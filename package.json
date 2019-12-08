@@ -1,5 +1,6 @@
 {
   "name": "task-manager-ui",
+  "author": "acrossoffwest & savayer",
   "version": "0.1.0",
   "private": true,
   "scripts": {
