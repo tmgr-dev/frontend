@@ -1,7 +1,10 @@
+import AuthBase from '../AuthBase'
 
 export default {
   name: 'register',
-  components: {},
+  components: {
+      AuthBase
+  },
   props: [],
   data () {
     return {
