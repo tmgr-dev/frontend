@@ -6,7 +6,7 @@ var toToggle = document.querySelectorAll(".toggleColour");
 document.addEventListener('scroll', function() {
     /*Apply classes for slide in bar*/
     scrollpos = window.scrollY;
-    if(scrollpos > 10){
+    if (scrollpos > 10) {
         header.classList.add("bg-white");
         navaction.classList.remove("bg-white");
         navaction.classList.add("gradient");
@@ -20,8 +20,7 @@ document.addEventListener('scroll', function() {
         header.classList.add("shadow");
         navcontent.classList.remove("bg-gray-100");
         navcontent.classList.add("bg-white");
-    }
-    else {
+    } else {
         header.classList.remove("bg-white");
         navaction.classList.remove("gradient");
         navaction.classList.add("bg-white");
@@ -46,7 +45,8 @@ var navMenuDiv = document.getElementById("nav-content");
 var navMenu = document.getElementById("nav-toggle");
 
 document.onclick = check;
-function check(e){
+
+function check(e) {
     var target = (e && e.target) || (event && event.srcElement);
 
     //Nav Menu
@@ -56,7 +56,7 @@ function check(e){
             // click on the link
             if (navMenuDiv.classList.contains("hidden")) {
                 navMenuDiv.classList.remove("hidden");
-            } else {navMenuDiv.classList.add("hidden");}
+            } else { navMenuDiv.classList.add("hidden"); }
         } else {
             // click both outside link and outside menu, hide menu
             navMenuDiv.classList.add("hidden");
@@ -64,32 +64,31 @@ function check(e){
     }
 
 }
+
 function checkParent(t, elm) {
-    while(t.parentNode) {
-        if( t == elm ) {return true;}
+    while (t.parentNode) {
+        if (t == elm) { return true; }
         t = t.parentNode;
     }
     return false;
 }
 
 export default {
-  name: 'index',
-  components: {},
-  props: [],
-  data () {
-    return {
+    name: 'index',
+    components: {},
+    props: [],
+    data() {
+        return {
+
+        }
+    },
+    computed: {
+
+    },
+    mounted() {
+
+    },
+    methods: {
 
     }
-  },
-  computed: {
-
-  },
-  mounted () {
-
-  },
-  methods: {
-
-  }
 }
-
-
