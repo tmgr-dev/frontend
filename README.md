@@ -28,6 +28,8 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 ### Creating new component
 For creating new component use [vue-generate-component](https://www.npmjs.com/package/vue-generate-component)
 
+Note: component will be created in current folder
+
 ### Git Flow
 
 Branch name for production releases: `master`
