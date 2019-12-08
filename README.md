@@ -27,3 +27,25 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 
 ### Creating new component
 For creating new component use [vue-generate-component](https://www.npmjs.com/package/vue-generate-component)
+
+### Git Flow
+
+Branch name for production releases: `master`
+
+Branch name for "next release" development: `develop` 
+
+How to name your supporting branch prefixes?
+
+Feature branches: `feature`
+
+Bugfix branches: `bugfix`
+
+Release branches:`release`
+
+Hotfix branches: `hotfix`
+
+Support branches: `support`
+
+Version tag prefix: `v`
+
+Hooks and filters directory: `./.git/hooks` 
