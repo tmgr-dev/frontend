@@ -1,4 +1,6 @@
-# task-manager-ui
+# SPA Task Manager  
+
+Lightweight task manager application.
 
 ## Project setup
 ```
