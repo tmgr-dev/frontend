@@ -24,3 +24,6 @@ yarn lint
 
 ### Customize configuration
 See [Configuration Reference](https://cli.vuejs.org/config/).
+
+### Creating new component
+For creating new component use [vue-generate-component](https://www.npmjs.com/package/vue-generate-component)
