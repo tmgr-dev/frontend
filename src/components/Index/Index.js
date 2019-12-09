@@ -41,7 +41,7 @@ document.addEventListener('scroll', function() {
 /*Toggle dropdown list*/
 /*https://gist.github.com/slavapas/593e8e50cf4cc16ac972afcbad4f70c8*/
 
-var navMenuDiv = document.getElementById("nav-content");
+/* var navMenuDiv = document.getElementById("nav-content");
 var navMenu = document.getElementById("nav-toggle");
 
 document.onclick = check;
@@ -71,7 +71,7 @@ function checkParent(t, elm) {
         t = t.parentNode;
     }
     return false;
-}
+} */
 
 export default {
     name: 'index',
