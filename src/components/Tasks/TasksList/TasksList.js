@@ -1,19 +1,22 @@
 import DropdownMenu from "../../UIElements/DropdownMenu";
-export default {
-  name: 'tasks-list',
-  components: {
-      DropdownMenu
-  },
-  props: [],
-  data () {
-    return {
-        panel: false,
-        isOpen: false
-    }
-  },
-  computed: {
+import Navbar from "../../UIElements/Navbar";
 
-  },
+export default {
+    name: 'tasks-list',
+    components: {
+        DropdownMenu,
+        Navbar
+    },
+    props: [],
+    data() {
+        return {
+            panel: false,
+            isOpen: false
+        }
+    },
+    computed: {
+
+    },
     created() {
         const handleEscape = (e) => {
             if (e.key === 'Esc' || e.key === 'Escape') {
@@ -25,12 +28,10 @@ export default {
             document.removeEventListener('keydown', handleEscape)
         })
     },
-  mounted () {
+    mounted() {
 
-  },
-  methods: {
+    },
+    methods: {
 
-  }
+    }
 }
-
-
