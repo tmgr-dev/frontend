@@ -1,7 +1,7 @@
 import AuthBase from '../AuthBase'
 
 export default {
-  name: 'login',
+  name: 'Login',
   components: {
       AuthBase
   },

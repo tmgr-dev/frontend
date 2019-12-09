@@ -1,11 +1,11 @@
 
 export default {
-  name: 'category-list',
+  name: 'ProjectList',
   components: {},
   props: [],
   data () {
     return {
-
+        h1: 'Projects'
     }
   },
   computed: {

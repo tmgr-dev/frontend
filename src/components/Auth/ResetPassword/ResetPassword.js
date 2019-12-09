@@ -1,7 +1,7 @@
 import AuthBase from "../AuthBase";
 
 export default {
-  name: 'reset-password',
+  name: 'ResetPassword',
     components: {
         AuthBase
     },

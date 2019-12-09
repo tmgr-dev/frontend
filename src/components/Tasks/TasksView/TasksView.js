@@ -1,6 +1,6 @@
 
 export default {
-  name: 'tasks-view',
+  name: 'TasksView',
   components: {},
   props: [],
   data () {

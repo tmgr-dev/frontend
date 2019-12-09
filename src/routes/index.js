@@ -3,47 +3,66 @@ import Register from '../components/Auth/Register'
 import ForgetPassword from '../components/Auth/ForgetPassword'
 import ResetPassword from '../components/Auth/ResetPassword'
 import Index from '../components/Index'
-import CategoryForm from '../components/Categories/CategoryForm'
-import CategoryList from '../components/Categories/CategoryList'
-import CategoryView from '../components/Categories/CategoryView'
+import ProjectForm from '../components/Projects/ProjectForm'
+import ProjectList from '../components/Projects/ProjectList'
+import ProjectView from '../components/Projects/ProjectView'
 import TasksList from "../components/Tasks/TasksList";
 
 const routes = [
     {
         path: '/',
-        component: Index
+        component: Index,
+        name: Index.name
     },
     {
         path: '/register',
-        component: Register
+        component: Register,
+        name: Register.name
     },
     {
         path: '/password/forget',
-        component: ForgetPassword
+        component: ForgetPassword,
+        name: ForgetPassword.name
     },
     {
         path: '/password/reset',
-        component: ResetPassword
+        component: ResetPassword,
+        name: ResetPassword.name
     },
     {
         path: '/login',
-        component: Login
+        component: Login,
+        name: Login.name
     },
     {
-        path: '/categories',
-        component: CategoryList
+        path: '/projects',
+        component: ProjectList,
+        name: ProjectList.name
     },
     {
-        path: '/categories/view',
-        component: CategoryView
+        path: '/projects/view',
+        component: ProjectView,
+        name: ProjectView.name
     },
     {
-        path: '/categories/form',
-        component: CategoryForm
+        path: '/projects/form',
+        component: ProjectForm,
+        name: ProjectForm.name
     },
     {
         path: '/tasks',
-        component: TasksList
+        component: TasksList,
+        name: 'Current' + TasksList.name
+    },
+    {
+        path: '/tasks/hidden',
+        component: TasksList,
+        name: 'Hidden' + TasksList.name
+    },
+    {
+        path: '/tasks/archive',
+        component: TasksList,
+        name: 'Archive' + TasksList.name
     },
 ]
 

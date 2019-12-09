@@ -24,6 +24,7 @@
 
 <script>
     export default {
+        name: 'DropdownMenu',
         data() {
             return {
                 isOpen: false

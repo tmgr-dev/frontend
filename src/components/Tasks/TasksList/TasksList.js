@@ -2,7 +2,7 @@ import DropdownMenu from "../../UIElements/DropdownMenu";
 import Navbar from "../../UIElements/Navbar";
 
 export default {
-    name: 'tasks-list',
+    name: 'TasksList',
     components: {
         DropdownMenu,
         Navbar
@@ -11,7 +11,12 @@ export default {
     data() {
         return {
             panel: false,
-            isOpen: false
+            isOpen: false,
+            h1: {
+                CurrentTasksList: 'Current tasks',
+                HiddenTasksList: 'Hidden tasks',
+                ArchiveTasksList: 'Archive tasks'
+            }
         }
     },
     computed: {
@@ -29,7 +34,7 @@ export default {
         })
     },
     mounted() {
-
+        window.console.log(this.$route)
     },
     methods: {
 

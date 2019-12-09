@@ -1,6 +1,6 @@
 
 export default {
-  name: 'tasks-form',
+  name: 'TasksForm',
   components: {},
   props: [],
   data () {

@@ -1,6 +1,6 @@
 
 export default {
-  name: 'category-form',
+  name: 'ProjectForm',
   components: {},
   props: [],
   data () {

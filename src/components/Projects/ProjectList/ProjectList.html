@@ -1,0 +1,31 @@
+<BaseLayout>
+    <span slot="header">{{ h1 }}</span>
+    <table class="w-full shadow-lg rounded mt-5" slot="body">
+        <tbody class="bg-white">
+        <tr v-for="item in Array(5)" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
+            <td class="flex inline-flex items-center">
+                <span class="py-3 w-40">
+                    <p class="text-gray-800 text-sm">Task manager Project</p>
+                    <p class="md:hidden text-xs text-gray-600 font-medium">Process</p>
+                    <p class="pl-4 hidden md:table-cell text-xs text-gray-500 font-medium">Project</p>
+                </span>
+            </td>
+            <td class="hidden md:table-cell">
+                <p class="text-sm text-gray-800 font-medium">Sub projects</p>
+                <p class="text-xs text-gray-500 font-medium">158</p>
+            </td>
+            <td class="hidden md:table-cell">
+                <p class="text-sm text-gray-700 font-medium">Tasks</p>
+                <p class="text-xs text-gray-500 font-medium">352</p>
+            </td>
+            <td>
+                <DropdownMenu class="lg:hidden"></DropdownMenu>
+                <div class="hidden lg:block">
+                    <Button type="router-link" to="/projects/view" color="green" extra-class="rounded-l">Open</Button>
+                    <Button color="red" extra-class="rounded-r">Delete</Button>
+                </div>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+</BaseLayout>

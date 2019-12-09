@@ -74,7 +74,7 @@ function checkParent(t, elm) {
 } */
 
 export default {
-    name: 'index',
+    name: 'Index',
     components: {},
     props: [],
     data() {

@@ -17,16 +17,16 @@
             <div class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block" :class="{ hidden: isHidden }">
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0">
                     <li>
-                        <a class="block px-4 py-1 md:p-2 lg:px-4" href="#" title="Link">Categories</a>
+                        <router-link to="/projects" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/projects' ? 'text-purple-600' : ''}`" href="#" title="Link">Categories</router-link>
                     </li>
                     <li>
-                        <a class="block px-4 py-1 md:p-2 lg:px-4 text-purple-600" href="#" title="Link">Current tasks</a>
+                        <router-link to="/tasks" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks' ? 'text-purple-600' : ''}`" href="#" title="Link">Current tasks</router-link>
                     </li>
                     <li>
-                        <a class="block px-4 py-1 md:p-2 lg:px-4" href="#" title="Link">Hidden</a>
+                        <router-link to="/tasks/hidden" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/hidden' ? 'text-purple-600' : ''}`" href="#" title="Link">Hidden</router-link>
                     </li>
                     <li>
-                        <a class="block px-4 py-1 md:p-2 lg:px-4" href="#" title="Link">Archive</a>
+                        <router-link to="/tasks/archive" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? 'text-purple-600': ''}`" href="#" title="Link">Archive</router-link>
                     </li>
                 </ul>
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:ml-auto md:mt-0 md:pt-0 md:border-0">

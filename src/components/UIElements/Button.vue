@@ -1,7 +1,6 @@
 <template>
-    <button :type="type" :class="`${extraClass} px-5 py-1 border border-4 border-${color}-400 text-${color}-600 hover:bg-${color}-400 hover:text-white`">
-        <slot></slot>
-    </button>
+    <router-link v-if="type === 'router-link'" :to="to" :class="getClass()"><slot></slot></router-link>
+    <button v-else :type="type" :class="getClass()"><slot></slot></button>
 </template>
 
 <script>
@@ -13,6 +12,11 @@
                 type: String,
                 default: () => 'button'
             },
+            to: {
+                required: false,
+                type: String,
+                default: () => ''
+            },
             color: {
                 required: false,
                 type: String,
@@ -22,6 +26,11 @@
                 required: false,
                 type: String,
                 default: () => ''
+            }
+        },
+        methods: {
+            getClass () {
+                return `${this.extraClass} px-5 py-1 border border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`
             }
         }
     }
