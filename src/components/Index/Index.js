@@ -72,10 +72,23 @@ function checkParent(t, elm) {
     }
     return false;
 } */
+import MainNav from './modules/MainNav'
+import MainFeatures from './modules/MainFeatures'
+import MainHeader from './modules/MainHeader'
+import MainTwitter from './modules/MainTwitter'
+import MainPricing from './modules/MainPricing'
+import MainFooter from './modules/MainFooter'
 
 export default {
     name: 'Index',
-    components: {},
+    components: {
+        MainNav,
+        MainFeatures,
+        MainHeader,
+        MainTwitter,
+        MainPricing,
+        MainFooter
+    },
     props: [],
     data() {
         return {
