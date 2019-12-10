@@ -6,18 +6,18 @@
 
             <div class="container px-3 mx-auto flex flex-wrap flex-col md:flex-row items-center">
                 <!--Left Col-->
-                <div class="flex flex-col w-full md:w-2/5 justify-center items-start text-center md:text-left">
+                <div class="flex flex-col w-full px-4 md:w-1/2 justify-center text-center md:text-left">
                     <p class="uppercase tracking-loose w-full">Track your tasks here! Why not?</p>
-                    <h1 class="my-4 text-5xl font-bold leading-tight text-white">Lightweight application for tracking your heavy tasks.</h1>
-                    <p class="leading-normal text-2xl mb-8 text-black">You can take easier tracking your tasks with our application.</p>
+                    <h1 class="my-4 xl:text-5xl lg:text-4xl text-3xl font-bold leading-tight text-white">Lightweight application for tracking your heavy tasks.</h1>
+                    <p class="leading-normal xl:text-2xl lg:text-xl md:text-lg text-base mb-8 text-black">You can take easier tracking your tasks with our application.</p>
 
 
-                    <router-link to="/register" class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow lg:mx-0 mx-auto">Get started</router-link>
+                    <router-link to="/register" class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto">Get started</router-link>
 
                 </div>
                 <!--Right Col-->
-                <div class="w-full md:w-3/5 py-6 text-center">
-                    <img class="w-full md:w-4/5 z-50" src="../../../assets/main.svg">
+                <div class="w-full md:w-1/2 py-6 text-center px-4">
+                    <img class="w-full z-50" src="../../../assets/main.svg">
                 </div>
 
             </div>
