@@ -1,11 +1,11 @@
 
 export default {
-  name: 'ProjectForm',
+  name: 'ProjectCategoryList',
   components: {},
   props: [],
   data () {
     return {
-
+        h1: 'Projects categories'
     }
   },
   computed: {

@@ -1,11 +1,11 @@
 
 export default {
-  name: 'ProjectView',
+  name: 'ProjectCategoryForm',
   components: {},
   props: [],
   data () {
     return {
-        h1: 'Task Manager Project'
+
     }
   },
   computed: {
