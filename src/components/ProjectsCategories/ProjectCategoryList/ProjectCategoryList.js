@@ -1,11 +1,16 @@
+import CategoryView from '../ProjectCategoryView/index'
+
 
 export default {
   name: 'ProjectCategoryList',
-  components: {},
+  components: {
+    CategoryView
+  },
   props: [],
   data () {
     return {
-        h1: 'Projects categories'
+        h1: 'Projects categories',
+        isShowModal: false
     }
   },
   computed: {
