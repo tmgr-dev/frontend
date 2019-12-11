@@ -1,11 +1,11 @@
 
 export default {
-  name: 'ProjectList',
+  name: 'ProjectCategoryView',
   components: {},
   props: [],
   data () {
     return {
-        h1: 'Projects'
+        h1: 'Project Category'
     }
   },
   computed: {

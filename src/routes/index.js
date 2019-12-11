@@ -3,9 +3,9 @@ import Register from '../components/Auth/Register'
 import ForgetPassword from '../components/Auth/ForgetPassword'
 import ResetPassword from '../components/Auth/ResetPassword'
 import Index from '../components/Index'
-import ProjectForm from '../components/Projects/ProjectForm'
-import ProjectList from '../components/Projects/ProjectList'
-import ProjectView from '../components/Projects/ProjectView'
+import ProjectCategoryForm from '../components/ProjectsCategories/ProjectCategoryForm'
+import ProjectCategoryList from '../components/ProjectsCategories/ProjectCategoryList'
+import ProjectCategoryView from '../components/ProjectsCategories/ProjectCategoryView'
 import TasksList from "../components/Tasks/TasksList";
 
 const routes = [
@@ -35,19 +35,19 @@ const routes = [
         name: Login.name
     },
     {
-        path: '/projects',
-        component: ProjectList,
-        name: ProjectList.name
+        path: '/projects-categories',
+        component: ProjectCategoryList,
+        name: ProjectCategoryList.name
     },
     {
-        path: '/projects/view',
-        component: ProjectView,
-        name: ProjectView.name
+        path: '/projects-categories/view',
+        component: ProjectCategoryView,
+        name: ProjectCategoryView.name
     },
     {
-        path: '/projects/form',
-        component: ProjectForm,
-        name: ProjectForm.name
+        path: '/projects-categories/form',
+        component: ProjectCategoryForm,
+        name: ProjectCategoryForm.name
     },
     {
         path: '/tasks',
