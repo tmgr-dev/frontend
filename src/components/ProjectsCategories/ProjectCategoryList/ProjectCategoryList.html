@@ -1,6 +1,12 @@
 <div>
     <BaseLayout>
         <span slot="header">{{ h1 }}</span>
+
+        <router-link to="/projects-categories/form" title="Add Category" slot="action" class="my-adding absolute right-0 bottom-0 mr-4
+            bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
+            <span class="block text-white text-xl pt-1 font-bold">+</span>
+        </router-link>
+
         <table class="w-full shadow-lg rounded mt-5" slot="body">
             <tbody class="bg-white">
             <tr v-for="item in 5" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
@@ -33,5 +39,6 @@
     <Modal :show="isShowModal" @close="isShowModal = false">
         <CategoryView slot="modal-body" />
     </Modal>
+    
     
 </div>
