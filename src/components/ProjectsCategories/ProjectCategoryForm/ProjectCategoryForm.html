@@ -1,5 +1,35 @@
+<BaseLayout>
+  <span slot="header"> {{ h1 }} </span>
+  <div class="max-w-xl mx-auto mt-5 bg-white shadow-md rounded px-8 py-6" slot="body">
+    <form class="w-full">
+      <div class="mb-4">
+        <label class="block text-gray-700 text-sm font-bold mb-2" for="categoryName">
+          Project category name
+        </label>
+        <input class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="categoryName" type="text" placeholder="Name" v-model="categoryName">
+        <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+      </div>
 
-<section class="project-form">
-  <h1>project-form Component</h1>
-</section>
-
+      <label for="parent-category" class="block text-gray-700 text-sm font-bold mb-2">
+        Parent category
+      </label>
+      <div class="relative mb-4">
+        <select id="parent-category" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline" :class="{ 'text-gray-500': selected }"  v-model="selectedParentCategory">
+          <option value="" disabled>Choose parent category</option>
+          <option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
+            {{ c.name }}
+          </option>
+        </select>
+        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+          <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+        </div>
+      </div>
+      
+      <div class="flex-row justify-center mt-8">
+        <button @click="sendData()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+          Add Category
+        </button>
+      </div>
+    </form>
+  </div>
+</BaseLayout>
