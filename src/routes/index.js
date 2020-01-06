@@ -1,75 +1,71 @@
-import Login from '../components/Auth/Login'
-import Register from '../components/Auth/Register'
-import ForgetPassword from '../components/Auth/ForgetPassword'
-import ResetPassword from '../components/Auth/ResetPassword'
-import Index from '../components/Index'
-import ProjectCategoryForm from '../components/ProjectsCategories/ProjectCategoryForm'
-import ProjectCategoryList from '../components/ProjectsCategories/ProjectCategoryList'
-import ProjectCategoryView from '../components/ProjectsCategories/ProjectCategoryView'
-import TasksList from "../components/Tasks/TasksList"
-import TasksForm from "../components/Tasks/TasksForm"
+import Vue from 'vue'
+import Router from 'vue-router'
 
-const routes = [
-    {
-        path: '/',
-        component: Index,
-        name: Index.name
-    },
-    {
-        path: '/register',
-        component: Register,
-        name: Register.name
-    },
-    {
-        path: '/password/forget',
-        component: ForgetPassword,
-        name: ForgetPassword.name
-    },
-    {
-        path: '/password/reset',
-        component: ResetPassword,
-        name: ResetPassword.name
-    },
-    {
-        path: '/login',
-        component: Login,
-        name: Login.name
-    },
-    {
-        path: '/projects-categories',
-        component: ProjectCategoryList,
-        name: ProjectCategoryList.name
-    },
-    {
-        path: '/projects-categories/view',
-        component: ProjectCategoryView,
-        name: ProjectCategoryView.name
-    },
-    {
-        path: '/projects-categories/form',
-        component: ProjectCategoryForm,
-        name: ProjectCategoryForm.name
-    },
-    {
-        path: '/tasks',
-        component: TasksList,
-        name: 'Current' + TasksList.name
-    },
-    {
-        path: '/tasks/form',
-        component: TasksForm,
-        name: 'Current' + TasksForm.name
-    },
-    {
-        path: '/tasks/hidden',
-        component: TasksList,
-        name: 'Hidden' + TasksList.name
-    },
-    {
-        path: '/tasks/archive',
-        component: TasksList,
-        name: 'Archive' + TasksList.name
-    },
-]
+Vue.use(Router)
 
-export default routes
+export default new Router({
+    mode: 'history',
+    base: process.env.BASE_URL,
+    routes: [
+        {
+            path: '/',
+            component: () => import('@/components/Index'),
+            name: 'Index'
+        },
+        {
+            path: '/register',
+            component: () => import('@/components/Auth/Register'),
+            name: 'Register'
+        },
+        {
+            path: '/password/forget',
+            component: () => import('@/components/Auth/ForgetPassword'),
+            name: 'ForgetPassword'
+        },
+        {
+            path: '/password/reset',
+            component: () => import('@/components/Auth/ResetPassword'),
+            name: 'ResetPassword'
+        },
+        {
+            path: '/login',
+            component: () => import('@/components/Auth/Login'),
+            name: 'Login'
+        },
+        {
+            path: '/projects-categories',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
+            name: 'ProjectCategoryList'
+        },
+        {
+            path: '/projects-categories/view',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
+            name: 'ProjectCategoryView'
+        },
+        {
+            path: '/projects-categories/form',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+            name: 'ProjectCategoryForm'
+        },
+        {
+            path: '/tasks',
+            component: () => import('@/components/Tasks/TasksList'),
+            name: 'CurrentTasksList'
+        },
+        {
+            path: '/tasks/form',
+            component: () => import('@/components/Tasks/TasksForm'),
+            name: 'TasksForm'
+        },
+        {
+            path: '/tasks/hidden',
+            component: () => import('@/components/Tasks/TasksList'),
+            name: 'HiddenTasksList'
+        },
+        {
+            path: '/tasks/archive',
+            component: () => import('@/components/Tasks/TasksList'),
+            name: 'ArchiveTasksList'
+        },
+    ]
+})

@@ -21,7 +21,7 @@
                     <DropdownMenu class="lg:hidden"></DropdownMenu>
                     <div class="hidden lg:block">
                         <Button color="green" extra-class="rounded-l">Done</Button>
-                        <Button color="blue">Open</Button>
+                        <Button color="blue" @click="$router.push('/tasks/form')">Open</Button>
                         <Button color="gray">Hide</Button>
                         <Button color="red" extra-class="rounded-r">Archive</Button>
                     </div>
