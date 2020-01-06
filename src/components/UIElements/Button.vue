@@ -1,6 +1,6 @@
 <template>
     <router-link v-if="type === 'router-link'" :to="to" :class="getClass()"><slot></slot></router-link>
-    <button v-else :type="type" :class="getClass()"><slot></slot></button>
+    <button v-else :type="type" @click="$emit('click')" :class="getClass()"><slot></slot></button>
 </template>
 
 <script>

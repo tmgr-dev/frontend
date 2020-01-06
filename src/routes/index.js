@@ -6,7 +6,8 @@ import Index from '../components/Index'
 import ProjectCategoryForm from '../components/ProjectsCategories/ProjectCategoryForm'
 import ProjectCategoryList from '../components/ProjectsCategories/ProjectCategoryList'
 import ProjectCategoryView from '../components/ProjectsCategories/ProjectCategoryView'
-import TasksList from "../components/Tasks/TasksList";
+import TasksList from "../components/Tasks/TasksList"
+import TasksForm from "../components/Tasks/TasksForm"
 
 const routes = [
     {
@@ -53,6 +54,11 @@ const routes = [
         path: '/tasks',
         component: TasksList,
         name: 'Current' + TasksList.name
+    },
+    {
+        path: '/tasks/form',
+        component: TasksForm,
+        name: 'Current' + TasksForm.name
     },
     {
         path: '/tasks/hidden',

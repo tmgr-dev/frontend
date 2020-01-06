@@ -1,5 +1,84 @@
+<BaseLayout>
+    <span slot="header">Task form</span>
+    <div class="lg:flex" slot="body">
+        <div class="lg:w-1/2 mt-5 p-5" >
+            <div class="shadow-lg rounded bg-white p-5 h-full">
+                <Countdown :init-counter="counter"></Countdown>
+            </div>
+        </div>
+        <div class="lg:w-1/2 mt-5 p-5" >
+            <div class="bg-white shadow-lg rounded p-5">
+                <div class="mb-4">
+                    <label for="parent-category" class="block text-gray-700 text-sm font-bold mb-2">
+                        Parent category
+                    </label>
+                    <div class="relative mb-4">
+                        <select id="parent-category" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline" :class="{ 'text-gray-500': selected }"  v-model="selectedParentCategory">
+                            <option value="" disabled>Choose parent category</option>
+                            <option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
+                                {{ c.name }}
+                            </option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                            <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white shadow-lg rounded p-5">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="categoryName">
+                        Task title
+                    </label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="categoryName" type="text" placeholder="Name" v-model="categoryName">
+                    <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+                </div>
+            </div>
+            <div class="bg-white shadow-lg rounded p-5">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="categoryName">
+                        Description
+                    </label>
+                    <textarea class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="categoryName" type="text" placeholder="Name" v-model="categoryName"/>
+                    <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="lg:flex" slot="body">
 
-<section class="tasks-form">
-  <h1>tasks-form Component</h1>
-</section>
-
+        <div class="w-full mt-5 p-5" >
+            <h2 class="text-2xl text-gray-800 pt-5">Checkpoints</h2>
+            <div class="bg-white shadow-lg rounded mt-5 p-5">
+                <div class="mb-4 flex" v-for="v in 5">
+                    <div class="w-0/12 text-2xl mt-1">{{ v }}.</div>
+                    <div class="w-9/12 mx-2">
+                        <input
+                            class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            type="text"
+                            placeholder="Checkpoint content"
+                            :value="v === 1 ? 'Research subjects for task' : ''"
+                        >
+                    </div>
+                    <div class="w-1/12 mx-2">
+                        <input
+                            class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            type="text"
+                            placeholder="00:00"
+                            :value="v === 1 ? '00:00' : ''"
+                        >
+                    </div>
+                    <div class="w-1/12 mx-2">
+                        <input
+                            class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            type="text"
+                            placeholder="00:00"
+                            :value="v === 1 ? '25:00' : ''"
+                        >
+                    </div>
+                    <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+                </div>
+            </div>
+        </div>
+    </div>
+</BaseLayout>
