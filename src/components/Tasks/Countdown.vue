@@ -116,7 +116,7 @@
     .counter {
         align-content: center;
         text-align: center;
-        padding: 50px;
+        padding: 23px;
         // background: #333;
         border-radius: 10px;
         margin-bottom: 50px;
