@@ -1,9 +1,10 @@
 import Vue from 'vue'
 import Router from 'vue-router'
+import store from '../store'
 
 Vue.use(Router)
 
-export default new Router({
+let router = new Router({
     mode: 'history',
     base: process.env.BASE_URL,
     routes: [
@@ -15,22 +16,34 @@ export default new Router({
         {
             path: '/register',
             component: () => import('@/components/Auth/Register'),
-            name: 'Register'
+            name: 'Register',
+            meta: {
+                allowedGuests: true
+            }
         },
         {
             path: '/password/forget',
             component: () => import('@/components/Auth/ForgetPassword'),
-            name: 'ForgetPassword'
+            name: 'ForgetPassword',
+            meta: {
+                allowedGuests: true
+            }
         },
         {
             path: '/password/reset',
             component: () => import('@/components/Auth/ResetPassword'),
-            name: 'ResetPassword'
+            name: 'ResetPassword',
+            meta: {
+                allowedGuests: true
+            }
         },
         {
             path: '/login',
             component: () => import('@/components/Auth/Login'),
-            name: 'Login'
+            name: 'Login',
+            meta: {
+                allowedGuests: true
+            }
         },
         {
             path: '/projects-categories',
@@ -69,3 +82,21 @@ export default new Router({
         },
     ]
 })
+
+router.beforeEach((to, from, next) => {
+    if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
+        next({name: 'CurrentTasksList'})
+    }
+
+    if (to.matched.some(record => !record.meta.allowedGuests)) {
+        if (!store.getters.isLoggedIn) {
+            next({ name: 'Login' })
+        } else {
+            next()
+        }
+    } else {
+        next()
+    }
+})
+
+export default router

@@ -30,8 +30,11 @@
                     </li>
                 </ul>
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:ml-auto md:mt-0 md:pt-0 md:border-0">
+                    <li class="text-gray-500">
+                        {{ $store.getters.user.name }}(current user)
+                    </li>
                     <li>
-                        <router-link to="/" class="block px-4 py-1 md:p-2 lg:px-4" title="Link">Logout</router-link>
+                        <a href="#" @click.prevent="logout" class="block px-4 py-1 md:p-2 lg:px-4" title="Logout">Logout</a>
                     </li>
                 </ul>
             </div>
@@ -48,7 +51,12 @@
             }
         },
         methods: {
-
+            logout () {
+                this.$axios.get('auth/logout').then(() => {
+                    this.$store.dispatch('logout')
+                    this.$router.push({name: 'Login'})
+                })
+            }
         }
     }
 </script>
