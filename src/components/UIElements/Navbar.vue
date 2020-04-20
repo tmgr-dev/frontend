@@ -53,9 +53,16 @@
         methods: {
             logout () {
                 this.$axios.get('auth/logout').then(() => {
-                    this.$store.dispatch('logout')
-                    this.$router.push({name: 'Login'})
+                    this.removeUserData()
+                }).catch(({response}) => {
+                    if (response.status && response.status === 401) {
+                        this.removeUserData()
+                    }
                 })
+            },
+            removeUserData () {
+                this.$store.dispatch('logout')
+                this.$router.push({name: 'Login'})
             }
         }
     }

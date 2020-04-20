@@ -3,7 +3,7 @@
         <input
             :id="name"
             :type="type"
-            :class="`flex-grow h-8 px-2 border rounded border-grey-400 ${errors ? 'with-errors' : ''}`"
+            :class="`flex-grow h-8 w-full px-2 border rounded border-grey-400 ${errors ? 'with-errors' : ''}`"
             :name="name"
             :placeholder="placeholder"
             v-model="val"
