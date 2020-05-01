@@ -51,3 +51,16 @@ Support branches: `support`
 Version tag prefix: `v`
 
 Hooks and filters directory: `./.git/hooks` 
+
+### Environment variables
+
+First of all you have to create .env file
+
+    cp example.env .env
+    
+#### Variables
+
+`VUE_APP_API_BASE_URL` - API base URL
+
+    # Example:
+    VUE_APP_API_BASE_URL=http://taskmanager.localhost/api/
