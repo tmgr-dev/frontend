@@ -29,7 +29,7 @@ export default {
             password: this.password,
             password_confirmation: this.password_confirmation
         })
-            .then(({data}) => {
+            .then(({data: { data }}) => {
                 this.$store.commit('token', data)
                 this.setUser()
             })
