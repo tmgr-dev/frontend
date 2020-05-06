@@ -8,10 +8,12 @@ export default {
     props: [],
     data() {
         return {
-            name: null,
-            email: null,
-            password: null,
-            password_confirmation: null,
+            form: {
+                name: null,
+                email: null,
+                password: null,
+                password_confirmation: null,
+            },
             errors: {}
         }
     },
@@ -22,33 +24,30 @@ export default {
 
     },
     methods: {
-        register() {
-            this.$axios.post('auth/register', {
-                name: this.name,
-                email: this.email,
-                password: this.password,
-                password_confirmation: this.password_confirmation
-            })
-                .then(({ data: { data } }) => {
-                    this.$store.commit('token', data)
-                    this.setUser()
-                })
-                .catch((error) => {
-                    if (!error || !error.response) {
-                        return
-                    }
+        async register() {
+            const {...registerData} = this.form
+            try {
+                const { data } = await this.$axios.post('auth/register', registerData)
+                
+                this.$store.commit('token', data.data)
+                this.setUser()
+                
+            } catch (error) {
+                if (error && error.response) {
                     this.errors = error.response.data.errors
-                })
+                }
+            }
         },
-        setUser() {
+
+        async setUser() {
             this.$axios.defaults.headers = {
                 Authorization: `Bearer ${this.$store.getters.token.token}`,
                 'X-Requested-With': 'XMLHttpRequest'
             }
-            this.$axios.get('user').then(({ data }) => {
-                this.$store.commit('user', data)
-                this.$router.push({ name: 'CurrentTasksList' })
-            })
+            const { data } = await this.$axios.get('user')
+
+            this.$store.commit('user', data)
+            this.$router.push({ name: 'CurrentTasksList' })
         }
     }
 }

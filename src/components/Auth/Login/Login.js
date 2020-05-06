@@ -8,8 +8,10 @@ export default {
     props: [],
     data() {
         return {
-            email: null,
-            password: null,
+            form: {
+                email: null,
+                password: null,
+            },
             errors: {}
         }
     },
@@ -20,35 +22,30 @@ export default {
 
     },
     methods: {
-        login() {
-            this.$axios.post('auth/login', {
-                email: this.email,
-                password: this.password
-            })
-                .then(({ data: { data } }) => {
-                    this.$store.commit('token', data)
-                    this.setUser()
-                })
-                .then(({ data }) => {
-                    this.$store.commit('token', data)
-                    this.setUser()
-                })
-                .catch((error) => {
-                    if (!error || !error.response) {
-                        return
-                    }
+        async login() {
+            const { ...loginData } = this.form
+
+            try {
+                const { data } = await this.$axios.post('auth/login', loginData)
+                
+                this.$store.commit('token', data.data)
+                this.setUser()
+
+            } catch (error) {
+                if (error && error.response) {
                     this.errors = error.response.data.errors
-                })
+                }
+            }
         },
-        setUser() {
+        async setUser() {
             this.$axios.defaults.headers = {
                 Authorization: `Bearer ${this.$store.getters.token.token}`,
                 'X-Requested-With': 'XMLHttpRequest'
             }
-            this.$axios.get('user').then(({ data }) => {
-                this.$store.commit('user', data)
-                this.$router.push({ name: 'CurrentTasksList' })
-            })
+            const { data } = await this.$axios.get('user')
+
+            this.$store.commit('user', data)
+            this.$router.push({ name: 'CurrentTasksList' })
         }
     }
 }

@@ -13,7 +13,7 @@ if (store.getters.token) {
         Authorization: `Bearer ${store.getters.token.token}`,
         'X-Requested-With': 'XMLHttpRequest'
     }
-    axios.get('user').then(({data}) => {
+    axios.get('user').then(({ data }) => {
         store.commit('user', data)
     })
 }
@@ -21,9 +21,9 @@ if (store.getters.token) {
 Vue.prototype.$axios = axios
 
 new Vue({
-  router,
-  store,
-  render: h => h(App),
+    router,
+    store,
+    render: h => h(App),
     components: {
 
     },
