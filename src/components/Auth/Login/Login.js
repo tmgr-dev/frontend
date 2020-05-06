@@ -25,6 +25,10 @@ export default {
                 email: this.email,
                 password: this.password
             })
+                .then(({ data: { data } }) => {
+                    this.$store.commit('token', data)
+                    this.setUser()
+                })
                 .then(({ data }) => {
                     this.$store.commit('token', data)
                     this.setUser()
