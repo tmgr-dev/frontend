@@ -5,6 +5,7 @@ import Button from "../components/UIElements/Button";
 import DropdownMenu from "../components/UIElements/DropdownMenu";
 import Countdown from "../components/Tasks/Countdown";
 import InputField from "../components/UIElements/InputField";
+import MiniLoader from "../components/UIElements/MiniLoader";
 
 export default [
     BaseLayout,
@@ -13,5 +14,6 @@ export default [
     DropdownMenu,
     Countdown,
     InputField,
-    Button
+    Button,
+    MiniLoader
 ]
