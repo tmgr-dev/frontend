@@ -8,6 +8,7 @@ export default {
     props: [],
     data() {
         return {
+            showLoader: false,
             form: {
                 email: null,
                 password: null,
@@ -15,23 +16,20 @@ export default {
             errors: {}
         }
     },
-    computed: {
-
-    },
-    mounted() {
-
-    },
     methods: {
         async login() {
             const { ...loginData } = this.form
 
             try {
+                this.showLoader = true
                 const { data } = await this.$axios.post('auth/login', loginData)
+                this.showLoader = false
                 
                 this.$store.commit('token', data.data)
                 this.setUser()
 
             } catch (error) {
+                this.showLoader = false
                 if (error && error.response) {
                     this.errors = error.response.data.errors
                 }

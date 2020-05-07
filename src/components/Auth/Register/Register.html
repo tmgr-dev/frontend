@@ -17,7 +17,10 @@
                 </div>
                 <div class="flex flex-col mt-8">
                     <button type="submit" @click.prevent="register" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
-                        Register
+                        <span class="relative">
+                            Register
+                            <mini-loader :is-active="showLoader" />
+                        </span>
                     </button>
                 </div>
             </form>
