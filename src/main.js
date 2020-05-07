@@ -1,7 +1,7 @@
 import Vue from './bootstrap/index'
 import router from './routes/index'
 import App from './App'
-import './assets/styles/index.css';
+import './assets/styles/index.scss';
 import axios from 'axios'
 import store from './store'
 

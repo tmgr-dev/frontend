@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div class="input_wrapper">
         <input
             :id="name"
             :type="type"
@@ -8,10 +8,8 @@
             :placeholder="placeholder"
             v-model="val"
         >
-        <div v-if="errors"  class="error">
-            <div v-for="message in errors" v-bind:key="message">
-                {{ message }}
-            </div>
+        <div v-if="errors"  class="error" :class="{ 'tooltip': errorAsTooltip }">
+            {{ errors[0] }}
         </div>
     </div>
 </template>
@@ -27,21 +25,26 @@
             errors: {
                 required: false,
                 type: Array,
-                default: () => null
+                default: null
             },
             type: {
                 required: false,
                 type: String,
-                default: () => 'text'
+                default: 'text'
             },
             placeholder: {
                 required: false,
                 type: String,
-                default: () => ''
+                default: ''
             },
             name: {
                 required: true,
                 type: String
+            }
+        },
+        data() {
+            return {
+                screenWidth: null
             }
         },
         computed: {
@@ -50,9 +53,19 @@
                 set (v) {
                     this.$emit('update:value', v)
                 }
+            },
+            errorAsTooltip() {
+                return this.screenWidth <= 767 ? false : true
             }
         },
         methods: {
+            updateWidth() {
+                this.screenWidth = window.innerWidth;
+            },
+        },
+        created() {
+            this.updateWidth()
+            window.addEventListener('resize', this.updateWidth);
         }
     }
 </script>
@@ -64,5 +77,41 @@
     .error {
         font-size: .9em;
         color: red;
+        &.tooltip {
+            position: absolute;
+            left: 108%;
+            white-space: nowrap;
+            background: #fff;
+            padding: 0.75rem;
+            min-width: 220px;
+            display: inline-block;
+            top: -6px;
+            border-radius: 7px;
+            box-shadow: 1px 1px 4px #888;
+            line-height: 1.1;
+            div {
+                margin-bottom: 5px;
+            }
+            &:before {
+                content: '';
+                border: 6px solid transparent;
+                border-right-color: #ffffff;
+                position: absolute;
+                left: -12px;
+                z-index: 2;
+                top: calc(50% - 5px);
+            }
+            &:after {
+                content: '';
+                border: 8px solid transparent;
+                border-right-color: #d0d0d0;
+                position: absolute;
+                top: calc(50% - 7px);
+                left: -16px;    
+            }
+        }
+    }
+    .input_wrapper {
+        position: relative;
     }
 </style>
