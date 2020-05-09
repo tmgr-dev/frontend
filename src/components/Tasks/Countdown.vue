@@ -2,15 +2,9 @@
     <div>
         <div v-if="counter" :class="'counter ' + extraCounterClass" id="counter">
             <span class="countdown-wrapper" title="Время: ЧЧ:ММ:СС">
-                <span class="countdown-item">
-                    {{ countdown.hours }}
-                </span>
-                <span class="countdown-item">
-                    {{ countdown.minutes }}
-                </span>
-                <span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">
-                    {{ countdown.seconds }}
-                </span>
+                <span class="countdown-item">{{ countdown.hours }}</span>
+                <span class="countdown-item">{{ countdown.minutes }}</span>
+                <span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
             </span>
                 <br>
                 <br>

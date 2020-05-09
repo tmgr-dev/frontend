@@ -8,9 +8,11 @@
             :placeholder="placeholder"
             v-model="val"
         >
-        <div v-if="errors"  class="error" :class="{ 'tooltip': errorAsTooltip }">
-            {{ errors[0] }}
-        </div>
+        <transition name="fade-left">
+            <div v-if="errors"  class="error" :class="{ 'tooltip': errorAsTooltip }">
+                {{ errors[0] }}
+            </div>
+        </transition>
     </div>
 </template>
 
@@ -113,5 +115,13 @@
     }
     .input_wrapper {
         position: relative;
+    }
+
+    .fade-left-enter-active, .fade-left-leave-active {
+        transition: .5s;
+        transform: translateX(0);
+    }
+    .fade-left-enter, .fade-left-leave-to {
+        transform: translateX(25px);
     }
 </style>
