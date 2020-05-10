@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div v-if="counter" :class="'counter ' + extraCounterClass" id="counter">
+        <div v-if="task" :class="'task ' + extraCounterClass" id="task">
             <span class="countdown-wrapper" title="Время: ЧЧ:ММ:СС">
                 <span class="countdown-item">{{ countdown.hours }}</span>
                 <span class="countdown-item">{{ countdown.minutes }}</span>
@@ -8,10 +8,10 @@
             </span>
                 <br>
                 <br>
-            <Button :color="counter.start_time ? 'red' : 'blue'"
+            <Button :color="task.start_time ? 'red' : 'blue'"
                     type="button"
                     @click="toggleCountdown"
-            >{{ counter.start_time ? 'Stop' : 'Run' }}</Button>
+            >{{ task.start_time ? 'Stop' : 'Run' }}</Button>
             <Button color="white"
                     type="button"
                     class="fullscreen-toggler"
@@ -25,26 +25,33 @@
     export default {
         name: "Countdown",
         props: {
-            initCounter: {
+            initTask: {
                 required: true,
                 type: Object
             }
         },
         mounted () {
-            this.counter = this.initCounter
+            this.task = this.initTask
+            this.task.start_time = this.task.start_time || 0
+
             this.renderTime()
             this.initCountdown()
+
+            this.$on('update-task', task => {
+                this.task = task
+                this.initCountdown()
+            })
         },
         data () {
             return {
                 extraCounterClass: '',
                 countdownInterval: null,
-                counter: {},
                 countdown: {
                     hours: '00',
                     minutes: '00',
                     seconds: '00'
-                }
+                },
+                task: null
             }
         },
         methods: {
@@ -56,40 +63,38 @@
                 }
             },
             toggleCountdown () {
-                // $.post(route('counter.admin.' + (this.counter.start_time ? 'stop' : 'start') + '.post', {
-                //     id: this.counter.id
-                // })).done((counter) => {
-                //     this.counter = Object.assign(this.counter, counter)
-                //     this.initCountdown()
-                // })
-                if (!this.counter.start_time) {
-                    this.counter.start_time = new Date().getTime() / 1000
-                } else {
-                    this.counter.start_time = 0
-                }
-                this.initCountdown()
+                this.$emit('toggle')
             },
             plusSecond () {
-                if (!this.counter) {
-                    this.counter = {
+                if (!this.task) {
+                    this.task = {
                         common_time: 0
                     }
                 }
-                ++this.counter.common_time
+                ++this.task.common_time
                 this.renderTime()
             },
+            prepareCommonTime () {
+                if (!this.task.common_time) {
+                    return
+                }
+                const currentTime = new Date().getTime() / 1000
+                this.task.common_time += currentTime.toFixed(1) - this.task.start_time
+                this.task.common_time = this.task.common_time.toFixed()
+            },
             initCountdown () {
-                if (this.counter.start_time === 0) {
+                if (!this.task.start_time) {
                     clearInterval(this.countdownInterval)
                     this.countdownInterval = null
                     return
                 }
+                this.prepareCommonTime()
                 this.countdownInterval = setInterval(() => {
                     this.plusSecond()
                 }, 1000)
             },
             renderTime () {
-                let seconds = this.counter.common_time
+                let seconds = this.task.common_time
                 var second = seconds % 60
                 var minute = (seconds - second) / 60 | 0
                 var hour = minute / 60 | 0
@@ -107,7 +112,7 @@
 </script>
 
 <style lang="scss">
-    .counter {
+    .task {
         align-content: center;
         text-align: center;
         padding: 23px;
@@ -130,7 +135,7 @@
             }
         }
 
-        .counter-wrappper {
+        .task-wrappper {
             font-size: 2em;
             display: block;
         }
@@ -145,7 +150,7 @@
             cursor: pointer;
         }
     }
-    .counter.fullscreen {
+    .task.fullscreen {
         position: fixed;
         width: 100vw;
         height: 100vh;

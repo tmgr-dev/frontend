@@ -86,6 +86,16 @@ let router = new Router({
             name: 'TasksForm'
         },
         {
+            path: '/tasks/create',
+            component: () => import('@/components/Tasks/TasksForm'),
+            name: 'TasksCreate'
+        },
+        {
+            path: '/tasks/:id/edit',
+            component: () => import('@/components/Tasks/TasksForm'),
+            name: 'TasksEdit'
+        },
+        {
             path: '/tasks/hidden',
             component: () => import('@/components/Tasks/TasksList'),
             name: 'HiddenTasksList'
