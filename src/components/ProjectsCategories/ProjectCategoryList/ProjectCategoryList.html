@@ -6,13 +6,13 @@
         <div slot="action">
             <div class="left-0 bottom-0 mr-4 absolute">
                 <router-link :to="`/projects-categories`" slot="action" class="">
-                    <span class="text-gray-800 text-sm">Categories {{ category ? ' > ' : '' }}</span>
+                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">Categories {{ category ? ' > ' : '' }}</span>
                 </router-link>
                 <router-link v-if="parentCategories" v-for="parentCategory in parentCategories" :key="parentCategory.id" :to="`/projects-categories/${parentCategory ? parentCategory.id + '/children' : ''}`" slot="action" class="">
-                    <span class="text-gray-800 text-sm">{{ parentCategory.title }} > </span>
+                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">{{ parentCategory.title }} > </span>
                 </router-link>
                 <router-link v-if="category" to="#" slot="action" class="">
-                    <span class="text-gray-800 text-sm">{{ category.title }}</span>
+                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">{{ category.title }}</span>
                 </router-link>
             </div>
             <div class="my-adding absolute right-0 bottom-0">

@@ -2,7 +2,7 @@
     <div>
         <Navbar />
         <header class="container mx-auto px-4 my-5 relative">
-            <h1 class="text-3xl text-gray-800 pt-5">
+            <h1 :class="`text-3xl ${$color('h1')}-800 pt-5`">
                 <slot name="header"></slot>
             </h1>
             <slot name="action"></slot>

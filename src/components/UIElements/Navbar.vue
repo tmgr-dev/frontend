@@ -1,5 +1,5 @@
 <template>
-    <nav class="bg-white shadow" role="navigation">
+    <nav :class="`${$color('bgNav')} shadow`" role="navigation">
         <div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
             <div class="mr-4 md:mr-8">
                 <router-link to="/tasks" rel="home">
@@ -17,20 +17,20 @@
             <div class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block" :class="{ hidden: isHidden }">
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0">
                     <li>
-                        <router-link to="/projects-categories" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/projects-categories' ? 'text-purple-600' : ''}`" href="#" title="Link">Categories</router-link>
+                        <router-link to="/projects-categories" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/projects-categories' ? $color('navLinkFocused') + '-600' : ''}`" href="#" title="Link">Categories</router-link>
                     </li>
                     <li>
-                        <router-link to="/tasks" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks' ? 'text-purple-600' : ''}`" href="#" title="Link">Current tasks</router-link>
+                        <router-link to="/tasks" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks' ? $color('navLinkFocused') + '-600' : ''}`" href="#" title="Link">Current tasks</router-link>
                     </li>
                     <li>
-                        <router-link to="/tasks/hidden" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/hidden' ? 'text-purple-600' : ''}`" href="#" title="Link">Hidden</router-link>
+                        <router-link to="/tasks/hidden" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/hidden' ? $color('navLinkFocused') + '-600' : ''}`" href="#" title="Link">Hidden</router-link>
                     </li>
                     <li>
-                        <router-link to="/tasks/archive" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? 'text-purple-600': ''}`" href="#" title="Link">Archive</router-link>
+                        <router-link to="/tasks/archive" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`" href="#" title="Link">Archive</router-link>
                     </li>
                 </ul>
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:ml-auto md:mt-0 md:pt-0 md:border-0">
-                    <li class="text-gray-500">
+                    <li :class="`${$color('navTextUser')}-500`">
                         {{ $store.getters.user.name }}(current user)
                     </li>
                     <li>
