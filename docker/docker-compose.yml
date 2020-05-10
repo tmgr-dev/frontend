@@ -1,0 +1,19 @@
+version: "2"
+
+services:
+  nginx:
+    image: nginx:1.17.10
+    restart: "${RESTART_TYPE}"
+    volumes:
+      - "${APP_DIR}/dist:/var/www/html:ro"
+      - "${NGINX_CONF_DIR}:/etc/nginx/conf.d"
+    environment:
+      - VIRTUAL_HOST=${DOMAINS}
+      - LETSENCRYPT_HOST=${DOMAINS}
+    networks:
+      - nginx-proxy-network
+
+networks:
+  nginx-proxy-network:
+    external:
+        name: reverseproxy_default
