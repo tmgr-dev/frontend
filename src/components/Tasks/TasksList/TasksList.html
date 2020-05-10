@@ -1,5 +1,7 @@
 <BaseLayout>
-    <span slot="header">{{ h1[$route.name] }}</span>
+    <span slot="header">
+        {{ h1[$route.name] }}
+    </span>
     <table class="w-full shadow-lg rounded mt-5" slot="body">
         <tbody class="bg-white">
             <tr v-for="task in tasks" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">

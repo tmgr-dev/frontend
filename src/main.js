@@ -4,8 +4,7 @@ import App from './App'
 import './assets/styles/index.scss';
 import axios from 'axios'
 import store from './store'
-import colorSchemes from './colors/schemes/dark'
-
+import colorSchemes from './colors/schemes'
 Vue.config.productionTip = false
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
@@ -20,7 +19,7 @@ if (store.getters.token) {
 }
 
 Vue.prototype.$axios = axios
-const color = colorKey => colorSchemes[colorKey]
+const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
 Vue.prototype.$color = color
 
 document.querySelector('body').className = color('bgBody')

@@ -30,6 +30,9 @@
                     </li>
                 </ul>
                 <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:ml-auto md:mt-0 md:pt-0 md:border-0">
+                    <li :class="`${$color('navTextUser')}-500 mr-5`">
+                        <DayNightSwitch :value="switchOn" @change="isOn => (isOn ? $store.commit('colorScheme', 'dark') : $store.commit('colorScheme', 'default'))"/>
+                    </li>
                     <li :class="`${$color('navTextUser')}-500`">
                         {{ $store.getters.user.name }}(current user)
                     </li>
@@ -47,7 +50,8 @@
         name: 'Navbar',
         data() {
             return {
-                isHidden: false
+                isHidden: false,
+                switchOn: this.$store.getters.colorScheme === 'dark'
             }
         },
         methods: {
