@@ -51,14 +51,29 @@ let router = new Router({
             name: 'ProjectCategoryList'
         },
         {
+            path: '/projects-categories/:id/children',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
+            name: 'ProjectCategoryChildrenList'
+        },
+        {
             path: '/projects-categories/view',
             component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
             name: 'ProjectCategoryView'
         },
         {
-            path: '/projects-categories/form',
+            path: '/projects-categories/create',
             component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
-            name: 'ProjectCategoryForm'
+            name: 'ProjectCategoryCreate'
+        },
+        {
+            path: '/projects-categories/:project_category_id/create',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+            name: 'ProjectCategoryCreateInCategory'
+        },
+        {
+            path: '/projects-categories/:id/edit',
+            component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+            name: 'ProjectCategoryEdit'
         },
         {
             path: '/tasks',
@@ -87,7 +102,11 @@ router.beforeEach((to, from, next) => {
     if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
         next({name: 'CurrentTasksList'})
     }
-
+    if (to.matched.some(record => record.meta.reuse === false)) {
+        router.app.key = to.path
+    } else {
+        router.app.key = null
+    }
     if (to.matched.some(record => !record.meta.allowedGuests)) {
         if (!store.getters.isLoggedIn) {
             next({ name: 'Login' })

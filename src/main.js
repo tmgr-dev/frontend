@@ -27,4 +27,9 @@ new Vue({
     components: {
 
     },
+    data () {
+        return {
+            key: null
+        }
+    }
 }).$mount('#app')

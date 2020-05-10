@@ -1,31 +1,43 @@
 <div>
     <BaseLayout>
-        <span slot="header">{{ h1 }}</span>
-
-        <router-link to="/projects-categories/form" title="Add Category" slot="action" class="my-adding absolute right-0 bottom-0 mr-4
+        <span slot="header">{{ h1 + (category ? ': ' + category.title : '') }}</span>
+        <div slot="action">
+            <div class="left-0 bottom-0 mr-4 absolute">
+                <router-link :to="`/projects-categories`" slot="action" class="">
+                    <span class="text-gray-800 text-sm">Categories {{ category ? ' > ' : '' }}</span>
+                </router-link>
+                <router-link v-if="parentCategories" v-for="parentCategory in parentCategories" :key="parentCategory.id" :to="`/projects-categories/${parentCategory ? parentCategory.id + '/children' : ''}`" slot="action" class="">
+                    <span class="text-gray-800 text-sm">{{ parentCategory.title }} > </span>
+                </router-link>
+                <router-link v-if="category" to="#" slot="action" class="">
+                    <span class="text-gray-800 text-sm">{{ category.title }}</span>
+                </router-link>
+            </div>
+            <router-link :to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add Category" class="my-adding absolute right-0 bottom-0 mr-4
             bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
-            <span class="block text-white text-xl pt-1 font-bold">+</span>
-        </router-link>
+                <span class="block text-white text-xl pt-1 font-bold">+</span>
+            </router-link>
+        </div>
 
         <table class="w-full shadow-lg rounded mt-5" slot="body">
             <tbody class="bg-white">
-            <tr v-for="item in 5" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
+            <tr v-for="category in categories" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
                 <td class="flex inline-flex items-center">
                     <span class="py-3 w-40">
-                        <p class="text-gray-800 text-sm">Project category name</p>
+                        <p class="text-gray-800 text-sm">{{ category.title }}</p>
                         <p class="text-xs text-gray-600 font-medium">Process</p>
                     </span>
                 </td>
                 <td class="hidden md:table-cell">
                     <p class="text-sm text-gray-700 font-medium">Projects</p>
-                    <p class="text-xs text-gray-500 font-medium">352</p>
+                    <p class="text-xs text-gray-500 font-medium">{{ category.children_count }}</p>
                 </td>
                 <td>
                     <DropdownMenu class="lg:hidden"></DropdownMenu>
-                    <div class="hidden lg:block">                        
-                        <button @click="isShowModal = !isShowModal" class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
+                    <div class="hidden lg:block">
+                        <router-link :to="{name: 'ProjectCategoryChildrenList', params: {id: category.id}}" class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
                             Open
-                        </button>                        
+                        </router-link>
                         <button class="rounded-r px-5 py-1 border border-4 border-red-400 text-red-600 hover:bg-red-400 hover:text-white">
                             Delete
                         </button>
@@ -35,10 +47,10 @@
             </tbody>
         </table>
     </BaseLayout>
-        
+
     <Modal :show="isShowModal" @close="isShowModal = false">
         <CategoryView slot="modal-body" />
     </Modal>
-    
-    
+
+
 </div>

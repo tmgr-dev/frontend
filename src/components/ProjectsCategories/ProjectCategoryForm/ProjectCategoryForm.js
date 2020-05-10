@@ -5,25 +5,50 @@ export default {
   props: [],
   data() {
     return {
-      h1: 'Add category',
-      categoryName: '',
-      selectedParentCategory: '',
-      slug: '',
-      parentCategories: [
-        { id: 1, name: `Petya's projects` },
-        { id: 2, name: `My projects` }
-      ]
+      h1: null,
+      form: this.getDefaultForm(),
+      parentCategories: null
     }
   },
   computed: {
-    selected() {
+    selected () {
       return !this.selectedParentCategory
-    }    
+    },
+    isCreate () {
+        return !this.$route.params.id && !this.form.id
+    }
   },
   mounted() {
-
+      this.setFormTexts()
+      this.loadParentCategories()
+      if (!this.isCreate) {
+          this.loadModel()
+      }
   },
   methods: {
+    async loadModel () {
+        const {data: {data}} = await this.$axios.get(`project_categories/${this.getId()}`)
+        this.form = data
+    },
+    async loadParentCategories () {
+        const {data: {data}} = await this.$axios.get('project_categories?all')
+        this.parentCategories = data
+    },
+    async create (withRoutePush = true) {
+        this.form.slug = this.generateSlug(this.form.title)
+        if (!this.form.project_category_id) {
+            delete this.form.project_category_id
+        }
+        const {data: {data}} = await this.$axios.post('project_categories', this.form)
+        if (!withRoutePush) {
+            return
+        }
+        this.$router.push({name: 'ProjectCategoryEdit', params: {id: data.id}})
+    },
+    async createAndContinue () {
+        this.create(false)
+        this.form = this.getDefaultForm()
+    },
     generateSlug(text) {
       const ru = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
@@ -46,9 +71,21 @@ export default {
 
       return n_str.join('').toLowerCase();
     },
-    sendData() {
-      this.slug = this.generateSlug(this.categoryName)
-      console.log(this.categoryName, this.slug)
+    setFormTexts() {
+        this.h1 = `${this.getFormTitlePrefix()} category`
+    },
+    getFormTitlePrefix () {
+      return this.isCreate ? 'Add' : 'Edit'
+    },
+    getId () {
+        return this.$route.params.id
+    },
+    getDefaultForm () {
+        return {
+            title: '',
+            project_category_id: this.$route.params.project_category_id || null,
+            slug: '',
+        }
     }
   }
 }
