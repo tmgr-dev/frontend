@@ -19,7 +19,7 @@
                     <button type="submit" @click.prevent="register" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
                         <span class="relative">
                             Register
-                            <mini-loader :is-active="showLoader" />
+                            <loader :type="'mini'" :is-active="showLoader" />
                         </span>
                     </button>
                 </div>

@@ -1,6 +1,6 @@
 <template>
-    <div class="mini_loader_wrapper" :class="{active: isActive}" :style="sidePositionStyle">
-        <div class="mini_loader">
+    <div class="loader_wrapper" :class="[{active: isActive}, type === 'mini' ? 'mini' : '']" :style="sidePositionStyle">
+        <div class="loader">
             <div></div>
             <div></div>
             <div></div>
@@ -11,7 +11,7 @@
 
 <script>
     export default {
-        name: "MiniLoader",
+        name: "Loader",
         props: {
             sidePositionStyle: {
                 type: String,
@@ -22,19 +22,20 @@
                 type: Boolean,
                 required: true,
                 default: true
+            },
+            type: {
+                type: String,
+                required: false
             }
         },
     };
 </script>
 
 <style lang="scss" scoped>
-    .mini_loader_wrapper {
-        position: absolute;
-        left: auto;
-        right: auto;
-        margin-left: 10px;
-        margin-right: 10px;
-        top: calc(50% - 7px);
+    .loader_wrapper {
+        &:not(.mini) {
+            display: flex;
+        }
         visibility: hidden;
         opacity: 0;
         transition: opacity .2s;
@@ -42,21 +43,43 @@
             opacity: 1;
             visibility: visible;
         }
+        &.mini {
+            position: absolute;
+            left: auto;
+            right: auto;
+            margin-left: 10px;
+            margin-right: 10px;
+            top: calc(50% - 7px);
+            .loader {
+                width: 20px;
+                height: 20px;
+            }
+
+            .loader div {
+                width: 12px;
+                height: 12px;
+                border: 2px solid;
+                border-color: #fff transparent transparent transparent;
+            }
+        }
     }
-    .mini_loader {
+    .loader {
+        &:not(.mini) {
+            margin: auto
+        }
         position: relative;
-        width: 20px;
-        height: 20px;
+        width: 60px;
+        height: 60px;
         div {
             box-sizing: border-box;
             display: block;
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            border: 2px solid #fff;
+            position: absolute;            
+            width: 42px;
+            height: 42px;
+            border: 5px solid;
             border-radius: 50%;
             animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-            border-color: #fff transparent transparent transparent;
+            border-color: #808080 transparent transparent transparent;
         }
 
         div:nth-child(1) {

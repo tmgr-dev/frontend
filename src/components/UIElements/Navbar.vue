@@ -29,17 +29,7 @@
                         <router-link to="/tasks/archive" :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`" href="#" title="Link">Archive</router-link>
                     </li>
                 </ul>
-                <ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:ml-auto md:mt-0 md:pt-0 md:border-0">
-                    <li :class="`${$color('navTextUser')}-500 mr-5`">
-                        <DayNightSwitch :value="switchOn" @change="isOn => (isOn ? $store.commit('colorScheme', 'dark') : $store.commit('colorScheme', 'default'))"/>
-                    </li>
-                    <li :class="`${$color('navTextUser')}-500`">
-                        {{ $store.getters.user.name }}(current user)
-                    </li>
-                    <li>
-                        <a href="#" @click.prevent="logout" class="block px-4 py-1 md:p-2 lg:px-4" title="Logout">Logout</a>
-                    </li>
-                </ul>
+                <AccountDropdown />
             </div>
         </div>
     </nav>
@@ -51,23 +41,7 @@
         data() {
             return {
                 isHidden: false,
-                switchOn: this.$store.getters.colorScheme === 'dark'
             }
-        },
-        methods: {
-            logout () {
-                this.$axios.get('auth/logout').then(() => {
-                    this.removeUserData()
-                }).catch(({response}) => {
-                    if (response.status && response.status === 401) {
-                        this.removeUserData()
-                    }
-                })
-            },
-            removeUserData () {
-                this.$store.dispatch('logout')
-                this.$router.push({name: 'Login'})
-            }
-        }
+        }        
     }
 </script>

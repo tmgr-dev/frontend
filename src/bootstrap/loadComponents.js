@@ -5,9 +5,10 @@ import Button from "../components/UIElements/Button";
 import DropdownMenu from "../components/UIElements/DropdownMenu";
 import Countdown from "../components/Tasks/Countdown";
 import InputField from "../components/UIElements/InputField";
-import MiniLoader from "../components/UIElements/MiniLoader";
+import Loader from "../components/UIElements/Loader";
 import DayNightSwitch from "../components/UIElements/DayNightSwitch";
 import RockerSwitch from 'vue-rocker-switch';
+import AccountDropdown from '@/components/UIElements/AccountDropdown';
 import "vue-rocker-switch/dist/vue-rocker-switch.css";
 
 export default [
@@ -20,5 +21,6 @@ export default [
     Countdown,
     InputField,
     Button,
-    MiniLoader
+    Loader,
+    AccountDropdown
 ]

@@ -19,8 +19,8 @@
         Parent category
       </label>
       <div class="relative mb-4">
-        <select id="parent-category" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline" :class="{ 'text-gray-500': selected }"  v-model="form.project_category_id">
-          <option value="">Choose parent category</option>
+        <select id="parent-category" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"   v-model="form.project_category_id">
+          <option value="" class="text-gray-500">Choose parent category</option>
           <option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
             {{ c.title }}
           </option>

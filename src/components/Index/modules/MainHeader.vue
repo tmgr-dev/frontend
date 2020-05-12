@@ -17,7 +17,7 @@
                 </div>
                 <!--Right Col-->
                 <div class="w-full md:w-1/2 py-6 text-center px-4">
-                    <img class="w-full z-50" src="../../../assets/main.svg">
+                    <img class="w-full z-50" src="../../../assets/img/main.svg">
                 </div>
 
             </div>
