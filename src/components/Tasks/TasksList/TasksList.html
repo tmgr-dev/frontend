@@ -2,14 +2,24 @@
     <span slot="header">
         {{ h1[$route.name] }}
     </span>
+    <div slot="action">
+        <div class="left-0 bottom-0 mr-4 absolute">
+        </div>
+        <div class="my-adding absolute right-0 bottom-0">
+            <router-link :to="`/tasks/create`" title="Add Task" class="my-adding absolute right-0 bottom-0 mr-4
+            bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
+                <span class="block text-white text-xl pt-1 font-bold">+</span>
+            </router-link>
+        </div>
+    </div>
     <table class="w-full shadow-lg rounded mt-5" slot="body">
-        <tbody class="bg-white">
-            <tr v-for="task in tasks" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
+        <tbody :class="`${$color('blocks')}`">
+            <tr v-for="task in tasks" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="panel = true">
                 <td class="flex inline-flex items-center">
                     <span class="py-3 w-40">
-                        <p class="text-gray-800 text-sm">{{ task.title }}</p>
-                        <p class="md:hidden text-xs text-gray-600 font-medium">{{ capitalize(task.status) }}</p>
-                        <p v-if="task.category" class="pl-2 hidden md:table-cell text-xs text-center w-full text-gray-500 font-medium">
+                        <p :class="`${$color('textMain')}-800 text-sm`">{{ task.title }}</p>
+                        <p :class="`md:hidden text-xs ${$color('textMain')}-600 font-medium`">{{ capitalize(task.status) }}</p>
+                        <p v-if="task.category" :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`">
                             <router-link :to="{
                                 name: 'ProjectCategoryChildrenList',
                                 params: {
@@ -17,15 +27,15 @@
                                 }
                             }">{{ task.category.title }}</router-link>
                         </p>
-                        <p v-else class="pl-2 hidden md:table-cell text-xs text-center w-full text-gray-500 font-medium"> - </p>
+                        <p v-else :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"> - </p>
                     </span>
                 </td>
                 <td class="hidden md:table-cell">
-                    <p class="text-sm text-gray-800 font-medium">{{ capitalize(task.status) }}</p>
-                    <p class="text-xs text-gray-500 font-medium">1 hour 59 minute (no active)</p>
+                    <p :class="`text-sm ${$color('textMain')}-800 font-medium`">{{ capitalize(task.status) }}</p>
+                    <p :class="`text-xs ${$color('textMain')}-500 font-medium`">1 hour 59 minute (no active)</p>
                 </td>
                 <td class="hidden md:table-cell">
-                    <p v-if="task.category" class="text-sm text-gray-700 font-medium">
+                    <p v-if="task.category" :class="`text-sm ${$color('textMain')}-700 font-medium`">
                         <router-link :to="{
                                 name: 'ProjectCategoryChildrenList',
                                 params: {
@@ -33,7 +43,7 @@
                                 }
                             }">{{ task.category.title }}</router-link>
                     </p>
-                    <p v-else class="text-sm text-gray-700 font-medium"> - </p>
+                    <p v-else :class="`text-sm ${$color('textMain')}-700 font-medium`"> - </p>
                 </td>
                 <td>
                     <DropdownMenu class="lg:hidden"></DropdownMenu>

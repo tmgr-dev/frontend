@@ -1,5 +1,5 @@
 <template>
-    <nav :class="`${$color('bgNav')} shadow`" role="navigation">
+    <nav :class="`${$color('blocks')} shadow`" role="navigation">
         <div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
             <div class="mr-4 md:mr-8">
                 <router-link to="/tasks" rel="home">
@@ -42,6 +42,6 @@
             return {
                 isHidden: false,
             }
-        }        
+        }
     }
 </script>

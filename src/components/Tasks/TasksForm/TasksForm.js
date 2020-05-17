@@ -76,7 +76,7 @@ export default {
         this.form = data
     },
     cancel () {
-        console.log('cancel')
+        window.history.back();
     },
     getDefaultForm () {
         return {

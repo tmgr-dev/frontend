@@ -3,13 +3,13 @@
     <div slot="body">
         <div class="lg:flex">
             <div class="lg:w-full h-full mt-5 p-5" >
-                <div class="shadow-lg bg-white p-5 h-full">
+                <div :class="`shadow-lg bg-white p-5 h-full ${$color('blocks')}`">
                     <div class="block w-3/4 float-left">
                         <div class="mb-2">
-<!--                            <label class=" text-gray-700 text-sm font-bold mb-2" for="">-->
+<!--                            <label class="  text-sm font-bold mb-2" for="">-->
 <!--                                Task title-->
 <!--                            </label>-->
-                            <input class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" type="text" placeholder="Enter task title" v-model="form.title">
+                            <input :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline`" type="text" placeholder="Enter task title" v-model="form.title">
                             <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
                         </div>
                     </div>
@@ -30,55 +30,55 @@
         </div>
         <div class="lg:flex">
             <div class="lg:w-1/2 h-full mt-5 p-5" >
-                <div class="shadow-lg bg-white p-5 h-full">
+                <div :class="`shadow-lg ${$color('blocks')} p-5 h-full`">
                     <Countdown v-if="form.id && showCountdown" ref="countdown" :init-task="form" @toggle="toggleCountdown"></Countdown>
                 </div>
             </div>
             <div class="lg:w-1/2 h-full mt-5 p-5" >
-                <div class="bg-white shadow-lg px-5 pb-1 pt-5">
+                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1 pt-5`">
                     <div class="mb-2">
-                        <label for="parent-category" class="block text-gray-700 text-sm font-bold mb-2">
+                        <label for="parent-category" class="block  text-sm font-bold mb-2">
                             Parent category
                         </label>
                         <div class="relative mb-2">
-                            <select id="parent-category" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline" :class="{ 'text-gray-500': selected }"  v-model="form.project_category_id">
+                            <select id="parent-category" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"  v-model="form.project_category_id">
                                 <option value="" disabled>Choose parent category</option>
                                 <option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
                                     {{ c.title }}
                                 </option>
                             </select>
 
-                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ">
                                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white shadow-lg px-5 pb-1 pt-5">
+                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1 pt-5`">
                     <div class="mb-2">
-                        <label for="parent-category" class="block text-gray-700 text-sm font-bold mb-2">
+                        <label for="parent-category" class="block  text-sm font-bold mb-2">
                             Status
                         </label>
                         <div class="relative mb-2">
-                            <select id="status" class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline" :class="{ 'text-gray-500': selected }"  v-model="form.status">
+                            <select id="status" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"  v-model="form.status">
                                 <option v-for="(c, i) in statuses" :key="i" :value="c.value">
                                     {{ c.name }}
                                 </option>
                             </select>
 
-                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ">
                                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white shadow-lg px-5 pb-1">
+                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1`">
                     <div class="mb-2">
-                        <label class="block text-gray-700 text-sm font-bold mb-2" for="">
+                        <label class="block  text-sm font-bold mb-2" for="">
                             Description
                         </label>
-                        <textarea class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="" type="text" placeholder="Name" v-model="form.description"/>
+                        <textarea :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`" id="" type="text" placeholder="Name" v-model="form.description"/>
                         <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
                     </div>
                 </div>
@@ -88,14 +88,14 @@
     <div class="lg:flex" slot="body">
 
         <div class="w-full mt-5 p-5" >
-            <h2 class="text-2xl text-gray-800 pt-5">Checkpoints</h2>
-            <div class="bg-white shadow-lg rounded mt-5 p-5">
+            <h2 class="text-2xl pt-5">Checkpoints</h2>
+            <div :class="`${$color('blocks')} shadow-lg rounded mt-5 p-5`">
                 <div class="mb-2" v-for="v in 5">
                     <div class="flex mb-2">
                         <div class="w-0/12 text-2xl mt-1">{{ v }}.</div>
                         <div class="w-full mx-2">
                             <input
-                                class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
                                 type="text"
                                 placeholder="Checkpoint content"
                                 :value="v === 1 ? 'Research subjects for task' : ''"
@@ -108,7 +108,7 @@
                         <div class="flex">
                             <div class="w-6/12 mx-2">
                                 <input
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-center"
+                                    :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
                                     type="text"
                                     placeholder="00:00"
                                     :value="v === 1 ? '00:00' : ''"
@@ -116,7 +116,7 @@
                             </div>
                             <div class="w-6/12 mx-2">
                                 <input
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-center"
+                                    :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
                                     type="text"
                                     placeholder="00:00"
                                     :value="v === 1 ? '25:00' : ''"
