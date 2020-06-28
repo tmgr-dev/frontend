@@ -9,9 +9,11 @@ import Loader from "../components/UIElements/Loader";
 import DayNightSwitch from "../components/UIElements/DayNightSwitch";
 import RockerSwitch from 'vue-rocker-switch';
 import AccountDropdown from '@/components/UIElements/AccountDropdown';
+import Alert from '@/components/UIElements/Alert';
 import "vue-rocker-switch/dist/vue-rocker-switch.css";
 
 export default [
+    Alert,
     BaseLayout,
     RockerSwitch,
     DayNightSwitch,

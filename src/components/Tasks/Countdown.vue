@@ -72,6 +72,7 @@
                     }
                 }
                 ++this.task.common_time
+                this.$emit('update:seconds', this.task.common_time)
                 this.renderTime()
             },
             prepareCommonTime () {

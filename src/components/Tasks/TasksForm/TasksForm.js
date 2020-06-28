@@ -4,6 +4,7 @@ export default {
   props: [],
   data () {
     return {
+        showSaveAlert: false,
         panel: false,
         isOpen: false,
         counter: {
@@ -22,6 +23,23 @@ export default {
             HiddenTasksList: 'Hidden tasks',
             ArchiveTasksList: 'Archive tasks'
         },
+        checkpoints: [
+            {
+                description: 'Research subjects for task',
+                start: 0,
+                end: 156
+            },
+            {
+                description: 'Second task',
+                start: 156,
+                end: 300
+            },
+            {
+                description: 'Third task',
+                start: 300,
+                end: 750
+            }
+        ],
         selected: false,
         form: this.getDefaultForm(),
         showCountdown: true
@@ -69,11 +87,17 @@ export default {
                 id: data.id
             }
         })
+        this.showSavedAlert()
     },
+      showSavedAlert() {
+          this.showSaveAlert = true
+          setTimeout(() => this.showSaveAlert = false, 3000)
+      },
     async save () {
         this.prepareForm()
         const {data: {data}} = await this.$axios.put(`tasks/${this.getId()}`, this.form)
         this.form = data
+        this.showSavedAlert()
     },
     cancel () {
         window.history.back();
@@ -85,7 +109,43 @@ export default {
             project_category_id: '',
             description: ''
         };
-    }
+    },
+    secondsToStringTime (seconds) {
+        const second = seconds % 60
+        let minute = (seconds - second) / 60 | 0
+        const hour = minute / 60 | 0
+        minute = minute - (hour * 60)
+
+        return `${this.prepareClockNumber(hour)}:${this.prepareClockNumber(minute)}:${this.prepareClockNumber(second)}`
+    },
+    stringTimeToSeconds (stringTime) {
+        let times = stringTime.split(':')
+        times = times.map(parseInt)
+        return times[0]*60*60 + times[1]*60 + times[2]
+    },
+    prepareClockNumber (num) {
+        return num < 10 ? '0' + num : num
+    },
+    addCheckpoint () {
+        if (!this.form.checkpoints) {
+            this.form.checkpoints = []
+        }
+        const currentTime = this.form.common_time
+        if (this.form.checkpoints.length !== 0 && this.form.checkpoints.length !== 1) {
+            this.form.checkpoints[this.form.checkpoints.length-1].end = currentTime
+        }
+        this.form.checkpoints.push({
+            description: 'New one',
+            start: currentTime,
+            end: currentTime
+        })
+    },
+      updateSeconds (seconds) {
+          if (!this.form.checkpoints || this.form.checkpoints.length === 0) {
+              return
+          }
+          this.form.checkpoints[this.form.checkpoints.length-1].end = seconds
+      }
   }
 }
 

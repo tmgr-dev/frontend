@@ -31,7 +31,13 @@
         <div class="lg:flex">
             <div class="lg:w-1/2 h-full mt-5 p-5" >
                 <div :class="`shadow-lg ${$color('blocks')} p-5 h-full`">
-                    <Countdown v-if="form.id && showCountdown" ref="countdown" :init-task="form" @toggle="toggleCountdown"></Countdown>
+                    <Countdown
+                        v-if="form.id && showCountdown"
+                        ref="countdown"
+                        :init-task="form"
+                        @toggle="toggleCountdown"
+                        @update:seconds="updateSeconds"
+                    />
                 </div>
             </div>
             <div class="lg:w-1/2 h-full mt-5 p-5" >
@@ -90,15 +96,15 @@
         <div class="w-full mt-5 p-5" >
             <h2 class="text-2xl pt-5">Checkpoints</h2>
             <div :class="`${$color('blocks')} shadow-lg rounded mt-5 p-5`">
-                <div class="mb-2" v-for="v in 5">
+                <div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
                     <div class="flex mb-2">
-                        <div class="w-0/12 text-2xl mt-1">{{ v }}.</div>
+                        <div class="w-0/12 text-2xl mt-1">{{ v+1 }}.</div>
                         <div class="w-full mx-2">
                             <input
                                 :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
                                 type="text"
                                 placeholder="Checkpoint content"
-                                :value="v === 1 ? 'Research subjects for task' : ''"
+                                v-model="checkpoint.description"
                             >
                         </div>
 
@@ -107,25 +113,29 @@
                     <div>
                         <div class="flex">
                             <div class="w-6/12 mx-2">
-                                <input
+                                <the-mask mask="##:##:##"
                                     :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
                                     type="text"
                                     placeholder="00:00"
-                                    :value="v === 1 ? '00:00' : ''"
-                                >
+                                    :value="secondsToStringTime(checkpoint.start)"
+                                />
                             </div>
                             <div class="w-6/12 mx-2">
-                                <input
+                                <the-mask mask="##:##:##"
                                     :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
                                     type="text"
                                     placeholder="00:00"
-                                    :value="v === 1 ? '25:00' : ''"
-                                >
+                                    :value="secondsToStringTime(checkpoint.end)"
+                                />
                             </div>
                         </div>
                     </div>
                 </div>
+                <button v-if="!isCreate" @click="addCheckpoint" class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                    Add
+                </button>
             </div>
         </div>
+        <Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
     </div>
 </BaseLayout>
