@@ -13,6 +13,7 @@ export default {
                 email: null,
                 password: null,
             },
+            message: '',
             errors: {}
         }
     },
@@ -24,7 +25,7 @@ export default {
                 this.showLoader = true
                 const { data } = await this.$axios.post('auth/login', loginData)
                 this.showLoader = false
-                
+
                 this.$store.commit('token', data.data)
                 this.setUser()
 
@@ -32,6 +33,9 @@ export default {
                 this.showLoader = false
                 if (error && error.response) {
                     this.errors = error.response.data.errors
+                    if (error.response.data && error.response.data.message) {
+                        this.message = error.response.data.message
+                    }
                 }
             }
         },

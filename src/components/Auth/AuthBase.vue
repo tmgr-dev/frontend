@@ -1,6 +1,6 @@
 <template>
     <div>
-        <section class="h-screen overflow-hidden flex items-center justify-center">
+        <section class="h-screen overflow-hidden flex items-center justify-center auth-form">
             <div class="bg-blue-400 h-screen w-screen">
                 <div class="flex flex-col items-center flex-1 h-full justify-center px-4 sm:px-0">
                     <div class="flex rounded-lg shadow-lg w-full sm:w-3/4 lg:w-1/2 bg-white sm:mx-0" style="height: 500px">

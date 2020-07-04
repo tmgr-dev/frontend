@@ -4,6 +4,7 @@ export default {
   props: [],
   data () {
     return {
+        errors: {},
         showSaveAlert: false,
         panel: false,
         isOpen: false,
@@ -79,25 +80,39 @@ export default {
       }
     },
     async create () {
-        this.prepareForm()
-        const {data: {data}} = await this.$axios.post('tasks', this.form)
-        this.$router.push({
-            name: 'TasksEdit',
-            params: {
-                id: data.id
+        try {
+            this.prepareForm()
+            const {data: {data}} = await this.$axios.post('tasks', this.form)
+            this.$router.push({
+                name: 'TasksEdit',
+                params: {
+                    id: data.id
+                }
+            })
+            this.showSavedAlert()
+        } catch (e) {
+            console.log(e)
+            if (e.response && e.response && e.response.data.errors) {
+                this.errors = e.response.data.errors
             }
-        })
-        this.showSavedAlert()
+        }
     },
       showSavedAlert() {
           this.showSaveAlert = true
           setTimeout(() => this.showSaveAlert = false, 3000)
       },
     async save () {
-        this.prepareForm()
-        const {data: {data}} = await this.$axios.put(`tasks/${this.getId()}`, this.form)
-        this.form = data
-        this.showSavedAlert()
+        try {
+            this.prepareForm()
+            const {data: {data}} = await this.$axios.put(`tasks/${this.getId()}`, this.form)
+            this.form = data
+            this.showSavedAlert()
+        } catch (e) {
+            console.log(e)
+            if (e.response && e.response && e.response.data.errors) {
+                this.errors = e.response.data.errors
+            }
+        }
     },
     cancel () {
         window.history.back();

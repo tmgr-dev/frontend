@@ -1,9 +1,19 @@
 <template>
     <div class="input_wrapper">
+        <select v-if="type === 'select'" name="" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`">
+            <option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">
+                {{ option[optionNameKey] }}
+            </option>
+        </select>
+        <textarea
+            :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
+            v-else-if="type === 'textarea'" name="" v-model="val">
+        </textarea>
         <input
+            v-else
             :id="name"
             :type="type"
-            :class="`flex-grow h-8 w-full px-2 border rounded border-grey-400 ${errors ? 'with-errors' : ''}`"
+            :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
             :name="name"
             :placeholder="placeholder"
             v-model="val"
@@ -33,6 +43,20 @@
                 required: false,
                 type: String,
                 default: 'text'
+            },
+            options: {
+                required: false,
+                type: Array
+            },
+            optionValueKey: {
+                required: false,
+                type: String,
+                default: 'value'
+            },
+            optionNameKey: {
+                required: false,
+                type: String,
+                default: 'name'
             },
             placeholder: {
                 required: false,
@@ -99,7 +123,7 @@
                 border: 6px solid transparent;
                 border-right-color: #ffffff;
                 position: absolute;
-                left: -12px;
+                left: -10px;
                 z-index: 2;
                 top: calc(50% - 5px);
             }
@@ -109,7 +133,7 @@
                 border-right-color: #d0d0d0;
                 position: absolute;
                 top: calc(50% - 7px);
-                left: -16px;    
+                left: -14px;
             }
         }
     }

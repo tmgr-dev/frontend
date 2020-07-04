@@ -6,11 +6,7 @@
                 <div :class="`shadow-lg bg-white p-5 h-full ${$color('blocks')}`">
                     <div class="block w-3/4 float-left">
                         <div class="mb-2">
-<!--                            <label class="  text-sm font-bold mb-2" for="">-->
-<!--                                Task title-->
-<!--                            </label>-->
-                            <input :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline`" type="text" placeholder="Enter task title" v-model="form.title">
-                            <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+                            <input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
                         </div>
                     </div>
                     <DropdownMenu class="lg:hidden"></DropdownMenu>
@@ -47,13 +43,15 @@
                             Parent category
                         </label>
                         <div class="relative mb-2">
-                            <select id="parent-category" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"  v-model="form.project_category_id">
-                                <option value="" disabled>Choose parent category</option>
-                                <option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
-                                    {{ c.title }}
-                                </option>
-                            </select>
-
+                            <input-field
+                                :value.sync="form.project_category_id"
+                                :options="parentCategories"
+                                option-value-key="id"
+                                option-name-key="title"
+                                :errors="errors.project_category_id"
+                                type="select"
+                                placeholder="Enter task title"
+                            />
                             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ">
                                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                             </div>
@@ -66,12 +64,12 @@
                             Status
                         </label>
                         <div class="relative mb-2">
-                            <select id="status" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"  v-model="form.status">
-                                <option v-for="(c, i) in statuses" :key="i" :value="c.value">
-                                    {{ c.name }}
-                                </option>
-                            </select>
-
+                            <input-field
+                                :value.sync="form.status"
+                                :options="statuses"
+                                :errors="errors.project_category_id"
+                                type="select"
+                            />
                             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ">
                                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                             </div>
@@ -84,8 +82,12 @@
                         <label class="block  text-sm font-bold mb-2" for="">
                             Description
                         </label>
-                        <textarea :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`" id="" type="text" placeholder="Name" v-model="form.description"/>
-                        <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+                        <input-field
+                            :value.sync="form.description"
+                            :errors="errors.description"
+                            type="textarea"
+                            placeholder="Description"
+                        />
                     </div>
                 </div>
             </div>
