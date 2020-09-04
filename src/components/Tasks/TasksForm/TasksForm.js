@@ -82,8 +82,8 @@ export default {
     },
     async loadModel () {
         const {data: {data}} = await this.$axios.get(`tasks/${this.getId()}`)
+        data.common_time = data.common_time ? data.common_time : 0
         this.form = data
-        this.form.common_time = this.form.common_time || 0
     },
     async toggleCountdown () {
         const {data: {data}} = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.getId()}/countdown`)
