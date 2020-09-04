@@ -56,8 +56,9 @@ export default {
     this.loadCategories()
     if (this.getId()) {
       this.loadModel()
+
         window.addEventListener("keydown", (e) => {
-            if(e.ctrlKey || e.metaKey){
+            if(e.ctrlKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')){
                 e.preventDefault();
                 this.save()
             }
