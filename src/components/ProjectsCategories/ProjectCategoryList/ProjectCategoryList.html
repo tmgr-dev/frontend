@@ -16,8 +16,7 @@
                 </router-link>
             </div>
             <div class="my-adding absolute right-0 bottom-0">
-                <router-link :to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add Category" class="my-adding absolute right-0 bottom-0 mr-4
-            bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
+                <router-link :to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add Category" class="my-adding absolute right-0 bottom-0 mr-4 bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
                     <span class="block text-white text-xl pt-1 font-bold">+</span>
                 </router-link>
                 <router-link v-if="category" :to="`/projects-categories/${category.id}/edit`" title="Add Category" class="my-adding my-adding absolute right-0 bottom-0 mr-16
@@ -43,12 +42,12 @@
                         <p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ category.children_count }}</p>
                     </td>
                     <td>
-                        <DropdownMenu class="lg:hidden"></DropdownMenu>
+                        <DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
                         <div class="hidden lg:block">
                             <router-link :to="{name: 'ProjectCategoryChildrenList', params: {id: category.id}}" class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
                                 Open
                             </router-link>
-                            <button class="rounded-r px-5 py-1 border border-4 border-red-400 text-red-600 hover:bg-red-400 hover:text-white">
+                            <button class="rounded-r px-5 py-1 border border-4 border-red-400 text-red-600 hover:bg-red-400 hover:text-white" @click="deleteCategory(category)">
                                 Delete
                             </button>
                         </div>

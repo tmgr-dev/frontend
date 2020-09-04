@@ -29,6 +29,22 @@ export default {
     this.loadCategories()
   },
   methods: {
+    getActions(category) {
+        return [
+            {
+                click: () => {
+                    return this.$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})
+                },
+                label: 'Open'
+            },
+            {
+                click: () => {
+                    this.deleteCategory(category)
+                },
+                label: 'Delete'
+            }
+        ]
+    },
     async loadCategories () {
         const {data: {data}} = await this.$axios.get(`project_categories/children/${this.showChildren ? this.id : '' }?all`)
         this.categories = data
@@ -39,6 +55,10 @@ export default {
         const {data: {data: category}} = await this.$axios.get(`project_categories/${this.id}/with/parents`)
         this.category = category
         this.parentCategories = this.extractParents(category)
+    },
+    async deleteCategory (category) {
+        await this.$axios.delete(`project_categories/${category.id}`)
+        this.loadCategories()
     },
     extractParents (category, parents = []) {
         if (!category.parent_category) {

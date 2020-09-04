@@ -12,8 +12,9 @@
             </router-link>
         </div>
     </div>
-    <table class="w-full shadow-lg rounded mt-5" slot="body">
-        <tbody :class="`${$color('blocks')}`">
+    <div slot="body">
+        <table v-if="tasks && tasks.length > 0" class="w-full shadow-lg rounded mt-5">
+            <tbody :class="`${$color('blocks')}`">
             <tr v-for="task in tasks" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="panel = true">
                 <td class="flex inline-flex items-center">
                     <span class="py-3 w-40">
@@ -55,6 +56,10 @@
                     </div>
                 </td>
             </tr>
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+        <div v-else>
+            You don't have tasks here
+        </div>
+    </div>
 </BaseLayout>
