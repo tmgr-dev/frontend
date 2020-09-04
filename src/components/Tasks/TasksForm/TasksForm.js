@@ -58,6 +58,16 @@ export default {
     }
   },
   methods: {
+    getActions () {
+        return [
+            {
+                click: () => {
+                    this[this.form.id ? 'save' : 'create']()
+                },
+                label: this.form.id ? 'Save' : 'Create'
+            }
+        ]
+    },
     async loadCategories () {
         const {data: {data}} = await this.$axios.get('project_categories?all')
         this.parentCategories = data

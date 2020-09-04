@@ -1,7 +1,7 @@
 export default {
     bgBody: 'dark-bg-body',
     bgNav: 'bg-gray-900',
-    blocks: 'bg-gray-900',
+    blocks: 'dark-bg-body',
     input: 'bg-gray-800',
     blocksHover: 'bg-gray-800',
     navTextUser: 'text-white',

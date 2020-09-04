@@ -1,26 +1,38 @@
 <template>
     <div class="input_wrapper">
-        <select v-if="type === 'select'" name="" :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`">
-            <option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">
-                {{ option[optionNameKey] }}
-            </option>
-        </select>
-        <textarea
-            :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
-            v-else-if="type === 'textarea'" name="" v-model="val">
-        </textarea>
-        <input
-            v-else
-            :id="name"
-            :type="type"
-            :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
-            :name="name"
-            :placeholder="placeholder"
-            v-model="val"
-        >
-        <transition name="fade-left">
-            <div v-if="errors"  class="error" :class="{ 'tooltip': errorAsTooltip }">
-                {{ errors[0] }}
+        <transition  name="fade">
+            <div v-if="showInput">
+                <select
+                        v-if="type === 'select'"
+                        name=""
+                        :class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"
+                        v-model="val"
+                >
+                    <option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">
+                        {{ option[optionNameKey] }}
+                    </option>
+                </select>
+                <textarea
+                        :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
+                        v-else-if="type === 'textarea'" name="" v-model="val">
+                </textarea>
+                <input
+                        v-else
+                        :id="name"
+                        :type="type"
+                        :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+                        :name="name"
+                        :placeholder="placeholder"
+                        v-model="val"
+                >
+                <transition name="fade-left">
+                    <div v-if="errors"  class="error" :class="{ 'tooltip': errorAsTooltip }">
+                        {{ errors[0] }}
+                    </div>
+                </transition>
+            </div>
+            <div v-else>
+                {{ value }} (<a href="#" @click.prevent="showInput = true">edit</a>)
             </div>
         </transition>
     </div>
@@ -64,13 +76,19 @@
                 default: ''
             },
             name: {
-                required: true,
+                required: false,
                 type: String
+            },
+            selected: {
+                required: false,
+                type: Boolean,
+                default: false
             }
         },
         data() {
             return {
-                screenWidth: null
+                screenWidth: null,
+                showInput: true
             }
         },
         computed: {

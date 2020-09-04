@@ -31,8 +31,8 @@
                     </span>
                 </td>
                 <td class="hidden md:table-cell">
-                    <p :class="`text-sm ${$color('textMain')}-800 font-medium`">{{ capitalize(task.status) }}</p>
-                    <p :class="`text-xs ${$color('textMain')}-500 font-medium`">1 hour 59 minute (no active)</p>
+                    <p :class="`text-sm ${$color('textMain')}-800 font-medium`" v-if="task.status === 'created' || task.status === 'active'">{{ capitalize(task.status) }}</p>
+                    <p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ getTaskFormattedTime(task) }}</p>
                 </td>
                 <td class="hidden md:table-cell">
                     <p v-if="task.category" :class="`text-sm ${$color('textMain')}-700 font-medium`">
@@ -46,12 +46,12 @@
                     <p v-else :class="`text-sm ${$color('textMain')}-700 font-medium`"> - </p>
                 </td>
                 <td>
-                    <DropdownMenu class="lg:hidden"></DropdownMenu>
+                    <DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
                     <div class="hidden lg:block">
-                        <Button color="green" extra-class="rounded-l">Done</Button>
-                        <Button color="blue" @click="$router.push(`/tasks/${task.id}/edit`)">Open</Button>
-                        <Button color="gray">Hide</Button>
-                        <Button color="red" extra-class="rounded-r">Archive</Button>
+                        <Button v-if="status !== 'done'" color="green" extra-class="rounded-l" @click="updateStatus(task, 'done')">Done</Button>
+                        <Button color="blue" @click="$router.push(`/tasks/${task.id}/edit`)">Open task</Button>
+                        <Button v-if="status === 'done' || status === 'hidden'" color="blue" @click="updateStatus(task, 'active')">Activate</Button>
+                        <Button v-if="status !== 'hidden'" color="gray" @click="updateStatus(task, 'hidden')">Hide</Button>
                     </div>
                 </td>
             </tr>

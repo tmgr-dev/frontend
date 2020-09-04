@@ -1,5 +1,5 @@
 <BaseLayout>
-    <span slot="header">{{ h1.main }}</span>
+    <span slot="header">{{ form.title || h1.main }}</span>
     <div slot="body">
         <div class="lg:flex">
             <div class="lg:w-full h-full mt-5 p-5" >
@@ -9,7 +9,7 @@
                             <input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
                         </div>
                     </div>
-                    <DropdownMenu class="lg:hidden"></DropdownMenu>
+                    <DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>
                     <div class="hidden lg:block">
                         <button v-if="!isCreate" @click="save" class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
                             Save
@@ -138,6 +138,8 @@
                 </button>
             </div>
         </div>
-        <Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
+        <transition name="fade">
+            <Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
+        </transition>
     </div>
 </BaseLayout>
