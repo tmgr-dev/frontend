@@ -15,7 +15,9 @@ export default {
 
   },
   methods: {
-
+    getActions () {
+      return []
+    }
   }
 }
 

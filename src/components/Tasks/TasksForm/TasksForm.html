@@ -96,18 +96,21 @@
     <div class="lg:flex" slot="body">
 
         <div class="w-full mt-5 p-5" >
-            <h2 class="text-2xl pt-5">Checkpoints</h2>
-            <div :class="`${$color('blocks')} shadow-lg rounded mt-5 p-5`">
+            <h2 class="text-2xl pt-5">
+                Checkpoints <img v-if="!isCreate" @click="addCheckpoint" class="inline-block cursor-pointer checkpoint-add" src="../../../assets/img/document-add.svg" alt="">
+            </h2>
+            <div :class="`${$color('blocks')} shadow-lg rounded mt-5 p-5`" :key="checkpointUpdateKey">
                 <div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
                     <div class="flex mb-2">
-                        <div class="w-0/12 text-2xl mt-1">{{ v+1 }}.</div>
-                        <div class="w-full mx-2">
+                        <div class="w-full mx-2 relative">
+                            <span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
                             <input
-                                :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
+                                :class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
                                 type="text"
                                 placeholder="Checkpoint content"
                                 v-model="checkpoint.description"
                             >
+                            <img class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)" src="../../../assets/img/delete.svg" alt="">
                         </div>
 
                         <!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
@@ -133,9 +136,6 @@
                         </div>
                     </div>
                 </div>
-                <button v-if="!isCreate" @click="addCheckpoint" class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
-                    Add
-                </button>
             </div>
         </div>
         <transition name="fade">

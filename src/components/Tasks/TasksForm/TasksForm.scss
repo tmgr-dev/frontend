@@ -1,3 +1,32 @@
 .tasks-form {
 
 }
+
+.checkpoint-delete {
+  top: 9px;
+  right: 10px;
+  cursor: pointer;
+  opacity: 0.5;
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.checkpoint-index {
+  width: fit-content;
+  top: 7px;
+  left: 10px;
+  cursor: pointer;
+  color: #00c300;
+  opacity: 0.5;
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.checkpoint-add {
+  opacity: 0.2;
+  &:hover {
+    opacity: 1;
+  }
+}

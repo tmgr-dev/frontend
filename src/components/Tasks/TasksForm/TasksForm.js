@@ -8,6 +8,7 @@ export default {
         showSaveAlert: false,
         panel: false,
         isOpen: false,
+        checkpointUpdateKey: 0,
         counter: {
             common_time: 0,
             start_time: 0
@@ -55,6 +56,12 @@ export default {
     this.loadCategories()
     if (this.getId()) {
       this.loadModel()
+        window.addEventListener("keydown", (e) => {
+            if(e.ctrlKey || e.metaKey){
+                e.preventDefault();
+                this.save()
+            }
+        })
     }
   },
   methods: {
@@ -118,7 +125,6 @@ export default {
             this.form = data
             this.showSavedAlert()
         } catch (e) {
-            console.log(e)
             if (e.response && e.response && e.response.data.errors) {
                 this.errors = e.response.data.errors
             }
@@ -164,7 +170,13 @@ export default {
             start: currentTime,
             end: currentTime
         })
+        ++this.checkpointUpdateKey
+        console.log(this.form.checkpoints)
     },
+      deleteCheckpoint(checkpointIndex) {
+          this.form.checkpoints.splice(checkpointIndex, 1)
+          ++this.checkpointUpdateKey
+      },
       updateSeconds (seconds) {
           if (!this.form.checkpoints || this.form.checkpoints.length === 0) {
               return
