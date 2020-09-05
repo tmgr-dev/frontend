@@ -12,6 +12,7 @@ export default {
         return {
             panel: false,
             isOpen: false,
+            showDefaultList: false,
             h1: {
                 CurrentTasksList: 'Current tasks',
                 HiddenTasksList: 'Hidden tasks',
@@ -38,6 +39,14 @@ export default {
         this.loadTasks()
     },
     methods: {
+        async stopCountdown (task) {
+            await this.$axios.delete(`tasks/${task.id}/countdown`)
+            this.loadTasks()
+        },
+        async startCountdown (task) {
+            await this.$axios.post(`tasks/${task.id}/countdown`)
+            this.loadTasks()
+        },
         getTaskFormattedTime(task) {
             let hours = (task.common_time / 3600).toFixed(0)
             let minutes = ((task.common_time % 3600) / 60).toFixed(0)

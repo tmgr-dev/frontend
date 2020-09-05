@@ -7,12 +7,15 @@ import store from './store'
 import colorSchemes from './colors/schemes'
 import VueTheMask from 'vue-the-mask';
 import { library } from '@fortawesome/fontawesome-svg-core'
-import {faPlusCircle, faPencilAlt, faBars} from '@fortawesome/free-solid-svg-icons'
+import {faPlusCircle, faPencilAlt, faBars, faEgg, faBackward} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
+
 library.add(faPlusCircle)
+library.add(faEgg)
 library.add(faPencilAlt)
 library.add(faBars)
+library.add(faBackward)
 
 Vue.component('font-awesome-icon', FontAwesomeIcon)
 

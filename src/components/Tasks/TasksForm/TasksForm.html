@@ -1,9 +1,9 @@
 <BaseLayout>
     <span slot="header">{{ form.title || h1.main }}</span>
-    <div slot="body">
+    <div slot="body" :class="`${$color('blocks')} rounded-lg`" >
         <div class="lg:flex">
             <div class="lg:w-full h-full mt-5 p-5" >
-                <div :class="`shadow-lg bg-white p-5 h-full ${$color('blocks')}`">
+                <div :class="`bg-white p-5 h-full ${$color('blocks')}`">
                     <div class="block w-3/4 float-left">
                         <div class="mb-2">
                             <input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
@@ -26,7 +26,7 @@
         </div>
         <div class="lg:flex">
             <div class="lg:w-1/2 h-full mt-5 p-5" >
-                <div :class="`shadow-lg ${$color('blocks')} p-5 h-full`">
+                <div :class="`${$color('blocks')} p-5 h-full`">
                     <Countdown
                         v-if="form.id && showCountdown"
                         ref="countdown"
@@ -37,7 +37,7 @@
                 </div>
             </div>
             <div class="lg:w-1/2 h-full mt-5 p-5" >
-                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1 pt-5`">
+                <div :class="`${$color('blocks')} px-5 pb-1 pt-5`">
                     <div class="mb-2">
                         <label for="parent-category" class="block  text-sm font-bold mb-2">
                             Parent category
@@ -58,7 +58,7 @@
                         </div>
                     </div>
                 </div>
-                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1 pt-5`">
+                <div :class="`${$color('blocks')}  px-5 pb-1 pt-5`">
                     <div class="mb-2">
                         <label for="parent-category" class="block  text-sm font-bold mb-2">
                             Status
@@ -77,7 +77,7 @@
                     </div>
                 </div>
 
-                <div :class="`${$color('blocks')} shadow-lg px-5 pb-1`">
+                <div :class="`${$color('blocks')}  px-5 pb-1`">
                     <div class="mb-2">
                         <label class="block  text-sm font-bold mb-2" for="">
                             Description
@@ -92,23 +92,20 @@
                 </div>
             </div>
         </div>
-    </div>
-    <div class="lg:flex" slot="body">
-
         <div class="w-full mt-5 p-5" >
             <h2 class="text-2xl pt-5">
                 Checkpoints <img v-if="!isCreate" @click="addCheckpoint" class="inline-block cursor-pointer checkpoint-add" src="../../../assets/img/document-add.svg" alt="">
             </h2>
-            <div :class="`${$color('blocks')} shadow-lg rounded mt-5 p-5`" :key="checkpointUpdateKey">
+            <div :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
                 <div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
                     <div class="flex mb-2">
                         <div class="w-full mx-2 relative">
                             <span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
                             <input
-                                :class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
-                                type="text"
-                                placeholder="Checkpoint content"
-                                v-model="checkpoint.description"
+                                    :class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
+                                    type="text"
+                                    placeholder="Checkpoint content"
+                                    v-model="checkpoint.description"
                             >
                             <img class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)" src="../../../assets/img/delete.svg" alt="">
                         </div>
@@ -119,18 +116,18 @@
                         <div class="flex">
                             <div class="w-6/12 mx-2">
                                 <the-mask mask="##:##:##"
-                                    :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-                                    type="text"
-                                    placeholder="00:00"
-                                    :value="secondsToStringTime(checkpoint.start)"
+                                          :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+                                          type="text"
+                                          placeholder="00:00"
+                                          :value="secondsToStringTime(checkpoint.start)"
                                 />
                             </div>
                             <div class="w-6/12 mx-2">
                                 <the-mask mask="##:##:##"
-                                    :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-                                    type="text"
-                                    placeholder="00:00"
-                                    :value="secondsToStringTime(checkpoint.end)"
+                                          :class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+                                          type="text"
+                                          placeholder="00:00"
+                                          :value="secondsToStringTime(checkpoint.end)"
                                 />
                             </div>
                         </div>

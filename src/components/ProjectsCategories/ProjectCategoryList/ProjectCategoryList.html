@@ -1,21 +1,14 @@
 <div>
     <BaseLayout>
         <span slot="header">
-            {{ h1 + (category ? ': ' + category.title : '') }}
+            {{ category ? category.title : h1 }}
         </span>
         <div slot="action">
-            <div class="left-0 bottom-0 mr-4 absolute">
-                <router-link :to="`/projects-categories`" slot="action" class="">
-                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">Categories {{ category ? ' > ' : '' }}</span>
-                </router-link>
-                <router-link v-if="parentCategories" v-for="parentCategory in parentCategories" :key="parentCategory.id" :to="`/projects-categories/${parentCategory ? parentCategory.id + '/children' : ''}`" slot="action" class="">
-                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">{{ parentCategory.title }} > </span>
-                </router-link>
-                <router-link v-if="category" to="#" slot="action" class="">
-                    <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">{{ category.title }}</span>
-                </router-link>
-            </div>
-            <div class="my-adding absolute right-0 bottom-0 mr-5">
+            <breadcrumbs
+                    :current="category ? category.title : 'Categories'"
+                    :items="getBreadcrumbs()"
+            />
+            <div class="my-adding absolute right-0 bottom-0 mr-5 mb-2">
                 <router-link v-if="category" :to="`/projects-categories/${category.id}/edit`" title="Edit category name" class="pr-5 opacity-25 hover:opacity-100">
                     <font-awesome-icon icon="pencil-alt" class="text-4xl"/>
                 </router-link>
@@ -27,9 +20,9 @@
 
         <div slot="body">
             <loader v-if="showLoader" :is-active="showLoader" />
-            <table v-else class="w-full shadow-lg rounded mt-5" slot="body">
+            <table v-else-if="showDefaultList" class="w-full shadow-lg rounded mt-5" slot="body">
                 <tbody :class="`${$color('blocks')}`">
-                <tr v-for="category in categories" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="panel = true">
+                <tr v-for="category in categories" :class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})">
                     <td class="flex inline-flex items-center">
                         <span class="py-3 w-40">
                             <p :class="`${$color('textMain')}-800 text-sm`">{{ category.title }}</p>
@@ -54,6 +47,32 @@
                 </tr>
                 </tbody>
             </table>
+            <div v-else >
+                <div v-for="category in categories" class="w-full px-2 mt-2">
+                    <div class="shadow-xl rounded-lg md:flex">
+                        <div class="w-full">
+                            <div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <p class="font-bold text-xl cursor-pointer" @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})">{{ category.title }}</p>
+                                        <div class="flex items-start">
+                                            <span>
+<!--                                                <font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>-->
+                                            </span>
+                                            <span class="text-gray-700 ml-2">Projects: {{ category.children_count }}</span>
+                                        </div>
+                                    </div>
+                                    <DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
+                                    <div class="hidden lg:block">
+                                        <new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">Open</new-button>
+                                        <new-button color="red" @click="deleteCategory(category)" class="mr-2">Delete</new-button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </BaseLayout>
 

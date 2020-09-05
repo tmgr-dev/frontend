@@ -12,7 +12,7 @@
         </div>
     </div>
     <div slot="body">
-        <table v-if="tasks && tasks.length > 0" class="w-full shadow-lg rounded mt-5">
+        <table v-if="tasks && tasks.length > 0 && showDefaultList" class="w-full shadow-lg rounded mt-5">
             <tbody :class="`${$color('blocks')}`">
             <tr v-for="task in tasks" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="panel = true">
                 <td class="flex inline-flex items-center">
@@ -57,8 +57,38 @@
             </tr>
             </tbody>
         </table>
-        <div v-else>
+        <div v-else-if="showDefaultList">
             You don't have tasks here
+        </div>
+        <div class="w-full items-center justify-center" v-else>
+            <div v-for="task in tasks" class="w-full px-2 mt-2">
+                <div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
+                    <div class="w-full">
+                        <div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="font-bold text-xl cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">{{ task.title }}</p>
+                                    <div class="flex items-start">
+                                <span>
+                                    <font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>
+                                </span>
+                                        <span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
+                                    </div>
+                                </div>
+                                <DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
+                                <div class="hidden lg:block">
+                                    <new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">Open</new-button>
+                                    <new-button v-if="status !== 'done'" color="blue" @click="updateStatus(task, 'done')" class="mr-2">Done</new-button>
+                                    <new-button v-if="status === 'done' || status === 'hidden'" color="purple" @click="updateStatus(task, 'active')" class="mr-2">Activate</new-button>
+                                    <new-button v-if="status !== 'hidden'" color="gray" @click="updateStatus(task, 'hidden')" class="mr-2">Hide</new-button>
+                                    <new-button v-if="task.start_time" color="red" @click="stopCountdown(task)" class="mr-2">Stop timer</new-button>
+                                    <new-button v-if="!task.start_time && (task.status === 'active' || task.status === 'created')" color="green" @click="startCountdown(task)" class="mr-2">Start timer</new-button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </BaseLayout>

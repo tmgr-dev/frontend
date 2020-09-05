@@ -1,16 +1,20 @@
 import CategoryView from '../ProjectCategoryView/index'
-
+import Breadcrumbs from '../../UIElements/Breadcrumbs'
 
 export default {
   name: 'ProjectCategoryList',
   components: {
-    CategoryView
+    CategoryView,
+    breadcrumbs: Breadcrumbs
   },
   props: [],
   data () {
     return {
         h1: 'Projects categories',
         isShowModal: false,
+        cardOpen: true,
+        item: true,
+        showDefaultList: false,
         categories: null,
         category: null,
         parentCategories: [],
@@ -29,6 +33,27 @@ export default {
     this.loadCategories()
   },
   methods: {
+      getBreadcrumbs() {
+          const items = [
+              {
+                  label: 'Categories',
+                  to: '/projects-categories'
+              }
+          ]
+          console.log(this.getProjectCategoriesBreadcrumbs())
+          return items.concat(this.getProjectCategoriesBreadcrumbs())
+      },
+      getProjectCategoriesBreadcrumbs() {
+          if (!this.parentCategories) {
+              return []
+          }
+          const result = []
+          this.parentCategories.map(item => result.push({
+              label: item.title,
+              to: `/projects-categories/${item ? item.id + '/children' : ''}`
+          }))
+          return result
+      },
     getActions(category) {
         return [
             {
