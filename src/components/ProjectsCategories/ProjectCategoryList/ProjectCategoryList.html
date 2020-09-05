@@ -15,13 +15,12 @@
                     <span :class="`${$color('textBreadcrumbs')}-800 text-sm`">{{ category.title }}</span>
                 </router-link>
             </div>
-            <div class="my-adding absolute right-0 bottom-0">
-                <router-link :to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add Category" class="my-adding absolute right-0 bottom-0 mr-4 bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
-                    <span class="block text-white text-xl pt-1 font-bold">+</span>
+            <div class="my-adding absolute right-0 bottom-0 mr-5">
+                <router-link v-if="category" :to="`/projects-categories/${category.id}/edit`" title="Edit category name" class="pr-5 opacity-25 hover:opacity-100">
+                    <font-awesome-icon icon="pencil-alt" class="text-4xl"/>
                 </router-link>
-                <router-link v-if="category" :to="`/projects-categories/${category.id}/edit`" title="Add Category" class="my-adding my-adding absolute right-0 bottom-0 mr-16
-            bg-gray-500 hover:bg-gray-600 w-10 h-10 rounded-full">
-                    <span class="block text-white text-xl pt-1 font-bold">Edit</span>
+                <router-link :to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add category" class="opacity-25 hover:opacity-100">
+                    <font-awesome-icon icon="plus-circle" class="text-4xl"/>
                 </router-link>
             </div>
         </div>

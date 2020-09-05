@@ -6,6 +6,15 @@ import axios from 'axios'
 import store from './store'
 import colorSchemes from './colors/schemes'
 import VueTheMask from 'vue-the-mask';
+import { library } from '@fortawesome/fontawesome-svg-core'
+import {faPlusCircle, faPencilAlt, faBars} from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+
+library.add(faPlusCircle)
+library.add(faPencilAlt)
+library.add(faBars)
+
+Vue.component('font-awesome-icon', FontAwesomeIcon)
 
 Vue.config.productionTip = false
 
