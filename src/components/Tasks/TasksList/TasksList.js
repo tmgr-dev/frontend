@@ -48,8 +48,8 @@ export default {
             this.loadTasks()
         },
         getTaskFormattedTime(task) {
-            let hours = (task.common_time / 3600).toFixed(0)
-            let minutes = ((task.common_time % 3600) / 60).toFixed(0)
+            let hours = Math.floor(task.common_time / 3600)
+            let minutes = Math.ceil((task.common_time % 3600) / 60)
 
             return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`
         },

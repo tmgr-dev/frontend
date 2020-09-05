@@ -3,7 +3,7 @@
         <div class="h-screen w-screen flex">
             <!-- container -->
 
-            <aside
+            <aside v-show="false"
                     class="flex flex-col items-center bg-white text-gray-700 shadow h-full">
                 <!-- Side Nav Bar-->
 
