@@ -1,8 +1,8 @@
 <template>
-	<div class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col m-5">
-		<div class="card-body p-4">
+	<div class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5">
+		<div class="card-body py-4">
 			<nav aria-label="breadcrumb">
-				<ol class="breadcrumb flex">
+				<ol class="breadcrumb flex" v-if="current">
 					<li class="breadcrumb-item text-gray-600" v-for="(item, i) in items" :key="i">
 						<router-link :to="item.to" href="#" class="text-gray-600 hover:text-purple-700 mx-2">
 							{{ item.label }}
@@ -10,6 +10,12 @@
 					</li>
 					<li class="breadcrumb-item active text-purple-700 hover:text-purple-700 mx-2" aria-current="page">
 						{{ current }}
+					</li>
+				</ol>
+
+				<ol class="breadcrumb flex" v-else style="padding-left: 0;">
+					<li class="breadcrumb-item active text-purple-700 hover:text-purple-700 mx-2" aria-current="page">
+						Categories
 					</li>
 				</ol>
 			</nav>
@@ -42,10 +48,6 @@
 <style scoped>
 	.breadcrumb .breadcrumb-item {
 		position: relative;
-	}
-
-	.breadcrumb .breadcrumb-item:first-child {
-		margin-left: 0 !important;
 	}
 
 	.breadcrumb .breadcrumb-item:not(:last-child):after {

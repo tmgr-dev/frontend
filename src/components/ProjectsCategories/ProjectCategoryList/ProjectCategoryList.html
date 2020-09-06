@@ -5,10 +5,10 @@
 		</span>
 		<div slot="action">
 			<breadcrumbs
-				:current="category ? category.title : 'Categories'"
+				:current="category ? category.title : ''"
 				:items="getBreadcrumbs()"
 			/>
-			<div class="my-adding absolute right-0 bottom-0 mr-5 mb-2">
+			<div class="absolute right-0 bottom-0 mr-5 mb-2">
 				<router-link
 					v-if="category" :to="`/projects-categories/${category.id}/edit`"
 					title="Edit category name"
@@ -58,7 +58,7 @@
 				</tbody>
 			</table>
 			<div v-else-if="categories && categories.length > 0">
-				<div v-for="category in categories" class="w-full px-2 mt-2">
+				<div v-for="category in categories" class="w-full mt-2">
 					<div class="shadow-xl rounded-lg md:flex">
 						<div class="w-full">
 							<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">

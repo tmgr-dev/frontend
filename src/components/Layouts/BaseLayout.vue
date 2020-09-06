@@ -216,7 +216,7 @@
                     </h1>
                     <slot name="action"></slot>
                 </header>
-                <div class="container mx-auto px-4 my-5">
+                <div class="container mx-auto px-5 my-5">
                     <slot name="body"></slot>
                 </div>
                 <div class="flex flex-col fixed z-50 right-0 bottom-0 mr-4">
