@@ -34,8 +34,8 @@
             this.task = this.initTask
             this.task.start_time = this.task.start_time || 0
 
-            this.renderTime()
             this.initCountdown()
+						this.renderTime()
 
             this.$on('update-task', task => {
                 this.task = task
@@ -81,7 +81,7 @@
                 }
                 const currentTime = new Date().getTime() / 1000
                 this.task.common_time += currentTime.toFixed(1) - this.task.start_time
-                this.task.common_time = this.task.common_time.toFixed()
+                this.task.common_time = Math.floor(this.task.common_time)
             },
             initCountdown () {
                 if (!this.task.start_time) {
@@ -89,6 +89,7 @@
                     this.countdownInterval = null
                     return
                 }
+
                 this.prepareCommonTime()
                 this.countdownInterval = setInterval(() => {
                     this.plusSecond()
@@ -116,11 +117,14 @@
     .task {
         align-content: center;
         text-align: center;
-        padding: 23px;
+        padding: 0px 23px;
         // background: #333;
         border-radius: 10px;
-        margin-bottom: 50px;
-        margin-top: 50px;
+        @media screen and (min-width: 821px) {
+					margin-bottom: 50px;
+					margin-top: 50px;
+					padding: 23px;
+				}
 
         .countdown-item {
             font-size: 2em;

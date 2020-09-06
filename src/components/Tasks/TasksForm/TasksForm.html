@@ -3,7 +3,7 @@
 	<div slot="body" :class="`${$color('blocks')} rounded-lg`">
 		<div class="lg:flex">
 			<div class="lg:w-full h-full mt-5 p-5">
-				<div :class="`bg-white p-5 h-full ${$color('blocks')}`">
+				<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
 					<div class="block w-3/4 float-left">
 						<div class="mb-2">
 							<input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
@@ -31,7 +31,7 @@
 			</div>
 		</div>
 		<div class="lg:flex">
-			<div class="lg:w-1/2 h-full mt-5 p-5">
+			<div class="lg:w-1/2 h-full mt-5">
 				<div :class="`${$color('blocks')} p-5 h-full`">
 					<Countdown
 						v-if="form.id && showCountdown"
