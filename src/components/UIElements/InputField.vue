@@ -141,7 +141,7 @@
                 border: 6px solid transparent;
                 border-right-color: #ffffff;
                 position: absolute;
-                left: -10px;
+                left: -12px;
                 z-index: 2;
                 top: calc(50% - 5px);
             }
@@ -151,7 +151,7 @@
                 border-right-color: #d0d0d0;
                 position: absolute;
                 top: calc(50% - 7px);
-                left: -14px;
+                left: -16px;
             }
         }
     }

@@ -2,6 +2,10 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+body {
+    overflow-x: hidden;
+}
+
 .bg-screen-default {
     background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
 }

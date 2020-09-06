@@ -1,4 +1,3 @@
-
 export default {
   name: 'ProjectCategoryForm',
   components: {},
@@ -11,43 +10,44 @@ export default {
     }
   },
   computed: {
-    selected () {
+    selected() {
       return !this.selectedParentCategory
     },
-    isCreate () {
-        return !this.$route.params.id && !this.form.id
+    isCreate() {
+      return !this.$route.params.id && !this.form.id
     }
   },
   mounted() {
-      this.setFormTexts()
-      this.loadParentCategories()
-      if (!this.isCreate) {
-          this.loadModel()
-      }
+    this.setFormTexts()
+    this.loadParentCategories()
+    if (!this.isCreate) {
+      this.loadModel()
+    }
   },
   methods: {
-    async loadModel () {
-        const {data: {data}} = await this.$axios.get(`project_categories/${this.getId()}`)
-        this.form = data
+    async loadModel() {
+      const {data: {data}} = await this.$axios.get(`project_categories/${this.getId()}`)
+      this.form = data
     },
-    async loadParentCategories () {
-        const {data: {data}} = await this.$axios.get('project_categories?all')
-        this.parentCategories = data
+    async loadParentCategories() {
+      const {data: {data}} = await this.$axios.get('project_categories?all')
+      this.parentCategories = data
     },
-    async create (withRoutePush = true) {
-        this.form.slug = this.generateSlug(this.form.title)
-        if (!this.form.project_category_id) {
-            delete this.form.project_category_id
-        }
-        const {data: {data}} = await this.$axios.post('project_categories', this.form)
-        if (!withRoutePush) {
-            return
-        }
-        this.$router.push({name: 'ProjectCategoryEdit', params: {id: data.id}})
+    async create(withRoutePush = true) {
+      this.form.slug = this.generateSlug(this.form.title)
+      if (!this.form.project_category_id) {
+        delete this.form.project_category_id
+      }
+      await this.$axios.post('project_categories', this.form)
+      if (!withRoutePush) {
+        return
+      }
+      //this.$router.push({name: 'ProjectCategoryEdit', params: {id: data.id}})
+      await this.$router.push('/projects-categories')
     },
-    async createAndContinue () {
-        this.create(false)
-        this.form = this.getDefaultForm()
+    async createAndContinue() {
+      await this.create(false)
+      this.form = this.getDefaultForm()
     },
     generateSlug(text) {
       const ru = {
@@ -65,27 +65,29 @@ export default {
         n_str.push(
           ru[text[i]]
           || ru[text[i].toLowerCase()] == undefined && text[i]
-          || ru[text[i].toLowerCase()].replace(/^(.)/, function (match) { return match.toUpperCase() })
+          || ru[text[i].toLowerCase()].replace(/^(.)/, function (match) {
+            return match.toUpperCase()
+          })
         );
       }
 
       return n_str.join('').toLowerCase();
     },
     setFormTexts() {
-        this.h1 = `${this.getFormTitlePrefix()} category`
+      this.h1 = `${this.getFormTitlePrefix()} category`
     },
-    getFormTitlePrefix () {
+    getFormTitlePrefix() {
       return this.isCreate ? 'Add' : 'Edit'
     },
-    getId () {
-        return this.$route.params.id
+    getId() {
+      return this.$route.params.id
     },
-    getDefaultForm () {
-        return {
-            title: '',
-            project_category_id: this.$route.params.project_category_id || null,
-            slug: '',
-        }
+    getDefaultForm() {
+      return {
+        title: '',
+        project_category_id: this.$route.params.project_category_id || null,
+        slug: '',
+      }
     }
   }
 }
