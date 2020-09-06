@@ -52,7 +52,8 @@ let router = new Router({
     {
       path: '/projects-categories',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
       name: 'ProjectCategoryList'
@@ -60,7 +61,8 @@ let router = new Router({
     {
       path: '/projects-categories/:id/children',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
       name: 'ProjectCategoryChildrenList'
@@ -68,7 +70,8 @@ let router = new Router({
     {
       path: '/projects-categories/view',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
       name: 'ProjectCategoryView'
@@ -76,7 +79,8 @@ let router = new Router({
     {
       path: '/projects-categories/create',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
       name: 'ProjectCategoryCreate'
@@ -84,7 +88,8 @@ let router = new Router({
     {
       path: '/projects-categories/:project_category_id/create',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
       name: 'ProjectCategoryCreateInCategory'
@@ -92,7 +97,8 @@ let router = new Router({
     {
       path: '/projects-categories/:id/edit',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
       name: 'ProjectCategoryEdit'
@@ -100,7 +106,8 @@ let router = new Router({
     {
       path: '/tasks',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/Tasks/TasksList'),
       name: 'CurrentTasksList'
@@ -108,7 +115,8 @@ let router = new Router({
     {
       path: '/tasks/form',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/Tasks/TasksForm'),
       name: 'TasksForm'
@@ -116,7 +124,8 @@ let router = new Router({
     {
       path: '/tasks/create',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/Tasks/TasksForm'),
       name: 'TasksCreate'
@@ -124,7 +133,8 @@ let router = new Router({
     {
       path: '/tasks/:id/edit',
       meta: {
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       component: () => import('@/components/Tasks/TasksForm'),
       name: 'TasksEdit'
@@ -134,7 +144,8 @@ let router = new Router({
       component: () => import('@/components/Tasks/TasksList'),
       meta: {
         status: 'hidden',
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       name: 'HiddenTasksList'
     },
@@ -143,7 +154,8 @@ let router = new Router({
       component: () => import('@/components/Tasks/TasksList'),
       meta: {
         status: 'done',
-        transitionName: 'slide'
+        transitionName: 'slide',
+        navbarHidden: true
       },
       name: 'ArchiveTasksList'
     },

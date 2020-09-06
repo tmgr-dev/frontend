@@ -3,16 +3,29 @@
 @import "tailwindcss/utilities";
 
 body {
-    overflow-x: hidden;
+	overflow-x: hidden;
+
+	&::-webkit-scrollbar {
+		width: 7px;
+	}
+
+	&::-webkit-scrollbar-track {
+		box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+	}
+
+	&::-webkit-scrollbar-thumb {
+		background-color: darkgrey;
+		outline: 1px solid slategrey;
+	}
 }
 
 .bg-screen-default {
-    background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
+	background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
 }
 
 @import 'checkbox';
 
 .icon {
-    display: inline-block;
-    vertical-align: text-top;
+	display: inline-block;
+	vertical-align: text-top;
 }

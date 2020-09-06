@@ -40,15 +40,13 @@ Vue.prototype.$color = color
 document.querySelector('body').className = color('bgBody')
 
 new Vue({
-    router,
-    store,
-    render: h => h(App),
-    components: {
+  router,
+  store,
+  render: h => h(App),
+  components: {
 
-    },
-    data () {
-        return {
-            key: null
-        }
-    }
+  },
+  data: () => ({
+    key: null
+  })
 }).$mount('#app')
