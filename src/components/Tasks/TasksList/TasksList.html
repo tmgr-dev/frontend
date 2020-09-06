@@ -2,93 +2,155 @@
     <span slot="header">
         {{ h1[$route.name] }}
     </span>
-    <div slot="action">
-        <div class="left-0 bottom-0 mr-4 absolute">
-        </div>
-        <div class="my-adding absolute right-0 bottom-0">
-            <router-link :to="`/tasks/create`" title="Add Task" class="pr-5">
-                <font-awesome-icon icon="plus-circle" class="text-4xl opacity-25 hover:opacity-100"/>
-            </router-link>
-        </div>
-    </div>
-    <div slot="body">
-        <table v-if="tasks && tasks.length > 0 && showDefaultList" class="w-full shadow-lg rounded mt-5">
-            <tbody :class="`${$color('blocks')}`">
-            <tr v-for="task in tasks" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`" @click="panel = true">
-                <td class="flex inline-flex items-center">
-                    <span class="py-3 w-40">
-                        <p :class="`${$color('textMain')}-800 text-sm`">{{ task.title }}</p>
-                        <p :class="`md:hidden text-xs ${$color('textMain')}-600 font-medium`">{{ capitalize(task.status) }}</p>
-                        <p v-if="task.category" :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`">
-                            <router-link :to="{
-                                name: 'ProjectCategoryChildrenList',
-                                params: {
-                                    id: task.category.id
-                                }
-                            }">{{ task.category.title }}</router-link>
-                        </p>
-                        <p v-else :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"> - </p>
-                    </span>
-                </td>
-                <td class="hidden md:table-cell">
-                    <p :class="`text-sm ${$color('textMain')}-800 font-medium`" v-if="task.status === 'created' || task.status === 'active'">{{ capitalize(task.status) }}</p>
-                    <p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ getTaskFormattedTime(task) }}</p>
-                </td>
-                <td class="hidden md:table-cell">
-                    <p v-if="task.category" :class="`text-sm ${$color('textMain')}-700 font-medium`">
-                        <router-link :to="{
-                                name: 'ProjectCategoryChildrenList',
-                                params: {
-                                    id: task.category.id
-                                }
-                            }">{{ task.category.title }}</router-link>
-                    </p>
-                    <p v-else :class="`text-sm ${$color('textMain')}-700 font-medium`"> - </p>
-                </td>
-                <td>
-                    <DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-                    <div class="hidden lg:block">
-                        <Button v-if="status !== 'done'" color="green" extra-class="rounded-l" @click="updateStatus(task, 'done')">Done</Button>
-                        <Button color="blue" @click="$router.push(`/tasks/${task.id}/edit`)">Open task</Button>
-                        <Button v-if="status === 'done' || status === 'hidden'" color="blue" @click="updateStatus(task, 'active')">Activate</Button>
-                        <Button v-if="status !== 'hidden'" color="gray" @click="updateStatus(task, 'hidden')">Hide</Button>
-                    </div>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-        <div v-else-if="showDefaultList">
-            You don't have tasks here
-        </div>
-        <div class="w-full items-center justify-center" v-else>
-            <div v-for="task in tasks" class="w-full px-2 mt-2">
-                <div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
-                    <div class="w-full">
-                        <div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="font-bold text-xl cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">{{ task.title }}</p>
-                                    <div class="flex items-start">
-                                <span>
-                                    <font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>
-                                </span>
-                                        <span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
-                                    </div>
-                                </div>
-                                <DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-                                <div class="hidden lg:block">
-                                    <new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">Open</new-button>
-                                    <new-button v-if="status !== 'done'" color="blue" @click="updateStatus(task, 'done')" class="mr-2">Done</new-button>
-                                    <new-button v-if="status === 'done' || status === 'hidden'" color="purple" @click="updateStatus(task, 'active')" class="mr-2">Activate</new-button>
-                                    <new-button v-if="status !== 'hidden'" color="gray" @click="updateStatus(task, 'hidden')" class="mr-2">Hide</new-button>
-                                    <new-button v-if="task.start_time" color="red" @click="stopCountdown(task)" class="mr-2">Stop timer</new-button>
-                                    <new-button v-if="!task.start_time && (task.status === 'active' || task.status === 'created')" color="green" @click="startCountdown(task)" class="mr-2">Start timer</new-button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+	<div slot="action">
+		<div class="left-0 bottom-0 mr-4 absolute">
+		</div>
+		<div class="my-adding absolute right-0 bottom-0">
+			<router-link :to="`/tasks/create`" title="Add Task" class="pr-5">
+				<font-awesome-icon icon="plus-circle" class="text-4xl opacity-25 hover:opacity-100"/>
+			</router-link>
+		</div>
+	</div>
+	<div slot="body">
+		<table v-if="tasks && tasks.length > 0 && showDefaultList" class="w-full shadow-lg rounded mt-5">
+			<tbody :class="`${$color('blocks')}`">
+			<tr v-for="task in tasks" :class="`accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`"
+					@click="panel = true">
+				<td class="flex inline-flex items-center">
+					<span class="py-3 w-40">
+							<p :class="`${$color('textMain')}-800 text-sm`">{{ task.title }}</p>
+							<p :class="`md:hidden text-xs ${$color('textMain')}-600 font-medium`">{{
+									capitalize(task.status)
+								}}</p>
+							<p v-if="task.category"
+								:class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`">
+									<router-link :to="{
+											name: 'ProjectCategoryChildrenList',
+											params: {
+													id: task.category.id
+											}
+									}">{{ task.category.title }}</router-link>
+							</p>
+							<p v-else
+								:class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"> - </p>
+					</span>
+				</td>
+				<td class="hidden md:table-cell">
+					<p :class="`text-sm ${$color('textMain')}-800 font-medium`"
+						v-if="task.status === 'created' || task.status === 'active'">{{ capitalize(task.status) }}</p>
+					<p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ getTaskFormattedTime(task) }}</p>
+				</td>
+				<td class="hidden md:table-cell">
+					<p v-if="task.category" :class="`text-sm ${$color('textMain')}-700 font-medium`">
+						<router-link :to="{
+							name: 'ProjectCategoryChildrenList',
+							params: {
+								id: task.category.id
+							}
+						}">
+							{{ task.category.title }}
+						</router-link>
+					</p>
+					<p v-else :class="`text-sm ${$color('textMain')}-700 font-medium`"> - </p>
+				</td>
+				<td>
+					<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
+					<div class="hidden lg:block">
+						<Button v-if="status !== 'done'" color="green" extra-class="rounded-l" @click="updateStatus(task, 'done')">
+							Done
+						</Button>
+						<Button color="blue" @click="$router.push(`/tasks/${task.id}/edit`)">Open task</Button>
+						<Button v-if="status === 'done' || status === 'hidden'" color="blue" @click="updateStatus(task, 'active')">
+							Activate
+						</Button>
+						<Button v-if="status !== 'hidden'" color="gray" @click="updateStatus(task, 'hidden')">Hide</Button>
+					</div>
+				</td>
+			</tr>
+			</tbody>
+		</table>
+		<div class="w-full items-center justify-center" v-else-if="tasks && tasks.length > 0 && !showDefaultList">
+			<div v-for="task in tasks" class="w-full px-2 mt-2">
+				<div class="shadow-xl rounded-lg md:flex"
+						:class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
+					<div class="w-full">
+						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
+							<div class="flex justify-between items-center">
+								<div>
+									<p class="font-bold text-xl cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">
+										{{ task.title }}</p>
+									<div class="flex items-start">
+										<span>
+											<font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>
+										</span>
+										<span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
+									</div>
+								</div>
+								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
+								<div class="hidden lg:block">
+									<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">Open</new-button>
+									<new-button
+										v-if="status !== 'done'"
+										color="blue"
+										@click="updateStatus(task, 'done', `done-${task.id}`)"
+										class="mr-2">
+										<span class="relative">
+											Done
+											<dots-loader v-if="dotsProps[`done-${task.id}`]" />
+										</span>
+									</new-button>
+									<new-button
+										v-if="status === 'done' || status === 'hidden'"
+										color="purple"
+										@click="updateStatus(task, 'active', `activate-${task.id}`)"
+										class="mr-2">
+										<span class="relative">
+											Activate
+											<dots-loader v-if="dotsProps[`activate-${task.id}`]" />
+										</span>
+									</new-button>
+									<new-button
+										v-if="status !== 'hidden'"
+										color="gray"
+										@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
+										class="mr-2">
+										<span class="relative">
+											Hide
+											<dots-loader v-if="dotsProps[`hide-${task.id}`]" />
+										</span>
+									</new-button>
+									<new-button
+										v-if="task.start_time"
+										color="red"
+										@click="stopCountdown(task, `stop-${task.id}`)"
+										class="mr-2">
+										<span class="relative">
+											Stop timer
+											<dots-loader v-if="dotsProps[`stop-${task.id}`]" />
+										</span>
+									</new-button>
+									<new-button
+										v-if="!task.start_time && (task.status === 'active' || task.status === 'created')"
+										color="green"
+										@click="startCountdown(task, `start-${task.id}`)"
+										class="mr-2">
+										<span class="relative">
+											Start timer
+											<dots-loader v-if="dotsProps[`start-${task.id}`]" />
+										</span>
+									</new-button>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
+			You don't have tasks here
+		</div>
+
+
+		<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
+	</div>
 </BaseLayout>

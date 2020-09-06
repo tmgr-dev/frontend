@@ -24,7 +24,6 @@
 		</div>
 
 		<div slot="body">
-			<loader v-if="showLoader" :is-active="true"/>
 			<table v-if="showDefaultList" class="w-full shadow-lg rounded mt-5" slot="body">
 				<tbody :class="`${$color('blocks')}`">
 				<tr v-for="category in categories"
@@ -90,8 +89,9 @@
 				</div>
 			</div>
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
-				No categories...
+				You don't have categories here
 			</div>
+			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 		</div>
 	</BaseLayout>
 

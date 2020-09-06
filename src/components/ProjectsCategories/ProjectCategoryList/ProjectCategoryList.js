@@ -18,7 +18,7 @@ export default {
       categories: null,
       category: null,
       parentCategories: [],
-      showLoader: false
+      showLoader: true
     }
   },
   computed: {
@@ -73,7 +73,6 @@ export default {
       this.parentCategories = this.extractParents(category)
     },
     async loadCategories() {
-      this.showLoader = true
       const {data: {data}} = await this.$axios.get(`project_categories/children/${this.id}?all`)
       if (this.id) {
         await this.loadChildrenCategories()
