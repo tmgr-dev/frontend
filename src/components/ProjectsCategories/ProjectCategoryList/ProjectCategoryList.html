@@ -77,10 +77,12 @@
 									</div>
 									<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
 									<div class="hidden lg:block">
-										<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})"
-																class="mr-2">Open
+										<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">
+											<img src="@/assets/img/go.svg" alt="">
 										</new-button>
-										<new-button color="red" @click="deleteCategory(category)" class="mr-2">Delete</new-button>
+										<new-button color="red" @click="deleteCategory(category)" class="mr-2">
+											<img src="@/assets/img/remove.svg" alt="">
+										</new-button>
 									</div>
 								</div>
 							</div>

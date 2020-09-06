@@ -49,5 +49,8 @@ export default {
 		&:hover, &:focus, &:active {
 			outline: none;
 		}
+
+		min-height: 40px;
+		line-height: 1;
 	}
 </style>

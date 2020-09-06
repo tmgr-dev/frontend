@@ -87,8 +87,10 @@
 									</div>
 								</div>
 								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="hidden lg:block">
-									<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">Open</new-button>
+								<div class="hidden lg:flex items-center">
+									<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">
+										<img src="@/assets/img/go.svg" alt="">
+									</new-button>
 									<new-button
 										v-if="status !== 'done'"
 										color="blue"

@@ -37,7 +37,7 @@
 		left: 101%;
 		color: #fff;
 		width: 100%;
-		bottom: -3px;
+		bottom: 0;
 
 		&:focus, &:hover, &:active {
 			outline: none;
