@@ -67,7 +67,7 @@ export default {
   },
   methods: {
     getActions() {
-      return [
+      const actions = [
         {
           click: () => {
             this[this.form.id ? 'save' : 'create']()
@@ -75,6 +75,13 @@ export default {
           label: this.form.id ? 'Save' : 'Create'
         }
       ]
+      actions.push({
+        click: () => {
+          this[this.isCreate ? 'cancel' : 'goToCurrentTasks']()
+        },
+        label: this.isCreate ? 'Cancel' : 'Tasks'
+      })
+      return actions
     },
     async loadCategories() {
       const {data: {data}} = await this.$axios.get('project_categories?all')
@@ -82,7 +89,8 @@ export default {
     },
     async loadModel() {
       const {data: {data}} = await this.$axios.get(`tasks/${this.getId()}`)
-      data.common_time = data.common_time ? data.common_time : 0
+      data.common_time = data.common_time && !data.start_time ? data.common_time : 1
+      console.log(data.common_time)
       this.form = data
     },
     async toggleCountdown() {
@@ -135,12 +143,16 @@ export default {
     cancel() {
       window.history.back();
     },
+    goToCurrentTasks() {
+      this.$router.push('/tasks')
+    },
     getDefaultForm() {
       return {
         title: '',
         status: 'active',
         project_category_id: '',
-        description: ''
+        description: '',
+        common_time: 0
       };
     },
     secondsToStringTime(seconds) {
