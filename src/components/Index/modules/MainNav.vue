@@ -29,7 +29,7 @@
 			</div>
 
 			<div
-				class="w-full flex-grow lg:flex lg:items-center lg:w-auto hidden lg:block mt-2 lg:mt-0 bg-white lg:bg-transparent text-black p-4 lg:p-0 z-20"
+				class="w-full flex-grow lg:flex lg:items-center lg:w-auto hidden lg:block mt-2 lg:mt-0 lg:bg-transparent text-black p-4 lg:p-0 z-20"
 				id="nav-content">
 				<ul class="list-reset lg:flex justify-end flex-1 items-center">
 					<!--                    <li class="mr-3">-->
@@ -40,13 +40,21 @@
 					<!--                    </li>-->
 					<li class="mr-3">
 						<router-link
+							v-if="!$store.getters.isLoggedIn"
 							to="/login"
 							class="inline-block text-white no-underline hover:text-gray-200 hover:text-underline py-2 px-4"
 							href="#">Login
 						</router-link>
+						<router-link
+							v-else
+							to="/tasks"
+							class="inline-block text-white no-underline hover:text-gray-200 hover:text-underline py-2 px-4"
+							href="#">Go to system
+						</router-link>
 					</li>
 				</ul>
 				<router-link
+					v-if="!$store.getters.isLoggedIn"
 					to="/register" id="navAction"
 					class="mx-auto lg:mx-0 hover:underline bg-white text-gray-800 font-bold rounded-full mt-4 lg:mt-0 py-4 px-8 shadow opacity-75">
 					Register

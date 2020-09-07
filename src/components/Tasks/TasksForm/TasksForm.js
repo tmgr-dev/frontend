@@ -5,6 +5,7 @@ export default {
   data() {
     return {
       errors: {},
+      showEditDescription: false,
       showSaveAlert: false,
       panel: false,
       isOpen: false,
@@ -25,23 +26,6 @@ export default {
         HiddenTasksList: 'Hidden tasks',
         ArchiveTasksList: 'Archive tasks'
       },
-      checkpoints: [
-        {
-          description: 'Research subjects for task',
-          start: 0,
-          end: 156
-        },
-        {
-          description: 'Second task',
-          start: 156,
-          end: 300
-        },
-        {
-          description: 'Third task',
-          start: 300,
-          end: 750
-        }
-      ],
       selected: false,
       form: this.getDefaultForm(),
       showCountdown: true
@@ -52,20 +36,23 @@ export default {
       return !this.getId()
     }
   },
-  mounted() {
+  created () {
     this.loadCategories()
     if (this.getId()) {
       this.loadModel()
 
-      window.addEventListener("keydown", (e) => {
+      window.onkeydown = this.getListener()
+    }
+  },
+  methods: {
+    getListener() {
+      return (e) => {
         if (e.ctrlKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')) {
           e.preventDefault();
           this.save()
         }
-      })
-    }
-  },
-  methods: {
+      }
+    },
     getActions() {
       const actions = [
         {
@@ -152,7 +139,8 @@ export default {
         status: 'active',
         project_category_id: '',
         description: '',
-        common_time: 0
+        common_time: 0,
+        checkpoints: []
       };
     },
     secondsToStringTime(seconds) {
@@ -197,6 +185,9 @@ export default {
       }
       this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
     }
+  },
+  destroy () {
+    this.form = this.getDefaultForm()
   }
 }
 

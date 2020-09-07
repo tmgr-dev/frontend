@@ -12,7 +12,18 @@
                     <p class="leading-normal xl:text-2xl lg:text-xl md:text-lg text-base mb-8 text-black">You can take easier tracking your tasks with our application.</p>
 
 
-                    <router-link to="/register" class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto">Get started</router-link>
+                    <router-link
+											v-if="!$store.getters.isLoggedIn"
+											to="/register"
+											class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto">
+											Get started
+										</router-link>
+										<router-link
+											v-else
+											to="/tasks"
+											class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto">
+											Go to system
+										</router-link>
 
                 </div>
                 <!--Right Col-->

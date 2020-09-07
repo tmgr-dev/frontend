@@ -91,23 +91,40 @@
 						</div>
 					</div>
 				</div>
-
-				<div :class="`${$color('blocks')}  px-5 pb-1 pt-5`">
-					<div class="mb-2">
-						<label class="block  text-sm font-bold mb-2" for="">
-							Description
-						</label>
-						<input-field
-							:value.sync="form.description"
-							:errors="errors.description"
-							type="textarea"
-							placeholder="Description"
-						/>
-					</div>
-				</div>
 			</div>
 		</div>
-		<div class="w-full mt-5 p-5">
+		<div class="w-full p-5">
+			<div :class="`${$color('blocks')}  px-5 pb-1 pt-5`">
+				<div class="mb-2">
+					<label class="block text-sm text-left font-bold mb-2" for="">
+						Description
+						<a
+							v-if="showEditDescription"
+							href="#"
+							class="text-red-600"
+							@click="showEditDescription = false">
+							<font-awesome-icon icon="ban" class="text-xl"/>
+						</a>
+					</label>
+					<input-field
+						v-if="showEditDescription"
+						:value.sync="form.description"
+						:errors="errors.description"
+						type="textarea"
+						placeholder="Description"
+					/>
+					<p
+						class="text-left whitespace-pre"
+						v-else
+					>
+						{{ form.description || 'Enter your task description'  }}
+						<a href="#" class="text-blue-600" @click="showEditDescription = true">
+							<font-awesome-icon icon="pencil-alt" class="text-xl"/>
+						</a>
+					</p>
+				</div>
+			</div>
+
 			<h2 class="text-2xl pt-5">
 				Checkpoints
 				<img v-if="!isCreate"
