@@ -69,90 +69,10 @@
 			</tr>
 			</tbody>
 		</table>
-		<div class="w-full items-center justify-center" v-else-if="tasks && tasks.length > 0 && !showDefaultList">
-			<div v-for="task in tasks" class="w-full px-2 mt-2">
-				<div class="shadow-xl rounded-lg md:flex"
-						:class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
-					<div class="w-full">
-						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center">
-								<div>
-									<p class="font-bold text-xl cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">
-										{{ task.title }}</p>
-									<div class="flex items-start">
-										<span>
-											<font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>
-										</span>
-										<span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
-									</div>
-								</div>
-								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="hidden lg:flex items-center">
-									<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">
-										<img src="@/assets/img/go.svg" alt="">
-									</new-button>
-									<new-button
-										v-if="status !== 'done'"
-										color="blue"
-										@click="updateStatus(task, 'done', `done-${task.id}`)"
-										class="mr-2">
-										<span class="relative">
-											Done
-											<dots-loader v-if="dotsProps[`done-${task.id}`]" />
-										</span>
-									</new-button>
-									<new-button
-										v-if="status === 'done' || status === 'hidden'"
-										color="purple"
-										@click="updateStatus(task, 'active', `activate-${task.id}`)"
-										class="mr-2">
-										<span class="relative">
-											Activate
-											<dots-loader v-if="dotsProps[`activate-${task.id}`]" />
-										</span>
-									</new-button>
-									<new-button
-										v-if="status !== 'hidden'"
-										color="gray"
-										@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
-										class="mr-2">
-										<span class="relative">
-											Hide
-											<dots-loader v-if="dotsProps[`hide-${task.id}`]" />
-										</span>
-									</new-button>
-									<new-button
-										v-if="task.start_time"
-										color="red"
-										@click="stopCountdown(task, `stop-${task.id}`)"
-										class="mr-2">
-										<span class="relative">
-											Stop timer
-											<dots-loader v-if="dotsProps[`stop-${task.id}`]" />
-										</span>
-									</new-button>
-									<new-button
-										v-if="!task.start_time && (task.status === 'active' || task.status === 'created')"
-										color="green"
-										@click="startCountdown(task, `start-${task.id}`)"
-										class="mr-2">
-										<span class="relative">
-											Start timer
-											<dots-loader v-if="dotsProps[`start-${task.id}`]" />
-										</span>
-									</new-button>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+		<tasks-list-component v-else-if="tasks && tasks.length > 0 && !showDefaultList" :tasks="tasks" :status="status" @reload-tasks="loadTasks"/>
 		<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
 			You don't have tasks here
 		</div>
-
-
 		<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 	</div>
 </BaseLayout>

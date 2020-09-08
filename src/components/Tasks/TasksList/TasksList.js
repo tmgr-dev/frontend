@@ -1,13 +1,15 @@
 import DropdownMenu from "../../UIElements/DropdownMenu";
 import Navbar from "../../UIElements/Navbar";
 import DotsLoader from "@/components/UIElements/DotsLoader";
+import TasksListComponent from "../../UIElements/TasksListComponent";
 
 export default {
   name: 'TasksList',
   components: {
     DropdownMenu,
     Navbar,
-    DotsLoader
+    DotsLoader,
+    TasksListComponent
   },
   props: [],
   data() {
@@ -70,6 +72,12 @@ export default {
       this.tasks = data
       this.showLoader = false
     },
+    getTasksIndexUrl() {
+      if (this.status) {
+        return `tasks/status/${this.status}?all`
+      }
+      return 'tasks/current?all'
+    },
     setDotsProps (tasks) {
       tasks.forEach(task => {
         this.$set(this.dotsProps, `hide-${task.id}`, false)
@@ -78,12 +86,6 @@ export default {
         this.$set(this.dotsProps, `stop-${task.id}`, false)
         this.$set(this.dotsProps, `activate-${task.id}`, false)
       })
-    },
-    getTasksIndexUrl() {
-      if (this.status) {
-        return `tasks/status/${this.status}?all`
-      }
-      return 'tasks/current?all'
     },
     getActions(task) {
       let actions = [

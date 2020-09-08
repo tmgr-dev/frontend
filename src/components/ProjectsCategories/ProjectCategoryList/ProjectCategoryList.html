@@ -65,14 +65,14 @@
 								<div class="flex justify-between items-center">
 									<div>
 										<p
-											class="font-bold text-xl cursor-pointer"
+											class="font-bold text-xl cursor-pointer text-left pl-2"
 											@click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})">
 											{{ category.title }}</p>
 										<div class="flex items-start">
 											<span>
 												<!-- <font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>-->
 											</span>
-											<span class="text-gray-700 ml-2">Projects: {{ category.children_count }}</span>
+											<span class="text-gray-700 ml-2">Projects: {{ category.children_count }}; Tasks: {{ category.tasks_count }}</span>
 										</div>
 									</div>
 									<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
@@ -92,6 +92,14 @@
 			</div>
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
 				You don't have categories here
+			</div>
+			<div v-if="tasks && tasks.length > 0">
+				<h1 class="text-3xl text-white-800 pt-5">
+					<span>
+							Tasks
+					</span>
+				</h1>
+				<tasks-list-component :tasks="tasks" @reload-tasks="loadTasks" :use-task-status-for-buttons="true"/>
 			</div>
 			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 		</div>

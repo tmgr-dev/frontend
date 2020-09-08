@@ -1,11 +1,13 @@
 import CategoryView from '../ProjectCategoryView/index'
 import Breadcrumbs from '../../UIElements/Breadcrumbs'
+import TasksListComponent from "../../UIElements/TasksListComponent";
 
 export default {
   name: 'ProjectCategoryList',
   components: {
     CategoryView,
-    breadcrumbs: Breadcrumbs
+    Breadcrumbs,
+    TasksListComponent
   },
   props: [],
   data() {
@@ -14,6 +16,8 @@ export default {
       isShowModal: false,
       cardOpen: true,
       item: true,
+      tasks: null,
+      status: null,
       showDefaultList: false,
       categories: null,
       category: null,
@@ -26,10 +30,22 @@ export default {
       return this.$route.params.id || ''
     }
   },
-  mounted() {
-    this.loadCategories()
+  async mounted() {
+    await this.loadCategories()
+    await this.loadTasks()
   },
   methods: {
+    async loadTasks() {
+      const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
+      this.tasks = data
+      this.showLoader = false
+    },
+    getTasksIndexUrl() {
+      if (this.status) {
+        return `tasks/?all&project_category_id=${this.id}&status=${this.status}`
+      }
+      return `tasks/?all&project_category_id=${this.id}`
+    },
     getBreadcrumbs() {
       const items = [
         {
