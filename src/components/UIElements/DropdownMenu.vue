@@ -1,5 +1,5 @@
 <template>
-	<div class="relative">
+	<div class="block">
 		<button @click="isOpen = !isOpen">
 			<svg
 				class="mr-3 md:mr-1 h-12 w-6 fill-current text-grey-dark"
