@@ -15,6 +15,7 @@ export default {
       panel: false,
       isOpen: false,
       showDefaultList: false,
+      summaryTimeString: null,
       showLoader: true,
       h1: {
         CurrentTasksList: 'Current tasks',
@@ -56,14 +57,16 @@ export default {
       this.dotsProps[dotId] = false
     },
     getTaskFormattedTime(task) {
-      let hours = Math.floor(task.common_time / 3600)
-      let minutes = Math.ceil((task.common_time % 3600) / 60)
+      const taskTime = task instanceof Object ? task.common_time : task
+      let hours = Math.floor(taskTime / 3600)
+      let minutes = Math.ceil((taskTime % 3600) / 60)
 
       return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`
     },
     async loadTasks() {
       const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
       this.setDotsProps(data)
+      this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
       this.tasks = data
       this.showLoader = false
     },

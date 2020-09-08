@@ -1,6 +1,6 @@
 <BaseLayout>
     <span slot="header">
-        {{ h1[$route.name] }}
+        {{ h1[$route.name] }}<br><small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
     </span>
 	<div slot="action">
 		<div class="left-0 bottom-0 mr-4 absolute">
