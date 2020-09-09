@@ -8,7 +8,7 @@
 				:current="category ? category.title : ''"
 				:items="getBreadcrumbs()"
 			/>
-			<div class="absolute right-0 bottom-0 mr-5 mb-2">
+			<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
 				<router-link
 					v-if="category" :to="`/projects-categories/${category.id}/edit`"
 					title="Edit category name"
@@ -126,6 +126,9 @@
 					</div>
 				</h1>
 				<tasks-list-component v-if="tasks && tasks.length > 0" :tasks="tasks" @reload-tasks="loadTasks" :use-task-status-for-buttons="true" :show-category-badges="false"/>
+				<div v-else style="font-style: italic; font-size: 18px;" class="mt-5">
+					You don't have tasks in the category
+				</div>
 			</div>
 			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 		</div>
