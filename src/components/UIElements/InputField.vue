@@ -43,8 +43,7 @@
 		name: "InputField",
 		props: {
 			value: {
-				required: false,
-				type: String
+				required: false
 			},
 			errors: {
 				required: false,

@@ -5,6 +5,7 @@ export default {
   data() {
     return {
       h1: null,
+      showSaveAlert: false,
       form: this.getDefaultForm(),
       parentCategories: null
     }
@@ -25,6 +26,10 @@ export default {
     }
   },
   methods: {
+    showSavedAlert() {
+      this.showSaveAlert = true
+      setTimeout(() => this.showSaveAlert = false, 3000)
+    },
     async loadModel() {
       const {data: {data}} = await this.$axios.get(`project_categories/${this.getId()}`)
       this.form = data
@@ -34,10 +39,18 @@ export default {
       this.parentCategories = data
     },
     async create(withRoutePush = true) {
-      this.form.slug = this.generateSlug(this.form.title)
       if (!this.form.project_category_id) {
         delete this.form.project_category_id
       }
+
+      if (!this.isCreate) {
+        const {data: {data}} = await this.$axios.put(`project_categories/${this.form.id}`, this.form)
+        this.form = data
+        this.showSavedAlert()
+        return
+      }
+      this.form.slug = this.generateSlug(this.form.title)
+
       await this.$axios.post('project_categories', this.form)
       if (!withRoutePush) {
         return

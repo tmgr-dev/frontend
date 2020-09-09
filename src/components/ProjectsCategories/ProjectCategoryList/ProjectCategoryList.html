@@ -93,13 +93,39 @@
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
 				You don't have categories here
 			</div>
-			<div v-if="tasks && tasks.length > 0">
-				<h1 class="text-3xl text-white-800 pt-5">
+			<div>
+				<h1 class="text-3xl text-white-800 pt-5 relative text-left lg:text-center ml-2">
 					<span>
 							Tasks
+							<router-link
+								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
+								class="opacity-25 hover:opacity-100 inline md:hidden">
+								<font-awesome-icon icon="plus-circle" class="text-3xl"/>
+							</router-link>
 					</span>
+					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
+						<div class="sm:mr-5 text-lg">
+							<button type="button" :class="!status ? `` : `opacity-25 hover:opacity-100`" class="inline sm:mr-2 mr-1 bg-green-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children`)">
+								All
+							</button>
+							<button type="button" :class="status !== `current` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/current`)">
+								Current
+							</button>
+							<button type="button" :class="status !== `hidden` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-gray-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/hidden`)">
+								Hidden
+							</button>
+							<button type="button" :class="status !== `done` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:ml-2 mr-1 bg-red-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/done`)">
+								Archive
+							</button>
+						</div>
+						<router-link
+							:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
+							class="opacity-25 hover:opacity-100 hidden md:inline">
+							<font-awesome-icon icon="plus-circle" class="text-4xl"/>
+						</router-link>
+					</div>
 				</h1>
-				<tasks-list-component :tasks="tasks" @reload-tasks="loadTasks" :use-task-status-for-buttons="true"/>
+				<tasks-list-component v-if="tasks && tasks.length > 0" :tasks="tasks" @reload-tasks="loadTasks" :use-task-status-for-buttons="true" :show-category-badges="false"/>
 			</div>
 			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 		</div>

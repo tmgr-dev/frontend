@@ -6,8 +6,12 @@
 					<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 						<div class="flex justify-between items-center">
 							<div>
-								<p class="font-bold text-xl cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">
-									{{ task.title }} {{ task.category ? `(${task.category.title})`: '' }}</p>
+								<p class="font-bold text-xl">
+									<span class="cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">{{ task.title }}</span>
+									<button v-if="task.category && showCategoryBadges" type="button" class="inline mr-2 bg-gray-700 text-white p-2 rounded ml-5 leading-none items-center" @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: task.category.id}})">
+										{{ task.category.title }}
+									</button>
+								</p>
 								<div class="flex items-start">
 											<span>
 												<font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>
@@ -21,7 +25,7 @@
 									<img src="@/assets/img/go.svg" alt="">
 								</new-button>
 								<new-button
-									v-if="(status !== 'done' && !useTaskStatusForButtons) || (useTaskStatusForButtons && task.status !== 'done')"
+									v-if="getShowButtons(task).done"
 									color="blue"
 									@click="updateStatus(task, 'done', `done-${task.id}`)"
 									class="mr-2">
@@ -31,7 +35,7 @@
 											</span>
 								</new-button>
 								<new-button
-									v-if="(status === 'done' || status === 'hidden' && !useTaskStatusForButtons) || (useTaskStatusForButtons && (task.status === 'done' || task.status === 'hidden'))"
+									v-if="getShowButtons(task).activate"
 									color="purple"
 									@click="updateStatus(task, 'active', `activate-${task.id}`)"
 									class="mr-2">
@@ -41,7 +45,7 @@
 											</span>
 								</new-button>
 								<new-button
-									v-if="(status !== 'hidden' && status !== 'done' && !useTaskStatusForButtons) || (useTaskStatusForButtons && (task.status === 'hidden' && task.status === 'done'))"
+									v-if="getShowButtons(task).hide"
 									color="gray"
 									@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
 									class="mr-2">
@@ -51,7 +55,7 @@
 											</span>
 								</new-button>
 								<new-button
-									v-if="task.start_time"
+									v-if="getShowButtons(task).start"
 									color="red"
 									@click="stopCountdown(task, `stop-${task.id}`)"
 									class="mr-2">
@@ -61,7 +65,7 @@
 											</span>
 								</new-button>
 								<new-button
-									v-if="!task.start_time && (task.status === 'active' || task.status === 'created')"
+									v-if="getShowButtons(task).stop"
 									color="green"
 									@click="startCountdown(task, `start-${task.id}`)"
 									class="mr-2">
@@ -104,6 +108,11 @@
 					required: false,
 					type: Boolean,
 					default: false
+				},
+				showCategoryBadges: {
+					required: false,
+					type: Boolean,
+					default: true
 				}
 			},
 			data: () => ({
@@ -115,6 +124,15 @@
 					await this.$axios.delete(`tasks/${task.id}/countdown`)
 					await this.loadTasks()
 					this.dotsProps[dotId] = false
+				},
+				getShowButtons(task) {
+					return {
+						done: (this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && task.status !== 'done'),
+						activate: (this.status === 'done' || this.status === 'hidden' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status === 'done' || task.status === 'hidden')),
+						hide: (this.status !== 'hidden' && this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status !== 'hidden' && task.status !== 'done')),
+						start: task.start_time,
+						stop: !task.start_time && (task.status === 'active' || task.status === 'created')
+					}
 				},
 				async startCountdown(task, dotId) {
 					this.dotsProps[dotId] = true
@@ -156,13 +174,15 @@
 							label: 'Edit'
 						}
 					]
-					actions = this.addActionItem(actions, this.getActionItem(task, 'active', 'Open again'))
-					actions = this.addActionItem(actions, this.getActionItem(task, 'hidden', 'Hide'))
-					actions = this.addActionItem(actions, this.getActionItem(task, 'done', 'Done'))
+
+					actions = this.addActionItem(actions, this.getActionItem(task, 'active', 'Activate'), this.getShowButtons(task).activate)
+					actions = this.addActionItem(actions, this.getActionItem(task, 'hidden', 'Hide'), this.getShowButtons(task).hide)
+					actions = this.addActionItem(actions, this.getActionItem(task, 'done', 'Done'), this.getShowButtons(task).done)
+
 					return actions
 				},
-				addActionItem(actions, item) {
-					if (!item) {
+				addActionItem(actions, item, show = true) {
+					if (!item || !show) {
 						return actions
 					}
 					actions.push(item)

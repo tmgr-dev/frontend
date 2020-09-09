@@ -50,5 +50,8 @@
 				</router-link>
 			</div>
 		</form>
+		<transition name="fade">
+			<Alert v-if="showSaveAlert" header="Saved" description="You saved your project category"/>
+		</transition>
 	</div>
 </BaseLayout>

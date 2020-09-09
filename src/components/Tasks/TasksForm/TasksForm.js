@@ -34,6 +34,9 @@ export default {
   computed: {
     isCreate() {
       return !this.getId()
+    },
+    projectCategoryId() {
+      return this.getProjectCategoryId()
     }
   },
   created () {
@@ -42,6 +45,9 @@ export default {
       this.loadModel()
 
       window.onkeydown = this.getListener()
+    }
+    if (this.projectCategoryId && this.isCreate) {
+      this.form.project_category_id = this.projectCategoryId
     }
   },
   methods: {
@@ -87,6 +93,9 @@ export default {
     },
     getId() {
       return this.$route.params.id
+    },
+    getProjectCategoryId() {
+      return this.$route.params.project_category_id
     },
     prepareForm() {
       if (this.form.project_category_id == '') {
@@ -134,10 +143,11 @@ export default {
       this.$router.push('/tasks')
     },
     getDefaultForm() {
+      console.log('PRO ID: ', this.projectCategoryId)
       return {
         title: '',
         status: 'active',
-        project_category_id: '',
+        project_category_id: this.projectCategoryId || '',
         description: '',
         common_time: 0,
         checkpoints: []

@@ -59,7 +59,7 @@ let router = new Router({
       name: 'ProjectCategoryList'
     },
     {
-      path: '/projects-categories/:id/children',
+      path: '/projects-categories/:id/children/:status?',
       meta: {
         transitionName: 'slide',
         navbarHidden: true
@@ -129,6 +129,15 @@ let router = new Router({
       },
       component: () => import('@/components/Tasks/TasksForm'),
       name: 'TasksCreate'
+    },
+    {
+      path: '/project-categories/:project_category_id/tasks/create',
+      meta: {
+        transitionName: 'slide',
+        navbarHidden: true
+      },
+      component: () => import('@/components/Tasks/TasksForm'),
+      name: 'TasksCreateWithProjectCategoryId'
     },
     {
       path: '/tasks/:id/edit',

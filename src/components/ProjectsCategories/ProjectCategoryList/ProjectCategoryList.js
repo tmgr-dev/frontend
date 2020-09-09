@@ -17,7 +17,7 @@ export default {
       cardOpen: true,
       item: true,
       tasks: null,
-      status: null,
+      //status: null,
       showDefaultList: false,
       categories: null,
       category: null,
@@ -28,6 +28,9 @@ export default {
   computed: {
     id() {
       return this.$route.params.id || ''
+    },
+    status() {
+      return this.$route.params.status || ''
     }
   },
   async mounted() {
@@ -41,8 +44,8 @@ export default {
       this.showLoader = false
     },
     getTasksIndexUrl() {
-      if (this.status) {
-        return `tasks/?all&project_category_id=${this.id}&status=${this.status}`
+      if (this.$route.params.status) {
+        return `tasks/?all&project_category_id=${this.id}&status=${this.$route.params.status}`
       }
       return `tasks/?all&project_category_id=${this.id}`
     },
