@@ -59,6 +59,15 @@ let router = new Router({
       name: 'ProjectCategoryList'
     },
     {
+      path: '/projects-categories/status/:status?',
+      meta: {
+        transitionName: 'slide',
+        navbarHidden: true
+      },
+      component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
+      name: 'ProjectCategoryChildrenListWithStatus'
+    },
+    {
       path: '/projects-categories/:id/children/:status?',
       meta: {
         transitionName: 'slide',

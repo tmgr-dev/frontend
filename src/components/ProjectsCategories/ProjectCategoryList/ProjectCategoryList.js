@@ -17,7 +17,6 @@ export default {
       cardOpen: true,
       item: true,
       tasks: null,
-      //status: null,
       showDefaultList: false,
       categories: null,
       category: null,
@@ -34,6 +33,7 @@ export default {
     }
   },
   async mounted() {
+    console.log('test')
     await this.loadCategories()
     await this.loadTasks()
   },

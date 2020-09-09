@@ -105,16 +105,16 @@
 					</span>
 					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
 						<div class="sm:mr-5 text-lg">
-							<button type="button" :class="!status ? `` : `opacity-25 hover:opacity-100`" class="inline sm:mr-2 mr-1 bg-green-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children`)">
+							<button type="button" :class="!status ? `` : `opacity-25 hover:opacity-100`" class="inline sm:mr-2 mr-1 bg-green-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id ? `${id}/children` : ''}`)">
 								All
 							</button>
-							<button type="button" :class="status !== `current` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/current`)">
+							<button type="button" :class="status !== `current` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'current'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/current`)">
 								Current
 							</button>
-							<button type="button" :class="status !== `hidden` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-gray-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/hidden`)">
+							<button type="button" :class="status !== `hidden` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-gray-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'hidden'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/hidden`)">
 								Hidden
 							</button>
-							<button type="button" :class="status !== `done` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:ml-2 mr-1 bg-red-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id}/children/done`)">
+							<button type="button" :class="status !== `done` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:ml-2 mr-1 bg-red-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'done'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/done`)">
 								Archive
 							</button>
 						</div>
