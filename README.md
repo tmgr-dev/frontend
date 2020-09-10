@@ -64,3 +64,6 @@ First of all you have to create .env file
 
     # Example:
     VUE_APP_API_BASE_URL=http://taskmanager.localhost/api/
+
+
+--- TEST
