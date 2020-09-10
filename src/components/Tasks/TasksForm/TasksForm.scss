@@ -24,9 +24,12 @@
   }
 }
 
-.checkpoint-add {
-  opacity: 0.2;
-  &:hover {
-    opacity: 1;
-  }
+.task-title-span {
+	max-width: 200px;
+	display: inline-block;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	top: 16px;
+	position: relative;
 }

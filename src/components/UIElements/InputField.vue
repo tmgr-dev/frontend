@@ -7,6 +7,7 @@
 					name=""
 					:class="`block appearance-none w-full  ${$color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"
 					v-model="val"
+					:disabled="!options || !options.length"
 				>
 					<option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">
 						{{ option[optionNameKey] }}

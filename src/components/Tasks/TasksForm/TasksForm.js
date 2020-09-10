@@ -27,6 +27,7 @@ export default {
         ArchiveTasksList: 'Archive tasks'
       },
       selected: false,
+      projectCategory: null,
       form: this.getDefaultForm(),
       showCountdown: true
     }
@@ -39,16 +40,17 @@ export default {
       return this.getProjectCategoryId()
     }
   },
-  created () {
+  async created () {
     this.loadCategories()
     if (this.getId()) {
-      this.loadModel()
+      await this.loadModel()
 
       window.onkeydown = this.getListener()
     }
     if (this.projectCategoryId && this.isCreate) {
       this.form.project_category_id = this.projectCategoryId
     }
+    await this.loadCategory()
   },
   methods: {
     getListener() {
@@ -79,6 +81,10 @@ export default {
     async loadCategories() {
       const {data: {data}} = await this.$axios.get('project_categories?all')
       this.parentCategories = data
+    },
+    async loadCategory() {
+      const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
+      this.projectCategory = data
     },
     async loadModel() {
       const {data: {data}} = await this.$axios.get(`tasks/${this.getId()}`)
