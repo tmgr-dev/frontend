@@ -1,19 +1,24 @@
 server {
     listen 80;
-    root /var/www/html;
+    root /var/www/html/dist;
     index index.html;
-    server_name taskmanager-ui.localhost;
-
-    charset utf-8;
+    server_name task-manager-ui.localhost;
 
     location / {
         try_files $uri $uri/ /index.html;
     }
+
+    charset utf-8;
 
     location = /favicon.ico { access_log off; log_not_found off; }
     location = /robots.txt  { access_log off; log_not_found off; }
 
     access_log off;
     error_log  /var/log/nginx/error.log error;
+
     sendfile off;
+
+    location ~ /\.ht {
+        deny all;
+    }
 }
