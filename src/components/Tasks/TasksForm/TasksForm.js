@@ -158,7 +158,7 @@ export default {
       console.log('PRO ID: ', this.projectCategoryId)
       return {
         title: '',
-        status: 'active',
+        status: 'created',
         project_category_id: this.projectCategoryId || '',
         description: '',
         common_time: 0,
