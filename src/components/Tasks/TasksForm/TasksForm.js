@@ -92,6 +92,12 @@ export default {
       console.log(data.common_time)
       this.form = data
     },
+    getCategoryStatus() {
+      if (this.form.status === 'created' || this.form.status === 'active') {
+        return 'current'
+      }
+      return this.form.status
+    },
     async toggleCountdown() {
       const {data: {data}} = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.getId()}/countdown`)
       this.form = data
