@@ -42,7 +42,7 @@
 								href="#"
 								class="text-red-600"
 								@click="showEditDescription = false">
-								<font-awesome-icon icon="ban" class="text-xl"/>
+								<span class="material-icons text-xl">cancel</span>
 							</a>
 						</label>
 						<input-field
@@ -58,7 +58,7 @@
 						>
 							{{ form.description || 'Enter your task description'  }}
 							<a href="#" class="text-blue-600" @click="showEditDescription = true">
-								<font-awesome-icon icon="pencil-alt" class="text-xl"/>
+								<span class="material-icons text-xl">edit</span>
 							</a>
 						</p>
 					</div>

@@ -2,6 +2,7 @@ import DropdownMenu from "../../UIElements/DropdownMenu";
 import Navbar from "../../UIElements/Navbar";
 import DotsLoader from "@/components/UIElements/DotsLoader";
 import TasksListComponent from "../../UIElements/TasksListComponent";
+import DefaultTasksListComponent from "@/components/UIElements/DefaultTasksListComponent";
 
 export default {
   name: 'TasksList',
@@ -9,7 +10,8 @@ export default {
     DropdownMenu,
     Navbar,
     DotsLoader,
-    TasksListComponent
+    TasksListComponent,
+    DefaultTasksListComponent
   },
   props: [],
   data() {

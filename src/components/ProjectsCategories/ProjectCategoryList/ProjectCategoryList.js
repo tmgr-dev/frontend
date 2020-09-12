@@ -21,7 +21,8 @@ export default {
       categories: null,
       category: null,
       parentCategories: [],
-      showLoader: true
+      showLoader: true,
+      dotsProps: {}
     }
   },
   computed: {
@@ -40,6 +41,7 @@ export default {
   methods: {
     async loadTasks() {
       const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
+      this.setDotsProps(data)
       this.tasks = data
       this.showLoader = false
     },
@@ -48,6 +50,15 @@ export default {
         return `tasks/?all&project_category_id=${this.id}&status=${this.$route.params.status}`
       }
       return `tasks/?all&project_category_id=${this.id}`
+    },
+    setDotsProps (tasks) {
+      tasks.forEach(task => {
+        this.$set(this.dotsProps, `hide-${task.id}`, false)
+        this.$set(this.dotsProps, `done-${task.id}`, false)
+        this.$set(this.dotsProps, `start-${task.id}`, false)
+        this.$set(this.dotsProps, `stop-${task.id}`, false)
+        this.$set(this.dotsProps, `activate-${task.id}`, false)
+      })
     },
     getBreadcrumbs() {
       const items = [

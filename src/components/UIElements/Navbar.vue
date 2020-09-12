@@ -6,7 +6,7 @@
 			</div>
 			<div class="ml-auto md:hidden">
 				<button class="flex items-center px-3 py-2 border rounded" type="button" @click="isHidden = !isHidden">
-					<font-awesome-icon icon="bars" class="opacity-75 hover:opacity-100"/>
+					test
 				</button>
 			</div>
 			<div class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block" :class="{ hidden: isHidden }">

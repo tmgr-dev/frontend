@@ -13,12 +13,12 @@
 					v-if="category" :to="`/projects-categories/${category.id}/edit`"
 					title="Edit category name"
 					class="pr-5 opacity-25 hover:opacity-100">
-					<font-awesome-icon icon="pencil-alt" class="text-4xl"/>
+					<span class="material-icons text-4xl">edit</span>
 				</router-link>
 				<router-link
 					:to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add category"
 					class="opacity-25 hover:opacity-100">
-					<font-awesome-icon icon="plus-circle" class="text-4xl"/>
+					<span class="material-icons text-4xl">add_circle_outline</span>
 				</router-link>
 			</div>
 		</div>
@@ -78,10 +78,10 @@
 									<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
 									<div class="hidden lg:block">
 										<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">
-											<img src="@/assets/img/go.svg" alt="">
+											<span class="material-icons">open_in_new</span>
 										</new-button>
 										<new-button color="red" @click="deleteCategory(category)" class="mr-2">
-											<img src="@/assets/img/remove.svg" alt="">
+											<span class="material-icons">delete</span>
 										</new-button>
 									</div>
 								</div>
@@ -100,7 +100,7 @@
 							<router-link
 								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
 								class="opacity-25 hover:opacity-100 inline md:hidden">
-								<font-awesome-icon icon="plus-circle" class="text-3xl"/>
+								<span class="material-icons text-3xl">add_circle_outline</span>
 							</router-link>
 					</span>
 					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
@@ -121,11 +121,18 @@
 						<router-link
 							:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
 							class="opacity-25 hover:opacity-100 hidden md:inline">
-							<font-awesome-icon icon="plus-circle" class="text-4xl"/>
+							<span class="material-icons text-4xl">add_circle_outline</span>
 						</router-link>
 					</div>
 				</h1>
-				<tasks-list-component v-if="tasks && tasks.length > 0" :tasks="tasks" @reload-tasks="loadTasks" :use-task-status-for-buttons="true" :show-category-badges="false"/>
+				<tasks-list-component
+					v-if="tasks && tasks.length > 0"
+					:tasks="tasks"
+					@reload-tasks="loadTasks"
+					:dots-props="dotsProps"
+					:use-task-status-for-buttons="true"
+					:show-category-badges="false"
+				/>
 				<div v-else style="font-style: italic; font-size: 18px;" class="mt-5">
 					You don't have tasks in the category
 				</div>

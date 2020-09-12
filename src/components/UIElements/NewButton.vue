@@ -17,31 +17,31 @@
 </template>
 
 <script>
-export default {
-	name: "NewButton",
-	props: {
-		type: {
-			required: false,
-			type: String,
-			default: () => 'button'
+	export default {
+		name: "NewButton",
+		props: {
+			type: {
+				required: false,
+				type: String,
+				default: 'button'
+			},
+			to: {
+				required: false,
+				type: String,
+				default: ''
+			},
+			color: {
+				required: false,
+				type: String,
+				default: 'green'
+			}
 		},
-		to: {
-			required: false,
-			type: String,
-			default: () => ''
-		},
-		color: {
-			required: false,
-			type: String,
-			default: () => 'green'
-		}
-	},
-	methods: {
-		getClass() {
-			return `${this.extraClass} px-5 py-1 border border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`
+		methods: {
+			getClass() {
+				return `${this.extraClass} px-5 py-1 border border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`
+			}
 		}
 	}
-}
 </script>
 
 <style scoped lang="scss">
@@ -50,7 +50,11 @@ export default {
 			outline: none;
 		}
 
-		min-height: 40px;
+		min-height: 45px;
 		line-height: 1;
+
+		.material-icons {
+			font-size: 18px;
+		}
 	}
 </style>
