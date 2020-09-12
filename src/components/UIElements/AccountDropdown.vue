@@ -26,8 +26,12 @@
 		name: 'AccountDropdown',
 		data() {
 			return {
-				isOpenProfileDropdown: false,
-				switchOn: this.$store.getters.colorScheme === 'dark'
+				isOpenProfileDropdown: false
+			}
+		},
+		computed: {
+			switchOn () {
+				return this.$store.getters.colorScheme === 'dark'
 			}
 		},
 		methods: {

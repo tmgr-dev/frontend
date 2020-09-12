@@ -10,5 +10,6 @@ export default {
   h1: 'text-gray',
   textBreadcrumbs: 'text-gray',
   navLinkFocused: 'text-purple',
-  bg: 'bg-white'
+  bg: 'bg-white',
+  buttonActionOpacity: ''
 }
