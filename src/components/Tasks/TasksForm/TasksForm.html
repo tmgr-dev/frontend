@@ -94,8 +94,9 @@
 									placeholder="Checkpoint content"
 									v-model="checkpoint.description"
 								>
-								<img class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)"
-										 src="@/assets/img/remove-red.svg" alt="">
+								<span class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)">
+									<span class="material-icons text-lg text-red-700">delete</span>
+								</span>
 							</div>
 
 							<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->

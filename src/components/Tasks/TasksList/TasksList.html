@@ -26,7 +26,7 @@
 			:is-loading-actions="isLoadingActions"
 			@reload-tasks="loadTasks"
 		/>
-		<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">
+		<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
 			You don't have tasks here
 		</div>
 		<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />

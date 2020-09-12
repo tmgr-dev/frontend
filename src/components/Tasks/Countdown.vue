@@ -14,7 +14,7 @@
             >{{ task.start_time ? 'Stop' : 'Run' }}</Button>
             <Button color="white"
                     type="button"
-                    class="fullscreen-toggler"
+                    class="fullscreen-toggler hover:bg-gray-600"
                     @click="fullscreen"
             >Fullscreen</Button>
         </div>
