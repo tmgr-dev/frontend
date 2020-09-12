@@ -5,7 +5,7 @@
 				<ol class="breadcrumb md:flex" v-if="current">
 					<li class="inline md:hidden">Breadcrumbs: </li>
 					<li class="breadcrumb-item  inline text-gray-600" v-for="(item, i) in items" :key="i">
-						<router-link :to="item.to" href="#" class="text-gray-600 hover:text-purple-700 mx-0 md:mx-1">
+						<router-link :to="item.to" class="text-gray-600 hover:text-purple-700 mx-0 md:mx-1">
 							{{ item.label }}
 						</router-link>
 					</li>

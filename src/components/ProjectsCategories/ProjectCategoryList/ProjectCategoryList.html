@@ -1,9 +1,7 @@
 <div>
 	<BaseLayout>
-		<span slot="header">
-			{{ category ? category.title : h1 }}
-		</span>
-		<div slot="action">
+		<template #header>{{ category ? category.title : h1 }}</template>
+		<template #action>
 			<breadcrumbs
 				:current="category ? category.title : ''"
 				:items="getBreadcrumbs()"
@@ -21,10 +19,10 @@
 					<span class="material-icons text-4xl">add_circle_outline</span>
 				</router-link>
 			</div>
-		</div>
+		</template>
 
-		<div slot="body">
-			<table v-if="showDefaultList" class="w-full shadow-lg rounded mt-5" slot="body">
+		<template #body>
+			<table v-if="showDefaultList" class="w-full shadow-lg rounded mt-5">
 				<tbody :class="`${$color('blocks')}`">
 				<tr v-for="category in categories"
 						:class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`"
@@ -138,10 +136,12 @@
 				</div>
 			</div>
 			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
-		</div>
+		</template>
 	</BaseLayout>
 
 	<Modal :show="isShowModal" @close="isShowModal = false">
-		<CategoryView slot="modal-body"/>
+		<template #modal-body>
+			<CategoryView />
+		</template>
 	</Modal>
 </div>

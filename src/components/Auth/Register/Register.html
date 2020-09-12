@@ -1,34 +1,37 @@
 <div>
-    <AuthBase>
-        <div slot="title">Hi there!</div>
-        <div slot="body">
-            <form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
-                <div class="flex flex-col mt-4">
-                    <input-field type="text" name="name" :errors="errors.name" :value.sync="form.name" placeholder="Name"/>
-                </div>
-                <div class="flex flex-col mt-4">
-                    <input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
-                </div>
-                <div class="flex flex-col mt-4">
-                    <input-field type="password" name="password" :errors="errors.password" :value.sync="form.password" placeholder="Password"/>
-                </div>
-                <div class="flex flex-col mt-4">
-                    <input-field type="password" name="password_confirmation" :errors="errors.password" :value.sync="form.password_confirmation" placeholder="Password confirmation"/>
-                </div>
-                <div class="flex flex-col mt-8">
-                    <button type="submit" @click.prevent="register" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+	<AuthBase>
+		<template #title>Hi there!</template>
+		<template #body>
+			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
+				<div class="flex flex-col mt-4">
+					<input-field type="text" name="name" :errors="errors.name" :value.sync="form.name" placeholder="Name"/>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="password" name="password" :errors="errors.password" :value.sync="form.password"
+											 placeholder="Password"/>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="password" name="password_confirmation" :errors="errors.password"
+											 :value.sync="form.password_confirmation" placeholder="Password confirmation"/>
+				</div>
+				<div class="flex flex-col mt-8">
+					<button type="submit" @click.prevent="register"
+									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
                         <span class="relative">
                             Register
-                            <loader v-if="showLoader" :is-mini="true" />
+                            <loader v-if="showLoader" :is-mini="true"/>
                         </span>
-                    </button>
-                </div>
-            </form>
-        </div>
-        <div slot="footer">
-            <router-link to="/login" class="no-underline hover:underline text-blue-dark text-xs" href="">
-                Do you have an account already?
-            </router-link>
-        </div>
-    </AuthBase>
+					</button>
+				</div>
+			</form>
+		</template>
+		<template #footer>
+			<router-link to="/login" class="no-underline hover:underline text-blue-dark text-xs">
+				Do you have an account already?
+			</router-link>
+		</template>
+	</AuthBase>
 </div>

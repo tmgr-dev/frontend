@@ -1,5 +1,5 @@
 <BaseLayout>
-	<div slot="header" class="">
+	<template #header>
 		<span>{{ form.title || h1.main }}</span>
 		<div v-if="!isCreate" class="md:absolute text-center md:mt-0 md:flex right-0 bottom-0">
 			<div class="text-lg">
@@ -17,141 +17,143 @@
 				</button>
 			</div>
 		</div>
-	</div>
-	<div slot="body" :class="`${$color('blocks')} rounded-lg`">
-		<div class="lg:flex">
-			<div class="lg:w-full h-full mt-5 p-5">
-				<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
-					<div class="block w-full float-left">
+	</template>
+	<template #body>
+		<div :class="`${$color('blocks')} rounded-lg`">
+			<div class="lg:flex">
+				<div class="lg:w-full h-full mt-5 p-5">
+					<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
+						<div class="block w-full float-left">
+							<div class="mb-2">
+								<input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="lg:flex px-5">
+				<div class="w-full h-full">
+					<div :class="`${$color('blocks')}  px-5 pb-1`">
 						<div class="mb-2">
-							<input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<div class="lg:flex px-5">
-			<div class="w-full h-full">
-				<div :class="`${$color('blocks')}  px-5 pb-1`">
-					<div class="mb-2">
-						<label class="block text-sm text-left font-bold mb-2" for="">
-							Description
-							<a
-								v-if="showEditDescription && !isCreate"
-								href="#"
-								class="text-red-600"
-								@click="showEditDescription = false">
-								<span class="material-icons text-xl">cancel</span>
-							</a>
-						</label>
-						<input-field
-							v-if="showEditDescription || isCreate"
-							:value.sync="form.description"
-							:errors="errors.description"
-							type="textarea"
-							placeholder="Description"
-						/>
-						<p
-							class="text-left whitespace-pre-line"
-							v-else
-						>
-							{{ form.description || 'Enter your task description'  }}
-							<a href="#" class="text-blue-600" @click="showEditDescription = true">
-								<span class="material-icons text-xl">edit</span>
-							</a>
-						</p>
-					</div>
-				</div>
-			</div>
-		</div>
-		<div class="lg:flex">
-			<div class="w-full h-full mt-5">
-				<div :class="`${$color('blocks')} p-5 h-full`">
-					<Countdown
-						v-if="form.id && showCountdown"
-						ref="countdown"
-						:init-task="form"
-						@toggle="toggleCountdown"
-						@update:seconds="updateSeconds"
-					/>
-				</div>
-			</div>
-		</div>
-		<div class="w-full p-5">
-			<h2 class="text-2xl pt-5" v-if="!isCreate && form.checkpoints && form.checkpoints.length">
-				Checkpoints
-			</h2>
-			<div v-if="!isCreate" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
-				<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
-					<div class="flex mb-2">
-						<div class="w-full mx-2 relative">
-							<span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
-							<input
-								:class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
-								type="text"
-								placeholder="Checkpoint content"
-								v-model="checkpoint.description"
+							<label class="block text-sm text-left font-bold mb-2" for="">
+								Description
+								<a
+									v-if="showEditDescription && !isCreate"
+									href="#"
+									class="text-red-600"
+									@click="showEditDescription = false">
+									<span class="material-icons text-xl">cancel</span>
+								</a>
+							</label>
+							<input-field
+								v-if="showEditDescription || isCreate"
+								:value.sync="form.description"
+								:errors="errors.description"
+								type="textarea"
+								placeholder="Description"
+							/>
+							<p
+								class="text-left whitespace-pre-line"
+								v-else
 							>
-							<img class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)"
-									src="@/assets/img/remove-red.svg" alt="">
-						</div>
-
-						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
-					</div>
-					<div>
-						<div class="flex">
-							<div class="w-6/12 mx-2">
-								<the-mask mask="##:##:##"
-													:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-													type="text"
-													placeholder="00:00"
-													:value="secondsToStringTime(checkpoint.start)"
-								/>
-							</div>
-							<div class="w-6/12 mx-2">
-								<the-mask mask="##:##:##"
-													:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-													type="text"
-													placeholder="00:00"
-													:value="secondsToStringTime(checkpoint.end)"
-								/>
-							</div>
+								{{ form.description || 'Enter your task description'  }}
+								<a href="#" class="text-blue-600" @click="showEditDescription = true">
+									<span class="material-icons text-xl">edit</span>
+								</a>
+							</p>
 						</div>
 					</div>
 				</div>
 			</div>
-<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
-			<div class="block">
-				<button v-if="!isCreate" @click="save"
-								class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-								type="button">
-					Save
-				</button>
-				<button v-if="isCreate" @click="create"
-								class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-								type="button">
-					Create
-				</button>
-				<button v-if="isCreate" @click="cancel"
-								class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-								type="button">
-					Cancel
-				</button>
-				<button v-else @click="!projectCategory ? goToCurrentTasks() : $router.push(`/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`)"
-								class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-								type="button">
-					{{ projectCategory ? 'Back to: ' + projectCategory.title : 'Tasks' }}
-				</button>
-				<button
-					v-if="!isCreate"
-					@click="addCheckpoint"
-					class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-					type="button">Add checkpoint</button>
+			<div class="lg:flex">
+				<div class="w-full h-full mt-5">
+					<div :class="`${$color('blocks')} p-5 h-full`">
+						<Countdown
+							v-if="form.id && showCountdown"
+							ref="countdown"
+							:init-task="form"
+							@toggle="toggleCountdown"
+							@update:seconds="updateSeconds"
+						/>
+					</div>
+				</div>
 			</div>
+			<div class="w-full p-5">
+				<h2 class="text-2xl pt-5" v-if="!isCreate && form.checkpoints && form.checkpoints.length">
+					Checkpoints
+				</h2>
+				<div v-if="!isCreate" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
+					<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
+						<div class="flex mb-2">
+							<div class="w-full mx-2 relative">
+								<span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
+								<input
+									:class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
+									type="text"
+									placeholder="Checkpoint content"
+									v-model="checkpoint.description"
+								>
+								<img class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)"
+										 src="@/assets/img/remove-red.svg" alt="">
+							</div>
+
+							<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
+						</div>
+						<div>
+							<div class="flex">
+								<div class="w-6/12 mx-2">
+									<the-mask mask="##:##:##"
+														:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+														type="text"
+														placeholder="00:00"
+														:value="secondsToStringTime(checkpoint.start)"
+									/>
+								</div>
+								<div class="w-6/12 mx-2">
+									<the-mask mask="##:##:##"
+														:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+														type="text"
+														placeholder="00:00"
+														:value="secondsToStringTime(checkpoint.end)"
+									/>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
+				<div class="block">
+					<button v-if="!isCreate" @click="save"
+									class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+									type="button">
+						Save
+					</button>
+					<button v-if="isCreate" @click="create"
+									class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+									type="button">
+						Create
+					</button>
+					<button v-if="isCreate" @click="cancel"
+									class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+									type="button">
+						Cancel
+					</button>
+					<button v-else @click="!projectCategory ? goToCurrentTasks() : $router.push(`/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`)"
+									class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+									type="button">
+						{{ projectCategory ? 'Back to: ' + projectCategory.title : 'Tasks' }}
+					</button>
+					<button
+						v-if="!isCreate"
+						@click="addCheckpoint"
+						class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+						type="button">Add checkpoint</button>
+				</div>
+			</div>
+			<transition name="fade">
+				<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
+			</transition>
 		</div>
-		<transition name="fade">
-			<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
-		</transition>
-	</div>
+	</template>
 </BaseLayout>

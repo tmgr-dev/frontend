@@ -1,42 +1,45 @@
 <div>
-    <AuthBase>
-        <div slot="title">Welcome back!</div>
-        <div slot="body">
-            <form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
-                <div class="flex flex-col mt-4">
-                    <h3 :style="{color: errors ? 'red' : 'initial'}">{{ message }}</h3>
-                    <p v-if="errors instanceof String" :style="{color: 'red'}">{{ errors }}</p>
-                </div>
-                <div class="flex flex-col mt-4">
-                    <input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
-                </div>
-                <div class="flex flex-col mt-4">
-                    <input-field type="password" name="password" :errors="errors.password" :value.sync="form.password" placeholder="Password"/>
-                </div>
-                <div class="flex items-center mt-4">
-                    <label class="checkbox-wrapper">
-                        <input type="checkbox" name="remember" class="mr-2">
-                        <span class="checkmark"></span>
-                        <span class="text-sm text-grey-dark select-none">Remember Me</span>
-                    </label>
-                </div>
-                <div class="flex flex-col mt-8">
-                    <button @click.prevent="login" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
-                        <span class="relative">
-                            Login
-                            <loader v-if="showLoader" :is-mini="true" />
-                        </span>
-                    </button>
-                </div>
-            </form>
-        </div>
-        <div slot="footer">
-            <router-link to="/password/forget" class="no-underline hover:underline text-blue-dark text-xs" href="">
-                Forgot Your Password?
-            </router-link><br>
-            <router-link to="/register" class="no-underline hover:underline text-blue-dark text-xs" href="">
-                Don't you have an account?
-            </router-link>
-        </div>
-    </AuthBase>
+	<AuthBase>
+		<template #title>Welcome back!</template>
+		<template #body>
+			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
+				<div class="flex flex-col mt-4">
+					<h3 :style="{color: errors ? 'red' : 'initial'}">{{ message }}</h3>
+					<p v-if="errors instanceof String" :style="{color: 'red'}">{{ errors }}</p>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="password" name="password" :errors="errors.password" :value.sync="form.password"
+											 placeholder="Password"/>
+				</div>
+				<div class="flex items-center mt-4">
+					<label class="checkbox-wrapper">
+						<input type="checkbox" name="remember" class="mr-2">
+						<span class="checkmark"></span>
+						<span class="text-sm text-grey-dark select-none">Remember Me</span>
+					</label>
+				</div>
+				<div class="flex flex-col mt-8">
+					<button @click.prevent="login"
+									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+						<span class="relative">
+								Login
+								<loader v-if="showLoader" :is-mini="true"/>
+						</span>
+					</button>
+				</div>
+			</form>
+		</template>
+		<template #footer>
+			<router-link to="/password/forget" class="no-underline hover:underline text-blue-dark text-xs">
+				Forgot Your Password?
+			</router-link>
+			<br>
+			<router-link to="/register" class="no-underline hover:underline text-blue-dark text-xs">
+				Don't you have an account?
+			</router-link>
+		</template>
+	</AuthBase>
 </div>
