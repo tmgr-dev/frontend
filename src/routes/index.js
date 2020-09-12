@@ -177,6 +177,15 @@ let router = new Router({
       },
       name: 'ArchiveTasksList'
     },
+    {
+      path: '/settings',
+      component: () => import('@/components/Settings'),
+      meta: {
+        transitionName: 'fade',
+        navbarHidden: true
+      },
+      name: 'Settings'
+    }
   ]
 })
 

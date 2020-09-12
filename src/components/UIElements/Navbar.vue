@@ -34,6 +34,10 @@
 							href="#" title="Link">Categories</router-link>
 					</li>
 				</ul>
+				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4">
+					<DayNightSwitch :value="switchOn"
+													@change="isOn => (isOn ? $store.commit('colorScheme', 'dark') : $store.commit('colorScheme', 'default'))"/>
+				</span>
 				<AccountDropdown />
 			</div>
 		</div>

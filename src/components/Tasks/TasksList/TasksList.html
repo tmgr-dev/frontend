@@ -1,8 +1,10 @@
 <BaseLayout>
-    <span slot="header">
-        {{ h1[$route.name] }}<br><small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
-    </span>
-	<div slot="action">
+	<template #header>
+		{{ h1[$route.name] }}
+		<br>
+		<small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
+	</template>
+	<template #action>
 		<div class="left-0 bottom-0 mr-4 absolute">
 		</div>
 		<div class="absolute right-0 bottom-0">
@@ -10,8 +12,8 @@
 				<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
 			</router-link>
 		</div>
-	</div>
-	<div slot="body">
+	</template>
+	<template #body>
 		<default-tasks-list-component
 			v-if="tasks && tasks.length > 0 && showDefaultList"
 			:tasks="tasks"
@@ -28,5 +30,5 @@
 			You don't have tasks here
 		</div>
 		<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
-	</div>
+	</template>
 </BaseLayout>

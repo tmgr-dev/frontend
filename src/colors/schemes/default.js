@@ -7,7 +7,7 @@ export default {
   input: 'bg-white',
   navTextUser: 'text-black',
   textMain: 'text-main',
-  h1: 'text-gray',
+  h1: 'text-blue',
   textBreadcrumbs: 'text-gray',
   navLinkFocused: 'text-purple',
   bg: 'bg-white',
