@@ -1,6 +1,7 @@
 import CategoryView from '../ProjectCategoryView/index'
 import Breadcrumbs from '../../UIElements/Breadcrumbs'
 import TasksListComponent from "../../UIElements/TasksListComponent";
+import LoadingButtonActions from "@/mixins/LoadingButtonActions";
 
 export default {
   name: 'ProjectCategoryList',
@@ -9,7 +10,7 @@ export default {
     Breadcrumbs,
     TasksListComponent
   },
-  props: [],
+  mixins: [ LoadingButtonActions ],
   data() {
     return {
       h1: 'Projects categories',
@@ -22,7 +23,7 @@ export default {
       category: null,
       parentCategories: [],
       showLoader: true,
-      dotsProps: {}
+      isLoadingActions: {}
     }
   },
   computed: {
@@ -41,7 +42,7 @@ export default {
   methods: {
     async loadTasks() {
       const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
-      this.setDotsProps(data)
+      this.setLoadingActions(data)
       this.tasks = data
       this.showLoader = false
     },
@@ -50,15 +51,6 @@ export default {
         return `tasks/?all&project_category_id=${this.id}&status=${this.$route.params.status}`
       }
       return `tasks/?all&project_category_id=${this.id}`
-    },
-    setDotsProps (tasks) {
-      tasks.forEach(task => {
-        this.$set(this.dotsProps, `hide-${task.id}`, false)
-        this.$set(this.dotsProps, `done-${task.id}`, false)
-        this.$set(this.dotsProps, `start-${task.id}`, false)
-        this.$set(this.dotsProps, `stop-${task.id}`, false)
-        this.$set(this.dotsProps, `activate-${task.id}`, false)
-      })
     },
     getBreadcrumbs() {
       const items = [

@@ -1,6 +1,6 @@
 <template>
-	<div class="loader_wrapper" :class="[{active: isActive}, type === 'mini' ? 'mini' : '']" :style="sidePositionStyle">
-		<div class="loader" v-if="type === 'mini'">
+	<div class="loader_wrapper active" :class="isMini ? 'mini' : ''" :style="isStatic ? 'position:static;margin:0;width:18px' : sidePositionStyle">
+		<div class="loader" v-if="isMini">
 			<div></div>
 			<div></div>
 			<div></div>
@@ -33,14 +33,15 @@ export default {
 			required: false,
 			default: 'left: 100%'
 		},
-		isActive: {
+		isMini: {
 			type: Boolean,
-			required: true,
-			default: true
+			required: false,
+			default: false
 		},
-		type: {
-			type: String,
-			required: false
+		isStatic: {
+			type: Boolean,
+			required: false,
+			default: false
 		}
 	},
 };
@@ -70,8 +71,8 @@ export default {
 			top: calc(50% - 7px);
 
 			.loader {
-				width: 20px;
-				height: 20px;
+				width: 12px;
+				height: 12px;
 			}
 
 			.loader div {

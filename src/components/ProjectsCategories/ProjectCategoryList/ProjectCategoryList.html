@@ -129,7 +129,7 @@
 					v-if="tasks && tasks.length > 0"
 					:tasks="tasks"
 					@reload-tasks="loadTasks"
-					:dots-props="dotsProps"
+					:is-loading-actions="isLoadingActions"
 					:use-task-status-for-buttons="true"
 					:show-category-badges="false"
 				/>

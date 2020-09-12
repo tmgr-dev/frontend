@@ -6,7 +6,7 @@
 			</div>
 			<div class="ml-auto md:hidden">
 				<button class="flex items-center px-3 py-2 border rounded" type="button" @click="isHidden = !isHidden">
-					test
+					Menu
 				</button>
 			</div>
 			<div class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block" :class="{ hidden: isHidden }">
@@ -20,24 +20,21 @@
 					<li>
 						<router-link to="/tasks/hidden"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/hidden' ? $color('navLinkFocused') + '-600' : ''}`"
-							href="#" title="Link">Hidden
-						</router-link>
+							href="#" title="Link">Hidden</router-link>
 					</li>
 					<li>
 						<router-link to="/tasks/archive"
-												:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`"
-												href="#" title="Link">Archive
-						</router-link>
+							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`"
+							href="#" title="Link">Archive</router-link>
 					</li>
 					<li>
 						<router-link
 							to="/projects-categories"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/projects-categories' ? $color('navLinkFocused') + '-600' : ''}`"
-							href="#" title="Link"
-						>Categories</router-link>
+							href="#" title="Link">Categories</router-link>
 					</li>
 				</ul>
-				<AccountDropdown/>
+				<AccountDropdown />
 			</div>
 		</div>
 	</nav>

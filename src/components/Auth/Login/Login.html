@@ -24,7 +24,7 @@
                     <button @click.prevent="login" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
                         <span class="relative">
                             Login
-                            <loader :type="'mini'" :is-active="showLoader" />
+                            <loader v-if="showLoader" :is-mini="true" />
                         </span>
                     </button>
                 </div>

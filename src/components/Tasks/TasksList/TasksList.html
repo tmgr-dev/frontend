@@ -21,7 +21,7 @@
 			v-else-if="tasks && tasks.length > 0 && !showDefaultList"
 			:tasks="tasks"
 			:status="status"
-			:dots-props="dotsProps"
+			:is-loading-actions="isLoadingActions"
 			@reload-tasks="loadTasks"
 		/>
 		<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;">

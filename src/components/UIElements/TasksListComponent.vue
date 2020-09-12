@@ -6,12 +6,18 @@
 					<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 						<div class="flex justify-between items-center">
 							<div>
-								<p class="font-bold text-xl">
-									<span class="cursor-pointer" @click="$router.push(`/tasks/${task.id}/edit`)">{{ task.title }}</span>
-									<button v-if="task.category && showCategoryBadges" type="button" class="inline mr-2 bg-gray-700 text-white p-2 rounded ml-5 leading-none items-center" @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: task.category.id}})">
+								<div>
+									<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
+										{{ task.title }}
+									</router-link>
+									<router-link
+										v-if="task.category && showCategoryBadges"
+										tag="button"
+										:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
+										class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base">
 										{{ task.category.title }}
-									</button>
-								</p>
+									</router-link>
+								</div>
 								<div class="flex items-start">
 									<span>
 										<span class="material-icons text-xl" :class="task.start_time ? 'text-green-600' : 'text-orange-600'">alarm</span>
@@ -30,8 +36,8 @@
 									@click="updateStatus(task, 'done', `done-${task.id}`)"
 									class="mr-2">
 										<span class="relative">
-											<span class="material-icons bold">done</span>
-											<dots-loader v-if="dotsProps[`done-${task.id}`]" />
+											<span class="material-icons text-bold" v-if="!isLoadingActions[`done-${task.id}`]">done</span>
+											<loader v-if="isLoadingActions[`done-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
 								<new-button
@@ -40,8 +46,8 @@
 									@click="updateStatus(task, 'active', `activate-${task.id}`)"
 									class="mr-2">
 										<span class="relative">
-											<span class="material-icons bold">refresh</span>
-											<dots-loader v-if="dotsProps[`activate-${task.id}`]" />
+											<span class="material-icons text-bold" v-if="!isLoadingActions[`activate-${task.id}`]">refresh</span>
+											<loader v-if="isLoadingActions[`activate-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
 								<new-button
@@ -50,8 +56,8 @@
 									@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
 									class="mr-2">
 										<span class="relative">
-											<span class="material-icons">visibility_off</span>
-											<dots-loader v-if="dotsProps[`hide-${task.id}`]" />
+											<span class="material-icons" v-if="!isLoadingActions[`hide-${task.id}`]">visibility_off</span>
+											<loader v-if="isLoadingActions[`hide-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
 								<new-button
@@ -61,8 +67,8 @@
 									@click="stopCountdown(task, `stop-${task.id}`)"
 									class="mr-2">
 										<span class="relative">
-											<span class="material-icons">alarm_off</span>
-											<dots-loader v-if="dotsProps[`stop-${task.id}`]" />
+											<span class="material-icons" v-if="!isLoadingActions[`stop-${task.id}`]">alarm_off</span>
+											<loader v-if="isLoadingActions[`stop-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
 
@@ -72,8 +78,8 @@
 									@click="startCountdown(task, `start-${task.id}`)"
 									class="mr-2">
 										<span class="relative">
-											<span class="material-icons">alarm_on</span>
-											<dots-loader v-if="dotsProps[`start-${task.id}`]" />
+											<span class="material-icons" v-if="!isLoadingActions[`start-${task.id}`]">alarm_on</span>
+											<loader v-if="isLoadingActions[`start-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
 							</div>
@@ -87,13 +93,12 @@
 
 <script>
 	import DropdownMenu from "@/components/UIElements/DropdownMenu";
-	import DotsLoader from "@/components/UIElements/DotsLoader";
+	import TasksListMixin from "@/mixins/TasksListMixin";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
-			DropdownMenu,
-			DotsLoader
+			DropdownMenu
 		},
 		props: {
 			tasks: {
@@ -116,17 +121,18 @@
 				type: Boolean,
 				default: true
 			},
-			dotsProps: {
+			isLoadingActions: {
 				required: true,
 				type: Object
 			}
 		},
+		mixins: [ TasksListMixin ],
 		methods: {
 			async stopCountdown(task, dotId) {
-				this.dotsProps[dotId] = true
+				this.isLoadingActions[dotId] = true
 				await this.$axios.delete(`tasks/${task.id}/countdown`)
 				await this.loadTasks()
-				this.dotsProps[dotId] = false
+				this.isLoadingActions[dotId] = false
 			},
 			getShowButtons(task) {
 				return {
@@ -138,26 +144,13 @@
 				}
 			},
 			async startCountdown(task, dotId) {
-				this.dotsProps[dotId] = true
+				this.isLoadingActions[dotId] = true
 				await this.$axios.post(`tasks/${task.id}/countdown`)
 				await this.loadTasks()
-				this.dotsProps[dotId] = false
-			},
-			getTaskFormattedTime(task) {
-				const taskTime = task instanceof Object ? task.common_time : task
-				let hours = Math.floor(taskTime / 3600)
-				let minutes = Math.ceil((taskTime % 3600) / 60)
-
-				return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`
+				this.isLoadingActions[dotId] = false
 			},
 			async loadTasks() {
-				this.$emit('reload-tasks')
-			},
-			getTasksIndexUrl() {
-				if (this.status) {
-					return `tasks/status/${this.status}?all`
-				}
-				return 'tasks/current?all'
+				await this.$emit('reload-tasks')
 			},
 			getActions(task) {
 				let actions = [
@@ -195,13 +188,13 @@
 			},
 			async updateStatus(task, status, dotId) {
 				try {
-					this.dotsProps[dotId] = true
+					this.isLoadingActions[dotId] = true
 					await this.$axios.put(`/tasks/${task.id}/${status}`)
 					await this.loadTasks()
-					this.dotsProps[dotId] = false
+					this.isLoadingActions[dotId] = false
 				} catch (e) {
-					this.dotsProps[dotId] = false
-					console.error(e.getMessage())
+					this.isLoadingActions[dotId] = false
+					console.error(e)
 				}
 			},
 			capitalize(s) {
