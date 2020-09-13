@@ -33,9 +33,9 @@
 			@close="isShowModalTimer = false">
 			<template #modal-body>
 				<div class="countdown-modal-edit">
-					<input type="text" class="countdown-item" v-model="countdown.hours">
-					<input type="text" class="countdown-item" v-model="countdown.minutes">
-					<input type="text" class="countdown-item" v-model="countdown.seconds">
+					<input type="text" class="countdown-item" v-mask="'##'" v-model="countdown.hours">
+					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.minutes" />
+					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.seconds" />
 				</div>
 				<div class="flex items-center mt-5">
 					<button
@@ -69,6 +69,14 @@
 		},
 		data() {
 			return {
+				timeTokens: {
+					F: {
+						pattern: /[0-5]/
+					},
+					'#': {
+						pattern: /\d/
+					},
+				},
 				extraCounterClass: '',
 				countdownInterval: null,
 				countdown: {
@@ -82,11 +90,23 @@
 		},
 		methods: {
 			async updateTimer () {
+				this.validateCountdownBeforeUpdate()
 				const seconds = this.countdown.hours * 3600 + +this.countdown.minutes * 60 + +this.countdown.seconds
 				await this.$axios.put(`tasks/${this.task.id}/time`, {
 					common_time: seconds
 				})
 				this.isShowModalTimer = false
+			},
+			validateCountdownBeforeUpdate () {
+				if (this.countdown.hours === '') {
+					this.countdown.hours = '00'
+				}
+				if (this.countdown.minutes === '') {
+					this.countdown.minutes = '00'
+				}
+				if (this.countdown.seconds === '') {
+					this.countdown.seconds = '00'
+				}
 			},
 			fullscreen() {
 				if (this.extraCounterClass === '') {

@@ -6,6 +6,7 @@ import axios from 'axios'
 import store from './store'
 import colorSchemes from './colors/schemes'
 import VueTheMask from 'vue-the-mask';
+import { mask } from 'vue-the-mask'
 import Tooltip from 'vue-directive-tooltip';
 
 Vue.config.productionTip = false
@@ -20,6 +21,7 @@ if (store.getters.token) {
         store.commit('user', data)
     })
 }
+Vue.directive(mask)
 Vue.use(Tooltip, {
   delay: 50,
   placement: 'top',
