@@ -1,28 +1,32 @@
 <template>
-	<div v-if="task" :class="'task ' + extraCounterClass" id="task">
+	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task">
 		<div class="relative inline-block">
-			<div class="countdown-wrapper mb-4" title="Время: ЧЧ:ММ:СС">
+			<div class="countdown-wrapper mb-4 select-none"
+					@dblclick="isShowModalTimer = true"
+					v-tooltip.top="'Double click to edit the time'">
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
 			</div>
-			<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
+			<!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
 				<span class="material-icons text-base">edit</span>
-			</a>
+			</a>-->
 		</div>
 		<div class="countdown-actions">
 			<Button
 				:color="task.start_time ? 'red' : 'blue'"
 				type="button"
-				@click="toggleCountdown">
-				{{ task.start_time ? 'Stop' : 'Run' }}
+				class="leading-none"
+				@click="$emit('toggle')">
+				<span v-if="!task.start_time" class="material-icons">play_arrow</span>
+				<span v-else class="material-icons">stop</span>
 			</Button>
 			<Button
-				color="white"
-				type="button"
-				class="fullscreen-toggler hover:bg-gray-600"
-				@click="fullscreen">
-				Fullscreen
+				color="gray"
+				@click="isFullScreen = !isFullScreen"
+				class="leading-none">
+				<span class="material-icons" v-if="!isFullScreen">open_in_full</span>
+				<span class="material-icons" v-else>close_fullscreen</span>
 			</Button>
 		</div>
 
@@ -69,6 +73,7 @@
 		},
 		data() {
 			return {
+				isFullScreen: false,
 				timeTokens: {
 					F: {
 						pattern: /[0-5]/
@@ -77,7 +82,6 @@
 						pattern: /\d/
 					},
 				},
-				extraCounterClass: '',
 				countdownInterval: null,
 				countdown: {
 					hours: '00',
@@ -107,16 +111,6 @@
 				if (this.countdown.seconds === '') {
 					this.countdown.seconds = '00'
 				}
-			},
-			fullscreen() {
-				if (this.extraCounterClass === '') {
-					this.extraCounterClass = 'fullscreen'
-				} else {
-					this.extraCounterClass = ''
-				}
-			},
-			toggleCountdown() {
-				this.$emit('toggle')
 			},
 			plusSecond() {
 				if (!this.task) {
