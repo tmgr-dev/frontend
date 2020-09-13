@@ -1,8 +1,19 @@
 <BaseLayout>
 	<template #header>
 		<span>{{ form.title || h1.main }}</span>
-		<div v-if="!isCreate" class="md:absolute text-center md:mt-0 md:flex right-0 bottom-0">
-			<div class="text-lg">
+	</template>
+	<template #action>
+		<div class="sm:flex items-between text-center">
+			<router-link
+				v-if="!isCreate"
+				:to="!projectCategory ? '/tasks' : `/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`"
+				class="py-2 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+				:class="`${$color('h1')}-800`"
+				type="button">
+				< {{ projectCategory ? projectCategory.title : 'Tasks' }}
+			</router-link>
+
+			<div v-if="!isCreate" class="text-base sm:text-lg ml-auto">
 				<button type="button" @click="form.status = 'created'" :class="form.status !== `created` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none items-center">
 					Created
 				</button>
@@ -43,7 +54,7 @@
 									href="#"
 									class="text-red-600 relative"
 									style="top:4px"
-									@click="showEditDescription = false">
+									@click.prevent="showEditDescription = false">
 									<span class="material-icons text-base">cancel</span>
 								</a>
 							</label>
@@ -124,7 +135,7 @@
 					</div>
 				</div>
 				<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
-				<div class="block">
+				<div class="block text-center">
 					<button v-if="!isCreate" @click="save"
 									class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 									type="button">
@@ -139,11 +150,6 @@
 									class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 									type="button">
 						Cancel
-					</button>
-					<button v-else @click="!projectCategory ? goToCurrentTasks() : $router.push(`/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`)"
-									class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-									type="button">
-						{{ projectCategory ? 'Back to: ' + projectCategory.title : 'Tasks' }}
 					</button>
 					<button
 						v-if="!isCreate"
