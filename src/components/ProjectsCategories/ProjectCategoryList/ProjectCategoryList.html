@@ -138,10 +138,4 @@
 			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 		</template>
 	</BaseLayout>
-
-	<Modal :show="isShowModal" @close="isShowModal = false">
-		<template #modal-body>
-			<CategoryView />
-		</template>
-	</Modal>
 </div>

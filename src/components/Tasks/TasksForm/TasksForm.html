@@ -41,9 +41,10 @@
 								<a
 									v-if="showEditDescription && !isCreate"
 									href="#"
-									class="text-red-600"
+									class="text-red-600 relative"
+									style="top:4px"
 									@click="showEditDescription = false">
-									<span class="material-icons text-xl">cancel</span>
+									<span class="material-icons text-base">cancel</span>
 								</a>
 							</label>
 							<input-field
@@ -55,12 +56,11 @@
 							/>
 							<p
 								class="text-left whitespace-pre-line"
-								v-else
-							>
-								{{ form.description || 'Enter your task description'  }}
-								<a href="#" class="text-blue-600" @click="showEditDescription = true">
-									<span class="material-icons text-xl">edit</span>
+								v-else>
+								<a href="#" class="text-blue-600 relative" style="top:2px" @click.prevent="showEditDescription = true">
+									<span class="material-icons text-base">edit</span>
 								</a>
+								{{ form.description || 'Enter your task description'  }}
 							</p>
 						</div>
 					</div>

@@ -2,7 +2,7 @@
 	<nav :class="`${$color('blocks')} shadow`" role="navigation">
 		<div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
 			<div class="mr-4 md:mr-8" style="width: 30px;">
-				<img src="../../assets/img/logo-light.svg" class="absolute top-0 mt-1" style="width: 75px; height: 60px; z-index: 9999999;" alt="Task manager">
+				<img src="../../assets/img/logo-light.svg" class="absolute top-0 mt-1" style="width: 75px; height: 60px; z-index: 99;" alt="Task manager">
 			</div>
 			<div class="ml-auto md:hidden">
 				<button class="flex items-center px-3 py-2 border rounded" type="button" @click="isHidden = !isHidden">
