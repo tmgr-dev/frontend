@@ -6,7 +6,7 @@ import axios from 'axios'
 import store from './store'
 import colorSchemes from './colors/schemes'
 import VueTheMask from 'vue-the-mask';
-import { VTooltip } from 'v-tooltip'
+import Tooltip from 'vue-directive-tooltip';
 
 Vue.config.productionTip = false
 
@@ -20,9 +20,37 @@ if (store.getters.token) {
         store.commit('user', data)
     })
 }
-
+Vue.use(Tooltip, {
+  delay: 50,
+  placement: 'top',
+  class: 'custom-tooltip',
+  triggers: ['hover'],
+  offset: 5
+})
 Vue.use(VueTheMask)
-Vue.directive('tooltip', VTooltip)
+/*Vue.directive('tooltip', {
+  bind (el, { value }) {
+    el.classList.add('relative')
+    if (!el.querySelector('.tooltip')) {
+      el.insertAdjacentHTML("beforeend", `
+        <div class="tooltip">
+          <span class="triangle"></span>
+          ${value}
+        </div>`)
+
+      const tooltip = el.querySelector('.tooltip')
+      if (tooltip) {
+        el.addEventListener('mouseover', () => {
+          tooltip.classList.add('active')
+        })
+
+        el.addEventListener('mouseout', () => {
+          tooltip.classList.remove('active')
+        })
+      }
+    }
+  }
+})*/
 
 Vue.prototype.$axios = axios
 const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]

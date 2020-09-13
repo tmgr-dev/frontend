@@ -1,0 +1,26 @@
+.tooltip {
+	background: #616161;
+	color: #ffffff;
+	text-align: center;
+	padding: 5px 15px;
+	border-radius: 50px;
+	bottom: calc(100% + 11px);
+	left: 50%;
+	transform: translateX(-50%);
+	position: absolute;
+	opacity: 0;
+	transition: .2s;
+	&.active {
+		opacity: 1;
+	}
+}
+
+.triangle {
+	border-width: 0 6px 6px;
+	border-color: transparent;
+	border-bottom-color: #616161;
+	position: absolute;
+	bottom: -6px;
+	transform: rotate(180deg) translateX(-50%);
+	left: calc(50% - 12px)
+}

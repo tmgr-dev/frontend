@@ -27,11 +27,13 @@
 							</div>
 							<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
 							<div class="hidden lg:flex items-center">
-								<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2">
+								<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2" v-tooltip.top="'Open'">
 									<span class="material-icons">open_in_new</span>
 								</new-button>
+
 								<new-button
 									v-if="getShowButtons(task).done"
+									v-tooltip.top="'Done'"
 									color="blue"
 									@click="updateStatus(task, 'done', `done-${task.id}`)"
 									class="mr-2">
@@ -42,6 +44,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).activate"
+									v-tooltip.top="'Reactivate'"
 									color="purple"
 									@click="updateStatus(task, 'active', `activate-${task.id}`)"
 									class="mr-2">
@@ -52,6 +55,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).hide"
+									v-tooltip.top="'Hide'"
 									color="gray"
 									@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
 									class="mr-2">
@@ -62,7 +66,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).start"
-									v-tooltip="'Stop timer'"
+									v-tooltip.top="'Stop timer'"
 									color="red"
 									@click="stopCountdown(task, `stop-${task.id}`)"
 									class="mr-2">
@@ -74,6 +78,7 @@
 
 								<new-button
 									v-if="getShowButtons(task).stop"
+									v-tooltip.top="'Start timer'"
 									color="green"
 									@click="startCountdown(task, `start-${task.id}`)"
 									class="mr-2">

@@ -35,3 +35,15 @@ body {
 	display: inline-block;
 	vertical-align: text-top;
 }
+
+/*@import "tooltip";*/
+@import "~vue-directive-tooltip/src/css/index.scss";
+
+.custom-tooltip {
+	background: #616161;
+	border-radius: 50px;
+
+	.tooltip-arrow {
+		border-top-color: #616161 !important;
+	}
+}
