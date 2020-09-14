@@ -10,7 +10,7 @@ let router = new Router({
   routes: [
     {
       path: '/',
-      component: () => import('@/components/Index'),
+      component: () => import('@/components/Index/index.vue'),
       name: 'Index'
     },
     {
