@@ -87,6 +87,18 @@
 											<loader v-if="isLoadingActions[`start-${task.id}`]" :is-mini="true" :is-static="true" />
 										</span>
 								</new-button>
+
+								<new-button
+									v-if="status === 'hidden' || status === 'done'"
+									v-tooltip.top="'Delete task'"
+									color="red"
+									@click="deleteTask(task, `delete-${task.id}`)"
+									class="mr-2">
+										<span class="relative">
+											<span class="material-icons" v-if="!isLoadingActions[`delete-${task.id}`]">delete</span>
+											<loader v-if="isLoadingActions[`delete-${task.id}`]" :is-mini="true" :is-static="true" />
+										</span>
+								</new-button>
 							</div>
 						</div>
 					</div>
@@ -195,6 +207,17 @@
 				try {
 					this.isLoadingActions[dotId] = true
 					await this.$axios.put(`/tasks/${task.id}/${status}`)
+					await this.loadTasks()
+					this.isLoadingActions[dotId] = false
+				} catch (e) {
+					this.isLoadingActions[dotId] = false
+					console.error(e)
+				}
+			},
+			async deleteTask (task, dotId) {
+				try {
+					this.isLoadingActions[dotId] = true
+					await this.$axios.delete(`/tasks/${task.id}`)
 					await this.loadTasks()
 					this.isLoadingActions[dotId] = false
 				} catch (e) {
