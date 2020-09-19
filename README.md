@@ -66,4 +66,4 @@ First of all you have to create .env file
     VUE_APP_API_BASE_URL=http://taskmanager.localhost/api/
 
 
---- TEST
+# Desktop Version in development. Soon...
