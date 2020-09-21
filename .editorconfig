@@ -13,21 +13,7 @@ insert_final_newline = true
 [*]
 charset = utf-8
 
-# 4 space indentation
-[*.{js,vue,html,css,scss}]
-indent_style = tab
-indent_size = 2
-
-# Tab indentation (no size specified)
-[Makefile]
-indent_style = tab
-
-# Indentation override for all JS under lib directory
-[src/**.js]
-indent_style = space
-indent_size = 2
-
-# Matches the exact files either package.json or .travis.yml
-[{package.json,.travis.yml}]
+# 2 space indentation
+[*.{js,vue,html,css,scss,json}]
 indent_style = tab
 indent_size = 2

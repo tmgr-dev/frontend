@@ -14,17 +14,17 @@ import Alert from '@/components/UIElements/Alert';
 import "vue-rocker-switch/dist/vue-rocker-switch.css";
 
 export default [
-    Alert,
-    BaseLayout,
-    RockerSwitch,
-    DayNightSwitch,
-    Modal,
-    Navbar,
-    DropdownMenu,
-    Countdown,
-    InputField,
-    Button,
-    NewButton,
-    Loader,
-    AccountDropdown
+	Alert,
+	BaseLayout,
+	RockerSwitch,
+	DayNightSwitch,
+	Modal,
+	Navbar,
+	DropdownMenu,
+	Countdown,
+	InputField,
+	Button,
+	NewButton,
+	Loader,
+	AccountDropdown
 ]
