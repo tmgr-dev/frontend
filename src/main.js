@@ -19,7 +19,13 @@ if (store.getters.token) {
     }
     axios.get('user').then(({ data }) => {
         store.commit('user', data)
-    })
+    }).finally(() => {
+			axios.get('user/settings').then(({ data: {data} }) => {
+				if (data && data.settings && data.settings.colorScheme) {
+					store.commit('colorScheme', data.settings.colorScheme)
+				}
+			})
+		})
 }
 Vue.directive(mask)
 Vue.use(Tooltip, {
@@ -30,29 +36,6 @@ Vue.use(Tooltip, {
   offset: 5
 })
 Vue.use(VueTheMask)
-/*Vue.directive('tooltip', {
-  bind (el, { value }) {
-    el.classList.add('relative')
-    if (!el.querySelector('.tooltip')) {
-      el.insertAdjacentHTML("beforeend", `
-        <div class="tooltip">
-          <span class="triangle"></span>
-          ${value}
-        </div>`)
-
-      const tooltip = el.querySelector('.tooltip')
-      if (tooltip) {
-        el.addEventListener('mouseover', () => {
-          tooltip.classList.add('active')
-        })
-
-        el.addEventListener('mouseout', () => {
-          tooltip.classList.remove('active')
-        })
-      }
-    }
-  }
-})*/
 
 Vue.prototype.$axios = axios
 const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]

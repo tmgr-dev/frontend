@@ -1,8 +1,17 @@
 import Vue from '../bootstrap/index'
 import Vuex from 'vuex'
 import colorSchemes from '../colors/schemes'
+import axios from "axios";
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
 
+const axiosWithState = (state) => {
+	axios.defaults.baseURL = state.apiBaseUrl
+	axios.defaults.headers = {
+		Authorization: `Bearer ${state.token.token}`,
+		'X-Requested-With': 'XMLHttpRequest'
+	}
+	return axios
+}
 Vue.use(Vuex)
 
 const state = {
@@ -40,12 +49,17 @@ const mutations = {
         state.user = user
     },
     colorScheme (state, colorScheme) {
-        console.log(colorScheme)
         if (colorScheme == null) {
             localStorage.removeItem('colorScheme')
         } else {
             localStorage.setItem('colorScheme', colorScheme)
         }
+
+				axiosWithState(state).patch('/user/settings', {
+					settings: {
+						colorScheme: colorScheme
+					}
+				})
 
         state.colorScheme = colorScheme
         document.querySelector('body').className = color('bgBody', colorScheme)

@@ -27,7 +27,6 @@ export default {
 
         this.$store.commit('token', data.data)
         await this.setUser()
-
       } catch (error) {
         this.showLoader = false
         if (error && error.response) {
@@ -46,8 +45,15 @@ export default {
       const {data} = await this.$axios.get('user')
 
       this.$store.commit('user', data)
+			await this.setColorScheme()
       await this.$router.push({name: 'CurrentTasksList'})
-    }
+    },
+		async setColorScheme() {
+			const { data: {data} } = await this.$axios.get('user/settings')
+			if (data && data.settings && data.settings.colorScheme) {
+				this.$store.commit('colorScheme', data.settings.colorScheme)
+			}
+		}
   }
 }
 

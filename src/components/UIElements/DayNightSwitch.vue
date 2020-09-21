@@ -19,17 +19,15 @@
                 required: true
             }
         },
-        watch: {
-            nightMode () {
-                this.$emit('change', this.nightMode)
-            }
-        },
-        data () {
-            return {
-                nightMode: this.value
-            }
-        },
-        methods: {
+        computed: {
+					nightMode: {
+						get() {
+							return this.value
+						},
+						set(value) {
+							this.$emit('update:value', value)
+						},
+					}
         }
     }
 </script>

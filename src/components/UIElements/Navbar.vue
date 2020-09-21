@@ -34,9 +34,8 @@
 							href="#" title="Link">Categories</router-link>
 					</li>
 				</ul>
-				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4">
-					<DayNightSwitch :value="switchOn"
-													@change="isOn => (isOn ? $store.commit('colorScheme', 'dark') : $store.commit('colorScheme', 'default'))"/>
+				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
+					<day-night-switch :value.sync="switchOn"/>
 				</span>
 				<AccountDropdown />
 			</div>
@@ -45,12 +44,24 @@
 </template>
 
 <script>
+	import DayNightSwitch from "./DayNightSwitch";
 	export default {
 		name: 'Navbar',
+		components: {DayNightSwitch},
+		computed: {
+			switchOn: {
+				get () {
+					return this.$store.getters.colorScheme === 'dark'
+				},
+				set (newValue) {
+					this.$store.commit('colorScheme', newValue ? 'dark' : 'default')
+				}
+			}
+		},
 		data() {
 			return {
 				isHidden: true,
-				switchOn: this.$store.getters.colorScheme === 'dark'
+				rerenderSwitcher: 0
 			}
 		}
 	}
