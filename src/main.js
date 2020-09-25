@@ -1,73 +1,51 @@
-import Vue from './bootstrap/index'
-import router from './routes/index'
-import App from './App'
-import './assets/styles/index.scss';
-import axios from 'axios'
-import store from './store'
-import colorSchemes from './colors/schemes'
-import VueTheMask from 'vue-the-mask';
-import { mask } from 'vue-the-mask'
-import Tooltip from 'vue-directive-tooltip';
+import { createApp } from "vue";
+import router from "./routes/index";
+import App from "./App";
+import axios from "axios";
+import store from "./store";
+import VueTheMask from "vue-the-mask";
+import { mask } from "vue-the-mask";
+import Tooltip from "vue-directive-tooltip";
+import components from "@/bootstrap/loadComponents";
+import colorSchemes from "@/colors/schemes";
 
-Vue.config.productionTip = false
+const app = createApp(App, {
+	data: () => ({
+		key: null
+	})
+})
+app.use(store)
+app.use(router)
+
+components.map(c => app.component(c.name, c))
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
+console.log(axios.defaults.baseURL)
 if (store.getters.token) {
-    axios.defaults.headers = {
-        Authorization: `Bearer ${store.getters.token.token}`,
-        'X-Requested-With': 'XMLHttpRequest'
-    }
-    axios.get('user').then(({ data }) => {
-        store.commit('user', data)
-    })
+	axios.defaults.headers = {
+		Authorization: `Bearer ${store.getters.token.token}`,
+		'X-Requested-With': 'XMLHttpRequest'
+	}
+	axios.get('user').then(({ data }) => {
+		store.commit('user', data)
+	})
 }
-Vue.directive(mask)
-Vue.use(Tooltip, {
+app.config.globalProperties.$axios = axios
+
+const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
+app.config.globalProperties.$color = color
+document.querySelector('body').className = color('bgBody')
+
+app.directive(mask)
+app.use(Tooltip, {
   delay: 50,
   placement: 'top',
   class: 'custom-tooltip',
   triggers: ['hover'],
   offset: 5
 })
-Vue.use(VueTheMask)
-/*Vue.directive('tooltip', {
-  bind (el, { value }) {
-    el.classList.add('relative')
-    if (!el.querySelector('.tooltip')) {
-      el.insertAdjacentHTML("beforeend", `
-        <div class="tooltip">
-          <span class="triangle"></span>
-          ${value}
-        </div>`)
+app.use(VueTheMask)
 
-      const tooltip = el.querySelector('.tooltip')
-      if (tooltip) {
-        el.addEventListener('mouseover', () => {
-          tooltip.classList.add('active')
-        })
-
-        el.addEventListener('mouseout', () => {
-          tooltip.classList.remove('active')
-        })
-      }
-    }
-  }
-})*/
-
-Vue.prototype.$axios = axios
-const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
-Vue.prototype.$color = color
-
-document.querySelector('body').className = color('bgBody')
-
-new Vue({
-  router,
-  store,
-  render: h => h(App),
-  components: {
-
-  },
-  data: () => ({
-    key: null
-  })
-}).$mount('#app')
+router.isReady().then(() => {
+	app.mount('#app')
+})

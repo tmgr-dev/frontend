@@ -1,27 +1,63 @@
 <template>
-	<div class="loader_wrapper active" :class="isMini ? 'mini' : ''" :style="isStatic ? 'position:static;margin:0;width:18px' : sidePositionStyle">
-		<div class="loader" v-if="isMini">
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
-		</div>
+  <div
+    class="loader_wrapper active"
+    :class="isMini ? 'mini' : ''"
+    :style="isStatic ? 'position:static;margin:0;width:18px' : sidePositionStyle"
+  >
+    <div
+      v-if="isMini"
+      class="loader"
+    >
+      <div />
+      <div />
+      <div />
+      <div />
+    </div>
 
-		<div class="loader" v-else>
-			<svg viewBox="0 0 38 38" id="preloader" xmlns="http://www.w3.org/2000/svg" width="45" height="45" stroke="#3A4564">
-				<g fill="none" fill-rule="evenodd">
-					<g transform="translate(1 1)" stroke-width="2">
-						<circle stroke-opacity=".25" cx="18" cy="18" r="18"></circle>
-						<path d="M36 18c0-9.94-8.06-18-18-18" transform="rotate(218.021 18 18)">
-							<animateTransform attributeName="transform" type="rotate" from="0 18 18" to="360 18 18" dur="0.8s"
-																repeatCount="indefinite"></animateTransform>
-						</path>
-					</g>
-				</g>
-			</svg>
-		</div>
-
-	</div>
+    <div
+      v-else
+      class="loader"
+    >
+      <svg
+        id="preloader"
+        viewBox="0 0 38 38"
+        xmlns="http://www.w3.org/2000/svg"
+        width="45"
+        height="45"
+        stroke="#3A4564"
+      >
+        <g
+          fill="none"
+          fill-rule="evenodd"
+        >
+          <g
+            transform="translate(1 1)"
+            stroke-width="2"
+          >
+            <circle
+              stroke-opacity=".25"
+              cx="18"
+              cy="18"
+              r="18"
+            />
+            <path
+              d="M36 18c0-9.94-8.06-18-18-18"
+              transform="rotate(218.021 18 18)"
+            >
+              <animateTransform
+                attributeName="transform"
+                type="rotate"
+                from="0 18 18"
+                to="360 18 18"
+                dur="0.8s"
+                repeatCount="indefinite"
+              />
+            </path>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
 </template>
 
 <script>

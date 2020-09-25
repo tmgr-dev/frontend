@@ -1,9 +1,9 @@
 <template>
-	<BaseLayout>
-		<template #header>
-			Settings
-		</template>
-	</BaseLayout>
+  <BaseLayout>
+    <template #header>
+      Settings
+    </template>
+  </BaseLayout>
 </template>
 
 <script>

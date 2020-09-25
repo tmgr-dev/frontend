@@ -1,5 +1,8 @@
 <template>
-	<input type="text" v-model="dots">
+  <input
+    v-model="dots"
+    type="text"
+  >
 </template>
 
 <script>
@@ -9,6 +12,12 @@
 			dots: '',
 			interval: null
 		}),
+		created () {
+			this.dotsLoad()
+		},
+		destroyed() {
+			clearInterval(this.interval)
+		},
 		methods: {
 			dotsLoad () {
 				this.interval = setInterval(() => {
@@ -19,12 +28,6 @@
 					this.dots += '.'
 				}, 170)
 			}
-		},
-		created () {
-			this.dotsLoad()
-		},
-		destroyed() {
-			clearInterval(this.interval)
 		}
 	}
 </script>

@@ -1,27 +1,52 @@
 <template>
-	<div class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5">
-		<div class="card-body py-4">
-			<nav aria-label="breadcrumb" class="text-left">
-				<ol class="breadcrumb md:flex" v-if="current">
-					<li class="inline md:hidden">Breadcrumbs: </li>
-					<li class="breadcrumb-item  inline text-gray-600" v-for="(item, i) in items" :key="i">
-						<router-link :to="item.to" class="text-gray-600 hover:text-purple-700 mx-0 md:mx-1">
-							{{ item.label }}
-						</router-link>
-					</li>
-					<li class="breadcrumb-item active inline text-purple-700 hover:text-purple-700 md:mx-1" aria-current="page">
-						{{ current }}
-					</li>
-				</ol>
+  <div class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5">
+    <div class="card-body py-4">
+      <nav
+        aria-label="breadcrumb"
+        class="text-left"
+      >
+        <ol
+          v-if="current"
+          class="breadcrumb md:flex"
+        >
+          <li class="inline md:hidden">
+            Breadcrumbs:
+          </li>
+          <li
+            v-for="(item, i) in items"
+            :key="i"
+            class="breadcrumb-item  inline text-gray-600"
+          >
+            <router-link
+              :to="item.to"
+              class="text-gray-600 hover:text-purple-700 mx-0 md:mx-1"
+            >
+              {{ item.label }}
+            </router-link>
+          </li>
+          <li
+            class="breadcrumb-item active inline text-purple-700 hover:text-purple-700 md:mx-1"
+            aria-current="page"
+          >
+            {{ current }}
+          </li>
+        </ol>
 
-				<ol class="breadcrumb flex" v-else style="padding-left: 0;">
-					<li class="breadcrumb-item active text-purple-700 hover:text-purple-700 mx-2" aria-current="page">
-						Categories
-					</li>
-				</ol>
-			</nav>
-		</div>
-	</div>
+        <ol
+          v-else
+          class="breadcrumb flex"
+          style="padding-left: 0;"
+        >
+          <li
+            class="breadcrumb-item active text-purple-700 hover:text-purple-700 mx-2"
+            aria-current="page"
+          >
+            Categories
+          </li>
+        </ol>
+      </nav>
+    </div>
+  </div>
 </template>
 
 <script>

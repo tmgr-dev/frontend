@@ -1,12 +1,8 @@
-import Vue from 'vue'
-import Router from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import store from '../store'
 
-Vue.use(Router)
-
-let router = new Router({
-  mode: 'history',
-  base: process.env.BASE_URL,
+let router = createRouter({
+  history: createWebHistory(),
   routes: [
     {
       path: '/',
@@ -193,11 +189,11 @@ router.beforeEach((to, from, next) => {
   if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
     next({name: 'CurrentTasksList'})
   }
-  if (to.matched.some(record => record.meta.reuse === false)) {
+/*  if (to.matched.some(record => record.meta.reuse === false)) {
     router.app.key = to.path
   } else {
     router.app.key = null
-  }
+  }*/
   if (to.matched.some(record => !record.meta.allowedGuests)) {
     if (!store.getters.isLoggedIn) {
       next({name: 'Login'})

@@ -1,66 +1,64 @@
-import Vue from '../bootstrap/index'
-import Vuex from 'vuex'
+import { createStore } from 'vuex'
 import colorSchemes from '../colors/schemes'
+
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
 
-Vue.use(Vuex)
-
 const state = {
-    apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
-    token: localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null,
-    user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
-    colorScheme: localStorage.getItem('colorScheme') || 'default',
+	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
+	token: localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null,
+	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
+	colorScheme: localStorage.getItem('colorScheme') || 'default',
 };
 
 const getters = {
-    apiBaseUrl: state => state.apiBaseUrl,
-    token: state => state.token,
-    user: state => state.user,
-    isLoggedIn: state => state.token !== null,
-    colorScheme: state => state.colorScheme
+	apiBaseUrl: state => state.apiBaseUrl,
+	token: state => state.token,
+	user: state => state.user,
+	isLoggedIn: state => state.token !== null,
+	colorScheme: state => state.colorScheme
 };
 
 const mutations = {
-    token (state, token) {
-        if (token == null) {
-            localStorage.removeItem('token')
-        } else {
-            localStorage.setItem('token', JSON.stringify(token))
-        }
+	token(state, token) {
+		if (token == null) {
+			localStorage.removeItem('token')
+		} else {
+			localStorage.setItem('token', JSON.stringify(token))
+		}
 
-        state.token = token
-    },
-    user (state, user) {
-        if (user == null) {
-            localStorage.removeItem('user')
-        } else {
-            localStorage.setItem('user', JSON.stringify(user))
-        }
+		state.token = token
+	},
+	user(state, user) {
+		if (user == null) {
+			localStorage.removeItem('user')
+		} else {
+			localStorage.setItem('user', JSON.stringify(user))
+		}
 
-        state.user = user
-    },
-    colorScheme (state, colorScheme) {
-        console.log(colorScheme)
-        if (colorScheme == null) {
-            localStorage.removeItem('colorScheme')
-        } else {
-            localStorage.setItem('colorScheme', colorScheme)
-        }
+		state.user = user
+	},
+	colorScheme(state, colorScheme) {
+		console.log(colorScheme)
+		if (colorScheme == null) {
+			localStorage.removeItem('colorScheme')
+		} else {
+			localStorage.setItem('colorScheme', colorScheme)
+		}
 
-        state.colorScheme = colorScheme
-        document.querySelector('body').className = color('bgBody', colorScheme)
-    }
+		state.colorScheme = colorScheme
+		document.querySelector('body').className = color('bgBody', colorScheme)
+	}
 }
 
 const actions = {
-    logout (context) {
-        context.commit('token', null)
-    }
+	logout(context) {
+		context.commit('token', null)
+	}
 }
 
-export default new Vuex.Store({
-    state,
-    getters,
-    mutations,
-    actions
+export default createStore({
+	state,
+	getters,
+	mutations,
+	actions
 })

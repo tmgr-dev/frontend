@@ -1,13 +1,15 @@
 <template>
-    <div :class="{ 'theme-dark' : nightMode , 'switcher': true}">
-        <input
-            type="checkbox" id="theme-toggle" class="theme-toggle"
-            v-model="nightMode"
-        >
-        <label for="theme-toggle">
-            <span></span>
-        </label>
-    </div>
+  <div :class="{ 'theme-dark' : nightMode , 'switcher': true}">
+    <input
+      id="theme-toggle"
+      v-model="nightMode"
+      type="checkbox"
+      class="theme-toggle"
+    >
+    <label for="theme-toggle">
+      <span />
+    </label>
+  </div>
 </template>
 
 <script>
@@ -19,14 +21,14 @@
                 required: true
             }
         },
-        watch: {
-            nightMode () {
-                this.$emit('change', this.nightMode)
-            }
-        },
         data () {
             return {
                 nightMode: this.value
+            }
+        },
+        watch: {
+            nightMode () {
+                this.$emit('change', this.nightMode)
             }
         },
         methods: {

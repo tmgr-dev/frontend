@@ -1,13 +1,16 @@
 <template>
-	<div class="overlay active"
-			@click="close"
-			:class="isCenter ? 'flex' : ''">
-		<div
-			class="modal"
-			:style="modalStyles">
-			<slot name="modal-body"></slot>
-		</div>
-	</div>
+  <div
+    class="overlay active"
+    :class="isCenter ? 'flex' : ''"
+    @click="close"
+  >
+    <div
+      class="modal"
+      :style="modalStyles"
+    >
+      <slot name="modal-body" />
+    </div>
+  </div>
 </template>
 
 <script>

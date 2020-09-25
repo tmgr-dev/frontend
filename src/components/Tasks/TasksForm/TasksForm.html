@@ -10,7 +10,7 @@
 				class="py-2 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 				:class="`${$color('h1')}-800`"
 				type="button">
-				< {{ projectCategory ? projectCategory.title : 'Tasks' }}
+				{{ projectCategory ? projectCategory.title : 'Tasks' }}
 			</router-link>
 
 			<div v-if="!isCreate" class="text-base sm:text-lg ml-auto">

@@ -1,10 +1,19 @@
 <template>
-	<router-link v-if="type === 'router-link'" :to="to" :class="getClass()">
-		<slot></slot>
-	</router-link>
-	<button v-else :type="type" @click="$emit('click')" :class="getClass()">
-		<slot></slot>
-	</button>
+  <router-link
+    v-if="type === 'router-link'"
+    :to="to"
+    :class="getClass()"
+  >
+    <slot />
+  </router-link>
+  <button
+    v-else
+    :type="type"
+    :class="getClass()"
+    @click="$emit('click')"
+  >
+    <slot />
+  </button>
 </template>
 
 <script>

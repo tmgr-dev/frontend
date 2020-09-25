@@ -1,65 +1,102 @@
 <template>
-	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task">
-		<div class="relative inline-block">
-			<div class="countdown-wrapper mb-4 select-none"
-					@dblclick="isShowModalTimer = true"
-					v-tooltip.top="'Double click to edit the time'">
-				<span class="countdown-item">{{ countdown.hours }}</span>
-				<span class="countdown-item">{{ countdown.minutes }}</span>
-				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
-			</div>
-			<!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
+  <div
+    v-if="task"
+    id="task"
+    class="task"
+    :class="isFullScreen ? 'fullscreen' : ''"
+  >
+    <div class="relative inline-block">
+      <div
+        v-tooltip.top="'Double click to edit the time'"
+        class="countdown-wrapper mb-4 select-none"
+        @dblclick="isShowModalTimer = true"
+      >
+        <span class="countdown-item">{{ countdown.hours }}</span>
+        <span class="countdown-item">{{ countdown.minutes }}</span>
+        <span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
+      </div>
+      <!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
 				<span class="material-icons text-base">edit</span>
 			</a>-->
-		</div>
-		<div class="countdown-actions">
-			<Button
-				:color="task.start_time ? 'red' : 'blue'"
-				type="button"
-				class="leading-none"
-				@click="$emit('toggle')">
-				<span v-if="!task.start_time" class="material-icons">play_arrow</span>
-				<span v-else class="material-icons">stop</span>
-			</Button>
-			<Button
-				color="gray"
-				@click="isFullScreen = !isFullScreen"
-				class="leading-none">
-				<span class="material-icons" v-if="!isFullScreen">open_in_full</span>
-				<span class="material-icons" v-else>close_fullscreen</span>
-			</Button>
-		</div>
+    </div>
+    <div class="countdown-actions">
+      <Button
+        :color="task.start_time ? 'red' : 'blue'"
+        type="button"
+        class="leading-none"
+        @click="$emit('toggle')"
+      >
+        <span
+          v-if="!task.start_time"
+          class="material-icons"
+        >play_arrow</span>
+        <span
+          v-else
+          class="material-icons"
+        >stop</span>
+      </Button>
+      <Button
+        color="gray"
+        class="leading-none"
+        @click="isFullScreen = !isFullScreen"
+      >
+        <span
+          v-if="!isFullScreen"
+          class="material-icons"
+        >open_in_full</span>
+        <span
+          v-else
+          class="material-icons"
+        >close_fullscreen</span>
+      </Button>
+    </div>
 
-		<modal
-			v-if="isShowModalTimer"
-			:modal-width="500"
-			:is-center="true"
-			@close="isShowModalTimer = false">
-			<template #modal-body>
-				<div class="countdown-modal-edit">
-					<input type="text" class="countdown-item" v-mask="'##'" v-model="countdown.hours">
-					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.minutes" />
-					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.seconds" />
-				</div>
-				<div class="flex items-center mt-5">
-					<button
-						type="button"
-						@click="isShowModalTimer = false"
-						class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
-						Cancel
-					</button>
-					<button
-						type="button"
-						@click="updateTimer"
-						class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
-						Update
-					</button>
-				</div>
-
-
-			</template>
-		</modal>
-	</div>
+    <modal
+      v-if="isShowModalTimer"
+      :modal-width="500"
+      :is-center="true"
+      @close="isShowModalTimer = false"
+    >
+      <template #modal-body>
+        <div class="countdown-modal-edit">
+          <input
+            v-model="countdown.hours"
+            v-mask="'##'"
+            type="text"
+            class="countdown-item"
+          >
+          <the-mask
+            v-model="countdown.minutes"
+            class="countdown-item"
+            mask="F#"
+            :tokens="timeTokens"
+          />
+          <the-mask
+            v-model="countdown.seconds"
+            class="countdown-item"
+            mask="F#"
+            :tokens="timeTokens"
+          />
+        </div>
+        <div class="flex items-center mt-5">
+          <button
+            type="button"
+            class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+            @click="isShowModalTimer = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+            @click="updateTimer"
+          >
+            Update
+          </button>
+        </div>
+      </template>
+    </modal>
+  </div>
 </template>
 
 <script>
@@ -91,6 +128,18 @@
 				task: null,
 				isShowModalTimer: false
 			}
+		},
+		mounted() {
+			this.task = this.initTask
+			this.task.start_time = this.task.start_time || 0
+
+			this.initCountdown()
+			this.renderTime()
+
+			this.$on('update-task', task => {
+				this.task = task
+				this.initCountdown()
+			})
 		},
 		methods: {
 			async updateTimer () {
@@ -156,18 +205,6 @@
 			prepareClockNumber(num) {
 				return num < 10 ? '0' + num : num
 			}
-		},
-		mounted() {
-			this.task = this.initTask
-			this.task.start_time = this.task.start_time || 0
-
-			this.initCountdown()
-			this.renderTime()
-
-			this.$on('update-task', task => {
-				this.task = task
-				this.initCountdown()
-			})
 		},
 	}
 </script>
