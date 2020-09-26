@@ -2,16 +2,22 @@
 	<AuthBase>
 		<template #title>Welcome back!</template>
 		<template #body>
-			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
+			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
 				<div class="flex flex-col mt-4">
 					<h3 :style="{color: errors ? 'red' : 'initial'}">{{ message }}</h3>
 					<p v-if="errors instanceof String" :style="{color: 'red'}">{{ errors }}</p>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
+					<input-field
+						type="email"
+						name="email"
+						:errors="errors.email"
+						v-model="form.email"
+					 	placeholder="Email"
+					/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="password" name="password" :errors="errors.password" :value.sync="form.password"
+					<input-field type="password" name="password" :errors="errors.password" v-model="form.password"
 											 placeholder="Password"/>
 				</div>
 				<div class="flex items-center mt-4">
@@ -22,11 +28,12 @@
 					</label>
 				</div>
 				<div class="flex flex-col mt-8">
-					<button @click.prevent="login"
-									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+					<button
+						type="submit"
+						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
 						<span class="relative">
-								Login
-								<loader v-if="showLoader" :is-mini="true"/>
+							Login
+							<loader v-if="showLoader" :is-mini="true"/>
 						</span>
 					</button>
 				</div>
@@ -65,25 +72,21 @@
 		},
 		methods: {
 			async login() {
+				console.log(this.form)
 				const { ...loginData } = this.form
 
 				try {
 					this.showLoader = true
 					const {data} = await this.$axios.post('auth/login', loginData)
-					this.showLoader = false
 
 					this.$store.commit('token', data.data)
 					await this.setUser()
 
-				} catch (error) {
-					this.showLoader = false
-					if (error && error.response) {
-						this.errors = error.response.data.errors
-						if (error.response.data && error.response.data.message) {
-							this.message = error.response.data.message
-						}
-					}
+				} catch ({ response }) {
+					this.errors = response.data.errors
+					this.message = response.data.message
 				}
+				this.showLoader = false
 			},
 			async setUser() {
 				this.$axios.defaults.headers = {

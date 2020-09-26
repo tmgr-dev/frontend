@@ -28,7 +28,7 @@
           :id="name"
           v-model="val"
           :type="type"
-          :class="`shadow appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''} ${$route.name !== 'Login' ? ($color('input'), $color('borderMain')): ''}`"
+          :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
           :name="name"
           :placeholder="placeholder"
         >
@@ -43,7 +43,7 @@
         </transition>
       </div>
       <div v-else>
-        {{ value }} (<a
+				{{ modelValue }} (<a
           href="#"
           @click.prevent="showInput = true"
         >edit</a>)
@@ -56,7 +56,7 @@
 	export default {
 		name: "InputField",
 		props: {
-			value: {
+			modelValue: {
 				required: false
 			},
 			errors: {
@@ -107,10 +107,10 @@
 		computed: {
 			val: {
 				get() {
-					return this.value
+					return this.modelValue
 				},
 				set(v) {
-					this.$emit('update:value', v)
+					this.$emit('update:modelValue', v)
 				}
 			},
 			errorAsTooltip() {

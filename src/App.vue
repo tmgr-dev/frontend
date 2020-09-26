@@ -7,20 +7,8 @@
 			<Navbar v-if="$route.meta.navbarHidden" />
 		</transition>
 
-		<transition
-			:name="transitionName"
-			mode="out-in"
-			@beforeLeave="beforeLeave"
-			@enter="enter"
-			@afterEnter="afterEnter"
-		>
-			<router-view
-				:key="$route.path"
-				v-slot="{ Component }"
-			>
-				<component :is="Component" />
-			</router-view>
-		</transition>
+		<router-view></router-view>
+		
 	</div>
 </template>
 

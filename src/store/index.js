@@ -51,8 +51,9 @@ const mutations = {
 }
 
 const actions = {
-	logout(context) {
-		context.commit('token', null)
+	logout({ commit }) {
+		commit('token', null)
+		commit('colorScheme', null)
 	}
 }
 
