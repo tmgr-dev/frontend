@@ -4,18 +4,18 @@
 		<template #body>
 			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
 				<div class="flex flex-col mt-4">
-					<input-field type="text" name="name" :errors="errors.name" :value.sync="form.name" placeholder="Name"/>
+					<input-field type="text" name="name" :errors="errors.name" v-model="form.name" placeholder="Name"/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
+					<input-field type="email" name="email" :errors="errors.email" v-model="form.email" placeholder="E-mail"/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="password" name="password" :errors="errors.password" :value.sync="form.password"
+					<input-field type="password" name="password" :errors="errors.password" v-model="form.password"
 											 placeholder="Password"/>
 				</div>
 				<div class="flex flex-col mt-4">
 					<input-field type="password" name="password_confirmation" :errors="errors.password"
-											 :value.sync="form.password_confirmation" placeholder="Password confirmation"/>
+											 v-model="form.password_confirmation" placeholder="Password confirmation"/>
 				</div>
 				<div class="flex flex-col mt-8">
 					<button type="submit" @click.prevent="register"

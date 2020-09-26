@@ -105,7 +105,7 @@
                       v-if="!isLoadingActions[`hide-${task.id}`]"
                       class="material-icons"
                     >visibility_off</span>
-                    <loader
+										<loader
                       v-if="isLoadingActions[`hide-${task.id}`]"
                       :is-mini="true"
                       :is-static="true"
@@ -132,7 +132,7 @@
                   </span>
                 </new-button>
 
-                <new-button
+								<new-button
                   v-if="getShowButtons(task).stop"
                   v-tooltip.top="'Start timer'"
                   color="green"
@@ -183,10 +183,12 @@
 <script>
 	import DropdownMenu from "@/components/UIElements/DropdownMenu";
 	import TasksListMixin from "@/mixins/TasksListMixin";
+	import NewButton from "@/components/UIElements/NewButton";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			NewButton,
 			DropdownMenu
 		},
 		mixins: [ TasksListMixin ],

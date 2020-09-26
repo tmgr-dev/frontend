@@ -75,11 +75,11 @@ export default {
 		}
 	},
 	computed: {
-		selected() {
-			return !this.selectedParentCategory
-		},
 		isCreate() {
 			return !this.$route.params.id && !this.form.id
+		},
+		id () {
+			return this.$route.params.id
 		}
 	},
 	mounted() {
@@ -95,7 +95,7 @@ export default {
 			setTimeout(() => this.showSaveAlert = false, 3000)
 		},
 		async loadModel() {
-			const {data: {data}} = await this.$axios.get(`project_categories/${this.getId()}`)
+			const {data: {data}} = await this.$axios.get(`project_categories/${this.id}`)
 			this.form = data
 		},
 		async loadParentCategories() {
@@ -155,9 +155,6 @@ export default {
 		},
 		getFormTitlePrefix() {
 			return this.isCreate ? 'Add' : 'Edit'
-		},
-		getId() {
-			return this.$route.params.id
 		},
 		getDefaultForm() {
 			return {

@@ -53,8 +53,8 @@
           </li>
           <li>
             <router-link
-              to="/tasks/done"
-              :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/done' ? $color('navLinkFocused') + '-600': ''}`"
+              to="/tasks/archive"
+              :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`"
               href="#"
               title="Link"
             >
@@ -78,7 +78,7 @@
         >
           <DayNightSwitch
             :value="switchOn"
-            @change="isOn => (isOn ? $store.commit('colorScheme', 'dark') : $store.commit('colorScheme', 'default'))"
+            @change="switchThemeMode"
           />
         </span>
         <AccountDropdown />
@@ -101,6 +101,17 @@
 			return {
 				isHidden: true,
 				switchOn: this.$store.getters.colorScheme === 'dark'
+			}
+		},
+		methods: {
+			switchThemeMode (isOn) {
+				if (typeof isOn === 'boolean') {
+					if (isOn) {
+						this.$store.commit('colorScheme', 'dark')
+					} else {
+						this.$store.commit('colorScheme', 'default')
+					}
+				}
 			}
 		}
 	}

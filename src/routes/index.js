@@ -123,13 +123,42 @@ let router = createRouter({
 		  name: 'TasksCreate'
 	  },
 	  {
-		  path: '/tasks/:status?',
-		  component: TasksList,
+		  path: '/tasks',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true
 		  },
-		  name: 'Tasks'
+		  component: TasksList,
+		  name: 'CurrentTasksList'
+	  },
+	  {
+		  path: '/tasks/hidden',
+		  component: TasksList,
+		  meta: {
+			  status: 'hidden',
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  name: 'HiddenTasksList'
+	  },
+	  {
+		  path: '/tasks/archive',
+		  component: TasksList,
+		  meta: {
+			  status: 'done',
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  name: 'ArchiveTasksList'
+	  },
+	  {
+		  path: '/tasks/create',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: () => import('@/components/Tasks/TasksForm'),
+		  name: 'TasksCreate'
 	  },
 	  {
 		  path: '/tasks/:id/edit',
