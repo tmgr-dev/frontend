@@ -15,7 +15,7 @@ let router = createRouter({
       name: 'Register',
       meta: {
         allowedGuests: true,
-        transitionName: 'slide'
+        transitionName: 'fade-fast'
       }
     },
     {
@@ -24,7 +24,7 @@ let router = createRouter({
       name: 'ForgetPassword',
       meta: {
         allowedGuests: true,
-        transitionName: 'slide'
+        transitionName: 'fade-fast'
       }
     },
     {
@@ -33,7 +33,7 @@ let router = createRouter({
       name: 'ResetPassword',
       meta: {
         allowedGuests: true,
-        transitionName: 'slide'
+        transitionName: 'fade-fast'
       }
     },
     {
@@ -42,7 +42,7 @@ let router = createRouter({
       name: 'Login',
       meta: {
         allowedGuests: true,
-        transitionName: 'slide'
+        transitionName: 'fade-fast'
       }
     },
     {
@@ -177,7 +177,7 @@ let router = createRouter({
       path: '/settings',
       component: () => import('@/components/Settings'),
       meta: {
-        transitionName: 'fade',
+        transitionName: 'fade-fast',
         navbarHidden: true
       },
       name: 'Settings'

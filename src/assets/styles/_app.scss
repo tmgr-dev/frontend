@@ -15,15 +15,24 @@
 }
 
 .fade-enter-active,
-.fade-leave-active {
+.fade-leave-active,
+.fade-fast-enter-active,
+.fade-fast-leave-active{
 	transition-duration: 0.5s;
 	transition-property: height, opacity;
 	transition-timing-function: ease;
 	overflow: hidden;
 }
 
+.fade-fast-enter-active,
+.fade-fast-leave-active {
+	transition-duration: 0.25s;
+}
+
 .fade-enter-from,
-.fade-leave-active {
+.fade-leave-active,
+.fade-fast-enter-from,
+.fade-fast-leave-active{
 	opacity: 0
 }
 

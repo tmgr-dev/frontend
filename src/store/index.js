@@ -53,7 +53,7 @@ const mutations = {
 const actions = {
 	logout({ commit }) {
 		commit('token', null)
-		commit('colorScheme', null)
+		commit('colorScheme', 'default')
 	}
 }
 

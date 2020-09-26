@@ -70,7 +70,6 @@
 			},
 			removeUserData() {
 				this.$store.dispatch('logout')
-				console.log('хммм')
 				this.$router.push({name: 'Login'})
 			}
 		}
