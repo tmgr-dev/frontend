@@ -52,8 +52,37 @@ let router = createRouter({
         navbarHidden: true
       },
       component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
-      name: 'ProjectCategoryList'
+      name: 'ProjectCategoryList',
+	    children: [
+		    {
+			    path: 'view',
+			    meta: {
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
+			    name: 'ProjectCategoryView'
+		    },
+		    {
+			    path: 'create',
+			    meta: {
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+			    name: 'ProjectCategoryCreate'
+		    },
+	    ]
     },
+	  {
+		  path: '/projects-categories/:id/edit',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+		  name: 'ProjectCategoryEdit'
+	  },
     {
       path: '/projects-categories/status/:status?',
       meta: {
@@ -73,24 +102,6 @@ let router = createRouter({
       name: 'ProjectCategoryChildrenList'
     },
     {
-      path: '/projects-categories/view',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
-      name: 'ProjectCategoryView'
-    },
-    {
-      path: '/projects-categories/create',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
-      name: 'ProjectCategoryCreate'
-    },
-    {
       path: '/projects-categories/:project_category_id/create',
       meta: {
         transitionName: 'slide',
@@ -99,15 +110,15 @@ let router = createRouter({
       component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
       name: 'ProjectCategoryCreateInCategory'
     },
-    {
-      path: '/projects-categories/:id/edit',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
-      name: 'ProjectCategoryEdit'
-    },
+	  {
+		  path: '/project-categories/:project_category_id/tasks/create',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: () => import('@/components/Tasks/TasksForm'),
+		  name: 'TasksCreateWithProjectCategoryId'
+	  },
     {
       path: '/tasks',
       meta: {
@@ -115,64 +126,57 @@ let router = createRouter({
         navbarHidden: true
       },
       component: () => import('@/components/Tasks/TasksList'),
-      name: 'CurrentTasksList'
+      name: 'CurrentTasksList',
+	    children: [
+		    {
+			    path: 'form',
+			    component: () => import('@/components/Tasks/TasksForm'),
+			    meta: {
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    name: 'TasksForm'
+		    },
+		    {
+		    	path: 'create',
+			    meta: {
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    component: () => import('@/components/Tasks/TasksForm'),
+			    name: 'TasksCreate'
+		    },
+		    {
+		    	path: 'hidden',
+			    component: () => import('@/components/Tasks/TasksList'),
+			    meta: {
+				    status: 'hidden',
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    name: 'HiddenTasksList'
+		    },
+		    {
+			    path: 'archive',
+			    component: () => import('@/components/Tasks/TasksList'),
+			    meta: {
+				    status: 'done',
+				    transitionName: 'slide',
+				    navbarHidden: true
+			    },
+			    name: 'ArchiveTasksList'
+		    },
+	    ]
     },
-    {
-      path: '/tasks/form',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/Tasks/TasksForm'),
-      name: 'TasksForm'
-    },
-    {
-      path: '/tasks/create',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/Tasks/TasksForm'),
-      name: 'TasksCreate'
-    },
-    {
-      path: '/project-categories/:project_category_id/tasks/create',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/Tasks/TasksForm'),
-      name: 'TasksCreateWithProjectCategoryId'
-    },
-    {
-      path: '/tasks/:id/edit',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/Tasks/TasksForm'),
-      name: 'TasksEdit'
-    },
-    {
-      path: '/tasks/hidden',
-      component: () => import('@/components/Tasks/TasksList'),
-      meta: {
-        status: 'hidden',
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      name: 'HiddenTasksList'
-    },
-    {
-      path: '/tasks/archive',
-      component: () => import('@/components/Tasks/TasksList'),
-      meta: {
-        status: 'done',
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      name: 'ArchiveTasksList'
-    },
+	  {
+		  path: '/tasks/:id/edit',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: () => import('@/components/Tasks/TasksForm'),
+		  name: 'TasksEdit'
+	  },
     {
       path: '/settings',
       component: () => import('@/components/Settings'),
@@ -189,11 +193,6 @@ router.beforeEach((to, from, next) => {
   if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
     next({name: 'CurrentTasksList'})
   }
-/*  if (to.matched.some(record => record.meta.reuse === false)) {
-    router.app.key = to.path
-  } else {
-    router.app.key = null
-  }*/
   if (to.matched.some(record => !record.meta.allowedGuests)) {
     if (!store.getters.isLoggedIn) {
       next({name: 'Login'})

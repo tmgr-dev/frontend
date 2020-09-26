@@ -136,10 +136,10 @@
 			this.initCountdown()
 			this.renderTime()
 
-			this.$on('update-task', task => {
+			/*this.$on('update-task', task => {
 				this.task = task
 				this.initCountdown()
-			})
+			})*/
 		},
 		methods: {
 			async updateTimer () {
