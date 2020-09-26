@@ -13,8 +13,8 @@
 				mode="out-in"
 				@beforeLeave="beforeLeave"
 				@enter="enter"
-				@afterEnter="afterEnter"			>
-				<component :is="Component" />
+				@afterEnter="afterEnter">
+				<component :is="Component" :key="$route.path" />
 			</transition>
 		</router-view>
 	</div>

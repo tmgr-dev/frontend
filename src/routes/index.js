@@ -1,8 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import store from '../store'
 
+const ProjectCategoryList = () => import('@/components/ProjectsCategories/ProjectCategoryList')
 const TasksForm = () => import('@/components/Tasks/TasksForm')
 const TasksList = () => import('@/components/Tasks/TasksList')
+const ProjectCategoryForm = () => import('@/components/ProjectsCategories/ProjectCategoryForm')
 
 let router = createRouter({
   history: createWebHistory(),
@@ -12,7 +14,7 @@ let router = createRouter({
       component: () => import('@/components/Index/index.vue'),
       name: 'Index'
     },
-      {
+    {
       path: '/register',
       component: () => import('@/components/Auth/Register'),
       name: 'Register',
@@ -50,40 +52,29 @@ let router = createRouter({
     },
     {
       path: '/projects-categories',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
-      name: 'ProjectCategoryList',
-	    children: [
-		    {
-			    path: 'view',
-			    meta: {
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    component: () => import('@/components/ProjectsCategories/ProjectCategoryView'),
-			    name: 'ProjectCategoryView'
-		    },
-		    {
-			    path: 'create',
-			    meta: {
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
-			    name: 'ProjectCategoryCreate'
-		    },
-	    ]
+	    meta: {
+		    transitionName: 'slide',
+		    navbarHidden: true
+	    },
+	    component: ProjectCategoryList,
+	    name: 'ProjectCategoryList',
     },
+	  {
+		  path: '/projects-categories/create',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: ProjectCategoryForm,
+		  name: 'ProjectCategoryCreate'
+	  },
 	  {
 		  path: '/projects-categories/:id/edit',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true
 		  },
-		  component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+		  component: ProjectCategoryForm,
 		  name: 'ProjectCategoryEdit'
 	  },
     {
@@ -92,7 +83,7 @@ let router = createRouter({
         transitionName: 'slide',
         navbarHidden: true
       },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
+      component: ProjectCategoryList,
       name: 'ProjectCategoryChildrenListWithStatus'
     },
     {
@@ -101,7 +92,7 @@ let router = createRouter({
         transitionName: 'slide',
         navbarHidden: true
       },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryList'),
+      component: ProjectCategoryList,
       name: 'ProjectCategoryChildrenList'
     },
     {
@@ -110,7 +101,7 @@ let router = createRouter({
         transitionName: 'slide',
         navbarHidden: true
       },
-      component: () => import('@/components/ProjectsCategories/ProjectCategoryForm'),
+      component: ProjectCategoryForm,
       name: 'ProjectCategoryCreateInCategory'
     },
 	  {

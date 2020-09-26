@@ -1,0 +1,94 @@
+<template>
+	<BaseLayout>
+		<template #header>
+			{{ h1($route.params.status) }}
+			<br>
+			<small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
+		</template>
+		<template #action>
+			<div class="left-0 bottom-0 mr-4 absolute">
+			</div>
+			<div class="absolute right-0 bottom-0">
+				<router-link :to="`/tasks/create`" title="Add Task" class="pr-5">
+					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
+				</router-link>
+			</div>
+		</template>
+		<template #body>
+			<default-tasks-list-component
+				v-if="tasks && tasks.length > 0 && showDefaultList"
+				:tasks="tasks"
+				:status="status"
+			/>
+			<tasks-list-component
+				v-else-if="tasks && tasks.length > 0 && !showDefaultList"
+				:tasks="tasks"
+				:status="status"
+				:is-loading-actions="isLoadingActions"
+				@reload-tasks="loadTasks"
+			/>
+			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
+				You don't have tasks here
+			</div>
+			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
+		</template>
+	</BaseLayout>
+</template>
+
+<script>
+import DropdownMenu from "../UIElements/DropdownMenu";
+import Navbar from "../UIElements/Navbar";
+import TasksListComponent from "../UIElements/TasksListComponent";
+import DefaultTasksListComponent from "@/components/UIElements/DefaultTasksListComponent";
+import LoadingButtonActions from "@/mixins/LoadingButtonActions";
+import TasksListMixin from "@/mixins/TasksListMixin";
+
+export default {
+	name: 'TasksList',
+	components: {
+		DropdownMenu,
+		Navbar,
+		TasksListComponent,
+		DefaultTasksListComponent
+	},
+	mixins: [ LoadingButtonActions, TasksListMixin ],
+	data() {
+		return {
+			panel: false,
+			showDefaultList: false,
+			summaryTimeString: null,
+			showLoader: true,
+			tasks: [],
+			isLoadingActions: {}
+		}
+	},
+	computed: {
+		status () {
+			return this.$route.params.status
+		}
+	},
+	async created() {
+		console.log(this.status)
+		const data = await this.loadTasks()
+		this.setLoadingActions(data)
+	},
+	methods: {
+		h1 (param) {
+			if (param === 'hidden') {
+				return 'Hidden tasks'
+			}
+			if (param === 'done') {
+				return 'Archive tasks'
+			}
+			return 'Current tasks'
+		},
+		async loadTasks() {
+			const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
+			this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
+			this.tasks = data
+			this.showLoader = false
+			return data
+		}
+	}
+}
+</script>
