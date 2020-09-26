@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import store from '../store'
 
+const TasksForm = () => import('@/components/Tasks/TasksForm')
+const TasksList = () => import('@/components/Tasks/TasksList')
+
 let router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -9,7 +12,7 @@ let router = createRouter({
       component: () => import('@/components/Index/index.vue'),
       name: 'Index'
     },
-    {
+      {
       path: '/register',
       component: () => import('@/components/Auth/Register'),
       name: 'Register',
@@ -116,65 +119,34 @@ let router = createRouter({
 			  transitionName: 'slide',
 			  navbarHidden: true
 		  },
-		  component: () => import('@/components/Tasks/TasksForm'),
+		  component: TasksForm,
 		  name: 'TasksCreateWithProjectCategoryId'
 	  },
-    {
-      path: '/tasks',
-      meta: {
-        transitionName: 'slide',
-        navbarHidden: true
-      },
-      component: () => import('@/components/Tasks/TasksList'),
-      name: 'CurrentTasksList',
-	    children: [
-		    {
-			    path: 'form',
-			    component: () => import('@/components/Tasks/TasksForm'),
-			    meta: {
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    name: 'TasksForm'
-		    },
-		    {
-		    	path: 'create',
-			    meta: {
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    component: () => import('@/components/Tasks/TasksForm'),
-			    name: 'TasksCreate'
-		    },
-		    {
-		    	path: 'hidden',
-			    component: () => import('@/components/Tasks/TasksList'),
-			    meta: {
-				    status: 'hidden',
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    name: 'HiddenTasksList'
-		    },
-		    {
-			    path: 'archive',
-			    component: () => import('@/components/Tasks/TasksList'),
-			    meta: {
-				    status: 'done',
-				    transitionName: 'slide',
-				    navbarHidden: true
-			    },
-			    name: 'ArchiveTasksList'
-		    },
-	    ]
-    },
+	  {
+		  path: '/tasks/create',
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  component: TasksForm,
+		  name: 'TasksCreate'
+	  },
+	  {
+		  path: '/tasks/:status?',
+		  component: TasksList,
+		  meta: {
+			  transitionName: 'slide',
+			  navbarHidden: true
+		  },
+		  name: 'Tasks'
+	  },
 	  {
 		  path: '/tasks/:id/edit',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true
 		  },
-		  component: () => import('@/components/Tasks/TasksForm'),
+		  component: TasksForm,
 		  name: 'TasksEdit'
 	  },
     {

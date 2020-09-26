@@ -53,8 +53,8 @@
           </li>
           <li>
             <router-link
-              to="/tasks/archive"
-              :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/archive' ? $color('navLinkFocused') + '-600': ''}`"
+              to="/tasks/done"
+              :class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/tasks/done' ? $color('navLinkFocused') + '-600': ''}`"
               href="#"
               title="Link"
             >

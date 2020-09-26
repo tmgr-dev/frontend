@@ -20,25 +20,30 @@ export default {
       showDefaultList: false,
       summaryTimeString: null,
       showLoader: true,
-      h1: {
-        CurrentTasksList: 'Current tasks',
-        HiddenTasksList: 'Hidden tasks',
-        ArchiveTasksList: 'Archive tasks'
-      },
       tasks: [],
       isLoadingActions: {}
     }
   },
   computed: {
-    status() {
-      return this.$route.meta.status
+    status () {
+      return this.$route.params.status
     }
   },
   async created() {
+	  console.log(this.status)
     const data = await this.loadTasks()
     this.setLoadingActions(data)
   },
   methods: {
+  	h1 (param) {
+  		if (param === 'hidden') {
+  			return 'Hidden tasks'
+		  }
+  		if (param === 'done') {
+  			return 'Archive tasks'
+		  }
+  		return 'Current tasks'
+	  },
     async loadTasks() {
       const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
       this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))

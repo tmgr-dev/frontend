@@ -1,6 +1,6 @@
 <BaseLayout>
 	<template #header>
-		{{ h1[$route.name] }}
+		{{ h1($route.params.status) }}
 		<br>
 		<small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
 	</template>
