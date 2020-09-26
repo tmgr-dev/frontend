@@ -1,4 +1,4 @@
-<div>
+<template>
 	<AuthBase>
 		<template #title>Reset Password</template>
 		<template #body>
@@ -29,5 +29,30 @@
 			</router-link>
 		</template>
 	</AuthBase>
-</div>
+</template>
 
+<script>
+	import AuthBase from "@/components/Auth/AuthBase";
+
+	export default {
+		name: 'ResetPassword',
+		components: {
+			AuthBase
+		},
+		props: [],
+		data () {
+			return {
+
+			}
+		},
+		computed: {
+
+		},
+		mounted () {
+
+		},
+		methods: {
+
+		}
+	}
+</script>

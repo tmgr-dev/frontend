@@ -28,7 +28,7 @@
           :id="name"
           v-model="val"
           :type="type"
-          :class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+          :class="`shadow appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''} ${$route.name !== 'Login' ? ($color('input'), $color('borderMain')): ''}`"
           :name="name"
           :placeholder="placeholder"
         >

@@ -88,8 +88,15 @@
 </template>
 
 <script>
+	import DayNightSwitch from "@/components/UIElements/DayNightSwitch";
+	import AccountDropdown from '@/components/UIElements/AccountDropdown';
+
 	export default {
 		name: 'Navbar',
+		components: {
+			DayNightSwitch,
+			AccountDropdown
+		},
 		data() {
 			return {
 				isHidden: true,

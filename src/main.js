@@ -1,13 +1,12 @@
 import { createApp } from "vue";
-import router from "./routes/index";
 import App from "./App";
-import axios from "axios";
+import router from "./routes/index";
 import store from "./store";
+import { axios, color } from "./bootstrap/globalProperties";
 import VueTheMask from "vue-the-mask";
 import { mask } from "vue-the-mask";
 import Tooltip from "vue-directive-tooltip";
-import components from "@/bootstrap/loadComponents";
-import colorSchemes from "@/colors/schemes";
+import components from "@/bootstrap/globalComponents";
 
 const app = createApp(App, {
 	data: () => ({
@@ -19,22 +18,8 @@ app.use(router)
 
 components.map(c => app.component(c.name, c))
 
-axios.defaults.baseURL = store.getters.apiBaseUrl
-console.log(axios.defaults.baseURL)
-if (store.getters.token) {
-	axios.defaults.headers = {
-		Authorization: `Bearer ${store.getters.token.token}`,
-		'X-Requested-With': 'XMLHttpRequest'
-	}
-	axios.get('user').then(({ data }) => {
-		store.commit('user', data)
-	})
-}
 app.config.globalProperties.$axios = axios
-
-const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
 app.config.globalProperties.$color = color
-document.querySelector('body').className = color('bgBody')
 
 app.directive(mask)
 app.use(Tooltip, {
