@@ -4,6 +4,7 @@
 			:class="isCenter ? 'flex' : ''">
 		<div
 			class="modal"
+			:class="$color('modalBg')"
 			:style="modalStyles">
 			<slot name="modal-body"></slot>
 		</div>
@@ -82,7 +83,6 @@
 	}
 
 	.modal {
-		background: #fff;
 		width: 80%;
 		margin: 50px auto;
 		padding: 30px;

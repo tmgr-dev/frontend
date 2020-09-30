@@ -14,7 +14,7 @@
 					&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
 				</router-link>
 
-				<a href="#" class="absolute right-0 top-0 text-gray-600 hover:text-gray-900" @click.prevent="showModalCategory">
+				<a href="#" class="absolute right-0 top-0 text-gray-600" :class="$color('grayHover')" @click.prevent="showModalCategory">
 					<span class="material-icons text-lg">settings</span>
 				</a>
 
