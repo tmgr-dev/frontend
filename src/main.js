@@ -1,4 +1,4 @@
-import Vue from './bootstrap/index'
+import Vue from 'vue'
 import router from './routes/index'
 import App from './App'
 import './assets/styles/index.scss';
@@ -8,8 +8,14 @@ import colorSchemes from './colors/schemes'
 import VueTheMask from 'vue-the-mask';
 import { mask } from 'vue-the-mask'
 import Tooltip from 'vue-directive-tooltip';
+import components from "@/bootstrap/globalComponents";
+import VueSelect from 'vue-select'
+import 'vue-select/dist/vue-select.css';
 
 Vue.config.productionTip = false
+
+components.map(component => Vue.component(component.name, component))
+Vue.component('vselect', VueSelect)
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
 if (store.getters.token) {
@@ -30,29 +36,6 @@ Vue.use(Tooltip, {
   offset: 5
 })
 Vue.use(VueTheMask)
-/*Vue.directive('tooltip', {
-  bind (el, { value }) {
-    el.classList.add('relative')
-    if (!el.querySelector('.tooltip')) {
-      el.insertAdjacentHTML("beforeend", `
-        <div class="tooltip">
-          <span class="triangle"></span>
-          ${value}
-        </div>`)
-
-      const tooltip = el.querySelector('.tooltip')
-      if (tooltip) {
-        el.addEventListener('mouseover', () => {
-          tooltip.classList.add('active')
-        })
-
-        el.addEventListener('mouseout', () => {
-          tooltip.classList.remove('active')
-        })
-      }
-    }
-  }
-})*/
 
 Vue.prototype.$axios = axios
 const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
@@ -64,9 +47,6 @@ new Vue({
   router,
   store,
   render: h => h(App),
-  components: {
-
-  },
   data: () => ({
     key: null
   })

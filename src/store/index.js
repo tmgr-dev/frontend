@@ -1,4 +1,4 @@
-import Vue from '../bootstrap/index'
+import Vue from 'vue'
 import Vuex from 'vuex'
 import colorSchemes from '../colors/schemes'
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]

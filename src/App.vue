@@ -16,10 +16,15 @@
 </template>
 
 <script>
+	import Navbar from "@/components/UIElements/Navbar";
+
 	const DEFAULT_TRANSITION = 'fade'
 
 	export default {
 		name: 'App',
+		components: {
+			Navbar
+		},
 		data() {
 			return {
 				prevHeight: 0,
