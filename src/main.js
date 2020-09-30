@@ -19,14 +19,20 @@ Vue.component('vselect', VueSelect)
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
 if (store.getters.token) {
-    axios.defaults.headers = {
-        Authorization: `Bearer ${store.getters.token.token}`,
-        'X-Requested-With': 'XMLHttpRequest'
-    }
-    axios.get('user').then(({ data }) => {
-        store.commit('user', data)
-    })
+	axios.defaults.headers = {
+		Authorization: `Bearer ${store.getters.token.token}`,
+		'X-Requested-With': 'XMLHttpRequest'
+	}
+	axios.get('user').then(({ data }) => {
+		store.commit('user', data)
+	})
 }
+Vue.prototype.$axios = axios
+
+const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
+Vue.prototype.$color = color
+document.querySelector('body').className = color('bgBody')
+
 Vue.directive(mask)
 Vue.use(Tooltip, {
   delay: 50,
@@ -36,12 +42,6 @@ Vue.use(Tooltip, {
   offset: 5
 })
 Vue.use(VueTheMask)
-
-Vue.prototype.$axios = axios
-const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
-Vue.prototype.$color = color
-
-document.querySelector('body').className = color('bgBody')
 
 new Vue({
   router,

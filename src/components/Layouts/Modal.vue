@@ -14,6 +14,11 @@
 	export default {
 		name: "Modal",
 		props: {
+			closeOnBgClick: {
+				type: Boolean,
+				required: false,
+				default: true
+			},
 			show: {
 				type: Boolean,
 				required: false,
@@ -39,8 +44,10 @@
 		},
 		methods: {
 			close(e) {
-				if (e.target.classList.contains("overlay")) {
-					this.$emit("close");
+				if (this.closeOnBgClick) {
+					if (e.target.classList.contains("overlay")) {
+						this.$emit("close");
+					}
 				}
 			}
 		}

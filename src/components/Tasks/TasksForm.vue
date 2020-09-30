@@ -7,14 +7,14 @@
 			<div class="sm:flex items-between text-center">
 				<router-link
 					v-if="!isCreate"
-					:to="!projectCategory ? '/tasks' : `/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`"
-					class="py-2 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+					:to="!currentCategory ? '/tasks' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+					class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
 					:class="`${$color('h1')}-800`"
 					type="button">
-					&lt; {{ projectCategory ? projectCategory.title : 'Tasks' }}
+					&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
 				</router-link>
 
-				<a href="#" class="absolute right-0 top-0 text-gray-600 hover:text-gray-900" @click.prevent="isShowModalCategory = true">
+				<a href="#" class="absolute right-0 top-0 text-gray-600 hover:text-gray-900" @click.prevent="showModalCategory">
 					<span class="material-icons text-lg">settings</span>
 				</a>
 
@@ -22,12 +22,15 @@
 					v-if="isShowModalCategory"
 					:modal-width="500"
 					:is-center="true"
+					:close-on-bg-click="false"
 					@close="isShowModalCategory = false">
 					<template #modal-body>
-						<div class="">
-							<vselect :options="[1,2,3]" v-model="currentCategory">
-
-							</vselect>
+						<div>
+							<vselect
+								label="title"
+								:options="categoriesSelectOptions"
+								v-model="currentCategoryOptionInSelect"
+							/>
 						</div>
 						<div class="flex items-center mt-5">
 							<button
@@ -216,7 +219,6 @@
 					common_time: 0,
 					start_time: 0
 				},
-				parentCategories: [],
 				statuses: [
 					{value: 'created', name: `Created`},
 					{value: 'active', name: `Active`},
@@ -229,11 +231,12 @@
 					ArchiveTasksList: 'Archive tasks'
 				},
 				selected: false,
-				projectCategory: null,
 				form: this.getDefaultForm(),
 				showCountdown: true,
 				isShowModalCategory: false,
-				currentCategory: ''
+				categoriesSelectOptions: [],
+				currentCategory: '',
+				currentCategoryOptionInSelect: null
 			}
 		},
 		computed: {
@@ -248,7 +251,6 @@
 			}
 		},
 		async created () {
-			await this.loadCategories()
 			if (this.taskId) {
 				await this.loadModel()
 
@@ -260,8 +262,22 @@
 			await this.loadCategory()
 		},
 		methods: {
-			updateCategory () {
+			async showModalCategory () {
+				try {
+					this.isShowModalCategory = true
+					if (this.categoriesSelectOptions.length === 0) {
+						await this.loadCategories()
+					}
+				} catch (e) {
+					console.error(e)
+				}
+			},
+			async updateCategory () {
+				this.form.project_category_id = this.currentCategoryOptionInSelect.id
+				this.isShowModalCategory = false
 
+				await this.save()
+				await this.loadCategory()
 			},
 			getListener() {
 				return (e) => {
@@ -290,11 +306,14 @@
 			},
 			async loadCategories() {
 				const {data: {data}} = await this.$axios.get('project_categories?all')
-				this.parentCategories = data
+				this.categoriesSelectOptions = data
 			},
 			async loadCategory() {
-				const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
-				this.projectCategory = data
+				if (this.projectCategoryId || this.form.project_category_id) {
+					const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
+					this.currentCategory = data
+					this.currentCategoryOptionInSelect = data
+				}
 			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
