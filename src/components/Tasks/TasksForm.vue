@@ -6,7 +6,7 @@
 		<template #action>
 			<div class="sm:flex items-between text-center">
 				<router-link
-					v-if="!isCreate"
+					v-if="!isCreatingTask"
 					:to="!currentCategory ? '/tasks' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
 					class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
 					:class="`${$color('h1')}-800`"
@@ -14,42 +14,44 @@
 					&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
 				</router-link>
 
-				<a href="#" class="absolute right-0 top-0 text-gray-600" :class="$color('grayHover')" @click.prevent="showModalCategory">
-					<span class="material-icons text-lg">settings</span>
-				</a>
+				<div ref="editing_task_category" v-if="!isCreatingTask">
+					<a href="#" class="absolute right-0 top-0 text-gray-600" :class="$color('grayHover')" @click.prevent="showModalCategory">
+						<span class="material-icons text-lg">settings</span>
+					</a>
 
-				<modal
-					v-if="isShowModalCategory"
-					:modal-width="500"
-					:is-center="true"
-					:close-on-bg-click="false"
-					@close="isShowModalCategory = false">
-					<template #modal-body>
-						<div>
-							<vselect
-								label="title"
-								:options="categoriesSelectOptions"
-								v-model="currentCategoryOptionInSelect"
-							/>
-						</div>
-						<div class="flex items-center mt-5">
-							<button
-								type="button"
-								@click="isShowModalCategory = false"
-								class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
-								Cancel
-							</button>
-							<button
-								type="button"
-								@click="updateCategory"
-								class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
-								Update
-							</button>
-						</div>
-					</template>
-				</modal>
+					<modal
+						v-if="isShowModalCategory"
+						:modal-width="500"
+						:is-center="true"
+						:close-on-bg-click="false"
+						@close="isShowModalCategory = false">
+						<template #modal-body>
+							<div>
+								<vselect
+									label="title"
+									:options="categoriesSelectOptions"
+									v-model="currentCategoryOptionInSelect"
+								/>
+							</div>
+							<div class="flex items-center mt-5">
+								<button
+									type="button"
+									@click="isShowModalCategory = false"
+									class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+									Cancel
+								</button>
+								<button
+									type="button"
+									@click="updateCategory"
+									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+									Update
+								</button>
+							</div>
+						</template>
+					</modal>
+				</div>
 
-				<div v-if="!isCreate" class="text-base sm:text-lg ml-auto">
+				<div v-if="!isCreatingTask" class="text-base sm:text-lg ml-auto">
 					<button type="button" @click="form.status = 'created'" :class="form.status !== `created` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none">
 						Created
 					</button>
@@ -86,7 +88,7 @@
 								<label class="block text-sm text-left font-bold mb-2" for="">
 									Description
 									<a
-										v-if="showEditDescription && !isCreate"
+										v-if="showEditDescription && !isCreatingTask"
 										href="#"
 										class="text-red-600 relative"
 										style="top:4px"
@@ -95,7 +97,7 @@
 									</a>
 								</label>
 								<input-field
-									v-if="showEditDescription || isCreate"
+									v-if="showEditDescription || isCreatingTask"
 									:value.sync="form.description"
 									:errors="errors.description"
 									type="textarea"
@@ -127,10 +129,10 @@
 					</div>
 				</div>
 				<div class="w-full p-5">
-					<h2 class="text-2xl pt-5" v-if="!isCreate && form.checkpoints && form.checkpoints.length">
+					<h2 class="text-2xl pt-5" v-if="!isCreatingTask && form.checkpoints && form.checkpoints.length">
 						Checkpoints
 					</h2>
-					<div v-if="!isCreate" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
+					<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
 						<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints" :key="v">
 							<div class="flex mb-2">
 								<div class="w-full mx-2 relative">
@@ -172,23 +174,23 @@
 					</div>
 					<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
 					<div class="block text-center">
-						<button v-if="!isCreate" @click="save"
+						<button v-if="!isCreatingTask" @click="save"
 										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Save
 						</button>
-						<button v-if="isCreate" @click="create"
+						<button v-if="isCreatingTask" @click="create"
 										class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Create
 						</button>
-						<button v-if="isCreate" @click="cancel"
+						<button v-if="isCreatingTask" @click="cancel"
 										class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Cancel
 						</button>
 						<button
-							v-if="!isCreate"
+							v-if="!isCreatingTask"
 							@click="addCheckpoint"
 							class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 							type="button">Add checkpoint</button>
@@ -243,7 +245,7 @@
 			taskId () {
 				return this.$route.params.id
 			},
-			isCreate() {
+			isCreatingTask() {
 				return !this.taskId
 			},
 			projectCategoryId() {
@@ -256,7 +258,7 @@
 
 				window.onkeydown = this.getListener()
 			}
-			if (this.projectCategoryId && this.isCreate) {
+			if (this.projectCategoryId && this.isCreatingTask) {
 				this.form.project_category_id = this.projectCategoryId
 			}
 			await this.loadCategory()
@@ -298,9 +300,9 @@
 				]
 				actions.push({
 					click: () => {
-						this[this.isCreate ? 'cancel' : 'goToCurrentTasks']()
+						this[this.isCreatingTask ? 'cancel' : 'goToCurrentTasks']()
 					},
-					label: this.isCreate ? 'Cancel' : 'Tasks'
+					label: this.isCreatingTask ? 'Cancel' : 'Tasks'
 				})
 				return actions
 			},
@@ -341,13 +343,15 @@
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
-					this.$router.push({
+					if (!this.isCreatingTask) {
+						this.showSavedAlert()
+					}
+					await this.$router.push({
 						name: 'TasksEdit',
 						params: {
 							id: data.id
 						}
 					})
-					this.showSavedAlert()
 				} catch (e) {
 					console.log(e)
 					if (e.response && e.response && e.response.data.errors) {
