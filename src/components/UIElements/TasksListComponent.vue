@@ -27,13 +27,16 @@
 							</div>
 							<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
 							<div class="hidden lg:flex items-center">
-								<new-button @click="$router.push(`/tasks/${task.id}/edit`)" class="mr-2" v-tooltip.top="'Open'">
+								<new-button
+									@click="$router.push(`/tasks/${task.id}/edit`)"
+									class="mr-2"
+									v-tooltip.top="userSettings.showTooltips ? 'Open' : { visible: false }">
 									<span class="material-icons">open_in_new</span>
 								</new-button>
 
 								<new-button
 									v-if="getShowButtons(task).done"
-									v-tooltip.top="'Done'"
+									v-tooltip.top="userSettings.showTooltips ? 'Done' : { visible: false }"
 									color="blue"
 									@click="updateStatus(task, 'done', `done-${task.id}`)"
 									class="mr-2">
@@ -44,7 +47,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).activate"
-									v-tooltip.top="'Reactivate'"
+									v-tooltip.top="userSettings.showTooltips ? 'Reactivate' : { visible: false }"
 									color="purple"
 									@click="updateStatus(task, 'active', `activate-${task.id}`)"
 									class="mr-2">
@@ -55,7 +58,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).hide"
-									v-tooltip.top="'Hide'"
+									v-tooltip.top="userSettings.showTooltips ? 'Hide' : { visible: false }"
 									color="gray"
 									@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
 									class="mr-2">
@@ -66,7 +69,7 @@
 								</new-button>
 								<new-button
 									v-if="getShowButtons(task).start"
-									v-tooltip.top="'Stop timer'"
+									v-tooltip.top="userSettings.showTooltips ? 'Stop timer' : { visible: false }"
 									color="red"
 									@click="stopCountdown(task, `stop-${task.id}`)"
 									class="mr-2">
@@ -78,7 +81,7 @@
 
 								<new-button
 									v-if="getShowButtons(task).stop"
-									v-tooltip.top="'Start timer'"
+									v-tooltip.top="userSettings.showTooltips ? 'Start timer' : { visible: false }"
 									color="green"
 									@click="startCountdown(task, `start-${task.id}`)"
 									class="mr-2">
@@ -90,7 +93,7 @@
 
 								<new-button
 									v-if="status === 'hidden' || status === 'done'"
-									v-tooltip.top="'Delete task'"
+									v-tooltip.top="userSettings.showTooltips ? 'Delete task' : { visible: false }"
 									color="red"
 									@click="deleteTask(task, `delete-${task.id}`)"
 									class="mr-2">
@@ -144,6 +147,11 @@
 			}
 		},
 		mixins: [ TasksListMixin ],
+		computed: {
+			userSettings () {
+				return this.$store.getters.getUserSettings
+			}
+		},
 		methods: {
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true

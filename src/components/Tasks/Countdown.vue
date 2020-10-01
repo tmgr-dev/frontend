@@ -3,7 +3,7 @@
 		<div class="relative inline-block">
 			<div class="countdown-wrapper mb-4 select-none"
 					@dblclick="isShowModalTimer = true"
-					v-tooltip.top="'Double click to edit the time'">
+					v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }">
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
@@ -90,6 +90,11 @@
 				},
 				task: null,
 				isShowModalTimer: false
+			}
+		},
+		computed: {
+			userSettings () {
+				return this.$store.getters.getUserSettings
 			}
 		},
 		methods: {

@@ -9,7 +9,7 @@
 				<div class="b-switch-list">
 					<div class="b-switch-list__item">
 						<label class="b-switch">
-							<input type="checkbox" name="show_tooltips" >
+							<input type="checkbox" name="show_tooltips" v-model="userSettings.showTooltips">
 							<span></span>
 						</label>
 						<div class="b-switch-list__text">
@@ -28,20 +28,17 @@
 				</div>
 			</div>
 
+			<alert description="Saved" v-if="successSavingShow" />
+
 		</template>
 	</BaseLayout>
 </template>
 
 <script>
-	import BaseLayout from "@/components/Layouts/BaseLayout";
-
 	export default {
 		name: 'Settings',
-		components: {
-			BaseLayout
-		},
 		data: () => ({
-
+			successSavingShow: false
 		}),
 		computed: {
 			userSettings () {
@@ -54,9 +51,14 @@
 					await this.$axios.put('user/settings', {
 						settings: this.userSettings
 					})
+					this.showAlert()
 				} catch (e) {
 					console.error(e)
 				}
+			},
+			showAlert () {
+				this.successSavingShow = true
+				setTimeout(() => this.successSavingShow = false, 2000)
 			}
 		}
 	}
