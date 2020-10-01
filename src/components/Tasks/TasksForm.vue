@@ -26,27 +26,28 @@
 						:close-on-bg-click="false"
 						@close="isShowModalCategory = false">
 						<template #modal-body>
-							<div>
-								<vselect
-									label="title"
-									:options="categoriesSelectOptions"
-									v-model="currentCategoryOptionInSelect"
-								/>
-							</div>
-							<div class="flex items-center mt-5">
-								<button
-									type="button"
-									@click="isShowModalCategory = false"
-									class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
-									Cancel
-								</button>
-								<button
-									type="button"
-									@click="updateCategory"
-									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
-									Update
-								</button>
-							</div>
+							<form @submit.prevent="updateCategory">
+								<div>
+									<vselect
+										label="title"
+										:options="categoriesSelectOptions"
+										v-model="currentCategoryOptionInSelect"
+									/>
+								</div>
+								<div class="flex items-center mt-5">
+									<button
+										type="button"
+										@click="isShowModalCategory = false"
+										class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+										Cancel
+									</button>
+									<button
+										type="submit"
+										class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+										Update
+									</button>
+								</div>
+							</form>
 						</template>
 					</modal>
 				</div>

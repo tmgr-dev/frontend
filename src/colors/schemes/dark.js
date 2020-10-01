@@ -13,5 +13,6 @@ export default {
   bg: 'bg-gray-600',
   buttonActionOpacity: 'opacity-50 hover:opacity-75',
 	grayHover: 'hover:text-gray-300',
-	modalBg: 'bg-gray-400'
+	modalBg: 'bg-gray-400',
+	settingsTextColor: 'text-gray-400'
 }

@@ -13,5 +13,6 @@ export default {
   bg: 'bg-white',
   buttonActionOpacity: '',
 	grayHover: 'hover:text-gray-900',
-	modalBg: 'white'
+	modalBg: 'bg-white',
+	settingsTextColor: 'text-gray-800'
 }

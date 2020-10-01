@@ -54,6 +54,8 @@
 			},
 		},
 		created() {
+			this.$store.dispatch('loadUserSettings')
+
 			this.$router.beforeEach((to, from, next) => {
 				let transitionName = to.meta.transitionName || from.meta.transitionName;
 
