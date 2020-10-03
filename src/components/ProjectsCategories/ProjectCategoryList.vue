@@ -93,7 +93,7 @@
 				<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
 					You don't have categories here
 				</div>
-				<div>
+				<div class="mt-5">
 					<h1 class="text-3xl text-white-800 pt-5 relative text-left lg:text-center ml-2">
 					<span>
 							Tasks
