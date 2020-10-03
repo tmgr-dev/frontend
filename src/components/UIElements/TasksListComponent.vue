@@ -11,7 +11,7 @@
 				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center">
+							<div class="flex justify-between items-center relative" style="z-index: 9999">
 								<div>
 									<div>
 										<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
@@ -280,9 +280,9 @@
 			selectedGetter () {
 				return this.selected;
 			},
-			selectedSetter (v) {
-				this.selected = v;
-				if (this.selected.includes(true)) {
+			selectedSetter (arr) {
+				if (arr.filter(item => item).length >= 2) {
+					this.selected = arr;
 					const tasks = this.tasks.filter((task, index) => this.selected[index])
 					const time = tasks.reduce((p, c) => p + c.common_time, 0)
 					this.showTimeInModal = true
@@ -291,10 +291,13 @@
 			},
 			closeTimeInModal () {
 				this.selected = []
+				this.selecting = []
 				this.showTimeInModal = false
 			},
-			selectingSetter (v) {
-				this.selecting = v;
+			selectingSetter (arr) {
+				if (arr.filter(item => item).length >= 2) {
+					this.selecting = arr;
+				}
 			}
 		}
 	}
