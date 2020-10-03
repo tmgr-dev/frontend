@@ -1,7 +1,7 @@
 <template>
 	<div class="w-full items-center justify-center">
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }">
-			<div class="selection"></div>
+			<div class="selection" :class="$color('borderSelection')"></div>
 
 			<div
 				v-for="(task, i) in tasks"
@@ -309,7 +309,7 @@
 	}
 	.selection {
 		position: absolute;
-		border: 1px dotted #000;
+		border: 1px dotted;
 		z-index: 9999;
 		top: 0;
 		left: 0;

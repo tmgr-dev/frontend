@@ -14,5 +14,6 @@ export default {
   buttonActionOpacity: '',
 	grayHover: 'hover:text-gray-900',
 	modalBg: 'bg-white',
-	settingsTextColor: 'text-gray-800'
+	settingsTextColor: 'text-gray-800',
+	borderSelection: 'border-black'
 }
