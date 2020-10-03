@@ -120,7 +120,7 @@
 					<div class="w-full h-full mt-5">
 						<div :class="`${$color('blocks')} p-5 h-full`">
 							<Countdown
-								v-if="form.id && showCountdown"
+								v-if="form.id"
 								ref="countdown"
 								:init-task="form"
 								@toggle="toggleCountdown"
@@ -208,8 +208,11 @@
 <script>
 	export default {
 		name: 'TasksForm',
-		components: {},
-		props: [],
+		metaInfo () {
+			return {
+				title: `${this.form.title}`
+			}
+		},
 		data() {
 			return {
 				errors: {},
@@ -235,11 +238,10 @@
 				},
 				selected: false,
 				form: this.getDefaultForm(),
-				showCountdown: true,
 				isShowModalCategory: false,
 				categoriesSelectOptions: [],
 				currentCategory: '',
-				currentCategoryOptionInSelect: null
+				currentCategoryOptionInSelect: null,
 			}
 		},
 		computed: {
@@ -251,7 +253,18 @@
 			},
 			projectCategoryId() {
 				return this.$route.params.project_category_id
-			}
+			},
+/*			title () {
+				if (this.form.start_time) {
+					const timestamp = this.form.common_time
+					const hours = Math.floor(timestamp / 60 / 60);
+					const minutes = Math.floor(timestamp / 60) - (hours * 60)
+					const seconds = timestamp % 60;
+					return `${hours}:${minutes}:${seconds}`
+				}
+
+				return this.form.title
+			}*/
 		},
 		async created () {
 			if (this.taskId) {

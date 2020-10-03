@@ -9,6 +9,7 @@ import VueTheMask from 'vue-the-mask';
 import { mask } from 'vue-the-mask'
 import Tooltip from 'vue-directive-tooltip';
 import components from "@/bootstrap/globalComponents";
+import VueMeta from 'vue-meta';
 import VueSelect from 'vue-select'
 import 'vue-select/dist/vue-select.css';
 
@@ -16,6 +17,7 @@ Vue.config.productionTip = false
 
 components.map(component => Vue.component(component.name, component))
 Vue.component('vselect', VueSelect)
+Vue.use(VueMeta)
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
 if (store.getters.token) {

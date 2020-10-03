@@ -143,9 +143,7 @@
 				}
 
 				this.prepareCommonTime()
-				this.countdownInterval = setInterval(() => {
-					this.plusSecond()
-				}, 1000)
+				this.countdownInterval = setInterval(this.plusSecond, 1000)
 			},
 			renderTime() {
 				let seconds = this.task.common_time
@@ -163,7 +161,7 @@
 			}
 		},
 		mounted() {
-			this.task = this.initTask
+			this.task = { ...this.initTask }
 			this.task.start_time = this.task.start_time || 0
 
 			this.initCountdown()
