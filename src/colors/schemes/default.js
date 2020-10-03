@@ -11,5 +11,9 @@ export default {
   textBreadcrumbs: 'text-gray',
   navLinkFocused: 'text-purple',
   bg: 'bg-white',
-  buttonActionOpacity: ''
+  buttonActionOpacity: '',
+	grayHover: 'hover:text-gray-900',
+	modalBg: 'bg-white',
+	settingsTextColor: 'text-gray-800',
+	borderSelection: 'border-black'
 }

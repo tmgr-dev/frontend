@@ -16,10 +16,15 @@
 </template>
 
 <script>
+	import Navbar from "@/components/UIElements/Navbar";
+
 	const DEFAULT_TRANSITION = 'fade'
 
 	export default {
 		name: 'App',
+		components: {
+			Navbar
+		},
 		data() {
 			return {
 				prevHeight: 0,
@@ -49,6 +54,8 @@
 			},
 		},
 		created() {
+			this.$store.dispatch('loadUserSettings')
+
 			this.$router.beforeEach((to, from, next) => {
 				let transitionName = to.meta.transitionName || from.meta.transitionName;
 

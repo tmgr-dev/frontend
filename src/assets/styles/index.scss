@@ -2,6 +2,7 @@
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
+@import "switch";
 
 body {
 	overflow-x: hidden;
@@ -23,6 +24,7 @@ body {
 
 .countdown-wrapper {
 	font-family: 'Roboto', sans-serif;
+	cursor: pointer;
 }
 
 .bg-screen-default {
@@ -52,4 +54,14 @@ button {
 	&:focus {
 		outline: none;
 	}
+}
+
+.night-mode {
+	.vs__dropdown-menu {
+		background: #cbd5e0;
+	}
+}
+
+.vs__search {
+	color: #000;
 }

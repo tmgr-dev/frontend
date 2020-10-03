@@ -3,7 +3,7 @@
 		<div class="relative inline-block">
 			<div class="countdown-wrapper mb-4 select-none"
 					@dblclick="isShowModalTimer = true"
-					v-tooltip.top="'Double click to edit the time'">
+					v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }">
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
@@ -92,6 +92,11 @@
 				isShowModalTimer: false
 			}
 		},
+		computed: {
+			userSettings () {
+				return this.$store.getters.getUserSettings
+			}
+		},
 		methods: {
 			async updateTimer () {
 				this.validateCountdownBeforeUpdate()
@@ -138,9 +143,7 @@
 				}
 
 				this.prepareCommonTime()
-				this.countdownInterval = setInterval(() => {
-					this.plusSecond()
-				}, 1000)
+				this.countdownInterval = setInterval(this.plusSecond, 1000)
 			},
 			renderTime() {
 				let seconds = this.task.common_time
@@ -158,7 +161,7 @@
 			}
 		},
 		mounted() {
-			this.task = this.initTask
+			this.task = { ...this.initTask }
 			this.task.start_time = this.task.start_time || 0
 
 			this.initCountdown()
