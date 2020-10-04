@@ -14,7 +14,7 @@
 				</p>
 				<div class="w-full text-center">
 					<a href="#close"
-						class="absolute top-0 right-0 text-gray-400 hover:text-gray-100"
+						class="absolute top-0 right-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
 						@click.prevent="closeTimeInModal">
 						<span class="material-icons text-bold">close</span>
 					</a>
