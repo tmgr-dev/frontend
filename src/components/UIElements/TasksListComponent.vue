@@ -11,7 +11,7 @@
 				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center relative" style="z-index: 9999" @dblclick.prevent="showCommonTimeOfSelectedTasks">
+							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="setSelectToTask(i)" @dblclick.prevent="showCommonTimeOfSelectedTasks">
 								<div>
 									<div>
 										<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
@@ -295,6 +295,14 @@
 				} else {
 					this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
 				}
+			},
+			setSelectToTask (taskIndex) {
+				console.log(taskIndex)
+				if (!this.selected.length) {
+					this.selected = [...Array(this.tasks.length)].map(() => false)
+				}
+				// console.log(this.selected, this.selected[taskIndex], taskIndex)
+				// this.selected[taskIndex] = !this.selected[taskIndex]
 			},
 			showCommonTimeOfSelectedTasks () {
 				const tasks = this.tasks.filter((task, index) => this.selected[index])
