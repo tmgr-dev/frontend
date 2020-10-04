@@ -1,8 +1,61 @@
 <template>
-	<div class="w-full items-center justify-center">
-		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }">
+	<div class="w-full items-center justify-center relative">
+		<transition  name="bounce">
+			<vue-draggable-resizable :resizable="false" :w="225" class-name="absolute top-0 left-0 -mt-32 ml-5 rounded bg-green-600 p-5 cursor-pointer" v-if="showSelectedTasksCommonTime" style="z-index: 999999;"
+			>
+				<p>
+					<b>Selected tasks: </b>{{ selected.filter((v) => v).length }}<br>
+					{{ timeForModal }}
+				</p>
+				<div class="w-full text-center">
+					<button
+						type="button"
+						v-tooltip.top="userSettings.showTooltips ? 'Unselect all tasks' : { visible: false }"
+						@click="closeTimeInModal"
+						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						<span class="material-icons text-bold">check_box_outline_blank</span>
+					</button>
+					<button
+						v-tooltip.top="userSettings.showTooltips ? 'Close component' : { visible: false }"
+						type="button"
+						@click="jusCloseTimeInModal"
+						class="ml-1 w-1/4 bg-gray-700 text-white pt-2 rounded mt-2 hover:bg-gray-600">
+						<span class="material-icons text-bold">close</span>
+					</button>
+					<button
+						@click="selectedUpdateStatus('done')"
+						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						<span class="relative">
+							<span class="material-icons text-bold">done</span>
+						</span>
+					</button>
+					<button
+						@click="selectedUpdateStatus('active')"
+						class="ml-1 w-1/4 bg-purple-700 text-white rounded pt-2 mt-2 hover:bg-purple-600">
+						<span class="relative">
+							<span class="material-icons text-bold">refresh</span>
+						</span>
+					</button>
+					<button
+						@click="selectedUpdateStatus('hidden')"
+						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+							<span class="relative">
+								<span class="material-icons">visibility_off</span>
+							</span>
+					</button>
+					<button
+						v-if="status === 'hidden' || status === 'done'"
+						@click="deleteSelectedTasks()"
+						class="ml-1 w-1/4 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
+							<span class="relative">
+								<span class="material-icons">delete</span>
+							</span>
+					</button>
+				</div>
+			</vue-draggable-resizable>
+		</transition>
+		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
 			<div class="selection" :class="$color('borderSelection')"></div>
-
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
@@ -11,7 +64,7 @@
 				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="setSelectToTask(i)" @dblclick.prevent="showCommonTimeOfSelectedTasks">
+							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="() => {}">
 								<div>
 									<div>
 										<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
@@ -191,6 +244,7 @@
 		mixins: [ TasksListMixin ],
 		directives: { selectable },
 		data: () => ({
+			showSelectedTasksCommonTime: false,
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
@@ -260,27 +314,62 @@
 					label: label
 				}
 			},
-			async updateStatus(task, status, dotId) {
+			async updateStatus(task, status, dotId = null, loadTasks = true) {
 				try {
-					this.isLoadingActions[dotId] = true
+					this.setLoadingAction(dotId)
 					await this.$axios.put(`/tasks/${task.id}/${status}`)
-					await this.loadTasks()
-					this.isLoadingActions[dotId] = false
+					if (loadTasks) {
+						await this.loadTasks()
+					}
 				} catch (e) {
-					this.isLoadingActions[dotId] = false
 					console.error(e)
+				} finally {
+					this.setLoadingAction(dotId, false)
 				}
 			},
-			async deleteTask (task, dotId) {
-				try {
-					this.isLoadingActions[dotId] = true
-					await this.$axios.delete(`/tasks/${task.id}`)
-					await this.loadTasks()
-					this.isLoadingActions[dotId] = false
-				} catch (e) {
-					this.isLoadingActions[dotId] = false
-					console.error(e)
+			setLoadingAction(dotId = null, actionStatus = true) {
+				if (dotId == null) {
+					return
 				}
+
+				this.isLoadingActions[dotId] = actionStatus
+			},
+			async selectedUpdateStatus(status) {
+				for (let i = 0; i < this.tasks.length; ++i) {
+					if (!this.selected[i]) {
+						continue
+					}
+					await this.updateStatus(this.tasks[i], status, null, false)
+				}
+				await this.loadTasks()
+				this.refreshSelects()
+			},
+			refreshSelects() {
+				this.selected = []
+				this.selecting = []
+			},
+			async deleteTask (task, dotId = null, loadTasks = true) {
+				try {
+					this.setLoadingAction(dotId)
+					await this.$axios.delete(`/tasks/${task.id}`)
+					if (loadTasks) {
+						await this.loadTasks()
+					}
+				} catch (e) {
+					console.error(e)
+				} finally {
+					this.setLoadingAction(dotId, false)
+				}
+			},
+			async deleteSelectedTasks () {
+				for (let i = 0; i < this.tasks.length; ++i) {
+					if (!this.selected[i]) {
+						continue
+					}
+					await this.deleteTask(this.tasks[i], null, false)
+				}
+				await this.loadTasks()
+				this.refreshSelects()
 			},
 			capitalize(s) {
 				if (typeof s !== 'string') return ''
@@ -294,29 +383,35 @@
 					this.selected = arr
 				} else {
 					this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
+					this.showSelectedTasksCommonTime = true
 				}
+				const selectedCount = this.selected.filter(v => v).length > 1
+				if (!selectedCount) {
+					this.showSelectedTasksCommonTime = false
+				}
+				this.selecting = []
+				this.countTimeForModal()
 			},
-			setSelectToTask (taskIndex) {
-				console.log(taskIndex)
+			setSelectToTask () {
 				if (!this.selected.length) {
 					this.selected = [...Array(this.tasks.length)].map(() => false)
 				}
-				// console.log(this.selected, this.selected[taskIndex], taskIndex)
-				// this.selected[taskIndex] = !this.selected[taskIndex]
 			},
 			showCommonTimeOfSelectedTasks () {
+				this.showTimeInModal = true
+			},
+			countTimeForModal () {
 				const tasks = this.tasks.filter((task, index) => this.selected[index])
 				const time = tasks.reduce((p, c) => p + c.common_time, 0)
-				this.showTimeInModal = true
 				this.timeForModal = this.formatTime(time)
 			},
 			closeTimeInModal () {
 				this.jusCloseTimeInModal()
-				this.selected = []
-				this.selecting = []
+				this.refreshSelects()
 			},
 			jusCloseTimeInModal () {
 				this.showTimeInModal = false
+				this.showSelectedTasksCommonTime = false
 			},
 			selectingSetter (arr) {
 				if (arr.filter(item => item).length >= 2) {
@@ -355,5 +450,22 @@
 	}
 	.selectable.selected {
 		background-color: orange;
+	}
+	.bounce-enter-active {
+		animation: bounce-in .5s;
+	}
+	.bounce-leave-active {
+		animation: bounce-in .5s reverse;
+	}
+	@keyframes bounce-in {
+		0% {
+			transform: scale(0);
+		}
+		50% {
+			transform: scale(1.5);
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 </style>
