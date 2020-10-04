@@ -375,16 +375,9 @@
 				return this.selected;
 			},
 			selectedSetter (arr) {
-				if (!this.selected.length) {
-					this.selected = arr
-				} else {
-					this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
-					this.showSelectedTasksCommonTime = true
-				}
-				const selectedCount = this.selected.filter(v => v).length > 1
-				if (!selectedCount) {
-					this.showSelectedTasksCommonTime = false
-				}
+				this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
+
+				this.showSelectedTasksCommonTime = this.selected.filter(v => v).length > 1
 				this.selecting = []
 				this.countTimeForModal()
 			},
