@@ -1,44 +1,40 @@
 <template>
 	<div class="w-full items-center justify-center relative">
-		<transition  name="bounce">
-			<vue-draggable-resizable :resizable="false" :w="225" class-name="absolute top-0 left-0 -mt-32 ml-5 rounded bg-green-600 p-5 cursor-pointer" v-if="showSelectedTasksCommonTime" style="z-index: 999999;"
-			>
-				<p>
-					<b>Selected tasks: </b>{{ selected.filter((v) => v).length }}<br>
+		<transition name="bounce">
+			<vue-draggable-resizable
+				v-if="showSelectedTasksCommonTime"
+				style="z-index: 999999; top: 5%; right: 5%"
+				:resizable="false"
+				:w="250"
+				:h="150"
+				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
+				<p class="text-white text-center">
+					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
 					{{ timeForModal }}
 				</p>
 				<div class="w-full text-center">
-					<button
-						type="button"
-						v-tooltip.top="userSettings.showTooltips ? 'Unselect all tasks' : { visible: false }"
-						@click="closeTimeInModal"
-						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
-						<span class="material-icons text-bold">check_box_outline_blank</span>
-					</button>
-					<button
-						v-tooltip.top="userSettings.showTooltips ? 'Close component' : { visible: false }"
-						type="button"
-						@click="jusCloseTimeInModal"
-						class="ml-1 w-1/4 bg-gray-700 text-white pt-2 rounded mt-2 hover:bg-gray-600">
+					<a href="#close"
+						class="absolute top-0 right-0 text-gray-400 hover:text-gray-100"
+						@click.prevent="closeTimeInModal">
 						<span class="material-icons text-bold">close</span>
-					</button>
+					</a>
 					<button
 						@click="selectedUpdateStatus('done')"
-						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						class="mr-1 w-1/5 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
 						<span class="relative">
 							<span class="material-icons text-bold">done</span>
 						</span>
 					</button>
 					<button
 						@click="selectedUpdateStatus('active')"
-						class="ml-1 w-1/4 bg-purple-700 text-white rounded pt-2 mt-2 hover:bg-purple-600">
+						class="mr-1 w-1/5 bg-purple-700 text-white rounded pt-2 mt-2 hover:bg-purple-600">
 						<span class="relative">
 							<span class="material-icons text-bold">refresh</span>
 						</span>
 					</button>
 					<button
 						@click="selectedUpdateStatus('hidden')"
-						class="ml-1 w-1/4 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						class="mr-1 w-1/5 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
 							<span class="relative">
 								<span class="material-icons">visibility_off</span>
 							</span>
@@ -46,7 +42,7 @@
 					<button
 						v-if="status === 'hidden' || status === 'done'"
 						@click="deleteSelectedTasks()"
-						class="ml-1 w-1/4 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
+						class="w-1/5 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
 							<span class="relative">
 								<span class="material-icons">delete</span>
 							</span>
@@ -342,9 +338,9 @@
 					await this.updateStatus(this.tasks[i], status, null, false)
 				}
 				await this.loadTasks()
-				this.refreshSelects()
+				this.resetSelects()
 			},
-			refreshSelects() {
+			resetSelects() {
 				this.selected = []
 				this.selecting = []
 			},
@@ -369,7 +365,7 @@
 					await this.deleteTask(this.tasks[i], null, false)
 				}
 				await this.loadTasks()
-				this.refreshSelects()
+				this.resetSelects()
 			},
 			capitalize(s) {
 				if (typeof s !== 'string') return ''
@@ -392,26 +388,15 @@
 				this.selecting = []
 				this.countTimeForModal()
 			},
-			setSelectToTask () {
-				if (!this.selected.length) {
-					this.selected = [...Array(this.tasks.length)].map(() => false)
-				}
-			},
-			showCommonTimeOfSelectedTasks () {
-				this.showTimeInModal = true
-			},
 			countTimeForModal () {
 				const tasks = this.tasks.filter((task, index) => this.selected[index])
 				const time = tasks.reduce((p, c) => p + c.common_time, 0)
 				this.timeForModal = this.formatTime(time)
 			},
 			closeTimeInModal () {
-				this.jusCloseTimeInModal()
-				this.refreshSelects()
-			},
-			jusCloseTimeInModal () {
 				this.showTimeInModal = false
 				this.showSelectedTasksCommonTime = false
+				this.resetSelects()
 			},
 			selectingSetter (arr) {
 				if (arr.filter(item => item).length >= 2) {
