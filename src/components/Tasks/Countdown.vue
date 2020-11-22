@@ -94,7 +94,7 @@
 		},
 		computed: {
 			userSettings () {
-				return this.$store.getters.getUserSettings
+				return this.$store.getters.getUserSettings ?? {}
 			}
 		},
 		methods: {
