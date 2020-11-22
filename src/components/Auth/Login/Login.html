@@ -21,24 +21,26 @@
 						<span class="text-sm text-grey-dark select-none">Remember Me</span>
 					</label>
 				</div>
-				<div class="flex flex-col mt-8">
+				<div class="flex flex-row mt-8">
 					<button @click.prevent="login"
-									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded w-2/4">
 						<span class="relative">
-								Login
+								Log In
 								<loader v-if="showLoader" :is-mini="true"/>
 						</span>
 					</button>
+					<router-link to="/register" class="bg-blue-300 hover:bg-blue-500 text-white text-sm text-center font-semibold py-2 ml-1 px-4 rounded w-2/4">
+						<span class="relative">
+								Register
+								<loader v-if="showLoader" :is-mini="true"/>
+						</span>
+					</router-link>
 				</div>
 			</form>
 		</template>
 		<template #footer>
 			<router-link to="/password/forget" class="no-underline hover:underline text-blue-dark text-xs">
 				Forgot Your Password?
-			</router-link>
-			<br>
-			<router-link to="/register" class="no-underline hover:underline text-blue-dark text-xs">
-				Don't you have an account?
 			</router-link>
 		</template>
 	</AuthBase>
