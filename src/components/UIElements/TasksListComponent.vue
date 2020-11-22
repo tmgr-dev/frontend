@@ -47,6 +47,13 @@
 								<span class="material-icons">delete</span>
 							</span>
 					</button>
+					<button
+						@click="exportToImage()"
+						class="w-1/5 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
+							<span class="relative">
+								<span class="material-icons">description</span>
+							</span>
+					</button>
 				</div>
 			</vue-draggable-resizable>
 		</transition>
@@ -248,7 +255,7 @@
 		}),
 		computed: {
 			userSettings () {
-				return this.$store.getters.getUserSettings
+				return this.$store.getters.getUserSettings || {}
 			}
 		},
 		methods: {
@@ -382,9 +389,11 @@
 				this.countTimeForModal()
 			},
 			countTimeForModal () {
-				const tasks = this.tasks.filter((task, index) => this.selected[index])
-				const time = tasks.reduce((p, c) => p + c.common_time, 0)
+				const time = this.getSelectedTasks().reduce((p, c) => p + c.common_time, 0)
 				this.timeForModal = this.formatTime(time)
+			},
+			getSelectedTasks () {
+				return this.tasks.filter((task, index) => this.selected[index])
 			},
 			closeTimeInModal () {
 				this.showTimeInModal = false
@@ -395,6 +404,53 @@
 				if (arr.filter(item => item).length >= 2) {
 					this.selecting = arr;
 				}
+			},
+			async exportToImage () {
+				const tasksIds = this.getSelectedTasks().map(({id}) => id)
+				const response = await this.$axios.get('/exports/tasks/csv?' + this.jsonObjectToQueryString({
+					ids: tasksIds,
+					per_hour: 1000
+				}))
+				this.download(response.data, 'export.csv')
+			},
+			jsonObjectToQueryString (obj, prefix) {
+				const euc = encodeURIComponent
+				const serialize = this.jsonObjectToQueryString
+				const isNotNullObject = v => v !== null && typeof v === "object"
+				const queryStringItems = []
+
+				for (let p in obj) {
+					if (!obj.hasOwnProperty(p)) {
+						continue
+					}
+
+					const k = prefix ? prefix + "[" + p + "]" : p
+					const v = obj[p]
+					queryStringItems.push(isNotNullObject(v) ? serialize(v, k) : euc(k) + "=" + euc(v));
+				}
+				return queryStringItems.join("&");
+			},
+			download (data, filename, type) {
+				var file = new Blob([data], {type: type});
+				if (window.navigator.msSaveOrOpenBlob) // IE10+
+					window.navigator.msSaveOrOpenBlob(file, filename);
+				else { // Others
+					var a = document.createElement("a"),
+						url = URL.createObjectURL(file);
+					a.href = url;
+					a.download = filename;
+					document.body.appendChild(a);
+					a.click();
+					setTimeout(function() {
+						document.body.removeChild(a);
+						window.URL.revokeObjectURL(url);
+					}, 0);
+				}
+			},
+			selectAll () {
+				this.selected = this.tasks.map(() => true)
+				this.showSelectedTasksCommonTime = this.selected.filter(v => v).length > 1
+				this.countTimeForModal()
 			}
 		}
 	}

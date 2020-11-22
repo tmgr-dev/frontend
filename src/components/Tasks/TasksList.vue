@@ -9,6 +9,9 @@
 			<div class="left-0 bottom-0 mr-4 absolute">
 			</div>
 			<div class="absolute right-0 bottom-0">
+				<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
+					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
+				</a>
 				<router-link :to="`/tasks/create`" title="Add Task" class="pr-5">
 					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
 				</router-link>
@@ -19,6 +22,7 @@
 				v-if="tasks && tasks.length > 0 && showDefaultList"
 				:tasks="tasks"
 				:status="status"
+				ref="tasksListComponent"
 			/>
 			<tasks-list-component
 				v-else-if="tasks && tasks.length > 0 && !showDefaultList"
@@ -26,6 +30,7 @@
 				:status="status"
 				:is-loading-actions="isLoadingActions"
 				@reload-tasks="loadTasks"
+				ref="tasksListComponent"
 			/>
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
 				You don't have tasks here
@@ -79,6 +84,12 @@
 				this.tasks = data
 				this.showLoader = false
 				return data
+			},
+			selectAll () {
+				if (!this.$refs.tasksListComponent) {
+					return
+				}
+				this.$refs.tasksListComponent.selectAll()
 			}
 		}
 	}

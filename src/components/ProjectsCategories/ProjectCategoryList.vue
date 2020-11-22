@@ -97,6 +97,12 @@
 					<h1 class="text-3xl text-white-800 pt-5 relative text-left lg:text-center ml-2">
 					<span>
 							Tasks
+							<a
+								href="#"
+								@click.prevent="selectAll"
+								class="opacity-25 hover:opacity-100 inline md:hidden">
+								<span class="material-icons text-3xl">done_all</span>
+							</a>
 							<router-link
 								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
 								class="opacity-25 hover:opacity-100 inline md:hidden">
@@ -118,6 +124,13 @@
 									Archive
 								</button>
 							</div>
+							<a
+								href="#"
+								@click.prevent="selectAll"
+								alt="Select all"
+								class="opacity-25 hover:opacity-100 hidden md:inline mr-2">
+								<span class="material-icons text-3xl">done_all</span>
+							</a>
 							<router-link
 								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
 								class="opacity-25 hover:opacity-100 hidden md:inline">
@@ -132,6 +145,7 @@
 						:is-loading-actions="isLoadingActions"
 						:use-task-status-for-buttons="true"
 						:show-category-badges="false"
+						ref="tasksListComponent"
 					/>
 					<div v-else style="font-style: italic; font-size: 18px;" class="mt-5 text-center">
 						You don't have tasks in the category
@@ -256,6 +270,12 @@
 				}
 				parents.push(category.parent_category)
 				return this.extractParents(category.parent_category, parents)
+			},
+			selectAll () {
+				if (!this.$refs.tasksListComponent) {
+					return
+				}
+				this.$refs.tasksListComponent.selectAll()
 			}
 		}
 	}
