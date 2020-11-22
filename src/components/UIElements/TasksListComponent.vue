@@ -3,10 +3,9 @@
 		<transition name="bounce">
 			<vue-draggable-resizable
 				v-if="showSelectedTasksCommonTime"
-				style="z-index: 999999; top: 5%; right: 5%"
+				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px"
 				:resizable="false"
 				:w="250"
-				:h="150"
 				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
 				<p class="text-white text-center">
 					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
@@ -49,7 +48,7 @@
 					</button>
 					<button
 						@click="exportToImage()"
-						class="w-1/5 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
+						class="w-1/5 bg-blue-700 text-white rounded pt-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">description</span>
 							</span>

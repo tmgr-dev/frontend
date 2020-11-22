@@ -8,7 +8,7 @@
 		<template #action>
 			<div class="left-0 bottom-0 mr-4 absolute">
 			</div>
-			<div class="absolute right-0 bottom-0">
+			<div class="md:absolute md:right-0 md:bottom-0 text-center md:text-right">
 				<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
 					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
 				</a>
