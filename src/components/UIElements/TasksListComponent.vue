@@ -6,6 +6,7 @@
 				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px"
 				:resizable="false"
 				:w="250"
+				h="auto"
 				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
 				<p class="text-white text-center">
 					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
