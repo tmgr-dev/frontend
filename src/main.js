@@ -28,7 +28,10 @@ axios.defaults.baseURL = store.getters.apiBaseUrl
 if (store.getters.token) {
 	axios.defaults.headers = {
 		Authorization: `Bearer ${store.getters.token.token}`,
-		'X-Requested-With': 'XMLHttpRequest'
+		'X-Requested-With': 'XMLHttpRequest',
+		'Cache-Control': 'no-cache',
+		'Pragma': 'no-cache',
+		'Expires': '0'
 	}
 	axios.get('user').then(({ data }) => {
 		store.commit('user', data)

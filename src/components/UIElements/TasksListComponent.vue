@@ -48,10 +48,24 @@
 							</span>
 					</button>
 					<button
-						@click="exportToImage()"
+						@click="exportSelectedTasksTo()"
 						class="w-1/5 bg-blue-700 text-white rounded pt-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">description</span>
+							</span>
+					</button>
+					<button
+						@click="exportSelectedTasksTo('jpg')"
+						class="w-1/5 bg-blue-700 ml-1 text-white rounded pt-2 mt-2 hover:bg-blue-600">
+							<span class="relative">
+								<span class="material-icons">image</span>
+							</span>
+					</button>
+					<button
+						@click="exportSelectedTasksTo('xlsx')"
+						class="w-1/5 bg-blue-700 text-white ml-1 rounded pt-2 mt-2 hover:bg-blue-600">
+							<span class="relative">
+								<span class="material-icons">list</span>
 							</span>
 					</button>
 				</div>
@@ -405,13 +419,24 @@
 					this.selecting = arr;
 				}
 			},
-			async exportToImage () {
+			async exportSelectedTasksTo(exportType = 'csv') {
 				const tasksIds = this.getSelectedTasks().map(({id}) => id)
-				const response = await this.$axios.get('/exports/tasks/csv?' + this.jsonObjectToQueryString({
+				await this.defaultTasksExport(this.getExportUrl(exportType, tasksIds), exportType)
+			},
+			async defaultTasksExport (url, exportType = 'csv') {
+				const response = await this.$axios.get(url, {
+					responseType: 'blob'
+				})
+				this.download(response.data, 'export.' + exportType)
+			},
+			getExportUrl(exportType, tasksIds) {
+				return 'exports/tasks/' + exportType + '?' + this.getExportConfigs(tasksIds)
+			},
+			getExportConfigs(tasksIds) {
+				return this.jsonObjectToQueryString({
 					ids: tasksIds,
 					per_hour: 1000
-				}))
-				this.download(response.data, 'export.csv')
+				})
 			},
 			jsonObjectToQueryString (obj, prefix) {
 				const euc = encodeURIComponent
