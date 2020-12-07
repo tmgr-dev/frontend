@@ -21,7 +21,7 @@
 					v-else
 					:id="name"
 					:type="type"
-					:class="`shadow ${$color('input')} ${$color('borderMain')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:class="`shadow ${$color('borderMain')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
@@ -83,6 +83,10 @@
 				required: false,
 				type: Boolean,
 				default: false
+			},
+			extraClass: {
+				required: false,
+				type: String
 			}
 		},
 		data() {

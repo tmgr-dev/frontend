@@ -34,6 +34,12 @@
 										v-model="currentCategoryOptionInSelect"
 									/>
 								</div>
+								<div>
+									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
+										Approximately time
+										<input-field extra-class="bg-gray-400" :value.sync="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
+									</label>
+								</div>
 								<div class="flex items-center mt-5">
 									<button
 										type="button"
@@ -241,6 +247,7 @@
 				isShowModalCategory: false,
 				categoriesSelectOptions: [],
 				currentCategory: '',
+				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
 			}
 		},
@@ -289,7 +296,14 @@
 				}
 			},
 			async updateCategory () {
-				this.form.project_category_id = this.currentCategoryOptionInSelect.id
+				if (this.currentCategoryOptionInSelect) {
+					this.form.project_category_id = this.currentCategoryOptionInSelect.id
+				}
+				if (this.approximatelyTime) {
+					const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
+					this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
+				}
+
 				this.isShowModalCategory = false
 
 				await this.save()
@@ -334,8 +348,22 @@
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
 				data.common_time = data.common_time && !data.start_time ? data.common_time : 1
-				console.log(data.common_time)
+				if (data.approximately_time) {
+					this.approximatelyTime = this.toHHMM(data.approximately_time)
+				}
 				this.form = data
+			},
+			toHHMM (seconds) {
+				let hours   = Math.floor(seconds / 3600);
+				let minutes = Math.floor((seconds - (hours * 3600)) / 60);
+
+				if (hours   < 10) {
+					hours   = "0" + hours;
+				}
+				if (minutes < 10) {
+					minutes = "0" + minutes;
+				}
+				return hours + ':' + minutes;
 			},
 			getCategoryStatus() {
 				if (this.form.status === 'created' || this.form.status === 'active') {
@@ -381,6 +409,9 @@
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
+					if (data.approximately_time) {
+						this.approximatelyTime = this.toHHMM(data.approximately_time)
+					}
 					this.form = data
 					this.showSavedAlert()
 				} catch (e) {

@@ -15,5 +15,6 @@ export default {
 	grayHover: 'hover:text-gray-900',
 	modalBg: 'bg-white',
 	settingsTextColor: 'text-gray-800',
+	taskSettingTextColor: 'text-gray-800',
 	borderSelection: 'border-black'
 }
