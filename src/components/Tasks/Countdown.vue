@@ -1,12 +1,23 @@
 <template>
 	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task">
 		<div class="relative inline-block">
+			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none" style="opacity: 0.1">
+				<span class="countdown-item">{{ lastStartTime.hours }}</span>
+				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
+			</div>
 			<div class="countdown-wrapper mb-4 select-none"
 					@dblclick="isShowModalTimer = true"
 					v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }">
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
+			</div>
+			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none" style="opacity: 0.2">
+				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
+				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
+			</div>
+			<div v-if="timeIsOver">
+				<p class="text-red">Time is over</p>
 			</div>
 			<!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
 				<span class="material-icons text-base">edit</span>
@@ -74,6 +85,9 @@
 		data() {
 			return {
 				isFullScreen: false,
+				approximatelyEndTime: null,
+				lastStartTime: null,
+				timeIsOver: false,
 				timeTokens: {
 					F: {
 						pattern: /[0-5]/
@@ -155,6 +169,37 @@
 				this.countdown.hours = this.prepareClockNumber(hour)
 				this.countdown.minutes = this.prepareClockNumber(minute)
 				this.countdown.seconds = this.prepareClockNumber(second)
+
+				this.renderApproximatelyStartTime()
+			},
+			renderApproximatelyStartTime () {
+				if (!this.task.approximately_time || !this.task.start_time) {
+					return
+				}
+
+				const leftTime = this.task.approximately_time - this.task.common_time
+				if (leftTime < 0) {
+					this.timeIsOver = true
+					this.approximatelyEndTime = null
+					this.lastStartTime = null
+					return
+				}
+
+				const dt = new Date()
+				dt.setSeconds(dt.getSeconds() + (this.task.approximately_time - this.task.common_time))
+
+				this.approximatelyEndTime = {
+					hours: this.prepareClockNumber(dt.getHours()),
+					minutes: this.prepareClockNumber(dt.getMinutes())
+				}
+
+				const st = new Date()
+				st.setTime(this.task.start_time * 1000)
+
+				this.lastStartTime = {
+					hours: this.prepareClockNumber(st.getHours()),
+					minutes: this.prepareClockNumber(st.getMinutes())
+				}
 			},
 			prepareClockNumber(num) {
 				return num < 10 ? '0' + num : num

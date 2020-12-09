@@ -206,6 +206,9 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
 				</transition>
+				<p class="text-gray-500 pl-4 pb-2">
+					Estimated time to complete the task: {{ approximatelyTime }}
+				</p>
 			</div>
 		</template>
 	</BaseLayout>
@@ -414,6 +417,10 @@
 					}
 					this.form = data
 					this.showSavedAlert()
+
+					const id = this.form.id
+					this.form.id = null
+					setTimeout(() => this.form.id = id, 1)
 				} catch (e) {
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors
