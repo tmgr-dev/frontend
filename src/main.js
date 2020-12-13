@@ -1,4 +1,4 @@
-import Vue from 'vue'
+import { createApp, h } from 'vue'
 import router from './routes/index'
 import App from './App'
 import './assets/styles/index.scss';
@@ -9,7 +9,6 @@ import VueTheMask from 'vue-the-mask';
 import { mask } from 'vue-the-mask'
 import Tooltip from 'vue-directive-tooltip';
 import components from "@/bootstrap/globalComponents";
-import VueMeta from 'vue-meta';
 import VueSelect from 'vue-select'
 import 'vue-select/dist/vue-select.css';
 import VueDraggableResizable from 'vue-draggable-resizable'
@@ -17,12 +16,13 @@ import VueDraggableResizable from 'vue-draggable-resizable'
 // optionally import default styles
 import 'vue-draggable-resizable/dist/VueDraggableResizable.css'
 
-Vue.config.productionTip = false
+const app = createApp(App)
 
-components.map(component => Vue.component(component.name, component))
-Vue.component('vselect', VueSelect)
-Vue.component('vue-draggable-resizable', VueDraggableResizable)
-Vue.use(VueMeta)
+components.map(component => app.component(component.name, component))
+app.component('vselect', VueSelect)
+app.component('vue-draggable-resizable', VueDraggableResizable)
+app.use(router)
+app.use(store)
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
 if (store.getters.token) {
@@ -37,27 +37,21 @@ if (store.getters.token) {
 		store.commit('user', data)
 	})
 }
-Vue.prototype.$axios = axios
+app.config.globalProperties.$axios = axios
 
 const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
-Vue.prototype.$color = color
+app.config.globalProperties.$color = color
 document.querySelector('body').className = color('bgBody')
 
-Vue.directive(mask)
-Vue.use(Tooltip, {
-  delay: 50,
-  placement: 'top',
-  class: 'custom-tooltip',
-  triggers: ['hover'],
-  offset: 5
+app.directive('mask', mask)
+app.use(Tooltip, {
+	delay: 50,
+	placement: 'top',
+	class: 'custom-tooltip',
+	triggers: ['hover'],
+	offset: 5
 })
-Vue.use(VueTheMask)
+app.use(VueTheMask)
+app.mount('#app')
 
-new Vue({
-  router,
-  store,
-  render: h => h(App),
-  data: () => ({
-    key: null
-  })
-}).$mount('#app')
+export default app

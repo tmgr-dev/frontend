@@ -1,11 +1,9 @@
-import Vue from 'vue'
-import Vuex from 'vuex'
+import { createStore } from 'vuex'
 import colorSchemes from '../colors/schemes'
 import axios from 'axios'
 
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
 
-Vue.use(Vuex)
 
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
@@ -86,7 +84,7 @@ const actions = {
 	},
 }
 
-export default new Vuex.Store({
+export default createStore({
 	state,
 	getters,
 	mutations,

@@ -28,15 +28,22 @@
 						<template #modal-body>
 							<form @submit.prevent="updateCategory">
 								<div>
-									<vselect
-										label="title"
-										:options="categoriesSelectOptions"
-										v-model="currentCategoryOptionInSelect"
-									/>
+									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
+										Category
+										<input-field
+											extra-class="bg-gray-400"
+											v-model="form.project_category_id"
+											:errors="errors.approximately_time"
+											type="select"
+											:options="categoriesSelectOptions"
+											option-value-key="id"
+											option-name-key="title"
+										/>
+									</label>
 								</div>
 								<div>
 									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
-										Approximately time
+										Estimated time
 										<input-field extra-class="bg-gray-400" :value.sync="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
 									</label>
 								</div>
@@ -132,6 +139,11 @@
 								@toggle="toggleCountdown"
 								@update:seconds="updateSeconds"
 							/>
+							<Countdown
+								v-else
+								ref="countdown"
+								:init-task="form"
+							/>
 						</div>
 					</div>
 				</div>
@@ -160,26 +172,25 @@
 							<div>
 								<div class="flex">
 									<div class="w-6/12 mx-2">
-										<the-mask mask="##:##:##"
-															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-															type="text"
-															placeholder="00:00"
-															:value="secondsToStringTime(checkpoint.start)"
+										<input-field
+											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+											type="text"
+											placeholder="00:00"
+											:value="secondsToStringTime(checkpoint.start)"
 										/>
 									</div>
 									<div class="w-6/12 mx-2">
-										<the-mask mask="##:##:##"
-															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-															type="text"
-															placeholder="00:00"
-															:value="secondsToStringTime(checkpoint.end)"
+										<input-field
+											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+											type="text"
+											placeholder="00:00"
+											:value="secondsToStringTime(checkpoint.end)"
 										/>
 									</div>
 								</div>
 							</div>
 						</div>
 					</div>
-					<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
 					<div class="block text-center">
 						<button v-if="!isCreatingTask" @click="save"
 										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
@@ -206,7 +217,7 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
 				</transition>
-				<p class="text-gray-500 pl-4 pb-2">
+				<p v-if="approximatelyTime" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task: {{ approximatelyTime }}
 				</p>
 			</div>
@@ -215,12 +226,12 @@
 </template>
 
 <script>
+	import InputField from "../UIElements/InputField"
+
 	export default {
 		name: 'TasksForm',
-		metaInfo () {
-			return {
-				title: `${this.form.title}`
-			}
+		components: {
+			InputField
 		},
 		data() {
 			return {
@@ -264,17 +275,6 @@
 			projectCategoryId() {
 				return this.$route.params.project_category_id
 			},
-/*			title () {
-				if (this.form.start_time) {
-					const timestamp = this.form.common_time
-					const hours = Math.floor(timestamp / 60 / 60);
-					const minutes = Math.floor(timestamp / 60) - (hours * 60)
-					const seconds = timestamp % 60;
-					return `${hours}:${minutes}:${seconds}`
-				}
-
-				return this.form.title
-			}*/
 		},
 		async created () {
 			if (this.taskId) {
@@ -299,9 +299,6 @@
 				}
 			},
 			async updateCategory () {
-				if (this.currentCategoryOptionInSelect) {
-					this.form.project_category_id = this.currentCategoryOptionInSelect.id
-				}
 				if (this.approximatelyTime) {
 					const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
 					this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
@@ -375,9 +372,9 @@
 				return this.form.status
 			},
 			async toggleCountdown() {
+				this.form.id = null
 				const {data: {data}} = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.taskId}/countdown`)
-				this.form = data
-				this.$refs.countdown.$emit('update-task', this.form)
+				this.form = {...data}
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -434,7 +431,6 @@
 				this.$router.push('/tasks')
 			},
 			getDefaultForm() {
-				console.log('PRO ID: ', this.projectCategoryId)
 				return {
 					title: '',
 					status: 'created',

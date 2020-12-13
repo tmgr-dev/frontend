@@ -49,8 +49,8 @@
 			<template #modal-body>
 				<div class="countdown-modal-edit">
 					<input type="text" class="countdown-item" v-mask="'##'" v-model="countdown.hours">
-					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.minutes" />
-					<the-mask class="countdown-item" mask="F#" :tokens="timeTokens" v-model="countdown.seconds" />
+					<input-field class="countdown-item" v-model="countdown.minutes" />
+					<input-field class="countdown-item" v-model="countdown.seconds" />
 				</div>
 				<div class="flex items-center mt-5">
 					<button
@@ -66,16 +66,16 @@
 						Update
 					</button>
 				</div>
-
-
 			</template>
 		</modal>
 	</div>
 </template>
 
 <script>
+	import InputField from "../UIElements/InputField";
 	export default {
 		name: "Countdown",
+		components: {InputField},
 		props: {
 			initTask: {
 				required: true,
@@ -212,10 +212,10 @@
 			this.initCountdown()
 			this.renderTime()
 
-			this.$on('update-task', task => {
-				this.task = task
-				this.initCountdown()
-			})
+			// this.$on('update-task', task => {
+			// 	this.task = task
+			// 	this.initCountdown()
+			// })
 		},
 	}
 </script>
