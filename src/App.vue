@@ -14,7 +14,7 @@
 				@enter="enter"
 				@after-enter="afterEnter"
 			>
-				<component :is="Component" />
+				<component v-show="showComponent" :is="Component"></component>
 			</transition>
 		</router-view>
 	</div>
@@ -34,11 +34,18 @@
 			return {
 				prevHeight: 0,
 				transitionName: DEFAULT_TRANSITION,
+				showComponent: true
 			};
 		},
 		computed: {
 			navbarHidden () {
 				return this.$route.name !== 'Index'
+			}
+		},
+		watch: {
+			'$route.path' () {
+				this.showComponent = false
+				setTimeout(() => this.showComponent = true, 100)
 			}
 		},
 		methods: {
