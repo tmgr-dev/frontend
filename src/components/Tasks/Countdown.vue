@@ -48,9 +48,24 @@
 			@close="isShowModalTimer = false">
 			<template #modal-body>
 				<div class="countdown-modal-edit">
-					<input type="text" class="countdown-item" v-mask="'##'" v-model="countdown.hours">
-					<input-field class="countdown-item" v-model="countdown.minutes" />
-					<input-field class="countdown-item" v-model="countdown.seconds" />
+					<vue-the-mask
+						class="countdown-item"
+						mask="###"
+						:tokens="timeTokens"
+						v-model="countdown.hours"
+					/>
+					<vue-the-mask
+						class="countdown-item"
+						mask="F#"
+						:tokens="timeTokens"
+						v-model="countdown.minutes"
+					/>
+					<vue-the-mask
+						class="countdown-item"
+						mask="F#"
+						:tokens="timeTokens"
+						v-model="countdown.seconds"
+					/>
 				</div>
 				<div class="flex items-center mt-5">
 					<button

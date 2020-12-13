@@ -30,15 +30,6 @@
 								<div>
 									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
 										Category
-<!--										<input-field-->
-<!--											extra-class="bg-gray-400"-->
-<!--											v-model="form.project_category_id"-->
-<!--											:errors="errors.approximately_time"-->
-<!--											type="select"-->
-<!--											:options="categoriesSelectOptions"-->
-<!--											option-value-key="id"-->
-<!--											option-name-key="title"-->
-<!--										/>-->
 										<vue-select
 											label="title"
 											:options="categoriesSelectOptions"
@@ -177,19 +168,19 @@
 							<div>
 								<div class="flex">
 									<div class="w-6/12 mx-2">
-										<input-field
-											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-											type="text"
-											placeholder="00:00"
-											:model-value="secondsToStringTime(checkpoint.start)"
+										<vue-the-mask mask="##:##:##"
+															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+															type="text"
+															placeholder="00:00"
+															:value="secondsToStringTime(checkpoint.start)"
 										/>
 									</div>
 									<div class="w-6/12 mx-2">
-										<input-field
-											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-											type="text"
-											placeholder="00:00"
-											:model-value="secondsToStringTime(checkpoint.end)"
+										<vue-the-mask mask="##:##:##"
+															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
+															type="text"
+															placeholder="00:00"
+															:value="secondsToStringTime(checkpoint.end)"
 										/>
 									</div>
 								</div>

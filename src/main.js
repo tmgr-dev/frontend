@@ -18,7 +18,7 @@ import store from './store'
 import colorSchemes from './colors/schemes'
 
 // Directives
-import { mask } from 'vue-the-mask'
+import { VueTheMask, mask } from './components/UIElements/VueTheMask/index'
 import Tooltip from '@/directives/tooltip/src';
 import Selectable from '@/directives/selectable/src';
 
@@ -31,7 +31,7 @@ import './assets/styles/index.scss';
 const app = createApp(App)
 
 components.map(component => app.component(component.name, component))
-
+app.component(VueTheMask.name, VueTheMask)
 app.use(router)
 app.use(store)
 
