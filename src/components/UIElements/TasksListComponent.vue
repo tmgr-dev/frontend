@@ -1,12 +1,13 @@
 <template>
 	<div class="w-full items-center justify-center relative">
 		<transition name="bounce">
-			<div
+			<vue-draggable-resizable
 				v-if="showSelectedTasksCommonTime"
+				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px"
 				:resizable="false"
 				:w="250"
 				h="auto"
-				class="fixed rounded bg-green-600 py-5 px-2 cursor-pointer selected-tasks-popup">
+				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
 				<p class="text-white text-center">
 					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
 					{{ timeForModal }}
@@ -68,7 +69,7 @@
 							</span>
 					</button>
 				</div>
-			</div>
+			</vue-draggable-resizable>
 		</transition>
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
 			<div class="selection" :class="$color('borderSelection')"></div>
@@ -524,13 +525,5 @@
 		100% {
 			transform: scale(1);
 		}
-	}
-
-	.selected-tasks-popup {
-		z-index: 999999;
-		top: 5%;
-		right: 5%;
-		min-height: 150px;
-		min-width: 300px;
 	}
 </style>
