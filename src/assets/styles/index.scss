@@ -39,8 +39,7 @@ body {
 	vertical-align: text-top;
 }
 
-/*@import "tooltip";*/
-@import "~vue-directive-tooltip/src/css/index.scss";
+@import "../../directives/tooltip/src/css/index.scss";
 
 .custom-tooltip {
 	background: #616161;
