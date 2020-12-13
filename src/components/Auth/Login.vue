@@ -72,7 +72,6 @@
 		},
 		methods: {
 			async login() {
-				console.log(this.form)
 				const { ...loginData } = this.form
 
 				try {

@@ -192,7 +192,6 @@ export default {
 		}
 	},
 	async mounted() {
-		console.log('test')
 		await this.loadCategories()
 		await this.loadTasks()
 	},
@@ -216,7 +215,6 @@ export default {
 					to: '/projects-categories'
 				}
 			]
-			console.log(this.getProjectCategoriesBreadcrumbs())
 			return [...items, ...this.getProjectCategoriesBreadcrumbs()]
 		},
 		getProjectCategoriesBreadcrumbs() {

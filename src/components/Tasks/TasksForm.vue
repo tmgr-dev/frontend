@@ -395,7 +395,6 @@
 						}
 					})
 				} catch (e) {
-					console.log(e)
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors
 					}

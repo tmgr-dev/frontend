@@ -44,7 +44,6 @@ const mutations = {
 		state.user = user
 	},
 	colorScheme(state, colorScheme) {
-		console.log(colorScheme)
 		if (colorScheme == null) {
 			localStorage.removeItem('colorScheme')
 		} else {
