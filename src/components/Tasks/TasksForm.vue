@@ -355,7 +355,7 @@
 			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
-				data.common_time = data.common_time && !data.start_time ? data.common_time : 1
+				data.common_time = data.common_time || 0
 				if (data.approximately_time) {
 					this.approximatelyTime = this.toHHMM(data.approximately_time)
 				}

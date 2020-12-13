@@ -157,12 +157,11 @@
 				this.renderTime()
 			},
 			prepareCommonTime() {
-				if (!this.task.common_time) {
-					return
+				if (this.task.start_time) {
+					this.task.common_time += Math.floor(
+						((new Date()) - (new Date()).setTime(this.task.start_time * 1000)) / 1000
+					)
 				}
-				const currentTime = new Date().getTime() / 1000
-				this.task.common_time += currentTime.toFixed(1) - this.task.start_time
-				this.task.common_time = Math.floor(this.task.common_time)
 			},
 			initCountdown() {
 				if (!this.task.start_time) {
@@ -176,9 +175,9 @@
 			},
 			renderTime() {
 				let seconds = this.task.common_time
-				var second = seconds % 60
-				var minute = (seconds - second) / 60 | 0
-				var hour = minute / 60 | 0
+				const second = seconds % 60
+				let minute = (seconds - second) / 60 | 0
+				const hour = minute / 60 | 0
 				minute = minute - (hour * 60)
 
 				this.countdown.hours = this.prepareClockNumber(hour)
@@ -226,12 +225,10 @@
 
 			this.initCountdown()
 			this.renderTime()
-
-			// this.$on('update-task', task => {
-			// 	this.task = task
-			// 	this.initCountdown()
-			// })
 		},
+		beforeUnmount() {
+			clearInterval(this.countdownInterval)
+		}
 	}
 </script>
 
