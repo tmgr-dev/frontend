@@ -1,0 +1,47 @@
+<div>
+	<AuthBase>
+		<template #title>Welcome back!</template>
+		<template #body>
+			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
+				<div class="flex flex-col mt-4">
+					<h3 :style="{color: errors ? 'red' : 'initial'}">{{ message }}</h3>
+					<p v-if="errors instanceof String" :style="{color: 'red'}">{{ errors }}</p>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="email" name="email" :errors="errors.email" :value.sync="form.email" placeholder="E-mail"/>
+				</div>
+				<div class="flex flex-col mt-4">
+					<input-field type="password" name="password" :errors="errors.password" :value.sync="form.password"
+											 placeholder="Password"/>
+				</div>
+				<div class="flex items-center mt-4">
+					<label class="checkbox-wrapper">
+						<input type="checkbox" name="remember" class="mr-2">
+						<span class="checkmark"></span>
+						<span class="text-sm text-grey-dark select-none">Remember Me</span>
+					</label>
+				</div>
+				<div class="flex flex-row mt-8">
+					<button @click.prevent="login"
+									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded w-2/4">
+						<span class="relative">
+								Log In
+								<loader v-if="showLoader" :is-mini="true"/>
+						</span>
+					</button>
+					<router-link to="/register" class="bg-blue-300 hover:bg-blue-500 text-white text-sm text-center font-semibold py-2 ml-1 px-4 rounded w-2/4">
+						<span class="relative">
+								Register
+								<loader v-if="showLoader" :is-mini="true"/>
+						</span>
+					</router-link>
+				</div>
+			</form>
+		</template>
+		<template #footer>
+			<router-link to="/password/forget" class="no-underline hover:underline text-blue-dark text-xs">
+				Forgot Your Password?
+			</router-link>
+		</template>
+	</AuthBase>
+</div>

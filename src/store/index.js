@@ -1,13 +1,20 @@
-import { createStore } from 'vuex'
+import Vue from 'vue'
+import Vuex from 'vuex'
 import colorSchemes from '../colors/schemes'
+import axios from 'axios'
 
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
+
+Vue.use(Vuex)
 
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
 	token: localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null,
 	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
+	userSettings: {
+		showTooltips: true
+	}
 };
 
 const getters = {
@@ -15,7 +22,8 @@ const getters = {
 	token: state => state.token,
 	user: state => state.user,
 	isLoggedIn: state => state.token !== null,
-	colorScheme: state => state.colorScheme
+	colorScheme: state => state.colorScheme,
+	getUserSettings: state => state.userSettings
 };
 
 const mutations = {
@@ -38,7 +46,7 @@ const mutations = {
 		state.user = user
 	},
 	colorScheme(state, colorScheme) {
-		//console.log(colorScheme)
+		console.log(colorScheme)
 		if (colorScheme == null) {
 			localStorage.removeItem('colorScheme')
 		} else {
@@ -47,17 +55,38 @@ const mutations = {
 
 		state.colorScheme = colorScheme
 		document.querySelector('body').className = color('bgBody', colorScheme)
+	},
+	setUserSettings (state, settings) {
+		state.userSettings = settings
 	}
 }
 
 const actions = {
 	logout({ commit }) {
 		commit('token', null)
-		commit('colorScheme', 'default')
-	}
+	},
+	async loadUserSettings ({ commit }) {
+		try {
+			const { data: {data} } = await axios.get(`user/settings`)
+			if (data instanceof Object && data.hasOwnProperty('settings')) {
+				commit('setUserSettings', data.settings)
+			}
+		} catch (e) {
+			throw e
+		}
+	},
+	async putUserSettings ({ commit }, settings) {
+		try {
+			await axios.put(`user/settings`, settings)
+			commit('setUserSettings', settings)
+		} catch (e) {
+			console.error(e)
+			throw e
+		}
+	},
 }
 
-export default createStore({
+export default new Vuex.Store({
 	state,
 	getters,
 	mutations,

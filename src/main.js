@@ -1,36 +1,63 @@
-import { createApp } from "vue";
-import App from "./App";
-import router from "./routes/index";
-import store from "./store";
-import { axios, color } from "./bootstrap/globalProperties";
-import VueTheMask from "vue-the-mask";
-import { mask } from "vue-the-mask";
-import Tooltip from "vue-directive-tooltip";
+import Vue from 'vue'
+import router from './routes/index'
+import App from './App'
+import './assets/styles/index.scss';
+import axios from 'axios'
+import store from './store'
+import colorSchemes from './colors/schemes'
+import VueTheMask from 'vue-the-mask';
+import { mask } from 'vue-the-mask'
+import Tooltip from 'vue-directive-tooltip';
 import components from "@/bootstrap/globalComponents";
+import VueMeta from 'vue-meta';
+import VueSelect from 'vue-select'
+import 'vue-select/dist/vue-select.css';
+import VueDraggableResizable from 'vue-draggable-resizable'
 
-const app = createApp(App, {
-	data: () => ({
-		key: null
+// optionally import default styles
+import 'vue-draggable-resizable/dist/VueDraggableResizable.css'
+
+Vue.config.productionTip = false
+
+components.map(component => Vue.component(component.name, component))
+Vue.component('vselect', VueSelect)
+Vue.component('vue-draggable-resizable', VueDraggableResizable)
+Vue.use(VueMeta)
+
+axios.defaults.baseURL = store.getters.apiBaseUrl
+if (store.getters.token) {
+	axios.defaults.headers = {
+		Authorization: `Bearer ${store.getters.token.token}`,
+		'X-Requested-With': 'XMLHttpRequest',
+		'Cache-Control': 'no-cache',
+		'Pragma': 'no-cache',
+		'Expires': '0'
+	}
+	axios.get('user').then(({ data }) => {
+		store.commit('user', data)
 	})
-})
-app.use(store)
-app.use(router)
+}
+Vue.prototype.$axios = axios
 
-components.map(c => app.component(c.name, c))
+const color = colorKey => colorSchemes[store.getters.colorScheme][colorKey]
+Vue.prototype.$color = color
+document.querySelector('body').className = color('bgBody')
 
-app.config.globalProperties.$axios = axios
-app.config.globalProperties.$color = color
-
-app.directive(mask)
-app.use(Tooltip, {
+Vue.directive(mask)
+Vue.use(Tooltip, {
   delay: 50,
   placement: 'top',
   class: 'custom-tooltip',
   triggers: ['hover'],
   offset: 5
 })
-app.use(VueTheMask)
+Vue.use(VueTheMask)
 
-router.isReady().then(() => {
-	app.mount('#app')
-})
+new Vue({
+  router,
+  store,
+  render: h => h(App),
+  data: () => ({
+    key: null
+  })
+}).$mount('#app')

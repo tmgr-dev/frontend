@@ -1,22 +1,25 @@
 <template>
-  <div
-    class="overlay active"
-    :class="isCenter ? 'flex' : ''"
-    @click="close"
-  >
-    <div
-      class="modal"
-      :style="modalStyles"
-    >
-      <slot name="modal-body" />
-    </div>
-  </div>
+	<div class="overlay active"
+			@click="close"
+			:class="isCenter ? 'flex' : ''">
+		<div
+			class="modal"
+			:class="$color('modalBg')"
+			:style="modalStyles">
+			<slot name="modal-body"></slot>
+		</div>
+	</div>
 </template>
 
 <script>
 	export default {
 		name: "Modal",
 		props: {
+			closeOnBgClick: {
+				type: Boolean,
+				required: false,
+				default: true
+			},
 			show: {
 				type: Boolean,
 				required: false,
@@ -42,8 +45,10 @@
 		},
 		methods: {
 			close(e) {
-				if (e.target.classList.contains("overlay")) {
-					this.$emit("close");
+				if (this.closeOnBgClick) {
+					if (e.target.classList.contains("overlay")) {
+						this.$emit("close");
+					}
 				}
 			}
 		}
@@ -65,7 +70,7 @@
 
 		&.active {
 			transform: translate3d(0, 0, 0);
-			z-index: 100;
+			z-index: 9999;
 			opacity: 1;
 
 			.modal {
@@ -78,7 +83,6 @@
 	}
 
 	.modal {
-		background: #fff;
 		width: 80%;
 		margin: 50px auto;
 		padding: 30px;

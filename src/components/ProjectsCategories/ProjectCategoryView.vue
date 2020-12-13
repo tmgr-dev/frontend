@@ -7,12 +7,12 @@
 					<div class="bg-white">
 						<table class="w-full">
 							<tbody class="bg-white">
-							<tr v-for="item in 3" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
+							<tr v-for="item in 3" :key="item" class="accordion border-b border-grey-light hover:bg-gray-100" @click="panel = true">
 								<td class="flex inline-flex items-center">
-                        <span class="py-3 w-40">
-                            <p class="text-gray-800 text-sm">Project name</p>
-                            <p class="text-xs text-gray-600 font-medium">Process</p>
-                        </span>
+									<span class="py-3 w-40">
+										<p class="text-gray-800 text-sm">Project name</p>
+										<p class="text-xs text-gray-600 font-medium">Process</p>
+									</span>
 								</td>
 								<td class="hidden md:table-cell">
 									<p class="text-sm text-gray-700 font-medium">Tasks</p>
@@ -44,25 +44,25 @@
 </template>
 
 <script>
-export default {
-	name: 'ProjectCategoryView',
-	components: {},
-	props: [],
-	data () {
-		return {
-			h1: 'Project Category'
-		}
-	},
-	computed: {
+	export default {
+		name: 'ProjectCategoryView',
+		components: {},
+		props: [],
+		data () {
+			return {
+				h1: 'Project Category'
+			}
+		},
+		computed: {
 
-	},
-	mounted () {
+		},
+		mounted () {
 
-	},
-	methods: {
-		getActions () {
-			return []
+		},
+		methods: {
+			getActions () {
+				return []
+			}
 		}
 	}
-}
 </script>

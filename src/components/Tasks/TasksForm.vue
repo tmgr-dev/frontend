@@ -1,5 +1,4 @@
 <template>
-	<!--suppress HtmlUnknownTag -->
 	<BaseLayout>
 		<template #header>
 			<span>{{ form.title || h1.main }}</span>
@@ -7,15 +6,59 @@
 		<template #action>
 			<div class="sm:flex items-between text-center">
 				<router-link
-					v-if="!isCreate"
-					:to="!projectCategory ? '/tasks' : `/projects-categories/${projectCategory.id}/children/${getCategoryStatus()}`"
-					class="py-2 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+					v-if="!isCreatingTask"
+					:to="!currentCategory ? '/tasks' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+					class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
 					:class="`${$color('h1')}-800`"
 					type="button">
-					{{ projectCategory ? projectCategory.title : 'Tasks' }}
+					&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
 				</router-link>
 
-				<div v-if="!isCreate" class="text-base sm:text-lg ml-auto">
+				<div ref="editing_task_category" v-if="!isCreatingTask">
+					<a href="#" class="absolute right-0 top-0 text-gray-600" :class="$color('grayHover')" @click.prevent="showModalCategory">
+						<span class="material-icons text-lg">settings</span>
+					</a>
+
+					<modal
+						v-if="isShowModalCategory"
+						:modal-width="500"
+						:is-center="true"
+						:close-on-bg-click="false"
+						@close="isShowModalCategory = false">
+						<template #modal-body>
+							<form @submit.prevent="updateCategory">
+								<div>
+									<vselect
+										label="title"
+										:options="categoriesSelectOptions"
+										v-model="currentCategoryOptionInSelect"
+									/>
+								</div>
+								<div>
+									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
+										Approximately time
+										<input-field extra-class="bg-gray-400" :value.sync="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
+									</label>
+								</div>
+								<div class="flex items-center mt-5">
+									<button
+										type="button"
+										@click="isShowModalCategory = false"
+										class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+										Cancel
+									</button>
+									<button
+										type="submit"
+										class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+										Update
+									</button>
+								</div>
+							</form>
+						</template>
+					</modal>
+				</div>
+
+				<div v-if="!isCreatingTask" class="text-base sm:text-lg ml-auto">
 					<button type="button" @click="form.status = 'created'" :class="form.status !== `created` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none">
 						Created
 					</button>
@@ -38,7 +81,7 @@
 						<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
 							<div class="block w-full float-left">
 								<div class="mb-2">
-									<input-field v-model="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
+									<input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
 								</div>
 							</div>
 						</div>
@@ -52,7 +95,7 @@
 								<label class="block text-sm text-left font-bold mb-2" for="">
 									Description
 									<a
-										v-if="showEditDescription && !isCreate"
+										v-if="showEditDescription && !isCreatingTask"
 										href="#"
 										class="text-red-600 relative"
 										style="top:4px"
@@ -61,8 +104,8 @@
 									</a>
 								</label>
 								<input-field
-									v-if="showEditDescription || isCreate"
-									v-model="form.description"
+									v-if="showEditDescription || isCreatingTask"
+									:value.sync="form.description"
 									:errors="errors.description"
 									type="textarea"
 									placeholder="Description"
@@ -83,7 +126,7 @@
 					<div class="w-full h-full mt-5">
 						<div :class="`${$color('blocks')} p-5 h-full`">
 							<Countdown
-								v-if="form.id && showCountdown"
+								v-if="form.id"
 								ref="countdown"
 								:init-task="form"
 								@toggle="toggleCountdown"
@@ -93,11 +136,11 @@
 					</div>
 				</div>
 				<div class="w-full p-5">
-					<h2 class="text-2xl pt-5" v-if="!isCreate && form.checkpoints && form.checkpoints.length">
+					<h2 class="text-2xl pt-5" v-if="!isCreatingTask && form.checkpoints && form.checkpoints.length">
 						Checkpoints
 					</h2>
-					<div v-if="!isCreate" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
-						<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints">
+					<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
+						<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints" :key="v">
 							<div class="flex mb-2">
 								<div class="w-full mx-2 relative">
 									<span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
@@ -138,23 +181,23 @@
 					</div>
 					<!--			<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>-->
 					<div class="block text-center">
-						<button v-if="!isCreate" @click="save"
+						<button v-if="!isCreatingTask" @click="save"
 										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Save
 						</button>
-						<button v-if="isCreate" @click="create"
+						<button v-if="isCreatingTask" @click="create"
 										class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Create
 						</button>
-						<button v-if="isCreate" @click="cancel"
+						<button v-if="isCreatingTask" @click="cancel"
 										class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
 							Cancel
 						</button>
 						<button
-							v-if="!isCreate"
+							v-if="!isCreatingTask"
 							@click="addCheckpoint"
 							class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 							type="button">Add checkpoint</button>
@@ -163,6 +206,9 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
 				</transition>
+				<p class="text-gray-500 pl-4 pb-2">
+					Estimated time to complete the task: {{ approximatelyTime }}
+				</p>
 			</div>
 		</template>
 	</BaseLayout>
@@ -171,6 +217,11 @@
 <script>
 	export default {
 		name: 'TasksForm',
+		metaInfo () {
+			return {
+				title: `${this.form.title}`
+			}
+		},
 		data() {
 			return {
 				errors: {},
@@ -183,7 +234,6 @@
 					common_time: 0,
 					start_time: 0
 				},
-				parentCategories: [],
 				statuses: [
 					{value: 'created', name: `Created`},
 					{value: 'active', name: `Active`},
@@ -196,35 +246,72 @@
 					ArchiveTasksList: 'Archive tasks'
 				},
 				selected: false,
-				projectCategory: null,
 				form: this.getDefaultForm(),
-				showCountdown: true
+				isShowModalCategory: false,
+				categoriesSelectOptions: [],
+				currentCategory: '',
+				approximatelyTime: null,
+				currentCategoryOptionInSelect: null,
 			}
 		},
 		computed: {
 			taskId () {
 				return this.$route.params.id
 			},
-			isCreate() {
+			isCreatingTask() {
 				return !this.taskId
 			},
 			projectCategoryId() {
 				return this.$route.params.project_category_id
-			}
+			},
+/*			title () {
+				if (this.form.start_time) {
+					const timestamp = this.form.common_time
+					const hours = Math.floor(timestamp / 60 / 60);
+					const minutes = Math.floor(timestamp / 60) - (hours * 60)
+					const seconds = timestamp % 60;
+					return `${hours}:${minutes}:${seconds}`
+				}
+
+				return this.form.title
+			}*/
 		},
 		async created () {
-			this.loadCategories()
 			if (this.taskId) {
 				await this.loadModel()
 
 				window.onkeydown = this.getListener()
 			}
-			if (this.projectCategoryId && this.isCreate) {
+			if (this.projectCategoryId && this.isCreatingTask) {
 				this.form.project_category_id = this.projectCategoryId
 			}
 			await this.loadCategory()
 		},
 		methods: {
+			async showModalCategory () {
+				try {
+					this.isShowModalCategory = true
+					if (this.categoriesSelectOptions.length === 0) {
+						await this.loadCategories()
+					}
+				} catch (e) {
+					console.error(e)
+				}
+			},
+			async updateCategory () {
+				if (this.currentCategoryOptionInSelect) {
+					this.form.project_category_id = this.currentCategoryOptionInSelect.id
+				}
+				if (this.approximatelyTime) {
+					const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
+					this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
+				}
+
+				this.isShowModalCategory = false
+
+				await this.save()
+				await this.loadCategory()
+			},
 			getListener() {
 				return (e) => {
 					if (e.ctrlKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')) {
@@ -244,27 +331,42 @@
 				]
 				actions.push({
 					click: () => {
-						this[this.isCreate ? 'cancel' : 'goToCurrentTasks']()
+						this[this.isCreatingTask ? 'cancel' : 'goToCurrentTasks']()
 					},
-					label: this.isCreate ? 'Cancel' : 'Tasks'
+					label: this.isCreatingTask ? 'Cancel' : 'Tasks'
 				})
 				return actions
 			},
 			async loadCategories() {
 				const {data: {data}} = await this.$axios.get('project_categories?all')
-				this.parentCategories = data
+				this.categoriesSelectOptions = data
 			},
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
 					const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
-					this.projectCategory = data
+					this.currentCategory = data
+					this.currentCategoryOptionInSelect = data
 				}
 			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
 				data.common_time = data.common_time && !data.start_time ? data.common_time : 1
-				console.log(data.common_time)
+				if (data.approximately_time) {
+					this.approximatelyTime = this.toHHMM(data.approximately_time)
+				}
 				this.form = data
+			},
+			toHHMM (seconds) {
+				let hours   = Math.floor(seconds / 3600);
+				let minutes = Math.floor((seconds - (hours * 3600)) / 60);
+
+				if (hours   < 10) {
+					hours   = "0" + hours;
+				}
+				if (minutes < 10) {
+					minutes = "0" + minutes;
+				}
+				return hours + ':' + minutes;
 			},
 			getCategoryStatus() {
 				if (this.form.status === 'created' || this.form.status === 'active') {
@@ -286,14 +388,15 @@
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
-					console.log(data)
-					//this.showSavedAlert()
-					/*await this.$router.replace({
+					if (!this.isCreatingTask) {
+						this.showSavedAlert()
+					}
+					await this.$router.push({
 						name: 'TasksEdit',
 						params: {
 							id: data.id
 						}
-					})*/
+					})
 				} catch (e) {
 					console.log(e)
 					if (e.response && e.response && e.response.data.errors) {
@@ -309,8 +412,15 @@
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
+					if (data.approximately_time) {
+						this.approximatelyTime = this.toHHMM(data.approximately_time)
+					}
 					this.form = data
 					this.showSavedAlert()
+
+					const id = this.form.id
+					this.form.id = null
+					setTimeout(() => this.form.id = id, 1)
 				} catch (e) {
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors
@@ -384,39 +494,35 @@
 </script>
 
 <style lang="scss" scoped>
-.tasks-form {
-
-}
-
-.checkpoint-delete {
-	top: 9px;
-	right: 10px;
-	cursor: pointer;
-	opacity: 0.5;
-	&:hover {
-		opacity: 1;
+	.checkpoint-delete {
+		top: 9px;
+		right: 10px;
+		cursor: pointer;
+		opacity: 0.5;
+		&:hover {
+			opacity: 1;
+		}
 	}
-}
 
-.checkpoint-index {
-	width: fit-content;
-	top: 7px;
-	left: 10px;
-	cursor: pointer;
-	color: #00c300;
-	opacity: 0.5;
-	&:hover {
-		opacity: 1;
+	.checkpoint-index {
+		width: fit-content;
+		top: 7px;
+		left: 10px;
+		cursor: pointer;
+		color: #00c300;
+		opacity: 0.5;
+		&:hover {
+			opacity: 1;
+		}
 	}
-}
 
-.task-title-span {
-	max-width: 200px;
-	display: inline-block;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	top: 16px;
-	position: relative;
-}
+	.task-title-span {
+		max-width: 200px;
+		display: inline-block;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		top: 16px;
+		position: relative;
+	}
 </style>

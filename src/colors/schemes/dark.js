@@ -1,5 +1,5 @@
 export default {
-  bgBody: 'dark-bg-body',
+  bgBody: 'dark-bg-body night-mode',
   bgNav: 'bg-gray-900',
   blocks: 'bg-gray-900',
   input: 'bg-gray-800',
@@ -11,5 +11,10 @@ export default {
   textBreadcrumbs: 'text-white',
   navLinkFocused: 'text-green',
   bg: 'bg-gray-600',
-  buttonActionOpacity: 'opacity-50 hover:opacity-75'
+  buttonActionOpacity: 'opacity-50 hover:opacity-75',
+	grayHover: 'hover:text-gray-300',
+	modalBg: 'bg-gray-400',
+	settingsTextColor: 'text-gray-400',
+	taskSettingTextColor: 'text-gray-800',
+	borderSelection: 'border-gray-400'
 }

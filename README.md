@@ -1,4 +1,4 @@
-# SPA Task Manager  
+# [SPA Task Manager](http://tmgr.dev/)  
 
 Lightweight task manager application.
 
