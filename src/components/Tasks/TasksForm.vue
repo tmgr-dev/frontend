@@ -44,7 +44,7 @@
 								<div>
 									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
 										Estimated time
-										<input-field extra-class="bg-gray-400" :value.sync="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
+										<input-field extra-class="bg-gray-400" v-model="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
 									</label>
 								</div>
 								<div class="flex items-center mt-5">
@@ -88,7 +88,7 @@
 						<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
 							<div class="block w-full float-left">
 								<div class="mb-2">
-									<input-field :value.sync="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
+									<input-field v-model="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
 								</div>
 							</div>
 						</div>
@@ -112,7 +112,7 @@
 								</label>
 								<input-field
 									v-if="showEditDescription || isCreatingTask"
-									:value.sync="form.description"
+									v-model="form.description"
 									:errors="errors.description"
 									type="textarea"
 									placeholder="Description"
@@ -176,7 +176,7 @@
 											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
 											type="text"
 											placeholder="00:00"
-											:value="secondsToStringTime(checkpoint.start)"
+											:model-value="secondsToStringTime(checkpoint.start)"
 										/>
 									</div>
 									<div class="w-6/12 mx-2">
@@ -184,7 +184,7 @@
 											:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
 											type="text"
 											placeholder="00:00"
-											:value="secondsToStringTime(checkpoint.end)"
+											:model-value="secondsToStringTime(checkpoint.end)"
 										/>
 									</div>
 								</div>

@@ -43,7 +43,6 @@ app.config.globalProperties.$color = color
 document.querySelector('body').className = color('bgBody')
 
 app.directive('mask', mask)
-// app.use(VueTheMask)
 
 app.use(Tooltip, {
 	delay: 50,

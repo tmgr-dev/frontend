@@ -1,13 +1,13 @@
 <template>
 	<div class="w-full items-center justify-center relative">
 		<transition name="bounce">
-			<vue-draggable-resizable
+			<div
 				v-if="showSelectedTasksCommonTime"
-				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px"
+				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px; min-width: 300px;"
 				:resizable="false"
 				:w="250"
 				h="auto"
-				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
+				class="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
 				<p class="text-white text-center">
 					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
 					{{ timeForModal }}
@@ -69,7 +69,7 @@
 							</span>
 					</button>
 				</div>
-			</vue-draggable-resizable>
+			</div>
 		</transition>
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
 			<div class="selection" :class="$color('borderSelection')"></div>
@@ -223,15 +223,16 @@
 </template>
 
 <script>
-	import DropdownMenu from "@/components/UIElements/DropdownMenu";
-	import TasksListMixin from "@/mixins/TasksListMixin";
-	import selectable from 'vue-selectable';
+	import DropdownMenu from '@/components/UIElements/DropdownMenu';
+	import TasksListMixin from '@/mixins/TasksListMixin'
+	import selectable from 'vue-selectable'
 
 	export default {
 		name: "TasksListComponent",
 		components: {
 			DropdownMenu
 		},
+		emits: ['reload-tasks'],
 		props: {
 			tasks: {
 				required: false,
