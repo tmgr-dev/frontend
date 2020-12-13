@@ -1,25 +1,36 @@
-import { createApp, h } from 'vue'
-import router from './routes/index'
-import App from './App'
-import './assets/styles/index.scss';
-import axios from 'axios'
-import store from './store'
-import colorSchemes from './colors/schemes'
-import { mask } from 'vue-the-mask'
-import Tooltip from 'vue-directive-tooltip';
-import components from "@/bootstrap/globalComponents";
-import VueSelect from 'vue-select'
-import 'vue-select/dist/vue-select.css';
-import VueDraggableResizable from 'vue-draggable-resizable'
+/**
+ * TODO: Needs refactoring
+ */
 
-// optionally import default styles
-import 'vue-draggable-resizable/dist/VueDraggableResizable.css'
+import { createApp, h } from 'vue'
+
+// Vue Application
+import App from './App'
+
+// HTTP client
+import axios from 'axios'
+
+// Vue plugins
+import router from './routes/index'
+import store from './store'
+
+// Color schemes
+import colorSchemes from './colors/schemes'
+
+// Directives
+import { mask } from 'vue-the-mask'
+import Tooltip from '@/directives/tooltip/src';
+
+// Load components
+import components from "@/bootstrap/globalComponents";
+
+// Styles
+import './assets/styles/index.scss';
 
 const app = createApp(App)
 
 components.map(component => app.component(component.name, component))
-app.component('vselect', VueSelect)
-app.component('vue-draggable-resizable', VueDraggableResizable)
+
 app.use(router)
 app.use(store)
 
