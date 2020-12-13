@@ -10,7 +10,7 @@ import DayNightSwitch from "../components/UIElements/DayNightSwitch";
 import AccountDropdown from '@/components/UIElements/AccountDropdown';
 import Alert from '@/components/UIElements/Alert';
 import VueDraggableResizable from '@/components/UIElements/VueDraggableResizable/VueDraggableResizable';
-
+import VueSelect from '@/components/UIElements/VueSelect';
 
 export default [
 	Alert,
@@ -24,5 +24,6 @@ export default [
 	NewButton,
 	Loader,
 	AccountDropdown,
-	VueDraggableResizable
+	VueDraggableResizable,
+	VueSelect
 ]

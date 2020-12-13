@@ -30,14 +30,19 @@
 								<div>
 									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
 										Category
-										<input-field
-											extra-class="bg-gray-400"
-											v-model="form.project_category_id"
-											:errors="errors.approximately_time"
-											type="select"
+<!--										<input-field-->
+<!--											extra-class="bg-gray-400"-->
+<!--											v-model="form.project_category_id"-->
+<!--											:errors="errors.approximately_time"-->
+<!--											type="select"-->
+<!--											:options="categoriesSelectOptions"-->
+<!--											option-value-key="id"-->
+<!--											option-name-key="title"-->
+<!--										/>-->
+										<vue-select
+											label="title"
 											:options="categoriesSelectOptions"
-											option-value-key="id"
-											option-name-key="title"
+											v-model="currentCategoryOptionInSelect"
 										/>
 									</label>
 								</div>
@@ -298,14 +303,26 @@
 					console.error(e)
 				}
 			},
+			// async updateCategory () {
+			// 	if (this.approximatelyTime) {
+			// 		const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
+			// 		this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
+			// 	}
+			//
+			// 	this.isShowModalCategory = false
+			//
+			// 	await this.save()
+			// 	await this.loadCategory()
+			// },
 			async updateCategory () {
+				if (this.currentCategoryOptionInSelect) {
+					this.form.project_category_id = this.currentCategoryOptionInSelect.id
+				}
 				if (this.approximatelyTime) {
 					const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
 					this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
 				}
-
 				this.isShowModalCategory = false
-
 				await this.save()
 				await this.loadCategory()
 			},
