@@ -5,7 +5,6 @@ import './assets/styles/index.scss';
 import axios from 'axios'
 import store from './store'
 import colorSchemes from './colors/schemes'
-import VueTheMask from 'vue-the-mask';
 import { mask } from 'vue-the-mask'
 import Tooltip from 'vue-directive-tooltip';
 import components from "@/bootstrap/globalComponents";
@@ -44,6 +43,8 @@ app.config.globalProperties.$color = color
 document.querySelector('body').className = color('bgBody')
 
 app.directive('mask', mask)
+// app.use(VueTheMask)
+
 app.use(Tooltip, {
 	delay: 50,
 	placement: 'top',
@@ -51,7 +52,7 @@ app.use(Tooltip, {
 	triggers: ['hover'],
 	offset: 5
 })
-app.use(VueTheMask)
+
 app.mount('#app')
 
 export default app

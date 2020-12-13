@@ -1,17 +1,22 @@
 <template>
 	<div id="app" :class="$color('textMain')">
-		<transition name="fade" mode="out-in">
+		<transition
+			name="fade"
+			mode="out-in"
+		>
 			<Navbar v-if="$route.meta.navbarHidden" />
 		</transition>
-
-		<transition
-			:name="transitionName"
-			mode="out-in"
-			@beforeLeave="beforeLeave"
-			@enter="enter"
-			@afterEnter="afterEnter">
-			<router-view :key="$route.path"></router-view>
-		</transition>
+		<router-view :key="$route.path" v-slot="{ Component }">
+			<transition
+				:name="transitionName"
+				mode="out-in"
+				@before-leave="beforeLeave"
+				@enter="enter"
+				@after-enter="afterEnter"
+			>
+				<component :is="Component" />
+			</transition>
+		</router-view>
 	</div>
 </template>
 
