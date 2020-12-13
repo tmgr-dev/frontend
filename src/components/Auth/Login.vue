@@ -17,8 +17,13 @@
 					/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="password" name="password" :errors="errors.password" v-model="form.password"
-											 placeholder="Password"/>
+					<input-field
+						type="password"
+						name="password"
+						:errors="errors.password"
+						v-model="form.password"
+					  placeholder="Password"
+					/>
 				</div>
 				<div class="flex items-center mt-4">
 					<label class="checkbox-wrapper">
