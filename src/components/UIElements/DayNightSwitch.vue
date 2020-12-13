@@ -14,19 +14,19 @@
     export default {
         name: "DayNightSwitch",
         props: {
-            value: {
+            modelValue: {
                 type: Boolean,
                 required: true
             }
         },
         watch: {
             nightMode () {
-                this.$emit('change', this.nightMode)
+                this.$emit('update:modelValue', this.nightMode)
             }
         },
         data () {
             return {
-                nightMode: this.value
+                nightMode: this.modelValue
             }
         },
         methods: {

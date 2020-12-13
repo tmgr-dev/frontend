@@ -35,7 +35,7 @@
 					</li>
 				</ul>
 				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
-					<day-night-switch :value.sync="switchOn"/>
+					<day-night-switch v-model="switchOn"/>
 				</span>
 				<AccountDropdown />
 			</div>
