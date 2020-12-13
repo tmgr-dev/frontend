@@ -37,17 +37,19 @@
 				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
 					<day-night-switch v-model="switchOn"/>
 				</span>
-				<AccountDropdown />
+				<account-dropdown />
 			</div>
 		</div>
 	</nav>
 </template>
 
 <script>
-	import DayNightSwitch from "./DayNightSwitch";
+	import DayNightSwitch from './DayNightSwitch'
+	import AccountDropdown from './AccountDropdown'
+
 	export default {
 		name: 'Navbar',
-		components: {DayNightSwitch},
+		components: {AccountDropdown, DayNightSwitch},
 		computed: {
 			switchOn: {
 				get () {

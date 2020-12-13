@@ -59,8 +59,9 @@ const mutations = {
 }
 
 const actions = {
-	logout({ commit }) {
-		commit('token', null)
+	logout() {
+		localStorage.clear()
+		document.location.reload()
 	},
 	async loadUserSettings ({ commit }) {
 		try {
