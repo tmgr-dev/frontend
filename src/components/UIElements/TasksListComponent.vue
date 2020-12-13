@@ -3,11 +3,10 @@
 		<transition name="bounce">
 			<div
 				v-if="showSelectedTasksCommonTime"
-				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px; min-width: 300px;"
 				:resizable="false"
 				:w="250"
 				h="auto"
-				class="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
+				class="fixed rounded bg-green-600 py-5 px-2 cursor-pointer selected-tasks-popup">
 				<p class="text-white text-center">
 					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
 					{{ timeForModal }}
@@ -225,7 +224,6 @@
 <script>
 	import DropdownMenu from '@/components/UIElements/DropdownMenu';
 	import TasksListMixin from '@/mixins/TasksListMixin'
-	import selectable from 'vue-selectable'
 
 	export default {
 		name: "TasksListComponent",
@@ -260,7 +258,6 @@
 			}
 		},
 		mixins: [ TasksListMixin ],
-		directives: { selectable },
 		data: () => ({
 			showSelectedTasksCommonTime: false,
 			selected: [],
@@ -527,5 +524,13 @@
 		100% {
 			transform: scale(1);
 		}
+	}
+
+	.selected-tasks-popup {
+		z-index: 999999;
+		top: 5%;
+		right: 5%;
+		min-height: 150px;
+		min-width: 300px;
 	}
 </style>

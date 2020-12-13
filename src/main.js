@@ -20,6 +20,7 @@ import colorSchemes from './colors/schemes'
 // Directives
 import { mask } from 'vue-the-mask'
 import Tooltip from '@/directives/tooltip/src';
+import Selectable from '@/directives/selectable/src';
 
 // Load components
 import components from "@/bootstrap/globalComponents";
@@ -62,6 +63,7 @@ app.use(Tooltip, {
 	triggers: ['hover'],
 	offset: 5
 })
+app.use(Selectable)
 
 app.mount('#app')
 
