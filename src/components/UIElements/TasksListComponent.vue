@@ -83,18 +83,25 @@
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="() => {}">
 								<div>
-									<div>
+									<div class="flex">
 										<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
 											{{ task.title }}
 										</router-link>
-										<router-link
-											v-if="task.category && showCategoryBadges"
-											tag="button"
-											:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
-											class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base"
-										>
-											{{ task.category.title }}
-										</router-link>
+										<div class="flex items-start task-category-in-task">
+											<router-link
+												v-if="task.category && showCategoryBadges"
+												tag="button"
+												:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
+												class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base"
+											>
+												{{ task.category.title }}
+											</router-link>
+											<router-link
+												:to="`/${task.category ? 'project-categories/' + task.category.id + '/' : ''}tasks/create`" title="Add task to category"
+												class="opacity-25 hover:opacity-100 hidden md:inline add-task-to-category-from-task-category">
+												<span class="material-icons text-3xl -mt-1">add_circle_outline</span>
+											</router-link>
+										</div>
 									</div>
 									<div class="flex items-start">
 										<span>
@@ -480,7 +487,7 @@
 	}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 	.time-for-modal {
 		font-size: 20px;
 		color: #3c3c3c;
@@ -524,6 +531,17 @@
 		}
 		100% {
 			transform: scale(1);
+		}
+	}
+
+	.task-category-in-task {
+		.add-task-to-category-from-task-category {
+			display: none;
+		}
+		&:hover {
+			.add-task-to-category-from-task-category {
+				display: inherit;
+			}
 		}
 	}
 </style>
