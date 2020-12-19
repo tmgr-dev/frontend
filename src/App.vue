@@ -22,6 +22,7 @@
 
 <script>
 	import Navbar from "@/components/UIElements/Navbar";
+	import './assets/styles/index.scss';
 
 	const DEFAULT_TRANSITION = 'fade'
 

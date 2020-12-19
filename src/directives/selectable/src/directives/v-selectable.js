@@ -3,7 +3,6 @@ import selectable, { objectAssignSimple } from './selectable';
 const objectAssign = Object.assign || objectAssignSimple;
 
 function initSelectable(el, params, arg) {
-	console.log(el, params, arg)
 	el.selectable = new selectable(objectAssign({
 		boundingBox: !!params.constraint ? document.querySelector(params.constraint) : el,
 		selectBoxSelector: params.box || '.selection',
