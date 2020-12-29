@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		Login
+	</teleport>
 	<AuthBase>
 		<template #title>Welcome back!</template>
 		<template #body>

@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		Restore Password
+	</teleport>
 	<AuthBase>
 		<template #title>Restore Password</template>
 		<template #body>

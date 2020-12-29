@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		{{ form.title || h1.main }}
+	</teleport>
 	<BaseLayout>
 		<template #header>
 			<span>{{ form.title || h1.main }}</span>

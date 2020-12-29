@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		Registration
+	</teleport>
 	<AuthBase>
 		<template #title>Hi there!</template>
 		<template #body>

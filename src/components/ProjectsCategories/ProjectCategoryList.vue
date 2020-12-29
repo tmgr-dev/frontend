@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		{{ category ? category.title : h1 }}
+	</teleport>
 	<div>
 		<BaseLayout>
 			<template #header>{{ category ? category.title : h1 }}</template>

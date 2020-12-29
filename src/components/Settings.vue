@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		Settings
+	</teleport>
 	<BaseLayout>
 		<template #header>
 			Settings

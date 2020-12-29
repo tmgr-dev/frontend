@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title" >
+		{{ h1[$route.name] }}
+	</teleport>
 	<BaseLayout>
 		<template #header>
 			{{ h1[$route.name] }}
