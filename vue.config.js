@@ -10,16 +10,18 @@ module.exports = {
       .loader('url-loader')
       .tap(options => Object.assign(options, { limit: 10240 }))
 
-		config.output
-			.filename(`js/[name].[contenthash:8].${currentTime}.js`)
-			.chunkFilename(`js/[name].[contenthash:8].${currentTime}.js`)
-		config
-			.plugin('extract-css')
-			.tap(args => {
-				args[0].filename = `css/[name].[contenthash:8].${currentTime}.css`
-				args[0].chunkFilename = `css/[name].[contenthash:8].${currentTime}.css`
-				args[0].allChunks = true
-				return args
-			})
+		if (config.get('mode') === 'production') {
+			config.output
+				.filename(`js/[name].[contenthash:8].${currentTime}.js`)
+				.chunkFilename(`js/[name].[contenthash:8].${currentTime}.js`)
+
+			config.plugin('extract-css')
+				.tap(args => {
+					args[0].filename = `css/[name].[contenthash:8].${currentTime}.css`
+					args[0].chunkFilename = `css/[name].[contenthash:8].${currentTime}.css`
+					args[0].allChunks = true
+					return args
+				})
+		}
   }
 }
