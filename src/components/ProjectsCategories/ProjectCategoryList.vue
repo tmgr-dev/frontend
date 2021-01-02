@@ -157,6 +157,7 @@
 				<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
 			</template>
 		</BaseLayout>
+		<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined"/>
 	</div>
 </template>
 
@@ -164,9 +165,12 @@
 import Breadcrumbs from '../UIElements/Breadcrumbs'
 import TasksListComponent from "../UIElements/TasksListComponent";
 import LoadingButtonActions from "@/mixins/LoadingButtonActions";
+import Confirm from '../UIElements/Confirm'
+
 export default {
 	name: 'ProjectCategoryList',
 	components: {
+		Confirm,
 		Breadcrumbs,
 		TasksListComponent
 	},
@@ -183,7 +187,8 @@ export default {
 			category: null,
 			parentCategories: [],
 			showLoader: true,
-			isLoadingActions: {}
+			isLoadingActions: {},
+			confirm: null
 		}
 	},
 	computed: {
@@ -199,6 +204,9 @@ export default {
 		await this.loadTasks()
 	},
 	methods: {
+		showConfirm (title, body, action) {
+			this.confirm = {title, body, action}
+		},
 		async loadTasks() {
 			const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
 			this.setLoadingActions(data)
@@ -261,8 +269,16 @@ export default {
 			this.showLoader = false
 		},
 		async deleteCategory(category) {
-			await this.$axios.delete(`project_categories/${category.id}`)
-			await this.loadCategories()
+			this.showConfirm('Delete category', 'Are you shure?', async () => {
+				try {
+					await this.$axios.delete(`project_categories/${category.id}`)
+				} catch (e) {
+
+				} finally {
+					await this.loadCategories()
+					this.confirm = null
+				}
+			})
 		},
 		extractParents(category, parents = []) {
 			if (!category.parent_category) {

@@ -6,6 +6,7 @@ export default {
   blocksHover: 'bg-gray-800',
   navTextUser: 'text-white',
   textMain: 'dark-text-main',
+	textModal: 'text-main',
   borderMain: 'border-gray-700',
   h1: 'text-white',
   textBreadcrumbs: 'text-white',

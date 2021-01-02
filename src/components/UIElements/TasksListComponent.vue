@@ -227,15 +227,18 @@
 			</modal>
 		</div>
 	</div>
+	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined"/>
 </template>
 
 <script>
 	import DropdownMenu from '@/components/UIElements/DropdownMenu';
 	import TasksListMixin from '@/mixins/TasksListMixin'
+	import Confirm from "@/components/UIElements/Confirm";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			Confirm,
 			DropdownMenu
 		},
 		emits: ['reload-tasks'],
@@ -271,7 +274,8 @@
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
-			timeForModal: null
+			timeForModal: null,
+			confirm: null
 		}),
 		computed: {
 			userSettings () {
@@ -279,6 +283,9 @@
 			}
 		},
 		methods: {
+			showConfirm (title, body, action) {
+				this.confirm = {title, body, action}
+			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true
 				await this.$axios.delete(`tasks/${task.id}/countdown`)
@@ -372,17 +379,21 @@
 				this.selecting = []
 			},
 			async deleteTask (task, dotId = null, loadTasks = true) {
-				try {
-					this.setLoadingAction(dotId)
-					await this.$axios.delete(`/tasks/${task.id}`)
-					if (loadTasks) {
-						await this.loadTasks()
+				const deleteTask = async () => {
+					try {
+						this.setLoadingAction(dotId)
+						await this.$axios.delete(`/tasks/${task.id}`)
+						if (loadTasks) {
+							await this.loadTasks()
+						}
+					} catch (e) {
+						console.error(e)
+					} finally {
+						this.setLoadingAction(dotId, false)
+						this.confirm = undefined
 					}
-				} catch (e) {
-					console.error(e)
-				} finally {
-					this.setLoadingAction(dotId, false)
 				}
+				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
 			},
 			async deleteSelectedTasks () {
 				for (let i = 0; i < this.tasks.length; ++i) {
