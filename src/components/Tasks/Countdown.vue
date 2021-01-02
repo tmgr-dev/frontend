@@ -1,4 +1,7 @@
 <template>
+	<teleport to="title">
+		 &nbsp;{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
+	</teleport>
 	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task">
 		<div class="relative inline-block">
 			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none" style="opacity: 0.1">
