@@ -9,6 +9,7 @@
 				<breadcrumbs
 					:current="category ? category.title : ''"
 					:items="getBreadcrumbs()"
+					:drop="drop"
 				/>
 				<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
 					<router-link
@@ -29,14 +30,18 @@
 				<table v-if="showDefaultList" class="w-full shadow-lg rounded mt-5">
 					<tbody :class="`${$color('blocks')}`">
 					<tr v-for="category in categories"
-							:key="category.id"
-							:class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`"
-							@click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})">
+						:key="category.id"
+						:class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`"
+						@click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})"
+						@drop="drop($event)"
+						@dragenter.prevent
+						@dragover.prevent
+					>
 						<td class="flex inline-flex items-center">
-						<span class="py-3 w-40">
-							<p :class="`${$color('textMain')}-800 text-sm`">{{ category.title }}</p>
-							<p :class="`text-xs ${$color('textMain')}-600 font-medium`">Process</p>
-						</span>
+							<span class="py-3 w-40">
+								<p :class="`${$color('textMain')}-800 text-sm`">{{ category.title }}</p>
+								<p :class="`text-xs ${$color('textMain')}-600 font-medium`">Process</p>
+							</span>
 						</td>
 						<td class="hidden md:table-cell">
 							<p :class="`text-sm ${$color('textMain')}-700 font-medium`">Projects</p>
@@ -61,10 +66,18 @@
 					</tbody>
 				</table>
 				<div v-else-if="categories && categories.length > 0">
-					<div v-for="category in categories" class="w-full mt-2" :key="category.id">
+					<div
+						 v-for="category in categories"
+						 :class="`w-full mt-2`"
+						 :key="category.id"
+						 @drop="drop($event, category)"
+						 @dragenter.prevent="category.hoverClass = 'bg-red-500'"
+						 @dragover.prevent="category.hoverClass = 'bg-red-500'"
+						 @dragleave="category.hoverClass = ''"
+					>
 						<div class="shadow-xl rounded-lg md:flex">
 							<div class="w-full">
-								<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
+								<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')} ${category.hoverClass}`">
 									<div class="flex justify-between items-center">
 										<div>
 											<p
@@ -149,6 +162,7 @@
 						:use-task-status-for-buttons="true"
 						:show-category-badges="false"
 						ref="tasksListComponent"
+						draggable
 					/>
 					<div v-else style="font-style: italic; font-size: 18px;" class="mt-5 text-center">
 						You don't have tasks in the category
@@ -204,6 +218,18 @@ export default {
 		await this.loadTasks()
 	},
 	methods: {
+		async drop (event, category) {
+			const taskId = event.dataTransfer.getData('task-id')
+			const categoryId = category.id
+
+			category.hoverClass = ''
+
+			await this.$axios.patch(`tasks/${taskId}`, {
+				project_category_id: categoryId
+			})
+			this.loadCategories()
+			this.loadTasks()
+		},
 		showConfirm (title, body, action) {
 			this.confirm = {title, body, action}
 		},
@@ -223,7 +249,10 @@ export default {
 			const items = [
 				{
 					label: 'Categories',
-					to: '/projects-categories'
+					to: '/projects-categories',
+					payload: {
+						id: null
+					}
 				}
 			]
 			return [...items, ...this.getProjectCategoriesBreadcrumbs()]
@@ -235,7 +264,8 @@ export default {
 			const result = []
 			this.parentCategories.map(item => result.push({
 				label: item.title,
-				to: `/projects-categories/${item ? item.id + '/children' : ''}`
+				to: `/projects-categories/${item ? item.id + '/children' : ''}`,
+				payload: item
 			}))
 			return result
 		},

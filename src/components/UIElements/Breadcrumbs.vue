@@ -16,6 +16,10 @@
             v-for="(item, i) in items"
             :key="i"
             class="breadcrumb-item  inline text-gray-600"
+            @drop="drop($event, item.payload)"
+            @dragenter.prevent="item.payload.hoverClass = 'bg-red-500'"
+            @dragover.prevent="item.payload.hoverClass = 'bg-red-500'"
+            @dragleave="item.payload.hoverClass = ''"
           >
             <router-link
               :to="item.to"
@@ -66,7 +70,12 @@
 				required: false,
 				type: String,
 				default: 'Current page'
-			}
+			},
+      drop: {
+			  type: Function,
+        required: false,
+        default: () => () => {}
+      }
 		}
 	}
 </script>

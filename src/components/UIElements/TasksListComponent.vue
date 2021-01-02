@@ -72,12 +72,17 @@
 			</vue-draggable-resizable>
 		</transition>
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
-			<div class="selection" :class="$color('borderSelection')"></div>
+<!--			<div class="selection" :class="$color('borderSelection')"></div>-->
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
 				:class="{ selected: !!selected[i], selecting: !!selecting[i] }"
-				class="w-full px-2 mt-2 selectable">
+				class="w-full px-2 mt-2 selectable"
+				:draggable="draggable"
+				:data-task-id="task.id"
+				@dragstart="onDragStart($event, task)"
+				@dragend="onDragEnd($event, task)"
+			>
 				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
@@ -266,6 +271,11 @@
 			isLoadingActions: {
 				required: true,
 				type: Object
+			},
+			draggable: {
+				type: Boolean,
+				required: false,
+				default: false
 			}
 		},
 		mixins: [ TasksListMixin ],
@@ -283,6 +293,12 @@
 			}
 		},
 		methods: {
+			onDragStart (event, task) {
+				event.dataTransfer.setData('task-id', task.id)
+			},
+			onDragEnd (event, task) {
+				console.log('exit')
+			},
 			showConfirm (title, body, action) {
 				this.confirm = {title, body, action}
 			},
@@ -554,5 +570,14 @@
 				display: inherit;
 			}
 		}
+	}
+
+	.user-select-none {
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		-khtml-user-select: none;
+		-moz-user-select: none;
+		-ms-user-select: none;
+		user-select: none;
 	}
 </style>

@@ -453,6 +453,9 @@ export default class selectable {
 	 * Renders current selection state
 	 */
 	render() {
+		if (!this.selectBox) {
+			return;
+		}
 		let elStyle = this.selectBox.style;
 		if (this.dragging) {
 			let box = this.getSelectionBox();
