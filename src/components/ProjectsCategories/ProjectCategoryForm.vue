@@ -158,16 +158,22 @@
 				this.availableSettings = data
 			},
 			initSettings(availableSettings, settings = []) {
-				availableSettings.forEach((item, index) => {
+				return availableSettings.map((item, index) => {
 					console.log(settings, this.getSettingById(settings, item.id), item.id)
-					this.settings[index] = this.getSettingById(settings, item.id, {
+					const setting = this.getSettingById(settings, item.id, {
 						id: item.id,
 						value: ''
 					})
+					this.settings[index] = setting
+					item.show_custom_value_input = item.default_values && item.default_values.findIndex(val => val.value === setting.value) === -1
 				})
 			},
 			getSettingById(settings, id, defaultResult = null) {
-				return settings.find(setting => setting.id === id) || defaultResult
+				const result = settings.find(setting => setting.id === id) || defaultResult
+				return result
+			},
+			isNotDefaultValue(value) {
+				return !this.availableSettings.find(setting => setting.value === value)
 			},
 			async create(withRoutePush = true) {
 				if (!this.form.project_category_id) {
