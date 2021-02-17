@@ -225,6 +225,7 @@
 </template>
 
 <script>
+	import moment from 'moment'
 	import InputField from "../UIElements/InputField"
 
 	export default {
@@ -278,9 +279,9 @@
 		async created () {
 			if (this.taskId) {
 				await this.loadModel()
-
 				window.onkeydown = this.getListener()
 			}
+
 			if (this.projectCategoryId && this.isCreatingTask) {
 				this.form.project_category_id = this.projectCategoryId
 			}
@@ -354,6 +355,16 @@
 					const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
 					this.currentCategory = data
 					this.currentCategoryOptionInSelect = data
+
+					if (!!this.form.id || this.currentCategory.settings.length === 0) {
+						return
+					}
+
+					this.currentCategory.settings.forEach(setting => {
+						if (setting.key === 'task_name_pattern_date&time') {
+							this.form.title = moment().format(setting.value)
+						}
+					})
 				}
 			},
 			async loadModel() {
