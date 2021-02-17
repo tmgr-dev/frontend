@@ -94,7 +94,6 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your project category"/>
 				</transition>
-				Settings: {{ settings }}
 			</div>
 		</template>
 	</BaseLayout>
