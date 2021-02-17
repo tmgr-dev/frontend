@@ -94,6 +94,7 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your project category"/>
 				</transition>
+				Settings: {{ settings }}
 			</div>
 		</template>
 	</BaseLayout>
@@ -130,14 +131,14 @@
 				return this.$route.params.id
 			}
 		},
-		mounted() {
+		async mounted() {
 			this.setFormTexts()
-			this.loadParentCategories()
-			this.loadProjectCategorySettings()
+			await this.loadParentCategories()
 
 			if (!this.isCreate) {
-				this.loadModel()
+				await this.loadModel()
 			}
+			await this.loadProjectCategorySettings()
 		},
 		methods: {
 			showSavedAlert() {
@@ -154,13 +155,20 @@
 			},
 			async loadProjectCategorySettings() {
 				const {data: {data}} = await this.$axios.get('project_categories/settings')
-				data.forEach((item, index) => {
-					this.settings[index] = {
+				this.initSettings(data, this.form.settings)
+				this.availableSettings = data
+			},
+			initSettings(availableSettings, settings = []) {
+				availableSettings.forEach((item, index) => {
+					console.log(settings, this.getSettingById(settings, item.id), item.id)
+					this.settings[index] = this.getSettingById(settings, item.id, {
 						id: item.id,
 						value: ''
-					}
+					})
 				})
-				this.availableSettings = data
+			},
+			getSettingById(settings, id, defaultResult = null) {
+				return settings.find(setting => setting.id === id) || defaultResult
 			},
 			async create(withRoutePush = true) {
 				if (!this.form.project_category_id) {
@@ -170,6 +178,7 @@
 				if (!this.isCreate) {
 					const {data: {data}} = await this.$axios.put(`project_categories/${this.form.id}`, this.form)
 					this.form = data
+					await this.saveSettings(this.settings)
 					this.showSavedAlert()
 					return
 				}
@@ -179,8 +188,11 @@
 				if (!withRoutePush) {
 					return
 				}
-				//this.$router.push({name: 'ProjectCategoryEdit', params: {id: data.id}})
 				await this.$router.push('/projects-categories')
+			},
+			async saveSettings(settings) {
+				const {data: {data}} = await this.$axios.put(`/project_categories/${this.form.id}/settings`, settings)
+				this.initSettings(this.availableSettings, data.settings)
 			},
 			async createAndContinue() {
 				await this.create(false)
