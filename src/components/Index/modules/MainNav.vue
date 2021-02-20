@@ -71,7 +71,7 @@
             </router-link>
             <router-link
               v-else
-              to="/tasks"
+              to="/"
               class="inline-block text-white no-underline hover:text-gray-200 hover:text-underline py-2 px-4"
               href="#"
             >

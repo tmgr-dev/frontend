@@ -15,7 +15,7 @@
 				<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
 					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
 				</a>
-				<router-link :to="`/tasks/create`" title="Add Task" class="pr-5">
+				<router-link :to="`/create`" title="Add Task" class="pr-5">
 					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
 				</router-link>
 			</div>

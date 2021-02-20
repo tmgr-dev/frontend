@@ -89,7 +89,7 @@
 							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="() => {}">
 								<div>
 									<div class="flex">
-										<router-link :to="`/tasks/${task.id}/edit`" class="font-bold text-xl">
+										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl">
 											{{ task.title }}
 										</router-link>
 										<div class="flex items-start task-category-in-task">
@@ -118,7 +118,7 @@
 								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
 								<div class="hidden lg:flex items-center">
 									<new-button
-										@click="$router.push(`/tasks/${task.id}/edit`)"
+										@click="$router.push(`/${task.id}/edit`)"
 										class="mr-2"
 										v-tooltip.top="userSettings.showTooltips ? 'Open' : { visible: false }">
 										<span class="material-icons">open_in_new</span>

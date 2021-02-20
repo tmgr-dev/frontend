@@ -10,7 +10,7 @@
 			<div class="sm:flex items-between text-center">
 				<router-link
 					v-if="!isCreatingTask"
-					:to="!currentCategory ? '/tasks' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+					:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
 					class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
 					:class="`${$color('h1')}-800`"
 					type="button">
@@ -449,7 +449,7 @@
 				window.history.back();
 			},
 			goToCurrentTasks() {
-				this.$router.push('/tasks')
+				this.$router.push('/')
 			},
 			getDefaultForm() {
 				return {

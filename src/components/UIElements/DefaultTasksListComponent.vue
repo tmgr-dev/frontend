@@ -82,7 +82,7 @@
             </Button>
             <Button
               color="blue"
-              @click="$router.push(`/tasks/${task.id}/edit`)"
+              @click="$router.push(`/${task.id}/edit`)"
             >
               Open task
             </Button>

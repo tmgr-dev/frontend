@@ -11,8 +11,12 @@ let router = createRouter({
   routes: [
     {
       path: '/',
-      component: () => import('@/components/Index/index.vue'),
-      name: 'Index'
+			meta: {
+				transitionName: 'slide',
+				navbarHidden: true
+			},
+			component: TasksList,
+			name: 'CurrentTasksList'
     },
     {
       path: '/register',
@@ -114,7 +118,7 @@ let router = createRouter({
 		  name: 'TasksCreateWithProjectCategoryId'
 	  },
 	  {
-		  path: '/tasks/create',
+		  path: '/create',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true
@@ -123,16 +127,7 @@ let router = createRouter({
 		  name: 'TasksCreate'
 	  },
 	  {
-		  path: '/tasks',
-		  meta: {
-			  transitionName: 'slide',
-			  navbarHidden: true
-		  },
-		  component: TasksList,
-		  name: 'CurrentTasksList'
-	  },
-	  {
-		  path: '/tasks/hidden',
+		  path: '/hidden',
 		  component: TasksList,
 		  meta: {
 			  status: 'hidden',
@@ -142,7 +137,7 @@ let router = createRouter({
 		  name: 'HiddenTasksList'
 	  },
 	  {
-		  path: '/tasks/archive',
+		  path: '/archive',
 		  component: TasksList,
 		  meta: {
 			  status: 'done',
@@ -152,7 +147,7 @@ let router = createRouter({
 		  name: 'ArchiveTasksList'
 	  },
 	  {
-		  path: '/tasks/create',
+		  path: '/create',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true
@@ -161,7 +156,7 @@ let router = createRouter({
 		  name: 'TasksCreate'
 	  },
 	  {
-		  path: '/tasks/:id/edit',
+		  path: '/:id/edit',
 		  meta: {
 			  transitionName: 'slide',
 			  navbarHidden: true

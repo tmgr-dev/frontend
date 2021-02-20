@@ -25,7 +25,7 @@
           </router-link>
           <router-link
             v-else
-            to="/tasks"
+            to="/"
             class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto"
           >
             Go to system
