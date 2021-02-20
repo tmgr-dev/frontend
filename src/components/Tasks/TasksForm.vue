@@ -191,11 +191,18 @@
 						</div>
 					</div>
 					<div class="block text-center">
-						<button v-if="!isCreatingTask" @click="save"
-										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-										type="button">
-							Save
-						</button>
+						<span class="relative inline-flex rounded-md shadow-sm">
+							<button v-if="!isCreatingTask" @click="save"
+											class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+											type="button">
+								Save
+							</button>
+							<span v-if="isDataEdited" class="flex absolute h-5 w-5 top-0 right-0 -mt-1 mr-4">
+								<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+								<span class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500"></span>
+							</span>
+						</span>
+
 						<button v-if="isCreatingTask" @click="create"
 										class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 										type="button">
@@ -235,6 +242,16 @@
 		},
 		data() {
 			return {
+				savedData: {},
+				watchingFields: [
+					'title',
+					'description',
+					'status',
+					'project_category_id',
+					'checkpoints',
+					'approximately_time',
+					'settings'
+				],
 				errors: {},
 				showEditDescription: false,
 				showSaveAlert: false,
@@ -265,6 +282,11 @@
 				currentCategoryOptionInSelect: null,
 			}
 		},
+		watch: {
+			form (newVal) {
+				this.setSavedData(newVal)
+			}
+		},
 		computed: {
 			taskId () {
 				return this.$route.params.id
@@ -275,6 +297,15 @@
 			projectCategoryId() {
 				return this.$route.params.project_category_id
 			},
+			isDataEdited () {
+				for(let i = 0; i < this.watchingFields.length; ++i) {
+					const field = this.watchingFields[i]
+					if (this.savedData[field] !== this.form[field]) {
+						return true
+					}
+				}
+				return false
+			}
 		},
 		async created () {
 			if (this.taskId) {
@@ -298,17 +329,6 @@
 					console.error(e)
 				}
 			},
-			// async updateCategory () {
-			// 	if (this.approximatelyTime) {
-			// 		const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
-			// 		this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
-			// 	}
-			//
-			// 	this.isShowModalCategory = false
-			//
-			// 	await this.save()
-			// 	await this.loadCategory()
-			// },
 			async updateCategory () {
 				if (this.currentCategoryOptionInSelect) {
 					this.form.project_category_id = this.currentCategoryOptionInSelect.id
@@ -374,6 +394,9 @@
 					this.approximatelyTime = this.toHHMM(data.approximately_time)
 				}
 				this.form = data
+			},
+			setSavedData(data) {
+				this.watchingFields.forEach(field => this.savedData[field] = data[field])
 			},
 			toHHMM (seconds) {
 				let hours   = Math.floor(seconds / 3600);
