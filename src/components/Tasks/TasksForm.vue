@@ -300,7 +300,14 @@
 			isDataEdited () {
 				for(let i = 0; i < this.watchingFields.length; ++i) {
 					const field = this.watchingFields[i]
-					if (this.savedData[field] !== this.form[field]) {
+
+					if (field === 'checkpoints') {
+						const first = this.removeFieldsFromArray(this.savedData[field], ['end'])
+						const second = this.removeFieldsFromArray(this.form[field], ['end'])
+						if (!this.equals(first, second)) {
+							return true
+						}
+					} else if (!this.equals(this.savedData[field], this.form[field])) {
 						return true
 					}
 				}
@@ -319,6 +326,18 @@
 			await this.loadCategory()
 		},
 		methods: {
+			equals (o1, o2) {
+				return JSON.stringify(o1) === JSON.stringify(o2)
+			},
+			removeFieldsFromArray (arr, fieldsForDelete) {
+				arr = JSON.parse(JSON.stringify(arr))
+				return arr.map(item => {
+					const keys = Object.keys(item).filter(key => !fieldsForDelete.includes(key))
+					const result = {}
+					keys.forEach(key => result[key] = item[key])
+					return result
+				})
+			},
 			async showModalCategory () {
 				try {
 					this.isShowModalCategory = true
@@ -396,7 +415,7 @@
 				this.form = data
 			},
 			setSavedData(data) {
-				this.watchingFields.forEach(field => this.savedData[field] = data[field])
+				this.watchingFields.forEach(field => this.savedData[field] = JSON.parse(JSON.stringify(data[field])))
 			},
 			toHHMM (seconds) {
 				let hours   = Math.floor(seconds / 3600);
