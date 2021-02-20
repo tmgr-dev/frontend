@@ -28,6 +28,7 @@
 		</div>
 		<div class="countdown-actions">
 			<Button
+				v-if="!isFullScreen"
 				:color="task.start_time ? 'red' : 'blue'"
 				type="button"
 				class="leading-none"
@@ -94,6 +95,7 @@
 	export default {
 		name: "Countdown",
 		components: {InputField},
+		emits: ['toggle', 'update:seconds'],
 		props: {
 			initTask: {
 				required: true,
