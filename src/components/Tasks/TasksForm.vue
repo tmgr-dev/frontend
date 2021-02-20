@@ -295,6 +295,7 @@
 				currentCategory: '',
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
+				prevValue: null
 			}
 		},
 		watch: {
@@ -320,6 +321,10 @@
 						const first = this.removeFieldsFromArray(this.savedData[field], ['end'])
 						const second = this.removeFieldsFromArray(this.form[field], ['end'])
 						if (!this.equals(first, second)) {
+							if (this.equals(this.prevValue, second)) {
+								return true
+							}
+							this.prevValue = JSON.parse(JSON.stringify(second))
 							this.dispatchAutosave()
 							return true
 						}
