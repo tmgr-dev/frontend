@@ -12,23 +12,23 @@
 					<li>
 						<router-link to="/"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/' ? $color('navLinkFocused') + '-600' : ''}`"
-							href="#" title="Link">Current tasks</router-link>
+							title="Link">Current tasks</router-link>
 					</li>
 					<li>
 						<router-link to="/hidden"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/hidden' ? $color('navLinkFocused') + '-600' : ''}`"
-							href="#" title="Link">Hidden</router-link>
+							title="Link">Hidden</router-link>
 					</li>
 					<li>
 						<router-link to="/archive"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/archive' ? $color('navLinkFocused') + '-600': ''}`"
-							href="#" title="Link">Archive</router-link>
+							title="Link">Archive</router-link>
 					</li>
 					<li>
 						<router-link
 							to="/projects-categories"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/projects-categories' ? $color('navLinkFocused') + '-600' : ''}`"
-							href="#" title="Link">Categories</router-link>
+							title="Link">Categories</router-link>
 					</li>
 				</ul>
 				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
