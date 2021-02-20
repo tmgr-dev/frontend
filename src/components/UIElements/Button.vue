@@ -19,6 +19,7 @@
 <script>
 export default {
 	name: "Button",
+	emits: ['click'],
 	props: {
 		type: {
 			required: false,
