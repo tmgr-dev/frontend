@@ -192,9 +192,15 @@
 					</div>
 					<div class="block text-center">
 						<span class="relative inline-flex rounded-md shadow-sm">
-							<button v-if="!isCreatingTask" @click="save"
-											class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-											type="button">
+							<button
+								v-if="!isCreatingTask"
+								@click="save"
+								class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+								type="button">
+								<svg v-if="isSaving" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
 								Save
 							</button>
 							<span v-if="isDataEdited" class="flex absolute h-5 w-5 top-0 right-0 -mt-1 mr-4">
@@ -226,6 +232,11 @@
 				<p v-if="approximatelyTime" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task: {{ approximatelyTime }}
 				</p>
+				<transition name="fade">
+					<p v-if="showStatus" class="text-gray-500 float-right absolute right-0 -mt-8 mr-3">
+						{{ statusText }}
+					</p>
+				</transition>
 			</div>
 		</template>
 	</BaseLayout>
@@ -243,6 +254,8 @@
 		data() {
 			return {
 				savedData: {},
+				isSaving: false,
+				autosaveTimeout: null,
 				watchingFields: [
 					'title',
 					'description',
@@ -255,6 +268,8 @@
 				errors: {},
 				showEditDescription: false,
 				showSaveAlert: false,
+				statusText: '',
+				showStatus: false,
 				panel: false,
 				isOpen: false,
 				checkpointUpdateKey: 0,
@@ -305,9 +320,11 @@
 						const first = this.removeFieldsFromArray(this.savedData[field], ['end'])
 						const second = this.removeFieldsFromArray(this.form[field], ['end'])
 						if (!this.equals(first, second)) {
+							this.dispatchAutosave()
 							return true
 						}
 					} else if (!this.equals(this.savedData[field], this.form[field])) {
+						this.dispatchAutosave()
 						return true
 					}
 				}
@@ -326,6 +343,16 @@
 			await this.loadCategory()
 		},
 		methods: {
+			dispatchAutosave() {
+				this.removeDispatchedAutosave()
+				this.autosaveTimeout = setTimeout(() => this.save(true), 5000)
+			},
+			removeDispatchedAutosave() {
+				if (!this.autosaveTimeout) {
+					return
+				}
+				clearTimeout(this.autosaveTimeout)
+			},
 			equals (o1, o2) {
 				return JSON.stringify(o1) === JSON.stringify(o2)
 			},
@@ -468,7 +495,9 @@
 				this.showSaveAlert = true
 				setTimeout(() => this.showSaveAlert = false, 3000)
 			},
-			async save() {
+			async save(autosave = false) {
+				console.log(autosave)
+				this.isSaving = true
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
@@ -476,7 +505,9 @@
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}
 					this.form = data
-					this.showSavedAlert()
+					if (autosave !== true) {
+						this.showSavedAlert()
+					}
 
 					const id = this.form.id
 					this.form.id = null
@@ -486,6 +517,12 @@
 						this.errors = e.response.data.errors
 					}
 				}
+				this.removeDispatchedAutosave()
+				this.isSaving = false
+
+				this.showStatus = true
+				this.statusText = 'Saved'
+				setTimeout(() => this.showStatus = false, 5000)
 			},
 			cancel() {
 				window.history.back();
