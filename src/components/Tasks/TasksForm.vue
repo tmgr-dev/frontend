@@ -314,6 +314,9 @@
 				return this.$route.params.project_category_id
 			},
 			isDataEdited () {
+				if (!this.form.id) {
+					return false
+				}
 				for(let i = 0; i < this.watchingFields.length; ++i) {
 					const field = this.watchingFields[i]
 
