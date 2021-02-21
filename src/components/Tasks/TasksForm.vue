@@ -365,6 +365,9 @@
 				return JSON.stringify(o1) === JSON.stringify(o2)
 			},
 			removeFieldsFromArray (arr, fieldsForDelete) {
+				if (!arr) {
+					return
+				}
 				arr = JSON.parse(JSON.stringify(arr))
 				return arr.map(item => {
 					const keys = Object.keys(item).filter(key => !fieldsForDelete.includes(key))

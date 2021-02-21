@@ -82,6 +82,9 @@
 
 				next();
 			});
+
+			this.$store.getters.beamsClient.start()
+				.then(() => this.$store.getters.beamsClient.setUserId(this.$store.getters.user.id.toString(), this.$store.getters.tokenProvider));
 		}
 	}
 </script>

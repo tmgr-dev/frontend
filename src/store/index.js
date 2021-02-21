@@ -4,12 +4,22 @@ import axios from 'axios'
 
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
 
-
+import * as PusherPushNotifications from "@pusher/push-notifications-web";
+const token = localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null;
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
-	token: localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null,
+	token: token,
 	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
+	beamsClient: new PusherPushNotifications.Client({
+		instanceId: process.env.VUE_APP_PUSHER_BEAMS_INSTANCE_ID,
+	}),
+	tokenProvider: new PusherPushNotifications.TokenProvider({
+		url: process.env.VUE_APP_API_BASE_URL + 'pusher/beams-auth',
+		headers: {
+			Authorization: 'Bearer ' + token.token
+		}
+	}),
 	userSettings: {
 		showTooltips: true
 	}
@@ -18,6 +28,8 @@ const state = {
 const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
+	beamsClient: state => state.beamsClient,
+	tokenProvider: state => state.tokenProvider,
 	user: state => state.user,
 	isLoggedIn: state => state.token !== null,
 	colorScheme: state => state.colorScheme,
@@ -55,6 +67,9 @@ const mutations = {
 	},
 	setUserSettings (state, settings) {
 		state.userSettings = settings
+	},
+	setBeamsClient (state, beamsClient) {
+		state.beamsClient = beamsClient
 	}
 }
 
