@@ -356,15 +356,30 @@
 
 			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
 				.on('task-countdown-stopped', ({task}) => {
-					if (this.form.id !== task.id) {
-						return
-					}
-					this.form.id = null
-					setTimeout(() => this.form = task, 500)
-					this.showStatusUI('Countdown stopped')
+					this.setFormDataWithDelay(task).then(() => {
+						this.showStatusUI('Countdown stopped')
+					})
+				})
+				.on('task-countdown-started', ({task}) => {
+					console.log('test')
+					this.setFormDataWithDelay(task).then(() => {
+						this.showStatusUI('Countdown stopped')
+					})
 				})
 		},
 		methods: {
+			setFormDataWithDelay(data, delay = 500) {
+				return new Promise((resolve, reject) => {
+					if (this.form.id !== data.id) {
+						return
+					}
+					this.form.id = null
+					setTimeout(() => {
+						this.form = data
+						resolve()
+					}, delay)
+				})
+			},
 			dispatchAutosave() {
 				this.removeDispatchedAutosave()
 				this.autosaveTimeout = setTimeout(() => this.save(true), 5000)
