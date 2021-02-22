@@ -1,25 +1,21 @@
 import { createStore } from 'vuex'
 import colorSchemes from '../colors/schemes'
 import axios from 'axios'
-
+import pusherBeamsClient from './plugins/pusher-beams-client'
+import pusherTokenProvider from './plugins/pusher-token-provider'
+import pusher from './plugins/pusher'
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey]
 
-import * as PusherPushNotifications from "@pusher/push-notifications-web";
 const token = localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null;
+
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
 	token: token,
 	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
-	beamsClient: new PusherPushNotifications.Client({
-		instanceId: process.env.VUE_APP_PUSHER_BEAMS_INSTANCE_ID,
-	}),
-	tokenProvider: new PusherPushNotifications.TokenProvider({
-		url: process.env.VUE_APP_API_BASE_URL + 'pusher/beams-auth',
-		headers: {
-			Authorization: 'Bearer ' + token.token
-		}
-	}),
+	pusherBeamsClient: pusherBeamsClient,
+	pusherTokenProvider: pusherTokenProvider(token),
+	pusher: pusher(token),
 	userSettings: {
 		showTooltips: true
 	}
@@ -28,8 +24,9 @@ const state = {
 const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
-	beamsClient: state => state.beamsClient,
-	tokenProvider: state => state.tokenProvider,
+	pusherBeamsClient: state => state.pusherBeamsClient,
+	pusherTokenProvider: state => state.pusherTokenProvider,
+	pusher: state => state.pusher,
 	user: state => state.user,
 	isLoggedIn: state => state.token !== null,
 	colorScheme: state => state.colorScheme,
@@ -68,8 +65,8 @@ const mutations = {
 	setUserSettings (state, settings) {
 		state.userSettings = settings
 	},
-	setBeamsClient (state, beamsClient) {
-		state.beamsClient = beamsClient
+	setPusherBeamsClient (state, pusherBeamsClient) {
+		state.pusherBeamsClient = pusherBeamsClient
 	}
 }
 
@@ -78,7 +75,10 @@ const actions = {
 		localStorage.clear()
 		document.location.reload()
 	},
-	async loadUserSettings ({ commit }) {
+	async loadUserSettings ({ commit, state }) {
+		if (!state.user) {
+			return
+		}
 		try {
 			const { data: {data} } = await axios.get(`user/settings`)
 			if (data instanceof Object && data.hasOwnProperty('settings')) {

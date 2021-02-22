@@ -83,8 +83,11 @@
 				next();
 			});
 
-			this.$store.getters.beamsClient.start()
-				.then(() => this.$store.getters.beamsClient.setUserId(this.$store.getters.user.id.toString(), this.$store.getters.tokenProvider));
+			if (!this.$store.getters.user) {
+				return;
+			}
+			this.$store.getters.pusherBeamsClient.start()
+				.then(() => this.$store.getters.pusherBeamsClient.setUserId(this.$store.getters.user.id.toString(), this.$store.getters.pusherTokenProvider));
 		}
 	}
 </script>

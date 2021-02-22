@@ -142,6 +142,10 @@
 								v-else
 								ref="countdown"
 								:init-task="form"
+								:style="{
+									opacity: 0.2,
+									'pointer-events': 'none'
+								}"
 							/>
 						</div>
 					</div>
@@ -349,6 +353,11 @@
 				this.form.project_category_id = this.projectCategoryId
 			}
 			await this.loadCategory()
+
+			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
+				.on('my-event', (e) => {
+					console.log(e)
+				})
 		},
 		methods: {
 			dispatchAutosave() {
