@@ -355,8 +355,13 @@
 			await this.loadCategory()
 
 			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
-				.on('my-event', (e) => {
-					console.log(e)
+				.on('task-countdown-stopped', ({task}) => {
+					if (this.form.id !== task.id) {
+						return
+					}
+					this.form.id = null
+					setTimeout(() => this.form = task, 500)
+					this.showStatusUI('Countdown stopped')
 				})
 		},
 		methods: {
@@ -516,7 +521,6 @@
 				setTimeout(() => this.showSaveAlert = false, 3000)
 			},
 			async save(autosave = false) {
-				console.log(autosave)
 				this.isSaving = true
 				try {
 					this.prepareForm()
@@ -540,8 +544,11 @@
 				this.removeDispatchedAutosave()
 				this.isSaving = false
 
+				this.showStatusUI('Saved')
+			},
+			showStatusUI (text) {
 				this.showStatus = true
-				this.statusText = 'Saved'
+				this.statusText = text
 				setTimeout(() => this.showStatus = false, 5000)
 			},
 			cancel() {
