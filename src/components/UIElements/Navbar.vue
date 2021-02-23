@@ -7,8 +7,7 @@
 				</button>
 			</div>
 			<div class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block" :class="{ hidden: isHidden }">
-				<ul
-					class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0">
+				<ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0">
 					<li>
 						<router-link to="/"
 							:class="`block px-4 py-1 md:p-2 lg:px-4 ${$route.path === '/' ? $color('navLinkFocused') + '-600' : ''}`"
@@ -46,7 +45,20 @@
 
 	export default {
 		name: 'Navbar',
-		components: {AccountDropdown, DayNightSwitch},
+		components: {
+			AccountDropdown,
+			DayNightSwitch
+		},
+		data: () => ({
+			isHidden: true,
+			rerenderSwitcher: 0,
+			links: [
+				{ id: 1, name: 'Current tasks', path: '/' },
+				{ id: 1, name: 'Hidden', path: '/hidden' },
+				{ id: 1, name: 'Archive', path: '/acrhive' },
+				{ id: 1, name: 'Categories', path: '/projects-categories' },
+			]
+		}),
 		computed: {
 			switchOn: {
 				get () {
@@ -55,12 +67,6 @@
 				set (newValue) {
 					this.$store.commit('colorScheme', newValue ? 'dark' : 'default')
 				}
-			}
-		},
-		data() {
-			return {
-				isHidden: true,
-				rerenderSwitcher: 0
 			}
 		}
 	}
