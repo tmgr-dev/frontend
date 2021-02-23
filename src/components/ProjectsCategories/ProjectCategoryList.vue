@@ -19,7 +19,7 @@
 						<span class="material-icons text-4xl">edit</span>
 					</router-link>
 					<router-link
-						:to="`/projects-categories/${id ? id + '/' : ''}tasks/create`" title="Add category"
+						:to="`/projects-categories/${id ? id + '/' : ''}create`" title="Add category"
 						class="opacity-25 hover:opacity-100">
 						<span class="material-icons text-4xl">add_circle_outline</span>
 					</router-link>
