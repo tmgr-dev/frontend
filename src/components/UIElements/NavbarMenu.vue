@@ -4,13 +4,13 @@
 			v-for="link in links"
 			:key="link.id"
 			:to="link.path"
-			class="block px-4 py-1 md:p-2 lg:px-4"
-			:active-class="`${$color('navLinkFocused')}-600`"
 			custom
 			v-slot="{ href, isActive, navigate }">
-			<a :href="href" @click="navigate">
-				{{ link.name }}
-			</a>
+			<li class="block px-4 py-1 md:p-2 lg:px-4" :class="isActive ? activeLinkClass : ''">
+				<a :href="href" @click="navigate">
+					{{ link.name }}
+				</a>
+			</li>
 		</router-link>
 	</ul>
 </template>
@@ -22,9 +22,14 @@
 			links: [
 				{ id: 1, name: 'Current tasks', path: '/' },
 				{ id: 1, name: 'Hidden', path: '/hidden' },
-				{ id: 1, name: 'Archive', path: '/acrhive' },
+				{ id: 1, name: 'Archive', path: '/archive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' },
 			]
-		})
+		}),
+		computed: {
+			activeLinkClass () {
+				return `${this.$color('navLinkFocused')}-600`
+			}
+		}
 	}
 </script>
