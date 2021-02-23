@@ -28,14 +28,7 @@
 					  placeholder="Password"
 					/>
 				</div>
-				<div class="flex items-center mt-4">
-					<label class="checkbox-wrapper">
-						<input type="checkbox" name="remember" class="mr-2">
-						<span class="checkmark"></span>
-						<span class="text-sm text-grey-dark select-none">Remember Me</span>
-					</label>
-				</div>
-				<div class="flex flex-col mt-8">
+				<div class="flex flex-col mt-6">
 					<button
 						type="submit"
 						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">

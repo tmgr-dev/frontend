@@ -47,7 +47,7 @@
 	}
 </script>
 
-<style lang="scss">
+<style scoped lang="scss">
 	button {
 		&:hover, &:focus, &:active {
 			outline: none;

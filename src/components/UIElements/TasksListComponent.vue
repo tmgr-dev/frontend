@@ -72,7 +72,7 @@
 			</vue-draggable-resizable>
 		</transition>
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
-<!--			<div class="selection" :class="$color('borderSelection')"></div>-->
+			<div class="selection" :class="$color('borderSelection')"></div>
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"

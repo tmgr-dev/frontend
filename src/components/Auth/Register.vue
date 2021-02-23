@@ -20,7 +20,7 @@
 					<input-field type="password" name="password_confirmation" :errors="errors.password"
 											 v-model="form.password_confirmation" placeholder="Password confirmation"/>
 				</div>
-				<div class="flex flex-col mt-8">
+				<div class="flex flex-col mt-6">
 					<button type="submit" @click.prevent="register"
 									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
 											<span class="relative">

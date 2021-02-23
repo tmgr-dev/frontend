@@ -14,7 +14,7 @@
 					<input id="password_confirmation" type="password" class="flex-grow h-8 px-2 rounded border border-grey-400"
 								 name="password_confirmation" required placeholder="Password confirmation">
 				</div>
-				<div class="flex flex-col mt-8">
+				<div class="flex flex-col mt-6">
 					<button type="submit"
 									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
 						Reset

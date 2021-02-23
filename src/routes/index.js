@@ -6,7 +6,7 @@ const TasksForm = () => import('@/components/Tasks/TasksForm')
 const TasksList = () => import('@/components/Tasks/TasksList')
 const ProjectCategoryForm = () => import('@/components/ProjectsCategories/ProjectCategoryForm')
 
-let router = createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes: [
     {

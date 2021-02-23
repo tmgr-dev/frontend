@@ -20,7 +20,7 @@ const {default: colorSchemes} = require('./colors/schemes');
 // Directives
 const { VueTheMask, mask } = require('./components/UIElements/VueTheMask/index');
 const {default: Tooltip} = require('@/directives/tooltip/src');
-const {default: Selectable} = require('@/directives/selectable/src');
+const {default: Selectable} = require('@/directives/selectable/index');
 
 // Load components
 const {default: components} = require("@/bootstrap/globalComponents");

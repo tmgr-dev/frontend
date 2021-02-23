@@ -10,9 +10,9 @@
 					<input id="email" type="text" class="flex-grow h-8 px-2 border rounded border-grey-400" name="email" value=""
 								 placeholder="Email">
 				</div>
-				<div class="flex flex-col mt-8">
+				<div class="flex flex-col mt-6">
 					<router-link to="/password/reset"
-											 class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+											 class="bg-blue-500 text-center hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
 						Send link
 					</router-link>
 				</div>
