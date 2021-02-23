@@ -46,6 +46,52 @@
 										<input-field extra-class="bg-gray-400" v-model="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
 									</label>
 								</div>
+
+								<hr class="py-2">
+
+								<label for="settings" class="block text-gray-700 text-sm font-bold mb-5">
+									Settings
+								</label>
+								<div>
+									<div v-for="(setting, index) in availableSettings" id="settings">
+										<label :for="`setting-${setting.id}`" class="block text-gray-700 text-sm font-bold mb-2">
+											{{ setting.name }}
+										</label>
+										<div class="relative mb-4">
+											<select :id="`setting-${setting.id}`"
+															v-if="!setting.show_custom_value_input"
+															class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+															v-model="settings[index].value">
+												<option value="" class="text-gray-500">Choose default value</option>
+												<option v-for="(c, i) in setting.default_values" :key="i" :value="c.value">
+													{{ c.value }}
+												</option>
+											</select>
+											<input
+												v-else-if="setting.custom_value_available"
+												class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+												:id="`setting-${setting.id}`" type="text" :placeholder="setting.description" v-model="settings[index].value" :tag="settings[index].id = setting.id">
+											<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
+											<div class="b-switch-list" v-if="setting.custom_value_available">
+												<div
+													class="b-switch-list__item"
+													v-if="setting.default_values && setting.default_values.length > 0"
+												>
+													<label class="b-switch">
+														<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
+														<span></span>
+													</label>
+													<div
+														class="b-switch-list__text"
+													>
+														<div class="b-switch-list__title" :class="$color('settingsTextColor')">Set custom value</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+
 								<div class="flex items-center mt-5">
 									<button
 										type="button"
@@ -258,6 +304,8 @@
 		data() {
 			return {
 				savedData: {},
+				availableSettings: [],
+				settings: [],
 				isSaving: false,
 				autosaveTimeout: null,
 				watchingFields: [
@@ -353,7 +401,7 @@
 				this.form.project_category_id = this.projectCategoryId
 			}
 			await this.loadCategory()
-
+			await this.loadTaskSettings()
 			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
 				.on('task-countdown-stopped', ({task}) => {
 					this.setFormDataWithDelay(task).then(() => {
@@ -368,6 +416,28 @@
 				})
 		},
 		methods: {
+			async loadTaskSettings() {
+				const {data: {data}} = await this.$axios.get('tasks/settings')
+				this.initSettings(data, this.form.settings)
+				this.availableSettings = data
+			},
+			initSettings(availableSettings, settings = []) {
+				return availableSettings.map((item, index) => {
+					const setting = this.getSettingById(settings, item.id, {
+						id: item.id,
+						value: ''
+					})
+					this.settings[index] = setting
+					item.show_custom_value_input = item.default_values && item.default_values.findIndex(val => val.value === setting.value) === -1
+				})
+			},
+			getSettingById(settings, id, defaultResult = null) {
+				return settings.find(setting => setting.id === id) || defaultResult
+			},
+			async saveSettings(settings) {
+				const {data: {data}} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings)
+				this.initSettings(this.availableSettings, data.settings)
+			},
 			setFormDataWithDelay(data, delay = 500) {
 				return new Promise((resolve, reject) => {
 					if (this.form.id !== data.id) {
@@ -547,6 +617,8 @@
 					if (autosave !== true) {
 						this.showSavedAlert()
 					}
+
+					await this.saveSettings(this.settings)
 
 					const id = this.form.id
 					this.form.id = null

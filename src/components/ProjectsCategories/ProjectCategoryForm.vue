@@ -58,7 +58,10 @@
 									:id="`setting-${setting.id}`" type="text" :placeholder="setting.description" v-model="settings[index].value" :tag="settings[index].id = setting.id">
 								<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
 								<div class="b-switch-list" v-if="setting.custom_value_available">
-									<div class="b-switch-list__item">
+									<div
+										class="b-switch-list__item"
+										v-if="setting.default_values && setting.default_values.length > 0"
+									>
 										<label class="b-switch">
 											<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
 											<span></span>
@@ -159,7 +162,6 @@
 			},
 			initSettings(availableSettings, settings = []) {
 				return availableSettings.map((item, index) => {
-					console.log(settings, this.getSettingById(settings, item.id), item.id)
 					const setting = this.getSettingById(settings, item.id, {
 						id: item.id,
 						value: ''
