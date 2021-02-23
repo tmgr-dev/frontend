@@ -3,41 +3,31 @@
     <div
       class="account__user cursor-pointer flex item-center"
       :class="`${$color('navTextUser')}-500`"
-      @click="isOpenProfileDropdown = !isOpenProfileDropdown"
-    >
+      @click="isOpenProfileDropdown = !isOpenProfileDropdown">
       <span>{{ $store.getters.user.name }}</span>
-      <span
-        class="material-icons text-lg relative"
-        style="top:2px"
-      >person</span>
+      <span class="material-icons text-lg relative" style="top:2px">person</span>
     </div>
+
     <div
       v-if="isOpenProfileDropdown"
-      tabindex="-1"
-      class="fixed z-10 inset-0 h-full w-full bg-black opacity-50 cursor-default"
-      @click="isOpenProfileDropdown = false"
-    />
-    <div
-      v-if="isOpenProfileDropdown"
-      class="absolute right-0 mt-6 py-2 rounded-lg shadow-lg z-50"
-      :class="`${ $color('bg') }`"
-    >
+      class="absolute right-0 mt-6 py-2 shadow-lg z-50"
+      :class="`${ $color('blocks') }`">
       <ul class="w-40 py-2 px-4">
-        <li class="px-4 py-1 md:p-2 lg:px-4 hover:text-black">
+        <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <router-link
             to="/settings"
             class="block"
-            @click.native="isOpenProfileDropdown = false"
-          >
+            @click.native="isOpenProfileDropdown = false">
             Settings
           </router-link>
         </li>
-        <li class="px-4 py-1 md:p-2 lg:px-4 hover:text-black">
+        <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <a
             href="#"
             class="block"
-            @click.prevent="logout"
-          >Logout</a>
+            @click.prevent="logout">
+						Logout
+					</a>
         </li>
       </ul>
     </div>

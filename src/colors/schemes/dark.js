@@ -12,6 +12,7 @@ export default {
   textBreadcrumbs: 'text-white',
   navLinkFocused: 'text-green',
   bg: 'bg-gray-600',
+	profileMenu: '',
   buttonActionOpacity: 'opacity-50 hover:opacity-75',
 	grayHover: 'hover:text-gray-300',
 	modalBg: 'bg-gray-400',
