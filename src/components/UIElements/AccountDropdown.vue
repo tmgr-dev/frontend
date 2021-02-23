@@ -10,7 +10,8 @@
 
     <div
       v-if="isOpenProfileDropdown"
-      class="absolute right-0 mt-6 py-2 shadow-lg z-50"
+			@mouseleave="isOpenProfileDropdown = false"
+      class="absolute right-0 custom-top py-2 shadow-lg z-50"
       :class="`${ $color('blocks') }`">
       <ul class="w-40 py-2 px-4">
         <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
@@ -64,3 +65,9 @@
 		}
 	}
 </script>
+
+<style scoped>
+	.custom-top {
+		top: calc(100% + 24px)
+	}
+</style>
