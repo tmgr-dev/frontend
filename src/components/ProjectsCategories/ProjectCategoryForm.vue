@@ -2,6 +2,15 @@
 	<BaseLayout>
 		<template #header>{{ h1 }}</template>
 
+		<template #action v-if="parentCategories && parentCategories.length > 0">
+			<breadcrumbs
+				v-if="form.project_category_id"
+				:current="'Edit category'"
+				:items="getBreadcrumbs(extractParents({...form, ...{parent_category: findProjectCategoryById(form.project_category_id)} }))"
+				:drop="drop"
+			/>
+		</template>
+
 		<template #body>
 			<div :class="`${$color('blocks')} max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6`">
 				<form class="w-full">
@@ -103,9 +112,15 @@
 </template>
 
 <script>
+	import Breadcrumbs from '../UIElements/Breadcrumbs'
+	import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
+	import extractParents from './functions/extractParents'
+
 	export default {
 		name: 'ProjectCategoryForm',
-		components: {},
+		components: {
+			Breadcrumbs
+		},
 		props: [],
 		data() {
 			return {
@@ -143,6 +158,8 @@
 			await this.loadProjectCategorySettings()
 		},
 		methods: {
+			getBreadcrumbs,
+			extractParents,
 			showSavedAlert() {
 				this.showSaveAlert = true
 				setTimeout(() => this.showSaveAlert = false, 3000)
@@ -176,6 +193,11 @@
 			},
 			isNotDefaultValue(value) {
 				return !this.availableSettings.find(setting => setting.value === value)
+			},
+			findProjectCategoryById(id) {
+				return this.parentCategories.find((category) => {
+					return category.id === id
+				})
 			},
 			async create(withRoutePush = true) {
 				if (!this.form.project_category_id) {

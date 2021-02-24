@@ -8,7 +8,7 @@
 			<template #action>
 				<breadcrumbs
 					:current="category ? category.title : ''"
-					:items="getBreadcrumbs()"
+					:items="getBreadcrumbs(parentCategories)"
 					:drop="drop"
 				/>
 				<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
@@ -180,6 +180,8 @@ import Breadcrumbs from '../UIElements/Breadcrumbs'
 import TasksListComponent from "../UIElements/TasksListComponent";
 import LoadingButtonActions from "@/mixins/LoadingButtonActions";
 import Confirm from '../UIElements/Confirm'
+import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
+import extractParents from './functions/extractParents'
 
 export default {
 	name: 'ProjectCategoryList',
@@ -245,30 +247,7 @@ export default {
 			}
 			return `tasks/?all&project_category_id=${this.id}`
 		},
-		getBreadcrumbs() {
-			const items = [
-				{
-					label: 'Categories',
-					to: '/projects-categories',
-					payload: {
-						id: null
-					}
-				}
-			]
-			return [...items, ...this.getProjectCategoriesBreadcrumbs()]
-		},
-		getProjectCategoriesBreadcrumbs() {
-			if (!this.parentCategories) {
-				return []
-			}
-			const result = []
-			this.parentCategories.map(item => result.push({
-				label: item.title,
-				to: `/projects-categories/${item ? item.id + '/children' : ''}`,
-				payload: item
-			}))
-			return result
-		},
+		getBreadcrumbs,
 		getActions(category) {
 			return [
 				{
@@ -310,13 +289,7 @@ export default {
 				}
 			})
 		},
-		extractParents(category, parents = []) {
-			if (!category.parent_category) {
-				return parents.reverse()
-			}
-			parents.push(category.parent_category)
-			return this.extractParents(category.parent_category, parents)
-		},
+		extractParents,
 		selectAll () {
 			if (!this.$refs.tasksListComponent) {
 				return
