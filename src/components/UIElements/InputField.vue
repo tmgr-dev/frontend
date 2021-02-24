@@ -16,8 +16,16 @@
 				</select>
 				<textarea
 					:class="`shadow appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
-					v-else-if="type === 'textarea'" name="" v-model="val">
-                </textarea>
+					v-else-if="type === 'textarea'" name="" v-model="val"/>
+				<input
+					v-else-if="type === 'time_in_seconds'"
+					:id="name"
+					type="time"
+					:class="`shadow ${$color('borderMain')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:name="name"
+					:placeholder="placeholder"
+					v-model="val"
+				/>
 				<input
 					v-else
 					:id="name"
@@ -26,7 +34,7 @@
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
-				>
+				/>
 				<transition name="fade-left">
 					<div v-if="errors" class="error" :class="{ 'tooltip': errorAsTooltip }">
 						{{ errors[0] }}
@@ -41,6 +49,9 @@
 </template>
 
 <script>
+	import getTimeInSeconds from './InputField/getTimeInSeconds'
+	import toHHMM from './InputField/toHHMM'
+
 	export default {
 		name: "InputField",
 		props: {
@@ -99,10 +110,16 @@
 		computed: {
 			val: {
 				get() {
-					return this.modelValue
+					if (this.type !== 'time_in_seconds') {
+						return this.modelValue
+					}
+					return this.getSecondsInTime(this.modelValue)
 				},
 				set(v) {
-					this.$emit('update:modelValue', v)
+					if (this.type !== 'time_in_seconds') {
+						return this.$emit('update:modelValue', v)
+					}
+					this.$emit('update:modelValue', this.getTimeInSeconds(v))
 				}
 			},
 			errorAsTooltip() {
@@ -110,6 +127,8 @@
 			}
 		},
 		methods: {
+			getTimeInSeconds,
+			getSecondsInTime: toHHMM,
 			updateWidth() {
 				this.screenWidth = window.innerWidth;
 			},

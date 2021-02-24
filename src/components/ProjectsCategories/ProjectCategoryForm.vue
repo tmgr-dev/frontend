@@ -61,10 +61,26 @@
 										{{ c.value }}
 									</option>
 								</select>
-								<input
+
+								<div
 									v-else-if="setting.custom_value_available"
-									class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-									:id="`setting-${setting.id}`" type="text" :placeholder="setting.description" v-model="settings[index].value" :tag="settings[index].id = setting.id">
+								>
+									<input-field
+										v-if="setting.key === 'approximately_time'"
+										:id="`setting-${setting.id}`"
+										v-model="settings[index].value"
+										type="time_in_seconds"
+										:placeholder="setting.description"
+									/>
+									<input-field
+										v-else
+										:id="`setting-${setting.id}`"
+										type="text"
+										:placeholder="setting.description"
+										v-model="settings[index].value"
+										:tag="settings[index].id = setting.id"
+									/>
+								</div>
 								<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
 								<div class="b-switch-list" v-if="setting.custom_value_available">
 									<div
@@ -115,11 +131,13 @@
 	import Breadcrumbs from '../UIElements/Breadcrumbs'
 	import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
 	import extractParents from './functions/extractParents'
+	import InputField from "../UIElements/InputField"
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
-			Breadcrumbs
+			Breadcrumbs,
+			InputField
 		},
 		props: [],
 		data() {

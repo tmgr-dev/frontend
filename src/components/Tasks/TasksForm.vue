@@ -43,7 +43,7 @@
 								<div>
 									<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
 										Estimated time
-										<input-field extra-class="bg-gray-400" v-model="approximatelyTime" :errors="errors.approximately_time" type="time" placeholder="Enter approximately time"/>
+										<input-field extra-class="bg-gray-400" v-model="form.approximately_time" :errors="errors.approximately_time" type="time_in_seconds" placeholder="Enter approximately time"/>
 									</label>
 								</div>
 
@@ -67,10 +67,26 @@
 													{{ c.value }}
 												</option>
 											</select>
-											<input
+											<div
 												v-else-if="setting.custom_value_available"
-												class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-												:id="`setting-${setting.id}`" type="text" :placeholder="setting.description" v-model="settings[index].value" :tag="settings[index].id = setting.id">
+											>
+												<input-field
+													v-if="setting.key === 'approximately_time'"
+													:id="`setting-${setting.id}`"
+													v-model="form.approximately_time"
+													:errors="errors.approximately_time"
+													type="time_in_seconds"
+													placeholder="Enter approximately time"
+												/>
+												<input-field
+													v-else
+													:id="`setting-${setting.id}`"
+													type="text"
+													:placeholder="setting.description"
+													v-model="settings[index].value"
+													:tag="settings[index].id = setting.id"
+												/>
+											</div>
 											<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
 											<div class="b-switch-list" v-if="setting.custom_value_available">
 												<div
@@ -493,10 +509,6 @@
 				if (this.currentCategoryOptionInSelect) {
 					this.form.project_category_id = this.currentCategoryOptionInSelect.id
 				}
-				if (this.approximatelyTime) {
-					const timeSplit = this.approximatelyTime.split(':').map(v => parseInt(v))
-					this.form.approximately_time = timeSplit[0] * 3600 + timeSplit[1] * 60
-				}
 				this.isShowModalCategory = false
 				await this.save()
 				await this.loadCategory()
@@ -544,15 +556,15 @@
 						if (setting.key === 'task_name_pattern_date&time') {
 							this.form.title = moment().format(setting.value)
 						}
+						if (setting.key === 'approximately_time') {
+							this.form.approximately_time = parseInt(setting.value)
+						}
 					})
 				}
 			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
 				data.common_time = data.common_time || 0
-				if (data.approximately_time) {
-					this.approximatelyTime = this.toHHMM(data.approximately_time)
-				}
 				this.form = data
 			},
 			setSavedData(data) {
