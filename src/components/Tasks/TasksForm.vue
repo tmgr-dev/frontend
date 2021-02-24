@@ -295,8 +295,8 @@
 				<transition name="fade">
 					<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
 				</transition>
-				<p v-if="approximatelyTime" class="text-gray-500 pl-4 pb-2">
-					Estimated time to complete the task: {{ approximatelyTime }}
+				<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
+					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</p>
 				<transition name="fade">
 					<p v-if="showStatus" class="text-gray-500 float-right absolute right-0 -mt-8 mr-3">
