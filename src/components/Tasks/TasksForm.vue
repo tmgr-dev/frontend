@@ -410,8 +410,12 @@
 				})
 				.on('task-countdown-started', ({task}) => {
 					console.log('test')
+					const isCountdownStarted = !!this.form.start_time
 					this.setFormDataWithDelay(task).then(() => {
-						this.showStatusUI('Countdown stopped')
+						if (isCountdownStarted) {
+							return
+						}
+						this.showStatusUI('Countdown started')
 					})
 				})
 		},
