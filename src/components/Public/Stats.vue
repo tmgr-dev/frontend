@@ -12,7 +12,7 @@
 				<table>
 					<tbody>
 						<tr>
-							<th class="text-xl">User</th>
+							<th class="text-xl">Users</th>
 							<td class="px-5 text-2xl">{{ stats.users }}</td>
 						</tr>
 						<tr>
@@ -20,8 +20,14 @@
 							<td class="px-5 text-2xl">{{ stats.tasks }}</td>
 						</tr>
 						<tr>
-							<th class="text-xl">Hours</th>
-							<td class="px-5 text-2xl">{{ stats.hours }}</td>
+							<th class="text-xl">Сounted time</th>
+							<td class="px-5 text-2xl">
+								<p>
+									In hours: {{ stats.hours }}<br>
+									In days: {{ (stats.hours / 24).toFixed(2) }}<br>
+									In years: {{ ((stats.hours / 24)/365).toFixed(2) }}
+								</p>
+							</td>
 						</tr>
 					</tbody>
 				</table>
