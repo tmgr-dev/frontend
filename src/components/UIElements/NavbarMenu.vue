@@ -24,6 +24,7 @@
 				{ id: 1, name: 'Hidden', path: '/hidden' },
 				{ id: 1, name: 'Archive', path: '/archive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' },
+				{ id: 1, name: 'Stats', path: '/stats' },
 			]
 		}),
 		computed: {

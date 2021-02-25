@@ -172,23 +172,35 @@ const router = createRouter({
         navbarHidden: true
       },
       name: 'Settings'
+    },
+    {
+      path: '/stats',
+      component: () => import('@/components/Public/Stats'),
+      meta: {
+        transitionName: 'fade-fast',
+        navbarHidden: false,
+				allowedGuests: true,
+				notOnlyForLoggedUsers: true
+      },
+      name: 'Stats'
     }
   ]
 })
 
 router.beforeEach((to, from, next) => {
   if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
-    next({name: 'CurrentTasksList'})
+  	if (to.matched.some(record => record.meta.notOnlyForLoggedUsers)) {
+			return next()
+		}
+    return next({name: 'CurrentTasksList'})
   }
   if (to.matched.some(record => !record.meta.allowedGuests)) {
     if (!store.getters.isLoggedIn) {
-      next({name: 'Login'})
-    } else {
-      next()
+			return next({name: 'Login'})
     }
-  } else {
-    next()
+		return next()
   }
+	return next()
 })
 
 export default router
