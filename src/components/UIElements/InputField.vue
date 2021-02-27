@@ -2,18 +2,6 @@
 	<div class="input_wrapper">
 		<transition name="fade">
 			<div v-if="showInput">
-<!--				<select-->
-<!--					v-if="type === 'select'"-->
-<!--					name=""-->
-<!--					:class="`block appearance-none w-full ${extraClass || $color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"-->
-<!--					v-model="val"-->
-<!--					:disabled="!options || !options.length"-->
-<!--				>-->
-<!--					<option :value="null"  selected>{{ placeholder }}</option>-->
-<!--					<option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">-->
-<!--						{{ option[optionNameKey] }}-->
-<!--					</option>-->
-<!--				</select>-->
 				<div v-if="type === 'select'" :class="`shadow appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('borderMain')}`">
 					<vue-select
 						v-if="options"
@@ -34,6 +22,22 @@
 					:placeholder="placeholder"
 					v-model="val"
 				/>
+				<div
+					v-else-if="type === 'checkbox'"
+					class="b-switch-list mt-3"
+				>
+					<div
+						class="b-switch-list__item"
+					>
+						<label class="b-switch">
+							<input type="checkbox" :name="name" v-model="val">
+							<span></span>
+						</label>
+						<div class="b-switch-list__text">
+							<div class="b-switch-list__title" :class="$color('settingsTextColor')">{{ placeholder }}</div>
+						</div>
+					</div>
+				</div>
 				<input
 					v-else
 					:id="name"

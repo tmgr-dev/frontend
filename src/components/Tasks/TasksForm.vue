@@ -412,6 +412,11 @@
 			await this.loadTaskSettings()
 			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
 				.on('task-countdown-stopped', ({task}) => {
+					const isCountdownStarted = !!this.form.start_time
+					if (!isCountdownStarted) {
+						return
+					}
+
 					this.setFormDataWithDelay(task).then(() => {
 						this.showStatusUI('Countdown stopped')
 					})
@@ -419,6 +424,9 @@
 				.on('task-countdown-started', ({task}) => {
 					console.log('test')
 					const isCountdownStarted = !!this.form.start_time
+					if (isCountdownStarted) {
+						return
+					}
 					this.setFormDataWithDelay(task).then(() => {
 						if (isCountdownStarted) {
 							return
@@ -705,8 +713,10 @@
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
 			}
 		},
-		destroy () {
+		beforeUnmount () {
 			this.form = this.getDefaultForm()
+			clearInterval(this.countdownInterval)
+			clearInterval(this.reminderInterval)
 		}
 	}
 </script>
