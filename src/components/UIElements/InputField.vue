@@ -2,18 +2,26 @@
 	<div class="input_wrapper">
 		<transition name="fade">
 			<div v-if="showInput">
-				<select
-					v-if="type === 'select'"
-					name=""
-					:class="`block appearance-none w-full ${extraClass || $color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"
-					v-model="val"
-					:disabled="!options || !options.length"
-					:placeholder="placeholder"
-				>
-					<option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">
-						{{ option[optionNameKey] }}
-					</option>
-				</select>
+<!--				<select-->
+<!--					v-if="type === 'select'"-->
+<!--					name=""-->
+<!--					:class="`block appearance-none w-full ${extraClass || $color('input')} ${$color('borderMain')} border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline ${selected ? 'text-gray-500' : ''}`"-->
+<!--					v-model="val"-->
+<!--					:disabled="!options || !options.length"-->
+<!--				>-->
+<!--					<option :value="null"  selected>{{ placeholder }}</option>-->
+<!--					<option v-for="option in options" :key="option[optionValueKey]" :value="option[optionValueKey]">-->
+<!--						{{ option[optionNameKey] }}-->
+<!--					</option>-->
+<!--				</select>-->
+				<div v-if="type === 'select'" :class="`shadow appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('borderMain')}`">
+					<vue-select
+						v-if="options"
+						:label="optionNameKey"
+						:options="preparedOptions"
+						v-model="val"
+					/>
+				</div>
 				<textarea
 					:class="`shadow appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
 					v-else-if="type === 'textarea'" name="" v-model="val"/>
@@ -108,18 +116,35 @@
 			}
 		},
 		computed: {
-			val: {
+				val: {
 				get() {
+					if (this.type === 'select') {
+						return this.findOptionByValue(this.modelValue)
+					}
 					if (this.type !== 'time_in_seconds') {
 						return this.modelValue
 					}
 					return this.getSecondsInTime(this.modelValue)
 				},
 				set(v) {
+					if (this.type === 'select') {
+						return this.$emit('update:modelValue', v[this.optionValueKey])
+					}
 					if (this.type !== 'time_in_seconds') {
 						return this.$emit('update:modelValue', v)
 					}
 					this.$emit('update:modelValue', this.getTimeInSeconds(v))
+				}
+			},
+			preparedOptions: {
+				get() {
+					const preparedOptions = []
+					this.options.forEach(option => {
+						option.label = option[this.optionNameKey]
+						option.value = option[this.optionValueKey]
+						preparedOptions.push(option)
+					})
+					return preparedOptions
 				}
 			},
 			errorAsTooltip() {
@@ -127,6 +152,9 @@
 			}
 		},
 		methods: {
+			findOptionByValue(value) {
+				return this.options.find(option => option[this.optionValueKey] === value)
+			},
 			getTimeInSeconds,
 			getSecondsInTime: toHHMM,
 			updateWidth() {

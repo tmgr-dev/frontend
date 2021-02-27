@@ -71,17 +71,9 @@
 												v-else-if="setting.custom_value_available"
 											>
 												<input-field
-													v-if="setting.key === 'approximately_time'"
+													:extra-class="`bg-gray-400  ${$color('taskSettingTextColor')}`"
 													:id="`setting-${setting.id}`"
-													v-model="form.approximately_time"
-													:errors="errors.approximately_time"
-													type="time_in_seconds"
-													placeholder="Enter approximately time"
-												/>
-												<input-field
-													v-else
-													:id="`setting-${setting.id}`"
-													type="text"
+													:type="setting.component_type"
 													:placeholder="setting.description"
 													v-model="settings[index].value"
 													:tag="settings[index].id = setting.id"

@@ -18,32 +18,30 @@
 						<label class="block text-gray-700 text-sm font-bold mb-2" for="categoryName">
 							Project category name
 						</label>
-						<input
-							class="shadow appearance-none border rounded w-full py-2 px-3 border-gray-300 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-							id="categoryName" type="text" placeholder="Name" v-model="form.title">
+						<input-field
+							id="categoryName"
+							type="text"
+							placeholder="Name"
+							v-model="form.title"
+						/>
 						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 					</div>
 
-					<label for="parent-category" class="block text-gray-700 text-sm font-bold mb-2">
+					<label class="block text-gray-700 text-sm font-bold mb-2">
 						Parent category
 					</label>
 					<div class="relative mb-4">
-						<select id="parent-category"
-										class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
-										v-model="form.project_category_id">
-							<option value="" class="text-gray-500">Choose parent category</option>
-							<option v-for="(c, i) in parentCategories" :key="i" :value="c.id">
-								{{ c.title }}
-							</option>
-						</select>
-						<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-							<svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-								<path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-							</svg>
-						</div>
+						<input-field
+							type="select"
+							v-model="form.project_category_id"
+							:options="parentCategories"
+							placeholder="test"
+							option-name-key="title"
+							option-value-key="id"
+						/>
 					</div>
 					<hr class="py-2">
-					<label for="parent-category" class="block text-gray-700 text-sm font-bold mb-5">
+					<label class="block text-gray-700 text-sm font-bold mb-5">
 						Settings
 					</label>
 					<div>
@@ -52,37 +50,30 @@
 								{{ setting.name }}
 							</label>
 							<div class="relative mb-4">
-								<select :id="`setting-${setting.id}`"
-												v-if="!setting.show_custom_value_input"
-												class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
-												v-model="settings[index].value">
-									<option value="" class="text-gray-500">Choose default value</option>
-									<option v-for="(c, i) in setting.default_values" :key="i" :value="c.value">
-										{{ c.value }}
-									</option>
-								</select>
-
+								<input-field
+									v-if="!setting.show_custom_value_input"
+									:id="`setting-${setting.id}`"
+									type="select"
+									:placeholder="setting.description"
+									v-model="settings[index].value"
+									:options="setting.default_values"
+									option-name-key="value"
+									option-value-key="value"
+									:tag="settings[index].id = setting.id"
+								/>
 								<div
 									v-else-if="setting.custom_value_available"
 								>
 									<input-field
-										v-if="setting.key === 'approximately_time'"
 										:id="`setting-${setting.id}`"
-										v-model="settings[index].value"
-										type="time_in_seconds"
-										:placeholder="setting.description"
-									/>
-									<input-field
-										v-else
-										:id="`setting-${setting.id}`"
-										type="text"
+										:type="setting.component_type"
 										:placeholder="setting.description"
 										v-model="settings[index].value"
 										:tag="settings[index].id = setting.id"
 									/>
 								</div>
 								<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
-								<div class="b-switch-list" v-if="setting.custom_value_available">
+								<div class="b-switch-list mt-3" v-if="setting.custom_value_available">
 									<div
 										class="b-switch-list__item"
 										v-if="setting.default_values && setting.default_values.length > 0"
@@ -231,7 +222,9 @@
 				}
 				this.form.slug = this.generateSlug(this.form.title)
 
-				await this.$axios.post('project_categories', this.form)
+				const {data: {data}} = await this.$axios.post('project_categories', this.form)
+				this.form = data
+				await this.saveSettings(this.settings)
 				if (!withRoutePush) {
 					return
 				}
