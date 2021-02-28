@@ -3,7 +3,7 @@
 		<transition name="bounce">
 			<vue-draggable-resizable
 				v-if="showSelectedTasksCommonTime"
-				style="z-index: 999999; top: 5%; right: 5%; min-height: 150px"
+				style="z-index: 9; top: 5%; right: 5%; min-height: 150px"
 				:resizable="false"
 				:w="250"
 				h="auto"
@@ -85,7 +85,7 @@
 				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center relative" style="z-index: 9999" @click.prevent="() => {}">
+							<div class="flex justify-between items-center relative"  @click.prevent="() => {}">
 								<div>
 									<div class="flex">
 										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl">
@@ -115,7 +115,7 @@
 									</div>
 								</div>
 								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="hidden lg:flex items-center" v-if="!task.deleted_at">
+								<div class="hidden lg:flex items-center  z-10" v-if="!task.deleted_at">
 									<new-button
 										@click="$router.push(`/${task.id}/edit`)"
 										class="mr-2"
@@ -544,7 +544,7 @@
 	.selection {
 		position: absolute;
 		border: 1px dotted;
-		z-index: 9999;
+		z-index: 9;
 		top: 0;
 		left: 0;
 		cursor: default;

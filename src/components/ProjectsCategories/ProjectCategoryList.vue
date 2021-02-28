@@ -31,7 +31,7 @@
 					<tbody :class="`${$color('blocks')}`">
 					<tr v-for="category in categories"
 						:key="category.id"
-						:class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')}`"
+						:class="`cursor-pointer accordion border-b ${$color('borderMain')} hover:${$color('blocksHover')} ${category.deleted_at !== null ? 'hover:opacity-100 opacity-50' : ''}`"
 						@click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})"
 						@drop="drop($event)"
 						@dragenter.prevent
@@ -48,18 +48,28 @@
 							<p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ category.children_count }}</p>
 						</td>
 						<td>
-							<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
-							<div class="hidden lg:block">
-								<router-link
-									:to="{name: 'ProjectCategoryChildrenList', params: {id: category.id}}"
-									class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
-									Open
-								</router-link>
-								<button
-									class="rounded-r px-5 py-1 border border-4 border-red-400 text-red-600 hover:bg-red-400 hover:text-white"
-									@click="deleteCategory(category)">
-									Delete
-								</button>
+							<div v-if="category.deleted_at === null">
+								<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
+								<div class="hidden lg:block">
+									<router-link
+										:to="{name: 'ProjectCategoryChildrenList', params: {id: category.id}}"
+										class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
+										Open
+									</router-link>
+									<button
+										class="rounded-r px-5 py-1 border border-4 border-red-400 text-red-600 hover:bg-red-400 hover:text-white"
+										@click="deleteCategory(category)">
+										Delete
+									</button>
+								</div>
+							</div>
+							<div class="hidden lg:block" v-else>
+								<new-button
+									@click="restoreCategory(category)"
+									class="mr-2"
+									v-tooltip.top="userSettings.showTooltips ? 'Restore from trash' : { visible: false }">
+									<span class="material-icons">restore_from_trash</span>
+								</new-button>
 							</div>
 						</td>
 					</tr>
@@ -68,7 +78,7 @@
 				<div v-else-if="categories && categories.length > 0">
 					<div
 						 v-for="category in categories"
-						 :class="`w-full mt-2`"
+						 :class="`w-full mt-2 ${category.deleted_at !== null ? 'hover:opacity-100 opacity-50' : ''}`"
 						 :key="category.id"
 						 @drop="drop($event, category)"
 						 @dragenter.prevent="category.hoverClass = 'bg-red-500'"
@@ -91,13 +101,24 @@
 												<span class="text-gray-700 ml-2">Projects: {{ category.children_count }}; Tasks: {{ category.tasks_count }}</span>
 											</div>
 										</div>
-										<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
-										<div class="hidden lg:block">
-											<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">
-												<span class="material-icons">open_in_new</span>
-											</new-button>
-											<new-button color="red" @click="deleteCategory(category)" class="mr-2">
-												<span class="material-icons">delete</span>
+
+										<div v-if="category.deleted_at === null">
+											<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
+											<div class="hidden lg:block">
+												<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">
+													<span class="material-icons">open_in_new</span>
+												</new-button>
+												<new-button color="red" @click="deleteCategory(category)" class="mr-2">
+													<span class="material-icons">delete</span>
+												</new-button>
+											</div>
+										</div>
+										<div class="block" v-else>
+											<new-button
+												@click="restoreCategory(category)"
+												class="mr-2"
+											>
+												<span class="material-icons">restore_from_trash</span>
 											</new-button>
 										</div>
 									</div>
@@ -280,14 +301,22 @@ export default {
 		async deleteCategory(category) {
 			this.showConfirm('Delete category', 'Are you shure?', async () => {
 				try {
-					await this.$axios.delete(`project_categories/${category.id}`)
+					const {data: {data}} = await this.$axios.delete(`project_categories/${category.id}`)
+					category.deleted_at = data.deleted_at
 				} catch (e) {
 
 				} finally {
-					await this.loadCategories()
 					this.confirm = null
 				}
 			})
+		},
+		async restoreCategory(category) {
+			try {
+				const {data: {data}} = await this.$axios.post(`project_categories/${category.id}/restore`)
+				category.deleted_at = data.deleted_at
+			} catch (e) {
+
+			}
 		},
 		extractParents,
 		selectAll () {

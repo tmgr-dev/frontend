@@ -1,6 +1,6 @@
 <template>
-  <div class="block">
-    <button @click="isOpenDropdownMenu = !isOpenDropdownMenu">
+  <div class="block z-10">
+    <button @click.prevent="isOpenDropdownMenu = !isOpenDropdownMenu">
       <svg
         class="mr-3 md:mr-1 h-12 w-6 fill-current text-grey-dark"
         xmlns="http://www.w3.org/2000/svg"
@@ -19,7 +19,7 @@
     />
     <div
       v-if="isOpenDropdownMenu"
-      class="absolute right-0 z-10 mt-2 py-2 w-48 bg-white rounded-lg shadow-xl"
+      class="absolute right-0 mt-2 py-2 w-48 bg-white rounded-lg shadow-xl" style="z-index: 99"
     >
       <a
         v-for="(action, i) in actions"
