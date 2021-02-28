@@ -165,12 +165,12 @@
 								href="#"
 								@click.prevent="selectAll"
 								alt="Select all"
-								class="opacity-25 hover:opacity-100 hidden md:inline mr-2">
+								class="opacity-25 hover:opacity-100 tc-hidden md:inline mr-2">
 								<span class="material-icons text-3xl">done_all</span>
 							</a>
 							<router-link
 								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
-								class="opacity-25 hover:opacity-100 hidden md:inline">
+								class="opacity-25 hover:opacity-100 tc-hidden md:inline">
 								<span class="material-icons text-4xl">add_circle_outline</span>
 							</router-link>
 						</div>
