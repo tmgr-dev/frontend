@@ -44,10 +44,11 @@
 </template>
 
 <script>
+
 	import TasksListComponent from "../UIElements/TasksListComponent";
-	import DefaultTasksListComponent from "@/components/UIElements/DefaultTasksListComponent";
-	import LoadingButtonActions from "@/mixins/LoadingButtonActions";
-	import TasksListMixin from "@/mixins/TasksListMixin";
+	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
+	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
+	import TasksListMixin from "src/mixins/TasksListMixin";
 
 	export default {
 		name: 'TasksList',

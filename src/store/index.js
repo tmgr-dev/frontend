@@ -1,3 +1,4 @@
+console.log('Store')
 import { createStore } from 'vuex'
 import colorSchemes from '../colors/schemes'
 import axios from 'axios'

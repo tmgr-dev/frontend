@@ -1,3 +1,4 @@
+
 /**
  * TODO: Needs refactoring
  */
@@ -11,7 +12,7 @@ import App from './App.vue';
 import axios from 'axios';
 
 // Vue plugins
-const {default: router} = require('./routes');
+const {default: router} = require('./router');
 const {default: store} = require('./store');
 
 // Color schemes
@@ -19,11 +20,11 @@ const {default: colorSchemes} = require('./colors/schemes');
 
 // Directives
 const { VueTheMask, mask } = require('./components/UIElements/VueTheMask/index');
-const {default: Tooltip} = require('@/directives/tooltip/index');
-const {default: Selectable} = require('@/directives/selectable/index');
+const {default: Tooltip} = require('src/directives/tooltip/index');
+const {default: Selectable} = require('src/directives/selectable/index');
 
 // Load components
-const {default: components} = require("@/bootstrap/globalComponents");
+const {default: components} = require("src/bootstrap/globalComponents");
 
 import {Component} from "@vue/runtime-core";
 
@@ -67,6 +68,7 @@ app.use(Tooltip, {
 })
 app.use(Selectable)
 
-app.mount('#app');
+app.mount('#q-app');
+console.log('test')
 
 export default app;

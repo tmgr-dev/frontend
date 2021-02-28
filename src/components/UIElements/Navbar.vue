@@ -22,9 +22,10 @@
 </template>
 
 <script>
+
 	import DayNightSwitch from './DayNightSwitch'
 	import AccountDropdown from './AccountDropdown'
-	import NavbarMenu from "@/components/UIElements/NavbarMenu";
+	import NavbarMenu from "src/components/UIElements/NavbarMenu";
 
 	export default {
 		name: 'Navbar',

@@ -1,3 +1,4 @@
+
 import BaseLayout from "../components/Layouts/BaseLayout";
 import Modal from "../components/Layouts/Modal";
 import Button from "../components/UIElements/Button";
@@ -7,10 +8,10 @@ import Countdown from "../components/Tasks/Countdown";
 import InputField from "../components/UIElements/InputField";
 import Loader from "../components/UIElements/Loader";
 import DayNightSwitch from "../components/UIElements/DayNightSwitch";
-import AccountDropdown from '@/components/UIElements/AccountDropdown';
-import Alert from '@/components/UIElements/Alert';
-import VueDraggableResizable from '@/components/UIElements/VueDraggableResizable/VueDraggableResizable';
-import VueSelect from '@/components/UIElements/VueSelect';
+import AccountDropdown from 'src/components/UIElements/AccountDropdown';
+import Alert from 'src/components/UIElements/Alert';
+import VueDraggableResizable from 'src/components/UIElements/VueDraggableResizable/VueDraggableResizable';
+import VueSelect from 'src/components/UIElements/VueSelect';
 import Slideout from '../components/UIElements/Slideout/Slideout';
 
 export default [

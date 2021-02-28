@@ -53,7 +53,8 @@
 </template>
 
 <script>
-	import AuthBase from "@/components/Auth/AuthBase";
+
+	import AuthBase from "src/components/Auth/AuthBase";
 
 	export default {
 		name: 'Login',

@@ -1,5 +1,5 @@
 <template>
-	<div id="app" :class="$color('textMain')">
+	<div id="q-app" :class="$color('textMain')">
 		<Slideout menu="#menu" panel="#panel" :toggle-selectors="['a.toggle-button']" @on-open="open">
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden;">
 				<div
@@ -41,13 +41,16 @@
 </template>
 
 <script>
-	import Navbar from "@/components/UIElements/Navbar";
-	import NavbarMenu from "@/components/UIElements/NavbarMenu";
+	console.log('Run APP')
+	import { defineComponent } from 'vue'
+
+	import Navbar from "src/components/UIElements/Navbar";
+	import NavbarMenu from "src/components/UIElements/NavbarMenu";
 	import './assets/styles/index.scss';
 
 	const DEFAULT_TRANSITION = 'fade'
 
-	export default {
+	export default defineComponent({
 		name: 'App',
 		components: {
 			Navbar,
@@ -97,6 +100,7 @@
 			},
 		},
 		created() {
+			console.log('test')
 			this.$store.dispatch('loadUserSettings')
 
 			this.$router.beforeEach((to, from, next) => {
@@ -119,7 +123,7 @@
 			this.$store.getters.pusherBeamsClient.start()
 				.then(() => this.$store.getters.pusherBeamsClient.setUserId(this.$store.getters.user.id.toString(), this.$store.getters.pusherTokenProvider));
 		}
-	}
+	})
 </script>
 
 <style>

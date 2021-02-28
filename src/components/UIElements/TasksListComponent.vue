@@ -243,9 +243,10 @@
 </template>
 
 <script>
-	import DropdownMenu from '@/components/UIElements/DropdownMenu';
-	import TasksListMixin from '@/mixins/TasksListMixin'
-	import Confirm from "@/components/UIElements/Confirm";
+
+	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
+	import TasksListMixin from 'src/mixins/TasksListMixin'
+	import Confirm from "src/components/UIElements/Confirm";
 
 	export default {
 		name: "TasksListComponent",

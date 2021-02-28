@@ -4,7 +4,7 @@
       class="account__user cursor-pointer flex item-center"
       :class="`${$color('navTextUser')}-500`"
       @click="isOpenProfileDropdown = !isOpenProfileDropdown">
-      <span>{{ $store.getters.user.name }}</span>
+      <span>{{ $store.getters.user?.name }}</span>
       <span class="material-icons text-lg relative" style="top:2px">person</span>
     </div>
 

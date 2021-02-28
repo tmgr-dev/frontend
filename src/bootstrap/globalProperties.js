@@ -1,6 +1,7 @@
+
 import axios from "axios";
-import store from "@/store";
-import colorSchemes from "@/colors/schemes";
+import store from "src/store";
+import colorSchemes from "src/colors/schemes";
 
 axios.defaults.baseURL = store.getters.apiBaseUrl
 
