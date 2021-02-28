@@ -1,5 +1,5 @@
 <template>
-  <div class="block z-10">
+  <div class="tc-block z-10">
     <button @click.prevent="isOpenDropdownMenu = !isOpenDropdownMenu">
       <svg
         class="mr-3 md:mr-1 h-12 w-6 fill-current text-grey-dark"
@@ -25,7 +25,7 @@
         v-for="(action, i) in actions"
         :key="i"
         href="#"
-        class="block px-4 py-2 text-gray-800 hover:bg-indigo-500 hover:text-white"
+        class="tc-block px-4 py-2 text-gray-800 hover:bg-indigo-500 hover:text-white"
         @click.prevent="action.click($event)"
       >{{ action.label }}</a>
     </div>

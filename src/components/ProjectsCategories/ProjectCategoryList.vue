@@ -43,14 +43,14 @@
 								<p :class="`text-xs ${$color('textMain')}-600 font-medium`">Process</p>
 							</span>
 						</td>
-						<td class="hidden md:table-cell">
+						<td class="tc-hidden md:table-cell">
 							<p :class="`text-sm ${$color('textMain')}-700 font-medium`">Projects</p>
 							<p :class="`text-xs ${$color('textMain')}-500 font-medium`">{{ category.children_count }}</p>
 						</td>
 						<td>
 							<div v-if="category.deleted_at === null">
 								<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
-								<div class="hidden lg:block">
+								<div class="tc-hidden lg:block">
 									<router-link
 										:to="{name: 'ProjectCategoryChildrenList', params: {id: category.id}}"
 										class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">
@@ -63,7 +63,7 @@
 									</button>
 								</div>
 							</div>
-							<div class="hidden lg:block" v-else>
+							<div class="tc-hidden lg:block" v-else>
 								<new-button
 									@click="restoreCategory(category)"
 									class="mr-2"
@@ -104,7 +104,7 @@
 
 										<div v-if="category.deleted_at === null">
 											<DropdownMenu class="lg:hidden" :actions="getActions(category)"></DropdownMenu>
-											<div class="hidden lg:block">
+											<div class="tc-hidden lg:block">
 												<new-button @click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})" class="mr-2">
 													<span class="material-icons">open_in_new</span>
 												</new-button>
@@ -113,7 +113,7 @@
 												</new-button>
 											</div>
 										</div>
-										<div class="block" v-else>
+										<div class="tc-block" v-else>
 											<new-button
 												@click="restoreCategory(category)"
 												class="mr-2"

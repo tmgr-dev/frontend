@@ -15,7 +15,7 @@
 			<div :class="`${$color('blocks')} max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6`">
 				<form class="w-full">
 					<div class="mb-4">
-						<label class="block text-gray-700 text-sm font-bold mb-2" for="categoryName">
+						<label class="tc-block text-gray-700 text-sm font-bold mb-2" for="categoryName">
 							Project category name
 						</label>
 						<input-field
@@ -27,7 +27,7 @@
 						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 					</div>
 
-					<label class="block text-gray-700 text-sm font-bold mb-2">
+					<label class="tc-block text-gray-700 text-sm font-bold mb-2">
 						Parent category
 					</label>
 					<div class="relative mb-4">
@@ -41,12 +41,12 @@
 						/>
 					</div>
 					<hr class="py-2">
-					<label class="block text-gray-700 text-sm font-bold mb-5">
+					<label class="tc-block text-gray-700 text-sm font-bold mb-5">
 						Settings
 					</label>
 					<div>
 						<div v-for="(setting, index) in availableSettings">
-							<label :for="`setting-${setting.id}`" class="block text-gray-700 text-sm font-bold mb-2">
+							<label :for="`setting-${setting.id}`" class="tc-block text-gray-700 text-sm font-bold mb-2">
 								{{ setting.name }}
 							</label>
 							<div class="relative mb-4">

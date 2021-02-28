@@ -9,7 +9,7 @@
 			:to="link.path"
 			custom
 			v-slot="{ href, isActive, navigate }">
-			<li class="block px-4 py-1 md:p-2 lg:px-4" :class="isActive ? activeLinkClass : ''">
+			<li class="tc-block px-4 py-1 md:p-2 lg:px-4" :class="isActive ? activeLinkClass : ''">
 				<a :href="href" @click="navigate">
 					{{ link.name }}
 				</a>

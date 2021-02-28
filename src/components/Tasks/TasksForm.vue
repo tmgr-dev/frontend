@@ -49,18 +49,18 @@
 
 								<hr class="py-2">
 
-								<label for="settings" class="block text-gray-700 text-sm font-bold mb-5">
+								<label for="settings" class="tc-block text-gray-700 text-sm font-bold mb-5">
 									Settings
 								</label>
 								<div>
 									<div v-for="(setting, index) in availableSettings" id="settings">
-										<label :for="`setting-${setting.id}`" class="block text-gray-700 text-sm font-bold mb-2">
+										<label :for="`setting-${setting.id}`" class="tc-block text-gray-700 text-sm font-bold mb-2">
 											{{ setting.name }}
 										</label>
 										<div class="relative mb-4">
 											<select :id="`setting-${setting.id}`"
 															v-if="!setting.show_custom_value_input"
-															class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+															class="tc-block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
 															v-model="settings[index].value">
 												<option value="" class="text-gray-500">Choose default value</option>
 												<option v-for="(c, i) in setting.default_values" :key="i" :value="c.value">
@@ -104,12 +104,12 @@
 									<button
 										type="button"
 										@click="isShowModalCategory = false"
-										class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+										class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
 										Cancel
 									</button>
 									<button
 										type="submit"
-										class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+										class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
 										Update
 									</button>
 								</div>
@@ -139,7 +139,7 @@
 				<div class="lg:flex">
 					<div class="lg:w-full h-full mt-5 p-5">
 						<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
-							<div class="block w-full float-left">
+							<div class="tc-block w-full float-left">
 								<div class="mb-2">
 									<input-field v-model="form.title" :errors="errors.title" type="text" placeholder="Enter task title"/>
 								</div>
@@ -152,7 +152,7 @@
 					<div class="w-full h-full">
 						<div :class="`${$color('blocks')}  px-5 pb-1`">
 							<div class="mb-2">
-								<label class="block text-sm text-left font-bold mb-2" for="">
+								<label class="tc-block text-sm text-left font-bold mb-2" for="">
 									Description
 									<a
 										v-if="showEditDescription && !isCreatingTask"
@@ -248,7 +248,7 @@
 							</div>
 						</div>
 					</div>
-					<div class="block text-center">
+					<div class="tc-block text-center">
 						<span class="relative inline-flex rounded-md shadow-sm">
 							<button
 								v-if="!isCreatingTask"

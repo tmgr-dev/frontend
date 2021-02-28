@@ -17,7 +17,7 @@
         <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <router-link
             to="/settings"
-            class="block"
+            class="tc-block"
             @click.native="isOpenProfileDropdown = false">
             Settings
           </router-link>
@@ -25,7 +25,7 @@
         <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <a
             href="#"
-            class="block"
+            class="tc-block"
             @click.prevent="logout">
 						Logout
 					</a>

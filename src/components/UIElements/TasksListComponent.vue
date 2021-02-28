@@ -115,7 +115,7 @@
 									</div>
 								</div>
 								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="hidden lg:flex items-center  z-10" v-if="!task.deleted_at">
+								<div class="tc-hidden lg:flex items-center  z-10" v-if="!task.deleted_at">
 									<new-button
 										@click="$router.push(`/${task.id}/edit`)"
 										class="mr-2"
@@ -192,7 +192,7 @@
 											</span>
 									</new-button>
 								</div>
-								<div class="hidden lg:flex items-center" v-else>
+								<div class="tc-hidden lg:flex items-center" v-else>
 									<new-button
 										@click="restoreTask(task)"
 										class="mr-2"

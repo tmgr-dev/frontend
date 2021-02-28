@@ -15,7 +15,7 @@
             }}</p>
             <p
               v-if="task.category"
-              :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"
+              :class="`pl-2 tc-hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"
             >
               <router-link
                 :to="{
@@ -28,11 +28,11 @@
             </p>
             <p
               v-else
-              :class="`pl-2 hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"
+              :class="`pl-2 tc-hidden md:table-cell text-xs text-center w-full ${$color('textMain')}-500 font-medium`"
             > - </p>
           </span>
         </td>
-        <td class="hidden md:table-cell">
+        <td class="tc-hidden md:table-cell">
           <p
             v-if="task.status === 'created' || task.status === 'active'"
             :class="`text-sm ${$color('textMain')}-800 font-medium`"
@@ -43,7 +43,7 @@
             {{ getTaskFormattedTime(task) }}
           </p>
         </td>
-        <td class="hidden md:table-cell">
+        <td class="tc-hidden md:table-cell">
           <p
             v-if="task.category"
             :class="`text-sm ${$color('textMain')}-700 font-medium`"
@@ -71,7 +71,7 @@
             class="lg:hidden"
             :actions="getActions(task)"
           />
-          <div class="hidden lg:block">
+          <div class="tc-hidden lg:block">
             <Button
               v-if="status !== 'done'"
               color="green"

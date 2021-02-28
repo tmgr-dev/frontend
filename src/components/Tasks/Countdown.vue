@@ -99,13 +99,13 @@
 					<button
 						type="button"
 						@click="isShowModalTimer = false"
-						class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+						class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
 						Cancel
 					</button>
 					<button
 						type="button"
 						@click="updateTimer"
-						class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+						class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
 						Update
 					</button>
 				</div>

@@ -8,9 +8,9 @@
       </svg>
     </a>
   </div>
-	<nav :class="`${$color('menuBg')} shadow md:block hidden`" role="navigation">
+	<nav :class="`${$color('menuBg')} shadow md:block tc-hidden`" role="navigation">
 		<div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
-			<div class="w-full md:w-auto md:flex-grow md:flex md:items-center" :class="{ hidden: isHidden }">
+			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center ${isHidden ? 'tc-hidden' : ''}`">
 				<navbar-menu />
 				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
 					<day-night-switch v-model="switchOn"/>
@@ -35,6 +35,7 @@
 			DayNightSwitch
 		},
     created() {
+			console.log('Navbar created')
       window.addEventListener("test", null, Object.defineProperty({}, 'passive', {
         get: () => this.supportsPassive = true
       }));
@@ -52,7 +53,7 @@
 			rerenderSwitcher: 0,
 			links: [
 				{ id: 1, name: 'Current tasks', path: '/' },
-				{ id: 1, name: 'Hidden', path: '/hidden' },
+				{ id: 1, name: 'tc-hidden', path: '/tc-hidden' },
 				{ id: 1, name: 'Archive', path: '/acrhive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' },
 			],

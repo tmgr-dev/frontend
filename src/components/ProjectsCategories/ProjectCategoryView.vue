@@ -14,13 +14,13 @@
 										<p class="text-xs text-gray-600 font-medium">Process</p>
 									</span>
 								</td>
-								<td class="hidden md:table-cell">
+								<td class="tc-hidden md:table-cell">
 									<p class="text-sm text-gray-700 font-medium">Tasks</p>
 									<p class="text-xs text-gray-500 font-medium">352</p>
 								</td>
 								<td>
 									<DropdownMenu class="lg:hidden" :actions="getActions()"></DropdownMenu>
-									<div class="hidden lg:block">
+									<div class="tc-hidden lg:block">
 										<router-link
 											to="/projects-categories/view"
 											class="rounded-l px-5 py-1 border border-4 border-green-400 text-green-600 hover:bg-green-400 hover:text-white">

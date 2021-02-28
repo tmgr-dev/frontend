@@ -34,7 +34,7 @@
         </a>
       </div>
 
-      <div class="block lg:hidden pr-4">
+      <div class="tc-block lg:hidden pr-4">
         <button
           id="nav-toggle"
           class="flex items-center p-1 text-orange-800 hover:text-gray-900"
