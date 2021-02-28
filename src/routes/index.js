@@ -188,6 +188,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+	store.getters.slideout.close()
   if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
   	if (to.matched.some(record => record.meta.notOnlyForLoggedUsers)) {
 			return next()

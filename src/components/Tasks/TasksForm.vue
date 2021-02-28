@@ -18,7 +18,7 @@
 				</router-link>
 
 				<div ref="editing_task_category" v-if="!isCreatingTask">
-					<a href="#" class="absolute right-0 top-0 text-gray-600" :class="$color('grayHover')" @click.prevent="showModalCategory">
+					<a href="#" class="absolute left-0 top-0 text-gray-600 p-5 pt-4 md:p-0" :class="$color('grayHover')" @click.prevent="showModalCategory">
 						<span class="material-icons text-lg">settings</span>
 					</a>
 

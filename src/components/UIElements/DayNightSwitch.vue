@@ -19,6 +19,7 @@
                 required: true
             }
         },
+				emits: ['update:modelValue'],
         watch: {
             nightMode () {
                 this.$emit('update:modelValue', this.nightMode)

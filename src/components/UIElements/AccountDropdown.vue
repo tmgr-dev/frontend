@@ -68,6 +68,6 @@
 
 <style scoped>
 	.custom-top {
-		top: calc(100% + 24px)
+		top: calc(100% + 24px);
 	}
 </style>

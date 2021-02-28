@@ -88,7 +88,7 @@
 							<div class="flex justify-between items-center relative"  @click.prevent="() => {}">
 								<div>
 									<div class="flex">
-										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl">
+										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
 											{{ task.title }}
 										</router-link>
 										<div class="flex items-start task-category-in-task">

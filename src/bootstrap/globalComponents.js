@@ -11,6 +11,7 @@ import AccountDropdown from '@/components/UIElements/AccountDropdown';
 import Alert from '@/components/UIElements/Alert';
 import VueDraggableResizable from '@/components/UIElements/VueDraggableResizable/VueDraggableResizable';
 import VueSelect from '@/components/UIElements/VueSelect';
+import Slideout from '../components/UIElements/Slideout/Slideout';
 
 export default [
 	Alert,
@@ -25,5 +26,6 @@ export default [
 	Loader,
 	AccountDropdown,
 	VueDraggableResizable,
-	VueSelect
+	VueSelect,
+	Slideout
 ]

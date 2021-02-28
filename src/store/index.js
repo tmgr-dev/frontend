@@ -15,6 +15,7 @@ const state = {
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	pusherBeamsClient: pusherBeamsClient,
 	pusherTokenProvider: pusherTokenProvider(token),
+	sideout: null,
 	pusher: pusher(token),
 	userSettings: {
 		showTooltips: true
@@ -27,6 +28,7 @@ const getters = {
 	pusherBeamsClient: state => state.pusherBeamsClient,
 	pusherTokenProvider: state => state.pusherTokenProvider,
 	pusher: state => state.pusher,
+	slideout: state => state.slideout,
 	user: state => state.user,
 	isLoggedIn: state => state.token !== null,
 	colorScheme: state => state.colorScheme,
@@ -64,6 +66,9 @@ const mutations = {
 	},
 	setUserSettings (state, settings) {
 		state.userSettings = settings
+	},
+	setSlideout (state, slideout) {
+		state.slideout = slideout
 	},
 	setPusherBeamsClient (state, pusherBeamsClient) {
 		state.pusherBeamsClient = pusherBeamsClient

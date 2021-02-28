@@ -1,7 +1,8 @@
 export default {
   bgBody: 'bg-body',
   bgNav: 'bg-white',
-  blocks: 'bg-white',
+	menuBg: 'md:bg-bg-white',
+  blocks: 'md:bg-white',
   blocksHover: 'bg-gray-100',
   borderMain: 'border-gray-200',
   input: 'bg-white',

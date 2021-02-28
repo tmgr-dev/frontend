@@ -1,27 +1,48 @@
 <template>
 	<div id="app" :class="$color('textMain')">
-		<transition
-			name="fade"
-			mode="out-in"
-		>
-			<Navbar v-if="$route.meta.navbarHidden" />
-		</transition>
-		<router-view :key="$route.path" v-slot="{ Component }">
-			<transition
-				:name="transitionName"
-				mode="out-in"
-				@before-leave="beforeLeave"
-				@enter="enter"
-				@after-enter="afterEnter"
-			>
-				<component v-show="showComponent" :is="Component"></component>
-			</transition>
-		</router-view>
+		<Slideout menu="#menu" panel="#panel" :toggle-selectors="['a.toggle-button']" @on-open="open">
+			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden;">
+				<div
+					:class="`z-20 pl-5`"
+				>
+					<a href="#" class="absolute right-0 p-2" @click.prevent="$store.getters.slideout.toggle()">
+						<svg fill="currentColor" viewBox="0 0 20 20" class="w-6 h-6">
+							<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+						</svg>
+					</a>
+					<navbar-menu />
+					<account-dropdown />
+					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 pb-10" :key="rerenderSwitcher">
+            <day-night-switch v-model="switchOn"/>
+          </span>
+				</div>
+			</div>
+			<div id="panel" :class="$color('bgBody')">
+				<transition
+					name="fade"
+					mode="out-in"
+				>
+					<Navbar v-if="$route.meta.navbarHidden" />
+				</transition>
+				<router-view :key="$route.path" v-slot="{ Component }">
+					<transition
+						:name="transitionName"
+						mode="out-in"
+						@before-leave="beforeLeave"
+						@enter="enter"
+						@after-enter="afterEnter"
+					>
+						<component v-show="showComponent" :is="Component"></component>
+					</transition>
+				</router-view>
+			</div>
+		</Slideout>
 	</div>
 </template>
 
 <script>
 	import Navbar from "@/components/UIElements/Navbar";
+	import NavbarMenu from "@/components/UIElements/NavbarMenu";
 	import './assets/styles/index.scss';
 
 	const DEFAULT_TRANSITION = 'fade'
@@ -29,7 +50,8 @@
 	export default {
 		name: 'App',
 		components: {
-			Navbar
+			Navbar,
+			NavbarMenu
 		},
 		data() {
 			return {
@@ -41,6 +63,14 @@
 		computed: {
 			navbarHidden () {
 				return this.$route.name !== 'Index'
+			},
+			switchOn: {
+				get () {
+					return this.$store.getters.colorScheme === 'dark'
+				},
+				set (newValue) {
+					this.$store.commit('colorScheme', newValue ? 'dark' : 'default')
+				}
 			}
 		},
 		watch: {

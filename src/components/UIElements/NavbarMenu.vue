@@ -1,5 +1,8 @@
 <template>
-	<ul class="flex flex-col mt-4 -mx-4 pt-4 border-t md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0">
+	<ul
+		:class="`flex flex-col mt-4 -mx-4 pt-4 md:flex-row md:items-center md:mx-0 md:mt-0 md:pt-0 md:mr-4 lg:mr-8 md:border-0`"
+
+	>
 		<router-link
 			v-for="link in links"
 			:key="link.id"
