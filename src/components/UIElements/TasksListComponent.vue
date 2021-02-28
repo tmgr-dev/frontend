@@ -76,8 +76,7 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
-				:class="{ selected: !!selected[i], selecting: !!selecting[i] }"
-				class="w-full px-2 mt-2 selectable"
+				:class="`${!!selected[i] ? 'selected selecting' : ''} w-full px-2 mt-2 selectable ${task.deleted_at ? 'hover:opacity-100 opacity-50' : ''}`"
 				:draggable="draggable"
 				:data-task-id="task.id"
 				@dragstart="onDragStart($event, task)"
@@ -116,7 +115,7 @@
 									</div>
 								</div>
 								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="hidden lg:flex items-center">
+								<div class="hidden lg:flex items-center" v-if="!task.deleted_at">
 									<new-button
 										@click="$router.push(`/${task.id}/edit`)"
 										class="mr-2"
@@ -191,6 +190,14 @@
 												<span class="material-icons" v-if="!isLoadingActions[`delete-${task.id}`]">delete</span>
 												<loader v-if="isLoadingActions[`delete-${task.id}`]" :is-mini="true" :is-static="true" />
 											</span>
+									</new-button>
+								</div>
+								<div class="hidden lg:flex items-center" v-else>
+									<new-button
+										@click="restoreTask(task)"
+										class="mr-2"
+										v-tooltip.top="userSettings.showTooltips ? 'Restore from trash' : { visible: false }">
+										<span class="material-icons">restore_from_trash</span>
 									</new-button>
 								</div>
 							</div>
@@ -398,10 +405,11 @@
 				const deleteTask = async () => {
 					try {
 						this.setLoadingAction(dotId)
-						await this.$axios.delete(`/tasks/${task.id}`)
-						if (loadTasks) {
-							await this.loadTasks()
-						}
+						const {data: {data}} = await this.$axios.delete(`/tasks/${task.id}`)
+						task.deleted_at = data.deleted_at
+						// if (loadTasks) {
+						// 	await this.loadTasks()
+						// }
 					} catch (e) {
 						console.error(e)
 					} finally {
@@ -411,6 +419,18 @@
 				}
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
 			},
+			async restoreTask (task, dotId = null) {
+				try {
+					this.setLoadingAction(dotId)
+					const {data: {data}} = await this.$axios.post(`/tasks/${task.id}/restore`)
+					task.deleted_at = data.deleted_at
+				} catch (e) {
+					console.error(e)
+				} finally {
+					this.setLoadingAction(dotId, false)
+					this.confirm = undefined
+				}
+			},
 			async deleteSelectedTasks () {
 				for (let i = 0; i < this.tasks.length; ++i) {
 					if (!this.selected[i]) {
@@ -418,7 +438,7 @@
 					}
 					await this.deleteTask(this.tasks[i], null, false)
 				}
-				await this.loadTasks()
+				// await this.loadTasks()
 				this.resetSelects()
 			},
 			capitalize(s) {
