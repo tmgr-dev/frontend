@@ -1,6 +1,6 @@
 server {
     listen 80;
-    root /var/www/html/dist;
+    root /var/www/html/dist/spa;
     index index.html;
     server_name task-manager-ui.localhost;
 
