@@ -7,6 +7,9 @@
   "scripts": {
     "serve": "quasar dev",
     "build": "quasar build",
+    "build-linux": "quasar build -m electron --fix",
+    "build-windows": "quasar build -m electron --fix -T win32",
+    "serve-windows": "quasar dev --mode electron --fix -T win32",
     "build:pwa": "quasar build -m pwa",
     "lint": "vue-cli-service lint",
     "test": "echo \"No test specified\" && exit 0"
@@ -46,6 +49,9 @@
     "@vue/eslint-config-prettier": "^6.0.0",
     "@vue/eslint-config-typescript": "^5.0.2",
     "babel-eslint": "^10.0.1",
+    "electron": "^11.3.0",
+    "electron-builder": "^22.4.0",
+    "electron-packager": "^14.1.1",
     "eslint": "^7.14.0",
     "eslint-config-standard": "^16.0.2",
     "eslint-plugin-import": "^2.19.1",

@@ -174,12 +174,20 @@ module.exports = configure(function (/* ctx */) {
 
         // Windows only
         // win32metadata: { ... }
+				platform: 'win32'
       },
 
       builder: {
         // https://www.electron.build/configuration/configuration
 
-        appId: 'task-manager-quasar-tmp'
+        appId: 'dev.tmgr',
+				win: {
+					target: 'portable'
+				},
+				publish: {
+					'provider': 's3',
+					'bucket': 'myS3bucket'
+				}
       },
 
       // "chain" is a webpack-chain object https://github.com/neutrinojs/webpack-chain
