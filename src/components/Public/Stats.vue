@@ -16,7 +16,7 @@
 							<td class="px-5 text-2xl">{{ stats.users }}</td>
 						</tr>
 						<tr>
-							<th class="text-2xl text-left" colspan="2">Active users</th>
+							<th class="text-2xl text-center" colspan="2">Active users</th>
 						</tr>
 						<tr>
 							<th class="text-xl text-left">Last 24 hours</th>
@@ -33,6 +33,9 @@
 						<tr>
 							<th class="text-xl text-left">Last year</th>
 							<td class="px-5 text-2xl">{{ stats.active_in_1_year }}</td>
+						</tr>
+						<tr>
+							<th class="text-2xl text-center" colspan="2">Tasks</th>
 						</tr>
 						<tr>
 							<th class="text-xl text-left">Tasks</th>
