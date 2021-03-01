@@ -16,6 +16,30 @@
 							<td class="px-5 text-2xl">{{ stats.users }}</td>
 						</tr>
 						<tr>
+							<th class="text-2xl">Active users</th>
+							<td class="px-5 text-2xl"></td>
+						</tr>
+						<tr>
+							<th class="text-xl">Last 24 hours</th>
+							<td class="px-5 text-2xl">{{ stats.active_in_1_day }}</td>
+						</tr>
+						<tr>
+							<th class="text-xl">Last week</th>
+							<td class="px-5 text-2xl">{{ stats.active_in_1_day }}</td>
+						</tr>
+						<tr>
+							<th class="text-xl">Last month</th>
+							<td class="px-5 text-2xl">{{ stats.active_in_1_month }}</td>
+						</tr>
+						<tr>
+							<th class="text-xl">Last year</th>
+							<td class="px-5 text-2xl">{{ stats.active_in_1_year }}</td>
+						</tr>
+						<tr>
+							<th class="text-xl">Users</th>
+							<td class="px-5 text-2xl">{{ stats.users }}</td>
+						</tr>
+						<tr>
 							<th class="text-xl">Tasks</th>
 							<td class="px-5 text-2xl">{{ stats.tasks }}</td>
 						</tr>
