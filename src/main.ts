@@ -3,20 +3,21 @@
  * TODO: Needs refactoring
  */
 
-import { createApp, h } from 'vue';
-
+import { createApp } from "vue";
+import { Component } from "@vue/runtime-core";
 // Vue Application
-import App from './App.vue';
+import App from "./App.vue";
 
 // HTTP client
-import axios from 'axios';
+import axios from "axios";
+import colorSchemes from "./colors/schemes";
 
 // Vue plugins
 const {default: router} = require('./router');
 const {default: store} = require('./store');
 
 // Color schemes
-const {default: colorSchemes} = require('./colors/schemes');
+
 
 // Directives
 const { VueTheMask, mask } = require('./components/UIElements/VueTheMask/index');
@@ -25,8 +26,6 @@ const {default: Selectable} = require('src/directives/selectable/index');
 
 // Load components
 const {default: components} = require("src/bootstrap/globalComponents");
-
-import {Component} from "@vue/runtime-core";
 
 const app = createApp(App);
 

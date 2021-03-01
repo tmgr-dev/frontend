@@ -1,4 +1,3 @@
-
 import BaseLayout from "../components/Layouts/BaseLayout";
 import Modal from "../components/Layouts/Modal";
 import Button from "../components/UIElements/Button";

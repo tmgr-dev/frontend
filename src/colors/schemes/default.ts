@@ -1,4 +1,6 @@
-export default {
+import { Keys } from "@/colors/schemes/types";
+
+const keys: Keys = {
   bgBody: 'bg-body',
   bgNav: 'bg-white',
 	menuBg: 'md:bg-bg-white',
@@ -20,3 +22,5 @@ export default {
 	taskSettingTextColor: 'text-gray-800',
 	borderSelection: 'border-black'
 }
+
+export default keys;
