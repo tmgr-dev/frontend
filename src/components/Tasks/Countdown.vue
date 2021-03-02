@@ -60,7 +60,7 @@
 				</span>
 			</span>
 		</div>
-		<div class="flex"  v-if="task.start_time">
+		<div class="flex"  v-if="task.start_time && !isFullScreen">
 			<div class="mx-auto">
 				<input-field
 					type="checkbox"
