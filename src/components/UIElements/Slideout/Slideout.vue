@@ -32,7 +32,6 @@ export default {
 	name: 'Slideout',
 	mounted: function () {
 		this.wait(() => {
-			console.log(document.querySelector(this.panel))
 			this.$store.commit('setSlideout', new SlideoutJS({
 				'panel': document.querySelector(this.panel),
 				'menu': document.querySelector(this.menu),
@@ -65,7 +64,6 @@ export default {
 		wait(cb) {
 			if (!document.querySelector(this.panel)) {
 				this.waitTimeout = setTimeout(() => {
-					console.log(document.querySelector(this.panel), this.panel)
 					return this.wait(cb)
 				}, 500)
 				return

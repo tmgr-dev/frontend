@@ -41,7 +41,6 @@
 </template>
 
 <script>
-	console.log('Run APP')
 	import { defineComponent } from 'vue'
 
 	import Navbar from "src/components/UIElements/Navbar";
@@ -100,7 +99,6 @@
 			},
 		},
 		created() {
-			console.log('test')
 			this.$store.dispatch('loadUserSettings')
 
 			this.$router.beforeEach((to, from, next) => {

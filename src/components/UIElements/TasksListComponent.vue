@@ -304,7 +304,6 @@
 				event.dataTransfer.setData('task-id', task.id)
 			},
 			onDragEnd (event, task) {
-				console.log('exit')
 			},
 			showConfirm (title, body, action) {
 				this.confirm = {title, body, action}

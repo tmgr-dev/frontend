@@ -422,7 +422,6 @@
 					})
 				})
 				.on('task-countdown-started', ({task}) => {
-					console.log('test')
 					const isCountdownStarted = !!this.form.start_time
 					if (isCountdownStarted) {
 						return
@@ -700,7 +699,6 @@
 					end: currentTime
 				})
 				++this.checkpointUpdateKey
-				console.log(this.form.checkpoints)
 			},
 			deleteCheckpoint(checkpointIndex) {
 				this.form.checkpoints.splice(checkpointIndex, 1)

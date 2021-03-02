@@ -54,7 +54,4 @@ export default (obj: any) => {
 	app.use(Selectable)
 	app.use(router)
 	app.use(store)
-
-	// app.mount('#q-app');
-	console.log('Mounted')
 }

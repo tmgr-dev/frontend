@@ -35,7 +35,6 @@
 			DayNightSwitch
 		},
     created() {
-			console.log('Navbar created')
       window.addEventListener("test", null, Object.defineProperty({}, 'passive', {
         get: () => this.supportsPassive = true
       }));

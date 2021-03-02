@@ -6,7 +6,7 @@
 			<breadcrumbs
 				v-if="form.project_category_id"
 				:current="'Edit category'"
-				:items="getBreadcrumbs(extractParents({...form, ...{parent_category: findProjectCategoryById(form.project_category_id)} }))"
+				:items="getBreadcrumbs(getParents())"
 				:drop="drop"
 			/>
 		</template>
@@ -95,7 +95,7 @@
 						<button @click.prevent="create"
 										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 										type="button">
-							{{ h1 }}
+							{{ isCreate ? 'Create' : 'Save'}}
 						</button>
 						<button v-if="isCreate" @click.prevent="createAndContinue"
 										class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -104,9 +104,9 @@
 						</button>
 						<router-link
 							v-if="!isCreate" :to="`/projects-categories/${form.id}/children`"
-							class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 							type="button">
-							View
+							Cancel
 						</router-link>
 					</div>
 				</form>
@@ -144,7 +144,6 @@
 		watch: {
 			settings: {
 				handler (newVal, oldVal) {
-					console.log(newVal[0])
 				},
 				deep: true
 			}
@@ -159,16 +158,21 @@
 		},
 		async mounted() {
 			this.setFormTexts()
-			await this.loadParentCategories()
 
 			if (!this.isCreate) {
 				await this.loadModel()
 			}
+			await this.loadParentCategories()
 			await this.loadProjectCategorySettings()
 		},
 		methods: {
 			getBreadcrumbs,
 			extractParents,
+			getParents() {
+				const parents = this.extractParents({...this.form, ...{parent_category: this.findProjectCategoryById(this.form.project_category_id)} })
+				parents.push(this.form)
+				return parents
+			},
 			showSavedAlert() {
 				this.showSaveAlert = true
 				setTimeout(() => this.showSaveAlert = false, 3000)
@@ -179,7 +183,9 @@
 			},
 			async loadParentCategories() {
 				const {data: {data}} = await this.$axios.get('project_categories?all')
-				this.parentCategories = data
+				this.parentCategories = data.filter(category => {
+					return category.id !== this.form.id
+				})
 			},
 			async loadProjectCategorySettings() {
 				const {data: {data}} = await this.$axios.get('project_categories/settings')
@@ -228,7 +234,7 @@
 				if (!withRoutePush) {
 					return
 				}
-				await this.$router.push('/projects-categories')
+				await this.$router.push(`/projects-categories/${data.id}/children`)
 			},
 			async saveSettings(settings) {
 				const {data: {data}} = await this.$axios.put(`/project_categories/${this.form.id}/settings`, settings)

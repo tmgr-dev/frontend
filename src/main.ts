@@ -68,6 +68,5 @@ app.use(Tooltip, {
 app.use(Selectable)
 
 app.mount('#q-app');
-console.log('test')
 
 export default app;

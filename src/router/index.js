@@ -13,8 +13,6 @@ import routes from './routes'
 
 import store from '../store'
 
-console.log('Router')
-
 const router = route(function (/* { store, ssrContext } */) {
 	const createHistory = createWebHistory
 

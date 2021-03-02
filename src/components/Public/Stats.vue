@@ -70,7 +70,6 @@
 		}),
 		async created () {
 			const {data: {data}} = await this.$axios.get('/stats')
-			console.log(data)
 			this.stats = data
 		},
 		methods: {}

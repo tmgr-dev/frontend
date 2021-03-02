@@ -306,9 +306,7 @@
 			this.renderTime()
 		},
 		beforeUnmount() {
-			console.log('Rem int', this.reminderInterval)
 			clearTimeout(this.reminderInterval)
-			console.log('Rem int', this.reminderInterval)
 		}
 	}
 </script>
