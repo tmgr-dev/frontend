@@ -1,10 +1,10 @@
 <template>
 	<div :class="{ 'theme-dark' : nightMode , 'switcher': true}">
 		<input
-			type="checkbox" id="theme-toggle" class="theme-toggle"
+			type="checkbox" :id="`theme-toggle-${$.uid}`" class="theme-toggle"
 			v-model="nightMode"
 		/>
-		<label for="theme-toggle">
+		<label :for="`theme-toggle-${$.uid}`">
 			<span></span>
 		</label>
 	</div>
@@ -24,6 +24,8 @@ export default {
 		nightMode() {
 			this.$emit('update:modelValue', this.nightMode)
 		}
+	},
+	mounted() {
 	},
 	data() {
 		return {
