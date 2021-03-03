@@ -209,42 +209,35 @@
 						Checkpoints
 					</h2>
 					<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded mt-5 p-5`" :key="checkpointUpdateKey">
-						<div class="mb-2" v-for="(checkpoint, v) in form.checkpoints" :key="v">
+						<div class="mb-5" v-for="(checkpoint, v) in form.checkpoints" :key="v">
 							<div class="flex mb-2">
 								<div class="w-full mx-2 relative">
-									<span class="absolute right-0 top-0 checkpoint-index">{{ v + 1 }}</span>
-									<input
-										:class="`pl-10 shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline `"
+									<span
+										:class="`shadow ${$color('borderMain')} ${$color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+									>
+										{{ v + 1 }}
+									</span>
+									<span
+										:class="`shadow ${$color('borderMain')} ${$color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+									>
+										{{ secondsToStringTime(checkpoint.start) }}
+									</span>
+									<span
+										:class="`shadow ${$color('borderMain')} ${$color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+									>
+										{{ secondsToStringTime(checkpoint.end) }}
+									</span>
+									<input-field
 										type="text"
 										placeholder="Checkpoint content"
 										v-model="checkpoint.description"
-									>
-									<span class="absolute right-0 top-0 checkpoint-delete" @click="deleteCheckpoint(v)">
+									/>
+									<span class="absolute right-0 top-0 mt-5 checkpoint-delete" @click="deleteCheckpoint(v)">
 									<span class="material-icons text-lg text-red-700">delete</span>
 								</span>
 								</div>
 
 								<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
-							</div>
-							<div>
-								<div class="flex">
-									<div class="w-6/12 mx-2">
-										<vue-the-mask mask="##:##:##"
-															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-															type="text"
-															placeholder="00:00"
-															:value="secondsToStringTime(checkpoint.start)"
-										/>
-									</div>
-									<div class="w-6/12 mx-2">
-										<vue-the-mask mask="##:##:##"
-															:class="`shadow appearance-none border rounded w-full py-2 px-3 ${$color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline text-center`"
-															type="text"
-															placeholder="00:00"
-															:value="secondsToStringTime(checkpoint.end)"
-										/>
-									</div>
-								</div>
 							</div>
 						</div>
 					</div>
@@ -686,14 +679,18 @@
 				return num < 10 ? '0' + num : num
 			},
 			addCheckpoint() {
-				if (!this.form.checkpoints) {
-					this.form.checkpoints = []
+				const { form } = this
+				if (!form.checkpoints) {
+					form.checkpoints = []
 				}
-				const currentTime = this.form.common_time
-				if (this.form.checkpoints.length !== 0 && this.form.checkpoints.length !== 1) {
-					this.form.checkpoints[this.form.checkpoints.length - 1].end = currentTime
+				const currentTime = form.common_time + Math.floor(
+					((new Date()) - (new Date()).setTime(form.start_time * 1000)) / 1000
+				)
+				if (form.checkpoints.length > 0) {
+					const prevCheckpointIndex = form.checkpoints.length - 1
+					form.checkpoints[prevCheckpointIndex].end = currentTime
 				}
-				this.form.checkpoints.push({
+				form.checkpoints.push({
 					description: 'New one',
 					start: currentTime,
 					end: currentTime
