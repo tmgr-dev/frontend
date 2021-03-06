@@ -179,6 +179,17 @@ const routes = [
 		},
 		name: 'Stats'
 	},
+	{
+		path: '/push-notifications-enable-guide',
+		component: () => import('src/components/Public/PushNotificationsEnableGuide'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true
+		},
+		name: 'PushNotificationsEnableGuide'
+	},
 	// Always leave this as last one,
 	// but you can also remove it
 	{

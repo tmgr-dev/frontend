@@ -51,6 +51,10 @@
 		methods: {
 			async logout() {
 				try {
+					if (this.$store.getters.pusherBeamsUserId) {
+						await this.$store.getters.pusherBeamsClient.stop()
+						this.$store.commit('pusherBeamsUserId', null)
+					}
 					await this.$axios.get('auth/logout')
 					this.removeUserData()
 				} catch ({ response }) {

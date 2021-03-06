@@ -8,6 +8,7 @@
 		</template>
 		<template #body>
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color('textMain')}`">
+				<Button :color="pusherBeamsUserId ? `red` : `green`" @click="togglePushes">Web Pushes</Button>
 				<input-field v-model="userSettings.showTooltips" type="checkbox" placeholder="Show tooltips"></input-field>
 				<div>
 					<div v-for="(setting, index) in availableSettings">
@@ -67,20 +68,33 @@
 			<alert description="Saved" v-if="successSavingShow" />
 		</template>
 	</BaseLayout>
+	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined">
+		<template #body-content>
+			<p>{{ confirm.body }}</p>
+			<a href="/push-notifications-enable-guide" target="_blank" class="text-blue">How to enable or disable Push Notifications on Chrome, Firefox & Safari Browser?</a>
+		</template>
+	</confirm>
 </template>
 
 <script>
+	import Confirm from "src/components/UIElements/Confirm";
+	import Button from "components/UIElements/Button";
 	export default {
 		name: 'Settings',
+		components: {Button, Confirm},
 		data: () => ({
 			successSavingShow: false,
 			availableSettings: [],
 			settings: [],
 			user: {},
+			confirm: null
 		}),
 		computed: {
 			userSettings () {
 				return this.$store.getters.getUserSettings || {}
+			},
+			pusherBeamsUserId () {
+				return this.$store.getters.pusherBeamsUserId
 			}
 		},
 		async mounted() {
@@ -88,6 +102,28 @@
 			await this.loadSettings()
 		},
 		methods: {
+			showConfirm (title, body, action) {
+				this.confirm = {title, body, action}
+			},
+			togglePushes () {
+				if (this.$store.getters.pusherBeamsUserId) {
+					return this.$store.getters.pusherBeamsClient.stop()
+						.then(() => {
+							this.$store.commit('pusherBeamsUserId', null)
+						});
+				}
+				const userId = this.$store.getters.user.id.toString()
+				return this.$store.getters.pusherBeamsClient.start()
+					.then(() => {
+						this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
+							this.$store.commit('pusherBeamsUserId', userId)
+						})
+					}).catch((s) => {
+						this.showConfirm('Notifications registration', 'Please check notifications permissions', () => {
+							this.confirm = null
+						})
+					});
+			},
 			async loadUser() {
 				const {data: {data}} = await this.$axios.get('user')
 				this.user = data
