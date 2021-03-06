@@ -18,10 +18,7 @@
 				</div>
 			</div>
 			<div id="panel" :class="$color('bgBody')">
-				<transition
-					name="fade"
-					mode="out-in"
-				>
+				<transition name="fade" mode="out-in">
 					<Navbar v-if="$route.meta.navbarHidden" />
 				</transition>
 				<router-view :key="$route.path" v-slot="{ Component }">
@@ -30,8 +27,7 @@
 						mode="out-in"
 						@before-leave="beforeLeave"
 						@enter="enter"
-						@after-enter="afterEnter"
-					>
+						@after-enter="afterEnter">
 						<component v-show="showComponent" :is="Component"></component>
 					</transition>
 				</router-view>

@@ -10,14 +10,13 @@ import App from "./App.vue";
 
 // HTTP client
 import axios from "axios";
+
+// Dark & Day modes
 import colorSchemes from "./colors/schemes";
 
 // Vue plugins
 const {default: router} = require('./router');
 const {default: store} = require('./store');
-
-// Color schemes
-
 
 // Directives
 const { VueTheMask, mask } = require('./components/UIElements/VueTheMask/index');
