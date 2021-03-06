@@ -8,7 +8,7 @@
 		</template>
 		<template #body>
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color('textMain')}`">
-				<Button :color="pusherBeamsUserId ? `red` : `green`" @click="togglePushes">Web Pushes</Button>
+				<Button v-if="!pusherBeamsUserId" :color="pusherBeamsUserId ? `red` : `green`" @click="togglePushes">Web Pushes</Button>
 				<Button color="blue" @click="testWebPushNotifications">Test web push notifications</Button>
 				<input-field v-model="userSettings.showTooltips" type="checkbox" placeholder="Show tooltips"></input-field>
 				<div>
@@ -109,24 +109,21 @@
 			async testWebPushNotifications() {
 				await this.$axios.post('test/web/notifications')
 			},
-			togglePushes () {
+			async togglePushes () {
 				if (this.$store.getters.pusherBeamsUserId) {
-					return this.$store.getters.pusherBeamsClient.stop()
-						.then(() => {
-							this.$store.commit('pusherBeamsUserId', null)
-						});
+					await this.$store.getters.pusherBeamsClient.stop()
+					return this.$store.commit('pusherBeamsUserId', null)
 				}
 				const userId = this.$store.getters.user.id.toString()
-				return this.$store.getters.pusherBeamsClient.start()
-					.then(() => {
-						this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
-							this.$store.commit('pusherBeamsUserId', userId)
-						})
-					}).catch((s) => {
-						this.showConfirm('Notifications registration', 'Please check notifications permissions', () => {
-							this.confirm = null
-						})
-					});
+				try {
+					await this.$store.getters.pusherBeamsClient.start()
+					await this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider)
+					this.$store.commit('pusherBeamsUserId', userId)
+				} catch (e) {
+					this.showConfirm('Notifications registration', 'Please check notifications permissions', () => {
+						this.confirm = null
+					})
+				}
 			},
 			async loadUser() {
 				const {data: {data}} = await this.$axios.get('user')
