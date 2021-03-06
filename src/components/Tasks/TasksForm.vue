@@ -100,7 +100,7 @@
 									</div>
 								</div>
 
-								<div class="flex items-center mt-5">
+								<div class="flex flex-nowrap items-center mt-5">
 									<button
 										type="button"
 										@click="isShowModalCategory = false"

@@ -95,7 +95,7 @@
 						v-model="countdown.seconds"
 					/>
 				</div>
-				<div class="flex items-center mt-5">
+				<div class="flex items-center flex-nowrap mt-5">
 					<button
 						type="button"
 						@click="isShowModalTimer = false"
@@ -116,9 +116,12 @@
 
 <script>
 	import InputField from "../UIElements/InputField";
+
 	export default {
 		name: "Countdown",
-		components: {InputField},
+		components: {
+			InputField
+		},
 		emits: ['toggle', 'update:seconds'],
 		props: {
 			initTask: {
@@ -128,7 +131,7 @@
 			style: {
 				required: false,
 				type: Object,
-				default: () => {}
+				default: () => ({})
 			}
 		},
 		data() {

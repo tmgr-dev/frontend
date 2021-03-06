@@ -24,10 +24,7 @@ module.exports = configure(function(/* ctx */) {
 		boot: ["main.ts"],
 
 		// https://quasar.dev/quasar-cli/quasar-conf-js#Property%3A-css
-		css: [
-			"../assets/styles/custom-reset.scss"
-			/*"../assets/styles/index.scss"*/
-		],
+		css: ["../assets/styles/custom-reset.scss"],
 
 		// https://github.com/quasarframework/quasar/tree/dev/extras
 		extras: [
