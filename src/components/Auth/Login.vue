@@ -94,7 +94,7 @@
 					Authorization: `Bearer ${this.$store.getters.token.token}`,
 					'X-Requested-With': 'XMLHttpRequest'
 				}
-				const {data} = await this.$axios.get('user')
+				const {data: {data}} = await this.$axios.get('user')
 
 				this.$store.commit('user', data)
 				await this.$router.push({name: 'CurrentTasksList'})
