@@ -1,6 +1,6 @@
 <template>
-	<div class="fixed right-0 mr-10 bottom-0 mb-10">
-		<div class="flex bg-green-400 max-w-sm mb-4">
+	<div class="fixed text-main">
+		<div class="flex bg-green-400 max-w-sm">
 			<div class="w-16 bg-green-700">
 				<div class="p-4">
 					<svg class="h-8 w-8 text-white fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -13,7 +13,7 @@
 			</div>
 			<div class="w-auto text-grey-500 items-center p-4">
 				<span class="text-lg font-bold pb-4">
-					{{ header }}
+					{{ title }}
 				</span>
 				<p class="leading-tight">
 					{{ description }}
@@ -59,15 +59,23 @@
 	export default {
 		name: "Alert",
 		props: {
-			header: {
-				required: false,
+			title: {
 				type: String,
-				default: ''
+				required: false,
+				default: 'Saved'
 			},
 			description: {
-				required: true,
-				type: String
+				type: String,
+				required: false,
+				default: ''
 			},
 		}
 	}
 </script>
+
+<style scoped>
+	.fixed {
+		right: 20px;
+		bottom: 20px;
+	}
+</style>

@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<div class="h-screen w-screen flex">
+		<div class="w-screen flex">
 			<div class="w-screen">
 				<header class="container mx-auto px-4 my-5 relative">
 					<h1 :class="`md:text-3xl text-2xl mt-6 pt-1 md:pt-0 md:mt-0  ${$color('h1')}-900 relative text-center md:text-left text-center ml-2`">

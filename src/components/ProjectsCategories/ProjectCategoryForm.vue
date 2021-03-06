@@ -112,7 +112,11 @@
 					</div>
 				</form>
 				<transition name="fade">
-					<Alert v-if="showSaveAlert" header="Saved" description="You saved your project category"/>
+					<alert
+						v-if="isShowAlert"
+						:title="alertTitle"
+						:description="alertDescription"
+					/>
 				</transition>
 			</div>
 		</template>
@@ -124,6 +128,7 @@
 	import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
 	import extractParents from './functions/extractParents'
 	import InputField from "../UIElements/InputField"
+	import AlertData from "../../mixins/AlertData";
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -131,11 +136,12 @@
 			Breadcrumbs,
 			InputField
 		},
-		props: [],
+		mixins: [
+			AlertData
+		],
 		data() {
 			return {
 				h1: null,
-				showSaveAlert: false,
 				form: this.getDefaultForm(),
 				parentCategories: null,
 				availableSettings: [],
@@ -173,10 +179,6 @@
 				const parents = this.extractParents({...this.form, ...{parent_category: this.findProjectCategoryById(this.form.project_category_id)} })
 				parents.push(this.form)
 				return parents
-			},
-			showSavedAlert() {
-				this.showSaveAlert = true
-				setTimeout(() => this.showSaveAlert = false, 3000)
 			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`project_categories/${this.categoryId}`)
@@ -224,7 +226,7 @@
 					const {data: {data}} = await this.$axios.put(`project_categories/${this.form.id}`, this.form)
 					this.form = data
 					await this.saveSettings(this.settings)
-					this.showSavedAlert()
+					this.showAlert('Saved', 'The project category was saved')
 					return
 				}
 				this.form.slug = this.generateSlug(this.form.title)

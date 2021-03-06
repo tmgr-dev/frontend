@@ -277,16 +277,16 @@
 							type="button">Add checkpoint</button>
 					</div>
 				</div>
-				<transition name="fade">
-					<Alert v-if="showSaveAlert" header="Saved" description="You saved your task"></Alert>
-				</transition>
 				<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</p>
+
 				<transition name="fade">
-					<p v-if="showStatus" class="text-gray-500 float-right absolute right-0 -mt-8 mr-3">
-						{{ statusText }}
-					</p>
+					<alert
+						v-if="isShowAlert"
+						:title="alertTitle"
+						:description="alertDescription"
+					/>
 				</transition>
 			</div>
 		</template>
@@ -295,13 +295,17 @@
 
 <script>
 	import moment from 'moment'
-	import InputField from "../UIElements/InputField"
+	import AlertData from "../../mixins/AlertData";
+	import InputField from "../UIElements/InputField";
 
 	export default {
 		name: 'TasksForm',
 		components: {
 			InputField
 		},
+		mixins: [
+			AlertData
+		],
 		data() {
 			return {
 				savedData: {},
@@ -320,9 +324,6 @@
 				],
 				errors: {},
 				showEditDescription: false,
-				showSaveAlert: false,
-				statusText: '',
-				showStatus: false,
 				panel: false,
 				isOpen: false,
 				checkpointUpdateKey: 0,
@@ -411,7 +412,8 @@
 					}
 
 					this.setFormDataWithDelay(task).then(() => {
-						this.showStatusUI('Countdown stopped')
+						alert('stopped')
+						this.showAlert('Countdown stopped')
 					})
 				})
 				.on('task-countdown-started', ({task}) => {
@@ -423,7 +425,7 @@
 						if (isCountdownStarted) {
 							return
 						}
-						this.showStatusUI('Countdown started')
+						this.showAlert('Countdown started')
 					})
 				})
 		},
@@ -609,10 +611,6 @@
 					}
 				}
 			},
-			showSavedAlert() {
-				this.showSaveAlert = true
-				setTimeout(() => this.showSaveAlert = false, 3000)
-			},
 			async save(autosave = false) {
 				this.isSaving = true
 				try {
@@ -622,8 +620,8 @@
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}
 					this.form = data
-					if (autosave !== true) {
-						this.showSavedAlert()
+					if (!autosave) {
+						this.showAlert('Saved', 'The task was saved')
 					}
 
 					await this.saveSettings(this.settings)
@@ -639,12 +637,7 @@
 				this.removeDispatchedAutosave()
 				this.isSaving = false
 
-				this.showStatusUI('Saved')
-			},
-			showStatusUI (text) {
-				this.showStatus = true
-				this.statusText = text
-				setTimeout(() => this.showStatus = false, 5000)
+				this.showAlert()
 			},
 			cancel() {
 				window.history.back();

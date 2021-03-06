@@ -64,7 +64,7 @@
 					</button>
 				</div>
 			</div>
-			<alert description="Saved" v-if="successSavingShow" />
+			<alert v-if="successSavingShow" />
 		</template>
 	</BaseLayout>
 </template>
