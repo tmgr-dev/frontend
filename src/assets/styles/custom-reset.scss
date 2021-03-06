@@ -1,0 +1,11 @@
+body {
+	font-size: 16px;
+}
+
+h1 {
+	line-height: 60px;
+
+	@media (max-width: 767px) {
+		line-height: 48px;
+	}
+}

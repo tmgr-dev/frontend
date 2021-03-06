@@ -3,7 +3,7 @@
 		<transition name="bounce">
 			<vue-draggable-resizable
 				v-if="showSelectedTasksCommonTime"
-				style="z-index: 9; top: 5%; right: 5%; min-height: 150px"
+				style="z-index: 9; top: 80px; right: 50px; min-height: 150px"
 				:resizable="false"
 				:w="250"
 				h="auto"
@@ -20,21 +20,21 @@
 					</a>
 					<button
 						@click="selectedUpdateStatus('done')"
-						class="mr-1 w-1/5 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
 						<span class="relative">
 							<span class="material-icons text-bold">done</span>
 						</span>
 					</button>
 					<button
 						@click="selectedUpdateStatus('active')"
-						class="mr-1 w-1/5 bg-purple-700 text-white rounded pt-2 mt-2 hover:bg-purple-600">
+						class="mr-1 w-1/5 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">
 						<span class="relative">
 							<span class="material-icons text-bold">refresh</span>
 						</span>
 					</button>
 					<button
 						@click="selectedUpdateStatus('hidden')"
-						class="mr-1 w-1/5 bg-green-700 text-white rounded pt-2 mt-2 hover:bg-green-600">
+						class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
 							<span class="relative">
 								<span class="material-icons">visibility_off</span>
 							</span>
@@ -42,28 +42,28 @@
 					<button
 						v-if="status === 'hidden' || status === 'done'"
 						@click="deleteSelectedTasks()"
-						class="w-1/5 bg-red-700 text-white rounded pt-2 mt-2 hover:bg-red-600">
+						class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
 							<span class="relative">
 								<span class="material-icons">delete</span>
 							</span>
 					</button>
 					<button
 						@click="exportSelectedTasksTo()"
-						class="w-1/5 bg-blue-700 text-white rounded pt-2 mt-2 hover:bg-blue-600">
+						class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">description</span>
 							</span>
 					</button>
 					<button
 						@click="exportSelectedTasksTo('jpg')"
-						class="w-1/5 bg-blue-700 ml-1 text-white rounded pt-2 mt-2 hover:bg-blue-600">
+						class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">image</span>
 							</span>
 					</button>
 					<button
 						@click="exportSelectedTasksTo('xlsx')"
-						class="w-1/5 bg-blue-700 text-white ml-1 rounded pt-2 mt-2 hover:bg-blue-600">
+						class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">list</span>
 							</span>

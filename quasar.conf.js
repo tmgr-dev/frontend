@@ -1,5 +1,5 @@
 /*
- * This file runs in a Node context (it's NOT transpiled by Babel), so use only
+ * This file runs in a Node context (it"s NOT transpiled by Babel), so use only
  * the ES6 features that are supported by your Node version. https://node.green/
  */
 
@@ -10,7 +10,7 @@
 const ESLintPlugin = require("eslint-webpack-plugin");
 const { configure } = require("quasar/wrappers");
 
-module.exports = configure(function (/* ctx */) {
+module.exports = configure(function(/* ctx */) {
 	return {
 		// https://quasar.dev/quasar-cli/supporting-ts
 		supportTS: true,
@@ -25,26 +25,27 @@ module.exports = configure(function (/* ctx */) {
 
 		// https://quasar.dev/quasar-cli/quasar-conf-js#Property%3A-css
 		css: [
-			/*'../assets/styles/index.scss'*/
+			"../assets/styles/custom-reset.scss"
+			/*"../assets/styles/index.scss"*/
 		],
 
 		// https://github.com/quasarframework/quasar/tree/dev/extras
 		extras: [
-			// 'ionicons-v4',
-			// 'mdi-v5',
-			// 'fontawesome-v5',
-			// 'eva-icons',
-			// 'themify',
-			// 'line-awesome',
-			// 'roboto-font-latin-ext', // this or either 'roboto-font', NEVER both!
+			// "ionicons-v4",
+			// "mdi-v5",
+			// "fontawesome-v5",
+			// "eva-icons",
+			// "themify",
+			// "line-awesome",
+			// "roboto-font-latin-ext", // this or either "roboto-font", NEVER both!
 
-			'roboto-font', // optional, you are not bound to it
-			'material-icons' // optional, you are not bound to it
+			"roboto-font", // optional, you are not bound to it
+			"material-icons" // optional, you are not bound to it
 		],
 
 		// Full list of options: https://quasar.dev/quasar-cli/quasar-conf-js#Property%3A-build
 		build: {
-			vueRouterMode: 'history', // available values: 'hash', 'history'
+			vueRouterMode: "history", // available values: "hash", "history"
 
 			// transpile: false,
 
@@ -65,10 +66,10 @@ module.exports = configure(function (/* ctx */) {
 			// https://quasar.dev/quasar-cli/handling-webpack
 			// "chain" is a webpack-chain object https://github.com/neutrinojs/webpack-chain
 			chainWebpack(chain) {
-				chain.plugin('eslint-webpack-plugin')
-					.use(ESLintPlugin, [{extensions: ['js', 'vue']}])
+				chain
+					.plugin("eslint-webpack-plugin")
+					.use(ESLintPlugin, [{ extensions: ["js", "vue"] }]);
 			}
-
 		},
 
 		// Full list of options: https://quasar.dev/quasar-cli/quasar-conf-js#Property%3A-devServer
@@ -82,8 +83,8 @@ module.exports = configure(function (/* ctx */) {
 		framework: {
 			config: {},
 
-			// iconSet: 'material-icons', // Quasar icon set
-			// lang: 'en-US', // Quasar language pack
+			// iconSet: "material-icons", // Quasar icon set
+			// lang: "en-US", // Quasar language pack
 
 			// For special cases outside of where the auto-import stategy can have an impact
 			// (like functional components as one of the examples),
@@ -96,7 +97,7 @@ module.exports = configure(function (/* ctx */) {
 			plugins: []
 		},
 
-		// animations: 'all', // --- includes all animations
+		// animations: "all", // --- includes all animations
 		// https://quasar.dev/options/animations
 		animations: [],
 
@@ -107,41 +108,41 @@ module.exports = configure(function (/* ctx */) {
 
 		// https://quasar.dev/quasar-cli/developing-pwa/configuring-pwa
 		pwa: {
-			workboxPluginMode: 'GenerateSW', // 'GenerateSW' or 'InjectManifest'
+			workboxPluginMode: "GenerateSW", // "GenerateSW" or "InjectManifest"
 			workboxOptions: {}, // only for GenerateSW
 			manifest: {
-				name: 'TMGR',
-				short_name: 'TMGR',
-				description: 'Task Manager. Take under control your life.',
-				display: 'standalone',
-				orientation: 'portrait',
-				background_color: '#ffffff',
-				theme_color: '#027be3',
+				name: "TMGR",
+				short_name: "TMGR",
+				description: "Task Manager. Take under control your life.",
+				display: "standalone",
+				orientation: "portrait",
+				background_color: "#ffffff",
+				theme_color: "#027be3",
 				icons: [
 					{
-						src: 'icons/icon-128x128.png',
-						sizes: '128x128',
-						type: 'image/png'
+						src: "icons/icon-128x128.png",
+						sizes: "128x128",
+						type: "image/png"
 					},
 					{
-						src: 'icons/icon-192x192.png',
-						sizes: '192x192',
-						type: 'image/png'
+						src: "icons/icon-192x192.png",
+						sizes: "192x192",
+						type: "image/png"
 					},
 					{
-						src: 'icons/icon-256x256.png',
-						sizes: '256x256',
-						type: 'image/png'
+						src: "icons/icon-256x256.png",
+						sizes: "256x256",
+						type: "image/png"
 					},
 					{
-						src: 'icons/icon-384x384.png',
-						sizes: '384x384',
-						type: 'image/png'
+						src: "icons/icon-384x384.png",
+						sizes: "384x384",
+						type: "image/png"
 					},
 					{
-						src: 'icons/icon-512x512.png',
-						sizes: '512x512',
-						type: 'image/png'
+						src: "icons/icon-512x512.png",
+						sizes: "512x512",
+						type: "image/png"
 					}
 				]
 			}
@@ -159,47 +160,46 @@ module.exports = configure(function (/* ctx */) {
 
 		// Full list of options: https://quasar.dev/quasar-cli/developing-electron-apps/configuring-electron
 		electron: {
-			bundler: 'packager', // 'packager' or 'builder'
+			bundler: "packager", // "packager" or "builder"
 
 			packager: {
 				// https://github.com/electron-userland/electron-packager/blob/master/docs/api.md#options
 
 				// OS X / Mac App Store
-				// appBundleId: '',
-				// appCategoryType: '',
-				// osxSign: '',
-				// protocol: 'myapp://path',
+				// appBundleId: "",
+				// appCategoryType: "",
+				// osxSign: "",
+				// protocol: "myapp://path",
 
 				// Windows only
 				// win32metadata: { ... }
-				platform: 'win32'
+				platform: "win32"
 			},
 
 			builder: {
 				// https://www.electron.build/configuration/configuration
 
-				appId: 'dev.tmgr',
+				appId: "dev.tmgr",
 				win: {
-					target: 'portable'
+					target: "portable"
 				},
 				publish: {
-					'provider': 's3',
-					'bucket': 'myS3bucket'
+					provider: "s3",
+					bucket: "myS3bucket"
 				}
 			},
 
 			// "chain" is a webpack-chain object https://github.com/neutrinojs/webpack-chain
 			chainWebpackMain(chain) {
-				chain.plugin('eslint-webpack-plugin')
-					.use(ESLintPlugin, [{extensions: ['js']}])
+				chain.plugin("eslint-webpack-plugin")
+					.use(ESLintPlugin, [{ extensions: ["js"] }]);
 			},
 
 			// "chain" is a webpack-chain object https://github.com/neutrinojs/webpack-chain
 			chainWebpackPreload(chain) {
-				chain.plugin('eslint-webpack-plugin')
-					.use(ESLintPlugin, [{extensions: ['js']}])
+				chain.plugin("eslint-webpack-plugin")
+					.use(ESLintPlugin, [{ extensions: ["js"] }]);
 			}
-
 		}
-	}
-})
+	};
+});
