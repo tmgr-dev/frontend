@@ -41,56 +41,57 @@
 						/>
 					</div>
 					<hr class="py-2">
-					<label class="tc-block text-gray-700 text-sm font-bold mb-5">
-						Settings
-					</label>
-					<div>
-						<div v-for="(setting, index) in availableSettings">
-							<label :for="`setting-${setting.id}`" class="tc-block text-gray-700 text-sm font-bold mb-2">
-								{{ setting.name }}
-							</label>
-							<div class="relative mb-4">
-								<input-field
-									v-if="!setting.show_custom_value_input"
-									:id="`setting-${setting.id}`"
-									type="select"
-									:placeholder="setting.description"
-									v-model="settings[index].value"
-									:options="setting.default_values"
-									option-name-key="value"
-									option-value-key="value"
-									:tag="settings[index].id = setting.id"
-								/>
-								<div
-									v-else-if="setting.custom_value_available"
-								>
+					<div v-if="!isCreate">
+						<label class="tc-block text-gray-700 text-sm font-bold mb-5">
+							Settings
+						</label>
+						<div>
+							<div v-for="(setting, index) in availableSettings">
+								<label :for="`setting-${setting.id}`" class="tc-block text-gray-700 text-sm font-bold mb-2">
+									{{ setting.name }}
+								</label>
+								<div class="relative mb-4">
 									<input-field
+										v-if="!setting.show_custom_value_input"
 										:id="`setting-${setting.id}`"
-										:type="setting.component_type"
+										type="select"
 										:placeholder="setting.description"
 										v-model="settings[index].value"
+										:options="setting.default_values"
+										option-name-key="value"
+										option-value-key="value"
 										:tag="settings[index].id = setting.id"
 									/>
-								</div>
-								<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
-								<div class="b-switch-list mt-3" v-if="setting.custom_value_available">
 									<div
-										class="b-switch-list__item"
-										v-if="setting.default_values && setting.default_values.length > 0"
+										v-else-if="setting.custom_value_available"
 									>
-										<label class="b-switch">
-											<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
-											<span></span>
-										</label>
-										<div class="b-switch-list__text">
-											<div class="b-switch-list__title" :class="$color('settingsTextColor')">Set custom value</div>
+										<input-field
+											:id="`setting-${setting.id}`"
+											:type="setting.component_type"
+											:placeholder="setting.description"
+											v-model="settings[index].value"
+											:tag="settings[index].id = setting.id"
+										/>
+									</div>
+									<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
+									<div class="b-switch-list mt-3" v-if="setting.custom_value_available">
+										<div
+											class="b-switch-list__item"
+											v-if="setting.default_values && setting.default_values.length > 0"
+										>
+											<label class="b-switch">
+												<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
+												<span></span>
+											</label>
+											<div class="b-switch-list__text">
+												<div class="b-switch-list__title" :class="$color('settingsTextColor')">Set custom value</div>
+											</div>
 										</div>
 									</div>
 								</div>
 							</div>
 						</div>
 					</div>
-
 					<div class="flex-row justify-center mt-8">
 						<button @click.prevent="create"
 										class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -230,7 +231,7 @@
 
 				const {data: {data}} = await this.$axios.post('project_categories', this.form)
 				this.form = data
-				await this.saveSettings(this.settings)
+				// await this.saveSettings(this.settings)
 				if (!withRoutePush) {
 					return
 				}

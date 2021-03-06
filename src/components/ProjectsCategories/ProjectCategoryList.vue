@@ -141,7 +141,7 @@
 								<span class="material-icons text-3xl">done_all</span>
 							</a>
 							<router-link
-								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
+								:to="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
 								class="opacity-25 hover:opacity-100 inline md:hidden">
 								<span class="material-icons text-3xl">add_circle_outline</span>
 							</router-link>
@@ -169,7 +169,7 @@
 								<span class="material-icons text-3xl">done_all</span>
 							</a>
 							<router-link
-								:to="`/${id ? 'project-categories/' + id + '/' : ''}tasks/create`" title="Add task to category"
+								:to="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
 								class="opacity-25 hover:opacity-100 tc-hidden md:inline">
 								<span class="material-icons text-4xl">add_circle_outline</span>
 							</router-link>
