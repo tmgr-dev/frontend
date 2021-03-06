@@ -114,8 +114,20 @@
 			if (!this.$store.getters.user) {
 				return;
 			}
-			this.$store.getters.pusherBeamsClient.start()
-				.then(() => this.$store.getters.pusherBeamsClient.setUserId(this.$store.getters.user.id.toString(), this.$store.getters.pusherTokenProvider));
+			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+				console.log(userId)
+				if (userId) {
+					return this.$store.commit('pusherBeamsUserId', userId);
+				}
+				userId = this.$store.getters.user.id.toString()
+				this.$store.getters.pusherBeamsClient.start()
+					.then(() => {
+						this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
+							this.$store.commit('pusherBeamsUserId', userId)
+						})
+					});
+			})
+
 		}
 	})
 </script>

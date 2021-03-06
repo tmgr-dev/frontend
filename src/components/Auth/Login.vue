@@ -78,11 +78,11 @@
 
 				try {
 					this.showLoader = true
-					const {data} = await this.$axios.post('auth/login', loginData)
+					const {data: {data}} = await this.$axios.post('auth/login', loginData)
 
-					this.$store.commit('token', data.data)
+					this.$store.commit('token', data)
 					await this.setUser()
-
+					window.location.reload()
 				} catch ({ response }) {
 					this.errors = response.data.errors
 					this.message = response.data.message
@@ -94,7 +94,7 @@
 					Authorization: `Bearer ${this.$store.getters.token.token}`,
 					'X-Requested-With': 'XMLHttpRequest'
 				}
-				const {data} = await this.$axios.get('user')
+				const {data: {data}} = await this.$axios.get('user')
 
 				this.$store.commit('user', data)
 				await this.$router.push({name: 'CurrentTasksList'})

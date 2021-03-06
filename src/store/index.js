@@ -13,6 +13,7 @@ const state = {
 	token: token,
 	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
+	pusherBeamsUserId: null,
 	pusherBeamsClient: pusherBeamsClient,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
@@ -25,6 +26,7 @@ const state = {
 const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
+	pusherBeamsUserId: state => state.pusherBeamsUserId,
 	pusherBeamsClient: state => state.pusherBeamsClient,
 	pusherTokenProvider: state => state.pusherTokenProvider,
 	pusher: state => state.pusher,
@@ -53,6 +55,9 @@ const mutations = {
 		}
 
 		state.user = user
+	},
+	pusherBeamsUserId(state, pusherBeamsUserId) {
+		state.pusherBeamsUserId = pusherBeamsUserId
 	},
 	colorScheme(state, colorScheme) {
 		if (colorScheme == null) {
