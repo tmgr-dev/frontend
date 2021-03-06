@@ -9,6 +9,7 @@
 		<template #body>
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color('textMain')}`">
 				<Button :color="pusherBeamsUserId ? `red` : `green`" @click="togglePushes">Web Pushes</Button>
+				<Button color="blue" @click="testWebPushNotifications">Test web push notifications</Button>
 				<input-field v-model="userSettings.showTooltips" type="checkbox" placeholder="Show tooltips"></input-field>
 				<div>
 					<div v-for="(setting, index) in availableSettings">
@@ -104,6 +105,9 @@
 		methods: {
 			showConfirm (title, body, action) {
 				this.confirm = {title, body, action}
+			},
+			async testWebPushNotifications() {
+				await this.$axios.post('test/web/notifications')
 			},
 			togglePushes () {
 				if (this.$store.getters.pusherBeamsUserId) {
