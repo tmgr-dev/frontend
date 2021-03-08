@@ -304,6 +304,7 @@ export default {
 				try {
 					const {data: {data}} = await this.$axios.delete(`project_categories/${category.id}`)
 					category.deleted_at = data.deleted_at
+					await this.loadTasks()
 				} catch (e) {
 
 				} finally {
@@ -315,6 +316,7 @@ export default {
 			try {
 				const {data: {data}} = await this.$axios.post(`project_categories/${category.id}/restore`)
 				category.deleted_at = data.deleted_at
+				await this.loadTasks()
 			} catch (e) {
 
 			}
