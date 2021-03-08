@@ -11,6 +11,7 @@ const token = localStorage.getItem('token') ? JSON.parse(localStorage.getItem('t
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
 	token: token,
+	currentOpenedTaskId: null,
 	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	pusherBeamsUserId: null,
@@ -29,6 +30,7 @@ const getters = {
 	pusherBeamsUserId: state => state.pusherBeamsUserId,
 	pusherBeamsClient: state => state.pusherBeamsClient,
 	pusherTokenProvider: state => state.pusherTokenProvider,
+	currentOpenedTaskId: state => state.currentOpenedTaskId,
 	pusher: state => state.pusher,
 	slideout: state => state.slideout,
 	user: state => state.user,
@@ -58,6 +60,9 @@ const mutations = {
 	},
 	pusherBeamsUserId(state, pusherBeamsUserId) {
 		state.pusherBeamsUserId = pusherBeamsUserId
+	},
+	currentOpenedTaskId(state, currentOpenedTaskId) {
+		state.currentOpenedTaskId = currentOpenedTaskId
 	},
 	colorScheme(state, colorScheme) {
 		if (colorScheme == null) {

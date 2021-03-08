@@ -4,6 +4,7 @@ const keys: Keys = {
 	bgBody: 'dark-bg-body night-mode',
 	bgNav: 'bg-gray-900',
 	menuBg: 'md:bg-gray-900',
+	activeTaskReminderBg: 'bg-gray-800',
 	menuBgMobile: 'bg-gray-900',
 	blocks: 'bg-gray-900',
 	input: 'bg-gray-800',

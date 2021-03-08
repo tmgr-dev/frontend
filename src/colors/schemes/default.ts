@@ -7,6 +7,7 @@ const keys: Keys = {
   blocks: 'md:bg-white',
   blocksHover: 'bg-gray-100',
   borderMain: 'border-gray-200',
+  activeTaskReminderBg: 'bg-gray-200',
   input: 'bg-white',
   navTextUser: 'text-black',
   textMain: 'text-main',

@@ -560,6 +560,8 @@
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
 				data.common_time = data.common_time || 0
 				this.form = data
+
+				this.$store.commit('currentOpenedTaskId', this.form.id)
 			},
 			setSavedData(data) {
 				this.watchingFields.forEach(field => this.savedData[field] = JSON.parse(JSON.stringify(data[field])))

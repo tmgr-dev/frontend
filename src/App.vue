@@ -17,7 +17,7 @@
           </span>
 				</div>
 			</div>
-			<div id="panel" :class="$color('bgBody')">
+			<div id="panel" :class="`${$color('bgBody')}`">
 				<transition name="fade" mode="out-in">
 					<Navbar v-if="$route.meta.navbarHidden" />
 				</transition>
@@ -33,6 +33,25 @@
 				</router-view>
 			</div>
 		</Slideout>
+		<div :class="`fixed right-0 bottom-0 ml-5 mb-10 mr-2 z-10`">
+			<span
+				v-for="task in activeTasks"
+				class="mb-5 inline-block"
+			>
+				<span
+					:class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`"
+					v-if="task.id !== $store.getters.currentOpenedTaskId"
+				>
+				<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
+					<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+					<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
+				</span>
+				<div :class="$color('textMain')">
+					<router-link :to="`/${task.id}/edit`">{{ task.title }}</router-link>
+				</div>
+			</span>
+			</span>
+		</div>
 	</div>
 </template>
 
@@ -55,7 +74,8 @@
 			return {
 				prevHeight: 0,
 				transitionName: DEFAULT_TRANSITION,
-				showComponent: true
+				showComponent: true,
+				activeTasks: []
 			};
 		},
 		computed: {
@@ -94,10 +114,11 @@
 				element.style.height = 'auto';
 			},
 		},
-		created() {
+		async created() {
 			this.$store.dispatch('loadUserSettings')
 
 			this.$router.beforeEach((to, from, next) => {
+				this.$store.commit('currentOpenedTaskId', null)
 				let transitionName = to.meta.transitionName || from.meta.transitionName;
 
 				if (transitionName === 'slide') {
@@ -115,8 +136,7 @@
 				return;
 			}
 			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
-				console.log(userId)
-				if (userId) {
+				if (!userId) {
 					return this.$store.commit('pusherBeamsUserId', userId);
 				}
 				userId = this.$store.getters.user.id.toString()
@@ -127,7 +147,8 @@
 						})
 					});
 			})
-
+			const {data: {data}} = await this.$axios.get('/tasks/runned')
+			this.activeTasks = data
 		}
 	})
 </script>
