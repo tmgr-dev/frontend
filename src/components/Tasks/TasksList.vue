@@ -25,7 +25,7 @@
 		</template>
 		<template #body>
 			<transition name="fade" mode="out-in">
-				<input-field class="px-2 pb-5" v-if="showSearchInput" placeholder="Enter task name" v-model="searchText"></input-field>
+				<input-field class="px-2 pb-5" v-if="showSearchInput" placeholder="Enter task name" v-model="searchText" @keydown:enter="loadTasks"></input-field>
 			</transition>
 			<default-tasks-list-component
 				v-if="tasks && tasks.length > 0 && showDefaultList"
@@ -99,6 +99,7 @@
 		},
 		methods: {
 			async loadTasks() {
+				clearTimeout(this.searchTimeout)
 				const { searchText } = this
 				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl() + (searchText ? '&search=' + searchText : ''))
 				this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))

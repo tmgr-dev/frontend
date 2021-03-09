@@ -30,7 +30,7 @@
 						class="b-switch-list__item"
 					>
 						<label class="b-switch">
-							<input type="checkbox" :name="name" v-model="val">
+							<input type="checkbox" :name="name" v-model="val" @keydown:enter="$emit('keydown:enter', val)">
 							<span></span>
 						</label>
 						<div class="b-switch-list__text">
@@ -113,6 +113,10 @@
 				type: String
 			}
 		},
+		emits: [
+			'keydown:enter',
+			'update:modelValue'
+		],
 		data() {
 			return {
 				screenWidth: null,
