@@ -16,7 +16,7 @@
 				</div>
 				<slot name="footer"></slot>
 				<div class="container mx-auto px-5 my-5 text-center text-gray-600 pb-5">
-					<p>Simple task manager. <a href="#" target="_blank" class="text-gray-500">Tmgr.dev</a></p>
+					<p>Task manager. <a href="#" target="_blank" class="text-gray-500">Tmgr.dev</a></p>
 					<p>{{ getYearsForFooter() }}</p>
 				</div>
 			</div>

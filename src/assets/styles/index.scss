@@ -42,11 +42,11 @@ body {
 @import "../../directives/tooltip/css/index.scss";
 
 .custom-tooltip {
-	background: #616161;
+	background: #000;
 	border-radius: 50px;
 
 	.tooltip-arrow {
-		border-top-color: #616161 !important;
+		border-top-color: #000 !important;
 	}
 }
 
