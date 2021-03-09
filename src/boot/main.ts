@@ -34,7 +34,8 @@ export default (obj: any) => {
 
 	const color = (colorKey: string) => colorSchemes[store.getters.colorScheme][colorKey];
 	app.config.globalProperties.$color = color;
-	const body: any = document.querySelector('body');
+
+	const body = document.querySelector('body');
 	if (body) {
 		body.className = color('bgBody');
 	}

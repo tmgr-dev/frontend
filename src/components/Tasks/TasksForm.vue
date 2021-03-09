@@ -412,7 +412,6 @@
 					}
 
 					this.setFormDataWithDelay(task).then(() => {
-						alert('stopped')
 						this.showAlert('Countdown stopped')
 					})
 				})
