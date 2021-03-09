@@ -599,7 +599,7 @@
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
 					if (!this.isCreatingTask) {
-						this.showSavedAlert()
+						this.showAlert()
 					}
 					await this.$router.push({
 						name: 'TasksEdit',
