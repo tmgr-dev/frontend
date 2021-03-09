@@ -116,6 +116,9 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
+				if (!this.$store.getters.user) {
+					return
+				}
 				const {data: {data}} = await this.$axios.get('/tasks/runned')
 				this.activeTasks = data
 			}
