@@ -186,20 +186,11 @@
 					<div class="w-full h-full mt-5">
 						<div :class="`${$color('blocks')} p-5 h-full`">
 							<Countdown
-								v-if="form.id"
 								ref="countdown"
+								:disabled="!form.id"
 								:init-task="form"
 								@toggle="toggleCountdown"
 								@update:seconds="updateSeconds"
-							/>
-							<Countdown
-								v-else
-								ref="countdown"
-								:init-task="form"
-								:style="{
-									opacity: 0.2,
-									'pointer-events': 'none'
-								}"
 							/>
 						</div>
 					</div>

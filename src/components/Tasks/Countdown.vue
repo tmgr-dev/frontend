@@ -2,7 +2,7 @@
 	<teleport to="title">
 		 &nbsp;{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
 	</teleport>
-	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task" :style="style">
+	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task" :style="disabledStyles">
 		<div class="relative inline-block">
 			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none" style="opacity: 0.1">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
@@ -118,10 +118,10 @@
 				required: true,
 				type: Object
 			},
-			style: {
+			disabled: {
+				type: Boolean,
 				required: false,
-				type: Object,
-				default: () => ({})
+				default: false
 			}
 		},
 		data: () => ({
@@ -150,6 +150,13 @@
 		computed: {
 			userSettings () {
 				return this.$store.getters.getUserSettings ?? {}
+			},
+			disabledStyles () {
+				const disabledStyles = {
+					'opacity': 0.2,
+					'pointer-events': 'none'
+				}
+				return this.disabled ? disabledStyles : {}
 			}
 		},
 		methods: {
