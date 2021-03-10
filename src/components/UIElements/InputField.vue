@@ -232,7 +232,7 @@ input.with-errors {
 	transform: translateX(0);
 }
 
-.fade-left-enter, .fade-left-leave-to {
+.fade-left-enter-from, .fade-left-leave-to {
 	transform: translateX(25px);
 }
 </style>

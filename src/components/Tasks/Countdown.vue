@@ -1,10 +1,10 @@
 <template>
 	<teleport to="title">
-		 &nbsp;{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
+		{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
 	</teleport>
-	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task" :style="disabledStyles">
+	<div v-if="task" class="task" :class="{'fullscreen': isFullScreen}" id="task" :style="disabledStyles">
 		<div class="relative inline-block">
-			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none" style="opacity: 0.1">
+			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none opacity-10">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
@@ -15,16 +15,13 @@
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
 			</div>
-			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none" style="opacity: 0.2">
+			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20">
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
 			<div v-if="timeIsOver">
 				<p class="text-red">Time is over</p>
 			</div>
-			<!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
-				<span class="material-icons text-base">edit</span>
-			</a>-->
 		</div>
 		<div class="countdown-actions">
 			<Button

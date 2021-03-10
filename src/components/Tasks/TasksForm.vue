@@ -186,11 +186,15 @@
 					<div class="w-full h-full mt-5">
 						<div :class="`${$color('blocks')} p-5 h-full`">
 							<Countdown
-								ref="countdown"
-								:disabled="!form.id"
+								v-if="form.id"
 								:init-task="form"
 								@toggle="toggleCountdown"
 								@update:seconds="updateSeconds"
+							/>
+							<Countdown
+								v-else
+								disabled
+								:init-task="form"
 							/>
 						</div>
 					</div>
@@ -334,7 +338,14 @@
 					ArchiveTasksList: 'Archive tasks'
 				},
 				selected: false,
-				form: this.getDefaultForm(),
+				form: {
+					title: '',
+					status: 'created',
+					project_category_id: this.projectCategoryId || '',
+					description: '',
+					common_time: 0,
+					checkpoints: []
+				},
 				isShowModalCategory: false,
 				categoriesSelectOptions: [],
 				currentCategory: '',
@@ -383,41 +394,6 @@
 				}
 				return false
 			}
-		},
-		async created () {
-			if (this.taskId) {
-				await this.loadModel()
-				window.onkeydown = this.getListener()
-			}
-
-			if (this.projectCategoryId && this.isCreatingTask) {
-				this.form.project_category_id = this.projectCategoryId
-			}
-			await this.loadCategory()
-			await this.loadTaskSettings()
-			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
-				.on('task-countdown-stopped', ({task}) => {
-					const isCountdownStarted = !!this.form.start_time
-					if (!isCountdownStarted) {
-						return
-					}
-
-					this.setFormDataWithDelay(task).then(() => {
-						this.showAlert('Countdown stopped')
-					})
-				})
-				.on('task-countdown-started', ({task}) => {
-					const isCountdownStarted = !!this.form.start_time
-					if (isCountdownStarted) {
-						return
-					}
-					this.setFormDataWithDelay(task).then(() => {
-						if (isCountdownStarted) {
-							return
-						}
-						this.showAlert('Countdown started')
-					})
-				})
 		},
 		methods: {
 			async loadTaskSettings() {
@@ -497,7 +473,7 @@
 				await this.save()
 				await this.loadCategory()
 			},
-			getListener() {
+			getShortcutSaveListener() {
 				return (e) => {
 					if (e.ctrlKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')) {
 						e.preventDefault();
@@ -637,16 +613,6 @@
 			goToCurrentTasks() {
 				this.$router.push('/')
 			},
-			getDefaultForm() {
-				return {
-					title: '',
-					status: 'created',
-					project_category_id: this.projectCategoryId || '',
-					description: '',
-					common_time: 0,
-					checkpoints: []
-				};
-			},
 			secondsToStringTime(seconds) {
 				const second = seconds % 60
 				let minute = (seconds - second) / 60 | 0
@@ -693,11 +659,41 @@
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
 			}
 		},
-		beforeUnmount () {
-			this.form = this.getDefaultForm()
-			clearInterval(this.countdownInterval)
-			clearInterval(this.reminderInterval)
-		}
+		async created () {
+			if (this.taskId) {
+				await this.loadModel()
+				window.onkeydown = this.getShortcutSaveListener()
+			}
+
+			/*if (this.projectCategoryId && this.isCreatingTask) {
+				this.form.project_category_id = this.projectCategoryId
+			}*/
+			await this.loadCategory()
+			await this.loadTaskSettings()
+			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
+				.on('task-countdown-stopped', ({task}) => {
+					const isCountdownStarted = !!this.form.start_time
+					if (!isCountdownStarted) {
+						return
+					}
+
+					this.setFormDataWithDelay(task).then(() => {
+						this.showAlert('Countdown stopped')
+					})
+				})
+				.on('task-countdown-started', ({task}) => {
+					const isCountdownStarted = !!this.form.start_time
+					if (isCountdownStarted) {
+						return
+					}
+					this.setFormDataWithDelay(task).then(() => {
+						if (isCountdownStarted) {
+							return
+						}
+						this.showAlert('Countdown started')
+					})
+				})
+		},
 	}
 </script>
 
