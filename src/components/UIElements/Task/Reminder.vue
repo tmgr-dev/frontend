@@ -69,22 +69,23 @@
 			}
 		},
 		methods: {
+			onSoundEnd () {
+				this.reminderSoundPlaying = false
+			},
 			playReminder() {
-				this.reminderSound.addEventListener('ended', () => {
-					this.reminderSoundPlaying = false
-				}, false);
-				if (!this.isActiveReminder) {
-					return
+				this.reminderSound.addEventListener('ended', this.onSoundEnd)
+				if (this.isActiveReminder) {
+					this.reminderSound.play()
+					this.reminderSoundPlaying = true
 				}
-				this.reminderSound.play()
-				this.reminderSoundPlaying = true
 			},
 			stopReminder() {
-				if (!this.reminderSound) {
-					return
+				this.reminderSound.removeEventListener('ended', this.onSoundEnd)
+				if (this.reminderSound) {
+					this.reminderSound.pause()
+					this.reminderSound.currentTime = 0
+					this.reminderSoundPlaying = false
 				}
-				this.reminderSound.pause();
-				this.reminderSoundPlaying = false
 			},
 			initSoundReminderOfCountdown() {
 				if (!this.isActiveReminder || !this.soundReminder || !parseInt(this.soundReminder.value)) {
@@ -103,7 +104,7 @@
 			}
 		},
 		created () {
-			this.soundReminder = {"id":4,"name":"Active countdown reminder every","key":"active_countdown_reminder_every","description":"Every time after reaching out setted time you will get sound reminder.","value":"15"}//this.getSettingOfSoundReminder()
+			this.soundReminder = {"id":4,"name":"Active countdown reminder every","key":"active_countdown_reminder_every","description":"Every time after reaching out setted time you will get sound reminder.","value":"10"}//this.getSettingOfSoundReminder()
 			this.initSoundReminderOfCountdown()
 		},
 		beforeUnmount() {
