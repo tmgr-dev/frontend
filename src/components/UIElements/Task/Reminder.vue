@@ -14,10 +14,10 @@
 			:color="reminderSoundPlaying ? 'green' : 'gray'"
 			type="button"
 			class="leading-none"
-			@click="reminderSoundPlaying ? stopReminder () : playReminder()">
+			@click="reminderSoundPlaying ? stopReminder() : playReminder()">
 			<span class="material-icons">{{ reminderSoundPlaying ? 'volume_up' : 'volume_off' }}</span>
 		</Button>
-		<span v-if="reminderSoundPlaying" class="flex absolute h-5 w-5 top-0 right-0 -mt-1 -mr-2">
+		<span v-if="reminderSoundPlaying" @click="stopReminder" class="flex cursor-pointer absolute h-5 w-5 top-0 right-0 -mt-1 -mr-2">
 			<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
 			<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
 		</span>
@@ -64,7 +64,7 @@
 				if (isActive) {
 					return this.initSoundReminderOfCountdown()
 				}
-				clearTimeout(this.reminderInterval);
+				clearInterval(this.reminderInterval);
 				this.stopReminder()
 			}
 		},
@@ -73,6 +73,7 @@
 				this.reminderSoundPlaying = false
 			},
 			playReminder() {
+				// console.log('play')
 				this.reminderSound.addEventListener('ended', this.onSoundEnd)
 				if (this.isActiveReminder) {
 					this.reminderSound.play()
@@ -91,20 +92,16 @@
 				if (!this.isActiveReminder || !this.soundReminder || !parseInt(this.soundReminder.value)) {
 					return
 				}
-				console.log('init ')
+				// console.log('init')
 				const reminderDelay = parseInt(this.soundReminder.value) * 1000
-				this.reminderInterval = setTimeout(() => {
-					console.log('test')
-					this.playReminder()
-					this.initSoundReminderOfCountdown()
-				}, reminderDelay)
+				this.reminderInterval = setInterval(this.playReminder, reminderDelay)
 			},
 			getSettingOfSoundReminder() {
 				return this.task.settings.find(item => item.key === 'active_countdown_reminder_every')
 			}
 		},
 		created () {
-			this.soundReminder = {"id":4,"name":"Active countdown reminder every","key":"active_countdown_reminder_every","description":"Every time after reaching out setted time you will get sound reminder.","value":"10"}//this.getSettingOfSoundReminder()
+			this.soundReminder = this.getSettingOfSoundReminder()
 			this.initSoundReminderOfCountdown()
 		},
 		beforeUnmount() {
