@@ -10,13 +10,15 @@
 				</a>
 				<button
 					@click="$emit('updateStatus', 'done')"
-					class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
+					v-tooltip.top="setTooltipData('Done')"
+					class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-800">
 					<span class="relative">
 						<span class="material-icons text-bold">done</span>
 					</span>
 				</button>
 				<button
 					@click="$emit('updateStatus', 'active')"
+					v-tooltip.top="setTooltipData('Reactivate')"
 					class="mr-1 w-1/5 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">
 					<span class="relative">
 						<span class="material-icons text-bold">refresh</span>
@@ -24,13 +26,15 @@
 				</button>
 				<button
 					@click="$emit('updateStatus', 'hidden')"
-					class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
+					v-tooltip.top="setTooltipData('Hide')"
+					class="mr-1 w-1/5 bg-gray-700 text-white rounded py-2 mt-2 hover:bg-gray-600">
 					<span class="relative">
 						<span class="material-icons">visibility_off</span>
 					</span>
 				</button>
 				<button
 					v-if="status === 'hidden' || status === 'done'"
+					v-tooltip.top="setTooltipData('Delete')"
 					@click="$emit('remove')"
 					class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
 					<span class="relative">
@@ -39,6 +43,7 @@
 				</button>
 				<button
 					@click="$emit('export')"
+					v-tooltip.top="setTooltipData('Export to CSV')"
 					class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
 					<span class="relative">
 						<span class="material-icons">description</span>
@@ -46,6 +51,7 @@
 				</button>
 				<button
 					@click="$emit('export', 'jpg')"
+					v-tooltip.top="setTooltipData('Export to JPEG')"
 					class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
 					<span class="relative">
 						<span class="material-icons">image</span>
@@ -53,6 +59,7 @@
 				</button>
 				<button
 					@click="$emit('export', 'xlsx')"
+					v-tooltip.top="setTooltipData('Export to XLSX')"
 					class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
 					<span class="relative">
 						<span class="material-icons">list</span>
@@ -64,6 +71,7 @@
 </template>
 
 <script>
+	import SetTooltipData from "src/mixins/SetTooltipData";
 	import VueDraggableResizable from "src/components/UIElements/VueDraggableResizable/VueDraggableResizable";
 
 	export default {
@@ -72,6 +80,9 @@
 			'export',
 			'remove',
 			'updateStatus'
+		],
+		mixins: [
+			SetTooltipData
 		],
 		components: {
 			VueDraggableResizable
