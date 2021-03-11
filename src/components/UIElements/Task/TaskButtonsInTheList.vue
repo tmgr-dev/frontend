@@ -80,7 +80,7 @@
 		</new-button>
 	</div>
 	
-	<div class="tc-hidden lg:flex items-center" v-else>
+	<div class="tc-hidden lg:flex items-center z-10" v-else>
 		<new-button
 			@click="restoreTask(task)"
 			class="mr-2"
