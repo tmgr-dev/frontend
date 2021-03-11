@@ -5,10 +5,16 @@
 	<AuthBase>
 		<template #title>Restore Password</template>
 		<template #body>
-			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
+			<form v-if="!message" class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
 				<div class="flex flex-col mt-4">
-					<input id="email" type="text" class="flex-grow h-8 px-2 border rounded border-grey-400" name="email" v-model="email"
-								 placeholder="Email">
+					<input-field
+						id="email"
+						type="text"
+						name="email"
+						v-model="email"
+					  placeholder="Email"
+						:errors="errors?.email"
+					/>
 				</div>
 				<div class="flex flex-col mt-6">
 					<button
@@ -19,6 +25,9 @@
 					</button>
 				</div>
 			</form>
+			<p v-else>
+				{{ message }}
+			</p>
 		</template>
 		<template #footer>
 			<router-link to="/register" class="no-underline hover:underline text-blue-dark text-xs">
@@ -46,7 +55,9 @@
 		props: [],
 		data () {
 			return {
-				email: null
+				email: null,
+				message: null,
+				errors: {},
 			}
 		},
 		computed: {
@@ -57,10 +68,15 @@
 		},
 		methods: {
 			async sendResetLink() {
-				const r = await this.$axios.post('password/reset', {
-					email: this.email
-				})
-				console.log(r)
+				try {
+					console.log('test')
+					const r = await this.$axios.post('password/reset', {
+						email: this.email
+					})
+					this.message = 'The reset link sent. If you don\'t have an email with link please try check out your spam.'
+				} catch ({response: {data: {errors}}}) {
+					this.errors = errors
+				}
 			}
 		}
 	}
