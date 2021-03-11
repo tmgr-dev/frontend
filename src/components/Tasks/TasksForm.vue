@@ -665,9 +665,9 @@
 				window.onkeydown = this.getShortcutSaveListener()
 			}
 
-			/*if (this.projectCategoryId && this.isCreatingTask) {
+			if (this.projectCategoryId && this.isCreatingTask) {
 				this.form.project_category_id = this.projectCategoryId
-			}*/
+			}
 			await this.loadCategory()
 			await this.loadTaskSettings()
 			this.$store.getters.pusher.private(`App.User.${this.$store.getters.user.id}`)
