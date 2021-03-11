@@ -132,7 +132,8 @@
 </template>
 
 <script>
-	import TasksListMixin from 'src/mixins/TasksListMixin'
+	import downloadFile from "src/utils/downloadFile";
+	import TasksListMixin from "src/mixins/TasksListMixin";
 	import convertToQueryString from "src/utils/convertToQueryString";
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
@@ -329,33 +330,10 @@
 				const response = await this.$axios.get(url, {
 					responseType: 'blob'
 				})
-				this.download(response.data, 'export.' + exportType)
+				downloadFile(response.data, 'export.' + exportType)
 			},
 			getExportUrl(exportType, tasksIds) {
-				return 'exports/tasks/' + exportType + '?' + this.getExportConfigs(tasksIds)
-			},
-			getExportConfigs(tasksIds) {
-				return convertToQueryString({
-					ids: tasksIds,
-					per_hour: 1000
-				})
-			},
-			download (data, filename, type) {
-				var file = new Blob([data], {type: type});
-				if (window.navigator.msSaveOrOpenBlob) // IE10+
-					window.navigator.msSaveOrOpenBlob(file, filename);
-				else { // Others
-					var a = document.createElement("a"),
-						url = URL.createObjectURL(file);
-					a.href = url;
-					a.download = filename;
-					document.body.appendChild(a);
-					a.click();
-					setTimeout(function() {
-						document.body.removeChild(a);
-						window.URL.revokeObjectURL(url);
-					}, 0);
-				}
+				return 'exports/tasks/' + exportType + '?' + convertToQueryString({ ids: tasksIds, per_hour: 1000 })
 			},
 			selectAll () {
 				this.selected = this.tasks.map(() => true)
