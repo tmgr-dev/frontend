@@ -1,71 +1,18 @@
 <template>
 	<div class="w-full items-center justify-center relative">
 		<transition name="bounce">
-			<div v-if="showSelectedTasksCommonTime" class="draggable-block">
-				<vue-draggable-resizable :resizable="false" :w="250" class-name="rounded bg-green-600 py-5 px-2">
-					<p class="text-white text-center">
-						<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
-						{{ timeForModal }}
-					</p>
-					<div class="w-full text-center">
-						<a href="#close"
-							 class="absolute top-0 right-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
-							 @click.prevent="closeTimeInModal">
-							<span class="material-icons text-bold">close</span>
-						</a>
-						<button
-							@click="selectedUpdateStatus('done')"
-							class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
-						<span class="relative">
-							<span class="material-icons text-bold">done</span>
-						</span>
-						</button>
-						<button
-							@click="selectedUpdateStatus('active')"
-							class="mr-1 w-1/5 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">
-						<span class="relative">
-							<span class="material-icons text-bold">refresh</span>
-						</span>
-						</button>
-						<button
-							@click="selectedUpdateStatus('hidden')"
-							class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
-							<span class="relative">
-								<span class="material-icons">visibility_off</span>
-							</span>
-						</button>
-						<button
-							v-if="status === 'hidden' || status === 'done'"
-							@click="deleteSelectedTasks()"
-							class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
-							<span class="relative">
-								<span class="material-icons">delete</span>
-							</span>
-						</button>
-						<button
-							@click="exportSelectedTasksTo()"
-							class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
-							<span class="relative">
-								<span class="material-icons">description</span>
-							</span>
-						</button>
-						<button
-							@click="exportSelectedTasksTo('jpg')"
-							class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
-							<span class="relative">
-								<span class="material-icons">image</span>
-							</span>
-						</button>
-						<button
-							@click="exportSelectedTasksTo('xlsx')"
-							class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
-							<span class="relative">
-								<span class="material-icons">list</span>
-							</span>
-						</button>
-					</div>
-				</vue-draggable-resizable>
-			</div>
+			<tasks-multiple-actions-modal
+				v-if="showSelectedTasksCommonTime"
+				:status="status"
+				@updateStatus="updateStatusForSelectedTasks"
+				@remove="deleteSelectedTasks"
+				@export="exportSelectedTasks"
+				@close="closeTimeInModal">
+				<p class="text-white text-center">
+					<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br>
+					{{ timeForModal }}
+				</p>
+			</tasks-multiple-actions-modal>
 		</transition>
 
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
@@ -138,13 +85,13 @@
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
 	import TaskButtonsInTheList from "src/components/UIElements/Task/TaskButtonsInTheList";
-	import VueDraggableResizable from "src/components/UIElements/VueDraggableResizable/VueDraggableResizable";
+	import TasksMultipleActionsModal from "src/components/UIElements/Task/TasksMultipleActionsModal";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
-			VueDraggableResizable,
 			DropdownMenu
 		},
 		emits: ['reload-tasks'],
@@ -267,7 +214,7 @@
 					this.setLoadingAction(dotId, false)
 				}
 			},
-			async selectedUpdateStatus(status) {
+			async updateStatusForSelectedTasks (status) {
 				for (let i = 0; i < this.tasks.length; ++i) {
 					if (!this.selected[i]) {
 						continue
@@ -322,7 +269,7 @@
 					this.selecting = arr;
 				}
 			},
-			async exportSelectedTasksTo(exportType = 'csv') {
+			async exportSelectedTasks (exportType = 'csv') {
 				const tasksIds = this.getSelectedTasks().map(({id}) => id)
 				await this.defaultTasksExport(this.getExportUrl(exportType, tasksIds), exportType)
 			},
