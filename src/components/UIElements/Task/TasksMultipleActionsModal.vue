@@ -25,38 +25,38 @@
 				<button
 					@click="$emit('updateStatus', 'hidden')"
 					class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
-				<span class="relative">
-					<span class="material-icons">visibility_off</span>
-				</span>
+					<span class="relative">
+						<span class="material-icons">visibility_off</span>
+					</span>
 				</button>
 				<button
 					v-if="status === 'hidden' || status === 'done'"
 					@click="$emit('remove')"
 					class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
-				<span class="relative">
-					<span class="material-icons">delete</span>
-				</span>
+					<span class="relative">
+						<span class="material-icons">delete</span>
+					</span>
 				</button>
 				<button
 					@click="$emit('export')"
 					class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
-				<span class="relative">
-					<span class="material-icons">description</span>
-				</span>
+					<span class="relative">
+						<span class="material-icons">description</span>
+					</span>
 				</button>
 				<button
 					@click="$emit('export', 'jpg')"
 					class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
-				<span class="relative">
-					<span class="material-icons">image</span>
-				</span>
+					<span class="relative">
+						<span class="material-icons">image</span>
+					</span>
 				</button>
 				<button
 					@click="$emit('export', 'xlsx')"
 					class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
-				<span class="relative">
-					<span class="material-icons">list</span>
-				</span>
+					<span class="relative">
+						<span class="material-icons">list</span>
+					</span>
 				</button>
 			</div>
 		</vue-draggable-resizable>
