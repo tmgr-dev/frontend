@@ -4,7 +4,7 @@
 	</teleport>
 	<div v-if="task" class="task" :class="{'fullscreen': isFullScreen}" id="task" :style="disabledStyles">
 		<div class="relative inline-block">
-			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none opacity-10">
+			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none opacity-20" style="opacity: 0.2">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
@@ -15,7 +15,7 @@
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
 			</div>
-			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20">
+			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20" style="opacity: 0.2">
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
