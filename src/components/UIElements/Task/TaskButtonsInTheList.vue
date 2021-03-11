@@ -3,13 +3,13 @@
 		<new-button
 			@click="$router.push(`/${task.id}/edit`)"
 			class="mr-2"
-			v-tooltip.top="userSettings.showTooltips ? 'Open' : { visible: false }">
+			v-tooltip.top="setTooltipData('Open')">
 			<span class="material-icons">open_in_new</span>
 		</new-button>
 
 		<new-button
 			v-if="showedButtons.done"
-			v-tooltip.top="userSettings.showTooltips ? 'Done' : { visible: false }"
+			v-tooltip.top="setTooltipData('Done')"
 			color="blue"
 			@click="$emit('updateStatus', task, 'done', `done-${task.id}`)"
 			class="mr-2">
@@ -21,7 +21,7 @@
 
 		<new-button
 			v-if="showedButtons.activate"
-			v-tooltip.top="userSettings.showTooltips ? 'Reactivate' : { visible: false }"
+			v-tooltip.top="setTooltipData('Reactivate')"
 			color="purple"
 			@click="$emit('updateStatus', task, 'active', `activate-${task.id}`)"
 			class="mr-2">
@@ -33,7 +33,7 @@
 		
 		<new-button
 			v-if="showedButtons.hide"
-			v-tooltip.top="userSettings.showTooltips ? 'Hide' : { visible: false }"
+			v-tooltip.top="setTooltipData('Hide')"
 			color="gray"
 			@click="$emit('updateStatus', task, 'hidden', `hide-${task.id}`)"
 			class="mr-2">
@@ -45,7 +45,7 @@
 		
 		<new-button
 			v-if="showedButtons.start"
-			v-tooltip.top="userSettings.showTooltips ? 'Stop timer' : { visible: false }"
+			v-tooltip.top="setTooltipData('Stop timer')"
 			color="red"
 			@click="$emit('stopCountdown', task, `stop-${task.id}`)"
 			class="mr-2">
@@ -57,7 +57,7 @@
 
 		<new-button
 			v-if="showedButtons.stop"
-			v-tooltip.top="userSettings.showTooltips ? 'Start timer' : { visible: false }"
+			v-tooltip.top="setTooltipData('Start timer')"
 			color="green"
 			@click="$emit('startCountdown', task, `start-${task.id}`)"
 			class="mr-2">
@@ -69,7 +69,7 @@
 
 		<new-button
 			v-if="showedButtons.deleteTask"
-			v-tooltip.top="userSettings.showTooltips ? 'Delete task' : { visible: false }"
+			v-tooltip.top="setTooltipData('Delete task')"
 			color="red"
 			@click="deleteTask(task, `delete-${task.id}`)"
 			class="mr-2">
@@ -84,7 +84,7 @@
 		<new-button
 			@click="restoreTask(task)"
 			class="mr-2"
-			v-tooltip.top="userSettings.showTooltips ? 'Restore from trash' : { visible: false }">
+			v-tooltip.top="setTooltipData('Restore from trash')">
 			<span class="material-icons">restore_from_trash</span>
 		</new-button>
 	</div>
@@ -99,6 +99,7 @@
 </template>
 
 <script>
+	import SetTooltipData from "src/mixins/SetTooltipData";
 	import Confirm from "src/components/UIElements/Confirm";
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
 
@@ -113,6 +114,7 @@
 			Confirm
 		},
 		mixins: [
+			SetTooltipData,
 			TaskActionsInTheListMixin
 		],
 		props: {
@@ -132,11 +134,6 @@
 		data: () => ({
 			confirm: null
 		}),
-		computed: {
-			userSettings () {
-				return this.$store.getters.getUserSettings || {}
-			}
-		},
 		methods: {
 			showConfirm (title, body, action) {
 				this.confirm = { title, body, action }
