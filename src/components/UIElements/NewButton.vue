@@ -1,5 +1,5 @@
 <template>
-  <div class="inline-block">
+  <div class="inline-block button-custom-component">
 		<router-link
 			v-if="type === 'router-link'"
 			:to="to"
@@ -38,11 +38,6 @@
 				type: String,
 				default: 'green'
 			}
-		},
-		methods: {
-			getClass() {
-				return `${this.extraClass} px-5 py-1 border border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`
-			}
 		}
 	}
 </script>
@@ -55,9 +50,5 @@
 
 		min-height: 45px;
 		line-height: 1;
-
-		.material-icons {
-			font-size: 18px;
-		}
 	}
 </style>

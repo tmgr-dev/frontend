@@ -4,6 +4,7 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 @import "switch";
+@import "task";
 
 body {
 	overflow-x: hidden;
@@ -23,11 +24,6 @@ body {
 	}
 }
 
-.countdown-wrapper {
-	font-family: 'Roboto', sans-serif;
-	cursor: pointer;
-}
-
 .bg-screen-default {
 	background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
 }
@@ -42,11 +38,11 @@ body {
 @import "../../directives/tooltip/css/index.scss";
 
 .custom-tooltip {
-	background: #616161;
+	background: #000;
 	border-radius: 50px;
 
 	.tooltip-arrow {
-		border-top-color: #616161 !important;
+		border-top-color: #000 !important;
 	}
 }
 

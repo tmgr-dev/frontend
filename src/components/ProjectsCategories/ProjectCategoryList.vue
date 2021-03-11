@@ -189,7 +189,7 @@
 						You don't have tasks in the category
 					</div>
 				</div>
-				<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
+				<loader v-if="showLoader" style="margin-top: 2rem" />
 			</template>
 		</BaseLayout>
 		<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined"/>

@@ -1,10 +1,10 @@
 <template>
 	<teleport to="title">
-		 &nbsp;{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
+		{{countdown.hours}}:{{countdown.minutes}}:{{countdown.seconds}}
 	</teleport>
-	<div v-if="task" class="task" :class="isFullScreen ? 'fullscreen' : ''" id="task" :style="style">
+	<div v-if="task" class="task" :class="{'fullscreen': isFullScreen}" id="task" :style="disabledStyles">
 		<div class="relative inline-block">
-			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none" style="opacity: 0.1">
+			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none opacity-20" style="opacity: 0.2">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
@@ -15,16 +15,13 @@
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
 			</div>
-			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none" style="opacity: 0.2">
+			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20" style="opacity: 0.2">
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
 			<div v-if="timeIsOver">
 				<p class="text-red">Time is over</p>
 			</div>
-			<!--<a href="#" @click.prevent="isShowModalTimer = true" class="countdown-edit" title="Edit timer">
-				<span class="material-icons text-base">edit</span>
-			</a>-->
 		</div>
 		<div class="countdown-actions">
 			<Button
@@ -43,32 +40,17 @@
 				<span class="material-icons" v-if="!isFullScreen">open_in_full</span>
 				<span class="material-icons" v-else>close_fullscreen</span>
 			</Button>
-			<span
-				v-if="reminderSoundActive"
-				class="relative inline-flex rounded-md shadow-sm"
-			>
-				<Button
-					:color="reminderSoundPlaying ? 'green' : 'gray'"
-					type="button"
-					class="leading-none"
-					@click="reminderSoundPlaying ? stopReminder() : playReminder()">
-					<span class="material-icons">{{ reminderSoundPlaying ? 'volume_up' : 'volume_off' }}</span>
-				</Button>
-				<span v-if="reminderSoundPlaying" class="flex absolute h-5 w-5 top-0 right-0 -mt-1 -mr-2">
-					<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-					<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
-				</span>
-			</span>
+
+			<div id="reminder-sound-teleport" class="relative inline-flex rounded-md shadow-sm"></div>
+
 		</div>
-		<div class="flex"  v-if="task.start_time && !isFullScreen">
-			<div class="mx-auto">
-				<input-field
-					type="checkbox"
-					placeholder="Reminder"
-					v-model="reminderSoundActive"
-				/>
-			</div>
-		</div>
+
+		<reminder
+			v-if="task.start_time && !isFullScreen"
+			v-model:is-active="reminderSoundActive"
+			:task="task"
+		/>
+
 		<modal
 			v-if="isShowModalTimer"
 			:modal-width="500"
@@ -116,64 +98,62 @@
 
 <script>
 	import InputField from "../UIElements/InputField";
+	import Reminder from "src/components/UIElements/Task/Reminder";
 
 	export default {
 		name: "Countdown",
 		components: {
+			Reminder,
 			InputField
 		},
-		emits: ['toggle', 'update:seconds'],
+		emits: [
+			'toggle',
+			'update:seconds'
+		],
 		props: {
 			initTask: {
 				required: true,
 				type: Object
 			},
-			style: {
+			disabled: {
+				type: Boolean,
 				required: false,
-				type: Object,
-				default: () => ({})
+				default: false
 			}
 		},
-		data() {
-			return {
-				isFullScreen: false,
-				approximatelyEndTime: null,
-				lastStartTime: null,
-				timeIsOver: false,
-				timeTokens: {
-					F: {
-						pattern: /[0-5]/
-					},
-					'#': {
-						pattern: /\d/
-					},
+		data: () => ({
+			reminderSoundActive: false,
+			isFullScreen: false,
+			approximatelyEndTime: null,
+			lastStartTime: null,
+			timeIsOver: false,
+			timeTokens: {
+				F: {
+					pattern: /[0-5]/
 				},
-				countdownInterval: null,
-				reminderInterval: null,
-				countdown: {
-					hours: '00',
-					minutes: '00',
-					seconds: '00'
+				'#': {
+					pattern: /\d/
 				},
-				task: null,
-				isShowModalTimer: false,
-				reminderSound: new Audio('/sounds/reminder.mp3'),
-				reminderSoundPlaying: false,
-				reminderSoundActive: false
-			}
-		},
-		watch: {
-			reminderSoundActive (newVal) {
-				if (newVal) {
-					return this.initSoundReminderOfCountdown()
-				}
-				clearTimeout(this.reminderSound);
-				this.stopReminder()
-			}
-		},
+			},
+			countdownInterval: null,
+			countdown: {
+				hours: '00',
+				minutes: '00',
+				seconds: '00'
+			},
+			task: {},
+			isShowModalTimer: false
+		}),
 		computed: {
 			userSettings () {
 				return this.$store.getters.getUserSettings ?? {}
+			},
+			disabledStyles () {
+				const disabledStyles = {
+					'opacity': 0.2,
+					'pointer-events': 'none'
+				}
+				return this.disabled ? disabledStyles : {}
 			}
 		},
 		methods: {
@@ -222,38 +202,6 @@
 
 				this.prepareCommonTime()
 				this.countdownInterval = setInterval(this.plusSecond, 1000)
-				this.initSoundReminderOfCountdown()
-			},
-			initSoundReminderOfCountdown() {
-				const soundReminder = this.getSettingOfSoundReminder()
-				if (!this.reminderSoundActive || !soundReminder || !parseInt(soundReminder.value)) {
-					return
-				}
-				const reminderDelay = parseInt(soundReminder.value) * 1000
-				this.reminderInterval = setTimeout(() => {
-					this.playReminder()
-					this.initSoundReminderOfCountdown()
-				}, reminderDelay)
-			},
-			getSettingOfSoundReminder() {
-				return this.task.settings.find(item => item.key === 'active_countdown_reminder_every')
-			},
-			playReminder() {
-				this.reminderSound.addEventListener('ended', () => {
-					this.reminderSoundPlaying = false
-				}, false);
-				if (!this.reminderSoundActive) {
-					return
-				}
-				this.reminderSound.play()
-				this.reminderSoundPlaying = true
-			},
-			stopReminder() {
-				if (!this.reminderSound) {
-					return
-				}
-				this.reminderSound.pause();
-				this.reminderSoundPlaying = false
 			},
 			renderTime() {
 				let seconds = this.task.common_time
@@ -307,9 +255,6 @@
 
 			this.initCountdown()
 			this.renderTime()
-		},
-		beforeUnmount() {
-			clearTimeout(this.reminderInterval)
 		}
 	}
 </script>

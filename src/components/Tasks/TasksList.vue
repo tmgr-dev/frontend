@@ -12,7 +12,7 @@
 			<div class="left-0 bottom-0 mr-4 absolute">
 			</div>
 			<div class="md:absolute md:right-0 md:bottom-0 text-center md:text-right">
-				<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Select all" class="pr-1">
+				<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Search tasks" class="pr-1">
 					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">{{ showSearchInput ? 'search_off' : 'search'}}</span>
 				</a>
 				<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
@@ -27,14 +27,8 @@
 			<transition name="fade" mode="out-in">
 				<input-field class="px-2 pb-5" v-if="showSearchInput" placeholder="Enter task name" v-model="searchText" @keydown:enter="loadTasks"></input-field>
 			</transition>
-			<default-tasks-list-component
-				v-if="tasks && tasks.length > 0 && showDefaultList"
-				:tasks="tasks"
-				:status="status"
-				ref="tasksListComponent"
-			/>
 			<tasks-list-component
-				v-else-if="tasks && tasks.length > 0 && !showDefaultList"
+				v-if="tasks && tasks.length > 0"
 				:tasks="tasks"
 				:status="status"
 				:is-loading-actions="isLoadingActions"
@@ -44,17 +38,16 @@
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
 				You don't have tasks here
 			</div>
-			<loader v-if="showLoader" :is-active="true" style="margin-top: 2rem" />
+			<loader v-if="showLoader" style="margin-top: 2rem" />
 		</template>
 	</BaseLayout>
 </template>
 
 <script>
-
-	import TasksListComponent from "../UIElements/TasksListComponent";
-	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
-	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 	import TasksListMixin from "src/mixins/TasksListMixin";
+	import TasksListComponent from "../UIElements/TasksListComponent";
+	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
+	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
 
 	export default {
 		name: 'TasksList',
@@ -62,25 +55,25 @@
 			TasksListComponent,
 			DefaultTasksListComponent
 		},
-		mixins: [ LoadingButtonActions, TasksListMixin ],
-		data() {
-			return {
-				showSearchInput: false,
-				panel: false,
-				searchText: null,
-				searchTimeout: null,
-				showDefaultList: false,
-				summaryTimeString: null,
-				showLoader: true,
-				h1: {
-					CurrentTasksList: 'Current tasks',
-					HiddenTasksList: 'Hidden tasks',
-					ArchiveTasksList: 'Archive tasks'
-				},
-				tasks: [],
-				isLoadingActions: {}
-			}
-		},
+		mixins: [
+			LoadingButtonActions,
+			TasksListMixin
+		],
+		data: () => ({
+			showSearchInput: false,
+			panel: false,
+			searchText: null,
+			searchTimeout: null,
+			summaryTimeString: null,
+			showLoader: true,
+			h1: {
+				CurrentTasksList: 'Current tasks',
+				HiddenTasksList: 'Hidden tasks',
+				ArchiveTasksList: 'Archive tasks'
+			},
+			tasks: [],
+			isLoadingActions: {}
+		}),
 		computed: {
 			status() {
 				return this.$route.meta.status
@@ -92,10 +85,6 @@
 				this.searchTimeout = setTimeout(this.loadTasks, 1000)
 
 			}
-		},
-		async created() {
-			const data = await this.loadTasks()
-			this.setLoadingActions(data)
 		},
 		methods: {
 			async loadTasks() {
@@ -113,6 +102,10 @@
 				}
 				this.$refs.tasksListComponent.selectAll()
 			}
+		},
+		async created() {
+			const data = await this.loadTasks()
+			this.setLoadingActions(data)
 		}
 	}
 </script>

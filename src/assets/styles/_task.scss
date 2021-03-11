@@ -1,0 +1,55 @@
+.draggable-block {
+	z-index: 999999 !important;
+	top: 20px;
+	left: 20px;
+	min-height: 150px;
+	position: fixed;
+	cursor: pointer;
+	padding: 2.5rem 1rem;
+}
+
+.time-for-modal {
+	font-size: 20px;
+	color: #3c3c3c;
+	font-weight: bold;
+	text-align: center;
+}
+.selection {
+	position: absolute;
+	border: 1px dotted;
+	z-index: 9;
+	top: 0;
+	left: 0;
+	cursor: default;
+	display: none;
+}
+.selectable {
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+.selectable.selecting {
+	background-color: yellow;
+}
+.selectable.selected {
+	background-color: orange;
+}
+
+.task-category-in-task {
+	.add-task-to-category-from-task-category {
+		display: none;
+	}
+	&:hover {
+		.add-task-to-category-from-task-category {
+			display: inherit;
+		}
+	}
+}
+
+.button-custom-component {
+	.material-icons {
+		font-size: 18px !important;
+	}
+}
