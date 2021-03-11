@@ -1,91 +1,89 @@
 <template>
 	<div class="w-full items-center justify-center relative">
 		<transition name="bounce">
-			<vue-draggable-resizable
-				v-if="showSelectedTasksCommonTime"
-				style="z-index: 9; top: 80px; right: 50px; min-height: 150px"
-				:resizable="false"
-				:w="250"
-				h="auto"
-				class-name="fixed rounded bg-green-600 py-5 px-2 cursor-pointer">
-				<p class="text-white text-center">
-					<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
-					{{ timeForModal }}
-				</p>
-				<div class="w-full text-center">
-					<a href="#close"
-						class="absolute top-0 right-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
-						@click.prevent="closeTimeInModal">
-						<span class="material-icons text-bold">close</span>
-					</a>
-					<button
-						@click="selectedUpdateStatus('done')"
-						class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
+			<div v-if="showSelectedTasksCommonTime" class="draggable-block">
+				<vue-draggable-resizable :resizable="false" :w="250" class-name="rounded bg-green-600 py-5 px-2">
+					<p class="text-white text-center">
+						<b>Selected tasks: </b>{{ selected.filter(v => v).length }}<br>
+						{{ timeForModal }}
+					</p>
+					<div class="w-full text-center">
+						<a href="#close"
+							 class="absolute top-0 right-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
+							 @click.prevent="closeTimeInModal">
+							<span class="material-icons text-bold">close</span>
+						</a>
+						<button
+							@click="selectedUpdateStatus('done')"
+							class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
 						<span class="relative">
 							<span class="material-icons text-bold">done</span>
 						</span>
-					</button>
-					<button
-						@click="selectedUpdateStatus('active')"
-						class="mr-1 w-1/5 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">
+						</button>
+						<button
+							@click="selectedUpdateStatus('active')"
+							class="mr-1 w-1/5 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">
 						<span class="relative">
 							<span class="material-icons text-bold">refresh</span>
 						</span>
-					</button>
-					<button
-						@click="selectedUpdateStatus('hidden')"
-						class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
+						</button>
+						<button
+							@click="selectedUpdateStatus('hidden')"
+							class="mr-1 w-1/5 bg-green-700 text-white rounded py-2 mt-2 hover:bg-green-600">
 							<span class="relative">
 								<span class="material-icons">visibility_off</span>
 							</span>
-					</button>
-					<button
-						v-if="status === 'hidden' || status === 'done'"
-						@click="deleteSelectedTasks()"
-						class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
+						</button>
+						<button
+							v-if="status === 'hidden' || status === 'done'"
+							@click="deleteSelectedTasks()"
+							class="w-1/5 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-600">
 							<span class="relative">
 								<span class="material-icons">delete</span>
 							</span>
-					</button>
-					<button
-						@click="exportSelectedTasksTo()"
-						class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
+						</button>
+						<button
+							@click="exportSelectedTasksTo()"
+							class="w-1/5 bg-blue-700 text-white rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">description</span>
 							</span>
-					</button>
-					<button
-						@click="exportSelectedTasksTo('jpg')"
-						class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
+						</button>
+						<button
+							@click="exportSelectedTasksTo('jpg')"
+							class="w-1/5 bg-blue-700 ml-1 text-white rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">image</span>
 							</span>
-					</button>
-					<button
-						@click="exportSelectedTasksTo('xlsx')"
-						class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
+						</button>
+						<button
+							@click="exportSelectedTasksTo('xlsx')"
+							class="w-1/5 bg-blue-700 text-white ml-1 rounded py-2 mt-2 hover:bg-blue-600">
 							<span class="relative">
 								<span class="material-icons">list</span>
 							</span>
-					</button>
-				</div>
-			</vue-draggable-resizable>
+						</button>
+					</div>
+				</vue-draggable-resizable>
+			</div>
 		</transition>
+
 		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
 			<div class="selection" :class="$color('borderSelection')"></div>
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
-				:class="`${!!selected[i] ? 'selected selecting' : ''} w-full px-2 mt-2 selectable ${task.deleted_at ? 'hover:opacity-100 opacity-50' : ''}`"
+				class="w-full px-2 mt-2 selectable"
+				:class="{'selected': !!selected[i], 'selecting': !!selecting[i], 'hover:opacity-100 opacity-50': task.deleted_at}"
 				:draggable="draggable"
 				:data-task-id="task.id"
 				@dragstart="onDragStart($event, task)"
 				@dragend="onDragEnd($event, task)"
 			>
-				<div class="shadow-xl rounded-lg md:flex" :class="(task.start_time ? `border-solid border-l-8 border-green-600` : ``)">
+				<div class="shadow-xl rounded-lg md:flex" :class="{'border-solid border-l-8 border-green-600': task.start_time}">
 					<div class="w-full">
 						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center relative"  @click.prevent="() => {}">
+							<div class="flex justify-between items-center relative">
 								<div>
 									<div class="flex">
 										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
@@ -113,144 +111,39 @@
 										<span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
 									</div>
 								</div>
-								<DropdownMenu class="lg:hidden" :actions="getActions(task)"></DropdownMenu>
-								<div class="tc-hidden lg:flex items-center  z-10" v-if="!task.deleted_at">
-									<new-button
-										@click="$router.push(`/${task.id}/edit`)"
-										class="mr-2"
-										v-tooltip.top="userSettings.showTooltips ? 'Open' : { visible: false }">
-										<span class="material-icons">open_in_new</span>
-									</new-button>
 
-									<new-button
-										v-if="getShowButtons(task).done"
-										v-tooltip.top="userSettings.showTooltips ? 'Done' : { visible: false }"
-										color="blue"
-										@click="updateStatus(task, 'done', `done-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons text-bold" v-if="!isLoadingActions[`done-${task.id}`]">done</span>
-												<loader v-if="isLoadingActions[`done-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
-									<new-button
-										v-if="getShowButtons(task).activate"
-										v-tooltip.top="userSettings.showTooltips ? 'Reactivate' : { visible: false }"
-										color="purple"
-										@click="updateStatus(task, 'active', `activate-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons text-bold" v-if="!isLoadingActions[`activate-${task.id}`]">refresh</span>
-												<loader v-if="isLoadingActions[`activate-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
-									<new-button
-										v-if="getShowButtons(task).hide"
-										v-tooltip.top="userSettings.showTooltips ? 'Hide' : { visible: false }"
-										color="gray"
-										@click="updateStatus(task, 'hidden', `hide-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons" v-if="!isLoadingActions[`hide-${task.id}`]">visibility_off</span>
-												<loader v-if="isLoadingActions[`hide-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
-									<new-button
-										v-if="getShowButtons(task).start"
-										v-tooltip.top="userSettings.showTooltips ? 'Stop timer' : { visible: false }"
-										color="red"
-										@click="stopCountdown(task, `stop-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons" v-if="!isLoadingActions[`stop-${task.id}`]">alarm_off</span>
-												<loader v-if="isLoadingActions[`stop-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
+								<dropdown-menu class="lg:hidden" :actions="getActions(task)" />
 
-									<new-button
-										v-if="getShowButtons(task).stop"
-										v-tooltip.top="userSettings.showTooltips ? 'Start timer' : { visible: false }"
-										color="green"
-										@click="startCountdown(task, `start-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons" v-if="!isLoadingActions[`start-${task.id}`]">alarm_on</span>
-												<loader v-if="isLoadingActions[`start-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
-
-									<new-button
-										v-if="status === 'hidden' || status === 'done'"
-										v-tooltip.top="userSettings.showTooltips ? 'Delete task' : { visible: false }"
-										color="red"
-										@click="deleteTask(task, `delete-${task.id}`)"
-										class="mr-2">
-											<span class="relative">
-												<span class="material-icons" v-if="!isLoadingActions[`delete-${task.id}`]">delete</span>
-												<loader v-if="isLoadingActions[`delete-${task.id}`]" :is-mini="true" :is-static="true" />
-											</span>
-									</new-button>
-								</div>
-								<div class="tc-hidden lg:flex items-center" v-else>
-									<new-button
-										@click="restoreTask(task)"
-										class="mr-2"
-										v-tooltip.top="userSettings.showTooltips ? 'Restore from trash' : { visible: false }">
-										<span class="material-icons">restore_from_trash</span>
-									</new-button>
-								</div>
+								<task-buttons-in-the-list
+									:task="task"
+									:showed-buttons="getShowButtons(task)"
+									:is-loading-actions="isLoadingActions"
+									@updateStatus="updateStatus"
+									@stopCountdown="stopCountdown"
+									@startCountdown="startCountdown"
+								/>
 							</div>
 						</div>
 					</div>
 				</div>
 			</div>
-
-			<modal
-				v-if="showTimeInModal"
-				:is-center="true"
-				:modal-width="300"
-				@close="closeTimeInModal">
-				<template #modal-body>
-					<div class="time-for-modal" v-if="timeForModal">
-						<b>Selected tasks: </b>{{ selected.filter((v) => v).length }}<br>
-						{{ timeForModal }}
-					</div>
-					<div class="time-for-modal" v-else>
-						Ooops...
-					</div>
-
-					<div class="text-center">
-						<button
-							type="button"
-							@click="closeTimeInModal"
-							class="w-1/4 bg-green-700 text-white p-2 rounded mt-2 hover:bg-green-600">
-							{{ timeForModal ? 'OK!' : 'Sorry' }}
-						</button>
-						<button
-							v-if="timeForModal"
-							type="button"
-							@click="jusCloseTimeInModal()"
-							class="ml-1 w-2/4 bg-gray-700 text-white p-2 rounded mt-2 hover:bg-gray-600">
-							Cancel
-						</button>
-					</div>
-				</template>
-			</modal>
 		</div>
 	</div>
-	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined"/>
 </template>
 
 <script>
-
-	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
 	import TasksListMixin from 'src/mixins/TasksListMixin'
-	import Confirm from "src/components/UIElements/Confirm";
+	import convertToQueryString from "src/utils/convertToQueryString";
+	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
+	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
+	import TaskButtonsInTheList from "src/components/UIElements/Task/TaskButtonsInTheList";
+	import VueDraggableResizable from "src/components/UIElements/VueDraggableResizable/VueDraggableResizable";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
-			Confirm,
+			TaskButtonsInTheList,
+			VueDraggableResizable,
 			DropdownMenu
 		},
 		emits: ['reload-tasks'],
@@ -285,43 +178,23 @@
 				default: false
 			}
 		},
-		mixins: [ TasksListMixin ],
+		mixins: [
+			TasksListMixin,
+			TaskActionsInTheListMixin
+		],
 		data: () => ({
 			showSelectedTasksCommonTime: false,
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
 			timeForModal: null,
-			confirm: null
 		}),
-		computed: {
-			userSettings () {
-				return this.$store.getters.getUserSettings || {}
-			}
-		},
 		methods: {
-			onDragStart (event, task) {
-				event.dataTransfer.setData('task-id', task.id)
-			},
-			onDragEnd (event, task) {
-			},
-			showConfirm (title, body, action) {
-				this.confirm = {title, body, action}
-			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true
 				await this.$axios.delete(`tasks/${task.id}/countdown`)
 				await this.loadTasks()
 				this.isLoadingActions[dotId] = false
-			},
-			getShowButtons(task) {
-				return {
-					done: (this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && task.status !== 'done'),
-					activate: (this.status === 'done' || this.status === 'hidden' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status === 'done' || task.status === 'hidden')),
-					hide: (this.status !== 'hidden' && this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status !== 'hidden' && task.status !== 'done')),
-					start: task.start_time,
-					stop: !task.start_time && (task.status === 'active' || task.status === 'created')
-				}
 			},
 			async startCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true
@@ -329,6 +202,10 @@
 				await this.loadTasks()
 				this.isLoadingActions[dotId] = false
 			},
+			onDragStart (event, task) {
+				event.dataTransfer.setData('task-id', task.id)
+			},
+			onDragEnd (event, task) {},
 			async loadTasks() {
 				await this.$emit('reload-tasks')
 			},
@@ -347,6 +224,16 @@
 				actions = this.addActionItem(actions, this.getActionItem(task, 'done', 'Done'), this.getShowButtons(task).done)
 
 				return actions
+			},
+			getShowButtons(task) {
+				return {
+					done: (this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && task.status !== 'done'),
+					activate: (this.status === 'done' || this.status === 'hidden' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status === 'done' || task.status === 'hidden')),
+					hide: (this.status !== 'hidden' && this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status !== 'hidden' && task.status !== 'done')),
+					start: task.start_time,
+					stop: !task.start_time && (task.status === 'active' || task.status === 'created'),
+					deleteTask: this.status === 'hidden' || this.status === 'done'
+				}
 			},
 			addActionItem(actions, item, show = true) {
 				if (!item || !show) {
@@ -379,13 +266,6 @@
 					this.setLoadingAction(dotId, false)
 				}
 			},
-			setLoadingAction(dotId = null, actionStatus = true) {
-				if (dotId == null) {
-					return
-				}
-
-				this.isLoadingActions[dotId] = actionStatus
-			},
 			async selectedUpdateStatus(status) {
 				for (let i = 0; i < this.tasks.length; ++i) {
 					if (!this.selected[i]) {
@@ -394,41 +274,7 @@
 					await this.updateStatus(this.tasks[i], status, null, false)
 				}
 				await this.loadTasks()
-				this.resetSelects()
-			},
-			resetSelects() {
-				this.selected = []
-				this.selecting = []
-			},
-			async deleteTask (task, dotId = null, loadTasks = true) {
-				const deleteTask = async () => {
-					try {
-						this.setLoadingAction(dotId)
-						const {data: {data}} = await this.$axios.delete(`/tasks/${task.id}`)
-						task.deleted_at = data.deleted_at
-						// if (loadTasks) {
-						// 	await this.loadTasks()
-						// }
-					} catch (e) {
-						console.error(e)
-					} finally {
-						this.setLoadingAction(dotId, false)
-						this.confirm = undefined
-					}
-				}
-				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
-			},
-			async restoreTask (task, dotId = null) {
-				try {
-					this.setLoadingAction(dotId)
-					const {data: {data}} = await this.$axios.post(`/tasks/${task.id}/restore`)
-					task.deleted_at = data.deleted_at
-				} catch (e) {
-					console.error(e)
-				} finally {
-					this.setLoadingAction(dotId, false)
-					this.confirm = undefined
-				}
+				this.resetSelectedTasks()
 			},
 			async deleteSelectedTasks () {
 				for (let i = 0; i < this.tasks.length; ++i) {
@@ -438,7 +284,7 @@
 					await this.deleteTask(this.tasks[i], null, false)
 				}
 				// await this.loadTasks()
-				this.resetSelects()
+				this.resetSelectedTasks()
 			},
 			capitalize(s) {
 				if (typeof s !== 'string') return ''
@@ -450,7 +296,7 @@
 			selectedSetter (arr) {
 				this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
 
-				this.showSelectedTasksCommonTime = this.selected.filter(v => v).length > 1
+				this.showSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
 				this.selecting = []
 				this.countTimeForModal()
 			},
@@ -461,10 +307,14 @@
 			getSelectedTasks () {
 				return this.tasks.filter((task, index) => this.selected[index])
 			},
+			resetSelectedTasks () {
+				this.selected = []
+				this.selecting = []
+			},
 			closeTimeInModal () {
 				this.showTimeInModal = false
 				this.showSelectedTasksCommonTime = false
-				this.resetSelects()
+				this.resetSelectedTasks()
 			},
 			selectingSetter (arr) {
 				if (arr.filter(item => item).length >= 2) {
@@ -485,27 +335,10 @@
 				return 'exports/tasks/' + exportType + '?' + this.getExportConfigs(tasksIds)
 			},
 			getExportConfigs(tasksIds) {
-				return this.jsonObjectToQueryString({
+				return convertToQueryString({
 					ids: tasksIds,
 					per_hour: 1000
 				})
-			},
-			jsonObjectToQueryString (obj, prefix) {
-				const euc = encodeURIComponent
-				const serialize = this.jsonObjectToQueryString
-				const isNotNullObject = v => v !== null && typeof v === "object"
-				const queryStringItems = []
-
-				for (let p in obj) {
-					if (!obj.hasOwnProperty(p)) {
-						continue
-					}
-
-					const k = prefix ? prefix + "[" + p + "]" : p
-					const v = obj[p]
-					queryStringItems.push(isNotNullObject(v) ? serialize(v, k) : euc(k) + "=" + euc(v));
-				}
-				return queryStringItems.join("&");
 			},
 			download (data, filename, type) {
 				var file = new Blob([data], {type: type});
@@ -526,77 +359,9 @@
 			},
 			selectAll () {
 				this.selected = this.tasks.map(() => true)
-				this.showSelectedTasksCommonTime = this.selected.filter(v => v).length > 1
+				this.showSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
 				this.countTimeForModal()
 			}
 		}
 	}
 </script>
-
-<style scoped lang="scss">
-	.time-for-modal {
-		font-size: 20px;
-		color: #3c3c3c;
-		font-weight: bold;
-		text-align: center;
-	}
-	.selection {
-		position: absolute;
-		border: 1px dotted;
-		z-index: 9;
-		top: 0;
-		left: 0;
-		cursor: default;
-		display: none;
-	}
-	.selectable {
-		-webkit-touch-callout: none;
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		-ms-user-select: none;
-		user-select: none;
-	}
-	.selectable.selecting {
-		background-color: yellow;
-	}
-	.selectable.selected {
-		background-color: orange;
-	}
-	.bounce-enter-active {
-		animation: bounce-in .5s;
-	}
-	.bounce-leave-active {
-		animation: bounce-in .5s reverse;
-	}
-	@keyframes bounce-in {
-		0% {
-			transform: scale(0);
-		}
-		50% {
-			transform: scale(1.5);
-		}
-		100% {
-			transform: scale(1);
-		}
-	}
-
-	.task-category-in-task {
-		.add-task-to-category-from-task-category {
-			display: none;
-		}
-		&:hover {
-			.add-task-to-category-from-task-category {
-				display: inherit;
-			}
-		}
-	}
-
-	.user-select-none {
-		-webkit-touch-callout: none;
-		-webkit-user-select: none;
-		-khtml-user-select: none;
-		-moz-user-select: none;
-		-ms-user-select: none;
-		user-select: none;
-	}
-</style>

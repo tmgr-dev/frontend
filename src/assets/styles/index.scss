@@ -4,6 +4,7 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 @import "switch";
+@import "task";
 
 body {
 	overflow-x: hidden;
@@ -21,11 +22,6 @@ body {
 		background-color: darkgrey;
 		outline: 1px solid slategrey;
 	}
-}
-
-.countdown-wrapper {
-	font-family: 'Roboto', sans-serif;
-	cursor: pointer;
 }
 
 .bg-screen-default {
