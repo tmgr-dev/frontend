@@ -14,10 +14,16 @@ function createWindow () {
    * Initial window options
    */
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 600,
-    useContentSize: true,
+		width: 1024,
+		height: 1000,
+		minWidth: 1024,
+		minHeight: 768,
+		useContentSize: true,
+		frame: false,
     webPreferences: {
+			enableRemoteModule: true,
+			nodeIntegration: process.env.QUASAR_NODE_INTEGRATION,
+			nodeIntegrationInWorker: process.env.QUASAR_NODE_INTEGRATION,
       contextIsolation: true,
       // More info: /quasar-cli/developing-electron-apps/electron-preload-script
       preload: path.resolve(__dirname, process.env.QUASAR_ELECTRON_PRELOAD)
