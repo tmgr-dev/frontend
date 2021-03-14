@@ -105,7 +105,7 @@ body {
 .slideout-panel {
 	position: relative;
 	z-index: 1;
-	will-change: transform;
+/*	will-change: transform;*/
 	min-height: 100vh;
 }
 

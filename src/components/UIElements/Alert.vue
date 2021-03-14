@@ -61,7 +61,7 @@
 <style scoped lang="scss">
 	.alert {
 		right: 20px;
-		top: 20px;
+		bottom: 20px;
 	  color: rgba(26, 32, 44, 0.75);
 
 		&__info {
