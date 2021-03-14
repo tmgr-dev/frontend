@@ -202,8 +202,8 @@ import Breadcrumbs from '../UIElements/Breadcrumbs'
 import TasksListComponent from "../UIElements/TasksListComponent";
 import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 import Confirm from '../UIElements/Confirm'
-import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
-import extractParents from './functions/extractParents'
+import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs'
+import extractParents from '../../utils/extractParents'
 
 export default {
 	name: 'ProjectCategoryList',

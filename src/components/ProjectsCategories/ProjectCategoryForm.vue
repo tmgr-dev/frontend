@@ -124,11 +124,11 @@
 </template>
 
 <script>
-	import Breadcrumbs from '../UIElements/Breadcrumbs'
-	import getBreadcrumbs from '../UIElements/Breadcrumbs/getBreadcrumbs'
-	import extractParents from './functions/extractParents'
-	import InputField from "../UIElements/InputField"
-	import AlertData from "../../mixins/AlertData";
+	import AlertData from "src/mixins/AlertData";
+	import extractParents from "src/utils/extractParents";
+	import InputField from "src/components/UIElements/InputField";
+	import Breadcrumbs from "src/components/UIElements/Breadcrumbs";
+	import getBreadcrumbs from "src/utils/breadcrumbs/getBreadcrumbs";
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -226,7 +226,7 @@
 					const {data: {data}} = await this.$axios.put(`project_categories/${this.form.id}`, this.form)
 					this.form = data
 					await this.saveSettings(this.settings)
-					this.showAlert('Saved', 'The project category was saved')
+					this.showAlert('Saved', 'The category was saved')
 					return
 				}
 				this.form.slug = this.generateSlug(this.form.title)

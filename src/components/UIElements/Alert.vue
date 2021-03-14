@@ -53,7 +53,9 @@
 			isCreated: false
 		}),
 		mounted () {
-			this.isCreated = true
+			setTimeout(() => {
+				this.isCreated = true
+			}, 0)
 		}
 	}
 </script>
@@ -84,21 +86,17 @@
 	.mark {
 		stroke-dasharray: 10;
 		stroke-dashoffset: 10;
+		transition: .5s .75s;
 	}
 
 	.circle {
 		stroke-dasharray: 22;
 		stroke-dashoffset: 22;
+		transition: .5s .35s;
 	}
 
 	.svg.animate {
-		.circle {
-			transition: .5s .35s;
-			stroke-dashoffset: 0;
-		}
-
-		.mark {
-			transition: .5s .75s;
+		.circle, .mark {
 			stroke-dashoffset: 0;
 		}
 	}

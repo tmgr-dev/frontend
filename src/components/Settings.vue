@@ -66,7 +66,11 @@
 					</button>
 				</div>
 			</div>
-			<alert v-if="successSavingShow" />
+			<transition name="fade">
+				<alert
+					v-if="isShowAlert"
+				/>
+			</transition>
 		</template>
 	</BaseLayout>
 	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined">
@@ -78,13 +82,20 @@
 </template>
 
 <script>
+	import AlertData from "src/mixins/AlertData";
 	import Confirm from "src/components/UIElements/Confirm";
-	import Button from "components/UIElements/Button";
+	import Button from "src/components/UIElements/Button";
+
 	export default {
 		name: 'Settings',
-		components: {Button, Confirm},
+		components: {
+			Button,
+			Confirm
+		},
+		mixins: [
+			AlertData
+		],
 		data: () => ({
-			successSavingShow: false,
 			availableSettings: [],
 			settings: [],
 			user: {},
@@ -145,8 +156,7 @@
 				})
 			},
 			getSettingById(settings, id, defaultResult = null) {
-				const result = settings.find(setting => setting.id === id) || defaultResult
-				return result
+				return settings.find(setting => setting.id === id) || defaultResult
 			},
 			async saveSettings(settings) {
 				const {data: {data}} = await this.$axios.put(`/v2/user/settings`, settings)
@@ -162,10 +172,6 @@
 				} catch (e) {
 					console.error(e)
 				}
-			},
-			showAlert () {
-				this.successSavingShow = true
-				setTimeout(() => this.successSavingShow = false, 2000)
 			}
 		}
 	}
