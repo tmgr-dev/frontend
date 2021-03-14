@@ -169,6 +169,15 @@ const routes = [
 		name: 'Settings'
 	},
 	{
+		path: '/profile',
+		component: () => import('src/components/Profile'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: true
+		},
+		name: 'Profile'
+	},
+	{
 		path: '/stats',
 		component: () => import('src/components/Public/Stats'),
 		meta: {

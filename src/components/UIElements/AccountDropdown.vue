@@ -16,9 +16,15 @@
       <ul class="w-40 py-2 px-4">
         <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <router-link
+            to="/profile"
+            class="tc-block">
+            Profile
+          </router-link>
+				</li>
+        <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
+          <router-link
             to="/settings"
-            class="tc-block"
-            @click.native="isOpenProfileDropdown = false">
+            class="tc-block">
             Settings
           </router-link>
         </li>
