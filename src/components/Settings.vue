@@ -82,7 +82,6 @@
 </template>
 
 <script>
-	import AlertData from "src/mixins/AlertData";
 	import Confirm from "src/components/UIElements/Confirm";
 	import Button from "src/components/UIElements/Button";
 
@@ -92,9 +91,6 @@
 			Button,
 			Confirm
 		},
-		mixins: [
-			AlertData
-		],
 		data: () => ({
 			availableSettings: [],
 			settings: [],

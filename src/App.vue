@@ -31,6 +31,8 @@
 						<component v-show="showComponent" :is="Component"></component>
 					</transition>
 				</router-view>
+
+				<alert ref="alert"/>
 			</div>
 		</Slideout>
 		<div :class="`fixed right-0 bottom-0 ml-5 mb-10 mr-2 z-10`">

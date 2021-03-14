@@ -124,7 +124,6 @@
 </template>
 
 <script>
-	import AlertData from "src/mixins/AlertData";
 	import extractParents from "src/utils/extractParents";
 	import InputField from "src/components/UIElements/InputField";
 	import Breadcrumbs from "src/components/UIElements/Breadcrumbs";
@@ -136,9 +135,6 @@
 			Breadcrumbs,
 			InputField
 		},
-		mixins: [
-			AlertData
-		],
 		data() {
 			return {
 				h1: null,

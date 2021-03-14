@@ -260,8 +260,6 @@
 				<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</p>
-
-				<alert ref="alert"/>
 			</div>
 		</template>
 	</BaseLayout>
@@ -269,7 +267,6 @@
 
 <script>
 	import moment from 'moment'
-	import AlertData from "src/mixins/AlertData";
 	import InputField from "src/components/UIElements/InputField";
 	import TaskActions from "src/components/UIElements/Task/TaskActions";
 
@@ -279,9 +276,6 @@
 			TaskActions,
 			InputField
 		},
-		mixins: [
-			AlertData
-		],
 		data() {
 			return {
 				savedData: {},

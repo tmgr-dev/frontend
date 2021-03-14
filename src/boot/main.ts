@@ -31,6 +31,9 @@ export default (obj: any) => {
 		}
 	}
 	app.config.globalProperties.$axios = axios;
+	app.config.globalProperties.showAlert = function (title = 'Saved', description = '') {
+		this.$root.$refs.alert.show(title, description)
+	};
 
 	const color = (colorKey: string) => colorSchemes[store.getters.colorScheme][colorKey];
 	app.config.globalProperties.$color = color;
