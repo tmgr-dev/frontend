@@ -2,9 +2,9 @@
 	<div class="fixed alert">
 		<div class="flex bg-green-400 max-w-sm">
 			<div class="w-16 bg-green-700">
-				<div class="p-4">
+				<div class="flex h-full">
 					<svg
-						class="svg"
+						class="svg m-auto"
 						:class="{'animate': isCreated}"
 						xmlns="http://www.w3.org/2000/svg"
 						width="34.930046"

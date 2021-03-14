@@ -22,6 +22,16 @@
 						<span class="material-icons text-lg">settings</span>
 					</a>
 
+					<!--<task-settings-modal
+						v-if="isShowModalCategory"
+						:form="form"
+						:errors="errors"
+						:categories="categoriesSelectOptions"
+						v-model:selected-category="currentCategoryOptionInSelect"
+						:settings="availableSettings"
+						@submit="updateCategory"
+						@close="isShowModalCategory = false"
+					/>-->
 					<modal
 						v-if="isShowModalCategory"
 						:modal-width="500"
@@ -409,13 +419,12 @@
 			},
 			dispatchAutoSave() {
 				this.removeDispatchedAutoSave()
-				this.autoSaveTimeout = setTimeout(() => this.saveTask(true), 2000)
+				this.autoSaveTimeout = setTimeout(this.saveTask, 5000)
 			},
 			removeDispatchedAutoSave() {
-				if (!this.autoSaveTimeout) {
-					return
+				if (this.autoSaveTimeout) {
+					clearTimeout(this.autoSaveTimeout)
 				}
-				clearTimeout(this.autoSaveTimeout)
 			},
 			equals (o1, o2) {
 				return JSON.stringify(o1) === JSON.stringify(o2)
@@ -556,7 +565,7 @@
 					}
 				}
 			},
-			async saveTask (autoSave = false) {
+			async saveTask () {
 				this.isSaving = true
 				try {
 					this.prepareForm()
@@ -565,9 +574,6 @@
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}
 					this.form = data
-					if (!autoSave) {
-						this.showAlert('Saved', 'The task was saved')
-					}
 
 					await this.saveSettings(this.settings)
 
@@ -581,8 +587,7 @@
 				}
 				this.removeDispatchedAutoSave()
 				this.isSaving = false
-
-				this.showAlert()
+				this.showAlert('Saved', 'The task was saved')
 			},
 			goToCurrentTasks() {
 				this.$router.push('/')
