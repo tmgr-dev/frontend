@@ -2,7 +2,7 @@
 	<div class="w-full items-center justify-center relative">
 		<transition name="bounce">
 			<tasks-multiple-actions-modal
-				v-if="showSelectedTasksCommonTime"
+				v-if="isShowSelectedTasksCommonTime"
 				:status="status"
 				@updateStatus="updateStatusForSelectedTasks"
 				@remove="deleteSelectedTasks"
@@ -131,7 +131,7 @@
 			TaskActionsInTheListMixin
 		],
 		data: () => ({
-			showSelectedTasksCommonTime: false,
+			isShowSelectedTasksCommonTime: false,
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
@@ -242,11 +242,16 @@
 				return this.selected;
 			},
 			selectedSetter (arr) {
+				if (!this.selected.filter(Boolean).length && !this.selecting.length) {
+					return
+				}
 				this.selected = arr.map((v, i) => this.selected[i] && v ? false : (v && !this.selected[i] ? true : (!v && this.selected[i])))
 
-				this.showSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
+				this.isShowSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
 				this.selecting = []
-				this.countTimeForModal()
+				if (this.isShowSelectedTasksCommonTime) {
+					this.countTimeForModal()
+				}
 			},
 			countTimeForModal () {
 				const time = this.getSelectedTasks().reduce((p, c) => p + c.common_time, 0)
@@ -261,7 +266,7 @@
 			},
 			closeTimeInModal () {
 				this.showTimeInModal = false
-				this.showSelectedTasksCommonTime = false
+				this.isShowSelectedTasksCommonTime = false
 				this.resetSelectedTasks()
 			},
 			selectingSetter (arr) {
@@ -284,7 +289,7 @@
 			},
 			selectAll () {
 				this.selected = this.tasks.map(() => true)
-				this.showSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
+				this.isShowSelectedTasksCommonTime = this.selected.filter(Boolean).length > 1
 				this.countTimeForModal()
 			}
 		}
