@@ -1,6 +1,6 @@
 <template>
 	<div id="q-app" :class="$color('textMain')" class="q-electron-drag">
-		<q-bar v-if="this.$q.platform.is.electron">
+		<q-bar v-if="$q.platform.is.electron">
 			<q-icon name="map"/>
 
 			<div>TMGR</div>
@@ -29,21 +29,25 @@
 				</div>
 			</div>
 			<div id="panel" :class="`${$color('bgBody')}`">
-				<transition name="fade" mode="out-in">
-					<Navbar v-if="$route.meta.navbarHidden" />
-				</transition>
-				<router-view :key="$route.path" v-slot="{ Component }">
-					<transition
-						:name="transitionName"
-						mode="out-in"
-						@before-leave="beforeLeave"
-						@enter="enter"
-						@after-enter="afterEnter">
-						<component v-show="showComponent" :is="Component"></component>
+				<q-scroll-area :style="{
+					height: bodyHeight + 'px'
+				}">
+					<transition name="fade" mode="out-in">
+						<Navbar v-if="$route.meta.navbarHidden" />
 					</transition>
-				</router-view>
+					<router-view :key="$route.path" v-slot="{ Component }">
+						<transition
+							:name="transitionName"
+							mode="out-in"
+							@before-leave="beforeLeave"
+							@enter="enter"
+							@after-enter="afterEnter">
+							<component v-show="showComponent" :is="Component"></component>
+						</transition>
+					</router-view>
 
-				<alert ref="alert"/>
+					<alert ref="alert"/>
+				</q-scroll-area>
 			</div>
 		</Slideout>
 		<div :class="`fixed right-0 bottom-0 ml-5 mb-10 mr-2 z-10`">
@@ -90,7 +94,9 @@
 				prevHeight: 0,
 				transitionName: DEFAULT_TRANSITION,
 				showComponent: true,
-				activeTasks: []
+				activeTasks: [],
+				bodyOverflow: '',
+				bodyHeight: 800
 			};
 		},
 		computed: {
@@ -150,6 +156,26 @@
 					window.myWindowAPI.close()
 				}
 			},
+			initBodyHeight () {
+				setTimeout(() => {
+					try {
+						this.bodyHeight = this.getBodyHeight()
+						console.log(this.getBodyHeight())
+					} catch (e) {
+						setTimeout(() => this.bodyHeight = this.getBodyHeight(), 1000)
+					}
+				}, 500)
+			},
+			getBodyHeight () {
+				return this.getOffsetHeightOfElement('body') + 30 - this.getOffsetHeightOfElement('[role=toolbar]') - this.getOffsetHeightOfElement('nav')
+			},
+			getOffsetHeightOfElement (selector) {
+				const el = document.querySelector(selector)
+				if (!el) {
+					return 0
+				}
+				return el.offsetHeight
+			}
 		},
 		async created() {
 			this.$store.dispatch('loadUserSettings')
@@ -186,6 +212,12 @@
 					});
 			})
 			this.loadActiveTasks()
+			if (process.env.MODE === 'electron') {
+				document.body.style.overflow = 'hidden'
+			}
+		},
+		mounted() {
+			this.initBodyHeight()
 		}
 	})
 </script>
