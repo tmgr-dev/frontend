@@ -1,5 +1,16 @@
 <template>
-	<div id="q-app" :class="$color('textMain')">
+	<div id="q-app" :class="$color('textMain')" class="q-electron-drag">
+		<q-bar v-if="this.$q.platform.is.electron">
+			<q-icon name="map"/>
+
+			<div>TMGR</div>
+
+			<q-space/>
+
+			<q-btn class="q-electron-drag--exception" dense flat icon="minimize" @click="minimize" />
+			<q-btn class="q-electron-drag--exception" dense flat icon="crop_square" @click="maximize" />
+			<q-btn class="q-electron-drag--exception" dense flat icon="close" @click="closeApp" />
+		</q-bar>
 		<Slideout menu="#menu" panel="#panel" :toggle-selectors="['a.toggle-button']" @on-open="open">
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden;">
 				<div
@@ -123,7 +134,22 @@
 				}
 				const {data: {data}} = await this.$axios.get('/tasks/runned')
 				this.activeTasks = data
-			}
+			},
+			minimize () {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.minimize()
+				}
+			},
+			maximize () {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.toggleMaximize()
+				}
+			},
+			closeApp () {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.close()
+				}
+			},
 		},
 		async created() {
 			this.$store.dispatch('loadUserSettings')
