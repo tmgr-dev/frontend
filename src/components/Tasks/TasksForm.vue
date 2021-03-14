@@ -307,7 +307,7 @@
 				availableSettings: [],
 				settings: [],
 				isSaving: false,
-				autosaveTimeout: null,
+				autoSaveTimeout: null,
 				watchingFields: [
 					'title',
 					'description',
@@ -384,11 +384,11 @@
 								return true
 							}
 							this.prevValue = JSON.parse(JSON.stringify(second))
-							this.dispatchAutosave()
+							this.dispatchAutoSave()
 							return true
 						}
 					} else if (!this.equals(this.savedData[field], this.form[field])) {
-						this.dispatchAutosave()
+						this.dispatchAutoSave()
 						return true
 					}
 				}
@@ -430,15 +430,15 @@
 					}, delay)
 				})
 			},
-			dispatchAutosave() {
-				this.removeDispatchedAutosave()
-				this.autosaveTimeout = setTimeout(() => this.save(true), 5000)
+			dispatchAutoSave() {
+				this.removeDispatchedAutoSave()
+				this.autoSaveTimeout = setTimeout(() => this.save(true), 2000)
 			},
-			removeDispatchedAutosave() {
-				if (!this.autosaveTimeout) {
+			removeDispatchedAutoSave() {
+				if (!this.autoSaveTimeout) {
 					return
 				}
-				clearTimeout(this.autosaveTimeout)
+				clearTimeout(this.autoSaveTimeout)
 			},
 			equals (o1, o2) {
 				return JSON.stringify(o1) === JSON.stringify(o2)
@@ -579,7 +579,7 @@
 					}
 				}
 			},
-			async save(autosave = false) {
+			async save(autoSave = false) {
 				this.isSaving = true
 				try {
 					this.prepareForm()
@@ -588,7 +588,7 @@
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}
 					this.form = data
-					if (!autosave) {
+					if (!autoSave) {
 						this.showAlert('Saved', 'The task was saved')
 					}
 
@@ -602,7 +602,7 @@
 						this.errors = e.response.data.errors
 					}
 				}
-				this.removeDispatchedAutosave()
+				this.removeDispatchedAutoSave()
 				this.isSaving = false
 
 				this.showAlert()
