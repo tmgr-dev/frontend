@@ -154,8 +154,8 @@
 				event.dataTransfer.setData('task-id', task.id)
 			},
 			onDragEnd (event, task) {},
-			async loadTasks() {
-				await this.$emit('reload-tasks')
+			loadTasks() {
+				this.$emit('reload-tasks')
 			},
 			getActions(task) {
 				let actions = [
@@ -261,6 +261,7 @@
 				return this.tasks.filter((task, index) => this.selected[index])
 			},
 			resetSelectedTasks () {
+				this.isShowSelectedTasksCommonTime = false
 				this.selected = []
 				this.selecting = []
 			},
