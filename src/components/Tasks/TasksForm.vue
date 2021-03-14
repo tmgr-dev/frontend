@@ -566,8 +566,8 @@
 				}
 			},
 			async saveTask () {
-				this.isSaving = true
 				try {
+					this.isSaving = true
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
 					if (data.approximately_time) {
@@ -577,6 +577,8 @@
 
 					await this.saveSettings(this.settings)
 
+					this.showAlert('Saved', 'The task was saved')
+					this.removeDispatchedAutoSave()
 					const id = this.form.id
 					this.form.id = null
 					setTimeout(() => this.form.id = id, 1)
@@ -584,10 +586,10 @@
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors
 					}
+				} finally {
+					this.isSaving = false
 				}
-				this.removeDispatchedAutoSave()
-				this.isSaving = false
-				this.showAlert('Saved', 'The task was saved')
+
 			},
 			goToCurrentTasks() {
 				this.$router.push('/')
