@@ -261,13 +261,7 @@
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</p>
 
-				<transition name="fade">
-					<alert
-						v-if="isShowAlert"
-						:title="alertTitle"
-						:description="alertDescription"
-					/>
-				</transition>
+				<alert ref="alert"/>
 			</div>
 		</template>
 	</BaseLayout>
