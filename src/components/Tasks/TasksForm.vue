@@ -236,41 +236,16 @@
 							</div>
 						</div>
 					</div>
-					<div class="tc-block text-center">
-						<span class="relative inline-flex rounded-md shadow-sm">
-							<button
-								v-if="!isCreatingTask"
-								@click="save"
-								class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-								type="button">
-								<svg v-if="isSaving" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-								</svg>
-								Save
-							</button>
-							<span v-if="isDataEdited" class="flex absolute h-5 w-5 top-0 right-0 -mt-1 mr-4">
-								<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-								<span class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500"></span>
-							</span>
-						</span>
 
-						<button v-if="isCreatingTask" @click="create"
-										class="bg-orange-500 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-										type="button">
-							Create
-						</button>
-						<button v-if="isCreatingTask" @click="cancel"
-										class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
-										type="button">
-							Cancel
-						</button>
-						<button
-							v-if="!isCreatingTask"
-							@click="addCheckpoint"
-							class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-							type="button">Add checkpoint</button>
-					</div>
+					<task-actions
+						:is-creating-task="isCreatingTask"
+						:is-data-edited="isDataEdited"
+						:is-saving="isSaving"
+						@addCheckpoint="addCheckpoint"
+						@createTask="createTask"
+						@saveTask="saveTask"
+					/>
+
 				</div>
 				<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
@@ -290,12 +265,14 @@
 
 <script>
 	import moment from 'moment'
-	import AlertData from "../../mixins/AlertData";
-	import InputField from "../UIElements/InputField";
+	import AlertData from "src/mixins/AlertData";
+	import InputField from "src/components/UIElements/InputField";
+	import TaskActions from "src/components/UIElements/Task/TaskActions";
 
 	export default {
 		name: 'TasksForm',
 		components: {
+			TaskActions,
 			InputField
 		},
 		mixins: [
@@ -432,7 +409,7 @@
 			},
 			dispatchAutoSave() {
 				this.removeDispatchedAutoSave()
-				this.autoSaveTimeout = setTimeout(() => this.save(true), 2000)
+				this.autoSaveTimeout = setTimeout(() => this.saveTask(true), 2000)
 			},
 			removeDispatchedAutoSave() {
 				if (!this.autoSaveTimeout) {
@@ -470,14 +447,14 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect.id
 				}
 				this.isShowModalCategory = false
-				await this.save()
+				await this.saveTask()
 				await this.loadCategory()
 			},
 			getShortcutSaveListener() {
 				return (e) => {
 					if (e.ctrlKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')) {
 						e.preventDefault();
-						this.save()
+						this.saveTask()
 					}
 				}
 			},
@@ -552,15 +529,15 @@
 			},
 			async toggleCountdown() {
 				this.form.id = null
-				const {data: {data}} = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.taskId}/countdown`)
-				this.form = {...data}
+				const { data: {data} } = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.taskId}/countdown`)
+				this.form = { ...data }
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
 					delete this.form.project_category_id
 				}
 			},
-			async create() {
+			async createTask () {
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
@@ -579,7 +556,7 @@
 					}
 				}
 			},
-			async save(autoSave = false) {
+			async saveTask (autoSave = false) {
 				this.isSaving = true
 				try {
 					this.prepareForm()
@@ -606,9 +583,6 @@
 				this.isSaving = false
 
 				this.showAlert()
-			},
-			cancel() {
-				window.history.back();
 			},
 			goToCurrentTasks() {
 				this.$router.push('/')
