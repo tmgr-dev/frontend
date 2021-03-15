@@ -32,6 +32,7 @@
 				:tasks="tasks"
 				:status="status"
 				:is-loading-actions="isLoadingActions"
+				has-selectable
 				@reload-tasks="loadTasks"
 				ref="tasksListComponent"
 			/>

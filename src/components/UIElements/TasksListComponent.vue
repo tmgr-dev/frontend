@@ -15,8 +15,8 @@
 			</tasks-multiple-actions-modal>
 		</transition>
 
-		<div v-selectable="{ selectedGetter, selectedSetter, selectingSetter }" class="relative">
-			<div class="selection" :class="$color('borderSelection')"></div>
+		<div v-selectable="hasSelectable ? { selectedGetter, selectedSetter, selectingSetter } : {}" class="relative">
+			<div :class="[$color('borderSelection'), hasSelectable ? 'selection' : '']"></div>
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
@@ -96,6 +96,11 @@
 				type: Object
 			},
 			draggable: {
+				type: Boolean,
+				required: false,
+				default: false
+			},
+			hasSelectable: {
 				type: Boolean,
 				required: false,
 				default: false
@@ -215,6 +220,11 @@
 			selectedGetter () {
 				return this.selected;
 			},
+			selectingSetter (arr) {
+				if (arr.filter(item => item).length >= 2) {
+					this.selecting = arr;
+				}
+			},
 			selectedSetter (arr) {
 				if (!this.selected.filter(Boolean).length && !this.selecting.length) {
 					return
@@ -243,11 +253,6 @@
 				this.showTimeInModal = false
 				this.isShowSelectedTasksCommonTime = false
 				this.resetSelectedTasks()
-			},
-			selectingSetter (arr) {
-				if (arr.filter(item => item).length >= 2) {
-					this.selecting = arr;
-				}
 			},
 			async exportSelectedTasks (exportType = 'csv') {
 				const tasksIds = this.getSelectedTasks().map(({id}) => id)
