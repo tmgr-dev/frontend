@@ -111,13 +111,8 @@
 						</router-link>
 					</div>
 				</form>
-				<transition name="fade">
-					<alert
-						v-if="isShowAlert"
-						:title="alertTitle"
-						:description="alertDescription"
-					/>
-				</transition>
+
+				<alert ref="alert" />
 			</div>
 		</template>
 	</BaseLayout>

@@ -46,7 +46,7 @@
 						</transition>
 					</router-view>
 
-					<alert ref="alert"/>
+					<alert ref="alert" />
 				</q-scroll-area>
 			</div>
 		</Slideout>

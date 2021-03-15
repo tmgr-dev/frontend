@@ -66,11 +66,8 @@
 					</button>
 				</div>
 			</div>
-			<transition name="fade">
-				<alert
-					v-if="isShowAlert"
-				/>
-			</transition>
+
+			<alert ref="alert" />
 		</template>
 	</BaseLayout>
 	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined">
