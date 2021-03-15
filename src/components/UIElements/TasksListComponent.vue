@@ -25,52 +25,25 @@
 				:draggable="draggable"
 				:data-task-id="task.id"
 				@dragstart="onDragStart($event, task)"
-				@dragend="onDragEnd($event, task)"
 			>
 				<div class="shadow-xl rounded-lg md:flex" :class="{'border-solid border-l-8 border-green-600': task.start_time}">
-					<div class="w-full">
-						<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
-							<div class="flex justify-between items-center relative">
-								<div>
-									<div class="flex">
-										<router-link :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
-											{{ task.title }}
-										</router-link>
-										<div class="flex items-start task-category-in-task">
-											<router-link
-												v-if="task.category && showCategoryBadges"
-												:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
-												class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base z-10"
-											>
-												{{ task.category.title }}
-											</router-link>
-											<router-link
-												:to="`/${task.category ? 'project-categories/' + task.category.id + '/' : ''}tasks/create`" title="Add task to category"
-												class="opacity-25 hover:opacity-100 tc-hidden md:inline add-task-to-category-from-task-category z-10">
-												<span class="material-icons text-3xl -mt-1">add_circle_outline</span>
-											</router-link>
-										</div>
-									</div>
-									<div class="flex items-start">
-										<span>
-											<span class="material-icons text-xl" :class="task.start_time ? 'text-green-600' : 'text-orange-600'">alarm</span>
-										</span>
-										<span class="text-gray-700 ml-2">{{ getTaskFormattedTime(task) }}</span>
-									</div>
-								</div>
+					<div class="w-full p-4 md:p-5 flex justify-between items-center relative" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
+						<task-meta
+							:task="task"
+							:task-time="getTaskFormattedTime(task)"
+							:show-category-badges="showCategoryBadges"
+						/>
 
-								<dropdown-menu class="lg:hidden" :actions="getActions(task)" />
+						<dropdown-menu class="lg:hidden" :actions="getActions(task)" />
 
-								<task-buttons-in-the-list
-									:task="task"
-									:showed-buttons="getShowButtons(task)"
-									:is-loading-actions="isLoadingActions"
-									@updateStatus="updateStatus"
-									@stopCountdown="stopCountdown"
-									@startCountdown="startCountdown"
-								/>
-							</div>
-						</div>
+						<task-buttons-in-the-list
+							:task="task"
+							:showed-buttons="getShowButtons(task)"
+							:is-loading-actions="isLoadingActions"
+							@updateStatus="updateStatus"
+							@stopCountdown="stopCountdown"
+							@startCountdown="startCountdown"
+						/>
 					</div>
 				</div>
 			</div>
@@ -86,10 +59,12 @@
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
 	import TaskButtonsInTheList from "src/components/UIElements/Task/TaskButtonsInTheList";
 	import TasksMultipleActionsModal from "src/components/UIElements/Task/TasksMultipleActionsModal";
+	import TaskMeta from "components/UIElements/Task/TaskMeta";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			TaskMeta,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
 			DropdownMenu
@@ -153,7 +128,6 @@
 			onDragStart (event, task) {
 				event.dataTransfer.setData('task-id', task.id)
 			},
-			onDragEnd (event, task) {},
 			loadTasks() {
 				this.$emit('reload-tasks')
 			},
