@@ -1,0 +1,39 @@
+.alert {
+	right: 20px;
+	bottom: 20px;
+	color: rgba(26, 32, 44, 0.75);
+
+	&__info {
+		opacity: 0;
+		transition: .3s 1s;
+
+		&.show {
+			opacity: 1;
+		}
+	}
+
+	.mark, .circle {
+		fill: none;
+		stroke: #fff;
+		stroke-width: 0.720196;
+		stroke-linecap: round;
+	}
+
+	.mark {
+		stroke-dasharray: 10;
+		stroke-dashoffset: 10;
+		transition: .5s .75s;
+	}
+
+	.circle {
+		stroke-dasharray: 22;
+		stroke-dashoffset: 22;
+		transition: .5s .35s;
+	}
+
+	.svg.animate {
+		.circle, .mark {
+			stroke-dashoffset: 0;
+		}
+	}
+}

@@ -1,12 +1,12 @@
 <template>
 	<transition name="fade">
-		<div class="fixed alert" v-if="showAlert">
+		<div class="fixed alert" v-if="isShowAlert" @click="isShowAlert = false">
 			<div class="flex bg-green-400 max-w-sm">
 				<div class="w-16 bg-green-700">
 					<div class="flex h-full">
 						<svg
 							class="svg m-auto"
-							:class="{'animate': isCreated}"
+							:class="{'animate': animate}"
 							xmlns="http://www.w3.org/2000/svg"
 							width="34.930046"
 							height="34.747898"
@@ -23,13 +23,13 @@
 						</svg>
 					</div>
 				</div>
-				<div class="w-auto text-grey-500 items-center p-4 alert__info" :class="{'show': isCreated}">
+				<div class="w-auto text-grey-500 items-center p-4 alert__info" :class="{'show': animate}">
 				<span class="text-lg font-bold pb-4">
 					{{ title }}
 				</span>
-					<p class="leading-tight">
-						{{ description }}
-					</p>
+				<p class="leading-tight">
+					{{ description }}
+				</p>
 				</div>
 			</div>
 		</div>
@@ -52,72 +52,32 @@
 			}
 		},
 		data: () => ({
-			isCreated: false,
+			animate: false,
+			animateTimeout: null,
 			title: null,
 			description: null,
-			showAlert: false
+			isShowAlert: false
 		}),
 		methods: {
 			show (title, description = '') {
 				this.title = title
 				this.description = description
 
-				setTimeout(() => {
-					this.showAlert = true
-					setTimeout(() => this.isCreated = true, 0)
-					if (this.autoHide) {
-						this.hide()
-					}
-				}, 100)
+				this.isShowAlert = true
+				this.animateTimeout = setTimeout(() => {
+					this.animate = true
+				}, 0)
+				if (this.autoHide) {
+					this.hide()
+				}
 			},
 			hide () {
 				setTimeout(() => {
-					this.isCreated = false
-					this.showAlert = false
+					this.animate = false
+					clearTimeout(this.animateTimeout)
+					this.isShowAlert = false
 				}, this.lifetime)
 			}
 		}
 	}
 </script>
-
-<style scoped lang="scss">
-	.alert {
-		right: 20px;
-		bottom: 20px;
-	  color: rgba(26, 32, 44, 0.75);
-
-		&__info {
-			opacity: 0;
-			transition: .3s 1s;
-
-			&.show {
-				opacity: 1;
-			}
-		}
-	}
-
-	.mark, .circle {
-		fill: none;
-		stroke: #fff;
-		stroke-width: 0.720196;
-		stroke-linecap: round;
-	}
-
-	.mark {
-		stroke-dasharray: 10;
-		stroke-dashoffset: 10;
-		transition: .5s .75s;
-	}
-
-	.circle {
-		stroke-dasharray: 22;
-		stroke-dashoffset: 22;
-		transition: .5s .35s;
-	}
-
-	.svg.animate {
-		.circle, .mark {
-			stroke-dashoffset: 0;
-		}
-	}
-</style>
