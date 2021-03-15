@@ -393,16 +393,15 @@
 				const {data: {data}} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings)
 				this.initSettings(this.availableSettings, data.settings)
 			},
-			setFormDataWithDelay(data, delay = 500) {
+			setFormDataWithDelay(data, delay = 200) {
 				return new Promise((resolve, reject) => {
-					if (this.form.id !== data.id) {
-						return
+					if (this.form.id === data.id) {
+						this.form.id = null
+						setTimeout(() => {
+							this.form = data
+							resolve()
+						}, delay)
 					}
-					this.form.id = null
-					setTimeout(() => {
-						this.form = data
-						resolve()
-					}, delay)
 				})
 			},
 			dispatchAutoSave() {
@@ -652,15 +651,11 @@
 				})
 				.on('task-countdown-started', ({task}) => {
 					const isCountdownStarted = !!this.form.start_time
-					if (isCountdownStarted) {
-						return
+					if (!isCountdownStarted) {
+						this.setFormDataWithDelay(task).then(() => {
+							this.showAlert('Countdown started')
+						})
 					}
-					this.setFormDataWithDelay(task).then(() => {
-						if (isCountdownStarted) {
-							return
-						}
-						this.showAlert('Countdown started')
-					})
 				})
 		},
 	}

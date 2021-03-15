@@ -66,7 +66,7 @@
 				this.isShowAlert = true
 				this.animateTimeout = setTimeout(() => {
 					this.animate = true
-				}, 0)
+				}, 100)
 				if (this.autoHide) {
 					this.hide()
 				}
