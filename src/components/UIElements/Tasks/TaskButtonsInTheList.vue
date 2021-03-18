@@ -15,7 +15,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons text-bold" v-if="!isLoadingActions[`done-${task.id}`]">done</span>
-				<loader v-if="isLoadingActions[`done-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`done-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 
@@ -27,7 +27,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons text-bold" v-if="!isLoadingActions[`activate-${task.id}`]">refresh</span>
-				<loader v-if="isLoadingActions[`activate-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`activate-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 		
@@ -39,7 +39,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons" v-if="!isLoadingActions[`hide-${task.id}`]">visibility_off</span>
-				<loader v-if="isLoadingActions[`hide-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`hide-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 		
@@ -51,7 +51,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons" v-if="!isLoadingActions[`stop-${task.id}`]">alarm_off</span>
-				<loader v-if="isLoadingActions[`stop-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`stop-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 
@@ -63,7 +63,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons" v-if="!isLoadingActions[`start-${task.id}`]">alarm_on</span>
-				<loader v-if="isLoadingActions[`start-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`start-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 
@@ -75,7 +75,7 @@
 			class="mr-2">
 			<span class="relative">
 				<span class="material-icons" v-if="!isLoadingActions[`delete-${task.id}`]">delete</span>
-				<loader v-if="isLoadingActions[`delete-${task.id}`]" :is-mini="true" :is-static="true" />
+				<loader v-if="isLoadingActions[`delete-${task.id}`]" is-mini />
 			</span>
 		</new-button>
 	</div>

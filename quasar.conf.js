@@ -113,7 +113,7 @@ module.exports = configure(function(/* ctx */) {
 			manifest: {
 				name: "TMGR",
 				short_name: "TMGR",
-				description: "Task Manager. Take under control your life.",
+				description: "Tasks Manager. Take under control your life.",
 				display: "standalone",
 				orientation: "portrait",
 				background_color: "#ffffff",

@@ -268,7 +268,7 @@
 <script>
 	import moment from 'moment'
 	import InputField from "src/components/UIElements/InputField";
-	import TaskActions from "src/components/UIElements/Task/TaskActions";
+	import TaskActions from "src/components/UIElements/Tasks/TaskActions";
 
 	export default {
 		name: 'TasksForm',

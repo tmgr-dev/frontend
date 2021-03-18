@@ -98,7 +98,7 @@
 
 <script>
 	import InputField from "../UIElements/InputField";
-	import Reminder from "src/components/UIElements/Task/Reminder";
+	import Reminder from "src/components/UIElements/Tasks/Reminder";
 
 	export default {
 		name: "Countdown",

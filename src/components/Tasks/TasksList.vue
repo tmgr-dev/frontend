@@ -5,22 +5,28 @@
 	<BaseLayout>
 		<template #header>
 			{{ h1[$route.name] }}
-			<br>
-			<small v-if="summaryTimeString" class="text-opacity-25">{{ summaryTimeString }}</small>
 		</template>
 		<template #action>
-			<div class="left-0 bottom-0 mr-4 absolute">
-			</div>
-			<div class="md:absolute md:right-0 md:bottom-0 text-center md:text-right">
-				<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Search tasks" class="pr-1">
-					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">{{ showSearchInput ? 'search_off' : 'search'}}</span>
-				</a>
-				<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
-					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
-				</a>
-				<router-link :to="`/create`" title="Add Task" class="pr-5">
-					<span class="material-icons text-4xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
-				</router-link>
+			<div class="flex justify-between flex-wrap">
+				<transition name="fade">
+					<div
+						v-if="summaryTimeString"
+						class="sm:w-auto w-full text-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg">
+						{{ summaryTimeString }}
+					</div>
+				</transition>
+
+				<div class="sm:ml-auto sm:mt-0 ml-0 sm:w-auto w-full text-center mt-2">
+					<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Search tasks" class="pr-1">
+						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">{{ showSearchInput ? 'search_off' : 'search'}}</span>
+					</a>
+					<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
+						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
+					</a>
+					<router-link :to="`/create`" title="Add Task">
+						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
+					</router-link>
+				</div>
 			</div>
 		</template>
 		<template #body>
@@ -39,20 +45,23 @@
 			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
 				You don't have tasks here
 			</div>
-			<loader v-if="showLoader" style="margin-top: 2rem" />
+			<loading-tasks-list v-if="showLoader" class="mx-2" />
+			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
 </template>
 
 <script>
 	import TasksListMixin from "src/mixins/TasksListMixin";
-	import TasksListComponent from "../UIElements/TasksListComponent";
+	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
 	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
+	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
 
 	export default {
 		name: 'TasksList',
 		components: {
+			LoadingTasksList,
 			TasksListComponent,
 			DefaultTasksListComponent
 		},

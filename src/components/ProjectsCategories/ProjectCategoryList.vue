@@ -199,7 +199,7 @@
 <script>
 
 import Breadcrumbs from '../UIElements/Breadcrumbs'
-import TasksListComponent from "../UIElements/TasksListComponent";
+import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
 import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 import Confirm from '../UIElements/Confirm'
 import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs'

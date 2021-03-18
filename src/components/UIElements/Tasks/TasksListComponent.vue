@@ -55,15 +55,17 @@
 	import downloadFile from "src/utils/downloadFile";
 	import TasksListMixin from "src/mixins/TasksListMixin";
 	import convertToQueryString from "src/utils/convertToQueryString";
-	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
+	import DropdownMenu from 'components/UIElements/DropdownMenu';
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
-	import TaskButtonsInTheList from "src/components/UIElements/Task/TaskButtonsInTheList";
-	import TasksMultipleActionsModal from "src/components/UIElements/Task/TasksMultipleActionsModal";
-	import TaskMeta from "components/UIElements/Task/TaskMeta";
+	import TaskButtonsInTheList from "components/UIElements/Tasks/TaskButtonsInTheList";
+	import TasksMultipleActionsModal from "components/UIElements/Tasks/TasksMultipleActionsModal";
+	import TaskMeta from "components/UIElements/Tasks/TaskMeta";
+	import Loader from "components/UIElements/Loader";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			Loader,
 			TaskMeta,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
