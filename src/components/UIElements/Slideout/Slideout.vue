@@ -6,6 +6,8 @@
 <script>
 import SlideoutJS from 'slideout';
 
+const events = ['beforeclose', 'close', 'beforeopen', 'open', 'translatestart', 'translate', 'translateend']
+
 export default {
 	data () {
 		return {
@@ -28,7 +30,10 @@ export default {
 			}
 		}
 	},
-	emits: ['on-open'],
+	emits: [
+		...events.map(event => `on-${event}`),
+		...events.map(event => `once-${event}`),
+	],
 	name: 'Slideout',
 	mounted: function () {
 		this.wait(() => {
@@ -49,7 +54,6 @@ export default {
 					})
 				})
 			})
-			const events = ['beforeclose', 'close', 'beforeopen', 'open', 'translatestart', 'translate', 'translateend']
 			events.forEach(event => {
 				this.$store.getters.slideout.on(event, (data) => {
 					this.$emit('on-' + event, data)
@@ -65,7 +69,7 @@ export default {
 			if (!document.querySelector(this.panel)) {
 				this.waitTimeout = setTimeout(() => {
 					return this.wait(cb)
-				}, 500)
+				}, 0)
 				return
 			}
 			cb()

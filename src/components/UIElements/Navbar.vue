@@ -1,6 +1,6 @@
 <template>
   <div class="ml-auto md:hidden absolute z-30 right-0 p-4">
-		<div class="nav-toggle-menu" :class="{'active': $store.getters.slideout._opened}" @click="$store.getters.slideout.toggle()">
+		<div class="nav-toggle-menu" :class="{'active': menuIsActive}" @click="$store.getters.slideout.toggle()">
 			<div class="bar1"></div>
 			<div class="bar2"></div>
 			<div class="bar3"></div>
@@ -27,6 +27,13 @@
 
 	export default {
 		name: 'Navbar',
+		props: {
+			menuIsActive: {
+				type: Boolean,
+				required: false,
+				default: false
+			}
+		},
 		components: {
 			NavbarMenu,
 			AccountDropdown,

@@ -11,12 +11,17 @@
 			<q-btn class="q-electron-drag--exception" dense flat icon="crop_square" @click="maximize" />
 			<q-btn class="q-electron-drag--exception" dense flat icon="close" @click="closeApp" />
 		</q-bar>
-		<Slideout menu="#menu" panel="#panel" side="right" :toggle-selectors="['a.toggle-button']" @on-open="open">
+		<Slideout
+			menu="#menu"
+			panel="#panel"
+			side="right"
+			@on-beforeclose="menuIsActive = false"
+			@on-beforeopen="menuIsActive = true">
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden; border-left: 1px solid #1c1c1c;">
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
-					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10" :key="rerenderSwitcher">
+					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
             <day-night-switch v-model="switchOn"/>
           </span>
 				</div>
@@ -26,7 +31,7 @@
 					height: bodyHeight + 'px'
 				}">
 					<transition name="fade" mode="out-in">
-						<Navbar v-if="$route.meta.navbarHidden" />
+						<Navbar v-if="$route.meta.navbarHidden" :menu-is-active="menuIsActive" />
 					</transition>
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
@@ -90,7 +95,8 @@
 				showComponent: true,
 				activeTasks: [],
 				bodyOverflow: '',
-				bodyHeight: 800
+				bodyHeight: 800,
+				menuIsActive: false
 			};
 		},
 		computed: {
