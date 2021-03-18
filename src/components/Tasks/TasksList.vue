@@ -53,10 +53,10 @@
 
 <script>
 	import TasksListMixin from "src/mixins/TasksListMixin";
-	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
 	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
-	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
 	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
+	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
+	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
 
 	export default {
 		name: 'TasksList',

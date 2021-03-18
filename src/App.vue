@@ -11,19 +11,12 @@
 			<q-btn class="q-electron-drag--exception" dense flat icon="crop_square" @click="maximize" />
 			<q-btn class="q-electron-drag--exception" dense flat icon="close" @click="closeApp" />
 		</q-bar>
-		<Slideout menu="#menu" panel="#panel" :toggle-selectors="['a.toggle-button']" @on-open="open">
-			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden;">
-				<div
-					:class="`z-20 pl-5`"
-				>
-					<a href="#" class="absolute right-0 p-2" @click.prevent="$store.getters.slideout.toggle()">
-						<svg fill="currentColor" viewBox="0 0 20 20" class="w-6 h-6">
-							<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-						</svg>
-					</a>
+		<Slideout menu="#menu" panel="#panel" side="right" :toggle-selectors="['a.toggle-button']" @on-open="open">
+			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden; border-left: 1px solid #1c1c1c;">
+				<div class="z-20 px-4 text-right">
 					<navbar-menu />
-					<account-dropdown />
-					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 pb-10" :key="rerenderSwitcher">
+					<account-dropdown class="flex justify-end" />
+					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10" :key="rerenderSwitcher">
             <day-night-switch v-model="switchOn"/>
           </span>
 				</div>
@@ -79,7 +72,7 @@
 
 	import Navbar from "src/components/UIElements/Navbar";
 	import NavbarMenu from "src/components/UIElements/NavbarMenu";
-	import './assets/styles/index.scss';
+	import Slideout from 'src/components/UIElements/Slideout/Slideout';
 
 	const DEFAULT_TRANSITION = 'fade'
 
@@ -87,6 +80,7 @@
 		name: 'App',
 		components: {
 			Navbar,
+			Slideout,
 			NavbarMenu
 		},
 		data() {
@@ -221,3 +215,5 @@
 		}
 	})
 </script>
+
+<style src="src/assets/styles/index.scss" lang="scss"></style>

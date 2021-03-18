@@ -95,3 +95,38 @@
 		transform: scale(1);
 	}
 }
+
+
+/**
+burger
+ */
+
+.nav-toggle-menu {
+	direction: rtl;
+	.bar1, .bar2, .bar3 {
+		width: 26px;
+		height: 3px;
+		background-color: #fff;
+		margin: 5px 0;
+		transition: .4s;
+		border-radius: 3px;
+	}
+	.bar1 {
+		width: 22px;
+	}
+	.bar2 {
+		width: 18px;
+	}
+	&.active {
+		.bar1 {
+			transform: rotate(-45deg) translate(-5px, 5px);
+			width: 26px;
+		}
+		.bar2 {
+			opacity: 0;
+		}
+		.bar3 {
+			transform: rotate(45deg) translate(-6px, -7px);
+		}
+	}
+}
