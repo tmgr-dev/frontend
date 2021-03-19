@@ -92,19 +92,51 @@
 			},
 			async onEnd({to: {dataset: {status}}, item: {dataset: {task}}}) {
 				task = this.jsonDecode(task);
-				await this.$axios.put(`tasks/${task.id}/${status}`)
-				const foundTask = this.findTask(task.id)
-				foundTask.status = status
+				if (task.status !== status) {
+					await this.$axios.put(`tasks/${task.id}/${status}`)
+					const foundTask = this.findTask(status, task.id)
+					foundTask.status = status
+				}
+				this.saveOrders(status)
 			},
-			findTask(taskId) {
+			async saveOrders(status) {
+				const column = this.findColumn(status);
+				if (!column) {
+					return;
+				}
+				const orders = [];
+				const {tasks} = column
+				tasks.forEach(({id}, index) => {
+					orders.push({
+						id: id,
+						order: index + 1
+					})
+				})
+
+				await this.$axios.put('/tasks/update-orders', {
+					tasks: orders
+				})
+			},
+			findTask(status, taskId) {
+				const column = this.findColumn(status)
+				if (!column) {
+					return null;
+				}
+				const { tasks } = column;
+				for (let i = 0; i < tasks.length; ++i) {
+					const task = tasks[i];
+					if (task.id === taskId) {
+						return task;
+					}
+				}
+				return null;
+			},
+			findColumn(status) {
 				const { columns } = this;
 				for (let i = 0; i < columns.length; ++i) {
-					const {tasks} = columns[i];
-					for (let j = 0; j < tasks.length; ++j) {
-						const task = tasks[j];
-						if (task.id === taskId) {
-							return task
-						}
+					const column = columns[i];
+					if (column.status === status) {
+						return column
 					}
 				}
 				return null
@@ -123,7 +155,7 @@
 				return data;
 			},
 			getTasksIndexUrl(status) {
-				return `tasks/status/${status}?all`
+				return `tasks/status/${status}?all&order[column]=order&order[direction]=asc`
 			},
 			async saveUser() {
 				try {
