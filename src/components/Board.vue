@@ -97,7 +97,7 @@
 					const foundTask = this.findTask(status, task.id)
 					foundTask.status = status
 				}
-				this.saveOrders(status)
+				setTimeout(() => this.saveOrders(status), 500)
 			},
 			async saveOrders(status) {
 				const column = this.findColumn(status);
@@ -152,7 +152,15 @@
 			},
 			async loadTasksByStatus (status) {
 				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status))
-				return data;
+				return data.sort((a, b) => {
+					if ( a.order < b.order ){
+						return -1;
+					}
+					if ( a.order > b.order ){
+						return 1;
+					}
+					return 0;
+				});
 			},
 			getTasksIndexUrl(status) {
 				return `tasks/status/${status}?all&order[column]=order&order[direction]=asc`
