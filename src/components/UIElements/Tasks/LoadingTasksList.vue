@@ -4,8 +4,8 @@
 			class="task-list-loading"
 			:speed="0.875"
 			viewBox="0 0 400 180"
-			primaryColor="#1a202c"
-			secondaryColor="#2b3446"
+			:primaryColor="isNightMode ? '#1a202c' : '#fff'"
+			:secondaryColor="isNightMode ? '#2b3446' : '#f2f5f7'"
 			preserveAspectRatio="none"
 		>
 			<rect x="0" y="0" rx="0" ry="0" width="400" height="28" />
@@ -22,11 +22,14 @@
 
 	export default {
 		name: 'LoadingTasksList',
-		props: {},
 		components: {
 			ContentLoader
+		},
+		computed: {
+			isNightMode () {
+				return this.$store.getters.colorScheme === 'dark'
+			}
 		}
-
 	}
 </script>
 
