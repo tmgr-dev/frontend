@@ -50,6 +50,14 @@
 			</div>
 		</div>
 	</div>
+
+	<confirm
+		v-if="confirm"
+		:title="confirm.title"
+		:body="confirm.body"
+		@onOk="confirm.action()"
+		@onCancel="confirm = undefined"
+	/>
 </template>
 
 <script>
@@ -63,10 +71,12 @@
 	import TaskMeta from "components/UIElements/Tasks/TaskMeta";
 	import Loader from "components/UIElements/Loader";
 	import BounceLoader from "components/UIElements/BounceLoader";
+	import Confirm from "components/UIElements/Confirm";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			Confirm,
 			BounceLoader,
 			Loader,
 			TaskMeta,
@@ -121,6 +131,7 @@
 			TaskActionsInTheListMixin
 		],
 		data: () => ({
+			confirm: null,
 			isShowSelectedTasksCommonTime: false,
 			selected: [],
 			selecting: [],
@@ -212,15 +223,27 @@
 				await this.loadTasks()
 				this.resetSelectedTasks()
 			},
-			async deleteSelectedTasks () {
-				for (let i = 0; i < this.tasks.length; ++i) {
-					if (!this.selected[i]) {
-						continue
+			showConfirm (title, body, action) {
+				this.confirm = { title, body, action }
+			},
+			deleteSelectedTasks () {
+				const deleteMultipleTasks = async () => {
+					try {
+						for (let i = 0; i < this.tasks.length; ++i) {
+							if (!this.selected[i]) {
+								continue
+							}
+							const {data: {data}} = await this.$axios.delete(`/tasks/${this.tasks[i].id}`)
+							this.tasks[i].deleted_at = data.deleted_at
+						}
+					} catch (e) {
+						console.error(e)
+					} finally {
+						this.confirm = null
+						this.resetSelectedTasks()
 					}
-					await this.deleteTask(this.tasks[i], null, false)
 				}
-				// await this.loadTasks()
-				this.resetSelectedTasks()
+				this.showConfirm('Delete tasks', 'Are you sure?', deleteMultipleTasks)
 			},
 			capitalize(s) {
 				if (typeof s !== 'string') return ''

@@ -17,15 +17,12 @@ export default {
 				this.confirm = undefined
 			}
 		},
-		async deleteTask (task, dotId = null, loadTasks = true) {
+		async deleteTask (task, dotId = null) {
 			const deleteTask = async () => {
 				try {
 					this.setLoadingAction(dotId)
 					const {data: {data}} = await this.$axios.delete(`/tasks/${task.id}`)
 					task.deleted_at = data.deleted_at
-					// if (loadTasks) {
-					// 	await this.loadTasks()
-					// }
 				} catch (e) {
 					console.error(e)
 				} finally {
