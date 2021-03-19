@@ -8,7 +8,7 @@
 				<router-link
 					v-if="task.category && showCategoryBadges"
 					:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
-					class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base z-10">
+					class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base">
 					{{ task.category.title }}
 				</router-link>
 				<router-link

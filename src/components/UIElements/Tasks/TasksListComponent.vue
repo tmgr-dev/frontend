@@ -26,7 +26,7 @@
 				:data-task-id="task.id"
 				@dragstart="onDragStart($event, task)"
 			>
-				<div class="shadow-xl rounded-lg md:flex" :class="{'border-solid border-l-8 border-green-600': task.start_time}">
+				<div class="shadow-md rounded-lg md:flex" :class="{'border-solid border-l-8 border-green-600': task.start_time}">
 					<div class="w-full p-4 md:p-5 flex justify-between items-center relative" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 						<task-meta
 							:task="task"
@@ -34,7 +34,7 @@
 							:show-category-badges="showCategoryBadges"
 						/>
 
-						<dropdown-menu class="lg:hidden" :actions="getActions(task)" />
+						<dropdown-menu :actions="getActions(task)" />
 
 						<task-buttons-in-the-list
 							:task="task"
@@ -142,7 +142,7 @@
 				let actions = [
 					{
 						click: () => {
-							this.$router.push(`/tasks/${task.id}/edit`)
+							this.$router.push(`/${task.id}/edit`)
 						},
 						label: 'Edit'
 					}
@@ -168,8 +168,7 @@
 				if (!item || !show) {
 					return actions
 				}
-				actions.push(item)
-				return actions
+				return [...actions, item]
 			},
 			getActionItem(task, status, label) {
 				if (status === this.status) {

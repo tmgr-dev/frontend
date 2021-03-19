@@ -56,14 +56,12 @@
 	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
 	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
-	import DefaultTasksListComponent from "src/components/UIElements/DefaultTasksListComponent";
 
 	export default {
 		name: 'TasksList',
 		components: {
 			LoadingTasksList,
-			TasksListComponent,
-			DefaultTasksListComponent
+			TasksListComponent
 		},
 		mixins: [
 			LoadingButtonActions,

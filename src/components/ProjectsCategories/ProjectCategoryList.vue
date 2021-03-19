@@ -36,7 +36,7 @@
 					@dragenter.prevent="category.hoverClass = 'bg-red-500'"
 					@dragover.prevent="category.hoverClass = 'bg-red-500'"
 					@dragleave="category.hoverClass = ''">
-					<div class="shadow-xl rounded-lg md:flex">
+					<div class="shadow-md rounded-lg md:flex">
 						<div class="w-full">
 							<div class="p-4 md:p-5" :class="`${$color('blocks')} hover:${$color('blocksHover')} ${category.hoverClass}`">
 								<div class="flex justify-between items-center">
