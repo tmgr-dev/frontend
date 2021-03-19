@@ -11,7 +11,7 @@
 			v-slot="{ href, isActive, navigate }">
 			<li class="tc-block px-4 py-1 md:p-2 lg:px-4" :class="isActive ? activeLinkClass : ''">
 				<a :href="href" @click="navigate">
-					{{ link.name }}
+					{{ link.name }} <span class="top-0 text-red-500 relative text-sm" style="top: -10px;" v-html="link.small"></span>
 				</a>
 			</li>
 		</router-link>
@@ -25,7 +25,8 @@
 			links: [
 				{ id: 1, name: 'Current tasks', path: '/' },
 				{ id: 1, name: 'Hidden', path: '/hidden' },
-				{ id: 1, name: 'Archive', path: '/archive' },
+				{ id: 1, name: 'Board', small: 'in dev', path: '/board' },
+				// { id: 1, name: 'Archive', path: '/archive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' }
 			]
 		}),

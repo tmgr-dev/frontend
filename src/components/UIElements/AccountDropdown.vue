@@ -29,6 +29,13 @@
           </router-link>
         </li>
         <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
+					<router-link
+						to="/archive"
+						class="tc-block">
+						Archive
+					</router-link>
+        </li>
+        <li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
           <a
             href="#"
             class="tc-block"

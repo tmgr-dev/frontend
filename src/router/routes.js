@@ -178,6 +178,15 @@ const routes = [
 		name: 'Profile'
 	},
 	{
+		path: '/board',
+		component: () => import('src/components/Board'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: true
+		},
+		name: 'Board'
+	},
+	{
 		path: '/stats',
 		component: () => import('src/components/Public/Stats'),
 		meta: {
