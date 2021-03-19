@@ -3,6 +3,8 @@ import { Keys } from "@/colors/schemes/types";
 const keys: Keys = {
   bgBody: 'bg-body',
   bgNav: 'bg-white',
+	burgerIcon: 'bg-gray-900',
+	borderRight: 'border-r border-gray-300',
 	menuBg: 'md:bg-bg-white',
   blocks: 'md:bg-white',
   blocksHover: 'bg-gray-100',

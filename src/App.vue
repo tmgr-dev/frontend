@@ -18,7 +18,7 @@
 			@on-translate="translateMenu"
 			@on-beforeclose="menuIsActive = false"
 			@on-beforeopen="menuIsActive = true">
-			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden; border-left: 1px solid #1c1c1c;">
+			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden">
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
@@ -27,7 +27,7 @@
           </span>
 				</div>
 			</div>
-			<div id="panel" :class="`${$color('bgBody')}`">
+			<div id="panel" :class="`${$color('bgBody')} ${$color('borderRight')}`">
 				<q-scroll-area :style="{
 					height: bodyHeight + 'px'
 				}">

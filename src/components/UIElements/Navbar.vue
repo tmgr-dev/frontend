@@ -1,9 +1,9 @@
 <template>
   <div class="ml-auto md:hidden absolute z-30 right-0 p-4">
 		<div class="nav-toggle-menu" :class="{'active': menuIsActive}" @click="$store.getters.slideout.toggle()">
-			<div class="bar1"></div>
-			<div class="bar2"></div>
-			<div class="bar3"></div>
+			<div class="bar1" :class="$color('burgerIcon')"></div>
+			<div class="bar2" :class="$color('burgerIcon')"></div>
+			<div class="bar3" :class="$color('burgerIcon')"></div>
 		</div>
   </div>
 	<nav :class="`${$color('menuBg')} shadow md:block tc-hidden`" role="navigation">
