@@ -15,6 +15,7 @@
 			menu="#menu"
 			panel="#panel"
 			side="right"
+			@on-translate="translateMenu"
 			@on-beforeclose="menuIsActive = false"
 			@on-beforeopen="menuIsActive = true">
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden; border-left: 1px solid #1c1c1c;">
@@ -31,7 +32,7 @@
 					height: bodyHeight + 'px'
 				}">
 					<transition name="fade" mode="out-in">
-						<Navbar v-if="$route.meta.navbarHidden" :menu-is-active="menuIsActive" />
+						<Navbar v-if="$route.meta.navbarHidden" :menu-position="translateMenuPosition" :menu-is-active="menuIsActive" />
 					</transition>
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
@@ -48,24 +49,21 @@
 				</q-scroll-area>
 			</div>
 		</Slideout>
-		<div :class="`fixed right-0 bottom-0 ml-5 mb-10 mr-2 z-10`">
+		<div :class="`fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10`">
 				<span
 					v-for="task in activeTasks"
 					class="mb-5 inline-block"
 				>
 					<transition name="fade" mode="out-in">
-						<span
-							:class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`"
-							v-if="task.id !== $store.getters.currentOpenedTaskId"
-						>
-							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
-								<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-								<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
+						<router-link :to="`/${task.id}/edit`" v-if="task.id !== $store.getters.currentOpenedTaskId">
+							<span :class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`">
+								<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
+									<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+									<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
+								</span>
+								<span :class="$color('textMain')">{{ task.title }}</span>
 							</span>
-							<div :class="$color('textMain')">
-								<router-link :to="`/${task.id}/edit`">{{ task.title }}</router-link>
-							</div>
-						</span>
+						</router-link>
 					</transition>
 				</span>
 		</div>
@@ -96,7 +94,8 @@
 				activeTasks: [],
 				bodyOverflow: '',
 				bodyHeight: 800,
-				menuIsActive: false
+				menuIsActive: false,
+				translateMenuPosition: 0
 			};
 		},
 		computed: {
@@ -119,6 +118,9 @@
 			}
 		},
 		methods: {
+			translateMenu (data) {
+				this.translateMenuPosition = data
+			},
 			beforeLeave(element) {
 				this.prevHeight = getComputedStyle(element).height;
 			},

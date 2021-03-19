@@ -20,7 +20,6 @@
 </template>
 
 <script>
-
 	import DayNightSwitch from './DayNightSwitch'
 	import AccountDropdown from './AccountDropdown'
 	import NavbarMenu from "src/components/UIElements/NavbarMenu";
@@ -32,6 +31,11 @@
 				type: Boolean,
 				required: false,
 				default: false
+			},
+			menuPosition: {
+				type: Number,
+				required: false,
+				default: 0
 			}
 		},
 		components: {
@@ -39,19 +43,6 @@
 			AccountDropdown,
 			DayNightSwitch
 		},
-    created() {
-      window.addEventListener("test", null, Object.defineProperty({}, 'passive', {
-        get: () => this.supportsPassive = true
-      }));
-    },
-    watch: {
-		  isHidden(newVal) {
-		    if (newVal) {
-          return this.enableScroll()
-        }
-		    return this.disableScroll()
-      }
-    },
 		data: () => ({
 			isHidden: true,
 			rerenderSwitcher: 0,
@@ -61,13 +52,27 @@
 				{ id: 1, name: 'Archive', path: '/acrhive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' },
 			],
-      wheelEvent: 'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
-      supportsPassive: false
-    }),
+			wheelEvent: 'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
+			supportsPassive: false
+		}),
 		computed: {
-      wheelOpt () {
-        return this.supportsPassive ? { passive: false } : false
-      },
+			/*bar1Transform () {
+				const percentPos = Math.round(this.menuPosition/255*100)
+				const rotate = Math.round(45 * (1 - percentPos/100))
+				return {
+					transform: `rotate(${-rotate+45}deg)`
+				}
+			},
+			bar3Transform () {
+				const percentPos = Math.round(this.menuPosition/255*100)
+				const rotate = Math.round(45 * (1 - percentPos/100))
+				return {
+					transform: `rotate(${rotate-45}deg)`
+				}
+			},*/
+			wheelOpt () {
+				return this.supportsPassive ? { passive: false } : false
+			},
 			switchOn: {
 				get () {
 					return this.$store.getters.colorScheme === 'dark'
@@ -77,6 +82,14 @@
 				}
 			}
 		},
+    watch: {
+		  isHidden(newVal) {
+		    if (newVal) {
+          return this.enableScroll()
+        }
+		    return this.disableScroll()
+      }
+    },
     methods: {
       preventDefault(e) {
         e.preventDefault();
@@ -99,7 +112,12 @@
         window.removeEventListener('touchmove', this.preventDefault, this.wheelOpt);
         window.removeEventListener('keydown', this.preventDefaultForScrollKeys, false);
       }
-    }
+    },
+		created() {
+			window.addEventListener("test", null, Object.defineProperty({}, 'passive', {
+				get: () => this.supportsPassive = true
+			}));
+		}
 	}
 </script>
 
