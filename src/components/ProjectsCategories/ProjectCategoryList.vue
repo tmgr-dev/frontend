@@ -26,7 +26,7 @@
 		</template>
 
 		<template #body>
-			<loading-tasks-list v-if="isCategoriesLoading" />
+			<loading-tasks-list v-if="isCategoriesFirstLoading" />
 			<div v-if="categories && categories.length > 0">
 				<div
 					v-for="category in categories"
@@ -78,7 +78,7 @@
 					</div>
 				</div>
 			</div>
-			<div v-else-if="!isCategoriesLoading" style="font-style: italic; font-size: 18px;" class="text-center">
+			<div v-else-if="!isCategoriesFirstLoading" class="text-center italic text-xl">
 				You don't have categories here
 			</div>
 
@@ -127,18 +127,22 @@
 						</router-link>
 					</div>
 				</h1>
-				<loading-tasks-list v-if="isTasksLoading" class="mt-2" />
+
+				<loading-tasks-list v-if="isTasksFirstLoading" class="mt-2" />
+
 				<tasks-list-component
 					v-if="tasks && tasks.length > 0"
 					:tasks="tasks"
 					@reload-tasks="loadTasks"
 					:is-loading-actions="isLoadingActions"
+					:loading-action-tasks-ids="loadingActionTasksIds"
 					:use-task-status-for-buttons="true"
 					:show-category-badges="false"
 					ref="tasksListComponent"
 					draggable
 				/>
-				<div v-else style="font-style: italic; font-size: 18px;" class="mt-5 text-center">
+
+				<div v-else class="mt-5 text-center text-xl italic">
 					You don't have tasks in the category
 				</div>
 			</div>
@@ -175,10 +179,11 @@ export default {
 		categories: null,
 		category: null,
 		parentCategories: [],
-		isCategoriesLoading: true,
-		isTasksLoading: true,
+		isCategoriesFirstLoading: true,
+		isTasksFirstLoading: true,
 		isLoadingActions: {},
-		confirm: null
+		confirm: null,
+		loadingActionTasksIds: []
 	}),
 	computed: {
 		id() {
@@ -190,26 +195,27 @@ export default {
 	},
 	methods: {
 		async drop (event, category) {
-			const taskId = event.dataTransfer.getData('task-id')
+			const taskId = +event.dataTransfer.getData('task-id')
 			const categoryId = category.id
 
 			category.hoverClass = ''
+			this.loadingActionTasksIds.push(taskId)
 
 			await this.$axios.patch(`tasks/${taskId}`, {
 				project_category_id: categoryId
 			})
 			await this.loadCategories()
 			await this.loadTasks()
+			this.loadingActionTasksIds = this.loadingActionTasksIds.filter(id => id !== taskId)
 		},
 		showConfirm (title, body, action) {
 			this.confirm = {title, body, action}
 		},
 		async loadTasks() {
-			this.isTasksLoading = true
 			const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
 			this.setLoadingActions(data)
 			this.tasks = data
-			this.isTasksLoading = false
+			this.isTasksFirstLoading = false
 		},
 		getTasksIndexUrl() {
 			if (this.$route.params.status) {
@@ -240,13 +246,12 @@ export default {
 			this.parentCategories = this.extractParents(category)
 		},
 		async loadCategories() {
-			this.isCategoriesLoading = true
 			const {data: {data}} = await this.$axios.get(`project_categories/children/${this.id}?all`)
 			if (this.id) {
 				await this.loadChildrenCategories()
 			}
 			this.categories = data
-			this.isCategoriesLoading = false
+			this.isCategoriesFirstLoading = false
 		},
 		async deleteCategory(category) {
 			this.showConfirm('Delete category', 'Are you shure?', async () => {

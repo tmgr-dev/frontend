@@ -42,7 +42,7 @@
 				@reload-tasks="loadTasks"
 				ref="tasksListComponent"
 			/>
-			<div v-else-if="!showLoader" style="font-style: italic; font-size: 18px;" class="text-center">
+			<div v-else-if="!showLoader" class="text-center italic text-xl">
 				You don't have tasks here
 			</div>
 			<loading-tasks-list v-if="showLoader" class="mx-2" />

@@ -20,12 +20,13 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="i"
-				class="w-full px-2 mt-2 selectable"
+				class="w-full px-2 mt-2 selectable relative"
 				:class="{'selected': !!selected[i], 'selecting': !!selecting[i], 'hover:opacity-100 opacity-50': task.deleted_at}"
 				:draggable="draggable"
 				:data-task-id="task.id"
 				@dragstart="onDragStart($event, task)"
 			>
+				<bounce-loader v-if="loadingActionTasksIds.includes(task.id)" class="absolute l-0 t-0 z-10" />
 				<div class="shadow-md rounded-lg md:flex" :class="{'border-solid border-l-8 border-green-600': task.start_time}">
 					<div class="w-full p-4 md:p-5 flex justify-between items-center relative" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 						<task-meta
@@ -61,10 +62,12 @@
 	import TasksMultipleActionsModal from "components/UIElements/Tasks/TasksMultipleActionsModal";
 	import TaskMeta from "components/UIElements/Tasks/TaskMeta";
 	import Loader from "components/UIElements/Loader";
+	import BounceLoader from "components/UIElements/BounceLoader";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			BounceLoader,
 			Loader,
 			TaskMeta,
 			TasksMultipleActionsModal,
@@ -106,6 +109,11 @@
 				type: Boolean,
 				required: false,
 				default: false
+			},
+			loadingActionTasksIds: {
+				type: Array,
+				required: false,
+				default: () => []
 			}
 		},
 		mixins: [
@@ -117,7 +125,7 @@
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
-			timeForModal: null,
+			timeForModal: null
 		}),
 		methods: {
 			async stopCountdown(task, dotId) {
