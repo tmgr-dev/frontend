@@ -4,6 +4,7 @@
 			<tasks-multiple-actions-modal
 				v-if="isShowSelectedTasksCommonTime"
 				:status="status"
+				:is-loading-actions="isLoadingActionsForMultipleTasks"
 				@updateStatus="updateStatusForSelectedTasks"
 				@remove="deleteSelectedTasks"
 				@export="exportSelectedTasks"
@@ -136,7 +137,8 @@
 			selected: [],
 			selecting: [],
 			showTimeInModal: false,
-			timeForModal: null
+			timeForModal: null,
+			isLoadingActionsForMultipleTasks: []
 		}),
 		methods: {
 			async stopCountdown(task, dotId) {
@@ -214,6 +216,7 @@
 				}
 			},
 			async updateStatusForSelectedTasks (status) {
+				this.isLoadingActionsForMultipleTasks.push(status)
 				for (let i = 0; i < this.tasks.length; ++i) {
 					if (!this.selected[i]) {
 						continue
@@ -221,6 +224,7 @@
 					await this.updateStatus(this.tasks[i], status, null, false)
 				}
 				await this.loadTasks()
+				this.isLoadingActionsForMultipleTasks = this.isLoadingActionsForMultipleTasks.filter(s => s !== status)
 				this.resetSelectedTasks()
 			},
 			showConfirm (title, body, action) {
@@ -229,6 +233,7 @@
 			deleteSelectedTasks () {
 				const deleteMultipleTasks = async () => {
 					try {
+						this.isLoadingActionsForMultipleTasks.push('delete')
 						for (let i = 0; i < this.tasks.length; ++i) {
 							if (!this.selected[i]) {
 								continue
@@ -240,6 +245,7 @@
 						console.error(e)
 					} finally {
 						this.confirm = null
+						this.isLoadingActionsForMultipleTasks = this.isLoadingActionsForMultipleTasks.filter(s => s !== 'delete')
 						this.resetSelectedTasks()
 					}
 				}
@@ -287,8 +293,10 @@
 				this.resetSelectedTasks()
 			},
 			async exportSelectedTasks (exportType = 'csv') {
+				this.isLoadingActionsForMultipleTasks.push(exportType)
 				const tasksIds = this.getSelectedTasks().map(({id}) => id)
 				await this.defaultTasksExport(this.getExportUrl(exportType, tasksIds), exportType)
+				this.isLoadingActionsForMultipleTasks = this.isLoadingActionsForMultipleTasks.filter(s => s !== status)
 			},
 			async defaultTasksExport (url, exportType = 'csv') {
 				const response = await this.$axios.get(url, {
