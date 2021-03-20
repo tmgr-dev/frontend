@@ -129,3 +129,13 @@ burger
 		}
 	}
 }
+
+.auth-loader {
+	position: absolute;
+	top: 0;
+	display: inline-block !important;
+	vertical-align: middle;
+	width: 12px !important;
+	height: 12px !important;
+	margin-left: 10px;
+}

@@ -19,9 +19,11 @@
 				<div class="flex flex-col mt-6">
 					<button
 					 	class="bg-blue-500 text-center hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
-						@click.prevent="sendResetLink"
-					>
-						Send link
+						@click.prevent="sendResetLink">
+						<span class="relative">
+							Send link
+							<loader v-if="isLoading" class="auth-loader" is-mini />
+						</span>
 					</button>
 				</div>
 			</form>
@@ -42,7 +44,6 @@
 </template>
 
 <script>
-
 	import AuthBase from "src/components/Auth/AuthBase";
 	import Button from "components/UIElements/Button";
 
@@ -52,30 +53,24 @@
 			Button,
 			AuthBase
 		},
-		props: [],
-		data () {
-			return {
-				email: null,
-				message: null,
-				errors: {},
-			}
-		},
-		computed: {
-
-		},
-		mounted () {
-
-		},
+		data: () => ({
+			email: null,
+			message: null,
+			errors: {},
+			isLoading: false
+		}),
 		methods: {
 			async sendResetLink() {
 				try {
-					console.log('test')
+					this.isLoading = true
 					const r = await this.$axios.post('password/reset', {
 						email: this.email
 					})
 					this.message = 'The reset link sent. If you don\'t have an email with link please try check out your spam.'
 				} catch ({response: {data: {errors}}}) {
 					this.errors = errors
+				} finally {
+					this.isLoading = false
 				}
 			}
 		}

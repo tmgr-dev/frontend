@@ -7,26 +7,49 @@
 		<template #body>
 			<form class="form-horizontal w-3/4 mx-auto" method="POST" action="#">
 				<div class="flex flex-col mt-4">
-					<input-field type="text" name="name" :errors="errors.name" v-model="form.name" placeholder="Name"/>
+					<input-field
+						type="text"
+						name="name"
+						:errors="errors.name"
+						v-model="form.name"
+						placeholder="Name"
+					/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="email" name="email" :errors="errors.email" v-model="form.email" placeholder="E-mail"/>
+					<input-field
+						type="email"
+						name="email"
+						:errors="errors.email"
+						v-model="form.email"
+						placeholder="E-mail"
+					/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="password" name="password" :errors="errors.password" v-model="form.password"
-											 placeholder="Password"/>
+					<input-field
+						type="password"
+						name="password"
+						:errors="errors.password"
+						v-model="form.password"
+						placeholder="Password"
+					/>
 				</div>
 				<div class="flex flex-col mt-4">
-					<input-field type="password" name="password_confirmation" :errors="errors.password"
-											 v-model="form.password_confirmation" placeholder="Password confirmation"/>
+					<input-field
+						type="password"
+						name="password_confirmation"
+						:errors="errors.password"
+						v-model="form.password_confirmation"
+						placeholder="Password confirmation"
+					/>
 				</div>
 				<div class="flex flex-col mt-6">
-					<button type="submit" @click.prevent="register"
-									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
-											<span class="relative">
-													Register
-													<loader v-if="showLoader" :is-mini="true"/>
-											</span>
+					<button
+						type="submit" @click.prevent="register"
+						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+						<span class="relative">
+							Register
+							<loader v-if="showLoader" class="auth-loader" is-mini />
+						</span>
 					</button>
 				</div>
 			</form>
@@ -40,7 +63,6 @@
 </template>
 
 <script>
-
 	import AuthBase from "src/components/Auth/AuthBase";
 
 	export default {

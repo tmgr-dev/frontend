@@ -29,10 +29,14 @@
 					/>
 				</div>
 				<div class="flex flex-col mt-6">
-					<button type="submit"
-									@click.prevent="resetPassword"
-									class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
-						Reset
+					<button
+						type="submit"
+						@click.prevent="resetPassword"
+						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
+						<span class="relative">
+							Reset
+							<loader v-if="isLoading" class="auth-loader" is-mini />
+						</span>
 					</button>
 				</div>
 			</form>
@@ -53,7 +57,6 @@
 </template>
 
 <script>
-
 	import AuthBase from "src/components/Auth/AuthBase";
 
 	export default {
@@ -61,27 +64,18 @@
 		components: {
 			AuthBase
 		},
-		props: [],
-		data () {
-			return {
-				token: null,
-				password: null,
-				message: null,
-				errors: {},
-				passwordConfirmation: null
-			}
-		},
-		computed: {
-
-		},
-		created () {
-			const params = new URLSearchParams(document.location.search)
-			this.token = params.get('token')
-		},
+		data: () => ({
+			token: null,
+			password: null,
+			message: null,
+			errors: {},
+			passwordConfirmation: null,
+			isLoading: false
+		}),
 		methods: {
 			async resetPassword() {
-
 				try {
+					this.isLoading = true
 					await this.$axios.post(`password/reset/${this.token}`, {
 						password: this.password,
 						password_confirmation: this.passwordConfirmation,
@@ -89,8 +83,14 @@
 					this.message = 'Your password changed now you can log in with your new password.'
 				} catch ({response: {data: {errors}}}) {
 					this.errors = errors
+				} finally {
+					this.isLoading = false
 				}
 			}
+		},
+		created () {
+			const params = new URLSearchParams(document.location.search)
+			this.token = params.get('token')
 		}
 	}
 </script>

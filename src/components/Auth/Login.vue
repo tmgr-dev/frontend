@@ -34,7 +34,7 @@
 						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded">
 						<span class="relative">
 							Login
-							<loader v-if="showLoader" :is-mini="true"/>
+							<loader v-if="showLoader" class="auth-loader" is-mini />
 						</span>
 					</button>
 				</div>
@@ -53,7 +53,6 @@
 </template>
 
 <script>
-
 	import AuthBase from "src/components/Auth/AuthBase";
 
 	export default {
