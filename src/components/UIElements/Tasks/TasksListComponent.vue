@@ -207,7 +207,7 @@
 					this.setLoadingAction(dotId)
 					await this.$axios.put(`/tasks/${task.id}/${status}`)
 					if (loadTasks) {
-						await this.loadTasks()
+						this.loadTasks()
 					}
 				} catch (e) {
 					console.error(e)

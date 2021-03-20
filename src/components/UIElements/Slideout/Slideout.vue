@@ -91,7 +91,7 @@ body {
 	top: 0;
 	bottom: 0;
 	width: 256px;
-	height: 100vh;
+	height: 100%;
 	overflow-y: scroll;
 	-webkit-overflow-scrolling: touch;
 	z-index: 0;

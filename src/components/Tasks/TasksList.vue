@@ -42,6 +42,9 @@
 				@reload-tasks="reloadTasks"
 				ref="tasksListComponent"
 			/>
+			<div v-else-if="errorLoading" class="text-center italic text-xl">
+				Something went wrong...
+			</div>
 			<div v-else-if="!showLoader" class="text-center italic text-xl">
 				You don't have tasks here
 
@@ -72,6 +75,7 @@
 			TasksListMixin
 		],
 		data: () => ({
+			errorLoading: false,
 			showSearchInput: false,
 			panel: false,
 			searchText: null,
@@ -105,13 +109,19 @@
 				this.loadTasks()
 			},
 			async loadTasks() {
-				clearTimeout(this.searchTimeout)
-				const { searchText } = this
-				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl() + (searchText ? '&search=' + searchText : ''))
-				this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
-				this.tasks = data
-				this.showLoader = false
-				return data
+				try {
+					clearTimeout(this.searchTimeout)
+					const { searchText } = this
+					const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl() + (searchText ? '&search=' + searchText : ''))
+					this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
+					this.tasks = data
+					return data
+				} catch (e) {
+					console.error(e)
+					this.errorLoading = true
+				} finally {
+					this.showLoader = false
+				}
 			},
 			selectAll () {
 				if (!this.$refs.tasksListComponent) {
