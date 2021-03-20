@@ -39,11 +39,13 @@
 				:status="status"
 				:is-loading-actions="isLoadingActions"
 				has-selectable
-				@reload-tasks="loadTasks"
+				@reload-tasks="reloadTasks"
 				ref="tasksListComponent"
 			/>
 			<div v-else-if="!showLoader" class="text-center italic text-xl">
 				You don't have tasks here
+
+				<confetti v-if="hasAbilityToShowConfetti" />
 			</div>
 			<loading-tasks-list v-if="showLoader" class="mx-2" />
 			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
@@ -56,10 +58,12 @@
 	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
 	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
+	import Confetti from "components/UIElements/Confetti";
 
 	export default {
 		name: 'TasksList',
 		components: {
+			Confetti,
 			LoadingTasksList,
 			TasksListComponent
 		},
@@ -80,7 +84,8 @@
 				ArchiveTasksList: 'Archive tasks'
 			},
 			tasks: [],
-			isLoadingActions: {}
+			isLoadingActions: {},
+			hasAbilityToShowConfetti: false
 		}),
 		computed: {
 			status() {
@@ -95,6 +100,10 @@
 			}
 		},
 		methods: {
+			reloadTasks () {
+				this.hasAbilityToShowConfetti = true
+				this.loadTasks()
+			},
 			async loadTasks() {
 				clearTimeout(this.searchTimeout)
 				const { searchText } = this

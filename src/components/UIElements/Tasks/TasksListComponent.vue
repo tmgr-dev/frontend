@@ -63,16 +63,16 @@
 
 <script>
 	import downloadFile from "src/utils/downloadFile";
+	import Loader from "components/UIElements/Loader";
+	import Confirm from "components/UIElements/Confirm";
 	import TasksListMixin from "src/mixins/TasksListMixin";
-	import convertToQueryString from "src/utils/convertToQueryString";
+	import TaskMeta from "components/UIElements/Tasks/TaskMeta";
+	import BounceLoader from "components/UIElements/BounceLoader";
 	import DropdownMenu from 'components/UIElements/DropdownMenu';
+	import convertToQueryString from "src/utils/convertToQueryString";
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
 	import TaskButtonsInTheList from "components/UIElements/Tasks/TaskButtonsInTheList";
 	import TasksMultipleActionsModal from "components/UIElements/Tasks/TasksMultipleActionsModal";
-	import TaskMeta from "components/UIElements/Tasks/TaskMeta";
-	import Loader from "components/UIElements/Loader";
-	import BounceLoader from "components/UIElements/BounceLoader";
-	import Confirm from "components/UIElements/Confirm";
 
 	export default {
 		name: "TasksListComponent",
