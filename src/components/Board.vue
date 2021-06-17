@@ -15,11 +15,11 @@
 						class="w-1/3 pr-2"
 					>
 						<div
-							:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded`"
+							:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
 						>
 							<p :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`">{{column.title}}</p>
 							<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
-							<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status">
+							<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status" class="h-full">
 								<template #item="{element: task}">
 									<task-card
 										:task="task"
