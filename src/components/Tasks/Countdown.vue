@@ -29,7 +29,7 @@
 				:color="task.start_time ? 'red' : 'blue'"
 				type="button"
 				class="leading-none"
-				@click="$emit('toggle')">
+				@click="toggleCountdown">
 				<span v-if="!task.start_time" class="material-icons">play_arrow</span>
 				<span v-else class="material-icons">stop</span>
 			</Button>
@@ -100,6 +100,8 @@
 	import InputField from "../UIElements/InputField";
 	import Reminder from "src/components/UIElements/Tasks/Reminder";
 
+	let countdownInterval = null
+
 	export default {
 		name: "Countdown",
 		components: {
@@ -157,6 +159,13 @@
 			}
 		},
 		methods: {
+			toggleCountdown () {
+				if (countdownInterval) {
+					clearInterval(countdownInterval)
+					countdownInterval = null
+				}
+				this.$emit('toggle')
+			},
 			async updateTimer () {
 				this.validateCountdownBeforeUpdate()
 				const seconds = this.countdown.hours * 3600 + +this.countdown.minutes * 60 + +this.countdown.seconds
@@ -184,6 +193,7 @@
 				}
 				++this.task.common_time
 				this.$emit('update:seconds', this.task.common_time)
+				console.log('test')
 				this.renderTime()
 			},
 			prepareCommonTime() {
@@ -195,13 +205,13 @@
 			},
 			initCountdown() {
 				if (!this.task.start_time) {
-					clearInterval(this.countdownInterval)
-					this.countdownInterval = null
+					clearInterval(countdownInterval)
+					countdownInterval = null
 					return
 				}
 
 				this.prepareCommonTime()
-				this.countdownInterval = setInterval(this.plusSecond, 1000)
+				countdownInterval = setInterval(this.plusSecond, 1000)
 			},
 			renderTime() {
 				let seconds = this.task.common_time
