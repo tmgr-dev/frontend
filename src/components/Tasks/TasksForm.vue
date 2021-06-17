@@ -582,6 +582,7 @@
 				this.$router.push('/')
 			},
 			secondsToStringTime(seconds) {
+				console.log(seconds)
 				const second = seconds % 60
 				let minute = (seconds - second) / 60 | 0
 				const hour = minute / 60 | 0
@@ -602,9 +603,10 @@
 				if (!form.checkpoints) {
 					form.checkpoints = []
 				}
-				const currentTime = form.common_time + Math.floor(
+				const timeSinceStartTime = !form.start_time ? 0 : Math.floor(
 					((new Date()) - (new Date()).setTime(form.start_time * 1000)) / 1000
 				)
+				const currentTime = form.common_time + timeSinceStartTime
 				if (form.checkpoints.length > 0) {
 					const prevCheckpointIndex = form.checkpoints.length - 1
 					form.checkpoints[prevCheckpointIndex].end = currentTime
