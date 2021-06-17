@@ -327,19 +327,12 @@
 				currentCategory: '',
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
-				prevValue: null,
-				isDataEditedForce: false
+				prevValue: null
 			}
 		},
 		watch: {
 			form (newVal) {
 				this.setSavedData(newVal)
-			},
-			isDataEditedForce (newVal) {
-				if (!this.isDataEditedForce) {
-					return
-				}
-				this.saveTask()
 			}
 		},
 		computed: {
@@ -355,9 +348,6 @@
 			isDataEdited () {
 				if (!this.form.id) {
 					return false
-				}
-				if (this.isDataEditedForce) {
-					return true
 				}
 				for(let i = 0; i < this.watchingFields.length; ++i) {
 					const field = this.watchingFields[i]
@@ -536,14 +526,9 @@
 			},
 			async toggleCountdown() {
 				this.form.id = null
-				const isDelete = this.form.start_time
 				const { data: {data} } = await this.$axios[this.form.start_time ? 'delete' : 'post'](`tasks/${this.taskId}/countdown`)
 				this.form = { ...data }
 				this.updateSeconds(this.form.common_time)
-				/** TODO: Figure out how to fix that */
-				if (isDelete) {
-					this.isDataEditedForce = true
-				}
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -572,7 +557,6 @@
 			async saveTask () {
 				try {
 					this.isSaving = true
-					this.isDataEditedForce = false
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
 					if (data.approximately_time) {

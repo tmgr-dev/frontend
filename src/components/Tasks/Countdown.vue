@@ -265,6 +265,9 @@
 
 			this.initCountdown()
 			this.renderTime()
+		},
+		beforeUnmount() {
+			clearInterval(countdownInterval)
 		}
 	}
 </script>
