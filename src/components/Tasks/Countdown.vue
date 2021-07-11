@@ -193,7 +193,6 @@
 				}
 				++this.task.common_time
 				this.$emit('update:seconds', this.task.common_time)
-				console.log('test')
 				this.renderTime()
 			},
 			prepareCommonTime() {
@@ -212,6 +211,7 @@
 
 				this.prepareCommonTime()
 				countdownInterval = setInterval(this.plusSecond, 1000)
+				this.countdownInterval = true
 			},
 			renderTime() {
 				let seconds = this.task.common_time
