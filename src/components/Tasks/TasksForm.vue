@@ -1,6 +1,6 @@
 <template>
 	<teleport to="title">
-		{{ form.title || h1.main }}
+		{{ form.title || h1.main }}&nbsp;
 	</teleport>
 	<BaseLayout>
 		<template #header>
