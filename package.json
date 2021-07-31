@@ -71,9 +71,8 @@
     "vue-template-compiler": "^2.6.12"
   },
   "engines": {
-    "node": ">= 10.18.1",
-    "npm": ">= 6.13.4",
-    "yarn": ">= 1.21.1"
+    "node": ">= 14.15.5",
+    "npm": ">= 7.6.0"
   },
   "_moduleAliases": {
     "@root": "./src"
