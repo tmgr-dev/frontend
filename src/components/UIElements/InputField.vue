@@ -124,7 +124,7 @@
 			}
 		},
 		computed: {
-				val: {
+			val: {
 				get() {
 					if (this.type === 'select') {
 						return this.findOptionByValue(this.modelValue)

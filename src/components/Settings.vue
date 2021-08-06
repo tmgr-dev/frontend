@@ -17,8 +17,11 @@
 							{{ setting.name }}
 						</label>
 						<div class="relative mb-4">
+							<div v-if="setting.component_type === 'current_workspace'">
+								<current-workspace v-model="settings[index].value"></current-workspace>
+							</div>
 							<input-field
-								v-if="!setting.show_custom_value_input"
+								v-else-if="!setting.show_custom_value_input"
 								:id="`setting-${setting.id}`"
 								type="select"
 								:placeholder="setting.description"
@@ -81,12 +84,14 @@
 <script>
 	import Confirm from "src/components/UIElements/Confirm";
 	import Button from "src/components/UIElements/Button";
+	import CurrentWorkspace from "src/components/UIElements/CurrentWorkspace";
 
 	export default {
 		name: 'Settings',
 		components: {
 			Button,
-			Confirm
+			Confirm,
+			CurrentWorkspace
 		},
 		data: () => ({
 			availableSettings: [],
@@ -107,6 +112,9 @@
 			await this.loadSettings()
 		},
 		methods: {
+			parseInt (v) {
+				return parseInt(v);
+			},
 			showConfirm (title, body, action) {
 				this.confirm = {title, body, action}
 			},
@@ -157,6 +165,7 @@
 			},
 			async updateSettings () {
 				try {
+					console.log(this.userSettings)
 					await this.$axios.put('user/settings', {
 						settings: this.userSettings
 					})

@@ -1,4 +1,4 @@
-<style lang="scss">
+G<style lang="scss">
   @import '../scss/vue-select.scss';
 </style>
 
@@ -991,7 +991,7 @@
        * @return {boolean}
        */
       isTrackingValues () {
-        return typeof this.modelValue === 'undefined' || this.$options.props.hasOwnProperty('reduce');
+        return typeof this.modelValue === 'undefined'; // || this.$options.props.hasOwnProperty('reduce');
       },
 
       /**
