@@ -25,7 +25,7 @@
 			links: [
 				{ id: 1, name: 'Current tasks', path: '/' },
 				{ id: 1, name: 'Hidden', path: '/hidden' },
-				{ id: 1, name: 'Board', small: 'in dev', path: '/board' },
+				{ id: 1, name: 'Board', path: '/board' },
 				// { id: 1, name: 'Archive', path: '/archive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' }
 			]

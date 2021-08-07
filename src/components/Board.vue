@@ -4,30 +4,43 @@
 	</teleport>
 	<BaseLayout>
 		<template #header>
-			Board Test
+			Board
 		</template>
 		<template #body>
-			<div class="flex justify-center">
-				<div class="min-h-screen flex w-full py-12">
+			<div class="block justify-center">
+				<div class="min-h-screen w-full overflow-x-scroll py-12">
 					<div
-						v-for="column in columns"
-						:key="column.title"
-						class="w-1/3 pr-2"
+						style="width: max-content"
 					>
 						<div
-							:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
+							v-for="column in columns"
+							:key="column.title"
+							class="pr-2"
+							style="
+								width: 300px;
+								display: inline-block;
+								height: 100vh;
+								float: left;
+							"
 						>
-							<p :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`">{{column.title}}</p>
-							<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
-							<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status" class="h-full">
-								<template #item="{element: task}">
-									<task-card
-										:task="task"
-										class="mt-3 cursor-move"
-										:data-task="jsonEncode(task)"
-									></task-card>
-								</template>
-							</draggable>
+							<div
+								:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
+								:style="{
+									'background-color': column.status.color
+								}"
+							>
+								<p :class="`text-white font-semibold font-sans tracking-wide text-sm`">{{column.title}}</p>
+								<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
+								<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status.id" class="h-full">
+									<template #item="{element: task}">
+										<task-card
+											:task="task"
+											class="mt-3 cursor-move"
+											:data-task="jsonEncode(task)"
+										></task-card>
+									</template>
+								</draggable>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -57,7 +70,7 @@
 				password_confirmation: null,
 			},
 			errors: {},
-			columns: [
+			oldColumns: [
 				{
 					title: "Backlog",
 					status: "created",
@@ -72,16 +85,13 @@
 					title: "Hidden",
 					status: "hidden",
 					tasks: []
-				},
-				// {
-				// 	title: "Archive",
-				// 	status: "archive",
-				// 	tasks: []
-				// }
-			]
+				}
+			],
+			columns: []
 		}),
 		async mounted() {
-			this.loadTasks()
+			await this.loadColumns()
+			await this.loadTasks()
 		},
 		methods: {
 			jsonEncode(data) {
@@ -92,10 +102,12 @@
 			},
 			async onEnd({to: {dataset: {status}}, item: {dataset: {task}}}) {
 				task = this.jsonDecode(task);
-				if (task.status !== status) {
+				status = parseInt(status);
+				console.log(status, task.status_id)
+				if (task.status_id !== status) {
 					await this.$axios.put(`tasks/${task.id}/${status}`)
 					const foundTask = this.findTask(status, task.id)
-					foundTask.status = status
+					foundTask.status_id = status
 				}
 				setTimeout(() => this.saveOrders(status), 500)
 			},
@@ -135,7 +147,7 @@
 				const { columns } = this;
 				for (let i = 0; i < columns.length; ++i) {
 					const column = columns[i];
-					if (column.status === status) {
+					if (column.status.id === status) {
 						return column
 					}
 				}
@@ -144,14 +156,33 @@
 			onStart(evt) {
 				console.log(evt)
 			},
-			async loadTasks() {
-				this.columns.forEach(async ({status}, index) => {
-					this.columns[index].tasks = await this.loadTasksByStatus(status)
-					console.log(this.columns[index].tasks)
+			async loadColumns() {
+				const columns = []
+				const { data: {data: statuses} } = await this.$axios.get(`workspaces/statuses`)
+				for (let i = 0; i < statuses.length; ++i) {
+					let status = statuses[i];
+					if (status.type === 'archived') {
+						continue
+					}
+					columns.push({
+						title: status.name,
+						status: status,
+						tasks: []
+					})
+				}
+				this.$nextTick(() => {
+					this.columns = columns
 				})
 			},
+			async loadTasks() {
+				for (let i = 0; i < this.columns.length; ++i) {
+					let status = this.columns[i].status;
+					this.columns[i].tasks = await this.loadTasksByStatus(status);
+				}
+			},
 			async loadTasksByStatus (status) {
-				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status))
+				console.log(this.getTasksIndexUrl(status.hasOwnProperty('id') ? status.id : status));
+				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status.hasOwnProperty('id') ? status.id : status))
 				return data.sort((a, b) => {
 					if ( a.order < b.order ){
 						return -1;
