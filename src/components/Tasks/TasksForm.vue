@@ -22,16 +22,6 @@
 						<span class="material-icons text-lg">settings</span>
 					</a>
 
-					<!--<task-settings-modal
-						v-if="isShowModalCategory"
-						:form="form"
-						:errors="errors"
-						:categories="categoriesSelectOptions"
-						v-model:selected-category="currentCategoryOptionInSelect"
-						:settings="availableSettings"
-						@submit="updateCategory"
-						@close="isShowModalCategory = false"
-					/>-->
 					<modal
 						v-if="isShowModalCategory"
 						:modal-width="500"
@@ -129,17 +119,15 @@
 				</div>
 
 				<div v-if="!isCreatingTask" class="text-base sm:text-lg ml-auto">
-					<button type="button" @click="form.status = 'created'" :class="form.status !== `created` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none">
-						Created
-					</button>
-					<button type="button" @click="form.status = 'active'" :class="form.status !== `active` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none">
-						Active
-					</button>
-					<button type="button" @click="form.status = 'hidden'" :class="form.status !== `hidden` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-gray-700 text-white p-2 rounded leading-none">
-						Hidden
-					</button>
-					<button type="button" @click="form.status = 'done'" :class="form.status !== `done` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:ml-2 mr-1 bg-red-700 text-white p-2 rounded leading-none">
-						Done
+					<button
+						v-for="status in workspaceStatuses"
+						type="button"
+						@click="form.status_id = status.id"
+						:class="form.status_id !== status.id ? `opacity-25 hover:opacity-100` : ``"
+						class="inline sm:mr-2 sm:ml-2 mr-1 text-white p-2 rounded leading-none"
+						:style="`background-color: ${status.color}`"
+					>
+						{{ status.name }}
 					</button>
 				</div>
 			</div>
@@ -338,6 +326,9 @@
 		computed: {
 			taskId () {
 				return this.$route.params.id
+			},
+			workspaceStatuses () {
+				return this.$store.getters.statuses
 			},
 			isCreatingTask() {
 				return !this.taskId

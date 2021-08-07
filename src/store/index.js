@@ -18,6 +18,7 @@ const state = {
 	pusherBeamsClient: pusherBeamsClient,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
+	statuses: null,
 	pusher: pusher(token),
 	userSettings: {
 		showTooltips: true
@@ -27,6 +28,7 @@ const state = {
 const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
+	statuses: state => state.statuses,
 	pusherBeamsUserId: state => state.pusherBeamsUserId,
 	pusherBeamsClient: state => state.pusherBeamsClient,
 	pusherTokenProvider: state => state.pusherTokenProvider,
@@ -99,6 +101,17 @@ const actions = {
 			if (data instanceof Object && data.hasOwnProperty('settings')) {
 				commit('setUserSettings', data.settings)
 			}
+		} catch (e) {
+			throw e
+		}
+	},
+	async loadStatuses ({ commit, state }) {
+		if (!state.user) {
+			return
+		}
+		try {
+			const { data: {data} } = await axios.get(`workspaces/statuses`)
+			state.statuses = data
 		} catch (e) {
 			throw e
 		}

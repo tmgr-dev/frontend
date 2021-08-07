@@ -100,18 +100,16 @@
 					</span>
 					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
 						<div class="sm:mr-5 text-lg">
-							<button type="button" :class="!status ? `` : `opacity-25 hover:opacity-100`" class="inline sm:mr-2 mr-1 bg-green-700 text-white p-2 rounded leading-none items-center" @click="$router.push(`/projects-categories/${id ? `${id}/children` : ''}`)">
-								All
-							</button>
-							<button type="button" :class="status !== `current` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-blue-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'current'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/current`)">
-								Current
-							</button>
-							<button type="button" :class="status !== `hidden` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:mr-2 sm:ml-2 mr-1 bg-gray-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'hidden'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/hidden`)">
-								Hidden
-							</button>
-							<button type="button" :class="status !== `done` ? `opacity-25 hover:opacity-100` : ``" class="inline sm:ml-2 mr-1 bg-red-700 text-white p-2 rounded leading-none items-center" @click="!id ? $router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: 'done'}}) : $router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/done`)">
-								Archive
-							</button>
+							<input-field
+								v-if="workspaceStatuses.length > 0"
+								v-model="workspaceStatus"
+								type="select"
+								:options="workspaceStatuses"
+								option-name-key="name"
+								option-value-key="id"
+								class="items-center"
+								style="min-width: 200px"
+							/>
 						</div>
 						<a
 							href="#"
@@ -160,10 +158,12 @@ import LoadingButtonActions from "src/mixins/LoadingButtonActions";
 import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs'
 import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
 import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
+import InputField from "components/UIElements/InputField";
 
 export default {
 	name: 'ProjectCategoryList',
 	components: {
+		InputField,
 		LoadingTasksList,
 		Confirm,
 		Breadcrumbs,
@@ -183,14 +183,36 @@ export default {
 		isTasksFirstLoading: true,
 		isLoadingActions: {},
 		confirm: null,
-		loadingActionTasksIds: []
+		loadingActionTasksIds: [],
+		workspaceStatus: 'all'
 	}),
 	computed: {
+		workspaceStatuses () {
+			let statuses = this.$store.getters.statuses;
+
+			return [{
+				name: 'All',
+				id: 'all'
+			}].concat(statuses);
+		},
 		id() {
 			return this.$route.params.id || ''
 		},
 		status() {
 			return this.$route.params.status || ''
+		}
+	},
+	watch: {
+		workspaceStatus (newVal, oldVal) {
+			if (newVal === oldVal) {
+				return
+			}
+			const id = this.id;
+			if (id) {
+				this.$router.push(`/projects-categories/${id ? `${id}/children` : '/status'}/${newVal}`);
+			} else {
+				this.$router.push({name: 'ProjectCategoryChildrenListWithStatus', params: {status: newVal}});
+			}
 		}
 	},
 	methods: {
@@ -219,7 +241,7 @@ export default {
 		},
 		getTasksIndexUrl() {
 			if (this.$route.params.status) {
-				return `tasks/?all&project_category_id=${this.id}&status=${this.$route.params.status}`
+				return `tasks/?all&project_category_id=${this.id}&status_id=${this.$route.params.status}`
 			}
 			return `tasks/?all&project_category_id=${this.id}`
 		},
@@ -278,14 +300,19 @@ export default {
 		extractParents,
 		selectAll () {
 			if (!this.$refs.tasksListComponent) {
-				return
+				return;
 			}
-			this.$refs.tasksListComponent.selectAll()
+			this.$refs.tasksListComponent.selectAll();
 		}
 	},
 	async mounted() {
-		await this.loadCategories()
-		await this.loadTasks()
+		await this.loadCategories();
+		await this.loadTasks();
+		const status = this.$route.params.status;
+		if (!status) {
+			return
+		}
+		this.workspaceStatus = status === 'all' ? status : parseInt(status);
 	}
 }
 </script>

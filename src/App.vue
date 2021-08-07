@@ -181,6 +181,7 @@
 		},
 		async created() {
 			this.$store.dispatch('loadUserSettings')
+			this.$store.dispatch('loadStatuses')
 
 			this.$router.beforeEach((to, from, next) => {
 				this.$store.commit('currentOpenedTaskId', null)
