@@ -41,7 +41,6 @@
 		methods: {},
 		async created() {
 			let {data: {data: workspaces}} = await this.$axios.get('/workspaces');
-			console.log(workspaces);
 			this.workspaces = workspaces;
 		}
 	}

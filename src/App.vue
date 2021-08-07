@@ -162,7 +162,6 @@
 				setTimeout(() => {
 					try {
 						this.bodyHeight = this.getBodyHeight()
-						console.log(this.getBodyHeight())
 					} catch (e) {
 						setTimeout(() => this.bodyHeight = this.getBodyHeight(), 1000)
 					}

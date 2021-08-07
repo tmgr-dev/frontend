@@ -165,7 +165,6 @@
 			},
 			async updateSettings () {
 				try {
-					console.log(this.userSettings)
 					await this.$axios.put('user/settings', {
 						settings: this.userSettings
 					})

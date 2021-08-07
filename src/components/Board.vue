@@ -103,7 +103,6 @@
 			async onEnd({to: {dataset: {status}}, item: {dataset: {task}}}) {
 				task = this.jsonDecode(task);
 				status = parseInt(status);
-				console.log(status, task.status_id)
 				if (task.status_id !== status) {
 					await this.$axios.put(`tasks/${task.id}/${status}`)
 					const foundTask = this.findTask(status, task.id)
@@ -154,7 +153,6 @@
 				return null
 			},
 			onStart(evt) {
-				console.log(evt)
 			},
 			async loadColumns() {
 				const columns = []
@@ -181,7 +179,6 @@
 				}
 			},
 			async loadTasksByStatus (status) {
-				console.log(this.getTasksIndexUrl(status.hasOwnProperty('id') ? status.id : status));
 				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status.hasOwnProperty('id') ? status.id : status))
 				return data.sort((a, b) => {
 					if ( a.order < b.order ){
