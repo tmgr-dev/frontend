@@ -5,17 +5,7 @@
 				{{ task.title }}
 			</router-link>
 			<div class="flex items-start task-category-in-task">
-				<router-link
-					v-if="task.category && showCategoryBadges"
-					:to="{name: 'ProjectCategoryChildrenList', params: {id: task.category.id}}"
-					class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base">
-					{{ task.category.title }}
-				</router-link>
-				<router-link
-					:to="`/${task.category ? 'project-categories/' + task.category.id + '/' : ''}tasks/create`" title="Add task to category"
-					class="opacity-25 hover:opacity-100 tc-hidden md:inline add-task-to-category-from-task-category z-10">
-					<span class="material-icons text-3xl -mt-1">add_circle_outline</span>
-				</router-link>
+				<category-badge v-if="task.category && showCategoryBadges" :category="task.category"/>
 			</div>
 		</div>
 		<div class="flex items-start">
@@ -28,8 +18,10 @@
 </template>
 
 <script>
+	import CategoryBadge from "components/UIElements/CategoryBadge";
 	export default {
 		name: 'TaskMeta',
+		components: {CategoryBadge},
 		props: {
 			task: {
 				type: Object,

@@ -99,6 +99,7 @@
 <script>
 	import InputField from "../UIElements/InputField";
 	import Reminder from "src/components/UIElements/Tasks/Reminder";
+	import TimePreparationMixin from "src/mixins/TimePreparationMixin";
 
 	let countdownInterval = null
 
@@ -108,6 +109,9 @@
 			Reminder,
 			InputField
 		},
+		mixins: [
+			TimePreparationMixin
+		],
 		emits: [
 			'toggle',
 			'update:seconds'
@@ -214,16 +218,7 @@
 				this.countdownInterval = true
 			},
 			renderTime() {
-				let seconds = this.task.common_time
-				const second = seconds % 60
-				let minute = (seconds - second) / 60 | 0
-				const hour = minute / 60 | 0
-				minute = minute - (hour * 60)
-
-				this.countdown.hours = this.prepareClockNumber(hour)
-				this.countdown.minutes = this.prepareClockNumber(minute)
-				this.countdown.seconds = this.prepareClockNumber(second)
-
+				this.countdown = this.secondsToCountdownObject(this.task.common_time)
 				this.renderApproximatelyStartTime()
 			},
 			renderApproximatelyStartTime () {
@@ -254,9 +249,6 @@
 					hours: this.prepareClockNumber(st.getHours()),
 					minutes: this.prepareClockNumber(st.getMinutes())
 				}
-			},
-			prepareClockNumber(num) {
-				return num < 10 ? '0' + num : num
 			}
 		},
 		mounted() {

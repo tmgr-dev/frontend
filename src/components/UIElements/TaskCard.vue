@@ -10,16 +10,25 @@
 			>
 		</div>
 		<div class="flex mt-4 justify-between items-center">
-			<span class="text-sm text-gray-600">{{task.created_at}}</span>
-			<badge v-if="task.category" :color="badgeColor" @click="$router.push(`/projects-categories/${task.category.id}/children`)" class="cursor-pointer">{{ task.category.title }}</badge>
+			<span class="text-sm text-gray-600">{{ secondsToHumanReadableString(task.common_time) }}</span>
+			<div>
+				<category-badge v-if="task.category" :category="task.category"></category-badge>
+			</div>
 		</div>
 	</div>
 </template>
 <script>
 import Badge from "./Badge.vue";
+import moment from "moment";
+import TimePreparationMixin from "src/mixins/TimePreparationMixin";
+import CategoryBadge from "components/UIElements/CategoryBadge";
 
 export default {
+	mixins: [
+		TimePreparationMixin
+	],
 	components: {
+		CategoryBadge,
 		Badge
 	},
 	props: {
@@ -35,10 +44,11 @@ export default {
 				"Feature Request": "teal",
 				Backend: "blue",
 				QA: "green",
-				default: "teal"
+				default: "black"
 			};
 			return mappings[this.task.type] || mappings.default;
 		}
-	}
+	},
+	methods: {}
 };
 </script>
