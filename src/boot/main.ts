@@ -30,6 +30,17 @@ export default (obj: any) => {
 			'Expires': '0'
 		}
 	}
+
+	axios.interceptors.response.use(response => {
+		return response;
+	}, error => {
+		if (error.response.status === 401) {
+			store.dispatch('logout');
+		}
+		return error;
+	});
+
+
 	app.config.globalProperties.$axios = axios;
 
 	const color = (colorKey: string) => colorSchemes[store.getters.colorScheme][colorKey];

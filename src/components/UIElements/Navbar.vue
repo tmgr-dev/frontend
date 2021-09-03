@@ -47,8 +47,8 @@
 			isHidden: true,
 			rerenderSwitcher: 0,
 			links: [
-				{ id: 1, name: 'Current tasks', path: '/' },
-				{ id: 1, name: 'tc-hidden', path: '/tc-hidden' },
+				{ id: 1, name: 'List', path: '/' },
+				// { id: 1, name: 'tc-hidden', path: '/tc-hidden' },
 				{ id: 1, name: 'Archive', path: '/acrhive' },
 				{ id: 1, name: 'Categories', path: '/projects-categories' },
 			],

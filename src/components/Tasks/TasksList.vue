@@ -1,11 +1,8 @@
 <template>
-	<teleport to="title" >
+	<teleport to="title">
 		{{ h1[$route.name] }}
 	</teleport>
 	<BaseLayout>
-		<template #header>
-			{{ h1[$route.name] }}
-		</template>
 		<template #action>
 			<div class="flex justify-between flex-wrap">
 				<transition name="fade">
@@ -23,9 +20,9 @@
 					<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
 					</a>
-					<router-link :to="`/create`" title="Add Task">
+					<a href="#" title="Add Task" @click="showCreateTaskForm = true">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
-					</router-link>
+					</a>
 				</div>
 			</div>
 		</template>
@@ -54,6 +51,11 @@
 			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
+	<fullscreen-modal v-if="showCreateTaskForm">
+		<template #modal-body>
+			<task-form :is-modal="true" @close="showCreateTaskForm = false"></task-form>
+		</template>
+	</fullscreen-modal>
 </template>
 
 <script>
@@ -62,10 +64,14 @@
 	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
 	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
 	import Confetti from "components/UIElements/Confetti";
+	import FullscreenModal from "components/Layouts/FullscreenModal";
+	import TaskForm from "components/Tasks/TaskForm";
 
 	export default {
 		name: 'TasksList',
 		components: {
+			TaskForm,
+			FullscreenModal,
 			Confetti,
 			LoadingTasksList,
 			TasksListComponent
@@ -75,6 +81,7 @@
 			TasksListMixin
 		],
 		data: () => ({
+			showCreateTaskForm: false,
 			errorLoading: false,
 			showSearchInput: false,
 			panel: false,

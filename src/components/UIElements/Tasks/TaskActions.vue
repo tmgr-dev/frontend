@@ -35,8 +35,13 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('addCheckpoint')"
-			class="bg-green-500 mr-5 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+			class="bg-green-500 mr-4 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 			type="button">Add checkpoint</button>
+		<button
+			v-if="!isCreatingTask"
+			@click="$emit('settingsTask')"
+			class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+			type="button">Settings</button>
 	</div>
 </template>
 
@@ -46,7 +51,8 @@
 		emits: [
 			'addCheckpoint',
 			'createTask',
-			'saveTask'
+			'saveTask',
+			'settingsTask',
 		],
 		props: {
 			isCreatingTask: {

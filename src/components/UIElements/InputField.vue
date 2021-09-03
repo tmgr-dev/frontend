@@ -2,7 +2,7 @@
 	<div class="input_wrapper">
 		<transition name="fade">
 			<div v-if="showInput">
-				<div v-if="type === 'select'" :class="`shadow appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('borderMain')}`">
+				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${borderColor}`">
 					<vue-select
 						v-if="options"
 						:label="optionNameKey"
@@ -11,13 +11,17 @@
 					/>
 				</div>
 				<textarea
-					:class="`shadow appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('borderMain')}  leading-tight focus:outline-none focus:shadow-outline`"
-					v-else-if="type === 'textarea'" name="" v-model="val"/>
+					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					v-else-if="type === 'textarea'"
+					name=""
+					v-model="val"
+					:placeholder="placeholder"
+				/>
 				<input
 					v-else-if="type === 'time_in_seconds'"
 					:id="name"
 					type="time"
-					:class="`shadow ${$color('borderMain')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
@@ -42,7 +46,7 @@
 					v-else
 					:id="name"
 					:type="type"
-					:class="`shadow ${$color('borderMain')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
@@ -74,6 +78,11 @@
 				required: false,
 				type: Array,
 				default: null
+			},
+			hideBorder: {
+				required: false,
+				type: Boolean,
+				default: false
 			},
 			type: {
 				required: false,
@@ -124,6 +133,9 @@
 			}
 		},
 		computed: {
+			borderColor () {
+				return this.hideBorder ? 'border-none' : `shadow ${this.$color('borderMain')}`
+			},
 			val: {
 				get() {
 					if (this.type === 'select') {

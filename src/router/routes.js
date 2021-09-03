@@ -1,5 +1,6 @@
 const ProjectCategoryList = () => import('src/components/ProjectsCategories/ProjectCategoryList')
 const TasksForm = () => import('src/components/Tasks/TasksForm')
+const TaskForm = () => import('src/components/Tasks/TaskForm')
 const TasksList = () => import('src/components/Tasks/TasksList')
 const ProjectCategoryForm = () => import('src/components/ProjectsCategories/ProjectCategoryForm')
 
@@ -156,7 +157,7 @@ const routes = [
 			transitionName: 'slide',
 			navbarHidden: true
 		},
-		component: TasksForm,
+		component: TaskForm,
 		name: 'TasksEdit'
 	},
 	{

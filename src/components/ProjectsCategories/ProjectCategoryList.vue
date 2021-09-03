@@ -3,7 +3,6 @@
 		{{ category ? category.title : h1 }}
 	</teleport>
 	<BaseLayout>
-		<template #header>{{ category ? category.title : h1 }}</template>
 		<template #action>
 			<breadcrumbs
 				:current="category ? category.title : ''"

@@ -3,15 +3,13 @@
 		Board Test
 	</teleport>
 	<BaseLayout>
-		<template #header>
-			Board
-		</template>
 		<template #body>
 			<div class="block justify-center">
-				<div class="min-h-screen w-full overflow-x-scroll py-12">
+				<div class="min-h-screen w-full overflow-x-scroll pb-12">
 					<div
 						style="width: max-content"
 					>
+						
 						<div
 							v-for="column in columns"
 							:key="column.title"

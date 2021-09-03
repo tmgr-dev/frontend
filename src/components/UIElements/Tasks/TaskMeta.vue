@@ -1,9 +1,12 @@
 <template>
 	<div>
 		<div class="flex">
-			<router-link :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
+			<router-link v-if="!dontPushRouter" :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
 				{{ task.title }}
 			</router-link>
+      <a href="#" @click="$emit('openTask')" v-else class="font-bold text-xl z-10">
+        {{ task.title }}
+      </a>
 			<div class="flex items-start task-category-in-task">
 				<category-badge v-if="task.category && showCategoryBadges" :category="task.category"/>
 			</div>
@@ -22,10 +25,18 @@
 	export default {
 		name: 'TaskMeta',
 		components: {CategoryBadge},
+    emits: [
+        'openTask'
+    ],
 		props: {
 			task: {
 				type: Object,
 				required: true
+			},
+			dontPushRouter: {
+				type: Boolean,
+				required: false,
+        default: false
 			},
 			showCategoryBadges: {
 				required: false,

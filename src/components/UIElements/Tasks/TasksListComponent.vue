@@ -32,8 +32,10 @@
 					<div class="w-full p-4 md:p-5 flex justify-between items-center relative" :class="`${$color('blocks')} hover:${$color('blocksHover')}`">
 						<task-meta
 							:task="task"
+							:dont-push-router="true"
 							:task-time="getTaskFormattedTime(task)"
 							:show-category-badges="showCategoryBadges"
+							@openTask="modalTaskId = task.id"
 						/>
 
 						<dropdown-menu :actions="getActions(task)" />
@@ -51,7 +53,11 @@
 			</div>
 		</div>
 	</div>
-
+	<fullscreen-modal v-if="modalTaskId">
+		<template #modal-body>
+			<task-form :is-modal="true" :modal-task-id="modalTaskId" @close="closeTaskModal"></task-form>
+		</template>
+	</fullscreen-modal>
 	<confirm
 		v-if="confirm"
 		:title="confirm.title"
@@ -73,10 +79,18 @@
 	import TaskActionsInTheListMixin from "src/mixins/TaskActionsInTheListMixin";
 	import TaskButtonsInTheList from "components/UIElements/Tasks/TaskButtonsInTheList";
 	import TasksMultipleActionsModal from "components/UIElements/Tasks/TasksMultipleActionsModal";
+	import Modal from "components/Layouts/Modal";
+	import TasksForm from "components/Tasks/TasksForm";
+	import TaskForm from "components/Tasks/TaskForm";
+	import FullscreenModal from "components/Layouts/FullscreenModal";
 
 	export default {
 		name: "TasksListComponent",
 		components: {
+			FullscreenModal,
+			TaskForm,
+			TasksForm,
+			Modal,
 			Confirm,
 			BounceLoader,
 			Loader,
@@ -132,6 +146,8 @@
 			TaskActionsInTheListMixin
 		],
 		data: () => ({
+			showTaskForm: false,
+			modalTaskId: null,
 			confirm: null,
 			isShowSelectedTasksCommonTime: false,
 			selected: [],
@@ -141,6 +157,10 @@
 			isLoadingActionsForMultipleTasks: []
 		}),
 		methods: {
+			closeTaskModal() {
+				console.log('test')
+				this.modalTaskId = null;
+			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true
 				await this.$axios.delete(`tasks/${task.id}/countdown`)
@@ -163,7 +183,8 @@
 				let actions = [
 					{
 						click: () => {
-							this.$router.push(`/${task.id}/edit`)
+							this.modalTaskId = task.id
+							// this.$router.push(`/${task.id}/edit`)
 						},
 						label: 'Edit'
 					}
