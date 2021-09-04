@@ -99,7 +99,7 @@
 		</div>
 	</div>
 	<div :class="`${$color('blocks')} rounded-lg relative`">
-		<div :class="`p-3 shadow-md `" v-if="isModal">
+		<div :class="`p-3 shadow-md mt-10`">
 			<router-link
 				v-if="!isCreatingTask"
 				:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
@@ -125,6 +125,7 @@
 			<button
 				type="button"
 				:class="`checkpoint-delete absolute right-0`"
+				v-if="isModal"
 			>
 				<span class="material-icons text-2xl text-red-700" @click="$emit('close')">close</span>
 			</button>
