@@ -3,15 +3,6 @@
 		{{ form.title || h1.main }}&nbsp;
 	</teleport>
 	<div class="sm:flex items-between text-center">
-		<router-link
-			v-if="!isCreatingTask"
-			:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
-			class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
-			:class="`${$color('h1')}-800`"
-			type="button">
-			&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
-		</router-link>
-
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<modal
 				v-if="isShowModalCategory"
@@ -107,8 +98,30 @@
 			</modal>
 		</div>
 	</div>
-	<div :class="`${$color('blocks')} rounded-lg relative pt-5`">
-		<div class="pb-6" v-if="isModal">
+	<div :class="`${$color('blocks')} rounded-lg relative`">
+		<div :class="`p-3 shadow-md `" v-if="isModal">
+			<router-link
+				v-if="!isCreatingTask"
+				:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+				class="rounded focus:outline-none sm:mb-0"
+				:class="`${$color('h1')}-800`"
+				type="button">
+				{{ currentCategory ? currentCategory.title : 'Tasks' }}
+			</router-link>
+			<p v-else>
+				Create task
+			</p>
+			<input-field
+				v-if="!isCreatingTask && workspaceStatuses.length > 0"
+				v-model="form.status_id"
+				type="select"
+				:hide-border="true"
+				:options="workspaceStatuses"
+				option-name-key="name"
+				option-value-key="id"
+				class="inline-block ml-3"
+				style="min-width: 200px"
+			/>
 			<button
 				type="button"
 				:class="`checkpoint-delete absolute right-0`"
@@ -116,21 +129,7 @@
 				<span class="material-icons text-2xl text-red-700" @click="$emit('close')">close</span>
 			</button>
 		</div>
-		<div v-if="!isCreatingTask" class="md:grid md:grid-cols-1 gap-4 pb-5">
-			<div class="text-center sm:text-lg ml-auto">
-				<button
-					v-for="status in workspaceStatuses"
-					type="button"
-					@click="form.status_id = status.id"
-					:class="form.status_id !== status.id ? `opacity-25 hover:opacity-100` : ``"
-					class="inline sm:mr-2 sm:ml-2 mr-1 text-white p-2 rounded leading-none"
-					:style="`background-color: ${status.color}`"
-				>
-					{{ status.name }}
-				</button>
-			</div>
-		</div>
-		<div class="md:grid md:grid-cols-2 gap-4 mt-14">
+		<div :class="`md:grid md:grid-cols-2 gap-4 mt-14 ${isModal ? '' : 'pt-10'}`">
 			<div class="text-center">
 				<NewCountdown
 					v-if="form.id"
@@ -174,8 +173,8 @@
 					/>
 				</div>
 				<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
-					<div v-for="(checkpoint, v) in form.checkpoints" :key="v">
-						<div class="flex mb-1">
+					<div v-if="form.checkpoints.length">
+						<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
 							<div class="w-full relative">
 								<span
 									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10 ${checkpoint.inputType === 'textarea' ? 'pt-10' : ''}`"
@@ -193,9 +192,18 @@
 									<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
 								</span>
 							</div>
-
 							<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 						</div>
+						<h3 class="text-sm">
+							Add a checkpoint
+							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
+						</h3>
+					</div>
+					<div v-else>
+						<h3 class="text-sm">
+							Create checkpoints
+							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
+						</h3>
 					</div>
 				</div>
 			</div>
@@ -205,12 +213,11 @@
 		</div>
 
 
-		<div class="w-full p-5">
+		<div class="w-full p-5 shadow-top">
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
 				:is-saving="isSaving"
-				@addCheckpoint="addCheckpoint"
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
@@ -260,7 +267,7 @@
 				watchingFields: [
 					'title',
 					'description',
-					'status',
+					'status_id',
 					'project_category_id',
 					'checkpoints',
 					'approximately_time',
@@ -684,5 +691,9 @@
 		text-overflow: ellipsis;
 		top: 16px;
 		position: relative;
+	}
+	.shadow-top {
+		--tw-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+		box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.16);
 	}
 </style>
