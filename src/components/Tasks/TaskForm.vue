@@ -98,7 +98,7 @@
 			</modal>
 		</div>
 	</div>
-	<div :class="`${$color('blocks')} rounded-lg relative`">
+	<div :class="`container mx-auto ${$color('blocks')} rounded-lg relative`">
 		<div :class="`p-3 shadow-md mt-10`">
 			<router-link
 				v-if="!isCreatingTask"

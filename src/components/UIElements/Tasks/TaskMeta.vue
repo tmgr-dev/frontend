@@ -4,7 +4,7 @@
 			<router-link v-if="!dontPushRouter" :to="`/${task.id}/edit`" class="font-bold text-xl z-10">
 				{{ task.title }}
 			</router-link>
-      <a href="#" @click="$emit('openTask')" v-else class="font-bold text-xl z-10">
+      <a :href="`/${task.id}/edit`" @click.prevent="$emit('openTask')" v-else class="font-bold text-xl z-10">
         {{ task.title }}
       </a>
 			<div class="flex items-start task-category-in-task">

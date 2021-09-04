@@ -20,7 +20,7 @@
 					<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
 					</a>
-					<a href="#" title="Add Task" @click="showCreateTaskForm = true">
+					<a href="#" title="Add Task" @click="$store.dispatch('showCreateTaskModal')">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
 					</a>
 				</div>
@@ -51,11 +51,6 @@
 			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
-	<fullscreen-modal v-if="showCreateTaskForm">
-		<template #modal-body>
-			<task-form :is-modal="true" @close="showCreateTaskForm = false"></task-form>
-		</template>
-	</fullscreen-modal>
 </template>
 
 <script>

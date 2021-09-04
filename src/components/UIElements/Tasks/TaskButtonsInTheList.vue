@@ -1,7 +1,7 @@
 <template>
 	<div class="tc-hidden lg:flex items-center z-10" v-if="!task.deleted_at">
 		<new-button
-			@click="$router.push(`/${task.id}/edit`)"
+			@click="$store.commit('currentTaskIdForModal', task.id)"
 			class="mr-2"
 			v-tooltip.top="setTooltipData('Open')">
 			<span class="material-icons">open_in_new</span>

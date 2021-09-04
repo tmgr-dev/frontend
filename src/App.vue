@@ -55,7 +55,7 @@
 					class="mb-5 inline-block"
 				>
 					<transition name="fade" mode="out-in">
-						<router-link :to="`/${task.id}/edit`" v-if="task.id !== $store.getters.currentOpenedTaskId">
+						<a :href="`/${task.id}/edit`" @click.prevent="$store.commit('currentTaskIdForModal', task.id)" v-if="task.id !== $store.getters.currentOpenedTaskId">
 							<span :class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`">
 								<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
 									<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -63,10 +63,15 @@
 								</span>
 								<span :class="$color('textMain')">{{ task.title }}</span>
 							</span>
-						</router-link>
+						</a>
 					</transition>
 				</span>
 		</div>
+		<fullscreen-modal v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal" close-on-bg-click @close="$store.dispatch('closeTaskModal')">
+			<template #modal-body>
+				<task-form :is-modal="true" :modal-task-id="$store.getters.currentTaskIdForModal" @close="$store.dispatch('closeTaskModal')"></task-form>
+			</template>
+		</fullscreen-modal>
 	</div>
 </template>
 
@@ -76,12 +81,16 @@
 	import Navbar from "src/components/UIElements/Navbar";
 	import NavbarMenu from "src/components/UIElements/NavbarMenu";
 	import Slideout from 'src/components/UIElements/Slideout/Slideout';
+	import FullscreenModal from "components/Layouts/FullscreenModal";
+	import TaskForm from "components/Tasks/TaskForm";
 
 	const DEFAULT_TRANSITION = 'fade'
 
 	export default defineComponent({
 		name: 'App',
 		components: {
+			TaskForm,
+			FullscreenModal,
 			Navbar,
 			Slideout,
 			NavbarMenu
@@ -118,6 +127,9 @@
 			}
 		},
 		methods: {
+			closeTaskModal () {
+				this.$store.dispatch('closeTaskModal')
+			},
 			translateMenu (data) {
 				this.translateMenuPosition = data
 			},

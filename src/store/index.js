@@ -16,6 +16,8 @@ const state = {
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	pusherBeamsUserId: null,
 	pusherBeamsClient: pusherBeamsClient,
+	currentTaskIdForModal: null,
+	showCreateTaskModal: false,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
 	statuses: null,
@@ -29,6 +31,8 @@ const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
 	statuses: state => state.statuses,
+	currentTaskIdForModal: state => state.currentTaskIdForModal,
+	showCreateTaskModal: state => state.showCreateTaskModal,
 	pusherBeamsUserId: state => state.pusherBeamsUserId,
 	pusherBeamsClient: state => state.pusherBeamsClient,
 	pusherTokenProvider: state => state.pusherTokenProvider,
@@ -59,6 +63,9 @@ const mutations = {
 		}
 
 		state.user = user
+	},
+	currentTaskIdForModal(state, taskId) {
+		state.currentTaskIdForModal = taskId
 	},
 	pusherBeamsUserId(state, pusherBeamsUserId) {
 		state.pusherBeamsUserId = pusherBeamsUserId
@@ -91,6 +98,13 @@ const actions = {
 	logout() {
 		localStorage.clear()
 		document.location.reload()
+	},
+	closeTaskModal({state}) {
+		state.currentTaskIdForModal = null
+		state.showCreateTaskModal = false
+	},
+	showCreateTaskModal({state}) {
+		state.showCreateTaskModal = true
 	},
 	async loadUserSettings ({ commit, state }) {
 		if (!state.user) {

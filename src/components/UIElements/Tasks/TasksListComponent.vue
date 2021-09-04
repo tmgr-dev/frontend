@@ -35,7 +35,7 @@
 							:dont-push-router="true"
 							:task-time="getTaskFormattedTime(task)"
 							:show-category-badges="showCategoryBadges"
-							@openTask="modalTaskId = task.id"
+							@openTask="$store.commit('currentTaskIdForModal', task.id)"
 						/>
 
 						<dropdown-menu :actions="getActions(task)" />
@@ -53,11 +53,6 @@
 			</div>
 		</div>
 	</div>
-	<fullscreen-modal v-if="modalTaskId">
-		<template #modal-body>
-			<task-form :is-modal="true" :modal-task-id="modalTaskId" @close="closeTaskModal"></task-form>
-		</template>
-	</fullscreen-modal>
 	<confirm
 		v-if="confirm"
 		:title="confirm.title"
@@ -158,8 +153,7 @@
 		}),
 		methods: {
 			closeTaskModal() {
-				console.log('test')
-				this.modalTaskId = null;
+				this.$store.dispatch('closeTaskModal')
 			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true
@@ -183,24 +177,17 @@
 				let actions = [
 					{
 						click: () => {
-							this.modalTaskId = task.id
+							this.$store.commit('currentTaskIdForModal', task.id)
 							// this.$router.push(`/${task.id}/edit`)
 						},
 						label: 'Edit'
 					}
 				]
 
-				// actions = this.addActionItem(actions, this.getActionItem(task, 'active', 'Activate'), this.getShowButtons(task).activate)
-				// actions = this.addActionItem(actions, this.getActionItem(task, 'hidden', 'Hide'), this.getShowButtons(task).hide)
-				// actions = this.addActionItem(actions, this.getActionItem(task, 'done', 'Done'), this.getShowButtons(task).done)
-
 				return actions
 			},
 			getShowButtons(task) {
 				return {
-					// done: (this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && task.status !== 'done'),
-					// activate: (this.status === 'done' || this.status === 'hidden' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status === 'done' || task.status === 'hidden')),
-					// hide: (this.status !== 'hidden' && this.status !== 'done' && !this.useTaskStatusForButtons) || (this.useTaskStatusForButtons && (task.status !== 'hidden' && task.status !== 'done')),
 					start: task.start_time,
 					stop: !task.start_time,
 					deleteTask: this.status === 'hidden' || this.status === 'done'

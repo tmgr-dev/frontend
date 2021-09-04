@@ -1,7 +1,7 @@
 <template>
 	<div :class="`${$color('blocksHover')} ${$color('borderMain')} shadow rounded px-3 pt-3 pb-5 border`">
 		<div class="flex justify-between">
-			<router-link :to="`/${task.id}/edit`" :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`">{{task.title}}</router-link>
+			<a :href="`/${task.id}/edit`" @click.prevent="$store.commit('currentTaskIdForModal', task.id)" :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`">{{task.title}}</a>
 
 			<img
 				class="w-6 h-6 rounded-full ml-3"
