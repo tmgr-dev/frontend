@@ -69,7 +69,7 @@
 		</div>
 		<fullscreen-modal v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal" close-on-bg-click @close="$store.dispatch('closeTaskModal')">
 			<template #modal-body>
-				<task-form :is-modal="true" :modal-task-id="$store.getters.currentTaskIdForModal" @close="$store.dispatch('closeTaskModal')"></task-form>
+				<task-form :is-modal="true" :modal-task-id="$store.getters.currentTaskIdForModal" :modal-project-category-id="$store.getters.createTaskInProjectCategoryId" @close="$store.dispatch('closeTaskModal')"></task-form>
 			</template>
 		</fullscreen-modal>
 	</div>

@@ -253,10 +253,16 @@
 				required: false,
 				type: Number,
 				default: null
+			},
+			modalProjectCategoryId: {
+				required: false,
+				type: Number,
+				default: null
 			}
 		},
 		emits: [
-			'close'
+			'close',
+			'updated'
 		],
 		data() {
 			return {
@@ -318,7 +324,7 @@
 		},
 		computed: {
 			taskId () {
-				return this.$route.params.id || this.modalTaskId || this.form?.id
+				return this.projectCategoryId ? null : (this.$route.params.id || this.modalTaskId || this.form?.id)
 			},
 			workspaceStatuses () {
 				return this.$store.getters.statuses
@@ -327,7 +333,7 @@
 				return !this.taskId
 			},
 			projectCategoryId() {
-				return this.$route.params.project_category_id
+				return this.form?.id ? null : (this.$route.params.project_category_id || this.modalProjectCategoryId)
 			},
 			isDataEdited () {
 				if (!this.form.id) {
@@ -525,6 +531,7 @@
 				try {
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
+					this.$emit('updated')
 					if (!this.isCreatingTask) {
 						this.showAlert()
 					}
@@ -550,6 +557,7 @@
 					this.isSaving = true
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
+					this.$emit('updated')
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}

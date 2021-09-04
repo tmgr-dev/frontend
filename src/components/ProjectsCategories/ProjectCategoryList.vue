@@ -91,11 +91,13 @@
 							class="opacity-25 hover:opacity-100 inline md:hidden">
 							<span class="material-icons text-3xl">done_all</span>
 						</a>
-						<router-link
-							:to="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
+						<a
+							@click.prevent="$store.commit('createTaskInProjectCategoryId', id)"
+							:href="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`"
+						  title="Add task to category"
 							class="opacity-25 hover:opacity-100 inline md:hidden">
 							<span class="material-icons text-3xl">add_circle_outline</span>
-						</router-link>
+						</a>
 					</span>
 					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
 						<div class="sm:mr-5 text-lg">
@@ -117,11 +119,12 @@
 							class="opacity-25 hover:opacity-100 tc-hidden md:inline mr-2">
 							<span class="material-icons text-3xl">done_all</span>
 						</a>
-						<router-link
-							:to="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
+						<a
+							@click.prevent="$store.commit('createTaskInProjectCategoryId', id)"
+							:href="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
 							class="opacity-25 hover:opacity-100 tc-hidden md:inline">
 							<span class="material-icons text-4xl">add_circle_outline</span>
-						</router-link>
+						</a>
 					</div>
 				</h1>
 
