@@ -4,11 +4,11 @@
 	</teleport>
 	<div v-if="task" class="new-task" :class="{'fullscreen': isFullScreen}" id="task" :style="disabledStyles">
 		<div class="relative inline-block">
-			<div v-if="lastStartTime" class="countdown-wrapper select-none opacity-20 float-left" style="opacity: 0.2">
+			<div v-if="lastStartTime" :class="`countdown-wrapper select-none opacity-20`" style="opacity: 0.2">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
-			<div class="countdown-wrapper select-none float-left"
+			<div :class="`countdown-wrapper select-none ${lastStartTime ? '' : 'float-left'}`"
 					@dblclick="isShowModalTimer = true"
 					v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }">
 				<span class="countdown-item">{{ countdown.hours }}</span>
