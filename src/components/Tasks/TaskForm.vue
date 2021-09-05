@@ -324,7 +324,7 @@
 		},
 		computed: {
 			taskId () {
-				return this.projectCategoryId ? null : (this.$route.params.id || this.modalTaskId || this.form?.id)
+				return this.projectCategoryId ? null : (this.form?.id || this.modalTaskId || this.$route.params.id)
 			},
 			workspaceStatuses () {
 				return this.$store.getters.statuses
