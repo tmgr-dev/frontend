@@ -254,6 +254,11 @@
 				type: Number,
 				default: null
 			},
+			statusId: {
+				required: false,
+				type: Number,
+				default: null
+			},
 			modalProjectCategoryId: {
 				required: false,
 				type: Number,
@@ -304,6 +309,7 @@
 				form: {
 					title: '',
 					status: 'created',
+					status_id: this.statusId,
 					project_category_id: this.projectCategoryId || '',
 					description: '',
 					common_time: 0,
@@ -532,6 +538,7 @@
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.post('tasks', this.form)
 					this.$emit('updated')
+					this.$store.dispatch('reloadTasks')
 					if (!this.isCreatingTask) {
 						this.showAlert()
 					}
@@ -558,6 +565,7 @@
 					this.prepareForm()
 					const {data: {data}} = await this.$axios.put(`tasks/${this.taskId}`, this.form)
 					this.$emit('updated')
+					this.$store.dispatch('reloadTasks')
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time)
 					}

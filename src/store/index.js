@@ -18,7 +18,9 @@ const state = {
 	pusherBeamsClient: pusherBeamsClient,
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
+	createTaskInStatusId: null,
 	showCreateTaskModal: false,
+	reloadTasks: null,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
 	statuses: null,
@@ -32,8 +34,10 @@ const getters = {
 	apiBaseUrl: state => state.apiBaseUrl,
 	token: state => state.token,
 	statuses: state => state.statuses,
+	reloadTasks: state => state.reloadTasks,
 	currentTaskIdForModal: state => state.currentTaskIdForModal,
 	createTaskInProjectCategoryId: state => state.createTaskInProjectCategoryId,
+	createTaskInStatusId: state => state.createTaskInStatusId,
 	showCreateTaskModal: state => state.showCreateTaskModal,
 	pusherBeamsUserId: state => state.pusherBeamsUserId,
 	pusherBeamsClient: state => state.pusherBeamsClient,
@@ -69,10 +73,15 @@ const mutations = {
 	currentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId
 	},
-	createTaskInProjectCategoryId(state, projectCategoryId) {
+	showCreateTaskModal(state, {showCreateTaskModal, statusId}) {
+		state.showCreateTaskModal = showCreateTaskModal
+		state.createTaskInStatusId = statusId
+	},
+	createTaskInProjectCategoryId(state, projectCategoryId, statusId) {
 		state.currentTaskIdForModal = null
 		state.createTaskInProjectCategoryId = projectCategoryId
 		state.showCreateTaskModal = true
+		state.createTaskInStatusId = statusId
 	},
 	pusherBeamsUserId(state, pusherBeamsUserId) {
 		state.pusherBeamsUserId = pusherBeamsUserId
@@ -105,6 +114,12 @@ const actions = {
 	logout() {
 		localStorage.clear()
 		document.location.reload()
+	},
+	reloadTasks({state}) {
+		if (!state.reloadTasks) {
+			state.reloadTasks = 1
+		}
+		++state.reloadTasks
 	},
 	closeTaskModal({state}) {
 		state.currentTaskIdForModal = null

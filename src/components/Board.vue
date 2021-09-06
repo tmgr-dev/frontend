@@ -38,11 +38,11 @@
 								</div>
 
 								<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
-								<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status.id" class="h-full">
+								<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status.id" class="h-full" style="overflow-x: scroll">
 									<template #item="{element: task}">
 										<task-card
 											:task="task"
-											class="mt-3 cursor-move"
+											class="my-5 cursor-move"
 											:data-task="jsonEncode(task)"
 										></task-card>
 									</template>
@@ -73,6 +73,11 @@
 			Button,
 			TaskCard,
 			draggable
+		},
+		watch: {
+			'$store.getters.reloadTasks'() {
+				this.loadTasks()
+			}
 		},
 		data: () => ({
 			user: {
@@ -107,13 +112,14 @@
 		},
 		methods: {
 			getActions(column) {
+				console.log(column.status.id)
 				return [
-					{
-						click: () => {
-							alert(column.name);
-						},
-						label: 'Collapse'
-					},
+					// {
+					// 	click: () => {
+					// 		alert(column.name);
+					// 	},
+					// 	label: 'Collapse'
+					// },
 					{
 						click: async () => {
 							const response = await this.$axios.post(`statuses/${column.status.id}/to/${this.archivedStatus.id}`)
@@ -122,15 +128,18 @@
 						},
 						label: 'Archive all'
 					},
-					{
-						click: async () => {
-
-						},
-						label: 'Rename status'
-					},
+					// {
+					// 	click: async () => {
+					//
+					// 	},
+					// 	label: 'Rename status'
+					// },
 					{
 						click: () => {
-							alert(column.name);
+							this.$store.commit('showCreateTaskModal', {
+								showCreateTaskModal: true,
+								statusId: column.status.id
+							})
 						},
 						label: 'Create task'
 					},
