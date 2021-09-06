@@ -27,7 +27,16 @@
 									'background-color': column.status.color
 								}"
 							>
-								<p :class="`text-white font-semibold font-sans tracking-wide text-sm`">{{column.title}}</p>
+								<div>
+									<p :class="`relative text-white font-semibold font-sans tracking-wide text-sm`">
+										{{column.title}}
+
+									<div class="inline-block absolute top-0 right-0">
+										<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
+									</div>
+									</p>
+								</div>
+
 								<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
 								<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status.id" class="h-full">
 									<template #item="{element: task}">
@@ -52,10 +61,14 @@
 	import InputField from "components/UIElements/InputField";
 	import draggable from "vuedraggable";
 	import TaskCard from "./UIElements/TaskCard.vue";
+	import DropdownMenu from "components/UIElements/DropdownMenu";
+	import DashboardDropdownMenu from "components/UIElements/DashboardDropdownMenu";
 
 	export default {
 		name: 'Profile',
 		components: {
+			DashboardDropdownMenu,
+			DropdownMenu,
 			InputField,
 			Button,
 			TaskCard,
@@ -68,6 +81,7 @@
 				password_confirmation: null,
 			},
 			errors: {},
+			archivedStatus: null,
 			oldColumns: [
 				{
 					title: "Backlog",
@@ -92,6 +106,36 @@
 			await this.loadTasks()
 		},
 		methods: {
+			getActions(column) {
+				return [
+					{
+						click: () => {
+							alert(column.name);
+						},
+						label: 'Collapse'
+					},
+					{
+						click: async () => {
+							const response = await this.$axios.post(`statuses/${column.status.id}/to/${this.archivedStatus.id}`)
+							console.log(response)
+							this.loadTasks()
+						},
+						label: 'Archive all'
+					},
+					{
+						click: async () => {
+
+						},
+						label: 'Rename status'
+					},
+					{
+						click: () => {
+							alert(column.name);
+						},
+						label: 'Create task'
+					},
+				]
+			},
 			jsonEncode(data) {
 				return JSON.stringify(data);
 			},
@@ -158,6 +202,7 @@
 				for (let i = 0; i < statuses.length; ++i) {
 					let status = statuses[i];
 					if (status.type === 'archived') {
+						this.archivedStatus = status
 						continue
 					}
 					columns.push({
