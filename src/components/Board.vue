@@ -29,11 +29,10 @@
 							>
 								<div>
 									<p :class="`relative text-white font-semibold font-sans tracking-wide text-sm`">
-										{{column.title}} {{column.status.id}}
-
-									<div class="inline-block absolute top-0 right-0">
-										<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
-									</div>
+										{{ column.title }}
+										<div class="inline-block absolute top-0 right-0">
+											<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
+										</div>
 									</p>
 								</div>
 

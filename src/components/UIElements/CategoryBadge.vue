@@ -12,7 +12,6 @@
 		class="opacity-10 hover:opacity-100 tc-hidden md:inline add-task-to-category-from-task-category z-10">
 		<span class="material-icons text-3xl -mt-1">add_circle_outline</span>
 	</a>
-	{{statusId}}
 </template>
 
 <script>
