@@ -77,11 +77,11 @@ const mutations = {
 		state.showCreateTaskModal = showCreateTaskModal
 		state.createTaskInStatusId = statusId
 	},
-	createTaskInProjectCategoryId(state, projectCategoryId, statusId) {
+	createTaskInProjectCategoryId(state, {projectCategoryId, statusId}) {
+		state.createTaskInStatusId = statusId
 		state.currentTaskIdForModal = null
 		state.createTaskInProjectCategoryId = projectCategoryId
 		state.showCreateTaskModal = true
-		state.createTaskInStatusId = statusId
 	},
 	pusherBeamsUserId(state, pusherBeamsUserId) {
 		state.pusherBeamsUserId = pusherBeamsUserId

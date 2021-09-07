@@ -17,6 +17,12 @@
 					v-model="val"
 					:placeholder="placeholder"
 				/>
+				<content-editable
+					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					v-else-if="type === 'contenteditable'"
+					v-model="val"
+					:placeholder="placeholder"
+				/>
 				<input
 					v-else-if="type === 'time_in_seconds'"
 					:id="name"
@@ -64,15 +70,19 @@
 	</div>
 </template>
 
+
 <script>
 	import getTimeInSeconds from './InputField/getTimeInSeconds'
 	import toHHMM from './InputField/toHHMM'
+	import ContentEditable from './ContentEditable'
 
 	export default {
 		name: "InputField",
+		components: {ContentEditable},
 		props: {
 			modelValue: {
-				required: false
+				required: false,
+				default: null
 			},
 			errors: {
 				required: false,

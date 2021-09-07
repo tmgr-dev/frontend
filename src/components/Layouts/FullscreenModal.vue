@@ -3,7 +3,7 @@
 			@click="close"
 			:class="isCenter ? 'flex' : ''">
 		<div
-			class="f-modal"
+			class="f-modal h-full py-5"
 			:style="modalStyles">
 			<slot name="modal-body"></slot>
 		</div>
@@ -66,6 +66,13 @@
 		transition: 0.4s;
 		opacity: 0;
 		transform: translate3d(100%, 0, 0);
+
+		display: -webkit-flex;
+		display: flex;
+		-webkit-align-items: center;
+		align-items: center;
+		-webkit-justify-content: center;
+		justify-content: center;
 
 		&.active {
 			transform: translate3d(0, 0, 0);

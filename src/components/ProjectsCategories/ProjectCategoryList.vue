@@ -92,7 +92,7 @@
 							<span class="material-icons text-3xl">done_all</span>
 						</a>
 						<a
-							@click.prevent="$store.commit('createTaskInProjectCategoryId', id)"
+							@click.prevent="$store.commit('createTaskInProjectCategoryId', {projectCategoryId: id})"
 							:href="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`"
 						  title="Add task to category"
 							class="opacity-25 hover:opacity-100 inline md:hidden">
@@ -120,7 +120,7 @@
 							<span class="material-icons text-3xl">done_all</span>
 						</a>
 						<a
-							@click.prevent="$store.commit('createTaskInProjectCategoryId', id)"
+							@click.prevent="$store.commit('createTaskInProjectCategoryId', {projectCategoryId: id})"
 							:href="`/${id ? 'project-categories/' + id + '/tasks/' : ''}create`" title="Add task to category"
 							class="opacity-25 hover:opacity-100 tc-hidden md:inline">
 							<span class="material-icons text-4xl">add_circle_outline</span>

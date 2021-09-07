@@ -12,7 +12,7 @@
 		<div class="flex mt-4 justify-between items-center">
 			<span class="text-sm text-gray-600">{{ secondsToHumanReadableString(task.common_time) }}</span>
 			<div>
-				<category-badge v-if="task.category" :category="task.category"></category-badge>
+				<category-badge v-if="task.category" :category="task.category" :status-id="task.status_id"></category-badge>
 			</div>
 		</div>
 	</div>

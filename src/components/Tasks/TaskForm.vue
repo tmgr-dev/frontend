@@ -98,8 +98,8 @@
 			</modal>
 		</div>
 	</div>
-	<div :class="`container mx-auto ${$color('blocks')} rounded-lg relative`">
-		<div :class="`p-3 shadow-md mt-10`">
+	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative`">
+		<div ref="header" :class="`p-3 shadow-md ${isModal ? '' : 'mt-10'}`">
 			<router-link
 				v-if="!isCreatingTask"
 				:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
@@ -130,34 +130,23 @@
 				<span class="material-icons text-2xl text-red-700" @click="$emit('close')">close</span>
 			</button>
 		</div>
-		<div :class="`md:grid md:grid-cols-2 gap-4 mt-14 ${isModal ? '' : 'pt-10'}`">
-			<div class="text-center">
-				<NewCountdown
-					v-if="form.id"
-					:init-task="form"
-					@toggle="toggleCountdown"
-					@update:seconds="updateSeconds"
-				/>
-				<NewCountdown
-					v-else
-					disabled
-					:init-task="form"
-					@update:seconds="updateSeconds"
-				/>
-				<a href="#" class="text-gray-600 p-5 pt-4 md:p-0" :class="$color('grayHover')" >
-
-				</a>
-			</div>
-			<div>
-				<p></p>
-			</div>
-		</div>
-		<div class="p-10">
-
-		</div>
-		<div class="md:grid md:grid-cols-2">
-			<div class="p-2.5">
-				<div>
+		<div :class="`md:grid md:grid-cols-2 gap-4 ${isModal ? '' : 'pt-10'}`">
+			<div :style="`height: ${middleBlockHeight}px`" class="text-center p-2.5 overflow-y-scroll">
+				<div class="mt-14">
+					<NewCountdown
+						v-if="form.id"
+						:init-task="form"
+						@toggle="toggleCountdown"
+						@update:seconds="updateSeconds"
+					/>
+					<NewCountdown
+						v-else
+						disabled
+						:init-task="form"
+						@update:seconds="updateSeconds"
+					/>
+				</div>
+				<div class="mt-10">
 					<input-field
 						v-model="form.title"
 						:errors="errors.title"
@@ -165,11 +154,12 @@
 						:hide-border="true"
 						:extra-class="`mb-1 ${$color('input')}`"
 						placeholder="Task name"/>
+					<p v-html="form.description"></p>
 					<input-field
 						v-model="form.description"
 						:hide-border="true"
 						:errors="errors.description"
-						type="textarea"
+						type="contenteditable"
 						placeholder="Description"
 					/>
 				</div>
@@ -212,9 +202,7 @@
 				<p>Block in development</p>
 			</div>
 		</div>
-
-
-		<div class="w-full p-5 shadow-top">
+		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0' : ''}`">
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
@@ -271,6 +259,7 @@
 		],
 		data() {
 			return {
+				middleBlockHeight: 300,
 				savedData: {},
 				availableSettings: [],
 				settings: [],
@@ -368,6 +357,14 @@
 			}
 		},
 		methods: {
+			calcMiddleBlockHeight() {
+				const modalHeight = this.$refs.modal.offsetHeight;
+				const headerHeight = this.$refs.header.offsetHeight;
+				const footerHeight = this.$refs.footer.offsetHeight;
+
+				this.middleBlockHeight = modalHeight - (headerHeight + footerHeight);
+				console.log('this.middleBlockHeight', this.middleBlockHeight);
+			},
 			async loadTaskSettings() {
 				const {data: {data}} = await this.$axios.get('tasks/settings')
 				this.initSettings(data, this.form.settings)
@@ -527,6 +524,17 @@
 				this.form = { ...data }
 				this.form.id = id
 				this.updateSeconds(this.form.common_time)
+
+				if (this.form.start_time && this.form.status_id) {
+					const statusCurrent = this.workspaceStatuses.find((el) => el.type !== 'active');
+					if (statusCurrent) {
+						const firstActiveStatus = this.workspaceStatuses.find((el) => el.type === 'active');
+						if (firstActiveStatus) {
+							this.form.status_id = firstActiveStatus.id;
+							this.saveTask();
+						}
+					}
+				}
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -641,9 +649,20 @@
 					return
 				}
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
+			},
+			onResize() {
+				this.calcMiddleBlockHeight()
 			}
 		},
+		mounted() {
+			this.calcMiddleBlockHeight()
+			console.log('TASK FORM',this.statusId)
+		},
+		beforeUnmount() {
+			window.removeEventListener("resize", this.onResize);
+		},
 		async created () {
+			window.addEventListener("resize", this.onResize);
 			if (this.taskId) {
 				await this.loadModel()
 				window.onkeydown = this.getShortcutSaveListener()
