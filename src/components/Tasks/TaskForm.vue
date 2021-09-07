@@ -154,7 +154,6 @@
 						:hide-border="true"
 						:extra-class="`mb-1 ${$color('input')}`"
 						placeholder="Task name"/>
-					<p v-html="form.description"></p>
 					<input-field
 						v-model="form.description"
 						:hide-border="true"
