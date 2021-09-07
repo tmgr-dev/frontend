@@ -206,7 +206,7 @@
 		mounted() {
 			setTimeout(() => {
 				++this.updateKey
-			}, 100);
+			}, 500);
 		},
 		created() {
 			this.updateWidth()
