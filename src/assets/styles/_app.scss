@@ -139,3 +139,10 @@ burger
 	height: 12px !important;
 	margin-left: 10px;
 }
+
+.ql-bubble .ql-tooltip {
+	margin-left: 75px;
+	.ql-tooltip-arrow {
+		left: 10%;
+	}
+}

@@ -146,7 +146,7 @@
 						@update:seconds="updateSeconds"
 					/>
 				</div>
-				<div class="mt-10">
+				<div class="mt-10 mb-5">
 					<input-field
 						v-model="form.title"
 						:errors="errors.title"

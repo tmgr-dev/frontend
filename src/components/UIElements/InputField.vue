@@ -1,7 +1,7 @@
 <template>
 	<div class="input_wrapper">
 		<transition name="fade">
-			<div v-if="showInput">
+			<div v-if="showInput" :key="updateKey">
 				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${borderColor}`">
 					<vue-select
 						v-if="options"
@@ -17,12 +17,21 @@
 					v-model="val"
 					:placeholder="placeholder"
 				/>
-				<content-editable
-					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+<!--				<content-editable-->
+<!--					-->
+<!--					v-else-if="type === 'contenteditable'"-->
+<!--					v-model="val"-->
+<!--					:placeholder="placeholder"-->
+<!--				/>-->
+				<quill-editor
 					v-else-if="type === 'contenteditable'"
-					v-model="val"
+					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					v-model:content="val"
+					content-type="html"
+					theme="bubble"
 					:placeholder="placeholder"
-				/>
+				></quill-editor>
+
 				<input
 					v-else-if="type === 'time_in_seconds'"
 					:id="name"
@@ -75,6 +84,7 @@
 	import getTimeInSeconds from './InputField/getTimeInSeconds'
 	import toHHMM from './InputField/toHHMM'
 	import ContentEditable from './ContentEditable'
+
 
 	export default {
 		name: "InputField",
@@ -139,6 +149,8 @@
 		data() {
 			return {
 				screenWidth: null,
+				value: null,
+				updateKey: 0,
 				showInput: true
 			}
 		},
@@ -190,6 +202,11 @@
 			updateWidth() {
 				this.screenWidth = window.innerWidth;
 			},
+		},
+		mounted() {
+			setTimeout(() => {
+				++this.updateKey
+			}, 100);
 		},
 		created() {
 			this.updateWidth()

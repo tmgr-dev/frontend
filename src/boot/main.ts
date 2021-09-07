@@ -8,6 +8,8 @@ import colorSchemes from "src/colors/schemes";
 
 // Directives
 import { VueTheMask, mask } from "src/components/UIElements/VueTheMask";
+import { QuillEditor } from '@vueup/vue-quill';
+import '@vueup/vue-quill/dist/vue-quill.bubble.css';
 import Tooltip from "src/directives/tooltip";
 import Selectable from "src/directives/selectable";
 
@@ -19,6 +21,7 @@ export default (obj: any) => {
 
 	components.map((component: Component) => app.component(component.name || '', component));
 	app.component('VueTheMask', VueTheMask);
+	app.component('QuillEditor', QuillEditor);
 
 	axios.defaults.baseURL = store.getters.apiBaseUrl;
 	if (store.getters.token) {
