@@ -15,7 +15,7 @@
 					<slot name="alerts"></slot>
 				</div>
 				<slot name="footer"></slot>
-				<div class="container mx-auto px-5 my-5 text-center text-gray-600 pb-5">
+				<div class="container mx-auto px-5 my-5 text-center text-gray-600 pb-5" v-if="!noCopyright">
 					<p>Task manager. <a href="#" target="_blank" class="text-gray-500">Tmgr.dev</a></p>
 					<p>{{ getYearsForFooter() }}</p>
 				</div>
@@ -27,6 +27,13 @@
 <script>
 	export default {
 		name: "BaseLayout",
+		props: {
+			noCopyright: {
+				type: Boolean,
+				required: false,
+				default: false
+			}
+		},
 		methods: {
 			getYearsForFooter () {
 				const startYear = 2020

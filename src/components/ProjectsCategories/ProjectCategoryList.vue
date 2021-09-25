@@ -197,6 +197,11 @@ export default {
 				id: 'all'
 			}].concat(statuses);
 		},
+		tasksIndexUrl () {
+			return this.status
+				? `tasks/?all&project_category_id=${this.id}&status_id=${this.status}`
+				: `tasks/?all&project_category_id=${this.id}`
+		},
 		id() {
 			return this.$route.params.id || ''
 		},
@@ -236,16 +241,10 @@ export default {
 			this.confirm = {title, body, action}
 		},
 		async loadTasks() {
-			const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl())
+			const {data: {data}} = await this.$axios.get(this.tasksIndexUrl)
 			this.setLoadingActions(data)
 			this.tasks = data
 			this.isTasksFirstLoading = false
-		},
-		getTasksIndexUrl() {
-			if (this.$route.params.status) {
-				return `tasks/?all&project_category_id=${this.id}&status_id=${this.$route.params.status}`
-			}
-			return `tasks/?all&project_category_id=${this.id}`
 		},
 		getBreadcrumbs,
 		getActions(category) {

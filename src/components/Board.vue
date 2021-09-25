@@ -2,31 +2,18 @@
 	<teleport to="title">
 		Board Test
 	</teleport>
-	<BaseLayout>
+	<BaseLayout no-copyright>
 		<template #body>
 			<div class="block justify-center">
-				<div class="min-h-screen w-full overflow-x-scroll pb-12">
-					<div
-						style="width: max-content"
-					>
-						
+				<div class="w-full overflow-x-auto">
+					<div class="board-container">
 						<div
 							v-for="column in columns"
 							:key="column.title"
-							class="pr-2"
-							style="
-								width: 300px;
-								display: inline-block;
-								height: 100vh;
-								float: left;
-							"
-						>
+							class="pr-2 board-container__item">
 							<div
 								:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
-								:style="{
-									'background-color': column.status.color
-								}"
-							>
+								:style="{'background-color': column.status.color}">
 								<div>
 									<p :class="`relative text-white font-semibold font-sans tracking-wide text-sm`">
 										{{ column.title }}
@@ -37,11 +24,20 @@
 								</div>
 
 								<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
-								<draggable v-model="column.tasks" :animation="200" ghost-class="ghost-card" group="tasks" item-key="id" @end="onEnd" :data-status="column.status.id" class="h-full" style="overflow-x: scroll">
+								<draggable
+									v-model="column.tasks"
+									:animation="200"
+									ghost-class="ghost-card"
+									group="tasks"
+									item-key="id"
+									@end="onEnd"
+									:data-status="column.status.id"
+									class="board-card">
 									<template #item="{element: task}">
 										<task-card
 											:task="task"
 											class="my-5 cursor-move"
+
 											:data-task="jsonEncode(task)"
 										></task-card>
 									</template>
@@ -230,7 +226,7 @@
 				}
 			},
 			async loadTasksByStatus (status) {
-				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status.hasOwnProperty('id') ? status.id : status))
+				const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl(status?.id ? status.id : status))
 				return data.sort((a, b) => {
 					if ( a.order < b.order ){
 						return -1;
@@ -257,11 +253,50 @@
 	}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 	.settings-container {
 		max-width: 700px;
 		margin: 50px auto;
 		padding: 20px;
 		box-shadow: rgb(233 233 233) 1px 4px 20px;
+	}
+
+	.custom-scroll {
+		&::-webkit-scrollbar {
+			width: 2px;
+		}
+
+		&::-webkit-scrollbar-track {
+			box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+		}
+
+		&::-webkit-scrollbar-thumb {
+			background-color: #727272;
+		}
+	}
+
+	.board-container {
+		display: flex;
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		overflow-y: hidden;
+		@extend .custom-scroll;
+
+		&__item {
+			width: 300px;
+			flex-shrink: 0;
+			max-height: calc(100vh - 180px);
+		}
+	}
+
+	.board-card {
+		@extend .custom-scroll;
+		overflow-x: auto;
+		margin-top: 20px;
+		height: calc(100% - 50px);
+
+		div:first-child {
+			margin-top: 0 !important;
+		}
 	}
 </style>

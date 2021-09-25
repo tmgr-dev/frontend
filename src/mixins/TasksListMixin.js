@@ -1,4 +1,9 @@
 export default {
+	computed: {
+		tasksIndexUrl () {
+			return this.status ? `tasks/status/${this.status}?all` : 'tasks/current?all'
+		}
+	},
   methods: {
     getTaskFormattedTime(task) {
       const taskTime = task instanceof Object ? task.common_time : task
@@ -9,12 +14,6 @@ export default {
       let minutes = Math.ceil((taskTime % 3600) / 60)
 
       return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`
-    },
-    getTasksIndexUrl() {
-      if (this.status) {
-        return `tasks/status/${this.status}?all`
-      }
-      return 'tasks/current?all'
-    },
+    }
   }
 }

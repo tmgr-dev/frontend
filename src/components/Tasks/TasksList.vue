@@ -114,7 +114,7 @@
 				try {
 					clearTimeout(this.searchTimeout)
 					const { searchText } = this
-					const {data: {data}} = await this.$axios.get(this.getTasksIndexUrl() + (searchText ? '&search=' + searchText : ''))
+					const {data: {data}} = await this.$axios.get(this.tasksIndexUrl + (searchText ? '&search=' + searchText : ''))
 					this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
 					this.tasks = data
 					return data
