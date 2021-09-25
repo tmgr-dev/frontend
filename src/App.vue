@@ -92,6 +92,7 @@
 
 	const DEFAULT_TRANSITION = 'fade'
 
+	// TODO: solve slideout & horizontal scroll in the Board
 	export default defineComponent({
 		name: 'App',
 		components: {

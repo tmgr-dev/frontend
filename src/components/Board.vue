@@ -101,10 +101,6 @@
 			],
 			columns: []
 		}),
-		async mounted() {
-			await this.loadColumns()
-			await this.loadTasks()
-		},
 		methods: {
 			getActions(column) {
 				console.log(column.status.id)
@@ -249,6 +245,11 @@
 					this.errors = errors
 				}
 			}
+		},
+		async mounted() {
+			document.body.classList.add('overflow-hidden')
+			await this.loadColumns()
+			await this.loadTasks()
 		}
 	}
 </script>
@@ -285,7 +286,7 @@
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			max-height: calc(100vh - 180px);
+			height: calc(100vh - 180px);
 		}
 	}
 
