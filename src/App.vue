@@ -1,4 +1,5 @@
 <template>
+	<alert ref="alert" />
 	<div id="q-app" :class="$color('textMain')" class="q-electron-drag">
 		<q-bar v-if="$q.platform.is.electron">
 			<q-icon name="map"/>
@@ -44,8 +45,6 @@
 							<component v-show="showComponent" :is="Component"></component>
 						</transition>
 					</router-view>
-
-					<alert ref="alert" />
 				</q-scroll-area>
 			</div>
 		</Slideout>

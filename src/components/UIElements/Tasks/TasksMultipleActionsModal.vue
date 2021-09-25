@@ -18,6 +18,15 @@
 					</span>
 				</button>
 				<button
+					@click="$emit('updateStatus', '15')"
+					v-tooltip.top="setTooltipData('Archive')"
+					class="mr-1 bg-red-700 text-white rounded py-2 mt-2 hover:bg-red-800">
+					<span class="relative">
+						<span class="material-icons text-bold" v-if="!isLoadingActions.includes('15')">archive</span>
+						<loader v-if="isLoadingActions.includes('15')" is-mini />
+					</span>
+				</button>
+				<button
 					@click="$emit('updateStatus', 'active')"
 					v-tooltip.top="setTooltipData('Reactivate')"
 					class="mr-1 bg-purple-700 text-white rounded py-2 mt-2 hover:bg-purple-600">

@@ -130,77 +130,74 @@
 				<span class="material-icons text-2xl text-red-700" @click="$emit('close')">close</span>
 			</button>
 		</div>
-		<div :class="`md:grid md:grid-cols-2 gap-4 ${isModal ? '' : 'pt-10'}`">
-			<div :style="`height: ${middleBlockHeight}px`" class="text-center p-2.5 overflow-y-scroll">
-				<div class="mt-14">
-					<NewCountdown
-						v-if="form.id"
-						:init-task="form"
-						@toggle="toggleCountdown"
-						@update:seconds="updateSeconds"
-					/>
-					<NewCountdown
-						v-else
-						disabled
-						:init-task="form"
-						@update:seconds="updateSeconds"
-					/>
-				</div>
-				<div class="mt-10 mb-5">
-					<input-field
-						v-model="form.title"
-						:errors="errors.title"
-						type="text"
-						:hide-border="true"
-						:extra-class="`mb-1 ${$color('input')}`"
-						placeholder="Task name"/>
-					<input-field
-						v-model="form.description"
-						:hide-border="true"
-						:errors="errors.description"
-						type="contenteditable"
-						placeholder="Description"
-					/>
-				</div>
-				<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
-					<div v-if="form.checkpoints.length">
-						<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
-							<div class="w-full relative">
+
+		<div :style="`height: ${middleBlockHeight}px`" class="text-center p-2.5">
+			<div class="mt-14">
+				<NewCountdown
+					v-if="form.id"
+					:init-task="form"
+					@toggle="toggleCountdown"
+					@update:seconds="updateSeconds"
+				/>
+				<NewCountdown
+					v-else
+					disabled
+					:init-task="form"
+					@update:seconds="updateSeconds"
+				/>
+			</div>
+			<div class="mt-10 mb-5">
+				<input-field
+					v-model="form.title"
+					:errors="errors.title"
+					type="text"
+					:hide-border="true"
+					:extra-class="`mb-1 ${$color('input')}`"
+					placeholder="Task name"/>
+				<input-field
+					v-model="form.description"
+					:hide-border="true"
+					:errors="errors.description"
+					type="contenteditable"
+					placeholder="Description"
+				/>
+			</div>
+			<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
+				<div v-if="form.checkpoints.length">
+					<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
+						<div class="w-full relative">
 								<span
 									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10 ${checkpoint.inputType === 'textarea' ? 'pt-10' : ''}`"
 								>{{ v + 1 }}</span>
-								<input-field
-									:type="checkpoint.inputType"
-									placeholder="Checkpoint content"
-									:hide-border="true"
-									v-model="checkpoint.description"
-									:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? 'pt-10' : 'truncate pr-44'}`"
-								/>
-								<span class="absolute right-0 top-0 mt-1.5 text-sm" >
+							<input-field
+								:type="checkpoint.inputType"
+								placeholder="Checkpoint content"
+								:hide-border="true"
+								v-model="checkpoint.description"
+								:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? 'pt-10' : 'truncate pr-44'}`"
+							/>
+							<span class="absolute right-0 top-0 mt-1.5 text-sm" >
 									{{ secondsToStringTime(checkpoint.start) }} - {{ secondsToStringTime(checkpoint.end) }}
 									<span class="material-icons text-lg text-blue-700 checkpoint-delete" @click="changeCheckpointInputField(v)">edit</span>
 									<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
 								</span>
-							</div>
-							<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 						</div>
-						<h3 class="text-sm">
-							Add a checkpoint
-							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
-						</h3>
+						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 					</div>
-					<div v-else>
-						<h3 class="text-sm">
-							Create checkpoints
-							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
-						</h3>
-					</div>
+					<h3 class="text-sm">
+						Add a checkpoint
+						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
+					</h3>
+				</div>
+				<div v-else>
+					<h3 class="text-sm">
+						Create checkpoints
+						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
+					</h3>
 				</div>
 			</div>
-			<div class="p-2.5 text-center m-auto">
-				<p>Block in development</p>
-			</div>
 		</div>
+
 		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0' : ''}`">
 			<task-actions
 				:is-creating-task="isCreatingTask"

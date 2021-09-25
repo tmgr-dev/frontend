@@ -1,5 +1,8 @@
 <template>
 	<div class="tc-block text-center">
+		<!--<button v-if="!isCreatingTask" @click="$emit('removeTask')">
+			Delete
+		</button>-->
 		<span class="relative inline-flex rounded-md shadow-sm">
 			<button
 				v-if="!isCreatingTask"
@@ -47,6 +50,7 @@
 			'createTask',
 			'saveTask',
 			'settingsTask',
+			'removeTask'
 		],
 		props: {
 			isCreatingTask: {

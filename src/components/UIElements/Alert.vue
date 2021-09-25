@@ -81,3 +81,9 @@
 		}
 	}
 </script>
+
+<style scoped>
+	.alert {
+		z-index: 99999999;
+	}
+</style>
