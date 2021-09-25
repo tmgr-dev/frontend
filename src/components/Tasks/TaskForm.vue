@@ -203,6 +203,7 @@
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
 				:is-saving="isSaving"
+				@removeTask="removeTask(form)"
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
@@ -212,6 +213,14 @@
 			Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 		</p>
 	</div>
+
+	<confirm
+		v-if="confirm"
+		:title="confirm.title"
+		:body="confirm.body"
+		@onOk="confirm.action()"
+		@onCancel="confirm = undefined"
+	/>
 </template>
 
 <script>
@@ -219,10 +228,12 @@
 	import InputField from "src/components/UIElements/InputField";
 	import TaskActions from "src/components/UIElements/Tasks/TaskActions";
 	import NewCountdown from "components/Tasks/NewCountdown";
+	import Confirm from "components/UIElements/Confirm";
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			Confirm,
 			NewCountdown,
 			TaskActions,
 			InputField
@@ -255,6 +266,7 @@
 		],
 		data() {
 			return {
+				confirm: null,
 				middleBlockHeight: 300,
 				savedData: {},
 				availableSettings: [],
@@ -353,6 +365,23 @@
 			}
 		},
 		methods: {
+			showConfirm (title, body, action) {
+				this.confirm = { title, body, action }
+			},
+			async removeTask (task) {
+				const deleteTask = async () => {
+					try {
+						const {data: {data}} = await this.$axios.delete(`/tasks/${task.id}`)
+						task.deleted_at = data.deleted_at
+					} catch (e) {
+						console.error(e)
+					} finally {
+						this.confirm = null
+						this.$emit('close')
+					}
+				}
+				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
+			},
 			calcMiddleBlockHeight() {
 				const modalHeight = this.$refs.modal.offsetHeight;
 				const headerHeight = this.$refs.header.offsetHeight;

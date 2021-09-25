@@ -1,8 +1,11 @@
 <template>
-	<div class="tc-block text-center">
-		<!--<button v-if="!isCreatingTask" @click="$emit('removeTask')">
+	<div class="tc-block text-center flex justify-end">
+		<button
+			v-if="!isCreatingTask"
+			@click="$emit('removeTask')"
+			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5 mr-auto">
 			Delete
-		</button>-->
+		</button>
 		<span class="relative inline-flex rounded-md shadow-sm">
 			<button
 				v-if="!isCreatingTask"
@@ -31,14 +34,14 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$router.go(-1)"
-			class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 			type="button">
 			Cancel
 		</button>
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="bg-gray-500 mr-5 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 			type="button">Settings</button>
 	</div>
 </template>

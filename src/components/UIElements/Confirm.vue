@@ -6,14 +6,14 @@
 	@close="$emit('onCancel')">
 	<template #modal-body>
 		<slot name="title">
-			<h3 :class="`${$color('textModal')} p-5`">
+			<div :class="`${$color('textModal')} text-main p-2 text-xl text-bold`">
 				<slot name="title-content">
 					{{ title }}
 				</slot>
-			</h3>
+			</div>
 		</slot>
 		<slot name="body">
-			<p :class="`${$color('textModal')} p-5`">
+			<p :class="`${$color('textModal')} p-2`">
 				<slot name="body-content">
 					{{ body }}
 				</slot>

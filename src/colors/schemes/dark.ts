@@ -23,7 +23,7 @@ const keys: Keys = {
 	bg: 'bg-gray-600',
 	buttonActionOpacity: 'opacity-50 hover:opacity-75',
 	grayHover: 'hover:text-gray-300',
-	modalBg: 'bg-gray-400',
+	modalBg: 'bg-gray-200',
 	settingsTextColor: 'text-gray-400',
 	taskSettingTextColor: 'text-gray-800',
 	borderSelection: 'border-gray-400'
