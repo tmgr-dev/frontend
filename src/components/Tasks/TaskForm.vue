@@ -131,7 +131,10 @@
 			</button>
 		</div>
 
-		<div :style="`height: ${middleBlockHeight}px`" class="text-center p-2.5">
+		<div :style="{
+			height: `${middleBlockHeight}px`,
+			'overflow-y': 'scroll'
+		}" class="text-center p-2.5">
 			<div class="mt-14">
 				<NewCountdown
 					v-if="form.id"
@@ -196,6 +199,9 @@
 					</h3>
 				</div>
 			</div>
+			<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
+				Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
+			</p>
 		</div>
 
 		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0' : ''}`">
@@ -209,9 +215,6 @@
 				@settingsTask="showModalCategory"
 			/>
 		</div>
-		<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
-			Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
-		</p>
 	</div>
 
 	<confirm
