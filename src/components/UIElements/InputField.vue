@@ -204,9 +204,7 @@
 			},
 		},
 		mounted() {
-			setTimeout(() => {
-				++this.updateKey
-			}, 500);
+			//++this.updateKey
 		},
 		created() {
 			this.updateWidth()

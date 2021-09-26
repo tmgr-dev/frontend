@@ -10,15 +10,19 @@
 						<div
 							v-for="column in columns"
 							:key="column.title"
-							class="pr-2 board-container__item">
+							class="pr-2 board-container__item"
+						>
 							<div
 								:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
-								:style="{'background-color': column.status.color}">
+								:style="{'background-color': column.status.color}"
+							>
 								<div>
-									<p :class="`relative text-white font-semibold font-sans tracking-wide text-sm`">
+									<p
+										class="relative text-white font-semibold font-sans tracking-wide text-sm"
+									>
 										{{ column.title }}
 										<div class="inline-block absolute top-0 right-0">
-											<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
+											<dashboard-dropdown-menu :actions="getActions(column)"/>
 										</div>
 									</p>
 								</div>
@@ -36,10 +40,9 @@
 									<template #item="{element: task}">
 										<task-card
 											:task="task"
-											class="my-5 cursor-move"
-
+											class="my-2 cursor-move"
 											:data-task="jsonEncode(task)"
-										></task-card>
+										/>
 									</template>
 								</draggable>
 							</div>
@@ -105,26 +108,14 @@
 			getActions(column) {
 				console.log(column.status.id)
 				return [
-					// {
-					// 	click: () => {
-					// 		alert(column.name);
-					// 	},
-					// 	label: 'Collapse'
-					// },
 					{
 						click: async () => {
-							const response = await this.$axios.post(`statuses/${column.status.id}/to/${this.archivedStatus.id}`)
-							console.log(response)
+							await this.$axios
+								.post(`statuses/${column.status.id}/to/${this.archivedStatus.id}`)
 							this.loadTasks()
 						},
 						label: 'Archive all'
 					},
-					// {
-					// 	click: async () => {
-					//
-					// 	},
-					// 	label: 'Rename status'
-					// },
 					{
 						click: () => {
 							this.$store.commit('showCreateTaskModal', {
@@ -136,12 +127,8 @@
 					},
 				]
 			},
-			jsonEncode(data) {
-				return JSON.stringify(data);
-			},
-			jsonDecode(stringData) {
-				return JSON.parse(stringData)
-			},
+			jsonEncode: (data) => JSON.stringify(data),
+			jsonDecode: (stringData) => JSON.parse(stringData),
 			async onEnd({to: {dataset: {status}}, item: {dataset: {task}}}) {
 				task = this.jsonDecode(task);
 				status = parseInt(status);
@@ -211,7 +198,7 @@
 						tasks: []
 					})
 				}
-				this.$nextTick(() => {
+				await this.$nextTick(() => {
 					this.columns = columns
 				})
 			},
