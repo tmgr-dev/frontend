@@ -163,35 +163,28 @@
 
 				<div v-if="!isCreatingTask" class="checkpoints-wrapper" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
 					<div class="text-sm text-bold">
-						Add a checkpoint
+						{{ form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints' }}
 						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
 					</div>
-					<div v-if="form.checkpoints.length">
-						<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
-							<div class="w-full relative">
+
+					<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
+						<div class="w-full relative">
 								<span
 									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10`"
 								>{{ v + 1 }}</span>
-								<input-field
-									:type="checkpoint.inputType"
-									:for-checkpoint="true"
-									placeholder="Checkpoint content"
-									v-model="checkpoint.description"
-									:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'}`"
-								/>
-								<span class="absolute right-0 top-0 mt-1.5 text-sm" >
+							<input-field
+								:type="checkpoint.inputType"
+								:for-checkpoint="true"
+								placeholder="Checkpoint content"
+								v-model="checkpoint.description"
+								:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'}`"
+							/>
+							<span class="absolute right-0 top-0 mt-1.5 text-sm" >
 								{{ secondsToStringTime(checkpoint.start) }} - {{ secondsToStringTime(checkpoint.end) }}
 								<span class="material-icons text-lg text-blue-700 checkpoint-delete" @click="changeCheckpointInputField(v)">edit</span>
 								<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
 							</span>
-							</div>
 						</div>
-					</div>
-					<div v-else>
-						<h3 class="text-sm">
-							Create checkpoints
-							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
-						</h3>
 					</div>
 				</div>
 			</div>
