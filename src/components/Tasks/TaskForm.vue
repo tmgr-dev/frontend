@@ -98,44 +98,39 @@
 			</modal>
 		</div>
 	</div>
-	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative`">
-		<div ref="header" :class="`p-3 shadow-md ${isModal ? '' : 'mt-10'}`">
-			<router-link
-				v-if="!isCreatingTask"
-				:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
-				class="rounded focus:outline-none sm:mb-0"
-				:class="`${$color('h1')}-800`"
-				type="button">
-				{{ currentCategory ? currentCategory.title : 'Tasks' }}
-			</router-link>
-			<p v-else>
-				Create task
-			</p>
-			<input-field
-				v-if="!isCreatingTask && workspaceStatuses.length > 0"
-				v-model="form.status_id"
-				type="select"
-				:hide-border="true"
-				:options="workspaceStatuses"
-				option-name-key="name"
-				option-value-key="id"
-				class="inline-block ml-3"
-				style="min-width: 200px"
-			/>
+	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative p-3 pb-24`">
+		<header ref="header" :class="`flex justify-between items-center shadow-md ${isModal ? '' : 'mt-10'}`">
+			<div v-if="!isCreatingTask">
+				<router-link
+					:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+					class="rounded focus:outline-none sm:mb-0"
+					:class="`${$color('h1')}-800`"
+					type="button">
+					{{ currentCategory ? currentCategory.title : 'Tasks' }}
+				</router-link>
+				<input-field
+					v-if="workspaceStatuses.length > 0"
+					v-model="form.status_id"
+					type="select"
+					:options="workspaceStatuses"
+					option-name-key="name"
+					option-value-key="id"
+					class="inline-block ml-3"
+					style="min-width: 200px"
+				/>
+			</div>
+			<p v-else>Creating task</p>
+
 			<button
 				type="button"
-				:class="`checkpoint-delete absolute right-0`"
-				v-if="isModal"
-			>
-				<span class="material-icons text-2xl text-red-700" @click="$emit('close')">close</span>
+				class="checkpoint-delete"
+				v-if="isModal">
+				<span class="material-icons text-2xl" :class="$color('inverseTextColor')" @click="$emit('close')">close</span>
 			</button>
-		</div>
+		</header>
 
-		<div :style="{
-			height: `${middleBlockHeight}px`,
-			'overflow-y': 'scroll'
-		}" class="text-center p-2.5">
-			<div class="mt-14">
+		<section role="main" class="text-center">
+			<div class="mt-8">
 				<NewCountdown
 					v-if="form.id"
 					:init-task="form"
@@ -149,60 +144,62 @@
 					@update:seconds="updateSeconds"
 				/>
 			</div>
-			<div class="mt-10 mb-5">
-				<input-field
-					v-model="form.title"
-					:errors="errors.title"
-					type="text"
-					:hide-border="true"
-					:extra-class="`mb-1 ${$color('input')}`"
-					placeholder="Task name"/>
-				<input-field
-					v-model="form.description"
-					:hide-border="true"
-					:errors="errors.description"
-					type="contenteditable"
-					placeholder="Description"
-				/>
-			</div>
-			<div v-if="!isCreatingTask" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
-				<div v-if="form.checkpoints.length">
-					<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
-						<div class="w-full relative">
-								<span
-									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10 ${checkpoint.inputType === 'textarea' ? 'pt-10' : ''}`"
-								>{{ v + 1 }}</span>
-							<input-field
-								:type="checkpoint.inputType"
-								placeholder="Checkpoint content"
-								:hide-border="true"
-								v-model="checkpoint.description"
-								:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? 'pt-10' : 'truncate pr-44'}`"
-							/>
-							<span class="absolute right-0 top-0 mt-1.5 text-sm" >
-									{{ secondsToStringTime(checkpoint.start) }} - {{ secondsToStringTime(checkpoint.end) }}
-									<span class="material-icons text-lg text-blue-700 checkpoint-delete" @click="changeCheckpointInputField(v)">edit</span>
-									<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
-								</span>
-						</div>
-						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
-					</div>
-					<h3 class="text-sm">
+
+			<div class="form-and-checkpoints-wrapper">
+				<div class="mt-10 mb-5">
+					<input-field
+						v-model="form.title"
+						:errors="errors.title"
+						type="text"
+						:extra-class="`mb-1 ${$color('input')}`"
+						placeholder="Task name"/>
+					<input-field
+						v-model="form.description"
+						:errors="errors.description"
+						type="contenteditable"
+						placeholder="Description"
+					/>
+				</div>
+
+				<div v-if="!isCreatingTask" class="checkpoints-wrapper" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
+					<div class="text-sm text-bold">
 						Add a checkpoint
 						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
-					</h3>
-				</div>
-				<div v-else>
-					<h3 class="text-sm">
-						Create checkpoints
-						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
-					</h3>
+					</div>
+					<div v-if="form.checkpoints.length">
+						<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
+							<div class="w-full relative">
+								<span
+									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10`"
+								>{{ v + 1 }}</span>
+								<input-field
+									:type="checkpoint.inputType"
+									:for-checkpoint="true"
+									placeholder="Checkpoint content"
+									v-model="checkpoint.description"
+									:extra-class="`pl-7 ${$color('input')} ${checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'}`"
+								/>
+								<span class="absolute right-0 top-0 mt-1.5 text-sm" >
+								{{ secondsToStringTime(checkpoint.start) }} - {{ secondsToStringTime(checkpoint.end) }}
+								<span class="material-icons text-lg text-blue-700 checkpoint-delete" @click="changeCheckpointInputField(v)">edit</span>
+								<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
+							</span>
+							</div>
+						</div>
+					</div>
+					<div v-else>
+						<h3 class="text-sm">
+							Create checkpoints
+							<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
+						</h3>
+					</div>
 				</div>
 			</div>
-			<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
+
+			<span v-if="form.approximately_time" class="text-gray-500">
 				Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
-			</p>
-		</div>
+			</span>
+		</section>
 
 		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0' : ''}`">
 			<task-actions
@@ -270,7 +267,6 @@
 		data() {
 			return {
 				confirm: null,
-				middleBlockHeight: 300,
 				savedData: {},
 				availableSettings: [],
 				settings: [],
@@ -384,14 +380,6 @@
 					}
 				}
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
-			},
-			calcMiddleBlockHeight() {
-				const modalHeight = this.$refs.modal.offsetHeight;
-				const headerHeight = this.$refs.header.offsetHeight;
-				const footerHeight = this.$refs.footer.offsetHeight;
-
-				this.middleBlockHeight = modalHeight - (headerHeight + footerHeight);
-				console.log('this.middleBlockHeight', this.middleBlockHeight);
 			},
 			async loadTaskSettings() {
 				const {data: {data}} = await this.$axios.get('tasks/settings')
@@ -677,20 +665,9 @@
 					return
 				}
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
-			},
-			onResize() {
-				this.calcMiddleBlockHeight()
 			}
 		},
-		mounted() {
-			this.calcMiddleBlockHeight()
-			console.log('TASK FORM',this.statusId)
-		},
-		beforeUnmount() {
-			window.removeEventListener("resize", this.onResize);
-		},
 		async created () {
-			window.addEventListener("resize", this.onResize);
 			if (this.taskId) {
 				await this.loadModel()
 				window.onkeydown = this.getShortcutSaveListener()
@@ -759,5 +736,11 @@
 	.shadow-top {
 		--tw-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 		box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.16);
+	}
+
+	.container {
+		@media (max-width: 768px) {
+			max-width: 100% !important;
+		}
 	}
 </style>

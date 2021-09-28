@@ -4,6 +4,7 @@
 			:class="isCenter ? 'flex' : ''">
 		<div
 			class="f-modal h-full py-5"
+			:class="{'f-modal-mobile-full': mobileFullWidth}"
 			:style="modalStyles">
 			<slot name="modal-body"></slot>
 		</div>
@@ -18,6 +19,11 @@
 				type: Boolean,
 				required: false,
 				default: true
+			},
+			mobileFullWidth: {
+				type: Boolean,
+				required: false,
+				default: false
 			},
 			show: {
 				type: Boolean,
@@ -94,6 +100,12 @@
 
 		@media (max-width: 768px) {
 			max-width: 80% !important;
+		}
+
+		&.f-modal-mobile-full {
+			@media (max-width: 768px) {
+				max-width: 95% !important;
+			}
 		}
 
 		nav {

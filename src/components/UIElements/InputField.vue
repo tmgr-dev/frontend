@@ -2,7 +2,7 @@
 	<div class="input_wrapper">
 		<transition name="fade">
 			<div v-if="showInput" :key="updateKey">
-				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${borderColor}`">
+				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
 					<vue-select
 						v-if="options"
 						:label="optionNameKey"
@@ -11,10 +11,11 @@
 					/>
 				</div>
 				<textarea
-					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					:class="`${forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''} appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
 					v-else-if="type === 'textarea'"
 					name=""
 					v-model="val"
+					:style="forCheckpoint ? 'margin-bottom: -8px;' : ''"
 					:placeholder="placeholder"
 				/>
 <!--				<content-editable-->
@@ -25,7 +26,7 @@
 <!--				/>-->
 				<quill-editor
 					v-else-if="type === 'contenteditable'"
-					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
 					v-model:content="val"
 					content-type="html"
 					theme="bubble"
@@ -36,7 +37,7 @@
 					v-else-if="type === 'time_in_seconds'"
 					:id="name"
 					type="time"
-					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
@@ -61,7 +62,7 @@
 					v-else
 					:id="name"
 					:type="type"
-					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+					:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
 					v-model="val"
@@ -99,11 +100,6 @@
 				type: Array,
 				default: null
 			},
-			hideBorder: {
-				required: false,
-				type: Boolean,
-				default: false
-			},
 			type: {
 				required: false,
 				type: String,
@@ -127,6 +123,11 @@
 				required: false,
 				type: String,
 				default: ''
+			},
+			forCheckpoint: {
+				required: false,
+				type: Boolean,
+				default: false
 			},
 			name: {
 				required: false,
@@ -155,9 +156,6 @@
 			}
 		},
 		computed: {
-			borderColor () {
-				return this.hideBorder ? 'border-none' : `shadow ${this.$color('borderMain')}`
-			},
 			val: {
 				get() {
 					if (this.type === 'select') {

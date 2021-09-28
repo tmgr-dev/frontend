@@ -23,7 +23,7 @@
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
-					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
+					<span :class="`${$color('inverseTextColor')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
             <day-night-switch v-model="switchOn"/>
           </span>
 				</div>
@@ -66,7 +66,11 @@
 					</transition>
 				</span>
 		</div>
-		<fullscreen-modal v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal" close-on-bg-click @close="$store.dispatch('closeTaskModal')">
+		<fullscreen-modal
+			v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
+			close-on-bg-click
+			mobile-full-width
+			@close="$store.dispatch('closeTaskModal')">
 			<template #modal-body>
 				<task-form
 					:is-modal="true"

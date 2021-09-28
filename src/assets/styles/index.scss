@@ -25,6 +25,16 @@ body {
 	}
 }
 
+.reset-scroll {
+	&::-webkit-scrollbar {
+		width: 0;
+	}
+
+	&::-webkit-scrollbar-thumb {
+		background-color: transparent;
+	}
+}
+
 .bg-screen-default {
 	background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
 }
@@ -53,6 +63,10 @@ button {
 	}
 }
 
+.min-h-8 {
+	min-height: 36px;
+}
+
 .night-mode {
 	.vs__dropdown-menu {
 		background: #cbd5e0;
@@ -61,4 +75,28 @@ button {
 
 .vs__search {
 	color: #000;
+}
+
+.ql-container {
+	overflow-y: auto;
+	max-height: 300px;
+}
+
+.ql-editor {
+	&.ql-blank::before {
+		color: #fff !important;
+		left: 23px !important;
+	}
+
+	padding: 12px 10px;
+}
+
+.form-and-checkpoints-wrapper {
+	max-height: 680px;
+	overflow-y: auto;
+	margin-top: 20px;
+
+	@media (max-width: 1024px) { max-height: 550px }
+
+	@extend .reset-scroll;
 }

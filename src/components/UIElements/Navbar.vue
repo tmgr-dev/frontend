@@ -10,7 +10,7 @@
 		<div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center ${isHidden ? 'tc-hidden' : ''}`">
 				<navbar-menu />
-				<span :class="`${$color('navTextUser')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
+				<span :class="`${$color('inverseTextColor')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
 					<day-night-switch v-model="switchOn"/>
 				</span>
 				<account-dropdown />
