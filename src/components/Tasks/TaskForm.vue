@@ -99,38 +99,37 @@
 		</div>
 	</div>
 	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative p-3 pb-24`">
-		<header ref="header" :class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`">
-			<div v-if="!isCreatingTask">
-				<router-link
-					:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
-					class="rounded focus:outline-none sm:mb-0"
-					:class="`${$color('h1')}-800`"
-					type="button">
-					{{ currentCategory ? currentCategory.title : 'Tasks' }}
-				</router-link>
-				<input-field
-					v-if="workspaceStatuses.length > 0"
-					v-model="form.status_id"
-					type="select"
-					:options="workspaceStatuses"
-					option-name-key="name"
-					option-value-key="id"
-					class="inline-block ml-3"
-					style="min-width: 200px"
-				/>
+		<header ref="header">
+			<div :class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`">
+				<div v-if="!isCreatingTask">
+					<router-link
+						:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
+						class="rounded focus:outline-none sm:mb-0"
+						:class="`${$color('h1')}-800`"
+						type="button">
+						{{ currentCategory ? currentCategory.title : 'Tasks' }}
+					</router-link>
+					<input-field
+						v-if="workspaceStatuses.length > 0"
+						v-model="form.status_id"
+						type="select"
+						:options="workspaceStatuses"
+						option-name-key="name"
+						option-value-key="id"
+						class="inline-block ml-3"
+						style="min-width: 200px"
+					/>
+				</div>
+				<p v-else>Creating task</p>
+
+				<button
+					type="button"
+					class="checkpoint-delete"
+					v-if="isModal">
+					<span class="material-icons text-2xl" :class="$color('inverseTextColor')" @click="$emit('close')">close</span>
+				</button>
 			</div>
-			<p v-else>Creating task</p>
-
-			<button
-				type="button"
-				class="checkpoint-delete"
-				v-if="isModal">
-				<span class="material-icons text-2xl" :class="$color('inverseTextColor')" @click="$emit('close')">close</span>
-			</button>
-		</header>
-
-		<section role="main" class="text-center">
-			<div class="mt-8">
+			<div class="mt-8 text-center">
 				<NewCountdown
 					v-if="form.id"
 					:init-task="form"
@@ -144,8 +143,12 @@
 					@update:seconds="updateSeconds"
 				/>
 			</div>
+		</header>
 
-			<div class="form-and-checkpoints-wrapper">
+		<section role="main" class="text-center">
+			<div class="form-and-checkpoints-wrapper" :style="{
+				'max-height': `${middleBlockHeight}px`
+			}">
 				<div class="mt-10 mb-5" :class="$color('themeType')">
 					<input-field
 						v-model="form.title"
@@ -188,10 +191,6 @@
 					</div>
 				</div>
 			</div>
-
-			<span v-if="form.approximately_time" class="text-gray-500">
-				Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
-			</span>
 		</section>
 
 		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0 left-0' : ''}`">
@@ -203,7 +202,11 @@
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
-			/>
+			>
+				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5">
+					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
+				</span>
+			</task-actions>
 		</div>
 	</div>
 
@@ -259,6 +262,7 @@
 		],
 		data() {
 			return {
+				middleBlockHeight: null,
 				confirm: null,
 				savedData: {},
 				availableSettings: [],
@@ -314,7 +318,10 @@
 		},
 		watch: {
 			form (newVal) {
-				this.setSavedData(newVal)
+				this.setSavedData(newVal);
+			},
+			'form.id'() {
+				this.delayedCalcMiddleBlockHeight();
 			}
 		},
 		computed: {
@@ -359,6 +366,14 @@
 		methods: {
 			showConfirm (title, body, action) {
 				this.confirm = { title, body, action }
+			},
+			calcMiddleBlockHeight() {
+				const modalHeight = this.$refs.modal.offsetHeight;
+				const headerHeight = this.$refs.header.offsetHeight;
+				const footerHeight = this.$refs.footer.offsetHeight;
+
+				this.middleBlockHeight = modalHeight - (headerHeight + footerHeight) - 60;
+				console.log('this.middleBlockHeight', this.middleBlockHeight, modalHeight, headerHeight,footerHeight);
 			},
 			async removeTask (task) {
 				const deleteTask = async () => {
@@ -533,7 +548,6 @@
 				this.form = { ...data }
 				this.form.id = id
 				this.updateSeconds(this.form.common_time)
-
 				if (this.form.start_time && this.form.status_id) {
 					const statusCurrent = this.workspaceStatuses.find((el) => el.type !== 'active');
 					if (statusCurrent) {
@@ -544,6 +558,11 @@
 						}
 					}
 				}
+
+				this.delayedCalcMiddleBlockHeight();
+			},
+			delayedCalcMiddleBlockHeight(delay = 100) {
+				setTimeout(this.calcMiddleBlockHeight, delay)
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -660,7 +679,11 @@
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
 			}
 		},
+		beforeUnmount() {
+			window.removeEventListener("resize", this.calcMiddleBlockHeight);
+		},
 		async created () {
+			window.addEventListener("resize", this.calcMiddleBlockHeight);
 			if (this.taskId) {
 				await this.loadModel()
 				window.onkeydown = this.getShortcutSaveListener()

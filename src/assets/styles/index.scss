@@ -78,11 +78,8 @@ button {
 }
 
 .form-and-checkpoints-wrapper {
-	max-height: 660px;
 	overflow-y: auto;
 	margin-top: 20px;
-
-	@media (max-width: 1024px) { max-height: 550px }
 
 	@extend .reset-scroll;
 }
