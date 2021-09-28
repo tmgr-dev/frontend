@@ -99,7 +99,7 @@
 		</div>
 	</div>
 	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative p-3 pb-24`">
-		<header ref="header" :class="`flex justify-between items-center shadow-md ${isModal ? '' : 'mt-10'}`">
+		<header ref="header" :class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`">
 			<div v-if="!isCreatingTask">
 				<router-link
 					:to="!currentCategory ? '/' : `/projects-categories/${currentCategory.id}/children/${getCategoryStatus()}`"
@@ -146,7 +146,7 @@
 			</div>
 
 			<div class="form-and-checkpoints-wrapper">
-				<div class="mt-10 mb-5">
+				<div class="mt-10 mb-5" :class="$color('themeType')">
 					<input-field
 						v-model="form.title"
 						:errors="errors.title"
@@ -194,7 +194,7 @@
 			</span>
 		</section>
 
-		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0' : ''}`">
+		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0 left-0' : ''}`">
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"

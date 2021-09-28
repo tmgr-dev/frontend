@@ -18,12 +18,6 @@
 					:style="forCheckpoint ? 'margin-bottom: -8px;' : ''"
 					:placeholder="placeholder"
 				/>
-<!--				<content-editable-->
-<!--					-->
-<!--					v-else-if="type === 'contenteditable'"-->
-<!--					v-model="val"-->
-<!--					:placeholder="placeholder"-->
-<!--				/>-->
 				<quill-editor
 					v-else-if="type === 'contenteditable'"
 					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"

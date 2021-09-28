@@ -1,6 +1,7 @@
 import { Keys } from "@/colors/schemes/types";
 
 const keys: Keys = {
+	themeType: 'default-mode',
   bgBody: 'bg-body',
   bgNav: 'bg-white',
 	burgerIcon: 'bg-gray-900',

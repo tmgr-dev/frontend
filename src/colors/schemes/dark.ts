@@ -1,6 +1,7 @@
 import { Keys } from "@/colors/schemes/types";
 
 const keys: Keys = {
+	themeType: 'dark-mode',
 	bgBody: 'dark-bg-body night-mode',
 	bgNav: 'bg-gray-900',
 	bgModalTop: 'bg-gray-700',
