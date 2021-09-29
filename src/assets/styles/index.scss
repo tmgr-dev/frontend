@@ -77,9 +77,15 @@ button {
 	color: #000;
 }
 
-.form-and-checkpoints-wrapper {
-	overflow-y: auto;
-	margin-top: 20px;
+.task-form-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
 
-	@extend .reset-scroll;
+	section[role="main"] {
+		@extend .reset-scroll;
+		flex: 1 1 auto;
+		overflow-y: auto;
+		min-height: 0;
+	}
 }

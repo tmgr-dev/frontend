@@ -98,7 +98,7 @@
 			</modal>
 		</div>
 	</div>
-	<div ref="modal" :class="`container mx-auto ${$color('blocks')} overflow-hidden ${isModal ? 'h-full' : ''} rounded-lg relative p-3 pb-24`">
+	<div ref="modal" :class="`container task-form-container mx-auto ${$color('blocks')} overflow-hidden rounded-lg relative p-3`">
 		<header ref="header">
 			<div :class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`">
 				<div v-if="!isCreatingTask">
@@ -146,25 +146,22 @@
 		</header>
 
 		<section role="main" class="text-center">
-			<div class="form-and-checkpoints-wrapper" :style="{
-				'max-height': `${middleBlockHeight}px`
-			}">
-				<div class="mt-10 mb-5" :class="$color('themeType')">
-					<input-field
-						v-model="form.title"
-						:errors="errors.title"
-						type="text"
-						:extra-class="`mb-1 ${$color('input')}`"
-						placeholder="Task name"/>
-					<input-field
-						v-model="form.description"
-						:errors="errors.description"
-						type="contenteditable"
-						placeholder="Description"
-					/>
-				</div>
+			<div class="mt-10 mb-5" :class="$color('themeType')">
+				<input-field
+					v-model="form.title"
+					:errors="errors.title"
+					type="text"
+					:extra-class="`mb-1 ${$color('input')}`"
+					placeholder="Task name"/>
+				<input-field
+					v-model="form.description"
+					:errors="errors.description"
+					type="contenteditable"
+					placeholder="Description"
+				/>
+			</div>
 
-				<div v-if="!isCreatingTask" class="checkpoints-wrapper" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
+			<div v-if="!isCreatingTask" class="checkpoints-wrapper" :class="`${$color('blocks')} rounded`" :key="checkpointUpdateKey">
 					<div class="text-sm text-bold">
 						{{ form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints' }}
 						<span class="material-icons text-lg text-gray-500 checkpoint-delete" @click="addCheckpoint">add</span>
@@ -190,10 +187,9 @@
 						</div>
 					</div>
 				</div>
-			</div>
 		</section>
 
-		<div ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')} ${isModal ? 'absolute bottom-0 left-0' : ''}`">
+		<footer ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')}`">
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
@@ -201,13 +197,12 @@
 				@removeTask="removeTask(form)"
 				@createTask="createTask"
 				@saveTask="saveTask"
-				@settingsTask="showModalCategory"
-			>
+				@settingsTask="showModalCategory">
 				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5">
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</span>
 			</task-actions>
-		</div>
+		</footer>
 	</div>
 
 	<confirm
@@ -319,9 +314,6 @@
 		watch: {
 			form (newVal) {
 				this.setSavedData(newVal);
-			},
-			'form.id'() {
-				this.delayedCalcMiddleBlockHeight();
 			}
 		},
 		computed: {
@@ -366,14 +358,6 @@
 		methods: {
 			showConfirm (title, body, action) {
 				this.confirm = { title, body, action }
-			},
-			calcMiddleBlockHeight() {
-				const modalHeight = this.$refs.modal.offsetHeight;
-				const headerHeight = this.$refs.header.offsetHeight;
-				const footerHeight = this.$refs.footer.offsetHeight;
-
-				this.middleBlockHeight = modalHeight - (headerHeight + footerHeight) - 60;
-				console.log('this.middleBlockHeight', this.middleBlockHeight, modalHeight, headerHeight,footerHeight);
 			},
 			async removeTask (task) {
 				const deleteTask = async () => {
@@ -558,11 +542,6 @@
 						}
 					}
 				}
-
-				this.delayedCalcMiddleBlockHeight();
-			},
-			delayedCalcMiddleBlockHeight(delay = 100) {
-				setTimeout(this.calcMiddleBlockHeight, delay)
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -679,11 +658,7 @@
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds
 			}
 		},
-		beforeUnmount() {
-			window.removeEventListener("resize", this.calcMiddleBlockHeight);
-		},
 		async created () {
-			window.addEventListener("resize", this.calcMiddleBlockHeight);
 			if (this.taskId) {
 				await this.loadModel()
 				window.onkeydown = this.getShortcutSaveListener()
