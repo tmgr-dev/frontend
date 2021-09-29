@@ -145,8 +145,8 @@
 			</div>
 		</header>
 
-		<section role="main" class="text-center">
-			<div class="mt-10 mb-5" :class="$color('themeType')">
+		<section role="main" class="text-center mt-10">
+			<div class="mb-5" :class="$color('themeType')">
 				<input-field
 					v-model="form.title"
 					:errors="errors.title"
@@ -189,7 +189,7 @@
 				</div>
 		</section>
 
-		<footer ref="footer" :class="`w-full p-5 shadow-top z-10 rounded-lg ${$color('blocks')}`">
+		<footer ref="footer" :class="`w-full sm:p-5 p-2 shadow-top z-10 rounded-lg ${$color('blocks')}`">
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
@@ -198,7 +198,7 @@
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory">
-				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5">
+				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5 estimated-info">
 					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
 				</span>
 			</task-actions>
