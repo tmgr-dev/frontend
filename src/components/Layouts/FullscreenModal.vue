@@ -3,7 +3,7 @@
 			@click="close"
 			:class="isCenter ? 'flex' : ''">
 		<div
-			class="f-modal h-full py-5"
+			class="f-modal"
 			:class="{'f-modal-mobile-full': mobileFullWidth}"
 			:style="modalStyles">
 			<slot name="modal-body"></slot>
@@ -73,11 +73,8 @@
 		opacity: 0;
 		transform: translate3d(100%, 0, 0);
 
-		display: -webkit-flex;
 		display: flex;
-		-webkit-align-items: center;
 		align-items: center;
-		-webkit-justify-content: center;
 		justify-content: center;
 
 		&.active {
@@ -96,6 +93,7 @@
 
 	.f-modal {
 		width: 97%;
+		height: calc(100vh - 2rem);
 		margin: 10px auto;
 
 		@media (max-width: 768px) {
