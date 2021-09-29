@@ -42,6 +42,10 @@ jobs:
         run: |
           ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && npm i"
 
+      - name: Git Pull
+        run: |
+          ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && git pull origin ${{env.GIT_BRANCH_NAME}}"
+
       - name: Build
         run: |
           ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && npm run build"
