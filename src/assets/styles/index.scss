@@ -8,6 +8,7 @@
 @import "alert";
 @import "editor";
 @import 'checkbox';
+@import "task-form";
 
 body {
 	overflow-x: hidden;
@@ -75,17 +76,4 @@ button {
 
 .vs__search {
 	color: #000;
-}
-
-.task-form-container {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-
-	section[role="main"] {
-		@extend .reset-scroll;
-		flex: 1 1 auto;
-		overflow-y: auto;
-		min-height: 0;
-	}
 }
