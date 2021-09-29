@@ -6,8 +6,6 @@ on:
       - develop
 jobs:
   deploying:
-    needs: [ docker ]
-    if: success()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
