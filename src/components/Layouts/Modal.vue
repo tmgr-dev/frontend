@@ -39,7 +39,8 @@
 			return {
 				modalStyles: {
 					width: this.modalWidth ? this.modalWidth+'px' : '',
-					margin: this.isCenter ? 'auto' : ''
+					margin: this.isCenter ? 'auto' : '',
+					borderRadius: '5px'
 				}
 			}
 		},

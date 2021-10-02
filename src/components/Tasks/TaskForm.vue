@@ -11,30 +11,30 @@
 				:close-on-bg-click="false"
 				@close="isShowModalCategory = false">
 				<template #modal-body>
-					<form @submit.prevent="updateCategory">
+					<form @submit.prevent="updateCategory" :class="`${$color('taskSettingTextColor')}`">
+						<label :class="`block text-sm text-left font-bold mb-2 mt-2`" for="">
+							Category
+							<input-field
+								type="select"
+								:options="categoriesSelectOptions"
+								option-name-key="title"
+								option-value-key="id"
+								v-model="currentCategoryOptionInSelect"
+							/>
+						</label>
 						<div>
-							<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
-								Category
-								<vue-select
-									label="title"
-									:options="categoriesSelectOptions"
-									v-model="currentCategoryOptionInSelect"
-								/>
-							</label>
-						</div>
-						<div>
-							<label :class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color('taskSettingTextColor')}`" for="">
+							<label :class="`block text-sm text-left font-bold mb-2 mt-2`" for="">
 								Estimated time
-								<input-field extra-class="bg-gray-400" v-model="form.approximately_time" :errors="errors.approximately_time" type="time_in_seconds" placeholder="Enter approximately time"/>
+								<input-field v-model="form.approximately_time" :errors="errors.approximately_time" type="time_in_seconds" placeholder="Enter approximately time"/>
 							</label>
 						</div>
 
-						<label for="settings" class="tc-block text-gray-700 text-sm font-bold mb-5">
+						<label for="settings" class="tc-block text-sm font-bold mb-5">
 							Settings
 						</label>
 						<div>
 							<div v-for="(setting, index) in availableSettings" id="settings">
-								<label :for="`setting-${setting.id}`" class="tc-block text-gray-700 text-sm font-bold mb-2">
+								<label :for="`setting-${setting.id}`" class="tc-block text-sm font-bold mb-2">
 									{{ setting.name }}
 								</label>
 								<div class="relative mb-4">
@@ -51,7 +51,6 @@
 										v-else-if="setting.custom_value_available"
 									>
 										<input-field
-											:extra-class="`bg-gray-400  ${$color('taskSettingTextColor')}`"
 											:id="`setting-${setting.id}`"
 											:type="setting.component_type"
 											:placeholder="setting.description"
@@ -442,7 +441,7 @@
 			},
 			async updateCategory () {
 				if (this.currentCategoryOptionInSelect) {
-					this.form.project_category_id = this.currentCategoryOptionInSelect.id
+					this.form.project_category_id = this.currentCategoryOptionInSelect
 				}
 				this.isShowModalCategory = false
 				await this.saveTask()
@@ -475,13 +474,13 @@
 			},
 			async loadCategories() {
 				const {data: {data}} = await this.$axios.get('project_categories?all')
-				this.categoriesSelectOptions = data
+				this.categoriesSelectOptions = [{id: null, title: 'Without category'}, ...data]
 			},
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
 					const {data: {data}} = await this.$axios.get(`project_categories/${this.projectCategoryId || this.form.project_category_id}`)
 					this.currentCategory = data
-					this.currentCategoryOptionInSelect = data
+					this.currentCategoryOptionInSelect = data.id
 
 					if (!!this.form.id || this.currentCategory.settings.length === 0) {
 						return
