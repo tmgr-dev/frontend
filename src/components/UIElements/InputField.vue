@@ -1,7 +1,7 @@
 <template>
 	<div class="input_wrapper">
 		<transition name="fade">
-			<div v-if="showInput" :key="updateKey">
+			<div v-if="showInput">
 				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
 					<vue-select
 						v-if="options"
@@ -22,6 +22,7 @@
 					v-else-if="type === 'contenteditable'"
 					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
 					v-model:content="val"
+					:key="updateKey"
 					content-type="html"
 					theme="bubble"
 					:placeholder="placeholder"
@@ -196,7 +197,9 @@
 			},
 		},
 		mounted() {
-			//++this.updateKey
+			if (this.type === 'contenteditable') {
+				setTimeout(()=> ++this.updateKey, 250);
+			}
 		},
 		created() {
 			this.updateWidth()
