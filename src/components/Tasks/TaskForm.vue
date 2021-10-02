@@ -9,30 +9,24 @@
 				:modal-width="500"
 				:is-center="true"
 				:close-on-bg-click="false"
-				@close="isShowModalCategory = false">
+				@close="isShowModalCategory = false"
+			>
 				<template #modal-body>
 					<form @submit.prevent="updateCategory" :class="`${$color('taskSettingTextColor')}`">
-						<label :class="`block text-sm text-left font-bold mb-2 mt-2`" for="">
-							Category
-							<input-field
-								type="select"
-								:options="categoriesSelectOptions"
-								option-name-key="title"
-								option-value-key="id"
-								v-model="currentCategoryOptionInSelect"
-							/>
-						</label>
-						<div>
-							<label :class="`block text-sm text-left font-bold mb-2 mt-2`" for="">
-								Estimated time
-								<input-field v-model="form.approximately_time" :errors="errors.approximately_time" type="time_in_seconds" placeholder="Enter approximately time"/>
-							</label>
-						</div>
-
 						<label for="settings" class="tc-block text-sm font-bold mb-5">
 							Settings
 						</label>
 						<div>
+							<label :class="`block text-sm text-left font-bold mb-2 mt-2`">
+								Category
+								<input-field
+									type="select"
+									:options="categoriesSelectOptions"
+									option-name-key="title"
+									option-value-key="id"
+									v-model="currentCategoryOptionInSelect"
+								/>
+							</label>
 							<div v-for="(setting, index) in availableSettings" id="settings">
 								<label :for="`setting-${setting.id}`" class="tc-block text-sm font-bold mb-2">
 									{{ setting.name }}
@@ -198,7 +192,7 @@
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory">
 				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5 estimated-info">
-					Estimated time to complete the task: {{ toHHMM(form.approximately_time) }}
+					Estimated time to complete the task: {{ toHHMM(getTaskSettingValue('approximately_time')) }}
 				</span>
 			</task-actions>
 		</footer>
@@ -368,6 +362,7 @@
 					} finally {
 						this.confirm = null
 						this.$emit('close')
+						this.$store.dispatch('reloadTasks')
 					}
 				}
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask)
@@ -496,6 +491,9 @@
 					})
 				}
 			},
+			getTaskSettingValue(key) {
+				return this.form?.settings?.find((item) => item.key === key)?.value
+			},
 			async loadModel() {
 				const {data: {data}} = await this.$axios.get(`tasks/${this.taskId}`)
 				data.common_time = data.common_time || 0
@@ -545,6 +543,9 @@
 			prepareForm() {
 				if (this.form.project_category_id === '') {
 					delete this.form.project_category_id
+				}
+				if (!this.isCreatingTask) {
+					this.form.approximately_time = this.getTaskSettingValue('approximately_time')
 				}
 			},
 			async createTask () {

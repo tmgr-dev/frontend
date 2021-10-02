@@ -103,6 +103,9 @@
 				clearTimeout(this.searchTimeout)
 				this.searchTimeout = setTimeout(this.loadTasks, 1000)
 
+			},
+			'$store.getters.reloadTasks'() {
+				this.loadTasks()
 			}
 		},
 		methods: {
