@@ -174,7 +174,7 @@
 			preparedOptions: {
 				get() {
 					const preparedOptions = []
-					this.options.forEach(option => {
+					this.options.filter(o => !!o).forEach(option => {
 						option.label = option[this.optionNameKey]
 						option.value = option[this.optionValueKey]
 						preparedOptions.push(option)
