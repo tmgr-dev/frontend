@@ -79,6 +79,7 @@
 				},
 				set (newValue) {
 					this.$store.commit('colorScheme', newValue ? 'dark' : 'default')
+					this.$store.dispatch('putUserSettings', this.$store.getters.getUserSettings)
 				}
 			}
 		},

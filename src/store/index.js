@@ -95,6 +95,7 @@ const mutations = {
 			localStorage.removeItem('colorScheme');
 		} else {
 			localStorage.setItem('colorScheme', colorScheme);
+			state.userSettings.colorScheme = colorScheme;
 		}
 
 		state.colorScheme = colorScheme;
@@ -138,6 +139,7 @@ const actions = {
 			const { data: { data } } = await axios.get(`user/settings`);
 			if (data instanceof Object && data.hasOwnProperty('settings')) {
 				commit('setUserSettings', data.settings);
+				commit('colorScheme', data.settings?.colorScheme ?? 'default')
 			}
 		} catch (e) {
 			throw e;
@@ -156,8 +158,9 @@ const actions = {
 	},
 	async putUserSettings({ commit }, settings) {
 		try {
-			await axios.put(`user/settings`, settings);
+			await axios.put(`user/settings`, {settings});
 			commit('setUserSettings', settings);
+			commit('colorScheme', settings?.colorScheme ?? 'default')
 		} catch (e) {
 			console.error(e);
 			throw e;
