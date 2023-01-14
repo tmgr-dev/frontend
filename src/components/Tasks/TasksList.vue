@@ -48,7 +48,6 @@
 				<confetti v-if="hasAbilityToShowConfetti" />
 			</div>
 			<loading-tasks-list v-if="showLoader" class="mx-2" />
-			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
 </template>

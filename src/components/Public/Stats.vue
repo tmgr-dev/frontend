@@ -8,8 +8,8 @@
 		<template #body>
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color('textMain')}`">
 				<h1 class="text-4xl text-center">Statistics</h1>
-				<p class="px-2 mb-5 mx-auto text-center">Simple statistics of service</p>
-				<table class="mx-auto">
+				<p id=stats-table-description" class="px-2 mb-5 mx-auto text-center">Simple statistics of service</p>
+				<table class="mx-auto" aria-describedby="stats-table-description">
 					<tbody>
 						<tr>
 							<th class="text-xl text-left">Users</th>

@@ -21,7 +21,6 @@
 					<p class="text-gray-600 text-sm mx-2">{{ action.label }}</p>
 				</a>
 			</div>
-			<!--												<a href="#" class="block bg-gray-800 text-white text-center font-bold py-2">See all notifications</a>-->
 		</div>
 	</div>
 </template>

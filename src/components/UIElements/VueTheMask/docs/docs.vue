@@ -36,7 +36,6 @@
     </div>
 
     <div class="equal width fields">
-      <!-- <field label="IP Addr." mask="###.###.###.###" :masked="masked"></field> -->
       <field label="DateTime" mask="##/##/#### ##:##:##" value="04011981 060515" placeholder="dd/mm/yyyy hh:mm:ss" :masked="masked"></field>
       <field label="Credit Card" mask="#### #### #### ####" value="4916479938940351" :masked="masked"></field>
     </div>
