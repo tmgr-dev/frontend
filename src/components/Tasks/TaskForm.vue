@@ -314,8 +314,7 @@
 				return this.projectCategoryId ? null : (this.form?.id || this.modalTaskId || this.$route.params.id)
 			},
 			approximatelyEndTime () {
-				const dt = new Date();
-				return this.toHHMM(dt.getSeconds() + (this.form.approximately_time - this.form.common_time));
+				return this.toHHMM(new Date().getSeconds() + (this.form.approximately_time - this.form.common_time));
 			},
 			workspaceStatuses () {
 				return this.$store.getters.statuses
