@@ -2,6 +2,7 @@
 	<teleport to="title">
 		{{ h1[$route.name] }}
 	</teleport>
+
 	<BaseLayout>
 		<template #action>
 			<div class="flex justify-between flex-wrap">
@@ -17,19 +18,23 @@
 					<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Search tasks" class="pr-1">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">{{ showSearchInput ? 'search_off' : 'search'}}</span>
 					</a>
+
 					<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
 					</a>
+
 					<a href="#" title="Add Task" @click="$store.dispatch('showCreateTaskModal')">
 						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
 					</a>
 				</div>
 			</div>
 		</template>
+
 		<template #body>
 			<transition name="fade" mode="out-in">
 				<input-field class="px-2 pb-5" v-if="showSearchInput" placeholder="Enter task name" v-model="searchText" @keydown:enter="loadTasks"></input-field>
 			</transition>
+
 			<tasks-list-component
 				v-if="tasks && tasks.length > 0"
 				:tasks="tasks"
@@ -39,14 +44,17 @@
 				@reload-tasks="reloadTasks"
 				ref="tasksListComponent"
 			/>
+
 			<div v-else-if="errorLoading" class="text-center italic text-xl">
 				Something went wrong...
 			</div>
+
 			<div v-else-if="!showLoader" class="text-center italic text-xl">
 				You don't have tasks here
 
 				<confetti v-if="hasAbilityToShowConfetti" />
 			</div>
+
 			<loading-tasks-list v-if="showLoader" class="mx-2" />
 			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
@@ -56,11 +64,11 @@
 <script>
 	import TasksListMixin from "src/mixins/TasksListMixin";
 	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
-	import LoadingTasksList from "components/UIElements/Tasks/LoadingTasksList";
+	import LoadingTasksList from "src/components/UIElements/Tasks/LoadingTasksList";
 	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
-	import Confetti from "components/UIElements/Confetti";
-	import FullscreenModal from "components/Layouts/FullscreenModal";
-	import TaskForm from "components/Tasks/TaskForm";
+	import Confetti from "src/components/UIElements/Confetti";
+	import FullscreenModal from "src/components/Layouts/FullscreenModal";
+	import TaskForm from "src/components/Tasks/TaskForm";
 
 	export default {
 		name: 'TasksList',
