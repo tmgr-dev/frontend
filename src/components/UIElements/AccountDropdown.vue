@@ -5,7 +5,10 @@
       :class="`${$color('inverseTextColor')}-500`"
       @click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
-      <span class="flex items-center">{{ $store.getters.user?.name?.slice(0, 15) }}</span>
+			<div class="flex items-center overflow-hidden">
+				<span class="whitespace-nowrap overflow-ellipsis w-24 overflow-hidden" v-if="$store.getters.user?.name?.length > 15">{{ $store.getters.user?.name?.slice(0, 15) }}</span>
+				<span v-else>{{ $store.getters.user?.name }}</span>
+			</div>
       <span class="material-icons text-xl">person</span>
     </div>
 
