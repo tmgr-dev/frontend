@@ -12,18 +12,18 @@
 							:key="column.title"
 							class="pr-2 board-container__item">
 							<div
-								:class="`${$color('blocks')} rounded-lg px-3 py-3 column-width rounded h-full`"
-								:style="{'background-color': column.status.color}">
+								:class="`rounded-lg px-3 py-3 column-width rounded h-full`">
 								<div>
-									<p :class="`relative text-white font-semibold font-sans tracking-wide text-sm`">
+									<div
+										:class="`relative ${$color('blocks')} ${$color('textMain')} font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded`"
+										:style="{'border-top': `solid 5px ${column.status.color}`}"
+									>
 										{{ column.title }}
-									<div class="inline-block absolute top-0 right-0">
-										<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
+										<div class="inline-block absolute top-0 right-0  pt-2">
+											<dashboard-dropdown-menu :actions="getActions(column)"></dashboard-dropdown-menu>
+										</div>
 									</div>
-									</p>
 								</div>
-
-								<!-- Draggable component comes from vuedraggable. It provides drag & drop functionality -->
 								<draggable
 									v-model="column.tasks"
 									:animation="200"
@@ -37,7 +37,6 @@
 										<task-card
 											:data-task="jsonEncode(task)"
 											:task="task"
-
 											class="my-5 cursor-move"
 										></task-card>
 									</template>
