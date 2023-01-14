@@ -6,13 +6,16 @@
 			<div class="bar3" :class="$color('burgerIcon')"></div>
 		</div>
   </div>
+
 	<nav :class="`${$color('menuBg')} shadow md:block tc-hidden`" role="navigation">
 		<div class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap">
 			<div :class="`w-full md:w-auto md:flex-grow md:flex md:items-center ${isHidden ? 'tc-hidden' : ''}`">
 				<navbar-menu />
+
 				<span :class="`${$color('inverseTextColor')}-500`" class="flex justify-between items-center ml-auto mr-4" :key="rerenderSwitcher">
 					<day-night-switch v-model="switchOn"/>
 				</span>
+
 				<account-dropdown />
 			</div>
 		</div>
@@ -46,12 +49,6 @@
 		data: () => ({
 			isHidden: true,
 			rerenderSwitcher: 0,
-			links: [
-				{ id: 1, name: 'List', path: '/' },
-				// { id: 1, name: 'tc-hidden', path: '/tc-hidden' },
-				{ id: 1, name: 'Archive', path: '/acrhive' },
-				{ id: 1, name: 'Categories', path: '/projects-categories' },
-			],
 			wheelEvent: 'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
 			supportsPassive: false
 		}),
