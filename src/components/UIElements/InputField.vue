@@ -1,75 +1,79 @@
 <template>
 	<div class="input_wrapper">
 		<transition name="fade">
-			<div v-if="showInput" :key="updateKey">
-				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
-					<vue-select
-						v-if="options"
-						:label="optionNameKey"
-						:options="preparedOptions"
+			<div>
+				<div v-if="showInput" :key="updateKey">
+					<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
+						<vue-select
+							v-if="options"
+							:label="optionNameKey"
+							:options="preparedOptions"
+							v-model="val"
+						/>
+					</div>
+					<textarea
+						:class="`${forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''} appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
+						v-else-if="type === 'textarea'"
+						name=""
+						v-model="val"
+						:style="forCheckpoint ? 'margin-bottom: -8px;' : ''"
+						:placeholder="placeholder"
+					/>
+					<div
+						v-else-if="type === 'contenteditable'"
+					>
+						<quill-editor
+							:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
+							v-model:content="val"
+							:key="updateKey"
+							content-type="html"
+							theme="bubble"
+							:placeholder="placeholder"
+						></quill-editor>
+					</div>
+					<input
+						v-else-if="type === 'time_in_seconds'"
+						:id="name"
+						type="time"
+						:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+						:name="name"
+						:placeholder="placeholder"
 						v-model="val"
 					/>
-				</div>
-				<textarea
-					:class="`${forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''} appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
-					v-else-if="type === 'textarea'"
-					name=""
-					v-model="val"
-					:style="forCheckpoint ? 'margin-bottom: -8px;' : ''"
-					:placeholder="placeholder"
-				/>
-				<quill-editor
-					v-else-if="type === 'contenteditable'"
-					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
-					v-model:content="val"
-					:key="updateKey"
-					content-type="html"
-					theme="bubble"
-					:placeholder="placeholder"
-				></quill-editor>
-
-				<input
-					v-else-if="type === 'time_in_seconds'"
-					:id="name"
-					type="time"
-					:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
-					:name="name"
-					:placeholder="placeholder"
-					v-model="val"
-				/>
-				<div
-					v-else-if="type === 'checkbox'"
-					class="b-switch-list mt-3"
-				>
 					<div
-						class="b-switch-list__item"
+						v-else-if="type === 'checkbox'"
+						class="b-switch-list mt-3"
 					>
-						<label class="b-switch">
-							<input type="checkbox" :name="name" v-model="val" @keydown:enter="$emit('keydown:enter', val)">
-							<span></span>
-						</label>
-						<div class="b-switch-list__text">
-							<div class="b-switch-list__title" :class="$color('settingsTextColor')">{{ placeholder }}</div>
+						<div
+							class="b-switch-list__item"
+						>
+							<label class="b-switch">
+								<input type="checkbox" :name="name" v-model="val" @keydown:enter="$emit('keydown:enter', val)">
+								<span></span>
+							</label>
+							<div class="b-switch-list__text">
+								<div class="b-switch-list__title" :class="$color('settingsTextColor')">{{ placeholder }}</div>
+							</div>
 						</div>
 					</div>
+					<input
+						v-else
+						:id="name"
+						:type="type"
+						:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+						:name="name"
+						:placeholder="placeholder"
+						v-model="val"
+					/>
+					<transition name="fade-left">
+						<div v-if="errors" class="error" :class="{ 'tooltip': errorAsTooltip }">
+							{{ errors[0] }}
+						</div>
+					</transition>
 				</div>
-				<input
-					v-else
-					:id="name"
-					:type="type"
-					:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
-					:name="name"
-					:placeholder="placeholder"
-					v-model="val"
-				/>
-				<transition name="fade-left">
-					<div v-if="errors" class="error" :class="{ 'tooltip': errorAsTooltip }">
-						{{ errors[0] }}
-					</div>
-				</transition>
-			</div>
-			<div v-else>
-				{{ modelValue }} (<a href="#" @click.prevent="showInput = true">edit</a>)
+				<div v-else>
+					{{ modelValue }} (<a href="#" @click.prevent="showInput = true">edit</a>)
+				</div>
 			</div>
 		</transition>
 	</div>
