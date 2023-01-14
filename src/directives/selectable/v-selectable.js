@@ -15,7 +15,7 @@ function initSelectable(el, params, arg) {
 export default {
 	name: 'selectable',
 	config: {},
-	install (app, installOptions) {
+	install(app, installOptions) {
 		app.directive('selectable', {
 			twoWay: false,
 
@@ -55,7 +55,7 @@ export default {
  * @param {*} oldvnode component's previous properties
  * @return boolean
  */
-function hasUpdated (value, oldValue) {
+function hasUpdated(value, oldValue) {
 	let updated = false;
 
 	if (typeof value === 'string' && value !== oldValue) {

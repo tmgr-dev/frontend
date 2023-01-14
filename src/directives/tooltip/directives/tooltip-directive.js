@@ -31,41 +31,41 @@ const SUB_POSITIONS = ['start', 'end'];
  * <div v-tooltip="{visible: false, content: 'my content'}">
  */
 export default {
-    name: 'tooltip',
-    config: {},
-    install (app, installOptions) {
-			app.directive('tooltip', {
-            beforeMount (el, binding, vnode) {
-                if (installOptions) {
-                    Tooltip.defaults(installOptions);
-                }
-            },
-            mounted (el, binding, vnode, oldVnode) {
-                if (installOptions) {
-                    Tooltip.defaults(installOptions);
-                }
+	name: 'tooltip',
+	config: {},
+	install(app, installOptions) {
+		app.directive('tooltip', {
+			beforeMount(el, binding, vnode) {
+				if (installOptions) {
+					Tooltip.defaults(installOptions);
+				}
+			},
+			mounted(el, binding, vnode, oldVnode) {
+				if (installOptions) {
+					Tooltip.defaults(installOptions);
+				}
 
-                let options = filterBindings(binding, vnode);
-                el.tooltip = new Tooltip(el, options);
+				let options = filterBindings(binding, vnode);
+				el.tooltip = new Tooltip(el, options);
 
-                if (binding.modifiers.notrigger && binding.value.visible === true) {
-                    el.tooltip.show();
-                }
+				if (binding.modifiers.notrigger && binding.value.visible === true) {
+					el.tooltip.show();
+				}
 
-                if (binding.value && binding.value.visible === false) {
-                    el.tooltip.disabled = true;
-                }
-            },
-            updated (el, binding, vnode, oldVnode) {
-                if (hasUpdated(binding.value, binding.oldValue)) {
-                    update(el, binding, vnode, oldVnode);
-                }
-            },
-            unmounted (el, binding, vnode, oldVnode) {
-                el.tooltip.destroy();
-            }
-        });
-    }
+				if (binding.value && binding.value.visible === false) {
+					el.tooltip.disabled = true;
+				}
+			},
+			updated(el, binding, vnode, oldVnode) {
+				if (hasUpdated(binding.value, binding.oldValue)) {
+					update(el, binding, vnode, oldVnode);
+				}
+			},
+			unmounted(el, binding, vnode, oldVnode) {
+				el.tooltip.destroy();
+			}
+		});
+	}
 };
 
 /**
@@ -74,19 +74,19 @@ export default {
  * @param {*} oldvnode component's previous properties
  * @return boolean
  */
-function hasUpdated (value, oldValue) {
-    let updated = false;
+function hasUpdated(value, oldValue) {
+	let updated = false;
 
-    if (typeof value === 'string' && value !== oldValue) {
-        updated = true;
-    } else if (isObject(value)) {
-        Object.keys(value).forEach(prop => {
-            if (value[prop] !== oldValue[prop]) {
-                updated = true;
-            }
-        });
-    }
-    return updated;
+	if (typeof value === 'string' && value !== oldValue) {
+		updated = true;
+	} else if (isObject(value)) {
+		Object.keys(value).forEach(prop => {
+			if (value[prop] !== oldValue[prop]) {
+				updated = true;
+			}
+		});
+	}
+	return updated;
 }
 
 /**
@@ -95,53 +95,51 @@ function hasUpdated (value, oldValue) {
  * @param {*} vnode
  * @return {*} filtered data object
  */
-function filterBindings (binding, vnode) {
-    const delay = !binding.value || isNaN(binding.value.delay) ? Tooltip._defaults.delay : binding.value.delay;
+function filterBindings(binding, vnode) {
+	const delay = !binding.value || isNaN(binding.value.delay) ? Tooltip._defaults.delay : binding.value.delay;
 
-    if (binding.value.ref) {
-        if (vnode.context.$refs[binding.value.ref]) {
-            binding.value.html = vnode.context.$refs[binding.value.ref];
-        } else {
-            console.error(`[Tooltip] no REF element [${binding.value.ref}]`); // eslint-disable-line
-        }
-    }
+	if (binding.value.ref) {
+		if (vnode.context.$refs[binding.value.ref]) {
+			binding.value.html = vnode.context.$refs[binding.value.ref];
+		} else {
+			console.error(`[Tooltip] no REF element [${binding.value.ref}]`); // eslint-disable-line
+		}
+	}
 
-    return {
-        class: getClass(binding),
-        id: (binding.value) ? binding.value.id : null,
-        html: (binding.value) ? binding.value.html : null,
-        placement: getPlacement(binding),
-        title: getContent(binding),
-        triggers: getTriggers(binding),
-        fixIosSafari: binding.modifiers.ios || false,
-        offset: (binding.value && binding.value.offset) ? binding.value.offset : Tooltip._defaults.offset,
-        delay
-    };
+	return {
+		class: getClass(binding),
+		id: (binding.value) ? binding.value.id : null,
+		html: (binding.value) ? binding.value.html : null,
+		placement: getPlacement(binding),
+		title: getContent(binding),
+		triggers: getTriggers(binding),
+		fixIosSafari: binding.modifiers.ios || false,
+		offset: (binding.value && binding.value.offset) ? binding.value.offset : Tooltip._defaults.offset,
+		delay
+	};
 }
 
 /**
  * Get placement from modifiers
  * @param {*} binding
  */
-function getPlacement ({modifiers, value}) {
-    let MODS = Object.keys(modifiers);
-    if (MODS.length === 0 && isObject(value) && typeof value.placement === 'string') {
-        MODS = value.placement.split('.');
-    }
-    let head = 'bottom';
-    let tail = null;
-    for (let i = 0; i < MODS.length; i++) {
-        const pos = MODS[i];
-        if (POSITIONS.indexOf(pos) > -1) {
-            head = pos;
-        }
-        if (SUB_POSITIONS.indexOf(pos) > -1) {
-            tail = pos;
-        }
-    }
-    // console.log((head && tail) ? `${head}-${tail}` : head);
-    // return 'auto';
-    return (head && tail) ? `${head}-${tail}` : head;
+function getPlacement({ modifiers, value }) {
+	let MODS = Object.keys(modifiers);
+	if (MODS.length === 0 && isObject(value) && typeof value.placement === 'string') {
+		MODS = value.placement.split('.');
+	}
+	let head = 'bottom';
+	let tail = null;
+	for (let i = 0; i < MODS.length; i++) {
+		const pos = MODS[i];
+		if (POSITIONS.indexOf(pos) > -1) {
+			head = pos;
+		}
+		if (SUB_POSITIONS.indexOf(pos) > -1) {
+			tail = pos;
+		}
+	}
+	return (head && tail) ? `${head}-${tail}` : head;
 }
 
 /**
@@ -149,31 +147,31 @@ function getPlacement ({modifiers, value}) {
  * @param {*} binding
  * @return String
  */
-function getTriggers ({modifiers}) {
-    let trigger = [];
-    if (modifiers.notrigger) {
-        return trigger;
-    } else if (modifiers.manual) {
-        trigger.push('manual');
-    } else {
-        if (modifiers.click) {
-            trigger.push('click');
-        }
+function getTriggers({ modifiers }) {
+	let trigger = [];
+	if (modifiers.notrigger) {
+		return trigger;
+	} else if (modifiers.manual) {
+		trigger.push('manual');
+	} else {
+		if (modifiers.click) {
+			trigger.push('click');
+		}
 
-        if (modifiers.hover) {
-            trigger.push('hover');
-        }
+		if (modifiers.hover) {
+			trigger.push('hover');
+		}
 
-        if (modifiers.focus) {
-            trigger.push('focus');
-        }
+		if (modifiers.focus) {
+			trigger.push('focus');
+		}
 
-        if (trigger.length === 0) {
-            trigger.push('hover', 'focus');
-        }
-    }
+		if (trigger.length === 0) {
+			trigger.push('hover', 'focus');
+		}
+	}
 
-    return trigger;
+	return trigger;
 }
 
 /**
@@ -181,8 +179,8 @@ function getTriggers ({modifiers}) {
  * @param {*} value
  * @return Boolean
  */
-function isObject (value) {
-    return typeof value === 'object';
+function isObject(value) {
+	return typeof value === 'object';
 }
 
 /**
@@ -190,8 +188,8 @@ function isObject (value) {
  * @param {*} value
  * @return Boolean
  */
-function isElement (value) {
-    return value instanceof window.Element;
+function isElement(value) {
+	return value instanceof window.Element;
 }
 
 /**
@@ -199,16 +197,16 @@ function isElement (value) {
  * @param {*} binding
  * @return HTMLElement | String
  */
-function getClass ({value}) {
-    if (value === null) {
-        return BASE_CLASS;
-    } else if (isObject(value) && typeof value.class === 'string') {
-        return `${BASE_CLASS} ${value.class}`;
-    } else if (Tooltip._defaults.class) {
-        return `${BASE_CLASS} ${Tooltip._defaults.class}`;
-    } else {
-        return BASE_CLASS;
-    }
+function getClass({ value }) {
+	if (value === null) {
+		return BASE_CLASS;
+	} else if (isObject(value) && typeof value.class === 'string') {
+		return `${BASE_CLASS} ${value.class}`;
+	} else if (Tooltip._defaults.class) {
+		return `${BASE_CLASS} ${Tooltip._defaults.class}`;
+	} else {
+		return BASE_CLASS;
+	}
 }
 
 /**
@@ -216,24 +214,24 @@ function getClass ({value}) {
  * @param {*} binding
  * @return HTMLElement | String
  */
-function getContent ({value}, vnode) {
-    if (value !== null && isObject(value)) {
-        if (value.content !== undefined) {
-            return `${value.content}`;
-        } else if (value.id && document.getElementById(value.id)) {
-            return document.getElementById(value.id);
-        } else if (value.html && document.getElementById(value.html)) {
-            return document.getElementById(value.html);
-        } else if (isElement(value.html)) {
-            return value.html;
-        } else if (value.ref && vnode) {
-            return vnode.context.$refs[value.ref] || '';
-        } else {
-            return '';
-        }
-    } else {
-        return `${value}`;
-    }
+function getContent({ value }, vnode) {
+	if (value !== null && isObject(value)) {
+		if (value.content !== undefined) {
+			return `${value.content}`;
+		} else if (value.id && document.getElementById(value.id)) {
+			return document.getElementById(value.id);
+		} else if (value.html && document.getElementById(value.html)) {
+			return document.getElementById(value.html);
+		} else if (isElement(value.html)) {
+			return value.html;
+		} else if (value.ref && vnode) {
+			return vnode.context.$refs[value.ref] || '';
+		} else {
+			return '';
+		}
+	} else {
+		return `${value}`;
+	}
 }
 
 /**
@@ -241,29 +239,29 @@ function getContent ({value}, vnode) {
  * @param {*} el Vue element
  * @param {*} binding
  */
-function update (el, binding, vnode, oldVnode) {
-    if (typeof binding.value === 'string') {
-        el.tooltip.content(binding.value);
-    } else {
-        if (binding.value && binding.value.class && binding.value.class.trim() !== el.tooltip.options.class.replace(BASE_CLASS, '').trim()) {
-            el.tooltip.class = `${BASE_CLASS} ${binding.value.class.trim()}`;
-        }
+function update(el, binding, vnode, oldVnode) {
+	if (typeof binding.value === 'string') {
+		el.tooltip.content(binding.value);
+	} else {
+		if (binding.value && binding.value.class && binding.value.class.trim() !== el.tooltip.options.class.replace(BASE_CLASS, '').trim()) {
+			el.tooltip.class = `${BASE_CLASS} ${binding.value.class.trim()}`;
+		}
 
-        el.tooltip.content(getContent(binding, vnode));
+		el.tooltip.content(getContent(binding, vnode));
 
-        if (!binding.modifiers.notrigger && binding.value && typeof binding.value.visible === 'boolean') {
-            el.tooltip.disabled = !binding.value.visible;
-            return;
-        } else if (binding.modifiers.notrigger) {
-            el.tooltip.disabled = false;
-        }
+		if (!binding.modifiers.notrigger && binding.value && typeof binding.value.visible === 'boolean') {
+			el.tooltip.disabled = !binding.value.visible;
+			return;
+		} else if (binding.modifiers.notrigger) {
+			el.tooltip.disabled = false;
+		}
 
-        const dir = vnode.data.directives[0];
+		const dir = vnode.data.directives[0];
 
-        if (dir.oldValue.visible !== dir.value.visible) {
-            if (!el.tooltip.disabled) {
-                el.tooltip.toggle(dir.value.visible);
-            }
-        }
-    }
+		if (dir.oldValue.visible !== dir.value.visible) {
+			if (!el.tooltip.disabled) {
+				el.tooltip.toggle(dir.value.visible);
+			}
+		}
+	}
 }

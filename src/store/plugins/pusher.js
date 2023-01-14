@@ -2,7 +2,7 @@ import Echo from 'laravel-echo';
 
 window.Pusher = require('pusher-js');
 
-export default function (token) {
+export default function(token) {
 	return new Echo({
 		broadcaster: 'pusher',
 		key: process.env.VUE_APP_PUSHER_KEY,

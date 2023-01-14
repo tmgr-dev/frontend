@@ -77,7 +77,7 @@ export default class selectable {
 	handlers = {
 		mousedown: null,
 		mouseup: null,
-		mousemove: null,
+		mousemove: null
 	};
 
 	/**
@@ -148,6 +148,32 @@ export default class selectable {
 	}
 
 	/**
+	 * Disables text selection (as a default browser action)
+	 * @param {Event} e
+	 * @return {boolean}
+	 */
+	static disableTextSelection(e) {
+		e.preventDefault();
+		return false;
+	}
+
+	/**
+	 * Returns element's absolute position (on the page) and size
+	 * @param {Element} element
+	 * @return {{top: number, left: number, width: Number, height: Number}}
+	 */
+	static absBox(element) {
+		let box = element.getBoundingClientRect();
+
+		return {
+			top: box.top + window.pageYOffset,
+			left: box.left + window.pageXOffset,
+			width: box.width,
+			height: box.height
+		};
+	}
+
+	/**
 	 * Adds event handlers to the root element
 	 */
 	attach() {
@@ -187,16 +213,6 @@ export default class selectable {
 		if (typeof this.selectedSetter === 'function') {
 			this.selectedSetter(this.selected, this.selected);
 		}
-	}
-
-	/**
-	 * Disables text selection (as a default browser action)
-	 * @param {Event} e
-	 * @return {boolean}
-	 */
-	static disableTextSelection(e) {
-		e.preventDefault();
-		return false;
 	}
 
 	/**
@@ -383,17 +399,6 @@ export default class selectable {
 			Math.min(Math.max(bb.left, e.pageX), bb.width + bb.left),
 			Math.min(Math.max(bb.top, e.pageY), bb.height + bb.top)
 		];
-	}
-
-	/**
-	 * Returns element's absolute position (on the page) and size
-	 * @param {Element} element
-	 * @return {{top: number, left: number, width: Number, height: Number}}
-	 */
-	static absBox(element) {
-		let box = element.getBoundingClientRect();
-
-		return { top: box.top + window.pageYOffset, left: box.left + window.pageXOffset , width: box.width, height: box.height };
 	}
 
 	/**

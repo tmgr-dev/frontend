@@ -1,7 +1,7 @@
 <template>
-	<div class="overlay active"
-			@click="close"
-			:class="isCenter ? 'flex' : ''">
+	<div :class="isCenter ? 'flex' : ''"
+			 class="overlay active"
+			 @click="close">
 		<div
 			class="f-modal"
 			:class="{'f-modal-mobile-full': mobileFullWidth}"
@@ -93,17 +93,10 @@
 
 	.f-modal {
 		width: 97%;
-		height: calc(100vh - 2rem);
 		margin: 10px auto;
 
 		@media (max-width: 768px) {
 			max-width: 80% !important;
-		}
-
-		&.f-modal-mobile-full {
-			@media (max-width: 768px) {
-				max-width: 95% !important;
-			}
 		}
 
 		nav {

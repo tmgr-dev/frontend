@@ -1,4 +1,4 @@
-import getProjectCategoriesBreadcrumbs from './getProjectCategoriesBreadcrumbs'
+import getProjectCategoriesBreadcrumbs from './getProjectCategoriesBreadcrumbs';
 
 export default function getBreadcrumbs(parentCategories) {
 	const items = [
@@ -9,6 +9,6 @@ export default function getBreadcrumbs(parentCategories) {
 				id: null
 			}
 		}
-	]
-	return [...items, ...getProjectCategoriesBreadcrumbs(parentCategories)]
+	];
+	return [...items, ...getProjectCategoriesBreadcrumbs(parentCategories)];
 }

@@ -1,343 +1,345 @@
 import Popper from 'popper.js';
 
 const CSS = {
-    HIDDEN: 'vue-tooltip-hidden',
-    VISIBLE: 'vue-tooltip-visible'
+	HIDDEN: 'vue-tooltip-hidden',
+	VISIBLE: 'vue-tooltip-visible'
 };
 const BASE_CLASS = `h-tooltip  ${CSS.HIDDEN}`;
 const PLACEMENT = ['top', 'left', 'right', 'bottom', 'auto'];
 const SUB_PLACEMENT = ['start', 'end'];
 
 const EVENTS = {
-    ADD: 1,
-    REMOVE: 2
+	ADD: 1,
+	REMOVE: 2
 };
 
 const DEFAULT_OPTIONS = {
-    container: false,
-    delay: 200,
-    instance: null, // the popper.js instance
-    fixIosSafari: false,
-    eventsEnabled: false,
-    html: false,
-    modifiers: {
-        arrow: {
-            element: '.tooltip-arrow'
-        }
-    },
-    placement: '',
-    placementPostfix: null, // start | end
-    removeOnDestroy: true,
-    title: '',
-    class: '', // ex: 'tooltip-custom tooltip-other-custom'
-    triggers: ['hover', 'focus'],
-    offset: 5
+	container: false,
+	delay: 200,
+	instance: null, // the popper.js instance
+	fixIosSafari: false,
+	eventsEnabled: false,
+	html: false,
+	modifiers: {
+		arrow: {
+			element: '.tooltip-arrow'
+		}
+	},
+	placement: '',
+	placementPostfix: null, // start | end
+	removeOnDestroy: true,
+	title: '',
+	class: '', // ex: 'tooltip-custom tooltip-other-custom'
+	triggers: ['hover', 'focus'],
+	offset: 5
 };
 
 const includes = (stack, needle) => {
-    return stack.indexOf(needle) > -1;
+	return stack.indexOf(needle) > -1;
 };
 
 export default class Tooltip {
-    constructor (el, options = {}) {
-        // Tooltip._defaults = DEFAULT_OPTIONS;
-        this._options = {
-            ...Tooltip._defaults,
-            ...{
-                onCreate: (data) => {
-                    this.content(this.tooltip.options.title);
-                    // this._$tt.update();
-                },
-                onUpdate: (data) => {
-                    this.content(this.tooltip.options.title);
-                    // this._$tt.update();
-                }
-            },
-            ...Tooltip.filterOptions(options)
-        };
+	constructor(el, options = {}) {
+		// Tooltip._defaults = DEFAULT_OPTIONS;
+		this._options = {
+			...Tooltip._defaults,
+			...{
+				onCreate: (data) => {
+					this.content(this.tooltip.options.title);
+					// this._$tt.update();
+				},
+				onUpdate: (data) => {
+					this.content(this.tooltip.options.title);
+					// this._$tt.update();
+				}
+			},
+			...Tooltip.filterOptions(options)
+		};
 
-        this._$el = el;
+		this._$el = el;
 
-        this._$tpl = this._createTooltipElement(this.options);
-        this._$tt = new Popper(el, this._$tpl, this._options);
-        this.setupPopper();
-    }
+		this._$tpl = this._createTooltipElement(this.options);
+		this._$tt = new Popper(el, this._$tpl, this._options);
+		this.setupPopper();
+	}
 
-    setupPopper () {
-        // this._$el.insertAdjacentElement('afterend', this._$tpl);
-        this.disabled = false;
-        this._visible = false;
-        this._clearDelay = null;
-        this._$tt.disableEventListeners();
-        this._setEvents();
-    }
+	get options() {
+		return { ...this._options };
+	}
 
-    destroy () {
-        this._cleanEvents();
-        if (this._$tpl && this._$tpl.parentNode) {
-            this._$tpl.parentNode.removeChild(this._$tpl);
-        }
-    }
+	get tooltip() {
+		return this._$tt;
+	}
 
-    get options () {
-        return {...this._options};
-    }
+	get visible() {
+		return this._visible;
+	}
 
-    get tooltip () {
-        return this._$tt;
-    }
+	set visible(val) {
+		if (typeof val === 'boolean') {
+			this._visible = val;
+		}
+	}
 
-    get visible () {
-        return this._visible;
-    }
+	get disabled() {
+		return this._disabled;
+	}
 
-    set visible (val) {
-        if (typeof val === 'boolean') {
-            this._visible = val;
-        }
-    }
+	set disabled(val) {
+		if (typeof val === 'boolean') {
+			this._disabled = val;
+		}
+	}
 
-    get disabled () {
-        return this._disabled;
-    }
+	set class(val) {
+		if (typeof val === 'string') {
+			const classList = this._$tpl.classList.value.replace(this.options.class, val);
+			this._options.class = classList;
+			this._$tpl.setAttribute('class', classList);
+		}
+	}
 
-    set disabled (val) {
-        if (typeof val === 'boolean') {
-            this._disabled = val;
-        }
-    }
+	static filterOptions(options) {
+		let opt = { ...options };
 
-    show () {
-        this.toggle(true);
-    }
+		opt.modifiers = {};
+		let head = null;
+		let tail = null;
+		if (opt.placement.indexOf('-') > -1) {
+			[head, tail] = opt.placement.split('-');
+			opt.placement = (includes(PLACEMENT, head) && includes(SUB_PLACEMENT, tail)) ? opt.placement : Tooltip._defaults.placement;
+		} else {
+			opt.placement = (includes(PLACEMENT, opt.placement)) ? opt.placement : Tooltip._defaults.placement;
+		}
 
-    hide () {
-        this.toggle(false);
-    }
+		opt.modifiers.offset = {
+			fn: Tooltip._setOffset
+		};
 
-    toggle (visible, autoHide = true) {
-        let delay = this._options.delay;
+		return opt;
+	}
 
-        if (this.disabled === true) {
-            visible = false;
-            delay = 0;
-        }
+	static _setOffset(data, opts) {
+		let offset = data.instance.options.offset;
 
-        if (typeof visible !== 'boolean') {
-            visible = !this._visible;
-        }
+		if (window.isNaN(offset) || offset < 0) {
+			offset = Tooltip._defaults.offset;
+		}
 
-        if (visible === true) {
-            delay = 0;
-        }
+		if (data.placement.indexOf('top') !== -1) {
+			data.offsets.popper.top -= offset;
+		} else if (data.placement.indexOf('right') !== -1) {
+			data.offsets.popper.left += offset;
+		} else if (data.placement.indexOf('bottom') !== -1) {
+			data.offsets.popper.top += offset;
+		} else if (data.placement.indexOf('left') !== -1) {
+			data.offsets.popper.left -= offset;
+		}
 
-        clearTimeout(this._clearDelay);
+		return data;
+	}
 
-        if (autoHide === true) {
-            this._clearDelay = setTimeout(() => {
-                this.visible = visible;
-                if (this.visible === true && this.disabled !== true) {
-                    // add tooltip node
-                    // this._$el.insertAdjacentElement('afterend', this._$tpl);
-                    document.querySelector('body').appendChild(this._$tpl);
+	static isIosSafari() {
+		return includes(navigator.userAgent.toLowerCase(), 'mobile') && includes(navigator.userAgent.toLowerCase(), 'safari') &&
+			(navigator.platform.toLowerCase() === 'iphone' || navigator.platform.toLowerCase() === 'ipad');
+	}
 
-                    // Need the timeout to be sure that the element is inserted in the DOM
-                    setTimeout(() => {
-                        // enable eventListeners
-                        this._$tt.enableEventListeners();
-                        // only update if the tooltip is visible
-                        this._$tt.scheduleUpdate();
-                        // switch CSS
-                        this._$tpl.classList.replace(CSS.HIDDEN, CSS.VISIBLE);
-                    }, 60);
-                } else {
-                    this._$tpl.classList.replace(CSS.VISIBLE, CSS.HIDDEN);
-                    // remove tooltip node
-                    if (this._$tpl && this._$tpl.parentNode) {
-                        this._$tpl.parentNode.removeChild(this._$tpl);
-                    }
+	static defaults(data) {
+		// if (data.placement) {
+		//     data.originalPlacement = data.placement;
+		// }
+		Tooltip._defaults = { ...Tooltip._defaults, ...data };
+	}
 
-                    this._$tt.disableEventListeners();
-                }
-            }, delay);
-        }
-    }
+	setupPopper() {
+		// this._$el.insertAdjacentElement('afterend', this._$tpl);
+		this.disabled = false;
+		this._visible = false;
+		this._clearDelay = null;
+		this._$tt.disableEventListeners();
+		this._setEvents();
+	}
 
-    _createTooltipElement (options) {
-        // wrapper
-        let $popper = document.createElement('div');
-        $popper.setAttribute('id', `tooltip-${randomId()}`);
-        $popper.setAttribute('class', `${BASE_CLASS} ${this._options.class}`);
+	destroy() {
+		this._cleanEvents();
+		if (this._$tpl && this._$tpl.parentNode) {
+			this._$tpl.parentNode.removeChild(this._$tpl);
+		}
+	}
 
-        // make arrow
-        let $arrow = document.createElement('div');
-        $arrow.setAttribute('class', 'tooltip-arrow');
-        $arrow.setAttribute('x-arrow', '');
-        $popper.appendChild($arrow);
+	show() {
+		this.toggle(true);
+	}
 
-        // make content container
-        let $content = document.createElement('div');
-        $content.setAttribute('class', 'tooltip-content');
-        $popper.appendChild($content);
+	hide() {
+		this.toggle(false);
+	}
 
-        return $popper;
-    }
+	toggle(visible, autoHide = true) {
+		let delay = this._options.delay;
 
-    _events (type = EVENTS.ADD) {
-        const evtType = (type === EVENTS.ADD) ? 'addEventListener' : 'removeEventListener';
-        if (!Array.isArray(this.options.triggers)) {
-            console.error('trigger should be an array', this.options.triggers); // eslint-disable-line
-            return;
-        }
+		if (this.disabled === true) {
+			visible = false;
+			delay = 0;
+		}
 
-        let lis = (...params) => this._$el[evtType](...params);
+		if (typeof visible !== 'boolean') {
+			visible = !this._visible;
+		}
 
-        if (includes(this.options.triggers, 'manual')) {
-            lis('click', this._onToggle.bind(this), false);
-        } else {
-            // For the strange iOS/safari behaviour, we remove any 'hover' and replace it by a 'click' event
-            if (this.options.fixIosSafari && Tooltip.isIosSafari() && includes(this.options.triggers, 'hover')) {
-                const pos = this.options.triggers.indexOf('hover');
-                const click = includes(this.options.triggers, 'click');
-                this._options.triggers[pos] = (click !== -1) ? 'click' : null;
-            }
+		if (visible === true) {
+			delay = 0;
+		}
 
-            this.options.triggers.map(evt => {
-                switch (evt) {
-                case 'click':
-                    lis('click', (e) => { this._onToggle(e); }, false);
-                    // document[evtType]('click', this._onDeactivate.bind(this), false);
-                    break;
-                case 'hover':
-                    lis('mouseenter', this._onActivate.bind(this), false);
-                    lis('mouseleave', this._onDeactivate.bind(this), false);
-                    break;
-                case 'focus':
-                    lis('focus', this._onActivate.bind(this), false);
-                    lis('blur', this._onDeactivate.bind(this), true);
-                    break;
-                }
-            });
+		clearTimeout(this._clearDelay);
 
-            if (includes(this.options.triggers, 'hover') || includes(this.options.triggers, 'focus')) {
-                this._$tpl[evtType]('mouseenter', this._onMouseOverTooltip.bind(this), false);
-                this._$tpl[evtType]('mouseleave', this._onMouseOutTooltip.bind(this), false);
-            }
-        }
-    }
+		if (autoHide === true) {
+			this._clearDelay = setTimeout(() => {
+				this.visible = visible;
+				if (this.visible === true && this.disabled !== true) {
+					// add tooltip node
+					// this._$el.insertAdjacentElement('afterend', this._$tpl);
+					document.querySelector('body').appendChild(this._$tpl);
 
-    _setEvents () {
-        this._events();
-    }
+					// Need the timeout to be sure that the element is inserted in the DOM
+					setTimeout(() => {
+						// enable eventListeners
+						this._$tt.enableEventListeners();
+						// only update if the tooltip is visible
+						this._$tt.scheduleUpdate();
+						// switch CSS
+						this._$tpl.classList.replace(CSS.HIDDEN, CSS.VISIBLE);
+					}, 60);
+				} else {
+					this._$tpl.classList.replace(CSS.VISIBLE, CSS.HIDDEN);
+					// remove tooltip node
+					if (this._$tpl && this._$tpl.parentNode) {
+						this._$tpl.parentNode.removeChild(this._$tpl);
+					}
 
-    _cleanEvents () {
-        this._events(EVENTS.REMOVE);
-    }
+					this._$tt.disableEventListeners();
+				}
+			}, delay);
+		}
+	}
 
-    _onActivate (e) {
-        this.show();
-    }
+	_createTooltipElement(options) {
+		// wrapper
+		let $popper = document.createElement('div');
+		$popper.setAttribute('id', `tooltip-${randomId()}`);
+		$popper.setAttribute('class', `${BASE_CLASS} ${this._options.class}`);
 
-    _onDeactivate (e) {
-        this.hide();
-    }
+		// make arrow
+		let $arrow = document.createElement('div');
+		$arrow.setAttribute('class', 'tooltip-arrow');
+		$arrow.setAttribute('x-arrow', '');
+		$popper.appendChild($arrow);
 
-    _onToggle (e) {
-        e.stopPropagation();
-        e.preventDefault();
-        this.toggle();
-    }
+		// make content container
+		let $content = document.createElement('div');
+		$content.setAttribute('class', 'tooltip-content');
+		$popper.appendChild($content);
 
-    _onMouseOverTooltip (e) {
-        this.toggle(true, false);
-    }
+		return $popper;
+	}
 
-    _onMouseOutTooltip (e) {
-        this.toggle(false);
-    }
+	_events(type = EVENTS.ADD) {
+		const evtType = (type === EVENTS.ADD) ? 'addEventListener' : 'removeEventListener';
+		if (!Array.isArray(this.options.triggers)) {
+			console.error('trigger should be an array', this.options.triggers); // eslint-disable-line
+			return;
+		}
 
-    content (content) {
-        const wrapper = this.tooltip.popper.querySelector('.tooltip-content');
-        if (typeof content === 'string') {
-            this.tooltip.options.title = content;
-            wrapper.textContent = content;
-        } else if (isElement(content)) {
-            if (content !== wrapper.children[0]) {
-                wrapper.innerHTML = '';
-                // this.tooltip.htmlContent = content.cloneNode(true);
-                this.tooltip.htmlContent = content;
-                wrapper.appendChild(this.tooltip.htmlContent);
-            }
-        } else {
-            console.error('unsupported content type', content); // eslint-disable-line
-        }
-    }
+		let lis = (...params) => this._$el[evtType](...params);
 
-    set class (val) {
-        if (typeof val === 'string') {
-            const classList = this._$tpl.classList.value.replace(this.options.class, val);
-            this._options.class = classList;
-            this._$tpl.setAttribute('class', classList);
-        }
-    }
+		if (includes(this.options.triggers, 'manual')) {
+			lis('click', this._onToggle.bind(this), false);
+		} else {
+			// For the strange iOS/safari behaviour, we remove any 'hover' and replace it by a 'click' event
+			if (this.options.fixIosSafari && Tooltip.isIosSafari() && includes(this.options.triggers, 'hover')) {
+				const pos = this.options.triggers.indexOf('hover');
+				const click = includes(this.options.triggers, 'click');
+				this._options.triggers[pos] = (click !== -1) ? 'click' : null;
+			}
 
-    static filterOptions (options) {
-        let opt = {...options};
+			this.options.triggers.map(evt => {
+				switch (evt) {
+					case 'click':
+						lis('click', (e) => {
+							this._onToggle(e);
+						}, false);
+						// document[evtType]('click', this._onDeactivate.bind(this), false);
+						break;
+					case 'hover':
+						lis('mouseenter', this._onActivate.bind(this), false);
+						lis('mouseleave', this._onDeactivate.bind(this), false);
+						break;
+					case 'focus':
+						lis('focus', this._onActivate.bind(this), false);
+						lis('blur', this._onDeactivate.bind(this), true);
+						break;
+				}
+			});
 
-        opt.modifiers = {};
-        let head = null;
-        let tail = null;
-        if (opt.placement.indexOf('-') > -1) {
-            [head, tail] = opt.placement.split('-');
-            opt.placement = (includes(PLACEMENT, head) && includes(SUB_PLACEMENT, tail)) ? opt.placement : Tooltip._defaults.placement;
-        } else {
-            opt.placement = (includes(PLACEMENT, opt.placement)) ? opt.placement : Tooltip._defaults.placement;
-        }
+			if (includes(this.options.triggers, 'hover') || includes(this.options.triggers, 'focus')) {
+				this._$tpl[evtType]('mouseenter', this._onMouseOverTooltip.bind(this), false);
+				this._$tpl[evtType]('mouseleave', this._onMouseOutTooltip.bind(this), false);
+			}
+		}
+	}
 
-        opt.modifiers.offset = {
-            fn: Tooltip._setOffset
-        };
+	_setEvents() {
+		this._events();
+	}
 
-        return opt;
-    }
+	_cleanEvents() {
+		this._events(EVENTS.REMOVE);
+	}
 
-    static _setOffset (data, opts) {
-        let offset = data.instance.options.offset;
+	_onActivate(e) {
+		this.show();
+	}
 
-        if (window.isNaN(offset) || offset < 0) {
-            offset = Tooltip._defaults.offset;
-        }
+	_onDeactivate(e) {
+		this.hide();
+	}
 
-        if (data.placement.indexOf('top') !== -1) {
-            data.offsets.popper.top -= offset;
-        } else if (data.placement.indexOf('right') !== -1) {
-            data.offsets.popper.left += offset;
-        } else if (data.placement.indexOf('bottom') !== -1) {
-            data.offsets.popper.top += offset;
-        } else if (data.placement.indexOf('left') !== -1) {
-            data.offsets.popper.left -= offset;
-        }
+	_onToggle(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		this.toggle();
+	}
 
-        return data;
-    }
+	_onMouseOverTooltip(e) {
+		this.toggle(true, false);
+	}
 
-    static isIosSafari () {
-        return includes(navigator.userAgent.toLowerCase(), 'mobile') && includes(navigator.userAgent.toLowerCase(), 'safari') &&
-                (navigator.platform.toLowerCase() === 'iphone' || navigator.platform.toLowerCase() === 'ipad');
-    }
+	_onMouseOutTooltip(e) {
+		this.toggle(false);
+	}
 
-    static defaults (data) {
-        // if (data.placement) {
-        //     data.originalPlacement = data.placement;
-        // }
-        Tooltip._defaults = {...Tooltip._defaults, ...data};
-    }
+	content(content) {
+		const wrapper = this.tooltip.popper.querySelector('.tooltip-content');
+		if (typeof content === 'string') {
+			this.tooltip.options.title = content;
+			wrapper.textContent = content;
+		} else if (isElement(content)) {
+			if (content !== wrapper.children[0]) {
+				wrapper.innerHTML = '';
+				// this.tooltip.htmlContent = content.cloneNode(true);
+				this.tooltip.htmlContent = content;
+				wrapper.appendChild(this.tooltip.htmlContent);
+			}
+		} else {
+			console.error('unsupported content type', content); // eslint-disable-line
+		}
+	}
 }
 
-Tooltip._defaults = {...DEFAULT_OPTIONS};
+Tooltip._defaults = { ...DEFAULT_OPTIONS };
 
-function randomId () {
-    return `${Date.now()}-${Math.round(Math.random() * 100000000)}`;
+function randomId() {
+	return `${Date.now()}-${Math.round(Math.random() * 100000000)}`;
 }
 
 /**
@@ -345,6 +347,6 @@ function randomId () {
  * @param {*} value
  * @return Boolean
  */
-function isElement (value) {
-    return value instanceof window.Element;
+function isElement(value) {
+	return value instanceof window.Element;
 }
