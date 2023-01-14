@@ -27,17 +27,18 @@
 								<draggable
 									v-model="column.tasks"
 									:animation="200"
-									:data-status="column.status.id"
-									class="board-card"
 									ghost-class="ghost-card"
 									group="tasks"
 									item-key="id"
-									@end="onEnd">
+									@end="onEnd"
+									:data-status="column.status.id"
+									class="board-card">
 									<template #item="{element: task}">
 										<task-card
-											:data-task="jsonEncode(task)"
 											:task="task"
 											class="my-5 cursor-move"
+
+											:data-task="jsonEncode(task)"
 										></task-card>
 									</template>
 								</draggable>

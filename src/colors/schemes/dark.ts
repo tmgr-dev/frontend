@@ -1,6 +1,7 @@
 import { Keys } from '@/colors/schemes/types';
 
 const keys: Keys = {
+	themeType: 'dark-mode',
 	bgBody: 'dark-bg-body night-mode',
 	bgNav: 'bg-gray-900',
 	bgModalTop: 'bg-gray-700',
@@ -13,19 +14,20 @@ const keys: Keys = {
 	blocks: 'bg-gray-900',
 	input: 'bg-gray-800',
 	blocksHover: 'bg-gray-800',
-	navTextUser: 'text-white',
+	inverseTextColor: 'text-white',
 	textMain: 'dark-text-main',
 	textModal: 'text-main',
 	borderMain: 'border-gray-700',
+	defaultBorder_darkNoBorder: 'border-none',
 	h1: 'text-white',
 	textBreadcrumbs: 'text-white',
 	navLinkFocused: 'text-green',
 	bg: 'bg-gray-600',
 	buttonActionOpacity: 'opacity-50 hover:opacity-75',
 	grayHover: 'hover:text-gray-300',
-	modalBg: 'bg-gray-200',
+	modalBg: 'bg-gray-600',
 	settingsTextColor: 'text-gray-400',
-	taskSettingTextColor: 'text-gray-800',
+	taskSettingTextColor: 'dark-text-main',
 	borderSelection: 'border-gray-400'
 };
 

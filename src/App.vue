@@ -23,8 +23,8 @@
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
-					<span :class="`${$color('navTextUser')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
-            <day-night-switch v-model="switchOn" />
+					<span :class="`${$color('inverseTextColor')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
+            <day-night-switch v-model="switchOn"/>
           </span>
 				</div>
 			</div>
@@ -42,8 +42,8 @@
 						<transition
 							:name="transitionName"
 							mode="out-in"
-							@enter="enter"
 							@before-leave="beforeLeave"
+							@enter="enter"
 							@after-enter="afterEnter"
 						>
 							<div>

@@ -154,3 +154,28 @@ burger
 		left: 10%;
 	}
 }
+
+/* width */
+::-webkit-scrollbar {
+	width: 7px;
+	height: 10px;
+	margin-right: 5px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+	border-radius: 100vh;
+	background: rgba(147, 147, 147, 0.1);
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+	background: rgba(117, 117, 117, 0.2);
+	border-radius: 100vh;
+	border: none;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+	background: #7c7c7c;
+}
