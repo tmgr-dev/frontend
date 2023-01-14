@@ -74,8 +74,11 @@
 					</transition>
 				</span>
 		</div>
-		<fullscreen-modal v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
-											close-on-bg-click @close="$store.dispatch('closeTaskModal')">
+
+		<fullscreen-modal
+			v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
+			close-on-bg-click @close="$store.dispatch('closeTaskModal')"
+		>
 			<template #modal-body>
 				<task-form
 					:is-modal="true"
@@ -95,8 +98,8 @@ import { defineComponent } from 'vue';
 import Navbar from 'src/components/UIElements/Navbar';
 import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 import Slideout from 'src/components/UIElements/Slideout/Slideout';
-import FullscreenModal from 'components/Layouts/FullscreenModal';
-import TaskForm from 'components/Tasks/TaskForm';
+import FullscreenModal from 'src/components/Layouts/FullscreenModal';
+import TaskForm from 'src/components/Tasks/TaskForm';
 
 const DEFAULT_TRANSITION = 'fade';
 
