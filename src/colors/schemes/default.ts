@@ -26,6 +26,6 @@ const keys: Keys = {
 	settingsTextColor: 'text-gray-800',
 	taskSettingTextColor: 'text-gray-800',
 	borderSelection: 'border-black'
-}
+};
 
 export default keys;

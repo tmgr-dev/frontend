@@ -1,8 +1,8 @@
 <template>
 	<p
 		ref="editable"
-		class="content-editable text-left"
 		:placeholder="placeholder"
+		class="content-editable text-left"
 		contenteditable
 		v-on="listeners"
 		v-html="modelValue"
@@ -15,12 +15,12 @@ export default {
 	props: {
 		modelValue: {
 			type: String,
-			default: '',
+			default: ''
 		},
 		placeholder: {
 			type: String,
-			default: '',
-		},
+			default: ''
+		}
 	},
 	emits: [
 		'input'
@@ -28,7 +28,7 @@ export default {
 	computed: {
 		listeners() {
 			return { ...this.$listeners, input: this.onInput };
-		},
+		}
 	},
 	mounted() {
 		this.$refs.editable.innerText = this.modelValue;
@@ -36,13 +36,13 @@ export default {
 	methods: {
 		onInput(e) {
 			this.$emit('update:modelValue', e.target.innerText);
-		},
-	},
+		}
+	}
 };
 </script>
-<style scoped lang="scss">
- 	.content-editable[placeholder]:empty::before {
-		content: attr(placeholder);
-		color: #9ba3af;
-	}
+<style lang="scss" scoped>
+.content-editable[placeholder]:empty::before {
+	content: attr(placeholder);
+	color: #9ba3af;
+}
 </style>

@@ -2,11 +2,11 @@
 	<alert ref="alert" />
 	<div id="q-app" :class="$color('textMain')" class="q-electron-drag">
 		<q-bar v-if="$q.platform.is.electron">
-			<q-icon name="map"/>
+			<q-icon name="map" />
 
 			<div>TMGR</div>
 
-			<q-space/>
+			<q-space />
 
 			<q-btn class="q-electron-drag--exception" dense flat icon="minimize" @click="minimize" />
 			<q-btn class="q-electron-drag--exception" dense flat icon="crop_square" @click="maximize" />
@@ -32,8 +32,11 @@
 				<q-scroll-area :style="{
 					height: bodyHeight + 'px'
 				}">
-					<transition name="fade" mode="out-in">
-						<Navbar v-if="$route.meta.navbarHidden" :menu-position="translateMenuPosition" :menu-is-active="menuIsActive" />
+					<transition mode="out-in" name="fade">
+						<div>
+							<Navbar v-if="$route.meta.navbarHidden" :menu-is-active="menuIsActive"
+											:menu-position="translateMenuPosition" />
+						</div>
 					</transition>
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
@@ -41,8 +44,11 @@
 							mode="out-in"
 							@before-leave="beforeLeave"
 							@enter="enter"
-							@after-enter="afterEnter">
-							<component v-show="showComponent" :is="Component"></component>
+							@after-enter="afterEnter"
+						>
+							<div>
+								<component :is="Component" v-show="showComponent"></component>
+							</div>
 						</transition>
 					</router-view>
 				</q-scroll-area>
@@ -53,11 +59,13 @@
 					v-for="task in activeTasks"
 					class="mb-5 inline-block"
 				>
-					<transition name="fade" mode="out-in">
-						<a :href="`/${task.id}/edit`" @click.prevent="$store.commit('currentTaskIdForModal', task.id)" v-if="task.id !== $store.getters.currentOpenedTaskId">
+					<transition mode="out-in" name="fade">
+						<a v-if="task.id !== $store.getters.currentOpenedTaskId" :href="`/${task.id}/edit`"
+							 @click.prevent="$store.commit('currentTaskIdForModal', task.id)">
 							<span :class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`">
 								<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
-									<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+									<span
+										class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
 									<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
 								</span>
 								<span :class="$color('textMain')">{{ task.title }}</span>
@@ -66,16 +74,13 @@
 					</transition>
 				</span>
 		</div>
-		<fullscreen-modal
-			v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
-			close-on-bg-click
-			mobile-full-width
-			@close="$store.dispatch('closeTaskModal')">
+		<fullscreen-modal v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
+											close-on-bg-click @close="$store.dispatch('closeTaskModal')">
 			<template #modal-body>
 				<task-form
 					:is-modal="true"
-					:modal-task-id="$store.getters.currentTaskIdForModal"
 					:modal-project-category-id="$store.getters.createTaskInProjectCategoryId"
+					:modal-task-id="$store.getters.currentTaskIdForModal"
 					:status-id="$store.getters.createTaskInStatusId"
 					@close="$store.dispatch('closeTaskModal')"
 				/>
@@ -85,165 +90,165 @@
 </template>
 
 <script>
-	import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
-	import Navbar from "src/components/UIElements/Navbar";
-	import NavbarMenu from "src/components/UIElements/NavbarMenu";
-	import Slideout from 'src/components/UIElements/Slideout/Slideout';
-	import FullscreenModal from "components/Layouts/FullscreenModal";
-	import TaskForm from "components/Tasks/TaskForm";
+import Navbar from 'src/components/UIElements/Navbar';
+import NavbarMenu from 'src/components/UIElements/NavbarMenu';
+import Slideout from 'src/components/UIElements/Slideout/Slideout';
+import FullscreenModal from 'components/Layouts/FullscreenModal';
+import TaskForm from 'components/Tasks/TaskForm';
 
-	const DEFAULT_TRANSITION = 'fade'
+const DEFAULT_TRANSITION = 'fade';
 
-	// TODO: solve slideout & horizontal scroll in the Board
-	export default defineComponent({
-		name: 'App',
-		components: {
-			TaskForm,
-			FullscreenModal,
-			Navbar,
-			Slideout,
-			NavbarMenu
+// TODO: solve slideout & horizontal scroll in the Board
+export default defineComponent({
+	name: 'App',
+	components: {
+		TaskForm,
+		FullscreenModal,
+		Navbar,
+		Slideout,
+		NavbarMenu
+	},
+	data() {
+		return {
+			prevHeight: 0,
+			transitionName: DEFAULT_TRANSITION,
+			showComponent: true,
+			activeTasks: [],
+			bodyOverflow: '',
+			bodyHeight: 800,
+			menuIsActive: false,
+			translateMenuPosition: 0
+		};
+	},
+	computed: {
+		navbarHidden() {
+			return this.$route.name !== 'Index';
 		},
-		data() {
-			return {
-				prevHeight: 0,
-				transitionName: DEFAULT_TRANSITION,
-				showComponent: true,
-				activeTasks: [],
-				bodyOverflow: '',
-				bodyHeight: 800,
-				menuIsActive: false,
-				translateMenuPosition: 0
-			};
-		},
-		computed: {
-			navbarHidden () {
-				return this.$route.name !== 'Index'
+		switchOn: {
+			get() {
+				return this.$store.getters.colorScheme === 'dark';
 			},
-			switchOn: {
-				get () {
-					return this.$store.getters.colorScheme === 'dark'
-				},
-				set (newValue) {
-					this.$store.commit('colorScheme', newValue ? 'dark' : 'default')
-				}
+			set(newValue) {
+				this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
 			}
+		}
+	},
+	watch: {
+		'$route.path'() {
+			this.showComponent = false;
+			setTimeout(() => this.showComponent = true, 100);
+		}
+	},
+	methods: {
+		closeTaskModal() {
+			this.$store.dispatch('closeTaskModal');
 		},
-		watch: {
-			'$route.path' () {
-				this.showComponent = false
-				setTimeout(() => this.showComponent = true, 100)
-			}
+		translateMenu(data) {
+			this.translateMenuPosition = data;
 		},
-		methods: {
-			closeTaskModal () {
-				this.$store.dispatch('closeTaskModal')
-			},
-			translateMenu (data) {
-				this.translateMenuPosition = data
-			},
-			beforeLeave(element) {
-				this.prevHeight = getComputedStyle(element).height;
-			},
-			enter(element) {
-				const {height} = getComputedStyle(element);
-
-				element.style.height = this.prevHeight;
-
-				setTimeout(() => {
-					element.style.height = height;
-				});
-			},
-			afterEnter(element) {
-				element.style.height = 'auto';
-			},
-			async loadActiveTasks() {
-				if (!this.$store.getters.user) {
-					return
-				}
-				const {data: {data}} = await this.$axios.get('/tasks/runned')
-				this.activeTasks = data
-			},
-			minimize () {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.minimize()
-				}
-			},
-			maximize () {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.toggleMaximize()
-				}
-			},
-			closeApp () {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.close()
-				}
-			},
-			initBodyHeight () {
-				setTimeout(() => {
-					try {
-						this.bodyHeight = this.getBodyHeight()
-					} catch (e) {
-						setTimeout(() => this.bodyHeight = this.getBodyHeight(), 1000)
-					}
-				}, 500)
-			},
-			getBodyHeight () {
-				return this.getOffsetHeightOfElement('body') + 30 - this.getOffsetHeightOfElement('[role=toolbar]') - this.getOffsetHeightOfElement('nav')
-			},
-			getOffsetHeightOfElement (selector) {
-				const el = document.querySelector(selector)
-				if (!el) {
-					return 0
-				}
-				return el.offsetHeight
-			}
+		beforeLeave(element) {
+			this.prevHeight = getComputedStyle(element).height;
 		},
-		async created() {
-			this.$store.dispatch('loadUserSettings')
-			this.$store.dispatch('loadStatuses')
+		enter(element) {
+			const { height } = getComputedStyle(element);
 
-			this.$router.beforeEach((to, from, next) => {
-				this.$store.commit('currentOpenedTaskId', null)
-				this.loadActiveTasks()
-				let transitionName = to.meta.transitionName || from.meta.transitionName;
+			element.style.height = this.prevHeight;
 
-				if (transitionName === 'slide') {
-					const toDepth = to.path.split('/').length;
-					const fromDepth = from.path.split('/').length;
-					transitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
-				}
-
-				this.transitionName = transitionName || DEFAULT_TRANSITION;
-
-				next();
+			setTimeout(() => {
+				element.style.height = height;
 			});
-
+		},
+		afterEnter(element) {
+			element.style.height = 'auto';
+		},
+		async loadActiveTasks() {
 			if (!this.$store.getters.user) {
 				return;
 			}
-			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
-				if (!userId) {
-					return this.$store.commit('pusherBeamsUserId', userId);
-				}
-				userId = this.$store.getters.user.id.toString()
-				this.$store.getters.pusherBeamsClient.start()
-					.then(() => {
-						this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
-							this.$store.commit('pusherBeamsUserId', userId)
-						})
-					});
-			})
-			this.loadActiveTasks()
+			const { data: { data } } = await this.$axios.get('/tasks/runned');
+			this.activeTasks = data;
+		},
+		minimize() {
 			if (process.env.MODE === 'electron') {
-				document.body.style.overflow = 'hidden'
+				window.myWindowAPI.minimize();
 			}
 		},
-		mounted() {
-			this.initBodyHeight()
+		maximize() {
+			if (process.env.MODE === 'electron') {
+				window.myWindowAPI.toggleMaximize();
+			}
+		},
+		closeApp() {
+			if (process.env.MODE === 'electron') {
+				window.myWindowAPI.close();
+			}
+		},
+		initBodyHeight() {
+			setTimeout(() => {
+				try {
+					this.bodyHeight = this.getBodyHeight();
+				} catch (e) {
+					setTimeout(() => this.bodyHeight = this.getBodyHeight(), 1000);
+				}
+			}, 500);
+		},
+		getBodyHeight() {
+			return this.getOffsetHeightOfElement('body') + 30 - this.getOffsetHeightOfElement('[role=toolbar]') - this.getOffsetHeightOfElement('nav');
+		},
+		getOffsetHeightOfElement(selector) {
+			const el = document.querySelector(selector);
+			if (!el) {
+				return 0;
+			}
+			return el.offsetHeight;
 		}
-	})
+	},
+	async created() {
+		this.$store.dispatch('loadUserSettings');
+		this.$store.dispatch('loadStatuses');
+
+		this.$router.beforeEach((to, from, next) => {
+			this.$store.commit('currentOpenedTaskId', null);
+			this.loadActiveTasks();
+			let transitionName = to.meta.transitionName || from.meta.transitionName;
+
+			if (transitionName === 'slide') {
+				const toDepth = to.path.split('/').length;
+				const fromDepth = from.path.split('/').length;
+				transitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
+			}
+
+			this.transitionName = transitionName || DEFAULT_TRANSITION;
+
+			next();
+		});
+
+		if (!this.$store.getters.user) {
+			return;
+		}
+		this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+			if (!userId) {
+				return this.$store.commit('pusherBeamsUserId', userId);
+			}
+			userId = this.$store.getters.user.id.toString();
+			this.$store.getters.pusherBeamsClient.start()
+				.then(() => {
+					this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
+						this.$store.commit('pusherBeamsUserId', userId);
+					});
+				});
+		});
+		this.loadActiveTasks();
+		if (process.env.MODE === 'electron') {
+			document.body.style.overflow = 'hidden';
+		}
+	},
+	mounted() {
+		this.initBodyHeight();
+	}
+});
 </script>
 
-<style src="src/assets/styles/index.scss" lang="scss"></style>
+<style lang="scss" src="src/assets/styles/index.scss"></style>

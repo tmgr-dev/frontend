@@ -1,8 +1,8 @@
 <template>
 	<div :class="{ 'theme-dark' : nightMode , 'switcher': true}">
 		<input
-			type="checkbox" :id="`theme-toggle-${$.uid}`" class="theme-toggle"
-			v-model="nightMode"
+			:id="`theme-toggle-${$.uid}`" v-model="nightMode" class="theme-toggle"
+			type="checkbox"
 		/>
 		<label :for="`theme-toggle-${$.uid}`">
 			<span></span>
@@ -12,7 +12,7 @@
 
 <script>
 export default {
-	name: "DayNightSwitch",
+	name: 'DayNightSwitch',
 	props: {
 		modelValue: {
 			type: Boolean,
@@ -22,7 +22,7 @@ export default {
 	emits: ['update:modelValue'],
 	watch: {
 		nightMode() {
-			this.$emit('update:modelValue', this.nightMode)
+			this.$emit('update:modelValue', this.nightMode);
 		}
 	},
 	mounted() {
@@ -30,10 +30,10 @@ export default {
 	data() {
 		return {
 			nightMode: this.modelValue
-		}
+		};
 	},
 	methods: {}
-}
+};
 </script>
 
 <style lang="scss">

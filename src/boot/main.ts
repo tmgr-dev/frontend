@@ -1,19 +1,19 @@
 // HTTP client
 import axios from 'axios';
 
-import { Component } from "@vue/runtime-core";
+import { Component } from '@vue/runtime-core';
 
 // Dark & Day modes
-import colorSchemes from "src/colors/schemes";
+import colorSchemes from 'src/colors/schemes';
 
 // Directives
-import { VueTheMask, mask } from "src/components/UIElements/VueTheMask";
+import { mask, VueTheMask } from 'src/components/UIElements/VueTheMask';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.bubble.css';
-import Tooltip from "src/directives/tooltip";
-import Selectable from "src/directives/selectable";
+import Tooltip from 'src/directives/tooltip';
+import Selectable from 'src/directives/selectable';
 
-import components from "src/bootstrap/globalComponents";
+import components from 'src/bootstrap/globalComponents';
 
 
 export default (obj: any) => {
@@ -31,7 +31,7 @@ export default (obj: any) => {
 			'Cache-Control': 'no-cache',
 			'Pragma': 'no-cache',
 			'Expires': '0'
-		}
+		};
 	}
 
 	axios.interceptors.response.use(response => {
@@ -62,8 +62,8 @@ export default (obj: any) => {
 		class: 'custom-tooltip',
 		triggers: ['hover'],
 		offset: 5
-	})
-	app.use(Selectable)
-	app.use(router)
-	app.use(store)
+	});
+	app.use(Selectable);
+	app.use(router);
+	app.use(store);
 }

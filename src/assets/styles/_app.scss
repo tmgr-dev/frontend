@@ -25,7 +25,7 @@
 }
 
 .fade-fast-enter-active,
-.fade-fast-leave-active{
+.fade-fast-leave-active {
 	transition-duration: 0.5s;
 	transition-property: height, opacity;
 	transition-timing-function: ease;
@@ -80,6 +80,7 @@
 .bounce-enter-active {
 	animation: bounce-in .3s;
 }
+
 .bounce-leave-active {
 	animation: bounce-in .3s reverse;
 }
@@ -103,6 +104,7 @@ burger
 
 .nav-toggle-menu {
 	direction: rtl;
+
 	.bar1, .bar2, .bar3 {
 		width: 26px;
 		height: 3px;
@@ -110,20 +112,25 @@ burger
 		transition: .3s;
 		border-radius: 3px;
 	}
+
 	.bar1 {
 		width: 22px;
 	}
+
 	.bar2 {
 		width: 18px;
 	}
+
 	&.active {
 		.bar1 {
 			transform: rotate(-45deg) translate(-5px, 5px);
 			width: 26px;
 		}
+
 		.bar2 {
 			opacity: 0;
 		}
+
 		.bar3 {
 			transform: rotate(45deg) translate(-6px, -7px);
 		}
@@ -142,6 +149,7 @@ burger
 
 .ql-bubble .ql-tooltip {
 	margin-left: 75px;
+
 	.ql-tooltip-arrow {
 		left: 10%;
 	}

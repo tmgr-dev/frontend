@@ -1,12 +1,13 @@
 <template>
 	<div :class="`${$color('blocksHover')} ${$color('borderMain')} shadow rounded px-3 pt-3 pb-5 border`">
 		<div class="flex justify-between">
-			<a :href="`/${task.id}/edit`" @click.prevent="$store.commit('currentTaskIdForModal', task.id)" :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`">{{task.title}}</a>
+			<a :class="`${$color('textMain')} font-semibold font-sans tracking-wide text-sm`" :href="`/${task.id}/edit`"
+				 @click.prevent="$store.commit('currentTaskIdForModal', task.id)">{{ task.title }}</a>
 
 			<img
+				alt="Avatar"
 				class="w-6 h-6 rounded-full ml-3"
 				src="https://pickaface.net/gallery/avatar/unr_sample_161118_2054_ynlrg.png"
-				alt="Avatar"
 			>
 		</div>
 		<div class="flex mt-4 justify-between items-center">
@@ -18,10 +19,9 @@
 	</div>
 </template>
 <script>
-import Badge from "./Badge.vue";
-import moment from "moment";
-import TimePreparationMixin from "src/mixins/TimePreparationMixin";
-import CategoryBadge from "components/UIElements/CategoryBadge";
+import Badge from './Badge.vue';
+import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
+import CategoryBadge from 'components/UIElements/CategoryBadge';
 
 export default {
 	mixins: [
@@ -40,11 +40,11 @@ export default {
 	computed: {
 		badgeColor() {
 			const mappings = {
-				Design: "purple",
-				"Feature Request": "teal",
-				Backend: "blue",
-				QA: "green",
-				default: "black"
+				Design: 'purple',
+				'Feature Request': 'teal',
+				Backend: 'blue',
+				QA: 'green',
+				default: 'black'
 			};
 			return mappings[this.task.type] || mappings.default;
 		}

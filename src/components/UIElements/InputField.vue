@@ -1,7 +1,7 @@
 <template>
 	<div class="input_wrapper">
 		<transition name="fade">
-			<div v-if="showInput">
+			<div v-if="showInput" :key="updateKey">
 				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
 					<vue-select
 						v-if="options"
