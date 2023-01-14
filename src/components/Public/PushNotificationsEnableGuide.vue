@@ -56,7 +56,6 @@
 					<p>On the next screen, tap on clear &amp; reset, a pop-up will appear asking for your permission to allow or Block notifications from the selected website. Choose the option as per your preference.</p>
 			</div>
 			<alert ref="alert" />
-			<!--<alert description="Saved" v-if="successSavingShow" />-->
 		</template>
 	</BaseLayout>
 	<confirm v-if="confirm" :title="confirm.title" :body="confirm.body" @onOk="confirm.action()" @onCancel="confirm = undefined"/>

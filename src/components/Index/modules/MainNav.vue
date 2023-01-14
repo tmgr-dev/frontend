@@ -3,7 +3,7 @@
   <nav
     id="header"
     class="fixed w-full z-30 top-0 text-white "
-    style="background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%;"
+    style="background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0 0;"
   >
     <div class="w-full container mx-auto flex flex-wrap items-center justify-between mt-0 py-2">
       <div class="pl-4 flex items-center">
@@ -54,12 +54,6 @@
         class="w-full flex-grow lg:flex lg:items-center lg:w-auto hidden lg:block mt-2 lg:mt-0 lg:bg-transparent text-black p-4 lg:p-0 z-20"
       >
         <ul class="list-reset lg:flex justify-end flex-1 items-center">
-          <!--                    <li class="mr-3">-->
-          <!--                        <a class="inline-block py-2 px-4 text-black font-bold no-underline" href="#">Active</a>-->
-          <!--                    </li>-->
-          <!--                    <li class="mr-3">-->
-          <!--                        <a class="inline-block text-black no-underline hover:text-gray-800 hover:text-underline py-2 px-4" href="#">link</a>-->
-          <!--                    </li>-->
           <li class="mr-3">
             <router-link
               v-if="!$store.getters.isLoggedIn"

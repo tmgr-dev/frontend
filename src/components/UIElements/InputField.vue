@@ -17,12 +17,6 @@
 					v-model="val"
 					:placeholder="placeholder"
 				/>
-<!--				<content-editable-->
-<!--					-->
-<!--					v-else-if="type === 'contenteditable'"-->
-<!--					v-model="val"-->
-<!--					:placeholder="placeholder"-->
-<!--				/>-->
 				<quill-editor
 					v-else-if="type === 'contenteditable'"
 					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"

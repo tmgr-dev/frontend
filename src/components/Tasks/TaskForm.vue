@@ -182,7 +182,6 @@
 									<span class="material-icons text-lg text-red-700 checkpoint-delete" @click="deleteCheckpoint(v)">delete</span>
 								</span>
 						</div>
-						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 					</div>
 					<h3 class="text-sm">
 						Add a checkpoint
@@ -413,7 +412,7 @@
 				this.initSettings(this.availableSettings, data.settings)
 			},
 			setFormDataWithDelay(data, delay = 200) {
-				return new Promise((resolve, reject) => {
+				return new Promise((resolve) => {
 					if (this.form.id === data.id) {
 						this.form.id = null
 						setTimeout(() => {

@@ -24,7 +24,6 @@
 							placeholder="Name"
 							v-model="form.title"
 						/>
-						<!-- <p class="text-red-500 text-xs italic">Please type a category name</p> -->
 					</div>
 
 					<label class="tc-block text-gray-700 text-sm font-bold mb-2">
@@ -197,11 +196,7 @@
 				})
 			},
 			getSettingById(settings, id, defaultResult = null) {
-				const result = settings.find(setting => setting.id === id) || defaultResult
-				return result
-			},
-			isNotDefaultValue(value) {
-				return !this.availableSettings.find(setting => setting.value === value)
+				return settings.find(setting => setting.id === id) || defaultResult
 			},
 			findProjectCategoryById(id) {
 				return this.parentCategories.find((category) => {
@@ -224,7 +219,6 @@
 
 				const {data: {data}} = await this.$axios.post('project_categories', this.form)
 				this.form = data
-				// await this.saveSettings(this.settings)
 				if (!withRoutePush) {
 					return
 				}
@@ -250,16 +244,15 @@
 
 				text = text.replace(/[ъь]+/g, '').replace(/й/g, 'i');
 
-				for (var i = 0; i < text.length; ++i) {
+				for (let i = 0; i < text.length; ++i) {
 					n_str.push(
 						ru[text[i]]
-						|| ru[text[i].toLowerCase()] == undefined && text[i]
+						|| ru[text[i].toLowerCase()] === undefined && text[i]
 						|| ru[text[i].toLowerCase()].replace(/^(.)/, function (match) {
 							return match.toUpperCase()
 						})
 					);
 				}
-
 				return n_str.join('').toLowerCase();
 			},
 			setFormTexts() {

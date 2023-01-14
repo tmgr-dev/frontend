@@ -45,9 +45,6 @@
 											@click="$router.push({name: 'ProjectCategoryChildrenList', params: {id: category.id}})">
 											{{ category.title }}</p>
 										<div class="flex items-start">
-											<span>
-												<!-- <font-awesome-icon :class="task.start_time ? 'text-green-600' : 'text-orange-600'" icon="egg" class="text-2xl"/>-->
-											</span>
 											<span class="text-gray-700 ml-2">Projects: {{ category.children_count }}; Tasks: {{ category.tasks_count }}</span>
 										</div>
 									</div>
@@ -99,8 +96,8 @@
 							<span class="material-icons text-3xl">add_circle_outline</span>
 						</a>
 					</span>
-					<div class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
-						<div class="sm:mr-5 text-lg">
+					<span class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5">
+						<span class="sm:mr-5 text-lg">
 							<input-field
 								v-if="workspaceStatuses.length > 0"
 								v-model="workspaceStatus"
@@ -111,11 +108,11 @@
 								class="items-center"
 								style="min-width: 200px"
 							/>
-						</div>
+						</span>
 						<a
 							href="#"
 							@click.prevent="selectAll"
-							alt="Select all"
+							title="Select all"
 							class="opacity-25 hover:opacity-100 tc-hidden md:inline mr-2">
 							<span class="material-icons text-3xl">done_all</span>
 						</a>
@@ -125,7 +122,7 @@
 							class="opacity-25 hover:opacity-100 tc-hidden md:inline">
 							<span class="material-icons text-4xl">add_circle_outline</span>
 						</a>
-					</div>
+					</span>
 				</h1>
 
 				<loading-tasks-list v-if="isTasksFirstLoading" class="mt-2" />
