@@ -31,9 +31,6 @@
 
 <script lang="ts">
 
-import NewButton from '@/components/UIElements/NewButton.vue';
-import Modal from '@/components/Layouts/Modal.vue';
-
 interface Props {
 	title: String,
 	body: String,
@@ -52,7 +49,6 @@ interface Data extends Props {
 
 export default {
 	name: 'Confirm',
-	components: { Modal, NewButton },
 	emits: ['onOk', 'onCancel'],
 	props: {
 		title: String,
