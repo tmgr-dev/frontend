@@ -22,7 +22,7 @@
 </template>
 
 <script>
-import CategoryBadge from 'components/UIElements/CategoryBadge';
+import CategoryBadge from 'src/components/UIElements/CategoryBadge';
 
 export default {
 	name: 'TaskMeta',
