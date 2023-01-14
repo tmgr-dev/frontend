@@ -1,12 +1,12 @@
 <template>
-	<div class="account relative select-none">
-		<div
-			:class="`${$color('navTextUser')}-500`"
-			class="account__user cursor-pointer flex item-center"
-			@click="isOpenProfileDropdown = !isOpenProfileDropdown">
-			<span>{{ $store.getters.user?.name }}</span>
-			<span class="material-icons text-lg relative" style="top:2px">person</span>
-		</div>
+  <div class="account relative select-none">
+    <div
+      class="account__user cursor-pointer flex item-center"
+      :class="`${$color('inverseTextColor')}-500`"
+      @click="isOpenProfileDropdown = !isOpenProfileDropdown">
+      <span>{{ $store.getters.user?.name }}</span>
+      <span class="material-icons text-lg relative" style="top:2px">person</span>
+    </div>
 
 		<div
 			v-if="isOpenProfileDropdown"
