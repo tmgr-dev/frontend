@@ -192,7 +192,7 @@
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory">
 				<span v-if="form.approximately_time" class="text-gray-500 py-2 pr-5 estimated-info">
-					Estimated time to complete the task: {{ toHHMM(getTaskSettingValue('approximately_time')) }}
+					Estimated time to complete the task: {{ approximatelyEndTime }}
 				</span>
 			</task-actions>
 		</footer>
@@ -312,6 +312,9 @@
 		computed: {
 			taskId () {
 				return this.projectCategoryId ? null : (this.form?.id || this.modalTaskId || this.$route.params.id)
+			},
+			approximatelyEndTime () {
+				return this.toHHMM(new Date().getSeconds() + (this.form.approximately_time - this.form.common_time));
 			},
 			workspaceStatuses () {
 				return this.$store.getters.statuses
