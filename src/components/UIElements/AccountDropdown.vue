@@ -1,18 +1,20 @@
 <template>
-  <div class="account relative select-none">
+  <div class="relative select-none mt-2 md:mt-0">
     <div
-      class="account__user cursor-pointer flex item-center"
+      class="cursor-pointer flex item-center gap-1"
       :class="`${$color('inverseTextColor')}-500`"
-      @click="isOpenProfileDropdown = !isOpenProfileDropdown">
-      <span>{{ $store.getters.user?.name }}</span>
-      <span class="material-icons text-lg relative" style="top:2px">person</span>
+      @click="isOpenProfileDropdown = !isOpenProfileDropdown"
+		>
+      <span class="flex items-center">{{ $store.getters.user?.name?.slice(0, 15) }}</span>
+      <span class="material-icons text-xl">person</span>
     </div>
 
 		<div
 			v-if="isOpenProfileDropdown"
 			:class="`${ $color('blocks') }`"
 			class="absolute right-0 custom-top py-2 shadow-lg z-50"
-			@mouseleave="isOpenProfileDropdown = false">
+			@mouseleave="isOpenProfileDropdown = false"
+		>
 			<ul class="w-40 py-2 px-4">
 				<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
 					<router-link
@@ -85,6 +87,6 @@ export default {
 
 <style scoped>
 .custom-top {
-	top: calc(100% + 24px);
+	top: calc(100% + 20px);
 }
 </style>
