@@ -57,6 +57,15 @@ let eventsFor = events.mouse;
 export default {
 	replace: true,
 	name: 'VueDraggableResizable',
+	emits: [
+		'activated',
+		'deactivated',
+		'dragging',
+		'resizing',
+		'resizestop',
+		'dragstop',
+		'update:active'
+	],
 	props: {
 		className: {
 			type: String,
