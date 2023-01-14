@@ -14,14 +14,14 @@ $disabled-color: $vs-state-disabled-color;
 $disabled-cursor: $vs-state-disabled-cursor;
 
 .vs--disabled {
-  .vs__dropdown-toggle,
-  .vs__clear,
-  .vs__search,
-  .vs__selected,
-  .vs__open-indicator {
-    cursor: $disabled-cursor;
-    background-color: $disabled-bg;
-  }
+	.vs__dropdown-toggle,
+	.vs__clear,
+	.vs__search,
+	.vs__selected,
+	.vs__open-indicator {
+		cursor: $disabled-cursor;
+		background-color: $disabled-bg;
+	}
 }
 
 /*
@@ -33,21 +33,21 @@ $disabled-cursor: $vs-state-disabled-cursor;
  */
 
 .v-select[dir="rtl"] {
-  .vs__actions {
-    padding: 0 3px 0 6px;
-  }
+	.vs__actions {
+		padding: 0 3px 0 6px;
+	}
 
-  .vs__clear {
-    margin-left: 6px;
-    margin-right: 0;
-  }
+	.vs__clear {
+		margin-left: 6px;
+		margin-right: 0;
+	}
 
-  .vs__deselect {
-    margin-left: 0;
-    margin-right: 2px;
-  }
+	.vs__deselect {
+		margin-left: 0;
+		margin-right: 2px;
+	}
 
-  .vs__dropdown-menu {
-    text-align: right;
-  }
+	.vs__dropdown-menu {
+		text-align: right;
+	}
 }

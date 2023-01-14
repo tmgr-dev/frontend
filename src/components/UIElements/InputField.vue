@@ -2,38 +2,39 @@
 	<div class="input_wrapper">
 		<transition name="fade">
 			<div v-if="showInput" :key="updateKey">
-				<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${borderColor}`">
+				<div v-if="type === 'select'"
+						 :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${borderColor}`">
 					<vue-select
 						v-if="options"
+						v-model="val"
 						:label="optionNameKey"
 						:options="preparedOptions"
-						v-model="val"
 					/>
 				</div>
 				<textarea
-					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
 					v-else-if="type === 'textarea'"
-					name=""
 					v-model="val"
+					:class="`appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
 					:placeholder="placeholder"
+					name=""
 				/>
 				<quill-editor
 					v-else-if="type === 'contenteditable'"
-					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
 					v-model:content="val"
+					:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${borderColor}  leading-tight focus:outline-none focus:shadow-outline`"
+					:placeholder="placeholder"
 					content-type="html"
 					theme="bubble"
-					:placeholder="placeholder"
 				></quill-editor>
 
 				<input
 					v-else-if="type === 'time_in_seconds'"
 					:id="name"
-					type="time"
+					v-model="val"
 					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
-					v-model="val"
+					type="time"
 				/>
 				<div
 					v-else-if="type === 'checkbox'"
@@ -43,25 +44,25 @@
 						class="b-switch-list__item"
 					>
 						<label class="b-switch">
-							<input type="checkbox" :name="name" v-model="val" @keydown:enter="$emit('keydown:enter', val)">
+							<input v-model="val" :name="name" type="checkbox" @keydown:enter="$emit('keydown:enter', val)">
 							<span></span>
 						</label>
 						<div class="b-switch-list__text">
-							<div class="b-switch-list__title" :class="$color('settingsTextColor')">{{ placeholder }}</div>
+							<div :class="$color('settingsTextColor')" class="b-switch-list__title">{{ placeholder }}</div>
 						</div>
 					</div>
 				</div>
 				<input
 					v-else
 					:id="name"
-					:type="type"
+					v-model="val"
 					:class="`${borderColor} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
 					:name="name"
 					:placeholder="placeholder"
-					v-model="val"
+					:type="type"
 				/>
 				<transition name="fade-left">
-					<div v-if="errors" class="error" :class="{ 'tooltip': errorAsTooltip }">
+					<div v-if="errors" :class="{ 'tooltip': errorAsTooltip }" class="error">
 						{{ errors[0] }}
 					</div>
 				</transition>
@@ -75,141 +76,141 @@
 
 
 <script>
-	import getTimeInSeconds from './InputField/getTimeInSeconds'
-	import toHHMM from './InputField/toHHMM'
-	import ContentEditable from './ContentEditable'
+import getTimeInSeconds from './InputField/getTimeInSeconds';
+import toHHMM from './InputField/toHHMM';
+import ContentEditable from './ContentEditable';
 
 
-	export default {
-		name: "InputField",
-		components: {ContentEditable},
-		props: {
-			modelValue: {
-				required: false,
-				default: null
-			},
-			errors: {
-				required: false,
-				type: Array,
-				default: null
-			},
-			hideBorder: {
-				required: false,
-				type: Boolean,
-				default: false
-			},
-			type: {
-				required: false,
-				type: String,
-				default: 'text'
-			},
-			options: {
-				required: false,
-				type: Array
-			},
-			optionValueKey: {
-				required: false,
-				type: String,
-				default: 'value'
-			},
-			optionNameKey: {
-				required: false,
-				type: String,
-				default: 'name'
-			},
-			placeholder: {
-				required: false,
-				type: String,
-				default: ''
-			},
-			name: {
-				required: false,
-				type: String
-			},
-			selected: {
-				required: false,
-				type: Boolean,
-				default: false
-			},
-			extraClass: {
-				required: false,
-				type: String
-			}
+export default {
+	name: 'InputField',
+	components: { ContentEditable },
+	props: {
+		modelValue: {
+			required: false,
+			default: null
 		},
-		emits: [
-			'keydown:enter',
-			'update:modelValue'
-		],
-		data() {
-			return {
-				screenWidth: null,
-				value: null,
-				updateKey: 0,
-				showInput: true
-			}
+		errors: {
+			required: false,
+			type: Array,
+			default: null
 		},
-		computed: {
-			borderColor () {
-				return this.hideBorder ? 'border-none' : `shadow ${this.$color('borderMain')}`
-			},
-			val: {
-				get() {
-					if (this.type === 'select') {
-						return this.findOptionByValue(this.modelValue)
-					}
-					if (this.type !== 'time_in_seconds') {
-						return this.modelValue
-					}
-					return this.getSecondsInTime(this.modelValue)
-				},
-				set(v) {
-					if (this.type === 'select') {
-						return this.$emit('update:modelValue', v[this.optionValueKey])
-					}
-					if (this.type !== 'time_in_seconds') {
-						return this.$emit('update:modelValue', v)
-					}
-					this.$emit('update:modelValue', this.getTimeInSeconds(v))
-				}
-			},
-			preparedOptions: {
-				get() {
-					const preparedOptions = []
-					this.options.forEach(option => {
-						option.label = option[this.optionNameKey]
-						option.value = option[this.optionValueKey]
-						preparedOptions.push(option)
-					})
-					return preparedOptions
-				}
-			},
-			errorAsTooltip() {
-				return this.screenWidth > 767
-			}
+		hideBorder: {
+			required: false,
+			type: Boolean,
+			default: false
 		},
-		methods: {
-			findOptionByValue(value) {
-				return this.options.find(option => option[this.optionValueKey] === value)
-			},
-			getTimeInSeconds,
-			getSecondsInTime: toHHMM,
-			updateWidth() {
-				this.screenWidth = window.innerWidth;
-			},
+		type: {
+			required: false,
+			type: String,
+			default: 'text'
 		},
-		mounted() {
-			setTimeout(() => {
-				++this.updateKey
-			}, 500);
+		options: {
+			required: false,
+			type: Array
 		},
-		created() {
-			this.updateWidth()
-			window.addEventListener('resize', this.updateWidth);
+		optionValueKey: {
+			required: false,
+			type: String,
+			default: 'value'
+		},
+		optionNameKey: {
+			required: false,
+			type: String,
+			default: 'name'
+		},
+		placeholder: {
+			required: false,
+			type: String,
+			default: ''
+		},
+		name: {
+			required: false,
+			type: String
+		},
+		selected: {
+			required: false,
+			type: Boolean,
+			default: false
+		},
+		extraClass: {
+			required: false,
+			type: String
 		}
+	},
+	emits: [
+		'keydown:enter',
+		'update:modelValue'
+	],
+	data() {
+		return {
+			screenWidth: null,
+			value: null,
+			updateKey: 0,
+			showInput: true
+		};
+	},
+	computed: {
+		borderColor() {
+			return this.hideBorder ? 'border-none' : `shadow ${this.$color('borderMain')}`;
+		},
+		val: {
+			get() {
+				if (this.type === 'select') {
+					return this.findOptionByValue(this.modelValue);
+				}
+				if (this.type !== 'time_in_seconds') {
+					return this.modelValue;
+				}
+				return this.getSecondsInTime(this.modelValue);
+			},
+			set(v) {
+				if (this.type === 'select') {
+					return this.$emit('update:modelValue', v[this.optionValueKey]);
+				}
+				if (this.type !== 'time_in_seconds') {
+					return this.$emit('update:modelValue', v);
+				}
+				this.$emit('update:modelValue', this.getTimeInSeconds(v));
+			}
+		},
+		preparedOptions: {
+			get() {
+				const preparedOptions = [];
+				this.options.forEach(option => {
+					option.label = option[this.optionNameKey];
+					option.value = option[this.optionValueKey];
+					preparedOptions.push(option);
+				});
+				return preparedOptions;
+			}
+		},
+		errorAsTooltip() {
+			return this.screenWidth > 767;
+		}
+	},
+	methods: {
+		findOptionByValue(value) {
+			return this.options.find(option => option[this.optionValueKey] === value);
+		},
+		getTimeInSeconds,
+		getSecondsInTime: toHHMM,
+		updateWidth() {
+			this.screenWidth = window.innerWidth;
+		}
+	},
+	mounted() {
+		setTimeout(() => {
+			++this.updateKey;
+		}, 500);
+	},
+	created() {
+		this.updateWidth();
+		window.addEventListener('resize', this.updateWidth);
 	}
+};
 </script>
 
-<style scoped lang="scss">
+<style lang="scss" scoped>
 input.with-errors {
 	border: red solid 1px;
 }

@@ -9,9 +9,10 @@
 		<button @click.prevent="isOpenDropdownMenu = !isOpenDropdownMenu">
 			<svg
 				class="mr-3 md:mr-1 h-12 w-6 fill-current text-grey-dark"
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 20 20">
-				<path d="M4 12a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+				viewBox="0 0 20 20"
+				xmlns="http://www.w3.org/2000/svg">
+				<path
+					d="M4 12a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
 			</svg>
 		</button>
 	</div>
@@ -22,8 +23,8 @@
 		<a
 			v-for="(action, i) in actions"
 			:key="i"
-			href="#"
 			class="tc-block px-4 py-2 text-gray-800 hover:bg-indigo-500 hover:text-white"
+			href="#"
 			@click.prevent="doAction(action)">
 			{{ action.label }}
 		</a>
@@ -31,22 +32,22 @@
 </template>
 
 <script>
-	export default {
-		name: 'DropdownMenu',
-		props: {
-			actions: {
-				required: true,
-				type: Array
-			}
-		},
-		data: () => ({
-			isOpenDropdownMenu: false
-		}),
-		methods: {
-			doAction (action) {
-				action.click()
-				setTimeout(() => this.isOpenDropdownMenu = false, 100)
-			}
+export default {
+	name: 'DropdownMenu',
+	props: {
+		actions: {
+			required: true,
+			type: Array
+		}
+	},
+	data: () => ({
+		isOpenDropdownMenu: false
+	}),
+	methods: {
+		doAction(action) {
+			action.click();
+			setTimeout(() => this.isOpenDropdownMenu = false, 100);
 		}
 	}
+};
 </script>

@@ -3,7 +3,8 @@
 		<div class="w-screen flex">
 			<div class="w-screen">
 				<header class="container mx-auto px-4 my-5 relative">
-					<h1 :class="`md:text-3xl text-2xl mt-6 pt-1 md:pt-0 md:mt-0  ${$color('h1')}-900 relative text-center md:text-left text-center`">
+					<h1
+						:class="`md:text-3xl text-2xl mt-6 pt-1 md:pt-0 md:mt-0  ${$color('h1')}-900 relative text-center md:text-left text-center`">
 						<slot name="header"></slot>
 					</h1>
 					<slot name="action"></slot>
@@ -15,8 +16,8 @@
 					<slot name="alerts"></slot>
 				</div>
 				<slot name="footer"></slot>
-				<div class="container mx-auto px-5 my-5 text-center text-gray-600 pb-5" v-if="!noCopyright">
-					<p>Task manager. <a href="#" target="_blank" class="text-gray-500">Tmgr.dev</a></p>
+				<div v-if="!noCopyright" class="container mx-auto px-5 my-5 text-center text-gray-600 pb-5">
+					<p>Task manager. <a class="text-gray-500" href="#" target="_blank">Tmgr.dev</a></p>
 					<p>{{ getYearsForFooter() }}</p>
 				</div>
 			</div>
@@ -25,21 +26,21 @@
 </template>
 
 <script>
-	export default {
-		name: "BaseLayout",
-		props: {
-			noCopyright: {
-				type: Boolean,
-				required: false,
-				default: false
-			}
-		},
-		methods: {
-			getYearsForFooter () {
-				const startYear = 2020
-				const currentYear = (new Date()).getFullYear()
-				return startYear === currentYear ? currentYear : `${startYear} - ${currentYear}`
-			}
+export default {
+	name: 'BaseLayout',
+	props: {
+		noCopyright: {
+			type: Boolean,
+			required: false,
+			default: false
+		}
+	},
+	methods: {
+		getYearsForFooter() {
+			const startYear = 2020;
+			const currentYear = (new Date()).getFullYear();
+			return startYear === currentYear ? currentYear : `${startYear} - ${currentYear}`;
 		}
 	}
+};
 </script>

@@ -5,23 +5,17 @@
 </template>
 
 <script>
-	export default {
-		name: 'TasksView',
-		components: {},
-		props: [],
-		data () {
-			return {
+export default {
+	name: 'TasksView',
+	components: {},
+	props: [],
+	data() {
+		return {};
+	},
+	computed: {},
+	mounted() {
 
-			}
-		},
-		computed: {
-
-		},
-		mounted () {
-
-		},
-		methods: {
-
-		}
-	}
+	},
+	methods: {}
+};
 </script>

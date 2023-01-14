@@ -6,14 +6,14 @@
 <script>
 import SlideoutJS from 'slideout';
 
-const events = ['beforeclose', 'close', 'beforeopen', 'open', 'translatestart', 'translate', 'translateend']
+const events = ['beforeclose', 'close', 'beforeopen', 'open', 'translatestart', 'translate', 'translateend'];
 
 export default {
-	data () {
+	data() {
 		return {
 			slideout: null,
 			waitTimeout: null
-		}
+		};
 	},
 	props: {
 		panel: {},
@@ -25,17 +25,17 @@ export default {
 		side: { default: 'left' },
 		duration: { default: 300 },
 		toggleSelectors: {
-			default: function () {
-				return []
+			default: function() {
+				return [];
 			}
 		}
 	},
 	emits: [
 		...events.map(event => `on-${event}`),
-		...events.map(event => `once-${event}`),
+		...events.map(event => `once-${event}`)
 	],
 	name: 'Slideout',
-	mounted: function () {
+	mounted: function() {
 		this.wait(() => {
 			this.$store.commit('setSlideout', new SlideoutJS({
 				'panel': document.querySelector(this.panel),
@@ -46,36 +46,36 @@ export default {
 				'easing': this.easing,
 				'side': this.side,
 				'duration': this.duration
-			}))
+			}));
 			this.toggleSelectors.forEach(selector => {
 				document.querySelectorAll(selector).forEach(element => {
 					element.addEventListener('click', () => {
-						this.$store.getters.slideout.toggle()
-					})
-				})
-			})
+						this.$store.getters.slideout.toggle();
+					});
+				});
+			});
 			events.forEach(event => {
 				this.$store.getters.slideout.on(event, (data) => {
-					this.$emit('on-' + event, data)
-				})
+					this.$emit('on-' + event, data);
+				});
 				this.$store.getters.slideout.once(event, (data) => {
-					this.$emit('once-' + event, data)
-				})
-			})
-		})
+					this.$emit('once-' + event, data);
+				});
+			});
+		});
 	},
 	methods: {
 		wait(cb) {
 			if (!document.querySelector(this.panel)) {
 				this.waitTimeout = setTimeout(() => {
-					return this.wait(cb)
-				}, 0)
-				return
+					return this.wait(cb);
+				}, 0);
+				return;
 			}
-			cb()
+			cb();
 		}
 	}
-}
+};
 
 </script>
 
@@ -109,7 +109,7 @@ body {
 .slideout-panel {
 	position: relative;
 	z-index: 1;
-/*	will-change: transform;*/
+	/*	will-change: transform;*/
 	min-height: 100vh;
 }
 

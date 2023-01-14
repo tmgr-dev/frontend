@@ -1,8 +1,8 @@
-const ProjectCategoryList = () => import('src/components/ProjectsCategories/ProjectCategoryList')
-const TasksForm = () => import('src/components/Tasks/TasksForm')
-const TaskForm = () => import('src/components/Tasks/TaskForm')
-const TasksList = () => import('src/components/Tasks/TasksList')
-const ProjectCategoryForm = () => import('src/components/ProjectsCategories/ProjectCategoryForm')
+const ProjectCategoryList = () => import('src/components/ProjectsCategories/ProjectCategoryList');
+const TasksForm = () => import('src/components/Tasks/TasksForm');
+const TaskForm = () => import('src/components/Tasks/TaskForm');
+const TasksList = () => import('src/components/Tasks/TasksList');
+const ProjectCategoryForm = () => import('src/components/ProjectsCategories/ProjectCategoryForm');
 
 const routes = [
 	{
@@ -57,7 +57,7 @@ const routes = [
 			navbarHidden: true
 		},
 		component: ProjectCategoryList,
-		name: 'ProjectCategoryList',
+		name: 'ProjectCategoryList'
 	},
 	{
 		path: '/projects-categories/create',
@@ -215,6 +215,6 @@ const routes = [
 		path: '/:catchAll(.*)*',
 		component: () => import('pages/Error404.vue')
 	}
-]
+];
 
-export default routes
+export default routes;
