@@ -1,19 +1,19 @@
 export default {
 	computed: {
-		tasksIndexUrl () {
-			return this.status ? `tasks/status/${this.status}?all` : 'tasks/current?all'
+		tasksIndexUrl() {
+			return this.status ? `tasks/status/${this.status}?all` : 'tasks/current?all';
 		}
 	},
-  methods: {
-    getTaskFormattedTime(task) {
-      const taskTime = task instanceof Object ? task.common_time : task
-      return this.formatTime(taskTime)
-    },
-    formatTime(taskTime) {
-      let hours = Math.floor(taskTime / 3600)
-      let minutes = Math.ceil((taskTime % 3600) / 60)
+	methods: {
+		getTaskFormattedTime(task) {
+			const taskTime = task instanceof Object ? task.common_time : task;
+			return this.formatTime(taskTime);
+		},
+		formatTime(taskTime) {
+			let hours = Math.floor(taskTime / 3600);
+			let minutes = Math.ceil((taskTime % 3600) / 60);
 
-      return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`
-    }
-  }
-}
+			return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`;
+		}
+	}
+};

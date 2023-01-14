@@ -1,4 +1,4 @@
-import { Keys } from "@/colors/schemes/types";
+import { Keys } from '@/colors/schemes/types';
 
 const keys: Keys = {
 	bgBody: 'dark-bg-body night-mode',
@@ -27,6 +27,6 @@ const keys: Keys = {
 	settingsTextColor: 'text-gray-400',
 	taskSettingTextColor: 'text-gray-800',
 	borderSelection: 'border-gray-400'
-}
+};
 
 export default keys;

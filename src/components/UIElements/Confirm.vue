@@ -1,35 +1,38 @@
 <template>
-<modal
-	:modal-width="width"
-	:is-center="isCenter"
-	:close-on-bg-click="cancelOnBgClick"
-	@close="$emit('onCancel')">
-	<template #modal-body>
-		<slot name="title">
-			<div :class="`${$color('textModal')} text-main p-2 text-xl text-bold`">
-				<slot name="title-content">
-					{{ title }}
-				</slot>
-			</div>
-		</slot>
-		<slot name="body">
-			<p :class="`${$color('textModal')} p-2`">
-				<slot name="body-content">
-					{{ body }}
-				</slot>
-			</p>
-		</slot>
-		<slot name="footer">
-			<div :class="`${$color('textModal')} float-right`">
-				<new-button color="green" @click="$emit('onOk')" class="pr-2">Ok</new-button>
-				<new-button color="gray" @click="$emit('onCancel')">Cancel</new-button>
-			</div>
-		</slot>
-	</template>
-</modal>
+	<modal
+		:close-on-bg-click="cancelOnBgClick"
+		:is-center="isCenter"
+		:modal-width="width"
+		@close="$emit('onCancel')">
+		<template #modal-body>
+			<slot name="title">
+				<div :class="`${$color('textModal')} text-main p-2 text-xl text-bold`">
+					<slot name="title-content">
+						{{ title }}
+					</slot>
+				</div>
+			</slot>
+			<slot name="body">
+				<p :class="`${$color('textModal')} p-2`">
+					<slot name="body-content">
+						{{ body }}
+					</slot>
+				</p>
+			</slot>
+			<slot name="footer">
+				<div :class="`${$color('textModal')} float-right`">
+					<new-button class="pr-2" color="green" @click="$emit('onOk')">Ok</new-button>
+					<new-button color="gray" @click="$emit('onCancel')">Cancel</new-button>
+				</div>
+			</slot>
+		</template>
+	</modal>
 </template>
 
 <script lang="ts">
+
+import NewButton from '@/components/UIElements/NewButton.vue';
+import Modal from '@/components/Layouts/Modal.vue';
 
 interface Props {
 	title: String,
@@ -44,11 +47,12 @@ interface Context {
 	emit: Function
 }
 
-interface Data extends Props{
+interface Data extends Props {
 }
 
 export default {
-	name: "Confirm",
+	name: 'Confirm',
+	components: { Modal, NewButton },
 	emits: ['onOk', 'onCancel'],
 	props: {
 		title: String,
@@ -66,16 +70,16 @@ export default {
 			default: true
 		}
 	},
-	setup ({title, body, width = 500, isCenter = true, cancelOnBgClick = true}: Props, context: Context): Data {
+	setup({ title, body, width = 500, isCenter = true, cancelOnBgClick = true }: Props): Data {
 		return {
 			width,
 			isCenter,
 			cancelOnBgClick,
 			title,
 			body
-		}
+		};
 	}
-}
+};
 </script>
 
 <style scoped>

@@ -14,6 +14,7 @@
 	font-weight: bold;
 	text-align: center;
 }
+
 .selection {
 	position: absolute;
 	border: 1px dotted;
@@ -23,6 +24,7 @@
 	cursor: default;
 	display: none;
 }
+
 .selectable {
 	-webkit-touch-callout: none;
 	-webkit-user-select: none;
@@ -30,9 +32,11 @@
 	-ms-user-select: none;
 	user-select: none;
 }
+
 .selectable.selecting {
 	background-color: yellow;
 }
+
 .selectable.selected {
 	background-color: orange;
 }
@@ -41,6 +45,7 @@
 	.add-task-to-category-from-task-category {
 		display: none;
 	}
+
 	&:hover {
 		.add-task-to-category-from-task-category {
 			display: inherit;
