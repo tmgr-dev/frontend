@@ -6,9 +6,9 @@ export default function getBreadcrumbs(parentCategories) {
 			label: 'Categories',
 			to: '/projects-categories',
 			payload: {
-				id: null
-			}
-		}
+				id: null,
+			},
+		},
 	];
 	return [...items, ...getProjectCategoriesBreadcrumbs(parentCategories)];
 }

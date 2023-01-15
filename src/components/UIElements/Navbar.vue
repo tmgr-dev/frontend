@@ -30,6 +30,7 @@
 				>
 					<day-night-switch v-model="switchOn" />
 				</span>
+
 				<account-dropdown />
 			</div>
 		</div>
@@ -37,136 +38,135 @@
 </template>
 
 <script>
-import DayNightSwitch from './DayNightSwitch';
-import AccountDropdown from './AccountDropdown';
-import NavbarMenu from 'src/components/UIElements/NavbarMenu';
+	import DayNightSwitch from './DayNightSwitch';
+	import AccountDropdown from './AccountDropdown';
+	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 
-export default {
-	name: 'Navbar',
-	props: {
-		menuIsActive: {
-			type: Boolean,
-			required: false,
-			default: false,
-		},
-		menuPosition: {
-			type: Number,
-			required: false,
-			default: 0,
-		},
-	},
-	components: {
-		NavbarMenu,
-		AccountDropdown,
-		DayNightSwitch,
-	},
-	data: () => ({
-		isHidden: true,
-		links: [
-			{ id: 1, name: 'List', path: '/' },
-			// { id: 1, name: 'tc-hidden', path: '/tc-hidden' },
-			{ id: 1, name: 'Archive', path: '/acrhive' },
-			{ id: 1, name: 'Categories', path: '/projects-categories' },
-		],
-		wheelEvent:
-			'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
-		supportsPassive: false,
-	}),
-	computed: {
-		wheelOpt() {
-			return this.supportsPassive ? { passive: false } : false;
-		},
-		switchOn: {
-			get() {
-				return this.$store.getters.colorScheme === 'dark';
+	export default {
+		name: 'Navbar',
+		props: {
+			menuIsActive: {
+				type: Boolean,
+				required: false,
+				default: false,
 			},
-			set(newValue) {
-				this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
-				this.$store.dispatch(
-					'putUserSettings',
-					this.$store.getters.getUserSettings,
+			menuPosition: {
+				type: Number,
+				required: false,
+				default: 0,
+			},
+		},
+		components: {
+			NavbarMenu,
+			AccountDropdown,
+			DayNightSwitch,
+		},
+		data: () => ({
+			isHidden: true,
+			links: [
+				{ id: 1, name: 'List', path: '/' },
+				{ id: 2, name: 'Archive', path: '/acrhive' },
+				{ id: 3, name: 'Categories', path: '/projects-categories' },
+			],
+			wheelEvent:
+				'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
+			supportsPassive: false,
+		}),
+		computed: {
+			wheelOpt() {
+				return this.supportsPassive ? { passive: false } : false;
+			},
+			switchOn: {
+				get() {
+					return this.$store.getters.colorScheme === 'dark';
+				},
+				set(newValue) {
+					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
+					this.$store.dispatch(
+						'putUserSettings',
+						this.$store.getters.getUserSettings,
+					);
+				},
+			},
+		},
+		watch: {
+			isHidden(newVal) {
+				if (newVal) {
+					return this.enableScroll();
+				}
+				return this.disableScroll();
+			},
+		},
+		methods: {
+			preventDefault(e) {
+				e.preventDefault();
+			},
+			preventDefaultForScrollKeys(e) {
+				if (keys[e.keyCode]) {
+					this.preventDefault(e);
+					return false;
+				}
+			},
+			disableScroll() {
+				window.addEventListener('DOMMouseScroll', this.preventDefault, false); // older FF
+				window.addEventListener(
+					this.wheelEvent,
+					this.preventDefault,
+					this.wheelOpt,
+				); // modern desktop
+				window.addEventListener('touchmove', this.preventDefault, this.wheelOpt); // mobile
+				window.addEventListener(
+					'keydown',
+					this.preventDefaultForScrollKeys,
+					false,
+				);
+			},
+			enableScroll() {
+				window.removeEventListener('DOMMouseScroll', this.preventDefault, false);
+				window.removeEventListener(
+					this.wheelEvent,
+					this.preventDefault,
+					this.wheelOpt,
+				);
+				window.removeEventListener(
+					'touchmove',
+					this.preventDefault,
+					this.wheelOpt,
+				);
+				window.removeEventListener(
+					'keydown',
+					this.preventDefaultForScrollKeys,
+					false,
 				);
 			},
 		},
-	},
-	watch: {
-		isHidden(newVal) {
-			if (newVal) {
-				return this.enableScroll();
-			}
-			return this.disableScroll();
-		},
-	},
-	methods: {
-		preventDefault(e) {
-			e.preventDefault();
-		},
-		preventDefaultForScrollKeys(e) {
-			if (keys[e.keyCode]) {
-				this.preventDefault(e);
-				return false;
-			}
-		},
-		disableScroll() {
-			window.addEventListener('DOMMouseScroll', this.preventDefault, false); // older FF
+		created() {
 			window.addEventListener(
-				this.wheelEvent,
-				this.preventDefault,
-				this.wheelOpt,
-			); // modern desktop
-			window.addEventListener('touchmove', this.preventDefault, this.wheelOpt); // mobile
-			window.addEventListener(
-				'keydown',
-				this.preventDefaultForScrollKeys,
-				false,
+				'test',
+				null,
+				Object.defineProperty({}, 'passive', {
+					get: () => (this.supportsPassive = true),
+				}),
 			);
 		},
-		enableScroll() {
-			window.removeEventListener('DOMMouseScroll', this.preventDefault, false);
-			window.removeEventListener(
-				this.wheelEvent,
-				this.preventDefault,
-				this.wheelOpt,
-			);
-			window.removeEventListener(
-				'touchmove',
-				this.preventDefault,
-				this.wheelOpt,
-			);
-			window.removeEventListener(
-				'keydown',
-				this.preventDefaultForScrollKeys,
-				false,
-			);
-		},
-	},
-	created() {
-		window.addEventListener(
-			'test',
-			null,
-			Object.defineProperty({}, 'passive', {
-				get: () => (this.supportsPassive = true),
-			}),
-		);
-	},
-};
+	};
 </script>
 
 <style>
-.fade-kiosk-list-enter-active,
-.fade-kiosk-list-leave-active {
-	transition: all 0.9s ease-in-out;
-}
+	.fade-kiosk-list-enter-active,
+	.fade-kiosk-list-leave-active {
+		transition: all 0.9s ease-in-out;
+	}
 
-.mobile-navbar-menu {
-	/*transform: translateX(-50%);*/
-}
+	.mobile-navbar-menu {
+		/*transform: translateX(-50%);*/
+	}
 
-.fade-kiosk-list-enter {
-	transform: translateX(100%);
-}
+	.fade-kiosk-list-enter {
+		transform: translateX(100%);
+	}
 
-.fade-kiosk-list-leave-to {
-	transform: translateX(-100%);
-}
+	.fade-kiosk-list-leave-to {
+		transform: translateX(-100%);
+	}
 </style>

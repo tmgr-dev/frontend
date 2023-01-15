@@ -4,7 +4,7 @@ var navcontent = document.getElementById('nav-content');
 var navaction = document.getElementById('navAction');
 var toToggle = document.querySelectorAll('.toggleColour');
 if (!document.location.pathname) {
-	document.addEventListener('scroll', function() {
+	document.addEventListener('scroll', function () {
 		/*Apply classes for slide in bar*/
 		scrollpos = window.scrollY;
 		if (scrollpos > 10) {
@@ -36,7 +36,6 @@ if (!document.location.pathname) {
 			header.classList.remove('shadow');
 			navcontent.classList.remove('bg-white');
 			navcontent.classList.add('bg-gray-100');
-
 		}
 	});
 }
@@ -89,15 +88,13 @@ export default {
 		MainHeader,
 		MainTwitter,
 		MainPricing,
-		MainFooter
+		MainFooter,
 	},
 	props: [],
 	data() {
 		return {};
 	},
 	computed: {},
-	mounted() {
-
-	},
-	methods: {}
+	mounted() {},
+	methods: {},
 };

@@ -1,7 +1,9 @@
 <template>
 	<teleport to="title"> Login </teleport>
+
 	<AuthBase>
 		<template #title>Welcome back!</template>
+
 		<template #body>
 			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
 				<div class="flex flex-col mt-4">
@@ -10,6 +12,7 @@
 						{{ errors }}
 					</p>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.email"
@@ -19,6 +22,7 @@
 						type="email"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.password"
@@ -28,6 +32,7 @@
 						type="password"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-6">
 					<button
 						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
@@ -41,6 +46,7 @@
 				</div>
 			</form>
 		</template>
+
 		<template #footer>
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
@@ -60,27 +66,27 @@
 </template>
 
 <script>
-import AuthBase from 'src/components/Auth/AuthBase';
+	import AuthBase from 'src/components/Auth/AuthBase';
 
-export default {
-	name: 'Login',
-	components: {
-		AuthBase,
-	},
-	data() {
-		return {
-			showLoader: false,
-			form: {
-				email: null,
-				password: null,
-			},
-			message: '',
-			errors: {},
-		};
-	},
-	methods: {
-		async login() {
-			const { ...loginData } = this.form;
+	export default {
+		name: 'Login',
+		components: {
+			AuthBase,
+		},
+		data() {
+			return {
+				showLoader: false,
+				form: {
+					email: null,
+					password: null,
+				},
+				message: '',
+				errors: {},
+			};
+		},
+		methods: {
+			async login() {
+				const { ...loginData } = this.form;
 
 			try {
 				this.showLoader = true;
@@ -105,15 +111,15 @@ export default {
 				data: { data },
 			} = await this.$axios.get('user');
 
-			this.$store.commit('user', data);
-			await this.$router.push({ name: 'CurrentTasksList' });
+				this.$store.commit('user', data);
+				await this.$router.push({ name: 'CurrentTasksList' });
+			},
 		},
-	},
-};
+	};
 </script>
 
 <style lang="scss">
-.auth-form {
-	color: #3c3c3c !important;
-}
+	.auth-form {
+		color: #3c3c3c !important;
+	}
 </style>

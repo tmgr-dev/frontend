@@ -1,11 +1,9 @@
 <template>
-	<div class="overlay active"
-			@click="close"
-			:class="isCenter ? 'flex' : ''">
+	<div class="overlay fixed inset-0 z-50 flex" :data-name="name" @click="close">
 		<div
-			class="modal"
-			:class="$color('modalBg')"
-			:style="modalStyles">
+			class="modal rounded-lg m-auto"
+			:class="[$color('modalBg'), modalClass]"
+		>
 			<slot name="modal-body"></slot>
 		</div>
 	</div>
@@ -13,122 +11,50 @@
 
 <script>
 	export default {
-		name: "Modal",
+		name: 'Modal',
+		emits: ['close'],
 		props: {
+			name: {
+				type: String,
+				required: false,
+			},
 			closeOnBgClick: {
 				type: Boolean,
 				required: false,
-				default: true
+				default: true,
 			},
-			show: {
-				type: Boolean,
+			modalClass: {
+				type: String,
 				required: false,
-				default: true
 			},
-			modalWidth: {
-				type: Number,
-				required: false
-			},
-			isCenter: {
-				type: Boolean,
-				required: false,
-				default: false
-			}
-		},
-		data () {
-			return {
-				modalStyles: {
-					width: this.modalWidth ? this.modalWidth+'px' : '',
-					margin: this.isCenter ? 'auto' : '',
-					borderRadius: '5px'
-				}
-			}
 		},
 		methods: {
 			close(e) {
 				if (this.closeOnBgClick) {
-					if (e.target.classList.contains("overlay")) {
-						this.$emit("close");
+					console.log(e.target, this.name, e.target.dataset.name);
+					if (
+						e.target.classList.contains('overlay') &&
+						e.target.dataset.name === this.name
+					) {
+						this.$emit('close');
 					}
 				}
-			}
-		}
-	}
+			},
+		},
+	};
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
 	.overlay {
-		position: fixed;
-		top: 0;
-		right: 0;
-		width: 100%;
-		height: 100%;
 		background: rgba(0, 0, 0, 0.555);
-		z-index: -1;
-		transition: 0.4s;
-		opacity: 0;
-		transform: translate3d(100%, 0, 0);
-
-		&.active {
-			transform: translate3d(0, 0, 0);
-			z-index: 9999;
-			opacity: 1;
-
-			.modal {
-				animation-name: bounceInRight;
-				animation-duration: 1s;
-				animation-fill-mode: both;
-				opacity: 1;
-			}
-		}
 	}
 
 	.modal {
-		width: 80%;
-		margin: 50px auto;
-		padding: 30px;
-
-		@media (max-width: 768px) {
-			max-width: 80% !important;
-		}
+		max-width: 95%;
+		max-height: 95%;
 
 		nav {
 			display: none;
-		}
-
-		transform: translate3d(3000px, 0, 0);
-		opacity: 0;
-	}
-
-	@keyframes bounceInRight {
-		from,
-		60%,
-		75%,
-		90%,
-		to {
-			animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
-		}
-
-		from {
-			opacity: 0;
-			transform: translate3d(3000px, 0, 0);
-		}
-
-		60% {
-			opacity: 1;
-			transform: translate3d(-25px, 0, 0);
-		}
-
-		75% {
-			transform: translate3d(10px, 0, 0);
-		}
-
-		90% {
-			transform: translate3d(-5px, 0, 0);
-		}
-
-		to {
-			transform: translate3d(0, 0, 0);
 		}
 	}
 </style>

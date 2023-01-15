@@ -3,7 +3,7 @@
 //  The open indicator appears as a down facing
 //  caret on the right side of the select.
 
-$transition-timing-function: cubic-bezier(1.000, -0.115, 0.975, 0.855);
+$transition-timing-function: cubic-bezier(1, -0.115, 0.975, 0.855);
 $transition-duration: 150ms;
 
 $open-indicator-color: $vs-controls-color;

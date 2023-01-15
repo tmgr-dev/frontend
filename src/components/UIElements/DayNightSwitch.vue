@@ -13,43 +13,43 @@
 </template>
 
 <script>
-export default {
-	name: 'DayNightSwitch',
-	props: {
-		modelValue: {
-			type: Boolean,
-			required: true,
+	export default {
+		name: 'DayNightSwitch',
+		props: {
+			modelValue: {
+				type: Boolean,
+				required: true,
+			},
 		},
-	},
-	emits: ['update:modelValue'],
-	watch: {
-		nightMode() {
-			this.$emit('update:modelValue', this.nightMode);
+		emits: ['update:modelValue'],
+		watch: {
+			nightMode() {
+				this.$emit('update:modelValue', this.nightMode);
+			},
 		},
-	},
-	mounted() {},
-	data() {
+		mounted() {},
+		data() {
 		return {
 			nightMode: this.modelValue,
-		};
-	},
-	methods: {},
-};
+			};
+		},
+		methods: {},
+	};
 </script>
 
 <style lang="scss">
-.switcher {
-	--toggle-size: 1rem;
-	--switch-w: 4em;
-	--switch-h: 2em;
-	--switch-handle-scale: 0.65;
-	--switch-off-handle-x: -0.125em;
-	--switch-on-handle-x: calc(100% - 0.125em);
-	--switch-transition-duration: 0.2s;
-}
+	.switcher {
+		--toggle-size: 1rem;
+		--switch-w: 4em;
+		--switch-h: 2em;
+		--switch-handle-scale: 0.65;
+		--switch-off-handle-x: -0.125em;
+		--switch-on-handle-x: calc(100% - 0.125em);
+		--switch-transition-duration: 0.2s;
+	}
 
-.theme-toggle {
-	display: none;
+	.theme-toggle {
+		display: none;
 
 	& + label {
 		font-size: var(--toggle-size);
@@ -65,10 +65,10 @@ export default {
 			#20206a 19%,
 			#4184b1 66%,
 			#62e7f7 100%
-		);
+			);
 		transition: var(--switch-transition-duration);
 		border: 0.125em solid hsl(207, 30%, 95%);
-		overflow: hidden;
+			overflow: hidden;
 
 		span {
 			background: #fffad8;
@@ -86,12 +86,12 @@ export default {
 		}
 	}
 
-	&:checked {
-		font-size: var(--switch-font-size);
+		&:checked {
+			font-size: var(--switch-font-size);
 
-		& + label {
-			background-position: top;
-			border-color: hsl(207, 30%, 50%);
+			& + label {
+				background-position: top;
+				border-color: hsl(207, 30%, 50%);
 
 			span {
 				background: transparent;
@@ -104,7 +104,7 @@ export default {
 	}
 }
 
-/*-- Housekeeping --*/
+	/*-- Housekeeping --*/
 
 .switcher {
 	*,
@@ -113,12 +113,12 @@ export default {
 		box-sizing: inherit;
 	}
 
-	box-sizing: border-box;
+		box-sizing: border-box;
 
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	transition: 0.2s ease;
-}
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		transition: 0.2s ease;
+	}
 </style>

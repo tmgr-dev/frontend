@@ -1,7 +1,9 @@
 <template>
 	<section class="bg-white border-b py-8">
 		<div class="container max-w-5xl mx-auto m-8">
-			<h1 class="w-full my-2 text-5xl font-bold leading-tight text-center text-gray-800">
+			<h1
+				class="w-full my-2 text-5xl font-bold leading-tight text-center text-gray-800"
+			>
 				Features
 			</h1>
 			<div class="w-full mb-4">
@@ -14,11 +16,12 @@
 						Lorem ipsum dolor sit amet
 					</h3>
 					<p class="text-gray-600 mb-8">
-						Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit
-						amet ligula.<br><br> Images from: <a
-						class="text-orange-500 underline"
-						href="https://undraw.co/"
-					>undraw.co</a>
+						Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at
+						ipsum eu nunc commodo posuere et sit amet ligula.<br /><br />
+						Images from:
+						<a class="text-orange-500 underline" href="https://undraw.co/"
+							>undraw.co</a
+						>
 					</p>
 				</div>
 				<div class="w-full sm:w-1/2 p-6">
@@ -34,13 +37,7 @@
 							transform="translate(-11.5 -150.75)"
 						/>
 
-						<ellipse
-							cx="588.5"
-							cy="577.5"
-							fill="#3f3d56"
-							rx="588.5"
-							ry="21"
-						/>
+						<ellipse cx="588.5" cy="577.5" fill="#3f3d56" rx="588.5" ry="21" />
 						<path
 							d="M119.9,721.42c-3-5.51.4-12.27,4.29-17.18s8.61-10,8.51-16.29c-.15-9-9.7-14.31-17.33-19.09a84,84,0,0,1-15.56-12.51A22.8,22.8,0,0,1,95,650c-1.58-3.52-1.54-7.52-1.44-11.37q.51-19.26,1.91-38.49"
 							fill="none"
@@ -116,24 +113,9 @@
 							fill="#3f3d56"
 							transform="translate(-11.5 -150.75)"
 						/>
-						<circle
-							cx="193"
-							cy="127.75"
-							fill="#ff6347"
-							r="6"
-						/>
-						<circle
-							cx="208"
-							cy="127.75"
-							fill="#ff6347"
-							r="6"
-						/>
-						<circle
-							cx="223"
-							cy="127.75"
-							fill="#ff6347"
-							r="6"
-						/>
+						<circle cx="193" cy="127.75" fill="#ff6347" r="6" />
+						<circle cx="208" cy="127.75" fill="#ff6347" r="6" />
+						<circle cx="223" cy="127.75" fill="#ff6347" r="6" />
 						<path
 							d="M387.5,490A66.5,66.5,0,1,1,321,423.5,66.47,66.47,0,0,1,387.5,490Z"
 							fill="none"
@@ -247,12 +229,7 @@
 							opacity=".1"
 							transform="translate(-11.5 -150.75)"
 						/>
-						<circle
-							cx="989.6"
-							cy="378.29"
-							fill="#ffc1c7"
-							r="15.09"
-						/>
+						<circle cx="989.6" cy="378.29" fill="#ffc1c7" r="15.09" />
 						<path
 							d="m1014 543.21a11.85 11.85 0 0 0 2 2.71 24.62 24.62 0 0 0 7.28 5.44 246.74 246.74 0 0 1 -25.93 3.86c0.92-3.24-0.29-6.7-1.91-9.64s-3.7-5.69-4.72-8.9l10.2 0.28c1.85 0 3.71 0.1 5.56 0 1.39-0.07 3.69-0.9 5-0.59 2.64 0.63 1.3 4.42 2.52 6.84z"
 							fill="#ffc1c7"
@@ -316,7 +293,6 @@
 					</svg>
 				</div>
 			</div>
-
 
 			<div class="flex flex-wrap flex-col-reverse sm:flex-row">
 				<div class="w-full sm:w-1/2 p-6 mt-6">
@@ -469,36 +445,11 @@
 							stroke-width="2"
 							transform="translate(-11.697 -13.011)"
 						/>
-						<circle
-							cx="214.07"
-							cy="310.65"
-							fill="#ff6347"
-							r="11.968"
-						/>
-						<circle
-							cx="322.2"
-							cy="566.52"
-							fill="#ff6347"
-							r="11.968"
-						/>
-						<circle
-							cx="780.7"
-							cy="309"
-							fill="#ff6347"
-							r="11.968"
-						/>
-						<circle
-							cx="991.17"
-							cy="607.78"
-							fill="#ff6347"
-							r="11.968"
-						/>
-						<circle
-							cx="600.35"
-							cy="480.68"
-							fill="#ff6347"
-							r="11.968"
-						/>
+						<circle cx="214.07" cy="310.65" fill="#ff6347" r="11.968" />
+						<circle cx="322.2" cy="566.52" fill="#ff6347" r="11.968" />
+						<circle cx="780.7" cy="309" fill="#ff6347" r="11.968" />
+						<circle cx="991.17" cy="607.78" fill="#ff6347" r="11.968" />
+						<circle cx="600.35" cy="480.68" fill="#ff6347" r="11.968" />
 					</svg>
 				</div>
 				<div class="w-full sm:w-1/2 p-6 mt-6">
@@ -507,11 +458,12 @@
 							Lorem ipsum dolor sit amet
 						</h3>
 						<p class="text-gray-600 mb-8">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit
-							amet ligula.<br><br> Images from: <a
-							class="text-orange-500 underline"
-							href="https://undraw.co/"
-						>undraw.co</a>
+							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
+							at ipsum eu nunc commodo posuere et sit amet ligula.<br /><br />
+							Images from:
+							<a class="text-orange-500 underline" href="https://undraw.co/"
+								>undraw.co</a
+							>
 						</p>
 					</div>
 				</div>
@@ -521,7 +473,7 @@
 </template>
 
 <script>
-export default {
-	name: 'MainFeatures'
-};
+	export default {
+		name: 'MainFeatures',
+	};
 </script>
