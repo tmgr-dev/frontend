@@ -33,6 +33,14 @@ $max-height: $vs-dropdown-max-height;
 	background: $bg-color;
 }
 
+.vs__dropdown-option {
+	padding: 3px 10px !important;
+}
+
+.vs__dropdown-option--highlight {
+	color: #e2e2e2 !important;
+}
+
 .vs__no-options {
 	text-align: center;
 }

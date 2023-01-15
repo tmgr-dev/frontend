@@ -84,12 +84,10 @@
 	import Modal from 'src/components/Layouts/Modal';
 	import TasksForm from 'src/components/Tasks/TasksForm';
 	import TaskForm from 'src/components/Tasks/TaskForm';
-	import FullscreenModal from 'src/components/Layouts/FullscreenModal';
 
 	export default {
 		name: 'TasksListComponent',
 		components: {
-			FullscreenModal,
 			TaskForm,
 			TasksForm,
 			Modal,

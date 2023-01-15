@@ -1,9 +1,9 @@
 <template>
 	<modal
 		:close-on-bg-click="cancelOnBgClick"
-		:is-center="isCenter"
-		:modal-width="width"
-		@close="$emit('onCancel')">
+		modal-class="p-6"
+		@close="$emit('onCancel')"
+	>
 		<template #modal-body>
 			<slot name="title">
 				<div :class="`${$color('textModal')} text-main p-2 text-xl text-bold`">
@@ -12,6 +12,7 @@
 					</slot>
 				</div>
 			</slot>
+
 			<slot name="body">
 				<p :class="`${$color('textModal')} p-2`">
 					<slot name="body-content">
@@ -19,6 +20,7 @@
 					</slot>
 				</p>
 			</slot>
+
 			<slot name="footer">
 				<div :class="`${$color('textModal')} float-right`">
 					<new-button class="pr-2" color="green" @click="$emit('onOk')">Ok</new-button>
@@ -34,7 +36,6 @@
 interface Props {
 	title: String,
 	body: String,
-	width?: Number,
 	isCenter?: Boolean,
 	cancelOnBgClick?: Boolean,
 }
@@ -53,14 +54,6 @@ export default {
 	props: {
 		title: String,
 		body: String,
-		width: {
-			type: Number,
-			default: 500
-		},
-		isCenter: {
-			type: Boolean,
-			default: true
-		},
 		cancelOnBgClick: {
 			type: Boolean,
 			default: true

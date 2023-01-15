@@ -67,14 +67,12 @@
 	import LoadingTasksList from "src/components/UIElements/Tasks/LoadingTasksList";
 	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
 	import Confetti from "src/components/UIElements/Confetti";
-	import FullscreenModal from "src/components/Layouts/FullscreenModal";
 	import TaskForm from "src/components/Tasks/TaskForm";
 
 	export default {
 		name: 'TasksList',
 		components: {
 			TaskForm,
-			FullscreenModal,
 			Confetti,
 			LoadingTasksList,
 			TasksListComponent

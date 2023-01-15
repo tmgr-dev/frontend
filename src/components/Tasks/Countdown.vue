@@ -54,9 +54,8 @@
 
 		<modal
 			v-if="isShowModalTimer"
-			:is-center="true"
-			:modal-width="500"
-			@close="isShowModalTimer = false">
+			@close="isShowModalTimer = false"
+		>
 			<template #modal-body>
 				<div class="countdown-modal-edit">
 					<vue-the-mask

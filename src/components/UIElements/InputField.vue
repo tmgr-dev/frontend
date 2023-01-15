@@ -9,6 +9,7 @@
 							:label="optionNameKey"
 							:options="preparedOptions"
 							v-model="val"
+							:clearable="false"
 						/>
 					</div>
 
