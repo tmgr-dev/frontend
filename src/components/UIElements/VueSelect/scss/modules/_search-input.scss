@@ -59,6 +59,6 @@ $font-size: 1em;
 // Single, when searching but not loading or open
 .vs--single.vs--searching:not(.vs--open):not(.vs--loading) {
 	.vs__search {
-		opacity: .2;
+		opacity: 0.2;
 	}
 }

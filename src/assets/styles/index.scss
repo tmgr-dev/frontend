@@ -1,14 +1,14 @@
-@import "app";
-@import "fonts";
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
-@import "switch";
-@import "task";
-@import "alert";
-@import "editor";
+@import 'app';
+@import 'fonts';
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+@import 'switch';
+@import 'task';
+@import 'alert';
+@import 'editor';
 @import 'checkbox';
-@import "task-form";
+@import 'task-form';
 
 body {
 	overflow-x: hidden;
@@ -39,7 +39,9 @@ body {
 }
 
 .bg-screen-default {
-	background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll 0% 0%
+	background: rgba(0, 0, 0, 0)
+		linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat scroll
+		0% 0%;
 }
 
 .icon {
@@ -47,7 +49,7 @@ body {
 	vertical-align: text-top;
 }
 
-@import "../../directives/tooltip/css/index.scss";
+@import '../../directives/tooltip/css/index.scss';
 
 .custom-tooltip {
 	background: #000;
@@ -74,7 +76,7 @@ button {
 	}
 
 	.vs__dropdown-option {
-		color: #656b75
+		color: #656b75;
 	}
 }
 
@@ -86,7 +88,7 @@ button {
 	animation: bounceInRight 1s;
 }
 .bounce-right-fade-leave-active {
-	transition: .5s;
+	transition: 0.5s;
 	opacity: 0;
 }
 

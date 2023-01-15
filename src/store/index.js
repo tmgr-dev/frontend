@@ -7,13 +7,17 @@ import pusher from './plugins/pusher';
 
 const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey];
 
-const token = localStorage.getItem('token') ? JSON.parse(localStorage.getItem('token')) : null;
+const token = localStorage.getItem('token')
+	? JSON.parse(localStorage.getItem('token'))
+	: null;
 
 const state = {
 	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
 	token: token,
 	currentOpenedTaskId: null,
-	user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null,
+	user: localStorage.getItem('user')
+		? JSON.parse(localStorage.getItem('user'))
+		: null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	pusherBeamsUserId: null,
 	pusherBeamsClient: pusherBeamsClient,
@@ -27,29 +31,29 @@ const state = {
 	statuses: null,
 	pusher: pusher(token),
 	userSettings: {
-		showTooltips: true
-	}
+		showTooltips: true,
+	},
 };
 
 const getters = {
-	apiBaseUrl: state => state.apiBaseUrl,
-	token: state => state.token,
-	statuses: state => state.statuses,
-	reloadTasks: state => state.reloadTasks,
-	currentTaskIdForModal: state => state.currentTaskIdForModal,
-	createTaskInProjectCategoryId: state => state.createTaskInProjectCategoryId,
-	createTaskInStatusId: state => state.createTaskInStatusId,
-	showCreateTaskModal: state => state.showCreateTaskModal,
-	pusherBeamsUserId: state => state.pusherBeamsUserId,
-	pusherBeamsClient: state => state.pusherBeamsClient,
-	pusherTokenProvider: state => state.pusherTokenProvider,
-	currentOpenedTaskId: state => state.currentOpenedTaskId,
-	pusher: state => state.pusher,
-	slideout: state => state.slideout,
-	user: state => state.user,
-	isLoggedIn: state => state.token !== null,
-	colorScheme: state => state.colorScheme,
-	getUserSettings: state => state.userSettings
+	apiBaseUrl: (state) => state.apiBaseUrl,
+	token: (state) => state.token,
+	statuses: (state) => state.statuses,
+	reloadTasks: (state) => state.reloadTasks,
+	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
+	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
+	createTaskInStatusId: (state) => state.createTaskInStatusId,
+	showCreateTaskModal: (state) => state.showCreateTaskModal,
+	pusherBeamsUserId: (state) => state.pusherBeamsUserId,
+	pusherBeamsClient: (state) => state.pusherBeamsClient,
+	pusherTokenProvider: (state) => state.pusherTokenProvider,
+	currentOpenedTaskId: (state) => state.currentOpenedTaskId,
+	pusher: (state) => state.pusher,
+	slideout: (state) => state.slideout,
+	user: (state) => state.user,
+	isLoggedIn: (state) => state.token !== null,
+	colorScheme: (state) => state.colorScheme,
+	getUserSettings: (state) => state.userSettings,
 };
 
 const mutations = {
@@ -108,7 +112,7 @@ const mutations = {
 	},
 	setPusherBeamsClient(state, pusherBeamsClient) {
 		state.pusherBeamsClient = pusherBeamsClient;
-	}
+	},
 };
 
 const actions = {
@@ -135,7 +139,9 @@ const actions = {
 			return;
 		}
 		try {
-			const { data: { data } } = await axios.get(`user/settings`);
+			const {
+				data: { data },
+			} = await axios.get(`user/settings`);
 			if (data instanceof Object && data.hasOwnProperty('settings')) {
 				commit('setUserSettings', data.settings);
 			}
@@ -148,7 +154,9 @@ const actions = {
 			return;
 		}
 		try {
-			const { data: { data } } = await axios.get(`workspaces/statuses`);
+			const {
+				data: { data },
+			} = await axios.get(`workspaces/statuses`);
 			state.statuses = data;
 		} catch (e) {
 			throw e;
@@ -162,12 +170,12 @@ const actions = {
 			console.error(e);
 			throw e;
 		}
-	}
+	},
 };
 
 export default createStore({
 	state,
 	getters,
 	mutations,
-	actions
+	actions,
 });

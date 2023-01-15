@@ -3,7 +3,12 @@
 		<transition name="fade">
 			<div>
 				<div v-if="showInput" :key="updateKey">
-					<div v-if="type === 'select'" :class="`appearance-none border rounded w-full ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')}`">
+					<div
+						v-if="type === 'select'"
+						:class="`appearance-none border rounded w-full ${
+							extraClass || $color('input')
+						} ${$color('defaultBorder_darkNoBorder')}`"
+					>
 						<vue-select
 							v-if="options"
 							:label="optionNameKey"
@@ -14,7 +19,13 @@
 					</div>
 
 					<textarea
-						:class="`${forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''} appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
+						:class="`${
+							forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''
+						} appearance-none border rounded w-full py-2 px-3 ${
+							extraClass || $color('input')
+						} ${$color(
+							'defaultBorder_darkNoBorder',
+						)} leading-tight focus:outline-none focus:shadow-outline`"
 						v-else-if="type === 'textarea'"
 						name=""
 						v-model="val"
@@ -22,11 +33,13 @@
 						:placeholder="placeholder"
 					/>
 
-					<div
-						v-else-if="type === 'contenteditable'"
-					>
+					<div v-else-if="type === 'contenteditable'">
 						<quill-editor
-							:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${extraClass || $color('input')} ${$color('defaultBorder_darkNoBorder')} leading-tight focus:outline-none focus:shadow-outline`"
+							:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${
+								extraClass || $color('input')
+							} ${$color(
+								'defaultBorder_darkNoBorder',
+							)} leading-tight focus:outline-none focus:shadow-outline`"
 							v-model:content="val"
 							:key="updateKey"
 							content-type="html"
@@ -39,26 +52,35 @@
 						v-else-if="type === 'time_in_seconds'"
 						:id="name"
 						type="time"
-						:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+						:class="`${$color('defaultBorder_darkNoBorder')} ${
+							extraClass || $color('input')
+						} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
+							errors ? 'with-errors' : ''
+						}`"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"
 					/>
 
-					<div
-						v-else-if="type === 'checkbox'"
-						class="b-switch-list mt-3"
-					>
-						<div
-							class="b-switch-list__item"
-						>
+					<div v-else-if="type === 'checkbox'" class="b-switch-list mt-3">
+						<div class="b-switch-list__item">
 							<label class="b-switch">
-								<input type="checkbox" :name="name" v-model="val" @keydown:enter="$emit('keydown:enter', val)">
+								<input
+									type="checkbox"
+									:name="name"
+									v-model="val"
+									@keydown:enter="$emit('keydown:enter', val)"
+								/>
 								<span></span>
 							</label>
 
 							<div class="b-switch-list__text">
-								<div class="b-switch-list__title" :class="$color('settingsTextColor')">{{ placeholder }}</div>
+								<div
+									class="b-switch-list__title"
+									:class="$color('settingsTextColor')"
+								>
+									{{ placeholder }}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -67,21 +89,31 @@
 						v-else
 						:id="name"
 						:type="type"
-						:class="`${$color('defaultBorder_darkNoBorder')} ${extraClass || $color('input')} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${errors ? 'with-errors' : ''}`"
+						:class="`${$color('defaultBorder_darkNoBorder')} ${
+							extraClass || $color('input')
+						} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
+							errors ? 'with-errors' : ''
+						}`"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"
 					/>
 
 					<transition name="fade-left">
-						<div v-if="errors" class="error" :class="{ 'tooltip': errorAsTooltip }">
+						<div
+							v-if="errors"
+							class="error"
+							:class="{ tooltip: errorAsTooltip }"
+						>
 							{{ errors[0] }}
 						</div>
 					</transition>
 				</div>
 
 				<div v-else>
-					{{ modelValue }} (<a href="#" @click.prevent="showInput = true">edit</a>)
+					{{ modelValue }} (<a href="#" @click.prevent="showInput = true"
+						>edit</a
+					>)
 				</div>
 			</div>
 		</transition>
@@ -89,121 +121,122 @@
 </template>
 
 <script>
-	import getTimeInSeconds from './InputField/getTimeInSeconds'
-	import toHHMM from './InputField/toHHMM'
-	import ContentEditable from './ContentEditable'
+	import getTimeInSeconds from './InputField/getTimeInSeconds';
+	import toHHMM from './InputField/toHHMM';
+	import ContentEditable from './ContentEditable';
 
 	export default {
-		name: "InputField",
+		name: 'InputField',
 		components: {
-			ContentEditable
+			ContentEditable,
 		},
 		props: {
 			modelValue: {
 				required: false,
-				default: null
+				default: null,
 			},
 			errors: {
 				required: false,
 				type: Array,
-				default: null
+				default: null,
 			},
 			type: {
 				required: false,
 				type: String,
-				default: 'text'
+				default: 'text',
 			},
 			options: {
 				required: false,
-				type: Array
+				type: Array,
 			},
 			optionValueKey: {
 				required: false,
 				type: String,
-				default: 'value'
+				default: 'value',
 			},
 			optionNameKey: {
 				required: false,
 				type: String,
-				default: 'name'
+				default: 'name',
 			},
 			placeholder: {
 				required: false,
 				type: String,
-				default: ''
+				default: '',
 			},
 			forCheckpoint: {
 				required: false,
 				type: Boolean,
-				default: false
+				default: false,
 			},
 			name: {
 				required: false,
-				type: String
+				type: String,
 			},
 			selected: {
 				required: false,
 				type: Boolean,
-				default: false
+				default: false,
 			},
 			extraClass: {
 				required: false,
-				type: String
-			}
+				type: String,
+			},
 		},
-		emits: [
-			'keydown:enter',
-			'update:modelValue'
-		],
+		emits: ['keydown:enter', 'update:modelValue'],
 		data() {
 			return {
 				screenWidth: null,
 				value: null,
 				updateKey: 0,
-				showInput: true
-			}
+				showInput: true,
+			};
 		},
 		computed: {
 			val: {
 				get() {
 					if (this.type === 'select') {
-						return this.findOptionByValue(this.modelValue)
+						return this.findOptionByValue(this.modelValue);
 					}
 					if (this.type !== 'time_in_seconds') {
-						return this.modelValue
+						return this.modelValue;
 					}
 
-					return this.getSecondsInTime(this.modelValue)
+					return this.getSecondsInTime(this.modelValue);
 				},
 				set(v) {
 					if (this.type === 'select') {
-						return this.$emit('update:modelValue', v[this.optionValueKey])
+						return this.$emit('update:modelValue', v[this.optionValueKey]);
 					}
 					if (this.type !== 'time_in_seconds') {
-						return this.$emit('update:modelValue', v)
+						return this.$emit('update:modelValue', v);
 					}
 
-					this.$emit('update:modelValue', this.getTimeInSeconds(v))
-				}
+					this.$emit('update:modelValue', this.getTimeInSeconds(v));
+				},
 			},
 			preparedOptions: {
 				get() {
-					const preparedOptions = []
-					this.options.filter(o => !!o).forEach(option => {
-						option.label = option[this.optionNameKey]
-						option.value = option[this.optionValueKey]
-						preparedOptions.push(option)
-					})
-					return preparedOptions
-				}
+					const preparedOptions = [];
+					this.options
+						.filter((o) => !!o)
+						.forEach((option) => {
+							option.label = option[this.optionNameKey];
+							option.value = option[this.optionValueKey];
+							preparedOptions.push(option);
+						});
+					return preparedOptions;
+				},
 			},
 			errorAsTooltip() {
-				return this.screenWidth > 767
-			}
+				return this.screenWidth > 767;
+			},
 		},
 		methods: {
 			findOptionByValue(value) {
-				return this.options.find(option => option[this.optionValueKey] === value)
+				return this.options.find(
+					(option) => option[this.optionValueKey] === value,
+				);
 			},
 			getTimeInSeconds,
 			getSecondsInTime: toHHMM,
@@ -213,14 +246,14 @@
 		},
 		mounted() {
 			if (this.type === 'contenteditable') {
-				setTimeout(()=> ++this.updateKey, 250);
+				setTimeout(() => ++this.updateKey, 250);
 			}
 		},
 		created() {
-			this.updateWidth()
+			this.updateWidth();
 			window.addEventListener('resize', this.updateWidth);
-		}
-	}
+		},
+	};
 </script>
 
 <style scoped lang="scss">
@@ -229,7 +262,7 @@
 	}
 
 	.error {
-		font-size: .9em;
+		font-size: 0.9em;
 		color: red;
 
 		&.tooltip {
@@ -274,12 +307,14 @@
 		position: relative;
 	}
 
-	.fade-left-enter-active, .fade-left-leave-active {
-		transition: .5s;
+	.fade-left-enter-active,
+	.fade-left-leave-active {
+		transition: 0.5s;
 		transform: translateX(0);
 	}
 
-	.fade-left-enter-from, .fade-left-leave-to {
+	.fade-left-enter-from,
+	.fade-left-leave-to {
 		transform: translateX(25px);
 	}
 </style>

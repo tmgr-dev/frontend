@@ -1,18 +1,20 @@
-const ProjectCategoryList = () => import('src/components/ProjectsCategories/ProjectCategoryList');
+const ProjectCategoryList = () =>
+	import('src/components/ProjectsCategories/ProjectCategoryList');
 const TasksForm = () => import('src/components/Tasks/TasksForm');
 const TaskForm = () => import('src/components/Tasks/TaskForm');
 const TasksList = () => import('src/components/Tasks/TasksList');
-const ProjectCategoryForm = () => import('src/components/ProjectsCategories/ProjectCategoryForm');
+const ProjectCategoryForm = () =>
+	import('src/components/ProjectsCategories/ProjectCategoryForm');
 
 const routes = [
 	{
 		path: '/',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: TasksList,
-		name: 'CurrentTasksList'
+		name: 'CurrentTasksList',
 	},
 	{
 		path: '/register',
@@ -20,8 +22,8 @@ const routes = [
 		name: 'Register',
 		meta: {
 			allowedGuests: true,
-			transitionName: 'fade-fast'
-		}
+			transitionName: 'fade-fast',
+		},
 	},
 	{
 		path: '/password/forget',
@@ -29,8 +31,8 @@ const routes = [
 		name: 'ForgetPassword',
 		meta: {
 			allowedGuests: true,
-			transitionName: 'fade-fast'
-		}
+			transitionName: 'fade-fast',
+		},
 	},
 	{
 		path: '/password/reset',
@@ -38,8 +40,8 @@ const routes = [
 		name: 'ResetPassword',
 		meta: {
 			allowedGuests: true,
-			transitionName: 'fade-fast'
-		}
+			transitionName: 'fade-fast',
+		},
 	},
 	{
 		path: '/login',
@@ -47,80 +49,80 @@ const routes = [
 		name: 'Login',
 		meta: {
 			allowedGuests: true,
-			transitionName: 'fade-fast'
-		}
+			transitionName: 'fade-fast',
+		},
 	},
 	{
 		path: '/projects-categories',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryList,
-		name: 'ProjectCategoryList'
+		name: 'ProjectCategoryList',
 	},
 	{
 		path: '/projects-categories/create',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryForm,
-		name: 'ProjectCategoryCreate'
+		name: 'ProjectCategoryCreate',
 	},
 	{
 		path: '/projects-categories/:id/edit',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryForm,
-		name: 'ProjectCategoryEdit'
+		name: 'ProjectCategoryEdit',
 	},
 	{
 		path: '/projects-categories/status/:status?',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryList,
-		name: 'ProjectCategoryChildrenListWithStatus'
+		name: 'ProjectCategoryChildrenListWithStatus',
 	},
 	{
 		path: '/projects-categories/:id/children/:status?',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryList,
-		name: 'ProjectCategoryChildrenList'
+		name: 'ProjectCategoryChildrenList',
 	},
 	{
 		path: '/projects-categories/:project_category_id/create',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: ProjectCategoryForm,
-		name: 'ProjectCategoryCreateInCategory'
+		name: 'ProjectCategoryCreateInCategory',
 	},
 	{
 		path: '/project-categories/:project_category_id/tasks/create',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: TasksForm,
-		name: 'TasksCreateWithProjectCategoryId'
+		name: 'TasksCreateWithProjectCategoryId',
 	},
 	{
 		path: '/create',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: TasksForm,
-		name: 'TasksCreate'
+		name: 'TasksCreate',
 	},
 	{
 		path: '/hidden',
@@ -128,9 +130,9 @@ const routes = [
 		meta: {
 			status: 'hidden',
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
-		name: 'HiddenTasksList'
+		name: 'HiddenTasksList',
 	},
 	{
 		path: '/archive',
@@ -138,54 +140,54 @@ const routes = [
 		meta: {
 			status: 'done',
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
-		name: 'ArchiveTasksList'
+		name: 'ArchiveTasksList',
 	},
 	{
 		path: '/create',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: () => import('src/components/Tasks/TasksForm'),
-		name: 'TasksCreate'
+		name: 'TasksCreate',
 	},
 	{
 		path: '/:id/edit',
 		meta: {
 			transitionName: 'slide',
-			navbarHidden: true
+			navbarHidden: true,
 		},
 		component: TaskForm,
-		name: 'TasksEdit'
+		name: 'TasksEdit',
 	},
 	{
 		path: '/settings',
 		component: () => import('src/components/Settings'),
 		meta: {
 			transitionName: 'fade-fast',
-			navbarHidden: true
+			navbarHidden: true,
 		},
-		name: 'Settings'
+		name: 'Settings',
 	},
 	{
 		path: '/profile',
 		component: () => import('src/components/Profile'),
 		meta: {
 			transitionName: 'fade-fast',
-			navbarHidden: true
+			navbarHidden: true,
 		},
-		name: 'Profile'
+		name: 'Profile',
 	},
 	{
 		path: '/board',
 		component: () => import('src/components/Board'),
 		meta: {
 			transitionName: 'fade-fast',
-			navbarHidden: true
+			navbarHidden: true,
 		},
-		name: 'Board'
+		name: 'Board',
 	},
 	{
 		path: '/stats',
@@ -194,27 +196,28 @@ const routes = [
 			transitionName: 'fade-fast',
 			navbarHidden: false,
 			allowedGuests: true,
-			notOnlyForLoggedUsers: true
+			notOnlyForLoggedUsers: true,
 		},
-		name: 'Stats'
+		name: 'Stats',
 	},
 	{
 		path: '/push-notifications-enable-guide',
-		component: () => import('src/components/Public/PushNotificationsEnableGuide'),
+		component: () =>
+			import('src/components/Public/PushNotificationsEnableGuide'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: false,
 			allowedGuests: true,
-			notOnlyForLoggedUsers: true
+			notOnlyForLoggedUsers: true,
 		},
-		name: 'PushNotificationsEnableGuide'
+		name: 'PushNotificationsEnableGuide',
 	},
 	// Always leave this as last one,
 	// but you can also remove it
 	{
 		path: '/:catchAll(.*)*',
-		component: () => import('pages/Error404.vue')
-	}
+		component: () => import('pages/Error404.vue'),
+	},
 ];
 
 export default routes;

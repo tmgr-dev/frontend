@@ -15,11 +15,12 @@ import Selectable from 'src/directives/selectable';
 
 import components from 'src/bootstrap/globalComponents';
 
-
 export default (obj: any) => {
 	const { app, router, store } = obj;
 
-	components.map((component: Component) => app.component(component.name || '', component));
+	components.map((component: Component) =>
+		app.component(component.name || '', component),
+	);
 	app.component('VueTheMask', VueTheMask);
 	app.component('QuillEditor', QuillEditor);
 
@@ -29,24 +30,27 @@ export default (obj: any) => {
 			Authorization: `Bearer ${store.getters.token.token}`,
 			'X-Requested-With': 'XMLHttpRequest',
 			'Cache-Control': 'no-cache',
-			'Pragma': 'no-cache',
-			'Expires': '0'
+			Pragma: 'no-cache',
+			Expires: '0',
 		};
 	}
 
-	axios.interceptors.response.use(response => {
-		return response;
-	}, error => {
-		if (error.response.status === 401) {
-			store.dispatch('logout');
-		}
-		return error;
-	});
-
+	axios.interceptors.response.use(
+		(response) => {
+			return response;
+		},
+		(error) => {
+			if (error.response.status === 401) {
+				store.dispatch('logout');
+			}
+			return error;
+		},
+	);
 
 	app.config.globalProperties.$axios = axios;
 
-	const color = (colorKey: string) => colorSchemes[store.getters.colorScheme][colorKey];
+	const color = (colorKey: string) =>
+		colorSchemes[store.getters.colorScheme][colorKey];
 	app.config.globalProperties.$color = color;
 
 	const body = document.querySelector('body');
@@ -61,9 +65,9 @@ export default (obj: any) => {
 		placement: 'top',
 		class: 'custom-tooltip',
 		triggers: ['hover'],
-		offset: 5
+		offset: 5,
 	});
 	app.use(Selectable);
 	app.use(router);
 	app.use(store);
-}
+};

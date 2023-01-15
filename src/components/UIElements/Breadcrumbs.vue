@@ -1,17 +1,11 @@
 <template>
-	<div class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5">
+	<div
+		class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5"
+	>
 		<div class="card-body py-4">
-			<nav
-				aria-label="breadcrumb"
-				class="text-left"
-			>
-				<ol
-					v-if="current"
-					class="breadcrumb md:flex"
-				>
-					<li class="inline md:hidden">
-						Breadcrumbs:
-					</li>
+			<nav aria-label="breadcrumb" class="text-left">
+				<ol v-if="current" class="breadcrumb md:flex">
+					<li class="inline md:hidden">Breadcrumbs:</li>
 
 					<li
 						v-for="(item, i) in items"
@@ -37,14 +31,8 @@
 					</li>
 				</ol>
 
-				<ol
-					v-else
-					class="breadcrumb flex pl-0"
-				>
-					<li
-						aria-current="page"
-						class="breadcrumb-item active text-gray-300"
-					>
+				<ol v-else class="breadcrumb flex pl-0">
+					<li aria-current="page" class="breadcrumb-item active text-gray-300">
 						Categories
 					</li>
 				</ol>
@@ -59,25 +47,24 @@
 		props: {
 			items: {
 				required: true,
-				type: Array
+				type: Array,
 			},
 			title: {
 				required: false,
 				type: String,
-				default: 'Breadcrumbs'
+				default: 'Breadcrumbs',
 			},
 			current: {
 				required: false,
 				type: String,
-				default: 'Current page'
+				default: 'Current page',
 			},
 			drop: {
 				type: Function,
 				required: false,
-				default: () => () => {
-				}
-			}
-		}
+				default: () => () => {},
+			},
+		},
 	};
 </script>
 

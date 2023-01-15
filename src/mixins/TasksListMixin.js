@@ -1,8 +1,10 @@
 export default {
 	computed: {
 		tasksIndexUrl() {
-			return this.status ? `tasks/status/${this.status}?all` : 'tasks/current?all';
-		}
+			return this.status
+				? `tasks/status/${this.status}?all`
+				: 'tasks/current?all';
+		},
 	},
 	methods: {
 		getTaskFormattedTime(task) {
@@ -13,7 +15,9 @@ export default {
 			let hours = Math.floor(taskTime / 3600);
 			let minutes = Math.ceil((taskTime % 3600) / 60);
 
-			return `${hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''}  ${minutes} minute${minutes > 1 ? 's' : ''}`;
-		}
-	}
+			return `${
+				hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''
+			}  ${minutes} minute${minutes > 1 ? 's' : ''}`;
+		},
+	},
 };

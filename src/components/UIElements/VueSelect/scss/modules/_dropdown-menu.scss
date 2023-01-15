@@ -15,7 +15,9 @@ $max-height: $vs-dropdown-max-height;
 	display: block;
 	box-sizing: border-box;
 	position: absolute;
-	top: calc(100% - #{$border-width}); // -{#$border-width} here ensures the left and right borders of the dropdown appear flush with the toggle.
+	top: calc(
+		100% - #{$border-width}
+	); // -{#$border-width} here ensures the left and right borders of the dropdown appear flush with the toggle.
 	left: 0;
 	z-index: $z-index;
 	padding: 5px 0;

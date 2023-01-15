@@ -1,20 +1,27 @@
 <template>
 	<header>
 		<!--Hero-->
-		<div class="pt-24 ">
-			<div class="container px-3 mx-auto flex flex-wrap flex-col md:flex-row items-center">
+		<div class="pt-24">
+			<div
+				class="container px-3 mx-auto flex flex-wrap flex-col md:flex-row items-center"
+			>
 				<!--Left Col-->
-				<div class="flex flex-col w-full px-4 md:w-1/2 justify-center text-center md:text-left">
+				<div
+					class="flex flex-col w-full px-4 md:w-1/2 justify-center text-center md:text-left"
+				>
 					<p class="uppercase tracking-loose w-full">
 						Track your tasks here! Why not?
 					</p>
-					<h1 class="my-4 xl:text-5xl lg:text-4xl text-3xl font-bold leading-tight text-white">
+					<h1
+						class="my-4 xl:text-5xl lg:text-4xl text-3xl font-bold leading-tight text-white"
+					>
 						Lightweight application for tracking your heavy tasks.
 					</h1>
-					<p class="leading-normal xl:text-2xl lg:text-xl md:text-lg text-base mb-8 text-black">
+					<p
+						class="leading-normal xl:text-2xl lg:text-xl md:text-lg text-base mb-8 text-black"
+					>
 						You can take easier tracking your tasks with our application.
 					</p>
-
 
 					<router-link
 						v-if="!$store.getters.isLoggedIn"
@@ -37,23 +44,14 @@
 						alt="TMGR.DEV"
 						class="w-full z-50"
 						src="../../../assets/img/main.svg"
-					>
+					/>
 				</div>
 			</div>
 		</div>
 
-
-		<div class="relative -mt-12 lg:-mt-24 ">
-			<svg
-				viewBox="0 0 1428 174"
-				xmlns="http://www.w3.org/2000/svg"
-			>
-				<g
-					fill="none"
-					fill-rule="evenodd"
-					stroke="none"
-					stroke-width="1"
-				>
+		<div class="relative -mt-12 lg:-mt-24">
+			<svg viewBox="0 0 1428 174" xmlns="http://www.w3.org/2000/svg">
+				<g fill="none" fill-rule="evenodd" stroke="none" stroke-width="1">
 					<g
 						fill="#FFFFFF"
 						fill-rule="nonzero"
@@ -79,7 +77,8 @@
 						transform="translate(-4.000000, 76.000000)"
 					>
 						<path
-							d="M0.457,34.035 C57.086,53.198 98.208,65.809 123.822,71.865 C181.454,85.495 234.295,90.29 272.033,93.459 C311.355,96.759 396.635,95.801 461.025,91.663 C486.76,90.01 518.727,86.372 556.926,80.752 C595.747,74.596 622.372,70.008 636.799,66.991 C663.913,61.324 712.501,49.503 727.605,46.128 C780.47,34.317 818.839,22.532 856.324,15.904 C922.689,4.169 955.676,2.522 1011.185,0.432 C1060.705,1.477 1097.39,3.129 1121.236,5.387 C1161.703,9.219 1208.621,17.821 1235.4,22.304 C1285.855,30.748 1354.351,47.432 1440.886,72.354 L1441.191,104.352 L1.121,104.031 L0.457,34.035 Z" />
+							d="M0.457,34.035 C57.086,53.198 98.208,65.809 123.822,71.865 C181.454,85.495 234.295,90.29 272.033,93.459 C311.355,96.759 396.635,95.801 461.025,91.663 C486.76,90.01 518.727,86.372 556.926,80.752 C595.747,74.596 622.372,70.008 636.799,66.991 C663.913,61.324 712.501,49.503 727.605,46.128 C780.47,34.317 818.839,22.532 856.324,15.904 C922.689,4.169 955.676,2.522 1011.185,0.432 C1060.705,1.477 1097.39,3.129 1121.236,5.387 C1161.703,9.219 1208.621,17.821 1235.4,22.304 C1285.855,30.748 1354.351,47.432 1440.886,72.354 L1441.191,104.352 L1.121,104.031 L0.457,34.035 Z"
+						/>
 					</g>
 				</g>
 			</svg>
@@ -88,7 +87,7 @@
 </template>
 
 <script>
-export default {
-	name: 'MainHeader'
-};
+	export default {
+		name: 'MainHeader',
+	};
 </script>

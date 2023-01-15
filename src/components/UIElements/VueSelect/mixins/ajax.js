@@ -7,13 +7,13 @@ export default {
 		 */
 		loading: {
 			type: Boolean,
-			default: false
-		}
+			default: false,
+		},
 	},
 
 	data() {
 		return {
-			mutableLoading: false
+			mutableLoading: false,
 		};
 	},
 
@@ -38,7 +38,7 @@ export default {
 		 */
 		loading(val) {
 			this.mutableLoading = val;
-		}
+		},
 	},
 
 	methods: {
@@ -54,6 +54,6 @@ export default {
 				return (this.mutableLoading = !this.mutableLoading);
 			}
 			return (this.mutableLoading = toggle);
-		}
-	}
+		},
+	},
 };

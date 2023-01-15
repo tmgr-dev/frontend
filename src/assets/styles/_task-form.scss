@@ -3,7 +3,7 @@
 	flex-direction: column;
 	height: 100%;
 
-	section[role="main"] {
+	section[role='main'] {
 		@extend .reset-scroll;
 		flex: 1 1 auto;
 		overflow-y: auto;

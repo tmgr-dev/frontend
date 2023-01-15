@@ -23,8 +23,12 @@
 
 			<slot name="footer">
 				<div :class="`${$color('textModal')} float-right`">
-					<new-button class="pr-2" color="green" @click="$emit('onOk')">Ok</new-button>
-					<new-button color="gray" @click="$emit('onCancel')">Cancel</new-button>
+					<new-button class="pr-2" color="green" @click="$emit('onOk')"
+						>Ok</new-button
+					>
+					<new-button color="gray" @click="$emit('onCancel')"
+						>Cancel</new-button
+					>
 				</div>
 			</slot>
 		</template>
@@ -32,21 +36,18 @@
 </template>
 
 <script lang="ts">
-
 interface Props {
-	title: String,
-	body: String,
-	isCenter?: Boolean,
-	cancelOnBgClick?: Boolean,
+	title: String;
+	body: String;
+	cancelOnBgClick?: Boolean;
 }
 
 interface Context {
-	attrs: Props,
-	emit: Function
+	attrs: Props;
+	emit: Function;
 }
 
-interface Data extends Props {
-}
+interface Data extends Props {}
 
 export default {
 	name: 'Confirm',
@@ -56,21 +57,17 @@ export default {
 		body: String,
 		cancelOnBgClick: {
 			type: Boolean,
-			default: true
-		}
+			default: true,
+		},
 	},
-	setup({ title, body, width = 500, isCenter = true, cancelOnBgClick = true }: Props): Data {
+	setup({ title, body, cancelOnBgClick = true }: Props): Data {
 		return {
-			width,
-			isCenter,
 			cancelOnBgClick,
 			title,
-			body
+			body,
 		};
-	}
+	},
 };
 </script>
 
-<style scoped>
-
-</style>
+<style scoped></style>

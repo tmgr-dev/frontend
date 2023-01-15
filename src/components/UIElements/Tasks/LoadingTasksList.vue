@@ -18,27 +18,27 @@
 </template>
 
 <script>
-import { ContentLoader } from 'vue-content-loader';
+	import { ContentLoader } from 'vue-content-loader';
 
-export default {
-	name: 'LoadingTasksList',
-	components: {
-		ContentLoader
-	},
-	computed: {
-		isNightMode() {
-			return this.$store.getters.colorScheme === 'dark';
-		}
-	}
-};
+	export default {
+		name: 'LoadingTasksList',
+		components: {
+			ContentLoader,
+		},
+		computed: {
+			isNightMode() {
+				return this.$store.getters.colorScheme === 'dark';
+			},
+		},
+	};
 </script>
 
 <style lang="scss" scoped>
-.task-list-loading {
-	height: 593px;
+	.task-list-loading {
+		height: 593px;
 
-	@media (max-width: 1279px) {
-		height: 560px;
+		@media (max-width: 1279px) {
+			height: 560px;
+		}
 	}
-}
 </style>
