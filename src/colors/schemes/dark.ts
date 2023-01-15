@@ -16,7 +16,7 @@ const keys: Keys = {
 	blocksHover: 'bg-gray-800',
 	inverseTextColor: 'text-white',
 	textMain: 'dark-text-main',
-	textModal: 'text-main',
+	textModal: 'text-gray-300',
 	borderMain: 'border-gray-700',
 	defaultBorder_darkNoBorder: 'border-none',
 	h1: 'text-white',
@@ -25,10 +25,10 @@ const keys: Keys = {
 	bg: 'bg-gray-600',
 	buttonActionOpacity: 'opacity-50 hover:opacity-75',
 	grayHover: 'hover:text-gray-300',
-	modalBg: 'bg-gray-600',
+	modalBg: 'bg-gray-900',
 	settingsTextColor: 'text-gray-400',
 	taskSettingTextColor: 'dark-text-main',
-	borderSelection: 'border-gray-400'
+	borderSelection: 'border-gray-400',
 };
 
 export default keys;

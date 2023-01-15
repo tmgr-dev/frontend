@@ -1,5 +1,5 @@
-$transition-timing-function: cubic-bezier(1.0, 0.5, 0.8, 1.0);
-$transition-duration: .15s;
+$transition-timing-function: cubic-bezier(1, 0.5, 0.8, 1);
+$transition-duration: 0.15s;
 
 /* KeyFrames */
 @-webkit-keyframes vSelectSpinner {

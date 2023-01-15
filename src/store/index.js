@@ -157,7 +157,6 @@ const actions = {
 			const {
 				data: { data },
 			} = await axios.get(`workspaces/statuses`);
-
 			state.statuses = data;
 		} catch (e) {
 			throw e;

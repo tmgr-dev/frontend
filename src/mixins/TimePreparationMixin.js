@@ -8,9 +8,9 @@ export default {
 		},
 		secondsToCountdownObject(seconds) {
 			const second = seconds % 60;
-			let minute = (seconds - second) / 60 | 0;
-			const hour = minute / 60 | 0;
-			minute = minute - (hour * 60);
+			let minute = ((seconds - second) / 60) | 0;
+			const hour = (minute / 60) | 0;
+			minute = minute - hour * 60;
 
 			const countdown = {};
 			countdown.hours = this.prepareClockNumber(hour);
@@ -24,6 +24,6 @@ export default {
 		},
 		formatDatetime(datetime) {
 			return moment(datetime).format('DD.MM');
-		}
-	}
+		},
+	},
 };

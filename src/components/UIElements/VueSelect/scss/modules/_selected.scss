@@ -3,7 +3,8 @@
 	display: flex;
 	align-items: center;
 	background-color: $vs-selected-bg;
-	border: $vs-selected-border-width $vs-selected-border-style $vs-selected-border-color;
+	border: $vs-selected-border-width $vs-selected-border-style
+		$vs-selected-border-color;
 	border-radius: $vs-border-radius;
 	color: map_get($vs-colors, 'dark');
 	line-height: $vs-component-line-height;
@@ -34,7 +35,7 @@
 
 	&.vs--open .vs__selected {
 		position: absolute;
-		opacity: .4;
+		opacity: 0.4;
 	}
 
 	&.vs--searching .vs__selected {

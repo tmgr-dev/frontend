@@ -16,7 +16,7 @@
 
 .fade-enter-active,
 .fade-leave-active {
-	transition: .5s;
+	transition: 0.5s;
 }
 
 .fade-enter-from,
@@ -39,7 +39,7 @@
 
 .fade-fast-enter-from,
 .fade-fast-leave-to {
-	opacity: 0
+	opacity: 0;
 }
 
 .slide-left-enter-active,
@@ -78,11 +78,11 @@
 }
 
 .bounce-enter-active {
-	animation: bounce-in .3s;
+	animation: bounce-in 0.3s;
 }
 
 .bounce-leave-active {
-	animation: bounce-in .3s reverse;
+	animation: bounce-in 0.3s reverse;
 }
 
 @keyframes bounce-in {
@@ -97,7 +97,6 @@
 	}
 }
 
-
 /**
 burger
  */
@@ -105,11 +104,13 @@ burger
 .nav-toggle-menu {
 	direction: rtl;
 
-	.bar1, .bar2, .bar3 {
+	.bar1,
+	.bar2,
+	.bar3 {
 		width: 26px;
 		height: 3px;
 		margin: 5px 0;
-		transition: .3s;
+		transition: 0.3s;
 		border-radius: 3px;
 	}
 

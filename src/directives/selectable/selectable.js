@@ -77,7 +77,7 @@ export default class selectable {
 	handlers = {
 		mousedown: null,
 		mouseup: null,
-		mousemove: null
+		mousemove: null,
 	};
 
 	/**
@@ -169,7 +169,7 @@ export default class selectable {
 			top: box.top + window.pageYOffset,
 			left: box.left + window.pageXOffset,
 			width: box.width,
-			height: box.height
+			height: box.height,
 		};
 	}
 
@@ -178,8 +178,8 @@ export default class selectable {
 	 */
 	attach() {
 		if (this.rootElement) {
-			Object.keys(this.handlers).forEach(
-				event => this.rootElement.addEventListener(event, this.handlers[event])
+			Object.keys(this.handlers).forEach((event) =>
+				this.rootElement.addEventListener(event, this.handlers[event]),
 			);
 		}
 	}
@@ -188,9 +188,14 @@ export default class selectable {
 	 * Removes all registered event handlers and clears references to DOM nodes
 	 */
 	detach() {
-		Object.keys(this.handlers).forEach(event => this.rootElement.removeEventListener(event, this.handlers[event]));
+		Object.keys(this.handlers).forEach((event) =>
+			this.rootElement.removeEventListener(event, this.handlers[event]),
+		);
 		if (this.disableTextSelection && this.dragging) {
-			this.rootElement.removeEventListener('selectstart', selectable.disableTextSelection);
+			this.rootElement.removeEventListener(
+				'selectstart',
+				selectable.disableTextSelection,
+			);
 		}
 		if (this.scrollRepeater) {
 			clearInterval(this.scrollRepeater);
@@ -209,7 +214,7 @@ export default class selectable {
 	 */
 	setSelectables(elements) {
 		this.selectables = elements;
-		this.selected = elements.map(i => false);
+		this.selected = elements.map((i) => false);
 		if (typeof this.selectedSetter === 'function') {
 			this.selectedSetter(this.selected, this.selected);
 		}
@@ -228,12 +233,19 @@ export default class selectable {
 			this.boundingBox = document.querySelector(this.boundingBoxSelector);
 		}
 		let bb = selectable.absBox(this.boundingBox);
-		if (e.pageX < bb.left || e.pageX > bb.width + bb.left ||
-			e.pageY < bb.top || e.pageY > bb.height + bb.top) {
+		if (
+			e.pageX < bb.left ||
+			e.pageX > bb.width + bb.left ||
+			e.pageY < bb.top ||
+			e.pageY > bb.height + bb.top
+		) {
 			return;
 		}
 		if (this.disableTextSelection) {
-			this.rootElement.addEventListener('selectstart', selectable.disableTextSelection);
+			this.rootElement.addEventListener(
+				'selectstart',
+				selectable.disableTextSelection,
+			);
 		}
 		if (this.scrollRepeater) {
 			clearInterval(this.scrollRepeater);
@@ -249,7 +261,7 @@ export default class selectable {
 		this.endX = x;
 		this.endY = y;
 		this.dragging = true;
-		this.selecting = this.selectables.map(i => false); // reset all selection
+		this.selecting = this.selectables.map((i) => false); // reset all selection
 		if (typeof this.selectingSetter === 'function') {
 			this.selectingSetter(this.selecting);
 		}
@@ -277,7 +289,10 @@ export default class selectable {
 				return;
 			}
 			if (this.disableTextSelection) {
-				this.rootElement.removeEventListener('selectstart', selectable.disableTextSelection);
+				this.rootElement.removeEventListener(
+					'selectstart',
+					selectable.disableTextSelection,
+				);
 			}
 			let [x, y] = this.bound(e);
 			this.endX = x;
@@ -296,8 +311,11 @@ export default class selectable {
 				this.selected = this.selectables.map((v, i) => !!gotSelection[i]);
 			}
 			if (this.addMode) {
-				let selectingItemsQty = this.selecting.reduce((a, i) => a + i ? 1 : 0, 0);
-				let idx = this.selecting.findIndex(v => !!v);
+				let selectingItemsQty = this.selecting.reduce(
+					(a, i) => (a + i ? 1 : 0),
+					0,
+				);
+				let idx = this.selecting.findIndex((v) => !!v);
 				if (selectingItemsQty === 1 && this.selected[idx]) {
 					this.selected[idx] = false;
 				} else {
@@ -397,7 +415,7 @@ export default class selectable {
 		let bb = selectable.absBox(this.boundingBox);
 		return [
 			Math.min(Math.max(bb.left, e.pageX), bb.width + bb.left),
-			Math.min(Math.max(bb.top, e.pageY), bb.height + bb.top)
+			Math.min(Math.max(bb.top, e.pageY), bb.height + bb.top),
 		];
 	}
 
@@ -407,10 +425,15 @@ export default class selectable {
 	updateSelection() {
 		let s = this.getSelectionBox();
 		s.top -= this.scrollingFrame ? this.scrollingFrame.scrollTop : 0;
-		this.selecting = this.selectables.map(selectable.absBox).map(b =>
-			(Math.abs((s.left - b.left) * 2 + s.width - b.width) < (s.width + b.width)) &&
-			(Math.abs((s.top - b.top) * 2 + s.height - b.height) < (s.height + b.height))
-		);
+		this.selecting = this.selectables
+			.map(selectable.absBox)
+			.map(
+				(b) =>
+					Math.abs((s.left - b.left) * 2 + s.width - b.width) <
+						s.width + b.width &&
+					Math.abs((s.top - b.top) * 2 + s.height - b.height) <
+						s.height + b.height,
+			);
 		if (this.selectingSetter) {
 			this.selectingSetter(this.selecting);
 		}
@@ -425,7 +448,7 @@ export default class selectable {
 			left: Math.min(this.startX, this.endX),
 			top: Math.min(this.startY, this.endY),
 			width: Math.abs(this.startX - this.endX),
-			height: Math.abs(this.startY - this.endY)
+			height: Math.abs(this.startY - this.endY),
 		};
 	}
 
@@ -472,9 +495,13 @@ export default class selectable {
 				this.selectBoxStartY = bb.top - selectBoxStart.top;
 				this.firstRun = false;
 			}
-			elStyle.left = (box.left - bb.left + this.selectBoxStartX) + 'px';
-			elStyle.top = (box.top - bb.top + this.selectBoxStartY -
-				(this.scrollingFrame ? this.scrollingFrame.scrollTop : 0)) + 'px';
+			elStyle.left = box.left - bb.left + this.selectBoxStartX + 'px';
+			elStyle.top =
+				box.top -
+				bb.top +
+				this.selectBoxStartY -
+				(this.scrollingFrame ? this.scrollingFrame.scrollTop : 0) +
+				'px';
 			elStyle.width = box.width + 'px';
 			elStyle.height = box.height + 'px';
 		} else {
