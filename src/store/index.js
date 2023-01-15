@@ -95,7 +95,7 @@ const mutations = {
 		state.currentOpenedTaskId = currentOpenedTaskId;
 	},
 	colorScheme(state, colorScheme) {
-		if (colorScheme == null) {
+		if (!colorScheme) {
 			localStorage.removeItem('colorScheme');
 		} else {
 			localStorage.setItem('colorScheme', colorScheme);
@@ -136,9 +136,8 @@ const actions = {
 		state.showCreateTaskModal = true;
 	},
 	async loadUserSettings({ commit, state }) {
-		if (!state.user) {
-			return;
-		}
+		if (!state.user) return;
+
 		try {
 			const {
 				data: { data },
@@ -146,7 +145,6 @@ const actions = {
 
 			if (data?.settings) {
 				commit('setUserSettings', data.settings);
-				commit('colorScheme', data.settings?.colorScheme ?? 'default');
 			}
 		} catch (e) {
 			throw e;

@@ -8,36 +8,66 @@
 
 			<q-space />
 
-			<q-btn class="q-electron-drag--exception" dense flat icon="minimize" @click="minimize" />
-			<q-btn class="q-electron-drag--exception" dense flat icon="crop_square" @click="maximize" />
-			<q-btn class="q-electron-drag--exception" dense flat icon="close" @click="closeApp" />
+			<q-btn
+				class="q-electron-drag--exception"
+				dense
+				flat
+				icon="minimize"
+				@click="minimize"
+			/>
+			<q-btn
+				class="q-electron-drag--exception"
+				dense
+				flat
+				icon="crop_square"
+				@click="maximize"
+			/>
+			<q-btn
+				class="q-electron-drag--exception"
+				dense
+				flat
+				icon="close"
+				@click="closeApp"
+			/>
 		</q-bar>
+
 		<Slideout
 			menu="#menu"
 			panel="#panel"
 			side="right"
 			@on-translate="translateMenu"
 			@on-beforeclose="menuIsActive = false"
-			@on-beforeopen="menuIsActive = true">
+			@on-beforeopen="menuIsActive = true"
+		>
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden">
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
-					<span :class="`${$color('inverseTextColor')}-500`" class="absolute bottom-0 right-0 pr-4 pb-10">
-            <day-night-switch v-model="switchOn"/>
-          </span>
+					<span
+						:class="`${$color('inverseTextColor')}-500`"
+						class="absolute bottom-0 right-0 pr-4 pb-10"
+					>
+						<day-night-switch v-model="switchOn" />
+					</span>
 				</div>
 			</div>
+
 			<div id="panel" :class="`${$color('bgBody')} ${$color('borderRight')}`">
-				<q-scroll-area :style="{
-					height: bodyHeight + 'px'
-				}">
+				<q-scroll-area
+					:style="{
+						height: bodyHeight + 'px',
+					}"
+				>
 					<transition mode="out-in" name="fade">
 						<div>
-							<Navbar v-if="$route.meta.navbarHidden" :menu-is-active="menuIsActive"
-											:menu-position="translateMenuPosition" />
+							<Navbar
+								v-if="$route.meta.navbarHidden"
+								:menu-is-active="menuIsActive"
+								:menu-position="translateMenuPosition"
+							/>
 						</div>
 					</transition>
+
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
 							:name="transitionName"
@@ -55,34 +85,47 @@
 			</div>
 		</Slideout>
 		<div :class="`fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10`">
-				<span
-					v-for="task in activeTasks"
-					class="mb-5 inline-block"
-				>
-					<transition mode="out-in" name="fade">
-						<a v-if="task.id !== $store.getters.currentOpenedTaskId" :href="`/${task.id}/edit`"
-							 @click.prevent="$store.commit('currentTaskIdForModal', task.id)">
-							<span :class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color('activeTaskReminderBg')}`">
-								<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
-									<span
-										class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-									<span class="relative inline-flex rounded-full h-5 w-5 bg-green-500"></span>
-								</span>
-								<span :class="$color('textMain')">{{ task.title }}</span>
+			<span v-for="task in activeTasks" class="mb-5 inline-block">
+				<transition mode="out-in" name="fade">
+					<a
+						v-if="task.id !== $store.getters.currentOpenedTaskId"
+						:href="`/${task.id}/edit`"
+						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
+					>
+						<span
+							:class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color(
+								'activeTaskReminderBg',
+							)}`"
+						>
+							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
+								<span
+									class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
+								></span>
+								<span
+									class="relative inline-flex rounded-full h-5 w-5 bg-green-500"
+								></span>
 							</span>
-						</a>
-					</transition>
-				</span>
+							<span :class="$color('textMain')">{{ task.title }}</span>
+						</span>
+					</a>
+				</transition>
+			</span>
 		</div>
 
 		<fullscreen-modal
-			v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
-			close-on-bg-click @close="$store.dispatch('closeTaskModal')"
+			v-if="
+				$store.getters.currentTaskIdForModal ||
+				$store.getters.showCreateTaskModal
+			"
+			close-on-bg-click
+			@close="$store.dispatch('closeTaskModal')"
 		>
 			<template #modal-body>
 				<task-form
 					:is-modal="true"
-					:modal-project-category-id="$store.getters.createTaskInProjectCategoryId"
+					:modal-project-category-id="
+						$store.getters.createTaskInProjectCategoryId
+					"
 					:modal-task-id="$store.getters.currentTaskIdForModal"
 					:status-id="$store.getters.createTaskInStatusId"
 					@close="$store.dispatch('closeTaskModal')"
@@ -111,7 +154,7 @@ export default defineComponent({
 		FullscreenModal,
 		Navbar,
 		Slideout,
-		NavbarMenu
+		NavbarMenu,
 	},
 	data() {
 		return {
@@ -122,7 +165,7 @@ export default defineComponent({
 			bodyOverflow: '',
 			bodyHeight: 800,
 			menuIsActive: false,
-			translateMenuPosition: 0
+			translateMenuPosition: 0,
 		};
 	},
 	computed: {
@@ -135,14 +178,14 @@ export default defineComponent({
 			},
 			set(newValue) {
 				this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
-			}
-		}
+			},
+		},
 	},
 	watch: {
 		'$route.path'() {
 			this.showComponent = false;
-			setTimeout(() => this.showComponent = true, 100);
-		}
+			setTimeout(() => (this.showComponent = true), 100);
+		},
 	},
 	methods: {
 		closeTaskModal() {
@@ -170,7 +213,9 @@ export default defineComponent({
 			if (!this.$store.getters.user) {
 				return;
 			}
-			const { data: { data } } = await this.$axios.get('/tasks/runned');
+			const {
+				data: { data },
+			} = await this.$axios.get('/tasks/runned');
 			this.activeTasks = data;
 		},
 		minimize() {
@@ -193,12 +238,17 @@ export default defineComponent({
 				try {
 					this.bodyHeight = this.getBodyHeight();
 				} catch (e) {
-					setTimeout(() => this.bodyHeight = this.getBodyHeight(), 1000);
+					setTimeout(() => (this.bodyHeight = this.getBodyHeight()), 1000);
 				}
 			}, 500);
 		},
 		getBodyHeight() {
-			return this.getOffsetHeightOfElement('body') + 30 - this.getOffsetHeightOfElement('[role=toolbar]') - this.getOffsetHeightOfElement('nav');
+			return (
+				this.getOffsetHeightOfElement('body') +
+				30 -
+				this.getOffsetHeightOfElement('[role=toolbar]') -
+				this.getOffsetHeightOfElement('nav')
+			);
 		},
 		getOffsetHeightOfElement(selector) {
 			const el = document.querySelector(selector);
@@ -206,7 +256,7 @@ export default defineComponent({
 				return 0;
 			}
 			return el.offsetHeight;
-		}
+		},
 	},
 	async created() {
 		this.$store.dispatch('loadUserSettings');
@@ -236,12 +286,13 @@ export default defineComponent({
 				return this.$store.commit('pusherBeamsUserId', userId);
 			}
 			userId = this.$store.getters.user.id.toString();
-			this.$store.getters.pusherBeamsClient.start()
-				.then(() => {
-					this.$store.getters.pusherBeamsClient.setUserId(userId, this.$store.getters.pusherTokenProvider).then(() => {
+			this.$store.getters.pusherBeamsClient.start().then(() => {
+				this.$store.getters.pusherBeamsClient
+					.setUserId(userId, this.$store.getters.pusherTokenProvider)
+					.then(() => {
 						this.$store.commit('pusherBeamsUserId', userId);
 					});
-				});
+			});
 		});
 		this.loadActiveTasks();
 		if (process.env.MODE === 'electron') {
@@ -250,7 +301,7 @@ export default defineComponent({
 	},
 	mounted() {
 		this.initBodyHeight();
-	}
+	},
 });
 </script>
 
