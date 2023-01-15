@@ -9,22 +9,46 @@
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="sm:w-auto w-full text-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg">
+						class="sm:w-auto w-full text-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg"
+					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
 				<div class="sm:ml-auto sm:mt-0 ml-0 sm:w-auto w-full text-center mt-2">
-					<a href="#" @click.prevent="showSearchInput = !showSearchInput" title="Search tasks" class="pr-1">
-						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">{{ showSearchInput ? 'search_off' : 'search'}}</span>
+					<a
+						href="#"
+						@click.prevent="showSearchInput = !showSearchInput"
+						title="Search tasks"
+						class="pr-1"
+					>
+						<span
+							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							>{{ showSearchInput ? 'search_off' : 'search' }}</span
+						>
 					</a>
 
-					<a href="#" @click.prevent="selectAll()" title="Select all" class="pr-1">
-						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">done_all</span>
+					<a
+						href="#"
+						@click.prevent="selectAll()"
+						title="Select all"
+						class="pr-1"
+					>
+						<span
+							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							>done_all</span
+						>
 					</a>
 
-					<a href="#" title="Add Task" @click="$store.dispatch('showCreateTaskModal')">
-						<span class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100">add_circle_outline</span>
+					<a
+						href="#"
+						title="Add Task"
+						@click="$store.dispatch('showCreateTaskModal')"
+					>
+						<span
+							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							>add_circle_outline</span
+						>
 					</a>
 				</div>
 			</div>
@@ -32,7 +56,13 @@
 
 		<template #body>
 			<transition name="fade" mode="out-in">
-				<input-field class="px-2 pb-5" v-if="showSearchInput" placeholder="Enter task name" v-model="searchText" @keydown:enter="loadTasks"></input-field>
+				<input-field
+					class="px-2 pb-5"
+					v-if="showSearchInput"
+					placeholder="Enter task name"
+					v-model="searchText"
+					@keydown:enter="loadTasks"
+				></input-field>
 			</transition>
 
 			<tasks-list-component
@@ -62,27 +92,22 @@
 </template>
 
 <script>
-	import TasksListMixin from "src/mixins/TasksListMixin";
-	import LoadingButtonActions from "src/mixins/LoadingButtonActions";
-	import LoadingTasksList from "src/components/UIElements/Tasks/LoadingTasksList";
-	import TasksListComponent from "src/components/UIElements/Tasks/TasksListComponent";
-	import Confetti from "src/components/UIElements/Confetti";
-	import FullscreenModal from "src/components/Layouts/FullscreenModal";
-	import TaskForm from "src/components/Tasks/TaskForm";
+	import TasksListMixin from 'src/mixins/TasksListMixin';
+	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
+	import LoadingTasksList from 'src/components/UIElements/Tasks/LoadingTasksList';
+	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
+	import Confetti from 'src/components/UIElements/Confetti';
+	import TaskForm from 'src/components/Tasks/TaskForm';
 
 	export default {
 		name: 'TasksList',
 		components: {
 			TaskForm,
-			FullscreenModal,
 			Confetti,
 			LoadingTasksList,
-			TasksListComponent
+			TasksListComponent,
 		},
-		mixins: [
-			LoadingButtonActions,
-			TasksListMixin
-		],
+		mixins: [LoadingButtonActions, TasksListMixin],
 		data: () => ({
 			showCreateTaskForm: false,
 			errorLoading: false,
@@ -95,57 +120,62 @@
 			h1: {
 				CurrentTasksList: 'Current tasks',
 				HiddenTasksList: 'Hidden tasks',
-				ArchiveTasksList: 'Archive tasks'
+				ArchiveTasksList: 'Archive tasks',
 			},
 			tasks: [],
 			isLoadingActions: {},
-			hasAbilityToShowConfetti: false
+			hasAbilityToShowConfetti: false,
 		}),
 		computed: {
 			status() {
-				return this.$route.meta.status
-			}
+				return this.$route.meta.status;
+			},
 		},
 		watch: {
-			searchText () {
-				clearTimeout(this.searchTimeout)
-				this.searchTimeout = setTimeout(this.loadTasks, 1000)
-
+			searchText() {
+				clearTimeout(this.searchTimeout);
+				this.searchTimeout = setTimeout(this.loadTasks, 1000);
 			},
 			'$store.getters.reloadTasks'() {
-				this.loadTasks()
-			}
+				this.loadTasks();
+			},
 		},
 		methods: {
-			reloadTasks () {
-				this.hasAbilityToShowConfetti = true
-				this.loadTasks()
+			reloadTasks() {
+				this.hasAbilityToShowConfetti = true;
+				this.loadTasks();
 			},
 			async loadTasks() {
 				try {
-					clearTimeout(this.searchTimeout)
-					const { searchText } = this
-					const {data: {data}} = await this.$axios.get(this.tasksIndexUrl + (searchText ? '&search=' + searchText : ''))
-					this.summaryTimeString = this.getTaskFormattedTime(data.reduce((summary, task) => task.common_time + summary, 0))
-					this.tasks = data
-					return data
+					clearTimeout(this.searchTimeout);
+					const { searchText } = this;
+					const {
+						data: { data },
+					} = await this.$axios.get(
+						this.tasksIndexUrl + (searchText ? '&search=' + searchText : ''),
+					);
+					this.summaryTimeString = this.getTaskFormattedTime(
+						data.reduce((summary, task) => task.common_time + summary, 0),
+					);
+					this.tasks = data;
+					return data;
 				} catch (e) {
-					console.error(e)
-					this.errorLoading = true
+					console.error(e);
+					this.errorLoading = true;
 				} finally {
-					this.showLoader = false
+					this.showLoader = false;
 				}
 			},
-			selectAll () {
+			selectAll() {
 				if (!this.$refs.tasksListComponent) {
-					return
+					return;
 				}
-				this.$refs.tasksListComponent.selectAll()
-			}
+				this.$refs.tasksListComponent.selectAll();
+			},
 		},
 		async created() {
-			const data = await this.loadTasks()
-			this.setLoadingActions(data)
-		}
-	}
+			const data = await this.loadTasks();
+			this.setLoadingActions(data);
+		},
+	};
 </script>

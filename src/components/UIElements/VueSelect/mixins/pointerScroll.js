@@ -2,8 +2,8 @@ export default {
 	props: {
 		autoscroll: {
 			type: Boolean,
-			default: true
-		}
+			default: true,
+		},
 	},
 
 	watch: {
@@ -11,7 +11,7 @@ export default {
 			if (this.autoscroll) {
 				this.maybeAdjustScroll();
 			}
-		}
+		},
 	},
 
 	methods: {
@@ -46,10 +46,10 @@ export default {
 			return this.$refs.dropdownMenu
 				? this.$refs.dropdownMenu.getBoundingClientRect()
 				: {
-					height: 0,
-					top: 0,
-					bottom: 0
-				};
-		}
-	}
+						height: 0,
+						top: 0,
+						bottom: 0,
+				  };
+		},
+	},
 };

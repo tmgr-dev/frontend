@@ -2,7 +2,7 @@ import Popper from 'popper.js';
 
 const CSS = {
 	HIDDEN: 'vue-tooltip-hidden',
-	VISIBLE: 'vue-tooltip-visible'
+	VISIBLE: 'vue-tooltip-visible',
 };
 const BASE_CLASS = `h-tooltip  ${CSS.HIDDEN}`;
 const PLACEMENT = ['top', 'left', 'right', 'bottom', 'auto'];
@@ -10,7 +10,7 @@ const SUB_PLACEMENT = ['start', 'end'];
 
 const EVENTS = {
 	ADD: 1,
-	REMOVE: 2
+	REMOVE: 2,
 };
 
 const DEFAULT_OPTIONS = {
@@ -22,8 +22,8 @@ const DEFAULT_OPTIONS = {
 	html: false,
 	modifiers: {
 		arrow: {
-			element: '.tooltip-arrow'
-		}
+			element: '.tooltip-arrow',
+		},
 	},
 	placement: '',
 	placementPostfix: null, // start | end
@@ -31,7 +31,7 @@ const DEFAULT_OPTIONS = {
 	title: '',
 	class: '', // ex: 'tooltip-custom tooltip-other-custom'
 	triggers: ['hover', 'focus'],
-	offset: 5
+	offset: 5,
 };
 
 const includes = (stack, needle) => {
@@ -51,9 +51,9 @@ export default class Tooltip {
 				onUpdate: (data) => {
 					this.content(this.tooltip.options.title);
 					// this._$tt.update();
-				}
+				},
 			},
-			...Tooltip.filterOptions(options)
+			...Tooltip.filterOptions(options),
 		};
 
 		this._$el = el;
@@ -93,7 +93,10 @@ export default class Tooltip {
 
 	set class(val) {
 		if (typeof val === 'string') {
-			const classList = this._$tpl.classList.value.replace(this.options.class, val);
+			const classList = this._$tpl.classList.value.replace(
+				this.options.class,
+				val,
+			);
 			this._options.class = classList;
 			this._$tpl.setAttribute('class', classList);
 		}
@@ -107,13 +110,18 @@ export default class Tooltip {
 		let tail = null;
 		if (opt.placement.indexOf('-') > -1) {
 			[head, tail] = opt.placement.split('-');
-			opt.placement = (includes(PLACEMENT, head) && includes(SUB_PLACEMENT, tail)) ? opt.placement : Tooltip._defaults.placement;
+			opt.placement =
+				includes(PLACEMENT, head) && includes(SUB_PLACEMENT, tail)
+					? opt.placement
+					: Tooltip._defaults.placement;
 		} else {
-			opt.placement = (includes(PLACEMENT, opt.placement)) ? opt.placement : Tooltip._defaults.placement;
+			opt.placement = includes(PLACEMENT, opt.placement)
+				? opt.placement
+				: Tooltip._defaults.placement;
 		}
 
 		opt.modifiers.offset = {
-			fn: Tooltip._setOffset
+			fn: Tooltip._setOffset,
 		};
 
 		return opt;
@@ -140,8 +148,12 @@ export default class Tooltip {
 	}
 
 	static isIosSafari() {
-		return includes(navigator.userAgent.toLowerCase(), 'mobile') && includes(navigator.userAgent.toLowerCase(), 'safari') &&
-			(navigator.platform.toLowerCase() === 'iphone' || navigator.platform.toLowerCase() === 'ipad');
+		return (
+			includes(navigator.userAgent.toLowerCase(), 'mobile') &&
+			includes(navigator.userAgent.toLowerCase(), 'safari') &&
+			(navigator.platform.toLowerCase() === 'iphone' ||
+				navigator.platform.toLowerCase() === 'ipad')
+		);
 	}
 
 	static defaults(data) {
@@ -244,7 +256,8 @@ export default class Tooltip {
 	}
 
 	_events(type = EVENTS.ADD) {
-		const evtType = (type === EVENTS.ADD) ? 'addEventListener' : 'removeEventListener';
+		const evtType =
+			type === EVENTS.ADD ? 'addEventListener' : 'removeEventListener';
 		if (!Array.isArray(this.options.triggers)) {
 			console.error('trigger should be an array', this.options.triggers); // eslint-disable-line
 			return;
@@ -256,18 +269,26 @@ export default class Tooltip {
 			lis('click', this._onToggle.bind(this), false);
 		} else {
 			// For the strange iOS/safari behaviour, we remove any 'hover' and replace it by a 'click' event
-			if (this.options.fixIosSafari && Tooltip.isIosSafari() && includes(this.options.triggers, 'hover')) {
+			if (
+				this.options.fixIosSafari &&
+				Tooltip.isIosSafari() &&
+				includes(this.options.triggers, 'hover')
+			) {
 				const pos = this.options.triggers.indexOf('hover');
 				const click = includes(this.options.triggers, 'click');
-				this._options.triggers[pos] = (click !== -1) ? 'click' : null;
+				this._options.triggers[pos] = click !== -1 ? 'click' : null;
 			}
 
-			this.options.triggers.map(evt => {
+			this.options.triggers.map((evt) => {
 				switch (evt) {
 					case 'click':
-						lis('click', (e) => {
-							this._onToggle(e);
-						}, false);
+						lis(
+							'click',
+							(e) => {
+								this._onToggle(e);
+							},
+							false,
+						);
 						// document[evtType]('click', this._onDeactivate.bind(this), false);
 						break;
 					case 'hover':
@@ -281,9 +302,20 @@ export default class Tooltip {
 				}
 			});
 
-			if (includes(this.options.triggers, 'hover') || includes(this.options.triggers, 'focus')) {
-				this._$tpl[evtType]('mouseenter', this._onMouseOverTooltip.bind(this), false);
-				this._$tpl[evtType]('mouseleave', this._onMouseOutTooltip.bind(this), false);
+			if (
+				includes(this.options.triggers, 'hover') ||
+				includes(this.options.triggers, 'focus')
+			) {
+				this._$tpl[evtType](
+					'mouseenter',
+					this._onMouseOverTooltip.bind(this),
+					false,
+				);
+				this._$tpl[evtType](
+					'mouseleave',
+					this._onMouseOutTooltip.bind(this),
+					false,
+				);
 			}
 		}
 	}

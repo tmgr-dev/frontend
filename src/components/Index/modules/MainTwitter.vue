@@ -1,7 +1,9 @@
 <template>
 	<section class="bg-white border-b py-8">
 		<div class="container mx-auto flex flex-wrap pt-4 pb-12">
-			<h1 class="w-full my-2 text-5xl font-bold leading-tight text-center text-gray-800">
+			<h1
+				class="w-full my-2 text-5xl font-bold leading-tight text-center text-gray-800"
+			>
 				Twitter
 			</h1>
 			<div class="w-full mb-4">
@@ -9,73 +11,89 @@
 			</div>
 
 			<div class="w-full md:w-1/3 p-6 flex flex-col flex-grow flex-shrink">
-				<div class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow">
-					<a
-						class="flex flex-wrap no-underline hover:no-underline"
-						href="#"
-					>
-						<p class="w-full text-gray-600 text-xs md:text-sm px-6">xGETTING STARTED</p>
-						<div class="w-full font-bold text-xl text-gray-800 px-6">Lorem ipsum dolor sit amet.</div>
+				<div
+					class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow"
+				>
+					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
+						<p class="w-full text-gray-600 text-xs md:text-sm px-6">
+							xGETTING STARTED
+						</p>
+						<div class="w-full font-bold text-xl text-gray-800 px-6">
+							Lorem ipsum dolor sit amet.
+						</div>
 						<p class="text-gray-800 text-base px-6 mb-5">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit
-							amet ligula.
+							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
+							at ipsum eu nunc commodo posuere et sit amet ligula.
 						</p>
 					</a>
 				</div>
-				<div class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6">
+				<div
+					class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6"
+				>
 					<div class="flex items-center justify-start">
 						<button
-							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg">
+							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg"
+						>
 							Action
 						</button>
 					</div>
 				</div>
 			</div>
 
-
 			<div class="w-full md:w-1/3 p-6 flex flex-col flex-grow flex-shrink">
-				<div class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow">
-					<a
-						class="flex flex-wrap no-underline hover:no-underline"
-						href="#"
-					>
-						<p class="w-full text-gray-600 text-xs md:text-sm px-6">xGETTING STARTED</p>
-						<div class="w-full font-bold text-xl text-gray-800 px-6">Lorem ipsum dolor sit amet.</div>
+				<div
+					class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow"
+				>
+					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
+						<p class="w-full text-gray-600 text-xs md:text-sm px-6">
+							xGETTING STARTED
+						</p>
+						<div class="w-full font-bold text-xl text-gray-800 px-6">
+							Lorem ipsum dolor sit amet.
+						</div>
 						<p class="text-gray-800 text-base px-6 mb-5">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit
-							amet ligula.
+							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
+							at ipsum eu nunc commodo posuere et sit amet ligula.
 						</p>
 					</a>
 				</div>
-				<div class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6">
+				<div
+					class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6"
+				>
 					<div class="flex items-center justify-center">
 						<button
-							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg">
+							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg"
+						>
 							Action
 						</button>
 					</div>
 				</div>
 			</div>
 
-
 			<div class="w-full md:w-1/3 p-6 flex flex-col flex-grow flex-shrink">
-				<div class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow">
-					<a
-						class="flex flex-wrap no-underline hover:no-underline"
-						href="#"
-					>
-						<p class="w-full text-gray-600 text-xs md:text-sm px-6">xGETTING STARTED</p>
-						<div class="w-full font-bold text-xl text-gray-800 px-6">Lorem ipsum dolor sit amet.</div>
+				<div
+					class="flex-1 bg-white rounded-t rounded-b-none overflow-hidden shadow"
+				>
+					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
+						<p class="w-full text-gray-600 text-xs md:text-sm px-6">
+							xGETTING STARTED
+						</p>
+						<div class="w-full font-bold text-xl text-gray-800 px-6">
+							Lorem ipsum dolor sit amet.
+						</div>
 						<p class="text-gray-800 text-base px-6 mb-5">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit
-							amet ligula.
+							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
+							at ipsum eu nunc commodo posuere et sit amet ligula.
 						</p>
 					</a>
 				</div>
-				<div class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6">
+				<div
+					class="flex-none mt-auto bg-white rounded-b rounded-t-none overflow-hidden shadow p-6"
+				>
 					<div class="flex items-center justify-end">
 						<button
-							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg">
+							class="mx-auto lg:mx-0 text-gray-700 hover:bg-gray-100 gradient font-bold rounded-full my-6 py-4 px-8 shadow-lg"
+						>
 							Action
 						</button>
 					</div>
@@ -86,7 +104,7 @@
 </template>
 
 <script>
-export default {
-	name: 'MainTwitter'
-};
+	export default {
+		name: 'MainTwitter',
+	};
 </script>

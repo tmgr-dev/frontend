@@ -8,12 +8,12 @@ function event(name) {
 	return evt;
 }
 
-export default function(el, binding) {
+export default function (el, binding) {
 	let config = binding.value;
 	if (Array.isArray(config) || typeof config === 'string') {
 		config = {
 			mask: config,
-			tokens: tokens
+			tokens: tokens,
 		};
 	}
 
@@ -26,7 +26,7 @@ export default function(el, binding) {
 		}
 	}
 
-	el.oninput = function(evt) {
+	el.oninput = function (evt) {
 		if (!evt.isTrusted) {
 			return;
 		}
@@ -50,12 +50,15 @@ export default function(el, binding) {
 		const digit = el.value[position - 1];
 		el.value = masker(el.value, config.mask, true, config.tokens);
 		// if the digit was changed, increment position until find the digit again
-		while (position < el.value.length && el.value.charAt(position - 1) !== digit) {
+		while (
+			position < el.value.length &&
+			el.value.charAt(position - 1) !== digit
+		) {
 			position++;
 		}
 		if (el === document.activeElement) {
 			el.setSelectionRange(position, position);
-			setTimeout(function() {
+			setTimeout(function () {
 				el.setSelectionRange(position, position);
 			}, 0);
 		}
