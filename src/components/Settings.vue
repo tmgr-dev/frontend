@@ -108,24 +108,26 @@
 		</template>
 	</BaseLayout>
 
-	<confirm
-		v-if="confirm"
-		:body="confirm.body"
-		:title="confirm.title"
-		@onCancel="confirm = undefined"
-		@onOk="confirm.action()"
-	>
-		<template #body-content>
-			<p>{{ confirm.body }}</p>
-			<a
-				class="text-blue"
-				href="/push-notifications-enable-guide"
-				target="_blank"
-				>How to enable or disable Push Notifications on Chrome, Firefox & Safari
-				Browser?</a
-			>
-		</template>
-	</confirm>
+	<Transition name="fade">
+		<confirm
+			v-if="confirm"
+			:body="confirm.body"
+			:title="confirm.title"
+			@onCancel="confirm = undefined"
+			@onOk="confirm.action()"
+		>
+			<template #body-content>
+				<p>{{ confirm.body }}</p>
+				<a
+					class="text-blue"
+					href="/push-notifications-enable-guide"
+					target="_blank"
+					>How to enable or disable Push Notifications on Chrome, Firefox &
+					Safari Browser?</a
+				>
+			</template>
+		</confirm>
+	</Transition>
 </template>
 
 <script>

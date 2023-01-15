@@ -117,13 +117,15 @@
 		</new-button>
 	</div>
 
-	<confirm
-		v-if="confirm"
-		:body="confirm.body"
-		:title="confirm.title"
-		@onCancel="confirm = undefined"
-		@onOk="confirm.action()"
-	/>
+	<Transition name="fade">
+		<confirm
+			v-if="confirm"
+			:body="confirm.body"
+			:title="confirm.title"
+			@onCancel="confirm = undefined"
+			@onOk="confirm.action()"
+		/>
+	</Transition>
 </template>
 
 <script>

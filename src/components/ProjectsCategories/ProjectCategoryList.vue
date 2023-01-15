@@ -203,13 +203,16 @@
 			</div>
 		</template>
 	</BaseLayout>
-	<confirm
-		v-if="confirm"
-		:body="confirm.body"
-		:title="confirm.title"
-		@onCancel="confirm = undefined"
-		@onOk="confirm.action()"
-	/>
+
+	<Transition name="fade">
+		<confirm
+			v-if="confirm"
+			:body="confirm.body"
+			:title="confirm.title"
+			@onCancel="confirm = undefined"
+			@onOk="confirm.action()"
+		/>
+	</Transition>
 </template>
 
 <script>
@@ -357,7 +360,7 @@
 				this.isCategoriesFirstLoading = false;
 			},
 			async deleteCategory(category) {
-				this.showConfirm('Delete category', 'Are you shure?', async () => {
+				this.showConfirm('Delete category', 'Are you sure?', async () => {
 					try {
 						const {
 							data: { data },
