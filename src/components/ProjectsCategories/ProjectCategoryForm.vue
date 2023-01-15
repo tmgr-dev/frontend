@@ -25,6 +25,7 @@
 						>
 							Project category name
 						</label>
+
 						<input-field
 							id="categoryName"
 							v-model="form.title"
@@ -36,6 +37,7 @@
 					<label class="tc-block text-gray-700 text-sm font-bold mb-2">
 						Parent category
 					</label>
+
 					<div class="relative mb-4">
 						<input-field
 							v-model="form.project_category_id"
@@ -46,11 +48,12 @@
 							type="select"
 						/>
 					</div>
-					<hr class="py-2" />
+
 					<div v-if="!isCreate">
 						<label class="tc-block text-gray-700 text-sm font-bold mb-5">
 							Settings
 						</label>
+
 						<div>
 							<div v-for="(setting, index) in availableSettings">
 								<label
@@ -59,6 +62,7 @@
 								>
 									{{ setting.name }}
 								</label>
+
 								<div class="relative mb-4">
 									<input-field
 										v-if="!setting.show_custom_value_input"
@@ -71,6 +75,7 @@
 										option-value-key="value"
 										type="select"
 									/>
+
 									<div v-else-if="setting.custom_value_available">
 										<input-field
 											:id="`setting-${setting.id}`"
@@ -80,9 +85,11 @@
 											:type="setting.component_type"
 										/>
 									</div>
-									<small v-if="!setting.show_custom_value_input">{{
-										setting.description
-									}}</small>
+
+									<small v-if="!setting.show_custom_value_input">
+										{{ setting.description }}
+									</small>
+
 									<div
 										v-if="setting.custom_value_available"
 										class="b-switch-list mt-3"
@@ -103,6 +110,7 @@
 												/>
 												<span></span>
 											</label>
+
 											<div class="b-switch-list__text">
 												<div
 													:class="$color('settingsTextColor')"
@@ -117,6 +125,7 @@
 							</div>
 						</div>
 					</div>
+
 					<div class="flex-row justify-center mt-8">
 						<button
 							class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -125,6 +134,7 @@
 						>
 							{{ isCreate ? 'Create' : 'Save' }}
 						</button>
+
 						<button
 							v-if="isCreate"
 							class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -133,6 +143,7 @@
 						>
 							Add & Continue
 						</button>
+
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
