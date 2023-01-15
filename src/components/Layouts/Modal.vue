@@ -1,9 +1,5 @@
 <template>
-	<div
-		class="overlay fixed inset-0 z-50 flex"
-		:data-name="name"
-		@click="close"
-	>
+	<div class="overlay fixed inset-0 z-50 flex" :data-name="name" @click="close">
 		<div
 			class="modal rounded-lg m-auto"
 			:class="[$color('modalBg'), modalClass]"
@@ -15,34 +11,37 @@
 
 <script>
 	export default {
-		name: "Modal",
+		name: 'Modal',
 		emits: ['close'],
 		props: {
 			name: {
 				type: String,
-				required: false
+				required: false,
 			},
 			closeOnBgClick: {
 				type: Boolean,
 				required: false,
-				default: true
+				default: true,
 			},
 			modalClass: {
 				type: String,
-				required: false
-			}
+				required: false,
+			},
 		},
 		methods: {
 			close(e) {
 				if (this.closeOnBgClick) {
-					console.log(e.target, this.name, e.target.dataset.name)
-					if (e.target.classList.contains("overlay") && e.target.dataset.name === this.name) {
-						this.$emit("close");
+					console.log(e.target, this.name, e.target.dataset.name);
+					if (
+						e.target.classList.contains('overlay') &&
+						e.target.dataset.name === this.name
+					) {
+						this.$emit('close');
 					}
 				}
-			}
-		}
-	}
+			},
+		},
+	};
 </script>
 
 <style lang="scss" scoped>

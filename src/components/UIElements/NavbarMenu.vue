@@ -12,7 +12,10 @@
 			<li :class="isActive && activeLinkClass">
 				<a :href="href" @click="navigate">
 					{{ link.name }}
-					<span class="top-0 text-red-500 relative text-sm" v-html="link.small" />
+					<span
+						class="top-0 text-red-500 relative text-sm"
+						v-html="link.small"
+					/>
 				</a>
 			</li>
 		</router-link>
@@ -20,19 +23,19 @@
 </template>
 
 <script>
-export default {
-	name: 'NavbarMenu',
-	data: () => ({
-		links: [
-			{ id: 1, name: 'List', path: '/' },
-			{ id: 2, name: 'Board', path: '/board' },
-			{ id: 3, name: 'Categories', path: '/projects-categories' }
-		]
-	}),
-	computed: {
-		activeLinkClass() {
-			return `${this.$color('navLinkFocused')}-600`;
-		}
-	}
-};
+	export default {
+		name: 'NavbarMenu',
+		data: () => ({
+			links: [
+				{ id: 1, name: 'List', path: '/' },
+				{ id: 2, name: 'Board', path: '/board' },
+				{ id: 3, name: 'Categories', path: '/projects-categories' },
+			],
+		}),
+		computed: {
+			activeLinkClass() {
+				return `${this.$color('navLinkFocused')}-600`;
+			},
+		},
+	};
 </script>

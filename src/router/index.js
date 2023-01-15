@@ -12,7 +12,7 @@ import routes from './routes';
  */
 import store from '../store';
 
-const router = route(function(/* { store, ssrContext } */) {
+const router = route(function (/* { store, ssrContext } */) {
 	const createHistory = createWebHistory;
 
 	const Router = createRouter({
@@ -22,18 +22,23 @@ const router = route(function(/* { store, ssrContext } */) {
 		// Leave this as is and make changes in quasar.conf.js instead!
 		// quasar.conf.js -> build -> vueRouterMode
 		// quasar.conf.js -> build -> publicPath
-		history: createHistory(process.env.MODE === 'ssr' ? void 0 : process.env.VUE_ROUTER_BASE)
+		history: createHistory(
+			process.env.MODE === 'ssr' ? void 0 : process.env.VUE_ROUTER_BASE,
+		),
 	});
 
 	Router.beforeEach((to, from, next) => {
 		store.getters.slideout.close();
-		if (to.matched.some(record => record.meta.allowedGuests) && store.getters.isLoggedIn) {
-			if (to.matched.some(record => record.meta.notOnlyForLoggedUsers)) {
+		if (
+			to.matched.some((record) => record.meta.allowedGuests) &&
+			store.getters.isLoggedIn
+		) {
+			if (to.matched.some((record) => record.meta.notOnlyForLoggedUsers)) {
 				return next();
 			}
 			return next({ name: 'CurrentTasksList' });
 		}
-		if (to.matched.some(record => !record.meta.allowedGuests)) {
+		if (to.matched.some((record) => !record.meta.allowedGuests)) {
 			if (!store.getters.isLoggedIn) {
 				return next({ name: 'Login' });
 			}

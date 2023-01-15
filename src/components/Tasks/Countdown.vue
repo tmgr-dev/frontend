@@ -2,21 +2,43 @@
 	<teleport to="title">
 		{{ countdown.hours }}:{{ countdown.minutes }}:{{ countdown.seconds }}
 	</teleport>
-	<div v-if="task" id="task" :class="{'fullscreen': isFullScreen}" :style="disabledStyles" class="task">
+	<div
+		v-if="task"
+		id="task"
+		:class="{ fullscreen: isFullScreen }"
+		:style="disabledStyles"
+		class="task"
+	>
 		<div class="relative inline-block">
-			<div v-if="lastStartTime" class="countdown-wrapper mb-4 select-none opacity-20" style="opacity: 0.2">
+			<div
+				v-if="lastStartTime"
+				class="countdown-wrapper mb-4 select-none opacity-20"
+				style="opacity: 0.2"
+			>
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
-			<div v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }"
-					 class="countdown-wrapper mb-4 select-none"
-					 @dblclick="isShowModalTimer = true">
+			<div
+				v-tooltip.top="
+					userSettings.showTooltips
+						? 'Double click to edit the time'
+						: { visible: false }
+				"
+				class="countdown-wrapper mb-4 select-none"
+				@dblclick="isShowModalTimer = true"
+			>
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
-				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
+				<span
+					:class="`countdown-item ` + (countdownInterval ? `seconds` : ``)"
+					>{{ countdown.seconds }}</span
+				>
 			</div>
-			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20"
-					 style="opacity: 0.2">
+			<div
+				v-if="approximatelyEndTime && !timeIsOver"
+				class="countdown-wrapper mb-4 select-none opacity-20"
+				style="opacity: 0.2"
+			>
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
@@ -30,20 +52,24 @@
 				:color="task.start_time ? 'red' : 'blue'"
 				class="leading-none"
 				type="button"
-				@click="toggleCountdown">
+				@click="toggleCountdown"
+			>
 				<span v-if="!task.start_time" class="material-icons">play_arrow</span>
 				<span v-else class="material-icons">stop</span>
 			</Button>
 			<Button
 				class="leading-none"
 				color="gray"
-				@click="isFullScreen = !isFullScreen">
+				@click="isFullScreen = !isFullScreen"
+			>
 				<span v-if="!isFullScreen" class="material-icons">open_in_full</span>
 				<span v-else class="material-icons">close_fullscreen</span>
 			</Button>
 
-			<div id="reminder-sound-teleport" class="relative inline-flex rounded-md shadow-sm"></div>
-
+			<div
+				id="reminder-sound-teleport"
+				class="relative inline-flex rounded-md shadow-sm"
+			></div>
 		</div>
 
 		<reminder
@@ -52,10 +78,7 @@
 			:task="task"
 		/>
 
-		<modal
-			v-if="isShowModalTimer"
-			@close="isShowModalTimer = false"
-		>
+		<modal v-if="isShowModalTimer" @close="isShowModalTimer = false">
 			<template #modal-body>
 				<div class="countdown-modal-edit">
 					<vue-the-mask
@@ -81,13 +104,15 @@
 					<button
 						class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 						type="button"
-						@click="isShowModalTimer = false">
+						@click="isShowModalTimer = false"
+					>
 						Cancel
 					</button>
 					<button
 						class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 						type="button"
-						@click="updateTimer">
+						@click="updateTimer"
+					>
 						Update
 					</button>
 				</div>
@@ -97,252 +122,254 @@
 </template>
 
 <script>
-import InputField from '../UIElements/InputField';
-import Reminder from 'src/components/UIElements/Tasks/Reminder';
-import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
+	import InputField from '../UIElements/InputField';
+	import Reminder from 'src/components/UIElements/Tasks/Reminder';
+	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
 
-let countdownInterval = null;
+	let countdownInterval = null;
 
-export default {
-	name: 'Countdown',
-	components: {
-		Reminder,
-		InputField
-	},
-	mixins: [
-		TimePreparationMixin
-	],
-	emits: [
-		'toggle',
-		'update:seconds'
-	],
-	props: {
-		initTask: {
-			required: true,
-			type: Object
+	export default {
+		name: 'Countdown',
+		components: {
+			Reminder,
+			InputField,
 		},
-		disabled: {
-			type: Boolean,
-			required: false,
-			default: false
-		}
-	},
-	data: () => ({
-		reminderSoundActive: false,
-		isFullScreen: false,
-		approximatelyEndTime: null,
-		lastStartTime: null,
-		timeIsOver: false,
-		timeTokens: {
-			F: {
-				pattern: /[0-5]/
+		mixins: [TimePreparationMixin],
+		emits: ['toggle', 'update:seconds'],
+		props: {
+			initTask: {
+				required: true,
+				type: Object,
 			},
-			'#': {
-				pattern: /\d/
-			}
+			disabled: {
+				type: Boolean,
+				required: false,
+				default: false,
+			},
 		},
-		countdownInterval: null,
-		countdown: {
-			hours: '00',
-			minutes: '00',
-			seconds: '00'
-		},
-		task: {},
-		isShowModalTimer: false
-	}),
-	computed: {
-		userSettings() {
-			return this.$store.getters.getUserSettings ?? {};
-		},
-		disabledStyles() {
-			const disabledStyles = {
-				'opacity': 0.2,
-				'pointer-events': 'none'
-			};
-			return this.disabled ? disabledStyles : {};
-		}
-	},
-	methods: {
-		toggleCountdown() {
-			if (countdownInterval) {
-				clearInterval(countdownInterval);
-				countdownInterval = null;
-			}
-			this.$emit('toggle');
-		},
-		async updateTimer() {
-			this.validateCountdownBeforeUpdate();
-			const seconds = this.countdown.hours * 3600 + +this.countdown.minutes * 60 + +this.countdown.seconds;
-			await this.$axios.put(`tasks/${this.task.id}/time`, {
-				common_time: seconds
-			});
-			this.isShowModalTimer = false;
-		},
-		validateCountdownBeforeUpdate() {
-			if (this.countdown.hours === '') {
-				this.countdown.hours = '00';
-			}
-			if (this.countdown.minutes === '') {
-				this.countdown.minutes = '00';
-			}
-			if (this.countdown.seconds === '') {
-				this.countdown.seconds = '00';
-			}
-		},
-		plusSecond() {
-			if (!this.task) {
-				this.task = {
-					common_time: 0
+		data: () => ({
+			reminderSoundActive: false,
+			isFullScreen: false,
+			approximatelyEndTime: null,
+			lastStartTime: null,
+			timeIsOver: false,
+			timeTokens: {
+				F: {
+					pattern: /[0-5]/,
+				},
+				'#': {
+					pattern: /\d/,
+				},
+			},
+			countdownInterval: null,
+			countdown: {
+				hours: '00',
+				minutes: '00',
+				seconds: '00',
+			},
+			task: {},
+			isShowModalTimer: false,
+		}),
+		computed: {
+			userSettings() {
+				return this.$store.getters.getUserSettings ?? {};
+			},
+			disabledStyles() {
+				const disabledStyles = {
+					opacity: 0.2,
+					'pointer-events': 'none',
 				};
-			}
-			++this.task.common_time;
-			this.$emit('update:seconds', this.task.common_time);
+				return this.disabled ? disabledStyles : {};
+			},
+		},
+		methods: {
+			toggleCountdown() {
+				if (countdownInterval) {
+					clearInterval(countdownInterval);
+					countdownInterval = null;
+				}
+				this.$emit('toggle');
+			},
+			async updateTimer() {
+				this.validateCountdownBeforeUpdate();
+				const seconds =
+					this.countdown.hours * 3600 +
+					+this.countdown.minutes * 60 +
+					+this.countdown.seconds;
+				await this.$axios.put(`tasks/${this.task.id}/time`, {
+					common_time: seconds,
+				});
+				this.isShowModalTimer = false;
+			},
+			validateCountdownBeforeUpdate() {
+				if (this.countdown.hours === '') {
+					this.countdown.hours = '00';
+				}
+				if (this.countdown.minutes === '') {
+					this.countdown.minutes = '00';
+				}
+				if (this.countdown.seconds === '') {
+					this.countdown.seconds = '00';
+				}
+			},
+			plusSecond() {
+				if (!this.task) {
+					this.task = {
+						common_time: 0,
+					};
+				}
+				++this.task.common_time;
+				this.$emit('update:seconds', this.task.common_time);
+				this.renderTime();
+			},
+			prepareCommonTime() {
+				if (this.task.start_time) {
+					this.task.common_time += Math.floor(
+						(new Date() - new Date().setTime(this.task.start_time * 1000)) /
+							1000,
+					);
+				}
+			},
+			initCountdown() {
+				if (!this.task.start_time) {
+					clearInterval(countdownInterval);
+					countdownInterval = null;
+					return;
+				}
+
+				this.prepareCommonTime();
+				countdownInterval = setInterval(this.plusSecond, 1000);
+				this.countdownInterval = true;
+			},
+			renderTime() {
+				this.countdown = this.secondsToCountdownObject(this.task.common_time);
+				this.renderApproximatelyStartTime();
+			},
+			renderApproximatelyStartTime() {
+				if (!this.task.approximately_time || !this.task.start_time) {
+					return;
+				}
+
+				const leftTime = this.task.approximately_time - this.task.common_time;
+				if (leftTime < 0) {
+					this.timeIsOver = true;
+					this.approximatelyEndTime = null;
+					this.lastStartTime = null;
+					return;
+				}
+
+				const dt = new Date();
+				dt.setSeconds(
+					dt.getSeconds() +
+						(this.task.approximately_time - this.task.common_time),
+				);
+
+				this.approximatelyEndTime = {
+					hours: this.prepareClockNumber(dt.getHours()),
+					minutes: this.prepareClockNumber(dt.getMinutes()),
+				};
+
+				const st = new Date();
+				st.setTime(this.task.start_time * 1000);
+
+				this.lastStartTime = {
+					hours: this.prepareClockNumber(st.getHours()),
+					minutes: this.prepareClockNumber(st.getMinutes()),
+				};
+			},
+		},
+		mounted() {
+			this.task = { ...this.initTask };
+			this.task.start_time = this.task.start_time || 0;
+
+			this.initCountdown();
 			this.renderTime();
 		},
-		prepareCommonTime() {
-			if (this.task.start_time) {
-				this.task.common_time += Math.floor(
-					((new Date()) - (new Date()).setTime(this.task.start_time * 1000)) / 1000
-				);
-			}
+		beforeUnmount() {
+			clearInterval(countdownInterval);
 		},
-		initCountdown() {
-			if (!this.task.start_time) {
-				clearInterval(countdownInterval);
-				countdownInterval = null;
-				return;
-			}
-
-			this.prepareCommonTime();
-			countdownInterval = setInterval(this.plusSecond, 1000);
-			this.countdownInterval = true;
-		},
-		renderTime() {
-			this.countdown = this.secondsToCountdownObject(this.task.common_time);
-			this.renderApproximatelyStartTime();
-		},
-		renderApproximatelyStartTime() {
-			if (!this.task.approximately_time || !this.task.start_time) {
-				return;
-			}
-
-			const leftTime = this.task.approximately_time - this.task.common_time;
-			if (leftTime < 0) {
-				this.timeIsOver = true;
-				this.approximatelyEndTime = null;
-				this.lastStartTime = null;
-				return;
-			}
-
-			const dt = new Date();
-			dt.setSeconds(dt.getSeconds() + (this.task.approximately_time - this.task.common_time));
-
-			this.approximatelyEndTime = {
-				hours: this.prepareClockNumber(dt.getHours()),
-				minutes: this.prepareClockNumber(dt.getMinutes())
-			};
-
-			const st = new Date();
-			st.setTime(this.task.start_time * 1000);
-
-			this.lastStartTime = {
-				hours: this.prepareClockNumber(st.getHours()),
-				minutes: this.prepareClockNumber(st.getMinutes())
-			};
-		}
-	},
-	mounted() {
-		this.task = { ...this.initTask };
-		this.task.start_time = this.task.start_time || 0;
-
-		this.initCountdown();
-		this.renderTime();
-	},
-	beforeUnmount() {
-		clearInterval(countdownInterval);
-	}
-};
+	};
 </script>
 
 <style lang="scss">
-.countdown-modal-edit {
-	display: flex;
-	justify-content: center;
+	.countdown-modal-edit {
+		display: flex;
+		justify-content: center;
 
-	.countdown-item {
-		width: 33%;
-		text-align: center;
-		margin-right: 5px !important;
-	}
-}
-
-.countdown-edit {
-	position: absolute;
-	top: -15px;
-	left: calc(100% + 10px);
-}
-
-.task {
-	align-content: center;
-	text-align: center;
-	padding: 0px 23px;
-	// background: #333;
-	border-radius: 10px;
-	@media screen and (min-width: 821px) {
-		margin-bottom: 50px;
-		margin-top: 50px;
-		padding: 23px;
-	}
-
-	.countdown-item {
-		font-size: 2em;
-		border-radius: 5px;
-		padding: 0px 10px;
-		background-color: rgb(51, 51, 51);
-		box-shadow: inset 0px 0px 26px #000;
-		margin-right: 15px;
-		color: white;
-
-		&.seconds {
-			color: #00c300;
-		}
-
-		&:last-child {
-			margin-right: 0;
+		.countdown-item {
+			width: 33%;
+			text-align: center;
+			margin-right: 5px !important;
 		}
 	}
 
-	.task-wrappper {
-		font-size: 2em;
-		display: block;
-	}
-
-	button {
-		display: table-cell
-	}
-
-	.do-fullscreen {
+	.countdown-edit {
 		position: absolute;
-		bottom: 10px;
-		right: 10px;
-		cursor: pointer;
+		top: -15px;
+		left: calc(100% + 10px);
 	}
-}
 
-.task.fullscreen {
-	position: fixed;
-	width: 100vw;
-	height: 100vh;
-	z-index: 99999;
-	top: 0;
-	left: 0;
-	margin: 0px;
-	padding-top: 250px;
-	background: #333;
-	border-radius: 0px;
+	.task {
+		align-content: center;
+		text-align: center;
+		padding: 0px 23px;
+		// background: #333;
+		border-radius: 10px;
+		@media screen and (min-width: 821px) {
+			margin-bottom: 50px;
+			margin-top: 50px;
+			padding: 23px;
+		}
 
-	.fullscreen-toggler {
-		color: white;
+		.countdown-item {
+			font-size: 2em;
+			border-radius: 5px;
+			padding: 0px 10px;
+			background-color: rgb(51, 51, 51);
+			box-shadow: inset 0px 0px 26px #000;
+			margin-right: 15px;
+			color: white;
+
+			&.seconds {
+				color: #00c300;
+			}
+
+			&:last-child {
+				margin-right: 0;
+			}
+		}
+
+		.task-wrappper {
+			font-size: 2em;
+			display: block;
+		}
+
+		button {
+			display: table-cell;
+		}
+
+		.do-fullscreen {
+			position: absolute;
+			bottom: 10px;
+			right: 10px;
+			cursor: pointer;
+		}
 	}
-}
+
+	.task.fullscreen {
+		position: fixed;
+		width: 100vw;
+		height: 100vh;
+		z-index: 99999;
+		top: 0;
+		left: 0;
+		margin: 0px;
+		padding-top: 250px;
+		background: #333;
+		border-radius: 0px;
+
+		.fullscreen-toggler {
+			color: white;
+		}
+	}
 </style>

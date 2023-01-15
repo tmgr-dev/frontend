@@ -8,7 +8,9 @@ export default {
 		async restoreTask(task, dotId = null) {
 			try {
 				this.setLoadingAction(dotId);
-				const { data: { data } } = await this.$axios.post(`/tasks/${task.id}/restore`);
+				const {
+					data: { data },
+				} = await this.$axios.post(`/tasks/${task.id}/restore`);
 				task.deleted_at = data.deleted_at;
 			} catch (e) {
 				console.error(e);
@@ -21,7 +23,9 @@ export default {
 			const deleteTask = async () => {
 				try {
 					this.setLoadingAction(dotId);
-					const { data: { data } } = await this.$axios.delete(`/tasks/${task.id}`);
+					const {
+						data: { data },
+					} = await this.$axios.delete(`/tasks/${task.id}`);
 					task.deleted_at = data.deleted_at;
 				} catch (e) {
 					console.error(e);
@@ -31,6 +35,6 @@ export default {
 				}
 			};
 			this.showConfirm('Delete task', 'Are you sure?', deleteTask);
-		}
-	}
+		},
+	},
 };
