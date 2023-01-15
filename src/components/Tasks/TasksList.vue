@@ -94,7 +94,7 @@
 <script>
 	import TasksListMixin from 'src/mixins/TasksListMixin';
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
-	import LoadingTasksList from 'src/components/UIElements/Tasks/LoadingTasksList';
+	import LoadingTasksList from 'src/components/Loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
 	import Confetti from 'src/components/UIElements/Confetti';
 	import TaskForm from 'src/components/Tasks/TaskForm';

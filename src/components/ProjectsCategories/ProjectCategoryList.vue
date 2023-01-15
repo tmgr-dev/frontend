@@ -221,7 +221,7 @@
 	import extractParents from '../../utils/extractParents';
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
 	import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs';
-	import LoadingTasksList from 'src/components/UIElements/Tasks/LoadingTasksList';
+	import LoadingTasksList from 'src/components/Loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
 	import InputField from 'src/components/UIElements/InputField';
 
