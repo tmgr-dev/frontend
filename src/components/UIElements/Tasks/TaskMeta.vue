@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<div class="flex">
+		<div class="flex items-center">
 			<router-link
 				v-if="!dontPushRouter"
 				:to="`/${task.id}/edit`"
@@ -8,6 +8,7 @@
 			>
 				{{ task.title }}
 			</router-link>
+
 			<a
 				v-else
 				:href="`/${task.id}/edit`"
@@ -16,22 +17,24 @@
 			>
 				{{ task.title }}
 			</a>
-			<div class="flex items-start task-category-in-task">
-				<category-badge
-					v-if="task.category && showCategoryBadges"
-					:category="task.category"
-				/>
-			</div>
+
+			<category-badge
+				v-if="task.category && showCategoryBadges"
+				:category="task.category"
+			/>
 		</div>
-		<div class="flex items-start">
+
+		<div class="flex items-end gap-2">
 			<span>
 				<span
 					:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
 					class="material-icons text-xl"
-					>alarm</span
 				>
+					alarm
+				</span>
 			</span>
-			<span class="text-gray-700 ml-2">{{ taskTime }}</span>
+
+			<span class="text-gray-700">{{ taskTime }}</span>
 		</div>
 	</div>
 </template>

@@ -136,13 +136,6 @@
 			<alert ref="alert" />
 		</template>
 	</BaseLayout>
-	<confirm
-		v-if="confirm"
-		:body="confirm.body"
-		:title="confirm.title"
-		@onCancel="confirm = undefined"
-		@onOk="confirm.action()"
-	/>
 </template>
 
 <script>
