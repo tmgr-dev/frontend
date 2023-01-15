@@ -2,12 +2,14 @@
 	<teleport to="title">
 		{{ countdown.hours }}:{{ countdown.minutes }}:{{ countdown.seconds }}
 	</teleport>
+
 	<div v-if="task" id="task" :class="{'fullscreen': isFullScreen}" :style="disabledStyles" class="new-task">
 		<div class="relative inline-block">
 			<div v-if="lastStartTime" :class="`countdown-wrapper select-none opacity-20`" style="opacity: 0.2">
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
+
 			<div v-tooltip.top="userSettings.showTooltips ? 'Double click to edit the time' : { visible: false }"
 					 :class="`countdown-wrapper select-none ${lastStartTime ? '' : 'float-left'}`"
 					 @dblclick="isShowModalTimer = true">
@@ -15,11 +17,13 @@
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span :class="`countdown-item ` + (countdownInterval ? `seconds` : ``)">{{ countdown.seconds }}</span>
 			</div>
+
 			<div v-if="approximatelyEndTime && !timeIsOver" class="countdown-wrapper mb-4 select-none opacity-20"
 					 style="opacity: 0.2">
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
+
 			<div v-if="timeIsOver">
 				<p class="text-red">Time is over</p>
 			</div>
@@ -46,48 +50,53 @@
 			:task="task"
 		/>
 
-		<modal
-			v-if="isShowModalTimer"
-			:is-center="true"
-			:modal-width="500"
-			@close="isShowModalTimer = false">
-			<template #modal-body>
-				<div class="countdown-modal-edit">
-					<vue-the-mask
-						v-model="countdown.hours"
-						:tokens="timeTokens"
-						class="countdown-item"
-						mask="###"
-					/>
-					<vue-the-mask
-						v-model="countdown.minutes"
-						:tokens="timeTokens"
-						class="countdown-item"
-						mask="F#"
-					/>
-					<vue-the-mask
-						v-model="countdown.seconds"
-						:tokens="timeTokens"
-						class="countdown-item"
-						mask="F#"
-					/>
-				</div>
-				<div class="flex items-center flex-nowrap mt-5">
-					<button
-						class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
-						type="button"
-						@click="isShowModalTimer = false">
-						Cancel
-					</button>
-					<button
-						class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
-						type="button"
-						@click="updateTimer">
-						Update
-					</button>
-				</div>
-			</template>
-		</modal>
+		<Transition name="bounce-right-fade">
+			<modal
+				v-if="isShowModalTimer"
+				modal-class="w-96 p-10"
+			>
+				<template #modal-body>
+					<div class="countdown-modal-edit">
+						<vue-the-mask
+							v-model="countdown.hours"
+							:tokens="timeTokens"
+							class="countdown-item"
+							mask="###"
+						/>
+
+						<vue-the-mask
+							v-model="countdown.minutes"
+							:tokens="timeTokens"
+							class="countdown-item"
+							mask="F#"
+						/>
+
+						<vue-the-mask
+							v-model="countdown.seconds"
+							:tokens="timeTokens"
+							class="countdown-item"
+							mask="F#"
+						/>
+					</div>
+
+					<div class="flex items-center flex-nowrap mt-5">
+						<button
+							class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+							type="button"
+							@click="isShowModalTimer = false">
+							Cancel
+						</button>
+
+						<button
+							class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+							type="button"
+							@click="updateTimer">
+							Update
+						</button>
+					</div>
+				</template>
+			</modal>
+		</Transition>
 	</div>
 </template>
 

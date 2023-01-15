@@ -75,20 +75,25 @@
 				</span>
 		</div>
 
-		<fullscreen-modal
-			v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
-			close-on-bg-click @close="$store.dispatch('closeTaskModal')"
-		>
-			<template #modal-body>
-				<task-form
-					:is-modal="true"
-					:modal-project-category-id="$store.getters.createTaskInProjectCategoryId"
-					:modal-task-id="$store.getters.currentTaskIdForModal"
-					:status-id="$store.getters.createTaskInStatusId"
-					@close="$store.dispatch('closeTaskModal')"
-				/>
-			</template>
-		</fullscreen-modal>
+		<Transition name="bounce-right-fade">
+			<modal
+				name="Task"
+				v-if="$store.getters.currentTaskIdForModal || $store.getters.showCreateTaskModal"
+				close-on-bg-click
+				modal-class="w-11/12 h-full"
+				@close="$store.dispatch('closeTaskModal')"
+			>
+				<template #modal-body>
+					<task-form
+						:is-modal="true"
+						:modal-project-category-id="$store.getters.createTaskInProjectCategoryId"
+						:modal-task-id="$store.getters.currentTaskIdForModal"
+						:status-id="$store.getters.createTaskInStatusId"
+						@close="$store.dispatch('closeTaskModal')"
+					/>
+				</template>
+			</modal>
+		</Transition>
 	</div>
 </template>
 
@@ -98,7 +103,6 @@ import { defineComponent } from 'vue';
 import Navbar from 'src/components/UIElements/Navbar';
 import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 import Slideout from 'src/components/UIElements/Slideout/Slideout';
-import FullscreenModal from 'src/components/Layouts/FullscreenModal';
 import TaskForm from 'src/components/Tasks/TaskForm';
 
 const DEFAULT_TRANSITION = 'fade';
@@ -108,7 +112,6 @@ export default defineComponent({
 	name: 'App',
 	components: {
 		TaskForm,
-		FullscreenModal,
 		Navbar,
 		Slideout,
 		NavbarMenu

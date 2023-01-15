@@ -2,96 +2,108 @@
 	<teleport to="title">
 		{{ form.title || h1.main }}&nbsp;
 	</teleport>
+
 	<div class="sm:flex items-between text-center">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
-			<modal
-				v-if="isShowModalCategory"
-				:modal-width="500"
-				:is-center="true"
-				:close-on-bg-click="false"
-				@close="isShowModalCategory = false"
-			>
-				<template #modal-body>
-					<form @submit.prevent="updateCategory" :class="`${$color('taskSettingTextColor')}`">
-						<label for="settings" class="tc-block text-sm font-bold mb-5">
-							Settings
-						</label>
-						<div>
-							<label :class="`block text-sm text-left font-bold mb-2 mt-2`">
-								Category
-								<input-field
-									type="select"
-									:options="categoriesSelectOptions"
-									option-name-key="title"
-									option-value-key="id"
-									v-model="currentCategoryOptionInSelect"
-								/>
+			<Transition name="bounce-right-fade">
+				<modal
+					v-if="isShowModalCategory"
+					modal-class="p-6 w-96"
+					@close="isShowModalCategory = false"
+				>
+					<template #modal-body>
+						<form @submit.prevent="updateCategory" :class="`${$color('taskSettingTextColor')}`">
+							<label for="settings" class="tc-block text-lg font-bold mb-5">
+								Settings
 							</label>
-							<div v-for="(setting, index) in availableSettings" id="settings">
-								<label :for="`setting-${setting.id}`" class="tc-block text-sm font-bold mb-2">
-									{{ setting.name }}
+							<div>
+								<label :class="`block text-sm text-left font-bold mb-2 mt-2`">
+									<span class="block mb-2">Category</span>
+
+									<input-field
+										type="select"
+										:options="categoriesSelectOptions"
+										option-name-key="title"
+										option-value-key="id"
+										v-model="currentCategoryOptionInSelect"
+									/>
 								</label>
-								<div class="relative mb-4">
-									<select :id="`setting-${setting.id}`"
-													v-if="!setting.show_custom_value_input"
-													class="tc-block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
-													v-model="settings[index].value">
-										<option value="" class="text-gray-500">Choose default value</option>
-										<option v-for="(c, i) in setting.default_values" :key="i" :value="c.value">
-											{{ c.value }}
-										</option>
-									</select>
-									<div
-										v-else-if="setting.custom_value_available"
-									>
-										<input-field
+
+								<div v-for="(setting, index) in availableSettings" id="settings" class="mt-4">
+									<label :for="`setting-${setting.id}`" class="tc-block text-left text-sm font-bold mb-2">
+										{{ setting.name }}
+									</label>
+
+									<div class="relative mb-4">
+										<select
 											:id="`setting-${setting.id}`"
-											:type="setting.component_type"
-											:placeholder="setting.description"
+											v-if="!setting.show_custom_value_input"
+											class="tc-block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
 											v-model="settings[index].value"
-											:tag="settings[index].id = setting.id"
-										/>
-									</div>
-									<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
-									<div class="b-switch-list" v-if="setting.custom_value_available">
-										<div
-											class="b-switch-list__item"
-											v-if="setting.default_values && setting.default_values.length > 0"
 										>
-											<label class="b-switch">
-												<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
-												<span></span>
-											</label>
+											<option value="" class="text-gray-500">Choose default value</option>
+											<option v-for="(c, i) in setting.default_values" :key="i" :value="c.value">
+												{{ c.value }}
+											</option>
+										</select>
+
+										<div
+											v-else-if="setting.custom_value_available"
+										>
+											<input-field
+												:id="`setting-${setting.id}`"
+												:type="setting.component_type"
+												:placeholder="setting.description"
+												v-model="settings[index].value"
+												:tag="settings[index].id = setting.id"
+											/>
+										</div>
+
+										<small v-if="!setting.show_custom_value_input">{{ setting.description }}</small>
+
+										<div class="b-switch-list" v-if="setting.custom_value_available">
 											<div
-												class="b-switch-list__text"
+												class="b-switch-list__item"
+												v-if="setting.default_values && setting.default_values.length > 0"
 											>
-												<div class="b-switch-list__title" :class="$color('settingsTextColor')">Set custom value</div>
+												<label class="b-switch">
+													<input type="checkbox" name="show_tooltips" v-model="setting.show_custom_value_input" @change="settings[index].value = ''">
+													<span></span>
+												</label>
+
+												<div
+													class="b-switch-list__text"
+												>
+													<div class="b-switch-list__title" :class="$color('settingsTextColor')">Set custom value</div>
+												</div>
 											</div>
 										</div>
 									</div>
 								</div>
 							</div>
-						</div>
 
-						<div class="flex flex-nowrap items-center mt-5">
-							<button
-								type="button"
-								@click="isShowModalCategory = false"
-								class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
-								Cancel
-							</button>
-							<button
-								type="submit"
-								class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
-								Update
-							</button>
-						</div>
-					</form>
-				</template>
-			</modal>
+							<div class="flex flex-nowrap items-center mt-6">
+								<button
+									type="button"
+									@click="isShowModalCategory = false"
+									class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded">
+									Cancel
+								</button>
+
+								<button
+									type="submit"
+									class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded">
+									Update
+								</button>
+							</div>
+						</form>
+					</template>
+				</modal>
+			</Transition>
 		</div>
 	</div>
-	<div ref="modal" :class="`container task-form-container mx-auto ${$color('blocks')} overflow-hidden rounded-lg relative p-3`">
+
+	<div ref="modal" :class="`${!isModal && 'container'} task-form-container mx-auto ${$color('blocks')} overflow-hidden rounded-lg relative p-3`">
 		<header ref="header">
 			<div :class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`">
 				<div v-if="!isCreatingTask">
@@ -102,6 +114,7 @@
 						type="button">
 						{{ currentCategory ? currentCategory.title : 'Tasks' }}
 					</router-link>
+
 					<input-field
 						v-if="workspaceStatuses.length > 0"
 						v-model="form.status_id"
@@ -113,6 +126,7 @@
 						style="min-width: 200px"
 					/>
 				</div>
+
 				<p v-else>Creating task</p>
 
 				<button
@@ -122,6 +136,7 @@
 					<span class="material-icons text-2xl" :class="$color('inverseTextColor')" @click="$emit('close')">close</span>
 				</button>
 			</div>
+
 			<div class="mt-8 text-center">
 				<NewCountdown
 					v-if="form.id"
@@ -129,6 +144,7 @@
 					@toggle="toggleCountdown"
 					@update:seconds="updateSeconds"
 				/>
+
 				<NewCountdown
 					v-else
 					disabled
@@ -145,7 +161,9 @@
 					:errors="errors.title"
 					type="text"
 					:extra-class="`mb-1 ${$color('input')}`"
-					placeholder="Task name"/>
+					placeholder="Task name"
+				/>
+
 				<input-field
 					v-model="form.description"
 					:errors="errors.description"
@@ -162,9 +180,12 @@
 
 					<div v-for="(checkpoint, v) in form.checkpoints" :key="v" class="flex mb-1">
 						<div class="w-full relative">
-								<span
-									:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10`"
-								>{{ v + 1 }}</span>
+							<span
+								:class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10`"
+							>
+								{{ v + 1 }}
+							</span>
+
 							<input-field
 								:type="checkpoint.inputType"
 								:for-checkpoint="true"
@@ -198,13 +219,15 @@
 		</footer>
 	</div>
 
-	<confirm
-		v-if="confirm"
-		:title="confirm.title"
-		:body="confirm.body"
-		@onOk="confirm.action()"
-		@onCancel="confirm = undefined"
-	/>
+	<Transition name="fade">
+		<confirm
+			v-if="confirm"
+			:title="confirm.title"
+			:body="confirm.body"
+			@onOk="confirm.action()"
+			@onCancel="confirm = undefined"
+		/>
+	</Transition>
 </template>
 
 <script>
