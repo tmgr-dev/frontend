@@ -3,13 +3,24 @@ import selectable, { objectAssignSimple } from './selectable';
 const objectAssign = Object.assign || objectAssignSimple;
 
 function initSelectable(el, params, arg) {
-	el.selectable = new selectable(objectAssign({
-		boundingBox: !!params.constraint ? document.querySelector(params.constraint) : el,
-		selectBoxSelector: params.box || '.selection',
-		boundingBoxSelector: params.constraint,
-		el
-	}, arg));
-	el.selectable.setSelectables(Array.prototype.slice.call(el.querySelectorAll(params.items || '.selectable')));
+	el.selectable = new selectable(
+		objectAssign(
+			{
+				boundingBox: !!params.constraint
+					? document.querySelector(params.constraint)
+					: el,
+				selectBoxSelector: params.box || '.selection',
+				boundingBoxSelector: params.constraint,
+				el,
+			},
+			arg,
+		),
+	);
+	el.selectable.setSelectables(
+		Array.prototype.slice.call(
+			el.querySelectorAll(params.items || '.selectable'),
+		),
+	);
 }
 
 export default {
@@ -44,9 +55,9 @@ export default {
 				}
 				el.selectable.detach();
 				el.selectable = null;
-			}
+			},
 		});
-	}
+	},
 };
 
 /**
@@ -61,7 +72,7 @@ function hasUpdated(value, oldValue) {
 	if (typeof value === 'string' && value !== oldValue) {
 		updated = true;
 	} else if (isObject(value)) {
-		Object.keys(value).forEach(prop => {
+		Object.keys(value).forEach((prop) => {
 			if (value[prop] !== oldValue[prop]) {
 				updated = true;
 			}
@@ -77,8 +88,14 @@ function hasUpdated(value, oldValue) {
  * @return {number} number of selectable items or -1 if no selectable component found
  */
 export function setSelectableItems(el, itemSelector) {
-	if (!!el && !!el.selectable && typeof el.selectable.setSelectables === 'function') {
-		let items = Array.prototype.slice.call(el.querySelectorAll(itemSelector || el.dataset.items || '.selectable'));
+	if (
+		!!el &&
+		!!el.selectable &&
+		typeof el.selectable.setSelectables === 'function'
+	) {
+		let items = Array.prototype.slice.call(
+			el.querySelectorAll(itemSelector || el.dataset.items || '.selectable'),
+		);
 		el.selectable.setSelectables(items);
 		return items.length;
 	} else {
@@ -92,8 +109,13 @@ export function setSelectableItems(el, itemSelector) {
  * @param {object} options
  */
 export function setOptions(el, options) {
-	if (!!el && !!el.selectable && typeof el.selectable.setSelectables === 'function') {
-		const needsAttach = el.selectable.rootElement == null && options.rootElement != null;
+	if (
+		!!el &&
+		!!el.selectable &&
+		typeof el.selectable.setSelectables === 'function'
+	) {
+		const needsAttach =
+			el.selectable.rootElement == null && options.rootElement != null;
 		objectAssign(el.selectable, options);
 		if (needsAttach) {
 			el.selectable.attach();

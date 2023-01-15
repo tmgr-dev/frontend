@@ -4,7 +4,7 @@ import def from './default';
 
 const colorSchemes: ColorKeys = {
 	dark,
-	default: def
+	default: def,
 };
 
 export default colorSchemes;

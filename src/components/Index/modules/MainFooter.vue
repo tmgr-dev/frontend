@@ -1,7 +1,7 @@
 <template>
 	<!--Footer-->
 	<footer class="bg-white">
-		<div class="container mx-auto  px-8">
+		<div class="container mx-auto px-8">
 			<div class="w-full flex flex-col md:flex-row py-6">
 				<div class="flex-1 mb-6">
 					<a
@@ -31,112 +31,117 @@
 					</a>
 				</div>
 
-
 				<div class="flex-1">
-					<p class="uppercase text-gray-500 md:mb-6">
-						Links
-					</p>
+					<p class="uppercase text-gray-500 md:mb-6">Links</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>FAQ</a>
+								>FAQ</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Help</a>
+								>Help</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Support</a>
+								>Support</a
+							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="uppercase text-gray-500 md:mb-6">
-						Legal
-					</p>
+					<p class="uppercase text-gray-500 md:mb-6">Legal</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Terms</a>
+								>Terms</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Privacy</a>
+								>Privacy</a
+							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="uppercase text-gray-500 md:mb-6">
-						Social
-					</p>
+					<p class="uppercase text-gray-500 md:mb-6">Social</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Facebook</a>
+								>Facebook</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Linkedin</a>
+								>Linkedin</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Twitter</a>
+								>Twitter</a
+							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="uppercase text-gray-500 md:mb-6">
-						Company
-					</p>
+					<p class="uppercase text-gray-500 md:mb-6">Company</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Official Blog</a>
+								>Official Blog</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>About Us</a>
+								>About Us</a
+							>
 						</li>
 						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
 							<a
 								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
 								href="#"
-							>Contact</a>
+								>Contact</a
+							>
 						</li>
 					</ul>
 				</div>
 			</div>
 		</div>
 
-		<a href="https://www.freepik.com/free-photos-vectors/background">Background vector created by freepik -
-			www.freepik.com</a>
-		<a href="https://github.com/tailwindtoolbox/Landing-Page">Based on Tailwind Toolbox - Landing Page Template</a>
+		<a href="https://www.freepik.com/free-photos-vectors/background"
+			>Background vector created by freepik - www.freepik.com</a
+		>
+		<a href="https://github.com/tailwindtoolbox/Landing-Page"
+			>Based on Tailwind Toolbox - Landing Page Template</a
+		>
 	</footer>
 </template>
 
 <script>
-export default {
-	name: 'MainFooter'
-};
+	export default {
+		name: 'MainFooter',
+	};
 </script>

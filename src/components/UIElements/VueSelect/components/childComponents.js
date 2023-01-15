@@ -3,5 +3,5 @@ import OpenIndicator from './OpenIndicator';
 
 export default {
 	Deselect,
-	OpenIndicator
+	OpenIndicator,
 };

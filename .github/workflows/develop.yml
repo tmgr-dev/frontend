@@ -49,7 +49,7 @@ jobs:
           ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && npm run build"
 
   on-success-deploying:
-    needs: [ deploying ]
+    needs: [deploying]
     if: success()
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -68,7 +68,7 @@ jobs:
           body: '{ "message": "\nDeploy successful \n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
 
   on-failure-deploying:
-    needs: [ deploying ]
+    needs: [deploying]
     if: failure()
     runs-on: ubuntu-latest
     timeout-minutes: 1

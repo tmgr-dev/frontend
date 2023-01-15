@@ -63,9 +63,9 @@ export default {
 			},
 			unmounted(el, binding, vnode, oldVnode) {
 				el.tooltip.destroy();
-			}
+			},
 		});
-	}
+	},
 };
 
 /**
@@ -80,7 +80,7 @@ function hasUpdated(value, oldValue) {
 	if (typeof value === 'string' && value !== oldValue) {
 		updated = true;
 	} else if (isObject(value)) {
-		Object.keys(value).forEach(prop => {
+		Object.keys(value).forEach((prop) => {
 			if (value[prop] !== oldValue[prop]) {
 				updated = true;
 			}
@@ -96,7 +96,10 @@ function hasUpdated(value, oldValue) {
  * @return {*} filtered data object
  */
 function filterBindings(binding, vnode) {
-	const delay = !binding.value || isNaN(binding.value.delay) ? Tooltip._defaults.delay : binding.value.delay;
+	const delay =
+		!binding.value || isNaN(binding.value.delay)
+			? Tooltip._defaults.delay
+			: binding.value.delay;
 
 	if (binding.value.ref) {
 		if (vnode.context.$refs[binding.value.ref]) {
@@ -108,14 +111,17 @@ function filterBindings(binding, vnode) {
 
 	return {
 		class: getClass(binding),
-		id: (binding.value) ? binding.value.id : null,
-		html: (binding.value) ? binding.value.html : null,
+		id: binding.value ? binding.value.id : null,
+		html: binding.value ? binding.value.html : null,
 		placement: getPlacement(binding),
 		title: getContent(binding),
 		triggers: getTriggers(binding),
 		fixIosSafari: binding.modifiers.ios || false,
-		offset: (binding.value && binding.value.offset) ? binding.value.offset : Tooltip._defaults.offset,
-		delay
+		offset:
+			binding.value && binding.value.offset
+				? binding.value.offset
+				: Tooltip._defaults.offset,
+		delay,
 	};
 }
 
@@ -125,7 +131,11 @@ function filterBindings(binding, vnode) {
  */
 function getPlacement({ modifiers, value }) {
 	let MODS = Object.keys(modifiers);
-	if (MODS.length === 0 && isObject(value) && typeof value.placement === 'string') {
+	if (
+		MODS.length === 0 &&
+		isObject(value) &&
+		typeof value.placement === 'string'
+	) {
 		MODS = value.placement.split('.');
 	}
 	let head = 'bottom';
@@ -139,7 +149,7 @@ function getPlacement({ modifiers, value }) {
 			tail = pos;
 		}
 	}
-	return (head && tail) ? `${head}-${tail}` : head;
+	return head && tail ? `${head}-${tail}` : head;
 }
 
 /**
@@ -243,13 +253,22 @@ function update(el, binding, vnode, oldVnode) {
 	if (typeof binding.value === 'string') {
 		el.tooltip.content(binding.value);
 	} else {
-		if (binding.value && binding.value.class && binding.value.class.trim() !== el.tooltip.options.class.replace(BASE_CLASS, '').trim()) {
+		if (
+			binding.value &&
+			binding.value.class &&
+			binding.value.class.trim() !==
+				el.tooltip.options.class.replace(BASE_CLASS, '').trim()
+		) {
 			el.tooltip.class = `${BASE_CLASS} ${binding.value.class.trim()}`;
 		}
 
 		el.tooltip.content(getContent(binding, vnode));
 
-		if (!binding.modifiers.notrigger && binding.value && typeof binding.value.visible === 'boolean') {
+		if (
+			!binding.modifiers.notrigger &&
+			binding.value &&
+			typeof binding.value.visible === 'boolean'
+		) {
 			el.tooltip.disabled = !binding.value.visible;
 			return;
 		} else if (binding.modifiers.notrigger) {
