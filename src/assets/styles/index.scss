@@ -123,3 +123,10 @@ button {
 		transform: translate3d(0, 0, 0);
 	}
 }
+.q-electron-draggable {
+	-webkit-user-select: none;
+	-webkit-app-region: drag;
+}
+.q-electron-draggable--exception {
+	-webkit-app-region: no-drag;
+}
