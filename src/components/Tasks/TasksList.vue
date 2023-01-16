@@ -5,7 +5,7 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex justify-between flex-nowrap">
+			<div class="flex justify-between items-center flex-nowrap">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
@@ -15,7 +15,9 @@
 					</div>
 				</transition>
 
-				<div class="overflow-hidden ml-auto w-full mr-3">
+				<div
+					class="overflow-hidden ml-auto w-full md:w-1/2 lg:w-1/4 xl:w-1/5 mr-3"
+				>
 					<transition name="transform-opacity-right" mode="out-in">
 						<input-field
 							class="w-full"
@@ -29,7 +31,6 @@
 
 				<div
 					class="sm:mt-0 ml-0 sm:w-auto flex-shrink-0 w-full text-center mt-2"
-					:class="{ 'sm:ml-auto': !showSearchInput }"
 				>
 					<a
 						href="#"
