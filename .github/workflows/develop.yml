@@ -42,7 +42,7 @@ jobs:
 
       - name: NPM Install
         run: |
-          ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && npm i"
+          ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }} && npm ci"
 
       - name: Build
         run: |
