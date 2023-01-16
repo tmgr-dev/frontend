@@ -1,4 +1,5 @@
 import { app, BrowserWindow, nativeTheme } from 'electron';
+import { initialize, enable } from '@electron/remote/main'
 import path from 'path';
 
 try {
@@ -18,6 +19,7 @@ function createWindow() {
 	/**
 	 * Initial window options
 	 */
+	initialize();
 	mainWindow = new BrowserWindow({
 		width: 1024,
 		height: 1000,
@@ -26,6 +28,7 @@ function createWindow() {
 		useContentSize: true,
 		frame: false,
 		webPreferences: {
+			sandbox: false,
 			enableRemoteModule: true,
 			nodeIntegration: process.env.QUASAR_NODE_INTEGRATION,
 			nodeIntegrationInWorker: process.env.QUASAR_NODE_INTEGRATION,
@@ -34,6 +37,8 @@ function createWindow() {
 			preload: path.resolve(__dirname, process.env.QUASAR_ELECTRON_PRELOAD),
 		},
 	});
+
+	enable(mainWindow.webContents);
 
 	mainWindow.loadURL(process.env.APP_URL);
 
