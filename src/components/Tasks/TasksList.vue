@@ -5,17 +5,33 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex justify-between flex-wrap">
+			<div class="flex justify-between items-center flex-nowrap">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="sm:w-auto w-full text-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg"
+						class="sm:w-auto w-full mr-6 flex-shrink-0 ext-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg"
 					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
-				<div class="sm:ml-auto sm:mt-0 ml-0 sm:w-auto w-full text-center mt-2">
+				<div
+					class="overflow-hidden ml-auto w-full md:w-1/2 lg:w-1/4 xl:w-1/5 mr-3"
+				>
+					<transition name="transform-opacity-right" mode="out-in">
+						<input-field
+							class="w-full"
+							v-if="showSearchInput"
+							placeholder="Enter task name"
+							v-model="searchText"
+							@keydown:enter="loadTasks"
+						></input-field>
+					</transition>
+				</div>
+
+				<div
+					class="sm:mt-0 ml-0 sm:w-auto flex-shrink-0 w-full text-center mt-2"
+				>
 					<a
 						href="#"
 						@click.prevent="showSearchInput = !showSearchInput"
@@ -24,8 +40,9 @@
 					>
 						<span
 							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
-							>{{ showSearchInput ? 'search_off' : 'search' }}</span
 						>
+							{{ showSearchInput ? 'search_off' : 'search' }}
+						</span>
 					</a>
 
 					<a
@@ -55,18 +72,8 @@
 		</template>
 
 		<template #body>
-			<transition name="fade" mode="out-in">
-				<input-field
-					class="px-2 pb-5"
-					v-if="showSearchInput"
-					placeholder="Enter task name"
-					v-model="searchText"
-					@keydown:enter="loadTasks"
-				></input-field>
-			</transition>
-
 			<tasks-list-component
-				v-if="tasks && tasks.length > 0"
+				v-if="tasks && tasks.length > 0 && !isLoading"
 				:tasks="tasks"
 				:status="status"
 				:is-loading-actions="isLoadingActions"
@@ -79,13 +86,13 @@
 				Something went wrong...
 			</div>
 
-			<div v-else-if="!showLoader" class="text-center italic text-xl">
+			<div v-else-if="!isLoading" class="text-center italic text-xl">
 				You don't have tasks here
 
 				<confetti v-if="hasAbilityToShowConfetti" />
 			</div>
 
-			<loading-tasks-list v-if="showLoader" class="mx-2" />
+			<loading-tasks-list v-if="isLoading" class="mx-2" />
 			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
@@ -116,7 +123,7 @@
 			searchText: null,
 			searchTimeout: null,
 			summaryTimeString: null,
-			showLoader: true,
+			isLoading: true,
 			h1: {
 				CurrentTasksList: 'Current tasks',
 				HiddenTasksList: 'Hidden tasks',
@@ -134,7 +141,7 @@
 		watch: {
 			searchText() {
 				clearTimeout(this.searchTimeout);
-				this.searchTimeout = setTimeout(this.loadTasks, 1000);
+				this.searchTimeout = setTimeout(this.loadTasks, 500);
 			},
 			'$store.getters.reloadTasks'() {
 				this.loadTasks();
@@ -147,23 +154,26 @@
 			},
 			async loadTasks() {
 				try {
+					this.isLoading = true;
 					clearTimeout(this.searchTimeout);
-					const { searchText } = this;
+
 					const {
 						data: { data },
 					} = await this.$axios.get(
-						this.tasksIndexUrl + (searchText ? '&search=' + searchText : ''),
+						this.tasksIndexUrl +
+							(this.searchText ? '&search=' + this.searchText : ''),
 					);
 					this.summaryTimeString = this.getTaskFormattedTime(
 						data.reduce((summary, task) => task.common_time + summary, 0),
 					);
 					this.tasks = data;
+
 					return data;
 				} catch (e) {
 					console.error(e);
 					this.errorLoading = true;
 				} finally {
-					this.showLoader = false;
+					this.isLoading = false;
 				}
 			},
 			selectAll() {
