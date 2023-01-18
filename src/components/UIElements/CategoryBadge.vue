@@ -3,7 +3,7 @@
 		<router-link
 			v-if="category.id"
 			:to="{ name: 'ProjectCategoryChildrenList', params: { id: category.id } }"
-			class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base"
+			class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base z-10"
 		>
 			{{ category.title }}
 		</router-link>
@@ -12,7 +12,7 @@
 			:href="`/${
 				category ? 'project-categories/' + category.id + '/' : ''
 			}tasks/create`"
-			class="opacity-10 hover:opacity-100 ml-1 tc-hidden md:inline add-task-to-category-from-task-category"
+			class="opacity-10 hover:opacity-100 ml-1 tc-hidden md:inline add-task-to-category-from-task-category z-10"
 			title="Create a task of this category"
 			@click.prevent="
 				$store.commit('createTaskInProjectCategoryId', {
