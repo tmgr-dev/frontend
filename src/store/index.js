@@ -95,12 +95,9 @@ const mutations = {
 		state.currentOpenedTaskId = currentOpenedTaskId;
 	},
 	colorScheme(state, colorScheme) {
-		if (colorScheme == null) {
-			localStorage.removeItem('colorScheme');
-		} else {
-			localStorage.setItem('colorScheme', colorScheme);
+		if (colorScheme) {
+			state.userSettings.colorScheme = colorScheme;
 		}
-
 		state.colorScheme = colorScheme;
 		document.querySelector('body').className = color('bgBody', colorScheme);
 	},
@@ -135,24 +132,23 @@ const actions = {
 		state.showCreateTaskModal = true;
 	},
 	async loadUserSettings({ commit, state }) {
-		if (!state.user) {
-			return;
-		}
+		if (!state.user) return;
 		try {
 			const {
 				data: { data },
 			} = await axios.get(`user/settings`);
-			if (data instanceof Object && data.hasOwnProperty('settings')) {
+
+			if (data?.settings) {
 				commit('setUserSettings', data.settings);
+				commit('colorScheme', data?.settings?.colorScheme);
 			}
 		} catch (e) {
 			throw e;
 		}
 	},
-	async loadStatuses({ commit, state }) {
-		if (!state.user) {
-			return;
-		}
+	async loadStatuses({ state }) {
+		if (!state.user) return;
+
 		try {
 			const {
 				data: { data },
@@ -164,8 +160,9 @@ const actions = {
 	},
 	async putUserSettings({ commit }, settings) {
 		try {
-			await axios.put(`user/settings`, settings);
+			await axios.put(`user/settings`, { settings });
 			commit('setUserSettings', settings);
+			commit('colorScheme', settings?.colorScheme ?? 'default');
 		} catch (e) {
 			console.error(e);
 			throw e;
