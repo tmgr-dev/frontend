@@ -116,13 +116,15 @@
 
 		<Transition name="bounce-right-fade">
 			<modal
-				name="Task"v-if="
-				$store.getters.currentTaskIdForModal ||
-				$store.getters.showCreateTaskModal
-
-				"close-on-bg-click
-			modal-class="w-11/12 h-full"@close="$store.dispatch('closeTaskModal')"
-		>
+				name="Task"
+				v-if="
+					$store.getters.currentTaskIdForModal ||
+					$store.getters.showCreateTaskModal
+				"
+				close-on-bg-click
+				modal-class="w-11/12 h-full"
+				@close="$store.dispatch('closeTaskModal')"
+			>
 			<template #modal-body>
 				<task-form
 					:is-modal="true"

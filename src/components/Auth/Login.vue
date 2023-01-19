@@ -96,6 +96,8 @@
 
 				this.$store.commit('token', data);
 				await this.setUser();
+				this.$store.dispatch('loadUserSettings');
+				this.$store.dispatch('loadStatuses');
 			} catch ({ response }) {
 				this.errors = response.data.errors;
 				this.message = response.data.message;
