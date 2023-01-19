@@ -1,10 +1,8 @@
 <template>
 	<alert ref="alert" />
-	<div id="q-app" :class="$color('textMain')" class="q-electron-drag">
-		<q-bar v-if="$q.platform.is.electron">
-			<q-icon name="map" />
-
-			<div>TMGR</div>
+	<div id="q-app" :class="$color('textMain')">
+		<q-bar v-if="$q.platform.is.electron" class="q-electron-drag q-electron-draggable">
+			<img src="/favicon-16x16.png">
 
 			<q-space />
 
@@ -310,4 +308,5 @@
 	});
 </script>
 
-<style lang="scss" src="src/assets/styles/index.scss"></style>
+<style lang="scss" src="src/assets/styles/index.scss">
+</style>

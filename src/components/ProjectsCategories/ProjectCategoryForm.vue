@@ -50,74 +50,70 @@
 					</div>
 
 					<div v-if="!isCreate">
-						<label class="tc-block text-gray-700 text-sm font-bold mb-5">
-							Settings
-						</label>
+						<SettingsLoader v-if="isLoading" class="mt-5" />
 
-						<div>
-							<div v-for="(setting, index) in availableSettings">
-								<label
-									:for="`setting-${setting.id}`"
-									class="tc-block text-gray-700 text-sm font-bold mb-2"
-								>
-									{{ setting.name }}
-								</label>
+						<div v-for="(setting, index) in availableSettings">
+							<label
+								:for="`setting-${setting.id}`"
+								class="tc-block text-gray-700 text-sm font-bold mb-2"
+							>
+								{{ setting.name }}
+							</label>
 
-								<div class="relative mb-4">
+							<div class="relative mb-4">
+								<input-field
+									v-if="!setting.show_custom_value_input"
+									:id="`setting-${setting.id}`"
+									v-model="settings[index].value"
+									:options="setting.default_values"
+									:placeholder="setting.description"
+									:tag="(settings[index].id = setting.id)"
+									option-name-key="value"
+									option-value-key="value"
+									type="select"
+								/>
+
+								<div v-else-if="setting.custom_value_available">
 									<input-field
-										v-if="!setting.show_custom_value_input"
 										:id="`setting-${setting.id}`"
 										v-model="settings[index].value"
-										:options="setting.default_values"
 										:placeholder="setting.description"
 										:tag="(settings[index].id = setting.id)"
-										option-name-key="value"
-										option-value-key="value"
-										type="select"
+										:type="setting.component_type"
 									/>
+								</div>
 
-									<div v-else-if="setting.custom_value_available">
-										<input-field
-											:id="`setting-${setting.id}`"
-											v-model="settings[index].value"
-											:placeholder="setting.description"
-											:tag="(settings[index].id = setting.id)"
-											:type="setting.component_type"
-										/>
-									</div>
+								<small v-if="!setting.show_custom_value_input">
+									{{ setting.description }}
+								</small>
 
-									<small v-if="!setting.show_custom_value_input">
-										{{ setting.description }}
-									</small>
-
+								<div
+									v-if="setting.custom_value_available"
+									class="b-switch-list mt-3"
+								>
 									<div
-										v-if="setting.custom_value_available"
-										class="b-switch-list mt-3"
+										v-if="
+											setting.default_values &&
+											setting.default_values.length > 0
+										"
+										class="b-switch-list__item"
 									>
-										<div
-											v-if="
-												setting.default_values &&
-												setting.default_values.length > 0
-											"
-											class="b-switch-list__item"
-										>
-											<label class="b-switch">
-												<input
-													v-model="setting.show_custom_value_input"
-													name="show_tooltips"
-													type="checkbox"
-													@change="settings[index].value = ''"
-												/>
-												<span></span>
-											</label>
+										<label class="b-switch">
+											<input
+												v-model="setting.show_custom_value_input"
+												name="show_tooltips"
+												type="checkbox"
+												@change="settings[index].value = ''"
+											/>
+											<span></span>
+										</label>
 
-											<div class="b-switch-list__text">
-												<div
-													:class="$color('settingsTextColor')"
-													class="b-switch-list__title"
-												>
-													Set custom value
-												</div>
+										<div class="b-switch-list__text">
+											<div
+												:class="$color('settingsTextColor')"
+												class="b-switch-list__title"
+											>
+												Set custom value
 											</div>
 										</div>
 									</div>
@@ -166,10 +162,12 @@
 	import InputField from 'src/components/UIElements/InputField';
 	import Breadcrumbs from 'src/components/UIElements/Breadcrumbs';
 	import getBreadcrumbs from 'src/utils/breadcrumbs/getBreadcrumbs';
+	import SettingsLoader from 'src/components/Loaders/SettingsLoader.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			SettingsLoader,
 			Breadcrumbs,
 			InputField,
 		},
@@ -177,9 +175,10 @@
 			return {
 				h1: null,
 				form: this.getDefaultForm(),
-				parentCategories: null,
+				parentCategories: [],
 				availableSettings: [],
 				settings: [],
+				isLoading: true,
 			};
 		},
 		watch: {
@@ -235,11 +234,18 @@
 				});
 			},
 			async loadProjectCategorySettings() {
-				const {
-					data: { data },
-				} = await this.$axios.get('project_categories/settings');
-				this.initSettings(data, this.form.settings);
-				this.availableSettings = data;
+				try {
+					const {
+						data: { data },
+					} = await this.$axios.get('project_categories/settings');
+
+					this.initSettings(data, this.form.settings);
+					this.availableSettings = data;
+				} catch (e) {
+					console.error(e);
+				} finally {
+					this.isLoading = false;
+				}
 			},
 			initSettings(availableSettings, settings = []) {
 				return availableSettings.map((item, index) => {

@@ -123,3 +123,31 @@ button {
 		transform: translate3d(0, 0, 0);
 	}
 }
+
+.q-electron-draggable {
+	-webkit-user-select: none;
+	-webkit-app-region: drag;
+}
+
+.q-electron-draggable--exception {
+	-webkit-app-region: no-drag;
+}
+
+.transform-opacity-right-enter-active {
+	animation: transformOpacityRight .5s;
+}
+.transform-opacity-right-leave-active {
+	animation: transformOpacityRight .5s reverse;
+}
+
+@keyframes transformOpacityRight {
+	from {
+		transform: translate3d(1000px, 0, 0);
+		opacity: 0;
+	}
+
+	100% {
+		transform: translate3d(0, 0, 0);
+		opacity: 1;
+	}
+}

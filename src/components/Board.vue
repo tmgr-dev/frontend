@@ -1,5 +1,5 @@
 <template>
-	<teleport to="title"> Board Test </teleport>
+	<teleport to="title">{{ title }}</teleport>
 	<BaseLayout no-copyright>
 		<template #body>
 			<div class="block justify-center">
@@ -79,6 +79,7 @@
 			},
 		},
 		data: () => ({
+			title: 'Board',
 			user: {
 				name: null,
 				password: null,
