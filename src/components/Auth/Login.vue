@@ -1,7 +1,9 @@
 <template>
 	<teleport to="title"> Login </teleport>
+
 	<AuthBase>
 		<template #title>Welcome back!</template>
+
 		<template #body>
 			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
 				<div class="flex flex-col mt-4">
@@ -10,6 +12,7 @@
 						{{ errors }}
 					</p>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.email"
@@ -19,6 +22,7 @@
 						type="email"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.password"
@@ -28,6 +32,7 @@
 						type="password"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-6">
 					<button
 						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
@@ -41,6 +46,7 @@
 				</div>
 			</form>
 		</template>
+
 		<template #footer>
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
@@ -82,29 +88,30 @@
 			async login() {
 				const { ...loginData } = this.form;
 
-				try {
-					this.showLoader = true;
-					const {
-						data: { data },
-					} = await this.$axios.post('auth/login', loginData);
-
-					this.$store.commit('token', data);
-					await this.setUser();
-					window.location.reload();
-				} catch ({ response }) {
-					this.errors = response.data.errors;
-					this.message = response.data.message;
-				}
-				this.showLoader = false;
-			},
-			async setUser() {
-				this.$axios.defaults.headers = {
-					Authorization: `Bearer ${this.$store.getters.token.token}`,
-					'X-Requested-With': 'XMLHttpRequest',
-				};
+			try {
+				this.showLoader = true;
 				const {
 					data: { data },
-				} = await this.$axios.get('user');
+				} = await this.$axios.post('auth/login', loginData);
+
+				this.$store.commit('token', data);
+				await this.setUser();
+				this.$store.dispatch('loadUserSettings');
+				this.$store.dispatch('loadStatuses');
+			} catch ({ response }) {
+				this.errors = response.data.errors;
+				this.message = response.data.message;
+			}
+			this.showLoader = false;
+		},
+		async setUser() {
+			this.$axios.defaults.headers = {
+				Authorization: `Bearer ${this.$store.getters.token.token}`,
+				'X-Requested-With': 'XMLHttpRequest',
+			};
+			const {
+				data: { data },
+			} = await this.$axios.get('user');
 
 				this.$store.commit('user', data);
 				await this.$router.push({ name: 'CurrentTasksList' });

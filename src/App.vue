@@ -13,6 +13,7 @@
 				icon="minimize"
 				@click="minimize"
 			/>
+
 			<q-btn
 				class="q-electron-drag--exception"
 				dense
@@ -20,6 +21,7 @@
 				icon="crop_square"
 				@click="maximize"
 			/>
+
 			<q-btn
 				class="q-electron-drag--exception"
 				dense
@@ -28,6 +30,7 @@
 				@click="closeApp"
 			/>
 		</q-bar>
+
 		<Slideout
 			menu="#menu"
 			panel="#panel"
@@ -48,6 +51,7 @@
 					</span>
 				</div>
 			</div>
+
 			<div id="panel" :class="`${$color('bgBody')} ${$color('borderRight')}`">
 				<q-scroll-area
 					:style="{
@@ -63,6 +67,7 @@
 							/>
 						</div>
 					</transition>
+
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
 							:name="transitionName"
@@ -79,6 +84,7 @@
 				</q-scroll-area>
 			</div>
 		</Slideout>
+
 		<div :class="`fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10`">
 			<span v-for="task in activeTasks" class="mb-5 inline-block">
 				<transition mode="out-in" name="fade">
@@ -95,11 +101,12 @@
 							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
 								<span
 									class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
-								></span>
+								/>
 								<span
 									class="relative inline-flex rounded-full h-5 w-5 bg-green-500"
-								></span>
+								/>
 							</span>
+
 							<span :class="$color('textMain')">{{ task.title }}</span>
 						</span>
 					</a>
@@ -118,11 +125,12 @@
 				modal-class="w-11/12 h-full"
 				@close="$store.dispatch('closeTaskModal')"
 			>
-				<template #modal-body>
-					<task-form
-						:is-modal="true"
-						:modal-project-category-id="
-							$store.getters.createTaskInProjectCategoryId
+			<template #modal-body>
+				<task-form
+					:is-modal="true"
+					:modal-project-category-id="
+						$store.getters.createTaskInProjectCategoryId
+
 						"
 						:modal-task-id="$store.getters.currentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
@@ -199,53 +207,53 @@
 
 				element.style.height = this.prevHeight;
 
-				setTimeout(() => {
-					element.style.height = height;
-				});
-			},
-			afterEnter(element) {
-				element.style.height = 'auto';
-			},
-			async loadActiveTasks() {
-				if (!this.$store.getters.user) {
-					return;
-				}
-				const {
-					data: { data },
-				} = await this.$axios.get('/tasks/runned');
-				this.activeTasks = data;
-			},
-			minimize() {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.minimize();
-				}
-			},
-			maximize() {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.toggleMaximize();
-				}
-			},
-			closeApp() {
-				if (process.env.MODE === 'electron') {
-					window.myWindowAPI.close();
-				}
-			},
-			initBodyHeight() {
-				setTimeout(() => {
-					try {
-						this.bodyHeight = this.getBodyHeight();
-					} catch (e) {
-						setTimeout(() => (this.bodyHeight = this.getBodyHeight()), 1000);
+			setTimeout(() => {
+				element.style.height = height;
+			});
+		},
+		afterEnter(element) {
+			element.style.height = 'auto';
+		},
+		async loadActiveTasks() {
+			if (!this.$store.getters.user) {
+				return;
+			}
+			const {
+				data: { data },
+			} = await this.$axios.get('/tasks/runned');
+			this.activeTasks = data;
+		},
+		minimize() {
+			if (process.env.MODE === 'electron') {
+				window.myWindowAPI.minimize();
+			}
+		},
+		maximize() {
+			if (process.env.MODE === 'electron') {
+				window.myWindowAPI.toggleMaximize();
+			}
+		},
+		closeApp() {
+			if (process.env.MODE === 'electron') {
+				window.myWindowAPI.close();
+			}
+		},
+		initBodyHeight() {
+			setTimeout(() => {
+				try {
+					this.bodyHeight = this.getBodyHeight();
+				} catch (e) {
+					setTimeout(() => (this.bodyHeight = this.getBodyHeight()), 1000);
 					}
 				}, 500);
 			},
 			getBodyHeight() {
 				return (
-					this.getOffsetHeightOfElement('body') +
-					30 -
-					this.getOffsetHeightOfElement('[role=toolbar]') -
-					this.getOffsetHeightOfElement('nav')
-				);
+				this.getOffsetHeightOfElement('body') +
+				30 -
+				this.getOffsetHeightOfElement('[role=toolbar]') -
+				this.getOffsetHeightOfElement('nav')
+			);
 			},
 			getOffsetHeightOfElement(selector) {
 				const el = document.querySelector(selector);
@@ -275,30 +283,30 @@
 				next();
 			});
 
-			if (!this.$store.getters.user) {
-				return;
+		if (!this.$store.getters.user) {
+			return;
+		}
+		this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+			if (!userId) {
+				return this.$store.commit('pusherBeamsUserId', userId);
 			}
-			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
-				if (!userId) {
-					return this.$store.commit('pusherBeamsUserId', userId);
-				}
-				userId = this.$store.getters.user.id.toString();
-				this.$store.getters.pusherBeamsClient.start().then(() => {
-					this.$store.getters.pusherBeamsClient
-						.setUserId(userId, this.$store.getters.pusherTokenProvider)
-						.then(() => {
-							this.$store.commit('pusherBeamsUserId', userId);
-						});
-				});
+			userId = this.$store.getters.user.id.toString();
+			this.$store.getters.pusherBeamsClient.start().then(() => {
+				this.$store.getters.pusherBeamsClient
+					.setUserId(userId, this.$store.getters.pusherTokenProvider)
+					.then(() => {
+						this.$store.commit('pusherBeamsUserId', userId);
+					});
 			});
-			this.loadActiveTasks();
-			if (process.env.MODE === 'electron') {
-				document.body.style.overflow = 'hidden';
-			}
-		},
-		mounted() {
-			this.initBodyHeight();
-		},
+		});
+		this.loadActiveTasks();
+		if (process.env.MODE === 'electron') {
+			document.body.style.overflow = 'hidden';
+		}
+	},
+	mounted() {
+		this.initBodyHeight();
+	},
 	});
 </script>
 
