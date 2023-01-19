@@ -28,7 +28,7 @@
 					:class="`${$color('inverseTextColor')}-500`"
 					class="flex justify-between items-center ml-auto mr-4"
 				>
-					<day-night-switch v-model="switchOn" />
+					<day-night-switch :key="this.$store.getters.colorScheme" v-model="switchOn" />
 				</span>
 
 				<account-dropdown />
@@ -67,15 +67,9 @@
 				{ id: 1, name: 'List', path: '/' },
 				{ id: 2, name: 'Archive', path: '/acrhive' },
 				{ id: 3, name: 'Categories', path: '/projects-categories' },
-			],
-			wheelEvent:
-				'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel',
-			supportsPassive: false,
+			]
 		}),
 		computed: {
-			wheelOpt() {
-				return this.supportsPassive ? { passive: false } : false;
-			},
 			switchOn: {
 				get() {
 					return this.$store.getters.colorScheme === 'dark';
@@ -87,68 +81,8 @@
 						this.$store.getters.getUserSettings,
 					);
 				},
-			},
-		},
-		watch: {
-			isHidden(newVal) {
-				if (newVal) {
-					return this.enableScroll();
-				}
-				return this.disableScroll();
-			},
-		},
-		methods: {
-			preventDefault(e) {
-				e.preventDefault();
-			},
-			preventDefaultForScrollKeys(e) {
-				if (keys[e.keyCode]) {
-					this.preventDefault(e);
-					return false;
-				}
-			},
-			disableScroll() {
-				window.addEventListener('DOMMouseScroll', this.preventDefault, false); // older FF
-				window.addEventListener(
-					this.wheelEvent,
-					this.preventDefault,
-					this.wheelOpt,
-				); // modern desktop
-				window.addEventListener('touchmove', this.preventDefault, this.wheelOpt); // mobile
-				window.addEventListener(
-					'keydown',
-					this.preventDefaultForScrollKeys,
-					false,
-				);
-			},
-			enableScroll() {
-				window.removeEventListener('DOMMouseScroll', this.preventDefault, false);
-				window.removeEventListener(
-					this.wheelEvent,
-					this.preventDefault,
-					this.wheelOpt,
-				);
-				window.removeEventListener(
-					'touchmove',
-					this.preventDefault,
-					this.wheelOpt,
-				);
-				window.removeEventListener(
-					'keydown',
-					this.preventDefaultForScrollKeys,
-					false,
-				);
-			},
-		},
-		created() {
-			window.addEventListener(
-				'test',
-				null,
-				Object.defineProperty({}, 'passive', {
-					get: () => (this.supportsPassive = true),
-				}),
-			);
-		},
+			}
+		}
 	};
 </script>
 

@@ -95,13 +95,9 @@ const mutations = {
 		state.currentOpenedTaskId = currentOpenedTaskId;
 	},
 	colorScheme(state, colorScheme) {
-		if (!colorScheme) {
-			localStorage.removeItem('colorScheme');
-		} else {
-			localStorage.setItem('colorScheme', colorScheme);
+		if (colorScheme) {
 			state.userSettings.colorScheme = colorScheme;
 		}
-
 		state.colorScheme = colorScheme;
 		document.querySelector('body').className = color('bgBody', colorScheme);
 	},
@@ -137,7 +133,6 @@ const actions = {
 	},
 	async loadUserSettings({ commit, state }) {
 		if (!state.user) return;
-
 		try {
 			const {
 				data: { data },
@@ -145,6 +140,7 @@ const actions = {
 
 			if (data?.settings) {
 				commit('setUserSettings', data.settings);
+				commit('colorScheme', data?.settings?.colorScheme);
 			}
 		} catch (e) {
 			throw e;
