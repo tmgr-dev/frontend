@@ -1,0 +1,110 @@
+<template>
+	<div
+		:class="`inline-block relative font-bold text-white shadow-md rounded focus:outline-none bg-${color}-500`">
+		<button
+			:class="`px-4 hover:bg-${color}-600 hover:rounded-l`"
+			type="button"
+			@click.prevent="() => {actions[defaultActionIndex].action(); showDropdownButtons=false;}"
+		>
+			{{ actions[defaultActionIndex].label }}
+		</button>
+		<button
+			:class="`hover:bg-${color}-600  hover:rounded-r `"
+			type="button"
+			@click.prevent="showDropdownButtons = !showDropdownButtons"
+		>
+			<span class="material-icons">expand_more</span>
+		</button>
+		<div :class="classesForDirection[direction]" class="rounded" :style="{top: `${dropdownOffset}px`}" v-if="showDropdownButtons" ref="dropdown">
+			<template
+				v-for="(action, i) in actions"
+			>
+				<button
+					:class="`w-full px-4 hover:bg-${color}-600`"
+					type="button"
+					v-if="i !== defaultActionIndex"
+					@click.prevent="() => {action.action(); showDropdownButtons=false;}"
+				>
+					{{ action.label }}
+				</button>
+			</template>
+		</div>
+	</div>
+</template>
+
+<script>
+	export default {
+		name: 'ButtonWithActions',
+		props: {
+			defaultActionIndex: {
+				required: false,
+				type: Number,
+				default: 0
+			},
+			direction: {
+				required: false,
+				type: String,
+				default: 'down'
+			},
+			actions: {
+				required: true,
+				type: Array
+			},
+			color: {
+				required: false,
+				type: String,
+				default: 'green'
+			},
+		},
+		watch: {
+			showDropdownButtons() {
+				this.$nextTick(() => {
+					this.dropdownOffset = this.direction === 'up' ? -this.$refs.dropdown.clientHeight : 0;
+				})
+			}
+		},
+		data () {
+			return {
+				showDropdownButtons: false,
+				dropdownOffset: 0,
+				classesForDirection: {
+					down: `absolute z-50 w-full bg-${this.color}-700`,
+					up: `absolute z-50 w-full bg-${this.color}-700`
+				}
+			}
+		}
+	};
+</script>
+
+<style lang="scss" scoped>
+	button {
+		&:hover,
+		&:focus,
+		&:active {
+			outline: none;
+		}
+
+		min-height: 45px;
+		line-height: 1;
+	}
+	.hover\:rounded-tl-lg {
+		border-top-left-radius: 0.5rem; /* 8px */
+	}
+	.hover\:rounded-tr-lg {
+		border-top-right-radius: 0.5rem; /* 8px */
+	}
+	.hover\:rounded-bl-lg {
+		border-bottom-left-radius: 0.5rem; /* 8px */
+	}
+	.hover\:rounded-br-lg {
+		border-bottom-right-radius: 0.5rem; /* 8px */
+	}
+	.hover\:rounded-l-lg {
+		border-top-left-radius: 0.5rem; /* 8px */
+		border-bottom-left-radius: 0.5rem; /* 8px */
+	}
+	.hover\:rounded-r-lg {
+		border-top-right-radius: 0.5rem; /* 8px */
+		border-bottom-right-radius: 0.5rem; /* 8px */
+	}
+</style>
