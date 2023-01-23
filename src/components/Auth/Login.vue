@@ -88,30 +88,33 @@
 			async login() {
 				const { ...loginData } = this.form;
 
-			try {
-				this.showLoader = true;
+				try {
+					this.showLoader = true;
+					const {
+						data: { data },
+					} = await this.$axios.post('auth/login', loginData);
+
+					this.$store.commit('token', data);
+					await this.setUser();
+
+					await Promise.all([
+						this.$store.dispatch('loadUserSettings'),
+						this.$store.dispatch('loadStatuses'),
+					]);
+				} catch ({ response }) {
+					this.errors = response.data.errors;
+					this.message = response.data.message;
+				}
+				this.showLoader = false;
+			},
+			async setUser() {
+				this.$axios.defaults.headers = {
+					Authorization: `Bearer ${this.$store.getters.token.token}`,
+					'X-Requested-With': 'XMLHttpRequest',
+				};
 				const {
 					data: { data },
-				} = await this.$axios.post('auth/login', loginData);
-
-				this.$store.commit('token', data);
-				await this.setUser();
-				this.$store.dispatch('loadUserSettings');
-				this.$store.dispatch('loadStatuses');
-			} catch ({ response }) {
-				this.errors = response.data.errors;
-				this.message = response.data.message;
-			}
-			this.showLoader = false;
-		},
-		async setUser() {
-			this.$axios.defaults.headers = {
-				Authorization: `Bearer ${this.$store.getters.token.token}`,
-				'X-Requested-With': 'XMLHttpRequest',
-			};
-			const {
-				data: { data },
-			} = await this.$axios.get('user');
+				} = await this.$axios.get('user');
 
 				this.$store.commit('user', data);
 				await this.$router.push({ name: 'CurrentTasksList' });
