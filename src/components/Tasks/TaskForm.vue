@@ -710,6 +710,7 @@
 					} = await this.$axios.post('tasks', this.form);
 					this.$emit('updated');
 					this.$store.dispatch('reloadTasks');
+
 					if (!this.isCreatingTask) {
 						this.showAlert();
 					}
@@ -722,7 +723,7 @@
 						});
 					} else {
 						this.form = data;
-						this.created();
+						await this.initComponent();
 					}
 				} catch (e) {
 					if (e.response && e.response && e.response.data.errors) {
@@ -819,38 +820,41 @@
 				}
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds;
 			},
+			async initComponent() {
+				if (this.taskId) {
+					await this.loadModel();
+					window.onkeydown = this.getShortcutSaveListener();
+				}
+
+				if (this.projectCategoryId && this.isCreatingTask) {
+					this.form.project_category_id = this.projectCategoryId;
+				}
+				await this.loadCategory();
+				await this.loadTaskSettings();
+				this.$store.getters.pusher
+					.private(`App.User.${this.$store.getters.user.id}`)
+					.on('task-countdown-stopped', ({ task }) => {
+						const isCountdownStarted = !!this.form.start_time;
+						if (!isCountdownStarted) {
+							return;
+						}
+
+						this.setFormDataWithDelay(task).then(() => {
+							this.showAlert('Countdown stopped');
+						});
+					})
+					.on('task-countdown-started', ({ task }) => {
+						const isCountdownStarted = !!this.form.start_time;
+						if (!isCountdownStarted) {
+							this.setFormDataWithDelay(task).then(() => {
+								this.showAlert('Countdown started');
+							});
+						}
+					});
+			}
 		},
 		async created() {
-			if (this.taskId) {
-				await this.loadModel();
-				window.onkeydown = this.getShortcutSaveListener();
-			}
-
-			if (this.projectCategoryId && this.isCreatingTask) {
-				this.form.project_category_id = this.projectCategoryId;
-			}
-			await this.loadCategory();
-			await this.loadTaskSettings();
-			this.$store.getters.pusher
-				.private(`App.User.${this.$store.getters.user.id}`)
-				.on('task-countdown-stopped', ({ task }) => {
-					const isCountdownStarted = !!this.form.start_time;
-					if (!isCountdownStarted) {
-						return;
-					}
-
-					this.setFormDataWithDelay(task).then(() => {
-						this.showAlert('Countdown stopped');
-					});
-				})
-				.on('task-countdown-started', ({ task }) => {
-					const isCountdownStarted = !!this.form.start_time;
-					if (!isCountdownStarted) {
-						this.setFormDataWithDelay(task).then(() => {
-							this.showAlert('Countdown started');
-						});
-					}
-				});
+			await this.initComponent();
 		},
 	};
 </script>
