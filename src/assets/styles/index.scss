@@ -44,6 +44,37 @@ body {
 		0% 0%;
 }
 
+#theme-start-animation-container {
+	position: absolute;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	right: 220px;
+	top: 22px;
+	width: 20px;
+	height: 20px;
+}
+
+#dark-mode-bg {
+	position: relative;
+	transform: scale(0);
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 100vw;
+	height: calc(100vh - 22px);
+	border-radius: 50%;
+	background-color: #171717;
+	transition: 1s;
+	display: flex;
+	flex: 0 0 auto;
+
+	&.active {
+		transform: scale(2.8);
+	}
+}
+
 .icon {
 	display: inline-block;
 	vertical-align: text-top;

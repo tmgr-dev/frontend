@@ -13,13 +13,17 @@ import components from 'src/bootstrap/globalComponents';
 export default (obj: any) => {
 	const { app, router, store } = obj;
 
+	store.commit('colorScheme', localStorage.getItem('colorScheme'));
+	// avoid showing the end of animation after first initialization
+	document
+		.querySelector('#theme-start-animation-container')
+		?.classList.add('!hidden');
+
 	components.map((component: Component) =>
 		app.component(component.name || '', component),
 	);
 	app.component('VueTheMask', VueTheMask);
 	app.component('QuillEditor', QuillEditor);
-
-	store.commit('colorScheme', localStorage.getItem('colorScheme'));
 
 	axios.defaults.baseURL = store.getters.apiBaseUrl;
 	if (store.getters.token) {

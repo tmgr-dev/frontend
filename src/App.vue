@@ -49,7 +49,7 @@
 					<span
 						class="absolute bottom-0 right-0 pr-4 pb-10 text-black dark:text-white"
 					>
-						<day-night-switch v-model="switchOn" />
+						<day-night-switch />
 					</span>
 				</div>
 			</div>
@@ -60,15 +60,11 @@
 						height: bodyHeight + 'px',
 					}"
 				>
-					<transition mode="out-in" name="fade">
-						<div>
-							<Navbar
-								v-if="$route.meta.navbarHidden"
-								:menu-is-active="menuIsActive"
-								:menu-position="translateMenuPosition"
-							/>
-						</div>
-					</transition>
+					<Navbar
+						v-if="$route.meta.navbarHidden"
+						:menu-is-active="menuIsActive"
+						:menu-position="translateMenuPosition"
+					/>
 
 					<router-view :key="$route.path" v-slot="{ Component }">
 						<transition
@@ -177,14 +173,6 @@
 		computed: {
 			navbarHidden() {
 				return this.$route.name !== 'Index';
-			},
-			switchOn: {
-				get() {
-					return this.$store.getters.colorScheme === 'dark';
-				},
-				set(newValue) {
-					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
-				},
 			},
 		},
 		watch: {
