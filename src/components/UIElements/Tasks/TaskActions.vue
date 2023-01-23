@@ -3,7 +3,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-auto"
+			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none mr-auto"
 		>
 			Delete
 		</button>
@@ -14,7 +14,7 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="bg-blue-500 mr-4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+				class="bg-blue-500 mr-4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
 				type="button"
 			>
 				<svg
@@ -56,7 +56,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="bg-orange-500 mr-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-orange-500 mr-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
 			type="button"
 		>
 			Create
@@ -65,7 +65,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$store.dispatch('closeTaskModal')"
-			class="bg-gray-500 hover:bg-gray-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-gray-500 hover:bg-gray-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
 			type="button"
 		>
 			Cancel
@@ -74,7 +74,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
 			type="button"
 		>
 			Settings

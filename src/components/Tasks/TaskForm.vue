@@ -47,7 +47,7 @@
 										<select
 											:id="`setting-${setting.id}`"
 											v-if="!setting.show_custom_value_input"
-											class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+											class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none"
 											v-model="settings[index].value"
 										>
 											<option value="" class="text-gray-500">

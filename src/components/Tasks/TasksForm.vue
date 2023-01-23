@@ -94,7 +94,7 @@
 													v-if="!setting.show_custom_value_input"
 													:id="`setting-${setting.id}`"
 													v-model="settings[index].value"
-													class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+													class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none"
 												>
 													<option class="text-gray-500" value="">
 														Choose default value
@@ -290,21 +290,21 @@
 							<div class="flex mb-2">
 								<div class="w-full mx-2 relative">
 									<span
-										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none"
 										:class="{ 'with-errors': errors }"
 									>
 										{{ i + 1 }}
 									</span>
 
 									<span
-										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none"
 										:class="{ 'with-errors': errors }"
 									>
 										{{ secondsToStringTime(checkpoint.start) }}
 									</span>
 
 									<span
-										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none"
 										:class="{ 'with-errors': errors }"
 									>
 										{{ secondsToStringTime(checkpoint.end) }}

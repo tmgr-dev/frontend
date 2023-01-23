@@ -5,15 +5,13 @@
 		<template #header>Profile</template>
 
 		<template #body>
-			<div
-				class="w-full text-tmgr-blue dark:text-tmgr-gray md:w-auto md:flex-grow md:flex md:items-center md:block block"
-			>
+			<div class="flex flex-col gap-3 max-w-lg">
 				<div>
 					<input-field
 						v-model="user.name"
 						:errors="errors?.name"
 						class="pb-2"
-						placeholder="Enter your name"
+						placeholder="Your name"
 					/>
 				</div>
 
@@ -22,20 +20,20 @@
 						v-model="user.password"
 						:errors="errors?.password"
 						class="w-1/2 pr-2"
-						placeholder="Enter new password"
+						placeholder="New password"
 					/>
 
 					<input-field
 						v-model="user.password_confirmation"
 						:errors="errors?.password_confirmation"
 						class="w-1/2 pl-2"
-						placeholder="Enter new password confirmation"
+						placeholder="New password confirmation"
 					/>
 				</div>
 
-				<div class="text-right">
+				<div class="text-left">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mt-10"
+						class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded focus:outline-none sm:mb-0 mt-4"
 						type="button"
 						@click="saveUser"
 					>

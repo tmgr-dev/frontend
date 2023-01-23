@@ -87,7 +87,7 @@
 			</div>
 		</Slideout>
 
-		<div :class="`fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10`">
+		<div class="fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10">
 			<span v-for="task in activeTasks" class="mb-5 inline-block">
 				<transition mode="out-in" name="fade">
 					<a
@@ -96,7 +96,7 @@
 						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
 					>
 						<span
-							class="relative inline-flex rounded-md shadow-sm p-2 mr-5 bg-gray-200 dark:bg-gray-800"
+							class="relative inline-flex rounded-md shadow-sm p-2 mr-5 bg-gray-200 transition-colors duration-300 dark:bg-gray-800"
 						>
 							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
 								<span
@@ -107,9 +107,9 @@
 								/>
 							</span>
 
-							<span class="text-tmgr-blue dark:text-tmgr-gray">{{
-								task.title
-							}}</span>
+							<span class="text-tmgr-blue dark:text-tmgr-gray">
+								{{ task.title }}
+							</span>
 						</span>
 					</a>
 				</transition>

@@ -49,7 +49,7 @@
 					<div class="shadow-md rounded-lg md:flex">
 						<div class="w-full">
 							<div
-								class="dark:bg-gray-900 bg-white hover:bg-gray-100 hover:dark:bg-gray-800 p-4 md:p-5"
+								class="dark:bg-gray-900 transition-colors duration-300 bg-white hover:bg-gray-100 hover:dark:bg-gray-800 p-4 md:p-5"
 								:class="category.hoverClass"
 							>
 								<div class="flex justify-between items-center">

@@ -13,7 +13,7 @@
 
 		<template #body>
 			<div
-				class="dark:bg-gray-900 bg-white max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6"
+				class="dark:bg-gray-900 bg-white transition-colors duration-300 max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6"
 			>
 				<form class="w-full">
 					<div class="mb-4">
@@ -121,7 +121,7 @@
 
 					<div class="flex-row justify-center mt-8">
 						<button
-							class="bg-blue-500 mr-5 hover:bg-blue-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-blue-500 mr-5 hover:bg-blue-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 							@click.prevent="create"
 						>
@@ -130,7 +130,7 @@
 
 						<button
 							v-if="isCreate"
-							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 							@click.prevent="createAndContinue"
 						>
@@ -140,7 +140,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 						>
 							Cancel
