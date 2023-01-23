@@ -4,9 +4,7 @@
 			<div class="w-screen">
 				<header class="container mx-auto px-4 my-5 relative">
 					<h1
-						:class="`md:text-3xl text-2xl mt-6 pt-1 md:pt-0 md:mt-0  ${$color(
-							'h1',
-						)}-900 relative text-center md:text-left text-center`"
+						class="md:text-3xl text-2xl mt-6 pt-1 md:pt-0 md:mt-0 text-blue-800 dark:text-white relative text-center md:text-left text-center"
 					>
 						<slot name="header"></slot>
 					</h1>

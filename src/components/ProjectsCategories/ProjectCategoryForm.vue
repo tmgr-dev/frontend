@@ -13,14 +13,12 @@
 
 		<template #body>
 			<div
-				:class="`${$color(
-					'blocks',
-				)} max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6`"
+				class="dark:bg-gray-900 bg-white max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6"
 			>
 				<form class="w-full">
 					<div class="mb-4">
 						<label
-							class="tc-block text-gray-700 text-sm font-bold mb-2"
+							class="block text-gray-700 text-sm font-bold mb-2"
 							for="categoryName"
 						>
 							Project category name
@@ -34,7 +32,7 @@
 						/>
 					</div>
 
-					<label class="tc-block text-gray-700 text-sm font-bold mb-2">
+					<label class="block text-gray-700 text-sm font-bold mb-2">
 						Parent category
 					</label>
 
@@ -55,7 +53,7 @@
 						<div v-for="(setting, index) in availableSettings">
 							<label
 								:for="`setting-${setting.id}`"
-								class="tc-block text-gray-700 text-sm font-bold mb-2"
+								class="block text-gray-700 text-sm font-bold mb-2"
 							>
 								{{ setting.name }}
 							</label>
@@ -110,8 +108,7 @@
 
 										<div class="b-switch-list__text">
 											<div
-												:class="$color('settingsTextColor')"
-												class="b-switch-list__title"
+												class="b-switch-list__title text-gray-800 dark:text-gray-400"
 											>
 												Set custom value
 											</div>

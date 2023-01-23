@@ -45,10 +45,8 @@
 					<div class="shadow-md rounded-lg md:flex">
 						<div class="w-full">
 							<div
-								:class="`${$color('blocks')} hover:${$color('blocksHover')} ${
-									category.hoverClass
-								}`"
-								class="p-4 md:p-5"
+								class="dark:bg-gray-900 bg-white hover:bg-gray-100 hover:dark:bg-gray-800 p-4 md:p-5"
+								:class="category.hoverClass"
 							>
 								<div class="flex justify-between items-center">
 									<div>
@@ -76,7 +74,7 @@
 											:actions="getActions(category)"
 											class="lg:hidden"
 										></DropdownMenu>
-										<div class="tc-hidden lg:block">
+										<div class="hidden lg:block">
 											<new-button
 												class="mr-2"
 												@click="
@@ -97,7 +95,7 @@
 											</new-button>
 										</div>
 									</div>
-									<div v-else class="tc-block">
+									<div v-else>
 										<new-button class="mr-2" @click="restoreCategory(category)">
 											<span class="material-icons">restore_from_trash</span>
 										</new-button>
@@ -159,7 +157,7 @@
 							/>
 						</span>
 						<a
-							class="opacity-25 hover:opacity-100 tc-hidden md:inline mr-2"
+							class="opacity-25 hover:opacity-100 hidden md:inline mr-2"
 							href="#"
 							title="Select all"
 							@click.prevent="selectAll"
@@ -170,7 +168,7 @@
 							:href="`/${
 								id ? 'project-categories/' + id + '/tasks/' : ''
 							}create`"
-							class="opacity-25 hover:opacity-100 tc-hidden md:inline"
+							class="opacity-25 hover:opacity-100 hidden md:inline"
 							title="Add task to category"
 							@click.prevent="
 								$store.commit('createTaskInProjectCategoryId', {

@@ -1,5 +1,5 @@
 <template>
-	<div class="tc-block text-center flex justify-end">
+	<div class="text-center flex justify-end">
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
@@ -8,7 +8,7 @@
 			Delete
 		</button>
 
-		<slot></slot>
+		<slot />
 
 		<span class="relative inline-flex rounded-md shadow-sm">
 			<button
@@ -31,12 +31,12 @@
 						r="10"
 						stroke="currentColor"
 						stroke-width="4"
-					></circle>
+					/>
 					<path
 						class="opacity-75"
 						fill="currentColor"
 						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-					></path>
+					/>
 				</svg>
 
 				Save
@@ -48,17 +48,15 @@
 			>
 				<span
 					class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
-				></span>
-				<span
-					class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500"
-				></span>
+				/>
+				<span class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500" />
 			</span>
 		</span>
 
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="bg-orange-5 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-orange-500 mr-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 			type="button"
 		>
 			Create
@@ -67,7 +65,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$store.dispatch('closeTaskModal')"
-			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-gray-500 hover:bg-gray-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
 			type="button"
 		>
 			Cancel

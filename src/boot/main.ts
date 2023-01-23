@@ -1,10 +1,5 @@
-// HTTP client
 import axios from 'axios';
-
 import { Component } from '@vue/runtime-core';
-
-// Dark & Day modes
-import colorSchemes from 'src/colors/schemes';
 
 // Directives
 import { mask, VueTheMask } from 'src/components/UIElements/VueTheMask';
@@ -49,17 +44,7 @@ export default (obj: any) => {
 
 	app.config.globalProperties.$axios = axios;
 
-	const color = (colorKey: string) =>
-		colorSchemes[store.getters.colorScheme][colorKey];
-	app.config.globalProperties.$color = color;
-
-	const body = document.querySelector('body');
-	if (body) {
-		body.className = color('bgBody');
-	}
-
 	app.directive('mask', mask);
-
 	app.use(Tooltip, {
 		delay: 50,
 		placement: 'top',

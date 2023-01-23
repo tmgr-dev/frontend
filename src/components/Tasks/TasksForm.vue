@@ -9,7 +9,6 @@
 			<div class="sm:flex items-between text-center">
 				<router-link
 					v-if="!isCreatingTask"
-					:class="`${$color('h1')}-800`"
 					:to="
 						!currentCategory
 							? '/'
@@ -17,7 +16,7 @@
 									currentCategory.id
 							  }/children/${getCategoryStatus()}`
 					"
-					class="py-2 rounded focus:outline-none sm:mb-0 mb-5"
+					class="text-blue-800 dark:text-white py-2 rounded focus:outline-none sm:mb-0 mb-5"
 					type="button"
 				>
 					&lt; {{ currentCategory ? currentCategory.title : 'Tasks' }}
@@ -25,8 +24,7 @@
 
 				<div v-if="!isCreatingTask" ref="editing_task_category">
 					<a
-						:class="$color('grayHover')"
-						class="absolute left-0 top-0 text-gray-600 p-5 pt-4 md:p-0"
+						class="absolute left-0 top-0 hover:dark:text-gray-300 hover:text-gray-900 text-gray-600 p-5 pt-4 md:p-0"
 						href="#"
 						@click.prevent="showModalCategory"
 					>
@@ -45,9 +43,7 @@
 								<form @submit.prevent="updateCategory">
 									<div>
 										<label
-											:class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color(
-												'taskSettingTextColor',
-											)}`"
+											class="block dark:text-tmgr-gray text-gray-800 text-sm text-left font-bold bg-gray-400 mb-2 mt-2"
 											for=""
 										>
 											Category
@@ -60,9 +56,7 @@
 									</div>
 									<div>
 										<label
-											:class="`block text-sm text-left font-bold bg-gray-400 mb-2 mt-2 text-black ${$color(
-												'taskSettingTextColor',
-											)}`"
+											class="block dark:text-tmgr-gray text-gray-800 text-sm text-left font-bold bg-gray-400 mb-2 mt-2"
 											for=""
 										>
 											Estimated time
@@ -79,7 +73,7 @@
 									<hr class="py-2" />
 
 									<label
-										class="tc-block text-gray-700 text-sm font-bold mb-5"
+										class="block text-gray-700 text-sm font-bold mb-5"
 										for="settings"
 									>
 										Settings
@@ -91,7 +85,7 @@
 										>
 											<label
 												:for="`setting-${setting.id}`"
-												class="tc-block text-gray-700 text-sm font-bold mb-2"
+												class="block text-gray-700 text-sm font-bold mb-2"
 											>
 												{{ setting.name }}
 											</label>
@@ -100,7 +94,7 @@
 													v-if="!setting.show_custom_value_input"
 													:id="`setting-${setting.id}`"
 													v-model="settings[index].value"
-													class="tc-block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+													class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
 												>
 													<option class="text-gray-500" value="">
 														Choose default value
@@ -117,9 +111,7 @@
 													<input-field
 														:id="`setting-${setting.id}`"
 														v-model="settings[index].value"
-														:extra-class="`bg-gray-400  ${$color(
-															'taskSettingTextColor',
-														)}`"
+														extra-class="bg-gray-400 dark:text-tmgr-gray text-gray-800"
 														:placeholder="setting.description"
 														:tag="(settings[index].id = setting.id)"
 														:type="setting.component_type"
@@ -150,8 +142,7 @@
 														</label>
 														<div class="b-switch-list__text">
 															<div
-																:class="$color('settingsTextColor')"
-																class="b-switch-list__title"
+																class="b-switch-list__title text-gray-800 dark:text-gray-400"
 															>
 																Set custom value
 															</div>
@@ -164,14 +155,14 @@
 
 									<div class="flex flex-nowrap items-center mt-5">
 										<button
-											class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+											class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 											type="button"
 											@click="isShowModalCategory = false"
 										>
 											Cancel
 										</button>
 										<button
-											class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+											class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 											type="submit"
 										>
 											Update
@@ -201,11 +192,11 @@
 		</template>
 
 		<template #body>
-			<div :class="`${$color('blocks')} rounded-lg relative`">
+			<div class="bg-white dark:bg-gray-900 rounded-lg relative">
 				<div class="lg:flex">
 					<div class="lg:w-full h-full mt-5 p-5">
-						<div :class="`bg-white pl-5 pr-5 h-full ${$color('blocks')}`">
-							<div class="tc-block w-full float-left">
+						<div class="bg-white pl-5 pr-5 h-full bg-white dark:bg-gray-900">
+							<div class="block w-full float-left">
 								<div class="mb-2">
 									<input-field
 										v-model="form.title"
@@ -221,9 +212,9 @@
 
 				<div class="lg:flex px-5">
 					<div class="w-full h-full">
-						<div :class="`${$color('blocks')}  px-5 pb-1`">
+						<div class="bg-white dark:bg-gray-900 px-5 pb-1">
 							<div class="mb-2">
-								<label class="tc-block text-sm text-left font-bold mb-2" for="">
+								<label class="block text-sm text-left font-bold mb-2" for="">
 									Description
 									<a
 										v-if="showEditDescription && !isCreatingTask"
@@ -257,9 +248,10 @@
 						</div>
 					</div>
 				</div>
+
 				<div class="lg:flex">
 					<div class="w-full h-full mt-5">
-						<div :class="`${$color('blocks')} p-5 h-full`">
+						<div class="bg-white dark:bg-gray-900 p-5 h-full">
 							<Countdown
 								v-if="form.id"
 								:init-task="form"
@@ -275,6 +267,7 @@
 						</div>
 					</div>
 				</div>
+
 				<div class="w-full p-5">
 					<h2
 						v-if="
@@ -287,54 +280,49 @@
 					<div
 						v-if="!isCreatingTask"
 						:key="checkpointUpdateKey"
-						:class="`${$color('blocks')} rounded mt-5 p-5`"
+						class="bg-white dark:bg-gray-900 rounded mt-5 p-5"
 					>
 						<div
-							v-for="(checkpoint, v) in form.checkpoints"
-							:key="v"
+							v-for="(checkpoint, i) in form.checkpoints"
+							:key="i"
 							class="mb-5"
 						>
 							<div class="flex mb-2">
 								<div class="w-full mx-2 relative">
 									<span
-										:class="`shadow ${$color('borderMain')} ${$color(
-											'input',
-										)} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
-											errors ? 'with-errors' : ''
-										}`"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										:class="{ 'with-errors': errors }"
 									>
-										{{ v + 1 }}
+										{{ i + 1 }}
 									</span>
+
 									<span
-										:class="`shadow ${$color('borderMain')} ${$color(
-											'input',
-										)} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
-											errors ? 'with-errors' : ''
-										}`"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										:class="{ 'with-errors': errors }"
 									>
 										{{ secondsToStringTime(checkpoint.start) }}
 									</span>
+
 									<span
-										:class="`shadow ${$color('borderMain')} ${$color(
-											'input',
-										)} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
-											errors ? 'with-errors' : ''
-										}`"
+										class="shadow border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
+										:class="{ 'with-errors': errors }"
 									>
 										{{ secondsToStringTime(checkpoint.end) }}
 									</span>
+
 									<input-field
 										v-model="checkpoint.description"
 										placeholder="Checkpoint content"
 										type="text"
 									/>
+
 									<span
 										class="absolute right-0 top-0 mt-5 checkpoint-delete"
-										@click="deleteCheckpoint(v)"
+										@click="deleteCheckpoint(i)"
 									>
-										<span class="material-icons text-lg text-red-700"
-											>delete</span
-										>
+										<span class="material-icons text-lg text-red-700">
+											delete
+										</span>
 									</span>
 								</div>
 							</div>
@@ -350,6 +338,7 @@
 						@saveTask="saveTask"
 					/>
 				</div>
+
 				<p v-if="form.approximately_time" class="text-gray-500 pl-4 pb-2">
 					Estimated time to complete the task:
 					{{ toHHMM(form.approximately_time) }}

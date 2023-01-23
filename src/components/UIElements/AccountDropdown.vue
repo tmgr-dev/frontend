@@ -1,13 +1,12 @@
 <template>
 	<div class="relative select-none mt-2 md:mt-0">
 		<div
-			class="cursor-pointer flex item-center gap-1"
-			:class="`${$color('inverseTextColor')}-500`"
+			class="cursor-pointer flex item-center gap-1 text-black dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
 			<div class="flex items-center overflow-hidden">
 				<span
-					class="whitespace-nowrap overflow-ellipsis w-24 overflow-hidden"
+					class="whitespace-nowrap text-ellipsis w-24 overflow-hidden"
 					v-if="$store.getters.user?.name?.length > 15"
 					>{{ $store.getters.user?.name?.slice(0, 15) }}</span
 				>
@@ -18,22 +17,21 @@
 
 		<div
 			v-if="isOpenProfileDropdown"
-			:class="`${$color('blocks')}`"
-			class="absolute right-0 custom-top py-2 shadow-lg z-50"
+			class="absolute right-0 custom-top bg-white dark:bg-gray-900 py-2 shadow-lg z-50"
 			@mouseleave="isOpenProfileDropdown = false"
 		>
 			<ul class="w-40 py-2 px-4">
 				<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-					<router-link class="tc-block" to="/profile"> Profile </router-link>
+					<router-link class="block" to="/profile"> Profile </router-link>
 				</li>
 				<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-					<router-link class="tc-block" to="/settings"> Settings </router-link>
+					<router-link class="block" to="/settings"> Settings </router-link>
 				</li>
 				<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-					<router-link class="tc-block" to="/archive"> Archive </router-link>
+					<router-link class="block" to="/archive"> Archive </router-link>
 				</li>
 				<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-					<a class="tc-block" href="#" @click.prevent="logout"> Logout </a>
+					<a class="block" href="#" @click.prevent="logout"> Logout </a>
 				</li>
 			</ul>
 		</div>

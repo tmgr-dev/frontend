@@ -5,30 +5,31 @@
 			:class="{ active: menuIsActive }"
 			@click="$store.getters.slideout.toggle()"
 		>
-			<div class="bar1" :class="$color('burgerIcon')"></div>
-			<div class="bar2" :class="$color('burgerIcon')"></div>
-			<div class="bar3" :class="$color('burgerIcon')"></div>
+			<div class="bar1 bg-gray-900 dark:bg-white"></div>
+			<div class="bar2 bg-gray-900 dark:bg-white"></div>
+			<div class="bar3 bg-gray-900 dark:bg-white"></div>
 		</div>
 	</div>
 
 	<nav
-		:class="`${$color('menuBg')} shadow md:block tc-hidden`"
+		class="bg-white dark:bg-gray-900 shadow md:block hidden"
 		role="navigation"
 	>
 		<div
 			class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap"
 		>
 			<div
-				:class="`w-full md:w-auto md:flex-grow md:flex md:items-center ${
-					isHidden ? 'tc-hidden' : ''
-				}`"
+				class="w-full md:w-auto md:flex-grow md:flex md:items-center"
+				:class="{ hidden: isHidden }"
 			>
 				<navbar-menu />
 				<span
-					:class="`${$color('inverseTextColor')}-500`"
-					class="flex justify-between items-center ml-auto mr-4"
+					class="flex justify-between items-center ml-auto mr-4 text-black dark:text-white"
 				>
-					<day-night-switch :key="this.$store.getters.colorScheme" v-model="switchOn" />
+					<day-night-switch
+						:key="this.$store.getters.colorScheme"
+						v-model="switchOn"
+					/>
 				</span>
 
 				<account-dropdown />
@@ -67,7 +68,7 @@
 				{ id: 1, name: 'List', path: '/' },
 				{ id: 2, name: 'Archive', path: '/acrhive' },
 				{ id: 3, name: 'Categories', path: '/projects-categories' },
-			]
+			],
 		}),
 		computed: {
 			switchOn: {
@@ -81,8 +82,8 @@
 						this.$store.getters.getUserSettings,
 					);
 				},
-			}
-		}
+			},
+		},
 	};
 </script>
 
