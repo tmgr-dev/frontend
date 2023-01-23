@@ -152,7 +152,7 @@
 										currentCategory.id
 								  }/children/${getCategoryStatus()}`
 						"
-						class="rounded focus:outline-none sm:mb-0 text-blue-800 text-white"
+						class="rounded focus:outline-none sm:mb-0 text-blue-800 dark:text-neutral-200 text-white"
 						type="button"
 					>
 						{{ currentCategory ? currentCategory.title : 'Tasks' }}
@@ -222,7 +222,7 @@
 				class="checkpoints-wrapper rounded dark:bg-gray-900 bg-white"
 				:key="checkpointUpdateKey"
 			>
-				<div class="text-sm text-bold">
+				<div class="text-sm text-bold flex items-center justify-center gap-2">
 					{{
 						form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints'
 					}}
@@ -253,19 +253,27 @@
 								checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'
 							}`"
 						/>
-						<span class="absolute right-0 top-0 mt-1.5 text-sm">
-							{{ secondsToStringTime(checkpoint.start) }} -
-							{{ secondsToStringTime(checkpoint.end) }}
+						<span
+							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+						>
+							<span class="text-sm">
+								{{ secondsToStringTime(checkpoint.start) }} -
+								{{ secondsToStringTime(checkpoint.end) }}
+							</span>
+
 							<span
-								class="material-icons text-lg text-blue-700 checkpoint-delete"
+								class="material-icons text-base text-blue-700 leading-none checkpoint-delete"
 								@click="changeCheckpointInputField(v)"
-								>edit</span
 							>
+								edit
+							</span>
+
 							<span
-								class="material-icons text-lg text-red-700 checkpoint-delete"
+								class="material-icons text-base text-red-700 leading-none checkpoint-delete"
 								@click="deleteCheckpoint(v)"
-								>delete</span
 							>
+								delete
+							</span>
 						</span>
 					</div>
 				</div>
@@ -287,7 +295,7 @@
 			>
 				<span
 					v-if="form.approximately_time"
-					class="text-gray-500 py-2 pr-5 estimated-info"
+					class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
 				>
 					Estimated time to complete the task: {{ approximatelyEndTime }}
 				</span>
