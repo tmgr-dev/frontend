@@ -30,6 +30,7 @@
 					if (isDarkMode) {
 						this.background.classList.add('active');
 					} else {
+						this.background.classList.remove('max-h-screen');
 						document.querySelector('body').classList.remove('bg-neutral-900');
 						this.background.classList.remove('active');
 					}
@@ -40,12 +41,14 @@
 			setBodyAttrs() {
 				if (this.darkMode) {
 					document.querySelector('body').classList.add('bg-neutral-900');
+					this.background.classList.add('max-h-screen');
 				}
 			},
 		},
 		mounted() {
 			this.background = document.querySelector('#dark-mode-bg');
 			this.background.addEventListener('transitionend', this.setBodyAttrs);
+
 			setTimeout(() => {
 				document
 					.querySelector('#theme-start-animation-container')
