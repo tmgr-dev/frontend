@@ -19,6 +19,8 @@ export default (obj: any) => {
 	app.component('VueTheMask', VueTheMask);
 	app.component('QuillEditor', QuillEditor);
 
+	store.commit('colorScheme', localStorage.getItem('colorScheme'));
+
 	axios.defaults.baseURL = store.getters.apiBaseUrl;
 	if (store.getters.token) {
 		axios.defaults.headers.common = {

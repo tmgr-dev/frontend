@@ -96,6 +96,7 @@ const mutations = {
 			state.userSettings.colorScheme = colorScheme;
 		}
 		state.colorScheme = colorScheme;
+		localStorage.setItem('colorScheme', colorScheme);
 		document.querySelector('html').className =
 			colorScheme === 'dark' ? 'dark' : '';
 	},
@@ -112,7 +113,10 @@ const mutations = {
 
 const actions = {
 	logout() {
+		const theme = localStorage.getItem('colorScheme');
 		localStorage.clear();
+		localStorage.setItem('colorScheme', theme);
+
 		document.location.reload();
 	},
 	reloadTasks({ state }) {
@@ -131,6 +135,7 @@ const actions = {
 	},
 	async loadUserSettings({ commit, state }) {
 		if (!state.user) return;
+
 		try {
 			const {
 				data: { data },
@@ -138,7 +143,6 @@ const actions = {
 
 			if (data?.settings) {
 				commit('setUserSettings', data.settings);
-				commit('colorScheme', data?.settings?.colorScheme);
 			}
 		} catch (e) {
 			throw e;
@@ -159,8 +163,8 @@ const actions = {
 	async putUserSettings({ commit }, settings) {
 		try {
 			await axios.put(`user/settings`, { settings });
+
 			commit('setUserSettings', settings);
-			commit('colorScheme', settings?.colorScheme ?? 'default');
 		} catch (e) {
 			console.error(e);
 			throw e;
