@@ -5,7 +5,7 @@
 				<div v-if="showInput" :key="updateKey">
 					<div
 						v-if="type === 'select'"
-						class="appearance-none border-0 rounded w-full bg-white dark:bg-gray-800"
+						class="appearance-none border-0 transition-colors duration-300 rounded w-full bg-white dark:bg-gray-800"
 						:class="extraClass"
 					>
 						<vue-select
@@ -18,7 +18,7 @@
 					</div>
 
 					<textarea
-						class="appearance-none border rounded w-full py-2 px-3 bg-white dark:bg-gray-800 leading-tight outline-none focus:shadow-outline"
+						class="appearance-none border transition-colors duration-300 rounded w-full py-2 px-3 bg-white dark:bg-gray-800 leading-tight outline-none"
 						:class="[
 							extraClass,
 							forCheckpoint ? 'max-h-40 pt-2 min-h-[36px]' : '',
@@ -32,7 +32,7 @@
 
 					<div v-else-if="type === 'contenteditable'">
 						<quill-editor
-							class="relative z-10 appearance-none border-0 rounded w-full py-2 px-3 leading-tight bg-white dark:bg-gray-800 outline-none focus:shadow-outline"
+							class="relative z-10 appearance-none transition-colors duration-300 border-0 rounded w-full py-2 px-3 leading-tight bg-white dark:bg-gray-800 outline-none"
 							:class="extraClass"
 							v-model:content="val"
 							:key="updateKey"
@@ -46,7 +46,7 @@
 						v-else-if="type === 'time_in_seconds'"
 						:id="name"
 						type="time"
-						class="appearance-none border-0 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
+						class="appearance-none border-0 bg-white transition-colors duration-300 dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none"
 						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"
@@ -79,7 +79,7 @@
 						v-else
 						:id="name"
 						:type="type"
-						class="appearance-none dark:border-0 border border-neutral-300 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
+						class="appearance-none dark:border-transparent border border-neutral-300 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none transition-colors duration-300"
 						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"

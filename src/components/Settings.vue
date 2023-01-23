@@ -6,13 +6,7 @@
 			<div class="flex flex-col gap-3 max-w-md">
 				<button
 					v-if="!pusherBeamsUserId"
-					:color="pusherBeamsUserId ? `red` : `green`"
-					class="px-5 py-2"
-					:class="{
-						'border-red-400 text-red-600 hover:bg-red-400': pusherBeamsUserId,
-						'border-blue-400 text-blue-600 hover:bg-blue-400':
-							!pusherBeamsUserId,
-					}"
+					class="px-5 py-2 border-green-400 text-green-600 hover:bg-green-400 text-green-400 hover:text-white border-2 transition"
 					@click="togglePushes"
 				>
 					Web Pushes
