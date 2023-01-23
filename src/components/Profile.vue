@@ -6,9 +6,7 @@
 
 		<template #body>
 			<div
-				:class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color(
-					'textMain',
-				)}`"
+				class="w-full text-tmgr-blue dark:text-tmgr-gray md:w-auto md:flex-grow md:flex md:items-center md:block block"
 			>
 				<div>
 					<input-field

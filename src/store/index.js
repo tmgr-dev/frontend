@@ -1,11 +1,8 @@
 import { createStore } from 'vuex';
-import colorSchemes from '../colors/schemes';
 import axios from 'axios';
 import pusherBeamsClient from './plugins/pusher-beams-client';
 import pusherTokenProvider from './plugins/pusher-token-provider';
 import pusher from './plugins/pusher';
-
-const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey];
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token'))
@@ -99,7 +96,8 @@ const mutations = {
 			state.userSettings.colorScheme = colorScheme;
 		}
 		state.colorScheme = colorScheme;
-		document.querySelector('body').className = color('bgBody', colorScheme);
+		document.querySelector('html').className =
+			colorScheme === 'dark' ? 'dark' : '';
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;

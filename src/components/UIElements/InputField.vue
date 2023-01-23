@@ -5,9 +5,7 @@
 				<div v-if="showInput" :key="updateKey">
 					<div
 						v-if="type === 'select'"
-						:class="`appearance-none border rounded w-full ${
-							extraClass || $color('input')
-						} ${$color('defaultBorder_darkNoBorder')}`"
+						:class="`appearance-none border-0 rounded w-full bg-white dark:bg-gray-800 ${extraClass}`"
 					>
 						<vue-select
 							v-if="options"
@@ -19,13 +17,11 @@
 					</div>
 
 					<textarea
-						:class="`${
-							forCheckpoint ? 'max-h-40 pt-2 min-h-8' : ''
-						} appearance-none border rounded w-full py-2 px-3 ${
-							extraClass || $color('input')
-						} ${$color(
-							'defaultBorder_darkNoBorder',
-						)} leading-tight focus:outline-none focus:shadow-outline`"
+						class="appearance-none border rounded w-full py-2 px-3 bg-white dark:bg-gray-800 leading-tight outline-none focus:shadow-outline"
+						:class="[
+							extraClass,
+							forCheckpoint ? 'max-h-40 pt-2 min-h-[36px]' : '',
+						]"
 						v-else-if="type === 'textarea'"
 						name=""
 						v-model="val"
@@ -35,11 +31,8 @@
 
 					<div v-else-if="type === 'contenteditable'">
 						<quill-editor
-							:class="`relative z-10 appearance-none border rounded w-full py-2 px-3 ${
-								extraClass || $color('input')
-							} ${$color(
-								'defaultBorder_darkNoBorder',
-							)} leading-tight focus:outline-none focus:shadow-outline`"
+							class="relative z-10 appearance-none border-0 rounded w-full py-2 px-3 leading-tight bg-white dark:bg-gray-800 outline-none focus:shadow-outline"
+							:class="extraClass"
 							v-model:content="val"
 							:key="updateKey"
 							content-type="html"
@@ -52,11 +45,8 @@
 						v-else-if="type === 'time_in_seconds'"
 						:id="name"
 						type="time"
-						:class="`${$color('defaultBorder_darkNoBorder')} ${
-							extraClass || $color('input')
-						} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
-							errors ? 'with-errors' : ''
-						}`"
+						class="appearance-none border-0 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
+						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"
@@ -76,8 +66,7 @@
 
 							<div class="b-switch-list__text">
 								<div
-									class="b-switch-list__title"
-									:class="$color('settingsTextColor')"
+									class="b-switch-list__title text-gray-800 dark:text-gray-400"
 								>
 									{{ placeholder }}
 								</div>
@@ -89,11 +78,8 @@
 						v-else
 						:id="name"
 						:type="type"
-						:class="`${$color('defaultBorder_darkNoBorder')} ${
-							extraClass || $color('input')
-						} appearance-none border rounded w-full py-2 px-3  leading-tight focus:outline-none focus:shadow-outline ${
-							errors ? 'with-errors' : ''
-						}`"
+						class="appearance-none border-0 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
+						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"

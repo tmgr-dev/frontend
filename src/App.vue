@@ -1,8 +1,11 @@
 <template>
 	<alert ref="alert" />
-	<div id="q-app" :class="$color('textMain')">
-		<q-bar v-if="$q.platform.is.electron" class="q-electron-drag q-electron-draggable">
-			<img src="/favicon-16x16.png">
+	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray">
+		<q-bar
+			v-if="$q.platform.is.electron"
+			class="q-electron-drag q-electron-draggable"
+		>
+			<img src="/favicon-16x16.png" />
 
 			<q-space />
 
@@ -44,15 +47,14 @@
 					<navbar-menu />
 					<account-dropdown class="flex justify-end" />
 					<span
-						:class="`${$color('inverseTextColor')}-500`"
-						class="absolute bottom-0 right-0 pr-4 pb-10"
+						class="absolute bottom-0 right-0 pr-4 pb-10 text-black dark:text-white"
 					>
 						<day-night-switch v-model="switchOn" />
 					</span>
 				</div>
 			</div>
 
-			<div id="panel" :class="`${$color('bgBody')} ${$color('borderRight')}`">
+			<div id="panel">
 				<q-scroll-area
 					:style="{
 						height: bodyHeight + 'px',
@@ -94,9 +96,7 @@
 						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
 					>
 						<span
-							:class="`relative inline-flex rounded-md shadow-sm p-2 mr-5 ${$color(
-								'activeTaskReminderBg',
-							)}`"
+							class="relative inline-flex rounded-md shadow-sm p-2 mr-5 bg-gray-200 dark:bg-gray-800"
 						>
 							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
 								<span
@@ -107,7 +107,9 @@
 								/>
 							</span>
 
-							<span :class="$color('textMain')">{{ task.title }}</span>
+							<span class="text-tmgr-blue dark:text-tmgr-gray">{{
+								task.title
+							}}</span>
 						</span>
 					</a>
 				</transition>
@@ -125,12 +127,11 @@
 				modal-class="w-11/12 h-full"
 				@close="$store.dispatch('closeTaskModal')"
 			>
-			<template #modal-body>
-				<task-form
-					:is-modal="true"
-					:modal-project-category-id="
-						$store.getters.createTaskInProjectCategoryId
-
+				<template #modal-body>
+					<task-form
+						:is-modal="true"
+						:modal-project-category-id="
+							$store.getters.createTaskInProjectCategoryId
 						"
 						:modal-task-id="$store.getters.currentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
@@ -207,53 +208,53 @@
 
 				element.style.height = this.prevHeight;
 
-			setTimeout(() => {
-				element.style.height = height;
-			});
-		},
-		afterEnter(element) {
-			element.style.height = 'auto';
-		},
-		async loadActiveTasks() {
-			if (!this.$store.getters.user) {
-				return;
-			}
-			const {
-				data: { data },
-			} = await this.$axios.get('/tasks/runned');
-			this.activeTasks = data;
-		},
-		minimize() {
-			if (process.env.MODE === 'electron') {
-				window.myWindowAPI.minimize();
-			}
-		},
-		maximize() {
-			if (process.env.MODE === 'electron') {
-				window.myWindowAPI.toggleMaximize();
-			}
-		},
-		closeApp() {
-			if (process.env.MODE === 'electron') {
-				window.myWindowAPI.close();
-			}
-		},
-		initBodyHeight() {
-			setTimeout(() => {
-				try {
-					this.bodyHeight = this.getBodyHeight();
-				} catch (e) {
-					setTimeout(() => (this.bodyHeight = this.getBodyHeight()), 1000);
+				setTimeout(() => {
+					element.style.height = height;
+				});
+			},
+			afterEnter(element) {
+				element.style.height = 'auto';
+			},
+			async loadActiveTasks() {
+				if (!this.$store.getters.user) {
+					return;
+				}
+				const {
+					data: { data },
+				} = await this.$axios.get('/tasks/runned');
+				this.activeTasks = data;
+			},
+			minimize() {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.minimize();
+				}
+			},
+			maximize() {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.toggleMaximize();
+				}
+			},
+			closeApp() {
+				if (process.env.MODE === 'electron') {
+					window.myWindowAPI.close();
+				}
+			},
+			initBodyHeight() {
+				setTimeout(() => {
+					try {
+						this.bodyHeight = this.getBodyHeight();
+					} catch (e) {
+						setTimeout(() => (this.bodyHeight = this.getBodyHeight()), 1000);
 					}
 				}, 500);
 			},
 			getBodyHeight() {
 				return (
-				this.getOffsetHeightOfElement('body') +
-				30 -
-				this.getOffsetHeightOfElement('[role=toolbar]') -
-				this.getOffsetHeightOfElement('nav')
-			);
+					this.getOffsetHeightOfElement('body') +
+					30 -
+					this.getOffsetHeightOfElement('[role=toolbar]') -
+					this.getOffsetHeightOfElement('nav')
+				);
 			},
 			getOffsetHeightOfElement(selector) {
 				const el = document.querySelector(selector);
@@ -283,32 +284,31 @@
 				next();
 			});
 
-		if (!this.$store.getters.user) {
-			return;
-		}
-		this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
-			if (!userId) {
-				return this.$store.commit('pusherBeamsUserId', userId);
+			if (!this.$store.getters.user) {
+				return;
 			}
-			userId = this.$store.getters.user.id.toString();
-			this.$store.getters.pusherBeamsClient.start().then(() => {
-				this.$store.getters.pusherBeamsClient
-					.setUserId(userId, this.$store.getters.pusherTokenProvider)
-					.then(() => {
-						this.$store.commit('pusherBeamsUserId', userId);
-					});
+			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+				if (!userId) {
+					return this.$store.commit('pusherBeamsUserId', userId);
+				}
+				userId = this.$store.getters.user.id.toString();
+				this.$store.getters.pusherBeamsClient.start().then(() => {
+					this.$store.getters.pusherBeamsClient
+						.setUserId(userId, this.$store.getters.pusherTokenProvider)
+						.then(() => {
+							this.$store.commit('pusherBeamsUserId', userId);
+						});
+				});
 			});
-		});
-		this.loadActiveTasks();
-		if (process.env.MODE === 'electron') {
-			document.body.style.overflow = 'hidden';
-		}
-	},
-	mounted() {
-		this.initBodyHeight();
-	},
+			this.loadActiveTasks();
+			if (process.env.MODE === 'electron') {
+				document.body.style.overflow = 'hidden';
+			}
+		},
+		mounted() {
+			this.initBodyHeight();
+		},
 	});
 </script>
 
-<style lang="scss" src="src/assets/styles/index.scss">
-</style>
+<style lang="scss" src="src/assets/styles/index.scss"></style>

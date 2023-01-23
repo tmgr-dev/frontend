@@ -4,9 +4,7 @@
 		<template #header> Settings </template>
 		<template #body>
 			<div
-				:class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color(
-					'textMain',
-				)}`"
+				class="w-full md:w-auto md:flex-grow md:flex md:items-center md:block block"
 			>
 				<Button
 					v-if="!pusherBeamsUserId"
@@ -28,7 +26,7 @@
 					<div v-for="(setting, index) in availableSettings">
 						<label
 							:for="`setting-${setting.id}`"
-							class="tc-block text-gray-700 text-sm font-bold mb-2"
+							class="block text-gray-700 text-sm font-bold mb-2"
 						>
 							{{ setting.name }}
 						</label>
@@ -82,8 +80,7 @@
 									</label>
 									<div class="b-switch-list__text">
 										<div
-											:class="$color('settingsTextColor')"
-											class="b-switch-list__title"
+											class="b-switch-list__title text-gray-800 dark:text-gray-400"
 										>
 											Set custom value
 										</div>

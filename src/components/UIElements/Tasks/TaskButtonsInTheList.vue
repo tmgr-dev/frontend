@@ -1,5 +1,5 @@
 <template>
-	<div v-if="!task.deleted_at" class="tc-hidden lg:flex items-center z-10">
+	<div v-if="!task.deleted_at" class="hidden lg:flex items-center z-10">
 		<new-button
 			v-tooltip.top="setTooltipData('Open')"
 			class="mr-2"
@@ -12,7 +12,7 @@
 			v-if="showedButtons.done"
 			v-tooltip.top="setTooltipData('Done')"
 			class="mr-2"
-			color="blue"
+			button-class="bg-blue-700 hover:bg-blue-600"
 			@click="$emit('updateStatus', task, 'done', `done-${task.id}`)"
 		>
 			<span class="relative">
@@ -29,7 +29,7 @@
 			v-if="showedButtons.activate"
 			v-tooltip.top="setTooltipData('Reactivate')"
 			class="mr-2"
-			color="purple"
+			button-class="bg-purple-700 hover:bg-purple-600"
 			@click="$emit('updateStatus', task, 'active', `activate-${task.id}`)"
 		>
 			<span class="relative">
@@ -46,7 +46,7 @@
 			v-if="showedButtons.hide"
 			v-tooltip.top="setTooltipData('Hide')"
 			class="mr-2"
-			color="gray"
+			button-class="bg-gray-700 hover:bg-gray-600"
 			@click="$emit('updateStatus', task, 'hidden', `hide-${task.id}`)"
 		>
 			<span class="relative">
@@ -61,7 +61,7 @@
 			v-if="showedButtons.start"
 			v-tooltip.top="setTooltipData('Stop timer')"
 			class="mr-2"
-			color="red"
+			button-class="bg-red-700 hover:bg-red-600"
 			@click="$emit('stopCountdown', task, `stop-${task.id}`)"
 		>
 			<span class="relative">
@@ -76,7 +76,7 @@
 			v-if="showedButtons.stop"
 			v-tooltip.top="setTooltipData('Start timer')"
 			class="mr-2"
-			color="green"
+			button-class="bg-green-700 hover:bg-green-600"
 			@click="$emit('startCountdown', task, `start-${task.id}`)"
 		>
 			<span class="relative">
@@ -93,7 +93,7 @@
 			v-if="showedButtons.deleteTask"
 			v-tooltip.top="setTooltipData('Delete task')"
 			class="mr-2"
-			color="red"
+			button-class="bg-red-700 hover:bg-red-600"
 			@click="deleteTask(task, `delete-${task.id}`)"
 		>
 			<span class="relative">
@@ -107,7 +107,7 @@
 		</new-button>
 	</div>
 
-	<div v-else class="tc-hidden lg:flex items-center z-10">
+	<div v-else class="hidden lg:flex items-center z-10">
 		<new-button
 			v-tooltip.top="setTooltipData('Restore from trash')"
 			class="mr-2"
