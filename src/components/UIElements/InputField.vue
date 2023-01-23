@@ -5,7 +5,8 @@
 				<div v-if="showInput" :key="updateKey">
 					<div
 						v-if="type === 'select'"
-						:class="`appearance-none border-0 rounded w-full bg-white dark:bg-gray-800 ${extraClass}`"
+						class="appearance-none border-0 rounded w-full bg-white dark:bg-gray-800"
+						:class="extraClass"
 					>
 						<vue-select
 							v-if="options"
@@ -78,7 +79,7 @@
 						v-else
 						:id="name"
 						:type="type"
-						class="appearance-none border-0 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
+						class="appearance-none dark:border-0 border border-neutral-300 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none focus:shadow-outline"
 						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"

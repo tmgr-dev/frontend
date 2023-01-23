@@ -14,7 +14,7 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+				class="bg-blue-500 mr-4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 				type="button"
 			>
 				<svg

@@ -2,6 +2,7 @@
 	<teleport to="title">
 		{{ category ? category.title : h1 }}
 	</teleport>
+
 	<BaseLayout>
 		<template #action>
 			<breadcrumbs
@@ -9,6 +10,7 @@
 				:drop="drop"
 				:items="getBreadcrumbs(parentCategories)"
 			/>
+
 			<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
 				<router-link
 					v-if="category"
@@ -18,6 +20,7 @@
 				>
 					<span class="material-icons text-4xl">edit</span>
 				</router-link>
+
 				<router-link
 					:to="`/projects-categories/${id ? id + '/' : ''}create`"
 					class="opacity-25 hover:opacity-100"
@@ -30,6 +33,7 @@
 
 		<template #body>
 			<loading-tasks-list v-if="isCategoriesFirstLoading" />
+
 			<div v-if="categories && categories.length > 0">
 				<div
 					v-for="category in categories"

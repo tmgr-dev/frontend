@@ -29,7 +29,9 @@
 					</transition>
 				</div>
 
-				<div class="sm:mt-0 ml-0 sm:w-auto shrink-0 w-full text-center mt-2">
+				<div
+					class="hidden md:flex sm:mt-0 ml-0 sm:w-auto shrink-0 w-full text-center mt-2"
+				>
 					<a
 						href="#"
 						@click.prevent="showSearchInput = !showSearchInput"

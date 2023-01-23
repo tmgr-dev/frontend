@@ -10,31 +10,26 @@
 					<li
 						v-for="(item, i) in items"
 						:key="i"
-						class="breadcrumb-item inline text-gray-600"
+						class="breadcrumb-item inline text-neutral-600 dark:text-neutral-400"
 						@dragleave="item.payload.hoverClass = ''"
 						@drop="drop($event, item.payload)"
 						@dragenter.prevent="item.payload.hoverClass = 'bg-red-500'"
 						@dragover.prevent="item.payload.hoverClass = 'bg-red-500'"
 					>
-						<router-link
-							:to="item.to"
-							class="text-gray-300 hover:text-gray-100 mx-0 md:mx-1"
-						>
+						<router-link :to="item.to" class="mx-0 md:mx-1">
 							{{ item.label }}
 						</router-link>
 					</li>
 					<li
 						aria-current="page"
-						class="breadcrumb-item active inline text-gray-300 font-bold md:mx-1"
+						class="breadcrumb-item active inline font-bold md:mx-1"
 					>
 						{{ current }}
 					</li>
 				</ol>
 
 				<ol v-else class="breadcrumb flex pl-0">
-					<li aria-current="page" class="breadcrumb-item active text-gray-300">
-						Categories
-					</li>
+					<li aria-current="page" class="breadcrumb-item">Categories</li>
 				</ol>
 			</nav>
 		</div>

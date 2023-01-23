@@ -121,7 +121,7 @@
 
 					<div class="flex-row justify-center mt-8">
 						<button
-							class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-blue-500 mr-5 hover:bg-blue-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 							type="button"
 							@click.prevent="create"
 						>
@@ -130,7 +130,7 @@
 
 						<button
 							v-if="isCreate"
-							class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
 							type="button"
 							@click.prevent="createAndContinue"
 						>
