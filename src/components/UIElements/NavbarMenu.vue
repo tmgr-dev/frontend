@@ -9,7 +9,7 @@
 			:to="link.path"
 			custom
 		>
-			<li :class="isActive && activeLinkClass">
+			<li :class="{ 'text-purple dark:text-green': isActive }">
 				<a :href="href" @click="navigate">
 					{{ link.name }}
 					<span
@@ -32,10 +32,5 @@
 				{ id: 3, name: 'Categories', path: '/projects-categories' },
 			],
 		}),
-		computed: {
-			activeLinkClass() {
-				return `${this.$color('navLinkFocused')}-600`;
-			},
-		},
 	};
 </script>

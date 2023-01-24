@@ -9,6 +9,7 @@
 /* eslint-env node */
 const ESLintPlugin = require('eslint-webpack-plugin');
 const { configure } = require('quasar/wrappers');
+const path = require('path');
 
 module.exports = configure(function (/* ctx */) {
 	return {
@@ -24,7 +25,7 @@ module.exports = configure(function (/* ctx */) {
 		boot: ['main.ts', 'alert.ts'],
 
 		// https://quasar.dev/quasar-cli/quasar-conf-js#Property%3A-css
-		css: ['../assets/styles/custom-reset.scss'],
+		css: [],
 
 		// https://github.com/quasarframework/quasar/tree/dev/extras
 		extras: [
@@ -62,10 +63,37 @@ module.exports = configure(function (/* ctx */) {
 
 			// https://quasar.dev/quasar-cli/handling-webpack
 			// "chain" is a webpack-chain object https://github.com/neutrinojs/webpack-chain
+			/*chainWebpack(chain) {
+				chain
+					.plugin('eslint-webpack-plugin')
+					.use(ESLintPlugin, [{ extensions: ['js', 'vue'] }]);
+			},*/
+
 			chainWebpack(chain) {
 				chain
 					.plugin('eslint-webpack-plugin')
 					.use(ESLintPlugin, [{ extensions: ['js', 'vue'] }]);
+
+				chain.resolve.alias.set('quasar/dist/quasar.css', false);
+				chain.resolve.alias.set('quasar/dist/quasar.prod.css', false);
+
+				chain.module
+					.rule('sass')
+					.exclude.add(
+						path.resolve(
+							__dirname,
+							'../../node_modules/quasar/dist/quasar.sass',
+						),
+					);
+
+				chain.module
+					.rule('scss')
+					.exclude.add(
+						path.resolve(
+							__dirname,
+							'../../node_modules/quasar/dist/quasar.scss',
+						),
+					);
 			},
 		},
 

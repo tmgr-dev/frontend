@@ -24,7 +24,7 @@
 								</div>
 							</div>
 						</div>
-						<div class="tc-hidden md:block md:w-1/2 rounded-r-lg login-image" />
+						<div class="hidden md:block md:w-1/2 rounded-r-lg login-image" />
 					</div>
 				</div>
 			</div>

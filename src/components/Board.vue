@@ -13,9 +13,7 @@
 							<div :class="`rounded-lg px-3 py-3 column-width rounded h-full`">
 								<div>
 									<div
-										:class="`relative ${$color('blocks')} ${$color(
-											'textMain',
-										)} font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded`"
+										class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded"
 										:style="{
 											'border-top': `solid 5px ${column.status.color}`,
 										}"

@@ -24,7 +24,7 @@
 			/>
 		</div>
 
-		<div class="flex items-end gap-2">
+		<div class="flex items-center gap-2">
 			<span>
 				<span
 					:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
