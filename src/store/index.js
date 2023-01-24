@@ -1,11 +1,8 @@
 import { createStore } from 'vuex';
-import colorSchemes from '../colors/schemes';
 import axios from 'axios';
 import pusherBeamsClient from './plugins/pusher-beams-client';
 import pusherTokenProvider from './plugins/pusher-token-provider';
 import pusher from './plugins/pusher';
-
-const color = (colorKey, colorScheme) => colorSchemes[colorScheme][colorKey];
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token'))
@@ -99,7 +96,9 @@ const mutations = {
 			state.userSettings.colorScheme = colorScheme;
 		}
 		state.colorScheme = colorScheme;
-		document.querySelector('body').className = color('bgBody', colorScheme);
+		localStorage.setItem('colorScheme', colorScheme);
+		document.querySelector('html').className =
+			colorScheme === 'dark' ? 'dark' : '';
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
@@ -114,7 +113,10 @@ const mutations = {
 
 const actions = {
 	logout() {
+		const theme = localStorage.getItem('colorScheme');
 		localStorage.clear();
+		localStorage.setItem('colorScheme', theme);
+
 		document.location.reload();
 	},
 	reloadTasks({ state }) {
@@ -133,6 +135,7 @@ const actions = {
 	},
 	async loadUserSettings({ commit, state }) {
 		if (!state.user) return;
+
 		try {
 			const {
 				data: { data },
@@ -140,7 +143,6 @@ const actions = {
 
 			if (data?.settings) {
 				commit('setUserSettings', data.settings);
-				commit('colorScheme', data?.settings?.colorScheme);
 			}
 		} catch (e) {
 			throw e;
@@ -161,8 +163,8 @@ const actions = {
 	async putUserSettings({ commit }, settings) {
 		try {
 			await axios.put(`user/settings`, { settings });
+
 			commit('setUserSettings', settings);
-			commit('colorScheme', settings?.colorScheme ?? 'default');
 		} catch (e) {
 			console.error(e);
 			throw e;

@@ -2,19 +2,18 @@
 	<div class="inline-block button-custom-component">
 		<router-link
 			v-if="type === 'router-link'"
-			:class="`bg-${color}-700 hover:bg-${color}-600`"
 			:to="to"
 			class="mt-3 sm:mt-0 py-2 px-5 md:py-3 md:px-6 font-bold text-white rounded-lg shadow-md"
+			:class="buttonClass"
 		>
 			<slot />
 		</router-link>
+
 		<button
 			v-else
-			:class="`bg-${color}-700 hover:bg-${color}-600 ${$color(
-				'buttonActionOpacity',
-			)}`"
 			:type="type"
-			class="mt-3 sm:mt-0 py-2 px-5 md:py-3 md:px-6 font-bold text-white rounded-lg shadow-md focus:outline-none"
+			class="mt-3 sm:mt-0 py-2 px-5 md:py-3 md:px-6 dark:opacity-50 hover:dark:opacity-75 font-bold text-white rounded-lg shadow-md focus:outline-none"
+			:class="buttonClass"
 		>
 			<slot />
 		</button>
@@ -35,10 +34,10 @@
 				type: String,
 				default: '',
 			},
-			color: {
+			buttonClass: {
 				required: false,
 				type: String,
-				default: 'green',
+				default: 'bg-green-700 hover:bg-green-600',
 			},
 		},
 	};
