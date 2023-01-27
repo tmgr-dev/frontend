@@ -175,7 +175,7 @@
 				<button type="button" class="checkpoint-delete" v-if="isModal">
 					<span
 						class="material-icons text-2xl text-black dark:text-white"
-						@click="$emit('close')"
+						@click="close"
 					>
 						close
 					</span>
@@ -468,6 +468,10 @@
 			},
 		},
 		methods: {
+			close () {
+				window.history.back();
+				this.$emit('close');
+			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
 			},

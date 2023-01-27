@@ -28,6 +28,14 @@ body {
 	}
 }
 
+.dark body {
+	background-image: url("../img/bg-test.webp");
+	background-size: cover;
+	background-repeat: no-repeat;
+	background-attachment: fixed;
+	backdrop-filter: blur(15px) grayscale(100%);
+}
+
 .reset-scroll {
 	&::-webkit-scrollbar {
 		width: 0;
