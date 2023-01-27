@@ -60,6 +60,7 @@
 						height: bodyHeight + 'px',
 					}"
 				>
+
 					<transition mode="out-in" name="fade">
 						<div>
 							<Navbar
@@ -93,7 +94,7 @@
 					<a
 						v-if="task.id !== $store.getters.currentOpenedTaskId"
 						:href="`/${task.id}/edit`"
-						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
+						@click.prevent="openTask($event, task)"
 					>
 						<span
 							class="relative inline-flex rounded-md shadow-sm p-2 mr-5 bg-gray-200 transition-colors duration-300 dark:bg-gray-800"
@@ -116,40 +117,42 @@
 			</span>
 		</div>
 
-		<Transition name="bounce-right-fade">
-			<modal
+			<gsap-modal
 				name="Task"
-				v-if="
-					$store.getters.currentTaskIdForModal ||
-					$store.getters.showCreateTaskModal
-				"
+				ref="taskModal"
 				close-on-bg-click
 				modal-class="w-11/12 h-full"
 				@close="$store.dispatch('closeTaskModal')"
 			>
 				<template #modal-body>
 					<task-form
+						v-if="
+							$store.getters.currentTaskIdForModal ||
+							$store.getters.showCreateTaskModal
+						"
 						:is-modal="true"
 						:modal-project-category-id="
 							$store.getters.createTaskInProjectCategoryId
 						"
 						:modal-task-id="$store.getters.currentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
-						@close="$store.dispatch('closeTaskModal')"
+						@close="$store.dispatch('closeTaskModal'); $refs.taskModal.forceClose()"
 					/>
 				</template>
-			</modal>
-		</Transition>
+			</gsap-modal>
 	</div>
 </template>
 
 <script>
 	import { defineComponent } from 'vue';
 
+	import { gsap } from 'gsap'
 	import Navbar from 'src/components/UIElements/Navbar';
 	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 	import Slideout from 'src/components/UIElements/Slideout/Slideout';
 	import TaskForm from 'src/components/Tasks/TaskForm';
+	import GsapModal from 'src/components/Layouts/GsapModal';
+	import Button from 'src/components/UIElements/Button.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -157,10 +160,12 @@
 	export default defineComponent({
 		name: 'App',
 		components: {
+			Button,
 			TaskForm,
 			Navbar,
 			Slideout,
 			NavbarMenu,
+			GsapModal
 		},
 		data() {
 			return {
@@ -192,8 +197,20 @@
 				this.showComponent = false;
 				setTimeout(() => (this.showComponent = true), 100);
 			},
+			'$store.getters.currentTaskIdForModal' (newVal, oldVal) {
+				if (newVal) {
+					console.log(this.$store.getters.clickedOn);
+					this.$refs.taskModal.show(this.$store.getters.clickedOn)
+				} else {
+					this.$refs.taskModal.close()
+				}
+			}
 		},
 		methods: {
+			openTask (e, task) {
+				this.$store.commit('clickedOn', e)
+				this.$store.commit('currentTaskIdForModal', task.id);
+			},
 			closeTaskModal() {
 				this.$store.dispatch('closeTaskModal');
 			},

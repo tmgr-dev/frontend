@@ -19,6 +19,7 @@ const state = {
 	pusherBeamsUserId: null,
 	pusherBeamsClient: pusherBeamsClient,
 	currentTaskIdForModal: null,
+	clickedOn: null,
 	createTaskInProjectCategoryId: null,
 	createTaskInStatusId: null,
 	showCreateTaskModal: false,
@@ -38,6 +39,7 @@ const getters = {
 	statuses: (state) => state.statuses,
 	reloadTasks: (state) => state.reloadTasks,
 	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
+	clickedOn: (state) => state.clickedOn,
 	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
 	createTaskInStatusId: (state) => state.createTaskInStatusId,
 	showCreateTaskModal: (state) => state.showCreateTaskModal,
@@ -74,6 +76,9 @@ const mutations = {
 	},
 	currentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
+	},
+	clickedOn(state, clickedOn) {
+		state.clickedOn = clickedOn;
 	},
 	showCreateTaskModal(state, { showCreateTaskModal, statusId }) {
 		state.showCreateTaskModal = showCreateTaskModal;

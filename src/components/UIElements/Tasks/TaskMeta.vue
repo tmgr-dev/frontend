@@ -13,7 +13,7 @@
 				v-else
 				:href="`/${task.id}/edit`"
 				class="font-bold text-xl z-10"
-				@click.prevent="$emit('openTask')"
+				@click.prevent="$emit('openTask', $event)"
 			>
 				{{ task.title }}
 			</a>

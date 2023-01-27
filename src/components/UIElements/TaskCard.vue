@@ -6,7 +6,7 @@
 			<a
 				class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm"
 				:href="`/${task.id}/edit`"
-				@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
+				@click.prevent="openTask($event, task)"
 				>{{ task.title }}</a
 			>
 
@@ -59,6 +59,11 @@
 				return mappings[this.task.type] || mappings.default;
 			},
 		},
-		methods: {},
+		methods: {
+			openTask (e, task) {
+				this.$store.commit('clickedOn', e)
+				this.$store.commit('currentTaskIdForModal', task.id);
+			}
+		},
 	};
 </script>
