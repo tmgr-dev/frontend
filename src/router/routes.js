@@ -181,6 +181,15 @@ const routes = [
 		name: 'Profile',
 	},
 	{
+		path: '/workspaces/invitation',
+		component: () => import('src/components/WorkspaceInvitation'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceInvitation',
+	},
+	{
 		path: '/board',
 		component: () => import('src/components/Board'),
 		meta: {
