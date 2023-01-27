@@ -147,3 +147,13 @@ button {
 		opacity: 1;
 	}
 }
+
+.dark .dark\:bg-neutral-900 {
+	--tw-bg-opacity: 1;
+	background-color: rgb(23 23 23/var(--tw-bg-opacity));
+}
+
+.bg-neutral-100 {
+	--tw-bg-opacity: 1;
+	background-color: rgb(245 245 245/var(--tw-bg-opacity));
+}
