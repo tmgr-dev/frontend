@@ -135,9 +135,10 @@
 
 	<div
 		ref="modal"
-		:class="`${
-			!isModal && 'container'
-		} task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3`"
+		:class="{
+			'task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3': isModal,
+			'container mx-auto': !isModal
+		}"
 	>
 		<header ref="header">
 			<div
@@ -172,14 +173,25 @@
 
 				<p v-else>Creating task</p>
 
-				<button type="button" class="checkpoint-delete" v-if="isModal">
+				<div v-if="isModal">
+					<button type="button" class="checkpoint-delete mr-2">
+						<router-link
+							class="material-icons text-2xl text-black dark:text-white"
+							:to="`/${taskId}/edit`"
+						>
+							open_in_new
+						</router-link>
+					</button>
+
+					<button type="button" class="checkpoint-delete">
 					<span
 						class="material-icons text-2xl text-black dark:text-white"
-						@click="$emit('close')"
+						@click="close"
 					>
 						close
 					</span>
-				</button>
+					</button>
+				</div>
 			</div>
 
 			<div class="mt-8 text-center">
@@ -219,7 +231,7 @@
 
 			<div
 				v-if="!isCreatingTask"
-				class="checkpoints-wrapper rounded dark:bg-gray-900 bg-white"
+				class="checkpoints-wrapper rounded"
 				:key="checkpointUpdateKey"
 			>
 				<div class="text-sm text-bold flex items-center justify-center gap-2">
@@ -282,7 +294,7 @@
 
 		<footer
 			ref="footer"
-			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg dark:bg-gray-900 bg-white"
+			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -413,6 +425,9 @@
 				this.setSavedData(newVal);
 			},
 		},
+		unmounted() {
+			this.$store.dispatch('closeTaskModal')
+		},
 		computed: {
 			taskId() {
 				return this.projectCategoryId
@@ -468,6 +483,10 @@
 			},
 		},
 		methods: {
+			close() {
+				this.$emit('close');
+				this.$store.dispatch('reloadTasks');
+			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
 			},
@@ -482,8 +501,7 @@
 						console.error(e);
 					} finally {
 						this.confirm = null;
-						this.$emit('close');
-						this.$store.dispatch('reloadTasks');
+						this.close()
 					}
 				};
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
