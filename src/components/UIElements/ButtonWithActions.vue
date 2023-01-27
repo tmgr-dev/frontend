@@ -1,21 +1,26 @@
 <template>
 	<div
-		:class="`inline-block relative font-bold text-white shadow-md rounded focus:outline-none bg-${color}-500`">
+		:class="`inline-block relative font-bold text-white shadow-md rounded hover:rounded focus:outline-none bg-${color}-500`">
 		<button
-			:class="`px-4 hover:bg-${color}-600 hover:rounded-l`"
+			:class="`px-4 hover:bg-${color}-600`"
 			type="button"
 			@click.prevent="() => {actions[defaultActionIndex].action(); showDropdownButtons=false;}"
 		>
 			{{ actions[defaultActionIndex].label }}
 		</button>
 		<button
-			:class="`hover:bg-${color}-600  hover:rounded-r `"
+			v-tooltip.right="userSettings.showTooltips
+						? 'Save & ...'
+						: { visible: false }
+			"
+			:class="`hover:bg-${color}-600 hover:rounded-r`"
 			type="button"
 			@click.prevent="showDropdownButtons = !showDropdownButtons"
 		>
-			<span class="material-icons">expand_more</span>
+			<span v-if="!showDropdownButtons" class="material-icons">keyboard_arrow_{{ direction }}</span>
+			<span v-else class="material-icons">keyboard_arrow_{{ direction === 'up' ? 'down' : 'up' }}</span>
 		</button>
-		<div :class="classesForDirection[direction]" class="rounded" :style="{top: `${dropdownOffset}px`}" v-if="showDropdownButtons" ref="dropdown">
+		<div :class="classesForDirection[direction]" class="" :style="{top: `${dropdownOffset}px`}" v-if="showDropdownButtons" ref="dropdown">
 			<template
 				v-for="(action, i) in actions"
 			>
@@ -54,6 +59,11 @@
 				required: false,
 				type: String,
 				default: 'green'
+			},
+		},
+		computed: {
+			userSettings() {
+				return this.$store.getters.getUserSettings ?? {};
 			},
 		},
 		watch: {
