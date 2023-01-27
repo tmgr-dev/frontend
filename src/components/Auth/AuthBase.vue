@@ -3,7 +3,7 @@
 		<section
 			class="h-screen overflow-hidden flex items-center justify-center auth-form"
 		>
-			<div class="bg-blue-400 h-screen w-screen">
+			<div class="h-screen w-screen">
 				<div
 					class="flex flex-col items-center flex-1 h-full justify-center px-4 sm:px-0"
 				>

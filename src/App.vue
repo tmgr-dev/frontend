@@ -3,35 +3,36 @@
 	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray">
 		<q-bar
 			v-if="$q.platform.is.electron"
-			class="q-electron-drag q-electron-draggable"
+			class="q-electron-draggable relative w-full p-2"
+			style="background-color: inherit"
 		>
-			<img src="/favicon-16x16.png" />
+			<img class="inline" src="/favicon-16x16.png" />
 
-			<q-space />
+			<div class="inline float-right">
+				<q-btn
+					class="q-electron-drag--exception"
+					dense
+					flat
+					icon="minimize"
+					@click="minimize"
+				/>
 
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="minimize"
-				@click="minimize"
-			/>
+				<q-btn
+					class="q-electron-drag--exception"
+					dense
+					flat
+					icon="crop_square"
+					@click="maximize"
+				/>
 
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="crop_square"
-				@click="maximize"
-			/>
-
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="close"
-				@click="closeApp"
-			/>
+				<q-btn
+					class="q-electron-drag--exception"
+					dense
+					flat
+					icon="close"
+					@click="closeApp"
+				/>
+			</div>
 		</q-bar>
 
 		<Slideout
