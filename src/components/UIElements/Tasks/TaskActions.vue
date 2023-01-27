@@ -13,7 +13,14 @@
 		<span class="relative inline-flex rounded-md shadow-sm">
 			<button-with-actions
 				v-if="!isCreatingTask"
-				:actions="[{action: () => $emit('saveTask'), label: 'Save'},{action: () => $emit('saveTask', true), label: 'Save & Start'}]"
+				:actions="[
+					{action: () => $emit('saveTask'), label: 'Save'},
+					{action: () => {
+						$emit('saveTask', true);
+						$store.dispatch('closeTaskModal');
+					}, label: 'Close'},
+					{action: () => $emit('saveTask', true), label: 'Start'}
+				]"
 				direction="up"
 				color="blue"
 				class="mr-5"
