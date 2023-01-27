@@ -4,8 +4,8 @@ module.exports = {
 	theme: {
 		extend: {
 			colors: {
-				'tmgr-blue': '#2c3e50',
-				'tmgr-gray': '#e2e2e2',
+				'tmgr-blue': '#282f33',
+				'tmgr-gray': '#f1b100',
 			},
 		},
 	},

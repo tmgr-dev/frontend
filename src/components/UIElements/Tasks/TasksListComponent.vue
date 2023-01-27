@@ -55,7 +55,7 @@
 					class="shadow-md rounded-lg md:flex"
 				>
 					<div
-						class="w-full p-4 md:p-5 flex justify-between transition-colors duration-300 items-center relative dark:bg-gray-900 bg-white hover:bg-gray-100 hover:dark:bg-gray-800"
+						class="w-full p-4 md:p-5 flex justify-between transition-colors duration-300 items-center relative dark:bg-tmgr-blue bg-white hover:bg-gray-100 hover:dark:bg-gray-800"
 					>
 						<task-meta
 							:dont-push-router="true"

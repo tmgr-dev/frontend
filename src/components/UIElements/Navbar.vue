@@ -12,7 +12,7 @@
 	</div>
 
 	<nav
-		class="bg-white dark:bg-gray-900 transition-colors duration-300 shadow md:block hidden"
+		class="bg-white dark:bg-tmgr-blue transition-colors duration-300 shadow md:block hidden"
 		role="navigation"
 	>
 		<div
