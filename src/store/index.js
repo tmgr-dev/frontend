@@ -74,6 +74,7 @@ const mutations = {
 	},
 	currentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
+		window.history.pushState({}, {}, `/${taskId}/edit`)
 	},
 	showCreateTaskModal(state, { showCreateTaskModal, statusId }) {
 		state.showCreateTaskModal = showCreateTaskModal;
