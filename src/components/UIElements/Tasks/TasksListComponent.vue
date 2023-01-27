@@ -62,7 +62,7 @@
 							:show-category-badges="showCategoryBadges"
 							:task="task"
 							:task-time="getTaskFormattedTime(task)"
-							@openTask="$store.commit('currentTaskIdForModal', task.id)"
+							@openTask="openTask($event, task)"
 						/>
 
 						<dropdown-menu :actions="getActions(task)" />
@@ -91,6 +91,7 @@
 </template>
 
 <script>
+	import { gsap } from 'gsap'
 	import downloadFile from 'src/utils/downloadFile';
 	import Loader from 'src/components/UIElements/Loader';
 	import Confirm from 'src/components/UIElements/Confirm';
@@ -175,6 +176,10 @@
 			isLoadingActionsForMultipleTasks: [],
 		}),
 		methods: {
+			openTask (e, task) {
+				this.$store.commit('clickedOn', e)
+				this.$store.commit('currentTaskIdForModal', task.id);
+			},
 			closeTaskModal() {
 				this.$store.dispatch('closeTaskModal');
 			},
