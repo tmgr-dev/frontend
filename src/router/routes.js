@@ -181,7 +181,7 @@ const routes = [
 		name: 'Profile',
 	},
 	{
-		path: '/workspaces/invitation',
+		path: '/workspaces/invitations/:token',
 		component: () => import('src/components/WorkspaceInvitation'),
 		meta: {
 			transitionName: 'fade-fast',
