@@ -255,6 +255,49 @@
 						class="inline-block ml-3"
 						style="min-width: 200px"
 					/>
+					<div class="inline-block relative ml-5">
+						<div
+							v-if="form.assignees && form.assignees.length"
+							v-for="(workspaceMember, i) in form.assignees"
+							:key="i"
+							:class="`w-8 absolute h-8 -top-5  z-0 hover:z-10 inline-block rounded-full border-green-400 border-2 bg-green-600`"
+							:style="{
+								'margin-left': `${i*1.2}rem`
+							}"
+						>
+							<div
+								class="text-center text-white mt-1 relative group cursor-pointer"
+								v-tooltip.right="workspaceMember.name"
+							>
+								{{ workspaceMember.name.charAt(0).toUpperCase() }}
+								<span
+									class="material-icons text-sm text-red-300 group-hover:text-red-500 cursor-pointer -top-3 -right-1 absolute group-hover:visible invisible"
+									@click="deleteAssign(workspaceMember)"
+								>
+									cancel
+								</span>
+							</div>
+						</div>
+						<div
+							v-else
+							:class="`w-8 absolute h-8 -top-5  z-0 hover:z-10 inline-block rounded-full border-green-300 border-2 bg-green-200 hover:bg-green-400`"
+							:style="{
+								'margin-left': `${i*1.2}rem`
+							}"
+						>
+							<div
+								class="text-center text-white mt-1 relative"
+								v-tooltip.left="`Assign task to user`"
+							>
+								<span
+									class="material-icons text-sm text-white cursor-pointer -top-3 -right-1"
+									@click="isShowModalAssign = true"
+								>
+									add
+								</span>
+							</div>
+						</div>
+					</div>
 				</div>
 
 				<p v-else>Creating task</p>
@@ -503,6 +546,9 @@
 			},
 		},
 		computed: {
+			userSettings() {
+				return this.$store.getters.getUserSettings ?? {};
+			},
 			taskId() {
 				return this.projectCategoryId
 					? null
@@ -615,7 +661,9 @@
 				const {
 					data: { data },
 				} = await this.$axios.delete(`/tasks/${this.form.id}/assign/${user.id}`);
-				this.form.assignees = data.assignees;
+				this.$nextTick(() => {
+					this.form.assignees = data.assignees;
+				});
 			},
 			async loadWorkspaceMembers() {
 				const {
