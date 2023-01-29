@@ -65,62 +65,26 @@
 	</AuthBase>
 </template>
 
-<script>
+<script setup>
+	import { ref, getCurrentInstance } from 'vue';
+	import userInit from 'src/mixins/UserInitializationMixin';
 	import AuthBase from 'src/components/Auth/AuthBase';
 
-	export default {
-		name: 'Login',
-		components: {
-			AuthBase,
-		},
-		data() {
-			return {
-				showLoader: false,
-				form: {
-					email: null,
-					password: null,
-				},
-				message: '',
-				errors: {},
-			};
-		},
-		methods: {
-			async login() {
-				const { ...loginData } = this.form;
+	// TODO: There might be a more elegant way to declare plugins instead of declaring global properties
+	const { appContext: {config: {globalProperties: { $axios, $store, $router }}} } = getCurrentInstance();
+	const { errors, message, setUser, login: defaultLogin } = userInit();
+	let showLoader = ref(false);
+	const form = ref({
+		email: null,
+		password: null,
+	});
 
-				try {
-					this.showLoader = true;
-					const {
-						data: { data },
-					} = await this.$axios.post('auth/login', loginData);
+	const login = async () => {
+		showLoader.value = true;
+		await defaultLogin(form.value);
+		showLoader.value = false;
+	}
 
-					this.$store.commit('token', data);
-					await this.setUser();
-
-					await Promise.all([
-						this.$store.dispatch('loadUserSettings'),
-						this.$store.dispatch('loadStatuses'),
-					]);
-				} catch ({ response }) {
-					this.errors = response.data.errors;
-					this.message = response.data.message;
-				}
-				this.showLoader = false;
-			},
-			async setUser() {
-				this.$axios.defaults.headers = {
-					Authorization: `Bearer ${this.$store.getters.token.token}`,
-					'X-Requested-With': 'XMLHttpRequest',
-				};
-				const {
-					data: { data },
-				} = await this.$axios.get('user');
-
-				this.$store.commit('user', data);
-				await this.$router.push({ name: 'CurrentTasksList' });
-			},
-		},
-	};
 </script>
 
 <style lang="scss">
