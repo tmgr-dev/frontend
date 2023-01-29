@@ -70,7 +70,6 @@
 	import userInit from 'src/mixins/UserInitializationMixin';
 	import AuthBase from 'src/components/Auth/AuthBase';
 
-	// TODO: There might be a more elegant way to declare plugins instead of declaring global properties
 	const { errors, message, login: defaultLogin } = userInit();
 	let showLoader = ref(false);
 	const form = ref({

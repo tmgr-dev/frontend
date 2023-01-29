@@ -1,6 +1,7 @@
 import { getCurrentInstance } from 'vue';
 import formError from './FormErrorsMixin';
 export default function () {
+	// TODO: There might be a more elegant way to declare plugins instead of declaring global properties
 	const { appContext: {config: {globalProperties: { $axios, $store, $router }}} } = getCurrentInstance();
 	const { errors, message, tryCatchRequest } = formError();
 
@@ -33,10 +34,19 @@ export default function () {
 		});
 	}
 
+	const register = async (registerData) => {
+		await tryCatchRequest(async () => {
+			const { data } = await $axios.post('auth/register', registerData);
+			$store.commit('token', data.data);
+			await setUser();
+		});
+	}
+
 	return {
 		errors,
 		message,
 		setUser,
-		login
+		login,
+		register
 	}
 };
