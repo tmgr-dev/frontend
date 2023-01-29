@@ -19,12 +19,14 @@
 							</label>
 
 							<div>
-								<span
+								<div
 									v-if="form.user"
-									class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+									class="text-start py-1 pr-5 estimated-info hidden md:block"
 								>
 									Author: <span class="text-blue-500">{{ form.user.name }}</span>
-								</span>
+								</div>
+
+								<hr class="h-px my-2 bg-gray-200 border-0 dark:bg-gray-700">
 								<label class="block text-sm text-left font-bold mb-2 mt-2">
 									<span class="block mb-2">Category</span>
 									<input-field
@@ -114,23 +116,30 @@
 									</div>
 								</div>
 								<div
-									class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+									class="py-2 pr-5 estimated-info hidden md:block text-start"
 								>
-									<p>
+									<p class="">
 										Assignees
 										<span
 											class="material-icons text-lg text-gray-500 checkpoint-delete"
-											@click=""
+											@click="isShowModalAssign = true"
 										>
-										add
-									</span>
+											add
+										</span>
 									</p>
-									<p
+									<hr class="h-px my-1 bg-gray-200 border-0 dark:bg-gray-700">
+									<div
 										v-if="form.assignees && form.assignees.length"
 										v-for="assignee in form.assignees"
 									>
 										{{ assignee.name }}
-									</p>
+										<span
+											class="material-icons text-lg text-red-500 checkpoint-delete"
+											@click="deleteAssign(assignee)"
+										>
+													person_remove
+											</span>
+									</div>
 								</div>
 							</div>
 
@@ -148,6 +157,60 @@
 									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 								>
 									Update
+								</button>
+							</div>
+						</form>
+					</template>
+				</modal>
+			</Transition>
+			<Transition name="bounce-right-fade">
+				<modal
+					v-if="isShowModalAssign"
+					modal-class="p-6 w-96"
+					@close="isShowModalAssign = false"
+				>
+					<template #modal-body>
+						<form
+							@submit.prevent=""
+							class="text-gray-800 dark:text-tmgr-gray"
+						>
+							<label for="settings" class="block text-lg font-bold mb-5">
+								Assign task to user
+							</label>
+
+							<div>
+								<div class="grid grid-cols-1 gap-2">
+									<div v-for="workspaceMember in workspaceMembers" class="cols-span-1">
+										<div class="grid grid-cols-2 gap-2">
+											<div class="col-span-1 text-end">
+												<span
+													v-if="!form.assignees.find((user) => user.id === workspaceMember.id)"
+													class="material-icons text-lg text-gray-500 top-1.5 checkpoint-delete"
+													@click="assign(workspaceMember)"
+												>
+														radio_button_unchecked
+												</span>
+												<span
+													v-else
+													class="material-icons text-lg text-gray-500 top-1.5 checkpoint-delete"
+													@click="deleteAssign(workspaceMember)"
+												>
+														radio_button_checked
+												</span>
+											</div>
+											<div class="col-span-1 text-start">{{ workspaceMember.name }}</div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div class="flex flex-nowrap items-center mt-6">
+								<button
+									type="button"
+									@click="isShowModalAssign = false"
+									class="block w-full mr-1 bg-gray-700 text-white p-2 rounded"
+								>
+									Close
 								</button>
 							</div>
 						</form>
@@ -319,7 +382,7 @@
 			>
 				<span
 					v-if="form.approximately_time"
-					class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+					:class="`text-${approximatelyEndTime === '00:00' ? 'red' : 'gray'}-500 py-2 pr-5 estimated-info hidden md:block`"
 				>
 					Left time: {{ approximatelyEndTime }}
 				</span>
@@ -385,6 +448,7 @@
 				settings: [],
 				isSaving: false,
 				autoSaveTimeout: null,
+				workspaceMembers: [],
 				watchingFields: [
 					'title',
 					'description',
@@ -425,6 +489,7 @@
 					checkpoints: [],
 				},
 				isShowModalCategory: false,
+				isShowModalAssign: false,
 				categoriesSelectOptions: [],
 				currentCategory: '',
 				approximatelyTime: null,
@@ -444,10 +509,8 @@
 					: this.form?.id || this.modalTaskId || this.$route.params.id;
 			},
 			approximatelyEndTime() {
-				return this.toHHMM(
-					new Date().getSeconds() +
-						(this.form.approximately_time - this.form.common_time),
-				);
+				const secondsLeft = new Date().getSeconds() + (this.form.approximately_time - this.form.common_time);
+				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
 			},
 			workspaceStatuses() {
 				return this.$store.getters.statuses;
@@ -541,6 +604,24 @@
 					data: { data },
 				} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings);
 				this.initSettings(this.availableSettings, data.settings);
+			},
+			async assign(user) {
+				const {
+					data: { data },
+				} = await this.$axios.post(`/tasks/${this.form.id}/assign/${user.id}`);
+				this.form.assignees = data.assignees;
+			},
+			async deleteAssign(user) {
+				const {
+					data: { data },
+				} = await this.$axios.delete(`/tasks/${this.form.id}/assign/${user.id}`);
+				this.form.assignees = data.assignees;
+			},
+			async loadWorkspaceMembers() {
+				const {
+					data: { data },
+				} = await this.$axios.get(`/workspaces/${this.form.workspace_id}/members`);
+				this.workspaceMembers = data;
 			},
 			setFormDataWithDelay(data, delay = 200) {
 				return new Promise((resolve, reject) => {
@@ -851,6 +932,7 @@
 			async initComponent() {
 				if (this.taskId) {
 					await this.loadModel();
+					await this.loadWorkspaceMembers();
 					window.onkeydown = this.getShortcutSaveListener();
 				}
 
