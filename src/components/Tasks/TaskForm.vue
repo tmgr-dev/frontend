@@ -19,9 +19,14 @@
 							</label>
 
 							<div>
+								<span
+									v-if="form.user"
+									class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+								>
+									Author: <span class="text-blue-500">{{ form.user.name }}</span>
+								</span>
 								<label class="block text-sm text-left font-bold mb-2 mt-2">
 									<span class="block mb-2">Category</span>
-
 									<input-field
 										type="select"
 										:options="categoriesSelectOptions"
@@ -107,6 +112,25 @@
 											</div>
 										</div>
 									</div>
+								</div>
+								<div
+									class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+								>
+									<p>
+										Assignees
+										<span
+											class="material-icons text-lg text-gray-500 checkpoint-delete"
+											@click=""
+										>
+										add
+									</span>
+									</p>
+									<p
+										v-if="form.assignees && form.assignees.length"
+										v-for="assignee in form.assignees"
+									>
+										{{ assignee.name }}
+									</p>
 								</div>
 							</div>
 
@@ -297,7 +321,7 @@
 					v-if="form.approximately_time"
 					class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
 				>
-					Estimated time to complete the task: {{ approximatelyEndTime }}
+					Left time: {{ approximatelyEndTime }}
 				</span>
 			</task-actions>
 		</footer>
