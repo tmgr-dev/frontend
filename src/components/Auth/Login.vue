@@ -66,13 +66,12 @@
 </template>
 
 <script setup>
-	import { ref, getCurrentInstance } from 'vue';
+	import { ref } from 'vue';
 	import userInit from 'src/mixins/UserInitializationMixin';
 	import AuthBase from 'src/components/Auth/AuthBase';
 
 	// TODO: There might be a more elegant way to declare plugins instead of declaring global properties
-	const { appContext: {config: {globalProperties: { $axios, $store, $router }}} } = getCurrentInstance();
-	const { errors, message, setUser, login: defaultLogin } = userInit();
+	const { errors, message, login: defaultLogin } = userInit();
 	let showLoader = ref(false);
 	const form = ref({
 		email: null,
