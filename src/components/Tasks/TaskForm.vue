@@ -21,7 +21,7 @@
 							<div>
 								<div
 									v-if="form.user"
-									class="text-start py-1 pr-5 estimated-info hidden md:block"
+									class="text-start py-1 pr-5 estimated-info"
 								>
 									Author: <span class="text-blue-500">{{ form.user.name }}</span>
 								</div>
@@ -116,7 +116,7 @@
 									</div>
 								</div>
 								<div
-									class="py-2 pr-5 estimated-info hidden md:block text-start"
+									class="py-2 pr-5 estimated-info text-start"
 								>
 									<p class="">
 										Assignees
