@@ -8,7 +8,7 @@
 		"serve": "quasar dev",
 		"build": "quasar build",
 		"build:linux": "quasar build -m electron --fix",
-		"build:mas": "PYTHON_PATH=/Users/iuriikarpov/.pyenv/shims/python quasar build -m electron --fix -T mas -b builder",
+		"build:mas": "quasar build -m electron --fix -T mas",
 		"build:windows": "quasar build -m electron --fix -T win32",
 		"serve:windows": "quasar dev --mode electron --fix -T win32",
 		"serve:mas": "quasar dev --mode electron --fix -T mas",
