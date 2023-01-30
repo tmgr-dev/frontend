@@ -1,8 +1,8 @@
 <template>
 	<div
-		:class="`inline-block relative font-bold text-white shadow-md rounded hover:rounded focus:outline-none bg-${color}-500`">
+		:class="`relative font-bold text-white shadow-md rounded hover:rounded focus:outline-none ${buttonClass} w-full`">
 		<button
-			:class="`px-4 ${buttonClass}`"
+			:class="`px-4 h-full`"
 			type="button"
 			@click.prevent="() => {actions[defaultActionIndex].action(); showDropdownButtons=false;}"
 		>
@@ -13,7 +13,7 @@
 						? 'Save & ...'
 						: { visible: false }
 			"
-			:class="`${buttonClass} hover:rounded-r`"
+			:class="`h-full opacity-50 hover:opacity-100`"
 			type="button"
 			@click.prevent="showDropdownButtons = !showDropdownButtons"
 		>
@@ -51,10 +51,15 @@
 				type: String,
 				default: 'down'
 			},
+			wrapperClass: {
+				required: false,
+				type: String,
+				default: 'bg-blue-500'
+			},
 			buttonClass: {
 				required: false,
 				type: String,
-				default: 'hover:bg-blue-600'
+				default: 'bg-blue-500 hover:bg-blue-600'
 			},
 			actions: {
 				required: true,
@@ -91,34 +96,4 @@
 </script>
 
 <style lang="scss" scoped>
-	button {
-		&:hover,
-		&:focus,
-		&:active {
-			outline: none;
-		}
-
-		min-height: 45px;
-		line-height: 1;
-	}
-	.hover\:rounded-tl-lg {
-		border-top-left-radius: 0.5rem; /* 8px */
-	}
-	.hover\:rounded-tr-lg {
-		border-top-right-radius: 0.5rem; /* 8px */
-	}
-	.hover\:rounded-bl-lg {
-		border-bottom-left-radius: 0.5rem; /* 8px */
-	}
-	.hover\:rounded-br-lg {
-		border-bottom-right-radius: 0.5rem; /* 8px */
-	}
-	.hover\:rounded-l-lg {
-		border-top-left-radius: 0.5rem; /* 8px */
-		border-bottom-left-radius: 0.5rem; /* 8px */
-	}
-	.hover\:rounded-r-lg {
-		border-top-right-radius: 0.5rem; /* 8px */
-		border-bottom-right-radius: 0.5rem; /* 8px */
-	}
 </style>
