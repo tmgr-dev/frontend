@@ -3,41 +3,42 @@
 	<BaseLayout>
 		<template #header> Settings </template>
 		<template #body>
-			<div
-				:class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color(
-					'textMain',
-				)}`"
-			>
-				<Button
+			<div class="flex flex-col gap-3 max-w-md">
+				<button
 					v-if="!pusherBeamsUserId"
-					:color="pusherBeamsUserId ? `red` : `green`"
+					class="px-5 py-2 border-green-400 text-green-600 hover:bg-green-400 text-green-400 hover:text-white border-2 transition"
 					@click="togglePushes"
-					>Web Pushes
-				</Button>
+				>
+					Web Pushes
+				</button>
 
-				<Button color="blue" @click="testWebPushNotifications">
+				<button
+					class="px-5 py-2 border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white border-2 transition"
+					@click="testWebPushNotifications"
+				>
 					Test web push notifications
-				</Button>
+				</button>
 
 				<input-field
 					v-model="userSettings.showTooltips"
 					placeholder="Show tooltips"
 					type="checkbox"
 				/>
+
 				<div>
 					<div v-for="(setting, index) in availableSettings">
 						<label
 							:for="`setting-${setting.id}`"
-							class="tc-block text-gray-700 text-sm font-bold mb-2"
+							class="block text-gray-700 text-sm font-bold mb-2"
 						>
 							{{ setting.name }}
 						</label>
+
 						<div class="relative mb-4">
 							<div v-if="setting.component_type === 'current_workspace'">
-								<current-workspace
-									v-model="settings[index].value"
-								></current-workspace>
+								<current-workspace v-model="settings[index].value" />
 							</div>
+
 							<input-field
 								v-else-if="!setting.show_custom_value_input"
 								:id="`setting-${setting.id}`"
@@ -49,6 +50,7 @@
 								option-value-key="value"
 								type="select"
 							/>
+
 							<div v-else-if="setting.custom_value_available">
 								<input-field
 									:id="`setting-${setting.id}`"
@@ -58,9 +60,11 @@
 									:type="setting.component_type"
 								/>
 							</div>
-							<small v-if="!setting.show_custom_value_input">{{
-								setting.description
-							}}</small>
+
+							<small v-if="!setting.show_custom_value_input">
+								{{ setting.description }}
+							</small>
+
 							<div
 								v-if="setting.custom_value_available"
 								class="b-switch-list mt-3"
@@ -80,10 +84,10 @@
 										/>
 										<span></span>
 									</label>
+
 									<div class="b-switch-list__text">
 										<div
-											:class="$color('settingsTextColor')"
-											class="b-switch-list__title"
+											class="b-switch-list__title text-gray-800 dark:text-gray-400"
 										>
 											Set custom value
 										</div>
@@ -93,9 +97,10 @@
 						</div>
 					</div>
 				</div>
-				<div class="text-right">
+
+				<div class="text-left">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mt-10"
+						class="bg-blue-500 hover:bg-blue-600 transition text-white font-bold py-2 px-8 rounded focus:outline-none sm:mb-0 mt-4"
 						type="button"
 						@click="updateSettings"
 					>
@@ -122,9 +127,10 @@
 					class="text-blue"
 					href="/push-notifications-enable-guide"
 					target="_blank"
-					>How to enable or disable Push Notifications on Chrome, Firefox &
-					Safari Browser?</a
 				>
+					How to enable or disable Push Notifications on Chrome, Firefox &
+					Safari Browser?
+				</a>
 			</template>
 		</confirm>
 	</Transition>

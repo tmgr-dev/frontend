@@ -102,14 +102,14 @@
 				</div>
 				<div class="flex items-center flex-nowrap mt-5">
 					<button
-						class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+						class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 						type="button"
 						@click="isShowModalTimer = false"
 					>
 						Cancel
 					</button>
 					<button
-						class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+						class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 						type="button"
 						@click="updateTimer"
 					>

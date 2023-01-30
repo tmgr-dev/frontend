@@ -12,7 +12,7 @@
 			:href="`/${
 				category ? 'project-categories/' + category.id + '/' : ''
 			}tasks/create`"
-			class="opacity-10 hover:opacity-100 ml-1 tc-hidden md:inline add-task-to-category-from-task-category z-10"
+			class="opacity-10 hover:opacity-100 ml-1 hidden md:inline add-task-to-category-from-task-category z-10"
 			title="Create a task of this category"
 			@click.prevent="
 				$store.commit('createTaskInProjectCategoryId', {

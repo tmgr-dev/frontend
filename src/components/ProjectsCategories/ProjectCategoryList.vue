@@ -2,6 +2,7 @@
 	<teleport to="title">
 		{{ category ? category.title : h1 }}
 	</teleport>
+
 	<BaseLayout>
 		<template #action>
 			<breadcrumbs
@@ -9,6 +10,7 @@
 				:drop="drop"
 				:items="getBreadcrumbs(parentCategories)"
 			/>
+
 			<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
 				<router-link
 					v-if="category"
@@ -18,6 +20,7 @@
 				>
 					<span class="material-icons text-4xl">edit</span>
 				</router-link>
+
 				<router-link
 					:to="`/projects-categories/${id ? id + '/' : ''}create`"
 					class="opacity-25 hover:opacity-100"
@@ -30,6 +33,7 @@
 
 		<template #body>
 			<loading-tasks-list v-if="isCategoriesFirstLoading" />
+
 			<div v-if="categories && categories.length > 0">
 				<div
 					v-for="category in categories"
@@ -45,10 +49,8 @@
 					<div class="shadow-md rounded-lg md:flex">
 						<div class="w-full">
 							<div
-								:class="`${$color('blocks')} hover:${$color('blocksHover')} ${
-									category.hoverClass
-								}`"
-								class="p-4 md:p-5"
+								class="dark:bg-gray-900 transition-colors duration-300 bg-white hover:bg-gray-100 hover:dark:bg-gray-800 p-4 md:p-5"
+								:class="category.hoverClass"
 							>
 								<div class="flex justify-between items-center">
 									<div>
@@ -76,7 +78,7 @@
 											:actions="getActions(category)"
 											class="lg:hidden"
 										></DropdownMenu>
-										<div class="tc-hidden lg:block">
+										<div class="hidden lg:block">
 											<new-button
 												class="mr-2"
 												@click="
@@ -97,7 +99,7 @@
 											</new-button>
 										</div>
 									</div>
-									<div v-else class="tc-block">
+									<div v-else>
 										<new-button class="mr-2" @click="restoreCategory(category)">
 											<span class="material-icons">restore_from_trash</span>
 										</new-button>
@@ -159,7 +161,7 @@
 							/>
 						</span>
 						<a
-							class="opacity-25 hover:opacity-100 tc-hidden md:inline mr-2"
+							class="opacity-25 hover:opacity-100 hidden md:inline mr-2"
 							href="#"
 							title="Select all"
 							@click.prevent="selectAll"
@@ -170,7 +172,7 @@
 							:href="`/${
 								id ? 'project-categories/' + id + '/tasks/' : ''
 							}create`"
-							class="opacity-25 hover:opacity-100 tc-hidden md:inline"
+							class="opacity-25 hover:opacity-100 hidden md:inline"
 							title="Add task to category"
 							@click.prevent="
 								$store.commit('createTaskInProjectCategoryId', {

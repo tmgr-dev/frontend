@@ -12,13 +12,14 @@
 					<template #modal-body>
 						<form
 							@submit.prevent="updateCategory"
-							:class="`${$color('taskSettingTextColor')}`"
+							class="text-gray-800 dark:text-tmgr-gray"
 						>
-							<label for="settings" class="tc-block text-lg font-bold mb-5">
+							<label for="settings" class="block text-lg font-bold mb-5">
 								Settings
 							</label>
+
 							<div>
-								<label :class="`block text-sm text-left font-bold mb-2 mt-2`">
+								<label class="block text-sm text-left font-bold mb-2 mt-2">
 									<span class="block mb-2">Category</span>
 
 									<input-field
@@ -37,7 +38,7 @@
 								>
 									<label
 										:for="`setting-${setting.id}`"
-										class="tc-block text-left text-sm font-bold mb-2"
+										class="block text-left text-sm font-bold mb-2"
 									>
 										{{ setting.name }}
 									</label>
@@ -46,7 +47,7 @@
 										<select
 											:id="`setting-${setting.id}`"
 											v-if="!setting.show_custom_value_input"
-											class="tc-block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline"
+											class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none"
 											v-model="settings[index].value"
 										>
 											<option value="" class="text-gray-500">
@@ -98,8 +99,7 @@
 
 												<div class="b-switch-list__text">
 													<div
-														class="b-switch-list__title"
-														:class="$color('settingsTextColor')"
+														class="b-switch-list__title dark:text-gray-400 text-gray-800"
 													>
 														Set custom value
 													</div>
@@ -114,14 +114,14 @@
 								<button
 									type="button"
 									@click="isShowModalCategory = false"
-									class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+									class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 								>
 									Cancel
 								</button>
 
 								<button
 									type="submit"
-									class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 								>
 									Update
 								</button>
@@ -135,9 +135,9 @@
 
 	<div
 		ref="modal"
-		:class="`${!isModal && 'container'} task-form-container mx-auto ${$color(
-			'blocks',
-		)} overflow-hidden rounded-lg relative p-3`"
+		:class="`${
+			!isModal && 'container'
+		} task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3`"
 	>
 		<header ref="header">
 			<div
@@ -152,8 +152,7 @@
 										currentCategory.id
 								  }/children/${getCategoryStatus()}`
 						"
-						class="rounded focus:outline-none sm:mb-0"
-						:class="`${$color('h1')}-800`"
+						class="rounded focus:outline-none sm:mb-0 text-blue-800 dark:text-neutral-200 text-white"
 						type="button"
 					>
 						{{ currentCategory ? currentCategory.title : 'Tasks' }}
@@ -175,11 +174,11 @@
 
 				<button type="button" class="checkpoint-delete" v-if="isModal">
 					<span
-						class="material-icons text-2xl"
-						:class="$color('inverseTextColor')"
+						class="material-icons text-2xl text-black dark:text-white"
 						@click="$emit('close')"
-						>close</span
 					>
+						close
+					</span>
 				</button>
 			</div>
 
@@ -201,12 +200,12 @@
 		</header>
 
 		<section role="main" class="text-center mt-10">
-			<div class="mb-5" :class="$color('themeType')">
+			<div class="mb-5">
 				<input-field
 					v-model="form.title"
 					:errors="errors.title"
 					type="text"
-					:extra-class="`mb-1 ${$color('input')}`"
+					extra-class="mb-1 bg-white dark:bg-gray-800"
 					placeholder="Task name"
 				/>
 
@@ -220,19 +219,19 @@
 
 			<div
 				v-if="!isCreatingTask"
-				class="checkpoints-wrapper"
-				:class="`${$color('blocks')} rounded`"
+				class="checkpoints-wrapper rounded dark:bg-gray-900 bg-white"
 				:key="checkpointUpdateKey"
 			>
-				<div class="text-sm text-bold">
+				<div class="text-sm text-bold flex items-center justify-center gap-2">
 					{{
 						form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints'
 					}}
 					<span
 						class="material-icons text-lg text-gray-500 checkpoint-delete"
 						@click="addCheckpoint"
-						>add</span
 					>
+						add
+					</span>
 				</div>
 
 				<div
@@ -250,23 +249,31 @@
 							:for-checkpoint="true"
 							placeholder="Checkpoint content"
 							v-model="checkpoint.description"
-							:extra-class="`pl-7 ${$color('input')} ${
+							:extra-class="`pl-7 bg-white dark:bg-gray-800 ${
 								checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'
 							}`"
 						/>
-						<span class="absolute right-0 top-0 mt-1.5 text-sm">
-							{{ secondsToStringTime(checkpoint.start) }} -
-							{{ secondsToStringTime(checkpoint.end) }}
+						<span
+							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+						>
+							<span class="text-sm">
+								{{ secondsToStringTime(checkpoint.start) }} -
+								{{ secondsToStringTime(checkpoint.end) }}
+							</span>
+
 							<span
-								class="material-icons text-lg text-blue-700 checkpoint-delete"
+								class="material-icons text-base text-blue-700 leading-none checkpoint-delete"
 								@click="changeCheckpointInputField(v)"
-								>edit</span
 							>
+								edit
+							</span>
+
 							<span
-								class="material-icons text-lg text-red-700 checkpoint-delete"
+								class="material-icons text-base text-red-700 leading-none checkpoint-delete"
 								@click="deleteCheckpoint(v)"
-								>delete</span
 							>
+								delete
+							</span>
 						</span>
 					</div>
 				</div>
@@ -275,9 +282,7 @@
 
 		<footer
 			ref="footer"
-			:class="`w-full sm:p-5 p-2 shadow-top z-10 rounded-lg ${$color(
-				'blocks',
-			)}`"
+			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg dark:bg-gray-900 bg-white"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -290,7 +295,7 @@
 			>
 				<span
 					v-if="form.approximately_time"
-					class="text-gray-500 py-2 pr-5 estimated-info"
+					class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
 				>
 					Estimated time to complete the task: {{ approximatelyEndTime }}
 				</span>
@@ -710,6 +715,7 @@
 					} = await this.$axios.post('tasks', this.form);
 					this.$emit('updated');
 					this.$store.dispatch('reloadTasks');
+
 					if (!this.isCreatingTask) {
 						this.showAlert();
 					}
@@ -722,7 +728,7 @@
 						});
 					} else {
 						this.form = data;
-						this.created();
+						await this.initComponent();
 					}
 				} catch (e) {
 					if (e.response && e.response && e.response.data.errors) {
@@ -815,7 +821,6 @@
 				const inputType = this.form.checkpoints[checkpointIndex].inputType;
 				this.form.checkpoints[checkpointIndex].inputType =
 					!inputType || inputType === 'text' ? 'textarea' : 'text';
-				console.log(this.form.checkpoints[checkpointIndex].inputType);
 				++this.checkpointUpdateKey;
 			},
 			updateSeconds(seconds) {
@@ -824,38 +829,41 @@
 				}
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds;
 			},
+			async initComponent() {
+				if (this.taskId) {
+					await this.loadModel();
+					window.onkeydown = this.getShortcutSaveListener();
+				}
+
+				if (this.projectCategoryId && this.isCreatingTask) {
+					this.form.project_category_id = this.projectCategoryId;
+				}
+				await this.loadCategory();
+				await this.loadTaskSettings();
+				this.$store.getters.pusher
+					.private(`App.User.${this.$store.getters.user.id}`)
+					.on('task-countdown-stopped', ({ task }) => {
+						const isCountdownStarted = !!this.form.start_time;
+						if (!isCountdownStarted) {
+							return;
+						}
+
+						this.setFormDataWithDelay(task).then(() => {
+							this.showAlert('Countdown stopped');
+						});
+					})
+					.on('task-countdown-started', ({ task }) => {
+						const isCountdownStarted = !!this.form.start_time;
+						if (!isCountdownStarted) {
+							this.setFormDataWithDelay(task).then(() => {
+								this.showAlert('Countdown started');
+							});
+						}
+					});
+			},
 		},
 		async created() {
-			if (this.taskId) {
-				await this.loadModel();
-				window.onkeydown = this.getShortcutSaveListener();
-			}
-
-			if (this.projectCategoryId && this.isCreatingTask) {
-				this.form.project_category_id = this.projectCategoryId;
-			}
-			await this.loadCategory();
-			await this.loadTaskSettings();
-			this.$store.getters.pusher
-				.private(`App.User.${this.$store.getters.user.id}`)
-				.on('task-countdown-stopped', ({ task }) => {
-					const isCountdownStarted = !!this.form.start_time;
-					if (!isCountdownStarted) {
-						return;
-					}
-
-					this.setFormDataWithDelay(task).then(() => {
-						this.showAlert('Countdown stopped');
-					});
-				})
-				.on('task-countdown-started', ({ task }) => {
-					const isCountdownStarted = !!this.form.start_time;
-					if (!isCountdownStarted) {
-						this.setFormDataWithDelay(task).then(() => {
-							this.showAlert('Countdown started');
-						});
-					}
-				});
+			await this.initComponent();
 		},
 	};
 </script>

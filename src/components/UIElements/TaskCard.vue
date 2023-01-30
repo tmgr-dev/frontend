@@ -1,14 +1,10 @@
 <template>
 	<div
-		:class="`${$color('blocksHover')} ${$color(
-			'borderMain',
-		)} shadow rounded px-3 pt-3 pb-5 border`"
+		class="bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow rounded px-3 pt-3 pb-5 border"
 	>
 		<div class="flex justify-between">
 			<a
-				:class="`${$color(
-					'textMain',
-				)} font-semibold font-sans tracking-wide text-sm`"
+				class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm"
 				:href="`/${task.id}/edit`"
 				@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
 				>{{ task.title }}</a

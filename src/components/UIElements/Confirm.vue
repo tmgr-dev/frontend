@@ -6,7 +6,7 @@
 	>
 		<template #modal-body>
 			<slot name="title">
-				<div :class="`${$color('textModal')} text-main text-xl text-bold`">
+				<div class="dark:text-gray-300 text-tmgr-blue text-xl text-bold">
 					<slot name="title-content">
 						{{ title }}
 					</slot>
@@ -14,7 +14,7 @@
 			</slot>
 
 			<slot name="body">
-				<p :class="`${$color('textModal')} mt-1`">
+				<p class="text-tmgr-blue dark:text-gray-300 mt-1">
 					<slot name="body-content">
 						{{ body }}
 					</slot>
@@ -22,13 +22,18 @@
 			</slot>
 
 			<slot name="footer">
-				<div :class="`${$color('textModal')} float-right mt-3`">
-					<new-button class="pr-2" color="green" @click="$emit('onOk')"
-						>Ok</new-button
+				<div class="text-tmgr-blue dark:text-gray-300 float-right mt-3">
+					<new-button
+						class="pr-2"
+						button-class="bg-green-700 hover:bg-green-600"
+						@click="$emit('onOk')"
 					>
-					<new-button color="gray" @click="$emit('onCancel')"
-						>Cancel</new-button
-					>
+						Ok
+					</new-button>
+
+					<new-button color="gray" @click="$emit('onCancel')">
+						Cancel
+					</new-button>
 				</div>
 			</slot>
 		</template>
