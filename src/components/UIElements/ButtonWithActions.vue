@@ -2,7 +2,7 @@
 	<div
 		:class="`inline-block relative font-bold text-white shadow-md rounded hover:rounded focus:outline-none bg-${color}-500`">
 		<button
-			:class="`px-4 hover:bg-${color}-600`"
+			:class="`px-4 ${buttonClass}`"
 			type="button"
 			@click.prevent="() => {actions[defaultActionIndex].action(); showDropdownButtons=false;}"
 		>
@@ -13,7 +13,7 @@
 						? 'Save & ...'
 						: { visible: false }
 			"
-			:class="`hover:bg-${color}-600 hover:rounded-r`"
+			:class="`${buttonClass} hover:rounded-r`"
 			type="button"
 			@click.prevent="showDropdownButtons = !showDropdownButtons"
 		>
@@ -25,7 +25,7 @@
 				v-for="(action, i) in actions"
 			>
 				<button
-					:class="`w-full px-4 hover:bg-${color}-600`"
+					:class="`w-full px-4 ${buttonClass}`"
 					type="button"
 					v-if="i !== defaultActionIndex"
 					@click.prevent="() => {action.action(); showDropdownButtons=false;}"
@@ -51,14 +51,22 @@
 				type: String,
 				default: 'down'
 			},
+			buttonClass: {
+				required: false,
+				type: String,
+				default: 'hover:bg-blue-600'
+			},
 			actions: {
 				required: true,
 				type: Array
 			},
-			color: {
+			classesForDirection: {
 				required: false,
 				type: String,
-				default: 'green'
+				default: () => ({
+					down: `absolute z-50 w-full bg-blue-700`,
+					up: `absolute z-50 w-full bg-blue-700`
+				})
 			},
 		},
 		computed: {
@@ -76,11 +84,7 @@
 		data () {
 			return {
 				showDropdownButtons: false,
-				dropdownOffset: 0,
-				classesForDirection: {
-					down: `absolute z-50 w-full bg-${this.color}-700`,
-					up: `absolute z-50 w-full bg-${this.color}-700`
-				}
+				dropdownOffset: 0
 			}
 		}
 	};
