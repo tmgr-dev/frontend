@@ -4,9 +4,7 @@
 		<template #header> </template>
 		<template #body>
 			<div
-				:class="`w-full md:w-auto md:flex-grow md:flex md:items-center md:block block ${$color(
-					'textMain',
-				)}`"
+				class="w-full text-tmgr-blue dark:text-tmgr-gray md:w-auto md:flex-grow md:flex md:items-center md:block block"
 			>
 				<h1 class="text-4xl text-center">Statistics</h1>
 				<p id="stats-table-description" class="px-2 mb-5 mx-auto text-center">

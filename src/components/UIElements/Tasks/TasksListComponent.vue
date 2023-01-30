@@ -26,8 +26,9 @@
 			class="relative"
 		>
 			<div
-				:class="[$color('borderSelection'), hasSelectable ? 'selection' : '']"
-			></div>
+				class="dark:border-gray-400 border-black"
+				:class="[hasSelectable ? 'selection' : '']"
+			/>
 
 			<div
 				v-for="(task, i) in tasks"
@@ -54,8 +55,7 @@
 					class="shadow-md rounded-lg md:flex"
 				>
 					<div
-						:class="`${$color('blocks')} hover:${$color('blocksHover')}`"
-						class="w-full p-4 md:p-5 flex justify-between items-center relative"
+						class="w-full p-4 md:p-5 flex justify-between transition-colors duration-300 items-center relative dark:bg-gray-900 bg-white hover:bg-gray-100 hover:dark:bg-gray-800"
 					>
 						<task-meta
 							:dont-push-router="true"

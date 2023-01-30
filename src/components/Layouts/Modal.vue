@@ -1,8 +1,8 @@
 <template>
 	<div class="overlay fixed inset-0 z-50 flex" :data-name="name" @click="close">
 		<div
-			class="modal rounded-lg m-auto"
-			:class="[$color('modalBg'), modalClass]"
+			class="modal bg-white dark:bg-gray-900 rounded-lg m-auto"
+			:class="modalClass"
 		>
 			<slot name="modal-body"></slot>
 		</div>
@@ -31,7 +31,6 @@
 		methods: {
 			close(e) {
 				if (this.closeOnBgClick) {
-					console.log(e.target, this.name, e.target.dataset.name);
 					if (
 						e.target.classList.contains('overlay') &&
 						e.target.dataset.name === this.name

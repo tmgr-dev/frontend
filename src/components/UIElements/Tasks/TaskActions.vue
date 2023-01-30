@@ -62,17 +62,15 @@
 			>
 				<span
 					class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
-				></span>
-				<span
-					class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500"
-				></span>
+				/>
+				<span class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500" />
 			</span>
 		</span>
 
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="bg-orange-5 mr-5 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-orange-500 mr-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
 			type="button"
 		>
 			Create
@@ -81,7 +79,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$store.dispatch('closeTaskModal')"
-			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline sm:mb-0 mb-5"
+			class="bg-gray-500 hover:bg-gray-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
 			type="button"
 		>
 			Cancel
@@ -90,7 +88,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
 			type="button"
 		>
 			Settings

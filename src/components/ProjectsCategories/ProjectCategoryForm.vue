@@ -13,14 +13,12 @@
 
 		<template #body>
 			<div
-				:class="`${$color(
-					'blocks',
-				)} max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6`"
+				class="dark:bg-gray-900 bg-white transition-colors duration-300 max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6"
 			>
 				<form class="w-full">
 					<div class="mb-4">
 						<label
-							class="tc-block text-gray-700 text-sm font-bold mb-2"
+							class="block text-gray-700 text-sm font-bold mb-2"
 							for="categoryName"
 						>
 							Project category name
@@ -34,7 +32,7 @@
 						/>
 					</div>
 
-					<label class="tc-block text-gray-700 text-sm font-bold mb-2">
+					<label class="block text-gray-700 text-sm font-bold mb-2">
 						Parent category
 					</label>
 
@@ -55,7 +53,7 @@
 						<div v-for="(setting, index) in availableSettings">
 							<label
 								:for="`setting-${setting.id}`"
-								class="tc-block text-gray-700 text-sm font-bold mb-2"
+								class="block text-gray-700 text-sm font-bold mb-2"
 							>
 								{{ setting.name }}
 							</label>
@@ -110,8 +108,7 @@
 
 										<div class="b-switch-list__text">
 											<div
-												:class="$color('settingsTextColor')"
-												class="b-switch-list__title"
+												class="b-switch-list__title text-gray-800 dark:text-gray-400"
 											>
 												Set custom value
 											</div>
@@ -124,7 +121,7 @@
 
 					<div class="flex-row justify-center mt-8">
 						<button
-							class="bg-blue-500 mr-5 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-blue-500 mr-5 hover:bg-blue-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 							@click.prevent="create"
 						>
@@ -133,7 +130,7 @@
 
 						<button
 							v-if="isCreate"
-							class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 							@click.prevent="createAndContinue"
 						>
@@ -143,7 +140,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
 						>
 							Cancel

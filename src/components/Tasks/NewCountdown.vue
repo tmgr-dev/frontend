@@ -8,9 +8,12 @@
 		id="task"
 		:class="{ fullscreen: isFullScreen }"
 		:style="disabledStyles"
-		class="new-task"
+		class="new-task flex flex-col justify-center"
 	>
-		<div class="relative inline-block">
+		<div
+			class="relative"
+			:class="{ 'flex gap-5 justify-center items-center': !task.start_time }"
+		>
 			<div
 				v-if="lastStartTime"
 				:class="`countdown-wrapper select-none opacity-20`"
@@ -52,16 +55,21 @@
 				<p class="text-red">Time is over</p>
 			</div>
 
-			<Button
-				v-if="!isFullScreen"
-				:color="task.start_time ? 'red' : 'blue'"
-				class="mt-2 leading-none ml-3"
-				type="button"
-				@click="toggleCountdown"
-			>
-				<span v-if="!task.start_time" class="material-icons">play_arrow</span>
-				<span v-else class="material-icons">stop</span>
-			</Button>
+			<div class="flex justify-center" :class="{ 'mt-2': task.start_time }">
+				<button
+					v-if="!isFullScreen"
+					class="leading-none outline-none border flex hover:text-white px-5 py-2"
+					:class="{
+						'border-red-400 text-red-600 hover:bg-red-400': task.start_time,
+						'border-blue-400 text-blue-600 hover:bg-blue-400': !task.start_time,
+					}"
+					type="button"
+					@click="toggleCountdown"
+				>
+					<span v-if="!task.start_time" class="material-icons">play_arrow</span>
+					<span v-else class="material-icons">stop</span>
+				</button>
+			</div>
 
 			<div
 				id="reminder-sound-teleport"
@@ -103,7 +111,7 @@
 
 					<div class="flex items-center flex-nowrap mt-5">
 						<button
-							class="tc-block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+							class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 							type="button"
 							@click="isShowModalTimer = false"
 						>
@@ -111,7 +119,7 @@
 						</button>
 
 						<button
-							class="tc-block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+							class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 							type="button"
 							@click="updateTimer"
 						>
@@ -334,10 +342,6 @@
 		.new-task-wrappper {
 			font-size: 2em;
 			display: block;
-		}
-
-		button {
-			display: table-cell;
 		}
 
 		.do-fullscreen {

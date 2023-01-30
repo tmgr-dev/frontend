@@ -27,7 +27,7 @@
 		<a
 			v-for="(action, i) in actions"
 			:key="i"
-			class="tc-block px-4 py-2 text-gray-800 hover:bg-indigo-500 hover:text-white"
+			class="block px-4 py-2 text-gray-800 hover:bg-indigo-500 hover:text-white"
 			href="#"
 			@click.prevent="doAction(action)"
 		>
