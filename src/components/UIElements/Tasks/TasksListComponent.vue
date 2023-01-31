@@ -103,14 +103,12 @@
 	import TaskButtonsInTheList from 'src/components/UIElements/Tasks/TaskButtonsInTheList';
 	import TasksMultipleActionsModal from 'src/components/UIElements/Tasks/TasksMultipleActionsModal';
 	import Modal from 'src/components/Layouts/Modal';
-	import TasksForm from 'src/components/Tasks/TasksForm';
 	import TaskForm from 'src/components/Tasks/TaskForm';
 
 	export default {
 		name: 'TasksListComponent',
 		components: {
 			TaskForm,
-			TasksForm,
 			Modal,
 			Confirm,
 			BounceLoader,
