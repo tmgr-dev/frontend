@@ -136,8 +136,9 @@
 	<div
 		ref="modal"
 		:class="{
-			'task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3': isModal,
-			'container mx-auto': !isModal
+			'task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3':
+				isModal,
+			'container mx-auto': !isModal,
 		}"
 	>
 		<header ref="header">
@@ -184,12 +185,12 @@
 					</button>
 
 					<button type="button" class="checkpoint-delete">
-					<span
-						class="material-icons text-2xl text-black dark:text-white"
-						@click="close"
-					>
-						close
-					</span>
+						<span
+							class="material-icons text-2xl text-black dark:text-white"
+							@click="close"
+						>
+							close
+						</span>
 					</button>
 				</div>
 			</div>
@@ -295,6 +296,7 @@
 		<footer
 			ref="footer"
 			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg"
+			:class="{ 'mt-10': isPage }"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -426,7 +428,7 @@
 			},
 		},
 		unmounted() {
-			this.$store.dispatch('closeTaskModal')
+			this.$store.dispatch('closeTaskModal');
 		},
 		computed: {
 			taskId() {
@@ -481,6 +483,11 @@
 				}
 				return false;
 			},
+			isPage() {
+				return (
+					this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
+				);
+			},
 		},
 		methods: {
 			close() {
@@ -497,11 +504,15 @@
 							data: { data },
 						} = await this.$axios.delete(`/tasks/${task.id}`);
 						task.deleted_at = data.deleted_at;
+
+						if (this.isPage) {
+							this.$router.replace('/');
+						}
 					} catch (e) {
-						console.error(e);
+						console.error('suka', e);
 					} finally {
 						this.confirm = null;
-						this.close()
+						this.close();
 					}
 				};
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
@@ -658,13 +669,20 @@
 				return this.form?.settings?.find((item) => item.key === key)?.value;
 			},
 			async loadModel() {
-				const {
-					data: { data },
-				} = await this.$axios.get(`tasks/${this.taskId}`);
-				data.common_time = data.common_time || 0;
-				this.form = data;
+				try {
+					const {
+						data: { data },
+					} = await this.$axios.get(`tasks/${this.taskId}`);
+					data.common_time = data.common_time || 0;
+					this.form = data;
 
-				this.$store.commit('currentOpenedTaskId', this.form.id);
+					this.$store.commit('currentOpenedTaskId', this.form.id);
+				} catch (e) {
+					// @todo check here 404 error, show toast and redirect to main page
+					/*if (this.isPage) {
+						this.$router.replace('/');
+					}*/
+				}
 			},
 			setSavedData(data) {
 				this.watchingFields.forEach(
