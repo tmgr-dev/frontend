@@ -25,7 +25,7 @@ const state = {
 	reloadTasks: null,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
-	statuses: null,
+	statuses: [],
 	pusher: pusher(token),
 	userSettings: {
 		showTooltips: true,
@@ -63,6 +63,9 @@ const mutations = {
 
 		state.token = token;
 	},
+	setStatuses(state, data) {
+		state.statuses = data;
+	},
 	user(state, user) {
 		if (user == null) {
 			localStorage.removeItem('user');
@@ -74,7 +77,7 @@ const mutations = {
 	},
 	currentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
-		window.history.pushState({}, {}, `/${taskId}/edit`)
+		window.history.pushState({}, {}, `/${taskId}/edit`);
 	},
 	showCreateTaskModal(state, { showCreateTaskModal, statusId }) {
 		state.showCreateTaskModal = showCreateTaskModal;
@@ -149,14 +152,15 @@ const actions = {
 			throw e;
 		}
 	},
-	async loadStatuses({ state }) {
+	async loadStatuses({ state, commit }) {
 		if (!state.user) return;
 
 		try {
 			const {
 				data: { data },
 			} = await axios.get(`workspaces/statuses`);
-			state.statuses = data;
+
+			commit('setStatuses', data);
 		} catch (e) {
 			throw e;
 		}
