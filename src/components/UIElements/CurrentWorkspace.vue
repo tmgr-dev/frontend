@@ -7,16 +7,22 @@
 		option-value-key="id"
 		selected
 		type="select"
-	></input-field>
-	<a href="#" @click.prevent="isShowCreateNewWorkspaceModal = true" class="py-2 inline-block relative">Add new workspace <span class="material-icons ml-2 mt-0 absolute inline-block">add_circle_outline</span></a>
-	<br>
-	<a href="#" @click.prevent="isShowCreateWorkspaceInvitationModal = true" class="py-2 inline-block relative">Create invitation to workspace <span class="material-icons ml-2 mt-0 absolute inline-block">add_circle_outline</span></a>
+	/>
+
+	<button
+		@click="isShowWorkspaceModal = true"
+		class="py-2 flex items-center gap-2 relative"
+	>
+		<span class="material-icons text-lg">add_circle_outline</span>
+		Add new workspace
+	</button>
+
 	<Transition name="bounce-right-fade">
 		<modal
-			v-if="isShowCreateNewWorkspaceModal"
+			v-if="isShowWorkspaceModal"
 			modal-class="p-6 w-96"
 			close-on-bg-click
-			@close="isShowCreateNewWorkspaceModal = false"
+			@close="isShowWorkspaceModal = false"
 		>
 			<template #modal-body>
 				<input-field
@@ -26,9 +32,12 @@
 					extra-class="mb-1 bg-white dark:bg-gray-800"
 					placeholder="New workspace name"
 				/>
+
 				<button
 					@click="createNewWorkspace()"
-					class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0"
+					:disabled="isLoading"
+					:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+					class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none sm:mb-0"
 					type="button"
 				>
 					Create
@@ -36,6 +45,7 @@
 			</template>
 		</modal>
 	</Transition>
+
 	<Transition name="bounce-right-fade">
 		<modal
 			v-if="isShowCreateWorkspaceInvitationModal"
@@ -76,7 +86,7 @@
 </template>
 
 <script>
-	import InputField from 'components/UIElements/InputField';
+	import InputField from 'src/components/UIElements/InputField';
 
 	export default {
 		name: 'CurrentWorkspace',
@@ -89,7 +99,8 @@
 		emits: ['update:modelValue'],
 		data() {
 			return {
-				isShowCreateNewWorkspaceModal: false,
+				isShowWorkspaceModal: false,
+				isLoading: false,
 				isShowCreateWorkspaceInvitationModal: false,
 				workspaces: [],
 				errors: {},
@@ -117,16 +128,15 @@
 			}
 		},
 		methods: {
-			async createNewWorkspace () {
+			async createNewWorkspace() {
 				try {
-					let {
-						data: { data: workspaces },
-					} = await this.$axios.post('/workspaces', this.newWorkspace)
-
+					this.isLoading = true;
+					await this.$axios.post('/workspaces', this.newWorkspace);
 				} catch (e) {
-					if (e.response && e.response && e.response.data.errors) {
-						this.errors = e.response.data.errors;
-					}
+					this.errors = e.response?.data?.errors || {};
+				} finally {
+					this.isLoading = false;
+					this.isShowWorkspaceModal = false;
 				}
 			},
 			async createNewWorkspaceInvitation () {
@@ -146,9 +156,8 @@
 			let {
 				data: { data: workspaces },
 			} = await this.$axios.get('/workspaces');
+
 			this.workspaces = workspaces;
 		},
 	};
 </script>
-
-<style lang="scss" scoped></style>

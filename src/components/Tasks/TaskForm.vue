@@ -135,9 +135,11 @@
 
 	<div
 		ref="modal"
-		:class="`${
-			!isModal && 'container'
-		} task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3`"
+		:class="{
+			'task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3':
+				isModal,
+			'container mx-auto': !isModal,
+		}"
 	>
 		<header ref="header">
 			<div
@@ -172,14 +174,25 @@
 
 				<p v-else>Creating task</p>
 
-				<button type="button" class="checkpoint-delete" v-if="isModal">
-					<span
-						class="material-icons text-2xl text-black dark:text-white"
-						@click="$emit('close')"
-					>
-						close
-					</span>
-				</button>
+				<div v-if="isModal">
+					<button type="button" class="checkpoint-delete mr-2">
+						<router-link
+							class="material-icons text-2xl text-black dark:text-white"
+							:to="`/${taskId}/edit`"
+						>
+							open_in_new
+						</router-link>
+					</button>
+
+					<button type="button" class="checkpoint-delete">
+						<span
+							class="material-icons text-2xl text-black dark:text-white"
+							@click="close"
+						>
+							close
+						</span>
+					</button>
+				</div>
 			</div>
 
 			<div class="mt-8 text-center">
@@ -219,7 +232,7 @@
 
 			<div
 				v-if="!isCreatingTask"
-				class="checkpoints-wrapper rounded dark:bg-gray-900 bg-white"
+				class="checkpoints-wrapper rounded"
 				:key="checkpointUpdateKey"
 			>
 				<div class="text-sm text-bold flex items-center justify-center gap-2">
@@ -282,7 +295,8 @@
 
 		<footer
 			ref="footer"
-			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg dark:bg-gray-900 bg-white"
+			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg"
+			:class="{ 'mt-10': isPage }"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -413,6 +427,9 @@
 				this.setSavedData(newVal);
 			},
 		},
+		unmounted() {
+			this.$store.dispatch('closeTaskModal');
+		},
 		computed: {
 			taskId() {
 				return this.projectCategoryId
@@ -466,8 +483,17 @@
 				}
 				return false;
 			},
+			isPage() {
+				return (
+					this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
+				);
+			},
 		},
 		methods: {
+			close() {
+				this.$emit('close');
+				this.$store.dispatch('reloadTasks');
+			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
 			},
@@ -478,12 +504,15 @@
 							data: { data },
 						} = await this.$axios.delete(`/tasks/${task.id}`);
 						task.deleted_at = data.deleted_at;
+
+						if (this.isPage) {
+							this.$router.replace('/');
+						}
 					} catch (e) {
-						console.error(e);
+						console.error('suka', e);
 					} finally {
 						this.confirm = null;
-						this.$emit('close');
-						this.$store.dispatch('reloadTasks');
+						this.close();
 					}
 				};
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
@@ -640,13 +669,20 @@
 				return this.form?.settings?.find((item) => item.key === key)?.value;
 			},
 			async loadModel() {
-				const {
-					data: { data },
-				} = await this.$axios.get(`tasks/${this.taskId}`);
-				data.common_time = data.common_time || 0;
-				this.form = data;
+				try {
+					const {
+						data: { data },
+					} = await this.$axios.get(`tasks/${this.taskId}`);
+					data.common_time = data.common_time || 0;
+					this.form = data;
 
-				this.$store.commit('currentOpenedTaskId', this.form.id);
+					this.$store.commit('currentOpenedTaskId', this.form.id);
+				} catch (e) {
+					// @todo check here 404 error, show toast and redirect to main page
+					/*if (this.isPage) {
+						this.$router.replace('/');
+					}*/
+				}
 			},
 			setSavedData(data) {
 				this.watchingFields.forEach(
@@ -736,7 +772,7 @@
 					}
 				}
 			},
-			async saveTask() {
+			async saveTask(start = false) {
 				try {
 					this.isSaving = true;
 					this.prepareForm();
@@ -763,6 +799,11 @@
 					}
 				} finally {
 					this.isSaving = false;
+					setTimeout(() => {
+						if (start && !this.form.start_time) {
+							this.toggleCountdown()
+						}
+					}, 500)
 				}
 			},
 			goToCurrentTasks() {
