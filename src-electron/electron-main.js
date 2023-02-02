@@ -26,7 +26,7 @@ function createWindow() {
 		minWidth: 1024,
 		minHeight: 768,
 		useContentSize: true,
-		frame: false,
+		frame: true,
 		webPreferences: {
 			sandbox: false,
 			enableRemoteModule: true,
@@ -60,9 +60,7 @@ function createWindow() {
 app.on('ready', createWindow);
 
 app.on('window-all-closed', () => {
-	if (process.platform !== 'darwin') {
-		app.quit();
-	}
+	app.quit();
 });
 
 app.on('activate', () => {

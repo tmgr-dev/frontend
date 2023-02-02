@@ -3,7 +3,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none mr-auto"
+			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded outline-none mr-auto"
 		>
 			Delete
 		</button>
