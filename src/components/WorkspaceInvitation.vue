@@ -2,22 +2,28 @@
 	<teleport to="title">Invitation to the workspace</teleport>
 
 	<BaseLayout>
-		<template #header><span class="mt-10 w-full inline-block text-center">You have been invited to the workspace:</span></template>
+		<template #header>
+			<span class="mt-10 w-full block text-center">
+				You have been invited to the workspace:
+			</span>
+		</template>
 
 		<template #body>
-			<div class="flex mx-auto flex-col gap-3 max-w-lg" v-if="!accepted">
+			<div class="mx-auto max-w-sm" v-if="!accepted">
 				<button
 					@click="accept"
-					class="w-full bg-orange-500 mr-5 mt-5 mb-10 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
+					class="w-full bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none"
 					type="button"
 				>
 					Accept
 				</button>
 			</div>
-			<div class="flex mx-auto flex-col gap-3 max-w-lg" v-else>
-				<h2 class="md:text-3xl text-2xl mx-auto mt-6 pt-1 md:pt-0 md:mt-0 text-blue-800 dark:text-white relative md:text-left">
-					You successfully accept invitation
-				</h2>
+
+			<div
+				class="mt-6 text-center text-xl text-blue-800 dark:text-white font-bold"
+			>
+				<span v-if="accepted"> You successfully accept invitation! </span>
+				<span v-if="message" class="text-red-600">{{ message }}</span>
 			</div>
 		</template>
 	</BaseLayout>
@@ -36,19 +42,20 @@
 		data: () => ({
 			accepted: false,
 			workspace: {
-				name: "Workspace name"
+				name: 'Workspace name',
 			},
 			user: {
 				name: null,
 				password: null,
 				password_confirmation: null,
 			},
+			message: '',
 			errors: {},
 		}),
 		computed: {
-			workspaceInvitationToken () {
+			workspaceInvitationToken() {
 				return this.$route.params.token;
-			}
+			},
 		},
 		async mounted() {
 			await this.loadUser();
@@ -61,8 +68,14 @@
 				this.user = data;
 			},
 			async accept() {
-				await this.$axios.post(`/workspaces/invitations/${this.workspaceInvitationToken}/accept`);
-				this.accepted = true
+				try {
+					await this.$axios.post(
+						`/workspaces/invitations/${this.workspaceInvitationToken}/accept`,
+					);
+					this.accepted = true;
+				} catch (e) {
+					this.message = e.response?.data?.message;
+				}
 			},
 			async saveUser() {
 				try {
