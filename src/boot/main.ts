@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { Component } from '@vue/runtime-core';
 
 // Directives
@@ -20,31 +19,6 @@ export default (obj: any) => {
 	app.component('QuillEditor', QuillEditor);
 
 	store.commit('colorScheme', localStorage.getItem('colorScheme'));
-
-	axios.defaults.baseURL = store.getters.apiBaseUrl;
-	if (store.getters.token) {
-		axios.defaults.headers.common = {
-			Authorization: `Bearer ${store.getters.token.token}`,
-			'X-Requested-With': 'XMLHttpRequest',
-			'Cache-Control': 'no-cache',
-			Pragma: 'no-cache',
-			Expires: '0',
-		};
-	}
-
-	axios.interceptors.response.use(
-		(response) => {
-			return response;
-		},
-		(error) => {
-			if (error.response.status === 401) {
-				store.dispatch('logout');
-			}
-			throw error;
-		},
-	);
-
-	app.config.globalProperties.$axios = axios;
 
 	app.directive('mask', mask);
 	app.use(Tooltip, {
