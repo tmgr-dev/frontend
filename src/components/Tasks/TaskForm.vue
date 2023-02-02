@@ -678,10 +678,14 @@
 
 					this.$store.commit('currentOpenedTaskId', this.form.id);
 				} catch (e) {
-					// @todo check here 404 error, show toast and redirect to main page
-					/*if (this.isPage) {
-						this.$router.replace('/');
-					}*/
+					if (e.response?.status === 404) {
+						// @todo show error alert
+						//this.showAlert();
+
+						if (this.isPage) {
+							this.$router.replace('/');
+						}
+					}
 				}
 			},
 			setSavedData(data) {

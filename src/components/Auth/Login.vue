@@ -7,7 +7,9 @@
 		<template #body>
 			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
 				<div class="flex flex-col mt-4">
-					<h3 :style="{ color: errors ? 'red' : 'initial' }">{{ message }}</h3>
+					<div :style="{ color: errors ? 'red' : 'initial' }">
+						{{ message }}
+					</div>
 					<p v-if="errors instanceof String" :style="{ color: 'red' }">
 						{{ errors }}
 					</p>
@@ -40,7 +42,7 @@
 					>
 						<span class="relative">
 							Login
-							<loader v-if="showLoader" class="auth-loader" is-mini />
+							<loader v-if="isLoading" class="auth-loader" is-mini />
 						</span>
 					</button>
 				</div>
@@ -65,28 +67,53 @@
 	</AuthBase>
 </template>
 
-<script setup>
+<script setup lang="ts">
+	import store from 'src/store';
 	import { ref } from 'vue';
-	import userInit from 'src/mixins/UserInitializationMixin';
+	import { useRouter } from 'vue-router';
 	import AuthBase from 'src/components/Auth/AuthBase';
+	import { Login, login as loginAction } from 'src/actions/tmgr/auth';
+	import {
+		getUser,
+		getUserSettings,
+		getWorkspaceStatuses,
+	} from 'src/actions/tmgr/user';
+	import { AxiosError } from 'axios';
 
-	const { errors, message, login: defaultLogin } = userInit();
-	let showLoader = ref(false);
+	const router = useRouter();
+
 	const form = ref({
-		email: null,
-		password: null,
-	});
+		email: '',
+		password: '',
+	} as Login);
 
-	const login = async () => {
-		showLoader.value = true;
-		await defaultLogin(form.value);
-		showLoader.value = false;
+	// @todo for savayer only. Find out how to make it global
+	const isLoading = ref(false);
+	const message = ref('');
+	const errors = ref({});
+
+	async function login() {
+		try {
+			message.value = '';
+			errors.value = {};
+			isLoading.value = true;
+			await loginAction(form.value);
+			await getUser();
+
+			await router.push({ name: 'CurrentTasksList' });
+
+			if (store.state.user) {
+				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
+			}
+		} catch (error: unknown) {
+			if (error instanceof AxiosError) {
+				errors.value = error.response?.data?.errors;
+				message.value = error.response?.data?.message;
+			}
+
+			throw error;
+		} finally {
+			isLoading.value = false;
+		}
 	}
-
 </script>
-
-<style lang="scss">
-	.auth-form {
-		color: #3c3c3c !important;
-	}
-</style>

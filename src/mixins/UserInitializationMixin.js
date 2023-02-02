@@ -1,15 +1,18 @@
 import { getCurrentInstance } from 'vue';
-import formError from './FormErrorsMixin';
+import useRequest from './useRequest';
+
 export default function () {
-	// TODO: There might be a more elegant way to declare plugins instead of declaring global properties
-	const { appContext: {config: {globalProperties: { $axios, $store, $router }}} } = getCurrentInstance();
-	const { errors, message, tryCatchRequest } = formError();
+	// @todo: There might be a more elegant way to declare plugins instead of declaring global properties
+	const {
+		appContext: {
+			config: {
+				globalProperties: { $axios, $store, $router },
+			},
+		},
+	} = getCurrentInstance();
+	const { errors, message, tryCatchRequest } = useRequest();
 
 	const setUser = async () => {
-		$axios.defaults.headers = {
-			Authorization: `Bearer ${$store.getters.token.token}`,
-			'X-Requested-With': 'XMLHttpRequest',
-		};
 		const {
 			data: { data },
 		} = await $axios.get('user');
@@ -21,7 +24,7 @@ export default function () {
 		await tryCatchRequest(async () => {
 			const response = await $axios.post('auth/login', loginData);
 			const {
-				data: { data }
+				data: { data },
 			} = response;
 			$store.commit('token', data);
 			await setUser();
@@ -32,7 +35,7 @@ export default function () {
 				$store.dispatch('loadStatuses'),
 			]);
 		});
-	}
+	};
 
 	const register = async (registerData) => {
 		await tryCatchRequest(async () => {
@@ -40,13 +43,13 @@ export default function () {
 			$store.commit('token', data.data);
 			await setUser();
 		});
-	}
+	};
 
 	return {
 		errors,
 		message,
 		setUser,
 		login,
-		register
-	}
-};
+		register,
+	};
+}

@@ -9,7 +9,6 @@ const token = localStorage.getItem('token')
 	: null;
 
 const state = {
-	apiBaseUrl: process.env.VUE_APP_API_BASE_URL,
 	token: token,
 	currentOpenedTaskId: null,
 	user: localStorage.getItem('user')
@@ -33,7 +32,6 @@ const state = {
 };
 
 const getters = {
-	apiBaseUrl: (state) => state.apiBaseUrl,
 	token: (state) => state.token,
 	statuses: (state) => state.statuses,
 	reloadTasks: (state) => state.reloadTasks,
@@ -121,7 +119,7 @@ const actions = {
 		localStorage.clear();
 		localStorage.setItem('colorScheme', theme);
 
-		document.location.reload();
+		// document.location.reload();
 	},
 	reloadTasks({ state }) {
 		if (!state.reloadTasks) {
@@ -136,34 +134,6 @@ const actions = {
 	},
 	showCreateTaskModal({ state }) {
 		state.showCreateTaskModal = true;
-	},
-	async loadUserSettings({ commit, state }) {
-		if (!state.user) return;
-
-		try {
-			const {
-				data: { data },
-			} = await axios.get(`user/settings`);
-
-			if (data?.settings) {
-				commit('setUserSettings', data.settings);
-			}
-		} catch (e) {
-			throw e;
-		}
-	},
-	async loadStatuses({ state, commit }) {
-		if (!state.user) return;
-
-		try {
-			const {
-				data: { data },
-			} = await axios.get(`workspaces/statuses`);
-
-			commit('setStatuses', data);
-		} catch (e) {
-			throw e;
-		}
 	},
 	async putUserSettings({ commit }, settings) {
 		try {
