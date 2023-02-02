@@ -7,11 +7,48 @@
 		option-value-key="id"
 		selected
 		type="select"
-	></input-field>
+	/>
+
+	<button
+		@click="isShowWorkspaceModal = true"
+		class="py-2 flex items-center gap-2 relative"
+	>
+		<span class="material-icons text-lg">add_circle_outline</span>
+		Add new workspace
+	</button>
+
+	<Transition name="bounce-right-fade">
+		<modal
+			v-if="isShowWorkspaceModal"
+			modal-class="p-6 w-96"
+			close-on-bg-click
+			@close="isShowWorkspaceModal = false"
+		>
+			<template #modal-body>
+				<input-field
+					v-model="newWorkspace.name"
+					:errors="errors.title"
+					type="text"
+					extra-class="mb-1 bg-white dark:bg-gray-800"
+					placeholder="New workspace name"
+				/>
+
+				<button
+					@click="createNewWorkspace()"
+					:disabled="isLoading"
+					:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+					class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none sm:mb-0"
+					type="button"
+				>
+					Create
+				</button>
+			</template>
+		</modal>
+	</Transition>
 </template>
 
 <script>
-	import InputField from 'components/UIElements/InputField';
+	import InputField from 'src/components/UIElements/InputField';
 
 	export default {
 		name: 'CurrentWorkspace',
@@ -24,7 +61,14 @@
 		emits: ['update:modelValue'],
 		data() {
 			return {
+				isShowWorkspaceModal: false,
+				isLoading: false,
 				workspaces: [],
+				errors: {},
+				newWorkspace: {
+					name: '',
+					type: 'test',
+				},
 			};
 		},
 		computed: {
@@ -37,14 +81,25 @@
 				},
 			},
 		},
-		methods: {},
+		methods: {
+			async createNewWorkspace() {
+				try {
+					this.isLoading = true;
+					await this.$axios.post('/workspaces', this.newWorkspace);
+				} catch (e) {
+					this.errors = e.response?.data?.errors || {};
+				} finally {
+					this.isLoading = false;
+					this.isShowWorkspaceModal = false;
+				}
+			},
+		},
 		async created() {
 			let {
 				data: { data: workspaces },
 			} = await this.$axios.get('/workspaces');
+
 			this.workspaces = workspaces;
 		},
 	};
 </script>
-
-<style lang="scss" scoped></style>
