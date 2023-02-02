@@ -48,6 +48,7 @@
 <script>
 	import Button from 'src/components/UIElements/Button';
 	import InputField from 'src/components/UIElements/InputField';
+	import { getUser, updateUser } from 'src/actions/tmgr/user';
 
 	export default {
 		name: 'Profile',
@@ -64,28 +65,16 @@
 			errors: {},
 		}),
 		async mounted() {
-			await this.loadUser();
+			// @todo try to get from store this data first
+			this.user = await getUser(); // inside we put response to store. @todo think how to reorganize it or don't care
 		},
 		methods: {
-			async loadUser() {
-				const {
-					data: { data },
-				} = await this.$axios.get('user');
-				this.user = data;
-			},
 			async saveUser() {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.put('user', this.user);
-					this.user = data;
+					this.user = updateUser(this.user);
 					this.showAlert('Saved', 'User data saved');
-				} catch ({
-					response: {
-						data: { errors },
-					},
-				}) {
-					this.errors = errors;
+				} catch (error) {
+					this.errors = error.response.data.errors;
 				}
 			},
 		},

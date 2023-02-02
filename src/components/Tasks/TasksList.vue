@@ -105,6 +105,7 @@
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
 	import Confetti from 'src/components/UIElements/Confetti';
 	import TaskForm from 'src/components/Tasks/TaskForm';
+	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';
 
 	export default {
 		name: 'TasksList',
@@ -157,18 +158,28 @@
 					this.isLoading = true;
 					clearTimeout(this.searchTimeout);
 
-					const {
-						data: { data },
-					} = await this.$axios.get(
-						this.tasksIndexUrl +
-							(this.searchText ? '&search=' + this.searchText : ''),
-					);
-					this.summaryTimeString = this.getTaskFormattedTime(
-						data.reduce((summary, task) => task.common_time + summary, 0),
-					);
-					this.tasks = data;
+					let tasks = [];
 
-					return data;
+					if (this.status) {
+						tasks = await getTasksByStatus(this.status, {
+							params: {
+								search: this.searchText,
+							},
+						});
+					} else {
+						tasks = await getTasks({
+							params: {
+								search: this.searchText,
+							},
+						});
+					}
+
+					this.summaryTimeString = this.getTaskFormattedTime(
+						tasks.reduce((summary, task) => task.common_time + summary, 0),
+					);
+					this.tasks = tasks;
+
+					return tasks;
 				} catch (e) {
 					console.error(e);
 					this.errorLoading = true;

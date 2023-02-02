@@ -334,6 +334,7 @@
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
 	import NewCountdown from 'components/Tasks/NewCountdown';
 	import Confirm from 'components/UIElements/Confirm';
+	import { getTaskSettings } from 'src/actions/tmgr/tasks';
 
 	export default {
 		name: 'TaskForm',
@@ -518,9 +519,7 @@
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
 			},
 			async loadTaskSettings() {
-				const {
-					data: { data },
-				} = await this.$axios.get('tasks/settings');
+				const data = await getTaskSettings();
 				this.initSettings(data, this.form.settings);
 				this.availableSettings = data;
 			},

@@ -1,33 +1,45 @@
 <template>
-	<teleport to="title"> Login </teleport>
+	<teleport to="title"> New Password </teleport>
 
 	<AuthBase>
-		<template #title>Welcome back!</template>
+		<template #title>New Password</template>
 
 		<template #body>
-			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
-				<div class="flex flex-col mt-4">
-					<div :style="{ color: errors ? 'red' : 'initial' }">
-						{{ message }}
-					</div>
-				</div>
+			<div
+				class="text-center"
+				:class="[
+					errors && Object.keys(errors).length > 0
+						? 'text-red-600'
+						: 'text-neutral-600 font-bold',
+				]"
+			>
+				{{ message }}
+			</div>
 
+			<form
+				class="form-horizontal w-3/4 mx-auto"
+				@submit.prevent="resetPassword"
+			>
 				<div class="flex flex-col mt-4">
 					<input-field
-						v-model="form.email"
-						:errors="errors.email"
-						name="email"
-						placeholder="Email"
-						type="email"
+						id="password"
+						v-model="form.password"
+						:errors="errors?.password"
+						name="password"
+						placeholder="Password"
+						required
+						type="password"
 					/>
 				</div>
 
 				<div class="flex flex-col mt-4">
 					<input-field
-						v-model="form.password"
-						:errors="errors.password"
-						name="password"
-						placeholder="Password"
+						id="password_confirmation"
+						v-model="form.password_confirmation"
+						:errors="errors?.password_confirmation"
+						name="password_confirmation"
+						placeholder="Password confirmation"
+						required
 						type="password"
 					/>
 				</div>
@@ -38,7 +50,7 @@
 						type="submit"
 					>
 						<span class="relative">
-							Login
+							Reset
 							<loader v-if="isLoading" class="auth-loader" is-mini />
 						</span>
 					</button>
@@ -49,16 +61,16 @@
 		<template #footer>
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
-				to="/password/forget"
+				to="/register"
 			>
-				Forgot Your Password?
+				You don't have account?
 			</router-link>
 			<br />
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
-				to="/register"
+				to="/login"
 			>
-				Don't you have an account?
+				Login
 			</router-link>
 		</template>
 	</AuthBase>
@@ -66,42 +78,39 @@
 
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
-	import { ref } from 'vue';
-	import store from 'src/store';
-	import { Login, login as loginAction } from 'src/actions/tmgr/auth';
-	import {
-		getUser,
-		getUserSettings,
-		getWorkspaceStatuses,
-	} from 'src/actions/tmgr/user';
+	import { ref, onBeforeMount } from 'vue';
+	import { setNewPassword } from 'src/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
 	import AuthBase from 'src/components/Auth/AuthBase';
 
 	const router = useRouter();
 
-	const form = ref({
-		email: '',
-		password: '',
-	} as Login);
-
-	// @todo for savayer only. Find out how to make it global
 	const isLoading = ref(false);
+	const form = ref({
+		password: '',
+		password_confirmation: '',
+	});
 	const message = ref('');
 	const errors = ref({});
+	const token = ref('');
 
-	async function login() {
+	onBeforeMount(() => {
+		const params = new URLSearchParams(location.search);
+		token.value = params.get('token') || '';
+
+		if (!token.value) {
+			router.push({ name: 'NotFound' });
+		}
+	});
+
+	async function resetPassword() {
 		try {
 			message.value = '';
 			errors.value = {};
 			isLoading.value = true;
-			await loginAction(form.value);
-			await getUser(true);
-
-			await router.push({ name: 'CurrentTasksList' });
-
-			if (store.state.user) {
-				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
-			}
+			await setNewPassword(token.value, form.value);
+			message.value =
+				'Your password changed now you can log in with your new password.';
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
