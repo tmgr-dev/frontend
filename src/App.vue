@@ -149,6 +149,7 @@
 	import TaskForm from 'src/components/Tasks/TaskForm';
 	import store from 'src/store';
 	import { getUserSettings, getWorkspaceStatuses } from 'src/actions/tmgr/user';
+	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -222,13 +223,9 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
-				if (!this.$store.getters.user) {
-					return;
-				}
-				const {
-					data: { data },
-				} = await this.$axios.get('/tasks/runned');
-				this.activeTasks = data;
+				if (!this.$store.getters.user) return;
+
+				this.activeTasks = await getLaunchedTasks();
 			},
 			minimize() {
 				if (process.env.MODE === 'electron') {

@@ -189,7 +189,7 @@
 			},
 			isAuthPage() {
 				// @todo it is temporary solution until this component refactored. Input shouldn't know about $route
-				return ['Login', 'Register', 'ForgetPassword'].includes(
+				return ['Login', 'Register', 'ForgetPassword', 'NewPassword'].includes(
 					this.$route.name,
 				);
 			},
