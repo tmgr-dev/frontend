@@ -772,7 +772,7 @@
 					}
 				}
 			},
-			async saveTask() {
+			async saveTask(start = false) {
 				try {
 					this.isSaving = true;
 					this.prepareForm();
@@ -799,6 +799,11 @@
 					}
 				} finally {
 					this.isSaving = false;
+					setTimeout(() => {
+						if (start && !this.form.start_time) {
+							this.toggleCountdown()
+						}
+					}, 500)
 				}
 			},
 			goToCurrentTasks() {
