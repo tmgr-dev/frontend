@@ -43,7 +43,15 @@ export const deleteTask = async (taskId: number) => {
 		data: { data },
 	} = await $axios.delete(`/tasks/${taskId}`);
 
-	return data;
+	return data.deleted_at;
+};
+
+export const restoreDeletedTask = async (taskId: number) => {
+	const {
+		data: { data },
+	} = await $axios.post(`/tasks/${taskId}/restore`);
+
+	return data.deleted_at;
 };
 
 export const getTasksByStatus = async (
@@ -104,6 +112,17 @@ export const stopTaskTimeCounter = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/countdown`);
+
+	return data;
+};
+
+export const updateTaskTimeCounter = async (
+	taskId: number,
+	payload: { common_time: number },
+) => {
+	const {
+		data: { data },
+	} = await $axios.put(`tasks/${taskId}/time`, payload);
 
 	return data;
 };

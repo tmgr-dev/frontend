@@ -671,14 +671,13 @@
 			async removeTask(task) {
 				const deleteTaskConfirmation = async () => {
 					try {
-						const data = await deleteTask(this.taskId);
-						task.deleted_at = data.deleted_at;
+						task.deleted_at = await deleteTask(this.taskId);
 
 						if (this.isPage) {
 							this.$router.replace('/');
 						}
 					} catch (e) {
-						console.error('suka', e);
+						console.error(e);
 					} finally {
 						this.confirm = null;
 						this.close();
@@ -889,7 +888,7 @@
 			},
 			async toggleCountdown() {
 				// @todo explore why do we need set null here in order to get working countdown
-				// this.form.id = null;
+				this.form.id = null;
 
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
