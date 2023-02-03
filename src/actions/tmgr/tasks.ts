@@ -1,5 +1,6 @@
 import $axios from 'src/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
+import objectToQueryString from 'src/utils/objectToQueryString';
 
 interface Task {}
 
@@ -56,6 +57,17 @@ export const getTasksByStatus = async (
 	return data;
 };
 
+export const updateTaskStatus = async (
+	taskId: number,
+	status: string | number,
+) => {
+	const {
+		data: { data },
+	} = await $axios.get(`tasks/${taskId}/${status}`);
+
+	return data;
+};
+
 export const getLaunchedTasks = async () => {
 	const {
 		data: { data },
@@ -92,6 +104,22 @@ export const stopTaskTimeCounter = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/countdown`);
+
+	return data;
+};
+
+type exportType = 'csv' | 'jpg' | 'xlsx';
+
+export const exportTasks = async (
+	exportType: exportType,
+	params: { ids: number[]; per_hour: number },
+) => {
+	const { data } = await $axios.get(
+		`exports/tasks/${exportType}?${objectToQueryString(params)}`,
+		{
+			responseType: 'blob',
+		},
+	);
 
 	return data;
 };

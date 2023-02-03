@@ -4,7 +4,7 @@
 			<div>
 				<tasks-multiple-actions-modal
 					v-if="isShowSelectedTasksCommonTime"
-					:is-loading-actions="isLoadingActionsForMultipleTasks"
+					:is-loading-actions="loadingActionsForMultipleTasks"
 					:status="status"
 					@close="closeTimeInModal"
 					@export="exportSelectedTasks"
@@ -98,12 +98,19 @@
 	import TaskMeta from 'src/components/UIElements/Tasks/TaskMeta';
 	import BounceLoader from 'src/components/UIElements/BounceLoader';
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
-	import convertToQueryString from 'src/utils/convertToQueryString';
+	import convertToQueryString from 'src/utils/objectToQueryString';
 	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from 'src/components/UIElements/Tasks/TaskButtonsInTheList';
 	import TasksMultipleActionsModal from 'src/components/UIElements/Tasks/TasksMultipleActionsModal';
 	import Modal from 'src/components/Layouts/Modal';
 	import TaskForm from 'src/components/Tasks/TaskForm';
+	import {
+		exportTasks,
+		getTask,
+		startTaskTimeCounter,
+		stopTaskTimeCounter,
+		updateTaskStatus,
+	} from 'src/actions/tmgr/tasks';
 
 	export default {
 		name: 'TasksListComponent',
@@ -170,7 +177,7 @@
 			selecting: [],
 			showTimeInModal: false,
 			timeForModal: null,
-			isLoadingActionsForMultipleTasks: [],
+			loadingActionsForMultipleTasks: [],
 		}),
 		methods: {
 			closeTaskModal() {
@@ -178,13 +185,13 @@
 			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true;
-				await this.$axios.delete(`tasks/${task.id}/countdown`);
+				await stopTaskTimeCounter(task.id);
 				await this.loadTasks();
 				this.isLoadingActions[dotId] = false;
 			},
 			async startCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true;
-				await this.$axios.post(`tasks/${task.id}/countdown`);
+				await startTaskTimeCounter(task.id);
 				await this.loadTasks();
 				this.isLoadingActions[dotId] = false;
 			},
@@ -195,7 +202,7 @@
 				this.$emit('reload-tasks');
 			},
 			getActions(task) {
-				let actions = [
+				return [
 					{
 						click: () => {
 							this.$store.commit('currentTaskIdForModal', task.id);
@@ -204,8 +211,6 @@
 						label: 'Edit',
 					},
 				];
-
-				return actions;
 			},
 			getShowButtons(task) {
 				return {
@@ -214,27 +219,11 @@
 					deleteTask: this.status === 'hidden' || this.status === 'done',
 				};
 			},
-			addActionItem(actions, item, show = true) {
-				if (!item || !show) {
-					return actions;
-				}
-				return [...actions, item];
-			},
-			getActionItem(task, status, label) {
-				if (status === this.status) {
-					return null;
-				}
-				return {
-					click: () => {
-						this.updateStatus(task, status);
-					},
-					label: label,
-				};
-			},
 			async updateStatus(task, status, dotId = null, loadTasks = true) {
 				try {
 					this.setLoadingAction(dotId);
-					await this.$axios.put(`/tasks/${task.id}/${status}`);
+					await updateTaskStatus(task.id, status);
+
 					if (loadTasks) {
 						this.loadTasks();
 					}
@@ -245,7 +234,7 @@
 				}
 			},
 			async updateStatusForSelectedTasks(status) {
-				this.isLoadingActionsForMultipleTasks.push(status);
+				this.loadingActionsForMultipleTasks.push(status);
 				for (let i = 0; i < this.tasks.length; ++i) {
 					if (!this.selected[i]) {
 						continue;
@@ -253,8 +242,8 @@
 					await this.updateStatus(this.tasks[i], status, null, false);
 				}
 				await this.loadTasks();
-				this.isLoadingActionsForMultipleTasks =
-					this.isLoadingActionsForMultipleTasks.filter((s) => s !== status);
+				this.loadingActionsForMultipleTasks =
+					this.loadingActionsForMultipleTasks.filter((s) => s !== status);
 				this.resetSelectedTasks();
 			},
 			showConfirm(title, body, action) {
@@ -263,24 +252,21 @@
 			deleteSelectedTasks() {
 				const deleteMultipleTasks = async () => {
 					try {
-						this.isLoadingActionsForMultipleTasks.push('delete');
+						this.loadingActionsForMultipleTasks.push('delete');
 						for (let i = 0; i < this.tasks.length; ++i) {
 							if (!this.selected[i]) {
 								continue;
 							}
-							const {
-								data: { data },
-							} = await this.$axios.delete(`/tasks/${this.tasks[i].id}`);
+							const data = await getTask(this.tasks[i].id);
+
 							this.tasks[i].deleted_at = data.deleted_at;
 						}
 					} catch (e) {
 						console.error(e);
 					} finally {
 						this.confirm = null;
-						this.isLoadingActionsForMultipleTasks =
-							this.isLoadingActionsForMultipleTasks.filter(
-								(s) => s !== 'delete',
-							);
+						this.loadingActionsForMultipleTasks =
+							this.loadingActionsForMultipleTasks.filter((s) => s !== 'delete');
 						this.resetSelectedTasks();
 					}
 				};
@@ -338,33 +324,30 @@
 				this.resetSelectedTasks();
 			},
 			async exportSelectedTasks(exportType = 'csv') {
-				this.isLoadingActionsForMultipleTasks.push(exportType);
+				this.loadingActionsForMultipleTasks.push(exportType);
 				const tasksIds = this.getSelectedTasks().map(({ id }) => id);
-				await this.defaultTasksExport(
-					this.getExportUrl(exportType, tasksIds),
-					exportType,
-				);
-				this.isLoadingActionsForMultipleTasks =
-					this.isLoadingActionsForMultipleTasks.filter((s) => s !== status);
-			},
-			async defaultTasksExport(url, exportType = 'csv') {
-				const response = await this.$axios.get(url, {
-					responseType: 'blob',
-				});
-				downloadFile(response.data, 'export.' + exportType);
-			},
-			getExportUrl(exportType, tasksIds) {
-				return (
-					'exports/tasks/' +
-					exportType +
-					'?' +
-					convertToQueryString({ ids: tasksIds, per_hour: 1000 })
-				);
+
+				try {
+					const data = await exportTasks(exportType, {
+						ids: tasksIds,
+						per_hour: 1000,
+					});
+
+					downloadFile(data, 'export.' + exportType);
+				} catch (e) {
+					console.error(e);
+				} finally {
+					this.loadingActionsForMultipleTasks =
+						this.loadingActionsForMultipleTasks.filter(
+							(type) => type !== exportType,
+						);
+				}
 			},
 			selectAll() {
 				this.selected = this.tasks.map(() => true);
 				this.isShowSelectedTasksCommonTime =
 					this.selected.filter(Boolean).length > 1;
+
 				this.countTimeForModal();
 			},
 		},
