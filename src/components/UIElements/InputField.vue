@@ -79,8 +79,12 @@
 						v-else
 						:id="name"
 						:type="type"
-						class="appearance-none dark:border-transparent border border-neutral-300 bg-white dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none transition-colors duration-300"
-						:class="[extraClass, errors ? 'with-errors' : '']"
+						class="appearance-none border border-neutral-300 bg-white rounded w-full py-2 px-3 leading-tight outline-none transition-colors duration-300"
+						:class="[
+							extraClass,
+							errors ? 'with-errors' : '',
+							!isAuthPage && 'dark:border-transparent dark:bg-gray-800',
+						]"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"
@@ -88,7 +92,7 @@
 
 					<transition name="fade-left">
 						<div
-							v-if="errors"
+							v-if="hasError"
 							class="error"
 							:class="{ tooltip: errorAsTooltip }"
 						>
@@ -180,6 +184,15 @@
 			};
 		},
 		computed: {
+			hasError() {
+				return this.errors?.length > 0 && this.errors[0];
+			},
+			isAuthPage() {
+				// @todo it is temporary solution until this component refactored. Input shouldn't know about $route
+				return ['Login', 'Register', 'ForgetPassword', 'NewPassword'].includes(
+					this.$route.name,
+				);
+			},
 			val: {
 				get() {
 					if (this.type === 'select') {

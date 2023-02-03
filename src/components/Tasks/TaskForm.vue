@@ -483,6 +483,7 @@
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
 	import NewCountdown from 'src/components/Tasks/NewCountdown';
 	import Confirm from 'src/components/UIElements/Confirm';
+	import { getTaskSettings } from 'src/actions/tmgr/tasks';
 
 	export default {
 		name: 'TaskForm',
@@ -594,6 +595,7 @@
 				const secondsLeft =
 					new Date().getSeconds() +
 					(this.form.approximately_time - this.form.common_time);
+
 				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
 			},
 			workspaceStatuses() {
@@ -672,9 +674,7 @@
 				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
 			},
 			async loadTaskSettings() {
-				const {
-					data: { data },
-				} = await this.$axios.get('tasks/settings');
+				const data = await getTaskSettings();
 				this.initSettings(data, this.form.settings);
 				this.availableSettings = data;
 			},
@@ -701,7 +701,6 @@
 				} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings);
 				this.initSettings(this.availableSettings, data.settings);
 			},
-
 			async handleAssign(userId) {
 				const isAssigned = this.form.assignees.find(
 					(user) => user.id === userId,
@@ -868,10 +867,14 @@
 
 					this.$store.commit('currentOpenedTaskId', this.form.id);
 				} catch (e) {
-					// @todo check here 404 error, show toast and redirect to main page
-					/*if (this.isPage) {
-						this.$router.replace('/');
-					}*/
+					if (e.response?.status === 404) {
+						// @todo show error alert
+						//this.showAlert();
+
+						if (this.isPage) {
+							this.$router.replace('/');
+						}
+					}
 				}
 			},
 			setSavedData(data) {

@@ -35,8 +35,8 @@ const routes = [
 	},
 	{
 		path: '/password/reset',
-		component: () => import('src/components/Auth/ResetPassword'),
-		name: 'ResetPassword',
+		component: () => import('components/Auth/NewPassword.vue'),
+		name: 'NewPassword',
 		meta: {
 			allowedGuests: true,
 			transitionName: 'fade-fast',
@@ -216,6 +216,7 @@ const routes = [
 	// but you can also remove it
 	{
 		path: '/:catchAll(.*)*',
+		name: 'NotFound',
 		component: () => import('pages/Error404.vue'),
 	},
 ];

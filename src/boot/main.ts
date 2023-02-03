@@ -21,7 +21,8 @@ export default (obj: any) => {
 
 	store.commit('colorScheme', localStorage.getItem('colorScheme'));
 
-	axios.defaults.baseURL = store.getters.apiBaseUrl;
+	// I RETURNED IT TEMPORARILY. BECAUSE I AM TIRED TO REPLACE ALL THE AXIOS CALLS
+	axios.defaults.baseURL = process.env.VUE_APP_API_BASE_URL;
 	if (store.getters.token) {
 		axios.defaults.headers.common = {
 			Authorization: `Bearer ${store.getters.token.token}`,

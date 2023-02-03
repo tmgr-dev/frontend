@@ -140,6 +140,13 @@
 	import Confirm from 'src/components/UIElements/Confirm';
 	import Button from 'src/components/UIElements/Button';
 	import CurrentWorkspace from 'src/components/UIElements/CurrentWorkspace';
+	import {
+		getUser,
+		getUserSettingsV2,
+		updateUserSettings,
+		updateUserSettingsV2,
+	} from 'src/actions/tmgr/user';
+	import { sendNotification } from 'src/actions/tmgr/notifications';
 
 	export default {
 		name: 'Settings',
@@ -163,18 +170,15 @@
 			},
 		},
 		async mounted() {
-			await this.loadUser();
+			this.user = await getUser();
 			await this.loadSettings();
 		},
 		methods: {
-			parseInt(v) {
-				return parseInt(v);
-			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
 			},
 			async testWebPushNotifications() {
-				await this.$axios.post('test/web/notifications');
+				await sendNotification();
 			},
 			async togglePushes() {
 				if (this.$store.getters.pusherBeamsUserId) {
@@ -199,16 +203,8 @@
 					);
 				}
 			},
-			async loadUser() {
-				const {
-					data: { data },
-				} = await this.$axios.get('user');
-				this.user = data;
-			},
 			async loadSettings() {
-				const {
-					data: { data },
-				} = await this.$axios.get('v2/user/settings');
+				const data = await getUserSettingsV2();
 				this.initSettings(data, this.user.settings);
 				this.availableSettings = data;
 			},
@@ -229,18 +225,13 @@
 			getSettingById(settings, id, defaultResult = null) {
 				return settings.find((setting) => setting.id === id) || defaultResult;
 			},
-			async saveSettings(settings) {
-				const {
-					data: { data },
-				} = await this.$axios.put(`/v2/user/settings`, settings);
-				this.initSettings(this.availableSettings, data.settings);
-			},
 			async updateSettings() {
 				try {
-					await this.$axios.put('user/settings', {
-						settings: this.userSettings,
-					});
-					await this.saveSettings(this.settings);
+					const [data] = await Promise.all([
+						updateUserSettingsV2(this.settings),
+						updateUserSettings({ settings: this.userSettings }),
+					]);
+					this.initSettings(this.availableSettings, data.settings);
 					this.showAlert();
 				} catch (e) {
 					console.error(e);
