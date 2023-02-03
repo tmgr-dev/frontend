@@ -1,39 +1,6 @@
 <template>
 	<alert ref="alert" />
 	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray">
-		<q-bar
-			v-if="$q.platform.is.electron"
-			class="q-electron-drag q-electron-draggable"
-		>
-			<img src="/favicon-16x16.png" />
-
-			<q-space />
-
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="minimize"
-				@click="minimize"
-			/>
-
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="crop_square"
-				@click="maximize"
-			/>
-
-			<q-btn
-				class="q-electron-drag--exception"
-				dense
-				flat
-				icon="close"
-				@click="closeApp"
-			/>
-		</q-bar>
-
 		<Slideout
 			menu="#menu"
 			panel="#panel"
@@ -79,7 +46,7 @@
 							@after-enter="afterEnter"
 						>
 							<div>
-								<component :is="Component" v-show="showComponent"></component>
+								<component :is="Component" v-if="showComponent"></component>
 							</div>
 						</transition>
 					</router-view>
@@ -119,10 +86,7 @@
 		<Transition name="bounce-right-fade">
 			<modal
 				name="Task"
-				v-if="
-					$store.getters.currentTaskIdForModal ||
-					$store.getters.showCreateTaskModal
-				"
+				v-if="showTaskFormModalWindow"
 				close-on-bg-click
 				modal-class="w-11/12 h-full"
 				@close="$store.dispatch('closeTaskModal')"
@@ -131,8 +95,8 @@
 					<task-form
 						:is-modal="true"
 						:modal-project-category-id="
-							$store.getters.createTaskInProjectCategoryId
-						"
+						$store.getters.createTaskInProjectCategoryId
+					"
 						:modal-task-id="$store.getters.currentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
 						@close="$store.dispatch('closeTaskModal')"
@@ -186,6 +150,9 @@
 					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
 				},
 			},
+			showTaskFormModalWindow () {
+				return (this.$route.name !== 'TasksEdit') && (this.$store.getters.currentTaskIdForModal || this.$store.getters.showCreateTaskModal);
+			}
 		},
 		watch: {
 			'$route.path'() {
