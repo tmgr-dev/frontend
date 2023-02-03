@@ -15,14 +15,17 @@
 							<h1 class="text-4xl text-center font-thin">
 								<slot name="title" />
 							</h1>
+
 							<div class="w-full mt-4">
 								<slot name="body" />
+
 								<div class="text-center mt-4">
 									<slot name="footer" />
 								</div>
 							</div>
 						</div>
 					</div>
+
 					<div
 						class="hidden md:block md:w-1/2 rounded-r-lg bg-[url(../../assets/img/bg-login.jpeg)] bg-center bg-cover bg-no-repeat"
 					/>
