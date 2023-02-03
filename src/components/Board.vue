@@ -14,13 +14,13 @@
 							<div :class="`rounded-lg px-3 py-3 column-width rounded h-full`">
 								<div>
 									<div
-										class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded"
+										class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded relative"
 										:style="{
 											'border-top': `solid 5px ${column.status.color}`,
 										}"
 									>
 										{{ column.title }}
-										<div class="absolute top-5 right-3">
+										<div class="absolute top-2 right-3">
 											<dashboard-dropdown-menu :actions="getActions(column)" />
 										</div>
 									</div>
