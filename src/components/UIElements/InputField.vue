@@ -255,12 +255,12 @@
 		&.tooltip {
 			position: absolute;
 			left: 108%;
-			white-space: nowrap;
 			background: #fff;
 			padding: 0.75rem;
 			min-width: 220px;
 			display: inline-block;
-			top: -6px;
+			top: 50%;
+			transform: translateY(-50%);
 			border-radius: 7px;
 			box-shadow: 1px 1px 4px #888;
 			line-height: 1.1;

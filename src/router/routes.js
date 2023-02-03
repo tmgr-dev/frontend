@@ -1,6 +1,5 @@
 const ProjectCategoryList = () =>
 	import('src/components/ProjectsCategories/ProjectCategoryList');
-const TasksForm = () => import('src/components/Tasks/TasksForm');
 const TaskForm = () => import('src/components/Tasks/TaskForm');
 const TasksList = () => import('src/components/Tasks/TasksList');
 const ProjectCategoryForm = () =>
@@ -106,13 +105,14 @@ const routes = [
 		component: ProjectCategoryForm,
 		name: 'ProjectCategoryCreateInCategory',
 	},
+	/* @todo investigate why we don't have this page (404) */
 	{
 		path: '/project-categories/:project_category_id/tasks/create',
 		meta: {
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
-		component: TasksForm,
+		component: TaskForm,
 		name: 'TasksCreateWithProjectCategoryId',
 	},
 	{
@@ -121,7 +121,7 @@ const routes = [
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
-		component: TasksForm,
+		component: TaskForm,
 		name: 'TasksCreate',
 	},
 	{
@@ -143,15 +143,6 @@ const routes = [
 			navbarHidden: true,
 		},
 		name: 'ArchiveTasksList',
-	},
-	{
-		path: '/create',
-		meta: {
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: () => import('src/components/Tasks/TasksForm'),
-		name: 'TasksCreate',
 	},
 	{
 		path: '/:id/edit',
@@ -179,6 +170,15 @@ const routes = [
 			navbarHidden: true,
 		},
 		name: 'Profile',
+	},
+	{
+		path: '/workspaces/invitations/:token',
+		component: () => import('src/components/WorkspaceInvitation'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceInvitation',
 	},
 	{
 		path: '/board',
