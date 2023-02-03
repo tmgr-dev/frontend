@@ -483,7 +483,22 @@
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
 	import NewCountdown from 'src/components/Tasks/NewCountdown';
 	import Confirm from 'src/components/UIElements/Confirm';
-	import { getTaskSettings } from 'src/actions/tmgr/tasks';
+	import {
+		deleteTask,
+		getTask,
+		createTask as createTaskAction,
+		updateTask,
+		stopTaskTimeCounter,
+		startTaskTimeCounter,
+		addTaskAssignee,
+		deleteTaskAssignee,
+	} from 'src/actions/tmgr/tasks';
+	import {
+		getTaskSettings,
+		updateOneTaskSettings,
+	} from 'src/actions/tmgr/settings';
+	import { getCategories, getSubCategories } from 'src/actions/tmgr/categories';
+	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 
 	export default {
 		name: 'TaskForm',
@@ -654,11 +669,9 @@
 				this.confirm = { title, body, action };
 			},
 			async removeTask(task) {
-				const deleteTask = async () => {
+				const deleteTaskConfirmation = async () => {
 					try {
-						const {
-							data: { data },
-						} = await this.$axios.delete(`/tasks/${task.id}`);
+						const data = await deleteTask(this.taskId);
 						task.deleted_at = data.deleted_at;
 
 						if (this.isPage) {
@@ -671,7 +684,11 @@
 						this.close();
 					}
 				};
-				this.showConfirm('Delete task', 'Are you sure?', deleteTask);
+				this.showConfirm(
+					'Delete task',
+					'Are you sure?',
+					deleteTaskConfirmation,
+				);
 			},
 			async loadTaskSettings() {
 				const data = await getTaskSettings();
@@ -696,9 +713,7 @@
 				return settings.find((setting) => setting.id === id) || defaultResult;
 			},
 			async saveSettings(settings) {
-				const {
-					data: { data },
-				} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings);
+				const data = await updateOneTaskSettings(this.form.id, settings);
 				this.initSettings(this.availableSettings, data.settings);
 			},
 			async handleAssign(userId) {
@@ -713,28 +728,10 @@
 				}
 			},
 			async addAssign(userId) {
-				const {
-					data: { data },
-				} = await this.$axios.post(`/tasks/${this.form.id}/assign/${userId}`);
-
-				this.form.assignees = data.assignees;
+				this.form.assignees = await addTaskAssignee(this.form.id, userId);
 			},
 			async deleteAssign(userId) {
-				const {
-					data: { data },
-				} = await this.$axios.delete(`/tasks/${this.form.id}/assign/${userId}`);
-
-				await this.$nextTick(() => {
-					this.form.assignees = data.assignees;
-				});
-			},
-			async loadWorkspaceMembers() {
-				const {
-					data: { data },
-				} = await this.$axios.get(
-					`/workspaces/${this.form.workspace_id}/members`,
-				);
-				this.workspaceMembers = data;
+				this.form.assignees = await deleteTaskAssignee(this.form.id, userId);
 			},
 			setFormDataWithDelay(data, delay = 200) {
 				return new Promise((resolve, reject) => {
@@ -820,9 +817,7 @@
 				return actions;
 			},
 			async loadCategories() {
-				const {
-					data: { data },
-				} = await this.$axios.get('project_categories?all');
+				const data = await getCategories();
 				this.categoriesSelectOptions = [
 					{ id: null, title: 'Without category' },
 					...data,
@@ -830,19 +825,14 @@
 			},
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
-					const {
-						data: { data },
-					} = await this.$axios.get(
-						`project_categories/${
-							this.projectCategoryId || this.form.project_category_id
-						}`,
+					const data = await getSubCategories(
+						this.projectCategoryId || this.form.project_category_id,
 					);
 					this.currentCategory = data;
 					this.currentCategoryOptionInSelect = data.id;
 
-					if (!!this.form.id || this.currentCategory.settings.length === 0) {
+					if (!!this.form.id || this.currentCategory.settings.length === 0)
 						return;
-					}
 
 					this.currentCategory.settings.forEach((setting) => {
 						if (setting.key === 'task_name_pattern_date&time') {
@@ -859,11 +849,7 @@
 			},
 			async loadModel() {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.get(`tasks/${this.taskId}`);
-					data.common_time = data.common_time || 0;
-					this.form = data;
+					this.form = await getTask(this.taskId);
 
 					this.$store.commit('currentOpenedTaskId', this.form.id);
 				} catch (e) {
@@ -902,16 +888,17 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
-				const id = this.taskId;
-				this.form.id = null;
-				const {
-					data: { data },
-				} = await this.$axios[this.form.start_time ? 'delete' : 'post'](
-					`tasks/${id}/countdown`,
-				);
-				this.form = { ...data };
-				this.form.id = id;
+				// @todo explore why do we need set null here in order to get working countdown
+				// this.form.id = null;
+
+				if (this.form.start_time) {
+					this.form = await stopTaskTimeCounter(this.taskId);
+				} else {
+					this.form = await startTaskTimeCounter(this.taskId);
+				}
+
 				this.updateSeconds(this.form.common_time);
+
 				if (this.form.start_time && this.form.status_id) {
 					const statusCurrent = this.workspaceStatuses.find(
 						(el) => el.type !== 'active',
@@ -922,7 +909,7 @@
 						);
 						if (firstActiveStatus) {
 							this.form.status_id = firstActiveStatus.id;
-							this.saveTask();
+							await this.saveTask();
 						}
 					}
 				}
@@ -939,11 +926,9 @@
 			async createTask() {
 				try {
 					this.prepareForm();
-					const {
-						data: { data },
-					} = await this.$axios.post('tasks', this.form);
+					const data = await createTaskAction(this.form);
 					this.$emit('updated');
-					this.$store.dispatch('reloadTasks');
+					await this.$store.dispatch('reloadTasks');
 
 					if (!this.isCreatingTask) {
 						this.showAlert();
@@ -969,11 +954,10 @@
 				try {
 					this.isSaving = true;
 					this.prepareForm();
-					const {
-						data: { data },
-					} = await this.$axios.put(`tasks/${this.taskId}`, this.form);
+					const data = await updateTask(this.taskId, this.form);
 					this.$emit('updated');
-					this.$store.dispatch('reloadTasks');
+					await this.$store.dispatch('reloadTasks');
+
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time);
 					}
@@ -1061,7 +1045,9 @@
 			async initComponent() {
 				if (this.taskId) {
 					await this.loadModel();
-					await this.loadWorkspaceMembers();
+					this.workspaceMembers = await getWorkspaceMembers(
+						this.form.workspace_id,
+					);
 					window.onkeydown = this.getShortcutSaveListener();
 				}
 
