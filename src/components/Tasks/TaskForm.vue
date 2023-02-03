@@ -3,11 +3,12 @@
 
 	<div class="sm:flex items-between text-center">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
+			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
 				<modal
-					v-if="isShowModalCategory"
+					v-if="isShowSettingsModal"
 					modal-class="p-6 w-96"
-					@close="isShowModalCategory = false"
+					@close="isShowSettingsModal = false"
 				>
 					<template #modal-body>
 						<form
@@ -19,7 +20,17 @@
 							</label>
 
 							<div>
-								<label class="block text-sm text-left font-bold mb-2 mt-2">
+								<div
+									v-if="form.user"
+									class="text-start py-1 pr-5 estimated-info border-b border-neutral-200 dark:border-neutral-600"
+								>
+									Author:
+									<span class="text-neutral-600 dark:text-neutral-300">
+										{{ form.user.name }}
+									</span>
+								</div>
+
+								<label class="block text-sm text-left font-bold mb-2 mt-4">
 									<span class="block mb-2">Category</span>
 
 									<input-field
@@ -72,9 +83,9 @@
 											/>
 										</div>
 
-										<small v-if="!setting.show_custom_value_input">{{
-											setting.description
-										}}</small>
+										<small v-if="!setting.show_custom_value_input">
+											{{ setting.description }}
+										</small>
 
 										<div
 											class="b-switch-list"
@@ -108,12 +119,43 @@
 										</div>
 									</div>
 								</div>
+
+								<div class="py-2 pr-5 estimated-info text-start">
+									<div
+										class="flex items-center border-b border-neutral-200 dark:border-neutral-600"
+									>
+										Assignees
+										<span
+											class="material-icons text-lg checkpoint-delete"
+											@click="isShowModalAssign = true"
+										>
+											add
+										</span>
+									</div>
+
+									<div
+										v-if="form.assignees && form.assignees.length"
+										v-for="assignee in form.assignees"
+										class="flex gap-2 mt-2"
+									>
+										<div class="flex items-center gap-1.5">
+											{{ assignee.name }}
+
+											<span
+												class="material-icons text-lg text-red-500 checkpoint-delete"
+												@click="deleteAssign(assignee.id)"
+											>
+												person_remove
+											</span>
+										</div>
+									</div>
+								</div>
 							</div>
 
 							<div class="flex flex-nowrap items-center mt-6">
 								<button
 									type="button"
-									@click="isShowModalCategory = false"
+									@click="isShowSettingsModal = false"
 									class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
 								>
 									Cancel
@@ -124,6 +166,63 @@
 									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
 								>
 									Update
+								</button>
+							</div>
+						</form>
+					</template>
+				</modal>
+			</Transition>
+
+			<!-- assigners -->
+			<Transition name="bounce-right-fade">
+				<modal
+					v-if="isShowModalAssign"
+					modal-class="p-6 w-96"
+					@close="isShowModalAssign = false"
+				>
+					<template #modal-body>
+						<form @submit.prevent="" class="text-gray-800 dark:text-tmgr-gray">
+							<label for="settings" class="block text-lg font-bold">
+								Assign task to user
+							</label>
+
+							<div class="grid grid-cols-2 gap-2 mt-5">
+								<div
+									v-for="workspaceMember in workspaceMembers"
+									:key="workspaceMember.id"
+								>
+									<div
+										class="flex items-center cursor-pointer gap-1.5 dark:hover:text-white group"
+										@click="handleAssign(workspaceMember.id)"
+									>
+										<span
+											class="material-icons text-lg text-neutral-300 dark:group-hover:text-white"
+										>
+											<template
+												v-if="
+													form.assignees.find(
+														(user) => user.id === workspaceMember.id,
+													)
+												"
+											>
+												radio_button_checked
+											</template>
+
+											<template v-else>radio_button_unchecked</template>
+										</span>
+
+										<span>{{ workspaceMember.name }}</span>
+									</div>
+								</div>
+							</div>
+
+							<div class="flex flex-nowrap items-center mt-6">
+								<button
+									type="button"
+									@click="isShowModalAssign = false"
+									class="block w-full mr-1 bg-gray-700 text-white p-2 rounded"
+								>
+									Close
 								</button>
 							</div>
 						</form>
@@ -145,7 +244,7 @@
 			<div
 				:class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`"
 			>
-				<div v-if="!isCreatingTask">
+				<template v-if="!isCreatingTask">
 					<router-link
 						:to="
 							!currentCategory
@@ -170,12 +269,56 @@
 						class="inline-block ml-3"
 						style="min-width: 200px"
 					/>
-				</div>
+
+					<div
+						class="relative ml-5 flex flex-row-reverse"
+						:class="{ 'ml-auto': isPage }"
+					>
+						<div
+							class="w-8 h-8 rounded-full border-gray-500 dark:border-gray-400 border-dashed border-2 flex cursor-default cursor-pointer group hover:dark:border-gray-200"
+							:class="{ '-ml-3': form.assignees?.length }"
+							v-tooltip.right="'Assign'"
+							@click="isShowModalAssign = true"
+						>
+							<span
+								class="material-icons text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white m-auto cursor-pointer"
+							>
+								add
+							</span>
+						</div>
+
+						<div
+							v-for="(workspaceMember, i) in form.assignees"
+							:key="i"
+							class="w-8 h-8 rounded-full border-green-400 bg-green-600 flex cursor-default group relative shadow shadow-neutral-300"
+							:class="{ '-mr-3': i > 0 }"
+							:title="workspaceMember.name"
+						>
+							<div class="m-auto font-sans text-lg text-white">
+								{{ workspaceMember.name.charAt(0).toUpperCase() }}
+							</div>
+
+							<div
+								class="flex cursor-pointer bg-red-500 rounded-full w-4 h-4 -top-1.5 -right-1.5 absolute group-hover:visible opacity-75 hover:opacity-100 invisible"
+							>
+								<span
+									class="material-icons m-auto text-xs text-white"
+									@click="deleteAssign(workspaceMember.id)"
+								>
+									close
+								</span>
+							</div>
+						</div>
+					</div>
+				</template>
 
 				<p v-else>Creating task</p>
 
-				<div v-if="isModal">
-					<button type="button" class="checkpoint-delete mr-2">
+				<div v-if="isModal" class="ml-auto flex gap-2">
+					<button
+						type="button"
+						class="opacity-50 hover:opacity-100 transition-opacity mr-2"
+					>
 						<router-link
 							class="material-icons text-2xl text-black dark:text-white"
 							:to="`/${taskId}/edit`"
@@ -184,10 +327,14 @@
 						</router-link>
 					</button>
 
-					<button type="button" class="checkpoint-delete">
+					<button
+						type="button"
+						class="opacity-50 hover:opacity-100 transition-opacity"
+						v-if="isModal"
+					>
 						<span
 							class="material-icons text-2xl text-black dark:text-white"
-							@click="close"
+							@click="$emit('close')"
 						>
 							close
 						</span>
@@ -309,9 +456,11 @@
 			>
 				<span
 					v-if="form.approximately_time"
-					class="text-gray-500 py-2 pr-5 estimated-info hidden md:block"
+					:class="`text-${
+						approximatelyEndTime === '00:00' ? 'red' : 'gray'
+					}-500 py-2 pr-5 estimated-info hidden md:block`"
 				>
-					Estimated time to complete the task: {{ approximatelyEndTime }}
+					Left time: {{ approximatelyEndTime }}
 				</span>
 			</task-actions>
 		</footer>
@@ -332,8 +481,8 @@
 	import moment from 'moment';
 	import InputField from 'src/components/UIElements/InputField';
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
-	import NewCountdown from 'components/Tasks/NewCountdown';
-	import Confirm from 'components/UIElements/Confirm';
+	import NewCountdown from 'src/components/Tasks/NewCountdown';
+	import Confirm from 'src/components/UIElements/Confirm';
 	import { getTaskSettings } from 'src/actions/tmgr/tasks';
 
 	export default {
@@ -376,6 +525,7 @@
 				settings: [],
 				isSaving: false,
 				autoSaveTimeout: null,
+				workspaceMembers: [],
 				watchingFields: [
 					'title',
 					'description',
@@ -415,7 +565,8 @@
 					common_time: 0,
 					checkpoints: [],
 				},
-				isShowModalCategory: false,
+				isShowSettingsModal: false,
+				isShowModalAssign: false,
 				categoriesSelectOptions: [],
 				currentCategory: '',
 				approximatelyTime: null,
@@ -432,16 +583,20 @@
 			this.$store.dispatch('closeTaskModal');
 		},
 		computed: {
+			userSettings() {
+				return this.$store.getters.getUserSettings ?? {};
+			},
 			taskId() {
 				return this.projectCategoryId
 					? null
 					: this.form?.id || this.modalTaskId || this.$route.params.id;
 			},
 			approximatelyEndTime() {
-				return this.toHHMM(
+				const secondsLeft =
 					new Date().getSeconds() +
-						(this.form.approximately_time - this.form.common_time),
-				);
+					(this.form.approximately_time - this.form.common_time);
+
+				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
 			},
 			workspaceStatuses() {
 				return this.$store.getters.statuses;
@@ -546,6 +701,41 @@
 				} = await this.$axios.put(`/tasks/${this.form.id}/settings`, settings);
 				this.initSettings(this.availableSettings, data.settings);
 			},
+			async handleAssign(userId) {
+				const isAssigned = this.form.assignees.find(
+					(user) => user.id === userId,
+				);
+
+				if (isAssigned) {
+					await this.deleteAssign(userId);
+				} else {
+					await this.addAssign(userId);
+				}
+			},
+			async addAssign(userId) {
+				const {
+					data: { data },
+				} = await this.$axios.post(`/tasks/${this.form.id}/assign/${userId}`);
+
+				this.form.assignees = data.assignees;
+			},
+			async deleteAssign(userId) {
+				const {
+					data: { data },
+				} = await this.$axios.delete(`/tasks/${this.form.id}/assign/${userId}`);
+
+				await this.$nextTick(() => {
+					this.form.assignees = data.assignees;
+				});
+			},
+			async loadWorkspaceMembers() {
+				const {
+					data: { data },
+				} = await this.$axios.get(
+					`/workspaces/${this.form.workspace_id}/members`,
+				);
+				this.workspaceMembers = data;
+			},
 			setFormDataWithDelay(data, delay = 200) {
 				return new Promise((resolve, reject) => {
 					if (this.form.id === data.id) {
@@ -585,7 +775,7 @@
 			},
 			async showModalCategory() {
 				try {
-					this.isShowModalCategory = true;
+					this.isShowSettingsModal = true;
 					if (this.categoriesSelectOptions.length === 0) {
 						await this.loadCategories();
 					}
@@ -597,7 +787,7 @@
 				if (this.currentCategoryOptionInSelect) {
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
-				this.isShowModalCategory = false;
+				this.isShowSettingsModal = false;
 				await this.saveTask();
 				await this.loadCategory();
 			},
@@ -775,7 +965,7 @@
 					}
 				}
 			},
-			async saveTask() {
+			async saveTask(start = false) {
 				try {
 					this.isSaving = true;
 					this.prepareForm();
@@ -802,6 +992,11 @@
 					}
 				} finally {
 					this.isSaving = false;
+					setTimeout(() => {
+						if (start && !this.form.start_time) {
+							this.toggleCountdown();
+						}
+					}, 500);
 				}
 			},
 			goToCurrentTasks() {
@@ -866,6 +1061,7 @@
 			async initComponent() {
 				if (this.taskId) {
 					await this.loadModel();
+					await this.loadWorkspaceMembers();
 					window.onkeydown = this.getShortcutSaveListener();
 				}
 
