@@ -132,7 +132,7 @@
 							v-if="isCreate"
 							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
 							type="button"
-							@click.prevent="createAndContinue"
+							@click.prevent="create(false)"
 						>
 							Add & Continue
 						</button>
@@ -160,6 +160,17 @@
 	import Breadcrumbs from 'src/components/UIElements/Breadcrumbs';
 	import getBreadcrumbs from 'src/utils/breadcrumbs/getBreadcrumbs';
 	import SettingsLoader from 'src/components/Loaders/SettingsLoader.vue';
+	import {
+		createCategory,
+		getCategories,
+		getCategory,
+		updateCategory,
+	} from 'src/actions/tmgr/categories';
+	import {
+		getCategorySettings,
+		updateCategorySettings,
+	} from 'src/actions/tmgr/settings';
+	import generateSlugFromRu from 'src/utils/generateSlugFromRu';
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -171,7 +182,11 @@
 		data() {
 			return {
 				h1: null,
-				form: this.getDefaultForm(),
+				form: {
+					title: '',
+					project_category_id: this.$route.params.project_category_id || null,
+					slug: '',
+				},
 				parentCategories: [],
 				availableSettings: [],
 				settings: [],
@@ -196,7 +211,7 @@
 			this.setFormTexts();
 
 			if (!this.isCreate) {
-				await this.loadModel();
+				this.form = await getCategory(this.categoryId);
 			}
 			await this.loadParentCategories();
 			await this.loadProjectCategorySettings();
@@ -216,25 +231,15 @@
 				parents.push(this.form);
 				return parents;
 			},
-			async loadModel() {
-				const {
-					data: { data },
-				} = await this.$axios.get(`project_categories/${this.categoryId}`);
-				this.form = data;
-			},
 			async loadParentCategories() {
-				const {
-					data: { data },
-				} = await this.$axios.get('project_categories?all');
+				const data = await getCategories();
 				this.parentCategories = data.filter((category) => {
 					return category.id !== this.form.id;
 				});
 			},
 			async loadProjectCategorySettings() {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.get('project_categories/settings');
+					const data = await getCategorySettings();
 
 					this.initSettings(data, this.form.settings);
 					this.availableSettings = data;
@@ -272,89 +277,26 @@
 				}
 
 				if (!this.isCreate) {
-					const {
-						data: { data },
-					} = await this.$axios.put(
-						`project_categories/${this.form.id}`,
-						this.form,
+					this.form = await updateCategory(this.form.id, this.form);
+					const settings = await updateCategorySettings(
+						this.form.id,
+						this.settings,
 					);
-					this.form = data;
-					await this.saveSettings(this.settings);
+
+					this.initSettings(this.availableSettings, settings);
 					this.showAlert('Saved', 'The category was saved');
+
 					return;
 				}
-				this.form.slug = this.generateSlug(this.form.title);
 
-				const {
-					data: { data },
-				} = await this.$axios.post('project_categories', this.form);
-				this.form = data;
-				if (!withRoutePush) {
-					return;
-				}
-				await this.$router.push(`/projects-categories/${data.id}/children`);
-			},
-			async saveSettings(settings) {
-				const {
-					data: { data },
-				} = await this.$axios.put(
-					`/project_categories/${this.form.id}/settings`,
-					settings,
-				);
-				this.initSettings(this.availableSettings, data.settings);
-			},
-			async createAndContinue() {
-				await this.create(false);
-				this.form = this.getDefaultForm();
-			},
-			generateSlug(text) {
-				const ru = {
-						а: 'a',
-						б: 'b',
-						в: 'v',
-						г: 'g',
-						д: 'd',
-						е: 'e',
-						ё: 'e',
-						ж: 'j',
-						з: 'z',
-						и: 'i',
-						к: 'k',
-						л: 'l',
-						м: 'm',
-						н: 'n',
-						о: 'o',
-						п: 'p',
-						р: 'r',
-						с: 's',
-						т: 't',
-						у: 'u',
-						ф: 'f',
-						х: 'h',
-						ц: 'c',
-						ч: 'ch',
-						ш: 'sh',
-						щ: 'shch',
-						ы: 'y',
-						э: 'e',
-						ю: 'u',
-						я: 'ya',
-						' ': '-',
-					},
-					n_str = [];
+				this.form.slug = this.generateSlugFromRu(this.form.title);
+				this.form = await createCategory(this.form);
 
-				text = text.replace(/[ъь]+/g, '').replace(/й/g, 'i');
-
-				for (let i = 0; i < text.length; ++i) {
-					n_str.push(
-						ru[text[i]] ||
-							(ru[text[i].toLowerCase()] === undefined && text[i]) ||
-							ru[text[i].toLowerCase()].replace(/^(.)/, function (match) {
-								return match.toUpperCase();
-							}),
+				if (withRoutePush) {
+					await this.$router.push(
+						`/projects-categories/${this.form.id}/children`,
 					);
 				}
-				return n_str.join('').toLowerCase();
 			},
 			setFormTexts() {
 				this.h1 = `${this.getFormTitlePrefix()} category`;
@@ -362,13 +304,7 @@
 			getFormTitlePrefix() {
 				return this.isCreate ? 'Add' : 'Edit';
 			},
-			getDefaultForm() {
-				return {
-					title: '',
-					project_category_id: this.$route.params.project_category_id || null,
-					slug: '',
-				};
-			},
+			generateSlugFromRu,
 		},
 	};
 </script>

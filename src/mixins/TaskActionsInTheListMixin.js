@@ -1,3 +1,5 @@
+import { deleteTask, restoreDeletedTask } from 'src/actions/tmgr/tasks';
+
 export default {
 	methods: {
 		setLoadingAction(dotId = null, actionStatus = true) {
@@ -8,10 +10,7 @@ export default {
 		async restoreTask(task, dotId = null) {
 			try {
 				this.setLoadingAction(dotId);
-				const {
-					data: { data },
-				} = await this.$axios.post(`/tasks/${task.id}/restore`);
-				task.deleted_at = data.deleted_at;
+				task.deleted_at = await restoreDeletedTask(task.id);
 			} catch (e) {
 				console.error(e);
 			} finally {
@@ -19,14 +18,11 @@ export default {
 				this.confirm = undefined;
 			}
 		},
-		async deleteTask(task, dotId = null) {
-			const deleteTask = async () => {
+		async removeTask(task, dotId = null) {
+			const deleteTaskConfirmation = async () => {
 				try {
 					this.setLoadingAction(dotId);
-					const {
-						data: { data },
-					} = await this.$axios.delete(`/tasks/${task.id}`);
-					task.deleted_at = data.deleted_at;
+					task.deleted_at = await deleteTask(task.id);
 				} catch (e) {
 					console.error(e);
 				} finally {
@@ -34,7 +30,7 @@ export default {
 					this.confirm = undefined;
 				}
 			};
-			this.showConfirm('Delete task', 'Are you sure?', deleteTask);
+			this.showConfirm('Delete task', 'Are you sure?', deleteTaskConfirmation);
 		},
 	},
 };

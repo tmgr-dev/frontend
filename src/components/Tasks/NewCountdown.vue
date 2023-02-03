@@ -136,6 +136,7 @@
 	import InputField from '../UIElements/InputField';
 	import Reminder from 'src/components/UIElements/Tasks/Reminder';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
+	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
 
 	let countdownInterval = null;
 
@@ -207,9 +208,11 @@
 					this.countdown.hours * 3600 +
 					+this.countdown.minutes * 60 +
 					+this.countdown.seconds;
-				await this.$axios.put(`tasks/${this.task.id}/time`, {
+
+				await updateTaskTimeCounter(this.task.id, {
 					common_time: seconds,
 				});
+
 				this.isShowModalTimer = false;
 			},
 			validateCountdownBeforeUpdate() {

@@ -119,7 +119,7 @@ const actions = {
 		localStorage.clear();
 		localStorage.setItem('colorScheme', theme);
 
-		// location.reload();
+		location.reload();
 	},
 	reloadTasks({ state }) {
 		if (!state.reloadTasks) {

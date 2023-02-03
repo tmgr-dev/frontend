@@ -21,32 +21,6 @@ export default (obj: any) => {
 
 	store.commit('colorScheme', localStorage.getItem('colorScheme'));
 
-	// I RETURNED IT TEMPORARILY. BECAUSE I AM TIRED TO REPLACE ALL THE AXIOS CALLS
-	axios.defaults.baseURL = process.env.VUE_APP_API_BASE_URL;
-	if (store.getters.token) {
-		axios.defaults.headers.common = {
-			Authorization: `Bearer ${store.getters.token.token}`,
-			'X-Requested-With': 'XMLHttpRequest',
-			'Cache-Control': 'no-cache',
-			Pragma: 'no-cache',
-			Expires: '0',
-		};
-	}
-
-	axios.interceptors.response.use(
-		(response) => {
-			return response;
-		},
-		(error) => {
-			if (error.response.status === 401) {
-				store.dispatch('logout');
-			}
-			throw error;
-		},
-	);
-
-	app.config.globalProperties.$axios = axios;
-
 	app.directive('mask', mask);
 	app.use(Tooltip, {
 		delay: 50,

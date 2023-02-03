@@ -60,6 +60,8 @@
 </template>
 
 <script>
+	import { getStats } from 'src/actions/tmgr/stats';
+
 	export default {
 		name: 'Stats',
 		data: () => ({
@@ -70,10 +72,7 @@
 			},
 		}),
 		async created() {
-			const {
-				data: { data },
-			} = await this.$axios.get('/stats');
-			this.stats = data;
+			this.stats = await getStats();
 		},
 		methods: {},
 	};

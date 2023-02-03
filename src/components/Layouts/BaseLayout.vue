@@ -10,7 +10,7 @@
 			<slot name="action" />
 		</header>
 
-		<div class="container mx-auto px-2 my-5">
+		<div :class="bodyContainerClass">
 			<slot name="body" />
 		</div>
 
@@ -42,6 +42,11 @@
 				type: Boolean,
 				required: false,
 				default: false,
+			},
+			bodyContainerClass: {
+				type: String,
+				required: false,
+				default: 'container mx-auto px-2 my-5',
 			},
 		},
 		computed: {
