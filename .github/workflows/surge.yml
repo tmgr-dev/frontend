@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v1
         with:
-          node-version: 18.13.0
+          node-version: 19.6.0
       - name: Install dependencies
         run: npm ci
       - name: Build static site
