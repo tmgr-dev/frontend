@@ -32,6 +32,8 @@
 <script>
 	import Button from 'src/components/UIElements/Button';
 	import InputField from 'src/components/UIElements/InputField';
+	import { getUser, updateUser } from 'src/actions/tmgr/user';
+	import { acceptWorkspaceInvitation } from 'src/actions/tmgr/workspaces';
 
 	export default {
 		name: 'WorkspaceInvitation',
@@ -58,20 +60,12 @@
 			},
 		},
 		async mounted() {
-			await this.loadUser();
+			this.user = await getUser();
 		},
 		methods: {
-			async loadUser() {
-				const {
-					data: { data },
-				} = await this.$axios.get('user');
-				this.user = data;
-			},
 			async accept() {
 				try {
-					await this.$axios.post(
-						`/workspaces/invitations/${this.workspaceInvitationToken}/accept`,
-					);
+					await acceptWorkspaceInvitation(this.workspaceInvitationToken);
 					this.accepted = true;
 				} catch (e) {
 					this.message = e.response?.data?.message;
@@ -79,17 +73,10 @@
 			},
 			async saveUser() {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.put('user', this.user);
-					this.user = data;
+					this.user = await updateUser(this.user);
 					this.showAlert('Saved', 'User data saved');
-				} catch ({
-					response: {
-						data: { errors },
-					},
-				}) {
-					this.errors = errors;
+				} catch (e) {
+					this.errors = e.response?.data?.errors;
 				}
 			},
 		},

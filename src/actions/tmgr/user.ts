@@ -59,13 +59,3 @@ export const updateUserSettingsV2 = async (payload: UserSettings) => {
 
 	return data;
 };
-
-export interface WorkspaceStatuses {}
-
-export const getWorkspaceStatuses = async () => {
-	const {
-		data: { data },
-	} = await $axios.get('workspaces/statuses');
-
-	store.commit('setStatuses', data);
-};

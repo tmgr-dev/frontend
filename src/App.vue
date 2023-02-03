@@ -115,8 +115,9 @@
 	import Slideout from 'src/components/UIElements/Slideout/Slideout';
 	import TaskForm from 'src/components/Tasks/TaskForm';
 	import store from 'src/store';
-	import { getUserSettings, getWorkspaceStatuses } from 'src/actions/tmgr/user';
+	import { getUserSettings } from 'src/actions/tmgr/user';
 	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
+	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
 
 	const DEFAULT_TRANSITION = 'fade';
 

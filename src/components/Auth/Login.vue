@@ -69,13 +69,10 @@
 	import { ref } from 'vue';
 	import store from 'src/store';
 	import { Login, login as loginAction } from 'src/actions/tmgr/auth';
-	import {
-		getUser,
-		getUserSettings,
-		getWorkspaceStatuses,
-	} from 'src/actions/tmgr/user';
+	import { getUser, getUserSettings } from 'src/actions/tmgr/user';
 	import { AxiosError } from 'axios';
 	import AuthBase from 'src/components/Auth/AuthBase';
+	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
 
 	const router = useRouter();
 
