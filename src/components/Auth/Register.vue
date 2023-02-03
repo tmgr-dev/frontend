@@ -1,7 +1,9 @@
 <template>
 	<teleport to="title"> Registration </teleport>
+
 	<AuthBase>
 		<template #title>Hi there!</template>
+
 		<template #body>
 			<form action="#" class="form-horizontal w-3/4 mx-auto" method="POST">
 				<div class="flex flex-col mt-4">
@@ -13,6 +15,7 @@
 						type="text"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.email"
@@ -22,6 +25,7 @@
 						type="email"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.password"
@@ -31,6 +35,7 @@
 						type="password"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-4">
 					<input-field
 						v-model="form.password_confirmation"
@@ -40,6 +45,7 @@
 						type="password"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-6">
 					<button
 						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
@@ -48,12 +54,13 @@
 					>
 						<span class="relative">
 							Register
-							<loader v-if="showLoader" class="auth-loader" is-mini />
+							<loader v-if="isLoading" class="auth-loader" is-mini />
 						</span>
 					</button>
 				</div>
 			</form>
 		</template>
+
 		<template #footer>
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
@@ -65,59 +72,41 @@
 	</AuthBase>
 </template>
 
-<script>
+<script setup lang="ts">
+	import { useRouter } from 'vue-router';
+	import { ref } from 'vue';
+	import { Register, register as registerAction } from 'src/actions/tmgr/auth';
+	import { AxiosError } from 'axios';
+	import { getUser } from 'src/actions/tmgr/user';
 	import AuthBase from 'src/components/Auth/AuthBase';
 
-	export default {
-		name: 'Register',
-		components: {
-			AuthBase,
-		},
-		props: [],
-		data() {
-			return {
-				showLoader: false,
-				form: {
-					name: null,
-					email: null,
-					password: null,
-					password_confirmation: null,
-				},
-				errors: {},
-			};
-		},
-		methods: {
-			async register() {
-				const { ...registerData } = this.form;
-				try {
-					this.showLoader = true;
-					const { data } = await this.$axios.post(
-						'auth/register',
-						registerData,
-					);
-					this.showLoader = false;
+	const router = useRouter();
 
-					this.$store.commit('token', data.data);
-					this.setUser();
-				} catch (error) {
-					this.showLoader = false;
+	const isLoading = ref(false);
+	const errors = ref({});
+	const form = ref({
+		name: '',
+		email: '',
+		password: '',
+		password_confirmation: '',
+	} as Register);
 
-					if (error && error.response) {
-						this.errors = error.response.data.errors;
-					}
-				}
-			},
+	async function register() {
+		try {
+			errors.value = {};
+			isLoading.value = true;
+			await registerAction(form.value);
+			await getUser(true);
 
-			async setUser() {
-				this.$axios.defaults.headers = {
-					Authorization: `Bearer ${this.$store.getters.token.token}`,
-					'X-Requested-With': 'XMLHttpRequest',
-				};
-				const { data } = await this.$axios.get('user');
+			await router.push({ name: 'CurrentTasksList' });
+		} catch (error: unknown) {
+			if (error instanceof AxiosError) {
+				errors.value = error.response?.data?.errors;
+			}
 
-				this.$store.commit('user', data);
-				this.$router.push({ name: 'CurrentTasksList' });
-			},
-		},
-	};
+			throw error;
+		} finally {
+			isLoading.value = false;
+		}
+	}
 </script>

@@ -39,6 +39,8 @@
 </template>
 
 <script>
+	import { logout as logoutAction } from 'src/actions/tmgr/auth';
+
 	export default {
 		name: 'AccountDropdown',
 		data() {
@@ -58,16 +60,11 @@
 						await this.$store.getters.pusherBeamsClient.stop();
 						this.$store.commit('pusherBeamsUserId', null);
 					}
-					await this.$axios.get('auth/logout');
-					this.removeUserData();
-				} catch ({ response }) {
-					if (response.status && response.status === 401) {
-						this.removeUserData();
-					}
+					await logoutAction();
+					await this.$store.dispatch('logout');
+				} catch (e) {
+					console.error(e);
 				}
-			},
-			removeUserData() {
-				this.$store.dispatch('logout');
 			},
 		},
 	};

@@ -1,7 +1,9 @@
 <template>
 	<teleport to="title"> Restore Password </teleport>
+
 	<AuthBase>
 		<template #title>Restore Password</template>
+
 		<template #body>
 			<form
 				v-if="!message"
@@ -19,6 +21,7 @@
 						type="text"
 					/>
 				</div>
+
 				<div class="flex flex-col mt-6">
 					<button
 						class="bg-blue-500 text-center hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
@@ -31,10 +34,12 @@
 					</button>
 				</div>
 			</form>
-			<p v-else>
+
+			<p v-else class="text-center">
 				{{ message }}
 			</p>
 		</template>
+
 		<template #footer>
 			<router-link
 				class="no-underline hover:underline text-blue-dark text-xs"
@@ -53,41 +58,35 @@
 	</AuthBase>
 </template>
 
-<script>
+<script setup lang="ts">
 	import AuthBase from 'src/components/Auth/AuthBase';
-	import Button from 'components/UIElements/Button';
+	import Button from 'src/components/UIElements/Button';
+	import { ref } from 'vue';
+	import { AxiosError } from 'axios';
+	import { resetPassword } from 'src/actions/tmgr/auth';
 
-	export default {
-		name: 'ForgetPassword',
-		components: {
-			Button,
-			AuthBase,
-		},
-		data: () => ({
-			email: null,
-			message: null,
-			errors: {},
-			isLoading: false,
-		}),
-		methods: {
-			async sendResetLink() {
-				try {
-					this.isLoading = true;
-					const r = await this.$axios.post('password/reset', {
-						email: this.email,
-					});
-					this.message =
-						"The reset link sent. If you don't have an email with link please try check out your spam.";
-				} catch ({
-					response: {
-						data: { errors },
-					},
-				}) {
-					this.errors = errors;
-				} finally {
-					this.isLoading = false;
-				}
-			},
-		},
-	};
+	const email = ref('');
+	const message = ref('');
+	const isLoading = ref(false);
+	const errors = ref({});
+
+	async function sendResetLink() {
+		try {
+			message.value = '';
+			errors.value = {};
+			isLoading.value = true;
+			await resetPassword({ email: email.value });
+
+			message.value =
+				"The reset link was sent. If you didn't get the email, please try check out your spam.";
+		} catch (error: unknown) {
+			if (error instanceof AxiosError) {
+				errors.value = error.response?.data?.errors;
+			}
+
+			throw error;
+		} finally {
+			isLoading.value = false;
+		}
+	}
 </script>

@@ -95,8 +95,8 @@
 					<task-form
 						:is-modal="true"
 						:modal-project-category-id="
-						$store.getters.createTaskInProjectCategoryId
-					"
+							$store.getters.createTaskInProjectCategoryId
+						"
 						:modal-task-id="$store.getters.currentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
 						@close="$store.dispatch('closeTaskModal')"
@@ -114,6 +114,9 @@
 	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 	import Slideout from 'src/components/UIElements/Slideout/Slideout';
 	import TaskForm from 'src/components/Tasks/TaskForm';
+	import store from 'src/store';
+	import { getUserSettings, getWorkspaceStatuses } from 'src/actions/tmgr/user';
+	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -150,9 +153,13 @@
 					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
 				},
 			},
-			showTaskFormModalWindow () {
-				return (this.$route.name !== 'TasksEdit') && (this.$store.getters.currentTaskIdForModal || this.$store.getters.showCreateTaskModal);
-			}
+			showTaskFormModalWindow() {
+				return (
+					this.$route.name !== 'TasksEdit' &&
+					(this.$store.getters.currentTaskIdForModal ||
+						this.$store.getters.showCreateTaskModal)
+				);
+			},
 		},
 		watch: {
 			'$route.path'() {
@@ -183,13 +190,9 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
-				if (!this.$store.getters.user) {
-					return;
-				}
-				const {
-					data: { data },
-				} = await this.$axios.get('/tasks/runned');
-				this.activeTasks = data;
+				if (!this.$store.getters.user) return;
+
+				this.activeTasks = await getLaunchedTasks();
 			},
 			minimize() {
 				if (process.env.MODE === 'electron') {
@@ -232,8 +235,9 @@
 			},
 		},
 		async created() {
-			this.$store.dispatch('loadUserSettings');
-			this.$store.dispatch('loadStatuses');
+			if (store.state.user) {
+				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
+			}
 
 			this.$router.beforeEach((to, from, next) => {
 				this.$store.commit('currentOpenedTaskId', null);
