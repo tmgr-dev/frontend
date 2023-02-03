@@ -4,10 +4,10 @@ import objectToQueryString from 'src/utils/objectToQueryString';
 
 interface Task {}
 
-export const getTasks = async (params: AxiosRequestConfig) => {
+export const getTasks = async (params: AxiosRequestConfig, current = true) => {
 	const {
 		data: { data },
-	} = await $axios.get('tasks/current?all', params);
+	} = await $axios.get(`tasks/${current ? 'current' : ''}?all`, params);
 
 	return data;
 };

@@ -320,12 +320,15 @@
 				this.confirm = { title, body, action };
 			},
 			async loadTasks() {
-				this.tasks = await getTasks({
-					params: {
-						project_category_id: this.id,
-						status_id: this.status || null,
+				this.tasks = await getTasks(
+					{
+						params: {
+							project_category_id: this.id,
+							status_id: this.status || null,
+						},
 					},
-				});
+					false,
+				);
 
 				this.setLoadingActions(this.tasks);
 				this.isTasksFirstLoading = false;

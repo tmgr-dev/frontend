@@ -20,3 +20,22 @@ export const updateOneTaskSettings = async (
 
 	return data;
 };
+
+export const getCategorySettings = async () => {
+	const {
+		data: { data },
+	} = await $axios.get('project_categories/settings');
+
+	return data;
+};
+
+export const updateCategorySettings = async (
+	categoryId: number,
+	payload: {},
+) => {
+	const {
+		data: { data },
+	} = await $axios.put(`project_categories/${categoryId}/settings`, payload);
+
+	return data.settings;
+};

@@ -1,6 +1,8 @@
 import { AxiosRequestConfig } from 'axios';
 import $axios from 'src/plugins/axios';
 
+export interface Category {}
+
 export const getCategories = async () => {
 	const {
 		data: { data },
@@ -32,6 +34,22 @@ export const getCategory = async (categoryId: number) => {
 	const {
 		data: { data },
 	} = await $axios.get(`project_categories/${categoryId}`);
+
+	return data;
+};
+
+export const createCategory = async (payload: Category) => {
+	const {
+		data: { data },
+	} = await $axios.post('project_categories', payload);
+
+	return data;
+};
+
+export const updateCategory = async (categoryId: number, payload: Category) => {
+	const {
+		data: { data },
+	} = await $axios.put(`project_categories/${categoryId}`, payload);
 
 	return data;
 };
