@@ -226,6 +226,13 @@
 	import LoadingTasksList from 'src/components/Loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
 	import InputField from 'src/components/UIElements/InputField';
+	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
+	import {
+		restoreCategory,
+		deleteCategory as deleteCategoryAction,
+		getParentCategory,
+		getSubCategories,
+	} from 'src/actions/tmgr/categories';
 
 	export default {
 		name: 'ProjectCategoryList',
@@ -264,11 +271,6 @@
 					},
 				].concat(statuses);
 			},
-			tasksIndexUrl() {
-				return this.status
-					? `tasks/?all&project_category_id=${this.id}&status_id=${this.status}`
-					: `tasks/?all&project_category_id=${this.id}`;
-			},
 			id() {
 				return this.$route.params.id || '';
 			},
@@ -304,9 +306,10 @@
 				category.hoverClass = '';
 				this.loadingActionTasksIds.push(taskId);
 
-				await this.$axios.patch(`tasks/${taskId}`, {
+				await updateTaskPartially(taskId, {
 					project_category_id: categoryId,
 				});
+
 				await this.loadCategories();
 				await this.loadTasks();
 				this.loadingActionTasksIds = this.loadingActionTasksIds.filter(
@@ -317,11 +320,14 @@
 				this.confirm = { title, body, action };
 			},
 			async loadTasks() {
-				const {
-					data: { data },
-				} = await this.$axios.get(this.tasksIndexUrl);
-				this.setLoadingActions(data);
-				this.tasks = data;
+				this.tasks = await getTasks({
+					params: {
+						project_category_id: this.id,
+						status_id: this.status || null,
+					},
+				});
+
+				this.setLoadingActions(this.tasks);
 				this.isTasksFirstLoading = false;
 			},
 			getBreadcrumbs,
@@ -344,32 +350,30 @@
 					},
 				];
 			},
-			async loadChildrenCategories() {
-				const {
-					data: { data: category },
-				} = await this.$axios.get(`project_categories/${this.id}/with/parents`);
-				this.category = category;
-				this.parentCategories = this.extractParents(category);
+			async loadParentCategory() {
+				this.category = await getParentCategory(this.id);
+				this.parentCategories = this.extractParents(this.category);
 			},
 			async loadCategories() {
-				const {
-					data: { data },
-				} = await this.$axios.get(`project_categories/children/${this.id}?all`);
+				this.categories = await getSubCategories(this.id, {
+					params: {
+						all: '',
+					},
+				});
+
 				if (this.id) {
-					await this.loadChildrenCategories();
+					await this.loadParentCategory();
 				}
-				this.categories = data;
+
 				this.isCategoriesFirstLoading = false;
 			},
 			async deleteCategory(category) {
 				this.showConfirm('Delete category', 'Are you sure?', async () => {
 					try {
-						const {
-							data: { data },
-						} = await this.$axios.delete(`project_categories/${category.id}`);
-						category.deleted_at = data.deleted_at;
+						category.deleted_at = await deleteCategoryAction(category.id);
 						await this.loadTasks();
 					} catch (e) {
+						console.error(e);
 					} finally {
 						this.confirm = null;
 					}
@@ -377,14 +381,11 @@
 			},
 			async restoreCategory(category) {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.post(
-						`project_categories/${category.id}/restore`,
-					);
-					category.deleted_at = data.deleted_at;
+					category.deleted_at = await restoreCategory(category.id);
 					await this.loadTasks();
-				} catch (e) {}
+				} catch (e) {
+					console.error(e);
+				}
 			},
 			extractParents,
 			selectAll() {

@@ -38,6 +38,14 @@ export const updateTask = async (taskId: number, task: Task) => {
 	return data;
 };
 
+export const updateTaskPartially = async (taskId: number, task: Task) => {
+	const {
+		data: { data },
+	} = await $axios.patch(`tasks/${taskId}`, task);
+
+	return data;
+};
+
 export const deleteTask = async (taskId: number) => {
 	const {
 		data: { data },

@@ -497,7 +497,7 @@
 		getTaskSettings,
 		updateOneTaskSettings,
 	} from 'src/actions/tmgr/settings';
-	import { getCategories, getSubCategories } from 'src/actions/tmgr/categories';
+	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 
 	export default {
@@ -824,11 +824,11 @@
 			},
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
-					const data = await getSubCategories(
-						this.projectCategoryId || this.form.project_category_id,
+					this.currentCategory = await getCategory(
+						+this.projectCategoryId || +this.form.project_category_id,
 					);
-					this.currentCategory = data;
-					this.currentCategoryOptionInSelect = data.id;
+
+					this.currentCategoryOptionInSelect = this.currentCategory.id;
 
 					if (!!this.form.id || this.currentCategory.settings.length === 0)
 						return;
