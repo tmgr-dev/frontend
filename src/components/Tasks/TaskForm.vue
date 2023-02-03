@@ -270,7 +270,10 @@
 						style="min-width: 200px"
 					/>
 
-					<div class="relative ml-5 flex flex-row-reverse">
+					<div
+						class="relative ml-5 flex flex-row-reverse"
+						:class="{ 'ml-auto': isPage }"
+					>
 						<div
 							class="w-8 h-8 rounded-full border-gray-500 dark:border-gray-400 border-dashed border-2 flex cursor-default cursor-pointer group hover:dark:border-gray-200"
 							:class="{ '-ml-3': form.assignees?.length }"
@@ -312,7 +315,10 @@
 				<p v-else>Creating task</p>
 
 				<div v-if="isModal" class="ml-auto flex gap-2">
-					<button type="button" class="opacity-50 hover:opacity-100 transition-opacity mr-2">
+					<button
+						type="button"
+						class="opacity-50 hover:opacity-100 transition-opacity mr-2"
+					>
 						<router-link
 							class="material-icons text-2xl text-black dark:text-white"
 							:to="`/${taskId}/edit`"
@@ -985,9 +991,9 @@
 					this.isSaving = false;
 					setTimeout(() => {
 						if (start && !this.form.start_time) {
-							this.toggleCountdown()
+							this.toggleCountdown();
 						}
-					}, 500)
+					}, 500);
 				}
 			},
 			goToCurrentTasks() {
