@@ -120,6 +120,11 @@
 <script>
 	import InputField from 'src/components/UIElements/InputField';
 	import { copyToClipboard as copy } from 'quasar';
+	import {
+		createWorkspace,
+		createWorkspaceInvitation,
+		getWorkspaces,
+	} from 'src/actions/tmgr/workspaces';
 
 	export default {
 		name: 'CurrentWorkspace',
@@ -178,7 +183,8 @@
 				try {
 					this.isLoading = true;
 					this.errors = {};
-					await this.$axios.post('/workspaces', this.newWorkspace);
+					const workspace = await createWorkspace(this.newWorkspace);
+					this.workspaces.push(workspace);
 					this.isShowWorkspaceModal = false;
 				} catch (e) {
 					this.errors = e.response?.data?.errors || {};
@@ -191,14 +197,10 @@
 					this.isCopied = false;
 					this.isLoading = true;
 					this.errors = {};
-					const {
-						data: { data: newWorkspaceInvitation },
-					} = await this.$axios.post(
-						`/workspaces/${this.val}/invitations`,
+					this.newWorkspaceInvitation = await createWorkspaceInvitation(
+						this.val,
 						this.newWorkspaceInvitation,
 					);
-
-					this.newWorkspaceInvitation = newWorkspaceInvitation;
 				} catch (e) {
 					this.errors = e.response?.data?.errors || {};
 				} finally {
@@ -207,11 +209,7 @@
 			},
 		},
 		async created() {
-			let {
-				data: { data: workspaces },
-			} = await this.$axios.get('/workspaces');
-
-			this.workspaces = workspaces;
+			this.workspaces = await getWorkspaces();
 		},
 	};
 </script>

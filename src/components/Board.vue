@@ -1,5 +1,6 @@
 <template>
 	<teleport to="title">{{ title }}</teleport>
+
 	<BaseLayout no-copyright>
 		<template #body>
 			<div class="block justify-center">
@@ -19,13 +20,12 @@
 										}"
 									>
 										{{ column.title }}
-										<div class="inline-block absolute top-0 right-0 pt-2">
-											<dashboard-dropdown-menu
-												:actions="getActions(column)"
-											></dashboard-dropdown-menu>
+										<div class="absolute top-5 right-3">
+											<dashboard-dropdown-menu :actions="getActions(column)" />
 										</div>
 									</div>
 								</div>
+
 								<draggable
 									v-model="column.tasks"
 									:animation="200"
@@ -41,7 +41,7 @@
 											:task="task"
 											class="my-5 cursor-move"
 											:data-task="jsonEncode(task)"
-										></task-card>
+										/>
 									</template>
 								</draggable>
 							</div>
@@ -55,11 +55,18 @@
 
 <script>
 	import Button from 'src/components/UIElements/Button';
-	import InputField from 'components/UIElements/InputField';
+	import InputField from 'src/components/UIElements/InputField';
 	import draggable from 'vuedraggable';
-	import TaskCard from './UIElements/TaskCard.vue';
-	import DropdownMenu from 'components/UIElements/DropdownMenu';
-	import DashboardDropdownMenu from 'components/UIElements/DashboardDropdownMenu';
+	import TaskCard from 'src/components/UIElements/TaskCard.vue';
+	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
+	import DashboardDropdownMenu from 'src/components/UIElements/DashboardDropdownMenu';
+	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
+	import {
+		getSortedTasksByStatus,
+		updateTaskOrders,
+		updateTaskStatus,
+	} from 'src/actions/tmgr/tasks';
+	import { updateUser } from 'src/actions/tmgr/user';
 
 	export default {
 		name: 'Profile',
@@ -108,15 +115,6 @@
 			getActions(column) {
 				return [
 					{
-						click: async () => {
-							const response = await this.$axios.post(
-								`statuses/${column.status.id}/to/${this.archivedStatus.id}`,
-							);
-							this.loadTasks();
-						},
-						label: 'Archive all',
-					},
-					{
 						click: () => {
 							this.$store.commit('showCreateTaskModal', {
 								showCreateTaskModal: true,
@@ -143,8 +141,9 @@
 			}) {
 				task = this.jsonDecode(task);
 				status = parseInt(status);
+
 				if (task.status_id !== status) {
-					await this.$axios.put(`tasks/${task.id}/${status}`);
+					await updateTaskStatus(task.id, status);
 					const foundTask = this.findTask(status, task.id);
 					foundTask.status_id = status;
 				}
@@ -164,7 +163,7 @@
 					});
 				});
 
-				await this.$axios.put('/tasks/update-orders', {
+				await updateTaskOrders({
 					tasks: orders,
 				});
 			},
@@ -195,9 +194,8 @@
 			onStart(evt) {},
 			async loadColumns() {
 				const columns = [];
-				const {
-					data: { data: statuses },
-				} = await this.$axios.get(`workspaces/statuses`);
+				const statuses = await getWorkspaceStatuses();
+
 				for (let i = 0; i < statuses.length; ++i) {
 					let status = statuses[i];
 					if (status.type === 'archived') {
@@ -210,7 +208,8 @@
 						tasks: [],
 					});
 				}
-				this.$nextTick(() => {
+
+				await this.$nextTick(() => {
 					this.columns = columns;
 				});
 			},
@@ -221,37 +220,19 @@
 				}
 			},
 			async loadTasksByStatus(status) {
-				const {
-					data: { data },
-				} = await this.$axios.get(
-					this.getTasksIndexUrl(status?.id ? status.id : status),
-				);
-				return data.sort((a, b) => {
-					if (a.order < b.order) {
-						return -1;
-					}
-					if (a.order > b.order) {
-						return 1;
-					}
-					return 0;
+				return await getSortedTasksByStatus(status?.id || status, {
+					params: {
+						'order[column]': 'order',
+						'order[direction]': 'asc',
+					},
 				});
-			},
-			getTasksIndexUrl(status) {
-				return `tasks/status/${status}?all&order[column]=order&order[direction]=asc`;
 			},
 			async saveUser() {
 				try {
-					const {
-						data: { data },
-					} = await this.$axios.put('user', this.user);
-					this.user = data;
+					this.user = await updateUser(this.user);
 					this.showAlert('Saved', 'User data saved');
-				} catch ({
-					response: {
-						data: { errors },
-					},
-				}) {
-					this.errors = errors;
+				} catch (e) {
+					this.errors = e.response?.data?.errors || {};
 				}
 			},
 		},
@@ -271,9 +252,33 @@
 		box-shadow: rgb(233 233 233) 1px 4px 20px;
 	}
 
+	.reset-scroll {
+		&::-webkit-scrollbar {
+			all: initial !important;
+		}
+		&::-webkit-scrollbar-button {
+			all: initial !important;
+		}
+		&::-webkit-scrollbar-track {
+			all: initial !important;
+		}
+		&::-webkit-scrollbar-track-piece {
+			all: initial !important;
+		}
+		&::-webkit-scrollbar-thumb {
+			all: initial !important;
+		}
+		&::-webkit-scrollbar-corner {
+			all: initial !important;
+		}
+		&::-webkit-resizer {
+			all: initial !important;
+		}
+	}
+
 	.custom-scroll {
 		&::-webkit-scrollbar {
-			width: 2px;
+			width: 1px;
 		}
 
 		&::-webkit-scrollbar-track {
@@ -290,12 +295,12 @@
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		overflow-y: hidden;
-		@extend .custom-scroll;
+		@extend .reset-scroll;
 
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			height: calc(100vh - 180px);
+			height: calc(100vh - 100px);
 		}
 	}
 

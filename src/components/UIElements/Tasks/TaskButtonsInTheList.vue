@@ -94,7 +94,7 @@
 			v-tooltip.top="setTooltipData('Delete task')"
 			class="mr-2"
 			button-class="bg-red-700 hover:bg-red-600"
-			@click="deleteTask(task, `delete-${task.id}`)"
+			@click="removeTask(task, `delete-${task.id}`)"
 		>
 			<span class="relative">
 				<span
