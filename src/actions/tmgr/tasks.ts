@@ -73,13 +73,33 @@ export const getTasksByStatus = async (
 	return data;
 };
 
+export const getSortedTasksByStatus = async (
+	statusId: number,
+	params: AxiosRequestConfig,
+) => {
+	const {
+		data: { data },
+	} = await $axios.get(`tasks/status/${statusId}?all`, params);
+
+	// @todo simplify it
+	return data.sort((a: { order: number }, b: { order: number }) => {
+		if (a.order < b.order) {
+			return -1;
+		}
+		if (a.order > b.order) {
+			return 1;
+		}
+		return 0;
+	});
+};
+
 export const updateTaskStatus = async (
 	taskId: number,
 	status: string | number,
 ) => {
 	const {
 		data: { data },
-	} = await $axios.get(`tasks/${taskId}/${status}`);
+	} = await $axios.put(`tasks/${taskId}/${status}`);
 
 	return data;
 };
@@ -133,6 +153,15 @@ export const updateTaskTimeCounter = async (
 	} = await $axios.put(`tasks/${taskId}/time`, payload);
 
 	return data;
+};
+
+type taskOrder = {
+	id: number;
+	order: number;
+};
+
+export const updateTaskOrders = async (payload: { tasks: taskOrder[] }) => {
+	await $axios.put('/tasks/update-orders', payload);
 };
 
 type exportType = 'csv' | 'jpg' | 'xlsx';

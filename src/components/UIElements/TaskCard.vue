@@ -2,34 +2,41 @@
 	<div
 		class="bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow rounded px-3 pt-3 pb-5 border"
 	>
-		<div class="flex justify-between">
+		<div class="flex gap-3 justify-between">
 			<a
 				class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm"
 				:href="`/${task.id}/edit`"
 				@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
-				>{{ task.title }}</a
 			>
+				{{ task.title }}
+			</a>
 
-			<img
-				alt="Avatar"
-				class="w-6 h-6 rounded-full ml-3"
-				src="https://pickaface.net/gallery/avatar/unr_sample_161118_2054_ynlrg.png"
-			/>
+			<!--	@todo create component and implement adding new users	here	-->
+			<div
+				class="shrink-0 w-6 h-6 rounded-full border-green-400 bg-green-600 flex cursor-default"
+			>
+				<div class="m-auto font-sans text-base text-white">
+					{{ user.name.charAt(0).toUpperCase() }}
+				</div>
+			</div>
 		</div>
+
 		<div class="flex mt-4 justify-between items-center">
-			<span class="text-sm text-gray-600">{{
-				secondsToHumanReadableString(task.common_time)
-			}}</span>
+			<span class="text-sm text-gray-600">
+				{{ secondsToHumanReadableString(task.common_time) }}
+			</span>
+
 			<div>
 				<category-badge
 					v-if="task.category"
 					:category="task.category"
 					:status-id="task.status_id"
-				></category-badge>
+				/>
 			</div>
 		</div>
 	</div>
 </template>
+
 <script>
 	import Badge from './Badge.vue';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
@@ -57,6 +64,9 @@
 					default: 'black',
 				};
 				return mappings[this.task.type] || mappings.default;
+			},
+			user() {
+				return this.$store.getters.user;
 			},
 		},
 		methods: {},
