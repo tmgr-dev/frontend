@@ -25,14 +25,16 @@ jobs:
           node-version: 19.6.0
       - name: Install dependencies
         run: npm ci
+      - name: Create .env
+        run: echo "${{ secrets.ENV_FILE }}" > .env
       - name: Build static site
         run: npm run build # Build your website
-      - name: Install globaly Surge
+      - name: Install globally Surge
         run: npm install --global surge
       - name: Deploy
         uses: koj-co/deploy-pr-action@v1.0.1
         with:
-          prefix: tmgr-dev-preview # Prefix for deployment URL
+          prefix: tmgr # Prefix for deployment URL
           robotsTxtPath: dist/spa/robots.txt # Add robots.txt file
           distDir: dist/spa # Path to dist directory
         env:
