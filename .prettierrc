@@ -4,5 +4,6 @@
   "trailingComma": "all",
   "bracketSpacing": true,
   "bracketSameLine": false,
-  "vueIndentScriptAndStyle": true
+  "vueIndentScriptAndStyle": true,
+  "tailwindConfig": "./tailwind.config.js"
 }
