@@ -84,7 +84,7 @@
 			},
 		},
 		data: () => ({
-			title: 'Board: HELLO',
+			title: 'Board',
 			user: {
 				name: null,
 				password: null,
