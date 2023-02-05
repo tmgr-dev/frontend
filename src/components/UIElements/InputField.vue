@@ -3,83 +3,22 @@
 		<transition name="fade">
 			<div>
 				<div v-if="showInput" :key="updateKey">
-					<div
-						v-if="type === 'select'"
-						class="appearance-none border-0 transition-colors duration-300 rounded w-full bg-white dark:bg-gray-800"
-						:class="extraClass"
-					>
-						<vue-select
-							v-if="options"
-							:label="optionNameKey"
-							:options="preparedOptions"
-							v-model="val"
-							:clearable="false"
-						/>
-					</div>
-
-					<textarea
-						class="appearance-none border transition-colors duration-300 rounded w-full py-2 px-3 bg-white dark:bg-gray-800 leading-tight outline-none"
-						:class="[
-							extraClass,
-							forCheckpoint ? 'max-h-40 pt-2 min-h-[36px]' : '',
-						]"
-						v-else-if="type === 'textarea'"
-						name=""
-						v-model="val"
-						:style="forCheckpoint ? 'margin-bottom: -8px;' : ''"
-						:placeholder="placeholder"
-					/>
-
-					<div v-else-if="type === 'contenteditable'">
-						<quill-editor
-							class="relative z-10 appearance-none transition-colors duration-300 border-0 rounded w-full py-2 px-3 leading-tight bg-white dark:bg-gray-800 outline-none"
-							:class="extraClass"
-							v-model:content="val"
-							:key="updateKey"
-							content-type="html"
-							theme="bubble"
-							:placeholder="placeholder"
-						/>
-					</div>
-
 					<input
-						v-else-if="type === 'time_in_seconds'"
+						v-if="type === 'time_in_seconds'"
 						:id="name"
 						type="time"
-						class="appearance-none border-0 bg-white transition-colors duration-300 dark:bg-gray-800 rounded w-full py-2 px-3 leading-tight outline-none"
+						class="w-full appearance-none rounded border-0 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
 						:class="[extraClass, errors ? 'with-errors' : '']"
 						:name="name"
 						:placeholder="placeholder"
 						v-model="val"
 					/>
 
-					<div v-else-if="type === 'checkbox'" class="b-switch-list mt-3">
-						<div class="b-switch-list__item">
-							<label class="b-switch">
-								<input
-									type="checkbox"
-									:name="name"
-									v-model="val"
-									@keydown:enter="$emit('keydown:enter', val)"
-								/>
-								<span></span>
-							</label>
-
-							<div class="b-switch-list__text">
-								<div
-									class="b-switch-list__title text-gray-800 dark:text-gray-400"
-								>
-									{{ placeholder }}
-								</div>
-							</div>
-						</div>
-					</div>
-
 					<input
 						v-else
 						:id="name"
 						:type="type"
-						class="appearance-none border border-neutral-300 bg-white rounded w-full py-2 px-3 leading-tight outline-none transition-colors duration-300"
+						class="w-full appearance-none rounded border border-neutral-300 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300"
 						:class="[
 							extraClass,
 							errors ? 'with-errors' : '',
@@ -164,11 +103,6 @@
 				required: false,
 				type: String,
 			},
-			selected: {
-				required: false,
-				type: Boolean,
-				default: false,
-			},
 			extraClass: {
 				required: false,
 				type: String,
@@ -195,9 +129,6 @@
 			},
 			val: {
 				get() {
-					if (this.type === 'select') {
-						return this.findOptionByValue(this.modelValue);
-					}
 					if (this.type !== 'time_in_seconds') {
 						return this.modelValue;
 					}
@@ -205,9 +136,6 @@
 					return this.getSecondsInTime(this.modelValue);
 				},
 				set(v) {
-					if (this.type === 'select') {
-						return this.$emit('update:modelValue', v[this.optionValueKey]);
-					}
 					if (this.type !== 'time_in_seconds') {
 						return this.$emit('update:modelValue', v);
 					}
@@ -233,11 +161,6 @@
 			},
 		},
 		methods: {
-			findOptionByValue(value) {
-				return this.options.find(
-					(option) => option[this.optionValueKey] === value,
-				);
-			},
 			getTimeInSeconds,
 			getSecondsInTime: toHHMM,
 			updateWidth() {
