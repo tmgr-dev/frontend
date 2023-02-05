@@ -33,11 +33,10 @@
 								<label class="mb-2 mt-4 block text-left text-sm font-bold">
 									<span class="mb-2 block">Category</span>
 
-									<input-field
-										type="select"
+									<Select
 										:options="categoriesSelectOptions"
-										option-name-key="title"
-										option-value-key="id"
+										label-key="title"
+										value-key="id"
 										v-model="currentCategoryOptionInSelect"
 									/>
 								</label>
@@ -55,68 +54,13 @@
 									</label>
 
 									<div class="relative mb-4">
-										<select
+										<input-field
 											:id="`setting-${setting.id}`"
-											v-if="!setting.show_custom_value_input"
-											class="block w-full appearance-none rounded border border-gray-300 bg-white px-4 py-2 pr-8 leading-tight shadow focus:outline-none"
+											:type="setting.component_type"
+											:placeholder="setting.description"
 											v-model="settings[index].value"
-										>
-											<option value="" class="text-gray-500">
-												Choose default value
-											</option>
-											<option
-												v-for="(c, i) in setting.default_values"
-												:key="i"
-												:value="c.value"
-											>
-												{{ c.value }}
-											</option>
-										</select>
-
-										<div v-else-if="setting.custom_value_available">
-											<input-field
-												:id="`setting-${setting.id}`"
-												:type="setting.component_type"
-												:placeholder="setting.description"
-												v-model="settings[index].value"
-												:tag="(settings[index].id = setting.id)"
-											/>
-										</div>
-
-										<small v-if="!setting.show_custom_value_input">
-											{{ setting.description }}
-										</small>
-
-										<div
-											class="b-switch-list"
-											v-if="setting.custom_value_available"
-										>
-											<div
-												class="b-switch-list__item"
-												v-if="
-													setting.default_values &&
-													setting.default_values.length > 0
-												"
-											>
-												<label class="b-switch">
-													<input
-														type="checkbox"
-														name="show_tooltips"
-														v-model="setting.show_custom_value_input"
-														@change="settings[index].value = ''"
-													/>
-													<span></span>
-												</label>
-
-												<div class="b-switch-list__text">
-													<div
-														class="b-switch-list__title text-gray-800 dark:text-gray-400"
-													>
-														Set custom value
-													</div>
-												</div>
-											</div>
-										</div>
+											:tag="(settings[index].id = setting.id)"
+										/>
 									</div>
 								</div>
 
@@ -253,21 +197,18 @@
 										currentCategory.id
 								  }/children/${getCategoryStatus()}`
 						"
-						class="rounded text-blue-800 text-white focus:outline-none dark:text-neutral-200 sm:mb-0"
+						class="hidden rounded text-blue-800 text-white focus:outline-none dark:text-neutral-200 sm:mb-0 sm:block"
 						type="button"
 					>
 						{{ currentCategory ? currentCategory.title : 'Tasks' }}
 					</router-link>
 
-					<input-field
-						v-if="workspaceStatuses.length > 0"
+					<Select
 						v-model="form.status_id"
-						type="select"
 						:options="workspaceStatuses"
-						option-name-key="name"
-						option-value-key="id"
-						class="ml-3 inline-block"
-						style="min-width: 200px"
+						label-key="name"
+						value-key="id"
+						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
 
 					<div
@@ -317,7 +258,7 @@
 				<div v-if="isModal" class="ml-auto flex gap-2">
 					<button
 						type="button"
-						class="mr-2 opacity-50 transition-opacity hover:opacity-100"
+						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block"
 					>
 						<router-link
 							class="material-icons text-2xl text-black dark:text-white"
@@ -369,12 +310,16 @@
 					placeholder="Task name"
 				/>
 
-				<input-field
+				<quill-editor
+					class="relative z-10 w-full appearance-none rounded border-0 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+					:class="errors.description && 'with-errors'"
 					v-model="form.description"
-					:errors="errors.description"
-					type="contenteditable"
+					content-type="html"
+					theme="bubble"
 					placeholder="Description"
 				/>
+
+				<input-field :errors="errors.description" />
 			</div>
 
 			<div
@@ -499,10 +444,14 @@
 	} from 'src/actions/tmgr/settings';
 	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
+	import Select from 'src/components/general/Select.vue';
+	import Switcher from 'src/components/general/Switcher.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			Switcher,
+			Select,
 			Confirm,
 			NewCountdown,
 			TaskActions,

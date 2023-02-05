@@ -21,10 +21,10 @@
 					Test web push notifications
 				</button>
 
-				<input-field
+				<Switcher
+					name="show_tooltips"
 					v-model="userSettings.showTooltips"
 					placeholder="Show tooltips"
-					type="checkbox"
 				/>
 
 				<div>
@@ -55,35 +55,16 @@
 								{{ setting.description }}
 							</small>
 
-							<div
-								v-if="setting.custom_value_available"
-								class="b-switch-list mt-3"
-							>
-								<div
-									v-if="
-										setting.default_values && setting.default_values.length > 0
-									"
-									class="b-switch-list__item"
-								>
-									<label class="b-switch">
-										<input
-											v-model="setting.show_custom_value_input"
-											name="show_tooltips"
-											type="checkbox"
-											@change="settings[index].value = ''"
-										/>
-										<span></span>
-									</label>
-
-									<div class="b-switch-list__text">
-										<div
-											class="b-switch-list__title text-gray-800 dark:text-gray-400"
-										>
-											Set custom value
-										</div>
-									</div>
-								</div>
-							</div>
+							<Switcher
+								v-if="
+									setting.custom_value_available &&
+									setting.default_values &&
+									setting.default_values.length > 0
+								"
+								name="set_custom_value"
+								v-model="setting.show_custom_value_input"
+								placeholder="Set custom value"
+							/>
 						</div>
 					</div>
 				</div>
@@ -136,10 +117,12 @@
 	} from 'src/actions/tmgr/user';
 	import { sendNotification } from 'src/actions/tmgr/notifications';
 	import Select from 'src/components/general/Select.vue';
+	import Switcher from 'src/components/general/Switcher.vue';
 
 	export default {
 		name: 'Settings',
 		components: {
+			Switcher,
 			Select,
 			Button,
 			Confirm,

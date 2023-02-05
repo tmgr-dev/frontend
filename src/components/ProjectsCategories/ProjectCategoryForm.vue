@@ -2,11 +2,10 @@
 	<BaseLayout>
 		<template #header>{{ h1 }}</template>
 
-		<template v-if="parentCategories && parentCategories.length > 0" #action>
+		<template v-if="categories && categories.length > 0" #action>
 			<breadcrumbs
 				v-if="form.project_category_id"
 				:current="'Edit category'"
-				:drop="drop"
 				:items="getBreadcrumbs(getParents())"
 			/>
 		</template>
@@ -39,7 +38,7 @@
 					<div class="relative mb-4">
 						<Select
 							v-model="form.project_category_id"
-							:options="parentCategories"
+							:options="categories"
 							label-key="title"
 							value-key="id"
 						/>
@@ -57,7 +56,6 @@
 							</label>
 
 							<div class="relative mb-4">
-								<!-- i don't know what it is	-->
 								<Select
 									v-if="!setting.show_custom_value_input"
 									:options="setting.default_values"
@@ -81,36 +79,16 @@
 									{{ setting.description }}
 								</small>
 
-								<div
-									v-if="setting.custom_value_available"
-									class="b-switch-list mt-3"
-								>
-									<div
-										v-if="
-											setting.default_values &&
-											setting.default_values.length > 0
-										"
-										class="b-switch-list__item"
-									>
-										<label class="b-switch">
-											<input
-												v-model="setting.show_custom_value_input"
-												name="show_tooltips"
-												type="checkbox"
-												@change="settings[index].value = ''"
-											/>
-											<span></span>
-										</label>
-
-										<div class="b-switch-list__text">
-											<div
-												class="b-switch-list__title text-gray-800 dark:text-gray-400"
-											>
-												Set custom value
-											</div>
-										</div>
-									</div>
-								</div>
+								<Switcher
+									v-if="
+										setting.custom_value_available &&
+										setting.default_values &&
+										setting.default_values.length > 0
+									"
+									name="set_custom_value"
+									v-model="setting.show_custom_value_input"
+									placeholder="Set custom value"
+								/>
 							</div>
 						</div>
 					</div>
@@ -143,8 +121,6 @@
 						</router-link>
 					</div>
 				</form>
-
-				<alert ref="alert" />
 			</div>
 		</template>
 	</BaseLayout>
@@ -160,6 +136,7 @@
 		createCategory,
 		getCategories,
 		getCategory,
+		getParentCategory,
 		updateCategory,
 	} from 'src/actions/tmgr/categories';
 	import {
@@ -168,10 +145,12 @@
 	} from 'src/actions/tmgr/settings';
 	import generateSlugFromRu from 'src/utils/generateSlugFromRu';
 	import Select from 'src/components/general/Select.vue';
+	import Switcher from 'src/components/general/Switcher.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			Switcher,
 			Select,
 			SettingsLoader,
 			Breadcrumbs,
@@ -185,7 +164,7 @@
 					project_category_id: this.$route.params.project_category_id || null,
 					slug: '',
 				},
-				parentCategories: [],
+				categories: [],
 				availableSettings: [],
 				settings: [],
 				isLoading: true,
@@ -211,7 +190,7 @@
 			if (!this.isCreate) {
 				this.form = await getCategory(this.categoryId);
 			}
-			await this.loadParentCategories();
+			await this.loadCategories();
 			await this.loadProjectCategorySettings();
 		},
 		methods: {
@@ -227,13 +206,14 @@
 					},
 				});
 				parents.push(this.form);
+
 				return parents;
 			},
-			async loadParentCategories() {
+			async loadCategories() {
 				const data = await getCategories();
-				this.parentCategories = data.filter((category) => {
-					return category.id !== this.form.id;
-				});
+				this.categories = data.filter(
+					(category) => category.id !== this.categoryId,
+				);
 			},
 			async loadProjectCategorySettings() {
 				try {
@@ -265,7 +245,7 @@
 				return settings.find((setting) => setting.id === id) || defaultResult;
 			},
 			findProjectCategoryById(id) {
-				return this.parentCategories.find((category) => {
+				return this.categories.find((category) => {
 					return category.id === id;
 				});
 			},
