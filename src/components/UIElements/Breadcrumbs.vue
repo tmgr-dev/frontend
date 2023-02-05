@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="card transition duration-300 ease-in-out hover:shadow-sm flex flex-col my-5"
+		class="card my-5 flex flex-col transition duration-300 ease-in-out hover:shadow-sm"
 	>
 		<div class="card-body py-4">
 			<nav aria-label="breadcrumb" class="text-left">
@@ -73,12 +73,6 @@
 
 		@media screen and (max-width: 768px) {
 			content: '/';
-		}
-	}
-
-	@media screen and (max-width: 768px) {
-		.breadcrumb .breadcrumb-item:first-child:before {
-			content: '->';
 		}
 	}
 </style>
