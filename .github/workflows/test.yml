@@ -4,6 +4,8 @@ on: push
 
 jobs:
   first_job:
+    outputs:
+      TEST_VAR: ${{ steps.set_output.outputs.TEST_VAR }}
     runs-on: ubuntu-latest
 
     steps:
@@ -20,4 +22,4 @@ jobs:
 
     steps:
       - name: Echo output variable
-        run: echo "${{ needs.first_job.steps.set_output.outputs.TEST_VAR }}"
+        run: echo "${{ needs.first_job.outputs.TEST_VAR }}"
