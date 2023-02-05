@@ -1,0 +1,26 @@
+name: Example Workflow
+
+on: push
+
+jobs:
+  first_job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set output variable
+        id: set_output
+        uses: actions/core@1.10.0
+        with:
+          env: TEST_VAR
+          value: Hello World
+
+  second_job:
+    runs-on: ubuntu-latest
+    needs: first_job
+
+    steps:
+      - name: Echo output variable
+        run: echo "${{ needs.first_job.steps.set_output.outputs.TEST_VAR }}"
