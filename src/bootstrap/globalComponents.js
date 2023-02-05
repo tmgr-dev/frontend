@@ -8,7 +8,6 @@ import Loader from '../components/UIElements/Loader';
 import DayNightSwitch from '../components/UIElements/DayNightSwitch';
 import AccountDropdown from 'src/components/UIElements/AccountDropdown';
 import Alert from 'src/components/UIElements/Alert';
-import VueSelect from 'src/components/UIElements/VueSelect';
 
 export default [
 	Alert,
@@ -21,5 +20,4 @@ export default [
 	NewButton,
 	Loader,
 	AccountDropdown,
-	VueSelect,
 ];

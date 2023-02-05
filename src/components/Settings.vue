@@ -42,12 +42,16 @@
 							</template>
 
 							<template v-else-if="setting.custom_value_available">
-								<input-field
-									:id="`setting-${setting.id}`"
+								<TimeField
+									v-if="setting.component_type === 'time_in_seconds'"
 									v-model="settings[index].value"
 									:placeholder="setting.description"
-									:tag="(settings[index].id = setting.id)"
-									:type="setting.component_type"
+								/>
+
+								<TextField
+									v-else
+									v-model="settings[index].value"
+									:placeholder="setting.description"
 								/>
 							</template>
 
@@ -118,10 +122,14 @@
 	import { sendNotification } from 'src/actions/tmgr/notifications';
 	import Select from 'src/components/general/Select.vue';
 	import Switcher from 'src/components/general/Switcher.vue';
+	import TimeField from 'src/components/general/TimeField.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'Settings',
 		components: {
+			TextField,
+			TimeField,
 			Switcher,
 			Select,
 			Button,

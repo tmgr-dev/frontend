@@ -2,12 +2,12 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded border bg-white py-2 px-3 outline-none transition-colors duration-300"
+			class="w-full rounded border bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 			:class="[
 				inputClass,
 				hasError
 					? 'border-red-500 placeholder:text-red-400'
-					: 'border-neutral-300 dark:border-neutral-600',
+					: 'border-neutral-300 dark:border-transparent',
 			]"
 			:name="name"
 			:placeholder="placeholder"
@@ -41,7 +41,7 @@
 		modelValue: string;
 		placeholder?: string;
 		inputClass?: string;
-		errors: [];
+		errors?: [];
 		showErrorInTooltip?: boolean;
 	}
 

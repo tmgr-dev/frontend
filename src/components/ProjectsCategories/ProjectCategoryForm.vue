@@ -23,11 +23,10 @@
 							Project category name
 						</label>
 
-						<input-field
-							id="categoryName"
+						<TextField
 							v-model="form.title"
+							:errors="errors.title"
 							placeholder="Name"
-							type="text"
 						/>
 					</div>
 
@@ -66,12 +65,16 @@
 								/>
 
 								<div v-else-if="setting.custom_value_available">
-									<input-field
-										:id="`setting-${setting.id}`"
+									<TimeField
+										v-if="setting.component_type === 'time_in_seconds'"
 										v-model="settings[index].value"
 										:placeholder="setting.description"
-										:tag="(settings[index].id = setting.id)"
-										:type="setting.component_type"
+									/>
+
+									<TextField
+										v-else
+										v-model="settings[index].value"
+										:placeholder="setting.description"
 									/>
 								</div>
 
@@ -146,10 +149,14 @@
 	import generateSlugFromRu from 'src/utils/generateSlugFromRu';
 	import Select from 'src/components/general/Select.vue';
 	import Switcher from 'src/components/general/Switcher.vue';
+	import TextField from 'src/components/general/TextField.vue';
+	import TimeField from 'src/components/general/TimeField.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			TimeField,
+			TextField,
 			Switcher,
 			Select,
 			SettingsLoader,
@@ -164,6 +171,7 @@
 					project_category_id: this.$route.params.project_category_id || null,
 					slug: '',
 				},
+				errors: {},
 				categories: [],
 				availableSettings: [],
 				settings: [],
@@ -254,21 +262,34 @@
 					delete this.form.project_category_id;
 				}
 
+				this.errors = {};
+
 				if (!this.isCreate) {
 					this.form = await updateCategory(this.form.id, this.form);
-					const settings = await updateCategorySettings(
-						this.form.id,
-						this.settings,
-					);
 
-					this.initSettings(this.availableSettings, settings);
-					this.showAlert('Saved', 'The category was saved');
+					try {
+						const settings = await updateCategorySettings(
+							this.form.id,
+							this.settings,
+						);
+
+						this.initSettings(this.availableSettings, settings);
+						this.showAlert('Saved', 'The category was saved');
+					} catch (e) {
+						this.errors = e.response?.data?.errors;
+						throw e;
+					}
 
 					return;
 				}
 
 				this.form.slug = this.generateSlugFromRu(this.form.title);
-				this.form = await createCategory(this.form);
+				try {
+					this.form = await createCategory(this.form);
+				} catch (e) {
+					this.errors = e.response?.data?.errors;
+					throw e;
+				}
 
 				if (withRoutePush) {
 					await this.$router.push(
