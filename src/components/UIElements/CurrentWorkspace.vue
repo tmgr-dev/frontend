@@ -20,7 +20,6 @@
 				<TextField
 					v-model="newWorkspace.name"
 					:errors="errors.name"
-					input-class="bg-white dark:bg-gray-800"
 					placeholder="New workspace name"
 				/>
 
@@ -61,7 +60,6 @@
 							type="number"
 							v-model="newWorkspaceInvitation.max_usage_times"
 							:errors="errors.max_usage_times"
-							input-class="bg-white dark:bg-gray-800"
 							placeholder="1"
 						/>
 					</label>
@@ -73,7 +71,6 @@
 							type="datetime-local"
 							v-model="newWorkspaceInvitation.expired_at"
 							:errors="errors.expired_at"
-							input-class="bg-white dark:bg-gray-800"
 							placeholder="Expired at"
 						/>
 					</label>
@@ -117,7 +114,7 @@
 		getWorkspaces,
 	} from 'src/actions/tmgr/workspaces';
 	import Select from 'src/components/general/Select.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import TextField from 'src/components/general/TextField';
 
 	export default {
 		name: 'CurrentWorkspace',

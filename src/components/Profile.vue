@@ -5,27 +5,24 @@
 		<template #header>Profile</template>
 
 		<template #body>
-			<div class="flex flex-col gap-3 max-w-lg">
-				<div>
-					<input-field
-						v-model="user.name"
-						:errors="errors?.name"
-						class="pb-2"
-						placeholder="Your name"
-					/>
-				</div>
+			<div class="flex max-w-lg flex-col gap-3">
+				<TextField
+					v-model="user.name"
+					:errors="errors.name"
+					placeholder="Your name"
+				/>
 
-				<div class="w-full flex">
-					<input-field
+				<div class="flex">
+					<TextField
 						v-model="user.password"
 						:errors="errors?.password"
 						class="w-1/2 pr-2"
 						placeholder="New password"
 					/>
 
-					<input-field
+					<TextField
 						v-model="user.password_confirmation"
-						:errors="errors?.password_confirmation"
+						:errors="errors.password_confirmation"
 						class="w-1/2 pl-2"
 						placeholder="New password confirmation"
 					/>
@@ -33,7 +30,7 @@
 
 				<div class="text-left">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded focus:outline-none sm:mb-0 mt-4"
+						class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
 						type="button"
 						@click="saveUser"
 					>
@@ -48,11 +45,13 @@
 <script>
 	import Button from 'src/components/UIElements/Button';
 	import InputField from 'src/components/UIElements/InputField';
+	import TextField from 'src/components/general/TextField';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 
 	export default {
 		name: 'Profile',
 		components: {
+			TextField,
 			InputField,
 			Button,
 		},

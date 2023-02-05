@@ -5,32 +5,30 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex justify-between items-center flex-nowrap">
+			<div class="flex flex-nowrap items-center justify-between">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="sm:w-auto w-full mr-6 shrink-0 ext-opacity-25 text-center text-bold lg:text-2xl sm:text-xl text-lg"
+						class="ext-opacity-25 text-bold mr-6 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
 				<div
-					class="overflow-hidden ml-auto w-full md:w-1/2 lg:w-1/4 xl:w-1/5 mr-3"
+					class="ml-auto mr-3 w-full overflow-hidden md:w-1/2 lg:w-1/4 xl:w-1/5"
 				>
 					<transition name="transform-opacity-right" mode="out-in">
-						<input-field
-							class="w-full"
+						<TextField
 							v-if="showSearchInput"
 							placeholder="Enter task name"
 							v-model="searchText"
-							@keydown:enter="loadTasks"
-						></input-field>
+						/>
 					</transition>
 				</div>
 
 				<div
-					class="hidden md:flex sm:mt-0 ml-0 sm:w-auto shrink-0 w-full text-center mt-2"
+					class="ml-0 mt-2 hidden w-full shrink-0 text-center sm:mt-0 sm:w-auto md:flex"
 				>
 					<a
 						href="#"
@@ -39,7 +37,7 @@
 						class="pr-1"
 					>
 						<span
-							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
 						>
 							{{ showSearchInput ? 'search_off' : 'search' }}
 						</span>
@@ -52,7 +50,7 @@
 						class="pr-1"
 					>
 						<span
-							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
 							>done_all</span
 						>
 					</a>
@@ -63,7 +61,7 @@
 						@click="$store.dispatch('showCreateTaskModal')"
 					>
 						<span
-							class="material-icons sm:text-4xl text-3xl text-gray-700 opacity-75 hover:opacity-100"
+							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
 							>add_circle_outline</span
 						>
 					</a>
@@ -82,11 +80,11 @@
 				ref="tasksListComponent"
 			/>
 
-			<div v-else-if="errorLoading" class="text-center italic text-xl">
+			<div v-else-if="errorLoading" class="text-center text-xl italic">
 				Something went wrong...
 			</div>
 
-			<div v-else-if="!isLoading" class="text-center italic text-xl">
+			<div v-else-if="!isLoading" class="text-center text-xl italic">
 				You don't have tasks here
 
 				<confetti v-if="hasAbilityToShowConfetti" />
@@ -106,10 +104,12 @@
 	import Confetti from 'src/components/UIElements/Confetti';
 	import TaskForm from 'src/components/Tasks/TaskForm';
 	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'TasksList',
 		components: {
+			TextField,
 			TaskForm,
 			Confetti,
 			LoadingTasksList,

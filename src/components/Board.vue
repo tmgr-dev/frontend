@@ -57,7 +57,7 @@
 	import Button from 'src/components/UIElements/Button';
 	import InputField from 'src/components/UIElements/InputField';
 	import draggable from 'vuedraggable';
-	import TaskCard from 'src/components/UIElements/TaskCard.vue';
+	import TaskCard from 'src/components/UIElements/TaskCard';
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
 	import DashboardDropdownMenu from 'src/components/UIElements/DashboardDropdownMenu';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';

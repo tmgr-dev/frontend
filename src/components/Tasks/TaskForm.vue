@@ -54,12 +54,16 @@
 									</label>
 
 									<div class="relative mb-4">
-										<input-field
-											:id="`setting-${setting.id}`"
-											:type="setting.component_type"
-											:placeholder="setting.description"
+										<TimeField
+											v-if="setting.component_type === 'time_in_seconds'"
 											v-model="settings[index].value"
-											:tag="(settings[index].id = setting.id)"
+											:placeholder="setting.description"
+										/>
+
+										<TextField
+											v-else
+											v-model="settings[index].value"
+											:placeholder="setting.description"
 										/>
 									</div>
 								</div>
@@ -305,14 +309,13 @@
 				<TextField
 					v-model="form.title"
 					:errors="errors.title"
-					input-class="bg-white dark:bg-gray-800"
 					placeholder="Task name"
 				/>
 
 				<quill-editor
-					class="relative z-10 w-full rounded border-0 !border-neutral-300 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300 dark:!border-neutral-600 dark:bg-gray-800"
+					class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 					:class="errors.description && 'border-red-500'"
-					v-model="form.description"
+					v-model:content="form.description"
 					content-type="html"
 					theme="bubble"
 					placeholder="Description"
@@ -346,15 +349,13 @@
 							{{ v + 1 }}
 						</span>
 
-						<input-field
-							:type="checkpoint.inputType"
-							:for-checkpoint="true"
+						<textarea
+							class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+							:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
 							placeholder="Checkpoint content"
 							v-model="checkpoint.description"
-							:extra-class="`pl-7 bg-white dark:bg-gray-800 ${
-								checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'
-							}`"
 						/>
+
 						<span
 							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
 						>
@@ -441,13 +442,15 @@
 	} from 'src/actions/tmgr/settings';
 	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
-	import Select from 'src/components/general/Select.vue';
-	import Switcher from 'src/components/general/Switcher.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import Select from 'src/components/general/Select';
+	import Switcher from 'src/components/general/Switcher';
+	import TextField from 'src/components/general/TextField';
+	import TimeField from 'src/components/general/TimeField.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			TimeField,
 			TextField,
 			Switcher,
 			Select,
@@ -792,7 +795,7 @@
 				}
 			},
 			getTaskSettingValue(key) {
-				return this.form?.settings?.find((item) => item.key === key)?.value;
+				return this.form.settings?.find((item) => item.key === key)?.value;
 			},
 			async loadModel() {
 				try {
