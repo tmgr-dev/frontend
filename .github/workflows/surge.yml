@@ -40,6 +40,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }} # GitHub token
           SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
+      - name: Log
+        run: echo "${{ steps.deploy.outputs.SURGE_DOMAIN }}"
   on-success-deploying:
     needs: [ release ]
     if: success()
