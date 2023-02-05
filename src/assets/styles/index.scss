@@ -136,3 +136,15 @@ button {
 		opacity: 1;
 	}
 }
+
+.fade-left-enter-active,
+.fade-left-leave-active {
+	transition: 0.5s;
+	transform: translateX(0);
+}
+
+.fade-left-enter-from,
+.fade-left-leave-to {
+	opacity: 0;
+	transform: translateX(100px);
+}

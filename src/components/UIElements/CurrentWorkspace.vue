@@ -17,11 +17,10 @@
 			@close="isShowWorkspaceModal = false"
 		>
 			<template #modal-body>
-				<input-field
+				<TextField
 					v-model="newWorkspace.name"
 					:errors="errors.name"
-					type="text"
-					extra-class="mb-1 bg-white dark:bg-gray-800"
+					input-class="bg-white dark:bg-gray-800"
 					placeholder="New workspace name"
 				/>
 
@@ -58,11 +57,11 @@
 					<label class="flex flex-col gap-2">
 						Max usage times
 
-						<input-field
+						<TextField
+							type="number"
 							v-model="newWorkspaceInvitation.max_usage_times"
 							:errors="errors.max_usage_times"
-							type="number"
-							extra-class="mb-1 bg-white dark:bg-gray-800"
+							input-class="bg-white dark:bg-gray-800"
 							placeholder="1"
 						/>
 					</label>
@@ -70,11 +69,11 @@
 					<label class="mt-3 flex flex-col gap-2">
 						Expired at
 
-						<input-field
+						<TextField
+							type="datetime-local"
 							v-model="newWorkspaceInvitation.expired_at"
 							:errors="errors.expired_at"
-							type="datetime-local"
-							extra-class="mb-1 bg-white dark:bg-gray-800"
+							input-class="bg-white dark:bg-gray-800"
 							placeholder="Expired at"
 						/>
 					</label>
@@ -118,10 +117,11 @@
 		getWorkspaces,
 	} from 'src/actions/tmgr/workspaces';
 	import Select from 'src/components/general/Select.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'CurrentWorkspace',
-		components: { Select, InputField },
+		components: { TextField, Select, InputField },
 		props: {
 			modelValue: {
 				required: false,

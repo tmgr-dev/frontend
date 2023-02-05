@@ -302,24 +302,21 @@
 
 		<section role="main" class="mt-10 text-center">
 			<div class="mb-5">
-				<input-field
+				<TextField
 					v-model="form.title"
 					:errors="errors.title"
-					type="text"
-					extra-class="mb-1 bg-white dark:bg-gray-800"
+					input-class="bg-white dark:bg-gray-800"
 					placeholder="Task name"
 				/>
 
 				<quill-editor
-					class="relative z-10 w-full appearance-none rounded border-0 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-					:class="errors.description && 'with-errors'"
+					class="relative z-10 w-full rounded border-0 !border-neutral-300 bg-white py-2 px-3 leading-tight outline-none transition-colors duration-300 dark:!border-neutral-600 dark:bg-gray-800"
+					:class="errors.description && 'border-red-500'"
 					v-model="form.description"
 					content-type="html"
 					theme="bubble"
 					placeholder="Description"
 				/>
-
-				<input-field :errors="errors.description" />
 			</div>
 
 			<div
@@ -446,10 +443,12 @@
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 	import Select from 'src/components/general/Select.vue';
 	import Switcher from 'src/components/general/Switcher.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			TextField,
 			Switcher,
 			Select,
 			Confirm,
