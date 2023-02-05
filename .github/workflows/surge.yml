@@ -11,8 +11,6 @@ jobs:
   release:
     name: Deploy website
     runs-on: ubuntu-latest
-    outputs:
-      SURGE_DOMAIN: ${{ env.SURGE_DOMAIN }}
     if: "!contains(github.event.head_commit.message, '[skip ci]') && (contains(github.event.comment.body, 'Deploy') || contains(github.event.comment.body, 'deploy') || github.event_name == 'push' || github.event_name == 'pull_request')"
     steps:
       - name: Checkout
@@ -40,8 +38,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }} # GitHub token
           SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
-      - name: Log
-        run: echo "${{ env.SURGE_DOMAIN }}"
   on-success-deploying:
     needs: [ release ]
     if: success()
@@ -59,9 +55,7 @@ jobs:
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\nDeploy successful \n${{env.SURGE_DOMAIN}}\n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
-        env:
-          SURGE_DOMAIN: ${{needs.release.outputs.SURGE_DOMAIN}}
+          body: '{ "message": "\nDeploy successful \n${{ needs.release.steps.deploy.outputs.SURGE_DOMAIN }}\n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
 
 
   on-failure-deploying:
