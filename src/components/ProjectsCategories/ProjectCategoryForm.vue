@@ -13,12 +13,12 @@
 
 		<template #body>
 			<div
-				class="dark:bg-gray-900 bg-white transition-colors duration-300 max-w-xl mx-auto mt-5 shadow-md rounded px-8 py-6"
+				class="mx-auto mt-5 max-w-xl rounded bg-white px-8 py-6 shadow-md transition-colors duration-300 dark:bg-gray-900"
 			>
 				<form class="w-full">
 					<div class="mb-4">
 						<label
-							class="block text-gray-700 text-sm font-bold mb-2"
+							class="mb-2 block text-sm font-bold text-gray-700"
 							for="categoryName"
 						>
 							Project category name
@@ -32,18 +32,16 @@
 						/>
 					</div>
 
-					<label class="block text-gray-700 text-sm font-bold mb-2">
+					<label class="mb-2 block text-sm font-bold text-gray-700">
 						Parent category
 					</label>
 
 					<div class="relative mb-4">
-						<input-field
+						<Select
 							v-model="form.project_category_id"
 							:options="parentCategories"
-							option-name-key="title"
-							option-value-key="id"
-							placeholder="test"
-							type="select"
+							label-key="title"
+							value-key="id"
 						/>
 					</div>
 
@@ -53,22 +51,20 @@
 						<div v-for="(setting, index) in availableSettings">
 							<label
 								:for="`setting-${setting.id}`"
-								class="block text-gray-700 text-sm font-bold mb-2"
+								class="mb-2 block text-sm font-bold text-gray-700"
 							>
 								{{ setting.name }}
 							</label>
 
 							<div class="relative mb-4">
-								<input-field
+								<!-- i don't know what it is	-->
+								<Select
 									v-if="!setting.show_custom_value_input"
-									:id="`setting-${setting.id}`"
-									v-model="settings[index].value"
 									:options="setting.default_values"
+									v-model="settings[index].value"
 									:placeholder="setting.description"
-									:tag="(settings[index].id = setting.id)"
-									option-name-key="value"
-									option-value-key="value"
-									type="select"
+									label-key="value"
+									value-key="value"
 								/>
 
 								<div v-else-if="setting.custom_value_available">
@@ -119,9 +115,9 @@
 						</div>
 					</div>
 
-					<div class="flex-row justify-center mt-8">
+					<div class="mt-8 flex-row justify-center">
 						<button
-							class="bg-blue-500 mr-5 hover:bg-blue-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
+							class="mr-5 rounded bg-blue-500 py-2 px-4 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
 							type="button"
 							@click.prevent="create"
 						>
@@ -130,7 +126,7 @@
 
 						<button
 							v-if="isCreate"
-							class="bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none"
+							class="rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none"
 							type="button"
 							@click.prevent="create(false)"
 						>
@@ -140,7 +136,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
+							class="rounded bg-gray-500 py-2 px-4 font-bold text-white hover:bg-gray-700 focus:outline-none"
 							type="button"
 						>
 							Cancel
@@ -171,10 +167,12 @@
 		updateCategorySettings,
 	} from 'src/actions/tmgr/settings';
 	import generateSlugFromRu from 'src/utils/generateSlugFromRu';
+	import Select from 'src/components/general/Select.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			Select,
 			SettingsLoader,
 			Breadcrumbs,
 			InputField,
