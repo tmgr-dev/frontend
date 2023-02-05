@@ -15,6 +15,8 @@ jobs:
       SURGE_DOMAIN: ${{ steps.deploy.outputs.SURGE_DOMAIN }}
     if: "!contains(github.event.head_commit.message, '[skip ci]') && (contains(github.event.comment.body, 'Deploy') || contains(github.event.comment.body, 'deploy') || github.event_name == 'push' || github.event_name == 'pull_request')"
     steps:
+      - name: Log
+        run: cat $GITHUB_OUTPUT
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Node.js
@@ -41,7 +43,7 @@ jobs:
           SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
       - name: Log
-        run: echo "${{ steps.deploy.outputs.SURGE_DOMAIN }}"
+        run: cat $GITHUB_OUTPUT
   on-success-deploying:
     needs: [ release ]
     if: success()
