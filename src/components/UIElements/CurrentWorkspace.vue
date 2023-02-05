@@ -1,17 +1,9 @@
 <template>
-	<input-field
-		v-if="workspaces.length > 0"
-		v-model="val"
-		:options="workspaces"
-		option-name-key="name"
-		option-value-key="id"
-		selected
-		type="select"
-	/>
+	<Select v-model="val" :options="workspaces" label-key="name" value-key="id" />
 
 	<button
 		@click="isShowWorkspaceModal = true"
-		class="py-2 flex items-end gap-2 relative"
+		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg">add_circle_outline</span>
 		Add new workspace
@@ -37,7 +29,7 @@
 					@click="createNewWorkspace()"
 					:disabled="isLoading"
 					:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-					class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none sm:mb-0"
+					class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 					type="button"
 				>
 					Create
@@ -48,7 +40,7 @@
 
 	<button
 		@click="isShowInvitationModal = true"
-		class="py-2 flex items-end gap-2 relative"
+		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg"> add_circle_outline </span>
 		Create invitation to workspace
@@ -75,7 +67,7 @@
 						/>
 					</label>
 
-					<label class="flex flex-col gap-2 mt-3">
+					<label class="mt-3 flex flex-col gap-2">
 						Expired at
 
 						<input-field
@@ -91,7 +83,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="isLoading"
 						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-						class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0"
+						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
 					>
 						Create
@@ -125,10 +117,11 @@
 		createWorkspaceInvitation,
 		getWorkspaces,
 	} from 'src/actions/tmgr/workspaces';
+	import Select from 'src/components/general/Select.vue';
 
 	export default {
 		name: 'CurrentWorkspace',
-		components: { InputField },
+		components: { Select, InputField },
 		props: {
 			modelValue: {
 				required: false,
@@ -156,7 +149,7 @@
 		computed: {
 			val: {
 				get() {
-					return parseInt(this.modelValue);
+					return this.modelValue;
 				},
 				set(v) {
 					return this.$emit('update:modelValue', v);
