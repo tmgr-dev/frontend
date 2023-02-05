@@ -29,7 +29,8 @@ jobs:
         run: npm run build # Build your website
       - name: Install globally Surge
         run: npm install --global surge
-      - name: Deploy
+      - id: deploy
+        name: Deploy
         uses: acrossoffwest/deploy-pr-action@v1.6.2
         with:
           prefix: tmgr # Prefix for deployment URL
@@ -50,7 +51,7 @@ jobs:
         uses: EthanSK/git-branch-name-action@v1
 
       - name: curl
-        uses: indiesdev/curl@v1
+        uses: indiesdev/curl@v1.1
         with:
           url: https://ts3-telegram.aow.space/notifications
           method: POST
@@ -69,7 +70,7 @@ jobs:
         uses: EthanSK/git-branch-name-action@v1
 
       - name: curl
-        uses: indiesdev/curl@v1
+        uses: indiesdev/curl@v1.1
         with:
           url: https://ts3-telegram.aow.space/notifications
           method: POST
