@@ -25,11 +25,11 @@
 		get() {
 			return props.options.find(
 				(option) =>
-					option[props.valueKey].toString() === props.modelValue.toString(),
+					option[props.valueKey]?.toString() === props.modelValue?.toString(),
 			);
 		},
 		set(value) {
-			emit('update:modelValue', value?.[props.labelKey]);
+			emit('update:modelValue', value?.[props.valueKey]);
 		},
 	});
 
