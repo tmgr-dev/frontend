@@ -12,9 +12,7 @@ jobs:
 
       - name: Set output variable
         id: set_output
-        with:
-          env: TEST_VAR
-          value: Hello World
+        run: echo "TEST_VAR=world" >> $GITHUB_OUTPUT && echo "$GITHUB_OUTPUT"
 
   second_job:
     runs-on: ubuntu-latest
