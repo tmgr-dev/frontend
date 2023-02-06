@@ -5,7 +5,7 @@
 			class="text-grey-dark mr-3 w-6 fill-current md:mr-1"
 			viewBox="0 0 20 20"
 			xmlns="http://www.w3.org/2000/svg"
-			@click="opened = true"
+			@click="opened = !opened"
 		>
 			<path
 				d="M4 12a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"
