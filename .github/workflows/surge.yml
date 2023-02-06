@@ -2,10 +2,6 @@ name: Deploy CI
 on:
   issue_comment:
     types: [created]
-  push:
-    branches-ignore:
-      - master
-      - develop
   pull_request:
     types:
       - opened
@@ -14,26 +10,71 @@ on:
 jobs:
   release:
     name: Deploy website
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+    outputs:
+      SURGE_DOMAIN: ${{ steps.deploy.outputs.SURGE_DOMAIN }}
     if: "!contains(github.event.head_commit.message, '[skip ci]') && (contains(github.event.comment.body, 'Deploy') || contains(github.event.comment.body, 'deploy') || github.event_name == 'push' || github.event_name == 'pull_request')"
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v3
         with:
           node-version: 19.6.0
       - name: Install dependencies
         run: npm ci
+      - name: Create .env
+        run: echo "${{ secrets.ENV_FILE }}" > .env
       - name: Build static site
         run: npm run build # Build your website
-      - name: Deploy
-        uses: koj-co/deploy-pr-action@v1.0.1
+      - name: Install globally Surge
+        run: npm install --global surge
+      - id: deploy
+        name: Deploy
+        uses: acrossoffwest/deploy-pr-action@v1.6.5
         with:
-          prefix: tmgr-dev-preview # Prefix for deployment URL
+          prefix: tmgr # Prefix for deployment URL
           robotsTxtPath: dist/spa/robots.txt # Add robots.txt file
           distDir: dist/spa # Path to dist directory
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }} # GitHub token
           SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
+
+  on-success-deploying:
+    needs: [ release ]
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Git branch name
+        id: git-branch-name
+        uses: EthanSK/git-branch-name-action@v1
+
+      - name: curl
+        uses: indiesdev/curl@v1.1
+        with:
+          url: https://ts3-telegram.aow.space/notifications
+          method: POST
+          accept: 200
+          headers: '{ "Content-Type": "application/json" }'
+          body: '{ "message": "\n ✅ Deploy successful \nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+
+  on-failure-deploying:
+    needs: [ release ]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Git branch name
+        id: git-branch-name
+        uses: EthanSK/git-branch-name-action@v1
+
+      - name: curl
+        uses: indiesdev/curl@v1.1
+        with:
+          url: https://ts3-telegram.aow.space/notifications
+          method: POST
+          accept: 200
+          headers: '{ "Content-Type": "application/json" }'
+          body: '{ "message": "\ ❌ nDeploy failed \nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
