@@ -58,7 +58,7 @@ jobs:
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\n ✅ Deploy successful \nRepository: `${{ github.repository }}`\nBranch: `${{  }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+          body: '{ "message": "\n ✅ Deploy successful \nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
 
   on-failure-deploying:
     needs: [ release ]
@@ -77,4 +77,4 @@ jobs:
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\ ❌ nDeploy failed \nRepository: `${{ github.repository }}`\nBranch: `${{  }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+          body: '{ "message": "\ ❌ nDeploy failed \nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
