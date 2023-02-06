@@ -183,11 +183,11 @@
 </template>
 
 <script>
-	import Confirm from '../components/UIElements/Confirm.vue';
-	import Breadcrumbs from '../components/UIElements/Breadcrumbs.vue';
+	import Confirm from '../components/general/Confirm.vue';
+	import Breadcrumbs from '../components/general/Breadcrumbs.vue';
 	import extractParents from '../utils/extractParents';
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
-	import getBreadcrumbs from '../utils/breadcrumbs/getBreadcrumbs';
+	import getBreadcrumbs from '../utils/getBreadcrumbs';
 	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/tasks/TasksListComponent.vue';
 	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';

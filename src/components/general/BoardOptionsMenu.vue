@@ -35,7 +35,7 @@
 
 <script>
 	export default {
-		name: 'DashboardDropdownMenu',
+		name: 'BoardOptionsMenu',
 		props: {
 			actions: {
 				required: true,

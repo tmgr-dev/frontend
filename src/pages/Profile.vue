@@ -43,7 +43,7 @@
 </template>
 
 <script>
-	import Button from 'src/components/UIElements/Button.vue';
+	import Button from 'src/components/general/Button.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 

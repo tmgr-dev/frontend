@@ -93,11 +93,11 @@
 <script>
 	import downloadFile from 'src/utils/downloadFile';
 	import Loader from 'src/components/loaders/Loader.vue';
-	import Confirm from 'src/components/UIElements/Confirm.vue';
+	import Confirm from 'src/components/general/Confirm.vue';
 	import TasksListMixin from 'src/mixins/TasksListMixin';
 	import TaskMeta from 'src/components/tasks/TaskMeta.vue';
 	import BounceLoader from 'src/components/loaders/BounceLoader.vue';
-	import DropdownMenu from 'src/components/UIElements/DropdownMenu.vue';
+	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
 	import convertToQueryString from 'src/utils/objectToQueryString';
 	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from 'src/components/tasks/TaskButtonsInTheList.vue';

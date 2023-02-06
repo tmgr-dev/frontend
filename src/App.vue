@@ -54,7 +54,7 @@
 			</div>
 		</Slideout>
 
-		<div class="fixed left-0 bottom-0 ml-10 mb-10 mr-2 z-10">
+		<div class="fixed left-0 bottom-0 z-10 ml-10 mb-10 mr-2">
 			<span v-for="task in activeTasks" class="mb-5 inline-block">
 				<transition mode="out-in" name="fade">
 					<a
@@ -63,14 +63,14 @@
 						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
 					>
 						<span
-							class="relative inline-flex rounded-md shadow-sm p-2 mr-5 bg-gray-200 transition-colors duration-300 dark:bg-gray-800"
+							class="relative mr-5 inline-flex rounded-md bg-gray-200 p-2 shadow-sm transition-colors duration-300 dark:bg-gray-800"
 						>
-							<span class="flex absolute h-5 w-5 top-0 left-0 -mt-2 -ml-2">
+							<span class="absolute top-0 left-0 -mt-2 -ml-2 flex h-5 w-5">
 								<span
-									class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
+									class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
 								/>
 								<span
-									class="relative inline-flex rounded-full h-5 w-5 bg-green-500"
+									class="relative inline-flex h-5 w-5 rounded-full bg-green-500"
 								/>
 							</span>
 
@@ -110,9 +110,9 @@
 <script>
 	import { defineComponent } from 'vue';
 
-	import Navbar from 'src/components/UIElements/Navbar';
-	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
-	import Slideout from 'src/components/UIElements/Slideout/Slideout';
+	import Navbar from 'src/components/general/Navbar.vue';
+	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
+	import Slideout from 'src/components/Slideout.vue';
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import store from 'src/store';
 	import { getUserSettings } from 'src/actions/tmgr/user';

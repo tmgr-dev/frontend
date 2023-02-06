@@ -424,7 +424,7 @@
 	import moment from 'moment';
 	import TaskActions from 'src/components/tasks/TaskActions.vue';
 	import Countdown from 'src/components/general/Countdown.vue';
-	import Confirm from 'src/components/UIElements/Confirm.vue';
+	import Confirm from 'src/components/general/Confirm.vue';
 	import {
 		deleteTask,
 		getTask,

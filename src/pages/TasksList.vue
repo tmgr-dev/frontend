@@ -103,7 +103,7 @@
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
 	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/tasks/TasksListComponent.vue';
-	import Confetti from 'src/components/UIElements/Confetti.vue';
+	import Confetti from 'src/components/Confetti.vue';
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';
 	import TextField from 'src/components/general/TextField.vue';

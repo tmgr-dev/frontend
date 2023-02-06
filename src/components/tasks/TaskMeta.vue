@@ -40,7 +40,7 @@
 </template>
 
 <script>
-	import CategoryBadge from 'src/components/UIElements/CategoryBadge.vue';
+	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
 
 	export default {
 		name: 'TaskMeta',
