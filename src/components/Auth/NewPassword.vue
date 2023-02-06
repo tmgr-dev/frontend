@@ -25,6 +25,7 @@
 					:errors="errors.password"
 					name="password"
 					placeholder="Password"
+					input-class="dark:bg-white dark:border-neutral-300"
 					type="password"
 				/>
 
@@ -33,6 +34,7 @@
 					:errors="errors?.password_confirmation"
 					name="password_confirmation"
 					placeholder="Password confirmation"
+					input-class="dark:bg-white dark:border-neutral-300"
 					type="password"
 				/>
 

@@ -6,7 +6,7 @@
 			:class="[
 				inputClass,
 				hasError
-					? 'border-red-500 placeholder:text-red-400'
+					? '!border-red-500 placeholder:text-red-400'
 					: 'border-neutral-300 dark:border-transparent',
 			]"
 			:name="name"
