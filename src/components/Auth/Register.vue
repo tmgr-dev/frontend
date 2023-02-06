@@ -11,6 +11,7 @@
 						v-model="form.name"
 						:errors="errors.name"
 						name="name"
+						input-class="dark:bg-white dark:border-neutral-300"
 						placeholder="Name"
 					/>
 				</div>
@@ -21,6 +22,7 @@
 						:errors="errors.email"
 						name="email"
 						placeholder="E-mail"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="email"
 					/>
 				</div>
@@ -31,6 +33,7 @@
 						:errors="errors.password"
 						name="password"
 						placeholder="Password"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="password"
 					/>
 				</div>
@@ -41,6 +44,7 @@
 						:errors="errors.password"
 						name="password_confirmation"
 						placeholder="Password confirmation"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="password"
 					/>
 				</div>

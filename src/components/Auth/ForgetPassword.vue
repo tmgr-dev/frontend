@@ -17,6 +17,7 @@
 						:errors="errors.email"
 						name="email"
 						placeholder="Email"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="email"
 					/>
 				</div>

@@ -18,6 +18,7 @@
 						:errors="errors.email"
 						name="email"
 						placeholder="Email"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="email"
 					/>
 				</div>
@@ -28,6 +29,7 @@
 						:errors="errors.password"
 						name="password"
 						placeholder="Password"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="password"
 					/>
 				</div>
