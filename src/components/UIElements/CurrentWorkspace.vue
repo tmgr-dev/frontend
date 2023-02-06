@@ -1,17 +1,9 @@
 <template>
-	<input-field
-		v-if="workspaces.length > 0"
-		v-model="val"
-		:options="workspaces"
-		option-name-key="name"
-		option-value-key="id"
-		selected
-		type="select"
-	/>
+	<Select v-model="val" :options="workspaces" label-key="name" value-key="id" />
 
 	<button
 		@click="isShowWorkspaceModal = true"
-		class="py-2 flex items-end gap-2 relative"
+		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg">add_circle_outline</span>
 		Add new workspace
@@ -25,11 +17,9 @@
 			@close="isShowWorkspaceModal = false"
 		>
 			<template #modal-body>
-				<input-field
+				<TextField
 					v-model="newWorkspace.name"
 					:errors="errors.name"
-					type="text"
-					extra-class="mb-1 bg-white dark:bg-gray-800"
 					placeholder="New workspace name"
 				/>
 
@@ -37,7 +27,7 @@
 					@click="createNewWorkspace()"
 					:disabled="isLoading"
 					:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-					class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none sm:mb-0"
+					class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 					type="button"
 				>
 					Create
@@ -48,7 +38,7 @@
 
 	<button
 		@click="isShowInvitationModal = true"
-		class="py-2 flex items-end gap-2 relative"
+		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg"> add_circle_outline </span>
 		Create invitation to workspace
@@ -66,23 +56,21 @@
 					<label class="flex flex-col gap-2">
 						Max usage times
 
-						<input-field
+						<TextField
+							type="number"
 							v-model="newWorkspaceInvitation.max_usage_times"
 							:errors="errors.max_usage_times"
-							type="number"
-							extra-class="mb-1 bg-white dark:bg-gray-800"
 							placeholder="1"
 						/>
 					</label>
 
-					<label class="flex flex-col gap-2 mt-3">
+					<label class="mt-3 flex flex-col gap-2">
 						Expired at
 
-						<input-field
+						<TextField
+							type="datetime-local"
 							v-model="newWorkspaceInvitation.expired_at"
 							:errors="errors.expired_at"
-							type="datetime-local"
-							extra-class="mb-1 bg-white dark:bg-gray-800"
 							placeholder="Expired at"
 						/>
 					</label>
@@ -91,7 +79,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="isLoading"
 						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-						class="w-full bg-orange-500 mr-5 mt-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0"
+						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
 					>
 						Create
@@ -118,17 +106,21 @@
 </template>
 
 <script>
-	import InputField from 'src/components/UIElements/InputField';
 	import { copyToClipboard as copy } from 'quasar';
 	import {
 		createWorkspace,
 		createWorkspaceInvitation,
 		getWorkspaces,
 	} from 'src/actions/tmgr/workspaces';
+	import Select from 'src/components/general/Select.vue';
+	import TextField from 'src/components/general/TextField';
 
 	export default {
 		name: 'CurrentWorkspace',
-		components: { InputField },
+		components: {
+			TextField,
+			Select,
+		},
 		props: {
 			modelValue: {
 				required: false,
@@ -156,7 +148,7 @@
 		computed: {
 			val: {
 				get() {
-					return parseInt(this.modelValue);
+					return this.modelValue;
 				},
 				set(v) {
 					return this.$emit('update:modelValue', v);

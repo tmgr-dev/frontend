@@ -9,18 +9,18 @@
 						<div
 							v-for="column in columns"
 							:key="column.title"
-							class="pr-2 board-container__item"
+							class="board-container__item pr-2"
 						>
-							<div :class="`rounded-lg px-3 py-3 column-width rounded h-full`">
+							<div class="column-width h-full rounded-lg rounded px-3 py-3">
 								<div>
 									<div
-										class="text-tmgr-blue dark:text-tmgr-gray font-semibold font-sans tracking-wide text-sm pt-2 pl-2 pb-2 rounded relative"
+										class="rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
 										:style="{
 											'border-top': `solid 5px ${column.status.color}`,
 										}"
 									>
 										{{ column.title }}
-										<div class="absolute top-2 right-3">
+										<div class="absolute top-5 right-3">
 											<dashboard-dropdown-menu :actions="getActions(column)" />
 										</div>
 									</div>
@@ -55,9 +55,8 @@
 
 <script>
 	import Button from 'src/components/UIElements/Button';
-	import InputField from 'src/components/UIElements/InputField';
 	import draggable from 'vuedraggable';
-	import TaskCard from 'src/components/UIElements/TaskCard.vue';
+	import TaskCard from 'src/components/UIElements/TaskCard';
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
 	import DashboardDropdownMenu from 'src/components/UIElements/DashboardDropdownMenu';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
@@ -73,7 +72,6 @@
 		components: {
 			DashboardDropdownMenu,
 			DropdownMenu,
-			InputField,
 			Button,
 			TaskCard,
 			draggable,
