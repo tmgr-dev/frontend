@@ -12,7 +12,7 @@ jobs:
       image: acrossoffwest/domda-php-fpm:8.0.0.1
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 1
 
@@ -21,7 +21,7 @@ jobs:
         uses: EthanSK/git-branch-name-action@v1
 
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
+        uses: shimataro/ssh-key-action@v2.5.0
         with:
           key: ${{ secrets.RSA_PRIVATE_KEY }}
           known_hosts: 'just-a-placeholder-so-we-dont-get-errors'
