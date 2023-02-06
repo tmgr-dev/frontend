@@ -55,7 +55,6 @@
 
 <script>
 	import Button from 'src/components/UIElements/Button';
-	import InputField from 'src/components/UIElements/InputField';
 	import draggable from 'vuedraggable';
 	import TaskCard from 'src/components/UIElements/TaskCard';
 	import DropdownMenu from 'src/components/UIElements/DropdownMenu';
@@ -73,7 +72,6 @@
 		components: {
 			DashboardDropdownMenu,
 			DropdownMenu,
-			InputField,
 			Button,
 			TaskCard,
 			draggable,

@@ -12,7 +12,7 @@
 	>
 		<div
 			class="relative"
-			:class="{ 'flex gap-5 justify-center items-center': !task.start_time }"
+			:class="{ 'flex items-center justify-center gap-5': !task.start_time }"
 		>
 			<div
 				v-if="lastStartTime"
@@ -58,7 +58,7 @@
 			<div class="flex justify-center" :class="{ 'mt-2': task.start_time }">
 				<button
 					v-if="!isFullScreen"
-					class="leading-none outline-none border flex hover:text-white px-5 py-2"
+					class="flex border px-5 py-2 leading-none outline-none hover:text-white"
 					:class="{
 						'border-red-400 text-red-600 hover:bg-red-400': task.start_time,
 						'border-blue-400 text-blue-600 hover:bg-blue-400': !task.start_time,
@@ -109,9 +109,9 @@
 						/>
 					</div>
 
-					<div class="flex items-center flex-nowrap mt-5">
+					<div class="mt-5 flex flex-nowrap items-center">
 						<button
-							class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+							class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
 							type="button"
 							@click="isShowModalTimer = false"
 						>
@@ -119,7 +119,7 @@
 						</button>
 
 						<button
-							class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+							class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
 							type="button"
 							@click="updateTimer"
 						>
@@ -133,7 +133,6 @@
 </template>
 
 <script>
-	import InputField from '../UIElements/InputField';
 	import Reminder from 'src/components/UIElements/Tasks/Reminder';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
@@ -144,7 +143,6 @@
 		name: 'NewCountdown',
 		components: {
 			Reminder,
-			InputField,
 		},
 		mixins: [TimePreparationMixin],
 		emits: ['toggle', 'update:seconds'],

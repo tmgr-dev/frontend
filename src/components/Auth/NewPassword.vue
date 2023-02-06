@@ -10,43 +10,35 @@
 				:class="[
 					errors && Object.keys(errors).length > 0
 						? 'text-red-600'
-						: 'text-neutral-600 font-bold',
+						: 'font-bold text-neutral-600',
 				]"
 			>
 				{{ message }}
 			</div>
 
 			<form
-				class="form-horizontal w-3/4 mx-auto"
+				class="form-horizontal mx-auto flex w-3/4 flex-col gap-2"
 				@submit.prevent="resetPassword"
 			>
-				<div class="flex flex-col mt-4">
-					<input-field
-						id="password"
-						v-model="form.password"
-						:errors="errors?.password"
-						name="password"
-						placeholder="Password"
-						required
-						type="password"
-					/>
-				</div>
+				<TextField
+					v-model="form.password"
+					:errors="errors.password"
+					name="password"
+					placeholder="Password"
+					type="password"
+				/>
 
-				<div class="flex flex-col mt-4">
-					<input-field
-						id="password_confirmation"
-						v-model="form.password_confirmation"
-						:errors="errors?.password_confirmation"
-						name="password_confirmation"
-						placeholder="Password confirmation"
-						required
-						type="password"
-					/>
-				</div>
+				<TextField
+					v-model="form.password_confirmation"
+					:errors="errors?.password_confirmation"
+					name="password_confirmation"
+					placeholder="Password confirmation"
+					type="password"
+				/>
 
-				<div class="flex flex-col mt-6">
+				<div class="mt-2 flex flex-col">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
+						class="rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
 						type="submit"
 					>
 						<span class="relative">
@@ -60,14 +52,14 @@
 
 		<template #footer>
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/register"
 			>
 				You don't have account?
 			</router-link>
 			<br />
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/login"
 			>
 				Login
@@ -81,7 +73,8 @@
 	import { ref, onBeforeMount } from 'vue';
 	import { setNewPassword } from 'src/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
-	import AuthBase from 'src/components/Auth/AuthBase';
+	import AuthBase from 'src/components/Layouts/AuthBase.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	const router = useRouter();
 

@@ -8,23 +8,22 @@
 			<form
 				v-if="!message"
 				action="#"
-				class="form-horizontal w-3/4 mx-auto"
+				class="form-horizontal mx-auto w-3/4"
 				method="POST"
 			>
-				<div class="flex flex-col mt-4">
-					<input-field
-						id="email"
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="email"
-						:errors="errors?.email"
+						:errors="errors.email"
 						name="email"
 						placeholder="Email"
-						type="text"
+						type="email"
 					/>
 				</div>
 
-				<div class="flex flex-col mt-6">
+				<div class="mt-6 flex flex-col">
 					<button
-						class="bg-blue-500 text-center hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
+						class="rounded bg-blue-500 py-2 px-4 text-center text-sm font-semibold text-white hover:bg-blue-700"
 						@click.prevent="sendResetLink"
 					>
 						<span class="relative">
@@ -42,14 +41,14 @@
 
 		<template #footer>
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/register"
 			>
 				You don't have account?
 			</router-link>
 			<br />
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/login"
 			>
 				Login
@@ -59,11 +58,12 @@
 </template>
 
 <script setup lang="ts">
-	import AuthBase from 'src/components/Auth/AuthBase';
+	import AuthBase from 'src/components/Layouts/AuthBase.vue';
 	import Button from 'src/components/UIElements/Button';
 	import { ref } from 'vue';
 	import { AxiosError } from 'axios';
 	import { resetPassword } from 'src/actions/tmgr/auth';
+	import TextField from 'src/components/general/TextField.vue';
 
 	const email = ref('');
 	const message = ref('');

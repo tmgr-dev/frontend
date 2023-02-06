@@ -3,7 +3,7 @@
 
 	<BaseLayout>
 		<template #header>
-			<span class="mt-10 w-full block text-center">
+			<span class="mt-10 block w-full text-center">
 				You have been invited to the workspace:
 			</span>
 		</template>
@@ -12,7 +12,7 @@
 			<div class="mx-auto max-w-sm" v-if="!accepted">
 				<button
 					@click="accept"
-					class="w-full bg-orange-500 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded outline-none"
+					class="w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600"
 					type="button"
 				>
 					Accept
@@ -20,7 +20,7 @@
 			</div>
 
 			<div
-				class="mt-6 text-center text-xl text-blue-800 dark:text-white font-bold"
+				class="mt-6 text-center text-xl font-bold text-blue-800 dark:text-white"
 			>
 				<span v-if="accepted"> You successfully accept invitation! </span>
 				<span v-if="message" class="text-red-600">{{ message }}</span>
@@ -31,16 +31,12 @@
 
 <script>
 	import Button from 'src/components/UIElements/Button';
-	import InputField from 'src/components/UIElements/InputField';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import { acceptWorkspaceInvitation } from 'src/actions/tmgr/workspaces';
 
 	export default {
 		name: 'WorkspaceInvitation',
-		components: {
-			InputField,
-			Button,
-		},
+		components: { Button },
 		data: () => ({
 			accepted: false,
 			workspace: {

@@ -131,7 +131,6 @@
 
 <script>
 	import extractParents from 'src/utils/extractParents';
-	import InputField from 'src/components/UIElements/InputField';
 	import Breadcrumbs from 'src/components/UIElements/Breadcrumbs';
 	import getBreadcrumbs from 'src/utils/breadcrumbs/getBreadcrumbs';
 	import SettingsLoader from 'src/components/Loaders/SettingsLoader.vue';
@@ -139,7 +138,6 @@
 		createCategory,
 		getCategories,
 		getCategory,
-		getParentCategory,
 		updateCategory,
 	} from 'src/actions/tmgr/categories';
 	import {
@@ -161,7 +159,6 @@
 			Select,
 			SettingsLoader,
 			Breadcrumbs,
-			InputField,
 		},
 		data() {
 			return {

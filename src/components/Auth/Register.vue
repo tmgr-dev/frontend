@@ -5,19 +5,18 @@
 		<template #title>Hi there!</template>
 
 		<template #body>
-			<form action="#" class="form-horizontal w-3/4 mx-auto" method="POST">
-				<div class="flex flex-col mt-4">
-					<input-field
+			<form action="#" class="form-horizontal mx-auto w-3/4" method="POST">
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.name"
 						:errors="errors.name"
 						name="name"
 						placeholder="Name"
-						type="text"
 					/>
 				</div>
 
-				<div class="flex flex-col mt-4">
-					<input-field
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.email"
 						:errors="errors.email"
 						name="email"
@@ -26,8 +25,8 @@
 					/>
 				</div>
 
-				<div class="flex flex-col mt-4">
-					<input-field
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.password"
 						:errors="errors.password"
 						name="password"
@@ -36,8 +35,8 @@
 					/>
 				</div>
 
-				<div class="flex flex-col mt-4">
-					<input-field
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.password_confirmation"
 						:errors="errors.password"
 						name="password_confirmation"
@@ -46,9 +45,9 @@
 					/>
 				</div>
 
-				<div class="flex flex-col mt-6">
+				<div class="mt-6 flex flex-col">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
+						class="rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
 						type="submit"
 						@click.prevent="register"
 					>
@@ -63,7 +62,7 @@
 
 		<template #footer>
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/login"
 			>
 				Do you have an account already?
@@ -78,7 +77,8 @@
 	import { Register, register as registerAction } from 'src/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
 	import { getUser } from 'src/actions/tmgr/user';
-	import AuthBase from 'src/components/Auth/AuthBase';
+	import AuthBase from 'src/components/Layouts/AuthBase.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	const router = useRouter();
 

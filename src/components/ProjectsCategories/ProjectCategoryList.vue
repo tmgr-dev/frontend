@@ -190,7 +190,6 @@
 	import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs';
 	import LoadingTasksList from 'src/components/Loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
-	import InputField from 'src/components/UIElements/InputField';
 	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
 	import {
 		restoreCategory,
@@ -204,7 +203,6 @@
 		name: 'ProjectCategoryList',
 		components: {
 			Select,
-			InputField,
 			LoadingTasksList,
 			Confirm,
 			Breadcrumbs,

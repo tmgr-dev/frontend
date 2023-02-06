@@ -422,7 +422,6 @@
 
 <script>
 	import moment from 'moment';
-	import InputField from 'src/components/UIElements/InputField';
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
 	import NewCountdown from 'src/components/Tasks/NewCountdown';
 	import Confirm from 'src/components/UIElements/Confirm';
@@ -457,7 +456,6 @@
 			Confirm,
 			NewCountdown,
 			TaskActions,
-			InputField,
 		},
 		props: {
 			isModal: {

@@ -106,7 +106,6 @@
 </template>
 
 <script>
-	import InputField from 'src/components/UIElements/InputField';
 	import { copyToClipboard as copy } from 'quasar';
 	import {
 		createWorkspace,
@@ -118,7 +117,10 @@
 
 	export default {
 		name: 'CurrentWorkspace',
-		components: { TextField, Select, InputField },
+		components: {
+			TextField,
+			Select,
+		},
 		props: {
 			modelValue: {
 				required: false,
