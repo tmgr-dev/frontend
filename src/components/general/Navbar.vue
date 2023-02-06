@@ -1,5 +1,5 @@
 <template>
-	<div class="ml-auto md:hidden absolute z-30 right-0 p-4">
+	<div class="absolute right-0 z-30 ml-auto p-4 md:hidden">
 		<div
 			class="nav-toggle-menu"
 			:class="{ active: menuIsActive }"
@@ -12,19 +12,19 @@
 	</div>
 
 	<nav
-		class="bg-white dark:bg-gray-900 transition-colors duration-300 shadow md:block hidden"
+		class="hidden bg-white shadow transition-colors duration-300 dark:bg-gray-900 md:block"
 		role="navigation"
 	>
 		<div
-			class="container mx-auto p-4 flex flex-wrap items-center md:flex-no-wrap"
+			class="md:flex-no-wrap container mx-auto flex flex-wrap items-center p-4"
 		>
 			<div
-				class="w-full md:w-auto md:flex-grow md:flex md:items-center"
+				class="w-full md:flex md:w-auto md:flex-grow md:items-center"
 				:class="{ hidden: isHidden }"
 			>
 				<navbar-menu />
 				<span
-					class="flex justify-between items-center ml-auto mr-4 text-black dark:text-white"
+					class="ml-auto mr-4 flex items-center justify-between text-black dark:text-white"
 				>
 					<day-night-switch
 						:key="this.$store.getters.colorScheme"
@@ -39,9 +39,9 @@
 </template>
 
 <script>
-	import DayNightSwitch from './DayNightSwitch';
-	import AccountDropdown from './AccountDropdown';
-	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
+	import DayNightSwitch from './DayNightSwitch.vue';
+	import AccountDropdown from './AccountDropdown.vue';
+	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
 
 	export default {
 		name: 'Navbar',

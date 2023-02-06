@@ -130,7 +130,7 @@
 
 <script>
 	import SetTooltipData from 'src/mixins/SetTooltipData';
-	import Confirm from 'src/components/UIElements/Confirm.vue';
+	import Confirm from 'src/components/general/Confirm.vue';
 	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
 
 	export default {

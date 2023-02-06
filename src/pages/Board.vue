@@ -54,11 +54,11 @@
 </template>
 
 <script>
-	import Button from 'src/components/UIElements/Button.vue';
+	import Button from 'src/components/general/Button.vue';
 	import draggable from 'vuedraggable';
-	import TaskCard from 'src/components/tasks/TaskCard.vue';
-	import DropdownMenu from 'src/components/UIElements/DropdownMenu.vue';
-	import DashboardDropdownMenu from 'src/components/UIElements/DashboardDropdownMenu.vue';
+	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
+	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
+	import DashboardDropdownMenu from 'src/components/general/BoardOptionsMenu.vue';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
 	import {
 		getSortedTasksByStatus,

@@ -5,10 +5,10 @@ import { Component } from '@vue/runtime-core';
 import { mask, VueTheMask } from 'src/plugins/VueTheMask';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.bubble.css';
-import Tooltip from 'src/directives/tooltip';
-import Selectable from 'src/directives/selectable';
+import Tooltip from 'src/plugins/directives/tooltip';
+import Selectable from 'src/plugins/directives/selectable';
 
-import components from 'src/bootstrap/globalComponents';
+import components from 'src/boot/globalComponents';
 
 export default (obj: any) => {
 	const { app, router, store } = obj;

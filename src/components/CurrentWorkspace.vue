@@ -113,7 +113,7 @@
 		getWorkspaces,
 	} from 'src/actions/tmgr/workspaces';
 	import Select from 'src/components/general/Select.vue';
-	import TextField from 'src/components/general/TextField';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'CurrentWorkspace',

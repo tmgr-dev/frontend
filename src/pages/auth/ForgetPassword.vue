@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 	import AuthBase from 'src/components/layouts/AuthBase.vue';
-	import Button from 'src/components/UIElements/Button.vue';
+	import Button from 'src/components/general/Button.vue';
 	import { ref } from 'vue';
 	import { AxiosError } from 'axios';
 	import { resetPassword } from 'src/actions/tmgr/auth';

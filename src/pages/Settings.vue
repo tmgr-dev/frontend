@@ -110,9 +110,9 @@
 </template>
 
 <script>
-	import Confirm from 'src/components/UIElements/Confirm.vue';
-	import Button from 'src/components/UIElements/Button.vue';
-	import CurrentWorkspace from 'src/components/UIElements/CurrentWorkspace.vue';
+	import Confirm from 'src/components/general/Confirm.vue';
+	import Button from 'src/components/general/Button.vue';
+	import CurrentWorkspace from 'src/components/CurrentWorkspace.vue';
 	import {
 		getUser,
 		getUserSettingsV2,

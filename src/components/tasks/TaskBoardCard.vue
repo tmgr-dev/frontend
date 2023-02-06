@@ -38,9 +38,9 @@
 </template>
 
 <script>
-	import Badge from '../UIElements/Badge.vue';
+	import Badge from '../general/Badge.vue';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-	import CategoryBadge from 'src/components/UIElements/CategoryBadge.vue';
+	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
 
 	export default {
 		mixins: [TimePreparationMixin],

@@ -131,8 +131,8 @@
 
 <script>
 	import extractParents from 'src/utils/extractParents';
-	import Breadcrumbs from 'src/components/UIElements/Breadcrumbs.vue';
-	import getBreadcrumbs from 'src/utils/breadcrumbs/getBreadcrumbs';
+	import Breadcrumbs from 'src/components/general/Breadcrumbs.vue';
+	import getBreadcrumbs from 'src/utils/getBreadcrumbs';
 	import SettingsLoader from 'src/components/loaders/SettingsLoader.vue';
 	import {
 		createCategory,
