@@ -51,6 +51,9 @@ jobs:
         id: git-branch-name
         uses: EthanSK/git-branch-name-action@v1
 
+      - uses: kceb/pull-request-url-action@v1
+        id: pr-url
+
       - name: curl
         uses: indiesdev/curl@v1.1
         with:
@@ -58,9 +61,9 @@ jobs:
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\nDeploy successful \n${{ env.SURGE_DOMAIN }}\n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+          body: '{ "message": "\nDeploy successful \nPull request: ${{ env.PR_URL }}\n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
         env:
-          SURGE_DOMAIN: ${{ needs.release.outputs.SURGE_DOMAIN }}
+          PR_URL: ${{ steps.pr-url.outputs.url }}
 
   on-failure-deploying:
     needs: [ release ]
