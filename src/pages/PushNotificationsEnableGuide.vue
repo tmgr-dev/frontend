@@ -10,7 +10,7 @@
 		</template>
 		<template #body>
 			<div
-				class="w-full text-tmgr-blue dark:text-tmgr-gray md:w-auto md:flex-grow md:flex md:items-center md:block block"
+				class="block w-full text-tmgr-blue dark:text-tmgr-gray md:block md:flex md:w-auto md:flex-grow md:items-center"
 			>
 				<p>
 					<strong
@@ -131,13 +131,17 @@
 					selected website. Choose the option as per your preference.
 				</p>
 			</div>
+
 			<alert ref="alert" />
 		</template>
 	</BaseLayout>
 </template>
 
 <script>
+	import Alert from 'src/components/general/Alert.vue';
+
 	export default {
 		name: 'PushNotificationsEnableGuide',
+		components: { Alert },
 	};
 </script>
