@@ -5,36 +5,38 @@
 		<template #title>Welcome back!</template>
 
 		<template #body>
-			<form class="form-horizontal w-3/4 mx-auto" @submit.prevent="login">
-				<div class="flex flex-col mt-4">
+			<form class="form-horizontal mx-auto w-3/4" @submit.prevent="login">
+				<div class="mt-4 flex flex-col">
 					<div :style="{ color: errors ? 'red' : 'initial' }">
 						{{ message }}
 					</div>
 				</div>
 
-				<div class="flex flex-col mt-4">
-					<input-field
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.email"
 						:errors="errors.email"
 						name="email"
 						placeholder="Email"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="email"
 					/>
 				</div>
 
-				<div class="flex flex-col mt-4">
-					<input-field
+				<div class="mt-4 flex flex-col">
+					<TextField
 						v-model="form.password"
 						:errors="errors.password"
 						name="password"
 						placeholder="Password"
+						input-class="dark:bg-white dark:border-neutral-300"
 						type="password"
 					/>
 				</div>
 
-				<div class="flex flex-col mt-6">
+				<div class="mt-6 flex flex-col">
 					<button
-						class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded"
+						class="rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
 						type="submit"
 					>
 						<span class="relative">
@@ -48,14 +50,14 @@
 
 		<template #footer>
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/password/forget"
 			>
 				Forgot Your Password?
 			</router-link>
 			<br />
 			<router-link
-				class="no-underline hover:underline text-blue-dark text-xs"
+				class="text-blue-dark text-xs no-underline hover:underline"
 				to="/register"
 			>
 				Don't you have an account?
@@ -71,8 +73,9 @@
 	import { Login, login as loginAction } from 'src/actions/tmgr/auth';
 	import { getUser, getUserSettings } from 'src/actions/tmgr/user';
 	import { AxiosError } from 'axios';
-	import AuthBase from 'src/components/Auth/AuthBase';
+	import AuthBase from 'src/components/Layouts/AuthBase.vue';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
+	import TextField from 'src/components/general/TextField.vue';
 
 	const router = useRouter();
 

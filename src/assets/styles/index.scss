@@ -3,7 +3,6 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
-@import 'switch';
 @import 'task';
 @import 'alert';
 @import 'editor';
@@ -68,20 +67,6 @@ button {
 	&:focus {
 		outline: none;
 	}
-}
-
-.night-mode {
-	.vs__dropdown-menu {
-		background: #1f2937;
-	}
-
-	.vs__dropdown-option {
-		color: #656b75;
-	}
-}
-
-.vs__search {
-	color: #000;
 }
 
 .bounce-right-fade-enter-active {

@@ -11,7 +11,7 @@
 				:items="getBreadcrumbs(parentCategories)"
 			/>
 
-			<div class="md:absolute right-0 bottom-0 mr-5 mb-2">
+			<div class="right-0 bottom-0 mr-5 mb-2 md:absolute">
 				<router-link
 					v-if="category"
 					:to="`/projects-categories/${category.id}/edit`"
@@ -38,24 +38,24 @@
 				<div
 					v-for="category in categories"
 					:key="category.id"
-					:class="`w-full mt-2 ${
-						category.deleted_at !== null ? 'hover:opacity-100 opacity-50' : ''
+					:class="`mt-2 w-full ${
+						category.deleted_at !== null ? 'opacity-50 hover:opacity-100' : ''
 					}`"
 					@dragleave="category.hoverClass = ''"
 					@drop="drop($event, category)"
 					@dragenter.prevent="category.hoverClass = 'bg-red-500'"
 					@dragover.prevent="category.hoverClass = 'bg-red-500'"
 				>
-					<div class="shadow-md rounded-lg md:flex">
+					<div class="rounded-lg shadow-md md:flex">
 						<div class="w-full">
 							<div
-								class="dark:bg-gray-900 transition-colors duration-300 bg-white hover:bg-gray-100 hover:dark:bg-gray-800 p-4 md:p-5"
+								class="bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 								:class="category.hoverClass"
 							>
-								<div class="flex justify-between items-center">
+								<div class="flex items-center justify-between">
 									<div>
 										<p
-											class="font-bold text-xl cursor-pointer text-left pl-2"
+											class="cursor-pointer pl-2 text-left text-xl font-bold"
 											@click="
 												$router.push({
 													name: 'ProjectCategoryChildrenList',
@@ -66,7 +66,7 @@
 											{{ category.title }}
 										</p>
 										<div class="flex items-start">
-											<span class="text-gray-700 ml-2"
+											<span class="ml-2 text-gray-700"
 												>Projects: {{ category.children_count }}; Tasks:
 												{{ category.tasks_count }}</span
 											>
@@ -110,81 +110,46 @@
 					</div>
 				</div>
 			</div>
+
 			<div
 				v-else-if="!isCategoriesFirstLoading"
-				class="text-center italic text-xl"
+				class="text-center text-xl italic"
 			>
 				You don't have categories here
 			</div>
 
-			<div class="mt-5">
-				<h1
-					class="text-3xl text-white-800 pt-5 relative text-left lg:text-center ml-2"
-				>
-					<span>
+			<div class="mt-10 px-4">
+				<div class="grid grid-cols-2 items-center sm:flex">
+					<h2 class="text-white-800 text-left text-3xl lg:text-center">
 						Tasks
-						<a
-							class="opacity-25 hover:opacity-100 inline md:hidden"
-							href="#"
-							@click.prevent="selectAll"
-						>
+					</h2>
+
+					<Select
+						v-model="workspaceStatus"
+						:options="workspaceStatuses"
+						class="ml-auto w-36"
+						label-key="name"
+						value-key="id"
+					/>
+
+					<div class="col-span-2 ml-auto flex items-center gap-2 sm:ml-2">
+						<button class="opacity-25 hover:opacity-100" @click="selectAll">
 							<span class="material-icons text-3xl">done_all</span>
-						</a>
-						<a
-							:href="`/${
-								id ? 'project-categories/' + id + '/tasks/' : ''
-							}create`"
-							class="opacity-25 hover:opacity-100 inline md:hidden"
+						</button>
+
+						<button
+							class="opacity-25 hover:opacity-100"
 							title="Add task to category"
-							@click.prevent="
+							@click="
 								$store.commit('createTaskInProjectCategoryId', {
 									projectCategoryId: id,
 								})
 							"
 						>
 							<span class="material-icons text-3xl">add_circle_outline</span>
-						</a>
-					</span>
-					<span
-						class="md:absolute md:mt-2 md:mt-0 flex right-0 bottom-0 sm:mr-5"
-					>
-						<span class="sm:mr-5 text-lg">
-							<input-field
-								v-if="workspaceStatuses.length > 0"
-								v-model="workspaceStatus"
-								:options="workspaceStatuses"
-								class="items-center"
-								option-name-key="name"
-								option-value-key="id"
-								style="min-width: 200px"
-								type="select"
-							/>
-						</span>
-						<a
-							class="opacity-25 hover:opacity-100 hidden md:inline mr-2"
-							href="#"
-							title="Select all"
-							@click.prevent="selectAll"
-						>
-							<span class="material-icons text-3xl">done_all</span>
-						</a>
-						<a
-							:href="`/${
-								id ? 'project-categories/' + id + '/tasks/' : ''
-							}create`"
-							class="opacity-25 hover:opacity-100 hidden md:inline"
-							title="Add task to category"
-							@click.prevent="
-								$store.commit('createTaskInProjectCategoryId', {
-									projectCategoryId: id,
-								})
-							"
-						>
-							<span class="material-icons text-4xl">add_circle_outline</span>
-						</a>
-					</span>
-				</h1>
-
+						</button>
+					</div>
+				</div>
 				<loading-tasks-list v-if="isTasksFirstLoading" class="mt-2" />
 
 				<tasks-list-component
@@ -225,7 +190,6 @@
 	import getBreadcrumbs from '../../utils/breadcrumbs/getBreadcrumbs';
 	import LoadingTasksList from 'src/components/Loaders/LoadingTasksList.vue';
 	import TasksListComponent from 'src/components/UIElements/Tasks/TasksListComponent';
-	import InputField from 'src/components/UIElements/InputField';
 	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
 	import {
 		restoreCategory,
@@ -233,11 +197,12 @@
 		getParentCategory,
 		getSubCategories,
 	} from 'src/actions/tmgr/categories';
+	import Select from 'src/components/general/Select.vue';
 
 	export default {
 		name: 'ProjectCategoryList',
 		components: {
-			InputField,
+			Select,
 			LoadingTasksList,
 			Confirm,
 			Breadcrumbs,

@@ -1,106 +1,81 @@
 <template>
 	<teleport to="title"> Settings </teleport>
+
 	<BaseLayout>
 		<template #header> Settings </template>
+
 		<template #body>
-			<div class="flex flex-col gap-3 max-w-md">
+			<div class="flex max-w-md flex-col gap-3">
 				<button
 					v-if="!pusherBeamsUserId"
-					class="px-5 py-2 border-green-400 text-green-600 hover:bg-green-400 text-green-400 hover:text-white border-2 transition"
+					class="border-2 border-green-400 px-5 py-2 text-green-600 text-green-400 transition hover:bg-green-400 hover:text-white"
 					@click="togglePushes"
 				>
 					Web Pushes
 				</button>
 
 				<button
-					class="px-5 py-2 border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white border-2 transition"
+					class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
 					@click="testWebPushNotifications"
 				>
 					Test web push notifications
 				</button>
 
-				<input-field
+				<Switcher
+					name="show_tooltips"
 					v-model="userSettings.showTooltips"
 					placeholder="Show tooltips"
-					type="checkbox"
 				/>
 
 				<div>
 					<div v-for="(setting, index) in availableSettings">
 						<label
 							:for="`setting-${setting.id}`"
-							class="block text-gray-700 text-sm font-bold mb-2"
+							class="mb-2 block text-sm font-bold text-gray-700"
 						>
 							{{ setting.name }}
 						</label>
 
 						<div class="relative mb-4">
-							<div v-if="setting.component_type === 'current_workspace'">
+							<template v-if="setting.component_type === 'current_workspace'">
 								<current-workspace v-model="settings[index].value" />
-							</div>
+							</template>
 
-							<input-field
-								v-else-if="!setting.show_custom_value_input"
-								:id="`setting-${setting.id}`"
-								v-model="settings[index].value"
-								:options="setting.default_values"
-								:placeholder="setting.description"
-								:tag="(settings[index].id = setting.id)"
-								option-name-key="value"
-								option-value-key="value"
-								type="select"
-							/>
-
-							<div v-else-if="setting.custom_value_available">
-								<input-field
-									:id="`setting-${setting.id}`"
+							<template v-else-if="setting.custom_value_available">
+								<TimeField
+									v-if="setting.component_type === 'time_in_seconds'"
 									v-model="settings[index].value"
 									:placeholder="setting.description"
-									:tag="(settings[index].id = setting.id)"
-									:type="setting.component_type"
 								/>
-							</div>
+
+								<TextField
+									v-else
+									v-model="settings[index].value"
+									:placeholder="setting.description"
+								/>
+							</template>
 
 							<small v-if="!setting.show_custom_value_input">
 								{{ setting.description }}
 							</small>
 
-							<div
-								v-if="setting.custom_value_available"
-								class="b-switch-list mt-3"
-							>
-								<div
-									v-if="
-										setting.default_values && setting.default_values.length > 0
-									"
-									class="b-switch-list__item"
-								>
-									<label class="b-switch">
-										<input
-											v-model="setting.show_custom_value_input"
-											name="show_tooltips"
-											type="checkbox"
-											@change="settings[index].value = ''"
-										/>
-										<span></span>
-									</label>
-
-									<div class="b-switch-list__text">
-										<div
-											class="b-switch-list__title text-gray-800 dark:text-gray-400"
-										>
-											Set custom value
-										</div>
-									</div>
-								</div>
-							</div>
+							<Switcher
+								v-if="
+									setting.custom_value_available &&
+									setting.default_values &&
+									setting.default_values.length > 0
+								"
+								name="set_custom_value"
+								v-model="setting.show_custom_value_input"
+								placeholder="Set custom value"
+							/>
 						</div>
 					</div>
 				</div>
 
 				<div class="text-left">
 					<button
-						class="bg-blue-500 hover:bg-blue-600 transition text-white font-bold py-2 px-8 rounded focus:outline-none sm:mb-0 mt-4"
+						class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
 						type="button"
 						@click="updateSettings"
 					>
@@ -108,8 +83,6 @@
 					</button>
 				</div>
 			</div>
-
-			<alert ref="alert" />
 		</template>
 	</BaseLayout>
 
@@ -147,10 +120,18 @@
 		updateUserSettingsV2,
 	} from 'src/actions/tmgr/user';
 	import { sendNotification } from 'src/actions/tmgr/notifications';
+	import Select from 'src/components/general/Select.vue';
+	import Switcher from 'src/components/general/Switcher.vue';
+	import TimeField from 'src/components/general/TimeField.vue';
+	import TextField from 'src/components/general/TextField.vue';
 
 	export default {
 		name: 'Settings',
 		components: {
+			TextField,
+			TimeField,
+			Switcher,
+			Select,
 			Button,
 			Confirm,
 			CurrentWorkspace,

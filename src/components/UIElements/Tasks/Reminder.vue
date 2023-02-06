@@ -1,10 +1,10 @@
 <template>
 	<div class="flex">
 		<div class="mx-auto">
-			<input-field
+			<Switcher
+				name="reminder"
 				v-model="isActiveReminder"
 				placeholder="Reminder"
-				type="checkbox"
 			/>
 		</div>
 	</div>
@@ -22,21 +22,21 @@
 		</Button>
 		<span
 			v-if="reminderSoundPlaying"
-			class="flex cursor-pointer absolute h-5 w-5 top-0 right-0 -mt-1 -mr-2"
+			class="absolute top-0 right-0 -mt-1 -mr-2 flex h-5 w-5 cursor-pointer"
 			@click="stopReminder"
 		>
 			<span
-				class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
+				class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
 			></span>
 			<span
-				class="relative inline-flex rounded-full h-5 w-5 bg-green-500"
+				class="relative inline-flex h-5 w-5 rounded-full bg-green-500"
 			></span>
 		</span>
 	</teleport>
 </template>
 
 <script>
-	import InputField from 'src/components/UIElements/InputField';
+	import Switcher from 'src/components/general/Switcher.vue';
 
 	export default {
 		name: 'Reminder',
@@ -51,9 +51,7 @@
 			},
 		},
 		emits: ['update:is-active', 'remind'],
-		components: {
-			InputField,
-		},
+		components: { Switcher },
 		data: () => ({
 			reminderInterval: null,
 			soundReminder: null,

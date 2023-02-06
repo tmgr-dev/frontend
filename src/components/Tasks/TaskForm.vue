@@ -1,7 +1,7 @@
 <template>
 	<teleport to="title"> {{ form.title || h1.main }}&nbsp; </teleport>
 
-	<div class="sm:flex items-between text-center">
+	<div class="items-between text-center sm:flex">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
@@ -15,14 +15,14 @@
 							@submit.prevent="updateCategory"
 							class="text-gray-800 dark:text-tmgr-gray"
 						>
-							<label for="settings" class="block text-lg font-bold mb-5">
+							<label for="settings" class="mb-5 block text-lg font-bold">
 								Settings
 							</label>
 
 							<div>
 								<div
 									v-if="form.user"
-									class="text-start py-1 pr-5 estimated-info border-b border-neutral-200 dark:border-neutral-600"
+									class="estimated-info border-b border-neutral-200 py-1 pr-5 text-start dark:border-neutral-600"
 								>
 									Author:
 									<span class="text-neutral-600 dark:text-neutral-300">
@@ -30,14 +30,13 @@
 									</span>
 								</div>
 
-								<label class="block text-sm text-left font-bold mb-2 mt-4">
-									<span class="block mb-2">Category</span>
+								<label class="mb-2 mt-4 block text-left text-sm font-bold">
+									<span class="mb-2 block">Category</span>
 
-									<input-field
-										type="select"
+									<Select
 										:options="categoriesSelectOptions"
-										option-name-key="title"
-										option-value-key="id"
+										label-key="title"
+										value-key="id"
 										v-model="currentCategoryOptionInSelect"
 									/>
 								</label>
@@ -49,84 +48,33 @@
 								>
 									<label
 										:for="`setting-${setting.id}`"
-										class="block text-left text-sm font-bold mb-2"
+										class="mb-2 block text-left text-sm font-bold"
 									>
 										{{ setting.name }}
 									</label>
 
 									<div class="relative mb-4">
-										<select
-											:id="`setting-${setting.id}`"
-											v-if="!setting.show_custom_value_input"
-											class="block appearance-none w-full bg-white border border-gray-300 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none"
+										<TimeField
+											v-if="setting.component_type === 'time_in_seconds'"
 											v-model="settings[index].value"
-										>
-											<option value="" class="text-gray-500">
-												Choose default value
-											</option>
-											<option
-												v-for="(c, i) in setting.default_values"
-												:key="i"
-												:value="c.value"
-											>
-												{{ c.value }}
-											</option>
-										</select>
+											:placeholder="setting.description"
+										/>
 
-										<div v-else-if="setting.custom_value_available">
-											<input-field
-												:id="`setting-${setting.id}`"
-												:type="setting.component_type"
-												:placeholder="setting.description"
-												v-model="settings[index].value"
-												:tag="(settings[index].id = setting.id)"
-											/>
-										</div>
-
-										<small v-if="!setting.show_custom_value_input">
-											{{ setting.description }}
-										</small>
-
-										<div
-											class="b-switch-list"
-											v-if="setting.custom_value_available"
-										>
-											<div
-												class="b-switch-list__item"
-												v-if="
-													setting.default_values &&
-													setting.default_values.length > 0
-												"
-											>
-												<label class="b-switch">
-													<input
-														type="checkbox"
-														name="show_tooltips"
-														v-model="setting.show_custom_value_input"
-														@change="settings[index].value = ''"
-													/>
-													<span></span>
-												</label>
-
-												<div class="b-switch-list__text">
-													<div
-														class="b-switch-list__title dark:text-gray-400 text-gray-800"
-													>
-														Set custom value
-													</div>
-												</div>
-											</div>
-										</div>
+										<TextField
+											v-else
+											v-model="settings[index].value"
+											:placeholder="setting.description"
+										/>
 									</div>
 								</div>
 
-								<div class="py-2 pr-5 estimated-info text-start">
+								<div class="estimated-info py-2 pr-5 text-start">
 									<div
 										class="flex items-center border-b border-neutral-200 dark:border-neutral-600"
 									>
 										Assignees
 										<span
-											class="material-icons text-lg checkpoint-delete"
+											class="material-icons checkpoint-delete text-lg"
 											@click="isShowModalAssign = true"
 										>
 											add
@@ -136,13 +84,13 @@
 									<div
 										v-if="form.assignees && form.assignees.length"
 										v-for="assignee in form.assignees"
-										class="flex gap-2 mt-2"
+										class="mt-2 flex gap-2"
 									>
 										<div class="flex items-center gap-1.5">
 											{{ assignee.name }}
 
 											<span
-												class="material-icons text-lg text-red-500 checkpoint-delete"
+												class="material-icons checkpoint-delete text-lg text-red-500"
 												@click="deleteAssign(assignee.id)"
 											>
 												person_remove
@@ -152,18 +100,18 @@
 								</div>
 							</div>
 
-							<div class="flex flex-nowrap items-center mt-6">
+							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
 									@click="isShowSettingsModal = false"
-									class="block w-2/4 mr-1 bg-gray-700 text-white p-2 rounded"
+									class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
 								>
 									Cancel
 								</button>
 
 								<button
 									type="submit"
-									class="block w-2/4 mr-1 bg-blue-700 text-white p-2 rounded"
+									class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
 								>
 									Update
 								</button>
@@ -186,13 +134,13 @@
 								Assign task to user
 							</label>
 
-							<div class="grid grid-cols-2 gap-2 mt-5">
+							<div class="mt-5 grid grid-cols-2 gap-2">
 								<div
 									v-for="workspaceMember in workspaceMembers"
 									:key="workspaceMember.id"
 								>
 									<div
-										class="flex items-center cursor-pointer gap-1.5 dark:hover:text-white group"
+										class="group flex cursor-pointer items-center gap-1.5 dark:hover:text-white"
 										@click="handleAssign(workspaceMember.id)"
 									>
 										<span
@@ -216,11 +164,11 @@
 								</div>
 							</div>
 
-							<div class="flex flex-nowrap items-center mt-6">
+							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
 									@click="isShowModalAssign = false"
-									class="block w-full mr-1 bg-gray-700 text-white p-2 rounded"
+									class="mr-1 block w-full rounded bg-gray-700 p-2 text-white"
 								>
 									Close
 								</button>
@@ -235,14 +183,14 @@
 	<div
 		ref="modal"
 		:class="{
-			'task-form-container mx-auto dark:bg-gray-900 bg-white overflow-hidden rounded-lg relative p-3':
+			'task-form-container relative mx-auto overflow-hidden rounded-lg bg-white p-3 dark:bg-gray-900':
 				isModal,
 			'container mx-auto': !isModal,
 		}"
 	>
 		<header ref="header">
 			<div
-				:class="`flex justify-between items-center ${isModal ? '' : 'mt-10'}`"
+				:class="`flex items-center justify-between ${isModal ? '' : 'mt-10'}`"
 			>
 				<template v-if="!isCreatingTask">
 					<router-link
@@ -253,21 +201,18 @@
 										currentCategory.id
 								  }/children/${getCategoryStatus()}`
 						"
-						class="rounded focus:outline-none sm:mb-0 text-blue-800 dark:text-neutral-200 text-white"
+						class="hidden rounded text-blue-800 text-white focus:outline-none dark:text-neutral-200 sm:mb-0 sm:block"
 						type="button"
 					>
 						{{ currentCategory ? currentCategory.title : 'Tasks' }}
 					</router-link>
 
-					<input-field
-						v-if="workspaceStatuses.length > 0"
+					<Select
 						v-model="form.status_id"
-						type="select"
 						:options="workspaceStatuses"
-						option-name-key="name"
-						option-value-key="id"
-						class="inline-block ml-3"
-						style="min-width: 200px"
+						label-key="name"
+						value-key="id"
+						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
 
 					<div
@@ -275,13 +220,13 @@
 						:class="{ 'ml-auto': isPage }"
 					>
 						<div
-							class="w-8 h-8 rounded-full border-gray-500 dark:border-gray-400 border-dashed border-2 flex cursor-default cursor-pointer group hover:dark:border-gray-200"
+							class="group flex h-8 w-8 cursor-default cursor-pointer rounded-full border-2 border-dashed border-gray-500 dark:border-gray-400 hover:dark:border-gray-200"
 							:class="{ '-ml-3': form.assignees?.length }"
 							v-tooltip.right="'Assign'"
 							@click="isShowModalAssign = true"
 						>
 							<span
-								class="material-icons text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white m-auto cursor-pointer"
+								class="material-icons m-auto cursor-pointer text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white"
 							>
 								add
 							</span>
@@ -290,7 +235,7 @@
 						<div
 							v-for="(workspaceMember, i) in form.assignees"
 							:key="i"
-							class="w-8 h-8 rounded-full border-green-400 bg-green-600 flex cursor-default group relative shadow shadow-neutral-300"
+							class="group relative flex h-8 w-8 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-neutral-300"
 							:class="{ '-mr-3': i > 0 }"
 							:title="workspaceMember.name"
 						>
@@ -299,7 +244,7 @@
 							</div>
 
 							<div
-								class="flex cursor-pointer bg-red-500 rounded-full w-4 h-4 -top-1.5 -right-1.5 absolute group-hover:visible opacity-75 hover:opacity-100 invisible"
+								class="invisible absolute -top-1.5 -right-1.5 flex h-4 w-4 cursor-pointer rounded-full bg-red-500 opacity-75 hover:opacity-100 group-hover:visible"
 							>
 								<span
 									class="material-icons m-auto text-xs text-white"
@@ -317,7 +262,7 @@
 				<div v-if="isModal" class="ml-auto flex gap-2">
 					<button
 						type="button"
-						class="opacity-50 hover:opacity-100 transition-opacity mr-2"
+						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block"
 					>
 						<router-link
 							class="material-icons text-2xl text-black dark:text-white"
@@ -329,7 +274,7 @@
 
 					<button
 						type="button"
-						class="opacity-50 hover:opacity-100 transition-opacity"
+						class="opacity-50 transition-opacity hover:opacity-100"
 						v-if="isModal"
 					>
 						<span
@@ -359,20 +304,20 @@
 			</div>
 		</header>
 
-		<section role="main" class="text-center mt-10">
+		<section role="main" class="mt-10 text-center">
 			<div class="mb-5">
-				<input-field
+				<TextField
 					v-model="form.title"
 					:errors="errors.title"
-					type="text"
-					extra-class="mb-1 bg-white dark:bg-gray-800"
 					placeholder="Task name"
 				/>
 
-				<input-field
-					v-model="form.description"
-					:errors="errors.description"
-					type="contenteditable"
+				<quill-editor
+					class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+					:class="errors.description && 'border-red-500'"
+					v-model:content="form.description"
+					content-type="html"
+					theme="bubble"
 					placeholder="Description"
 				/>
 			</div>
@@ -382,12 +327,12 @@
 				class="checkpoints-wrapper rounded"
 				:key="checkpointUpdateKey"
 			>
-				<div class="text-sm text-bold flex items-center justify-center gap-2">
+				<div class="text-bold flex items-center justify-center gap-2 text-sm">
 					{{
 						form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints'
 					}}
 					<span
-						class="material-icons text-lg text-gray-500 checkpoint-delete"
+						class="material-icons checkpoint-delete text-lg text-gray-500"
 						@click="addCheckpoint"
 					>
 						add
@@ -397,22 +342,20 @@
 				<div
 					v-for="(checkpoint, v) in form.checkpoints"
 					:key="v"
-					class="flex mb-1"
+					class="mb-1 flex"
 				>
-					<div class="w-full relative">
-						<span :class="`absolute left-0 top-0 mt-1.5 ml-1.5 z-10`">
+					<div class="relative w-full">
+						<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
 							{{ v + 1 }}
 						</span>
 
-						<input-field
-							:type="checkpoint.inputType"
-							:for-checkpoint="true"
+						<textarea
+							class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+							:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
 							placeholder="Checkpoint content"
 							v-model="checkpoint.description"
-							:extra-class="`pl-7 bg-white dark:bg-gray-800 ${
-								checkpoint.inputType === 'textarea' ? '' : 'truncate pr-44'
-							}`"
 						/>
+
 						<span
 							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
 						>
@@ -422,14 +365,14 @@
 							</span>
 
 							<span
-								class="material-icons text-base text-blue-700 leading-none checkpoint-delete"
+								class="material-icons checkpoint-delete text-base leading-none text-blue-700"
 								@click="changeCheckpointInputField(v)"
 							>
 								edit
 							</span>
 
 							<span
-								class="material-icons text-base text-red-700 leading-none checkpoint-delete"
+								class="material-icons checkpoint-delete text-base leading-none text-red-700"
 								@click="deleteCheckpoint(v)"
 							>
 								delete
@@ -442,7 +385,7 @@
 
 		<footer
 			ref="footer"
-			class="w-full sm:p-5 p-2 shadow-top z-10 rounded-lg"
+			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5"
 			:class="{ 'mt-10': isPage }"
 		>
 			<task-actions
@@ -458,7 +401,7 @@
 					v-if="form.approximately_time"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
-					}-500 py-2 pr-5 estimated-info hidden md:block`"
+					}-500 estimated-info hidden py-2 pr-5 md:block`"
 				>
 					Left time: {{ approximatelyEndTime }}
 				</span>
@@ -479,7 +422,6 @@
 
 <script>
 	import moment from 'moment';
-	import InputField from 'src/components/UIElements/InputField';
 	import TaskActions from 'src/components/UIElements/Tasks/TaskActions';
 	import NewCountdown from 'src/components/Tasks/NewCountdown';
 	import Confirm from 'src/components/UIElements/Confirm';
@@ -499,14 +441,21 @@
 	} from 'src/actions/tmgr/settings';
 	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
+	import Select from 'src/components/general/Select';
+	import Switcher from 'src/components/general/Switcher';
+	import TextField from 'src/components/general/TextField';
+	import TimeField from 'src/components/general/TimeField.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			TimeField,
+			TextField,
+			Switcher,
+			Select,
 			Confirm,
 			NewCountdown,
 			TaskActions,
-			InputField,
 		},
 		props: {
 			isModal: {
@@ -844,7 +793,7 @@
 				}
 			},
 			getTaskSettingValue(key) {
-				return this.form?.settings?.find((item) => item.key === key)?.value;
+				return this.form.settings?.find((item) => item.key === key)?.value;
 			},
 			async loadModel() {
 				try {
