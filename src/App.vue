@@ -1,5 +1,6 @@
 <template>
 	<alert ref="alert" />
+
 	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray">
 		<Slideout
 			menu="#menu"
@@ -118,6 +119,9 @@
 	import { getUserSettings } from 'src/actions/tmgr/user';
 	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
+	import Alert from 'src/components/general/Alert.vue';
+	import AccountDropdown from 'src/components/general/AccountDropdown.vue';
+	import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -125,6 +129,9 @@
 	export default defineComponent({
 		name: 'App',
 		components: {
+			DayNightSwitch,
+			AccountDropdown,
+			Alert,
 			TaskForm,
 			Navbar,
 			Slideout,

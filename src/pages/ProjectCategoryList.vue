@@ -66,10 +66,10 @@
 											{{ category.title }}
 										</p>
 										<div class="flex items-start">
-											<span class="ml-2 text-gray-700"
-												>Projects: {{ category.children_count }}; Tasks:
-												{{ category.tasks_count }}</span
-											>
+											<span class="ml-2 text-gray-700">
+												Projects: {{ category.children_count }}; Tasks:
+												{{ category.tasks_count }}
+											</span>
 										</div>
 									</div>
 
@@ -77,7 +77,8 @@
 										<DropdownMenu
 											:actions="getActions(category)"
 											class="lg:hidden"
-										></DropdownMenu>
+										/>
+
 										<div class="hidden lg:block">
 											<new-button
 												class="mr-2"
@@ -198,10 +199,12 @@
 		getSubCategories,
 	} from 'src/actions/tmgr/categories';
 	import Select from 'src/components/general/Select.vue';
+	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
 
 	export default {
 		name: 'ProjectCategoryList',
 		components: {
+			DropdownMenu,
 			Select,
 			LoadingTasksList,
 			Confirm,
