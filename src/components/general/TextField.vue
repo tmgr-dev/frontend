@@ -30,7 +30,7 @@
 	import { computed } from 'vue';
 
 	const tooltipClasses = [
-		'top-1/2 sm:absolute left-[calc(100%+15px)] min-w-[220px] sm:-translate-y-1/2 rounded-md sm:drop-shadow-lg sm:bg-white p-2.5',
+		'pl-0 p-1 top-1/2 sm:absolute left-[calc(100%+15px)] min-w-[220px] sm:-translate-y-1/2 rounded-md sm:drop-shadow-lg sm:bg-white sm:p-2.5',
 		"before:content-none sm:before:content-[''] before:border-[7px] before:border-transparent before:border-r-white",
 		'before:absolute before:-left-3 before:z-10 before:top-1/2 before:-translate-y-1/2',
 	];
@@ -67,3 +67,29 @@
 		return props.errors?.length > 0 && props.errors[0];
 	});
 </script>
+
+<style scoped>
+	.fade-left-enter-active,
+	.fade-left-leave-active {
+		transition: 0.5s;
+		transform: translateX(0) translateY(-50%);
+	}
+
+	.fade-left-enter-from,
+	.fade-left-leave-to {
+		opacity: 0;
+		transform: translateX(100px) translateY(-50%);
+	}
+
+	@media (max-width: 640px) {
+		.fade-left-enter-active,
+		.fade-left-leave-active {
+			transform: translateX(0) translateY(0);
+		}
+
+		.fade-left-enter-from,
+		.fade-left-leave-to {
+			transform: translateX(100px) translateY(0);
+		}
+	}
+</style>

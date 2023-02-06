@@ -36,7 +36,6 @@
 </template>
 
 <script>
-	import InputField from 'src/components/UIElements/InputField';
 	import Switcher from 'src/components/general/Switcher.vue';
 
 	export default {
@@ -52,10 +51,7 @@
 			},
 		},
 		emits: ['update:is-active', 'remind'],
-		components: {
-			Switcher,
-			InputField,
-		},
+		components: { Switcher },
 		data: () => ({
 			reminderInterval: null,
 			soundReminder: null,

@@ -44,7 +44,6 @@
 
 <script>
 	import Button from 'src/components/UIElements/Button';
-	import InputField from 'src/components/UIElements/InputField';
 	import TextField from 'src/components/general/TextField';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 
@@ -52,7 +51,6 @@
 		name: 'Profile',
 		components: {
 			TextField,
-			InputField,
 			Button,
 		},
 		data: () => ({
