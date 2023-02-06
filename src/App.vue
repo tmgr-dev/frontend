@@ -113,7 +113,7 @@
 	import Navbar from 'src/components/UIElements/Navbar';
 	import NavbarMenu from 'src/components/UIElements/NavbarMenu';
 	import Slideout from 'src/components/UIElements/Slideout/Slideout';
-	import TaskForm from 'src/components/Tasks/TaskForm';
+	import TaskForm from 'src/pages/TaskForm.vue';
 	import store from 'src/store';
 	import { getUserSettings } from 'src/actions/tmgr/user';
 	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
