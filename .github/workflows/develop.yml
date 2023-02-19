@@ -49,39 +49,37 @@ jobs:
           ssh -o "StrictHostKeyChecking no" ${{ secrets.SSH_USER }}@${{ secrets.DEV_SSH_HOST }} -p ${{ secrets.SSH_PORT }} "cd ~/projects/${{ github.event.repository.name }}/docker && docker-compose run --rm node npm run build"
 
   on-success-deploying:
-    needs: [deploying]
+    needs: [ deploying ]
     if: success()
     runs-on: ubuntu-latest
-    timeout-minutes: 1
     steps:
-      - name: Git branch name
+      - name: Detect git branch name
         id: git-branch-name
         uses: EthanSK/git-branch-name-action@v1
 
-      - name: curl
-        uses: indiesdev/curl@v1
+      - name: Send notification to Telegram Chats
+        uses: indiesdev/curl@v1.1
         with:
-          url: https://ts3-telegram.aow.space/notifications
+          url: https://notifications.aow.space/
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\nDeploy successful \n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+          body: '{ "message": "✅ Deploy successful \n#deploy #successful\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
 
   on-failure-deploying:
     needs: [deploying]
     if: failure()
     runs-on: ubuntu-latest
-    timeout-minutes: 1
     steps:
-      - name: Git branch name
+      - name: Detect git branch name
         id: git-branch-name
         uses: EthanSK/git-branch-name-action@v1
 
-      - name: curl
-        uses: indiesdev/curl@v1
+      - name: Send notification to Telegram Chats
+        uses: indiesdev/curl@v1.1
         with:
-          url: https://ts3-telegram.aow.space/notifications
+          url: https://notifications.aow.space/
           method: POST
           accept: 200
           headers: '{ "Content-Type": "application/json" }'
-          body: '{ "message": "\n Deploy failed \n#deploy #failed\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
+          body: '{ "message": "❌ Deploy failed \n#deploy #failure\n\nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\n\nHead commit:\n`${{ github.event.head_commit.message }}`\n © `${{ github.event.pusher.name }}` in [commit](${{ github.event.head_commit.url }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
