@@ -4,10 +4,9 @@
 			:type="type"
 			class="w-full rounded border bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 			:class="[
-				inputClass,
-				hasError
-					? '!border-red-500 placeholder:text-red-400'
-					: 'border-neutral-300 dark:border-transparent',
+				'border-neutral-300',
+				inputClass || 'dark:border-transparent',
+				hasError && '!border-red-500 placeholder:text-red-400',
 			]"
 			:name="name"
 			:placeholder="placeholder"
