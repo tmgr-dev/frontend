@@ -12,28 +12,28 @@
 			</a>
 
 			<!--	@todo create component and implement adding new users	here	-->
-			<div class="relative flex flex-row-reverse ml-5">
-
-			<div
-				class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
-				v-if="task.assignees.length > 0"
-				v-for="(item, i) in task.assignees"
-				key="i"
-				:class="{ '-mr-1': i > 0 }"
-			>
-				<div class="m-auto font-sans text-base text-white" >
-					{{item.name.charAt(0).toUpperCase()}}
+			<div class="relative  ml-5">
+				<div class=" flex flex-row-reverse "
+						 v-if="task.assignees.length > 0">
+					<div
+						class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
+						v-for="(assignee, i) in task.assignees"
+						key="i"
+						:class="{ '-mr-1': i > 0 }"
+					>
+						<assignee-avatar
+						:name=assignee.name
+					/>
+					</div>
 				</div>
-			</div>
-
-			<div
-				class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
-				v-else
-			>
-			<div class="m-auto font-sans text-base text-white"  >
-				{{task.user.name.charAt(0).toUpperCase()}}
-			</div>
-			</div>
+				<div v-else><div
+					class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
+				>
+					<assignee-avatar
+						:name=task.user.name
+					/>
+				</div>
+				</div>
 			</div>
 		</div>
 
@@ -57,10 +57,12 @@
 	import Badge from '../general/Badge.vue';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
 	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+	import AssigneeAvatar from "src/components/general/AssigneeAvatar.vue";
 
 	export default {
 		mixins: [TimePreparationMixin],
 		components: {
+			AssigneeAvatar,
 			CategoryBadge,
 			Badge,
 		},
