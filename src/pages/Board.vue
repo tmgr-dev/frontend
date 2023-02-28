@@ -239,7 +239,7 @@
 			await this.loadColumns();
 			await this.loadTasks();
 		},
-		async unmounted(){
+		unmounted(){
 			document.body.classList.remove('overflow-hidden');
 		}
 	};
