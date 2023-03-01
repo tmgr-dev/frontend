@@ -214,47 +214,13 @@
 						value-key="id"
 						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
-
-					<div
-						class="relative flex flex-row-reverse"
-						:class="[isPage ? 'ml-auto' : 'ml-5']"
-					>
-						<div
-							class="group flex h-8 w-8 cursor-default cursor-pointer rounded-full border-2 border-dashed border-gray-500 dark:border-gray-400 hover:dark:border-gray-200"
-							:class="{ '-ml-3': form.assignees?.length }"
-							v-tooltip.right="'Assign'"
-							@click="isShowModalAssign = true"
-						>
-							<span
-								class="material-icons m-auto cursor-pointer text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white"
-							>
-								add
-							</span>
-						</div>
-
-						<div
-							v-for="(workspaceMember, i) in form.assignees"
-							:key="i"
-							class="group relative flex h-8 w-8 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-neutral-300"
-							:class="{ '-mr-3': i > 0 }"
-							:title="workspaceMember.name"
-						>
-							<div class="m-auto font-sans text-lg text-white">
-								{{ workspaceMember.name.charAt(0).toUpperCase() }}
-							</div>
-
-							<div
-								class="invisible absolute -top-1.5 -right-1.5 flex h-4 w-4 cursor-pointer rounded-full bg-red-500 opacity-75 hover:opacity-100 group-hover:visible"
-							>
-								<span
-									class="material-icons m-auto text-xs text-white"
-									@click="deleteAssign(workspaceMember.id)"
-								>
-									close
-								</span>
-							</div>
-						</div>
-					</div>
+					<assignee-avatars
+						:task="form"
+						:isActive="isActiveAssignBtns"
+						avatarsClass="group relative flex h-8 w-8 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-neutral-300"
+						@showModal="showModal"
+						@deleteAssign="deleteAssign"
+					/>
 				</template>
 
 				<p v-else>Creating task</p>
@@ -445,10 +411,12 @@
 	import Switcher from 'src/components/general/Switcher.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
+	import AssigneeAvatars from 'src/components/general/AssigneeAvatars.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			AssigneeAvatars,
 			TimeField,
 			TextField,
 			Switcher,
@@ -482,6 +450,7 @@
 		emits: ['close', 'updated'],
 		data() {
 			return {
+				isActiveAssignBtns: true,
 				middleBlockHeight: null,
 				confirm: null,
 				savedData: {},
@@ -610,6 +579,9 @@
 			},
 		},
 		methods: {
+			showModal() {
+				this.isShowModalAssign = true;
+			},
 			close() {
 				this.$emit('close');
 				this.$store.dispatch('reloadTasks');
