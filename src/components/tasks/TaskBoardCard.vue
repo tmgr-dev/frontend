@@ -12,29 +12,12 @@
 			</a>
 
 			<!--	@todo create component and implement adding new users	here	-->
-			<div class="relative  ml-5">
-				<div class=" flex flex-row-reverse "
-						 v-if="task.assignees.length > 0">
-					<div
-						class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
-						v-for="(assignee, i) in task.assignees"
-						key="i"
-						:class="{ '-mr-1': i > 0 }"
-					>
-						<assignee-avatar
-						:name=assignee.name
-					/>
-					</div>
-				</div>
-				<div v-else><div
-					class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
-				>
-					<assignee-avatar
-						:name=task.user.name
-					/>
-				</div>
-				</div>
-			</div>
+			<assignee-avatars
+				:task=task
+				:isActive=isActiveAssignBtns
+				avatarsClass=" group flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
+			/>
+
 		</div>
 
 		<div class="mt-4 flex items-center justify-between">
@@ -54,39 +37,44 @@
 </template>
 
 <script>
-	import Badge from '../general/Badge.vue';
-	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
-	import AssigneeAvatar from "src/components/general/AssigneeAvatar.vue";
+import Badge from '../general/Badge.vue';
+import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
+import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+import AssigneeAvatar from "src/components/general/AssigneeAvatar.vue";
+import AssigneeAvatars from "src/components/general/AssigneeAvatars.vue";
 
-	export default {
-		mixins: [TimePreparationMixin],
-		components: {
-			AssigneeAvatar,
-			CategoryBadge,
-			Badge,
+export default {
+	mixins: [TimePreparationMixin],
+	components: {
+		AssigneeAvatars,
+		AssigneeAvatar,
+		CategoryBadge,
+		Badge,
+	},
+	props: {
+		task: {
+			type: Object,
+			default: () => ({}),
 		},
-		props: {
-			task: {
-				type: Object,
-				default: () => ({}),
-			},
+	},
+	data: () => ({
+		isActiveAssignBtns: false
+	}),
+	computed: {
+		badgeColor() {
+			const mappings = {
+				Design: 'purple',
+				'Feature Request': 'teal',
+				Backend: 'blue',
+				QA: 'green',
+				default: 'black',
+			};
+			return mappings[this.task.type] || mappings.default;
 		},
-		computed: {
-			badgeColor() {
-				const mappings = {
-					Design: 'purple',
-					'Feature Request': 'teal',
-					Backend: 'blue',
-					QA: 'green',
-					default: 'black',
-				};
-				return mappings[this.task.type] || mappings.default;
-			},
-			user() {
-				return this.$store.getters.user;
-			},
+		user() {
+			return this.$store.getters.user;
 		},
-		methods: {},
-	};
+	},
+	methods: {},
+};
 </script>
