@@ -239,6 +239,9 @@
 			await this.loadColumns();
 			await this.loadTasks();
 		},
+		unmounted(){
+			document.body.classList.remove('overflow-hidden');
+		}
 	};
 </script>
 
