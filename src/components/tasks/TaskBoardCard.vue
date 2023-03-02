@@ -11,14 +11,11 @@
 				{{ task.title }}
 			</a>
 
-			<!--	@todo create component and implement adding new users	here	-->
-			<div
-				class="flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600"
-			>
-				<div class="m-auto font-sans text-base text-white">
-					{{ user.name.charAt(0).toUpperCase() }}
-				</div>
-			</div>
+			<assignee-users
+				:assignees="task.assignees"
+				:show-assignee-controls="false"
+				avatarsClass="h-6 w-6"
+			/>
 		</div>
 
 		<div class="mt-4 flex items-center justify-between">
@@ -41,10 +38,14 @@
 	import Badge from '../general/Badge.vue';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
 	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
+	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
 
 	export default {
 		mixins: [TimePreparationMixin],
 		components: {
+			AssigneeUsers,
+			AssigneeAvatar,
 			CategoryBadge,
 			Badge,
 		},
@@ -69,6 +70,5 @@
 				return this.$store.getters.user;
 			},
 		},
-		methods: {},
 	};
 </script>
