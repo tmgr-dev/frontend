@@ -91,7 +91,7 @@
 
 											<span
 												class="material-icons checkpoint-delete text-lg text-red-500"
-												@click="deleteAssign(assignee.id)"
+												@click="deleteAssignee(assignee.id)"
 											>
 												person_remove
 											</span>
@@ -214,12 +214,13 @@
 						value-key="id"
 						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
-					<assignee-avatars
-						:task="form"
-						:isActive="isActiveAssignBtns"
-						avatarsClass="group relative flex h-8 w-8 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-neutral-300"
-						@showModal="showModal"
-						@deleteAssign="deleteAssign"
+
+					<assignee-users
+						:assignees="form.assignees"
+						avatarsClass="h-8 w-8"
+						:show-assignee-controls="true"
+						@showModal="isShowModalAssign = true"
+						@deleteAssignee="deleteAssignee"
 					/>
 				</template>
 
@@ -411,12 +412,12 @@
 	import Switcher from 'src/components/general/Switcher.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
-	import AssigneeAvatars from 'src/components/general/AssigneeAvatars.vue';
+	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
-			AssigneeAvatars,
+			AssigneeUsers,
 			TimeField,
 			TextField,
 			Switcher,
@@ -579,9 +580,6 @@
 			},
 		},
 		methods: {
-			showModal() {
-				this.isShowModalAssign = true;
-			},
 			close() {
 				this.$emit('close');
 				this.$store.dispatch('reloadTasks');
@@ -642,7 +640,7 @@
 				);
 
 				if (isAssigned) {
-					await this.deleteAssign(userId);
+					await this.deleteAssignee(userId);
 				} else {
 					await this.addAssign(userId);
 				}
@@ -650,7 +648,7 @@
 			async addAssign(userId) {
 				this.form.assignees = await addTaskAssignee(this.form.id, userId);
 			},
-			async deleteAssign(userId) {
+			async deleteAssignee(userId) {
 				this.form.assignees = await deleteTaskAssignee(this.form.id, userId);
 			},
 			setFormDataWithDelay(data, delay = 200) {

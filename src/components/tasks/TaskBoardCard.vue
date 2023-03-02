@@ -11,13 +11,11 @@
 				{{ task.title }}
 			</a>
 
-			<!--	@todo create component and implement adding new users	here	-->
-			<assignee-avatars
-				:task=task
-				:isActive=isActiveAssignBtns
-				avatarsClass=" group flex h-6 w-6 shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-gray-300"
+			<assignee-users
+				:assignees="task.assignees"
+				:show-assignee-controls="false"
+				avatarsClass="h-6 w-6"
 			/>
-
 		</div>
 
 		<div class="mt-4 flex items-center justify-between">
@@ -37,44 +35,40 @@
 </template>
 
 <script>
-import Badge from '../general/Badge.vue';
-import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-import CategoryBadge from 'src/components/general/CategoryBadge.vue';
-import AssigneeAvatar from "src/components/general/AssigneeAvatar.vue";
-import AssigneeAvatars from "src/components/general/AssigneeAvatars.vue";
+	import Badge from '../general/Badge.vue';
+	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
+	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
+	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
 
-export default {
-	mixins: [TimePreparationMixin],
-	components: {
-		AssigneeAvatars,
-		AssigneeAvatar,
-		CategoryBadge,
-		Badge,
-	},
-	props: {
-		task: {
-			type: Object,
-			default: () => ({}),
+	export default {
+		mixins: [TimePreparationMixin],
+		components: {
+			AssigneeUsers,
+			AssigneeAvatar,
+			CategoryBadge,
+			Badge,
 		},
-	},
-	data: () => ({
-		isActiveAssignBtns: false
-	}),
-	computed: {
-		badgeColor() {
-			const mappings = {
-				Design: 'purple',
-				'Feature Request': 'teal',
-				Backend: 'blue',
-				QA: 'green',
-				default: 'black',
-			};
-			return mappings[this.task.type] || mappings.default;
+		props: {
+			task: {
+				type: Object,
+				default: () => ({}),
+			},
 		},
-		user() {
-			return this.$store.getters.user;
+		computed: {
+			badgeColor() {
+				const mappings = {
+					Design: 'purple',
+					'Feature Request': 'teal',
+					Backend: 'blue',
+					QA: 'green',
+					default: 'black',
+				};
+				return mappings[this.task.type] || mappings.default;
+			},
+			user() {
+				return this.$store.getters.user;
+			},
 		},
-	},
-	methods: {},
-};
+	};
 </script>
