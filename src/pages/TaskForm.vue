@@ -413,6 +413,7 @@
 	import TextField from 'src/components/general/TextField.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
 	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
+	import { stringUtils } from 'src/utils/stringUtils';
 
 	export default {
 		name: 'TaskForm',
@@ -513,8 +514,12 @@
 				this.setSavedData(newVal);
 			},
 		},
+		mounted() {
+			document.body.addEventListener('keydown', this.handleEscKeyDown);
+		},
 		unmounted() {
 			this.$store.dispatch('closeTaskModal');
+			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
 			userSettings() {
@@ -583,6 +588,22 @@
 			close() {
 				this.$emit('close');
 				this.$store.dispatch('reloadTasks');
+			},
+			handleEscKeyDown(event) {
+				if (event.key === 'Escape') {
+					if (
+						this.isCreatingTask &&
+						(!stringUtils.isBlank(this.form.title) ||
+							!stringUtils.isBlank(this.form.description))
+					) {
+						this.showConfirm('Cancel task', 'Are you sure?', () => {
+							this.$emit('close');
+						});
+					} else {
+						this.$emit('close');
+						this.$store.dispatch('reloadTasks');
+					}
+				}
 			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
