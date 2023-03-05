@@ -401,6 +401,7 @@
 		startTaskTimeCounter,
 		addTaskAssignee,
 		deleteTaskAssignee,
+		getTasksIndexes
 	} from 'src/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
@@ -413,6 +414,7 @@
 	import TextField from 'src/components/general/TextField.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
 	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
+	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
 
 	export default {
 		name: 'TaskForm',
@@ -752,14 +754,15 @@
 					if (!!this.form.id || this.currentCategory.settings.length === 0)
 						return;
 
-					this.currentCategory.settings.forEach((setting) => {
+					for (const setting of this.currentCategory.settings) {
 						if (setting.key === 'task_name_pattern_date&time') {
-							this.form.title = moment().format(setting.value);
+							const indexes = await getTasksIndexes(this.currentCategory.id);
+							this.form.title = titlePatternHandler(setting.value, new Map(Object.entries(indexes)));
 						}
 						if (setting.key === 'approximately_time') {
 							this.form.approximately_time = parseInt(setting.value);
 						}
-					});
+					}
 				}
 			},
 			getTaskSettingValue(key) {
