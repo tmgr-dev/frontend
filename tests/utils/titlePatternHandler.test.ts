@@ -18,6 +18,6 @@ test('Title Pattern Handler', () => {
 	expect(titlePatternHandler('TMGR-{index#category}-{index#workspace}: Hours - {dts#H#dte}; Minutes - {dts#S#dte}; Second hours: {dts#H#dte}', new Map([['category', 1], ['workspace', 1]])))
 		.toBe(`TMGR-1-1: Hours - ${date.format('H')}; Minutes - ${date.format('S')}; Second hours: ${date.format('H')}`);
 
-	expect(titlePatternHandler('TMGR-{index#category}-{index#workspace}: {dts#YYYY-MM-DD#dte} {dts#H:S:i#dte}', new Map([['category', 1], ['workspace', 1]])))
-		.toBe(`TMGR-1-1: ${date.format('YYYY-MM-DD')} ${date.format('H:S:i')}`);
+	expect(titlePatternHandler('TMGR-{index#workspace}: {dts#H:S:i#dte}'))
+		.toBe(`TMGR-0: ${date.format('H:S:i')}`);
 });
