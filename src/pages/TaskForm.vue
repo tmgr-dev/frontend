@@ -363,6 +363,7 @@
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
+				@cancelCreateTask="cancelCreateTask"
 			>
 				<span
 					v-if="form.approximately_time"
@@ -590,17 +591,7 @@
 			},
 			handleEscKeyDown(event) {
 				if (event.key === 'Escape') {
-					if (
-						this.isCreatingTask &&
-						(this.form.title || this.form.description)
-					) {
-						this.showConfirm('Cancel task', 'Are you sure?', () => {
-							this.$emit('close');
-						});
-					} else {
-						this.saveTask();
-						this.$emit('close');
-					}
+					this.cancelCreateTask();
 				}
 			},
 			showConfirm(title, body, action) {
@@ -885,6 +876,16 @@
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors;
 					}
+				}
+			},
+			cancelCreateTask() {
+				if (this.isCreatingTask && (this.form.title || this.form.description)) {
+					this.showConfirm('Cancel task', 'Are you sure?', () => {
+						this.$emit('close');
+					});
+				} else {
+					this.saveTask();
+					this.$emit('close');
 				}
 			},
 			async saveTask(start = false) {
