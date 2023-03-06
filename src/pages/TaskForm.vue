@@ -807,7 +807,7 @@
 			},
 			async toggleCountdown() {
 				// @todo explore why do we need set null here in order to get working countdown
-				this.form.id = null;
+				// this.form.id = null;
 
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
