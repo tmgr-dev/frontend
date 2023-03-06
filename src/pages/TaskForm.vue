@@ -254,7 +254,7 @@
 				</div>
 			</div>
 
-			<div class="mt-8 text-center">
+			<div class="mt-8 text-center" :key="this.form.common_time">
 				<Countdown
 					v-if="form.id"
 					:init-task="form"
