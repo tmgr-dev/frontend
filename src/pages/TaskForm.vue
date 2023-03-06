@@ -413,7 +413,6 @@
 	import TextField from 'src/components/general/TextField.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
 	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
-	import { stringUtils } from 'src/utils/stringUtils';
 
 	export default {
 		name: 'TaskForm',
@@ -593,15 +592,14 @@
 				if (event.key === 'Escape') {
 					if (
 						this.isCreatingTask &&
-						(!stringUtils.isBlank(this.form.title) ||
-							!stringUtils.isBlank(this.form.description))
+						(this.form.title || this.form.description)
 					) {
 						this.showConfirm('Cancel task', 'Are you sure?', () => {
 							this.$emit('close');
 						});
 					} else {
+						this.saveTask();
 						this.$emit('close');
-						this.$store.dispatch('reloadTasks');
 					}
 				}
 			},
