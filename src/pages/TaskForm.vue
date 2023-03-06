@@ -254,7 +254,7 @@
 				</div>
 			</div>
 
-			<div class="mt-8 text-center">
+			<div class="mt-8 text-center" :key="this.form.common_time">
 				<Countdown
 					v-if="form.id"
 					:init-task="form"
@@ -816,9 +816,6 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
-				// @todo explore why do we need set null here in order to get working countdown
-				this.form.id = null;
-
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
