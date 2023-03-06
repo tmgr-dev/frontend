@@ -1,9 +1,9 @@
 <template>
-	<div class="text-center flex justify-end">
+	<div class="flex justify-end text-center">
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="bg-red-500 mr-5 hover:bg-red-700 text-white font-bold py-2 px-4 rounded outline-none mr-auto"
+			class="mr-5 mr-auto rounded bg-red-500 py-2 px-4 font-bold text-white outline-none hover:bg-red-700"
 		>
 			Delete
 		</button>
@@ -14,12 +14,12 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="bg-blue-500 mr-4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
+				class="mr-4 rounded bg-blue-500 py-2 px-4 font-bold text-white hover:bg-blue-700 focus:outline-none"
 				type="button"
 			>
 				<svg
 					v-if="isSaving"
-					class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline"
+					class="-ml-1 mr-3 inline h-5 w-5 animate-spin text-white"
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
 					viewBox="0 0 24 24"
@@ -44,19 +44,19 @@
 
 			<span
 				v-if="isDataEdited"
-				class="flex absolute h-5 w-5 top-0 right-0 -mt-1 mr-4"
+				class="absolute top-0 right-0 -mt-1 mr-4 flex h-5 w-5"
 			>
 				<span
-					class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
+					class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
 				/>
-				<span class="relative inline-flex rounded-full h-5 w-5 bg-yellow-500" />
+				<span class="relative inline-flex h-5 w-5 rounded-full bg-yellow-500" />
 			</span>
 		</span>
 
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="bg-orange-500 mr-5 hover:bg-orange-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
+			class="mr-5 mb-5 rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 			type="button"
 		>
 			Create
@@ -64,8 +64,8 @@
 
 		<button
 			v-if="isCreatingTask"
-			@click="$store.dispatch('closeTaskModal')"
-			class="bg-gray-500 hover:bg-gray-600 transition text-white font-bold py-2 px-4 rounded focus:outline-none sm:mb-0 mb-5"
+			@click="$emit('cancelCreateTask')"
+			class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
 			type="button"
 		>
 			Cancel
@@ -74,7 +74,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none"
+			class="rounded bg-gray-500 py-2 px-4 font-bold text-white hover:bg-gray-700 focus:outline-none"
 			type="button"
 		>
 			Settings
@@ -85,7 +85,13 @@
 <script>
 	export default {
 		name: 'TaskActions',
-		emits: ['createTask', 'saveTask', 'settingsTask', 'removeTask'],
+		emits: [
+			'createTask',
+			'saveTask',
+			'settingsTask',
+			'removeTask',
+			'cancelCreateTask',
+		],
 		props: {
 			isCreatingTask: {
 				type: Boolean,
