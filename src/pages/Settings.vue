@@ -38,7 +38,10 @@
 
 						<div class="relative mb-4">
 							<template v-if="setting.component_type === 'current_workspace'">
-								<current-workspace v-model="settings[index].value" />
+								<current-workspace
+									v-model="settings[index].value"
+									@updateSettings="updateSettings"
+								/>
 							</template>
 
 							<template v-else-if="setting.custom_value_available">
