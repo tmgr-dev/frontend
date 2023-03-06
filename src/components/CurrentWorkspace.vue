@@ -1,5 +1,11 @@
 <template>
-	<Select v-model="val" :options="workspaces" label-key="name" value-key="id" />
+	<Select
+		v-model="val"
+		:options="workspaces"
+		label-key="name"
+		value-key="id"
+		@updateSettings="() => $emit('updateSettings')"
+	/>
 
 	<button
 		@click="isShowWorkspaceModal = true"
@@ -126,7 +132,8 @@
 				required: false,
 			},
 		},
-		emits: ['update:modelValue'],
+
+		emits: ['update:modelValue', 'updateSettings'],
 		data() {
 			return {
 				isLoading: false,
