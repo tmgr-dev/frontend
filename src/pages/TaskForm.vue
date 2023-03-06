@@ -363,6 +363,7 @@
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
+				@cancelCreateTask="cancelCreateTask"
 			>
 				<span
 					v-if="form.approximately_time"
@@ -513,8 +514,12 @@
 				this.setSavedData(newVal);
 			},
 		},
+		mounted() {
+			document.body.addEventListener('keydown', this.handleEscKeyDown);
+		},
 		unmounted() {
 			this.$store.dispatch('closeTaskModal');
+			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
 			userSettings() {
@@ -583,6 +588,11 @@
 			close() {
 				this.$emit('close');
 				this.$store.dispatch('reloadTasks');
+			},
+			handleEscKeyDown(event) {
+				if (event.key === 'Escape') {
+					this.cancelCreateTask();
+				}
 			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
@@ -866,6 +876,16 @@
 					if (e.response && e.response && e.response.data.errors) {
 						this.errors = e.response.data.errors;
 					}
+				}
+			},
+			cancelCreateTask() {
+				if (this.isCreatingTask && (this.form.title || this.form.description)) {
+					this.showConfirm('Cancel task', 'Are you sure?', () => {
+						this.$emit('close');
+					});
+				} else {
+					this.saveTask();
+					this.$emit('close');
 				}
 			},
 			async saveTask(start = false) {
