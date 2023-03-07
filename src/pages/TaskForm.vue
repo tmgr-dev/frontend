@@ -246,7 +246,7 @@
 					>
 						<span
 							class="material-icons text-2xl text-black dark:text-white"
-							@click="$emit('close')"
+							@click="close"
 						>
 							close
 						</span>
@@ -402,7 +402,7 @@
 		startTaskTimeCounter,
 		addTaskAssignee,
 		deleteTaskAssignee,
-		getTasksIndexes
+		getTasksIndexes,
 	} from 'src/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
@@ -518,6 +518,7 @@
 		},
 		mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
+			this.handleHistoryState();
 		},
 		unmounted() {
 			this.$store.dispatch('closeTaskModal');
@@ -587,6 +588,11 @@
 			},
 		},
 		methods: {
+			handleHistoryState() {
+				if (this.isModal && !this.isCreatingTask) {
+					window.history.pushState({}, {}, `/${this.taskId}/edit`);
+				}
+			},
 			close() {
 				this.$emit('close');
 				this.$store.dispatch('reloadTasks');
@@ -767,7 +773,10 @@
 					for (const setting of this.currentCategory.settings) {
 						if (setting.key === 'task_name_pattern_date&time') {
 							const indexes = await getTasksIndexes(this.currentCategory.id);
-							this.form.title = titlePatternHandler(setting.value, new Map(Object.entries(indexes)));
+							this.form.title = titlePatternHandler(
+								setting.value,
+								new Map(Object.entries(indexes)),
+							);
 						}
 						if (setting.key === 'approximately_time') {
 							this.form.approximately_time = parseInt(setting.value);
@@ -870,6 +879,7 @@
 						});
 					} else {
 						this.form = data;
+						this.handleHistoryState();
 						await this.initComponent();
 					}
 				} catch (e) {
