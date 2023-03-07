@@ -31,9 +31,22 @@
 			</a>
 		</div>
 	</div>
+	<Teleport to="body">
+		<div
+			@click="
+				() => {
+					opened = false;
+				}
+			"
+			v-if="opened"
+			class="fixed top-0 left-0 right-0 bottom-0 h-screen w-screen bg-cyan-900"
+		></div>
+	</Teleport>
 </template>
 
 <script>
+	import vClickOutside from 'v-click-outside';
+
 	export default {
 		name: 'BoardOptionsMenu',
 		props: {
@@ -42,10 +55,22 @@
 				type: Array,
 			},
 		},
+		// directives: {
+		// 	clickOutside: vClickOutside.directive,
+		// },
 		data() {
 			return {
 				opened: false,
 			};
+		},
+		methods: {
+			onClickOutside() {
+				console.log('as,jdfgsmhfgsjg');
+				this.opened = false;
+			},
+			// onClickOutside(event) {
+			// 	console.log('Clicked outside. Event: ', event);
+			// },
 		},
 	};
 </script>
