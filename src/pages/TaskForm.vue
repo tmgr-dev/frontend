@@ -590,7 +590,7 @@
 		methods: {
 			handleHistoryState() {
 				if (this.isModal && !this.isCreatingTask) {
-					window.history.pushState({}, {}, `/${this.taskId}/edit`);
+					history.pushState({}, '', `/${this.taskId}/edit`);
 				}
 			},
 			close() {
