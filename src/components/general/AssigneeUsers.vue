@@ -1,5 +1,5 @@
 <template>
-	<div class="relative" :class="[isPage ? 'ml-auto' : 'ml-5']">
+	<div class="relative" :class="[isModal ? 'ml-5' : 'ml-auto']">
 		<div class="flex flex-row-reverse">
 			<div
 				v-if="showAssigneeControls"
@@ -37,37 +37,55 @@
 	</div>
 </template>
 
-<script>
+<script setup lang="ts">
+	import { computed } from 'vue';
 	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
+	interface assigneeType {
+		name: string;
+		id: number;
+	}
+	interface Props {
+		assignees: assigneeType[];
+		avatarsClass: string;
+		showAssigneeControls: Boolean;
+		isModal: Boolean;
+	}
+	interface Data extends Props {}
+	const props = defineProps<Props>();
+	const emit = defineEmits(['showModal', 'deleteAssignee']);
 
-	export default {
-		name: 'AssigneeUsers',
-		emits: ['showModal', 'deleteAssignee'],
-		components: {
-			AssigneeAvatar,
-		},
-		props: {
-			assignees: {
-				type: Array,
-				required: true,
-				default: [],
-			},
-			avatarsClass: {
-				type: String,
-				default: '',
-			},
-			showAssigneeControls: {
-				type: Boolean,
-				default: true,
-			},
-		},
-		computed: {
-			/* @todo this component shouldn't know about it. isPage is needed only to change the css class, so the class should be passed from parent component */
-			isPage() {
-				return (
-					this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
-				);
-			},
-		},
-	};
+	// const isPage = computed(() => {
+	// 	return $route.name === 'TasksEdit' || $route.name === 'TasksCreate';
+	// });
+
+	// export default {
+	// 	name: 'AssigneeUsers',
+	// 	// emits: ['showModal', 'deleteAssignee'],
+	// 	components: {
+	// 		AssigneeAvatar,
+	// 	},
+	// 	props: {
+	// 		assignees: {
+	// 			type: Array,
+	// 			required: true,
+	// 			default: [],
+	// 		},
+	// 		avatarsClass: {
+	// 			type: String,
+	// 			default: '',
+	// 		},
+	// 		showAssigneeControls: {
+	// 			type: Boolean,
+	// 			default: true,
+	// 		},
+	// 	},
+	// 	computed: {
+	// 		/* @todo this component shouldn't know about it. isPage is needed only to change the css class, so the class should be passed from parent component */
+	// 		isPage() {
+	// 			return (
+	// 				this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
+	// 			);
+	// 		},
+	// 	},
+	// };
 </script>
