@@ -16,7 +16,17 @@
 	</div>
 </template>
 
-<script>
+<script lang="ts">
+	interface assigneeType {
+		name: string;
+		id: number;
+	}
+	interface Props {
+		assignee: assigneeType;
+		showRemovingAssignee: Boolean;
+	}
+
+	interface Data extends Props {}
 	export default {
 		name: 'AssigneeAvatar',
 		emits: ['deleteAssign'],
@@ -29,6 +39,12 @@
 				type: Boolean,
 				default: true,
 			},
+		},
+		setup({ assignee, showRemovingAssignee = true }: Props): Data {
+			return {
+				assignee,
+				showRemovingAssignee,
+			};
 		},
 	};
 </script>
