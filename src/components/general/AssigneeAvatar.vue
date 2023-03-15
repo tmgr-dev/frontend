@@ -16,35 +16,24 @@
 	</div>
 </template>
 
-<script lang="ts">
-	interface assigneeType {
+<script setup lang="ts">
+	import type { PropType } from 'vue';
+	interface Assignee {
 		name: string;
 		id: number;
 	}
 	interface Props {
-		assignee: assigneeType;
+		assignee: Assignee;
 		showRemovingAssignee: Boolean;
 	}
-
-	interface Data extends Props {}
-	export default {
-		name: 'AssigneeAvatar',
-		emits: ['deleteAssign'],
-		props: {
-			assignee: {
-				type: Object,
-				required: true,
-			},
-			showRemovingAssignee: {
-				type: Boolean,
-				default: true,
-			},
+	const props = defineProps({
+		showRemovingAssignee: {
+			type: Boolean,
+			default: true,
 		},
-		setup({ assignee, showRemovingAssignee = true }: Props): Data {
-			return {
-				assignee,
-				showRemovingAssignee,
-			};
+		assignee: {
+			type: Object as PropType<Assignee>,
+			required: true,
 		},
-	};
+	});
 </script>

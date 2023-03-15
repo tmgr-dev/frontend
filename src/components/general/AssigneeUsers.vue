@@ -38,54 +38,37 @@
 </template>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import type { PropType } from 'vue';
 	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
-	interface assigneeType {
+	interface Assignee {
 		name: string;
 		id: number;
 	}
 	interface Props {
-		assignees: assigneeType[];
+		assignees: Assignee[];
 		avatarsClass: string;
 		showAssigneeControls: Boolean;
 		isModal: Boolean;
 	}
-	interface Data extends Props {}
-	const props = defineProps<Props>();
+
+	const props = defineProps({
+		assignees: {
+			type: Array as PropType<Array<Assignee>>,
+			required: true,
+			default: [],
+		},
+		avatarsClass: {
+			type: String,
+			default: '',
+		},
+		showAssigneeControls: {
+			type: Boolean,
+			default: true,
+		},
+		isModal: {
+			type: Boolean,
+			default: false,
+		},
+	});
 	const emit = defineEmits(['showModal', 'deleteAssignee']);
-
-	// const isPage = computed(() => {
-	// 	return $route.name === 'TasksEdit' || $route.name === 'TasksCreate';
-	// });
-
-	// export default {
-	// 	name: 'AssigneeUsers',
-	// 	// emits: ['showModal', 'deleteAssignee'],
-	// 	components: {
-	// 		AssigneeAvatar,
-	// 	},
-	// 	props: {
-	// 		assignees: {
-	// 			type: Array,
-	// 			required: true,
-	// 			default: [],
-	// 		},
-	// 		avatarsClass: {
-	// 			type: String,
-	// 			default: '',
-	// 		},
-	// 		showAssigneeControls: {
-	// 			type: Boolean,
-	// 			default: true,
-	// 		},
-	// 	},
-	// 	computed: {
-	// 		/* @todo this component shouldn't know about it. isPage is needed only to change the css class, so the class should be passed from parent component */
-	// 		isPage() {
-	// 			return (
-	// 				this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
-	// 			);
-	// 		},
-	// 	},
-	// };
 </script>
