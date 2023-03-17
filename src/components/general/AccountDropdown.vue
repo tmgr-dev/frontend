@@ -44,7 +44,6 @@
 							value-key="id"
 							@updateSettings="updateSettings"
 						/>
-						<!--						<button type="button" @click="updateSettings">save</button>-->
 					</div>
 					<ul class="mt-4">
 						<li class="py-1" v-for="{ name } in workspaceUsers">
@@ -91,7 +90,6 @@
 				availableSettings: [],
 			};
 		},
-
 		computed: {
 			switchOn() {
 				return this.$store.getters.colorScheme === 'dark';
@@ -101,7 +99,6 @@
 			},
 		},
 		async mounted() {
-			this.user = await getUser();
 			await this.loadSettings();
 		},
 		async created() {
@@ -121,13 +118,12 @@
 				}
 			},
 			async loadSettings() {
+				this.user = await getUser();
 				this.workspaceId = this.user.settings[0].value;
 				this.workspaceUsers = await getWorkspaceMembers(this.workspaceId);
 			},
 			async updateSettings() {
-				console.log(this.workspaceId);
 				const data = await getUserSettingsV2();
-				console.log('data1', data);
 				this.user.settings.find(async (item) => {
 					const newUserSettings = data.find(
 						(element) => element.id === item.id,
@@ -135,6 +131,8 @@
 					newUserSettings.value = this.workspaceId;
 					await updateUserSettingsV2([newUserSettings]);
 					this.showAlert();
+					document.location.reload();
+					this.isOpenProfileDropdown = false;
 				});
 			},
 		},
