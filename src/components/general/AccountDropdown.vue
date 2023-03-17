@@ -20,8 +20,10 @@
 			class="absolute right-0 custom-top bg-white dark:bg-gray-900 py-2 shadow-lg z-50 border rounded dark:border-gray-700 border-gray-200"
 			@mouseleave="isOpenProfileDropdown = false"
 		>
-			<div class="flex">
-				<ul class="w-32 py-2 px-4 dark:border-gray-700 border-r-2">
+			<div class="sm:flex">
+				<ul
+					class="sm:w-32 py-2 px-4 dark:border-gray-700 border-b-2 sm:border-r-2 sm:border-b-0"
+				>
 					<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
 						<router-link class="block" to="/profile"> Profile </router-link>
 					</li>
@@ -45,8 +47,8 @@
 							@updateSettings="updateSettings"
 						/>
 					</div>
-					<ul class="mt-4">
-						<li class="py-1" v-for="{ name } in workspaceUsers">
+					<ul class="mt-4 h-24 overflow-y-scroll">
+						<li class="py-1 px-4 sm:px-0" v-for="{ name } in workspaceUsers">
 							{{ name }}
 						</li>
 					</ul>
