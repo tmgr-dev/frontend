@@ -28,16 +28,26 @@
 					:errors="errors.name"
 					placeholder="New workspace name"
 				/>
-
-				<button
-					@click="createNewWorkspace()"
-					:disabled="isLoading"
-					:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-					class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-					type="button"
-				>
-					Create
-				</button>
+				<div class="flex">
+					<button
+						@click="createNewWorkspace()"
+						:disabled="isLoading"
+						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+						type="button"
+					>
+						Create
+					</button>
+					<button
+						@click="isShowWorkspaceModal = false"
+						:disabled="isLoading"
+						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+						class="mt-5 w-full rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
+						type="button"
+					>
+						Cancel
+					</button>
+				</div>
 			</template>
 		</modal>
 	</Transition>
