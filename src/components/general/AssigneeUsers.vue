@@ -38,37 +38,20 @@
 </template>
 
 <script setup lang="ts">
-	import type { PropType } from 'vue';
 	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
-	interface Assignee {
-		name: string;
+
+	export interface Assignee {
 		id: number;
+		name: string;
 	}
+
 	interface Props {
 		assignees: Assignee[];
 		avatarsClass: string;
-		showAssigneeControls: Boolean;
-		isModal: Boolean;
+		showAssigneeControls: boolean;
+		isModal: boolean;
 	}
 
-	const props = defineProps({
-		assignees: {
-			type: Array as PropType<Array<Assignee>>,
-			required: true,
-			default: [],
-		},
-		avatarsClass: {
-			type: String,
-			default: '',
-		},
-		showAssigneeControls: {
-			type: Boolean,
-			default: true,
-		},
-		isModal: {
-			type: Boolean,
-			default: false,
-		},
-	});
+	const props = defineProps<Props>();
 	const emit = defineEmits(['showModal', 'deleteAssignee']);
 </script>
