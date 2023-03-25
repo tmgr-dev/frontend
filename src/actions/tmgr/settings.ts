@@ -1,6 +1,12 @@
 import $axios from 'src/plugins/axios';
 
-interface Settings {}
+export interface Setting {
+	id: number;
+	description: string;
+	key: string;
+	name: string;
+	value: string | number;
+}
 
 export const getTaskSettings = async () => {
 	const {
@@ -12,7 +18,7 @@ export const getTaskSettings = async () => {
 
 export const updateOneTaskSettings = async (
 	taskId: number,
-	payload: Settings,
+	payload: Setting,
 ) => {
 	const {
 		data: { data },

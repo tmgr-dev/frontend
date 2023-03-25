@@ -19,7 +19,7 @@
 		valueKey: 'value',
 		placeholder: 'Select',
 	});
-	const emit = defineEmits(['update:modelValue', 'updateSettings']);
+	const emit = defineEmits(['update:modelValue', 'change']);
 
 	const value = computed({
 		get() {
@@ -30,7 +30,7 @@
 		},
 		set(value) {
 			emit('update:modelValue', value?.[props.valueKey]);
-			emit('updateSettings');
+			emit('change', value?.[props.valueKey]);
 		},
 	});
 
@@ -40,6 +40,7 @@
 			.map((option) => {
 				option.label = option[props.labelKey];
 				option.value = option[props.valueKey];
+
 				return option;
 			});
 	});
