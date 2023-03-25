@@ -101,17 +101,13 @@
 	const workspaceUsers = ref([]);
 
 	onBeforeMount(async () => {
-		workspaces.value = await getWorkspaces();
-	});
+		const [userData, workspaceData] = await Promise.all([
+			getUser(),
+			getWorkspaces(),
+		]);
 
-	onMounted(async () => {
-		document.addEventListener('click', (e: MouseEvent) => {
-			if (!$wrapper.value?.contains(e.target as Node)) {
-				isOpenProfileDropdown.value = false;
-			}
-		});
-
-		user.value = await getUser();
+		user.value = userData;
+		workspaces.value = workspaceData;
 
 		const workspaceSetting = user.value.settings.find(
 			(setting) => setting.key === 'current_workspace',
@@ -121,6 +117,14 @@
 			workspaceId.value = +workspaceSetting.value;
 			workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
 		}
+	});
+
+	onMounted(async () => {
+		document.addEventListener('click', (e: MouseEvent) => {
+			if (!$wrapper.value?.contains(e.target as Node)) {
+				isOpenProfileDropdown.value = false;
+			}
+		});
 	});
 
 	async function onSelectChange(workspaceId: number) {
