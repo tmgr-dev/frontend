@@ -1,54 +1,60 @@
 <template>
-	<div class="relative select-none mt-2 md:mt-0">
+	<div class="relative mt-2 select-none md:mt-0">
 		<div
-			class="cursor-pointer flex item-center gap-1 text-black dark:text-white"
+			class="item-center flex cursor-pointer gap-1 text-black dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
 			<div class="flex items-center overflow-hidden">
 				<span
-					class="whitespace-nowrap text-ellipsis w-24 overflow-hidden"
-					v-if="$store.getters.user?.name?.length > 15"
-					>{{ $store.getters.user?.name?.slice(0, 15) }}</span
+					class="w-24 overflow-hidden text-ellipsis whitespace-nowrap"
+					v-if="store.getters.user?.name?.length > 15"
 				>
-				<span v-else>{{ $store.getters.user?.name }}</span>
+					{{ store.getters.user?.name?.slice(0, 15) }}
+				</span>
+
+				<span v-else>{{ store.getters.user?.name }}</span>
 			</div>
+
 			<span class="material-icons text-xl">person</span>
 		</div>
 
+		<!--	dropdown block	-->
 		<div
 			v-if="isOpenProfileDropdown"
-			class="absolute right-0 custom-top bg-white dark:bg-gray-900 py-2 shadow-lg z-50 border rounded dark:border-gray-700 border-gray-200"
+			class="absolute top-[calc(100%+20px)] right-0 z-50 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
 			@mouseleave="isOpenProfileDropdown = false"
 		>
 			<div class="sm:flex">
 				<ul
-					class="sm:w-32 py-2 px-4 dark:border-gray-700 border-b-2 sm:border-r-2 sm:border-b-0"
+					class="border-b-2 py-2 px-4 dark:border-gray-700 sm:w-32 sm:border-r-2 sm:border-b-0"
 				>
-					<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-						<router-link class="block" to="/profile"> Profile </router-link>
+					<li
+						v-for="link in links"
+						:key="link.id"
+						class="py-1 hover:opacity-75 md:p-2 lg:px-4"
+					>
+						<router-link class="block" :to="link.to">
+							{{ link.name }}
+						</router-link>
 					</li>
-					<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-						<router-link class="block" to="/settings"> Settings </router-link>
-					</li>
-					<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-						<router-link class="block" to="/archive"> Archive </router-link>
-					</li>
-					<li class="px-4 py-1 md:p-2 lg:px-4 hover:opacity-75">
-						<a class="block" href="#" @click.prevent="logout"> Logout </a>
+					<li class="py-1 hover:opacity-75 md:p-2 lg:px-4">
+						<a class="block" href="#" @click.prevent="logout">Logout</a>
 					</li>
 				</ul>
+
 				<div class="w-56 py-2 px-4">
-					<div>
-						<Select
-							:options="workspaces"
-							v-model="workspaceId"
-							label-key="name"
-							value-key="id"
-							@updateSettings="updateSettings"
-						/>
-					</div>
-					<ul class="mt-4 h-24 overflow-y-scroll">
-						<li class="py-1 px-4 sm:px-0" v-for="{ name } in workspaceUsers">
+					<Select
+						:options="workspaces"
+						v-model="workspaceId"
+						label-key="name"
+						value-key="id"
+						@updateSettings="updateSettings"
+					/>
+
+					<div class="mt-2 text-neutral-400">workspace users:</div>
+
+					<ul class="h-24 overflow-y-auto">
+						<li class="py-1 sm:px-0" v-for="{ name } in workspaceUsers">
 							{{ name }}
 						</li>
 					</ul>
@@ -58,91 +64,83 @@
 	</div>
 </template>
 
-<script>
+<script setup lang="ts">
 	import { logout as logoutAction } from 'src/actions/tmgr/auth';
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
+		Workspace,
 	} from 'src/actions/tmgr/workspaces';
 	import {
 		getUser,
-		getUserSettings,
 		getUserSettingsV2,
-		updateUserSettings,
 		updateUserSettingsV2,
+		User,
 	} from 'src/actions/tmgr/user';
 	import Select from 'src/components/general/Select.vue';
-	import Button from 'src/components/general/Button.vue';
+	import { onBeforeMount, onMounted, Ref, ref } from 'vue';
+	import store from 'src/store';
 
-	export default {
-		name: 'AccountDropdown',
-		components: {
-			Button,
-			Select,
+	const emit = defineEmits(['updateSettings']);
+	const isOpenProfileDropdown = ref(false);
+	const links = [
+		{
+			id: 1,
+			name: 'Profile',
+			to: '/profile',
 		},
-		emits: ['updateSettings'],
-		data() {
-			return {
-				isOpenProfileDropdown: false,
-				workspaces: [],
-				user: {},
-				settings: [],
-				workspaceId: '',
-				workspaceUsers: [],
-				availableSettings: [],
-			};
+		{
+			id: 2,
+			name: 'Settings',
+			to: '/settings',
 		},
-		computed: {
-			switchOn() {
-				return this.$store.getters.colorScheme === 'dark';
-			},
-			userSettings() {
-				return this.$store.getters.getUserSettings || {};
-			},
+		{
+			id: 3,
+			name: 'Archive',
+			to: '/archive',
 		},
-		async mounted() {
-			await this.loadSettings();
-		},
-		async created() {
-			this.workspaces = await getWorkspaces();
-		},
-		methods: {
-			async logout() {
-				try {
-					if (this.$store.getters.pusherBeamsUserId) {
-						await this.$store.getters.pusherBeamsClient.stop();
-						this.$store.commit('pusherBeamsUserId', null);
-					}
-					await logoutAction();
-					await this.$store.dispatch('logout');
-				} catch (e) {
-					console.error(e);
-				}
-			},
-			async loadSettings() {
-				this.user = await getUser();
-				this.workspaceId = this.user.settings[0].value;
-				this.workspaceUsers = await getWorkspaceMembers(this.workspaceId);
-			},
-			async updateSettings() {
-				const data = await getUserSettingsV2();
-				this.user.settings.find(async (item) => {
-					const newUserSettings = data.find(
-						(element) => element.id === item.id,
-					);
-					newUserSettings.value = this.workspaceId;
-					await updateUserSettingsV2([newUserSettings]);
-					this.showAlert();
-					document.location.reload();
-					this.isOpenProfileDropdown = false;
-				});
-			},
-		},
-	};
-</script>
+	];
+	const workspaces = ref([] as Workspace[]);
+	const user = ref({} as User);
+	const settings = ref([]);
+	const workspaceId: Ref<number> = ref(0);
+	const workspaceUsers = ref([]);
 
-<style scoped>
-	.custom-top {
-		top: calc(100% + 20px);
+	onBeforeMount(async () => {
+		workspaces.value = await getWorkspaces();
+	});
+
+	onMounted(async () => {
+		await loadSettings();
+	});
+
+	async function loadSettings() {
+		user.value = await getUser();
+		workspaceId.value = user.value.settings[0].value;
+		workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
 	}
-</style>
+
+	async function logout() {
+		try {
+			if (store.getters.pusherBeamsUserId) {
+				await store.getters.pusherBeamsClient.stop();
+				store.commit('pusherBeamsUserId', null);
+			}
+			await logoutAction();
+			await store.dispatch('logout');
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	async function updateSettings() {
+		const data = await getUserSettingsV2();
+		user.value.settings.find(async (item) => {
+			const newUserSettings = data.find((element) => element.id === item.id);
+			newUserSettings.value = workspaceId.value;
+			await updateUserSettingsV2([newUserSettings]);
+			document.location.reload();
+			isOpenProfileDropdown.value = false;
+		});
+	}
+</script>
