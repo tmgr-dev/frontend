@@ -1,5 +1,5 @@
 <template>
-	<div class="relative" :class="[isPage ? 'ml-auto' : 'ml-5']">
+	<div class="relative" :class="[isModal ? 'ml-5' : 'ml-auto']">
 		<div class="flex flex-row-reverse">
 			<div
 				v-if="showAssigneeControls"
@@ -37,37 +37,21 @@
 	</div>
 </template>
 
-<script>
+<script setup lang="ts">
 	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
 
-	export default {
-		name: 'AssigneeUsers',
-		emits: ['showModal', 'deleteAssignee'],
-		components: {
-			AssigneeAvatar,
-		},
-		props: {
-			assignees: {
-				type: Array,
-				required: true,
-				default: [],
-			},
-			avatarsClass: {
-				type: String,
-				default: '',
-			},
-			showAssigneeControls: {
-				type: Boolean,
-				default: true,
-			},
-		},
-		computed: {
-			/* @todo this component shouldn't know about it. isPage is needed only to change the css class, so the class should be passed from parent component */
-			isPage() {
-				return (
-					this.$route.name === 'TasksEdit' || this.$route.name === 'TasksCreate'
-				);
-			},
-		},
-	};
+	export interface Assignee {
+		id: number;
+		name: string;
+	}
+
+	interface Props {
+		assignees: Assignee[];
+		avatarsClass: string;
+		showAssigneeControls: boolean;
+		isModal: boolean;
+	}
+
+	const props = defineProps<Props>();
+	const emit = defineEmits(['showModal', 'deleteAssignee']);
 </script>

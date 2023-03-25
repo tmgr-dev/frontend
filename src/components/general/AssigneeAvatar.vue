@@ -1,6 +1,6 @@
 <template>
 	<div class="m-auto font-sans text-base text-white">
-		{{ assignee?.name.charAt(0).toUpperCase() }}
+		{{ assignee.name.charAt(0).toUpperCase() }}
 	</div>
 
 	<div
@@ -16,19 +16,13 @@
 	</div>
 </template>
 
-<script>
-	export default {
-		name: 'AssigneeAvatar',
-		emits: ['deleteAssign'],
-		props: {
-			assignee: {
-				type: Object,
-				required: true,
-			},
-			showRemovingAssignee: {
-				type: Boolean,
-				default: true,
-			},
-		},
-	};
+<script setup lang="ts">
+	import { Assignee } from 'src/components/general/AssigneeUsers.vue';
+
+	interface Props {
+		assignee: Assignee;
+		showRemovingAssignee: Boolean;
+	}
+
+	const props = defineProps<Props>();
 </script>
