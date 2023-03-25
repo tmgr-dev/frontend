@@ -1,6 +1,6 @@
 <template>
 	<div class="m-auto font-sans text-base text-white">
-		{{ assignee?.name.charAt(0).toUpperCase() }}
+		{{ assignee.name.charAt(0).toUpperCase() }}
 	</div>
 
 	<div
@@ -17,23 +17,12 @@
 </template>
 
 <script setup lang="ts">
-	import type { PropType } from 'vue';
-	interface Assignee {
-		name: string;
-		id: number;
-	}
+	import { Assignee } from 'src/components/general/AssigneeUsers.vue';
+
 	interface Props {
 		assignee: Assignee;
 		showRemovingAssignee: Boolean;
 	}
-	const props = defineProps({
-		showRemovingAssignee: {
-			type: Boolean,
-			default: true,
-		},
-		assignee: {
-			type: Object as PropType<Assignee>,
-			required: true,
-		},
-	});
+
+	const props = defineProps<Props>();
 </script>
