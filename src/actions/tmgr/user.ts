@@ -1,8 +1,14 @@
 import $axios from 'src/plugins/axios';
 import store from 'src/store';
-import { AxiosRequestConfig } from 'axios';
+import { Setting } from 'src/actions/tmgr/settings';
 
-export interface User {}
+export interface User {
+	id: number;
+	email: string;
+	role: number;
+	name: string;
+	settings: Setting[];
+}
 
 export const getUser = async (saveToStore = false) => {
 	const {

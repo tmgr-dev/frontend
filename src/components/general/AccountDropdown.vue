@@ -22,7 +22,6 @@
 		<div
 			v-if="isOpenProfileDropdown"
 			class="absolute top-[calc(100%+20px)] right-0 z-50 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
-			@mouseleave="isOpenProfileDropdown = false"
 		>
 			<div class="sm:flex">
 				<ul
@@ -48,7 +47,7 @@
 						v-model="workspaceId"
 						label-key="name"
 						value-key="id"
-						@updateSettings="updateSettings"
+						@change="onSelectChange"
 					/>
 
 					<div class="mt-2 text-neutral-400">workspace users:</div>
@@ -71,12 +70,7 @@
 		getWorkspaces,
 		Workspace,
 	} from 'src/actions/tmgr/workspaces';
-	import {
-		getUser,
-		getUserSettingsV2,
-		updateUserSettingsV2,
-		User,
-	} from 'src/actions/tmgr/user';
+	import { getUser, updateUserSettingsV2, User } from 'src/actions/tmgr/user';
 	import Select from 'src/components/general/Select.vue';
 	import { onBeforeMount, onMounted, Ref, ref } from 'vue';
 	import store from 'src/store';
@@ -102,7 +96,6 @@
 	];
 	const workspaces = ref([] as Workspace[]);
 	const user = ref({} as User);
-	const settings = ref([]);
 	const workspaceId: Ref<number> = ref(0);
 	const workspaceUsers = ref([]);
 
@@ -111,13 +104,31 @@
 	});
 
 	onMounted(async () => {
-		await loadSettings();
+		user.value = await getUser();
+
+		const workspaceSetting = user.value.settings.find(
+			(setting) => setting.key === 'current_workspace',
+		);
+
+		if (workspaceSetting) {
+			workspaceId.value = +workspaceSetting.value;
+			workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
+		}
 	});
 
-	async function loadSettings() {
-		user.value = await getUser();
-		workspaceId.value = user.value.settings[0].value;
-		workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
+	async function onSelectChange(workspaceId: number) {
+		const settingsWithUpdatedWorkspace = user.value.settings.map((setting) => {
+			if (setting.key === 'current_workspace') {
+				setting.value = workspaceId;
+			}
+
+			return {
+				id: setting.id,
+				value: setting.value,
+			};
+		});
+
+		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
 	}
 
 	async function logout() {
@@ -131,16 +142,5 @@
 		} catch (e) {
 			console.error(e);
 		}
-	}
-
-	async function updateSettings() {
-		const data = await getUserSettingsV2();
-		user.value.settings.find(async (item) => {
-			const newUserSettings = data.find((element) => element.id === item.id);
-			newUserSettings.value = workspaceId.value;
-			await updateUserSettingsV2([newUserSettings]);
-			document.location.reload();
-			isOpenProfileDropdown.value = false;
-		});
 	}
 </script>
