@@ -1,5 +1,5 @@
 <template>
-	<div class="relative mt-2 select-none md:mt-0">
+	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
 			class="item-center flex cursor-pointer gap-1 text-black dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
@@ -94,6 +94,7 @@
 			to: '/archive',
 		},
 	];
+	const $wrapper: Ref<HTMLDivElement | null> = ref(null);
 	const workspaces = ref([] as Workspace[]);
 	const user = ref({} as User);
 	const workspaceId: Ref<number> = ref(0);
@@ -104,6 +105,12 @@
 	});
 
 	onMounted(async () => {
+		document.addEventListener('click', (e: MouseEvent) => {
+			if (!$wrapper.value?.contains(e.target as Node)) {
+				isOpenProfileDropdown.value = false;
+			}
+		});
+
 		user.value = await getUser();
 
 		const workspaceSetting = user.value.settings.find(
