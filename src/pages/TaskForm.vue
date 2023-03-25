@@ -217,7 +217,7 @@
 
 					<assignee-users
 						:assignees="form.assignees"
-						:isModal="isModal"
+						:is-modal="isModal"
 						avatarsClass="h-8 w-8"
 						:show-assignee-controls="true"
 						@showModal="isShowModalAssign = true"
