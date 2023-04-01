@@ -24,6 +24,7 @@ const state = {
 	reloadTasks: null,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
+	appRerender: 0,
 	statuses: [],
 	pusher: pusher(token),
 	userSettings: {
@@ -33,6 +34,7 @@ const state = {
 
 const getters = {
 	token: (state) => state.token,
+	appRerender: (state) => state.appRerender,
 	statuses: (state) => state.statuses,
 	reloadTasks: (state) => state.reloadTasks,
 	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
@@ -63,6 +65,13 @@ const mutations = {
 	},
 	setStatuses(state, data) {
 		state.statuses = data;
+	},
+	appRerender(state) {
+		state.appRerender++;
+		if (state.slideout?._opened) {
+			console.log(state.slideout);
+			state.slideout?.toggle();
+		}
 	},
 	user(state, user) {
 		if (user == null) {
