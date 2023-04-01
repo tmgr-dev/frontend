@@ -1,7 +1,7 @@
 <template>
 	<alert ref="alert" />
 
-	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray">
+	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray" :key="$store.getters.appRerender">
 		<Slideout
 			menu="#menu"
 			panel="#panel"
@@ -13,7 +13,10 @@
 			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden">
 				<div class="z-20 px-4 text-right">
 					<navbar-menu />
-					<account-dropdown class="flex justify-end" />
+					<account-dropdown
+						v-if="$store.getters.isLoggedIn"
+						class="flex justify-end"
+					/>
 					<span
 						class="absolute bottom-0 right-0 pr-4 pb-10 text-black dark:text-white"
 					>
