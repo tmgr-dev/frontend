@@ -140,6 +140,8 @@
 		});
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+
+		store.commit('appRerender')
 	}
 
 	async function logout() {
