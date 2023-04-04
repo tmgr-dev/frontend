@@ -21,6 +21,12 @@
 		<!--	dropdown block	-->
 		<div
 			v-if="isOpenProfileDropdown"
+			class="fixed inset-0 h-full w-full bg-black opacity-50 cursor-default z-20"
+			@click="isOpenProfileDropdown = false"
+		/>
+		<div
+			@click="isOpenProfileDropdown = false"
+			v-if="isOpenProfileDropdown"
 			class="absolute top-[calc(100%+20px)] right-0 z-50 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
 		>
 			<div class="sm:flex">
@@ -130,7 +136,7 @@
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
 
-		store.commit('appRerender')
+		store.commit('appRerender');
 	}
 
 	async function logout() {
