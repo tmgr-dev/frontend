@@ -100,6 +100,15 @@
 					>
 						Create
 					</button>
+					<button
+						@click="isShowInvitationModal = false"
+						:disabled="isLoading"
+						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+						class="mt-5 w-full rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
+						type="button"
+					>
+						Cancel
+					</button>
 				</div>
 
 				<div v-else class="flex gap-2">
@@ -113,6 +122,14 @@
 							:class="{ 'text-green-500': isCopied }"
 						>
 							content_copy
+						</span>
+					</button>
+					<button @click="onCloseModal()">
+						<span
+							class="material-icons text-2xl text-black dark:text-white"
+							data-v-41c3e80d=""
+						>
+							close
 						</span>
 					</button>
 				</div>
@@ -215,6 +232,10 @@
 				} finally {
 					this.isLoading = false;
 				}
+			},
+			async onCloseModal() {
+				this.isShowInvitationModal = false;
+				this.newWorkspaceInvitation.token = null;
 			},
 		},
 		async created() {
