@@ -1,5 +1,5 @@
 <template>
-	<div class="relative mt-2 select-none md:mt-0">
+	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
 			class="item-center flex cursor-pointer gap-1 text-black dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
@@ -94,17 +94,20 @@
 			to: '/archive',
 		},
 	];
+	const $wrapper: Ref<HTMLDivElement | null> = ref(null);
 	const workspaces = ref([] as Workspace[]);
 	const user = ref({} as User);
 	const workspaceId: Ref<number> = ref(0);
 	const workspaceUsers = ref([]);
 
 	onBeforeMount(async () => {
-		workspaces.value = await getWorkspaces();
-	});
+		const [userData, workspaceData] = await Promise.all([
+			getUser(),
+			getWorkspaces(),
+		]);
 
-	onMounted(async () => {
-		user.value = await getUser();
+		user.value = userData;
+		workspaces.value = workspaceData;
 
 		const workspaceSetting = user.value.settings.find(
 			(setting) => setting.key === 'current_workspace',
@@ -114,6 +117,14 @@
 			workspaceId.value = +workspaceSetting.value;
 			workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
 		}
+	});
+
+	onMounted(async () => {
+		document.addEventListener('click', (e: MouseEvent) => {
+			if (!$wrapper.value?.contains(e.target as Node)) {
+				isOpenProfileDropdown.value = false;
+			}
+		});
 	});
 
 	async function onSelectChange(workspaceId: number) {
