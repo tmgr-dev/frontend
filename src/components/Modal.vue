@@ -49,8 +49,18 @@
 					}
 				}
 			},
+			closeByEsc(e) {
+				if (e.key === 'Escape') {
+					this.$emit('close');
+				}
+			},
+		},
+
+		mounted() {
+			document.body.addEventListener('keydown', this.closeByEsc);
 		},
 		unmounted() {
+			document.body.removeEventListener('keydown', this.closeByEsc);
 			if (location.href !== this.initialUrl) {
 				history.pushState({}, '', this.initialUrl);
 			}
