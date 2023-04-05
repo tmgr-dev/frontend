@@ -1,7 +1,7 @@
 <template>
 	<div
 		class="fixed inset-0 z-50 flex bg-black/50"
-		:data-name="name"
+		data-name="overlay"
 		@click="close"
 	>
 		<div
@@ -41,10 +41,7 @@
 		methods: {
 			close(e) {
 				if (this.closeOnBgClick) {
-					if (
-						e.target.classList.contains('overlay') &&
-						e.target.dataset.name === this.name
-					) {
+					if (e.target.dataset.name === 'overlay') {
 						this.$emit('close');
 					}
 				}
