@@ -18,10 +18,6 @@
 		name: 'Modal',
 		emits: ['close'],
 		props: {
-			name: {
-				type: String,
-				required: false,
-			},
 			closeOnBgClick: {
 				type: Boolean,
 				required: false,
