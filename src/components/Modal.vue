@@ -55,7 +55,6 @@
 				}
 			},
 		},
-
 		mounted() {
 			document.body.addEventListener('keydown', this.closeByEsc);
 		},
