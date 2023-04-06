@@ -1,7 +1,11 @@
 <template>
 	<alert ref="alert" />
 
-	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray" :key="$store.getters.appRerender">
+	<div
+		id="q-app"
+		class="text-tmgr-blue dark:text-tmgr-gray"
+		:key="$store.getters.appRerender"
+	>
 		<Slideout
 			menu="#menu"
 			panel="#panel"
@@ -89,7 +93,6 @@
 
 		<Transition name="bounce-right-fade">
 			<modal
-				name="Task"
 				v-if="showTaskFormModalWindow"
 				close-on-bg-click
 				modal-class="w-11/12 h-full"
