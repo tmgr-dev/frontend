@@ -14,7 +14,7 @@
 </template>
 
 <script lang="ts" setup>
-	import { onUnmounted, ref } from 'vue';
+	import { onMounted, onUnmounted, ref } from 'vue';
 
 	interface Props {
 		modalClass: string;
@@ -25,11 +25,22 @@
 	const emit = defineEmits(['close']);
 	const initialUrl = ref(location.href);
 
+	onMounted(() => {
+		document.addEventListener('keydown', closeByEscape);
+	});
+
 	onUnmounted(() => {
 		if (location.href !== initialUrl.value) {
 			history.pushState({}, '', initialUrl.value);
 		}
+		document.removeEventListener('keydown', closeByEscape);
 	});
+
+	function closeByEscape(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			emit('close');
+		}
+	}
 
 	function close(e: MouseEvent) {
 		if (props.closeOnBgClick) {
