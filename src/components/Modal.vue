@@ -18,7 +18,7 @@
 
 	interface Props {
 		modalClass: string;
-		closeOnBgClick: boolean;
+		closeOnBgClick?: boolean;
 	}
 
 	const props = defineProps<Props>();

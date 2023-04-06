@@ -5,7 +5,7 @@
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
-				<modal
+				<Modal
 					v-if="isShowSettingsModal"
 					modal-class="p-6 w-96"
 					@close="isShowSettingsModal = false"
@@ -118,12 +118,12 @@
 							</div>
 						</form>
 					</template>
-				</modal>
+				</Modal>
 			</Transition>
 
 			<!-- assigners -->
 			<Transition name="bounce-right-fade">
-				<modal
+				<Modal
 					v-if="isShowModalAssign"
 					modal-class="p-6 w-96"
 					@close="isShowModalAssign = false"
@@ -175,7 +175,7 @@
 							</div>
 						</form>
 					</template>
-				</modal>
+				</Modal>
 			</Transition>
 		</div>
 	</div>
@@ -417,10 +417,12 @@
 	import TimeField from 'src/components/general/TimeField.vue';
 	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
 	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
+	import Modal from 'src/components/Modal.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			Modal,
 			AssigneeUsers,
 			TimeField,
 			TextField,

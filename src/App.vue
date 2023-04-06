@@ -92,7 +92,7 @@
 		</div>
 
 		<Transition name="bounce-right-fade">
-			<modal
+			<Modal
 				v-if="showTaskFormModalWindow"
 				close-on-bg-click
 				modal-class="w-11/12 h-full"
@@ -109,7 +109,7 @@
 						@close="$store.dispatch('closeTaskModal')"
 					/>
 				</template>
-			</modal>
+			</Modal>
 		</Transition>
 	</div>
 </template>
@@ -128,6 +128,7 @@
 	import Alert from 'src/components/general/Alert.vue';
 	import AccountDropdown from 'src/components/general/AccountDropdown.vue';
 	import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
+	import Modal from 'src/components/Modal.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -135,6 +136,7 @@
 	export default defineComponent({
 		name: 'App',
 		components: {
+			Modal,
 			DayNightSwitch,
 			AccountDropdown,
 			Alert,

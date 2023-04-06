@@ -8,7 +8,7 @@
 	/>
 
 	<button
-		@click="isShowWorkspaceModal = true"
+		@click="flags.isShowWorkspaceModal = true"
 		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg">add_circle_outline</span>
@@ -16,11 +16,11 @@
 	</button>
 
 	<Transition name="bounce-right-fade">
-		<modal
-			v-if="isShowWorkspaceModal"
+		<Modal
+			v-if="flags.isShowWorkspaceModal"
 			modal-class="p-6 w-96"
 			close-on-bg-click
-			@close="isShowWorkspaceModal = false"
+			@close="flags.isShowWorkspaceModal = false"
 		>
 			<template #modal-body>
 				<TextField
@@ -31,29 +31,20 @@
 				<div class="flex">
 					<button
 						@click="createNewWorkspace()"
-						:disabled="isLoading"
-						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+						:disabled="flags.isLoading"
+						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
+						class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 						type="button"
 					>
 						Create
 					</button>
-					<button
-						@click="isShowWorkspaceModal = false"
-						:disabled="isLoading"
-						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
-						class="mt-5 w-full rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
-						type="button"
-					>
-						Cancel
-					</button>
 				</div>
 			</template>
-		</modal>
+		</Modal>
 	</Transition>
 
 	<button
-		@click="isShowInvitationModal = true"
+		@click="flags.isShowInvitationModal = true"
 		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg"> add_circle_outline </span>
@@ -61,14 +52,14 @@
 	</button>
 
 	<Transition name="bounce-right-fade">
-		<modal
-			v-if="isShowInvitationModal"
-			:modal-class="`p-6 ${newWorkspaceInvitation.token ? 'w-auto' : 'w-96'}`"
+		<Modal
+			v-if="flags.isShowInvitationModal"
+			:modal-class="`p-6 ${invitationToken ? 'w-auto' : 'w-96'}`"
 			close-on-bg-click
-			@close="isShowInvitationModal = false"
+			@close="flags.isShowInvitationModal = false"
 		>
 			<template #modal-body>
-				<div v-if="!newWorkspaceInvitation.token">
+				<div v-if="!invitationToken">
 					<label class="flex flex-col gap-2">
 						Max usage times
 
@@ -93,8 +84,8 @@
 
 					<button
 						@click="createNewWorkspaceInvitation()"
-						:disabled="isLoading"
-						:class="{ 'bg-neutral-400 hover:bg-neutral-400': isLoading }"
+						:disabled="flags.isLoading"
+						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
 						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
 					>
@@ -110,115 +101,120 @@
 					<button @click="copyToClipboard(invitationLink)">
 						<span
 							class="material-icons transition-colors"
-							:class="{ 'text-green-500': isCopied }"
+							:class="{ 'text-green-500': flags.isCopied }"
 						>
 							content_copy
 						</span>
 					</button>
 				</div>
 			</template>
-		</modal>
+		</Modal>
 	</Transition>
 </template>
 
-<script>
+<script setup lang="ts">
 	import { copyToClipboard as copy } from 'quasar';
 	import {
 		createWorkspace,
 		createWorkspaceInvitation,
 		getWorkspaces,
+		Workspace,
+		WorkspaceInvitation,
 	} from 'src/actions/tmgr/workspaces';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
+	import { computed, onBeforeMount, reactive, Ref, ref } from 'vue';
+	import { AxiosError } from 'axios';
+	import Modal from 'src/components/Modal.vue';
 
-	export default {
-		name: 'CurrentWorkspace',
-		components: {
-			TextField,
-			Select,
-		},
-		props: {
-			modelValue: {
-				required: false,
-			},
-		},
+	interface Props {
+		modelValue: string | number;
+	}
 
-		emits: ['update:modelValue', 'updateSettings'],
-		data() {
-			return {
-				isLoading: false,
-				isShowWorkspaceModal: false,
-				isShowInvitationModal: false,
-				workspaces: [],
-				errors: {},
-				newWorkspace: {
-					name: '',
-					type: 'test',
-				},
-				newWorkspaceInvitation: {
-					max_usage_times: '',
-					expired_at: null,
-				},
-				isCopied: false,
-			};
-		},
-		computed: {
-			val: {
-				get() {
-					return this.modelValue;
-				},
-				set(v) {
-					return this.$emit('update:modelValue', v);
-				},
-			},
-			invitationLink() {
-				return `${location.protocol}//${location.host}/workspaces/invitations/${this.newWorkspaceInvitation.token}`;
-			},
-		},
-		methods: {
-			async copyToClipboard(value) {
-				try {
-					await copy(value);
-					this.isCopied = true;
+	const props = defineProps<Props>();
+	const emit = defineEmits(['update:modelValue', 'updateSettings']);
 
-					setTimeout(() => {
-						this.isCopied = false;
-					}, 2000);
-				} catch (e) {
-					console.warn('failed to copy', e);
-				}
-			},
-			async createNewWorkspace() {
-				try {
-					this.isLoading = true;
-					this.errors = {};
-					const workspace = await createWorkspace(this.newWorkspace);
-					this.workspaces.push(workspace);
-					this.isShowWorkspaceModal = false;
-				} catch (e) {
-					this.errors = e.response?.data?.errors || {};
-				} finally {
-					this.isLoading = false;
-				}
-			},
-			async createNewWorkspaceInvitation() {
-				try {
-					this.isCopied = false;
-					this.isLoading = true;
-					this.errors = {};
-					this.newWorkspaceInvitation = await createWorkspaceInvitation(
-						this.val,
-						this.newWorkspaceInvitation,
-					);
-				} catch (e) {
-					this.errors = e.response?.data?.errors || {};
-				} finally {
-					this.isLoading = false;
-				}
-			},
+	const flags = reactive({
+		isLoading: false,
+		isCopied: false,
+		isShowInvitationModal: false,
+		isShowWorkspaceModal: false,
+	});
+	const workspaces: Ref<Workspace[]> = ref([]);
+	const errors = ref({});
+	const newWorkspace: Ref<Workspace> = ref({
+		name: '',
+		type: 'test',
+	});
+	const newWorkspaceInvitation: Ref<WorkspaceInvitation> = ref({
+		max_usage_times: '',
+		expired_at: null,
+	});
+	const invitationToken = ref('');
+
+	onBeforeMount(async () => {
+		workspaces.value = await getWorkspaces();
+	});
+
+	const val = computed({
+		get() {
+			return props.modelValue;
 		},
-		async created() {
-			this.workspaces = await getWorkspaces();
+		set(v) {
+			emit('update:modelValue', v);
 		},
-	};
+	});
+
+	const invitationLink = computed(() => {
+		return `${location.protocol}//${location.host}/workspaces/invitations/${invitationToken.value}`;
+	});
+
+	async function copyToClipboard(value: string) {
+		try {
+			await copy(value);
+			flags.isCopied = true;
+
+			setTimeout(() => {
+				flags.isCopied = false;
+			}, 2000);
+		} catch (e) {
+			console.warn('failed to copy', e);
+		}
+	}
+
+	async function createNewWorkspace() {
+		try {
+			flags.isLoading = true;
+			errors.value = {};
+			const workspace = await createWorkspace(newWorkspace.value);
+			workspaces.value.push(workspace);
+			flags.isShowWorkspaceModal = false;
+		} catch (error: unknown) {
+			if (error instanceof AxiosError) {
+				errors.value = error.response?.data?.errors;
+			}
+		} finally {
+			flags.isLoading = false;
+		}
+	}
+
+	async function createNewWorkspaceInvitation() {
+		try {
+			flags.isCopied = false;
+			flags.isLoading = true;
+			errors.value = {};
+
+			const { token } = await createWorkspaceInvitation(
+				+val.value,
+				newWorkspaceInvitation.value,
+			);
+			invitationToken.value = token;
+		} catch (error) {
+			if (error instanceof AxiosError) {
+				errors.value = error.response?.data?.errors;
+			}
+		} finally {
+			flags.isLoading = false;
+		}
+	}
 </script>
