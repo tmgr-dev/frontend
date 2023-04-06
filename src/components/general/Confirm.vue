@@ -1,12 +1,12 @@
 <template>
-	<modal
+	<Modal
 		:close-on-bg-click="cancelOnBgClick"
 		modal-class="p-6"
 		@close="$emit('onCancel')"
 	>
 		<template #modal-body>
 			<slot name="title">
-				<div class="dark:text-gray-300 text-tmgr-blue text-xl text-bold">
+				<div class="text-bold text-xl text-tmgr-blue dark:text-gray-300">
 					<slot name="title-content">
 						{{ title }}
 					</slot>
@@ -14,7 +14,7 @@
 			</slot>
 
 			<slot name="body">
-				<p class="text-tmgr-blue dark:text-gray-300 mt-1">
+				<p class="mt-1 text-tmgr-blue dark:text-gray-300">
 					<slot name="body-content">
 						{{ body }}
 					</slot>
@@ -22,7 +22,7 @@
 			</slot>
 
 			<slot name="footer">
-				<div class="text-tmgr-blue dark:text-gray-300 float-right mt-3">
+				<div class="float-right mt-3 text-tmgr-blue dark:text-gray-300">
 					<new-button
 						class="pr-2"
 						button-class="bg-green-700 hover:bg-green-600"
@@ -37,10 +37,12 @@
 				</div>
 			</slot>
 		</template>
-	</modal>
+	</Modal>
 </template>
 
 <script lang="ts">
+	import Modal from 'src/components/Modal.vue';
+
 	interface Props {
 		title: String;
 		body: String;
@@ -56,6 +58,7 @@
 
 	export default {
 		name: 'Confirm',
+		components: { Modal },
 		emits: ['onOk', 'onCancel'],
 		props: {
 			title: String,

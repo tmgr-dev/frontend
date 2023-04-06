@@ -84,7 +84,7 @@
 		/>
 
 		<Transition name="bounce-right-fade">
-			<modal v-if="isShowModalTimer" modal-class="w-96 p-10">
+			<Modal v-if="isShowModalTimer" modal-class="w-96 p-10">
 				<template #modal-body>
 					<div class="countdown-modal-edit">
 						<vue-the-mask
@@ -127,7 +127,7 @@
 						</button>
 					</div>
 				</template>
-			</modal>
+			</Modal>
 		</Transition>
 	</div>
 </template>
@@ -136,12 +136,14 @@
 	import Reminder from 'src/components/tasks/Reminder.vue';
 	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
+	import Modal from 'src/components/Modal.vue';
 
 	let countdownInterval = null;
 
 	export default {
 		name: 'Countdown',
 		components: {
+			Modal,
 			Reminder,
 		},
 		mixins: [TimePreparationMixin],

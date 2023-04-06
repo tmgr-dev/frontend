@@ -42,13 +42,20 @@ export const createWorkspace = async (payload: Workspace) => {
 
 export interface WorkspaceInvitation {
 	max_usage_times: string;
-	expired_at?: string;
+	expired_at?: Date | null;
+}
+
+export interface WorkspaceInvitationResponse {
+	max_usage_times: string;
+	expired_at?: Date | null;
+	token: string;
+	usage_times: number;
 }
 
 export const createWorkspaceInvitation = async (
 	workspaceId: number,
 	payload: WorkspaceInvitation,
-) => {
+): Promise<WorkspaceInvitationResponse> => {
 	const {
 		data: { data },
 	} = await $axios.post(`/workspaces/${workspaceId}/invitations`, payload);
