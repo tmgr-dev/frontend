@@ -5,6 +5,12 @@
 		<template #body>
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
+					<filters-board
+						v-if="workspaceUsers.length"
+						:workspaceUsers="workspaceUsers"
+						:chosen-user.sync="chosenUser"
+						@update:chosenUser="handleChosenUserUpdate"
+					/>
 					<div class="board-container">
 						<div
 							v-for="column in columns"
@@ -59,28 +65,30 @@
 	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
 	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
 	import DashboardDropdownMenu from 'src/components/general/BoardOptionsMenu.vue';
-	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
+	import {
+		getWorkspaceMembers,
+		getWorkspaces,
+		getWorkspaceStatuses,
+	} from 'src/actions/tmgr/workspaces';
 	import {
 		getSortedTasksByStatus,
 		updateTaskOrders,
 		updateTaskStatus,
 	} from 'src/actions/tmgr/tasks';
-	import { updateUser } from 'src/actions/tmgr/user';
+	import { getUser, updateUser } from 'src/actions/tmgr/user';
+	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
 
 	export default {
 		name: 'Board',
 		components: {
+			FiltersBoard,
 			DashboardDropdownMenu,
 			DropdownMenu,
 			Button,
 			TaskCard,
 			draggable,
 		},
-		watch: {
-			'$store.getters.reloadTasks'() {
-				this.loadTasks();
-			},
-		},
+
 		data: () => ({
 			title: 'Board',
 			user: {
@@ -88,6 +96,11 @@
 				password: null,
 				password_confirmation: null,
 			},
+			userData: {},
+			workspacesData: [],
+			workspaceId: 0,
+			workspaceUsers: [],
+			chosenUser: null,
 			errors: {},
 			archivedStatus: null,
 			oldColumns: [
@@ -109,7 +122,19 @@
 			],
 			columns: [],
 		}),
+		watch: {
+			'$store.getters.reloadTasks'() {
+				this.loadTasks();
+			},
+			chosenUser: function () {
+				this.loadTasks();
+			},
+		},
 		methods: {
+			handleChosenUserUpdate(newChosenUser) {
+				this.chosenUser = newChosenUser;
+				console.log(this.chosenUser);
+			},
 			getActions(column) {
 				return [
 					{
@@ -200,6 +225,7 @@
 						this.archivedStatus = status;
 						continue;
 					}
+
 					columns.push({
 						title: status.name,
 						status: status,
@@ -218,12 +244,29 @@
 				}
 			},
 			async loadTasksByStatus(status) {
-				return await getSortedTasksByStatus(status?.id || status, {
-					params: {
-						'order[column]': 'order',
-						'order[direction]': 'asc',
-					},
-				});
+				if (this.chosenUser?.id) {
+					const tasks = await getSortedTasksByStatus(status?.id || status, {
+						params: {
+							'order[column]': 'order',
+							'order[direction]': 'asc',
+						},
+					});
+
+					return tasks.filter((item) =>
+						item.assignees.find(
+							(assignee) =>
+								assignee.id === this.chosenUser.id &&
+								assignee.name === this.chosenUser.name,
+						),
+					);
+				} else {
+					return await getSortedTasksByStatus(status?.id || status, {
+						params: {
+							'order[column]': 'order',
+							'order[direction]': 'asc',
+						},
+					});
+				}
 			},
 			async saveUser() {
 				try {
@@ -234,14 +277,31 @@
 				}
 			},
 		},
+		async beforeMount() {
+			const user = await getUser();
+			const workspaces = await getWorkspaces();
+			this.workspacesData = workspaces;
+			this.userData = user;
+			// console.log('HERE', workspaces, user);
+
+			const workspaceSetting = this.userData.settings.find(
+				(setting) => setting.key === 'current_workspace',
+			);
+			if (workspaceSetting) {
+				this.workspaceId = +workspaceSetting.value;
+				const users = await getWorkspaceMembers(this.workspaceId);
+				this.workspaceUsers = [{ id: 0, name: 'Select User' }, ...users];
+			}
+		},
 		async mounted() {
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
+			// console.log('this', this.columns);
 		},
-		unmounted(){
+		unmounted() {
 			document.body.classList.remove('overflow-hidden');
-		}
+		},
 	};
 </script>
 
@@ -301,7 +361,7 @@
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			height: calc(100vh - 100px);
+			height: calc(100vh - 130px);
 		}
 	}
 
