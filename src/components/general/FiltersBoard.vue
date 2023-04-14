@@ -21,7 +21,6 @@
 	import { useStore } from 'vuex';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
-	import { getCategories } from 'src/actions/tmgr/categories';
 	const emit = defineEmits(['update:chosenUser']);
 
 	const props = defineProps({
@@ -39,8 +38,5 @@
 			'update:chosenUser',
 			userOptions.find((option) => option.id === selectedUser.value),
 		);
-	});
-	onMounted(async () => {
-		// selectedUser.value = 39;
 	});
 </script>

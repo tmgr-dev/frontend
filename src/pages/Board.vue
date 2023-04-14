@@ -133,7 +133,6 @@
 		methods: {
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
-				console.log(this.chosenUser);
 			},
 			getActions(column) {
 				return [
@@ -282,7 +281,6 @@
 			const workspaces = await getWorkspaces();
 			this.workspacesData = workspaces;
 			this.userData = user;
-			// console.log('HERE', workspaces, user);
 
 			const workspaceSetting = this.userData.settings.find(
 				(setting) => setting.key === 'current_workspace',
@@ -297,7 +295,6 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-			// console.log('this', this.columns);
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
