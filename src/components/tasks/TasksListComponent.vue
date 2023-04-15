@@ -55,26 +55,34 @@
 					class="rounded-lg shadow-md md:flex"
 				>
 					<div
-						class="relative flex w-full items-center justify-between bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
+						class="relative flex w-full items-center bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 					>
-						<task-meta
-							:dont-push-router="true"
-							:show-category-badges="showCategoryBadges"
-							:task="task"
-							:task-time="getTaskFormattedTime(task)"
-							@openTask="$store.commit('currentTaskIdForModal', task.id)"
-						/>
+						<div class="flex flex-col gap-1 md:flex-row">
+							<task-meta
+								class="max-w-xl xl:max-w-3xl 2xl:max-w-4xl"
+								:show-category-badges="showCategoryBadges"
+								:task="task"
+								:task-time="getTaskFormattedTime(task)"
+								@openTask="$store.commit('currentTaskIdForModal', task.id)"
+							/>
 
-						<dropdown-menu :actions="getActions(task)" />
+							<category-badge
+								class="order-first shrink-0 self-start md:order-1 md:mx-2"
+								v-if="task.category && showCategoryBadges"
+								:category="task.category"
+							/>
+						</div>
 
-						<task-buttons-in-the-list
-							:is-loading-actions="isLoadingActions"
-							:showed-buttons="getShowButtons(task)"
-							:task="task"
-							@startCountdown="startCountdown"
-							@stopCountdown="stopCountdown"
-							@updateStatus="updateStatus"
-						/>
+						<div class="ml-auto">
+							<task-buttons-in-the-list
+								:is-loading-actions="isLoadingActions"
+								:showed-buttons="getShowButtons(task)"
+								:task="task"
+								@startCountdown="startCountdown"
+								@stopCountdown="stopCountdown"
+								@updateStatus="updateStatus"
+							/>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -98,7 +106,6 @@
 	import TaskMeta from 'src/components/tasks/TaskMeta.vue';
 	import BounceLoader from 'src/components/loaders/BounceLoader.vue';
 	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
-	import convertToQueryString from 'src/utils/objectToQueryString';
 	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from 'src/components/tasks/TaskButtonsInTheList.vue';
 	import TasksMultipleActionsModal from 'src/components/tasks/TasksMultipleActionsModal.vue';
@@ -111,10 +118,12 @@
 		stopTaskTimeCounter,
 		updateTaskStatus,
 	} from 'src/actions/tmgr/tasks';
+	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
 
 	export default {
 		name: 'TasksListComponent',
 		components: {
+			CategoryBadge,
 			TaskForm,
 			Modal,
 			Confirm,
