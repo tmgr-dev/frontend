@@ -1,40 +1,24 @@
 <template>
 	<div>
-		<div class="flex items-center">
-			<router-link
-				v-if="!dontPushRouter"
-				:to="`/${task.id}/edit`"
-				class="z-10 text-xl font-bold"
-			>
-				{{ task.title }}
-			</router-link>
-
-			<a
-				v-else
-				:href="`/${task.id}/edit`"
-				class="z-10 text-xl font-bold"
-				@click.prevent="$emit('openTask')"
-			>
-				{{ task.title }}
-			</a>
-
-			<category-badge
-				v-if="task.category && showCategoryBadges"
-				:category="task.category"
-			/>
-		</div>
+		<a
+			:href="`/${task.id}/edit`"
+			class="relative z-10 text-sm font-bold lg:text-xl"
+			@click.prevent="$emit('openTask')"
+		>
+			{{ task.title }}
+		</a>
 
 		<div class="flex items-center gap-2">
-			<span>
-				<span
-					:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
-					class="material-icons text-xl"
-				>
-					alarm
-				</span>
+			<span
+				:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
+				class="material-icons text-xs sm:text-base md:text-xl"
+			>
+				alarm
 			</span>
 
-			<span class="text-gray-700">{{ taskTime }}</span>
+			<span class="text-xs text-gray-700 sm:text-base md:text-lg">
+				{{ taskTime }}
+			</span>
 		</div>
 	</div>
 </template>
@@ -50,11 +34,6 @@
 			task: {
 				type: Object,
 				required: true,
-			},
-			dontPushRouter: {
-				type: Boolean,
-				required: false,
-				default: false,
 			},
 			showCategoryBadges: {
 				required: false,
