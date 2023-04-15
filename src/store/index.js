@@ -24,7 +24,6 @@ const state = {
 	reloadTasks: null,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
-	appRerender: 0,
 	statuses: [],
 	pusher: pusher(token),
 	userSettings: {
@@ -34,7 +33,6 @@ const state = {
 
 const getters = {
 	token: (state) => state.token,
-	appRerender: (state) => state.appRerender,
 	statuses: (state) => state.statuses,
 	reloadTasks: (state) => state.reloadTasks,
 	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
@@ -46,7 +44,6 @@ const getters = {
 	pusherTokenProvider: (state) => state.pusherTokenProvider,
 	currentOpenedTaskId: (state) => state.currentOpenedTaskId,
 	pusher: (state) => state.pusher,
-	slideout: (state) => state.slideout,
 	user: (state) => state.user,
 	isLoggedIn: (state) => state.token !== null,
 	colorScheme: (state) => state.colorScheme,
@@ -65,13 +62,6 @@ const mutations = {
 	},
 	setStatuses(state, data) {
 		state.statuses = data;
-	},
-	appRerender(state) {
-		state.appRerender++;
-		if (state.slideout?._opened) {
-			console.log(state.slideout);
-			state.slideout?.toggle();
-		}
 	},
 	user(state, user) {
 		if (user == null) {
@@ -112,9 +102,6 @@ const mutations = {
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
-	},
-	setSlideout(state, slideout) {
-		state.slideout = slideout;
 	},
 	setPusherBeamsClient(state, pusherBeamsClient) {
 		state.pusherBeamsClient = pusherBeamsClient;
