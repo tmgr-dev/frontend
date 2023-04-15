@@ -2,7 +2,7 @@
 	<div>
 		<a
 			:href="`/${task.id}/edit`"
-			class="relative z-10 text-sm font-bold lg:text-xl"
+			class="relative z-10 text-sm font-medium lg:text-lg"
 			@click.prevent="$emit('openTask')"
 		>
 			{{ task.title }}
@@ -16,7 +16,7 @@
 				alarm
 			</span>
 
-			<span class="text-xs text-gray-700 sm:text-base md:text-lg">
+			<span class="text-xs text-gray-700 sm:text-base md:text-base">
 				{{ taskTime }}
 			</span>
 		</div>

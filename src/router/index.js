@@ -28,7 +28,6 @@ const router = route(function (/* { store, ssrContext } */) {
 	});
 
 	Router.beforeEach((to, from, next) => {
-		store.getters.slideout.close();
 		if (
 			to.matched.some((record) => record.meta.allowedGuests) &&
 			store.getters.isLoggedIn

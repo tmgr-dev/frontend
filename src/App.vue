@@ -1,95 +1,26 @@
 <template>
 	<alert ref="alert" />
 
-	<div
-		id="q-app"
-		class="text-tmgr-blue dark:text-tmgr-gray"
-		:key="$store.getters.appRerender"
-	>
-		<Slideout
-			menu="#menu"
-			panel="#panel"
-			side="right"
-			@on-translate="translateMenu"
-			@on-beforeclose="menuIsActive = false"
-			@on-beforeopen="menuIsActive = true"
-		>
-			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden">
-				<div class="z-20 px-4 text-right">
-					<navbar-menu />
-					<account-dropdown
-						v-if="$store.getters.isLoggedIn"
-						class="flex justify-end"
-					/>
-					<span
-						class="absolute bottom-0 right-0 pr-4 pb-10 text-black dark:text-white"
-					>
-						<day-night-switch v-model="switchOn" />
-					</span>
+	<div id="q-app" class="font-sans text-tmgr-blue dark:text-tmgr-gray">
+		<transition mode="out-in" name="fade">
+			<Navbar v-if="$route.meta.navbarHidden" />
+		</transition>
+
+		<router-view :key="$route.path" v-slot="{ Component }">
+			<transition
+				:name="transitionName"
+				mode="out-in"
+				@before-leave="beforeLeave"
+				@enter="enter"
+				@after-enter="afterEnter"
+			>
+				<div>
+					<component :is="Component" v-if="showComponent"></component>
 				</div>
-			</div>
+			</transition>
+		</router-view>
 
-			<div id="panel">
-				<q-scroll-area
-					:style="{
-						height: bodyHeight + 'px',
-					}"
-				>
-					<transition mode="out-in" name="fade">
-						<div>
-							<Navbar
-								v-if="$route.meta.navbarHidden"
-								:menu-is-active="menuIsActive"
-								:menu-position="translateMenuPosition"
-							/>
-						</div>
-					</transition>
-
-					<router-view :key="$route.path" v-slot="{ Component }">
-						<transition
-							:name="transitionName"
-							mode="out-in"
-							@before-leave="beforeLeave"
-							@enter="enter"
-							@after-enter="afterEnter"
-						>
-							<div>
-								<component :is="Component" v-if="showComponent"></component>
-							</div>
-						</transition>
-					</router-view>
-				</q-scroll-area>
-			</div>
-		</Slideout>
-
-		<div class="fixed left-0 bottom-0 z-10 ml-10 mb-10 mr-2">
-			<span v-for="task in activeTasks" class="mb-5 inline-block">
-				<transition mode="out-in" name="fade">
-					<a
-						v-if="task.id !== $store.getters.currentOpenedTaskId"
-						:href="`/${task.id}/edit`"
-						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
-					>
-						<span
-							class="relative mr-5 inline-flex rounded-md bg-gray-200 p-2 shadow-sm transition-colors duration-300 dark:bg-gray-800"
-						>
-							<span class="absolute top-0 left-0 -mt-2 -ml-2 flex h-5 w-5">
-								<span
-									class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
-								/>
-								<span
-									class="relative inline-flex h-5 w-5 rounded-full bg-green-500"
-								/>
-							</span>
-
-							<span class="text-tmgr-blue dark:text-tmgr-gray">
-								{{ task.title }}
-							</span>
-						</span>
-					</a>
-				</transition>
-			</span>
-		</div>
+		<ActiveTasks :tasks="activeTasks" />
 
 		<Transition name="bounce-right-fade">
 			<Modal
@@ -99,7 +30,7 @@
 				@close="$store.dispatch('closeTaskModal')"
 			>
 				<template #modal-body>
-					<task-form
+					<TaskForm
 						:is-modal="true"
 						:modal-project-category-id="
 							$store.getters.createTaskInProjectCategoryId
@@ -118,32 +49,25 @@
 	import { defineComponent } from 'vue';
 
 	import Navbar from 'src/components/general/Navbar.vue';
-	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
-	import Slideout from 'src/components/Slideout.vue';
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import store from 'src/store';
 	import { getUserSettings } from 'src/actions/tmgr/user';
 	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
 	import Alert from 'src/components/general/Alert.vue';
-	import AccountDropdown from 'src/components/general/AccountDropdown.vue';
-	import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
 	import Modal from 'src/components/Modal.vue';
+	import ActiveTasks from 'src/components/ActiveTasks.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
-	// TODO: solve slideout & horizontal scroll in the Board
 	export default defineComponent({
 		name: 'App',
 		components: {
+			ActiveTasks,
 			Modal,
-			DayNightSwitch,
-			AccountDropdown,
 			Alert,
 			TaskForm,
 			Navbar,
-			Slideout,
-			NavbarMenu,
 		},
 		data() {
 			return {
@@ -153,8 +77,6 @@
 				activeTasks: [],
 				bodyOverflow: '',
 				bodyHeight: 800,
-				menuIsActive: false,
-				translateMenuPosition: 0,
 			};
 		},
 		computed: {
@@ -186,9 +108,6 @@
 		methods: {
 			closeTaskModal() {
 				this.$store.dispatch('closeTaskModal');
-			},
-			translateMenu(data) {
-				this.translateMenuPosition = data;
 			},
 			beforeLeave(element) {
 				this.prevHeight = getComputedStyle(element).height;

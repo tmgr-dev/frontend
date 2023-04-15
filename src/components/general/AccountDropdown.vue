@@ -1,7 +1,7 @@
 <template>
 	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
-			class="item-center flex cursor-pointer gap-1 text-black dark:text-white"
+			class="item-center flex cursor-pointer justify-center gap-1 text-black dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
 			<div class="flex items-center overflow-hidden">
@@ -21,7 +21,7 @@
 		<!--	dropdown block	-->
 		<div
 			v-if="isOpenProfileDropdown"
-			class="absolute top-[calc(100%+20px)] right-0 z-50 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+			class="static mt-2 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900 md:absolute md:top-[calc(100%+10px)] md:right-0 md:z-50 md:w-auto"
 		>
 			<div class="sm:flex">
 				<ul
@@ -36,6 +36,7 @@
 							{{ link.name }}
 						</router-link>
 					</li>
+
 					<li class="py-1 hover:opacity-75 md:p-2 lg:px-4">
 						<a class="block" href="#" @click.prevent="logout">Logout</a>
 					</li>
@@ -141,7 +142,7 @@
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
 
-		store.commit('appRerender')
+		store.commit('appRerender');
 	}
 
 	async function logout() {

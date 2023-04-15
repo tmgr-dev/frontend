@@ -2,7 +2,14 @@ import $axios from 'src/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
 import objectToQueryString from 'src/utils/objectToQueryString';
 
-interface Task {}
+export interface Task {
+	id: number;
+	approximately_time: number;
+	category: number;
+	title: string;
+	description: string;
+	common_time: number;
+}
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
 	const {
@@ -12,10 +19,14 @@ export const getTasks = async (params: AxiosRequestConfig, current = true) => {
 	return data;
 };
 
-export const getTasksIndexes = async (categoryId: null|number = null) => {
+export const getTasksIndexes = async (categoryId: null | number = null) => {
 	const {
-		data: { data: {index} },
-	} = await $axios.get(`tasks/indexes${categoryId ? `?category=${categoryId}` : ''}`);
+		data: {
+			data: { index },
+		},
+	} = await $axios.get(
+		`tasks/indexes${categoryId ? `?category=${categoryId}` : ''}`,
+	);
 
 	return index;
 };

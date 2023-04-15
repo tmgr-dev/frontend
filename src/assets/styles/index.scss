@@ -69,6 +69,24 @@ button {
 	}
 }
 
+.translate-left-enter-active {
+	animation: translateLeft 0.5s;
+}
+.translate-left-leave-active {
+	animation: translateLeft 0.5s reverse;
+}
+
+@keyframes translateLeft {
+	from {
+		transform: translate3d(1000px, 0 ,0);
+	}
+
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+
 .bounce-right-fade-enter-active {
 	animation: bounceInRight 1s;
 }
@@ -107,15 +125,6 @@ button {
 	to {
 		transform: translate3d(0, 0, 0);
 	}
-}
-
-.q-electron-draggable {
-	-webkit-user-select: none;
-	-webkit-app-region: drag;
-}
-
-.q-electron-draggable--exception {
-	-webkit-app-region: no-drag;
 }
 
 .transform-opacity-right-enter-active {
