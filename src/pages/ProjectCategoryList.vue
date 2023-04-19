@@ -70,6 +70,9 @@
 												Projects: {{ category.children_count }}; Tasks:
 												{{ category.tasks_count }}
 											</span>
+											<span v-if="category.user" class="ml-2 text-gray-700"
+												>Creator:{{ category?.user?.name }}</span
+											>
 										</div>
 									</div>
 
@@ -270,6 +273,7 @@
 			async drop(event, category) {
 				const taskId = +event.dataTransfer.getData('task-id');
 				const categoryId = category.id;
+				console.log('category', category);
 
 				category.hoverClass = '';
 				this.loadingActionTasksIds.push(taskId);
@@ -331,6 +335,7 @@
 						all: '',
 					},
 				});
+				console.log('cat', this.categories);
 
 				if (this.id) {
 					await this.loadParentCategory();
