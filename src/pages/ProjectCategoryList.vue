@@ -273,7 +273,6 @@
 			async drop(event, category) {
 				const taskId = +event.dataTransfer.getData('task-id');
 				const categoryId = category.id;
-				console.log('category', category);
 
 				category.hoverClass = '';
 				this.loadingActionTasksIds.push(taskId);
@@ -335,7 +334,6 @@
 						all: '',
 					},
 				});
-				console.log('cat', this.categories);
 
 				if (this.id) {
 					await this.loadParentCategory();
