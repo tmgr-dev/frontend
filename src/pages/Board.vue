@@ -17,7 +17,7 @@
 							:key="column.title"
 							class="board-container__item pr-2"
 						>
-							<div class="column-width h-full rounded-lg rounded px-3 py-3">
+							<div class="column-width h-full rounded-lg rounded px-3 pb-3">
 								<div>
 									<div
 										class="relative rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
@@ -237,10 +237,15 @@
 				});
 			},
 			async loadTasks() {
-				for (let i = 0; i < this.columns.length; ++i) {
-					let status = this.columns[i].status;
-					this.columns[i].tasks = await this.loadTasksByStatus(status);
-				}
+				const tasksPromises = this.columns.map((column) =>
+					this.loadTasksByStatus(column.status),
+				);
+
+				const tasksArray = await Promise.all(tasksPromises);
+
+				this.columns.forEach((column, i) => {
+					column.tasks = tasksArray[i];
+				});
 			},
 			async loadTasksByStatus(status) {
 				if (this.chosenUser?.id) {
