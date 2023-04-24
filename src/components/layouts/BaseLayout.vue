@@ -1,6 +1,6 @@
 <template>
 	<div class="flex min-h-screen w-screen flex-col">
-		<header class="container relative mx-auto my-5 px-4">
+		<header class="container relative mx-auto px-4">
 			<h1
 				class="relative mt-6 pt-1 text-center text-center text-2xl text-blue-800 dark:text-white md:mt-0 md:pt-0 md:text-left md:text-3xl"
 			>
