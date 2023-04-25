@@ -11,9 +11,9 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="flex">
-				<div class="w-48 py-2">
+				<div class="w-48 py-3">
 					<Select
-						placeholder="Select user"
+						placeholder="Select User"
 						:options="workspaceUsers"
 						v-model="selectedUser"
 						label-key="name"
@@ -25,18 +25,24 @@
 	</div>
 </template>
 
-<script setup>
-	import { onMounted, ref, watch } from 'vue';
+<script setup lang="ts">
+	import { ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	const emit = defineEmits(['update:chosenUser', 'handleUpdateDraggable']);
-
-	const props = defineProps({
-		workspaceUsers: Array,
-		chosenUser: Object,
-		activeDraggable: Boolean,
-	});
+	export interface UserOption {
+		id: number;
+		name: string;
+		value: number;
+		label: string;
+	}
+	interface Props {
+		workspaceUsers: UserOption[];
+		chosenUser: object;
+		activeDraggable: boolean;
+	}
+	const props = defineProps<Props>();
 
 	const store = useStore();
 	const selectedUser = ref(0);

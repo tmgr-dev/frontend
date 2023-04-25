@@ -5,14 +5,16 @@
 		<template #body>
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
-					<filters-board
-						v-if="workspaceUsers.length"
-						:workspaceUsers="workspaceUsers"
-						:chosen-user.sync="chosenUser"
-						@update:chosenUser="handleChosenUserUpdate"
-						activeDraggable="activeDraggable"
-						@handleUpdateDraggable="handleUpdateDraggable"
-					/>
+					<div class="min-h-filters">
+						<filters-board
+							v-if="workspaceUsers.length"
+							:workspaceUsers="workspaceUsers"
+							:chosen-user.sync="chosenUser"
+							@update:chosenUser="handleChosenUserUpdate"
+							activeDraggable="activeDraggable"
+							@handleUpdateDraggable="handleUpdateDraggable"
+						/>
+					</div>
 					<div class="board-container">
 						<draggable
 							v-if="activeDraggable"
@@ -138,7 +140,7 @@
 		getWorkspaceMembers,
 		getWorkspaces,
 		getWorkspaceStatuses,
-		updateWorkspacePivot,
+		updateWorkspaceOrder,
 	} from 'src/actions/tmgr/workspaces';
 	import {
 		getSortedTasksByStatus,
@@ -250,7 +252,7 @@
 					return { status_id, order };
 				});
 
-				await updateWorkspacePivot(this.workspaceId, {
+				await updateWorkspaceOrder(this.workspaceId, {
 					statuses_with_order: sortedStats,
 				});
 			},
