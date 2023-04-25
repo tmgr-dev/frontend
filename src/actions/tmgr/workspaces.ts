@@ -41,7 +41,7 @@ export const createWorkspace = async (payload: Workspace) => {
 	return data;
 };
 
-export const updateWorkspacePivot = async (
+export const updateWorkspaceOrder = async (
 	workspaceId: number,
 	payload: [],
 ) => {

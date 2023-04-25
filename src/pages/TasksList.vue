@@ -9,7 +9,7 @@
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="ext-opacity-25 text-bold mr-6 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
+						class="ext-opacity-25 text-bold mr-6 my-5 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
