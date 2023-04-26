@@ -35,7 +35,7 @@
 													'border-top': `solid 5px ${column.status.color}`,
 												}"
 											>
-												<div class="mr-2 flex items-center">
+												<div class="mr-2 flex items-center hover:cursor-move">
 													<svg
 														width="5"
 														height="8"
