@@ -11,7 +11,7 @@ module.exports = {
 				'tmgr-gray': '#e2e2e2',
 			},
 			minHeight: {
-				filters: '62px',
+				15: '62px',
 			},
 		},
 	},

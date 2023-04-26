@@ -5,7 +5,7 @@
 		<template #body>
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
-					<div class="min-h-filters">
+					<div class="min-h-15">
 						<filters-board
 							v-if="workspaceUsers.length"
 							:workspaceUsers="workspaceUsers"
