@@ -13,7 +13,7 @@
 				<a
 					:href="href"
 					:class="{ 'font-bold': isActive }"
-					@click="
+					@click.prevent="
 						() => {
 							navigate();
 							$emit('navigated');
