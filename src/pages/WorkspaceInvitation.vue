@@ -4,7 +4,7 @@
 	<BaseLayout>
 		<template #header>
 			<span class="mt-10 block w-full text-center">
-				You have been invited to the workspace:
+				You have been invited to the workspace : "{{ workspaceName }}"
 			</span>
 		</template>
 
@@ -32,7 +32,11 @@
 <script>
 	import Button from 'src/components/general/Button.vue';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
-	import { acceptWorkspaceInvitation } from 'src/actions/tmgr/workspaces';
+	import {
+		acceptWorkspaceInvitation,
+		workspaceInvitationInfo,
+	} from 'src/actions/tmgr/workspaces';
+	import { createLogger } from 'vuex';
 
 	export default {
 		name: 'WorkspaceInvitation',
@@ -49,6 +53,7 @@
 			},
 			message: '',
 			errors: {},
+			workspaceName: '',
 		}),
 		computed: {
 			workspaceInvitationToken() {
@@ -57,6 +62,10 @@
 		},
 		async mounted() {
 			this.user = await getUser();
+			const workspaceData = await workspaceInvitationInfo(
+				this.workspaceInvitationToken,
+			);
+			this.workspaceName = workspaceData.workspace.name;
 		},
 		methods: {
 			async accept() {
