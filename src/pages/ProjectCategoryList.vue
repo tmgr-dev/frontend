@@ -70,6 +70,9 @@
 												Projects: {{ category.children_count }}; Tasks:
 												{{ category.tasks_count }}
 											</span>
+											<span v-if="category.user" class="ml-2 text-gray-700">
+												Creator: {{ category?.user?.name }}
+											</span>
 										</div>
 									</div>
 
