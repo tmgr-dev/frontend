@@ -1,5 +1,6 @@
 import $axios from 'src/plugins/axios';
 import store from 'src/store';
+import { Category } from 'src/actions/tmgr/categories';
 
 export interface Workspace {
 	name: string;
@@ -36,6 +37,17 @@ export const createWorkspace = async (payload: Workspace) => {
 	const {
 		data: { data },
 	} = await $axios.post('workspaces', payload);
+
+	return data;
+};
+
+export const updateWorkspaceOrder = async (
+	workspaceId: number,
+	payload: [],
+) => {
+	const {
+		data: { data },
+	} = await $axios.put(`workspaces/${workspaceId}/statuses/order`, payload);
 
 	return data;
 };

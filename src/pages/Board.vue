@@ -5,14 +5,85 @@
 		<template #body>
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
-					<filters-board
-						v-if="workspaceUsers.length"
-						:workspaceUsers="workspaceUsers"
-						:chosen-user.sync="chosenUser"
-						@update:chosenUser="handleChosenUserUpdate"
-					/>
+					<div class="min-h-15">
+						<filters-board
+							v-if="workspaceUsers.length"
+							:workspaceUsers="workspaceUsers"
+							:chosen-user.sync="chosenUser"
+							@update:chosenUser="handleChosenUserUpdate"
+							activeDraggable="activeDraggable"
+							@handleUpdateDraggable="handleUpdateDraggable"
+						/>
+					</div>
 					<div class="board-container">
+						<draggable
+							v-if="activeDraggable"
+							v-model="columns"
+							group="columns"
+							item-key="id"
+							class="board-container"
+							@end="onMove"
+							data-id="column"
+						>
+							<template #item="{ element: column }">
+								<div class="board-container__item pr-2">
+									<div class="column-width h-full rounded-lg rounded px-3 pb-3">
+										<div>
+											<div
+												class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
+												:style="{
+													'border-top': `solid 5px ${column.status.color}`,
+												}"
+											>
+												<div class="mr-2 flex items-center hover:cursor-move">
+													<svg
+														width="5"
+														height="8"
+														viewBox="0 0 5 8"
+														fill="none"
+														xmlns="http://www.w3.org/2000/svg"
+													>
+														<circle cx="1" cy="1" r="1" fill="#D9D9D9" />
+														<circle cx="4" cy="1" r="1" fill="#D9D9D9" />
+														<circle cx="1" cy="4" r="1" fill="#D9D9D9" />
+														<circle cx="4" cy="4" r="1" fill="#D9D9D9" />
+														<circle cx="4" cy="7" r="1" fill="#D9D9D9" />
+														<circle cx="1" cy="7" r="1" fill="#D9D9D9" />
+													</svg>
+												</div>
+												{{ column.title }}
+												<div class="absolute top-1/2 right-3 -translate-y-1/2">
+													<dashboard-dropdown-menu
+														:actions="getActions(column)"
+													/>
+												</div>
+											</div>
+										</div>
+
+										<draggable
+											v-model="column.tasks"
+											:animation="200"
+											ghost-class="ghost-card"
+											group="tasks"
+											item-key="id"
+											@end="onEnd"
+											:data-status="column.status.id"
+											class="board-card"
+										>
+											<template #item="{ element: task }">
+												<task-card
+													:task="task"
+													class="my-5 cursor-move"
+													:data-task="jsonEncode(task)"
+												/>
+											</template>
+										</draggable>
+									</div>
+								</div>
+							</template>
+						</draggable>
 						<div
+							v-else
 							v-for="column in columns"
 							:key="column.title"
 							class="board-container__item pr-2"
@@ -69,6 +140,7 @@
 		getWorkspaceMembers,
 		getWorkspaces,
 		getWorkspaceStatuses,
+		updateWorkspaceOrder,
 	} from 'src/actions/tmgr/workspaces';
 	import {
 		getSortedTasksByStatus,
@@ -121,6 +193,7 @@
 				},
 			],
 			columns: [],
+			activeDraggable: false,
 		}),
 		watch: {
 			'$store.getters.reloadTasks'() {
@@ -171,6 +244,18 @@
 				}
 				setTimeout(() => this.saveOrders(status), 500);
 			},
+			async onMove() {
+				const sortedStats = this.columns.map((col, index) => {
+					col.status.pivot.order = index + 1;
+					const { status_id, order } = col.status.pivot;
+
+					return { status_id, order };
+				});
+
+				await updateWorkspaceOrder(this.workspaceId, {
+					statuses_with_order: sortedStats,
+				});
+			},
 			async saveOrders(status) {
 				const column = this.findColumn(status);
 				if (!column) {
@@ -217,6 +302,7 @@
 			async loadColumns() {
 				const columns = [];
 				const statuses = await getWorkspaceStatuses();
+				statuses.sort((a, b) => a.pivot.order - b.pivot.order);
 
 				for (let i = 0; i < statuses.length; ++i) {
 					let status = statuses[i];
@@ -279,6 +365,9 @@
 				} catch (e) {
 					this.errors = e.response?.data?.errors || {};
 				}
+			},
+			handleUpdateDraggable(value) {
+				this.activeDraggable = value;
 			},
 		},
 		async beforeMount() {
