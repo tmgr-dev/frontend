@@ -24,6 +24,7 @@ const state = {
 	reloadTasks: null,
 	pusherTokenProvider: pusherTokenProvider(token),
 	sideout: null,
+	appRerender: 0,
 	statuses: [],
 	pusher: pusher(token),
 	userSettings: {
@@ -34,6 +35,7 @@ const state = {
 const getters = {
 	token: (state) => state.token,
 	statuses: (state) => state.statuses,
+	appRerender: (state) => state.appRerender,
 	reloadTasks: (state) => state.reloadTasks,
 	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
 	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
@@ -62,6 +64,9 @@ const mutations = {
 	},
 	setStatuses(state, data) {
 		state.statuses = data;
+	},
+	appRerender(state) {
+		state.appRerender++;
 	},
 	user(state, user) {
 		if (user == null) {
