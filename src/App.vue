@@ -1,7 +1,11 @@
 <template>
 	<alert ref="alert" />
 
-	<div id="q-app" class="font-sans text-tmgr-blue dark:text-tmgr-gray">
+	<div
+		id="q-app"
+		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
+		:key="$store.getters.appRerender"
+	>
 		<transition mode="out-in" name="fade">
 			<Navbar v-if="$route.meta.navbarHidden" />
 		</transition>
@@ -47,7 +51,6 @@
 
 <script>
 	import { defineComponent } from 'vue';
-
 	import Navbar from 'src/components/general/Navbar.vue';
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import store from 'src/store';
