@@ -1,6 +1,8 @@
 <template>
 	<div class="w-full pl-4">
-		<div class="w-full flex items-center justify-between mr-20 rounded">
+		<div
+			class="w-full min-h-15 flex items-center justify-between mr-20 rounded"
+		>
 			<div class="flex items-center">
 				<input
 					class="cursor-pointer w-4 h-4 focus:outline-none rounded-lg"
@@ -11,7 +13,7 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="flex">
-				<div class="w-48 py-3">
+				<div v-if="workspaceUsers.length > 2" class="w-48 py-3">
 					<Select
 						placeholder="Select User"
 						:options="workspaceUsers"
