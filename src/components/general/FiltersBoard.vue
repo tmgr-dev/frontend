@@ -13,7 +13,7 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="flex">
-				<div v-if="workspaceUsers.length > 2" class="w-48 py-3">
+				<div v-if="workspaceUsers.length >= 2" class="w-48 py-3">
 					<Select
 						placeholder="Select User"
 						:options="workspaceUsers"
