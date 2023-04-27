@@ -13,6 +13,7 @@
 							@update:chosenUser="handleChosenUserUpdate"
 							activeDraggable="activeDraggable"
 							@handleUpdateDraggable="handleUpdateDraggable"
+							@handleSearchTextChanged="handleSearchTextChanged"
 						/>
 					</div>
 					<div class="board-container">
@@ -175,6 +176,7 @@
 			chosenUser: null,
 			errors: {},
 			archivedStatus: null,
+			searchText: '',
 			oldColumns: [
 				{
 					title: 'Backlog',
@@ -200,6 +202,9 @@
 				this.loadTasks();
 			},
 			chosenUser: function () {
+				this.loadTasks();
+			},
+			searchText: function () {
 				this.loadTasks();
 			},
 		},
@@ -322,6 +327,9 @@
 					this.columns = columns;
 				});
 			},
+			handleSearchTextChanged(newValue) {
+				this.searchText = newValue;
+			},
 			async loadTasks() {
 				const tasksPromises = this.columns.map((column) =>
 					this.loadTasksByStatus(column.status),
@@ -329,8 +337,20 @@
 
 				const tasksArray = await Promise.all(tasksPromises);
 
+				const filteredTasksArray = tasksArray.map((el) =>
+					el.filter(
+						(item) =>
+							item.title
+								.toLowerCase()
+								.includes(this.searchText.toLowerCase()) ||
+							item.description
+								.toLowerCase()
+								.includes(this.searchText.toLowerCase()),
+					),
+				);
+
 				this.columns.forEach((column, i) => {
-					column.tasks = tasksArray[i];
+					column.tasks = filteredTasksArray[i];
 				});
 			},
 			async loadTasksByStatus(status) {
