@@ -1,6 +1,8 @@
 <template>
 	<div class="w-full pl-4">
-		<div class="w-full flex items-center justify-between mr-20 rounded">
+		<div
+			class="w-full min-h-15 flex items-center justify-between mr-20 rounded"
+		>
 			<div class="flex">
 				<div class="flex items-center mr-3">
 					<input
@@ -15,7 +17,7 @@
 				<TextField placeholder="Search" v-model="searchText" />
 			</div>
 			<div class="flex">
-				<div class="w-48 py-3">
+				<div v-if="workspaceUsers.length >= 2" class="w-48 py-3">
 					<Select
 						placeholder="Select User"
 						:options="workspaceUsers"
