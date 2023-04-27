@@ -51,7 +51,6 @@
 		workspaceUsers: UserOption[];
 		chosenUser: object;
 		activeDraggable: boolean;
-		searchText: string;
 	}
 	const props = defineProps<Props>();
 
@@ -59,7 +58,7 @@
 	const selectedUser = ref(0);
 	const userOptions = props.workspaceUsers;
 	const tasks = ref([]);
-	const searchText = ref('');
+	const searchText = ref(null);
 
 	watch(selectedUser, () => {
 		emit(
@@ -68,8 +67,6 @@
 		);
 	});
 	watch(searchText, (newValue) => {
-		if (newValue !== '') {
-			emit('handleSearchTextChanged', newValue);
-		}
+		emit('handleSearchTextChanged', newValue);
 	});
 </script>
