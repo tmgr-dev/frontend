@@ -16,9 +16,10 @@
 							@handleSearchTextChanged="handleSearchTextChanged"
 						/>
 					</div>
+
 					<div class="board-container">
-						<draggable
-							v-if="activeDraggable"
+						<Draggable
+							:disabled="!activeDraggable"
 							v-model="columns"
 							group="columns"
 							item-key="id"
@@ -28,7 +29,7 @@
 						>
 							<template #item="{ element: column }">
 								<div class="board-container__item pr-2">
-									<div class="column-width h-full rounded-lg rounded px-3 pb-3">
+									<div class="column-width h-full rounded-lg px-3 pb-3">
 										<div>
 											<div
 												class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
@@ -36,32 +37,43 @@
 													'border-top': `solid 5px ${column.status.color}`,
 												}"
 											>
-												<div class="mr-2 flex items-center hover:cursor-move">
-													<svg
-														width="5"
-														height="8"
-														viewBox="0 0 5 8"
-														fill="none"
-														xmlns="http://www.w3.org/2000/svg"
-													>
-														<circle cx="1" cy="1" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="1" r="1" fill="#D9D9D9" />
-														<circle cx="1" cy="4" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="4" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="7" r="1" fill="#D9D9D9" />
-														<circle cx="1" cy="7" r="1" fill="#D9D9D9" />
-													</svg>
-												</div>
-												{{ column.title }}
-												<div class="absolute top-1/2 right-3 -translate-y-1/2">
-													<dashboard-dropdown-menu
-														:actions="getActions(column)"
+												<div
+													v-if="activeDraggable"
+													class="mr-2 flex items-center hover:cursor-move"
+												>
+													<EllipsisVerticalIcon
+														class="h-3"
+														aria-hidden="true"
+													/>
+													<EllipsisVerticalIcon
+														class="-ml-2 h-3"
+														aria-hidden="true"
 													/>
 												</div>
+
+												<div>
+													{{ column.title }}
+												</div>
+
+												<Dropdown class="ml-auto pr-2">
+													<MenuItem v-slot="{ active }">
+														<a
+															href="#"
+															:class="[
+																active
+																	? 'bg-gray-100 text-gray-900'
+																	: 'text-gray-700',
+																'block px-4 py-2 text-sm',
+															]"
+														>
+															create a task
+														</a>
+													</MenuItem>
+												</Dropdown>
 											</div>
 										</div>
 
-										<draggable
+										<Draggable
 											v-model="column.tasks"
 											:animation="200"
 											ghost-class="ghost-card"
@@ -78,52 +90,11 @@
 													:data-task="jsonEncode(task)"
 												/>
 											</template>
-										</draggable>
+										</Draggable>
 									</div>
 								</div>
 							</template>
-						</draggable>
-						<div
-							v-else
-							v-for="column in columns"
-							:key="column.title"
-							class="board-container__item pr-2"
-						>
-							<div class="column-width h-full rounded-lg rounded px-3 pb-3">
-								<div>
-									<div
-										class="relative rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-										:style="{
-											'border-top': `solid 5px ${column.status.color}`,
-										}"
-									>
-										{{ column.title }}
-										<div class="absolute top-1/2 right-3 -translate-y-1/2">
-											<dashboard-dropdown-menu :actions="getActions(column)" />
-										</div>
-									</div>
-								</div>
-
-								<draggable
-									v-model="column.tasks"
-									:animation="200"
-									ghost-class="ghost-card"
-									group="tasks"
-									item-key="id"
-									@end="onEnd"
-									:data-status="column.status.id"
-									class="board-card"
-								>
-									<template #item="{ element: task }">
-										<task-card
-											:task="task"
-											class="my-5 cursor-move"
-											:data-task="jsonEncode(task)"
-										/>
-									</template>
-								</draggable>
-							</div>
-						</div>
+						</Draggable>
 					</div>
 				</div>
 			</div>
@@ -133,7 +104,7 @@
 
 <script>
 	import Button from 'src/components/general/Button.vue';
-	import draggable from 'vuedraggable';
+	import Draggable from 'vuedraggable';
 	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
 	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
 	import DashboardDropdownMenu from 'src/components/general/BoardOptionsMenu.vue';
@@ -150,16 +121,22 @@
 	} from 'src/actions/tmgr/tasks';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
+	import Dropdown from 'src/components/general/Dropdown.vue';
+	import { MenuItem } from '@headlessui/vue';
+	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 
 	export default {
 		name: 'Board',
 		components: {
+			EllipsisVerticalIcon,
+			MenuItem,
+			Dropdown,
 			FiltersBoard,
 			DashboardDropdownMenu,
 			DropdownMenu,
 			Button,
 			TaskCard,
-			draggable,
+			Draggable,
 		},
 
 		data: () => ({
@@ -213,18 +190,11 @@
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
 			},
-			getActions(column) {
-				return [
-					{
-						click: () => {
-							this.$store.commit('showCreateTaskModal', {
-								showCreateTaskModal: true,
-								statusId: column.status.id,
-							});
-						},
-						label: 'Create task',
-					},
-				];
+			openTaskModal(column) {
+				this.$store.commit('showCreateTaskModal', {
+					showCreateTaskModal: true,
+					statusId: column.status.id,
+				});
 			},
 			jsonEncode(data) {
 				return JSON.stringify(data);
@@ -304,7 +274,6 @@
 				}
 				return null;
 			},
-			onStart(evt) {},
 			async loadColumns() {
 				const columns = [];
 				const statuses = await getWorkspaceStatuses();
@@ -396,8 +365,7 @@
 		},
 		async beforeMount() {
 			const user = await getUser();
-			const workspaces = await getWorkspaces();
-			this.workspacesData = workspaces;
+			this.workspacesData = await getWorkspaces();
 			this.userData = user;
 
 			const workspaceSetting = this.userData.settings.find(
