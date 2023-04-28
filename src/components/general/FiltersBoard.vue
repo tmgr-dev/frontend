@@ -1,12 +1,12 @@
 <template>
 	<div class="w-full pl-4">
 		<div
-			class="w-full min-h-15 flex items-center justify-between mr-20 rounded"
+			class="mr-20 flex min-h-15 w-full items-center justify-between rounded"
 		>
 			<div class="flex">
-				<div class="flex items-center mr-3">
+				<div class="mr-3 flex items-center">
 					<input
-						class="cursor-pointer w-4 h-4 focus:outline-none rounded-lg"
+						class="h-4 w-4 cursor-pointer rounded-lg focus:outline-none"
 						type="checkbox"
 						id="checkbox"
 						@change="$emit('handleUpdateDraggable', $event.target.checked)"
@@ -16,10 +16,11 @@
 
 				<TextField placeholder="Search" v-model="searchText" />
 			</div>
+
 			<div class="flex">
 				<div v-if="workspaceUsers.length >= 2" class="w-48 py-3">
 					<Select
-						placeholder="Select User"
+						placeholder="Select user"
 						:options="workspaceUsers"
 						v-model="selectedUser"
 						label-key="name"
@@ -38,11 +39,6 @@
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
 
-	const emit = defineEmits([
-		'update:chosenUser',
-		'handleUpdateDraggable',
-		'handleSearchTextChanged',
-	]);
 	export interface UserOption {
 		id: number;
 		name: string;
@@ -56,16 +52,20 @@
 	}
 	const props = defineProps<Props>();
 
+	const emit = defineEmits([
+		'update:chosenUser',
+		'handleUpdateDraggable',
+		'handleSearchTextChanged',
+	]);
 	const store = useStore();
 	const selectedUser = ref(0);
-	const userOptions = props.workspaceUsers;
 	const tasks = ref([]);
 	const searchText = ref(null);
 
 	watch(selectedUser, () => {
 		emit(
 			'update:chosenUser',
-			userOptions.find((option) => option.id === selectedUser.value),
+			props.workspaceUsers.find((option) => option.id === selectedUser.value),
 		);
 	});
 	watch(searchText, (newValue) => {

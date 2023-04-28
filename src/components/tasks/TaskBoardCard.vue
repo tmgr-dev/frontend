@@ -11,7 +11,7 @@
 				{{ task.title }}
 			</a>
 
-			<assignee-users
+			<AssigneeUsers
 				:assignees="task.assignees"
 				:show-assignee-controls="false"
 				avatarsClass="h-6 w-6"
@@ -23,13 +23,11 @@
 				{{ secondsToHumanReadableString(task.common_time) }}
 			</span>
 
-			<div>
-				<category-badge
-					v-if="task.category"
-					:category="task.category"
-					:status-id="task.status_id"
-				/>
-			</div>
+			<CategoryBadge
+				class="flex-row-reverse"
+				:category="task.category"
+				:status-id="task.status_id"
+			/>
 		</div>
 	</div>
 </template>

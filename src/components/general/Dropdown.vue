@@ -3,7 +3,7 @@
 		<div>
 			<slot name="toggle">
 				<MenuButton
-					class="flex items-center rounded-full text-neutral-600 hover:opacity-80 focus:outline-none dark:text-white"
+					class="flex items-center text-neutral-600 hover:opacity-80 focus:outline-none dark:text-white"
 				>
 					<span class="sr-only">Open options</span>
 					<EllipsisHorizontalIcon class="h-6 w-6" aria-hidden="true" />
