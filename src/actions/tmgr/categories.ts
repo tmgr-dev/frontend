@@ -1,7 +1,10 @@
 import { AxiosRequestConfig } from 'axios';
 import $axios from 'src/plugins/axios';
 
-export interface Category {}
+export interface Category {
+	id: number;
+	title: string;
+}
 
 export const getCategories = async () => {
 	const {

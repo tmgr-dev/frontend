@@ -6,7 +6,7 @@
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-15">
-						<filters-board
+						<FiltersBoard
 							v-if="workspaceUsers.length"
 							:workspaceUsers="workspaceUsers"
 							:chosen-user.sync="chosenUser"
@@ -84,7 +84,7 @@
 											class="board-card"
 										>
 											<template #item="{ element: task }">
-												<task-card
+												<TaskBoardCard
 													:task="task"
 													class="my-5 cursor-move"
 													:data-task="jsonEncode(task)"
@@ -105,9 +105,7 @@
 <script>
 	import Button from 'src/components/general/Button.vue';
 	import Draggable from 'vuedraggable';
-	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
 	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
-	import DashboardDropdownMenu from 'src/components/general/BoardOptionsMenu.vue';
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
@@ -124,18 +122,18 @@
 	import Dropdown from 'src/components/general/Dropdown.vue';
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
+	import TaskBoardCard from 'src/components/tasks/TaskBoardCard.vue';
 
 	export default {
 		name: 'Board',
 		components: {
+			TaskBoardCard,
 			EllipsisVerticalIcon,
 			MenuItem,
 			Dropdown,
 			FiltersBoard,
-			DashboardDropdownMenu,
 			DropdownMenu,
 			Button,
-			TaskCard,
 			Draggable,
 		},
 
@@ -374,7 +372,7 @@
 			if (workspaceSetting) {
 				this.workspaceId = +workspaceSetting.value;
 				const users = await getWorkspaceMembers(this.workspaceId);
-				this.workspaceUsers = [{ id: 0, name: 'Select User' }, ...users];
+				this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
 			}
 		},
 		async mounted() {
