@@ -124,6 +124,46 @@
 								</draggable>
 							</div>
 						</div>
+						<div class="w-12 h-12 flex justify-center items-center">
+							<span
+								@click="isShowCreateStatusModal = true"
+								class="material-icons text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
+								>add</span
+							>
+						</div>
+						<Transition name="bounce-right-fade">
+							<Modal
+								v-if="isShowCreateStatusModal"
+								modal-class="p-6 w-96"
+								close-on-bg-click
+								@close="isShowCreateStatusModal = false"
+							>
+								<template #modal-body>
+									<div>
+										<h1>Create status</h1>
+										<label class="flex flex-col gap-2">
+											Status name :
+											<TextField placeholder="Name" v-model="statusName" />
+										</label>
+										<label class="flex flex-col gap-2">
+											Status type :
+											<TextField placeholder="Type" v-model="statusType" />
+										</label>
+										<label class="flex flex-col gap-2">
+											Status color :
+											<TextField placeholder="Color" v-model="statusColor" />
+										</label>
+										<button
+											@click="createNewStatus()"
+											class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+											type="button"
+										>
+											Create
+										</button>
+									</div>
+								</template>
+							</Modal>
+						</Transition>
 					</div>
 				</div>
 			</div>
@@ -132,6 +172,7 @@
 </template>
 
 <script>
+	import Modal from 'src/components/Modal.vue';
 	import Button from 'src/components/general/Button.vue';
 	import draggable from 'vuedraggable';
 	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
@@ -150,10 +191,18 @@
 	} from 'src/actions/tmgr/tasks';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
+	import TextField from 'src/components/general/TextField.vue';
+	import {
+		createStatus,
+		deleteStatus,
+		getStatuses,
+	} from 'src/actions/tmgr/statuses';
 
 	export default {
 		name: 'Board',
 		components: {
+			TextField,
+			Modal,
 			FiltersBoard,
 			DashboardDropdownMenu,
 			DropdownMenu,
@@ -178,6 +227,10 @@
 			archivedStatus: null,
 			searchText: '',
 			filteredTasksArray: [],
+			isShowCreateStatusModal: false,
+			statusName: '',
+			statusType: '',
+			statusColor: '',
 			oldColumns: [
 				{
 					title: 'Backlog',
@@ -212,6 +265,17 @@
 		methods: {
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
+			},
+			async createNewStatus() {
+				const newStatus = {
+					name: this.statusName,
+					type: this.statusType,
+					color: this.statusColor,
+				};
+				await createStatus(this.workspaceId, newStatus);
+			},
+			async Dlt() {
+				await deleteStatus(301);
 			},
 			getActions(column) {
 				return [
@@ -413,6 +477,7 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
+			console.log('Statuses', await getStatuses());
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
