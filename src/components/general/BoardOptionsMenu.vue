@@ -1,6 +1,5 @@
 <template>
-	<!-- @todo close options by clicking outside	-->
-	<div class="relative">
+	<div class="relative" ref="$wrapper">
 		<svg
 			class="text-grey-dark mr-3 w-6 fill-current md:mr-1"
 			viewBox="0 0 20 20"
@@ -14,10 +13,10 @@
 
 		<div
 			v-if="opened"
-			class="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-md bg-white shadow-lg"
+			class="absolute right-0 z-50 mt-2 w-40 overflow-hidden rounded-md bg-white shadow-lg"
 		>
 			<a
-				v-for="action in actions"
+				v-for="action in props.actions"
 				:href="action.link || '#'"
 				class="flex items-center border-b px-3 py-3 last:border-b-0 hover:bg-gray-100"
 				@click.prevent="
@@ -33,21 +32,29 @@
 	</div>
 </template>
 
-<script>
-	export default {
-		name: 'BoardOptionsMenu',
-		props: {
-			actions: {
-				required: true,
-				type: Array,
-			},
-		},
-		data() {
-			return {
-				opened: false,
-			};
-		},
-	};
-</script>
+<script lang="ts" setup>
+	import { ref, defineProps, Ref, onMounted } from 'vue';
 
-<style scoped></style>
+	type action = {
+		label: string;
+		link?: string;
+		click: () => void;
+	};
+
+	interface Props {
+		actions: action[];
+	}
+
+	const props = defineProps<Props>();
+
+	const $wrapper: Ref<HTMLDivElement | null> = ref(null);
+	const opened = ref(false);
+
+	onMounted(async () => {
+		document.addEventListener('click', (e: MouseEvent) => {
+			if (!$wrapper.value?.contains(e.target as Node)) {
+				opened.value = false;
+			}
+		});
+	});
+</script>
