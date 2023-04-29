@@ -1,59 +1,43 @@
 import { createStore } from 'vuex';
-import axios from 'axios';
-import pusherBeamsClient from './plugins/pusher-beams-client';
-import pusherTokenProvider from './plugins/pusher-token-provider';
-import pusher from './plugins/pusher';
+import pusherModule from 'src/store/modules/pusher';
 
 const token = localStorage.getItem('token')
-	? JSON.parse(localStorage.getItem('token'))
+	? JSON.parse(localStorage.getItem('token') || '')
 	: null;
 
 const state = {
 	token: token,
 	currentOpenedTaskId: null,
 	user: localStorage.getItem('user')
-		? JSON.parse(localStorage.getItem('user'))
+		? JSON.parse(localStorage.getItem('user') || '')
 		: null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
-	pusherBeamsUserId: null,
-	pusherBeamsClient: pusherBeamsClient,
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
 	createTaskInStatusId: null,
 	showCreateTaskModal: false,
-	reloadTasks: null,
-	pusherTokenProvider: pusherTokenProvider(token),
-	sideout: null,
-	appRerender: 0,
+	reloadTasksKey: null,
+	appRerenderKey: 0,
 	statuses: [],
-	pusher: pusher(token),
 	userSettings: {
 		showTooltips: true,
 	},
 };
 
 const getters = {
-	token: (state) => state.token,
-	statuses: (state) => state.statuses,
-	appRerender: (state) => state.appRerender,
-	reloadTasks: (state) => state.reloadTasks,
+	getStatuses: (state) => state.statuses,
 	getCurrentTaskIdForModal: (state) => state.currentTaskIdForModal,
 	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
 	createTaskInStatusId: (state) => state.createTaskInStatusId,
 	showCreateTaskModal: (state) => state.showCreateTaskModal,
-	pusherBeamsUserId: (state) => state.pusherBeamsUserId,
-	pusherBeamsClient: (state) => state.pusherBeamsClient,
-	pusherTokenProvider: (state) => state.pusherTokenProvider,
 	getCurrentOpenedTaskId: (state) => state.currentOpenedTaskId,
-	pusher: (state) => state.pusher,
-	user: (state) => state.user,
 	isLoggedIn: (state) => state.token !== null,
 	getColorScheme: (state) => state.colorScheme,
 	getUserSettings: (state) => state.userSettings,
 };
 
 const mutations = {
-	token(state, token) {
+	setToken(state, token) {
 		if (token == null) {
 			localStorage.removeItem('token');
 		} else {
@@ -65,10 +49,10 @@ const mutations = {
 	setStatuses(state, data) {
 		state.statuses = data;
 	},
-	appRerender(state) {
-		state.appRerender++;
+	rerenderApp(state) {
+		state.appRerenderKey++;
 	},
-	user(state, user) {
+	setUser(state, user) {
 		if (user == null) {
 			localStorage.removeItem('user');
 		} else {
@@ -77,11 +61,18 @@ const mutations = {
 
 		state.user = user;
 	},
+	incrementReloadTasksKey({ state }) {
+		if (!state.reloadTasksKey) {
+			state.reloadTasksKey = 1;
+		}
+
+		++state.reloadTasksKey;
+	},
 	setCurrentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
 	},
-	showCreateTaskModal(state, { showCreateTaskModal, statusId }) {
-		state.showCreateTaskModal = showCreateTaskModal;
+	showCreateTaskModal(state, statusId) {
+		state.showCreateTaskModal = true;
 		state.createTaskInStatusId = statusId;
 	},
 	createTaskInProjectCategoryId(state, { projectCategoryId, statusId }) {
@@ -89,9 +80,6 @@ const mutations = {
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = projectCategoryId;
 		state.showCreateTaskModal = true;
-	},
-	pusherBeamsUserId(state, pusherBeamsUserId) {
-		state.pusherBeamsUserId = pusherBeamsUserId;
 	},
 	setCurrentOpenedTaskId(state, currentOpenedTaskId) {
 		state.currentOpenedTaskId = currentOpenedTaskId;
@@ -105,11 +93,13 @@ const mutations = {
 		document.querySelector('html').className =
 			colorScheme === 'dark' ? 'dark' : '';
 	},
+	closeTaskModal(state) {
+		state.currentTaskIdForModal = null;
+		state.createTaskInProjectCategoryId = null;
+		state.showCreateTaskModal = false;
+	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
-	},
-	setPusherBeamsClient(state, pusherBeamsClient) {
-		state.pusherBeamsClient = pusherBeamsClient;
 	},
 };
 
@@ -121,30 +111,10 @@ const actions = {
 
 		location.reload();
 	},
-	reloadTasks({ state }) {
-		if (!state.reloadTasks) {
-			state.reloadTasks = 1;
-		}
-		++state.reloadTasks;
-	},
-	closeTaskModal({ state }) {
-		state.currentTaskIdForModal = null;
-		state.createTaskInProjectCategoryId = null;
-		state.showCreateTaskModal = false;
-	},
-	showCreateTaskModal({ state }) {
-		state.showCreateTaskModal = true;
-	},
-	async putUserSettings({ commit }, settings) {
-		try {
-			await axios.put(`user/settings`, { settings });
+};
 
-			commit('setUserSettings', settings);
-		} catch (e) {
-			console.error(e);
-			throw e;
-		}
-	},
+const modules = {
+	pusher: pusherModule,
 };
 
 export default createStore({
@@ -152,4 +122,5 @@ export default createStore({
 	getters,
 	mutations,
 	actions,
+	modules,
 });

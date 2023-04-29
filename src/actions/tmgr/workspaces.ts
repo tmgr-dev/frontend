@@ -1,6 +1,5 @@
 import $axios from 'src/plugins/axios';
 import store from 'src/store';
-import { Category } from 'src/actions/tmgr/categories';
 
 export interface Workspace {
 	name: string;

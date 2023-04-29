@@ -9,7 +9,7 @@
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="ext-opacity-25 text-bold mr-6 my-5 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
+						class="ext-opacity-25 text-bold my-5 mr-6 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
@@ -59,7 +59,7 @@
 					<a
 						href="#"
 						title="Add Task"
-						@click="$store.dispatch('showCreateTaskModal')"
+						@click="$store.commit('showCreateTaskModal')"
 					>
 						<span
 							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"

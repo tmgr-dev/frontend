@@ -65,7 +65,7 @@
 				return mappings[this.task.type] || mappings.default;
 			},
 			user() {
-				return this.$store.getters.user;
+				return this.$store.state.user;
 			},
 		},
 	};

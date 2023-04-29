@@ -16,7 +16,7 @@ export const getUser = async (saveToStore = false) => {
 	} = await $axios.get('user');
 
 	if (saveToStore) {
-		store.commit('user', data);
+		store.commit('setUser', data);
 	}
 
 	return data;

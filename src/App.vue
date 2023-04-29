@@ -4,7 +4,7 @@
 	<div
 		id="q-app"
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
-		:key="$store.getters.appRerender"
+		:key="$store.state.appRerenderKey"
 	>
 		<transition mode="out-in" name="fade">
 			<Navbar v-if="$route.meta.navbarHidden" />
@@ -31,7 +31,7 @@
 				v-if="showTaskFormModalWindow"
 				close-on-bg-click
 				modal-class="w-11/12 h-full"
-				@close="$store.dispatch('closeTaskModal')"
+				@close="$store.commit('closeTaskModal')"
 			>
 				<template #modal-body>
 					<TaskForm
@@ -41,7 +41,7 @@
 						"
 						:modal-task-id="$store.getters.getCurrentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
-						@close="$store.dispatch('closeTaskModal')"
+						@close="$store.commit('closeTaskModal')"
 					/>
 				</template>
 			</Modal>
@@ -109,9 +109,6 @@
 			},
 		},
 		methods: {
-			closeTaskModal() {
-				this.$store.dispatch('closeTaskModal');
-			},
 			beforeLeave(element) {
 				this.prevHeight = getComputedStyle(element).height;
 			},
@@ -128,7 +125,7 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
-				if (!this.$store.getters.user) return;
+				if (!this.$store.state.user) return;
 
 				this.activeTasks = await getLaunchedTasks();
 			},
@@ -193,19 +190,19 @@
 				next();
 			});
 
-			if (!this.$store.getters.user) {
+			if (!this.$store.state.user) {
 				return;
 			}
-			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
 				if (!userId) {
-					return this.$store.commit('pusherBeamsUserId', userId);
+					return this.$store.commit('setPusherBeamsUserId', userId);
 				}
-				userId = this.$store.getters.user.id.toString();
-				this.$store.getters.pusherBeamsClient.start().then(() => {
-					this.$store.getters.pusherBeamsClient
-						.setUserId(userId, this.$store.getters.pusherTokenProvider)
+				userId = this.$store.state.user.id.toString();
+				this.$store.getters.getPusherBeamsClient.start().then(() => {
+					this.$store.getters.getPusherBeamsClient
+						.setUserId(userId, this.$store.getters.getPusherTokenProvider)
 						.then(() => {
-							this.$store.commit('pusherBeamsUserId', userId);
+							this.$store.commit('setPusherBeamsUserId', userId);
 						});
 				});
 			});
