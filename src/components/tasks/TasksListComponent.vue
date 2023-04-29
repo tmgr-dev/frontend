@@ -69,7 +69,7 @@
 								:show-category-badges="showCategoryBadges"
 								:task="task"
 								:task-time="getTaskFormattedTime(task)"
-								@openTask="$store.commit('currentTaskIdForModal', task.id)"
+								@openTask="$store.commit('setCurrentTaskIdForModal', task.id)"
 							/>
 						</div>
 

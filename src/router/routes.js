@@ -87,7 +87,7 @@ const routes = [
 		name: 'ProjectCategoryCreate',
 	},
 	{
-		path: '/projects-categories/:id/edit',
+		path: '/projects-categories/:id',
 		meta: {
 			transitionName: 'slide',
 			navbarHidden: true,
@@ -142,7 +142,7 @@ const routes = [
 		name: 'TasksCreate',
 	},
 	{
-		path: '/:id/edit',
+		path: '/:id',
 		meta: {
 			transitionName: 'slide',
 			navbarHidden: true,

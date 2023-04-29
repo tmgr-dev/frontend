@@ -5,8 +5,8 @@
 		<div class="flex justify-between gap-3">
 			<a
 				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-				:href="`/${task.id}/edit`"
-				@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
+				:href="`/${task.id}`"
+				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
 			>
 				{{ task.title }}
 			</a>
