@@ -232,12 +232,12 @@
 						type="button"
 						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block"
 					>
-						<router-link
+						<a
 							class="material-icons text-2xl text-black dark:text-white"
-							:to="`/${taskId}/edit`"
+							:href="`/${taskId}`"
 						>
 							open_in_new
-						</router-link>
+						</a>
 					</button>
 
 					<button
@@ -593,7 +593,7 @@
 		methods: {
 			handleHistoryState() {
 				if (this.isModal && !this.isCreatingTask) {
-					history.pushState({}, '', `/${this.taskId}/edit`);
+					history.pushState({}, '', `/${this.taskId}`);
 				}
 			},
 			close() {
@@ -794,7 +794,7 @@
 				try {
 					this.form = await getTask(this.taskId);
 
-					this.$store.commit('currentOpenedTaskId', this.form.id);
+					this.$store.commit('setCurrentOpenedTaskId', this.form.id);
 				} catch (e) {
 					if (e.response?.status === 404) {
 						// @todo show error alert

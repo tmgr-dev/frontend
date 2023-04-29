@@ -14,7 +14,7 @@
 			<div class="right-0 bottom-0 mr-5 mb-2 md:absolute">
 				<router-link
 					v-if="category"
-					:to="`/projects-categories/${category.id}/edit`"
+					:to="`/projects-categories/${category.id}`"
 					class="pr-5 opacity-25 hover:opacity-100"
 					title="Edit category name"
 				>

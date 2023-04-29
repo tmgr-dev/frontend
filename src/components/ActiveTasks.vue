@@ -4,8 +4,8 @@
 			<transition mode="out-in" name="fade">
 				<a
 					v-if="task.id !== currentOpenedTaskId"
-					:href="`/${task.id}/edit`"
-					@click.prevent="store.commit('currentTaskIdForModal', task.id)"
+					:href="`/${task.id}`"
+					@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"
 				>
 					<span
 						class="relative mr-5 inline-flex rounded-md bg-gray-200 p-2 shadow-sm transition-colors duration-300 dark:bg-gray-800"
@@ -41,5 +41,7 @@
 	}
 
 	const props = defineProps<Props>();
-	const currentOpenedTaskId = computed(() => store.getters.currentOpenedTaskId);
+	const currentOpenedTaskId = computed(
+		() => store.getters.getCurrentOpenedTaskId,
+	);
 </script>

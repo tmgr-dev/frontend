@@ -39,7 +39,7 @@
 						:modal-project-category-id="
 							$store.getters.createTaskInProjectCategoryId
 						"
-						:modal-task-id="$store.getters.currentTaskIdForModal"
+						:modal-task-id="$store.getters.getCurrentTaskIdForModal"
 						:status-id="$store.getters.createTaskInStatusId"
 						@close="$store.dispatch('closeTaskModal')"
 					/>
@@ -88,16 +88,16 @@
 			},
 			switchOn: {
 				get() {
-					return this.$store.getters.colorScheme === 'dark';
+					return this.$store.getters.getColorScheme === 'dark';
 				},
 				set(newValue) {
-					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
+					this.$store.commit('setColorScheme', newValue ? 'dark' : 'default');
 				},
 			},
 			showTaskFormModalWindow() {
 				return (
 					this.$route.name !== 'TasksEdit' &&
-					(this.$store.getters.currentTaskIdForModal ||
+					(this.$store.getters.getCurrentTaskIdForModal ||
 						this.$store.getters.showCreateTaskModal)
 				);
 			},
@@ -178,7 +178,7 @@
 			}
 
 			this.$router.beforeEach((to, from, next) => {
-				this.$store.commit('currentOpenedTaskId', null);
+				this.$store.commit('setCurrentOpenedTaskId', null);
 				this.loadActiveTasks();
 				let transitionName = to.meta.transitionName || from.meta.transitionName;
 

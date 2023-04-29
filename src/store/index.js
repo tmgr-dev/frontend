@@ -37,18 +37,18 @@ const getters = {
 	statuses: (state) => state.statuses,
 	appRerender: (state) => state.appRerender,
 	reloadTasks: (state) => state.reloadTasks,
-	currentTaskIdForModal: (state) => state.currentTaskIdForModal,
+	getCurrentTaskIdForModal: (state) => state.currentTaskIdForModal,
 	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
 	createTaskInStatusId: (state) => state.createTaskInStatusId,
 	showCreateTaskModal: (state) => state.showCreateTaskModal,
 	pusherBeamsUserId: (state) => state.pusherBeamsUserId,
 	pusherBeamsClient: (state) => state.pusherBeamsClient,
 	pusherTokenProvider: (state) => state.pusherTokenProvider,
-	currentOpenedTaskId: (state) => state.currentOpenedTaskId,
+	getCurrentOpenedTaskId: (state) => state.currentOpenedTaskId,
 	pusher: (state) => state.pusher,
 	user: (state) => state.user,
 	isLoggedIn: (state) => state.token !== null,
-	colorScheme: (state) => state.colorScheme,
+	getColorScheme: (state) => state.colorScheme,
 	getUserSettings: (state) => state.userSettings,
 };
 
@@ -77,7 +77,7 @@ const mutations = {
 
 		state.user = user;
 	},
-	currentTaskIdForModal(state, taskId) {
+	setCurrentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
 	},
 	showCreateTaskModal(state, { showCreateTaskModal, statusId }) {
@@ -93,10 +93,10 @@ const mutations = {
 	pusherBeamsUserId(state, pusherBeamsUserId) {
 		state.pusherBeamsUserId = pusherBeamsUserId;
 	},
-	currentOpenedTaskId(state, currentOpenedTaskId) {
+	setCurrentOpenedTaskId(state, currentOpenedTaskId) {
 		state.currentOpenedTaskId = currentOpenedTaskId;
 	},
-	colorScheme(state, colorScheme) {
+	setColorScheme(state, colorScheme) {
 		if (colorScheme) {
 			state.userSettings.colorScheme = colorScheme;
 		}
