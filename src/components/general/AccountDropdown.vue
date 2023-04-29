@@ -7,12 +7,12 @@
 			<div class="flex items-center overflow-hidden">
 				<span
 					class="w-24 overflow-hidden text-ellipsis whitespace-nowrap"
-					v-if="store.getters.user?.name?.length > 15"
+					v-if="store.state.user?.name?.length > 15"
 				>
-					{{ store.getters.user?.name?.slice(0, 15) }}
+					{{ store.state.user?.name?.slice(0, 15) }}
 				</span>
 
-				<span v-else>{{ store.getters.user?.name }}</span>
+				<span v-else>{{ store.state.user?.name }}</span>
 			</div>
 
 			<span class="material-icons text-xl">person</span>
@@ -142,14 +142,14 @@
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
 
-		store.commit('appRerender');
+		store.commit('rerenderApp');
 	}
 
 	async function logout() {
 		try {
-			if (store.getters.pusherBeamsUserId) {
-				await store.getters.pusherBeamsClient.stop();
-				store.commit('pusherBeamsUserId', null);
+			if (store.getters.getPusherBeamsUserId) {
+				await store.getters.getPusherBeamsClient.stop();
+				store.commit('setPusherBeamsUserId', null);
 			}
 			await logoutAction();
 			await store.dispatch('logout');

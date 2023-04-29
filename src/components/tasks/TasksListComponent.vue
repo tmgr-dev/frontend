@@ -190,7 +190,7 @@
 		}),
 		methods: {
 			closeTaskModal() {
-				this.$store.dispatch('closeTaskModal');
+				this.$store.commit('closeTaskModal');
 			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true;

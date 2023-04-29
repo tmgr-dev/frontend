@@ -1,5 +1,6 @@
 import { route } from 'quasar/wrappers';
 import { createRouter, createWebHistory } from 'vue-router';
+import store from '../store';
 import routes from './routes';
 
 /*
@@ -10,8 +11,6 @@ import routes from './routes';
  * async/await or return a Promise which resolves
  * with the Router instance.
  */
-import store from '../store';
-
 const router = route(function (/* { store, ssrContext } */) {
 	const createHistory = createWebHistory;
 

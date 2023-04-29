@@ -189,10 +189,7 @@
 				this.chosenUser = newChosenUser;
 			},
 			openTaskModal(column) {
-				this.$store.commit('showCreateTaskModal', {
-					showCreateTaskModal: true,
-					statusId: column.status.id,
-				});
+				this.$store.commit('showCreateTaskModal', column.status.id);
 			},
 			jsonEncode(data) {
 				return JSON.stringify(data);

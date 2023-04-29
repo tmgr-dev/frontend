@@ -233,7 +233,7 @@
 		}),
 		computed: {
 			workspaceStatuses() {
-				let statuses = this.$store.getters.statuses;
+				let statuses = this.$store.getters.getStatuses;
 
 				return [
 					{

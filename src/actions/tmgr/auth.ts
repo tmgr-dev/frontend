@@ -11,7 +11,7 @@ export const login = async (payload: Login) => {
 		data: { data: token },
 	} = await $axios.post('auth/login', payload);
 
-	store.commit('token', token);
+	store.commit('setToken', token);
 	$axios.defaults.headers.common.Authorization = `Bearer ${token.token}`;
 };
 
@@ -27,7 +27,7 @@ export const register = async (payload: Register) => {
 		data: { data: token },
 	} = await $axios.post('auth/register', payload);
 
-	store.commit('token', token);
+	store.commit('setToken', token);
 	$axios.defaults.headers.common.Authorization = `Bearer ${token.token}`;
 };
 

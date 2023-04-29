@@ -524,7 +524,7 @@
 			this.handleHistoryState();
 		},
 		unmounted() {
-			this.$store.dispatch('closeTaskModal');
+			this.$store.commit('closeTaskModal');
 			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
@@ -544,7 +544,7 @@
 				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
 			},
 			workspaceStatuses() {
-				return this.$store.getters.statuses;
+				return this.$store.getters.getStatuses;
 			},
 			isCreatingTask() {
 				return !this.taskId;
@@ -598,7 +598,7 @@
 			},
 			close() {
 				this.$emit('close');
-				this.$store.dispatch('reloadTasks');
+				this.$store.commit('incrementReloadTasksKey');
 			},
 			handleEscKeyDown(event) {
 				if (event.key === 'Escape') {
@@ -868,7 +868,7 @@
 					this.prepareForm();
 					const data = await createTaskAction(this.form);
 					this.$emit('updated');
-					await this.$store.dispatch('reloadTasks');
+					await this.$store.commit('incrementReloadTasksKey');
 
 					if (!this.isCreatingTask) {
 						this.showAlert();
@@ -907,7 +907,7 @@
 					this.prepareForm();
 					const data = await updateTask(this.taskId, this.form);
 					this.$emit('updated');
-					await this.$store.dispatch('reloadTasks');
+					await this.$store.commit('incrementReloadTasksKey');
 
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time);
@@ -1007,8 +1007,8 @@
 				}
 				await this.loadCategory();
 				await this.loadTaskSettings();
-				this.$store.getters.pusher
-					.private(`App.User.${this.$store.getters.user.id}`)
+				this.$store.getters.getPusher
+					.private(`App.User.${this.$store.state.user.id}`)
 					.on('task-countdown-stopped', ({ task }) => {
 						const isCountdownStarted = !!this.form.start_time;
 						if (!isCountdownStarted) {

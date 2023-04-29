@@ -34,7 +34,6 @@
 
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
-	import { useStore } from 'vuex';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -57,7 +56,6 @@
 		'handleUpdateDraggable',
 		'handleSearchTextChanged',
 	]);
-	const store = useStore();
 	const selectedUser = ref(0);
 	const tasks = ref([]);
 	const searchText = ref(null);

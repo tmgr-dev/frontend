@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 	import { Category } from 'src/actions/tmgr/categories';
-	import { useStore } from 'vuex';
+	import store from 'src/store';
 	import { PlusCircleIcon } from '@heroicons/vue/24/outline';
 
 	interface Props {
@@ -37,5 +37,4 @@
 	}
 
 	const props = defineProps<Props>();
-	const store = useStore();
 </script>
