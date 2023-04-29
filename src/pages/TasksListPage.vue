@@ -59,7 +59,7 @@
 					<a
 						href="#"
 						title="Add Task"
-						@click="$store.commit('showCreateTaskModal')"
+						@click="$store.commit('setShowCreatingTaskModal')"
 					>
 						<span
 							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
@@ -102,7 +102,7 @@
 	import TasksListMixin from 'src/mixins/TasksListMixin';
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
 	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from 'src/components/tasks/TasksListComponent.vue';
+	import TasksListComponent from 'src/components/tasks/TasksList.vue';
 	import Confetti from 'src/components/Confetti.vue';
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';

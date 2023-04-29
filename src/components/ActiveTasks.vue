@@ -3,7 +3,6 @@
 		<div v-for="task in tasks" class="mb-5 inline-block">
 			<transition mode="out-in" name="fade">
 				<a
-					v-if="task.id !== currentOpenedTaskId"
 					:href="`/${task.id}`"
 					@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"
 				>
@@ -34,14 +33,10 @@
 <script setup lang="ts">
 	import { Task } from 'src/actions/tmgr/tasks';
 	import store from 'src/store';
-	import { computed } from 'vue';
 
 	interface Props {
 		tasks: Task[];
 	}
 
-	const props = defineProps<Props>();
-	const currentOpenedTaskId = computed(
-		() => store.getters.getCurrentOpenedTaskId,
-	);
+	defineProps<Props>();
 </script>

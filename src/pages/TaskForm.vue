@@ -390,7 +390,6 @@
 </template>
 
 <script>
-	import moment from 'moment';
 	import TaskActions from 'src/components/tasks/TaskActions.vue';
 	import Countdown from 'src/components/general/Countdown.vue';
 	import Confirm from 'src/components/general/Confirm.vue';
@@ -418,6 +417,7 @@
 	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
 	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
 	import Modal from 'src/components/Modal.vue';
+	import { mapState } from 'vuex';
 
 	export default {
 		name: 'TaskForm',
@@ -528,9 +528,7 @@
 			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
-			userSettings() {
-				return this.$store.getters.getUserSettings ?? {};
-			},
+			...mapState(['workspaceStatuses']),
 			taskId() {
 				return this.projectCategoryId
 					? null
@@ -542,9 +540,6 @@
 					(this.form.approximately_time - this.form.common_time);
 
 				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
-			},
-			workspaceStatuses() {
-				return this.$store.getters.getStatuses;
 			},
 			isCreatingTask() {
 				return !this.taskId;
@@ -793,8 +788,6 @@
 			async loadModel() {
 				try {
 					this.form = await getTask(this.taskId);
-
-					this.$store.commit('setCurrentOpenedTaskId', this.form.id);
 				} catch (e) {
 					if (e.response?.status === 404) {
 						// @todo show error alert
@@ -868,7 +861,7 @@
 					this.prepareForm();
 					const data = await createTaskAction(this.form);
 					this.$emit('updated');
-					await this.$store.commit('incrementReloadTasksKey');
+					this.$store.commit('incrementReloadTasksKey');
 
 					if (!this.isCreatingTask) {
 						this.showAlert();
@@ -907,7 +900,7 @@
 					this.prepareForm();
 					const data = await updateTask(this.taskId, this.form);
 					this.$emit('updated');
-					await this.$store.commit('incrementReloadTasksKey');
+					this.$store.commit('incrementReloadTasksKey');
 
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time);

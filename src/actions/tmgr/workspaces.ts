@@ -27,7 +27,7 @@ export const getWorkspaceStatuses = async () => {
 		data: { data },
 	} = await $axios.get('workspaces/statuses');
 
-	store.commit('setStatuses', data);
+	store.commit('setWorkspaceStatuses', data);
 
 	return data;
 };

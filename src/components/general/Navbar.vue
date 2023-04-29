@@ -21,10 +21,7 @@
 			<div
 				class="ml-auto mr-4 flex items-center justify-between text-black dark:text-white"
 			>
-				<day-night-switch
-					:key="store.getters.getColorScheme"
-					v-model="switchOn"
-				/>
+				<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 			</div>
 
 			<account-dropdown />
@@ -45,10 +42,7 @@
 				<div
 					class="mt-auto mb-4 flex items-center justify-between text-black dark:text-white"
 				>
-					<day-night-switch
-						:key="store.getters.getColorScheme"
-						v-model="switchOn"
-					/>
+					<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 				</div>
 			</div>
 		</nav>
@@ -66,7 +60,7 @@
 
 	const switchOn = computed({
 		get() {
-			return store.getters.getColorScheme === 'dark';
+			return store.state.colorScheme === 'dark';
 		},
 		set(value) {
 			store.commit('setColorScheme', value ? 'dark' : 'default');
