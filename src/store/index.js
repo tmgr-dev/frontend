@@ -15,7 +15,8 @@ const state = {
 	createTaskInProjectCategoryId: null,
 	taskStatusId: null,
 	showCreatingTaskModal: false,
-	reloadTasksKey: 0,
+	reloadActiveTasksKey: 0, // for the App component
+	reloadTasksKey: 0, // for the board
 	appRerenderKey: 0,
 	workspaceStatuses: [],
 	userSettings: {
@@ -54,6 +55,9 @@ const mutations = {
 	},
 	incrementReloadTasksKey(state) {
 		state.reloadTasksKey++;
+	},
+	incrementReloadActiveTasksKey(state) {
+		state.reloadActiveTasksKey++;
 	},
 	setCurrentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
