@@ -147,7 +147,7 @@
 		}),
 		computed: {
 			userSettings() {
-				return this.$store.getters.getUserSettings || {};
+				return this.$store.state.userSettings || {};
 			},
 			pusherBeamsUserId() {
 				return this.$store.getters.getPusherBeamsUserId;

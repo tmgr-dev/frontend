@@ -193,7 +193,7 @@
 	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
 	import getBreadcrumbs from '../utils/getBreadcrumbs';
 	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from 'src/components/tasks/TasksListComponent.vue';
+	import TasksListComponent from 'src/components/tasks/TasksList.vue';
 	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
 	import {
 		restoreCategory,
@@ -233,7 +233,7 @@
 		}),
 		computed: {
 			workspaceStatuses() {
-				let statuses = this.$store.getters.getStatuses;
+				let statuses = this.$store.state.workspaceStatuses;
 
 				return [
 					{

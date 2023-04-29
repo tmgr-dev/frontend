@@ -56,15 +56,11 @@
 												</div>
 
 												<Dropdown class="ml-auto pr-2">
-													<MenuItem v-slot="{ active }">
+													<MenuItem>
 														<a
 															href="#"
-															:class="[
-																active
-																	? 'bg-gray-100 text-gray-900'
-																	: 'text-gray-700',
-																'block px-4 py-2 text-sm',
-															]"
+															class="block px-4 py-2 text-sm text-neutral-600"
+															@click.prevent="openTaskModal(column)"
 														>
 															create a task
 														</a>
@@ -174,7 +170,7 @@
 			activeDraggable: false,
 		}),
 		watch: {
-			'$store.getters.reloadTasks'() {
+			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
 			},
 			chosenUser: function () {
@@ -189,7 +185,7 @@
 				this.chosenUser = newChosenUser;
 			},
 			openTaskModal(column) {
-				this.$store.commit('showCreateTaskModal', column.status.id);
+				this.$store.commit('setShowCreatingTaskModal', column.status.id);
 			},
 			jsonEncode(data) {
 				return JSON.stringify(data);

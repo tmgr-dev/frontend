@@ -1,5 +1,5 @@
 const TaskForm = () => import('src/pages/TaskForm.vue');
-const TasksList = () => import('src/pages/TasksList.vue');
+const TasksListPage = () => import('pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('src/pages/ProjectCategoryList.vue');
 const ProjectCategoryForm = () => import('src/pages/ProjectCategoryForm.vue');
 
@@ -46,12 +46,12 @@ const routes = [
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
-		component: TasksList,
+		component: TasksListPage,
 		name: 'CurrentTasksList',
 	},
 	{
 		path: '/archive',
-		component: TasksList,
+		component: TasksListPage,
 		meta: {
 			status: 'done',
 			transitionName: 'slide',

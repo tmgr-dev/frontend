@@ -7,33 +7,24 @@ const token = localStorage.getItem('token')
 
 const state = {
 	token: token,
-	currentOpenedTaskId: null,
 	user: localStorage.getItem('user')
 		? JSON.parse(localStorage.getItem('user') || '')
 		: null,
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
-	createTaskInStatusId: null,
-	showCreateTaskModal: false,
-	reloadTasksKey: null,
+	taskStatusId: null,
+	showCreatingTaskModal: false,
+	reloadTasksKey: 0,
 	appRerenderKey: 0,
-	statuses: [],
+	workspaceStatuses: [],
 	userSettings: {
 		showTooltips: true,
 	},
 };
 
 const getters = {
-	getStatuses: (state) => state.statuses,
-	getCurrentTaskIdForModal: (state) => state.currentTaskIdForModal,
-	createTaskInProjectCategoryId: (state) => state.createTaskInProjectCategoryId,
-	createTaskInStatusId: (state) => state.createTaskInStatusId,
-	showCreateTaskModal: (state) => state.showCreateTaskModal,
-	getCurrentOpenedTaskId: (state) => state.currentOpenedTaskId,
 	isLoggedIn: (state) => state.token !== null,
-	getColorScheme: (state) => state.colorScheme,
-	getUserSettings: (state) => state.userSettings,
 };
 
 const mutations = {
@@ -46,8 +37,8 @@ const mutations = {
 
 		state.token = token;
 	},
-	setStatuses(state, data) {
-		state.statuses = data;
+	setWorkspaceStatuses(state, data) {
+		state.workspaceStatuses = data;
 	},
 	rerenderApp(state) {
 		state.appRerenderKey++;
@@ -61,28 +52,21 @@ const mutations = {
 
 		state.user = user;
 	},
-	incrementReloadTasksKey({ state }) {
-		if (!state.reloadTasksKey) {
-			state.reloadTasksKey = 1;
-		}
-
-		++state.reloadTasksKey;
+	incrementReloadTasksKey(state) {
+		state.reloadTasksKey++;
 	},
 	setCurrentTaskIdForModal(state, taskId) {
 		state.currentTaskIdForModal = taskId;
 	},
-	showCreateTaskModal(state, statusId) {
-		state.showCreateTaskModal = true;
-		state.createTaskInStatusId = statusId;
+	setShowCreatingTaskModal(state, statusId) {
+		state.showCreatingTaskModal = true;
+		state.taskStatusId = statusId;
 	},
 	createTaskInProjectCategoryId(state, { projectCategoryId, statusId }) {
-		state.createTaskInStatusId = statusId;
+		state.taskStatusId = statusId;
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = projectCategoryId;
-		state.showCreateTaskModal = true;
-	},
-	setCurrentOpenedTaskId(state, currentOpenedTaskId) {
-		state.currentOpenedTaskId = currentOpenedTaskId;
+		state.showCreatingTaskModal = true;
 	},
 	setColorScheme(state, colorScheme) {
 		if (colorScheme) {
@@ -96,7 +80,7 @@ const mutations = {
 	closeTaskModal(state) {
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = null;
-		state.showCreateTaskModal = false;
+		state.showCreatingTaskModal = false;
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
