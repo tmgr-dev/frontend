@@ -107,6 +107,9 @@
 				this.showComponent = false;
 				setTimeout(() => (this.showComponent = true), 100);
 			},
+			'$store.state.reloadActiveTasksKey'() {
+				this.loadActiveTasks();
+			},
 		},
 		methods: {
 			beforeLeave(element) {
