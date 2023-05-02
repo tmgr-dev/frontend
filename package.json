@@ -21,6 +21,7 @@
 		"@electron/remote": "^2.0.9",
 		"@pusher/push-notifications-web": "^1.1.0",
 		"@quasar/extras": "^1.15.9",
+		"@radial-color-picker/vue-color-picker": "^5.0.1",
 		"@vueup/vue-quill": "^1.0.1",
 		"axios": "^1.2.2",
 		"canvas-confetti": "^1.6.0",

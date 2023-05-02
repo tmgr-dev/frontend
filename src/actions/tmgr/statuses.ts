@@ -36,5 +36,5 @@ export const deleteStatus = async (statusId: number) => {
 		data: { data },
 	} = await $axios.delete(`/statuses/${statusId}`);
 
-	return data.deleted_at;
+	return;
 };
