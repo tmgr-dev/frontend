@@ -126,40 +126,126 @@
 						</div>
 						<div class="w-12 h-12 flex justify-center items-center">
 							<span
-								@click="isShowCreateStatusModal = true"
+								@click="
+									() => {
+										isShowStatusModal = true;
+										isCreatingStatus = true;
+									}
+								"
 								class="material-icons text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
 								>add</span
 							>
 						</div>
 						<Transition name="bounce-right-fade">
 							<Modal
-								v-if="isShowCreateStatusModal"
+								v-if="isShowStatusModal"
 								modal-class="p-6 w-96"
 								close-on-bg-click
-								@close="isShowCreateStatusModal = false"
+								@close="closeModal"
 							>
 								<template #modal-body>
-									<div>
-										<h1>Create status</h1>
-										<label class="flex flex-col gap-2">
-											Status name :
-											<TextField placeholder="Name" v-model="statusName" />
-										</label>
-										<label class="flex flex-col gap-2">
-											Status type :
-											<TextField placeholder="Type" v-model="statusType" />
-										</label>
-										<label class="flex flex-col gap-2">
-											Status color :
-											<TextField placeholder="Color" v-model="statusColor" />
-										</label>
-										<button
-											@click="createNewStatus()"
-											class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-											type="button"
-										>
-											Create
-										</button>
+									<div v-if="isCreatingStatus">
+										<div v-if="!isShowColorPicker">
+											<h1>Create status</h1>
+											<button @click="Dlt">Dlt</button>
+											<label class="flex flex-col gap-2">
+												Status name :
+												<TextField placeholder="Name" v-model="statusName" />
+											</label>
+											<label class="flex flex-col gap-2">
+												Status type :
+												<Select
+													placeholder="Select Type"
+													:options="statusTypes"
+													v-model="statusType"
+													label-key="name"
+													value-key="name"
+												/>
+											</label>
+											<label class="flex flex-col gap-2 mb-3">
+												Status color :
+												<button
+													type="button"
+													:style="{ backgroundColor: statusColor }"
+													class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+													:class="'bg-' + '[' + statusColor + ']'"
+													@click="isShowColorPicker = true"
+												>
+													{{ statusColor }}
+												</button>
+											</label>
+
+											<button
+												@click="createNewStatus()"
+												class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+												type="button"
+											>
+												Create
+											</button>
+										</div>
+
+										<div class="p-8" v-if="isShowColorPicker">
+											<color-picker
+												:hue="color.hue"
+												@input="onInput"
+												@select="onColorSelect"
+											></color-picker>
+										</div>
+									</div>
+									<div v-else>
+										<div v-if="!isShowColorPicker">
+											<h1>Edit status</h1>
+
+											<label class="flex flex-col gap-2">
+												Status name :
+												<TextField placeholder="Name" v-model="statusName" />
+											</label>
+											<label class="flex flex-col gap-2">
+												Status type :
+												<Select
+													placeholder="Select Type"
+													:options="statusTypes"
+													v-model="statusType"
+													label-key="name"
+													value-key="name"
+												/>
+											</label>
+											<label class="flex flex-col gap-2 mb-3">
+												Status color :
+												<button
+													type="button"
+													:style="{ backgroundColor: statusColor }"
+													class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+													:class="'bg-' + '[' + statusColor + ']'"
+													@click="isShowColorPicker = true"
+												>
+													{{ statusColor }}
+												</button>
+											</label>
+
+											<button
+												@click="editStatus()"
+												class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+												type="button"
+											>
+												Save
+											</button>
+											<button
+												@click="deleteStatus"
+												class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+												type="button"
+											>
+												Delete
+											</button>
+										</div>
+
+										<div class="p-8" v-if="isShowColorPicker">
+											<color-picker
+												:hue="color.hue"
+												@input="onInput"
+												@select="onColorSelect"
+											></color-picker>
+										</div>
 									</div>
 								</template>
 							</Modal>
@@ -167,6 +253,15 @@
 					</div>
 				</div>
 			</div>
+			<Transition name="fade">
+				<confirm
+					v-if="confirm"
+					:title="confirm.title"
+					:body="confirm.body"
+					@onOk="confirm.action()"
+					@onCancel="confirm = undefined"
+				/>
+			</Transition>
 		</template>
 	</BaseLayout>
 </template>
@@ -196,7 +291,11 @@
 		createStatus,
 		deleteStatus,
 		getStatuses,
+		updateStatus,
 	} from 'src/actions/tmgr/statuses';
+	import ColorPicker from '@radial-color-picker/vue-color-picker';
+	import Select from 'src/components/general/Select.vue';
+	import Confirm from 'src/components/general/Confirm.vue';
 
 	export default {
 		name: 'Board',
@@ -209,6 +308,9 @@
 			Button,
 			TaskCard,
 			draggable,
+			ColorPicker,
+			Select,
+			Confirm,
 		},
 
 		data: () => ({
@@ -227,10 +329,12 @@
 			archivedStatus: null,
 			searchText: '',
 			filteredTasksArray: [],
-			isShowCreateStatusModal: false,
+			isShowStatusModal: false,
+			isCreatingStatus: false,
 			statusName: '',
 			statusType: '',
-			statusColor: '',
+			statusColor: '#077fe8',
+			statusId: '',
 			oldColumns: [
 				{
 					title: 'Backlog',
@@ -250,6 +354,20 @@
 			],
 			columns: [],
 			activeDraggable: false,
+			color: {
+				hue: 235,
+				saturation: 100,
+				luminosity: 50,
+				alpha: 1,
+			},
+			isShowColorPicker: false,
+			statusTypes: [
+				{ id: 1, name: 'active' },
+				{ id: 2, name: 'hidden' },
+				{ id: 3, name: 'archived' },
+				{ id: 4, name: 'completed' },
+			],
+			confirm: null,
 		}),
 		watch: {
 			'$store.getters.reloadTasks'() {
@@ -263,8 +381,78 @@
 			},
 		},
 		methods: {
+			onColorSelect() {
+				const hexColor = this.hslToHex(
+					this.color.hue,
+					this.color.saturation,
+					this.color.luminosity,
+				);
+				this.statusColor = hexColor;
+				setTimeout(() => {
+					this.isShowColorPicker = false;
+				}, 1000);
+			},
+			hslToHex(h, s, l) {
+				l /= 100;
+				const a = (s * Math.min(l, 1 - l)) / 100;
+				const f = (n) => {
+					const k = (n + h / 30) % 12;
+					const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+					return Math.round(255 * color)
+						.toString(16)
+						.padStart(2, '0');
+				};
+				return `#${f(0)}${f(8)}${f(4)}`;
+			},
+			hueFromHex(H) {
+				// Convert hex to RGB first
+				let r = 0,
+					g = 0,
+					b = 0;
+				if (H.length === 4) {
+					r = '0x' + H[1] + H[1];
+					g = '0x' + H[2] + H[2];
+					b = '0x' + H[3] + H[3];
+				} else if (H.length === 7) {
+					r = '0x' + H[1] + H[2];
+					g = '0x' + H[3] + H[4];
+					b = '0x' + H[5] + H[6];
+				}
+				// Then to HSL
+				r /= 255;
+				g /= 255;
+				b /= 255;
+				let cmin = Math.min(r, g, b),
+					cmax = Math.max(r, g, b),
+					delta = cmax - cmin,
+					h = 0;
+
+				if (delta === 0) h = 0;
+				else if (cmax === r) h = ((g - b) / delta) % 6;
+				else if (cmax === g) h = (b - r) / delta + 2;
+				else h = (r - g) / delta + 4;
+
+				h = Math.round(h * 60);
+
+				if (h < 0) h += 360;
+
+				return h;
+			},
+			onInput(hue) {
+				this.color.hue = hue;
+			},
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
+			},
+			closeModal() {
+				this.clearStatus();
+				this.isShowStatusModal = false;
+				this.isShowColorPicker = false;
+			},
+			clearStatus() {
+				this.statusName = '';
+				this.statusType = '';
+				this.statusColor = '#077fe8';
 			},
 			async createNewStatus() {
 				const newStatus = {
@@ -272,11 +460,66 @@
 					type: this.statusType,
 					color: this.statusColor,
 				};
-				await createStatus(this.workspaceId, newStatus);
+
+				if (this.statusName === '' && this.statusType === '') {
+					alert(`'Name' and 'Type' fields are empty`);
+					return;
+				}
+				if (this.statusName === '') {
+					alert('Write the name of status');
+					return;
+				}
+				if (this.statusType === '') {
+					alert('Choose the type of status');
+					return;
+				} else {
+					await createStatus(this.workspaceId, newStatus);
+					this.showAlert('Save', 'The status was created');
+					this.closeModal();
+					this.$store.commit('appRerender');
+				}
 			},
-			async Dlt() {
-				await deleteStatus(301);
+			async editStatus() {
+				const newStatusData = {
+					name: this.statusName,
+					type: this.statusType,
+					color: this.statusColor,
+				};
+				if (this.statusName === '' && this.statusType === '') {
+					alert(`'Name' and 'Type' fields are empty`);
+					return;
+				}
+				if (this.statusName === '') {
+					alert('Write the name of status');
+					return;
+				}
+				if (this.statusType === '') {
+					alert('Choose the type of status');
+					return;
+				} else {
+					await updateStatus(this.statusId, newStatusData);
+					this.showAlert('Saved', 'The status was edited');
+					this.closeModal();
+					this.$store.commit('appRerender');
+				}
 			},
+			showConfirm(title, body, action) {
+				this.confirm = { title, body, action };
+			},
+			async deleteStatus() {
+				const deleteStatusConfirmation = async () => {
+					await deleteStatus(this.statusId);
+					this.closeModal();
+					this.showAlert('Saved', 'The status was deleted');
+					this.$store.commit('appRerender');
+				};
+				this.showConfirm(
+					'Delete task',
+					'Are you sure?',
+					deleteStatusConfirmation,
+				);
+			},
+
 			getActions(column) {
 				return [
 					{
@@ -287,6 +530,17 @@
 							});
 						},
 						label: 'Create task',
+					},
+					{
+						click: () => {
+							this.isShowStatusModal = true;
+							this.statusType = column.status.type;
+							this.statusName = column.status.name;
+							this.statusColor = column.status.color;
+							this.statusId = column.status.id;
+							this.color.hue = this.hueFromHex(this.statusColor);
+						},
+						label: 'Edit status',
 					},
 				];
 			},
@@ -477,7 +731,7 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-			console.log('Statuses', await getStatuses());
+			this.color.hue = this.hueFromHex(this.statusColor);
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
@@ -486,6 +740,7 @@
 </script>
 
 <style lang="scss" scoped>
+	@import '@radial-color-picker/vue-color-picker/dist/vue-color-picker.min.css';
 	.settings-container {
 		max-width: 700px;
 		margin: 50px auto;
