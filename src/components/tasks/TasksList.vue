@@ -1,8 +1,8 @@
 <template>
 	<div class="relative w-full items-center justify-center">
-		<transition name="bounce">
+		<Transition name="bounce">
 			<div>
-				<tasks-multiple-actions-modal
+				<TasksMultipleActionsModal
 					v-if="isShowSelectedTasksCommonTime"
 					:is-loading-actions="loadingActionsForMultipleTasks"
 					:status="status"
@@ -15,9 +15,9 @@
 						<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
 						{{ timeForModal }}
 					</p>
-				</tasks-multiple-actions-modal>
+				</TasksMultipleActionsModal>
 			</div>
-		</transition>
+		</Transition>
 
 		<div
 			v-selectable="
@@ -40,10 +40,10 @@
 				}"
 				:data-task-id="task.id"
 				:draggable="draggable"
-				class="selectable relative mt-2 w-full px-2"
+				class="selectable relative mt-2 w-full rounded-lg px-2"
 				@dragstart="onDragStart($event, task)"
 			>
-				<bounce-loader
+				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
 					class="l-0 t-0 absolute z-10"
 				/>
@@ -55,26 +55,26 @@
 					class="rounded-lg shadow-md md:flex"
 				>
 					<div
-						class="relative flex w-full items-center bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
+						class="relative flex w-full items-center rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
-						<div class="flex flex-col gap-1 md:flex-row">
-							<task-meta
+						<div class="flex flex-col gap-1">
+							<CategoryBadge
+								v-if="showCategoryBadges"
+								class="shrink-0 self-start"
+								:category="task.category"
+							/>
+
+							<TaskMeta
 								class="max-w-xl xl:max-w-3xl 2xl:max-w-4xl"
 								:show-category-badges="showCategoryBadges"
 								:task="task"
 								:task-time="getTaskFormattedTime(task)"
-								@openTask="$store.commit('currentTaskIdForModal', task.id)"
-							/>
-
-							<category-badge
-								class="order-first shrink-0 self-start md:order-1 md:mx-2"
-								v-if="task.category && showCategoryBadges"
-								:category="task.category"
+								@openTask="$store.commit('setCurrentTaskIdForModal', task.id)"
 							/>
 						</div>
 
 						<div class="ml-auto">
-							<task-buttons-in-the-list
+							<TaskButtonsInTheList
 								:is-loading-actions="isLoadingActions"
 								:showed-buttons="getShowButtons(task)"
 								:task="task"
@@ -89,7 +89,7 @@
 		</div>
 	</div>
 
-	<confirm
+	<Confirm
 		v-if="confirm"
 		:body="confirm.body"
 		:title="confirm.title"
@@ -190,7 +190,7 @@
 		}),
 		methods: {
 			closeTaskModal() {
-				this.$store.dispatch('closeTaskModal');
+				this.$store.commit('closeTaskModal');
 			},
 			async stopCountdown(task, dotId) {
 				this.isLoadingActions[dotId] = true;
@@ -209,17 +209,6 @@
 			},
 			loadTasks() {
 				this.$emit('reload-tasks');
-			},
-			getActions(task) {
-				return [
-					{
-						click: () => {
-							this.$store.commit('currentTaskIdForModal', task.id);
-							// this.$router.push(`/${task.id}/edit`)
-						},
-						label: 'Edit',
-					},
-				];
 			},
 			getShowButtons(task) {
 				return {
@@ -280,10 +269,6 @@
 					}
 				};
 				this.showConfirm('Delete tasks', 'Are you sure?', deleteMultipleTasks);
-			},
-			capitalize(s) {
-				if (typeof s !== 'string') return '';
-				return s.charAt(0).toUpperCase() + s.slice(1);
 			},
 			selectedGetter() {
 				return this.selected;

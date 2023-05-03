@@ -49,7 +49,7 @@
 		assignees: Assignee[];
 		avatarsClass: string;
 		showAssigneeControls: boolean;
-		isModal: boolean;
+		isModal?: boolean;
 	}
 
 	const props = defineProps<Props>();

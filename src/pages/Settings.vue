@@ -147,10 +147,10 @@
 		}),
 		computed: {
 			userSettings() {
-				return this.$store.getters.getUserSettings || {};
+				return this.$store.state.userSettings || {};
 			},
 			pusherBeamsUserId() {
-				return this.$store.getters.pusherBeamsUserId;
+				return this.$store.getters.getPusherBeamsUserId;
 			},
 		},
 		async mounted() {
@@ -165,18 +165,19 @@
 				await sendNotification();
 			},
 			async togglePushes() {
-				if (this.$store.getters.pusherBeamsUserId) {
-					await this.$store.getters.pusherBeamsClient.stop();
-					return this.$store.commit('pusherBeamsUserId', null);
+				if (this.$store.getters.getPusherBeamsUserId) {
+					await this.$store.getters.getPusherBeamsClient.stop();
+					return this.$store.commit('setPusherBeamsUserId', null);
 				}
-				const userId = this.$store.getters.user.id.toString();
+				const userId = this.$store.state.user?.id.toString();
+
 				try {
-					await this.$store.getters.pusherBeamsClient.start();
-					await this.$store.getters.pusherBeamsClient.setUserId(
+					await this.$store.getters.getPusherBeamsClient.start();
+					await this.$store.getters.getPusherBeamsClient.setUserId(
 						userId,
-						this.$store.getters.pusherTokenProvider,
+						this.$store.getters.getPusherTokenProvider,
 					);
-					this.$store.commit('pusherBeamsUserId', userId);
+					this.$store.commit('setPusherBeamsUserId', userId);
 				} catch (e) {
 					this.showConfirm(
 						'Notifications registration',

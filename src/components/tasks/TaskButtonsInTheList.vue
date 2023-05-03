@@ -3,7 +3,7 @@
 		<new-button
 			v-tooltip.top="setTooltipData('Open')"
 			class="mr-2"
-			@click="$store.commit('currentTaskIdForModal', task.id)"
+			@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 		>
 			<span class="material-icons">open_in_new</span>
 		</new-button>
