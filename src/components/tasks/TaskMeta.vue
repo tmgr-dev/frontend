@@ -1,7 +1,7 @@
 <template>
 	<div>
 		<a
-			:href="`/${task.id}/edit`"
+			:href="`/${task.id}`"
 			class="relative z-10 text-sm font-medium lg:text-lg"
 			@click.prevent="$emit('openTask')"
 		>

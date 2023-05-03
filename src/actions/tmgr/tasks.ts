@@ -1,5 +1,6 @@
 import $axios from 'src/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
+import store from 'src/store';
 import objectToQueryString from 'src/utils/objectToQueryString';
 
 export interface Task {
@@ -69,6 +70,12 @@ export const deleteTask = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`/tasks/${taskId}`);
+
+	/*
+	 * reload active tasks because somebody may remove active task without stopping countdown,
+	 * and we will need to reload the page to get correct number of active tasks
+	 * */
+	store.commit('incrementReloadActiveTasksKey');
 
 	return data.deleted_at;
 };
@@ -152,6 +159,8 @@ export const startTaskTimeCounter = async (taskId: number) => {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/countdown`);
 
+	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
+
 	return data;
 };
 
@@ -159,6 +168,8 @@ export const stopTaskTimeCounter = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/countdown`);
+
+	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
 
 	return data;
 };

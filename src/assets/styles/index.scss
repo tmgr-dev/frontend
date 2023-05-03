@@ -127,6 +127,26 @@ button {
 	}
 }
 
+.transform-to-block-enter-active {
+	animation: transformToBlock .5s ease-in-out;
+}
+
+.transform-to-block-leave-active {
+	animation: transformToBlock .5s reverse ease-in-out;
+}
+
+@keyframes transformToBlock {
+	from {
+		max-height: 0;
+		opacity: 0;
+	}
+
+	100% {
+		opacity: 1;
+	}
+}
+
+
 .transform-opacity-right-enter-active {
 	animation: transformOpacityRight .5s;
 }

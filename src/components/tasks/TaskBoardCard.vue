@@ -5,13 +5,13 @@
 		<div class="flex justify-between gap-3">
 			<a
 				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-				:href="`/${task.id}/edit`"
-				@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
+				:href="`/${task.id}`"
+				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
 			>
 				{{ task.title }}
 			</a>
 
-			<assignee-users
+			<AssigneeUsers
 				:assignees="task.assignees"
 				:show-assignee-controls="false"
 				avatarsClass="h-6 w-6"
@@ -23,13 +23,11 @@
 				{{ secondsToHumanReadableString(task.common_time) }}
 			</span>
 
-			<div>
-				<category-badge
-					v-if="task.category"
-					:category="task.category"
-					:status-id="task.status_id"
-				/>
-			</div>
+			<CategoryBadge
+				class="flex-row-reverse"
+				:category="task.category"
+				:status-id="task.status_id"
+			/>
 		</div>
 	</div>
 </template>
@@ -67,7 +65,7 @@
 				return mappings[this.task.type] || mappings.default;
 			},
 			user() {
-				return this.$store.getters.user;
+				return this.$store.state.user;
 			},
 		},
 	};

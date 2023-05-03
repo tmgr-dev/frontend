@@ -6,7 +6,7 @@
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-15">
-						<filters-board
+						<FiltersBoard
 							v-if="workspaceUsers.length"
 							:workspaceUsers="workspaceUsers"
 							:chosen-user.sync="chosenUser"
@@ -17,8 +17,8 @@
 						/>
 					</div>
 					<div class="board-container">
-						<draggable
-							v-if="activeDraggable"
+						<Draggable
+							:disabled="!activeDraggable"
 							v-model="columns"
 							group="columns"
 							item-key="id"
@@ -28,7 +28,7 @@
 						>
 							<template #item="{ element: column }">
 								<div class="board-container__item pr-2">
-									<div class="column-width h-full rounded-lg rounded px-3 pb-3">
+									<div class="column-width h-full rounded-lg px-3 pb-3">
 										<div>
 											<div
 												class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
@@ -36,32 +36,48 @@
 													'border-top': `solid 5px ${column.status.color}`,
 												}"
 											>
-												<div class="mr-2 flex items-center hover:cursor-move">
-													<svg
-														width="5"
-														height="8"
-														viewBox="0 0 5 8"
-														fill="none"
-														xmlns="http://www.w3.org/2000/svg"
-													>
-														<circle cx="1" cy="1" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="1" r="1" fill="#D9D9D9" />
-														<circle cx="1" cy="4" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="4" r="1" fill="#D9D9D9" />
-														<circle cx="4" cy="7" r="1" fill="#D9D9D9" />
-														<circle cx="1" cy="7" r="1" fill="#D9D9D9" />
-													</svg>
-												</div>
-												{{ column.title }}
-												<div class="absolute top-1/2 right-3 -translate-y-1/2">
-													<dashboard-dropdown-menu
-														:actions="getActions(column)"
+												<div
+													v-if="activeDraggable"
+													class="mr-2 flex items-center hover:cursor-move"
+												>
+													<EllipsisVerticalIcon
+														class="h-3"
+														aria-hidden="true"
+													/>
+													<EllipsisVerticalIcon
+														class="-ml-2 h-3"
+														aria-hidden="true"
 													/>
 												</div>
+
+												<div>
+													{{ column.title }}
+												</div>
+
+												<Dropdown class="ml-auto pr-2">
+													<MenuItem>
+														<a
+															href="#"
+															class="block px-4 py-2 text-sm text-neutral-600"
+															@click.prevent="openTaskModal(column)"
+														>
+															create a task
+														</a>
+													</MenuItem>
+													<MenuItem>
+														<a
+															href="#"
+															class="block px-4 py-2 text-sm text-neutral-600"
+															@click.prevent="openStatusModal(column)"
+														>
+															Edit status
+														</a>
+													</MenuItem>
+												</Dropdown>
 											</div>
 										</div>
 
-										<draggable
+										<Draggable
 											v-model="column.tasks"
 											:animation="200"
 											ghost-class="ghost-card"
@@ -72,58 +88,17 @@
 											class="board-card"
 										>
 											<template #item="{ element: task }">
-												<task-card
+												<TaskBoardCard
 													:task="task"
 													class="my-5 cursor-move"
 													:data-task="jsonEncode(task)"
 												/>
 											</template>
-										</draggable>
+										</Draggable>
 									</div>
 								</div>
 							</template>
-						</draggable>
-						<div
-							v-else
-							v-for="column in columns"
-							:key="column.title"
-							class="board-container__item pr-2"
-						>
-							<div class="column-width h-full rounded-lg rounded px-3 pb-3">
-								<div>
-									<div
-										class="relative rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-										:style="{
-											'border-top': `solid 5px ${column.status.color}`,
-										}"
-									>
-										{{ column.title }}
-										<div class="absolute top-1/2 right-3 -translate-y-1/2">
-											<dashboard-dropdown-menu :actions="getActions(column)" />
-										</div>
-									</div>
-								</div>
-
-								<draggable
-									v-model="column.tasks"
-									:animation="200"
-									ghost-class="ghost-card"
-									group="tasks"
-									item-key="id"
-									@end="onEnd"
-									:data-status="column.status.id"
-									class="board-card"
-								>
-									<template #item="{ element: task }">
-										<task-card
-											:task="task"
-											class="my-5 cursor-move"
-											:data-task="jsonEncode(task)"
-										/>
-									</template>
-								</draggable>
-							</div>
-						</div>
+						</Draggable>
 						<div class="w-12 h-12 flex justify-center items-center">
 							<span
 								@click="
@@ -133,125 +108,126 @@
 									}
 								"
 								class="material-icons text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
-								>add</span
 							>
+								add
+							</span>
 						</div>
-						<Transition name="bounce-right-fade">
-							<Modal
-								v-if="isShowStatusModal"
-								modal-class="p-6 w-96"
-								close-on-bg-click
-								@close="closeModal"
-							>
-								<template #modal-body>
-									<div v-if="isCreatingStatus">
-										<div v-if="!isShowColorPicker">
-											<h1>Create status</h1>
-											<button @click="Dlt">Dlt</button>
-											<label class="flex flex-col gap-2">
-												Status name :
-												<TextField placeholder="Name" v-model="statusName" />
-											</label>
-											<label class="flex flex-col gap-2">
-												Status type :
-												<Select
-													placeholder="Select Type"
-													:options="statusTypes"
-													v-model="statusType"
-													label-key="name"
-													value-key="name"
-												/>
-											</label>
-											<label class="flex flex-col gap-2 mb-3">
-												Status color :
-												<button
-													type="button"
-													:style="{ backgroundColor: statusColor }"
-													class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
-													:class="'bg-' + '[' + statusColor + ']'"
-													@click="isShowColorPicker = true"
-												>
-													{{ statusColor }}
-												</button>
-											</label>
-
-											<button
-												@click="createNewStatus()"
-												class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-												type="button"
-											>
-												Create
-											</button>
-										</div>
-
-										<div class="p-8" v-if="isShowColorPicker">
-											<color-picker
-												:hue="color.hue"
-												@input="onInput"
-												@select="onColorSelect"
-											></color-picker>
-										</div>
-									</div>
-									<div v-else>
-										<div v-if="!isShowColorPicker">
-											<h1>Edit status</h1>
-
-											<label class="flex flex-col gap-2">
-												Status name :
-												<TextField placeholder="Name" v-model="statusName" />
-											</label>
-											<label class="flex flex-col gap-2">
-												Status type :
-												<Select
-													placeholder="Select Type"
-													:options="statusTypes"
-													v-model="statusType"
-													label-key="name"
-													value-key="name"
-												/>
-											</label>
-											<label class="flex flex-col gap-2 mb-3">
-												Status color :
-												<button
-													type="button"
-													:style="{ backgroundColor: statusColor }"
-													class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
-													:class="'bg-' + '[' + statusColor + ']'"
-													@click="isShowColorPicker = true"
-												>
-													{{ statusColor }}
-												</button>
-											</label>
-
-											<button
-												@click="editStatus()"
-												class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-												type="button"
-											>
-												Save
-											</button>
-											<button
-												@click="deleteStatus"
-												class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
-												type="button"
-											>
-												Delete
-											</button>
-										</div>
-
-										<div class="p-8" v-if="isShowColorPicker">
-											<color-picker
-												:hue="color.hue"
-												@input="onInput"
-												@select="onColorSelect"
-											></color-picker>
-										</div>
-									</div>
-								</template>
-							</Modal>
-						</Transition>
 					</div>
 				</div>
+
+				<Transition name="bounce-right-fade">
+					<Modal
+						v-if="isShowStatusModal"
+						modal-class="p-6 w-96"
+						close-on-bg-click
+						@close="closeModal"
+					>
+						<template #modal-body>
+							<div v-if="isCreatingStatus">
+								<div v-if="!isShowColorPicker">
+									<h1>Create status</h1>
+									<label class="flex flex-col gap-2">
+										Status name :
+										<TextField placeholder="Name" v-model="statusName" />
+									</label>
+									<label class="flex flex-col gap-2">
+										Status type :
+										<Select
+											placeholder="Select Type"
+											:options="statusTypes"
+											v-model="statusType"
+											label-key="name"
+											value-key="name"
+										/>
+									</label>
+									<label class="flex flex-col gap-2 mb-3">
+										Status color :
+										<button
+											type="button"
+											:style="{ backgroundColor: statusColor }"
+											class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+											:class="'bg-' + '[' + statusColor + ']'"
+											@click="isShowColorPicker = true"
+										>
+											{{ statusColor }}
+										</button>
+									</label>
+
+									<button
+										@click="saveNewStatus()"
+										class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+										type="button"
+									>
+										Create
+									</button>
+								</div>
+
+								<div class="p-8" v-if="isShowColorPicker">
+									<color-picker
+										:hue="color.hue"
+										@input="onInput"
+										@select="onColorSelect"
+									></color-picker>
+								</div>
+							</div>
+							<div v-else>
+								<div v-if="!isShowColorPicker">
+									<h1>Edit status</h1>
+
+									<label class="flex flex-col gap-2">
+										Status name :
+										<TextField placeholder="Name" v-model="statusName" />
+									</label>
+									<label class="flex flex-col gap-2">
+										Status type :
+										<Select
+											placeholder="Select Type"
+											:options="statusTypes"
+											v-model="statusType"
+											label-key="name"
+											value-key="name"
+										/>
+									</label>
+									<label class="flex flex-col gap-2 mb-3">
+										Status color :
+										<button
+											type="button"
+											:style="{ backgroundColor: statusColor }"
+											class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+											:class="'bg-' + '[' + statusColor + ']'"
+											@click="isShowColorPicker = true"
+										>
+											{{ statusColor }}
+										</button>
+									</label>
+
+									<button
+										@click="saveNewStatus()"
+										class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+										type="button"
+									>
+										Save
+									</button>
+									<button
+										@click="deleteStatus"
+										class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+										type="button"
+									>
+										Delete
+									</button>
+								</div>
+
+								<div class="p-8" v-if="isShowColorPicker">
+									<color-picker
+										:hue="color.hue"
+										@input="onInput"
+										@select="onColorSelect"
+									></color-picker>
+								</div>
+							</div>
+						</template>
+					</Modal>
+				</Transition>
 			</div>
 			<Transition name="fade">
 				<confirm
@@ -269,10 +245,9 @@
 <script>
 	import Modal from 'src/components/Modal.vue';
 	import Button from 'src/components/general/Button.vue';
-	import draggable from 'vuedraggable';
-	import TaskCard from 'src/components/tasks/TaskBoardCard.vue';
+	import Draggable from 'vuedraggable';
 	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
-	import DashboardDropdownMenu from 'src/components/general/BoardOptionsMenu.vue';
+
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
@@ -286,28 +261,34 @@
 	} from 'src/actions/tmgr/tasks';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
+	import Dropdown from 'src/components/general/Dropdown.vue';
+	import { MenuItem } from '@headlessui/vue';
+	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
+	import TaskBoardCard from 'src/components/tasks/TaskBoardCard.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import {
 		createStatus,
 		deleteStatus,
-		getStatuses,
 		updateStatus,
 	} from 'src/actions/tmgr/statuses';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
 	import Select from 'src/components/general/Select.vue';
 	import Confirm from 'src/components/general/Confirm.vue';
+	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
 
 	export default {
 		name: 'Board',
 		components: {
+			TaskBoardCard,
+			EllipsisVerticalIcon,
+			MenuItem,
+			Dropdown,
 			TextField,
 			Modal,
 			FiltersBoard,
-			DashboardDropdownMenu,
 			DropdownMenu,
 			Button,
-			TaskCard,
-			draggable,
+			Draggable,
 			ColorPicker,
 			Select,
 			Confirm,
@@ -370,7 +351,7 @@
 			confirm: null,
 		}),
 		watch: {
-			'$store.getters.reloadTasks'() {
+			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
 			},
 			chosenUser: function () {
@@ -382,7 +363,7 @@
 		},
 		methods: {
 			onColorSelect() {
-				const hexColor = this.hslToHex(
+				const hexColor = hslToHex(
 					this.color.hue,
 					this.color.saturation,
 					this.color.luminosity,
@@ -392,52 +373,7 @@
 					this.isShowColorPicker = false;
 				}, 1000);
 			},
-			hslToHex(h, s, l) {
-				l /= 100;
-				const a = (s * Math.min(l, 1 - l)) / 100;
-				const f = (n) => {
-					const k = (n + h / 30) % 12;
-					const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-					return Math.round(255 * color)
-						.toString(16)
-						.padStart(2, '0');
-				};
-				return `#${f(0)}${f(8)}${f(4)}`;
-			},
-			hueFromHex(H) {
-				// Convert hex to RGB first
-				let r = 0,
-					g = 0,
-					b = 0;
-				if (H.length === 4) {
-					r = '0x' + H[1] + H[1];
-					g = '0x' + H[2] + H[2];
-					b = '0x' + H[3] + H[3];
-				} else if (H.length === 7) {
-					r = '0x' + H[1] + H[2];
-					g = '0x' + H[3] + H[4];
-					b = '0x' + H[5] + H[6];
-				}
-				// Then to HSL
-				r /= 255;
-				g /= 255;
-				b /= 255;
-				let cmin = Math.min(r, g, b),
-					cmax = Math.max(r, g, b),
-					delta = cmax - cmin,
-					h = 0;
 
-				if (delta === 0) h = 0;
-				else if (cmax === r) h = ((g - b) / delta) % 6;
-				else if (cmax === g) h = (b - r) / delta + 2;
-				else h = (r - g) / delta + 4;
-
-				h = Math.round(h * 60);
-
-				if (h < 0) h += 360;
-
-				return h;
-			},
 			onInput(hue) {
 				this.color.hue = hue;
 			},
@@ -448,59 +384,42 @@
 				this.clearStatus();
 				this.isShowStatusModal = false;
 				this.isShowColorPicker = false;
+				this.color.hue = hueFromHex(this.statusColor);
 			},
 			clearStatus() {
 				this.statusName = '';
 				this.statusType = '';
 				this.statusColor = '#077fe8';
 			},
-			async createNewStatus() {
+			async saveNewStatus() {
 				const newStatus = {
 					name: this.statusName,
 					type: this.statusType,
 					color: this.statusColor,
 				};
-
-				if (this.statusName === '' && this.statusType === '') {
+				if (this.statusName.trim() === '' && this.statusType.trim() === '') {
 					alert(`'Name' and 'Type' fields are empty`);
 					return;
 				}
-				if (this.statusName === '') {
+				if (this.statusName.trim() === '') {
 					alert('Write the name of status');
 					return;
 				}
-				if (this.statusType === '') {
+				if (this.statusType.trim() === '') {
 					alert('Choose the type of status');
 					return;
-				} else {
+				}
+				if (this.isCreatingStatus) {
 					await createStatus(this.workspaceId, newStatus);
 					this.showAlert('Save', 'The status was created');
 					this.closeModal();
-					this.$store.commit('appRerender');
+					this.$store.commit('rerenderApp');
 				}
-			},
-			async editStatus() {
-				const newStatusData = {
-					name: this.statusName,
-					type: this.statusType,
-					color: this.statusColor,
-				};
-				if (this.statusName === '' && this.statusType === '') {
-					alert(`'Name' and 'Type' fields are empty`);
-					return;
-				}
-				if (this.statusName === '') {
-					alert('Write the name of status');
-					return;
-				}
-				if (this.statusType === '') {
-					alert('Choose the type of status');
-					return;
-				} else {
-					await updateStatus(this.statusId, newStatusData);
+				if (!this.isCreatingStatus) {
+					await updateStatus(this.statusId, newStatus);
 					this.showAlert('Saved', 'The status was edited');
 					this.closeModal();
-					this.$store.commit('appRerender');
+					this.$store.commit('rerenderApp');
 				}
 			},
 			showConfirm(title, body, action) {
@@ -511,7 +430,7 @@
 					await deleteStatus(this.statusId);
 					this.closeModal();
 					this.showAlert('Saved', 'The status was deleted');
-					this.$store.commit('appRerender');
+					this.$store.commit('rerenderApp');
 				};
 				this.showConfirm(
 					'Delete task',
@@ -519,30 +438,17 @@
 					deleteStatusConfirmation,
 				);
 			},
+			openStatusModal(column) {
+				this.isShowStatusModal = true;
+				this.statusType = column.status.type;
+				this.statusName = column.status.name;
+				this.statusColor = column.status.color;
+				this.statusId = column.status.id;
+				this.color.hue = hueFromHex(this.statusColor);
+			},
 
-			getActions(column) {
-				return [
-					{
-						click: () => {
-							this.$store.commit('showCreateTaskModal', {
-								showCreateTaskModal: true,
-								statusId: column.status.id,
-							});
-						},
-						label: 'Create task',
-					},
-					{
-						click: () => {
-							this.isShowStatusModal = true;
-							this.statusType = column.status.type;
-							this.statusName = column.status.name;
-							this.statusColor = column.status.color;
-							this.statusId = column.status.id;
-							this.color.hue = this.hueFromHex(this.statusColor);
-						},
-						label: 'Edit status',
-					},
-				];
+			openTaskModal(column) {
+				this.$store.commit('setShowCreatingTaskModal', column.status.id);
 			},
 			jsonEncode(data) {
 				return JSON.stringify(data);
@@ -622,7 +528,6 @@
 				}
 				return null;
 			},
-			onStart(evt) {},
 			async loadColumns() {
 				const columns = [];
 				const statuses = await getWorkspaceStatuses();
@@ -714,8 +619,7 @@
 		},
 		async beforeMount() {
 			const user = await getUser();
-			const workspaces = await getWorkspaces();
-			this.workspacesData = workspaces;
+			this.workspacesData = await getWorkspaces();
 			this.userData = user;
 
 			const workspaceSetting = this.userData.settings.find(
@@ -724,14 +628,14 @@
 			if (workspaceSetting) {
 				this.workspaceId = +workspaceSetting.value;
 				const users = await getWorkspaceMembers(this.workspaceId);
-				this.workspaceUsers = [{ id: 0, name: 'Select User' }, ...users];
+				this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
 			}
 		},
 		async mounted() {
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-			this.color.hue = this.hueFromHex(this.statusColor);
+			this.color.hue = hueFromHex(this.statusColor);
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');

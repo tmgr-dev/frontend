@@ -5,8 +5,8 @@ const $axios = axios.create({
 	baseURL: process.env.VUE_APP_API_BASE_URL,
 	headers: {
 		common: {
-			Authorization: store.getters.token?.token
-				? `Bearer ${store.getters.token.token}`
+			Authorization: store.state.token?.token
+				? `Bearer ${store.state.token.token}`
 				: '',
 			'X-Requested-With': 'XMLHttpRequest',
 			'Cache-Control': 'no-cache',

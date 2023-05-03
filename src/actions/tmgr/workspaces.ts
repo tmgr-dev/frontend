@@ -1,6 +1,5 @@
 import $axios from 'src/plugins/axios';
 import store from 'src/store';
-import { Category } from 'src/actions/tmgr/categories';
 
 export interface Workspace {
 	name: string;
@@ -28,7 +27,7 @@ export const getWorkspaceStatuses = async () => {
 		data: { data },
 	} = await $axios.get('workspaces/statuses');
 
-	store.commit('setStatuses', data);
+	store.commit('setWorkspaceStatuses', data);
 
 	return data;
 };

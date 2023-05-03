@@ -19,7 +19,7 @@ export default (obj: any) => {
 	app.component('VueTheMask', VueTheMask);
 	app.component('QuillEditor', QuillEditor);
 
-	store.commit('colorScheme', localStorage.getItem('colorScheme'));
+	store.commit('setColorScheme', localStorage.getItem('colorScheme'));
 
 	app.directive('mask', mask);
 	app.use(Tooltip, {
