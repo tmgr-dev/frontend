@@ -123,14 +123,17 @@
 						@close="closeModal"
 					>
 						<template #modal-body>
-							<div v-if="isCreatingStatus">
+							<div>
 								<div v-if="!isShowColorPicker">
-									<h1>Create status</h1>
-									<label class="flex flex-col gap-2">
+									<h1 v-if="isCreatingStatus" class="text-xl text-center mb-3">
+										Create status
+									</h1>
+									<h1 v-else class="text-xl text-center mb-3">Edit status</h1>
+									<label class="flex flex-col gap-2 font-medium mb-3">
 										Status name :
 										<TextField placeholder="Name" v-model="statusName" />
 									</label>
-									<label class="flex flex-col gap-2">
+									<label class="flex flex-col gap-2 font-medium mb-4">
 										Status type :
 										<Select
 											placeholder="Select Type"
@@ -140,75 +143,31 @@
 											value-key="name"
 										/>
 									</label>
-									<label class="flex flex-col gap-2 mb-3">
-										Status color :
+									<div
+										class="flex mb-3 items-center justify-between font-medium mb-3"
+									>
+										<span>Status color :</span>
 										<button
 											type="button"
 											:style="{ backgroundColor: statusColor }"
-											class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+											class="w-2/4 rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
 											:class="'bg-' + '[' + statusColor + ']'"
 											@click="isShowColorPicker = true"
 										>
 											{{ statusColor }}
 										</button>
-									</label>
+									</div>
 
 									<button
 										@click="saveNewStatus()"
 										class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 										type="button"
 									>
-										Create
+										{{ isCreatingStatus ? 'Create' : 'Save' }}
 									</button>
-								</div>
-
-								<div class="p-8" v-if="isShowColorPicker">
-									<color-picker
-										:hue="color.hue"
-										@input="onInput"
-										@select="onColorSelect"
-									></color-picker>
-								</div>
-							</div>
-							<div v-else>
-								<div v-if="!isShowColorPicker">
-									<h1>Edit status</h1>
-
-									<label class="flex flex-col gap-2">
-										Status name :
-										<TextField placeholder="Name" v-model="statusName" />
-									</label>
-									<label class="flex flex-col gap-2">
-										Status type :
-										<Select
-											placeholder="Select Type"
-											:options="statusTypes"
-											v-model="statusType"
-											label-key="name"
-											value-key="name"
-										/>
-									</label>
-									<label class="flex flex-col gap-2 mb-3">
-										Status color :
-										<button
-											type="button"
-											:style="{ backgroundColor: statusColor }"
-											class="w-full rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
-											:class="'bg-' + '[' + statusColor + ']'"
-											@click="isShowColorPicker = true"
-										>
-											{{ statusColor }}
-										</button>
-									</label>
 
 									<button
-										@click="saveNewStatus()"
-										class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-										type="button"
-									>
-										Save
-									</button>
-									<button
+										v-if="!isCreatingStatus"
 										@click="deleteStatus"
 										class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
 										type="button"
@@ -216,7 +175,6 @@
 										Delete
 									</button>
 								</div>
-
 								<div class="p-8" v-if="isShowColorPicker">
 									<color-picker
 										:hue="color.hue"
