@@ -61,7 +61,7 @@
 															class="block px-4 py-2 text-sm text-neutral-600"
 															@click.prevent="openTaskModal(column)"
 														>
-															create a task
+															Create a task
 														</a>
 													</MenuItem>
 													<MenuItem>
@@ -131,7 +131,11 @@
 									<h1 v-else class="text-xl text-center mb-3">Edit status</h1>
 									<label class="flex flex-col gap-2 font-medium mb-3">
 										Status name :
-										<TextField placeholder="Name" v-model="statusName" />
+										<TextField
+											placeholder="Name"
+											v-model="statusName"
+											:errors="errors.name"
+										/>
 									</label>
 									<label class="flex flex-col gap-2 font-medium mb-4">
 										Status type :
@@ -139,6 +143,7 @@
 											placeholder="Select Type"
 											:options="statusTypes"
 											v-model="statusType"
+											:errors="errors.type"
 											label-key="name"
 											value-key="name"
 										/>
@@ -348,6 +353,7 @@
 				this.statusName = '';
 				this.statusType = '';
 				this.statusColor = '#077fe8';
+				this.errors = {};
 			},
 			async saveNewStatus() {
 				const newStatus = {
@@ -355,29 +361,30 @@
 					type: this.statusType,
 					color: this.statusColor,
 				};
-				if (this.statusName.trim() === '' && this.statusType.trim() === '') {
-					alert(`'Name' and 'Type' fields are empty`);
-					return;
-				}
-				if (this.statusName.trim() === '') {
-					alert('Write the name of status');
-					return;
-				}
-				if (this.statusType.trim() === '') {
-					alert('Choose the type of status');
-					return;
-				}
+
 				if (this.isCreatingStatus) {
-					await createStatus(this.workspaceId, newStatus);
-					this.showAlert('Save', 'The status was created');
-					this.closeModal();
-					this.$store.commit('rerenderApp');
+					try {
+						await createStatus(this.workspaceId, newStatus);
+						this.showAlert('Save', 'The status was created');
+						this.closeModal();
+						this.$store.commit('rerenderApp');
+					} catch (error) {
+						if (error) {
+							this.errors = error.response?.data?.errors;
+						}
+					}
 				}
 				if (!this.isCreatingStatus) {
-					await updateStatus(this.statusId, newStatus);
-					this.showAlert('Saved', 'The status was edited');
-					this.closeModal();
-					this.$store.commit('rerenderApp');
+					try {
+						await updateStatus(this.statusId, newStatus);
+						this.showAlert('Saved', 'The status was edited');
+						this.closeModal();
+						this.$store.commit('rerenderApp');
+					} catch (error) {
+						if (error) {
+							this.errors = error.response?.data?.errors;
+						}
+					}
 				}
 			},
 			showConfirm(title, body, action) {
@@ -391,7 +398,7 @@
 					this.$store.commit('rerenderApp');
 				};
 				this.showConfirm(
-					'Delete task',
+					'Delete status',
 					'Are you sure?',
 					deleteStatusConfirmation,
 				);
