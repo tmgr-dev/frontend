@@ -30,7 +30,7 @@
 	</Menu>
 </template>
 
-<script setup lang="ts">
+<script setup>
 	import { Menu, MenuButton, MenuItems } from '@headlessui/vue';
 	import { EllipsisHorizontalIcon } from '@heroicons/vue/20/solid';
 </script>
