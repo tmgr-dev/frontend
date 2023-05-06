@@ -26,26 +26,21 @@
 
 		<ActiveTasks :tasks="activeTasks" />
 
-		<Transition name="bounce-right-fade">
-			<Modal
-				v-if="showTaskFormModalWindow"
-				close-on-bg-click
-				modal-class="w-11/12 h-full"
+		<GsapModal
+			v-if="showTaskFormModalWindow"
+			close-on-bg-click
+			modal-class="w-11/12 h-full"
+			@close="$store.commit('closeTaskModal')"
+			:event="$store.state.modalCallerTarget"
+		>
+			<TaskForm
+				is-modal
+				:modal-project-category-id="$store.state.createTaskInProjectCategoryId"
+				:modal-task-id="$store.state.currentTaskIdForModal"
+				:status-id="$store.state.taskStatusId"
 				@close="$store.commit('closeTaskModal')"
-			>
-				<template #modal-body>
-					<TaskForm
-						is-modal
-						:modal-project-category-id="
-							$store.state.createTaskInProjectCategoryId
-						"
-						:modal-task-id="$store.state.currentTaskIdForModal"
-						:status-id="$store.state.taskStatusId"
-						@close="$store.commit('closeTaskModal')"
-					/>
-				</template>
-			</Modal>
-		</Transition>
+			/>
+		</GsapModal>
 	</div>
 </template>
 
@@ -60,12 +55,14 @@
 	import Alert from 'src/components/general/Alert.vue';
 	import Modal from 'src/components/Modal.vue';
 	import ActiveTasks from 'src/components/ActiveTasks.vue';
+	import GsapModal from 'src/components/general/GsapModal.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
 	export default defineComponent({
 		name: 'App',
 		components: {
+			GsapModal,
 			ActiveTasks,
 			Modal,
 			Alert,

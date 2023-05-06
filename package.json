@@ -28,6 +28,7 @@
 		"axios": "^1.2.2",
 		"canvas-confetti": "^1.6.0",
 		"core-js": "^3.27.1",
+		"gsap": "^3.11.5",
 		"install": "^0.13.0",
 		"module-alias": "^2.2.2",
 		"moment": "^2.29.4",
