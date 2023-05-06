@@ -6,7 +6,12 @@
 			<a
 				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
 				:href="`/${task.id}`"
-				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
+				@click.prevent="
+					$store.commit('setCurrentTaskIdForModal', {
+						taskId: task.id,
+						target: $event,
+					})
+				"
 			>
 				{{ task.title }}
 			</a>

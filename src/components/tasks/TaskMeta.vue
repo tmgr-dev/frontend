@@ -3,7 +3,7 @@
 		<a
 			:href="`/${task.id}`"
 			class="relative z-10 text-sm font-medium lg:text-lg"
-			@click.prevent="$emit('openTask')"
+			@click.prevent="$emit('openTask', $event)"
 		>
 			{{ task.title }}
 		</a>

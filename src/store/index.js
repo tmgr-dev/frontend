@@ -22,6 +22,7 @@ const state = {
 	userSettings: {
 		showTooltips: true,
 	},
+	modalCallerTarget: null,
 };
 
 const getters = {
@@ -59,8 +60,9 @@ const mutations = {
 	incrementReloadActiveTasksKey(state) {
 		state.reloadActiveTasksKey++;
 	},
-	setCurrentTaskIdForModal(state, taskId) {
+	setCurrentTaskIdForModal(state, { taskId, target }) {
 		state.currentTaskIdForModal = taskId;
+		state.modalCallerTarget = target;
 	},
 	setShowCreatingTaskModal(state, statusId) {
 		state.showCreatingTaskModal = true;

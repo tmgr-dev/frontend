@@ -20,7 +20,12 @@
 					<transition mode="out-in" name="fade">
 						<a
 							:href="`/${task.id}`"
-							@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"
+							@click.prevent="
+								store.commit('setCurrentTaskIdForModal', {
+									taskId: task.id,
+									target: $event,
+								})
+							"
 						>
 							<span
 								class="relative mr-5 inline-flex p-1 shadow-sm transition-colors duration-300"
