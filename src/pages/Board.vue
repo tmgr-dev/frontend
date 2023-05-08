@@ -50,8 +50,28 @@
 													/>
 												</div>
 
-												<div>
-													{{ column.title }}
+												<div
+													class="group w-full relative flex items-center h-6"
+												>
+													<span class="text-sm">
+														{{ column.title }}
+													</span>
+
+													<div
+														v-tooltip.left="
+															userSettings.showTooltips
+																? `Create task `
+																: { visible: false }
+														"
+														class="opacity-0 group-hover:opacity-100 transition duration-700 absolute top-0 right-3"
+													>
+														<div
+															@click="openTaskModal(column)"
+															class="material-icons text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
+														>
+															add
+														</div>
+													</div>
 												</div>
 
 												<Dropdown class="ml-auto pr-2">
@@ -322,6 +342,11 @@
 			},
 			searchText: function () {
 				this.loadTasks();
+			},
+		},
+		computed: {
+			userSettings() {
+				return this.$store.state.userSettings ?? {};
 			},
 		},
 		methods: {
