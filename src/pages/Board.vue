@@ -58,7 +58,11 @@
 													</span>
 
 													<div
-														v-tooltip.left="`Create task`"
+														v-tooltip.left="
+															userSettings.showTooltips
+																? `Create task `
+																: { visible: false }
+														"
 														class="opacity-0 group-hover:opacity-100 transition duration-700 absolute top-0 right-3"
 													>
 														<div
@@ -338,6 +342,11 @@
 			},
 			searchText: function () {
 				this.loadTasks();
+			},
+		},
+		computed: {
+			userSettings() {
+				return this.$store.state.userSettings ?? {};
 			},
 		},
 		methods: {
