@@ -29,9 +29,7 @@
 						? 'Double click to edit the time'
 						: { visible: false }
 				"
-				:class="`countdown-wrapper select-none ${
-					lastStartTime ? '' : 'float-left'
-				}`"
+				:class="`countdown-wrapper select-none`"
 				@dblclick="isShowModalTimer = true"
 			>
 				<span class="countdown-item">{{ countdown.hours }}</span>
