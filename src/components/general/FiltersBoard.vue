@@ -3,22 +3,37 @@
 		<div
 			class="mr-20 flex min-h-15 w-full items-center justify-between rounded"
 		>
+			<div class="mr-3 flex items-center">
+				<input
+					class="h-4 w-4 cursor-pointer rounded-lg focus:outline-none"
+					type="checkbox"
+					id="checkbox"
+					@change="$emit('handleUpdateDraggable', $event.target.checked)"
+				/>
+				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
+			</div>
 			<div class="flex">
-				<div class="mr-3 flex items-center">
-					<input
-						class="h-4 w-4 cursor-pointer rounded-lg focus:outline-none"
-						type="checkbox"
-						id="checkbox"
-						@change="$emit('handleUpdateDraggable', $event.target.checked)"
-					/>
-					<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
-				</div>
+				<TextField
+					placeholder="Search"
+					v-model="searchText"
+					input-class="py-1 dark:border-transparent"
+				/>
 
-				<TextField placeholder="Search" v-model="searchText" />
+				<div>
+					<div v-if="categories.length >= 2" class="ml-3 w-48">
+						<Select
+							placeholder="Select category"
+							:options="categories"
+							v-model="selectedCategory"
+							label-key="title"
+							value-key="id"
+						/>
+					</div>
+				</div>
 			</div>
 
-			<div class="flex">
-				<div v-if="workspaceUsers.length >= 2" class="w-48 py-3">
+			<div>
+				<div v-if="workspaceUsers.length >= 2" class="w-48">
 					<Select
 						placeholder="Select user"
 						:options="workspaceUsers"
@@ -44,10 +59,17 @@
 		value: number;
 		label: string;
 	}
+	export interface CategoryOption {
+		id: number;
+		title: string;
+		value: number;
+		label: string;
+	}
 	interface Props {
 		workspaceUsers: UserOption[];
 		chosenUser: object;
 		activeDraggable: boolean;
+		categories: CategoryOption[];
 	}
 	const props = defineProps<Props>();
 
@@ -55,15 +77,23 @@
 		'update:chosenUser',
 		'handleUpdateDraggable',
 		'handleSearchTextChanged',
+		'handleChosenCategory',
 	]);
 	const selectedUser = ref(0);
 	const tasks = ref([]);
 	const searchText = ref(null);
+	const selectedCategory = ref(0);
 
 	watch(selectedUser, () => {
 		emit(
 			'update:chosenUser',
 			props.workspaceUsers.find((option) => option.id === selectedUser.value),
+		);
+	});
+	watch(selectedCategory, () => {
+		emit(
+			'handleChosenCategory',
+			props.categories.find((option) => option.id === selectedCategory.value),
 		);
 	});
 	watch(searchText, (newValue) => {
