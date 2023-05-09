@@ -9,8 +9,10 @@
 						<FiltersBoard
 							v-if="workspaceUsers.length"
 							:workspaceUsers="workspaceUsers"
+							:categories="categories"
 							:chosen-user.sync="chosenUser"
 							@update:chosenUser="handleChosenUserUpdate"
+							@handleChosenCategory="handleChosenCategory"
 							activeDraggable="activeDraggable"
 							@handleUpdateDraggable="handleUpdateDraggable"
 							@handleSearchTextChanged="handleSearchTextChanged"
@@ -258,6 +260,7 @@
 	import Select from 'src/components/general/Select.vue';
 	import Confirm from 'src/components/general/Confirm.vue';
 	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
+	import { getCategories } from 'src/actions/tmgr/categories';
 
 	export default {
 		name: 'Board',
@@ -288,7 +291,9 @@
 			workspacesData: [],
 			workspaceId: 0,
 			workspaceUsers: [],
+			categories: [],
 			chosenUser: null,
+			chosenCategory: null,
 			errors: {},
 			archivedStatus: null,
 			searchText: '',
@@ -332,6 +337,7 @@
 				{ id: 4, name: 'completed' },
 			],
 			confirm: null,
+			tasks: [],
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
@@ -341,6 +347,9 @@
 				this.loadTasks();
 			},
 			searchText: function () {
+				this.loadTasks();
+			},
+			chosenCategory: function () {
 				this.loadTasks();
 			},
 		},
@@ -367,6 +376,9 @@
 			},
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
+			},
+			handleChosenCategory(newChosenCategory) {
+				this.chosenCategory = newChosenCategory;
 			},
 			closeModal() {
 				this.clearStatus();
@@ -571,29 +583,27 @@
 				});
 			},
 			async loadTasksByStatus(status) {
+				this.tasks = await getSortedTasksByStatus(status?.id || status, {
+					params: {
+						'order[column]': 'order',
+						'order[direction]': 'asc',
+					},
+				});
 				if (this.chosenUser?.id) {
-					const tasks = await getSortedTasksByStatus(status?.id || status, {
-						params: {
-							'order[column]': 'order',
-							'order[direction]': 'asc',
-						},
-					});
-
-					return tasks.filter((item) =>
+					this.tasks = this.tasks.filter((item) =>
 						item.assignees.find(
 							(assignee) =>
 								assignee.id === this.chosenUser.id &&
 								assignee.name === this.chosenUser.name,
 						),
 					);
-				} else {
-					return await getSortedTasksByStatus(status?.id || status, {
-						params: {
-							'order[column]': 'order',
-							'order[direction]': 'asc',
-						},
-					});
 				}
+				if (this.chosenCategory?.id) {
+					this.tasks = this.tasks.filter(
+						(task) => task.project_category_id === this.chosenCategory.id,
+					);
+				}
+				return this.tasks;
 			},
 			async saveUser() {
 				try {
@@ -622,6 +632,14 @@
 			}
 		},
 		async mounted() {
+			const categoriesData = await getCategories();
+			this.categories = [
+				{ id: 0, title: 'All categories' },
+				...categoriesData.map((cat) => ({
+					id: cat.id,
+					title: cat.title,
+				})),
+			];
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
