@@ -6,17 +6,47 @@
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-15">
-						<FiltersBoard
-							v-if="workspaceUsers.length"
-							:workspaceUsers="workspaceUsers"
-							:categories="categories"
-							:chosen-user.sync="chosenUser"
-							@update:chosenUser="handleChosenUserUpdate"
-							@handleChosenCategory="handleChosenCategory"
-							activeDraggable="activeDraggable"
-							@handleUpdateDraggable="handleUpdateDraggable"
-							@handleSearchTextChanged="handleSearchTextChanged"
-						/>
+						<div class="md:hidden relative">
+							<filters-svg
+								@handleFilter="handleFilter"
+								:isFiltersModal="isFiltersModal"
+							/>
+
+							<Transition name="bounce-right-fade">
+								<Modal
+									v-if="isFiltersModal"
+									modal-class="p-6 w-96"
+									close-on-bg-click
+									@close="closeFilterModal"
+								>
+									<template #modal-body>
+										<FiltersBoard
+											v-if="workspaceUsers.length"
+											:workspaceUsers="workspaceUsers"
+											:categories="categories"
+											:chosen-user.sync="chosenUser"
+											@update:chosenUser="handleChosenUserUpdate"
+											@handleChosenCategory="handleChosenCategory"
+											activeDraggable="activeDraggable"
+											@handleUpdateDraggable="handleUpdateDraggable"
+											@handleSearchTextChanged="handleSearchTextChanged"
+										/>
+									</template> </Modal
+							></Transition>
+						</div>
+						<div class="hidden md:block">
+							<FiltersBoard
+								v-if="workspaceUsers.length"
+								:workspaceUsers="workspaceUsers"
+								:categories="categories"
+								:chosen-user.sync="chosenUser"
+								@update:chosenUser="handleChosenUserUpdate"
+								@handleChosenCategory="handleChosenCategory"
+								activeDraggable="activeDraggable"
+								@handleUpdateDraggable="handleUpdateDraggable"
+								@handleSearchTextChanged="handleSearchTextChanged"
+							/>
+						</div>
 					</div>
 					<div class="board-container">
 						<Draggable
@@ -261,10 +291,12 @@
 	import Confirm from 'src/components/general/Confirm.vue';
 	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
 	import { getCategories } from 'src/actions/tmgr/categories';
+	import FiltersSvg from 'src/components/UI/FiltersSvg.vue';
 
 	export default {
 		name: 'Board',
 		components: {
+			FiltersSvg,
 			TaskBoardCard,
 			EllipsisVerticalIcon,
 			MenuItem,
@@ -338,6 +370,7 @@
 			],
 			confirm: null,
 			tasks: [],
+			isFiltersModal: false,
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
@@ -369,6 +402,12 @@
 				setTimeout(() => {
 					this.isShowColorPicker = false;
 				}, 1000);
+			},
+			handleFilter() {
+				this.isFiltersModal = !this.isFiltersModal;
+			},
+			closeFilterModal() {
+				this.isFiltersModal = false;
 			},
 
 			onInput(hue) {
