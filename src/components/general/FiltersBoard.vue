@@ -1,7 +1,7 @@
 <template>
 	<div class="w-full pl-4">
 		<div
-			class="mr-20 flex min-h-15 w-full items-center justify-between rounded"
+			class="mr-20 flex flex-col md:flex-row min-h-15 w-full items-center justify-between rounded"
 		>
 			<div class="mr-3 flex items-center">
 				<input
@@ -12,7 +12,7 @@
 				/>
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
-			<div class="flex">
+			<div class="flex flex-col m-2 md:flex-row">
 				<TextField
 					placeholder="Search"
 					v-model="searchText"
@@ -20,7 +20,7 @@
 				/>
 
 				<div>
-					<div v-if="categories.length >= 2" class="ml-3 w-48">
+					<div v-if="categories.length >= 2" class="md:m-0 md:ml-3 mt-2 w-48">
 						<Select
 							placeholder="Select category"
 							:options="categories"
@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, watch } from 'vue';
+	import { onMounted, Ref, ref, watch } from 'vue';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
