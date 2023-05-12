@@ -604,6 +604,9 @@
 				this.confirm = { title, body, action };
 			},
 			async removeTask(task) {
+				if (this.form.start_time) {
+					this.form = await stopTaskTimeCounter(this.taskId);
+				}
 				const deleteTaskConfirmation = async () => {
 					try {
 						task.deleted_at = await deleteTask(this.taskId);
