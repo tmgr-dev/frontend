@@ -2,8 +2,9 @@
   "printWidth": 80,
   "singleQuote": true,
   "trailingComma": "all",
+  "bracketSameLine": true,
   "bracketSpacing": true,
-  "bracketSameLine": false,
+  "htmlWhitespaceSensitivity": "ignore",
   "vueIndentScriptAndStyle": true,
   "tailwindConfig": "./tailwind.config.js"
 }
