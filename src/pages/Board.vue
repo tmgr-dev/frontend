@@ -27,7 +27,7 @@
 											:chosen-user.sync="chosenUser"
 											@update:chosenUser="handleChosenUserUpdate"
 											@handleChosenCategory="handleChosenCategory"
-											activeDraggable="activeDraggable"
+											:activeDraggable="activeDraggable"
 											@handleUpdateDraggable="handleUpdateDraggable"
 											@handleSearchTextChanged="handleSearchTextChanged"
 										/>
@@ -654,6 +654,7 @@
 			},
 			handleUpdateDraggable(value) {
 				this.activeDraggable = value;
+				this.$store.commit('updateDraggable', value);
 			},
 		},
 		async beforeMount() {
@@ -671,6 +672,7 @@
 			}
 		},
 		async mounted() {
+			// this.activeDraggable = this.$store.state.isDraggable;
 			const categoriesData = await getCategories();
 			this.categories = [
 				{ id: 0, title: 'All categories' },

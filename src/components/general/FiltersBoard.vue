@@ -9,6 +9,7 @@
 					type="checkbox"
 					id="checkbox"
 					@change="$emit('handleUpdateDraggable', $event.target.checked)"
+					:checked="activeDraggable"
 				/>
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
@@ -20,7 +21,10 @@
 				/>
 
 				<div>
-					<div v-if="categories.length >= 2" class="md:m-0 md:ml-3 mt-2 w-48">
+					<div
+						v-if="categories.length >= 2"
+						class="md:m-0 md:ml-3 md:mr-3 mt-2 w-48"
+					>
 						<Select
 							placeholder="Select category"
 							:options="categories"
@@ -30,10 +34,7 @@
 						/>
 					</div>
 				</div>
-			</div>
-
-			<div>
-				<div v-if="workspaceUsers.length >= 2" class="w-48">
+				<div v-if="workspaceUsers.length >= 2" class="w-48 mt-2 md:mt-0">
 					<Select
 						placeholder="Select user"
 						:options="workspaceUsers"
@@ -48,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-	import { onMounted, Ref, ref, watch } from 'vue';
+	import { computed, onMounted, Ref, ref, watch } from 'vue';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -68,8 +69,16 @@
 	interface Props {
 		workspaceUsers: UserOption[];
 		chosenUser: object;
-		activeDraggable: boolean;
+		activeDraggable: Boolean;
 		categories: CategoryOption[];
+	}
+
+	import { createStore, useStore } from 'vuex';
+
+	interface State {
+		selectedCategory: number;
+		searchText: string | null;
+		selectedUser: number;
 	}
 	const props = defineProps<Props>();
 
@@ -79,10 +88,28 @@
 		'handleSearchTextChanged',
 		'handleChosenCategory',
 	]);
-	const selectedUser = ref(0);
-	const tasks = ref([]);
-	const searchText = ref(null);
-	const selectedCategory = ref(0);
+	const store = useStore<State>();
+	const isChecked = ref(props.activeDraggable);
+
+	// Accessing state values
+	const selectedCategory = computed({
+		get: () => store.state.selectedCategory,
+		set: (value) => {
+			store.commit('updateSelectedCategory', value);
+		},
+	});
+	const searchText = computed({
+		get: () => store.state.searchText,
+		set: (value) => {
+			store.commit('updateSearchText', value);
+		},
+	});
+	const selectedUser = computed({
+		get: () => store.state.selectedUser,
+		set: (value) => {
+			store.commit('updateSelectedUser', value);
+		},
+	});
 
 	watch(selectedUser, () => {
 		emit(
