@@ -1,5 +1,6 @@
 import { createStore } from 'vuex';
 import pusherModule from 'src/store/modules/pusher';
+import filterModule from 'src/store/modules/boardFilters';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -22,9 +23,6 @@ const state = {
 	userSettings: {
 		showTooltips: true,
 	},
-	selectedCategory: 0,
-	searchText: null,
-	selectedUser: 0,
 };
 
 const getters = {
@@ -92,15 +90,6 @@ const mutations = {
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
 	},
-	updateSelectedCategory(state, data) {
-		state.selectedCategory = data;
-	},
-	updateSearchText(state, data) {
-		state.searchText = data;
-	},
-	updateSelectedUser(state, data) {
-		state.selectedUser = data;
-	},
 };
 
 const actions = {
@@ -115,6 +104,7 @@ const actions = {
 
 const modules = {
 	pusher: pusherModule,
+	filter: filterModule,
 };
 
 export default createStore({

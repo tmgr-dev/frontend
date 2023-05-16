@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, watch } from 'vue';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -73,7 +73,7 @@
 		categories: CategoryOption[];
 	}
 
-	import { createStore, useStore } from 'vuex';
+	import { useStore } from 'vuex';
 
 	interface State {
 		selectedCategory: number;
@@ -88,22 +88,22 @@
 		'handleSearchTextChanged',
 		'handleChosenCategory',
 	]);
-	const store = useStore<State>();
+	const store = useStore();
 
 	const selectedCategory = computed({
-		get: () => store.state.selectedCategory,
+		get: () => (store.state as { filter: State }).filter.selectedCategory,
 		set: (value) => {
 			store.commit('updateSelectedCategory', value);
 		},
 	});
 	const searchText = computed({
-		get: () => store.state.searchText,
+		get: () => (store.state as { filter: State }).filter.searchText,
 		set: (value) => {
 			store.commit('updateSearchText', value);
 		},
 	});
 	const selectedUser = computed({
-		get: () => store.state.selectedUser,
+		get: () => (store.state as { filter: State }).filter.selectedUser,
 		set: (value) => {
 			store.commit('updateSelectedUser', value);
 		},
