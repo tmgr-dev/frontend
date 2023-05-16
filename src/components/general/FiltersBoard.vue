@@ -17,7 +17,7 @@
 				<TextField
 					placeholder="Search"
 					v-model="searchText"
-					input-class="py-1 dark:border-transparent"
+					input-class="py-1 w-48 dark:border-transparent"
 				/>
 
 				<div>
