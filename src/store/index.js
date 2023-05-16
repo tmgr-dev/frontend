@@ -22,6 +22,10 @@ const state = {
 	userSettings: {
 		showTooltips: true,
 	},
+	selectedCategory: 0,
+	searchText: null,
+	selectedUser: 0,
+	activeDraggable: false,
 };
 
 const getters = {
@@ -88,6 +92,18 @@ const mutations = {
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
+	},
+	updateSelectedCategory(state, data) {
+		state.selectedCategory = data;
+	},
+	updateSearchText(state, data) {
+		state.searchText = data;
+	},
+	updateSelectedUser(state, data) {
+		state.selectedUser = data;
+	},
+	updateDraggable(state, isChecked) {
+		state.isDraggable = isChecked;
 	},
 };
 
