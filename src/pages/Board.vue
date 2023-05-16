@@ -654,7 +654,6 @@
 			},
 			handleUpdateDraggable(value) {
 				this.activeDraggable = value;
-				this.$store.commit('updateDraggable', value);
 			},
 		},
 		async beforeMount() {
