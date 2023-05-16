@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, Ref, ref, watch } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -69,7 +69,7 @@
 	interface Props {
 		workspaceUsers: UserOption[];
 		chosenUser: object;
-		activeDraggable: Boolean;
+		activeDraggable: boolean;
 		categories: CategoryOption[];
 	}
 
@@ -89,9 +89,7 @@
 		'handleChosenCategory',
 	]);
 	const store = useStore<State>();
-	const isChecked = ref(props.activeDraggable);
 
-	// Accessing state values
 	const selectedCategory = computed({
 		get: () => store.state.selectedCategory,
 		set: (value) => {

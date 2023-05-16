@@ -42,7 +42,7 @@
 								:chosen-user.sync="chosenUser"
 								@update:chosenUser="handleChosenUserUpdate"
 								@handleChosenCategory="handleChosenCategory"
-								activeDraggable="activeDraggable"
+								:activeDraggable="activeDraggable"
 								@handleUpdateDraggable="handleUpdateDraggable"
 								@handleSearchTextChanged="handleSearchTextChanged"
 							/>

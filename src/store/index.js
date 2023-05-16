@@ -25,7 +25,6 @@ const state = {
 	selectedCategory: 0,
 	searchText: null,
 	selectedUser: 0,
-	activeDraggable: false,
 };
 
 const getters = {
@@ -101,9 +100,6 @@ const mutations = {
 	},
 	updateSelectedUser(state, data) {
 		state.selectedUser = data;
-	},
-	updateDraggable(state, isChecked) {
-		state.isDraggable = isChecked;
 	},
 };
 
