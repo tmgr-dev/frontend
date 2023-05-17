@@ -6,15 +6,47 @@
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-15">
-						<FiltersBoard
-							v-if="workspaceUsers.length"
-							:workspaceUsers="workspaceUsers"
-							:chosen-user.sync="chosenUser"
-							@update:chosenUser="handleChosenUserUpdate"
-							activeDraggable="activeDraggable"
-							@handleUpdateDraggable="handleUpdateDraggable"
-							@handleSearchTextChanged="handleSearchTextChanged"
-						/>
+						<div class="md:hidden relative">
+							<filters-svg
+								@handleFilter="handleFilter"
+								:isFiltersModal="isFiltersModal"
+							/>
+
+							<Transition name="bounce-right-fade">
+								<Modal
+									v-if="isFiltersModal"
+									modal-class="p-6 w-96"
+									close-on-bg-click
+									@close="closeFilterModal"
+								>
+									<template #modal-body>
+										<FiltersBoard
+											v-if="workspaceUsers.length"
+											:workspaceUsers="workspaceUsers"
+											:categories="categories"
+											:chosen-user.sync="chosenUser"
+											@update:chosenUser="handleChosenUserUpdate"
+											@handleChosenCategory="handleChosenCategory"
+											:activeDraggable="activeDraggable"
+											@handleUpdateDraggable="handleUpdateDraggable"
+											@handleSearchTextChanged="handleSearchTextChanged"
+										/>
+									</template> </Modal
+							></Transition>
+						</div>
+						<div class="hidden md:block">
+							<FiltersBoard
+								v-if="workspaceUsers.length"
+								:workspaceUsers="workspaceUsers"
+								:categories="categories"
+								:chosen-user.sync="chosenUser"
+								@update:chosenUser="handleChosenUserUpdate"
+								@handleChosenCategory="handleChosenCategory"
+								:activeDraggable="activeDraggable"
+								@handleUpdateDraggable="handleUpdateDraggable"
+								@handleSearchTextChanged="handleSearchTextChanged"
+							/>
+						</div>
 					</div>
 					<div class="board-container">
 						<Draggable
@@ -258,10 +290,13 @@
 	import Select from 'src/components/general/Select.vue';
 	import Confirm from 'src/components/general/Confirm.vue';
 	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
+	import { getCategories } from 'src/actions/tmgr/categories';
+	import FiltersSvg from 'src/components/UI/FiltersSvg.vue';
 
 	export default {
 		name: 'Board',
 		components: {
+			FiltersSvg,
 			TaskBoardCard,
 			EllipsisVerticalIcon,
 			MenuItem,
@@ -288,7 +323,9 @@
 			workspacesData: [],
 			workspaceId: 0,
 			workspaceUsers: [],
+			categories: [],
 			chosenUser: null,
+			chosenCategory: null,
 			errors: {},
 			archivedStatus: null,
 			searchText: '',
@@ -332,6 +369,8 @@
 				{ id: 4, name: 'completed' },
 			],
 			confirm: null,
+			tasks: [],
+			isFiltersModal: false,
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
@@ -341,6 +380,9 @@
 				this.loadTasks();
 			},
 			searchText: function () {
+				this.loadTasks();
+			},
+			chosenCategory: function () {
 				this.loadTasks();
 			},
 		},
@@ -361,12 +403,21 @@
 					this.isShowColorPicker = false;
 				}, 1000);
 			},
+			handleFilter() {
+				this.isFiltersModal = !this.isFiltersModal;
+			},
+			closeFilterModal() {
+				this.isFiltersModal = false;
+			},
 
 			onInput(hue) {
 				this.color.hue = hue;
 			},
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
+			},
+			handleChosenCategory(newChosenCategory) {
+				this.chosenCategory = newChosenCategory;
 			},
 			closeModal() {
 				this.clearStatus();
@@ -571,29 +622,27 @@
 				});
 			},
 			async loadTasksByStatus(status) {
+				this.tasks = await getSortedTasksByStatus(status?.id || status, {
+					params: {
+						'order[column]': 'order',
+						'order[direction]': 'asc',
+					},
+				});
 				if (this.chosenUser?.id) {
-					const tasks = await getSortedTasksByStatus(status?.id || status, {
-						params: {
-							'order[column]': 'order',
-							'order[direction]': 'asc',
-						},
-					});
-
-					return tasks.filter((item) =>
+					this.tasks = this.tasks.filter((item) =>
 						item.assignees.find(
 							(assignee) =>
 								assignee.id === this.chosenUser.id &&
 								assignee.name === this.chosenUser.name,
 						),
 					);
-				} else {
-					return await getSortedTasksByStatus(status?.id || status, {
-						params: {
-							'order[column]': 'order',
-							'order[direction]': 'asc',
-						},
-					});
 				}
+				if (this.chosenCategory?.id) {
+					this.tasks = this.tasks.filter(
+						(task) => task.project_category_id === this.chosenCategory.id,
+					);
+				}
+				return this.tasks;
 			},
 			async saveUser() {
 				try {
@@ -622,6 +671,15 @@
 			}
 		},
 		async mounted() {
+			// this.activeDraggable = this.$store.state.isDraggable;
+			const categoriesData = await getCategories();
+			this.categories = [
+				{ id: 0, title: 'All categories' },
+				...categoriesData.map((cat) => ({
+					id: cat.id,
+					title: cat.title,
+				})),
+			];
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();

@@ -1,5 +1,6 @@
 import { createStore } from 'vuex';
 import pusherModule from 'src/store/modules/pusher';
+import filterModule from 'src/store/modules/boardFilters';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -103,6 +104,7 @@ const actions = {
 
 const modules = {
 	pusher: pusherModule,
+	filter: filterModule,
 };
 
 export default createStore({
