@@ -255,8 +255,8 @@
 				</div>
 			</div>
 		</header>
-		<div class="flex justify-center h-full">
-			<section role="main" class="w-1/2 mt-10 text-center">
+		<div class="flex justify-center h-full overflow-y-scroll">
+			<section role="main" class="w-1/2 text-center mt-10">
 				<div class="mt-8 text-center" :key="this.form.common_time">
 					<Countdown
 						v-if="form.id"
@@ -351,7 +351,13 @@
 					</div>
 				</div>
 			</section>
-			<comments-chat :assignees="workspaceMembers" />
+			<section v-if="!isCreatingTask" class="w-1/2 mt-10">
+				<comments-chat
+					:workspaceMembers="workspaceMembers"
+					:assignees="form.assignees"
+					:taskId="taskId"
+				/>
+			</section>
 		</div>
 
 		<footer
@@ -422,6 +428,7 @@
 	import Modal from 'src/components/Modal.vue';
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
+	import store from 'src/store';
 
 	export default {
 		name: 'TaskForm',
@@ -533,6 +540,9 @@
 			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
+			store() {
+				return store;
+			},
 			...mapState(['workspaceStatuses']),
 			taskId() {
 				return this.projectCategoryId
@@ -997,7 +1007,6 @@
 					this.workspaceMembers = await getWorkspaceMembers(
 						this.form.workspace_id,
 					);
-					console.log('users', this.workspaceMembers);
 					window.onkeydown = this.getShortcutSaveListener();
 				}
 
