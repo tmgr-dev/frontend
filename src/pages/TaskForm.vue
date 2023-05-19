@@ -255,10 +255,10 @@
 				</div>
 			</div>
 		</header>
-		<div class="flex justify-center h-full overflow-y-scroll">
+		<div class="md:flex justify-center h-full overflow-y-scroll">
 			<section
 				role="main"
-				class="w-1/2 text-center"
+				class="md:w-1/2 text-center"
 				:class="{ 'mt-10': !form.start_time }"
 			>
 				<Transition>
@@ -357,7 +357,7 @@
 					</div>
 				</div>
 			</section>
-			<section v-if="!isCreatingTask" class="w-1/2 mt-10">
+			<section v-if="!isCreatingTask" class="md:w-1/2 mt-10">
 				<comments-chat
 					:workspaceMembers="workspaceMembers"
 					:assignees="form.assignees"

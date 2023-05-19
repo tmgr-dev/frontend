@@ -11,18 +11,6 @@
 							'ml-auto': comment.user.name === store.state.user?.name,
 						}"
 					>
-						<div
-							v-if="comment.user.name === store.state.user?.name"
-							class="absolute ease-in duration-300 invisible right-1 top-0.5 flex rounded-full bg-red-500 h-4 w-4 cursor-pointer opacity-75 hover:opacity-100 group-hover:visible"
-						>
-							<span
-								class="left-0.5 material-icons cursor-pointer m-auto text-xs text-white"
-								@click="removeComment(comment.id)"
-							>
-								close
-							</span>
-						</div>
-
 						<span
 							class="'dark:bg-inherit text-sm p-0 text-gray-400"
 							v-if="
@@ -33,7 +21,19 @@
 							{{ comment.message }}
 							{{ moment(comment.updated_at).toNow() }} ago.
 						</span>
+
 						<div v-else class="flex flex-col">
+							<div
+								v-if="comment.user.name === store.state.user?.name"
+								class="absolute ease-in duration-300 invisible right-1 top-0.5 flex rounded-full bg-red-500 h-4 w-4 cursor-pointer opacity-75 hover:opacity-100 group-hover:visible"
+							>
+								<span
+									class="left-0.5 material-icons cursor-pointer m-auto text-xs text-white"
+									@click="removeComment(comment.id)"
+								>
+									close
+								</span>
+							</div>
 							<span> {{ comment.user.name }}: </span>
 							<span
 								class="w-fit rounded-lg p-2 dark:bg-gray-700 cursor-pointer"
