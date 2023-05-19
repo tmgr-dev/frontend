@@ -254,107 +254,124 @@
 					</button>
 				</div>
 			</div>
-
-			<div class="mt-8 text-center" :key="this.form.common_time">
-				<Countdown
-					v-if="form.id"
-					:init-task="form"
-					@toggle="toggleCountdown"
-					@update:seconds="updateSeconds"
-				/>
-
-				<Countdown
-					v-else
-					disabled
-					:init-task="form"
-					@update:seconds="updateSeconds"
-				/>
-			</div>
 		</header>
-
-		<section role="main" class="mt-10 text-center">
-			<div class="mb-5">
-				<TextField
-					v-model="form.title"
-					:errors="errors.title"
-					placeholder="Task name"
-				/>
-
-				<quill-editor
-					class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
-					:class="errors.description && 'border-red-500'"
-					v-model:content="form.description"
-					content-type="html"
-					theme="bubble"
-					placeholder="Description"
-				/>
-			</div>
-
-			<div
-				v-if="!isCreatingTask"
-				class="checkpoints-wrapper rounded"
-				:key="checkpointUpdateKey"
+		<div class="md:flex justify-center h-full overflow-y-scroll">
+			<section
+				role="main"
+				class="md:w-1/2 text-center"
+				:class="{ 'mt-10': !form.start_time }"
 			>
-				<div class="text-bold flex items-center justify-center gap-2 text-sm">
-					{{
-						form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints'
-					}}
-					<span
-						class="material-icons checkpoint-delete text-lg text-gray-500"
-						@click="addCheckpoint"
-					>
-						add
-					</span>
+				<Transition>
+					<div class="mt-8 text-center" :key="this.form.common_time">
+						<Countdown
+							v-if="form.id"
+							:init-task="form"
+							@toggle="toggleCountdown"
+							@update:seconds="updateSeconds"
+						/>
+
+						<Countdown
+							v-else
+							disabled
+							:init-task="form"
+							@update:seconds="updateSeconds"
+						/>
+					</div>
+				</Transition>
+				<div class="mb-5">
+					<TextField
+						v-model="form.title"
+						:errors="errors.title"
+						placeholder="Task name"
+					/>
+
+					<quill-editor
+						class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+						:class="errors.description && 'border-red-500'"
+						v-model:content="form.description"
+						content-type="html"
+						theme="bubble"
+						placeholder="Description"
+					/>
 				</div>
 
 				<div
-					v-for="(checkpoint, v) in form.checkpoints"
-					:key="v"
-					class="mb-1 flex"
+					v-if="!isCreatingTask"
+					class="checkpoints-wrapper rounded"
+					:key="checkpointUpdateKey"
 				>
-					<div class="relative w-full">
-						<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
-							{{ v + 1 }}
-						</span>
-
-						<textarea
-							class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-							:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
-							placeholder="Checkpoint content"
-							v-model="checkpoint.description"
-						/>
-
+					<div class="text-bold flex items-center justify-center gap-2 text-sm">
+						{{
+							form.checkpoints.length
+								? 'Add a checkpoint'
+								: 'Create checkpoints'
+						}}
 						<span
-							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+							class="material-icons checkpoint-delete text-lg text-gray-500"
+							@click="addCheckpoint"
 						>
-							<span class="text-sm">
-								{{ secondsToStringTime(checkpoint.start) }} -
-								{{ secondsToStringTime(checkpoint.end) }}
-							</span>
-
-							<span
-								class="material-icons checkpoint-delete text-base leading-none text-blue-700"
-								@click="changeCheckpointInputField(v)"
-							>
-								edit
-							</span>
-
-							<span
-								class="material-icons checkpoint-delete text-base leading-none text-red-700"
-								@click="deleteCheckpoint(v)"
-							>
-								delete
-							</span>
+							add
 						</span>
 					</div>
+
+					<div
+						v-for="(checkpoint, v) in form.checkpoints"
+						:key="v"
+						class="mb-1 flex"
+					>
+						<div class="relative w-full">
+							<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
+								{{ v + 1 }}
+							</span>
+
+							<textarea
+								class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+								:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
+								placeholder="Checkpoint content"
+								v-model="checkpoint.description"
+							/>
+
+							<span
+								class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+							>
+								<span class="text-sm">
+									{{ secondsToStringTime(checkpoint.start) }} -
+									{{ secondsToStringTime(checkpoint.end) }}
+								</span>
+
+								<span
+									class="material-icons checkpoint-delete text-base leading-none text-blue-700"
+									@click="changeCheckpointInputField(v)"
+								>
+									edit
+								</span>
+
+								<span
+									class="material-icons checkpoint-delete text-base leading-none text-red-700"
+									@click="deleteCheckpoint(v)"
+								>
+									delete
+								</span>
+							</span>
+						</div>
+					</div>
 				</div>
-			</div>
-		</section>
+			</section>
+			<section v-if="!isCreatingTask" class="md:w-1/2 mt-10">
+				<comments-chat
+					:workspaceMembers="workspaceMembers"
+					:assignees="form.assignees"
+					:taskId="taskId"
+					:startTime="form.start_time"
+					:isDataEdited="isDataEdited"
+				/>
+			</section>
+		</div>
 
 		<footer
 			ref="footer"
-			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5"
-			:class="{ 'mt-10': isPage }"
+			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5 mt-10"
+			:class="{ 'mt-30': isPage }"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -418,10 +435,13 @@
 	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
 	import Modal from 'src/components/Modal.vue';
 	import { mapState } from 'vuex';
+	import CommentsChat from 'src/components/general/CommentsChat.vue';
+	import store from 'src/store';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			CommentsChat,
 			Modal,
 			AssigneeUsers,
 			TimeField,
@@ -512,6 +532,7 @@
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
 				prevValue: null,
+				edited: false,
 			};
 		},
 		watch: {
@@ -528,6 +549,9 @@
 			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
+			store() {
+				return store;
+			},
 			...mapState(['workspaceStatuses']),
 			taskId() {
 				return this.projectCategoryId
