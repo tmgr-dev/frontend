@@ -256,22 +256,28 @@
 			</div>
 		</header>
 		<div class="flex justify-center h-full overflow-y-scroll">
-			<section role="main" class="w-1/2 text-center mt-10">
-				<div class="mt-8 text-center" :key="this.form.common_time">
-					<Countdown
-						v-if="form.id"
-						:init-task="form"
-						@toggle="toggleCountdown"
-						@update:seconds="updateSeconds"
-					/>
+			<section
+				role="main"
+				class="w-1/2 text-center"
+				:class="{ 'mt-10': !form.start_time }"
+			>
+				<Transition>
+					<div class="mt-8 text-center" :key="this.form.common_time">
+						<Countdown
+							v-if="form.id"
+							:init-task="form"
+							@toggle="toggleCountdown"
+							@update:seconds="updateSeconds"
+						/>
 
-					<Countdown
-						v-else
-						disabled
-						:init-task="form"
-						@update:seconds="updateSeconds"
-					/>
-				</div>
+						<Countdown
+							v-else
+							disabled
+							:init-task="form"
+							@update:seconds="updateSeconds"
+						/>
+					</div>
+				</Transition>
 				<div class="mb-5">
 					<TextField
 						v-model="form.title"
@@ -356,6 +362,8 @@
 					:workspaceMembers="workspaceMembers"
 					:assignees="form.assignees"
 					:taskId="taskId"
+					:startTime="form.start_time"
+					:isDataEdited="isDataEdited"
 				/>
 			</section>
 		</div>
@@ -524,6 +532,7 @@
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
 				prevValue: null,
+				edited: false,
 			};
 		},
 		watch: {
