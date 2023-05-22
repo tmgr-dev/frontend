@@ -1,10 +1,12 @@
 <template>
 	<div class="mt-10 px-4">
-		<div
-			class="w-full h-64 max-h-80 overflow-y-scroll dark:bg-gray-800 rounded p-4"
-		>
+		<div class="w-full h-64 overflow-y-scroll dark:bg-gray-800 rounded p-4">
 			<ul v-if="comments">
-				<li class="relative p-2" v-for="comment in comments" :key="comment.id">
+				<li
+					class="relative p-2"
+					v-for="(comment, index) in comments"
+					:key="comment.id"
+				>
 					<div
 						class="w-fit flex flex-col group"
 						:class="{
@@ -43,11 +45,18 @@
 						</div>
 					</div>
 				</li>
+				<div ref="container"></div>
 			</ul>
 		</div>
 		<div class="w-full mt-2">
 			<form class="flex justify-between items-center">
-				<TextField class="w-full" placeholder="Text" v-model="message" />
+				<TextField
+					class="w-full"
+					placeholder="Text"
+					v-model="message"
+					@keydown="submitCommentByKeys"
+					v-tooltip.left="`Press 'cmd'+'Enter' to add`"
+				/>
 				<button class="p-2" type="button" @click="submitForm">
 					<span
 						class="material-icons -rotate-45 text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
@@ -83,6 +92,14 @@
 	const comments = ref({});
 	const message: Ref<string> = ref('');
 	const processing = ref(false);
+
+	const submitCommentByKeys = (e: KeyboardEvent) => {
+		if (e.keyCode === 13 && e.metaKey) {
+			if (message.value) {
+				submitForm();
+			}
+		}
+	};
 
 	watch(processing, async (newValue) => {
 		if (!newValue) {
@@ -120,6 +137,7 @@
 	onBeforeMount(async () => {
 		const commentsData = await getComments(props.taskId);
 		comments.value = commentsData;
+		scrollToBottom();
 	});
 
 	async function submitForm() {
