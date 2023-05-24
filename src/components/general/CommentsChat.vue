@@ -91,7 +91,12 @@
 				</div>
 			</Transition>
 			<form class="flex justify-between items-center">
-				<TextField class="w-full" placeholder="Text" v-model="message" />
+				<TextField
+					class="w-full"
+					placeholder="Text"
+					v-model="message"
+					@keydown="submitCommentByKeys"
+					v-tooltip.left="`Press 'cmd'+'Enter' to add`" />
 				<button class="p-2" type="button" @click="submitForm">
 					<span
 						class="material-icons -rotate-45 text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white">
@@ -234,6 +239,13 @@
 		comments.value = comments.value.map((comment) =>
 			comment.id === c.id ? { ...comment, message: c.message } : comment,
 		);
+	};
+	const submitCommentByKeys = (e: KeyboardEvent) => {
+		if ((e.keyCode === 13 && e.metaKey) || (e.keyCode === 13 && e.ctrlKey)) {
+			if (message.value) {
+				submitForm();
+			}
+		}
 	};
 
 	defineExpose({
