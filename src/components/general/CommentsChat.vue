@@ -1,16 +1,16 @@
 <template>
 	<div class="mt-10 px-4">
 		<div
-			class="w-full h-72 max-h-80 overflow-y-scroll dark:bg-gray-800 rounded p-4">
+			class="h-72 max-h-80 w-full overflow-y-scroll rounded p-4 dark:bg-gray-800">
 			<ul v-if="comments">
 				<li class="p-2" v-for="comment in comments" :key="comment.id">
 					<div
-						class="w-fit relative flex flex-col group"
+						class="group relative flex w-fit flex-col"
 						:class="{
 							'ml-auto': comment.user.name === store.state.user?.name,
 						}">
 						<span
-							class="'dark:bg-inherit text-sm p-0 text-gray-400"
+							class="'dark:bg-inherit p-0 text-sm text-gray-400"
 							v-if="
 								comment.message.toLowerCase().includes('timer') ||
 								comment.message.toLowerCase().includes('task')
@@ -23,9 +23,9 @@
 							<div>
 								<div
 									v-if="comment.user.name === store.state.user?.name"
-									class="absolute ease-in duration-300 invisible -right-4 -top-0 flex rounded-full bg-red-500 h-4 w-4 cursor-pointer opacity-75 hover:opacity-100 group-hover:visible">
+									class="invisible absolute -right-4 -top-0 flex h-4 w-4 cursor-pointer rounded-full bg-red-500 opacity-75 duration-300 ease-in hover:opacity-100 group-hover:visible">
 									<span
-										class="left-0.5 material-icons cursor-pointer m-auto text-xs text-white"
+										class="material-icons left-0.5 m-auto cursor-pointer text-xs text-white"
 										@click="removeComment(comment.id!)">
 										close
 									</span>
@@ -33,17 +33,17 @@
 
 								<div
 									v-if="comment.user.name === store.state.user?.name"
-									class="absolute ease-in duration-300 invisible -right-4 top-6 flex rounded-full bg-green-500 h-4 w-4 cursor-pointer opacity-75 hover:opacity-100 group-hover:visible">
+									class="invisible absolute -right-4 top-6 flex h-4 w-4 cursor-pointer rounded-full bg-green-500 opacity-75 duration-300 ease-in hover:opacity-100 group-hover:visible">
 									<span
-										class="left-0.5 material-icons cursor-pointer m-auto text-xs text-white"
+										class="material-icons left-0.5 m-auto cursor-pointer text-xs text-white"
 										@click="onEditClick(comment.id)">
 										edit
 									</span>
 								</div>
 								<div
-									class="absolute ease-in duration-300 invisible -right-6 -bottom-4 flex cursor-pointer opacity-75 hover:opacity-100 group-hover:visible">
+									class="invisible absolute -right-6 -bottom-4 flex cursor-pointer opacity-75 duration-300 ease-in hover:opacity-100 group-hover:visible">
 									<span
-										class="left-0.5 h-6 w-6 material-icons cursor-pointer m-auto text-md text-white z-50"
+										class="material-icons text-md left-0.5 z-50 m-auto h-6 w-6 cursor-pointer text-white"
 										@click="onReplyClick(comment.id)">
 										reply
 									</span>
@@ -53,14 +53,14 @@
 							<div class="flex flex-col">
 								<span>{{ comment.user.name }}:</span>
 								<span
-									class="w-fit rounded-lg p-2 dark:bg-gray-700 cursor-pointer">
+									class="w-fit cursor-pointer rounded-lg p-2 dark:bg-gray-700">
 									{{ comment.message }}
 								</span>
 							</div>
 						</div>
 					</div>
 					<div
-						class="flex w-fit px-2 rounded dark:bg-gray-500 text-xs opacity-70 z-10"
+						class="z-10 flex w-fit rounded px-2 text-xs opacity-70 dark:bg-gray-500"
 						:class="{
 							'ml-auto': comment.user.name === store.state.user?.name,
 						}"
@@ -72,34 +72,38 @@
 				</li>
 			</ul>
 		</div>
-		<div class="w-full mt-2">
+		<div class="mt-2 w-full">
 			<Transition
 				enter-active-class="transition-opacity duration-300 ease-out"
 				enter-from-class="opacity-0"
 				leave-active-class="transition-opacity duration-300 ease-out"
 				leave-to-class="opacity-0">
 				<div
-					class="m-2 w-fit relative rounded-lg p-2 dark:bg-gray-700"
+					class="relative m-2 w-fit rounded-lg p-2 dark:bg-gray-700"
 					v-if="isReplying">
 					<span class="w-fit cursor-pointer">
 						{{ replyingMessage.message }}
 					</span>
 					<span
-						class="absolute left-18 h-6 w-6 material-icons cursor-pointer m-auto text-md text-white">
+						class="left-18 material-icons text-md absolute m-auto h-6 w-6 cursor-pointer text-white">
 						reply
 					</span>
 				</div>
 			</Transition>
-			<form class="flex justify-between items-center">
+			<form class="flex items-center justify-between">
 				<TextField
 					class="w-full"
 					placeholder="Text"
 					v-model="message"
 					@keydown="submitCommentByKeys"
-					v-tooltip.left="`Press 'cmd'+'Enter' to add`" />
+					v-tooltip.left="
+						store.state.userSettings.showTooltips
+							? `Press 'cmd'+'Enter' to add`
+							: { visible: false }
+					" />
 				<button class="p-2" type="button" @click="submitForm">
 					<span
-						class="material-icons -rotate-45 text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white">
+						class="material-icons -rotate-45 cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white">
 						send
 					</span>
 				</button>
