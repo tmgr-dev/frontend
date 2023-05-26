@@ -1,7 +1,7 @@
 <template>
 	<div class="w-full pl-4">
 		<div
-			class="mr-20 flex flex-col md:flex-row min-h-15 w-full items-center justify-between rounded"
+			class="mr-20 flex min-h-[62px] w-full flex-col items-center justify-between rounded md:flex-row"
 		>
 			<div class="mr-3 flex items-center">
 				<input
@@ -13,7 +13,7 @@
 				/>
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
-			<div class="flex flex-col m-2 md:flex-row">
+			<div class="m-2 flex flex-col md:flex-row">
 				<TextField
 					placeholder="Search"
 					v-model="searchText"
@@ -23,7 +23,7 @@
 				<div>
 					<div
 						v-if="categories.length >= 2"
-						class="md:m-0 md:ml-3 md:mr-3 mt-2 w-48"
+						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
 					>
 						<Select
 							placeholder="Select category"
@@ -34,7 +34,7 @@
 						/>
 					</div>
 				</div>
-				<div v-if="workspaceUsers.length >= 2" class="w-48 mt-2 md:mt-0">
+				<div v-if="workspaceUsers.length >= 2" class="mt-2 w-48 md:mt-0">
 					<Select
 						placeholder="Select user"
 						:options="workspaceUsers"
