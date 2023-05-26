@@ -1,23 +1,23 @@
 <template>
-	<teleport to="title">{{ title }}</teleport>
+	<Teleport to="title">{{ title }}</Teleport>
 
 	<BaseLayout no-copyright>
 		<template #body>
 			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
-					<div class="min-h-15">
-						<div class="md:hidden relative">
-							<filters-svg
-								@handleFilter="handleFilter"
-								:isFiltersModal="isFiltersModal"
+					<div class="min-h-[62px]">
+						<div class="relative md:hidden">
+							<FilterIcon
+								@click="isFiltersModalShown = !isFiltersModalShown"
+								:isActive="isFiltersModalShown"
 							/>
 
 							<Transition name="bounce-right-fade">
 								<Modal
-									v-if="isFiltersModal"
+									v-if="isFiltersModalShown"
 									modal-class="p-6 w-96"
 									close-on-bg-click
-									@close="closeFilterModal"
+									@close="isFiltersModalShown = false"
 								>
 									<template #modal-body>
 										<FiltersBoard
@@ -31,9 +31,11 @@
 											@handleUpdateDraggable="handleUpdateDraggable"
 											@handleSearchTextChanged="handleSearchTextChanged"
 										/>
-									</template> </Modal
-							></Transition>
+									</template>
+								</Modal>
+							</Transition>
 						</div>
+
 						<div class="hidden md:block">
 							<FiltersBoard
 								v-if="workspaceUsers.length"
@@ -48,6 +50,7 @@
 							/>
 						</div>
 					</div>
+
 					<div class="board-container">
 						<Draggable
 							:disabled="!activeDraggable"
@@ -83,7 +86,7 @@
 												</div>
 
 												<div
-													class="group w-full relative flex items-center h-6"
+													class="group relative flex h-6 w-full items-center"
 												>
 													<span class="text-sm">
 														{{ column.title }}
@@ -95,11 +98,11 @@
 																? `Create task `
 																: { visible: false }
 														"
-														class="opacity-0 group-hover:opacity-100 transition duration-700 absolute top-0 right-3"
+														class="absolute top-0 right-3 opacity-0 transition duration-700 group-hover:opacity-100"
 													>
 														<div
 															@click="openTaskModal(column)"
-															class="material-icons text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
+															class="material-icons cursor-pointer text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
 														>
 															add
 														</div>
@@ -151,7 +154,8 @@
 								</div>
 							</template>
 						</Draggable>
-						<div class="w-12 h-12 flex justify-center items-center">
+
+						<div class="flex h-12 w-12 items-center justify-center">
 							<span
 								@click="
 									() => {
@@ -159,7 +163,7 @@
 										isCreatingStatus = true;
 									}
 								"
-								class="material-icons text-2xl text-gray-500 cursor-pointer hover:text-black dark:text-gray-700 dark:hover:text-white"
+								class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
 							>
 								add
 							</span>
@@ -177,11 +181,11 @@
 						<template #modal-body>
 							<div>
 								<div v-if="!isShowColorPicker">
-									<h1 v-if="isCreatingStatus" class="text-xl text-center mb-3">
+									<h1 v-if="isCreatingStatus" class="mb-3 text-center text-xl">
 										Create status
 									</h1>
-									<h1 v-else class="text-xl text-center mb-3">Edit status</h1>
-									<label class="flex flex-col gap-2 font-medium mb-3">
+									<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
+									<label class="mb-3 flex flex-col gap-2 font-medium">
 										Status name :
 										<TextField
 											placeholder="Name"
@@ -189,7 +193,7 @@
 											:errors="errors.name"
 										/>
 									</label>
-									<label class="flex flex-col gap-2 font-medium mb-4">
+									<label class="mb-4 flex flex-col gap-2 font-medium">
 										Status type :
 										<Select
 											placeholder="Select Type"
@@ -201,7 +205,7 @@
 										/>
 									</label>
 									<div
-										class="flex mb-3 items-center justify-between font-medium mb-3"
+										class="mb-3 mb-3 flex items-center justify-between font-medium"
 									>
 										<span>Status color :</span>
 										<button
@@ -237,13 +241,14 @@
 										:hue="color.hue"
 										@input="onInput"
 										@select="onColorSelect"
-									></color-picker>
+									/>
 								</div>
 							</div>
 						</template>
 					</Modal>
 				</Transition>
 			</div>
+
 			<Transition name="fade">
 				<confirm
 					v-if="confirm"
@@ -291,12 +296,12 @@
 	import Confirm from 'src/components/general/Confirm.vue';
 	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
 	import { getCategories } from 'src/actions/tmgr/categories';
-	import FiltersSvg from 'src/components/UI/FiltersSvg.vue';
+	import FilterIcon from 'src/components/icons/FilterIcon.vue';
 
 	export default {
 		name: 'Board',
 		components: {
-			FiltersSvg,
+			FilterIcon,
 			TaskBoardCard,
 			EllipsisVerticalIcon,
 			MenuItem,
@@ -370,7 +375,7 @@
 			],
 			confirm: null,
 			tasks: [],
-			isFiltersModal: false,
+			isFiltersModalShown: false,
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
@@ -404,10 +409,10 @@
 				}, 1000);
 			},
 			handleFilter() {
-				this.isFiltersModal = !this.isFiltersModal;
+				this.isFiltersModalShown = !this.isFiltersModalShown;
 			},
 			closeFilterModal() {
-				this.isFiltersModal = false;
+				this.isFiltersModalShown = false;
 			},
 
 			onInput(hue) {

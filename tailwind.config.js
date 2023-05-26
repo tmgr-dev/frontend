@@ -10,9 +10,6 @@ module.exports = {
 				'tmgr-blue': '#2c3e50',
 				'tmgr-gray': '#e2e2e2',
 			},
-			minHeight: {
-				15: '62px',
-			},
 		},
 	},
 	plugins: [],
