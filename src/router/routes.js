@@ -206,6 +206,15 @@ const routes = [
 		name: 'NotFound',
 		component: () => import('src/pages/Error404.vue'),
 	},
+	{
+		path: '/daily-routines',
+		component: () => import('src/pages/DailyRoutine.vue'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'Daily routines',
+	},
 ];
 
 export default routes;
