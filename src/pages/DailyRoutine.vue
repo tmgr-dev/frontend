@@ -1,7 +1,7 @@
 <template>
 	<BaseLayout no-copyright>
 		<template #body>
-			<div class="w-full items-center justify-between py-4 md:flex">
+			<div class="w-full items-center justify-between pt-6 md:flex md:py-4">
 				<div class="rounded-xl p-2 dark:bg-gray-900 md:w-4/6">
 					<div
 						class="flex items-center justify-between rounded-xl border px-2 dark:border-0 dark:bg-gray-800"
@@ -12,7 +12,7 @@
 						/>
 
 						<Button
-							class="my-1 ml-2 w-32 rounded-xl py-2 px-2 text-sm font-semibold text-white dark:bg-gray-800 dark:hover:bg-gray-700"
+							class="my-1 ml-2 w-32 rounded-xl py-2 px-2 text-sm text-white dark:bg-gray-800 dark:hover:bg-gray-700"
 							type="submit"
 						>
 							<span class="relative">Never repeat</span>
