@@ -14,6 +14,14 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="m-2 flex flex-col md:flex-row">
+				<div class="mr-2 hidden items-center justify-center md:flex">
+					<span
+						class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
+						@click="loadTasks"
+					>
+						refresh
+					</span>
+				</div>
 				<TextField
 					placeholder="Search"
 					v-model="searchText"
@@ -87,6 +95,8 @@
 		'handleUpdateDraggable',
 		'handleSearchTextChanged',
 		'handleChosenCategory',
+		'loadTasks',
+		'loadColumns',
 	]);
 	const store = useStore();
 
@@ -124,4 +134,8 @@
 	watch(searchText, (newValue) => {
 		emit('handleSearchTextChanged', newValue);
 	});
+	const loadTasks = () => {
+		emit('loadColumns');
+		emit('loadTasks');
+	};
 </script>
