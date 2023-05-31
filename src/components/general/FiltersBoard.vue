@@ -14,15 +14,10 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="m-2 flex flex-col md:flex-row">
-				<div class="mr-2 flex hidden items-center justify-center md:flex">
+				<div class="mr-2 hidden items-center justify-center md:flex">
 					<span
 						class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
-						@click="
-							() => {
-								emit('loadColumns');
-								emit('loadTasks');
-							}
-						"
+						@click="loadTasks"
 					>
 						refresh
 					</span>
