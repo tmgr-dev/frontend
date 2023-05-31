@@ -71,6 +71,8 @@
 					</div>
 				</li>
 			</ul>
+
+			<div ref="$chatAnchor" />
 		</div>
 		<div class="mt-2 w-full">
 			<Transition
@@ -95,12 +97,7 @@
 					class="w-full"
 					placeholder="Text"
 					v-model="message"
-					@keydown="submitCommentByKeys"
-					v-tooltip.left="
-						store.state.userSettings.showTooltips
-							? `Press 'cmd'+'Enter' to add`
-							: { visible: false }
-					" />
+					@keydown="submitCommentByKeys" />
 				<button class="p-2" type="button" @click="submitForm">
 					<span
 						class="material-icons -rotate-45 cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white">
@@ -152,12 +149,13 @@
 	}
 	const props = defineProps<Props>();
 	const comments = ref<Comment[]>([]);
-	const message: Ref<string> = ref('');
-	const processing = ref<boolean>(false);
-	const isReplying = ref<boolean>(false);
+	const message: Ref = ref('');
+	const processing = ref(false);
+	const isReplying = ref(false);
 	const replyingMessage = ref<Comment>();
-	const isEditing = ref<boolean>(false);
+	const isEditing = ref(false);
 	const editingMessage = ref<Comment>();
+	const $chatAnchor = ref<HTMLElement>();
 
 	watch(processing, async (newValue) => {
 		if (!newValue) {
@@ -196,9 +194,9 @@
 	});
 
 	onBeforeMount(async () => {
-		const commentsData = (await getComments(props.taskId)) as Comment[];
-		comments.value = commentsData;
+		comments.value = (await getComments(props.taskId)) as Comment[];
 	});
+
 	const onReplyClick = (id: number) => {
 		isReplying.value = !isReplying.value;
 		replyingMessage.value = comments.value.find((comment) => comment.id === id);
@@ -210,6 +208,7 @@
 
 	async function submitForm() {
 		processing.value = true;
+
 		const newComment: any = {
 			message: message.value,
 		};
@@ -217,12 +216,14 @@
 			await updateComment(editingMessage.value?.id!, newComment);
 			isEditing.value = false;
 		} else if (isReplying.value) {
-			(newComment.comment_id = replyingMessage.value?.id),
-				await createComment(props.taskId, newComment);
+			newComment.comment_id = replyingMessage.value?.id;
+			await createComment(props.taskId, newComment);
 			isReplying.value = false;
 		} else {
 			await createComment(props.taskId, newComment);
 		}
+		// it won't work properly cuz we need to add the comment before sending the request
+		$chatAnchor.value?.scrollIntoView(false);
 		processing.value = false;
 	}
 
@@ -245,7 +246,9 @@
 		);
 	};
 	const submitCommentByKeys = (e: KeyboardEvent) => {
-		if ((e.keyCode === 13 && e.metaKey) || (e.keyCode === 13 && e.ctrlKey)) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+
 			if (message.value) {
 				submitForm();
 			}
