@@ -6,6 +6,45 @@
 
 		<template #body>
 			<form action="#" class="form-horizontal mx-auto w-3/4" method="POST">
+				<div class="flex flex-col">
+					<div class="text-center">
+						Register with
+					</div>
+				</div>
+				<div class="mt-6 flex flex-col">
+					<Button
+						class="my-1 flex justify-around rounded bg-slate-200 py-2 px-4 text-sm font-semibold text-black hover:bg-slate-300"
+						@click="loginWithSocialite('apple')"
+					>
+						<div class="flex">
+							<AppleIcon class="h-5 w-5" />
+							<span class="relative ml-3"> Apple </span>
+						</div>
+					</Button>
+					<Button
+						class="group my-1 flex justify-around rounded bg-black py-2 px-4 text-sm font-semibold text-white hover:bg-gray-800"
+						@click="loginWithSocialite('github')"
+					>
+						<div class="flex">
+							<GitHubIcon class="h-5 w-5" />
+							<span class="relative ml-3"> GitHub </span>
+						</div>
+					</Button>
+					<Button
+						class="my-1 flex justify-around rounded bg-red-400 py-2 px-4 text-sm font-semibold text-white hover:bg-red-700"
+						@click="loginWithSocialite('google')"
+					>
+						<div class="flex">
+							<GoogleIcon class="h-5 w-5" />
+							<span class="relative ml-3"> Google </span>
+						</div>
+					</Button>
+				</div>
+				<div class="mt-4 flex flex-col">
+					<div class="text-center">
+						or with
+					</div>
+				</div>
 				<div class="mt-4 flex flex-col">
 					<TextField
 						v-model="form.name"
@@ -59,24 +98,6 @@
 							Register
 							<loader v-if="isLoading" class="auth-loader" is-mini />
 						</span>
-					</Button>
-					<Button
-						class="my-1 flex justify-around rounded bg-slate-200 py-2 px-4 text-sm font-semibold text-black hover:bg-slate-300"
-					>
-						<AppleIcon class="h-5 w-5" />
-						<span class="relative"> Register with Apple </span>
-					</Button>
-					<Button
-						class="group my-1 flex justify-around rounded bg-black py-2 px-4 text-sm font-semibold text-white hover:bg-gray-800"
-					>
-						<GitHubIcon class="h-5 w-5" />
-						<span class="relative"> Register with GitHub </span>
-					</Button>
-					<Button
-						class="my-1 flex justify-around rounded bg-red-400 py-2 px-4 text-sm font-semibold text-white hover:bg-red-700"
-					>
-						<GoogleIcon class="h-5 w-5" />
-						<span class="relative"> Register with Google </span>
 					</Button>
 				</div>
 			</form>
@@ -135,5 +156,9 @@
 		} finally {
 			isLoading.value = false;
 		}
+	}
+
+	async function loginWithSocialite(platform: string) {
+		document.location.href = `${process.env.VUE_APP_API_BASE_URL}auth/login/${platform}`;
 	}
 </script>
