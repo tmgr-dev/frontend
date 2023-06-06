@@ -12,7 +12,9 @@
 	>
 		<div
 			class="relative"
-			:class="{ 'flex items-center justify-center gap-5': !task.start_time }"
+			:class="{
+				'flex items-center justify-center gap-5 pb-4': !task.start_time,
+			}"
 		>
 			<div
 				v-if="lastStartTime"
