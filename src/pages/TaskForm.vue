@@ -8,11 +8,13 @@
 				<Modal
 					v-if="isShowSettingsModal"
 					modal-class="p-6 w-96"
-					@close="isShowSettingsModal = false">
+					@close="isShowSettingsModal = false"
+				>
 					<template #modal-body>
 						<form
 							@submit.prevent="updateCategory"
-							class="text-gray-800 dark:text-tmgr-gray">
+							class="text-gray-800 dark:text-tmgr-gray"
+						>
 							<label for="settings" class="mb-5 block text-lg font-bold">
 								Settings
 							</label>
@@ -20,7 +22,8 @@
 							<div>
 								<div
 									v-if="form.user"
-									class="estimated-info border-b border-neutral-200 py-1 pr-5 text-start dark:border-neutral-600">
+									class="estimated-info border-b border-neutral-200 py-1 pr-5 text-start dark:border-neutral-600"
+								>
 									Author:
 									<span class="text-neutral-600 dark:text-neutral-300">
 										{{ form.user.name }}
@@ -34,16 +37,19 @@
 										:options="categoriesSelectOptions"
 										label-key="title"
 										value-key="id"
-										v-model="currentCategoryOptionInSelect" />
+										v-model="currentCategoryOptionInSelect"
+									/>
 								</label>
 
 								<div
 									v-for="(setting, index) in availableSettings"
 									id="settings"
-									class="mt-4">
+									class="mt-4"
+								>
 									<label
 										:for="`setting-${setting.id}`"
-										class="mb-2 block text-left text-sm font-bold">
+										class="mb-2 block text-left text-sm font-bold"
+									>
 										{{ setting.name }}
 									</label>
 
@@ -51,12 +57,14 @@
 										<TimeField
 											v-if="setting.component_type === 'time_in_seconds'"
 											v-model="settings[index].value"
-											:placeholder="setting.description" />
+											:placeholder="setting.description"
+										/>
 
 										<TextField
 											v-else
 											v-model="settings[index].value"
-											:placeholder="setting.description" />
+											:placeholder="setting.description"
+										/>
 									</div>
 								</div>
 
@@ -74,13 +82,15 @@
 									<div
 										v-if="form.assignees && form.assignees.length"
 										v-for="assignee in form.assignees"
-										class="mt-2 flex gap-2">
+										class="mt-2 flex gap-2"
+									>
 										<div class="flex items-center gap-1.5">
 											{{ assignee.name }}
 
 											<span
 												class="material-icons checkpoint-delete text-lg text-red-500"
-												@click="deleteAssignee(assignee.id)">
+												@click="deleteAssignee(assignee.id)"
+											>
 												person_remove
 											</span>
 										</div>
@@ -92,13 +102,15 @@
 								<button
 									type="button"
 									@click="isShowSettingsModal = false"
-									class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white">
+									class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
+								>
 									Cancel
 								</button>
 
 								<button
 									type="submit"
-									class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white">
+									class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
+								>
 									Update
 								</button>
 							</div>
@@ -112,7 +124,8 @@
 				<Modal
 					v-if="isShowModalAssign"
 					modal-class="p-6 w-96"
-					@close="isShowModalAssign = false">
+					@close="isShowModalAssign = false"
+				>
 					<template #modal-body>
 						<form @submit.prevent="" class="text-gray-800 dark:text-tmgr-gray">
 							<label for="settings" class="block text-lg font-bold">
@@ -122,18 +135,22 @@
 							<div class="mt-5 grid grid-cols-2 gap-2">
 								<div
 									v-for="workspaceMember in workspaceMembers"
-									:key="workspaceMember.id">
+									:key="workspaceMember.id"
+								>
 									<div
 										class="group flex cursor-pointer items-center gap-1.5 dark:hover:text-white"
-										@click="handleAssign(workspaceMember.id)">
+										@click="handleAssign(workspaceMember.id)"
+									>
 										<span
-											class="material-icons text-lg text-neutral-300 dark:group-hover:text-white">
+											class="material-icons text-lg text-neutral-300 dark:group-hover:text-white"
+										>
 											<template
 												v-if="
 													form.assignees.find(
 														(user) => user.id === workspaceMember.id,
 													)
-												">
+												"
+											>
 												radio_button_checked
 											</template>
 
@@ -149,7 +166,8 @@
 								<button
 									type="button"
 									@click="isShowModalAssign = false"
-									class="mr-1 block w-full rounded bg-gray-700 p-2 text-white">
+									class="mr-1 block w-full rounded bg-gray-700 p-2 text-white"
+								>
 									Close
 								</button>
 							</div>
@@ -166,10 +184,12 @@
 			'task-form-container relative mx-auto overflow-hidden rounded-lg bg-white p-3 dark:bg-gray-900':
 				isModal,
 			'container mx-auto': !isModal,
-		}">
+		}"
+	>
 		<header ref="header">
 			<div
-				:class="`flex items-center justify-between ${isModal ? '' : 'mt-10'}`">
+				:class="`flex items-center justify-between ${isModal ? '' : 'mt-10'}`"
+			>
 				<template v-if="!isCreatingTask">
 					<router-link
 						:to="
@@ -180,7 +200,8 @@
 								  }/children/${getCategoryStatus()}`
 						"
 						class="hidden rounded text-blue-800 text-white focus:outline-none dark:text-neutral-200 sm:mb-0 sm:block"
-						type="button">
+						type="button"
+					>
 						{{ currentCategory ? currentCategory.title : 'tasks' }}
 					</router-link>
 
@@ -189,7 +210,8 @@
 						:options="workspaceStatuses"
 						label-key="name"
 						value-key="id"
-						class="w-36 shrink-0 sm:ml-3 sm:w-40" />
+						class="w-36 shrink-0 sm:ml-3 sm:w-40"
+					/>
 
 					<assignee-users
 						:assignees="form.assignees"
@@ -197,7 +219,8 @@
 						avatarsClass="h-8 w-8"
 						:show-assignee-controls="true"
 						@showModal="isShowModalAssign = true"
-						@deleteAssignee="deleteAssignee" />
+						@deleteAssignee="deleteAssignee"
+					/>
 				</template>
 
 				<p v-else>Creating task</p>
@@ -205,10 +228,12 @@
 				<div v-if="isModal" class="ml-auto flex gap-2">
 					<button
 						type="button"
-						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block">
+						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block"
+					>
 						<a
 							class="material-icons text-2xl text-black dark:text-white"
-							:href="`/${taskId}`">
+							:href="`/${taskId}`"
+						>
 							open_in_new
 						</a>
 					</button>
@@ -216,41 +241,47 @@
 					<button
 						type="button"
 						class="opacity-50 transition-opacity hover:opacity-100"
-						v-if="isModal">
+						v-if="isModal"
+					>
 						<span
 							class="material-icons text-2xl text-black dark:text-white"
-							@click="close">
+							@click="close"
+						>
 							close
 						</span>
 					</button>
 				</div>
 			</div>
 		</header>
-		<div class="md:flex justify-center h-full overflow-y-scroll">
+		<div class="h-full justify-center overflow-y-scroll md:flex">
 			<section
 				role="main"
-				class="md:w-1/2 text-center"
-				:class="{ 'mt-10': !form.start_time }">
+				class="text-center md:w-1/2"
+				:class="{ 'mt-10': !form.start_time }"
+			>
 				<Transition>
 					<div class="mt-8 text-center" :key="this.form.common_time">
 						<Countdown
 							v-if="form.id"
 							:init-task="form"
 							@toggle="toggleCountdown"
-							@update:seconds="updateSeconds" />
+							@update:seconds="updateSeconds"
+						/>
 
 						<Countdown
 							v-else
 							disabled
 							:init-task="form"
-							@update:seconds="updateSeconds" />
+							@update:seconds="updateSeconds"
+						/>
 					</div>
 				</Transition>
 				<div class="mb-5">
 					<TextField
 						v-model="form.title"
 						:errors="errors.title"
-						placeholder="Task name" />
+						placeholder="Task name"
+					/>
 
 					<quill-editor
 						class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
@@ -258,13 +289,15 @@
 						v-model:content="form.description"
 						content-type="html"
 						theme="bubble"
-						placeholder="Description" />
+						placeholder="Description"
+					/>
 				</div>
 
 				<div
 					v-if="!isCreatingTask"
 					class="checkpoints-wrapper rounded"
-					:key="checkpointUpdateKey">
+					:key="checkpointUpdateKey"
+				>
 					<div class="text-bold flex items-center justify-center gap-2 text-sm">
 						{{
 							form.checkpoints.length
@@ -273,7 +306,8 @@
 						}}
 						<span
 							class="material-icons checkpoint-delete text-lg text-gray-500"
-							@click="addCheckpoint">
+							@click="addCheckpoint"
+						>
 							add
 						</span>
 					</div>
@@ -281,7 +315,8 @@
 					<div
 						v-for="(checkpoint, v) in form.checkpoints"
 						:key="v"
-						class="mb-1 flex">
+						class="mb-1 flex"
+					>
 						<div class="relative w-full">
 							<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
 								{{ v + 1 }}
@@ -291,10 +326,12 @@
 								class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
 								:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
 								placeholder="Checkpoint content"
-								v-model="checkpoint.description" />
+								v-model="checkpoint.description"
+							/>
 
 							<span
-								class="absolute right-0 top-2 flex items-center gap-1 text-sm">
+								class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+							>
 								<span class="text-sm">
 									{{ secondsToStringTime(checkpoint.start) }} -
 									{{ secondsToStringTime(checkpoint.end) }}
@@ -302,13 +339,15 @@
 
 								<span
 									class="material-icons checkpoint-delete text-base leading-none text-blue-700"
-									@click="changeCheckpointInputField(v)">
+									@click="changeCheckpointInputField(v)"
+								>
 									edit
 								</span>
 
 								<span
 									class="material-icons checkpoint-delete text-base leading-none text-red-700"
-									@click="deleteCheckpoint(v)">
+									@click="deleteCheckpoint(v)"
+								>
 									delete
 								</span>
 							</span>
@@ -316,21 +355,23 @@
 					</div>
 				</div>
 			</section>
-			<section v-if="!isCreatingTask" class="md:w-1/2 mt-10">
+			<section v-if="!isCreatingTask" class="mt-10 md:w-1/2">
 				<comments-chat
 					:workspaceMembers="workspaceMembers"
 					:assignees="form.assignees"
 					:taskId="taskId"
 					:startTime="form.start_time"
 					:isDataEdited="isDataEdited"
-					ref="commentsChat" />
+					ref="commentsChat"
+				/>
 			</section>
 		</div>
 
 		<footer
 			ref="footer"
-			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5 mt-10"
-			:class="{ 'mt-30': isPage }">
+			class="shadow-top z-10 mt-10 w-full rounded-lg p-2 sm:p-5"
+			:class="{ 'mt-30': isPage }"
+		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
 				:is-data-edited="isDataEdited"
@@ -339,12 +380,14 @@
 				@createTask="createTask"
 				@saveTask="saveTask"
 				@settingsTask="showModalCategory"
-				@cancelCreateTask="cancelCreateTask">
+				@cancelCreateTask="cancelCreateTask"
+			>
 				<span
 					v-if="form.approximately_time"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
-					}-500 estimated-info hidden py-2 pr-5 md:block`">
+					}-500 estimated-info hidden py-2 pr-5 md:block`"
+				>
 					Left time: {{ approximatelyEndTime }}
 				</span>
 			</task-actions>
@@ -357,7 +400,8 @@
 			:title="confirm.title"
 			:body="confirm.body"
 			@onOk="confirm.action()"
-			@onCancel="confirm = undefined" />
+			@onCancel="confirm = undefined"
+		/>
 	</Transition>
 </template>
 
@@ -709,7 +753,7 @@
 			getShortcutSaveListener() {
 				return (e) => {
 					if (
-						e.ctrlKey &&
+						(e.metaKey || e.ctrlKey) &&
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
