@@ -214,6 +214,18 @@
 						value-key="id"
 						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
+					<div
+						v-if="categoriesSelectOptions.length >= 2"
+						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
+					>
+						<Select
+							placeholder="Select category"
+							:options="categoriesSelectOptions"
+							v-model="form.project_category_id"
+							label-key="title"
+							value-key="id"
+						/>
+					</div>
 
 					<assignee-users
 						:assignees="form.assignees"
@@ -543,9 +555,12 @@
 				this.setSavedData(newVal);
 			},
 		},
-		mounted() {
+		async mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
 			this.handleHistoryState();
+			if (this.categoriesSelectOptions.length === 0) {
+				await this.loadCategories();
+			}
 		},
 		unmounted() {
 			this.$store.commit('closeTaskModal');
