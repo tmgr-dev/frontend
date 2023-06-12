@@ -42,7 +42,7 @@ jobs:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
 
   on-success-deploying:
-    needs: [ release ]
+    needs: [release]
     if: success()
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -61,7 +61,7 @@ jobs:
           body: '{ "message": "\n ✅ Deploy successful \nRepository: `${{ github.repository }}`\nBranch: `${{ env.GIT_BRANCH_NAME }}`\nPusher: `${{ github.event.pusher.name }}`\nFor more information look at pull request page in the GitHub.com [repository](https://github.com/${{ github.repository }})", "receivers": ${{ secrets.DEV_TELEGRAM_CHATS }} }'
 
   on-failure-deploying:
-    needs: [ release ]
+    needs: [release]
     if: failure()
     runs-on: ubuntu-latest
     timeout-minutes: 1
