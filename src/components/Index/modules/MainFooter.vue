@@ -2,15 +2,15 @@
 	<!--Footer-->
 	<footer class="bg-white">
 		<div class="container mx-auto px-8">
-			<div class="w-full flex flex-col md:flex-row py-6">
-				<div class="flex-1 mb-6">
+			<div class="flex w-full flex-col py-6 md:flex-row">
+				<div class="mb-6 flex-1">
 					<a
-						class="text-orange-600 no-underline hover:no-underline font-bold text-2xl lg:text-4xl"
+						class="text-2xl font-bold text-orange-600 no-underline hover:no-underline lg:text-4xl"
 						href="#"
 					>
 						<!--Icon from: http://www.potlabicons.com/ -->
 						<svg
-							class="h-8 fill-current inline"
+							class="inline h-8 fill-current"
 							viewBox="0 0 512.005 512.005"
 							xmlns="http://www.w3.org/2000/svg"
 						>
@@ -34,23 +34,23 @@
 				<div class="flex-1">
 					<p class="uppercase text-gray-500 md:mb-6">Links</p>
 					<ul class="list-reset mb-6">
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>FAQ</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Help</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Support</a
 							>
@@ -60,16 +60,16 @@
 				<div class="flex-1">
 					<p class="uppercase text-gray-500 md:mb-6">Legal</p>
 					<ul class="list-reset mb-6">
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Terms</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Privacy</a
 							>
@@ -79,23 +79,23 @@
 				<div class="flex-1">
 					<p class="uppercase text-gray-500 md:mb-6">Social</p>
 					<ul class="list-reset mb-6">
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Facebook</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Linkedin</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Twitter</a
 							>
@@ -105,23 +105,23 @@
 				<div class="flex-1">
 					<p class="uppercase text-gray-500 md:mb-6">Company</p>
 					<ul class="list-reset mb-6">
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Official Blog</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>About Us</a
 							>
 						</li>
-						<li class="mt-2 inline-block mr-2 md:block md:mr-0">
+						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
-								class="no-underline hover:underline text-gray-800 hover:text-orange-500"
+								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
 								>Contact</a
 							>

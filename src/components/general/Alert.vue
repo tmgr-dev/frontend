@@ -1,7 +1,7 @@
 <template>
 	<transition name="fade">
-		<div v-if="isShowAlert" class="fixed alert" @click="isShowAlert = false">
-			<div class="flex bg-green-400 max-w-sm">
+		<div v-if="isShowAlert" class="alert fixed" @click="isShowAlert = false">
+			<div class="flex max-w-sm bg-green-400">
 				<div class="w-16 bg-green-700">
 					<div class="flex h-full">
 						<svg
@@ -26,9 +26,9 @@
 				</div>
 				<div
 					:class="{ show: animate }"
-					class="w-auto text-grey-500 items-center p-4 alert__info"
+					class="text-grey-500 alert__info w-auto items-center p-4"
 				>
-					<span class="text-lg font-bold pb-4">
+					<span class="pb-4 text-lg font-bold">
 						{{ title }}
 					</span>
 					<p class="leading-tight">

@@ -7,9 +7,7 @@
 		<template #body>
 			<form action="#" class="form-horizontal mx-auto w-3/4" method="POST">
 				<div class="flex flex-col">
-					<div class="text-center">
-						Register with
-					</div>
+					<div class="text-center">Register with</div>
 				</div>
 				<div class="mt-6 flex flex-col">
 					<Button
@@ -41,9 +39,7 @@
 					</Button>
 				</div>
 				<div class="mt-4 flex flex-col">
-					<div class="text-center">
-						or with
-					</div>
+					<div class="text-center">or with</div>
 				</div>
 				<div class="mt-4 flex flex-col">
 					<TextField
