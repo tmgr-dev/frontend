@@ -238,6 +238,18 @@
 				</template>
 
 				<p v-else>Creating task</p>
+				<div
+					v-if="categoriesSelectOptions.length >= 2"
+					class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
+				>
+					<Select
+						placeholder="Select category"
+						:options="categoriesSelectOptions"
+						v-model="form.project_category_id"
+						label-key="title"
+						value-key="id"
+					/>
+				</div>
 
 				<div v-if="isModal" class="ml-auto flex gap-2">
 					<button
