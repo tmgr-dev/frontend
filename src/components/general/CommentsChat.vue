@@ -129,7 +129,6 @@
 	import TextField from 'src/components/general/TextField.vue';
 	import Button from 'src/components/general/Button.vue';
 	import { onBeforeMount, onMounted, Ref, ref, UnwrapRef, watch } from 'vue';
-	// import { Assignee } from 'src/components/general/AssigneeUsers.vue';
 	import store from '../../store';
 	import moment from 'moment';
 	import {
@@ -195,7 +194,7 @@
 	watch(
 		() => props.startTime,
 		async (newValue, oldValue) => {
-			if (newValue !== 0) {
+			if (newValue && newValue !== 0) {
 				processing.value = true;
 				const newComment = {
 					message: `Timer starts`,
