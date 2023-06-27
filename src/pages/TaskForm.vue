@@ -219,6 +219,7 @@
 						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
 					>
 						<Select
+							v-if="!isCreatingTask"
 							placeholder="Select category"
 							:options="categoriesSelectOptions"
 							v-model="form.project_category_id"
@@ -243,6 +244,7 @@
 					class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
 				>
 					<Select
+						v-if="isCreatingTask"
 						placeholder="Select category"
 						:options="categoriesSelectOptions"
 						v-model="form.project_category_id"
@@ -462,6 +464,7 @@
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
+	import { newTitleCount } from 'src/utils/newTitleCount';
 
 	export default {
 		name: 'TaskForm',
@@ -566,7 +569,11 @@
 			form(newVal) {
 				this.setSavedData(newVal);
 			},
+			'form.project_category_id': function (newVal, oldVal) {
+				this.loadCategory();
+			},
 		},
+
 		async mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
 			this.handleHistoryState();
@@ -822,16 +829,47 @@
 
 					this.currentCategoryOptionInSelect = this.currentCategory.id;
 
-					if (!!this.form.id || this.currentCategory.settings.length === 0)
-						return;
+					//not sure for what this peace of code and if we need it for future
+					// if (!!this.form.id || this.currentCategory.settings.length === 0)
+					// 	return;
 
 					for (const setting of this.currentCategory.settings) {
 						if (setting.key === 'task_name_pattern_date&time') {
 							const indexes = await getTasksIndexes(this.currentCategory.id);
-							this.form.title = titlePatternHandler(
-								setting.value,
-								new Map(Object.entries(indexes)),
-							);
+							if (this.isCreatingTask) {
+								if (this.form.title) {
+									let splitStr = this.form.title.split(':');
+									splitStr[0] = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+									this.form.title = splitStr.join('');
+									this.form.title = newTitleCount(this.form.title);
+								} else {
+									this.form.title = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+									this.form.title = newTitleCount(this.form.title);
+								}
+							} else {
+								if (this.form.title) {
+									let splitStr = this.form.title.split(':');
+									splitStr[0] = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+									this.form.title = splitStr.join('');
+								} else {
+									this.form.title = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+									const prefix = this.form.title.split('-')[0];
+									const num = parseInt(this.form.title.split('-')[1]) + 1;
+									this.form.title = `${prefix}-${num}:`;
+								}
+							}
 						}
 						if (setting.key === 'approximately_time') {
 							this.form.approximately_time = parseInt(setting.value);
