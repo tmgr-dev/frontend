@@ -26,6 +26,9 @@ body {
 		outline: 1px solid slategrey;
 	}
 }
+.ql-editor p img {
+	max-height: 200px;
+}
 
 .reset-scroll {
 	&::-webkit-scrollbar {
