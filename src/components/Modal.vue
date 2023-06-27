@@ -38,7 +38,12 @@
 
 	function closeByEscape(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			emit('close');
+			const secondModal = document.querySelector('#modal2');
+			if (secondModal) {
+				secondModal.remove();
+			} else {
+				emit('close');
+			}
 		}
 	}
 
