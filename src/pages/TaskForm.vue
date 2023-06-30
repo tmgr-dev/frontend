@@ -569,7 +569,11 @@
 			form(newVal) {
 				this.setSavedData(newVal);
 			},
-			'form.project_category_id': function (newVal, oldVal) {
+			'form.project_category_id': async function (newVal, oldVal) {
+				if (this.isCreatingTask) {
+					this.currentCategory = await getCategory(newVal);
+				}
+				this.currentCategory.id = newVal;
 				this.loadCategory();
 			},
 		},
@@ -829,50 +833,27 @@
 
 					this.currentCategoryOptionInSelect = this.currentCategory.id;
 
-					//not sure for what this peace of code and if we need it for future
-					// if (!!this.form.id || this.currentCategory.settings.length === 0)
-					// 	return;
+					if (!!this.form.id || this.currentCategory.settings.length === 0)
+						return;
 
 					for (const setting of this.currentCategory.settings) {
+						console.log('settingkey', setting.key);
 						if (setting.key === 'task_name_pattern_date&time') {
 							const indexes = await getTasksIndexes(this.currentCategory.id);
-							if (this.isCreatingTask) {
-								if (this.form.title) {
-									let splitStr = this.form.title.split(':');
-									splitStr[0] = titlePatternHandler(
-										setting.value,
-										new Map(Object.entries(indexes)),
+							for (const setting of this.currentCategory.settings) {
+								if (setting.key === 'task_name_pattern_date&time') {
+									const indexes = await getTasksIndexes(
+										this.currentCategory.id,
 									);
-									this.form.title = splitStr.join('');
-									this.form.title = newTitleCount(this.form.title);
-								} else {
 									this.form.title = titlePatternHandler(
 										setting.value,
 										new Map(Object.entries(indexes)),
 									);
-									this.form.title = newTitleCount(this.form.title);
-								}
-							} else {
-								if (this.form.title) {
-									let splitStr = this.form.title.split(':');
-									splitStr[0] = titlePatternHandler(
-										setting.value,
-										new Map(Object.entries(indexes)),
-									);
-									this.form.title = splitStr.join('');
-								} else {
-									this.form.title = titlePatternHandler(
-										setting.value,
-										new Map(Object.entries(indexes)),
-									);
-									const prefix = this.form.title.split('-')[0];
-									const num = parseInt(this.form.title.split('-')[1]) + 1;
-									this.form.title = `${prefix}-${num}:`;
 								}
 							}
-						}
-						if (setting.key === 'approximately_time') {
-							this.form.approximately_time = parseInt(setting.value);
+							if (setting.key === 'approximately_time') {
+								this.form.approximately_time = parseInt(setting.value);
+							}
 						}
 					}
 				}
