@@ -81,16 +81,11 @@
 	const links = [
 		{
 			id: 1,
-			name: 'Profile',
-			to: '/profile',
-		},
-		{
-			id: 2,
 			name: 'Settings',
 			to: '/settings',
 		},
 		{
-			id: 3,
+			id: 2,
 			name: 'Archive',
 			to: '/archive',
 		},
