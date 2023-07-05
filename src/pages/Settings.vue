@@ -5,85 +5,139 @@
 		<template #header> Settings </template>
 
 		<template #body>
-			<div class="flex max-w-md flex-col gap-3">
-				<button
-					v-if="!pusherBeamsUserId"
-					class="border-2 border-green-400 px-5 py-2 text-green-600 text-green-400 transition hover:bg-green-400 hover:text-white"
-					@click="togglePushes"
-				>
-					Web Pushes
-				</button>
-
-				<button
-					class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
-					@click="testWebPushNotifications"
-				>
-					Test web push notifications
-				</button>
-
-				<Switcher
-					name="show_tooltips"
-					v-model="userSettings.showTooltips"
-					placeholder="Show tooltips"
-				/>
-
-				<div>
-					<div v-for="(setting, index) in availableSettings">
-						<label
-							:for="`setting-${setting.id}`"
-							class="mb-2 block text-sm font-bold text-gray-700"
-						>
-							{{ setting.name }}
-						</label>
-
-						<div class="relative mb-4">
-							<template v-if="setting.component_type === 'current_workspace'">
-								<current-workspace
-									v-model="settings[index].value"
-									@updateSettings="updateSettings"
-								/>
-							</template>
-
-							<template v-else-if="setting.custom_value_available">
-								<TimeField
-									v-if="setting.component_type === 'time_in_seconds'"
-									v-model="settings[index].value"
-									:placeholder="setting.description"
-								/>
-
-								<TextField
-									v-else
-									v-model="settings[index].value"
-									:placeholder="setting.description"
-								/>
-							</template>
-
-							<small v-if="!setting.show_custom_value_input">
-								{{ setting.description }}
-							</small>
-
-							<Switcher
-								v-if="
-									setting.custom_value_available &&
-									setting.default_values &&
-									setting.default_values.length > 0
-								"
-								name="set_custom_value"
-								v-model="setting.show_custom_value_input"
-								placeholder="Set custom value"
-							/>
-						</div>
+			<div class="flex w-full">
+				<div class="flex w-1/4 flex-col gap-4 p-4">
+					<p
+						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						@click="showNotificationSettings"
+						:class="[
+							isNotification
+								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
+								: '',
+						]"
+					>
+						Notification
+					</p>
+					<div
+						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						@click="showWorkspaceSettings"
+						:class="[
+							isWorkspaceSettings
+								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
+								: '',
+						]"
+					>
+						Workspace settings
+					</div>
+					<div
+						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						@click="showProfileSettings"
+						:class="[
+							isProfile
+								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
+								: '',
+						]"
+					>
+						Profile
 					</div>
 				</div>
+				<div class="w-3/4">
+					<div v-if="isNotification" class="flex w-1/2 flex-col gap-3.5 p-4">
+						<button
+							v-if="!pusherBeamsUserId"
+							class="border-2 border-green-400 px-5 py-2 text-green-600 text-green-400 transition hover:bg-green-400 hover:text-white"
+							@click="togglePushes"
+						>
+							Web Pushes
+						</button>
 
-				<div class="text-left">
-					<button
-						class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
-						type="button"
-						@click="updateSettings"
-					>
-						Save
-					</button>
+						<button
+							class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
+							@click="testWebPushNotifications"
+						>
+							Test web push notifications
+						</button>
+						<Switcher
+							name="show_tooltips"
+							v-model="userSettings.showTooltips"
+							placeholder="Show tooltips"
+						/>
+						<div class="text-left">
+							<button
+								class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+								type="button"
+								@click="updateSettings"
+							>
+								Save
+							</button>
+						</div>
+					</div>
+
+					<div v-if="isWorkspaceSettings" class="flex w-1/2 flex-col gap-3 p-4">
+						<div>
+							<div v-for="(setting, index) in availableSettings">
+								<label
+									:for="`setting-${setting.id}`"
+									class="mb-2 block text-sm font-bold text-gray-700"
+								>
+									{{ setting.name }}
+								</label>
+
+								<div class="relative mb-4">
+									<template
+										v-if="setting.component_type === 'current_workspace'"
+									>
+										<current-workspace
+											v-model="settings[index].value"
+											@updateSettings="updateSettings"
+										/>
+									</template>
+
+									<template v-else-if="setting.custom_value_available">
+										<TimeField
+											v-if="setting.component_type === 'time_in_seconds'"
+											v-model="settings[index].value"
+											:placeholder="setting.description"
+										/>
+
+										<TextField
+											v-else
+											v-model="settings[index].value"
+											:placeholder="setting.description"
+										/>
+									</template>
+
+									<small v-if="!setting.show_custom_value_input">
+										{{ setting.description }}
+									</small>
+
+									<Switcher
+										v-if="
+											setting.custom_value_available &&
+											setting.default_values &&
+											setting.default_values.length > 0
+										"
+										name="set_custom_value"
+										v-model="setting.show_custom_value_input"
+										placeholder="Set custom value"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<div class="text-left">
+							<button
+								class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+								type="button"
+								@click="updateSettings"
+							>
+								Save
+							</button>
+						</div>
+					</div>
+					<div v-if="isProfile" class="flex w-1/3 flex-col gap-3.5 p-2">
+						<profile />
+					</div>
 				</div>
 			</div>
 		</template>
@@ -127,10 +181,12 @@
 	import Switcher from 'src/components/general/Switcher.vue';
 	import TimeField from 'src/components/general/TimeField.vue';
 	import TextField from 'src/components/general/TextField.vue';
+	import Profile from 'src/pages/Profile.vue';
 
 	export default {
 		name: 'Settings',
 		components: {
+			Profile,
 			TextField,
 			TimeField,
 			Switcher,
@@ -144,6 +200,9 @@
 			settings: [],
 			user: {},
 			confirm: null,
+			isNotification: false,
+			isWorkspaceSettings: true,
+			isProfile: false,
 		}),
 		computed: {
 			userSettings() {
@@ -160,6 +219,21 @@
 		methods: {
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
+			},
+			showNotificationSettings() {
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isNotification = true;
+			},
+			showWorkspaceSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = true;
+				this.isProfile = false;
+			},
+			showProfileSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = true;
 			},
 			async testWebPushNotifications() {
 				await sendNotification();

@@ -2,7 +2,7 @@
 	<teleport to="title">Profile</teleport>
 
 	<BaseLayout>
-		<template #header>Profile</template>
+		<!--		<template #header>Profile</template>-->
 
 		<template #body>
 			<div class="flex max-w-lg flex-col gap-3">
