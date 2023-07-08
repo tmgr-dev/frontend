@@ -548,6 +548,7 @@
 				edited: false,
 				isProcessing: false,
 				comment: {},
+				isShowAlert: true,
 			};
 		},
 		watch: {
@@ -723,8 +724,9 @@
 					}
 				});
 			},
-			dispatchAutoSave() {
+			async dispatchAutoSave() {
 				this.removeDispatchedAutoSave();
+				this.isShowAlert = false;
 				this.autoSaveTimeout = setTimeout(this.saveTask, 5000);
 			},
 			removeDispatchedAutoSave() {
@@ -764,6 +766,7 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
 				this.isShowSettingsModal = false;
+				this.isShowAlert = true;
 				await this.saveTask();
 				await this.loadCategory();
 			},
@@ -774,6 +777,7 @@
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
+						this.isShowAlert = true;
 						this.saveTask();
 					}
 				};
@@ -869,6 +873,8 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
+				this.isShowAlert = false;
+				await this.saveTask();
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
@@ -935,6 +941,7 @@
 						this.$emit('close');
 					});
 				} else {
+					this.isShowAlert = true;
 					this.saveTask();
 					this.$emit('close');
 				}
@@ -953,8 +960,10 @@
 					this.form = data;
 
 					await this.saveSettings(this.settings);
+					if (this.isShowAlert) {
+						this.showAlert('Saved', 'The task was saved');
+					}
 
-					this.showAlert('Saved', 'The task was saved');
 					this.removeDispatchedAutoSave();
 					const id = this.form.id;
 					this.form.id = null;
