@@ -1,5 +1,5 @@
 import { app, BrowserWindow, nativeTheme } from 'electron';
-import { initialize, enable } from '@electron/remote/main'
+import { initialize, enable } from '@electron/remote/main';
 import path from 'path';
 
 try {

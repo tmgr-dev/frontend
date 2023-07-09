@@ -1,21 +1,21 @@
 <template>
-	<section class="bg-white border-b py-8">
-		<div class="container max-w-5xl mx-auto m-8">
+	<section class="border-b bg-white py-8">
+		<div class="container m-8 mx-auto max-w-5xl">
 			<h1
-				class="w-full my-2 text-5xl font-bold leading-tight text-center text-gray-800"
+				class="my-2 w-full text-center text-5xl font-bold leading-tight text-gray-800"
 			>
 				Features
 			</h1>
-			<div class="w-full mb-4">
-				<div class="h-1 mx-auto gradient w-64 opacity-25 my-0 py-0 rounded-t" />
+			<div class="mb-4 w-full">
+				<div class="gradient mx-auto my-0 h-1 w-64 rounded-t py-0 opacity-25" />
 			</div>
 
 			<div class="flex flex-wrap">
-				<div class="w-5/6 sm:w-1/2 p-6">
-					<h3 class="text-3xl text-gray-800 font-bold leading-none mb-3">
+				<div class="w-5/6 p-6 sm:w-1/2">
+					<h3 class="mb-3 text-3xl font-bold leading-none text-gray-800">
 						Lorem ipsum dolor sit amet
 					</h3>
-					<p class="text-gray-600 mb-8">
+					<p class="mb-8 text-gray-600">
 						Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at
 						ipsum eu nunc commodo posuere et sit amet ligula.<br /><br />
 						Images from:
@@ -24,9 +24,9 @@
 						>
 					</p>
 				</div>
-				<div class="w-full sm:w-1/2 p-6">
+				<div class="w-full p-6 sm:w-1/2">
 					<svg
-						class="w-full sm:h-64 mx-auto"
+						class="mx-auto w-full sm:h-64"
 						viewBox="0 0 1177 598.5"
 						xmlns="http://www.w3.org/2000/svg"
 					>
@@ -294,10 +294,10 @@
 				</div>
 			</div>
 
-			<div class="flex flex-wrap flex-col-reverse sm:flex-row">
-				<div class="w-full sm:w-1/2 p-6 mt-6">
+			<div class="flex flex-col-reverse flex-wrap sm:flex-row">
+				<div class="mt-6 w-full p-6 sm:w-1/2">
 					<svg
-						class="w-5/6 sm:h-64 mx-auto"
+						class="mx-auto w-5/6 sm:h-64"
 						viewBox="0 0 1176.60617 873.97852"
 						xmlns="http://www.w3.org/2000/svg"
 					>
@@ -452,12 +452,12 @@
 						<circle cx="600.35" cy="480.68" fill="#ff6347" r="11.968" />
 					</svg>
 				</div>
-				<div class="w-full sm:w-1/2 p-6 mt-6">
+				<div class="mt-6 w-full p-6 sm:w-1/2">
 					<div class="align-middle">
-						<h3 class="text-3xl text-gray-800 font-bold leading-none mb-3">
+						<h3 class="mb-3 text-3xl font-bold leading-none text-gray-800">
 							Lorem ipsum dolor sit amet
 						</h3>
-						<p class="text-gray-600 mb-8">
+						<p class="mb-8 text-gray-600">
 							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
 							at ipsum eu nunc commodo posuere et sit amet ligula.<br /><br />
 							Images from:

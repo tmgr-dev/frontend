@@ -99,6 +99,17 @@
 	.vs__search {
 		color: #b3b3b3;
 	}
+	.vs__selected-options {
+		flex-wrap: nowrap;
+		max-width: calc(100% - 25px);
+	}
+	.vs__selected {
+		display: block;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		max-width: 100%;
+		overflow: hidden;
+	}
 	.red-placeholder .vs__search::placeholder {
 		color: #f87171;
 	}
