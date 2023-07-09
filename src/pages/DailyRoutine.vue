@@ -8,6 +8,8 @@
 					>
 						<TextField
 							class="w-5/6 p-2"
+							v-model="form.title"
+							@keyup.enter.native="createTask"
 							placeholder="Enter your routine(enter to add new task)"
 						/>
 
@@ -23,7 +25,7 @@
 					<li
 						class="mx-2 flex w-28 flex-col rounded-xl border p-2 dark:border-0 dark:bg-gray-800"
 					>
-						<span>15</span>
+						<span>{{ tasks.length }}</span>
 						<span class="text-gray-500">routines</span>
 					</li>
 					<li
@@ -36,35 +38,36 @@
 						class="mx-2 flex w-28 flex-col rounded-xl border p-2 dark:border-0 dark:bg-gray-800"
 					>
 						<span>112</span>
-						<span class="text-gray-500">compited</span>
+						<span class="text-gray-500">completed</span>
 					</li>
 				</ul>
 			</div>
 			<ul class="w-full pt-4">
 				<li
 					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"
+					v-for="task in tasks"
 				>
-					<span>Task#1</span>
+					<span>{{ task.title }}</span>
 					<span>19:46</span>
 				</li>
-				<li
-					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"
-				>
-					<span>Task#2</span>
-					<span>May 28</span>
-				</li>
-				<li
-					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"
-				>
-					<span>Task#3</span>
-					<span>May 19 at 12:00</span>
-				</li>
-				<li
-					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"
-				>
-					<span>Task#4</span>
-					<span>Every day at 13:25</span>
-				</li>
+<!--				<li-->
+<!--					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"-->
+<!--				>-->
+<!--					<span>Task#2</span>-->
+<!--					<span>May 28</span>-->
+<!--				</li>-->
+<!--				<li-->
+<!--					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"-->
+<!--				>-->
+<!--					<span>Task#3</span>-->
+<!--					<span>May 19 at 12:00</span>-->
+<!--				</li>-->
+<!--				<li-->
+<!--					class="m-2 flex justify-between rounded-xl border py-3.5 px-5 dark:border-0 dark:bg-gray-800"-->
+<!--				>-->
+<!--					<span>Task#4</span>-->
+<!--					<span>Every day at 13:25</span>-->
+<!--				</li>-->
 			</ul>
 		</template>
 	</BaseLayout>
@@ -73,4 +76,21 @@
 <script setup lang="ts">
 	import TextField from 'src/components/general/TextField.vue';
 	import Button from 'src/components/general/Button.vue';
+	import { createDailyTask, getDailyTasks } from 'src/actions/tmgr/daily-tasks';
+	import { onMounted, ref } from 'vue';
+	import { Task } from 'src/actions/tmgr/tasks';
+
+	const tasks = ref<Task[]>([] as Task[]);
+	const form = ref<Task>({} as Task);
+
+	onMounted(async () => {
+		tasks.value = await getDailyTasks();
+	})
+
+	async function createTask () {
+		form.value.status = 'backlog';
+		const result = await createDailyTask(form.value);
+		tasks.value = [result, ...tasks.value];
+		form.value = {} as Task;
+	}
 </script>
