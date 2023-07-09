@@ -1,5 +1,5 @@
 <template>
-	<teleport to="title"> {{ form.title || h1.main }}&nbsp; </teleport>
+	<teleport to="title">{{ form.title || h1.main }}&nbsp;</teleport>
 
 	<div class="items-between text-center sm:flex">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
@@ -214,6 +214,18 @@
 						value-key="id"
 						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
+					<div
+						v-if="categoriesSelectOptions.length >= 2"
+						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
+					>
+						<Select
+							placeholder="Select category"
+							:options="categoriesSelectOptions"
+							v-model="form.project_category_id"
+							label-key="title"
+							value-key="id"
+						/>
+					</div>
 
 					<assignee-users
 						:assignees="form.assignees"
@@ -255,10 +267,10 @@
 				</div>
 			</div>
 		</header>
-		<div class="md:flex justify-center h-full overflow-y-scroll">
+		<div class="h-full justify-center overflow-y-scroll md:flex">
 			<section
 				role="main"
-				class="md:w-1/2 text-center"
+				class="text-center md:w-1/2"
 				:class="{ 'mt-10': !form.start_time }"
 			>
 				<Transition>
@@ -286,7 +298,7 @@
 					/>
 
 					<quill-editor
-						class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+						class="relative z-10 !mt-2 min-h-[200px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 						:class="errors.description && 'border-red-500'"
 						v-model:content="form.description"
 						content-type="html"
@@ -357,20 +369,21 @@
 					</div>
 				</div>
 			</section>
-			<section v-if="!isCreatingTask" class="md:w-1/2 mt-10">
+			<section v-if="!isCreatingTask" class="mt-10 md:w-1/2">
 				<comments-chat
 					:workspaceMembers="workspaceMembers"
 					:assignees="form.assignees"
 					:taskId="taskId"
 					:startTime="form.start_time"
 					:isDataEdited="isDataEdited"
+					ref="commentsChat"
 				/>
 			</section>
 		</div>
 
 		<footer
 			ref="footer"
-			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5 mt-10"
+			class="shadow-top z-10 mt-10 w-full rounded-lg p-2 sm:p-5"
 			:class="{ 'mt-30': isPage }"
 		>
 			<task-actions
@@ -533,6 +546,9 @@
 				currentCategoryOptionInSelect: null,
 				prevValue: null,
 				edited: false,
+				isProcessing: false,
+				comment: {},
+				isShowAlert: true,
 			};
 		},
 		watch: {
@@ -540,9 +556,12 @@
 				this.setSavedData(newVal);
 			},
 		},
-		mounted() {
+		async mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
 			this.handleHistoryState();
+			if (this.categoriesSelectOptions.length === 0) {
+				await this.loadCategories();
+			}
 		},
 		unmounted() {
 			this.$store.commit('closeTaskModal');
@@ -705,8 +724,9 @@
 					}
 				});
 			},
-			dispatchAutoSave() {
+			async dispatchAutoSave() {
 				this.removeDispatchedAutoSave();
+				this.isShowAlert = false;
 				this.autoSaveTimeout = setTimeout(this.saveTask, 5000);
 			},
 			removeDispatchedAutoSave() {
@@ -746,6 +766,7 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
 				this.isShowSettingsModal = false;
+				this.isShowAlert = true;
 				await this.saveTask();
 				await this.loadCategory();
 			},
@@ -756,6 +777,7 @@
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
+						this.isShowAlert = true;
 						this.saveTask();
 					}
 				};
@@ -851,6 +873,8 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
+				this.isShowAlert = false;
+				await this.saveTask();
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
@@ -917,6 +941,7 @@
 						this.$emit('close');
 					});
 				} else {
+					this.isShowAlert = true;
 					this.saveTask();
 					this.$emit('close');
 				}
@@ -935,8 +960,10 @@
 					this.form = data;
 
 					await this.saveSettings(this.settings);
+					if (this.isShowAlert) {
+						this.showAlert('Saved', 'The task was saved');
+					}
 
-					this.showAlert('Saved', 'The task was saved');
 					this.removeDispatchedAutoSave();
 					const id = this.form.id;
 					this.form.id = null;
@@ -1027,6 +1054,24 @@
 				}
 				await this.loadCategory();
 				await this.loadTaskSettings();
+				this.$store.getters.getPusher
+					.private(`App.Workspace.${this.form.workspace_id}`)
+					.on('comment-added', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.addingComment(comment);
+						}
+					})
+					.on('comment-updated', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.editingComment(comment);
+						}
+					})
+					.on('comment-deleted', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.deletingComment(comment);
+						}
+					});
+
 				this.$store.getters.getPusher
 					.private(`App.User.${this.$store.state.user.id}`)
 					.on('task-countdown-stopped', ({ task }) => {

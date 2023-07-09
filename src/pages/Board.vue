@@ -11,6 +11,21 @@
 								@click="isFiltersModalShown = !isFiltersModalShown"
 								:isActive="isFiltersModalShown"
 							/>
+							<div
+								class="fixed top-0.5 left-12 z-40 mr-2 mr-auto flex items-center justify-center p-4"
+							>
+								<span
+									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
+									@click="
+										async () => {
+											await loadColumns();
+											await loadTasks();
+										}
+									"
+								>
+									refresh
+								</span>
+							</div>
 
 							<Transition name="bounce-right-fade">
 								<Modal
@@ -30,6 +45,8 @@
 											:activeDraggable="activeDraggable"
 											@handleUpdateDraggable="handleUpdateDraggable"
 											@handleSearchTextChanged="handleSearchTextChanged"
+											@loadTasks="loadTasks"
+											@loadColumns="loadColumns"
 										/>
 									</template>
 								</Modal>
@@ -47,6 +64,8 @@
 								:activeDraggable="activeDraggable"
 								@handleUpdateDraggable="handleUpdateDraggable"
 								@handleSearchTextChanged="handleSearchTextChanged"
+								@loadTasks="loadTasks"
+								@loadColumns="loadColumns"
 							/>
 						</div>
 					</div>
@@ -155,7 +174,10 @@
 							</template>
 						</Draggable>
 
-						<div class="flex h-12 w-12 items-center justify-center">
+						<div
+							class="flex h-12 w-12 items-center justify-center"
+							v-if="columns.length > 0"
+						>
 							<span
 								@click="
 									() => {

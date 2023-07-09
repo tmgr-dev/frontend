@@ -1,6 +1,6 @@
 <template>
 	<div
-		v-if="tasks.length > 0"
+		v-if="tasks?.length > 0"
 		class="fixed left-4 bottom-4 z-10 mr-2 flex flex-col items-start gap-3"
 	>
 		<AnimatedRing

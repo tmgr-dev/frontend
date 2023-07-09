@@ -14,6 +14,14 @@
 				<label class="ml-2 text-sm" for="checkbox">Reorder statuses</label>
 			</div>
 			<div class="m-2 flex flex-col md:flex-row">
+				<div class="mr-2 hidden items-center justify-center md:flex">
+					<span
+						class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
+						@click="loadTasks"
+					>
+						refresh
+					</span>
+				</div>
 				<TextField
 					placeholder="Search"
 					v-model="searchText"
@@ -49,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, watch } from 'vue';
+	import { computed, onMounted, watch } from 'vue';
 	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -74,6 +82,7 @@
 	}
 
 	import { useStore } from 'vuex';
+	import { useRouter } from 'vue-router';
 
 	interface State {
 		selectedCategory: number;
@@ -87,8 +96,13 @@
 		'handleUpdateDraggable',
 		'handleSearchTextChanged',
 		'handleChosenCategory',
+		'loadTasks',
+		'loadColumns',
 	]);
+
 	const store = useStore();
+	const router = useRouter();
+	const currentRoute = router.currentRoute.value;
 
 	const selectedCategory = computed({
 		get: () => (store.state as { filter: State }).filter.selectedCategory,
@@ -96,12 +110,14 @@
 			store.commit('updateSelectedCategory', value);
 		},
 	});
+
 	const searchText = computed({
 		get: () => (store.state as { filter: State }).filter.searchText,
 		set: (value) => {
 			store.commit('updateSearchText', value);
 		},
 	});
+
 	const selectedUser = computed({
 		get: () => (store.state as { filter: State }).filter.selectedUser,
 		set: (value) => {
@@ -109,19 +125,72 @@
 		},
 	});
 
+	const buildQuery = () => {
+		const query: Record<string, string> = {};
+
+		if (searchText.value) {
+			query.search = searchText.value;
+		}
+
+		if (selectedCategory.value) {
+			query.category = selectedCategory.value.toString();
+		}
+
+		if (selectedUser.value) {
+			query.user = selectedUser.value.toString();
+		}
+
+		return query;
+	};
+
+	onMounted(() => {
+		const query = currentRoute.query;
+
+		if (query.search) {
+			searchText.value = query.search as string;
+		}
+
+		if (query.category) {
+			selectedCategory.value = Number(query.category);
+		}
+
+		if (query.user) {
+			selectedUser.value = Number(query.user);
+		}
+	});
+
 	watch(selectedUser, () => {
 		emit(
 			'update:chosenUser',
 			props.workspaceUsers.find((option) => option.id === selectedUser.value),
 		);
+		router.push({
+			...currentRoute.query,
+			query: buildQuery(),
+		});
 	});
+
 	watch(selectedCategory, () => {
 		emit(
 			'handleChosenCategory',
 			props.categories.find((option) => option.id === selectedCategory.value),
 		);
+		router.push({
+			...currentRoute.query,
+			query: buildQuery(),
+		});
 	});
+
 	watch(searchText, (newValue) => {
 		emit('handleSearchTextChanged', newValue);
+
+		router.push({
+			...currentRoute.query,
+			query: buildQuery(),
+		});
 	});
+	const loadTasks = () => {
+		emit('loadColumns');
+		emit('loadTasks');
+	};
 </script>

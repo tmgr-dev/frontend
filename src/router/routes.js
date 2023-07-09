@@ -14,6 +14,15 @@ const routes = [
 		},
 	},
 	{
+		path: '/login/:platform',
+		component: () => import('src/pages/auth/SocialiteProxy.vue'),
+		name: 'SocialiteProxy',
+		meta: {
+			allowedGuests: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
 		path: '/register',
 		component: () => import('src/pages/auth/Register.vue'),
 		name: 'Register',

@@ -18,24 +18,31 @@ import moment from 'moment';
 	Input: "TMGR-{index#workspace}: {dts#H:S:i#dte}"
 	Output: "TMGR-1: 22:12:01"
  */
-export const titlePatternHandler = (rawString: string, indexes: Map<string, number> = new Map([['workspace', 0], ['category', 0]])): string => {
+export const titlePatternHandler = (
+	rawString: string,
+	indexes: Map<string, number> = new Map([
+		['workspace', 0],
+		['category', 0],
+	]),
+): string => {
 	let result = rawString;
 	if (result.includes('{index#')) {
 		indexes.forEach((index, indexKey) => {
 			result = result.replaceAll(`{index#${indexKey}}`, String(index));
-		})
+		});
 	}
 	let datetimeMap: Map<string, string> = new Map();
 	if (result.includes('{dts#')) {
 		let datetimes = result.split('{dts#');
-		datetimes.map((item) => item.split("#dte}")[0])
+		datetimes
+			.map((item) => item.split('#dte}')[0])
 			.filter((item) => item.trim().length > 0)
 			.forEach((item, index) => {
-				datetimeMap.set(`{dts#${item}#dte}`, moment().format(item))
+				datetimeMap.set(`{dts#${item}#dte}`, moment().format(item));
 			});
 		datetimeMap.forEach((v, k) => {
 			result = result.replaceAll(k, v);
-		})
+		});
 	}
 	return result;
-}
+};
