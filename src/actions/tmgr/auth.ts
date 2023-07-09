@@ -66,11 +66,9 @@ export interface Register {
 }
 
 export const register = async (payload: Register) => {
-	const {
-		data: { data: token },
-	} = await $axios.post('auth/register', payload);
+	const response = await $axios.post('auth/register', payload);
 
-	setAxiosHeaderBearerToken(token);
+	setAxiosHeaderBearerToken(response);
 };
 
 export const logout = async () => {
