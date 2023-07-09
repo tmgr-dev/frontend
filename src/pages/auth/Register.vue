@@ -87,8 +87,8 @@
 				<div class="mt-6 flex flex-col">
 					<Button
 						class="my-1 rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
-						type="submit"
-						@click.prevent="register"
+						type="button"
+						@click="register"
 					>
 						<span class="relative">
 							Register
@@ -136,6 +136,7 @@
 	} as Register);
 
 	async function register() {
+		console.log('test');
 		try {
 			errors.value = {};
 			isLoading.value = true;
