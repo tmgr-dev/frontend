@@ -26,6 +26,9 @@ body {
 		outline: 1px solid slategrey;
 	}
 }
+.ql-editor p img {
+	max-height: 200px;
+}
 
 .reset-scroll {
 	&::-webkit-scrollbar {
@@ -78,14 +81,13 @@ button {
 
 @keyframes translateLeft {
 	from {
-		transform: translate3d(1000px, 0 ,0);
+		transform: translate3d(1000px, 0, 0);
 	}
 
 	to {
 		transform: translate3d(0, 0, 0);
 	}
 }
-
 
 .bounce-right-fade-enter-active {
 	animation: bounceInRight 1s;
@@ -128,11 +130,11 @@ button {
 }
 
 .transform-to-block-enter-active {
-	animation: transformToBlock .5s ease-in-out;
+	animation: transformToBlock 0.5s ease-in-out;
 }
 
 .transform-to-block-leave-active {
-	animation: transformToBlock .5s reverse ease-in-out;
+	animation: transformToBlock 0.5s reverse ease-in-out;
 }
 
 @keyframes transformToBlock {
@@ -146,12 +148,11 @@ button {
 	}
 }
 
-
 .transform-opacity-right-enter-active {
-	animation: transformOpacityRight .5s;
+	animation: transformOpacityRight 0.5s;
 }
 .transform-opacity-right-leave-active {
-	animation: transformOpacityRight .5s reverse;
+	animation: transformOpacityRight 0.5s reverse;
 }
 
 @keyframes transformOpacityRight {

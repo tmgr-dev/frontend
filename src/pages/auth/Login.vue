@@ -12,9 +12,7 @@
 					</div>
 				</div>
 				<div class="flex flex-col">
-					<div class="text-center">
-						Login with
-					</div>
+					<div class="text-center">Login with</div>
 				</div>
 				<div class="mt-6 flex flex-col">
 					<Button
@@ -46,9 +44,7 @@
 					</Button>
 				</div>
 				<div class="mt-4 flex flex-col">
-					<div class="text-center">
-						or with
-					</div>
+					<div class="text-center">or with</div>
 				</div>
 				<div class="mt-4 flex flex-col">
 					<TextField

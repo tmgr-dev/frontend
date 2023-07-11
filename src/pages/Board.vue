@@ -174,7 +174,10 @@
 							</template>
 						</Draggable>
 
-						<div class="flex h-12 w-12 items-center justify-center">
+						<div
+							class="flex h-12 w-12 items-center justify-center"
+							v-if="columns.length > 0"
+						>
 							<span
 								@click="
 									() => {
