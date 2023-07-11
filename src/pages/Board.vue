@@ -180,6 +180,7 @@
 									() => {
 										isShowStatusModal = true;
 										isCreatingStatus = true;
+										$store.commit('openModal');
 									}
 								"
 								class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
@@ -197,6 +198,7 @@
 							modal-class="p-6 w-96"
 							close-on-bg-click
 							@close="closeModal"
+							@closing-modal="closingModal"
 						>
 							<template #modal-body>
 								<div>
@@ -236,7 +238,7 @@
 												:style="{ backgroundColor: statusColor }"
 												class="w-2/4 rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
 												:class="'bg-' + '[' + statusColor + ']'"
-												@click="isShowColorPicker = true"
+												@click="openPickerModal"
 											>
 												{{ statusColor }}
 											</button>
@@ -268,6 +270,7 @@
 							modal-class=""
 							close-on-bg-click
 							@close="closePickerModal"
+							@closing-modal="closingModal"
 						>
 							<template #modal-body>
 								<div class="relative p-8">
@@ -469,15 +472,32 @@
 			handleChosenCategory(newChosenCategory) {
 				this.chosenCategory = newChosenCategory;
 			},
+			openPickerModal() {
+				this.isShowColorPicker = true;
+				$store.commit('openModal');
+			},
+			closingModal() {
+				if (this.isShowStatusModal && this.isShowColorPicker) {
+					this.isShowColorPicker = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (!this.isShowColorPicker) {
+					this.closeModal();
+					return;
+				}
+			},
 			closeModal() {
 				this.clearStatus();
 				this.isShowStatusModal = false;
 				this.isShowColorPicker = false;
 				this.color.hue = hueFromHex(this.statusColor);
+				this.$store.commit('resetOpenModals');
 			},
 			closePickerModal() {
 				this.isShowColorPicker = false;
 				this.color.hue = hueFromHex(this.statusColor);
+				this.$store.commit('closeModal');
 			},
 			clearStatus() {
 				this.statusName = '';

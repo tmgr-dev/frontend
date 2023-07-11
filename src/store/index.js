@@ -1,6 +1,6 @@
-import { createStore } from 'vuex';
-import pusherModule from 'src/store/modules/pusher';
 import filterModule from 'src/store/modules/boardFilters';
+import pusherModule from 'src/store/modules/pusher';
+import { createStore } from 'vuex';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -23,6 +23,7 @@ const state = {
 	userSettings: {
 		showTooltips: true,
 	},
+	openModals: 0,
 };
 
 const getters = {
@@ -89,6 +90,15 @@ const mutations = {
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;
+	},
+	openModal(state) {
+		state.openModals++;
+	},
+	closeModal(state) {
+		state.openModals--;
+	},
+	resetOpenModals(state) {
+		state.openModals = 0;
 	},
 };
 
