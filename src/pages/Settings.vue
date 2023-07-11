@@ -5,10 +5,12 @@
 		<template #header> Settings </template>
 
 		<template #body>
-			<div class="flex w-full">
-				<div class="flex w-1/4 flex-col gap-4 p-4">
+			<div class="w-full md:flex">
+				<div
+					class="flex justify-between p-4 md:w-1/4 md:flex-col md:justify-start md:gap-4"
+				>
 					<p
-						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
 						@click="showNotificationSettings"
 						:class="[
 							isNotification
@@ -19,7 +21,7 @@
 						Notification
 					</p>
 					<div
-						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
 						@click="showWorkspaceSettings"
 						:class="[
 							isWorkspaceSettings
@@ -30,7 +32,7 @@
 						Workspace settings
 					</div>
 					<div
-						class="cursor-pointer text-lg font-bold transition-colors duration-300 hover:underline hover:decoration-2"
+						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
 						@click="showProfileSettings"
 						:class="[
 							isProfile
@@ -41,8 +43,8 @@
 						Profile
 					</div>
 				</div>
-				<div class="w-3/4">
-					<div v-if="isNotification" class="flex w-1/2 flex-col gap-3.5 p-4">
+				<div class="md:w-3/4">
+					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4 md:w-1/2">
 						<button
 							v-if="!pusherBeamsUserId"
 							class="border-2 border-green-400 px-5 py-2 text-green-600 text-green-400 transition hover:bg-green-400 hover:text-white"
@@ -73,7 +75,10 @@
 						</div>
 					</div>
 
-					<div v-if="isWorkspaceSettings" class="flex w-1/2 flex-col gap-3 p-4">
+					<div
+						v-if="isWorkspaceSettings"
+						class="flex flex-col gap-3 p-4 md:w-1/2"
+					>
 						<div>
 							<div v-for="(setting, index) in availableSettings">
 								<label
@@ -135,7 +140,7 @@
 							</button>
 						</div>
 					</div>
-					<div v-if="isProfile" class="flex w-1/3 flex-col gap-3.5 p-2">
+					<div v-if="isProfile" class="flex flex-col gap-3.5 p-2">
 						<profile />
 					</div>
 				</div>
