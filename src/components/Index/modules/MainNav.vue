@@ -2,7 +2,7 @@
 	<!--Nav-->
 	<nav
 		id="header"
-		class="fixed w-full z-30 top-0 text-white"
+		class="fixed top-0 z-30 w-full text-white"
 		style="
 			background: rgba(0, 0, 0, 0)
 				linear-gradient(to right, rgb(0, 210, 255), rgb(58, 123, 213)) repeat
@@ -10,16 +10,16 @@
 		"
 	>
 		<div
-			class="w-full container mx-auto flex flex-wrap items-center justify-between mt-0 py-2"
+			class="container mx-auto mt-0 flex w-full flex-wrap items-center justify-between py-2"
 		>
-			<div class="pl-4 flex items-center">
+			<div class="flex items-center pl-4">
 				<a
-					class="toggleColour text-white no-underline hover:no-underline font-bold text-2xl lg:text-4xl"
+					class="toggleColour text-2xl font-bold text-white no-underline hover:no-underline lg:text-4xl"
 					href="#"
 				>
 					<!--Icon from: http://www.potlabicons.com/ -->
 					<svg
-						class="h-8 fill-current inline"
+						class="inline h-8 fill-current"
 						viewBox="0 0 512.005 512.005"
 						xmlns="http://www.w3.org/2000/svg"
 					>
@@ -40,13 +40,13 @@
 				</a>
 			</div>
 
-			<div class="lg:hidden pr-4">
+			<div class="pr-4 lg:hidden">
 				<button
 					id="nav-toggle"
 					class="flex items-center p-1 text-orange-800 hover:text-gray-900"
 				>
 					<svg
-						class="fill-current h-6 w-6"
+						class="h-6 w-6 fill-current"
 						viewBox="0 0 20 20"
 						xmlns="http://www.w3.org/2000/svg"
 					>
@@ -58,13 +58,13 @@
 
 			<div
 				id="nav-content"
-				class="w-full flex-grow lg:flex lg:items-center lg:w-auto hidden lg:block mt-2 lg:mt-0 lg:bg-transparent text-black p-4 lg:p-0 z-20"
+				class="z-20 mt-2 hidden w-full flex-grow p-4 text-black lg:mt-0 lg:block lg:flex lg:w-auto lg:items-center lg:bg-transparent lg:p-0"
 			>
-				<ul class="list-reset lg:flex justify-end flex-1 items-center">
+				<ul class="list-reset flex-1 items-center justify-end lg:flex">
 					<li class="mr-3">
 						<router-link
 							v-if="!$store.getters.isLoggedIn"
-							class="inline-block text-white no-underline hover:text-gray-200 hover:text-underline py-2 px-4"
+							class="hover:text-underline inline-block py-2 px-4 text-white no-underline hover:text-gray-200"
 							href="#"
 							to="/login"
 						>
@@ -72,7 +72,7 @@
 						</router-link>
 						<router-link
 							v-else
-							class="inline-block text-white no-underline hover:text-gray-200 hover:text-underline py-2 px-4"
+							class="hover:text-underline inline-block py-2 px-4 text-white no-underline hover:text-gray-200"
 							href="#"
 							to="/"
 						>
@@ -83,7 +83,7 @@
 				<router-link
 					v-if="!$store.getters.isLoggedIn"
 					id="navAction"
-					class="mx-auto lg:mx-0 hover:underline bg-white text-gray-800 font-bold rounded-full mt-4 lg:mt-0 py-4 px-8 shadow opacity-75"
+					class="mx-auto mt-4 rounded-full bg-white py-4 px-8 font-bold text-gray-800 opacity-75 shadow hover:underline lg:mx-0 lg:mt-0"
 					to="/register"
 				>
 					Register
@@ -91,7 +91,7 @@
 			</div>
 		</div>
 
-		<hr class="border-b border-gray-100 opacity-25 my-0 py-0" />
+		<hr class="my-0 border-b border-gray-100 py-0 opacity-25" />
 	</nav>
 </template>
 

@@ -70,11 +70,13 @@
 
 								<div class="estimated-info py-2 pr-5 text-start">
 									<div
-										class="flex items-center border-b border-neutral-200 dark:border-neutral-600">
+										class="flex items-center border-b border-neutral-200 dark:border-neutral-600"
+									>
 										Assignees
 										<span
 											class="material-icons checkpoint-delete text-lg"
-											@click="isShowModalAssign = true">
+											@click="isShowModalAssign = true"
+										>
 											add
 										</span>
 									</div>
@@ -212,6 +214,19 @@
 						value-key="id"
 						class="w-36 shrink-0 sm:ml-3 sm:w-40"
 					/>
+					<div
+						v-if="categoriesSelectOptions.length >= 2"
+						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
+					>
+						<Select
+							placeholder="Select category"
+							:options="categoriesSelectOptions"
+							v-model="form.project_category_id"
+							label-key="title"
+							value-key="id"
+						/>
+					</div>
+
 
 					<assignee-users
 						:assignees="form.assignees"
@@ -284,7 +299,7 @@
 					/>
 
 					<quill-editor
-						class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+						class="relative z-10 !mt-2 min-h-[200px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 						:class="errors.description && 'border-red-500'"
 						v-model:content="form.description"
 						content-type="html"
@@ -534,6 +549,7 @@
 				edited: false,
 				isProcessing: false,
 				comment: {},
+				isShowAlert: true,
 			};
 		},
 		watch: {
@@ -541,9 +557,12 @@
 				this.setSavedData(newVal);
 			},
 		},
-		mounted() {
+		async mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
 			this.handleHistoryState();
+			if (this.categoriesSelectOptions.length === 0) {
+				await this.loadCategories();
+			}
 		},
 		unmounted() {
 			this.$store.commit('closeTaskModal');
@@ -706,8 +725,9 @@
 					}
 				});
 			},
-			dispatchAutoSave() {
+			async dispatchAutoSave() {
 				this.removeDispatchedAutoSave();
+				this.isShowAlert = false;
 				this.autoSaveTimeout = setTimeout(this.saveTask, 5000);
 			},
 			removeDispatchedAutoSave() {
@@ -747,6 +767,7 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
 				this.isShowSettingsModal = false;
+				this.isShowAlert = true;
 				await this.saveTask();
 				await this.loadCategory();
 			},
@@ -757,6 +778,7 @@
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
+						this.isShowAlert = true;
 						this.saveTask();
 					}
 				};
@@ -852,6 +874,8 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
+				this.isShowAlert = false;
+				await this.saveTask();
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
@@ -918,6 +942,7 @@
 						this.$emit('close');
 					});
 				} else {
+					this.isShowAlert = true;
 					this.saveTask();
 					this.$emit('close');
 				}
@@ -936,8 +961,10 @@
 					this.form = data;
 
 					await this.saveSettings(this.settings);
+					if (this.isShowAlert) {
+						this.showAlert('Saved', 'The task was saved');
+					}
 
-					this.showAlert('Saved', 'The task was saved');
 					this.removeDispatchedAutoSave();
 					const id = this.form.id;
 					this.form.id = null;
