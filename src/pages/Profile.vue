@@ -1,45 +1,39 @@
 <template>
 	<teleport to="title">Profile</teleport>
 
-	<BaseLayout>
-		<!--		<template #header>Profile</template>-->
+	<div class="flex max-w-lg flex-col gap-3">
+		<TextField
+			v-model="user.name"
+			:errors="errors.name"
+			placeholder="Your name"
+		/>
 
-		<template #body>
-			<div class="flex max-w-lg flex-col gap-3">
-				<TextField
-					v-model="user.name"
-					:errors="errors.name"
-					placeholder="Your name"
-				/>
+		<div class="flex">
+			<TextField
+				v-model="user.password"
+				:errors="errors?.password"
+				class="w-1/2 pr-2"
+				placeholder="New password"
+			/>
 
-				<div class="flex">
-					<TextField
-						v-model="user.password"
-						:errors="errors?.password"
-						class="w-1/2 pr-2"
-						placeholder="New password"
-					/>
+			<TextField
+				v-model="user.password_confirmation"
+				:errors="errors.password_confirmation"
+				class="w-1/2 pl-2"
+				placeholder="New password confirmation"
+			/>
+		</div>
 
-					<TextField
-						v-model="user.password_confirmation"
-						:errors="errors.password_confirmation"
-						class="w-1/2 pl-2"
-						placeholder="New password confirmation"
-					/>
-				</div>
-
-				<div class="text-left">
-					<button
-						class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
-						type="button"
-						@click="saveUser"
-					>
-						Save
-					</button>
-				</div>
-			</div>
-		</template>
-	</BaseLayout>
+		<div class="text-left">
+			<button
+				class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
+				type="button"
+				@click="saveUser"
+			>
+				Save
+			</button>
+		</div>
+	</div>
 </template>
 
 <script>
