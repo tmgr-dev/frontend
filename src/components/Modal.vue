@@ -1,5 +1,6 @@
 <template>
 	<div
+		id="backdrop"
 		class="fixed inset-0 z-50 flex bg-black/50"
 		data-name="overlay"
 		@click="close"
@@ -15,6 +16,7 @@
 
 <script lang="ts" setup>
 	import { onMounted, onUnmounted, ref } from 'vue';
+	import { useStore } from 'vuex';
 
 	interface Props {
 		modalClass: string;
@@ -22,8 +24,9 @@
 	}
 
 	const props = defineProps<Props>();
-	const emit = defineEmits(['close']);
+	const emit = defineEmits(['close', 'closingModal']);
 	const initialUrl = ref(location.href);
+	const store = useStore();
 
 	onMounted(() => {
 		document.addEventListener('keydown', closeByEscape);
@@ -38,9 +41,8 @@
 
 	function closeByEscape(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			const secondModal = document.querySelector('#modal2');
-			if (secondModal) {
-				secondModal.remove();
+			if (store.state.openModals) {
+				emit('closingModal');
 			} else {
 				emit('close');
 			}
@@ -48,11 +50,21 @@
 	}
 
 	function close(e: MouseEvent) {
-		if (props.closeOnBgClick) {
-			const target = e.target as HTMLDivElement;
-
-			if (target.dataset.name === 'overlay') {
-				emit('close');
+		const secondModal = document.querySelector('#modal3');
+		const thirdModal = document.querySelector('#modal4');
+		const target = e.target as HTMLDivElement;
+		if (thirdModal && target == thirdModal) {
+			emit('closingModal');
+			return;
+		}
+		if (target === secondModal) {
+			emit('closingModal');
+			return;
+		} else {
+			if (props.closeOnBgClick) {
+				if (target.dataset.name === 'overlay') {
+					emit('close');
+				}
 			}
 		}
 	}
