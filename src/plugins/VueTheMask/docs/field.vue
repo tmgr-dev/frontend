@@ -1,5 +1,5 @@
 <template>
-	<div class="inline field">
+	<div class="field inline">
 		<label>{{ label }}</label>
 		<the-mask
 			v-model="editableValue"

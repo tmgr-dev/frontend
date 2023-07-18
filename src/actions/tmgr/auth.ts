@@ -22,35 +22,39 @@ export interface LoginWithCodeRequest {
 	code: string;
 }
 
-export interface LoginGoogleRequest extends LoginWithCodeRequest{
+export interface LoginGoogleRequest extends LoginWithCodeRequest {
 	scope: string;
 	ail: string;
 	authuser: number;
 	prompt: string;
 }
 
-const setAxiosHeaderBearerToken = ({ data: { data: token } }: LoginResponseWrapper): void => {
+const setAxiosHeaderBearerToken = ({
+	data: { data: token },
+}: LoginResponseWrapper): void => {
 	store.commit('setToken', token);
 	$axios.defaults.headers.common.Authorization = `Bearer ${token.token}`;
 };
 
 export const login = (payload: LoginRequest): Promise<void> => {
-	return $axios.post('auth/login', payload)
-		.then(setAxiosHeaderBearerToken);
+	return $axios.post('auth/login', payload).then(setAxiosHeaderBearerToken);
 };
 
 export const loginGithub = (payload: LoginWithCodeRequest): Promise<void> => {
-	return $axios.post(`auth/login/github/redirect`, payload)
+	return $axios
+		.post(`auth/login/github/redirect`, payload)
 		.then(setAxiosHeaderBearerToken);
 };
 
 export const loginGoogle = (payload: LoginGoogleRequest): Promise<void> => {
-	return $axios.post(`auth/login/google/redirect`, payload)
+	return $axios
+		.post(`auth/login/google/redirect`, payload)
 		.then(setAxiosHeaderBearerToken);
 };
 
 export const loginApple = (payload: LoginWithCodeRequest): Promise<void> => {
-	return $axios.post(`auth/login/apple/accept`, payload)
+	return $axios
+		.post(`auth/login/apple/accept`, payload)
 		.then(setAxiosHeaderBearerToken);
 };
 
@@ -62,11 +66,9 @@ export interface Register {
 }
 
 export const register = async (payload: Register) => {
-	const {
-		data: { data: token },
-	} = await $axios.post('auth/register', payload);
+	const response = await $axios.post('auth/register', payload);
 
-	setAxiosHeaderBearerToken(token);
+	setAxiosHeaderBearerToken(response);
 };
 
 export const logout = async () => {

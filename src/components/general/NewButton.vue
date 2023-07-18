@@ -1,9 +1,9 @@
 <template>
-	<div class="inline-block button-custom-component">
+	<div class="button-custom-component inline-block">
 		<router-link
 			v-if="type === 'router-link'"
 			:to="to"
-			class="mt-3 sm:mt-0 py-2 px-5 md:py-3 md:px-6 font-bold text-white rounded-lg shadow-md"
+			class="mt-3 rounded-lg py-2 px-5 font-bold text-white shadow-md sm:mt-0 md:py-3 md:px-6"
 			:class="buttonClass"
 		>
 			<slot />
@@ -12,7 +12,7 @@
 		<button
 			v-else
 			:type="type"
-			class="mt-3 sm:mt-0 py-2 px-5 md:py-3 md:px-6 dark:opacity-50 hover:dark:opacity-75 font-bold text-white rounded-lg shadow-md focus:outline-none"
+			class="mt-3 rounded-lg py-2 px-5 font-bold text-white shadow-md focus:outline-none dark:opacity-50 hover:dark:opacity-75 sm:mt-0 md:py-3 md:px-6"
 			:class="buttonClass"
 		>
 			<slot />
