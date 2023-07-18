@@ -8,8 +8,10 @@ export interface Task {
 	approximately_time: number;
 	category: number;
 	title: string;
+	status: string;
 	description: string;
 	common_time: number;
+	is_daily_routine: boolean;
 }
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
