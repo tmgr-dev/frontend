@@ -232,6 +232,7 @@
 						/>
 					</div>
 
+
 					<assignee-users
 						:assignees="form.assignees"
 						:is-modal="isModal"
@@ -813,7 +814,7 @@
 			getShortcutSaveListener() {
 				return (e) => {
 					if (
-						e.ctrlKey &&
+						(e.metaKey || e.ctrlKey) &&
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
