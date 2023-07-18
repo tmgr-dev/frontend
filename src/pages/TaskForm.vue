@@ -874,13 +874,12 @@
 			},
 			async toggleCountdown() {
 				this.isShowAlert = false;
-				await this.saveTask();
+
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
 					this.form = await startTaskTimeCounter(this.taskId);
 				}
-
 				this.updateSeconds(this.form.common_time);
 
 				if (this.form.start_time && this.form.status_id) {
@@ -893,10 +892,10 @@
 						);
 						if (firstActiveStatus) {
 							this.form.status_id = firstActiveStatus.id;
-							await this.saveTask();
 						}
 					}
 				}
+				await this.saveTask();
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -1080,16 +1079,12 @@
 							return;
 						}
 
-						this.setFormDataWithDelay(task).then(() => {
-							this.showAlert('Countdown stopped');
-						});
+						this.setFormDataWithDelay(task);
 					})
 					.on('task-countdown-started', ({ task }) => {
 						const isCountdownStarted = !!this.form.start_time;
 						if (!isCountdownStarted) {
-							this.setFormDataWithDelay(task).then(() => {
-								this.showAlert('Countdown started');
-							});
+							this.setFormDataWithDelay(task);
 						}
 					});
 			},
