@@ -6,9 +6,10 @@
 			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
 				<Modal
+					id="modal3"
 					v-if="isShowSettingsModal"
 					modal-class="p-6 w-96"
-					@close="isShowSettingsModal = false"
+					@closingModal="closingModal"
 				>
 					<template #modal-body>
 						<form
@@ -75,7 +76,9 @@
 										Assignees
 										<span
 											class="material-icons checkpoint-delete text-lg"
-											@click="isShowModalAssign = true"
+											@click="
+												(isShowModalAssign = true), $store.commit('openModal')
+											"
 										>
 											add
 										</span>
@@ -103,7 +106,7 @@
 							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
-									@click="isShowSettingsModal = false"
+									@click="closingModal"
 									class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
 								>
 									Cancel
@@ -124,9 +127,10 @@
 			<!-- assigners -->
 			<Transition name="bounce-right-fade">
 				<Modal
+					id="modal4"
 					v-if="isShowModalAssign"
 					modal-class="p-6 w-96"
-					@close="isShowModalAssign = false"
+					@closingModal="closingModal"
 				>
 					<template #modal-body>
 						<form @submit.prevent="" class="text-gray-800 dark:text-tmgr-gray">
@@ -167,7 +171,7 @@
 							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
-									@click="isShowModalAssign = false"
+									@click="closingModal"
 									class="mr-1 block w-full rounded bg-gray-700 p-2 text-white"
 								>
 									Close
@@ -233,7 +237,7 @@
 						:is-modal="isModal"
 						avatarsClass="h-8 w-8"
 						:show-assignee-controls="true"
-						@showModal="isShowModalAssign = true"
+						@showModal="(isShowModalAssign = true), $store.commit('openModal')"
 						@deleteAssignee="deleteAssignee"
 					/>
 				</template>
@@ -580,7 +584,8 @@
 		},
 
 		async mounted() {
-			document.body.addEventListener('keydown', this.handleEscKeyDown);
+			this.$store.commit('resetOpenModals');
+
 			this.handleHistoryState();
 			if (this.categoriesSelectOptions.length === 0) {
 				await this.loadCategories();
@@ -588,7 +593,6 @@
 		},
 		unmounted() {
 			this.$store.commit('closeTaskModal');
-			document.body.removeEventListener('keydown', this.handleEscKeyDown);
 		},
 		computed: {
 			store() {
@@ -661,8 +665,19 @@
 				this.$emit('close');
 				this.$store.commit('incrementReloadTasksKey');
 			},
-			handleEscKeyDown(event) {
-				if (event.key === 'Escape') {
+
+			closingModal() {
+				if (this.isShowModalAssign) {
+					this.isShowModalAssign = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (this.isShowSettingsModal && !this.isShowModalAssign) {
+					this.isShowSettingsModal = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (!this.isShowSettingsModal && !this.isShowModalAssign) {
 					this.cancelCreateTask();
 				}
 			},
@@ -777,6 +792,7 @@
 			async showModalCategory() {
 				try {
 					this.isShowSettingsModal = true;
+					this.$store.commit('openModal');
 					if (this.categoriesSelectOptions.length === 0) {
 						await this.loadCategories();
 					}
@@ -789,6 +805,7 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
 				this.isShowSettingsModal = false;
+				this.$store.commit('closeModal');
 				this.isShowAlert = true;
 				await this.saveTask();
 				await this.loadCategory();

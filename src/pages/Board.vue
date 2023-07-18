@@ -183,6 +183,7 @@
 									() => {
 										isShowStatusModal = true;
 										isCreatingStatus = true;
+										$store.commit('openModal');
 									}
 								"
 								class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
@@ -194,80 +195,108 @@
 				</div>
 
 				<Transition name="bounce-right-fade">
-					<Modal
-						v-if="isShowStatusModal"
-						modal-class="p-6 w-96"
-						close-on-bg-click
-						@close="closeModal"
-					>
-						<template #modal-body>
-							<div>
-								<div v-if="!isShowColorPicker">
-									<h1 v-if="isCreatingStatus" class="mb-3 text-center text-xl">
-										Create status
-									</h1>
-									<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
-									<label class="mb-3 flex flex-col gap-2 font-medium">
-										Status name :
-										<TextField
-											placeholder="Name"
-											v-model="statusName"
-											:errors="errors.name"
-										/>
-									</label>
-									<label class="mb-4 flex flex-col gap-2 font-medium">
-										Status type :
-										<Select
-											placeholder="Select Type"
-											:options="statusTypes"
-											v-model="statusType"
-											:errors="errors.type"
-											label-key="name"
-											value-key="name"
-										/>
-									</label>
-									<div
-										class="mb-3 mb-3 flex items-center justify-between font-medium"
-									>
-										<span>Status color :</span>
-										<button
-											type="button"
-											:style="{ backgroundColor: statusColor }"
-											class="w-2/4 rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
-											:class="'bg-' + '[' + statusColor + ']'"
-											@click="isShowColorPicker = true"
+					<div>
+						<Modal
+							v-if="isShowStatusModal"
+							modal-class="p-6 w-96"
+							close-on-bg-click
+							@close="closeModal"
+							@closing-modal="closingModal"
+						>
+							<template #modal-body>
+								<div>
+									<div v-if="!isShowColorPicker">
+										<h1
+											v-if="isCreatingStatus"
+											class="mb-3 text-center text-xl"
 										>
-											{{ statusColor }}
+											Create status
+										</h1>
+										<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
+										<label class="mb-3 flex flex-col gap-2 font-medium">
+											Status name :
+											<TextField
+												placeholder="Name"
+												v-model="statusName"
+												:errors="errors.name"
+											/>
+										</label>
+										<label class="mb-4 flex flex-col gap-2 font-medium">
+											Status type :
+											<Select
+												placeholder="Select Type"
+												:options="statusTypes"
+												v-model="statusType"
+												:errors="errors.type"
+												label-key="name"
+												value-key="name"
+											/>
+										</label>
+										<div
+											class="mb-3 mb-3 flex items-center justify-between font-medium"
+										>
+											<span>Status color :</span>
+											<button
+												type="button"
+												:style="{ backgroundColor: statusColor }"
+												class="w-2/4 rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+												:class="'bg-' + '[' + statusColor + ']'"
+												@click="openPickerModal"
+											>
+												{{ statusColor }}
+											</button>
+										</div>
+
+										<button
+											@click="saveNewStatus()"
+											class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+											type="button"
+										>
+											{{ isCreatingStatus ? 'Create' : 'Save' }}
+										</button>
+
+										<button
+											v-if="!isCreatingStatus"
+											@click="deleteStatus"
+											class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+											type="button"
+										>
+											Delete
 										</button>
 									</div>
-
-									<button
-										@click="saveNewStatus()"
-										class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-										type="button"
-									>
-										{{ isCreatingStatus ? 'Create' : 'Save' }}
-									</button>
-
-									<button
-										v-if="!isCreatingStatus"
-										@click="deleteStatus"
-										class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
-										type="button"
-									>
-										Delete
-									</button>
 								</div>
-								<div class="p-8" v-if="isShowColorPicker">
+							</template>
+						</Modal>
+						<Modal
+							id="modal2"
+							v-if="isShowColorPicker"
+							modal-class=""
+							close-on-bg-click
+							@close="closePickerModal"
+							@closing-modal="closingModal"
+						>
+							<template #modal-body>
+								<div class="relative p-8">
+									<button
+										type="button"
+										class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
+									>
+										<span
+											class="material-icons text-2xl text-black dark:text-white"
+											@click="closePickerModal"
+										>
+											close
+										</span>
+									</button>
 									<color-picker
 										:hue="color.hue"
 										@input="onInput"
 										@select="onColorSelect"
 									/>
 								</div>
-							</div>
-						</template>
-					</Modal>
+							</template>
+						</Modal>
+					</div>
 				</Transition>
 			</div>
 
@@ -446,11 +475,32 @@
 			handleChosenCategory(newChosenCategory) {
 				this.chosenCategory = newChosenCategory;
 			},
+			openPickerModal() {
+				this.isShowColorPicker = true;
+				$store.commit('openModal');
+			},
+			closingModal() {
+				if (this.isShowStatusModal && this.isShowColorPicker) {
+					this.isShowColorPicker = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (!this.isShowColorPicker) {
+					this.closeModal();
+					return;
+				}
+			},
 			closeModal() {
 				this.clearStatus();
 				this.isShowStatusModal = false;
 				this.isShowColorPicker = false;
 				this.color.hue = hueFromHex(this.statusColor);
+				this.$store.commit('resetOpenModals');
+			},
+			closePickerModal() {
+				this.isShowColorPicker = false;
+				this.color.hue = hueFromHex(this.statusColor);
+				this.$store.commit('closeModal');
 			},
 			clearStatus() {
 				this.statusName = '';
