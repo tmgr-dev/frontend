@@ -219,6 +219,7 @@
 						class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
 					>
 						<Select
+							v-if="!isCreatingTask"
 							placeholder="Select category"
 							:options="categoriesSelectOptions"
 							v-model="form.project_category_id"
@@ -238,6 +239,19 @@
 				</template>
 
 				<p v-else>Creating task</p>
+				<div
+					v-if="categoriesSelectOptions.length >= 2"
+					class="mt-2 w-48 md:m-0 md:ml-3 md:mr-3"
+				>
+					<Select
+						v-if="isCreatingTask"
+						placeholder="Select category"
+						:options="categoriesSelectOptions"
+						v-model="form.project_category_id"
+						label-key="title"
+						value-key="id"
+					/>
+				</div>
 
 				<div v-if="isModal" class="ml-auto flex gap-2">
 					<button
@@ -450,6 +464,7 @@
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
+	import { newTitleCount } from 'src/utils/newTitleCount';
 
 	export default {
 		name: 'TaskForm',
@@ -555,7 +570,15 @@
 			form(newVal) {
 				this.setSavedData(newVal);
 			},
+			'form.project_category_id': async function (newVal, oldVal) {
+				if (this.isCreatingTask) {
+					this.currentCategory = await getCategory(newVal);
+				}
+				this.currentCategory.id = newVal;
+				this.loadCategory();
+			},
 		},
+
 		async mounted() {
 			document.body.addEventListener('keydown', this.handleEscKeyDown);
 			this.handleHistoryState();
@@ -818,15 +841,23 @@
 						return;
 
 					for (const setting of this.currentCategory.settings) {
+						console.log('settingkey', setting.key);
 						if (setting.key === 'task_name_pattern_date&time') {
 							const indexes = await getTasksIndexes(this.currentCategory.id);
-							this.form.title = titlePatternHandler(
-								setting.value,
-								new Map(Object.entries(indexes)),
-							);
-						}
-						if (setting.key === 'approximately_time') {
-							this.form.approximately_time = parseInt(setting.value);
+							for (const setting of this.currentCategory.settings) {
+								if (setting.key === 'task_name_pattern_date&time') {
+									const indexes = await getTasksIndexes(
+										this.currentCategory.id,
+									);
+									this.form.title = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+								}
+							}
+							if (setting.key === 'approximately_time') {
+								this.form.approximately_time = parseInt(setting.value);
+							}
 						}
 					}
 				}
