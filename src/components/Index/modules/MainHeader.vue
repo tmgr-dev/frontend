@@ -3,46 +3,46 @@
 		<!--Hero-->
 		<div class="pt-24">
 			<div
-				class="container px-3 mx-auto flex flex-wrap flex-col md:flex-row items-center"
+				class="container mx-auto flex flex-col flex-wrap items-center px-3 md:flex-row"
 			>
 				<!--Left Col-->
 				<div
-					class="flex flex-col w-full px-4 md:w-1/2 justify-center text-center md:text-left"
+					class="flex w-full flex-col justify-center px-4 text-center md:w-1/2 md:text-left"
 				>
-					<p class="uppercase tracking-loose w-full">
+					<p class="tracking-loose w-full uppercase">
 						Track your tasks here! Why not?
 					</p>
 					<h1
-						class="my-4 xl:text-5xl lg:text-4xl text-3xl font-bold leading-tight text-white"
+						class="my-4 text-3xl font-bold leading-tight text-white lg:text-4xl xl:text-5xl"
 					>
 						Lightweight application for tracking your heavy tasks.
 					</h1>
 					<p
-						class="leading-normal xl:text-2xl lg:text-xl md:text-lg text-base mb-8 text-black"
+						class="mb-8 text-base leading-normal text-black md:text-lg lg:text-xl xl:text-2xl"
 					>
 						You can take easier tracking your tasks with our application.
 					</p>
 
 					<router-link
 						v-if="!$store.getters.isLoggedIn"
-						class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto"
+						class="my-6 mx-auto rounded-full border border-gray-400 bg-white py-4 px-8 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/register"
 					>
 						Get started
 					</router-link>
 					<router-link
 						v-else
-						class="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-8 my-6 border border-gray-400 rounded-full shadow mx-auto"
+						class="my-6 mx-auto rounded-full border border-gray-400 bg-white py-4 px-8 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/"
 					>
 						Go to system
 					</router-link>
 				</div>
 				<!--Right Col-->
-				<div class="w-full md:w-1/2 py-6 text-center px-4">
+				<div class="w-full py-6 px-4 text-center md:w-1/2">
 					<img
 						alt="TMGR.DEV"
-						class="w-full z-50"
+						class="z-50 w-full"
 						src="../../../assets/img/main.svg"
 					/>
 				</div>

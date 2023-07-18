@@ -17,7 +17,7 @@ services:
     image: node:19.4.0
     working_dir: /var/www/html
     volumes:
-      - "./../:/var/www/html"
+      - './../:/var/www/html'
 
 networks:
   nginx-proxy-network:

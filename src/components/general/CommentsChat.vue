@@ -94,13 +94,16 @@
 			>
 				<div
 					class="relative m-3 w-fit rounded-lg p-2 dark:bg-gray-700"
+
 					v-if="isReplying"
 				>
 					<span class="w-fit cursor-pointer">
 						{{ replyingMessage.message }}
 					</span>
 					<span
+
 						class="material-icons text-md left-18 absolute m-auto h-6 w-6 cursor-pointer text-white"
+
 					>
 						reply
 					</span>
@@ -204,7 +207,7 @@
 	watch(
 		() => props.startTime,
 		async (newValue, oldValue) => {
-			if (newValue !== 0) {
+			if (newValue && newValue !== 0) {
 				processing.value = true;
 				const newComment = {
 					message: `Timer starts`,
