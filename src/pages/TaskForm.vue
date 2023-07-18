@@ -464,7 +464,6 @@
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
-	import { newTitleCount } from 'src/utils/newTitleCount';
 
 	export default {
 		name: 'TaskForm',
