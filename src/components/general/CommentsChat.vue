@@ -120,7 +120,7 @@
 						send
 					</span>
 				</button>
-				<button class="py-2" type="button" @click="submitForm">
+				<button class="py-2" type="button">
 					<svg
 						@click="toggleHelpMode"
 						xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
@@ -149,6 +149,7 @@
 		deleteComment,
 		getComments,
 		updateComment,
+		createAskingHelpComment
 	} from 'src/actions/tmgr/comments';
 	import { defineExpose } from 'vue';
 	export interface Assignee {
@@ -241,6 +242,11 @@
 
 	async function submitForm() {
 		processing.value = true;
+
+		if (isHelpMode.value) {
+			await createAskingHelpComment(props.taskId, message.value);
+			return;
+		}
 
 		const newComment: any = {
 			message: message.value,
