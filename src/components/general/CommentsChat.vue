@@ -245,6 +245,7 @@
 
 		if (isHelpMode.value) {
 			await createAskingHelpComment(props.taskId, message.value);
+			processing.value = false;
 			return;
 		}
 
