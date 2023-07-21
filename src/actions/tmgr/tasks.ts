@@ -52,6 +52,14 @@ export const createTask = async (task: Task) => {
 	return data;
 };
 
+export const optimizeWithAI = async (text: string) => {
+	const {
+		data: { data },
+	} = await $axios.post('ai/optimize', {text});
+
+	return data;
+};
+
 export const updateTask = async (taskId: number, task: Task) => {
 	const {
 		data: { data },
