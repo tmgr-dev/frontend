@@ -93,17 +93,30 @@
 				leave-to-class="opacity-0"
 			>
 				<div
-					class="relative m-2 w-fit rounded-lg p-2 dark:bg-gray-700"
+					class="relative m-3 w-fit rounded-lg p-2 dark:bg-gray-700"
+
 					v-if="isReplying"
 				>
 					<span class="w-fit cursor-pointer">
 						{{ replyingMessage.message }}
 					</span>
 					<span
-						class="left-18 material-icons text-md absolute m-auto h-6 w-6 cursor-pointer text-white"
+
+						class="material-icons text-md left-18 absolute m-auto h-6 w-6 cursor-pointer text-white"
+
 					>
 						reply
 					</span>
+					<div
+						class="absolute -left-2 -top-1.5 flex h-4 w-4 cursor-pointer rounded-full bg-red-500 opacity-75 duration-300 ease-in hover:opacity-100"
+					>
+						<span
+							class="material-icons left-0.5 m-auto cursor-pointer text-xs text-white"
+							@click="closeReply"
+						>
+							close
+						</span>
+					</div>
 				</div>
 			</Transition>
 			<form class="flex items-center justify-between">
@@ -231,9 +244,14 @@
 		isReplying.value = !isReplying.value;
 		replyingMessage.value = comments.value.find((comment) => comment.id === id);
 	};
+  
+	const closeReply = () => {
+		isReplying.value = !isReplying.value;
+	};
 
 	const toggleHelpMode = () => {
 		isHelpMode.value = !isHelpMode.value;
+
 	};
 	const onEditClick = (id: number) => {
 		isEditing.value = !isEditing.value;
