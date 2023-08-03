@@ -8,8 +8,10 @@ export interface Task {
 	approximately_time: number;
 	category: number;
 	title: string;
+	status: string;
 	description: string;
 	common_time: number;
+	is_daily_routine: boolean;
 }
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
@@ -46,6 +48,14 @@ export const createTask = async (task: Task) => {
 	const {
 		data: { data },
 	} = await $axios.post('tasks', task);
+
+	return data;
+};
+
+export const optimizeWithAI = async (text: string) => {
+	const {
+		data: { data },
+	} = await $axios.post('ai/optimize', {text});
 
 	return data;
 };

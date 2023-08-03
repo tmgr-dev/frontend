@@ -232,7 +232,6 @@
 						/>
 					</div>
 
-
 					<assignee-users
 						:assignees="form.assignees"
 						:is-modal="isModal"
@@ -324,6 +323,39 @@
 						theme="bubble"
 						placeholder="Description"
 					/>
+					<div v-if="form.description?.length" class="w-full block my-2">
+						<div
+							class="float-right opacity-50 hover:opacity-100 cursor-pointer"
+						>
+							<svg
+								v-if="isDescriptionOptimizing"
+								class="h-5 w-5 animate-spin"
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								/>
+							</svg>
+							<svg
+								@click="optimizeWithAI"
+								v-else
+							 	xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+								<path fill-rule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z" clip-rule="evenodd" />
+							</svg>
+						</div>
+					</div>
 				</div>
 
 				<div
@@ -344,48 +376,7 @@
 							add
 						</span>
 					</div>
-
-					<div
-						v-for="(checkpoint, v) in form.checkpoints"
-						:key="v"
-						class="mb-1 flex"
-					>
-						<div class="relative w-full">
-							<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
-								{{ v + 1 }}
-							</span>
-
-							<textarea
-								class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-								:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
-								placeholder="Checkpoint content"
-								v-model="checkpoint.description"
-							/>
-
-							<span
-								class="absolute right-0 top-2 flex items-center gap-1 text-sm"
-							>
-								<span class="text-sm">
-									{{ secondsToStringTime(checkpoint.start) }} -
-									{{ secondsToStringTime(checkpoint.end) }}
-								</span>
-
-								<span
-									class="material-icons checkpoint-delete text-base leading-none text-blue-700"
-									@click="changeCheckpointInputField(v)"
-								>
-									edit
-								</span>
-
-								<span
-									class="material-icons checkpoint-delete text-base leading-none text-red-700"
-									@click="deleteCheckpoint(v)"
-								>
-									delete
-								</span>
-							</span>
-						</div>
-					</div>
+					<checkpoints :checkpoints="form.checkpoints" />
 				</div>
 			</section>
 			<section v-if="!isCreatingTask" class="mt-10 md:w-1/2">
@@ -452,6 +443,7 @@
 		addTaskAssignee,
 		deleteTaskAssignee,
 		getTasksIndexes,
+		optimizeWithAI
 	} from 'src/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
@@ -469,11 +461,13 @@
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
-	import { newTitleCount } from 'src/utils/newTitleCount';
+	import Checkpoints from 'src/components/general/Checkpoints.vue';
+
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			Checkpoints,
 			CommentsChat,
 			Modal,
 			AssigneeUsers,
@@ -510,6 +504,7 @@
 		emits: ['close', 'updated'],
 		data() {
 			return {
+				isDescriptionOptimizing: false,
 				isActiveAssignBtns: true,
 				middleBlockHeight: null,
 				confirm: null,
@@ -576,10 +571,7 @@
 				this.setSavedData(newVal);
 			},
 			'form.project_category_id': async function (newVal, oldVal) {
-				if (this.isCreatingTask) {
-					this.currentCategory = await getCategory(newVal);
-				}
-				this.currentCategory.id = newVal;
+				this.currentCategory = await getCategory(newVal);
 				this.loadCategory();
 			},
 		},
@@ -657,6 +649,13 @@
 			},
 		},
 		methods: {
+			async optimizeWithAI () {
+				this.isDescriptionOptimizing = true;
+				const result = await optimizeWithAI(`${this.form.title}: ${this.form.description.replace(/(<([^>]+)>)/gi, "")}`);
+				this.form.description = result;
+
+				this.isDescriptionOptimizing = false;
+			},
 			handleHistoryState() {
 				if (this.isModal && !this.isCreatingTask) {
 					history.pushState({}, '', `/${this.taskId}`);
@@ -1032,24 +1031,6 @@
 			goToCurrentTasks() {
 				this.$router.push('/');
 			},
-			secondsToStringTime(seconds) {
-				const second = seconds % 60;
-				let minute = ((seconds - second) / 60) | 0;
-				const hour = (minute / 60) | 0;
-				minute = minute - hour * 60;
-
-				return `${this.prepareClockNumber(hour)}:${this.prepareClockNumber(
-					minute,
-				)}:${this.prepareClockNumber(second)}`;
-			},
-			stringTimeToSeconds(stringTime) {
-				let times = stringTime.split(':');
-				times = times.map(parseInt);
-				return times[0] * 60 * 60 + times[1] * 60 + times[2];
-			},
-			prepareClockNumber(num) {
-				return num < 10 ? '0' + num : num;
-			},
 			addCheckpoint() {
 				const { form } = this;
 				if (!form.checkpoints) {
@@ -1070,16 +1051,6 @@
 					start: currentTime,
 					end: currentTime,
 				});
-				++this.checkpointUpdateKey;
-			},
-			deleteCheckpoint(checkpointIndex) {
-				this.form.checkpoints.splice(checkpointIndex, 1);
-				++this.checkpointUpdateKey;
-			},
-			changeCheckpointInputField(checkpointIndex) {
-				const inputType = this.form.checkpoints[checkpointIndex].inputType;
-				this.form.checkpoints[checkpointIndex].inputType =
-					!inputType || inputType === 'text' ? 'textarea' : 'text';
 				++this.checkpointUpdateKey;
 			},
 			updateSeconds(seconds) {
@@ -1145,28 +1116,6 @@
 </script>
 
 <style lang="scss" scoped>
-	.checkpoint-delete {
-		top: 9px;
-		right: 10px;
-		cursor: pointer;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
-	.checkpoint-index {
-		width: fit-content;
-		top: 7px;
-		left: 10px;
-		cursor: pointer;
-		color: #00c300;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
 	.task-title-span {
 		max-width: 200px;
 		display: inline-block;
