@@ -34,5 +34,6 @@
 		{ id: 1, name: 'List', path: '/' },
 		{ id: 2, name: 'Board', path: '/board' },
 		{ id: 3, name: 'Categories', path: '/projects-categories' },
+		{ id: 4, name: 'Daily routines', path: '/daily-routines' },
 	];
 </script>
