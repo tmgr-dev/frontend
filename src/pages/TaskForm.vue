@@ -232,7 +232,6 @@
 						/>
 					</div>
 
-
 					<assignee-users
 						:assignees="form.assignees"
 						:is-modal="isModal"
@@ -377,48 +376,7 @@
 							add
 						</span>
 					</div>
-
-					<div
-						v-for="(checkpoint, v) in form.checkpoints"
-						:key="v"
-						class="mb-1 flex"
-					>
-						<div class="relative w-full">
-							<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
-								{{ v + 1 }}
-							</span>
-
-							<textarea
-								class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-								:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
-								placeholder="Checkpoint content"
-								v-model="checkpoint.description"
-							/>
-
-							<span
-								class="absolute right-0 top-2 flex items-center gap-1 text-sm"
-							>
-								<span class="text-sm">
-									{{ secondsToStringTime(checkpoint.start) }} -
-									{{ secondsToStringTime(checkpoint.end) }}
-								</span>
-
-								<span
-									class="material-icons checkpoint-delete text-base leading-none text-blue-700"
-									@click="changeCheckpointInputField(v)"
-								>
-									edit
-								</span>
-
-								<span
-									class="material-icons checkpoint-delete text-base leading-none text-red-700"
-									@click="deleteCheckpoint(v)"
-								>
-									delete
-								</span>
-							</span>
-						</div>
-					</div>
+					<checkpoints :checkpoints="form.checkpoints" />
 				</div>
 			</section>
 			<section v-if="!isCreatingTask" class="mt-10 md:w-1/2">
@@ -503,10 +461,13 @@
 	import { mapState } from 'vuex';
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
+	import Checkpoints from 'src/components/general/Checkpoints.vue';
+
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			Checkpoints,
 			CommentsChat,
 			Modal,
 			AssigneeUsers,
@@ -610,10 +571,7 @@
 				this.setSavedData(newVal);
 			},
 			'form.project_category_id': async function (newVal, oldVal) {
-				if (this.isCreatingTask) {
-					this.currentCategory = await getCategory(newVal);
-				}
-				this.currentCategory.id = newVal;
+				this.currentCategory = await getCategory(newVal);
 				this.loadCategory();
 			},
 		},
@@ -1073,24 +1031,6 @@
 			goToCurrentTasks() {
 				this.$router.push('/');
 			},
-			secondsToStringTime(seconds) {
-				const second = seconds % 60;
-				let minute = ((seconds - second) / 60) | 0;
-				const hour = (minute / 60) | 0;
-				minute = minute - hour * 60;
-
-				return `${this.prepareClockNumber(hour)}:${this.prepareClockNumber(
-					minute,
-				)}:${this.prepareClockNumber(second)}`;
-			},
-			stringTimeToSeconds(stringTime) {
-				let times = stringTime.split(':');
-				times = times.map(parseInt);
-				return times[0] * 60 * 60 + times[1] * 60 + times[2];
-			},
-			prepareClockNumber(num) {
-				return num < 10 ? '0' + num : num;
-			},
 			addCheckpoint() {
 				const { form } = this;
 				if (!form.checkpoints) {
@@ -1111,16 +1051,6 @@
 					start: currentTime,
 					end: currentTime,
 				});
-				++this.checkpointUpdateKey;
-			},
-			deleteCheckpoint(checkpointIndex) {
-				this.form.checkpoints.splice(checkpointIndex, 1);
-				++this.checkpointUpdateKey;
-			},
-			changeCheckpointInputField(checkpointIndex) {
-				const inputType = this.form.checkpoints[checkpointIndex].inputType;
-				this.form.checkpoints[checkpointIndex].inputType =
-					!inputType || inputType === 'text' ? 'textarea' : 'text';
 				++this.checkpointUpdateKey;
 			},
 			updateSeconds(seconds) {
@@ -1186,28 +1116,6 @@
 </script>
 
 <style lang="scss" scoped>
-	.checkpoint-delete {
-		top: 9px;
-		right: 10px;
-		cursor: pointer;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
-	.checkpoint-index {
-		width: fit-content;
-		top: 7px;
-		left: 10px;
-		cursor: pointer;
-		color: #00c300;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
 	.task-title-span {
 		max-width: 200px;
 		display: inline-block;
