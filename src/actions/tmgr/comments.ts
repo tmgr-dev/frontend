@@ -20,6 +20,14 @@ export const createComment = async (taskId: number, payload: Comment) => {
 	return data;
 };
 
+export const createAskingHelpComment = async (taskId: number, question: string) => {
+	const {
+		data: { data },
+	} = await $axios.post(`/tasks/${taskId}/comments/help`, {question});
+
+	return data;
+};
+
 export const updateComment = async (commentId: number, payload: Comment) => {
 	const {
 		data: { data },
