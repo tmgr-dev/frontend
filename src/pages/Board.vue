@@ -71,111 +71,114 @@
 					</div>
 
 					<div class="board-container">
-						<Draggable
-							:disabled="!activeDraggable"
-							v-model="columns"
-							group="columns"
-							item-key="id"
-							class="board-container"
-							@end="onMove"
-							data-id="column"
-						>
-							<template #item="{ element: column }">
-								<div class="board-container__item pr-2">
-									<div class="column-width h-full rounded-lg px-3 pb-3">
-										<div>
-											<div
-												class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-												:style="{
-													'border-top': `solid 5px ${column.status.color}`,
-												}"
-											>
+						<div class="w-fit" ref="cont1">
+							<Draggable
+								ref="cont2"
+								:disabled="!activeDraggable"
+								v-model="columns"
+								group="columns"
+								item-key="id"
+								class="board-container"
+								@end="onMove"
+								data-id="column"
+							>
+								<template #item="{ element: column }">
+									<div class="board-container__item pr-2">
+										<div class="column-width h-full rounded-lg px-3 pb-3">
+											<div>
 												<div
-													v-if="activeDraggable"
-													class="mr-2 flex items-center hover:cursor-move"
+													class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
+													:style="{
+														'border-top': `solid 5px ${column.status.color}`,
+													}"
 												>
-													<EllipsisVerticalIcon
-														class="h-3"
-														aria-hidden="true"
-													/>
-													<EllipsisVerticalIcon
-														class="-ml-2 h-3"
-														aria-hidden="true"
-													/>
-												</div>
-
-												<div
-													class="group relative flex h-6 w-full items-center"
-												>
-													<span class="text-sm">
-														{{ column.title }}
-													</span>
+													<div
+														v-if="activeDraggable"
+														class="mr-2 flex items-center hover:cursor-move"
+													>
+														<EllipsisVerticalIcon
+															class="h-3"
+															aria-hidden="true"
+														/>
+														<EllipsisVerticalIcon
+															class="-ml-2 h-3"
+															aria-hidden="true"
+														/>
+													</div>
 
 													<div
-														v-tooltip.left="
-															userSettings.showTooltips
-																? `Create task `
-																: { visible: false }
-														"
-														class="absolute top-0 right-3 opacity-0 transition duration-700 group-hover:opacity-100"
+														class="group relative flex h-6 w-full items-center"
 													>
+														<span class="text-sm">
+															{{ column.title }}
+														</span>
+
 														<div
-															@click="openTaskModal(column)"
-															class="material-icons cursor-pointer text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
+															v-tooltip.left="
+																userSettings.showTooltips
+																	? `Create task `
+																	: { visible: false }
+															"
+															class="absolute top-0 right-3 opacity-0 transition duration-700 group-hover:opacity-100"
 														>
-															add
+															<div
+																@click="openTaskModal(column)"
+																class="material-icons cursor-pointer text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
+															>
+																add
+															</div>
 														</div>
 													</div>
+
+													<Dropdown class="ml-auto pr-2">
+														<MenuItem>
+															<a
+																href="#"
+																class="block px-4 py-2 text-sm text-neutral-600"
+																@click.prevent="openTaskModal(column)"
+															>
+																Create a task
+															</a>
+														</MenuItem>
+														<MenuItem>
+															<a
+																href="#"
+																class="block px-4 py-2 text-sm text-neutral-600"
+																@click.prevent="openStatusModal(column)"
+															>
+																Edit status
+															</a>
+														</MenuItem>
+													</Dropdown>
 												</div>
-
-												<Dropdown class="ml-auto pr-2">
-													<MenuItem>
-														<a
-															href="#"
-															class="block px-4 py-2 text-sm text-neutral-600"
-															@click.prevent="openTaskModal(column)"
-														>
-															Create a task
-														</a>
-													</MenuItem>
-													<MenuItem>
-														<a
-															href="#"
-															class="block px-4 py-2 text-sm text-neutral-600"
-															@click.prevent="openStatusModal(column)"
-														>
-															Edit status
-														</a>
-													</MenuItem>
-												</Dropdown>
 											</div>
-										</div>
 
-										<Draggable
-											v-model="column.tasks"
-											:animation="200"
-											ghost-class="ghost-card"
-											group="tasks"
-											item-key="id"
-											@end="onEnd"
-											:data-status="column.status.id"
-											class="board-card"
-										>
-											<template #item="{ element: task }">
-												<TaskBoardCard
-													:task="task"
-													class="my-5 cursor-move"
-													:data-task="jsonEncode(task)"
-												/>
-											</template>
-										</Draggable>
+											<Draggable
+												v-model="column.tasks"
+												:animation="200"
+												ghost-class="ghost-card"
+												group="tasks"
+												item-key="id"
+												@end="onEnd"
+												:data-status="column.status.id"
+												class="board-card"
+											>
+												<template #item="{ element: task }">
+													<TaskBoardCard
+														:task="task"
+														class="my-5 cursor-move"
+														:data-task="jsonEncode(task)"
+													/>
+												</template>
+											</Draggable>
+										</div>
 									</div>
-								</div>
-							</template>
-						</Draggable>
+								</template>
+							</Draggable>
+						</div>
 
 						<div
-							class="flex h-12 w-12 items-center justify-center"
+							class="fixed right-2 z-10 h-full w-12 flex-col"
 							v-if="columns.length > 0"
 						>
 							<span
@@ -190,6 +193,22 @@
 							>
 								add
 							</span>
+							<div class="relative my-2 flex h-screen items-center">
+								<div
+									v-if="hasHorizontalScroll"
+									class="flex h-full items-center"
+								>
+									<span
+										@click="scrollHorizontally"
+										class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
+									>
+										arrow_forward_ios
+									</span>
+									<div
+										class="before:to-100% relative flex h-64 w-0.5 items-center bg-gray-100 before:absolute before:right-2 before:-z-10 before:h-5/6 before:w-full before:bg-gradient-to-l before:from-[#000000] before:from-gray-600 before:blur-[4px] dark:bg-neutral-900"
+									></div>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -312,7 +331,6 @@
 		</template>
 	</BaseLayout>
 </template>
-
 <script>
 	import Modal from 'src/components/Modal.vue';
 	import Button from 'src/components/general/Button.vue';
@@ -427,6 +445,7 @@
 			confirm: null,
 			tasks: [],
 			isFiltersModalShown: false,
+			hasHorizontalScroll: false,
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
@@ -448,6 +467,12 @@
 			},
 		},
 		methods: {
+			scrollHorizontally() {
+				document.querySelector('.board-container').scrollTo({
+					left: document.querySelector('.board-container').scrollLeft + 200,
+					behavior: 'smooth',
+				});
+			},
 			onColorSelect() {
 				const hexColor = hslToHex(
 					this.color.hue,
@@ -748,7 +773,6 @@
 			}
 		},
 		async mounted() {
-			// this.activeDraggable = this.$store.state.isDraggable;
 			const categoriesData = await getCategories();
 			this.categories = [
 				{ id: 0, title: 'All categories' },
@@ -761,6 +785,10 @@
 			await this.loadColumns();
 			await this.loadTasks();
 			this.color.hue = hueFromHex(this.statusColor);
+
+			this.hasHorizontalScroll =
+				document.querySelector('.board-container').scrollWidth >
+				document.querySelector('.board-container').clientWidth;
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
@@ -817,6 +845,7 @@
 
 	.board-container {
 		display: flex;
+
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		overflow-y: hidden;
@@ -827,6 +856,15 @@
 			flex-shrink: 0;
 			height: calc(100vh - 130px);
 		}
+	}
+	.shadow-radial::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background: radial-gradient(circle, rgba(0, 0, 0, 0.5), transparent);
 	}
 
 	.board-card {
