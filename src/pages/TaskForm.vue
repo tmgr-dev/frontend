@@ -893,7 +893,6 @@
 									}
 								}
 							}
-							x;
 							if (setting.key === 'approximately_time') {
 								this.form.approximately_time = parseInt(setting.value);
 							}
