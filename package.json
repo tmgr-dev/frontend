@@ -70,7 +70,7 @@
 		"laravel-echo": "^1.14.2",
 		"node-sass": "^8.0.0",
 		"path": "^0.12.7",
-		"postcss": "^8.4.21",
+		"postcss": "^8.4.31",
 		"prettier": "^2.8.3",
 		"prettier-plugin-tailwindcss": "^0.2.2",
 		"pusher-js": "^8.0.0",
