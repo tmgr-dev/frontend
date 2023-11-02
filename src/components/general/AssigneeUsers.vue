@@ -1,5 +1,5 @@
 <template>
-	<div class="relative" :class="[isModal ? 'ml-5' : 'ml-auto']">
+	<div class="relative" :class="[isModal ? 'ml-5' : 'md:ml-auto']">
 		<div class="flex flex-row-reverse">
 			<div
 				v-if="showAssigneeControls"
