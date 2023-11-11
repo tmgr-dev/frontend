@@ -22,7 +22,7 @@
 		"@pusher/push-notifications-web": "^1.1.0",
 		"@quasar/extras": "^1.15.9",
 		"@vueup/vue-quill": "^1.0.1",
-		"axios": "^1.2.2",
+		"axios": "^1.6.0",
 		"canvas-confetti": "^1.6.0",
 		"core-js": "^3.27.1",
 		"module-alias": "^2.2.2",
