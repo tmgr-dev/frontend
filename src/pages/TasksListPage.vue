@@ -27,9 +27,39 @@
 					</transition>
 				</div>
 
+				<div>
+					<div
+						v-if="categories.length >= 2"
+						class="mt-2 w-44 md:m-0 md:ml-3 md:mr-3"
+						:class="{ hidden: !showCategorySelect }"
+					>
+						<transition name="transform-opacity-right" mode="out-in">
+							<Select
+								placeholder="Select category"
+								:options="categories"
+								v-model="selectedCategory"
+								label-key="title"
+								value-key="id"
+							/>
+						</transition>
+					</div>
+				</div>
+
 				<div
 					class="ml-0 mt-2 hidden w-full shrink-0 text-center sm:mt-0 sm:w-auto md:flex"
 				>
+					<a
+						href="#"
+						@click.prevent="showCategorySelect = !showCategorySelect"
+						title="Search tasks"
+						class="pr-1"
+					>
+						<span
+							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
+						>
+							{{ showCategorySelect ? 'filter_list' : 'filter_alt' }}
+						</span>
+					</a>
 					<a
 						href="#"
 						@click.prevent="showSearchInput = !showSearchInput"
@@ -107,6 +137,10 @@
 	import TaskForm from 'src/pages/TaskForm.vue';
 	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';
 	import TextField from 'src/components/general/TextField.vue';
+	import { getCategories } from 'src/actions/tmgr/categories';
+	import { hueFromHex } from 'src/utils/convertColors';
+	import { computed } from 'vue';
+	import Select from 'src/components/general/Select.vue';
 
 	export default {
 		name: 'TasksList',
@@ -116,6 +150,7 @@
 			Confetti,
 			LoadingTasksList,
 			TasksListComponent,
+			Select,
 		},
 		mixins: [LoadingButtonActions, TasksListMixin],
 		data: () => ({
@@ -135,12 +170,26 @@
 			tasks: [],
 			isLoadingActions: {},
 			hasAbilityToShowConfetti: false,
+			categories: [],
+			selectedCategory: null,
+			showCategorySelect: false,
 		}),
 		computed: {
 			status() {
 				return this.$route.meta.status;
 			},
 		},
+		async mounted() {
+			const categoriesData = await getCategories();
+			this.categories = [
+				{ id: 0, title: 'All categories' },
+				...categoriesData.map((cat) => ({
+					id: cat.id,
+					title: cat.title,
+				})),
+			];
+		},
+
 		watch: {
 			searchText() {
 				clearTimeout(this.searchTimeout);
@@ -149,12 +198,29 @@
 			'$store.getters.reloadTasks'() {
 				this.loadTasks();
 			},
+			async selectedCategory(newCategory, oldCategory) {
+				await this.loadTasks();
+				this.selectedCategory = newCategory;
+				this.findByCategory(this.selectedCategory);
+			},
 		},
 		methods: {
+			findByCategory(id) {
+				if (!id) {
+					return;
+				} else {
+					const tasks = this.tasks.filter(
+						(task) => task.category && task.category.id === id,
+					);
+					this.tasks = tasks;
+				}
+			},
+
 			reloadTasks() {
 				this.hasAbilityToShowConfetti = true;
 				this.loadTasks();
 			},
+
 			async loadTasks() {
 				try {
 					this.isLoading = true;
