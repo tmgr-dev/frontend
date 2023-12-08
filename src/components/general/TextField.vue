@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded border bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full rounded border bg-white py-1 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
 			:class="[
 				'border-neutral-300',
 				inputClass || 'dark:border-transparent',
