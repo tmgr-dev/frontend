@@ -5,32 +5,35 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex flex-nowrap items-center justify-between">
+			<div class="items-center justify-between md:flex md:flex-nowrap">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="ext-opacity-25 text-bold my-5 mr-6 w-full shrink-0 text-center text-lg sm:w-auto sm:text-xl lg:text-2xl"
+						class="text-bold my-5 mr-6 shrink-0 text-center text-lg text-opacity-25 sm:w-auto sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
 				<div
-					class="ml-auto mr-3 w-full overflow-hidden md:w-1/2 lg:w-1/4 xl:w-1/5"
+					class="absolute top-14 flex w-[90%] items-center justify-center p-4 md:static"
 				>
-					<transition name="transform-opacity-right" mode="out-in">
-						<TextField
-							v-if="showSearchInput"
-							placeholder="Enter task name"
-							v-model="searchText"
-						/>
-					</transition>
-				</div>
+					<div
+						class="mr-3 w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
+					>
+						<transition name="transform-opacity-right" mode="out-in">
+							<TextField
+								v-if="showSearchInput"
+								placeholder="Enter task name"
+								v-model="searchText"
+								class="p-2 md:p-0"
+							/>
+						</transition>
+					</div>
 
-				<div>
 					<div
 						v-if="categories.length >= 2"
-						class="mt-2 w-44 md:m-0 md:ml-3 md:mr-3"
+						class="w-44 md:m-0 md:ml-3 md:mr-3"
 						:class="{ hidden: !showCategorySelect }"
 					>
 						<transition name="transform-opacity-right" mode="out-in">
@@ -40,14 +43,13 @@
 								v-model="selectedCategory"
 								label-key="title"
 								value-key="id"
+								class="p-2 md:p-0"
 							/>
 						</transition>
 					</div>
 				</div>
 
-				<div
-					class="ml-0 mt-2 hidden w-full shrink-0 text-center sm:mt-0 sm:w-auto md:flex"
-				>
+				<div class="ml-0 mt-14 w-full text-center sm:w-auto md:mt-0 md:flex">
 					<a
 						href="#"
 						@click.prevent="showCategorySelect = !showCategorySelect"
