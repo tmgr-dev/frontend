@@ -25,11 +25,27 @@
 			</li>
 		</router-link>
 	</ul>
+	<button
+		class="flex appearance-none items-center rounded border bg-white px-2 transition-colors duration-300 dark:bg-gray-800"
+		@click="showCreatingTaskModal"
+	>
+		<span class="mr-2">Create</span>
+
+		<span class="material-icons">add</span>
+	</button>
 </template>
 
 <script lang="ts" setup>
+	import Button from 'src/components/general/Button.vue';
+	import { useStore } from 'vuex';
+
 	defineEmits(['navigated']);
 
+	const store = useStore();
+
+	const showCreatingTaskModal = () => {
+		store.commit('setShowCreatingTaskModal');
+	};
 	const links = [
 		{ id: 1, name: 'List', path: '/' },
 		{ id: 2, name: 'Board', path: '/board' },
