@@ -737,7 +737,10 @@
 						'order[direction]': 'asc',
 					},
 				});
-				if (this.chosenUser?.id) {
+				if (this.$store.state.filter.selectedUser) {
+					this.chosenUser = this.workspaceUsers.find(
+						(user) => user.id === this.$store.state.filter.selectedUser,
+					);
 					this.tasks = this.tasks.filter((item) =>
 						item.assignees.find(
 							(assignee) =>
