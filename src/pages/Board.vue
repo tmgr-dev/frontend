@@ -160,6 +160,7 @@
 												group="tasks"
 												item-key="id"
 												@end="onEnd"
+												:disabled="isMobile"
 												:data-status="column.status.id"
 												class="board-card"
 											>
@@ -446,11 +447,17 @@
 			tasks: [],
 			isFiltersModalShown: false,
 			hasHorizontalScroll: false,
+			isMobile: window.innerWidth <= 768,
 		}),
 		watch: {
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
 			},
+			$route() {
+				this.isMobile = window.innerWidth <= 768;
+				console.log(this.isMobile); // Adjust the screen width threshold as needed
+			},
+
 			chosenUser: function () {
 				this.loadTasks();
 			},
