@@ -873,7 +873,6 @@
 						return;
 
 					for (const setting of this.currentCategory.settings) {
-						console.log('settingkey', setting.key);
 						if (setting.key === 'task_name_pattern_date&time') {
 							const indexes = await getTasksIndexes(this.currentCategory.id);
 							for (const setting of this.currentCategory.settings) {
@@ -881,10 +880,20 @@
 									const indexes = await getTasksIndexes(
 										this.currentCategory.id,
 									);
-									this.form.title = titlePatternHandler(
+									const category = titlePatternHandler(
 										setting.value,
 										new Map(Object.entries(indexes)),
 									);
+									if (this.form.title) {
+										if (this.form.title.includes(':')) {
+											const cuttedTitle = this.form.title.split(':')[1].trim();
+											this.form.title = `${category} ${cuttedTitle}`;
+										} else {
+											this.form.title = `${category} ${this.form.title}`;
+										}
+									} else {
+										this.form.title = category;
+									}
 								}
 							}
 							if (setting.key === 'approximately_time') {
