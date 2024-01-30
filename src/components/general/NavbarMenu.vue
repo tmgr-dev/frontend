@@ -1,4 +1,14 @@
 <template>
+	<div class="w-48 pr-4">
+		<Select
+			:options="workspaces"
+			v-model="workspaceId"
+			label-key="name"
+			value-key="id"
+			@change="onSelectChange"
+		/>
+	</div>
+
 	<ul
 		class="mt-4 flex flex-col gap-2 pt-4 md:mx-0 md:mt-0 md:mr-4 md:flex-row md:items-center md:gap-7 md:border-0 md:pt-0 lg:mr-8"
 	>
@@ -38,10 +48,51 @@
 <script lang="ts" setup>
 	import Button from 'src/components/general/Button.vue';
 	import { useStore } from 'vuex';
+	import Select from 'src/components/general/Select.vue';
+	import { onBeforeMount, ref, Ref } from 'vue';
+	import { getWorkspaces, Workspace } from 'src/actions/tmgr/workspaces';
+	import { getUser, updateUserSettingsV2, User } from 'src/actions/tmgr/user';
 
 	defineEmits(['navigated']);
+	const workspaces = ref([] as Workspace[]);
+	const user = ref({} as User);
+	const workspaceId: Ref<number> = ref(0);
 
 	const store = useStore();
+
+	onBeforeMount(async () => {
+		const [userData, workspaceData] = await Promise.all([
+			getUser(),
+			getWorkspaces(),
+		]);
+
+		user.value = userData;
+		workspaces.value = workspaceData;
+
+		const workspaceSetting = user.value.settings.find(
+			(setting) => setting.key === 'current_workspace',
+		);
+
+		if (workspaceSetting) {
+			workspaceId.value = +workspaceSetting.value;
+		}
+	});
+	async function onSelectChange(workspaceId: number) {
+		const settingsWithUpdatedWorkspace = user.value.settings.map((setting) => {
+			if (setting.key === 'current_workspace') {
+				setting.value = workspaceId;
+			}
+
+			return {
+				id: setting.id,
+				value: setting.value,
+			};
+		});
+
+		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+
+		store.commit('rerenderApp');
+	}
 
 	const showCreatingTaskModal = () => {
 		store.commit('setShowCreatingTaskModal');
