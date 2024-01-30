@@ -109,9 +109,14 @@
 													<div
 														class="group relative flex h-6 w-full items-center"
 													>
-														<span class="text-sm">
-															{{ column.title }}
-														</span>
+														<div class="flex w-5/6 justify-between">
+															<span class="text-sm">
+																{{ column.title }}
+															</span>
+															<span class="text-sm">
+																{{ column.summary }}
+															</span>
+														</div>
 
 														<div
 															v-tooltip.left="
@@ -449,6 +454,7 @@
 			hasHorizontalScroll: false,
 			isMobile: window.innerWidth <= 768,
 		}),
+
 		watch: {
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
@@ -704,11 +710,19 @@
 			handleSearchTextChanged(newValue) {
 				this.searchText = newValue;
 			},
+			formatTime(taskTime) {
+				if (taskTime < 3600) {
+					let min = Math.ceil(taskTime / 60);
+					return `${min} m${min > 1 ? '' : ''}`;
+				} else {
+					let hoursDecimal = taskTime / 3600;
+					return `${hoursDecimal.toFixed(2)} h`;
+				}
+			},
 			async loadTasks() {
 				const tasksPromises = this.columns.map((column) =>
 					this.loadTasksByStatus(column.status),
 				);
-
 				const tasksArray = await Promise.all(tasksPromises);
 				if (this.searchText === '') {
 					this.filteredTasksArray = tasksArray;
@@ -725,10 +739,28 @@
 						),
 					);
 				}
+				console.log('tasksArray', tasksArray);
+				const columnsWithSummary = this.columns.map((column, i) => {
+					const summary = column.tasks.reduce(
+						(acc, task) => task.common_time + acc,
+						0,
+					);
+					const summaryInHours = this.formatTime(summary);
 
-				this.columns.forEach((column, i) => {
-					column.tasks = this.filteredTasksArray[i];
+					console.log('summaryInHours', summaryInHours);
+
+					const newColumn = { ...column, summary: summaryInHours };
+
+					newColumn.tasks = this.filteredTasksArray[i];
+
+					return newColumn;
 				});
+
+				this.columns = columnsWithSummary;
+
+				// this.columns.forEach((column, i) => {
+				// 	column.tasks = this.filteredTasksArray[i];
+				// });
 			},
 			async loadTasksByStatus(status) {
 				this.tasks = await getSortedTasksByStatus(status?.id || status, {
