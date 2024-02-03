@@ -68,6 +68,10 @@ export const updateTask = async (taskId: number, task: Task) => {
 	return data;
 };
 
+export const updateStatusOfTasks = async (taskIds: Array<number>, statusId: number) => {
+	await $axios.put(`statuses/${statusId}/tasks`, {task_ids: taskIds});
+};
+
 export const updateTaskPartially = async (taskId: number, task: Task) => {
 	const {
 		data: { data },
