@@ -154,6 +154,15 @@
 																Edit status
 															</a>
 														</MenuItem>
+														<MenuItem v-if="column.status.type === 'completed'">
+															<a
+																href="#"
+																class="block px-4 py-2 text-sm text-neutral-600"
+																@click.prevent="archiveColumnTasks(column)"
+															>
+																Archive all
+															</a>
+														</MenuItem>
 													</Dropdown>
 												</div>
 											</div>
@@ -350,9 +359,9 @@
 		updateWorkspaceOrder,
 	} from 'src/actions/tmgr/workspaces';
 	import {
-		getSortedTasksByStatus,
+		getSortedTasksByStatus, updateStatusOfTasks,
 		updateTaskOrders,
-		updateTaskStatus,
+		updateTaskStatus
 	} from 'src/actions/tmgr/tasks';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
@@ -453,6 +462,7 @@
 			isFiltersModalShown: false,
 			hasHorizontalScroll: false,
 			isMobile: window.innerWidth <= 768,
+			statuses: null
 		}),
 
 		watch: {
@@ -602,7 +612,6 @@
 				this.statusId = column.status.id;
 				this.color.hue = hueFromHex(this.statusColor);
 			},
-
 			openTaskModal(column) {
 				this.$store.commit('setShowCreatingTaskModal', column.status.id);
 			},
@@ -674,6 +683,19 @@
 				}
 				return null;
 			},
+			async archiveColumnTasks(column) {
+				if (!column) {
+					return null;
+				}
+				const { tasks } = column;
+				const taskIds = tasks.map(t => t.id);
+				const archiveStatus = this.statuses.find(s => s.type === 'archived');
+				if (!archiveStatus) {
+					return;
+				}
+				await updateStatusOfTasks(taskIds, archiveStatus.id);
+				await this.loadTasks();
+			},
 			findColumn(status) {
 				const { columns } = this;
 				for (let i = 0; i < columns.length; ++i) {
@@ -686,11 +708,11 @@
 			},
 			async loadColumns() {
 				const columns = [];
-				const statuses = await getWorkspaceStatuses();
-				statuses.sort((a, b) => a.pivot.order - b.pivot.order);
+				this.statuses = await getWorkspaceStatuses();
+				this.statuses.sort((a, b) => a.pivot.order - b.pivot.order);
 
-				for (let i = 0; i < statuses.length; ++i) {
-					let status = statuses[i];
+				for (let i = 0; i < this.statuses.length; ++i) {
+					let status = this.statuses[i];
 					if (status.type === 'archived') {
 						this.archivedStatus = status;
 						continue;
@@ -739,15 +761,12 @@
 						),
 					);
 				}
-				console.log('tasksArray', tasksArray);
 				const columnsWithSummary = this.columns.map((column, i) => {
 					const summary = column.tasks.reduce(
 						(acc, task) => task.common_time + acc,
 						0,
 					);
 					const summaryInHours = this.formatTime(summary);
-
-					console.log('summaryInHours', summaryInHours);
 
 					const newColumn = { ...column, summary: summaryInHours };
 
