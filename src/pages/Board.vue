@@ -761,8 +761,8 @@
 						),
 					);
 				}
-				const columnsWithSummary = this.columns.map((column, i) => {
-					const summary = column.tasks.reduce(
+				this.columns = this.columns.map((column, i) => {
+					const summary = this.filteredTasksArray[i].reduce(
 						(acc, task) => task.common_time + acc,
 						0,
 					);
@@ -774,12 +774,6 @@
 
 					return newColumn;
 				});
-
-				this.columns = columnsWithSummary;
-
-				// this.columns.forEach((column, i) => {
-				// 	column.tasks = this.filteredTasksArray[i];
-				// });
 			},
 			async loadTasksByStatus(status) {
 				this.tasks = await getSortedTasksByStatus(status?.id || status, {
