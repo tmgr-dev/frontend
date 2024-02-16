@@ -566,7 +566,8 @@
 				isShowSettingsModal: false,
 				isShowModalAssign: false,
 				categoriesSelectOptions: [],
-				currentCategory: '',
+				currentCategory: null,
+				previousCategoryTaskPrefix: null,
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
 				prevValue: null,
@@ -864,8 +865,9 @@
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
 					this.currentCategory = await getCategory(
-						+this.projectCategoryId || +this.form.project_category_id,
+						+this.form.project_category_id || +this.projectCategoryId,
 					);
+
 
 					this.currentCategoryOptionInSelect = this.currentCategory.id;
 
@@ -874,26 +876,26 @@
 
 					for (const setting of this.currentCategory.settings) {
 						if (setting.key === 'task_name_pattern_date&time') {
-							const indexes = await getTasksIndexes(this.currentCategory.id);
 							for (const setting of this.currentCategory.settings) {
 								if (setting.key === 'task_name_pattern_date&time') {
 									const indexes = await getTasksIndexes(
 										this.currentCategory.id,
 									);
-									const category = titlePatternHandler(
+									const taskTitlePrefixFromCategory = titlePatternHandler(
 										setting.value,
 										new Map(Object.entries(indexes)),
 									);
 									if (this.form.title) {
-										if (this.form.title.includes(':')) {
-											const cuttedTitle = this.form.title.split(':')[1].trim();
-											this.form.title = `${category} ${cuttedTitle}`;
+										if (this.form.title.includes(this.previousCategoryTaskPrefix)) {
+											let cuttedTitle = this.form.title.split(this.previousCategoryTaskPrefix)[1].trim();
+											this.form.title = `${taskTitlePrefixFromCategory} ${cuttedTitle}`;
 										} else {
-											this.form.title = `${category} ${this.form.title}`;
+											this.form.title = `${taskTitlePrefixFromCategory} ${this.form.title}`;
 										}
 									} else {
-										this.form.title = category;
+										this.form.title = taskTitlePrefixFromCategory;
 									}
+									this.previousCategoryTaskPrefix = taskTitlePrefixFromCategory;
 								}
 							}
 							if (setting.key === 'approximately_time') {
