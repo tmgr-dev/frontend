@@ -166,3 +166,10 @@ button {
 		opacity: 1;
 	}
 }
+
+.sortable-ghost {
+	opacity: .5;
+	* {
+		opacity: 0;
+	}
+}
