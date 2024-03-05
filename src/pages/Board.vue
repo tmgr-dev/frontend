@@ -170,7 +170,6 @@
 											<Draggable
 												v-model="column.tasks"
 												:animation="200"
-												ghost-class="ghost-card"
 												group="tasks"
 												item-key="id"
 												@end="onEnd"
@@ -359,9 +358,10 @@
 		updateWorkspaceOrder,
 	} from 'src/actions/tmgr/workspaces';
 	import {
-		getSortedTasksByStatus, updateStatusOfTasks,
+		getSortedTasksByStatus,
+		updateStatusOfTasks,
 		updateTaskOrders,
-		updateTaskStatus
+		updateTaskStatus,
 	} from 'src/actions/tmgr/tasks';
 	import { getUser, updateUser } from 'src/actions/tmgr/user';
 	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
@@ -462,7 +462,7 @@
 			isFiltersModalShown: false,
 			hasHorizontalScroll: false,
 			isMobile: window.innerWidth <= 768,
-			statuses: null
+			statuses: null,
 		}),
 
 		watch: {
@@ -688,8 +688,8 @@
 					return null;
 				}
 				const { tasks } = column;
-				const taskIds = tasks.map(t => t.id);
-				const archiveStatus = this.statuses.find(s => s.type === 'archived');
+				const taskIds = tasks.map((t) => t.id);
+				const archiveStatus = this.statuses.find((s) => s.type === 'archived');
 				if (!archiveStatus) {
 					return;
 				}
