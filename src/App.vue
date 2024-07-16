@@ -30,11 +30,12 @@
 			<Modal
 				v-if="showTaskFormModalWindow"
 				close-on-bg-click
-				modal-class="w-11/12 h-full"
 				@close="$store.commit('closeTaskModal')"
 			>
 				<template #modal-body>
-					<TaskForm
+					<NewForm :is-modal="true" @close="$store.commit('closeTaskModal')" />
+
+					<!--					<TaskForm
 						is-modal
 						:modal-project-category-id="
 							$store.state.createTaskInProjectCategoryId
@@ -42,7 +43,7 @@
 						:modal-task-id="$store.state.currentTaskIdForModal"
 						:status-id="$store.state.taskStatusId"
 						@close="$store.commit('closeTaskModal')"
-					/>
+					/>-->
 				</template>
 			</Modal>
 		</Transition>
@@ -60,12 +61,14 @@
 	import Alert from 'src/components/general/Alert.vue';
 	import Modal from 'src/components/Modal.vue';
 	import ActiveTasks from 'src/components/ActiveTasks.vue';
+	import NewForm from 'src/pages/NewForm.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
 	export default defineComponent({
 		name: 'App',
 		components: {
+			NewForm,
 			ActiveTasks,
 			Modal,
 			Alert,
