@@ -12,6 +12,9 @@ export interface Task {
 	description: string;
 	common_time: number;
 	is_daily_routine: boolean;
+	settings?: any; // @todo describe type
+	project_category_id?: number;
+	workspace_id?: number;
 }
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
@@ -55,7 +58,7 @@ export const createTask = async (task: Task) => {
 export const optimizeWithAI = async (text: string) => {
 	const {
 		data: { data },
-	} = await $axios.post('ai/optimize', {text});
+	} = await $axios.post('ai/optimize', { text });
 
 	return data;
 };
@@ -68,8 +71,11 @@ export const updateTask = async (taskId: number, task: Task) => {
 	return data;
 };
 
-export const updateStatusOfTasks = async (taskIds: Array<number>, statusId: number) => {
-	await $axios.put(`statuses/${statusId}/tasks`, {task_ids: taskIds});
+export const updateStatusOfTasks = async (
+	taskIds: Array<number>,
+	statusId: number,
+) => {
+	await $axios.put(`statuses/${statusId}/tasks`, { task_ids: taskIds });
 };
 
 export const updateTaskPartially = async (taskId: number, task: Task) => {
