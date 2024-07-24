@@ -29,6 +29,7 @@
 		<Transition name="bounce-right-fade">
 			<Modal
 				v-if="showTaskFormModalWindow"
+				modal-class="h-full w-full md:w-auto md:h-auto"
 				close-on-bg-click
 				@close="$store.commit('closeTaskModal')"
 			>
