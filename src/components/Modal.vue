@@ -1,12 +1,14 @@
 <template>
 	<div
 		id="backdrop"
-		class="fixed inset-0 z-50 flex bg-black/50"
+		class="fixed inset-0 z-50 flex"
 		data-name="overlay"
 		@click="close"
 	>
+		<div class="absolute inset-0 bg-black/50" />
+
 		<div
-			class="m-auto max-h-[95%] max-w-[95%] rounded-lg bg-white dark:bg-gray-900"
+			class="relative m-auto max-w-full bg-white dark:bg-gray-900 md:rounded-lg"
 			:class="modalClass"
 		>
 			<slot name="modal-body"></slot>
@@ -19,7 +21,7 @@
 	import { useStore } from 'vuex';
 
 	interface Props {
-		modalClass: string;
+		modalClass?: string;
 		closeOnBgClick?: boolean;
 	}
 
