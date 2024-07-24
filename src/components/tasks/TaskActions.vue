@@ -1,9 +1,9 @@
 <template>
-	<div class="flex justify-end text-center">
+	<div class="flex justify-end gap-3 text-center">
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="mr-5 mr-auto rounded bg-red-500 py-2 px-4 font-bold text-white outline-none hover:bg-red-700"
+			class="mr-auto rounded bg-red-500 py-2 px-4 font-bold text-white outline-none hover:bg-red-700"
 		>
 			Delete
 		</button>
@@ -14,7 +14,7 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="relative mr-4 rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none"
+				class="relative rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none"
 				type="button"
 			>
 				<svg
@@ -55,20 +55,20 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="mr-5 mb-5 rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+			class="mb-5 rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 			type="button"
 		>
 			Create
 		</button>
 
-		<button
+		<!--		<button
 			v-if="isCreatingTask"
 			@click="$emit('cancelCreateTask')"
 			class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
 			type="button"
 		>
 			Cancel
-		</button>
+		</button>-->
 
 		<button
 			v-if="!isCreatingTask"

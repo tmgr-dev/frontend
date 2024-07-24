@@ -70,13 +70,28 @@
 			</div>
 		</div>
 
-		<Editor v-model="form.description" class="min-h-60 md:!h-72" />
+		<Editor v-model="form.description" class="min-h-60 mb-2 md:!h-72" />
 
-		<button
-			class="mt-auto w-full rounded bg-blue-500 p-2 text-white transition-colors hover:bg-blue-600"
-		>
-			Continue
-		</button>
+		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
+			<TaskActions
+				:is-creating-task="!taskId"
+				:is-saving="isSaving"
+				@removeTask="removeTask(form)"
+				@createTask="createTask"
+				@saveTask="saveTask"
+				@settingsTask="showModalCategory"
+				@cancelCreateTask="cancelCreateTask"
+			>
+				<span
+					v-if="form.approximately_time"
+					:class="`text-${
+						approximatelyEndTime === '00:00' ? 'red' : 'gray'
+					}-500 estimated-info hidden py-2 pr-5 md:block`"
+				>
+					Left time: {{ approximatelyEndTime }}
+				</span>
+			</TaskActions>
+		</footer>
 	</div>
 
 	<!--
@@ -107,13 +122,18 @@
 	import { computed, onBeforeMount, reactive, ref } from 'vue';
 	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 	import { useRoute } from 'vue-router';
-	import { getTask, Task } from 'src/actions/tmgr/tasks';
+	import {
+		createTask as createTaskAction,
+		getTask,
+		Task,
+	} from 'src/actions/tmgr/tasks';
 	import PlantIcon from 'src/components/icons/PlantIcon.vue';
 	import Select from 'src/components/general/Select.vue';
 	import ProfileIcon from 'src/components/icons/ProfileIcon.vue';
 	import CalendarIcon from 'src/components/icons/CalendarIcon.vue';
 	import Editor from 'src/components/Editor.vue';
 	import TextField from 'src/components/general/TextField.vue';
+	import TaskActions from 'src/components/tasks/TaskActions.vue';
 
 	interface Props {
 		isModal: boolean;
@@ -139,6 +159,9 @@
 	async function initComponent() {
 		if (taskId) {
 			form = await getTask(+taskId);
+			if (form.workspace_id) {
+				workspaceMembers = await getWorkspaceMembers(form.workspace_id);
+			}
 			// this.workspaceMembers = await getWorkspaceMembers(this.form.workspace_id);
 			// window.onkeydown = this.getShortcutSaveListener();
 		}
@@ -202,5 +225,16 @@
 			chatMessages.value.push({ sender: 'User', text: newMessage.value });
 			newMessage.value = '';
 		}
+	};
+
+	const createTask = async () => {
+		form.approximately_time = form.settings?.find(
+			(item: any) => item.key === 'approximately_time',
+		)?.value;
+		// @ts-ignore @todo fix types
+		form = await createTaskAction(form);
+		/*if (!taskId) {
+			showAlert();
+		}*/
 	};
 </script>
