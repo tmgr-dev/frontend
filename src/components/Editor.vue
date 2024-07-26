@@ -28,14 +28,14 @@
 			<button
 				@click="togglePreview"
 				type="button"
-				class="flex h-full items-center gap-1.5 bg-gray-200/60 px-2 transition hover:bg-gray-200/90"
+				class="flex h-full items-center gap-1.5 bg-gray-200/60 px-2 transition hover:bg-gray-200/90 dark:bg-gray-800/80"
 			>
 				<EyeSlashIcon
 					v-if="editorPreviewActive"
-					class="size-3.5 stroke-neutral-600"
+					class="size-3.5 stroke-gray-500"
 				/>
-				<EyeIcon v-else class="size-3.5 stroke-neutral-600" />
-				<span class="text-neutral-600">Preview</span>
+				<EyeIcon v-else class="size-3.5 stroke-gray-500" />
+				<span class="text-dark-400">Preview</span>
 			</button>
 		</template>
 	</MdEditor>
@@ -70,3 +70,9 @@
 		editorRef.value?.togglePreviewOnly();
 	};
 </script>
+
+<style scoped>
+	.md-editor-dark {
+		--md-bk-color: transparent;
+	}
+</style>

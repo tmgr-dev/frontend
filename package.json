@@ -39,6 +39,7 @@
 		"vue": "^3.2.45",
 		"vue-cli": "^2.9.6",
 		"vue-content-loader": "^2.0.1",
+		"vue-multiselect": "^3.0.0",
 		"vue-router": "^4.1.6",
 		"vue-the-mask": "^0.11.1",
 		"vuedraggable": "^4.1.0",

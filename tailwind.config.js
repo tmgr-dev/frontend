@@ -8,6 +8,7 @@ module.exports = {
 			},
 			colors: {
 				'tmgr-blue': '#2c3e50',
+				'tmgr-light-blue': '#0F67A7',
 				'tmgr-gray': '#e2e2e2',
 			},
 		},
