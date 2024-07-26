@@ -5,16 +5,33 @@
 		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6 md:w-[700px]"
 	>
 		<div class="flex items-center justify-between">
-			<div class="relative">
-				<select
-					class="rounded-full bg-transparent text-xs font-medium text-blue-800"
-				>
-					<option>In progress</option>
-				</select>
-			</div>
+			<HeadlessSelect
+				:options="statuses"
+				label="name"
+				v-model="selectedStatus"
+				placeholder="status"
+				class="w-40"
+			>
+				<template #beforeSelectedValue>
+					<span
+						v-if="selectedStatus"
+						class="mr-3 inline-block size-2 shrink-0 rounded-full"
+						:style="{ backgroundColor: selectedStatus?.color }"
+					/>
+				</template>
+
+				<template #beforeOption="{ option }">
+					<span
+						class="mr-3 inline-block size-2 shrink-0 rounded-full"
+						:style="{ backgroundColor: option.color }"
+					/>
+				</template>
+			</HeadlessSelect>
 
 			<button @click="$emit('close')">
-				<XMarkIcon class="h-5 w-5 fill-neutral-600 hover:fill-black" />
+				<XMarkIcon
+					class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+				/>
 			</button>
 		</div>
 
@@ -70,7 +87,7 @@
 			</div>
 		</div>
 
-		<Editor v-model="form.description" class="min-h-60 mb-2 md:!h-72" />
+		<Editor v-model="form.description" class="mb-2 min-h-60 md:!h-72" />
 
 		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 			<TaskActions
@@ -117,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+	import Multiselect from 'vue-multiselect';
 	import { XMarkIcon } from '@heroicons/vue/20/solid';
 	import store from 'src/store';
 	import { computed, onBeforeMount, reactive, ref } from 'vue';
@@ -134,6 +152,9 @@
 	import Editor from 'src/components/Editor.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import TaskActions from 'src/components/tasks/TaskActions.vue';
+	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
+	import 'vue-multiselect/dist/vue-multiselect.css';
+	import HeadlessSelect from 'src/components/general/HeadlessSelect.vue';
 
 	interface Props {
 		isModal: boolean;
@@ -155,13 +176,17 @@
 	const taskId = computed(
 		() => modalTaskId.value || (route.params.id as string),
 	);
+	const statuses = ref<Status[]>();
+	const selectedStatus = ref<Status>();
 
 	async function initComponent() {
+		statuses.value = await getStatuses();
+		console.log(statuses.value);
 		if (taskId) {
 			form = await getTask(+taskId);
-			if (form.workspace_id) {
+			/*if (form.workspace_id) {
 				workspaceMembers = await getWorkspaceMembers(form.workspace_id);
-			}
+			}*/
 			// this.workspaceMembers = await getWorkspaceMembers(this.form.workspace_id);
 			// window.onkeydown = this.getShortcutSaveListener();
 		}
