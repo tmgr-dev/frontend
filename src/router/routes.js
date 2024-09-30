@@ -1,4 +1,5 @@
-const TaskForm = () => import('src/pages/TaskForm.vue');
+//const TaskForm = () => import('src/pages/TaskForm.vue');
+const TaskForm = () => import('src/pages/NewForm.vue');
 const TasksListPage = () => import('pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('src/pages/ProjectCategoryList.vue');
 const ProjectCategoryForm = () => import('src/pages/ProjectCategoryForm.vue');

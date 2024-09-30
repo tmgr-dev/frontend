@@ -6,7 +6,7 @@
 	>
 		<div class="relative">
 			<ListboxButton
-				class="relative w-full cursor-default rounded-md py-1.5 pl-3 pr-10 text-left text-gray-900 shadow-sm sm:text-sm sm:leading-6"
+				class="relative w-full cursor-default rounded-md py-1.5 pl-3 pr-10 text-left text-gray-900 sm:text-sm sm:leading-6"
 				v-slot="{ open }"
 			>
 				<span class="flex items-center">

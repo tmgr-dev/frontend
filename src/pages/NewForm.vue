@@ -2,7 +2,8 @@
 	<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 	<div
-		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6 md:w-[700px]"
+		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
+		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
 	>
 		<div class="flex items-center justify-between">
 			<HeadlessSelect
@@ -28,7 +29,7 @@
 				</template>
 			</HeadlessSelect>
 
-			<button @click="$emit('close')">
+			<button v-if="isModal" @click="$emit('close')">
 				<XMarkIcon
 					class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
 				/>
@@ -66,7 +67,7 @@
 
 			<div class="flex items-center gap-2">
 				<div class="flex rounded border border-neutral-200">
-					<ProfileIcon class="h-8 w-8" />
+					<ProfileIcon class="size-10" />
 				</div>
 
 				<div>
@@ -75,7 +76,7 @@
 				</div>
 			</div>
 
-			<div class="flex items-center gap-2">
+			<!--			<div class="flex items-center gap-2">
 				<div class="flex rounded border border-neutral-200">
 					<CalendarIcon class="h-8 w-8" />
 				</div>
@@ -84,30 +85,90 @@
 					<div class="text-xs text-neutral-400">Due date</div>
 					<div class="text-sm text-gray-600">05 Nov</div>
 				</div>
-			</div>
+			</div>-->
 		</div>
 
 		<Editor v-model="form.description" class="mb-2 min-h-60 md:!h-72" />
 
+		<!--	actions	-->
 		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
-			<TaskActions
-				:is-creating-task="!taskId"
-				:is-saving="isSaving"
-				@removeTask="removeTask(form)"
-				@createTask="createTask"
-				@saveTask="saveTask"
-				@settingsTask="showModalCategory"
-				@cancelCreateTask="cancelCreateTask"
-			>
-				<span
+			<div class="flex justify-end gap-3 text-center">
+				<button
+					v-if="taskId"
+					@click="removeTask"
+					class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
+				>
+					Delete
+				</button>
+
+				<!--				<span
 					v-if="form.approximately_time"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
 					}-500 estimated-info hidden py-2 pr-5 md:block`"
 				>
 					Left time: {{ approximatelyEndTime }}
+				</span>-->
+
+				<span class="relative inline-flex rounded-md shadow-sm">
+					<button
+						v-if="taskId"
+						@click="saveTask"
+						class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+						type="button"
+					>
+						<!--						<svg
+							v-if="isSaving"
+							class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+						>
+							<circle
+								class="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								stroke-width="4"
+							/>
+							<path
+								class="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+							/>
+						</svg>-->
+						<span>Save</span>
+					</button>
 				</span>
-			</TaskActions>
+
+				<button
+					v-if="!taskId"
+					@click="createTask"
+					class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+					type="button"
+				>
+					Create
+				</button>
+
+				<!--		<button
+					v-if="isCreatingTask"
+					@click="$emit('cancelCreateTask')"
+					class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
+					type="button"
+				>
+					Cancel
+				</button>-->
+
+				<button
+					v-if="taskId"
+					@click="openSettings"
+					class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
+					type="button"
+				>
+					Settings
+				</button>
+			</div>
 		</footer>
 	</div>
 
@@ -262,4 +323,8 @@
 			showAlert();
 		}*/
 	};
+
+	const removeTask = () => {};
+	const saveTask = () => {};
+	const openSettings = () => {};
 </script>
