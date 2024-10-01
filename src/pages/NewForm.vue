@@ -216,6 +216,8 @@
 	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
 	import 'vue-multiselect/dist/vue-multiselect.css';
 	import HeadlessSelect from 'src/components/general/HeadlessSelect.vue';
+	import { Setting } from 'src/actions/tmgr/settings';
+	import { User } from 'src/actions/tmgr/user';
 
 	interface Props {
 		isModal: boolean;

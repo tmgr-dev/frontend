@@ -1,11 +1,19 @@
 import $axios from 'src/plugins/axios';
 
-export interface Setting {
+export interface FormSetting {
 	id: number;
-	description: string;
 	key: string;
 	name: string;
 	value: string | number;
+	description: string;
+}
+
+export interface Setting extends Omit<FormSetting, 'value'> {
+	component_type: 'time_in_seconds' | 'integer';
+	custom_value_available: boolean;
+	default_values: any[];
+	rules: string;
+	variable_type: 'string' | 'integer';
 }
 
 export const getTaskSettings = async () => {
@@ -18,7 +26,7 @@ export const getTaskSettings = async () => {
 
 export const updateOneTaskSettings = async (
 	taskId: number,
-	payload: Setting,
+	payload: FormSetting,
 ) => {
 	const {
 		data: { data },
