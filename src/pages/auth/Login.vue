@@ -1,118 +1,93 @@
 <template>
-	<teleport to="title">Login</teleport>
+	<div class="flex flex-col md:flex-row h-screen">
+		<!-- Left Section -->
+		<div class="hidden md:flex flex-col justify-center items-center w-full md:w-1/2 bg-white p-6">
+			<!-- TMGR Logo -->
+			<img src="path_to_logo" alt="Logo" class="w-24 h-auto mb-6">
+			<!-- Heading -->
+			<h1 class="text-2xl md:text-4xl font-bold mb-4 text-center">
+				Elevate your efficiency, empower your plans with TMGR
+			</h1>
+			<!-- Registration Link -->
+			<p class="text-sm md:text-lg text-center">
+				Have no account?
+				<router-link to="/register" class="text-blue-600">Registration</router-link>
+			</p>
+			<!-- Illustration -->
+			<div class="mt-8">
+				<img src="path_to_your_illustration" alt="Illustration" class="w-48 md:w-80 h-auto">
+			</div>
+		</div>
 
-	<AuthBase>
-		<template #title>Welcome back!</template>
-
-		<template #body>
-			<form class="form-horizontal mx-auto w-3/4" @submit.prevent="login">
-				<div class="flex flex-col">
-					<div :style="{ color: errors ? 'red' : 'initial' }">
-						{{ message }}
+		<!-- Right Section (Login Form) -->
+		<div class="flex justify-center items-center w-full md:w-1/2 bg-gray-50 p-4 md:p-0">
+			<div class="w-full max-w-md p-8 bg-white rounded-lg shadow-lg">
+				<!-- Title -->
+				<h2 class="text-2xl md:text-3xl font-bold mb-6 text-center">Welcome back!</h2>
+				<!-- Login Form -->
+				<form @submit.prevent="login">
+					<!-- E-mail Field -->
+					<div class="mb-4">
+						<label for="email" class="block text-sm font-medium">E-mail</label>
+						<input
+							v-model="form.email"
+							id="email"
+							type="email"
+							placeholder="E-mail"
+							class="w-full px-4 py-2 border rounded-lg"
+						/>
 					</div>
-				</div>
-				<div class="flex flex-col">
-					<div class="text-center">Login with</div>
-				</div>
-				<div class="mt-6 flex flex-col">
-					<Button
-						class="my-1 flex justify-around rounded bg-slate-200 py-2 px-4 text-sm font-semibold text-black hover:bg-slate-300"
-						@click="loginWithSocialite('apple')"
-					>
-						<div class="flex">
-							<AppleIcon class="h-5 w-5" />
-							<span class="relative ml-3"> Apple </span>
+					<!-- Password Field -->
+					<div class="mb-4">
+						<label for="password" class="block text-sm font-medium">Password</label>
+						<div class="relative">
+							<input
+								v-model="form.password"
+								id="password"
+								type="password"
+								placeholder="Password"
+								class="w-full px-4 py-2 border rounded-lg"
+							/>
+							<span class="absolute inset-y-0 right-4 flex items-center">✈️</span>
 						</div>
-					</Button>
-					<Button
-						class="group my-1 flex justify-around rounded bg-black py-2 px-4 text-sm font-semibold text-white hover:bg-gray-800"
-						@click="loginWithSocialite('github')"
-					>
-						<div class="flex">
-							<GitHubIcon class="h-5 w-5" />
-							<span class="relative ml-3"> GitHub </span>
-						</div>
-					</Button>
-					<Button
-						class="my-1 flex justify-around rounded bg-red-400 py-2 px-4 text-sm font-semibold text-white hover:bg-red-700"
-						@click="loginWithSocialite('google')"
-					>
-						<div class="flex">
-							<GoogleIcon class="h-5 w-5" />
-							<span class="relative ml-3"> Google </span>
-						</div>
-					</Button>
-				</div>
-				<div class="mt-4 flex flex-col">
-					<div class="text-center">or with</div>
-				</div>
-				<div class="mt-4 flex flex-col">
-					<TextField
-						v-model="form.email"
-						:errors="errors.email"
-						name="email"
-						placeholder="Email"
-						input-class="dark:bg-white dark:border-neutral-300"
-						type="email"
-					/>
-				</div>
-
-				<div class="mt-4 flex flex-col">
-					<TextField
-						v-model="form.password"
-						:errors="errors.password"
-						name="password"
-						placeholder="Password"
-						input-class="dark:bg-white dark:border-neutral-300"
-						type="password"
-					/>
-				</div>
-				<div class="mt-6 flex flex-col">
-					<Button
-						class="my-1 rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+					</div>
+					<!-- Sign In Button -->
+					<button
 						type="submit"
+						class="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
 					>
-						<span class="relative">
-							Login
-							<loader v-if="isLoading" class="auth-loader" is-mini />
-						</span>
-					</Button>
-				</div>
-			</form>
-		</template>
-
-		<template #footer>
-			<router-link
-				class="text-blue-dark text-xs no-underline hover:underline"
-				to="/password/forget"
-			>
-				Forgot Your Password?
-			</router-link>
-			<br />
-			<router-link
-				class="text-blue-dark text-xs no-underline hover:underline"
-				to="/register"
-			>
-				Don't you have an account?
-			</router-link>
-		</template>
-	</AuthBase>
+						Sign in
+					</button>
+					<!-- Forgot Password Link -->
+					<div class="text-center mt-4">
+						<router-link to="/password/forget" class="text-blue-600">Forgot your password?</router-link>
+					</div>
+					<!-- Social Media Login Icons -->
+					<div class="flex justify-center mt-6 space-x-4">
+						<button class="bg-gray-200 p-3 rounded-full">
+							<img src="google_icon_path" alt="Google" class="w-5 h-5">
+						</button>
+						<button class="bg-gray-200 p-3 rounded-full">
+							<img src="apple_icon_path" alt="Apple" class="w-5 h-5">
+						</button>
+						<button class="bg-gray-200 p-3 rounded-full">
+							<img src="github_icon_path" alt="GitHub" class="w-5 h-5">
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
 </template>
 
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
 	import { ref } from 'vue';
-	import store from 'src/store';
 	import { LoginRequest, login as loginAction } from 'src/actions/tmgr/auth';
 	import { getUser, getUserSettings } from 'src/actions/tmgr/user';
 	import { AxiosError } from 'axios';
-	import AuthBase from 'src/components/layouts/AuthBase.vue';
 	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
-	import TextField from 'src/components/general/TextField.vue';
-	import Button from 'src/components/general/Button.vue';
-	import GitHubIcon from 'src/components/icons/GitHubIcon.vue';
-	import AppleIcon from 'src/components/icons/AppleIcon.vue';
-	import GoogleIcon from 'src/components/icons/GoogleIcon.vue';
+	import store from 'src/store';
 
 	const router = useRouter();
 
@@ -121,11 +96,10 @@
 		password: '',
 	} as LoginRequest);
 
-	// TODO: for savayer only. Find out how to make it global
-	// "@todo" это откуда @savayer?
 	const isLoading = ref(false);
 	const message = ref('');
 	const errors = ref({});
+
 	async function login() {
 		try {
 			message.value = '';
@@ -133,7 +107,6 @@
 			isLoading.value = true;
 			await loginAction(form.value);
 			await getUser(true);
-
 			await router.push({ name: 'CurrentTasksList' });
 
 			if (store.state.user) {
@@ -144,14 +117,9 @@
 				errors.value = error.response?.data?.errors;
 				message.value = error.response?.data?.message;
 			}
-
 			throw error;
 		} finally {
 			isLoading.value = false;
 		}
-	}
-
-	async function loginWithSocialite(platform: string) {
-		document.location.href = `${process.env.VUE_APP_API_BASE_URL}auth/login/${platform}`;
 	}
 </script>
