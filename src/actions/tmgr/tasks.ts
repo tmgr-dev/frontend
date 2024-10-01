@@ -2,18 +2,24 @@ import $axios from 'src/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
 import store from 'src/store';
 import objectToQueryString from 'src/utils/objectToQueryString';
+import { FormSetting, Setting } from 'src/actions/tmgr/settings';
+import { User } from 'src/actions/tmgr/user';
 
 export interface Task {
 	id: number;
 	approximately_time: number;
-	category: number;
-	title: string;
-	status: string;
-	description: string;
 	common_time: number;
+	description: string;
 	is_daily_routine: boolean;
-	settings?: any; // @todo describe type
+	order: number;
 	project_category_id?: number;
+	settings?: FormSetting[];
+	start_time: number;
+	status: string;
+	status_id: number;
+	title: string;
+	user: Pick<User, 'id' | 'name'>;
+	user_id: number;
 	workspace_id?: number;
 }
 
