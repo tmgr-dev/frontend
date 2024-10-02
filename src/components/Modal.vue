@@ -5,11 +5,11 @@
 		data-name="overlay"
 		@click="close"
 	>
-		<div class="absolute inset-0 bg-black/50" />
+		<div class="absolute inset-0 bg-black/50" @click="zooming" />
 
 		<div
 			class="relative m-auto max-w-full bg-white dark:bg-gray-900 md:rounded-lg"
-			:class="modalClass"
+			:class="[modalClass, { 'zoom-effect': isZooming }]"
 		>
 			<slot name="modal-body"></slot>
 		</div>
@@ -70,4 +70,30 @@
 			}
 		}
 	}
+
+	const isZooming = ref();
+	function zooming() {
+		isZooming.value = true;
+		setTimeout(() => {
+			isZooming.value = false;
+		}, 300);
+	}
 </script>
+
+<style scoped>
+	@keyframes zoomInOut {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.05);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	.zoom-effect {
+		animation: zoomInOut 0.3s ease-in-out;
+	}
+</style>
