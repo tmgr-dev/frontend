@@ -34,9 +34,9 @@
 				@close="$store.commit('closeTaskModal')"
 			>
 				<template #modal-body>
-					<!--					<NewForm :is-modal="true" @close="$store.commit('closeTaskModal')" />-->
+					<NewForm :is-modal="true" @close="$store.commit('closeTaskModal')" />
 
-					<TaskForm
+					<!--					<TaskForm
 						is-modal
 						:modal-project-category-id="
 							$store.state.createTaskInProjectCategoryId
@@ -44,7 +44,7 @@
 						:modal-task-id="$store.state.currentTaskIdForModal"
 						:status-id="$store.state.taskStatusId"
 						@close="$store.commit('closeTaskModal')"
-					/>
+					/>-->
 				</template>
 			</Modal>
 		</Transition>

@@ -1,82 +1,82 @@
 <template>
 	<teleport to="title">{{ form.title }}&nbsp;</teleport>
+	<div class="flex transition-all">
+		<div
+			class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
+			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
+		>
+			<div class="flex items-center justify-between">
+				<HeadlessSelect
+					:options="statuses"
+					label="name"
+					v-model="selectedStatus"
+					placeholder="status"
+					class="w-40"
+				>
+					<template #beforeSelectedValue>
+						<span
+							v-if="selectedStatus"
+							class="mr-3 inline-block size-2 shrink-0 rounded-full"
+							:style="{ backgroundColor: selectedStatus?.color }"
+						/>
+					</template>
 
-	<div
-		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
-		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
-	>
-		<div class="flex items-center justify-between">
-			<HeadlessSelect
-				:options="statuses"
-				label="name"
-				v-model="selectedStatus"
-				placeholder="status"
-				class="w-40"
-			>
-				<template #beforeSelectedValue>
-					<span
-						v-if="selectedStatus"
-						class="mr-3 inline-block size-2 shrink-0 rounded-full"
-						:style="{ backgroundColor: selectedStatus?.color }"
+					<template #beforeOption="{ option }">
+						<span
+							class="mr-3 inline-block size-2 shrink-0 rounded-full"
+							:style="{ backgroundColor: option.color }"
+						/>
+					</template>
+				</HeadlessSelect>
+
+				<button v-if="isModal" @click="$emit('close')">
+					<XMarkIcon
+						class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
 					/>
-				</template>
+				</button>
+			</div>
 
-				<template #beforeOption="{ option }">
-					<span
-						class="mr-3 inline-block size-2 shrink-0 rounded-full"
-						:style="{ backgroundColor: option.color }"
-					/>
-				</template>
-			</HeadlessSelect>
-
-			<button v-if="isModal" @click="$emit('close')">
-				<XMarkIcon
-					class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+			<div class="flex items-center justify-between">
+				<TextField
+					v-model="form.title"
+					class="w-full"
+					input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
+					placeholder="Task name"
 				/>
-			</button>
-		</div>
-
-		<div class="flex items-center justify-between">
-			<TextField
-				v-model="form.title"
-				class="w-full"
-				input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
-				placeholder="Task name"
-			/>
-		</div>
-
-		<div class="grid items-center gap-4 md:grid-cols-3">
-			<div class="flex items-center gap-2">
-				<div class="flex rounded bg-[#F4CD48]">
-					<PlantIcon class="m-auto h-10 w-10" />
-				</div>
-
-				<div class="w-full">
-					<div class="text-xs text-neutral-400">Category</div>
-
-					<Select
-						:options="[
-							{ title: 'Category 1', value: 1 },
-							{ title: 'Category 2', value: 2 },
-						]"
-						label-key="title"
-						value-key="value"
-					/>
-				</div>
 			</div>
 
-			<div class="flex items-center gap-2">
-				<div class="flex rounded border border-neutral-200">
-					<ProfileIcon class="size-10" />
+			<div class="grid items-center gap-4 md:grid-cols-3">
+				<div class="flex items-center gap-2">
+					<div class="flex rounded bg-[#F4CD48]">
+						<PlantIcon class="m-auto h-10 w-10" />
+					</div>
+
+					<div class="w-full">
+						<div class="text-xs text-neutral-400">Category</div>
+
+						<Select
+							:options="[
+								{ title: 'Category 1', value: 1 },
+								{ title: 'Category 2', value: 2 },
+							]"
+							label-key="title"
+							value-key="value"
+						/>
+					</div>
 				</div>
 
-				<div>
-					<div class="text-xs text-neutral-400">Assignees</div>
-					<div class="text-sm text-gray-600">savayer, +2</div>
-				</div>
-			</div>
+				<div class="flex items-center gap-2">
+					<div class="flex rounded border border-neutral-200">
+						<ProfileIcon class="size-10" />
+					</div>
 
-			<!--			<div class="flex items-center gap-2">
+					<div>
+						<div class="text-xs text-neutral-400">Assignees</div>
+						<div class="text-sm text-gray-600">savayer, +2</div>
+					</div>
+				</div>
+
+				<!--			<div class="flex items-center gap-2">
 				<div class="flex rounded border border-neutral-200">
 					<CalendarIcon class="h-8 w-8" />
 				</div>
@@ -86,22 +86,22 @@
 					<div class="text-sm text-gray-600">05 Nov</div>
 				</div>
 			</div>-->
-		</div>
+			</div>
 
-		<Editor v-model="form.description" class="mb-2 min-h-60 md:!h-72" />
+			<Editor v-model="form.description" class="mb-2 min-h-60 md:!h-72" />
 
-		<!--	actions	-->
-		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
-			<div class="flex justify-end gap-3 text-center">
-				<button
-					v-if="taskId"
-					@click="removeTask"
-					class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
-				>
-					Delete
-				</button>
+			<!--	actions	-->
+			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
+				<div class="flex justify-end gap-3 text-center">
+					<button
+						v-if="taskId"
+						@click="removeTask"
+						class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
+					>
+						Delete
+					</button>
 
-				<!--				<span
+					<!--				<span
 					v-if="form.approximately_time"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
@@ -110,14 +110,14 @@
 					Left time: {{ approximatelyEndTime }}
 				</span>-->
 
-				<span class="relative inline-flex rounded-md shadow-sm">
-					<button
-						v-if="taskId"
-						@click="saveTask"
-						class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
-						type="button"
-					>
-						<!--						<svg
+					<span class="relative inline-flex rounded-md shadow-sm">
+						<button
+							v-if="taskId"
+							@click="saveTask"
+							class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+							type="button"
+						>
+							<!--						<svg
 							v-if="isSaving"
 							class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
 							xmlns="http://www.w3.org/2000/svg"
@@ -138,20 +138,20 @@
 								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 							/>
 						</svg>-->
-						<span>Save</span>
+							<span>Save</span>
+						</button>
+					</span>
+
+					<button
+						v-if="!taskId"
+						@click="createTask"
+						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+						type="button"
+					>
+						Create
 					</button>
-				</span>
 
-				<button
-					v-if="!taskId"
-					@click="createTask"
-					class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
-					type="button"
-				>
-					Create
-				</button>
-
-				<!--		<button
+					<!--		<button
 					v-if="isCreatingTask"
 					@click="$emit('cancelCreateTask')"
 					class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
@@ -160,16 +160,29 @@
 					Cancel
 				</button>-->
 
-				<button
-					v-if="taskId"
-					@click="openSettings"
-					class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
-					type="button"
+					<button
+						v-if="taskId"
+						@click="openSettings"
+						class="flex items-center gap-1 rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
+						type="button"
+					>
+						Settings
+						<XMarkIcon v-if="showSettings" class="size-4 fill-current" />
+					</button>
+				</div>
+			</footer>
+		</div>
+
+		<div class="overflow-hidden">
+			<Transition name="fade">
+				<div
+					class="h-full min-w-72 border-l border-gray-200 p-6 dark:border-gray-700"
+					v-if="showSettings"
 				>
-					Settings
-				</button>
-			</div>
-		</footer>
+					<SettingsComponent :form="form" @close="showSettings = false" />
+				</div>
+			</Transition>
+		</div>
 	</div>
 
 	<!--
@@ -218,6 +231,7 @@
 	import HeadlessSelect from 'src/components/general/HeadlessSelect.vue';
 	import { Setting } from 'src/actions/tmgr/settings';
 	import { User } from 'src/actions/tmgr/user';
+	import SettingsComponent from 'src/components/SettingsComponent.vue';
 
 	interface Props {
 		isModal: boolean;
@@ -226,6 +240,7 @@
 	const props = defineProps<Props>();
 	const route = useRoute();
 	let form = reactive<Partial<Task>>({});
+	const showSettings = ref(false);
 	const modalTaskId = computed(() => store.state.currentTaskIdForModal);
 	const statusId = computed(() => store.state.taskStatusId);
 	const modalProjectCategoryId = computed(
@@ -328,5 +343,7 @@
 
 	const removeTask = () => {};
 	const saveTask = () => {};
-	const openSettings = () => {};
+	const openSettings = () => {
+		showSettings.value = !showSettings.value;
+	};
 </script>
