@@ -1,11 +1,12 @@
 <template>
 	<teleport to="title">{{ form.title }}&nbsp;</teleport>
+
 	<div class="flex transition-all">
 		<div
 			class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
 			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
 		>
-			<div class="flex items-center justify-between">
+			<div class="flex justify-between">
 				<HeadlessSelect
 					:options="statuses"
 					label="name"
@@ -29,7 +30,7 @@
 					</template>
 				</HeadlessSelect>
 
-				<button v-if="isModal" @click="$emit('close')">
+				<button v-if="isModal" @click="$emit('close')" class="-translate-y-1">
 					<XMarkIcon
 						class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
 					/>
@@ -44,6 +45,8 @@
 					placeholder="Task name"
 				/>
 			</div>
+
+			<Countdown :init-task="form" :disabled="!form.id" />
 
 			<div class="grid items-center gap-4 md:grid-cols-3">
 				<div class="flex items-center gap-2">
@@ -96,9 +99,10 @@
 					<button
 						v-if="taskId"
 						@click="removeTask"
+						title="Delete"
 						class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
 					>
-						Delete
+						<TrashIcon class="size-5" />
 					</button>
 
 					<!--				<span
@@ -114,8 +118,9 @@
 						<button
 							v-if="taskId"
 							@click="saveTask"
-							class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+							class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
 							type="button"
+							title="save"
 						>
 							<!--						<svg
 							v-if="isSaving"
@@ -138,7 +143,7 @@
 								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 							/>
 						</svg>-->
-							<span>Save</span>
+							<span><BookmarkIcon class="size-6" /></span>
 						</button>
 					</span>
 
@@ -147,8 +152,9 @@
 						@click="createTask"
 						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
+						title="Create"
 					>
-						Create
+						<DocumentPlusIcon class="size-6" />
 					</button>
 
 					<!--		<button
@@ -159,15 +165,24 @@
 				>
 					Cancel
 				</button>-->
+					<button
+						v-if="taskId"
+						@click="openSettings"
+						class="flex items-center gap-1 rounded bg-indigo-400 px-4 py-2 font-bold text-white hover:bg-indigo-500 focus:outline-none"
+						type="button"
+						title="Settings"
+					>
+						<ChatBubbleBottomCenterIcon class="size-6" />
+					</button>
 
 					<button
 						v-if="taskId"
 						@click="openSettings"
 						class="flex items-center gap-1 rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
 						type="button"
+						title="Settings"
 					>
-						Settings
-						<XMarkIcon v-if="showSettings" class="size-4 fill-current" />
+						<CogIcon class="size-6" />
 					</button>
 				</div>
 			</footer>
@@ -208,11 +223,16 @@
 </template>
 
 <script setup lang="ts">
-	import Multiselect from 'vue-multiselect';
-	import { XMarkIcon } from '@heroicons/vue/20/solid';
+	import {
+		XMarkIcon,
+		CogIcon,
+		TrashIcon,
+		DocumentPlusIcon,
+		BookmarkIcon,
+		ChatBubbleBottomCenterIcon,
+	} from '@heroicons/vue/20/solid';
 	import store from 'src/store';
 	import { computed, onBeforeMount, reactive, ref } from 'vue';
-	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 	import { useRoute } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -232,6 +252,7 @@
 	import { Setting } from 'src/actions/tmgr/settings';
 	import { User } from 'src/actions/tmgr/user';
 	import SettingsComponent from 'src/components/SettingsComponent.vue';
+	import Countdown from 'src/components/general/Countdown.vue';
 
 	interface Props {
 		isModal: boolean;

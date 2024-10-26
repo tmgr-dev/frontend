@@ -15,7 +15,7 @@ export default {
 			const countdown = {};
 			countdown.hours = this.prepareClockNumber(hour);
 			countdown.minutes = this.prepareClockNumber(minute);
-			countdown.seconds = this.prepareClockNumber(second);
+			countdown.seconds = this.prepareClockNumber(second) || '00';
 
 			return countdown;
 		},
