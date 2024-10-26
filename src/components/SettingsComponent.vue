@@ -1,8 +1,15 @@
 <template>
 	<form
+		v-if="settings.length > 0"
 		@submit.prevent="saveSettings"
 		class="text-gray-800 dark:text-tmgr-gray"
 	>
+		<button @click="emit('close')" class="absolute right-6 top-7">
+			<XMarkIcon
+				class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+			/>
+		</button>
+
 		<label for="settings" class="mb-5 block text-lg font-bold">
 			Settings
 		</label>
@@ -42,22 +49,12 @@
 			</div>
 		</div>
 
-		<div class="mt-6 flex flex-nowrap items-center">
-			<button
-				type="button"
-				@click="emit('close')"
-				class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
-			>
-				Cancel
-			</button>
-
-			<button
-				type="submit"
-				class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
-			>
-				Update
-			</button>
-		</div>
+		<button
+			type="submit"
+			class="w-full rounded bg-tmgr-light-blue p-2 text-white"
+		>
+			Update
+		</button>
 	</form>
 </template>
 
@@ -72,6 +69,7 @@
 	} from 'src/actions/tmgr/settings';
 	import { onBeforeMount, ref } from 'vue';
 	import { Task } from 'src/actions/tmgr/tasks';
+	import { XMarkIcon } from '@heroicons/vue/20/solid';
 
 	const emit = defineEmits(['close']);
 
