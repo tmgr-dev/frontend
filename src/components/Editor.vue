@@ -72,7 +72,8 @@
 </script>
 
 <style scoped>
-	.md-editor-dark {
+	.md-editor-dark:not(.md-editor-fullscreen) {
 		--md-bk-color: transparent;
+		height: 100% !important;
 	}
 </style>

@@ -91,7 +91,7 @@
 			</div>-->
 			</div>
 
-			<Editor v-model="form.description" class="mb-2 min-h-60 md:!h-72" />
+			<Editor v-model="form.description" class="mb-2 min-h-60 md:h-72" />
 
 			<!--	actions	-->
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
