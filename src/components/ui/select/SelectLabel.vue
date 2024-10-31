@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import { cn } from 'src/lib/utils'
+import { cn } from 'src/utils'
 import { SelectLabel, type SelectLabelProps } from 'radix-vue'
 
 const props = defineProps<SelectLabelProps & { class?: HTMLAttributes['class'] }>()

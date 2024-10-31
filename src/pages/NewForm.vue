@@ -7,6 +7,26 @@
 			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
 		>
 			<div class="flex justify-between">
+				<Select v-model="selectedStatus">
+					<SelectTrigger class="w-40 border-0">
+						<SelectValue placeholder="status" />
+					</SelectTrigger>
+					<SelectContent class="border-0 bg-white dark:bg-gray-800">
+						<SelectItem
+							class="cursor-pointer !text-white hover:!bg-tmgr-light-blue"
+							v-for="status in statuses"
+							:value="status.name"
+							:show-check-mark="false"
+						>
+							<span
+								class="mr-3 inline-block size-2 shrink-0 rounded-full"
+								:style="{ backgroundColor: status.color }"
+							/>
+							{{ status.name }}
+						</SelectItem>
+					</SelectContent>
+				</Select>
+
 				<HeadlessSelect
 					:options="statuses"
 					label="name"
@@ -240,7 +260,6 @@
 		Task,
 	} from 'src/actions/tmgr/tasks';
 	import PlantIcon from 'src/components/icons/PlantIcon.vue';
-	import Select from 'src/components/general/Select.vue';
 	import ProfileIcon from 'src/components/icons/ProfileIcon.vue';
 	import CalendarIcon from 'src/components/icons/CalendarIcon.vue';
 	import Editor from 'src/components/Editor.vue';
@@ -253,6 +272,15 @@
 	import { User } from 'src/actions/tmgr/user';
 	import SettingsComponent from 'src/components/SettingsComponent.vue';
 	import Countdown from 'src/components/general/Countdown.vue';
+	import {
+		Select,
+		SelectContent,
+		SelectGroup,
+		SelectItem,
+		SelectLabel,
+		SelectTrigger,
+		SelectValue,
+	} from 'src/components/ui/select';
 
 	interface Props {
 		isModal: boolean;

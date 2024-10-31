@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cn } from 'src/lib/utils'
+import { cn } from 'src/utils'
 import {
   SelectContent,
   type SelectContentEmits,
