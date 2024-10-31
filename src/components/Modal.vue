@@ -31,10 +31,12 @@
 	const store = useStore();
 
 	onMounted(() => {
+		document.body.classList.add('overflow-hidden');
 		document.addEventListener('keydown', closeByEscape);
 	});
 
 	onUnmounted(() => {
+		document.body.classList.remove('overflow-hidden');
 		if (location.href !== initialUrl.value) {
 			history.pushState({}, '', initialUrl.value);
 		}

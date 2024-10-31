@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cn } from 'src/lib/utils'
+import { cn } from 'src/utils'
 import { ChevronDown } from 'lucide-vue-next'
 import { SelectIcon, SelectTrigger, type SelectTriggerProps, useForwardProps } from 'radix-vue'
 import { computed, type HTMLAttributes } from 'vue'
