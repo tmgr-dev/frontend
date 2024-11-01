@@ -45,7 +45,10 @@
 		<!--			<Countdown :init-task="form" :disabled="!form.id" />-->
 
 		<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
-			<CategoriesCombobox :categories="categories" />
+			<CategoriesCombobox
+				:categories="categories"
+				v-model="form.project_category_id"
+			/>
 
 			<AssigneesCombobox :assignees="workspaceMembers" />
 
@@ -211,14 +214,16 @@
 
 	const props = defineProps<Props>();
 	const route = useRoute();
-	let form = reactive<Partial<Task>>({});
+	// @todo find out why v-model doesn't work with reactive
+	//let form = reactive<Partial<Task>>({});
+	let form = ref<Partial<Task>>({});
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const statusId = computed(() => store.state.taskStatusId);
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const projectCategoryId = computed(() =>
-		form?.id
+		form.value?.id
 			? null
 			: route.params.project_category_id || modalProjectCategoryId.value,
 	);
@@ -240,13 +245,14 @@
 
 		if (taskId.value) {
 			if (props.isModal) {
-				console.log(taskId.value);
 				history.pushState({}, '', `/${taskId.value}`);
 			}
 
-			form = await getTask(+taskId.value);
-			if (form.workspace_id) {
-				workspaceMembers.value = await getWorkspaceMembers(form.workspace_id);
+			form.value = await getTask(+taskId.value);
+			if (form.value.workspace_id) {
+				workspaceMembers.value = await getWorkspaceMembers(
+					form.value.workspace_id,
+				);
 			}
 			// this.workspaceMembers = await getWorkspaceMembers(this.form.workspace_id);
 			// window.onkeydown = this.getShortcutSaveListener();
@@ -298,7 +304,7 @@
 	});
 
 	const createTask = async () => {
-		form.approximately_time = form.settings?.find(
+		form.value.approximately_time = form.value.settings?.find(
 			(item: any) => item.key === 'approximately_time',
 		)?.value;
 		// @ts-ignore @todo fix types

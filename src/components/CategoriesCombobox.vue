@@ -16,18 +16,25 @@
 	} from 'src/components/ui/popover';
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
 	import { Button } from 'src/components/ui/button';
-	import { ref, defineProps, defineEmits, watch } from 'vue';
+	import { ref, defineProps, defineEmits, watch, computed } from 'vue';
 	import { Category } from 'src/actions/tmgr/categories';
 
 	interface Props {
 		categories: Category[];
+		modelValue: Category['id'];
 	}
 
 	const props = defineProps<Props>();
-	const emit = defineEmits(['update']);
-
+	const categoryId = defineModel();
 	const openCombobox = ref(false);
-	const selectedCategory = ref<Category['title']>();
+	const searchValue = ref('');
+	const filteredCategories = computed(() => {
+		if (!searchValue.value) return props.categories;
+
+		return props.categories.filter((category) =>
+			category.title.toLowerCase().includes(searchValue.value.toLowerCase()),
+		);
+	});
 </script>
 
 <template>
@@ -44,9 +51,9 @@
 				>
 					<span class="truncate">
 						{{
-							selectedCategory
+							categoryId
 								? props.categories.find(
-										(category) => category.title === selectedCategory,
+										(category) => category.id === categoryId,
 								  )?.title
 								: 'Category'
 						}}
@@ -63,18 +70,20 @@
 						class="h-9"
 						wrapper-class="dark:border-gray-600"
 						placeholder="Search category..."
+						@input="(e) => (searchValue = e.target.value)"
 					/>
 					<CommandEmpty>No category found.</CommandEmpty>
 					<CommandList>
 						<CommandGroup>
 							<CommandItem
-								v-for="category in props.categories"
+								v-for="category in filteredCategories"
 								:key="category.slug"
-								:value="category.title"
+								:value="category.id"
 								@select="
 									(e) => {
 										if (e.detail.value) {
-											selectedCategory = e.detail.value;
+											categoryId = e.detail.value;
+											searchValue = '';
 										}
 										openCombobox = false;
 									}
@@ -86,9 +95,7 @@
 									:class="
 										cn(
 											'ml-auto h-4 w-4',
-											selectedCategory === category.title
-												? 'opacity-100'
-												: 'opacity-0',
+											categoryId === category.id ? 'opacity-100' : 'opacity-0',
 										)
 									"
 								/>
