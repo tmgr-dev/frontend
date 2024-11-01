@@ -11,7 +11,7 @@
 				</div>
 				<div class="mt-6 flex flex-col">
 					<Button
-						class="my-1 flex justify-around rounded bg-slate-200 py-2 px-4 text-sm font-semibold text-black hover:bg-slate-300"
+						class="my-1 flex justify-around rounded bg-slate-200 px-4 py-2 text-sm font-semibold text-black hover:bg-slate-300"
 						@click="loginWithSocialite('apple')"
 					>
 						<div class="flex">
@@ -20,7 +20,7 @@
 						</div>
 					</Button>
 					<Button
-						class="group my-1 flex justify-around rounded bg-black py-2 px-4 text-sm font-semibold text-white hover:bg-gray-800"
+						class="group my-1 flex justify-around rounded bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
 						@click="loginWithSocialite('github')"
 					>
 						<div class="flex">
@@ -29,7 +29,7 @@
 						</div>
 					</Button>
 					<Button
-						class="my-1 flex justify-around rounded bg-red-400 py-2 px-4 text-sm font-semibold text-white hover:bg-red-700"
+						class="my-1 flex justify-around rounded bg-red-400 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
 						@click="loginWithSocialite('google')"
 					>
 						<div class="flex">
@@ -86,7 +86,7 @@
 
 				<div class="mt-6 flex flex-col">
 					<Button
-						class="my-1 rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+						class="my-1 rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
 						type="button"
 						@click="register"
 					>
@@ -136,7 +136,6 @@
 	} as Register);
 
 	async function register() {
-		console.log('test');
 		try {
 			errors.value = {};
 			isLoading.value = true;

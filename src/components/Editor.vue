@@ -1,3 +1,25 @@
+<script setup lang="ts">
+	import { ref } from 'vue';
+	import { MdEditor, ExposeParam } from 'md-editor-v3';
+	import 'src/assets/styles/md-editor.css';
+	import store from '../store';
+	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
+
+	interface Props {
+		modelValue: string;
+	}
+
+	const props = defineProps<Props>();
+	const value = defineModel();
+	const editorRef = ref<ExposeParam>();
+	const editorPreviewActive = ref(false);
+
+	const togglePreview = () => {
+		editorPreviewActive.value = !editorPreviewActive.value;
+		editorRef.value?.togglePreviewOnly();
+	};
+</script>
+
 <template>
 	<MdEditor
 		ref="editorRef"
@@ -40,36 +62,6 @@
 		</template>
 	</MdEditor>
 </template>
-
-<script setup lang="ts">
-	import { computed, ref } from 'vue';
-	import { MdEditor, ExposeParam } from 'md-editor-v3';
-	import 'src/assets/styles/md-editor.css';
-	import store from '../store';
-	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
-
-	interface Props {
-		modelValue: string;
-	}
-
-	const props = defineProps<Props>();
-	const emit = defineEmits(['update:modelValue']);
-	const editorRef = ref<ExposeParam>();
-	const editorPreviewActive = ref(false);
-	const value = computed({
-		get() {
-			return props.modelValue;
-		},
-		set(value) {
-			emit('update:modelValue', value);
-		},
-	});
-
-	const togglePreview = () => {
-		editorPreviewActive.value = !editorPreviewActive.value;
-		editorRef.value?.togglePreviewOnly();
-	};
-</script>
 
 <style>
 	.md-editor-dark:not(.md-editor-fullscreen) {
