@@ -2,11 +2,26 @@ import { AxiosRequestConfig } from 'axios';
 import $axios from 'src/plugins/axios';
 
 export interface Category {
+	children_count: number;
+	created_at: string;
+	deleted_at: null | string;
 	id: number;
+	parent_category: null | Category;
+	project_category_id: null | number;
+	settings: any[];
+	slug: string;
+	tasks_count: number;
 	title: string;
+	updated_at: string;
+	user: {
+		id: number;
+		name: string;
+	};
+	user_id: number;
+	workspace_id: number;
 }
 
-export const getCategories = async () => {
+export const getCategories = async (): Promise<Category[]> => {
 	const {
 		data: { data },
 	} = await $axios.get('project_categories?all');

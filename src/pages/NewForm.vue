@@ -58,146 +58,9 @@
 			<!--			<Countdown :init-task="form" :disabled="!form.id" />-->
 
 			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
-				<div class="flex items-center gap-2">
-					<FolderIcon class="size-5 shrink-0" />
+				<CategoriesCombobox :categories="categories" />
 
-					<Popover v-model:open="openCategoriesCombobox">
-						<PopoverTrigger as-child>
-							<Button
-								variant="ghost"
-								role="combobox"
-								:aria-expanded="openCategoriesCombobox"
-								class="w-32 justify-between px-0"
-							>
-								{{
-									categoryComboboxValue
-										? frameworks.find(
-												(framework) =>
-													framework.value === categoryComboboxValue,
-										  )?.label
-										: 'Category'
-								}}
-								<ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-							</Button>
-						</PopoverTrigger>
-
-						<PopoverContent
-							class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-						>
-							<Command>
-								<CommandInput
-									class="h-9"
-									wrapper-class="dark:border-gray-600"
-									placeholder="Search category..."
-								/>
-								<CommandEmpty>No category found.</CommandEmpty>
-								<CommandList>
-									<CommandGroup>
-										<CommandItem
-											v-for="framework in frameworks"
-											:key="framework.value"
-											:value="framework.value"
-											@select="
-												(e) => {
-													if (typeof e.detail.value === 'string') {
-														categoryComboboxValue = e.detail.value;
-													}
-													openCategoriesCombobox = false;
-												}
-											"
-											class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-										>
-											{{ framework.label }}
-											<Check
-												:class="
-													cn(
-														'ml-auto h-4 w-4',
-														categoryComboboxValue === framework.value
-															? 'opacity-100'
-															: 'opacity-0',
-													)
-												"
-											/>
-										</CommandItem>
-									</CommandGroup>
-								</CommandList>
-							</Command>
-						</PopoverContent>
-					</Popover>
-				</div>
-
-				<div class="flex items-center gap-2">
-					<UserIcon class="size-5" />
-
-					<Popover v-model:open="openAssigneesCombobox">
-						<PopoverTrigger as-child>
-							<Button
-								variant="ghost"
-								role="combobox"
-								:aria-expanded="openAssigneesCombobox"
-								class="w-32 justify-between overflow-hidden px-0"
-							>
-								{{
-									selectedAssignees.length > 0
-										? workspaceMembers
-												.filter((user) => selectedAssignees.includes(user.name))
-												.map((f) => f.name)
-												.join(', ')
-										: 'Assignee'
-								}}
-								<ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-							</Button>
-						</PopoverTrigger>
-
-						<PopoverContent
-							class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-						>
-							<Command>
-								<CommandInput
-									class="h-9"
-									wrapper-class="dark:border-gray-600"
-									placeholder="Search assignees..."
-								/>
-								<CommandEmpty>No assignees found.</CommandEmpty>
-								<CommandList>
-									<CommandGroup>
-										<CommandItem
-											v-for="user in workspaceMembers"
-											:key="user.id"
-											:value="user.name"
-											@select="
-												(e) => {
-													if (typeof e.detail.value === 'string') {
-														if (selectedAssignees.includes(e.detail.value)) {
-															selectedAssignees = selectedAssignees.filter(
-																(v) => v !== e.detail.value,
-															);
-														} else {
-															selectedAssignees.push(e.detail.value);
-														}
-													}
-												}
-											"
-											class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-										>
-											{{ user.name }}
-											<Check
-												:class="
-													cn(
-														'ml-auto h-4 w-4',
-														selectedAssignees.includes(user.name)
-															? 'opacity-100'
-															: 'opacity-0',
-													)
-												"
-											/>
-										</CommandItem>
-									</CommandGroup>
-								</CommandList>
-							</Command>
-						</PopoverContent>
-					</Popover>
-				</div>
+				<AssigneesCombobox :assignees="workspaceMembers" />
 
 				<div class="ml-auto">
 					<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
@@ -209,14 +72,14 @@
 			<!--	actions	-->
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 				<div class="flex justify-end gap-3 text-center">
-					<button
-						v-if="isModal"
-						@click="removeTask"
+					<a
+						v-if="isModal && taskId"
+						:href="`/${taskId}`"
 						title="Open advanced form"
 						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
 					>
 						<ArrowTopRightOnSquareIcon class="size-5" />
-					</button>
+					</a>
 
 					<!--				<span
 					v-if="form.approximately_time"
@@ -317,17 +180,11 @@
 <script setup lang="ts">
 	import {
 		XMarkIcon,
-		CogIcon,
 		TrashIcon,
 		DocumentPlusIcon,
 		BookmarkIcon,
-		ChatBubbleBottomCenterIcon,
 	} from '@heroicons/vue/20/solid';
-	import {
-		ArrowTopRightOnSquareIcon,
-		FolderIcon,
-		UserIcon,
-	} from '@heroicons/vue/24/outline';
+	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from 'src/store';
 	import { computed, onBeforeMount, reactive, ref, toRef } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -340,36 +197,23 @@
 	import TextField from 'src/components/general/TextField.vue';
 	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
 	import 'vue-multiselect/dist/vue-multiselect.css';
-	import { User } from 'src/actions/tmgr/user';
 	import SettingsComponent from 'src/components/SettingsComponent.vue';
-	import Countdown from 'src/components/general/Countdown.vue';
 	import {
 		Select,
 		SelectContent,
-		SelectGroup,
 		SelectItem,
-		SelectLabel,
 		SelectTrigger,
 		SelectValue,
 	} from 'src/components/ui/select';
-	import { cn } from 'src/utils';
-	import {
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-	} from 'src/components/ui/popover';
-	import {
-		Command,
-		CommandEmpty,
-		CommandGroup,
-		CommandInput,
-		CommandItem,
-		CommandList,
-	} from 'src/components/ui/command';
-	import { Check, ChevronsUpDown } from 'lucide-vue-next';
 	import { Button } from 'src/components/ui/button';
 	import TimeCounter from 'src/components/TimeCounter.vue';
-	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
+	import {
+		getWorkspaceMembers,
+		WorkspaceMember,
+	} from 'src/actions/tmgr/workspaces';
+	import AssigneesCombobox from 'src/components/AssigneesCombobox.vue';
+	import { Category, getCategories } from 'src/actions/tmgr/categories';
+	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
 
 	interface Props {
 		isModal: boolean;
@@ -393,12 +237,16 @@
 	);
 	const statuses = ref<Status[]>();
 	const selectedStatus = ref<Status>();
-	const workspaceMembers = ref([]);
+	const categories = ref<Category[]>([]);
+	const workspaceMembers = ref<WorkspaceMember[]>([]);
 
 	async function initComponent() {
-		// @todo check wtf this shit is doing
-		store.commit('resetOpenModals');
-		statuses.value = await getStatuses();
+		const [loadedStatuses, loadedCategories] = await Promise.all([
+			getStatuses(),
+			getCategories(),
+		]);
+		statuses.value = loadedStatuses;
+		categories.value = loadedCategories;
 
 		if (taskId.value) {
 			if (props.isModal) {
@@ -407,7 +255,6 @@
 			}
 
 			form = await getTask(+taskId.value);
-			console.log('form', form);
 			if (form.workspace_id) {
 				workspaceMembers.value = await getWorkspaceMembers(form.workspace_id);
 			}
@@ -473,18 +320,4 @@
 
 	const removeTask = () => {};
 	const saveTask = () => {};
-
-	const frameworks = [
-		{ value: 'next.js', label: 'Next.js' },
-		{ value: 'sveltekit', label: 'SvelteKit' },
-		{ value: 'nuxt', label: 'Nuxt' },
-		{ value: 'remix', label: 'Remix' },
-		{ value: 'astro', label: 'Astro' },
-	];
-
-	const openCategoriesCombobox = ref(false);
-	const categoryComboboxValue = ref('');
-
-	const openAssigneesCombobox = ref(false);
-	const selectedAssignees = ref([]);
 </script>
