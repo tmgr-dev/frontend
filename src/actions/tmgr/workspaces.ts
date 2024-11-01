@@ -14,7 +14,13 @@ export const getWorkspaces = async (): Promise<Workspace[]> => {
 	return data;
 };
 
-export const getWorkspaceMembers = async (workspaceId: number) => {
+export interface WorkspaceMember {
+	id: number;
+	name: string;
+}
+export const getWorkspaceMembers = async (
+	workspaceId: number,
+): Promise<WorkspaceMember[]> => {
 	const {
 		data: { data },
 	} = await $axios.get(`/workspaces/${workspaceId}/members`);
