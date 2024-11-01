@@ -44,7 +44,7 @@
 <script setup lang="ts">
 	import { computed, ref } from 'vue';
 	import { MdEditor, ExposeParam } from 'md-editor-v3';
-	import 'md-editor-v3/lib/style.css';
+	import 'src/assets/styles/md-editor.css';
 	import store from '../store';
 	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 
@@ -74,10 +74,5 @@
 <style>
 	.md-editor-dark:not(.md-editor-fullscreen) {
 		--md-bk-color: transparent;
-		height: 100%;
-	}
-
-	.cm-scroller .cm-content[contenteditable='true'] {
-		@apply max-h-52 lg:max-h-60;
 	}
 </style>
