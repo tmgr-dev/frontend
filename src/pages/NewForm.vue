@@ -1,87 +1,78 @@
 <template>
 	<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
-	<div class="flex transition-all">
-		<div
-			class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
-			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
-		>
-			<header class="flex justify-between">
-				<Select v-model="selectedStatus">
-					<SelectTrigger class="w-40 border-0">
-						<SelectValue placeholder="status" />
-					</SelectTrigger>
-					<SelectContent class="border-0 bg-white dark:bg-gray-800">
-						<SelectItem
-							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-							v-for="status in statuses"
-							:value="status"
-							:show-check-mark="false"
-						>
-							<span
-								class="mr-3 inline-block size-2 shrink-0 rounded-full"
-								:style="{ backgroundColor: status.color }"
-							/>
-							{{ status.name }}
-						</SelectItem>
-					</SelectContent>
-				</Select>
-
-				<SettingsComponent v-if="!isModal" :form="form" />
-				<!--				<button
-					v-if="!isModal"
-					@click="openSettings"
-					type="button"
-					title="Settings"
-				>
-					<CogIcon
-						class="size-6 fill-gray-400 transition hover:fill-black dark:hover:fill-white"
-					/>
-				</button>-->
-
-				<button v-if="isModal" @click="$emit('close')">
-					<XMarkIcon
-						class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
-					/>
-				</button>
-			</header>
-
-			<div class="flex items-center justify-between">
-				<TextField
-					v-model="form.title"
-					class="w-full"
-					input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
-					placeholder="Task name"
-				/>
-			</div>
-
-			<!--			<Countdown :init-task="form" :disabled="!form.id" />-->
-
-			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
-				<CategoriesCombobox :categories="categories" />
-
-				<AssigneesCombobox :assignees="workspaceMembers" />
-
-				<div class="ml-auto">
-					<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
-				</div>
-			</div>
-
-			<Editor v-model="form.description" class="mb-2 min-h-60 md:h-72" />
-
-			<!--	actions	-->
-			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
-				<div class="flex justify-end gap-3 text-center">
-					<a
-						v-if="isModal && taskId"
-						:href="`/${taskId}`"
-						title="Open advanced form"
-						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+	<div
+		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
+		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
+	>
+		<header class="flex justify-between">
+			<Select v-model="selectedStatus">
+				<SelectTrigger class="w-40 border-0">
+					<SelectValue placeholder="status" />
+				</SelectTrigger>
+				<SelectContent class="border-0 bg-white dark:bg-gray-800">
+					<SelectItem
+						class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+						v-for="status in statuses"
+						:value="status"
+						:show-check-mark="false"
 					>
-						<ArrowTopRightOnSquareIcon class="size-5" />
-					</a>
+						<span
+							class="mr-3 inline-block size-2 shrink-0 rounded-full"
+							:style="{ backgroundColor: status.color }"
+						/>
+						{{ status.name }}
+					</SelectItem>
+				</SelectContent>
+			</Select>
 
-					<!--				<span
+			<SettingsComponent v-if="!isModal" :form="form" />
+
+			<button v-if="isModal" @click="$emit('close')">
+				<XMarkIcon
+					class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+				/>
+			</button>
+		</header>
+
+		<TextField
+			v-model="form.title"
+			class="w-full"
+			input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
+			placeholder="Task name"
+		/>
+
+		<!--			<Countdown :init-task="form" :disabled="!form.id" />-->
+
+		<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
+			<CategoriesCombobox :categories="categories" />
+
+			<AssigneesCombobox :assignees="workspaceMembers" />
+
+			<div class="ml-auto">
+				<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
+			</div>
+		</div>
+
+		<Editor
+			v-model="form.description"
+			class="mb-2 grow md:h-72"
+			:class="[!isModal && 'lg:min-h-96']"
+		/>
+
+		<!--	actions	-->
+		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
+			<div class="flex justify-end gap-3 text-center">
+				<a
+					v-if="isModal && taskId"
+					:href="`/${taskId}`"
+					title="Open advanced form"
+					class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+				>
+					<ArrowTopRightOnSquareIcon class="size-5" />
+				</a>
+
+				<!--				<span
 					v-if="form.approximately_time"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
@@ -90,15 +81,15 @@
 					Left time: {{ approximatelyEndTime }}
 				</span>-->
 
-					<span class="relative inline-flex rounded-md shadow-sm">
-						<button
-							v-if="taskId"
-							@click="saveTask"
-							class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
-							type="button"
-							title="save"
-						>
-							<!--						<svg
+				<span class="relative inline-flex rounded-md shadow-sm">
+					<button
+						v-if="taskId"
+						@click="saveTask"
+						class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+						type="button"
+						title="save"
+					>
+						<!--						<svg
 							v-if="isSaving"
 							class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
 							xmlns="http://www.w3.org/2000/svg"
@@ -119,21 +110,21 @@
 								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 							/>
 						</svg>-->
-							<span><BookmarkIcon class="size-6" /></span>
-						</button>
-					</span>
-
-					<button
-						v-if="!taskId"
-						@click="createTask"
-						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
-						type="button"
-						title="Create"
-					>
-						<DocumentPlusIcon class="size-6" />
+						<span><BookmarkIcon class="size-6" /></span>
 					</button>
+				</span>
 
-					<!--		<button
+				<button
+					v-if="!taskId"
+					@click="createTask"
+					class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+					type="button"
+					title="Create"
+				>
+					<DocumentPlusIcon class="size-6" />
+				</button>
+
+				<!--		<button
 					v-if="isCreatingTask"
 					@click="$emit('cancelCreateTask')"
 					class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
@@ -142,17 +133,16 @@
 					Cancel
 				</button>-->
 
-					<button
-						v-if="taskId"
-						@click="removeTask"
-						title="Delete"
-						class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
-					>
-						<TrashIcon class="size-5" />
-					</button>
-				</div>
-			</footer>
-		</div>
+				<button
+					v-if="taskId"
+					@click="removeTask"
+					title="Delete"
+					class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
+				>
+					<TrashIcon class="size-5" />
+				</button>
+			</div>
+		</footer>
 	</div>
 
 	<!--
