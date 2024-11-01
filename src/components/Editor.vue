@@ -71,9 +71,13 @@
 	};
 </script>
 
-<style scoped>
+<style>
 	.md-editor-dark:not(.md-editor-fullscreen) {
 		--md-bk-color: transparent;
-		height: 100% !important;
+		height: 100%;
+	}
+
+	.cm-scroller .cm-content[contenteditable='true'] {
+		@apply max-h-52 lg:max-h-60;
 	}
 </style>

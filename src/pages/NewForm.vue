@@ -6,16 +6,16 @@
 			class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
 			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto']"
 		>
-			<div class="flex justify-between">
+			<header class="flex justify-between">
 				<Select v-model="selectedStatus">
 					<SelectTrigger class="w-40 border-0">
 						<SelectValue placeholder="status" />
 					</SelectTrigger>
 					<SelectContent class="border-0 bg-white dark:bg-gray-800">
 						<SelectItem
-							class="cursor-pointer !text-white hover:!bg-tmgr-light-blue"
+							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
 							v-for="status in statuses"
-							:value="status.name"
+							:value="status"
 							:show-check-mark="false"
 						>
 							<span
@@ -27,35 +27,12 @@
 					</SelectContent>
 				</Select>
 
-				<HeadlessSelect
-					:options="statuses"
-					label="name"
-					v-model="selectedStatus"
-					placeholder="status"
-					class="w-40"
-				>
-					<template #beforeSelectedValue>
-						<span
-							v-if="selectedStatus"
-							class="mr-3 inline-block size-2 shrink-0 rounded-full"
-							:style="{ backgroundColor: selectedStatus?.color }"
-						/>
-					</template>
-
-					<template #beforeOption="{ option }">
-						<span
-							class="mr-3 inline-block size-2 shrink-0 rounded-full"
-							:style="{ backgroundColor: option.color }"
-						/>
-					</template>
-				</HeadlessSelect>
-
-				<button v-if="isModal" @click="$emit('close')" class="-translate-y-1">
+				<button v-if="isModal" @click="$emit('close')">
 					<XMarkIcon
-						class="h-5 w-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+						class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
 					/>
 				</button>
-			</div>
+			</header>
 
 			<div class="flex items-center justify-between">
 				<TextField
@@ -66,49 +43,153 @@
 				/>
 			</div>
 
-			<Countdown :init-task="form" :disabled="!form.id" />
+			<!--			<Countdown :init-task="form" :disabled="!form.id" />-->
 
-			<div class="grid items-center gap-4 md:grid-cols-3">
+			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
 				<div class="flex items-center gap-2">
-					<div class="flex rounded bg-[#F4CD48]">
-						<PlantIcon class="m-auto h-10 w-10" />
-					</div>
+					<FolderIcon class="size-5 shrink-0" />
 
-					<div class="w-full">
-						<div class="text-xs text-neutral-400">Category</div>
+					<Popover v-model:open="openCategoriesCombobox">
+						<PopoverTrigger as-child>
+							<Button
+								variant="ghost"
+								role="combobox"
+								:aria-expanded="openCategoriesCombobox"
+								class="w-32 justify-between px-0"
+							>
+								{{
+									categoryComboboxValue
+										? frameworks.find(
+												(framework) =>
+													framework.value === categoryComboboxValue,
+										  )?.label
+										: 'Category'
+								}}
+								<ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+							</Button>
+						</PopoverTrigger>
 
-						<Select
-							:options="[
-								{ title: 'Category 1', value: 1 },
-								{ title: 'Category 2', value: 2 },
-							]"
-							label-key="title"
-							value-key="value"
-						/>
-					</div>
+						<PopoverContent
+							class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
+						>
+							<Command>
+								<CommandInput
+									class="h-9"
+									wrapper-class="dark:border-gray-600"
+									placeholder="Search category..."
+								/>
+								<CommandEmpty>No category found.</CommandEmpty>
+								<CommandList>
+									<CommandGroup>
+										<CommandItem
+											v-for="framework in frameworks"
+											:key="framework.value"
+											:value="framework.value"
+											@select="
+												(e) => {
+													if (typeof e.detail.value === 'string') {
+														categoryComboboxValue = e.detail.value;
+													}
+													openCategoriesCombobox = false;
+												}
+											"
+											class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+										>
+											{{ framework.label }}
+											<Check
+												:class="
+													cn(
+														'ml-auto h-4 w-4',
+														categoryComboboxValue === framework.value
+															? 'opacity-100'
+															: 'opacity-0',
+													)
+												"
+											/>
+										</CommandItem>
+									</CommandGroup>
+								</CommandList>
+							</Command>
+						</PopoverContent>
+					</Popover>
 				</div>
 
 				<div class="flex items-center gap-2">
-					<div class="flex rounded border border-neutral-200">
-						<ProfileIcon class="size-10" />
-					</div>
+					<UserIcon class="size-5" />
 
-					<div>
-						<div class="text-xs text-neutral-400">Assignees</div>
-						<div class="text-sm text-gray-600">savayer, +2</div>
-					</div>
+					<Popover v-model:open="openAssigneesCombobox">
+						<PopoverTrigger as-child>
+							<Button
+								variant="ghost"
+								role="combobox"
+								:aria-expanded="openAssigneesCombobox"
+								class="w-32 justify-between overflow-hidden px-0"
+							>
+								{{
+									selectedAssignees.length > 0
+										? workspaceMembers
+												.filter((user) => selectedAssignees.includes(user.name))
+												.map((f) => f.name)
+												.join(', ')
+										: 'Assignee'
+								}}
+								<ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+							</Button>
+						</PopoverTrigger>
+
+						<PopoverContent
+							class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
+						>
+							<Command>
+								<CommandInput
+									class="h-9"
+									wrapper-class="dark:border-gray-600"
+									placeholder="Search assignees..."
+								/>
+								<CommandEmpty>No assignees found.</CommandEmpty>
+								<CommandList>
+									<CommandGroup>
+										<CommandItem
+											v-for="user in workspaceMembers"
+											:key="user.id"
+											:value="user.name"
+											@select="
+												(e) => {
+													if (typeof e.detail.value === 'string') {
+														if (selectedAssignees.includes(e.detail.value)) {
+															selectedAssignees = selectedAssignees.filter(
+																(v) => v !== e.detail.value,
+															);
+														} else {
+															selectedAssignees.push(e.detail.value);
+														}
+													}
+												}
+											"
+											class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+										>
+											{{ user.name }}
+											<Check
+												:class="
+													cn(
+														'ml-auto h-4 w-4',
+														selectedAssignees.includes(user.name)
+															? 'opacity-100'
+															: 'opacity-0',
+													)
+												"
+											/>
+										</CommandItem>
+									</CommandGroup>
+								</CommandList>
+							</Command>
+						</PopoverContent>
+					</Popover>
 				</div>
 
-				<!--			<div class="flex items-center gap-2">
-				<div class="flex rounded border border-neutral-200">
-					<CalendarIcon class="h-8 w-8" />
+				<div class="ml-auto">
+					<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
 				</div>
-
-				<div>
-					<div class="text-xs text-neutral-400">Due date</div>
-					<div class="text-sm text-gray-600">05 Nov</div>
-				</div>
-			</div>-->
 			</div>
 
 			<Editor v-model="form.description" class="mb-2 min-h-60 md:h-72" />
@@ -117,12 +198,12 @@
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 				<div class="flex justify-end gap-3 text-center">
 					<button
-						v-if="taskId"
+						v-if="isModal"
 						@click="removeTask"
-						title="Delete"
-						class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
+						title="Open advanced form"
+						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
 					>
-						<TrashIcon class="size-5" />
+						<ArrowTopRightOnSquareIcon class="size-5" />
 					</button>
 
 					<!--				<span
@@ -138,7 +219,7 @@
 						<button
 							v-if="taskId"
 							@click="saveTask"
-							class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+							class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
 							type="button"
 							title="save"
 						>
@@ -186,7 +267,7 @@
 					Cancel
 				</button>-->
 					<button
-						v-if="taskId"
+						v-if="!isModal"
 						@click="openSettings"
 						class="flex items-center gap-1 rounded bg-indigo-400 px-4 py-2 font-bold text-white hover:bg-indigo-500 focus:outline-none"
 						type="button"
@@ -196,13 +277,22 @@
 					</button>
 
 					<button
-						v-if="taskId"
+						v-if="!isModal"
 						@click="openSettings"
 						class="flex items-center gap-1 rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
 						type="button"
 						title="Settings"
 					>
 						<CogIcon class="size-6" />
+					</button>
+
+					<button
+						v-if="taskId"
+						@click="removeTask"
+						title="Delete"
+						class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
+					>
+						<TrashIcon class="size-5" />
 					</button>
 				</div>
 			</footer>
@@ -251,24 +341,23 @@
 		BookmarkIcon,
 		ChatBubbleBottomCenterIcon,
 	} from '@heroicons/vue/20/solid';
+	import {
+		ArrowTopRightOnSquareIcon,
+		FolderIcon,
+		UserIcon,
+	} from '@heroicons/vue/24/outline';
 	import store from 'src/store';
-	import { computed, onBeforeMount, reactive, ref } from 'vue';
+	import { computed, onBeforeMount, reactive, ref, toRef } from 'vue';
 	import { useRoute } from 'vue-router';
 	import {
 		createTask as createTaskAction,
 		getTask,
 		Task,
 	} from 'src/actions/tmgr/tasks';
-	import PlantIcon from 'src/components/icons/PlantIcon.vue';
-	import ProfileIcon from 'src/components/icons/ProfileIcon.vue';
-	import CalendarIcon from 'src/components/icons/CalendarIcon.vue';
 	import Editor from 'src/components/Editor.vue';
 	import TextField from 'src/components/general/TextField.vue';
-	import TaskActions from 'src/components/tasks/TaskActions.vue';
 	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
 	import 'vue-multiselect/dist/vue-multiselect.css';
-	import HeadlessSelect from 'src/components/general/HeadlessSelect.vue';
-	import { Setting } from 'src/actions/tmgr/settings';
 	import { User } from 'src/actions/tmgr/user';
 	import SettingsComponent from 'src/components/SettingsComponent.vue';
 	import Countdown from 'src/components/general/Countdown.vue';
@@ -281,6 +370,24 @@
 		SelectTrigger,
 		SelectValue,
 	} from 'src/components/ui/select';
+	import { cn } from 'src/utils';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from 'src/components/ui/popover';
+	import {
+		Command,
+		CommandEmpty,
+		CommandGroup,
+		CommandInput,
+		CommandItem,
+		CommandList,
+	} from 'src/components/ui/command';
+	import { Check, ChevronsUpDown } from 'lucide-vue-next';
+	import { Button } from 'src/components/ui/button';
+	import TimeCounter from 'src/components/TimeCounter.vue';
+	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
 
 	interface Props {
 		isModal: boolean;
@@ -290,7 +397,7 @@
 	const route = useRoute();
 	let form = reactive<Partial<Task>>({});
 	const showSettings = ref(false);
-	const modalTaskId = computed(() => store.state.currentTaskIdForModal);
+	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const statusId = computed(() => store.state.taskStatusId);
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
@@ -305,15 +412,24 @@
 	);
 	const statuses = ref<Status[]>();
 	const selectedStatus = ref<Status>();
+	const workspaceMembers = ref([]);
 
 	async function initComponent() {
+		// @todo check wtf this shit is doing
+		store.commit('resetOpenModals');
 		statuses.value = await getStatuses();
-		console.log(statuses.value);
-		if (taskId) {
-			form = await getTask(+taskId);
-			/*if (form.workspace_id) {
-				workspaceMembers = await getWorkspaceMembers(form.workspace_id);
-			}*/
+
+		if (taskId.value) {
+			if (props.isModal) {
+				console.log(taskId.value);
+				history.pushState({}, '', `/${taskId.value}`);
+			}
+
+			form = await getTask(+taskId.value);
+			console.log('form', form);
+			if (form.workspace_id) {
+				workspaceMembers.value = await getWorkspaceMembers(form.workspace_id);
+			}
 			// this.workspaceMembers = await getWorkspaceMembers(this.form.workspace_id);
 			// window.onkeydown = this.getShortcutSaveListener();
 		}
@@ -363,22 +479,6 @@
 		initComponent();
 	});
 
-	const isChatOpen = ref(false);
-	const chatMessages = ref([
-		{ sender: 'System', text: 'Welcome to the chat!' },
-		{ sender: 'User', text: 'Hello, I have a question about the task.' },
-	]);
-	const newMessage = ref('');
-	const toggleChat = () => {
-		isChatOpen.value = !isChatOpen.value;
-	};
-	const sendMessage = () => {
-		if (newMessage.value.trim()) {
-			chatMessages.value.push({ sender: 'User', text: newMessage.value });
-			newMessage.value = '';
-		}
-	};
-
 	const createTask = async () => {
 		form.approximately_time = form.settings?.find(
 			(item: any) => item.key === 'approximately_time',
@@ -395,4 +495,18 @@
 	const openSettings = () => {
 		showSettings.value = !showSettings.value;
 	};
+
+	const frameworks = [
+		{ value: 'next.js', label: 'Next.js' },
+		{ value: 'sveltekit', label: 'SvelteKit' },
+		{ value: 'nuxt', label: 'Nuxt' },
+		{ value: 'remix', label: 'Remix' },
+		{ value: 'astro', label: 'Astro' },
+	];
+
+	const openCategoriesCombobox = ref(false);
+	const categoryComboboxValue = ref('');
+
+	const openAssigneesCombobox = ref(false);
+	const selectedAssignees = ref([]);
 </script>

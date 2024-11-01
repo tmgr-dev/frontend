@@ -1,5 +1,3 @@
-import moment from 'moment';
-
 export default {
 	methods: {
 		secondsToHumanReadableString(seconds) {
@@ -21,9 +19,6 @@ export default {
 		},
 		prepareClockNumber(num) {
 			return num < 10 ? '0' + num : num;
-		},
-		formatDatetime(datetime) {
-			return moment(datetime).format('DD.MM');
 		},
 	},
 };
