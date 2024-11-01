@@ -27,6 +27,18 @@
 					</SelectContent>
 				</Select>
 
+				<SettingsComponent v-if="!isModal" :form="form" />
+				<!--				<button
+					v-if="!isModal"
+					@click="openSettings"
+					type="button"
+					title="Settings"
+				>
+					<CogIcon
+						class="size-6 fill-gray-400 transition hover:fill-black dark:hover:fill-white"
+					/>
+				</button>-->
+
 				<button v-if="isModal" @click="$emit('close')">
 					<XMarkIcon
 						class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
@@ -266,25 +278,6 @@
 				>
 					Cancel
 				</button>-->
-					<button
-						v-if="!isModal"
-						@click="openSettings"
-						class="flex items-center gap-1 rounded bg-indigo-400 px-4 py-2 font-bold text-white hover:bg-indigo-500 focus:outline-none"
-						type="button"
-						title="Settings"
-					>
-						<ChatBubbleBottomCenterIcon class="size-6" />
-					</button>
-
-					<button
-						v-if="!isModal"
-						@click="openSettings"
-						class="flex items-center gap-1 rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
-						type="button"
-						title="Settings"
-					>
-						<CogIcon class="size-6" />
-					</button>
 
 					<button
 						v-if="taskId"
@@ -296,17 +289,6 @@
 					</button>
 				</div>
 			</footer>
-		</div>
-
-		<div class="overflow-hidden">
-			<Transition name="fade">
-				<div
-					class="h-full min-w-72 border-l border-gray-200 p-6 dark:border-gray-700"
-					v-if="showSettings"
-				>
-					<SettingsComponent :form="form" @close="showSettings = false" />
-				</div>
-			</Transition>
 		</div>
 	</div>
 
@@ -396,7 +378,6 @@
 	const props = defineProps<Props>();
 	const route = useRoute();
 	let form = reactive<Partial<Task>>({});
-	const showSettings = ref(false);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const statusId = computed(() => store.state.taskStatusId);
 	const modalProjectCategoryId = computed(
@@ -492,9 +473,6 @@
 
 	const removeTask = () => {};
 	const saveTask = () => {};
-	const openSettings = () => {
-		showSettings.value = !showSettings.value;
-	};
 
 	const frameworks = [
 		{ value: 'next.js', label: 'Next.js' },
