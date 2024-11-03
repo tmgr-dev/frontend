@@ -142,9 +142,54 @@
 					</div>
 					<div v-if="isProfile" class="flex flex-col gap-3.5 p-2">
 						<profile />
+						<div class="mt-6 border-t pt-6">
+							<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
+							<div class="flex items-center gap-4">
+								<div v-if="user.telegram_username" class="flex items-center gap-2">
+									<span class="text-green-600">✓</span>
+									<span>Connected as @{{ user.telegram_username }}</span>
+									<button
+										class="ml-2 text-red-500 hover:text-red-700"
+										@click="unlinkTelegram"
+									>
+										Unlink
+									</button>
+								</div>
+								<button
+									v-else
+									class="rounded bg-blue-500 py-2 px-4 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
+									@click="generateTelegramLink"
+								>
+									Connect Telegram
+								</button>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
+
+			<!-- Add to your existing confirm modal -->
+			<Transition name="fade">
+				<confirm
+					v-if="confirm"
+					:body="confirm.body"
+					:title="confirm.title"
+					@onCancel="confirm = undefined"
+					@onOk="confirm.action()"
+				>
+					<template #body-content>
+						<p>{{ confirm.body }}</p>
+
+						<a v-if="confirm.link"
+						class="mt-2 block text-blue-500 hover:text-blue-700"
+						:href="confirm.link"
+						target="_blank"
+						>
+						Open Telegram
+						</a>
+					</template>
+				</confirm>
+			</Transition>
 		</template>
 	</BaseLayout>
 
@@ -187,6 +232,7 @@
 	import TimeField from 'src/components/general/TimeField.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import Profile from 'src/pages/Profile.vue';
+	import { generateLink, unlink } from 'src/actions/tmgr/telegram';
 
 	export default {
 		name: 'Settings',
@@ -208,6 +254,7 @@
 			isNotification: false,
 			isWorkspaceSettings: true,
 			isProfile: false,
+			telegramLink: null,
 		}),
 		computed: {
 			userSettings() {
@@ -222,9 +269,44 @@
 			await this.loadSettings();
 		},
 		methods: {
-			showConfirm(title, body, action) {
-				this.confirm = { title, body, action };
+			async generateTelegramLink() {
+				try {
+					const link = await generateLink();
+
+					this.showConfirm(
+						'Connect Telegram',
+						'Click the button below to open Telegram and connect your account. After connecting, you\'ll receive notifications through Telegram.',
+						() => {
+							window.open(link, '_blank');
+							this.confirm = null;
+						},
+						link
+					);
+				} catch (error) {
+					console.error('Failed to generate Telegram link:', error);
+				}
 			},
+
+			async unlinkTelegram() {
+				this.showConfirm(
+					'Unlink Telegram',
+					'Are you sure you want to unlink your Telegram account? You will no longer receive notifications through Telegram.',
+					async () => {
+						try {
+							await unlink();
+							this.user = await getUser();
+							this.confirm = null;
+						} catch (error) {
+							console.error('Failed to unlink Telegram:', error);
+						}
+					}
+				);
+			},
+
+			showConfirm(title, body, action, link = null) {
+				this.confirm = { title, body, action, link };
+			},
+
 			showNotificationSettings() {
 				this.isWorkspaceSettings = false;
 				this.isProfile = false;
