@@ -215,6 +215,7 @@
 			v-model="form.description"
 			class="mb-2 grow md:h-72"
 			:class="[!isModal && 'lg:min-h-96']"
+			:show-preview="true"
 		/>
 
 		<!--	actions	-->

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { ref } from 'vue';
+	import { onMounted, ref } from 'vue';
 	import { MdEditor, ExposeParam } from 'md-editor-v3';
 	import 'src/assets/styles/md-editor.css';
 	import store from '../store';
@@ -7,6 +7,7 @@
 
 	interface Props {
 		modelValue: string;
+		showPreview?: boolean;
 	}
 
 	const props = defineProps<Props>();
@@ -18,6 +19,13 @@
 		editorPreviewActive.value = !editorPreviewActive.value;
 		editorRef.value?.togglePreviewOnly();
 	};
+
+	onMounted(() => {
+		if (props.showPreview) {
+			editorPreviewActive.value = true;
+			editorRef.value?.togglePreviewOnly(true);
+		}
+	});
 </script>
 
 <template>
