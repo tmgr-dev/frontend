@@ -16,17 +16,26 @@
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
 	import { Button } from 'src/components/ui/button';
 	import { UserIcon } from '@heroicons/vue/24/outline';
-	import { ref, defineProps, defineEmits } from 'vue';
+	import { ref, defineProps, computed } from 'vue';
 	import { WorkspaceMember } from 'src/actions/tmgr/workspaces';
 
 	interface Props {
 		assignees: WorkspaceMember[];
+		modelValue: WorkspaceMember['id'];
 	}
 	const props = defineProps<Props>();
-	const emit = defineEmits(['update']);
-
+	const assigneeIds = defineModel();
 	const openCombobox = ref(false);
-	const selectedAssignees = ref([]);
+	const searchValue = ref('');
+	const filteredAssignees = computed(() => {
+		if (!searchValue.value) return props.assignees;
+
+		return props.assignees.filter((assignee) =>
+			assignee.name.toLowerCase().includes(searchValue.value.toLowerCase()),
+		);
+	});
+
+	console.log(assigneeIds.value);
 </script>
 
 <template>
@@ -43,9 +52,9 @@
 				>
 					<span class="truncate">
 						{{
-							selectedAssignees.length > 0
+							assigneeIds.length > 0
 								? props.assignees
-										.filter((user) => selectedAssignees.includes(user.name))
+										.filter((assignee) => assigneeIds.includes(assignee.id))
 										.map((f) => f.name)
 										.join(', ')
 								: 'Assignee'
@@ -63,23 +72,24 @@
 						class="h-9"
 						wrapper-class="dark:border-gray-600"
 						placeholder="Search assignees..."
+						@input="(e) => (searchValue = e.target.value)"
 					/>
 					<CommandEmpty>No assignees found.</CommandEmpty>
 					<CommandList>
 						<CommandGroup>
 							<CommandItem
-								v-for="assignee in props.assignees"
+								v-for="assignee in filteredAssignees"
 								:key="assignee.id"
-								:value="assignee.name"
+								:value="assignee.id"
 								@select="
 									(e) => {
-										if (typeof e.detail.value === 'string') {
-											if (selectedAssignees.includes(e.detail.value)) {
-												selectedAssignees = selectedAssignees.filter(
+										if (typeof e.detail.value === 'number') {
+											if (assigneeIds.includes(e.detail.value)) {
+												assigneeIds = assigneeIds.filter(
 													(v) => v !== e.detail.value,
 												);
 											} else {
-												selectedAssignees.push(e.detail.value);
+												assigneeIds.push(e.detail.value);
 											}
 										}
 									}
@@ -91,7 +101,7 @@
 									:class="
 										cn(
 											'ml-auto h-4 w-4',
-											selectedAssignees.includes(assignee.name)
+											assigneeIds.includes(assignee.id)
 												? 'opacity-100'
 												: 'opacity-0',
 										)

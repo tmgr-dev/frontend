@@ -16,7 +16,7 @@
 	} from 'src/components/ui/popover';
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
 	import { Button } from 'src/components/ui/button';
-	import { ref, defineProps, defineEmits, watch, computed } from 'vue';
+	import { ref, computed } from 'vue';
 	import { Category } from 'src/actions/tmgr/categories';
 
 	interface Props {
