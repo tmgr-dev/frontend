@@ -17,8 +17,10 @@
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
+		addTaskAssignee,
 		createTask as createTaskAction,
 		deleteTask,
+		deleteTaskAssignee,
 		getTask,
 		stopTaskTimeCounter,
 		Task,
@@ -60,6 +62,7 @@
 		status: 'created',
 		status_id: store.state.taskStatusId || undefined,
 	});
+	const assignees = ref<WorkspaceMember['id'][]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
@@ -102,7 +105,6 @@
 			}
 
 			form.value = await getTask(+taskId.value);
-			console.log(form.value);
 		}
 	});
 
@@ -111,7 +113,7 @@
 	});
 
 	const createTask = async () => {
-		console.log(form.value);
+		// form.value.assignees = assignees.value.join(',');
 		form.value = await createTaskAction(form.value as Task);
 
 		if (props.isModal) {
@@ -152,6 +154,22 @@
 		}
 	};
 	const saveTask = () => {};
+
+	/*const handleAssignees = async (assigneeId: number) => {
+		try {
+			const isAssigned = assignees.value.find(
+				(assignee) => assignee.id === assigneeId,
+			);
+
+			if (isAssigned) {
+				await deleteTaskAssignee(form.value.id, assigneeId);
+			} else {
+				await addTaskAssignee(form.value.id, assigneeId);
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	};*/
 </script>
 
 <template>
@@ -204,7 +222,7 @@
 				v-model="form.project_category_id"
 			/>
 
-			<AssigneesCombobox :assignees="workspaceMembers" />
+			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />
 
 			<div class="ml-auto">
 				<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
@@ -215,7 +233,7 @@
 			v-model="form.description"
 			class="mb-2 grow md:h-72"
 			:class="[!isModal && 'lg:min-h-96']"
-			:show-preview="true"
+			:show-preview="!!taskId"
 		/>
 
 		<!--	actions	-->
