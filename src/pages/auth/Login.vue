@@ -134,7 +134,17 @@
 			await loginAction(form.value);
 			await getUser(true);
 
-			await router.push({ name: 'CurrentTasksList' });
+			if (localStorage.getItem('workspace.invitation')) {
+				const token = localStorage.getItem('workspace.invitation');
+				await router.push({
+					name: 'WorkspaceInvitation',
+					params: {
+						token
+					}
+				});
+			} else {
+				await router.push({ name: 'CurrentTasksList' });
+			}
 
 			if (store.state.user) {
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);

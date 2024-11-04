@@ -143,7 +143,17 @@
 			await registerAction(form.value);
 			await getUser(true);
 
-			await router.push({ name: 'CurrentTasksList' });
+			if (localStorage.getItem('workspace.invitation')) {
+				const token = localStorage.getItem('workspace.invitation');
+				await router.push({
+					name: 'WorkspaceInvitation',
+					params: {
+						token
+					}
+				});
+			} else {
+				await router.push({ name: 'CurrentTasksList' });
+			}
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
