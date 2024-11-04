@@ -54,6 +54,7 @@ export const updateWorkspaceOrder = async (
 export interface WorkspaceInvitation {
 	max_usage_times: string;
 	expired_at?: Date | null;
+	emails?: string | null;
 }
 
 export interface WorkspaceInvitationResponse {
@@ -83,8 +84,8 @@ export const acceptWorkspaceInvitation = async (token: string) => {
 };
 export const workspaceInvitationInfo = async (token: string) => {
 	const {
-		data: { data },
-	} = await $axios.get(`workspaces/invitations/${token}`);
+		data,
+	} = await $axios.get(`workspaces/invitations/${token}/info`);
 
 	return data;
 };
