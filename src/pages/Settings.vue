@@ -246,6 +246,9 @@
 			Confirm,
 			CurrentWorkspace,
 		},
+		created() {
+			this.handleTabFromQuery();
+		},
 		data: () => ({
 			availableSettings: [],
 			settings: [],
@@ -256,6 +259,12 @@
 			isProfile: false,
 			telegramLink: null,
 		}),
+		watch: {
+			'$route.query': {
+				handler: 'handleTabFromQuery',
+				immediate: true
+			}
+		},
 		computed: {
 			userSettings() {
 				return this.$store.state.userSettings || {};
@@ -269,6 +278,51 @@
 			await this.loadSettings();
 		},
 		methods: {
+			handleTabFromQuery() {
+				const tab = this.$route.query.tab;
+				if (tab) {
+					switch (tab.toLowerCase()) {
+						case 'notification':
+							this.showNotificationSettings();
+							break;
+						case 'workspace':
+							this.showWorkspaceSettings();
+							break;
+						case 'profile':
+							this.showProfileSettings();
+							break;
+					}
+				}
+			},
+
+			showNotificationSettings() {
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isNotification = true;
+				this.updateQueryParam('notification');
+			},
+
+			showWorkspaceSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = true;
+				this.isProfile = false;
+				this.updateQueryParam('workspace');
+			},
+
+			showProfileSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = true;
+				this.updateQueryParam('profile');
+			},
+
+			// Add new method to update query parameter
+			updateQueryParam(tab) {
+				// Update URL without reloading the page
+				this.$router.push({
+					query: { ...this.$route.query, tab }
+				}).catch(() => {});
+			},
 			async generateTelegramLink() {
 				try {
 					const link = await generateLink();
@@ -307,21 +361,6 @@
 				this.confirm = { title, body, action, link };
 			},
 
-			showNotificationSettings() {
-				this.isWorkspaceSettings = false;
-				this.isProfile = false;
-				this.isNotification = true;
-			},
-			showWorkspaceSettings() {
-				this.isNotification = false;
-				this.isWorkspaceSettings = true;
-				this.isProfile = false;
-			},
-			showProfileSettings() {
-				this.isNotification = false;
-				this.isWorkspaceSettings = false;
-				this.isProfile = true;
-			},
 			async testWebPushNotifications() {
 				await sendNotification();
 			},
