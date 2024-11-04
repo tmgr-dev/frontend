@@ -11,6 +11,7 @@
 			:name="name"
 			:placeholder="placeholder"
 			v-model="value"
+			:readonly="readonly"
 		/>
 
 		<transition name="fade-left">
@@ -39,6 +40,7 @@
 		name?: string;
 		modelValue: string;
 		placeholder?: string;
+		readonly?: string;
 		inputClass?: string;
 		errors?: [];
 		showErrorInTooltip?: boolean;
