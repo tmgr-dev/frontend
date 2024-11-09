@@ -6,22 +6,35 @@ import { FormSetting, Setting } from 'src/actions/tmgr/settings';
 import { User } from 'src/actions/tmgr/user';
 
 export interface Task {
-	id: number;
+	id: number | undefined;
 	approximately_time: number;
 	assignees: Record<string, any>[] | number[];
-	common_time: number;
+	category: number;
+	title: string;
+	status: string;
 	description: string;
+	description_json: object;
+	common_time: number;
 	is_daily_routine: boolean;
 	order: number;
 	project_category_id?: number;
 	settings?: FormSetting[];
 	start_time: number;
-	status: string;
 	status_id: number;
-	title: string;
 	user: Pick<User, 'id' | 'name'>;
 	user_id: number;
 	workspace_id?: number;
+}
+interface LinkResponse {
+	success: 1 | 0;
+	link?: string;
+	meta?: {
+		title: string;
+		description: string;
+		image: {
+			url: string;
+		};
+	};
 }
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
@@ -235,4 +248,27 @@ export const exportTasks = async (
 	);
 
 	return data;
+};
+
+export const fetchLinkMetadata = async (url: string): Promise<LinkResponse> => {
+	try {
+		const { data } = await $axios.post(`/fetch-link-metadata`, { url });
+
+		return {
+			success: 1,
+			link: url,
+			meta: {
+				title: data.title || '',
+				description: data.description || '',
+				image: {
+					url: data.image || ''
+				}
+			}
+		};
+	} catch (error) {
+		console.error('Error fetching link metadata:', error);
+		return {
+			success: 0
+		};
+	}
 };
