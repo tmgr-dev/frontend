@@ -105,6 +105,10 @@
 			}
 
 			form.value = await getTask(+taskId.value);
+			assignees.value =
+				(form.value.assignees as WorkspaceMember[])?.map(
+					(assignee) => assignee.id,
+				) || [];
 		}
 	});
 
@@ -113,7 +117,7 @@
 	});
 
 	const createTask = async () => {
-		// form.value.assignees = assignees.value.join(',');
+		form.value.assignees = assignees.value;
 		form.value = await createTaskAction(form.value as Task);
 
 		if (props.isModal) {

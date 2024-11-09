@@ -8,7 +8,7 @@ import { User } from 'src/actions/tmgr/user';
 export interface Task {
 	id: number;
 	approximately_time: number;
-	assignees: Record<string, any>[];
+	assignees: Record<string, any>[] | number[];
 	common_time: number;
 	description: string;
 	is_daily_routine: boolean;
