@@ -22,8 +22,10 @@
 		deleteTask,
 		deleteTaskAssignee,
 		getTask,
+		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		Task,
+		updateTask,
 	} from 'src/actions/tmgr/tasks';
 	import Editor from 'src/components/Editor.vue';
 	import TextField from 'src/components/general/TextField.vue';
@@ -46,6 +48,7 @@
 	import AssigneesCombobox from 'src/components/AssigneesCombobox.vue';
 	import { Category, getCategories } from 'src/actions/tmgr/categories';
 	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
+	import convertToHHMM from 'src/utils/convertToHHMM';
 
 	interface Props {
 		isModal: boolean;
@@ -78,6 +81,16 @@
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
+	const isLoading = ref(false);
+	const approximatelyEndTime = computed(() => {
+		if (form.value.approximately_time && form.value.common_time) {
+			const secondsLeft =
+				new Date().getSeconds() +
+				(form.value.approximately_time - form.value.common_time);
+
+			return convertToHHMM(secondsLeft < 0 ? 0 : secondsLeft);
+		}
+	});
 
 	onBeforeMount(async () => {
 		const workspaceId = store.state.user?.settings?.find(
@@ -132,9 +145,6 @@
 				},
 			});
 		}
-		/*if (!taskId) {
-		showAlert();
-	}*/
 	};
 
 	const removeTask = async () => {
@@ -157,23 +167,59 @@
 			}
 		}
 	};
-	const saveTask = () => {};
 
-	/*const handleAssignees = async (assigneeId: number) => {
+	const saveTask = async () => {
 		try {
-			const isAssigned = assignees.value.find(
-				(assignee) => assignee.id === assigneeId,
-			);
-
-			if (isAssigned) {
-				await deleteTaskAssignee(form.value.id, assigneeId);
-			} else {
-				await addTaskAssignee(form.value.id, assigneeId);
+			isLoading.value = true;
+			form.value.assignees = assignees.value;
+			if (!form.value.project_category_id) {
+				delete form.value.project_category_id;
 			}
+			form.value.approximately_time =
+				Number(
+					form.value.settings?.find((item) => item.key === 'approximately_time')
+						?.value,
+				) || 0;
+
+			form.value = await updateTask(+taskId.value, form.value as Task);
+			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
+		} finally {
+			isLoading.value = false;
 		}
-	};*/
+	};
+
+	const toggleTimer = async () => {
+		if (form.value.start_time) {
+			form.value = await stopTaskTimeCounter(+taskId.value);
+		} else {
+			form.value = await startTaskTimeCounter(+taskId.value);
+		}
+
+		/*if (
+			Array.isArray(form.value.checkpoints) &&
+			form.value.checkpoints.length > 0
+		) {
+			form.value.checkpoints[form.value.checkpoints.length - 1].end =
+				form.value.common_time;
+		}*/
+
+		/*if (form.value.start_time && form.value.status_id) {
+			const statusCurrent = this.workspaceStatuses.find(
+				(el) => el.type !== 'active',
+			);
+			if (statusCurrent) {
+				const firstActiveStatus = this.workspaceStatuses.find(
+					(el) => el.type === 'active',
+				);
+				if (firstActiveStatus) {
+					this.form.status_id = firstActiveStatus.id;
+				}
+			}
+		}*/
+		await saveTask();
+	};
 </script>
 
 <template>
@@ -229,7 +275,12 @@
 			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />
 
 			<div class="ml-auto">
-				<TimeCounter v-if="taskId" :init-task="form" :disabled="!form.id" />
+				<TimeCounter
+					v-if="taskId"
+					:init-task="form"
+					:disabled="!form.id"
+					@toggle="toggleTimer"
+				/>
 			</div>
 		</div>
 
@@ -252,14 +303,14 @@
 					<ArrowTopRightOnSquareIcon class="size-5" />
 				</a>
 
-				<!--				<span
-					v-if="form.approximately_time"
+				<span
+					v-if="approximatelyEndTime"
 					:class="`text-${
 						approximatelyEndTime === '00:00' ? 'red' : 'gray'
 					}-500 estimated-info hidden py-2 pr-5 md:block`"
 				>
 					Left time: {{ approximatelyEndTime }}
-				</span>-->
+				</span>
 
 				<span class="relative inline-flex rounded-md shadow-sm">
 					<button
