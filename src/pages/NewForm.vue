@@ -49,6 +49,7 @@
 	import { Category, getCategories } from 'src/actions/tmgr/categories';
 	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
 	import convertToHHMM from 'src/utils/convertToHHMM';
+	import Countdown from 'src/components/general/Countdown.vue';
 
 	interface Props {
 		isModal: boolean;
@@ -91,6 +92,9 @@
 			return convertToHHMM(secondsLeft < 0 ? 0 : secondsLeft);
 		}
 	});
+	const workspaceStatuses = computed<Status[]>(
+		() => store.state.workspaceStatuses as Status[],
+	);
 
 	onBeforeMount(async () => {
 		const workspaceId = store.state.user?.settings?.find(
@@ -205,19 +209,19 @@
 				form.value.common_time;
 		}*/
 
-		/*if (form.value.start_time && form.value.status_id) {
-			const statusCurrent = this.workspaceStatuses.find(
+		if (form.value.start_time && form.value.status_id) {
+			const statusCurrent = workspaceStatuses.value.find(
 				(el) => el.type !== 'active',
 			);
 			if (statusCurrent) {
-				const firstActiveStatus = this.workspaceStatuses.find(
+				const firstActiveStatus = workspaceStatuses.value.find(
 					(el) => el.type === 'active',
 				);
 				if (firstActiveStatus) {
-					this.form.status_id = firstActiveStatus.id;
+					form.value.status_id = firstActiveStatus.id;
 				}
 			}
-		}*/
+		}
 		await saveTask();
 	};
 </script>
@@ -276,7 +280,7 @@
 
 			<div class="ml-auto">
 				<TimeCounter
-					v-if="taskId"
+					v-if="form.id"
 					:init-task="form"
 					:disabled="!form.id"
 					@toggle="toggleTimer"
