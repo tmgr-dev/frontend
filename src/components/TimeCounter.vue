@@ -1,6 +1,6 @@
 <template>
 	<teleport to="title">
-		{{ countdown.hours }}:{{ countdown.minutes }}:{{ countdown.seconds }}
+		{{ timer.hours }}:{{ timer.minutes }}:{{ timer.seconds }}
 	</teleport>
 
 	<div
@@ -9,19 +9,15 @@
 		:style="disabledStyles"
 		class="flex flex-col justify-center"
 	>
-		<div
-			class="relative"
-			:class="{
-				'flex items-center justify-center gap-2': !task.start_time,
-			}"
-		>
+		<div class="relative flex items-center justify-center gap-2">
 			<div
 				v-if="lastStartTime"
-				:class="`countdown-wrapper select-none opacity-20`"
+				class="select-none opacity-20"
 				style="opacity: 0.2"
 			>
-				<span class="countdown-item">{{ lastStartTime.hours }}</span>
-				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
+				<span class="">{{ lastStartTime.hours }} </span>
+				{{ ':' }}
+				<span class="">{{ lastStartTime.minutes }}</span>
 			</div>
 
 			<div
@@ -33,19 +29,20 @@
 				class="flex select-none items-center gap-3 text-2xl"
 				@dblclick="isShowModalTimer = true"
 			>
-				<span>{{ countdown.hours }}</span>
-				<span>{{ countdown.minutes }}</span>
+				<span>{{ timer.hours }}</span>
+				<span>{{ timer.minutes }}</span>
 				<span>
-					{{ countdown.seconds }}
+					{{ timer.seconds }}
 				</span>
 			</div>
 
 			<div
 				v-if="approximatelyEndTime && !timeIsOver"
-				class="countdown-wrapper mb-4 select-none opacity-20"
+				class="select-none opacity-20"
 				style="opacity: 0.2"
 			>
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
+				{{ ':' }}
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
 			</div>
 
@@ -75,32 +72,32 @@
 			/>
 		</div>
 
-		<reminder
+		<!--		<reminder
 			v-if="task.start_time && !isFullScreen"
 			v-model:is-active="reminderSoundActive"
 			:task="task"
-		/>
+		/>-->
 
 		<Transition name="bounce-right-fade">
 			<Modal v-if="isShowModalTimer" modal-class="w-96 p-10">
 				<template #modal-body>
 					<div class="countdown-modal-edit">
 						<vue-the-mask
-							v-model="countdown.hours"
+							v-model="timer.hours"
 							:tokens="timeTokens"
 							class="countdown-item"
 							mask="###"
 						/>
 
 						<vue-the-mask
-							v-model="countdown.minutes"
+							v-model="timer.minutes"
 							:tokens="timeTokens"
 							class="countdown-item"
 							mask="F#"
 						/>
 
 						<vue-the-mask
-							v-model="countdown.seconds"
+							v-model="timer.seconds"
 							:tokens="timeTokens"
 							class="countdown-item"
 							mask="F#"
@@ -167,7 +164,7 @@
 	const isShowModalTimer = ref(false);
 	const task = reactive({});
 
-	const countdown = reactive({
+	const timer = reactive({
 		hours: '00',
 		minutes: '00',
 		seconds: '00',
@@ -199,20 +196,23 @@
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
 			countdownInterval = null;
+			task.start_time = false;
+		} else {
+			task.start_time = true;
+			countdownInterval = setInterval(plusSecond, 1000);
 		}
 		emit('toggle');
 	};
 
 	const validateCountdownBeforeUpdate = () => {
-		if (countdown.hours === '') countdown.hours = '00';
-		if (countdown.minutes === '') countdown.minutes = '00';
-		if (countdown.seconds === '') countdown.seconds = '00';
+		if (timer.hours === '') timer.hours = '00';
+		if (timer.minutes === '') timer.minutes = '00';
+		if (timer.seconds === '') timer.seconds = '00';
 	};
 
 	const updateTimer = async () => {
 		validateCountdownBeforeUpdate();
-		const seconds =
-			countdown.hours * 3600 + +countdown.minutes * 60 + +countdown.seconds;
+		const seconds = timer.hours * 3600 + +timer.minutes * 60 + +timer.seconds;
 
 		await updateTaskTimeCounter(task.id, {
 			common_time: seconds,
@@ -222,22 +222,14 @@
 	};
 
 	const plusSecond = () => {
-		if (!task.value) {
-			task.value = {
-				common_time: 0,
-			};
+		console.log('second', task.common_time);
+
+		if (!task.common_time) {
+			task.common_time = 0;
 		}
 		++task.common_time;
 		emit('update:seconds', task.common_time);
 		renderTime();
-	};
-
-	const prepareCommonTime = () => {
-		if (task.start_time) {
-			task.common_time += Math.floor(
-				(new Date() - new Date().setTime(task.start_time * 1000)) / 1000,
-			);
-		}
 	};
 
 	const initCountdown = () => {
@@ -247,7 +239,12 @@
 			return;
 		}
 
-		prepareCommonTime();
+		if (task.start_time) {
+			task.common_time += Math.floor(
+				(new Date() - new Date().setTime(task.start_time * 1000)) / 1000,
+			);
+		}
+
 		countdownInterval = setInterval(plusSecond, 1000);
 	};
 
@@ -284,10 +281,11 @@
 	};
 
 	const renderTime = () => {
-		const newCountdown = secondsToCountdownObject(task.common_time);
-		countdown.hours = newCountdown.hours;
-		countdown.minutes = newCountdown.minutes;
-		countdown.seconds = newCountdown.seconds;
+		const newTimer = secondsToCountdownObject(task.common_time);
+		timer.hours = newTimer.hours;
+		timer.minutes = newTimer.minutes;
+		timer.seconds = newTimer.seconds;
+
 		renderApproximatelyStartTime();
 	};
 
