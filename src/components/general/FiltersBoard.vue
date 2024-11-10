@@ -58,8 +58,8 @@
 
 <script setup lang="ts">
 	import { computed, onMounted, watch } from 'vue';
-	import Select from 'src/components/general/Select.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import Select from '@/components/general/Select.vue';
+	import TextField from '@/components/general/TextField.vue';
 
 	export interface UserOption {
 		id: number;

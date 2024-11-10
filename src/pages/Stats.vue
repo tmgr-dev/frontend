@@ -60,7 +60,7 @@
 </template>
 
 <script>
-	import { getStats } from 'src/actions/tmgr/stats';
+	import { getStats } from '@/actions/tmgr/stats';
 
 	export default {
 		name: 'Stats',

@@ -441,9 +441,9 @@
 </template>
 
 <script>
-	import TaskActions from 'src/components/tasks/TaskActions.vue';
-	import Countdown from 'src/components/general/Countdown.vue';
-	import Confirm from 'src/components/general/Confirm.vue';
+	import TaskActions from '@/components/tasks/TaskActions.vue';
+	import Countdown from '@/components/general/Countdown.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import {
 		deleteTask,
 		getTask,
@@ -455,25 +455,25 @@
 		deleteTaskAssignee,
 		getTasksIndexes,
 		optimizeWithAI,
-	} from 'src/actions/tmgr/tasks';
+	} from '@/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
 		updateOneTaskSettings,
-	} from 'src/actions/tmgr/settings';
-	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
-	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
-	import Select from 'src/components/general/Select.vue';
-	import Switcher from 'src/components/general/Switcher.vue';
-	import TextField from 'src/components/general/TextField.vue';
-	import TimeField from 'src/components/general/TimeField.vue';
-	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
-	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
-	import Modal from 'src/components/Modal.vue';
+	} from '@/actions/tmgr/settings';
+	import { getCategories, getCategory } from '@/actions/tmgr/categories';
+	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import Select from '@/components/general/Select.vue';
+	import Switcher from '@/components/general/Switcher.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import TimeField from '@/components/general/TimeField.vue';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import { titlePatternHandler } from '@/utils/titlePatternHandler';
+	import Modal from '@/components/Modal.vue';
 	import { mapState } from 'vuex';
-	import CommentsChat from 'src/components/general/CommentsChat.vue';
-	import store from 'src/store';
-	import Checkpoints from 'src/components/general/Checkpoints.vue';
-	import TimeCounter from 'src/components/TimeCounter.vue';
+	import CommentsChat from '@/components/general/CommentsChat.vue';
+	import store from '@/store';
+	import Checkpoints from '@/components/general/Checkpoints.vue';
+	import TimeCounter from '@/components/TimeCounter.vue';
 
 	export default {
 		name: 'TaskForm',

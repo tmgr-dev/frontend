@@ -1,5 +1,5 @@
-import filterModule from 'src/store/modules/boardFilters';
-import pusherModule from 'src/store/modules/pusher';
+import filterModule from '@/store/modules/boardFilters';
+import pusherModule from '@/store/modules/pusher';
 import { createStore } from 'vuex';
 
 const token = localStorage.getItem('token')
@@ -101,7 +101,9 @@ const mutations = {
 const actions = {
 	logout() {
 		const theme = localStorage.getItem('colorScheme');
-		const workspaceInvitationToken = localStorage.getItem('workspace.invitation');
+		const workspaceInvitationToken = localStorage.getItem(
+			'workspace.invitation',
+		);
 		localStorage.clear();
 		localStorage.setItem('colorScheme', theme);
 		if (workspaceInvitationToken) {

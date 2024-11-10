@@ -66,9 +66,9 @@ First of all you have to create .env file
 
 #### Variables
 
-`VUE_APP_API_BASE_URL` - API base URL
+`VITE_API_BASE_URL` - API base URL
 
     # Example:
-    VUE_APP_API_BASE_URL=http://taskmanager.localhost/api/
+    VITE_API_BASE_URL=http://taskmanager.localhost/api/
 
 # Desktop Version in development. Soon...

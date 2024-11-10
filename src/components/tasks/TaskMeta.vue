@@ -24,7 +24,7 @@
 </template>
 
 <script>
-	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 
 	export default {
 		name: 'TaskMeta',

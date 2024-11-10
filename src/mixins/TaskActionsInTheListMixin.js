@@ -1,4 +1,4 @@
-import { deleteTask, restoreDeletedTask } from 'src/actions/tmgr/tasks';
+import { deleteTask, restoreDeletedTask } from '@/actions/tmgr/tasks';
 
 export default {
 	methods: {

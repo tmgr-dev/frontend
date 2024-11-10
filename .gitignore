@@ -22,9 +22,6 @@ yarn-error.log*
 
 .thumbs.db
 
-# Quasar core related directories
-.quasar
-
 # Cordova related directories and files
 /src-cordova/node_modules
 /src-cordova/platforms

@@ -1,4 +1,4 @@
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 
 export const generateSmartDeviceToken = async () => {
 	const { data } = await $axios.post('/smart-device/token/generate');

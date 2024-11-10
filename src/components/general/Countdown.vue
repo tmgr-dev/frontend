@@ -133,10 +133,10 @@
 </template>
 
 <script>
-	import Reminder from 'src/components/tasks/Reminder.vue';
-	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
-	import Modal from 'src/components/Modal.vue';
+	import Reminder from '@/components/tasks/Reminder.vue';
+	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
+	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
+	import Modal from '@/components/Modal.vue';
 
 	let countdownInterval = null;
 

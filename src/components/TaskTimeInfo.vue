@@ -5,14 +5,14 @@
 		DialogHeader,
 		DialogTitle,
 		DialogTrigger,
-	} from 'src/components/ui/dialog';
+	} from '@/components/ui/dialog';
 	import { InformationCircleIcon, PencilIcon } from '@heroicons/vue/24/outline';
-	import { Button } from 'src/components/ui/button';
-	import { ExtendedTime, Time } from 'src/types';
-	import { onUnmounted, ref } from 'vue';
-	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
-	import VueTheMask from 'src/plugins/VueTheMask/component.vue';
-	import { dialogState } from 'src/composable/dialog';
+	import { Button } from '@/components/ui/button';
+	import { ExtendedTime, Time } from '@/types';
+	import { ref } from 'vue';
+	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
+	import VueTheMask from '@/plugins/VueTheMask/component.vue';
+	import { dialogState } from '@/composable/dialog';
 
 	interface Props {
 		// @todo why we can't just pass Date objects? We can actually and it will allow us to show dates too. Refactor it

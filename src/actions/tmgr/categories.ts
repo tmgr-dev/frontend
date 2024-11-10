@@ -1,5 +1,5 @@
 import { AxiosRequestConfig } from 'axios';
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 
 export interface Category {
 	children_count: number;

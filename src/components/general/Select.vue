@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 	import { computed } from 'vue';
-	import VueSelect from 'src/plugins/VueSelect';
+	import VueSelect from '@/plugins/VueSelect';
 
 	type optionType = {
 		[key: string]: string | number;

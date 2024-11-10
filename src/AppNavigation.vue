@@ -164,12 +164,12 @@
 <script setup>
 	import { computed, onBeforeMount, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
-	import store from 'src/store';
-	import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
-	import WorkspaceSelect from 'src/components/general/WorkspaceSelect.vue';
-	import { getDailyTasksCount } from 'src/actions/tmgr/daily-tasks';
-	import AccountDropdown from 'src/components/general/AccountDropdown.vue';
-	import Confirm from 'src/components/general/Confirm.vue';
+	import store from '@/store';
+	import DayNightSwitch from '@/components/general/DayNightSwitch.vue';
+	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
+	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
+	import AccountDropdown from '@/components/general/AccountDropdown.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 
 	const route = useRoute();
 	const dailyRoutinesCount = ref(0);

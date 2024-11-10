@@ -38,7 +38,7 @@
 </template>
 
 <script>
-	import Switcher from 'src/components/general/Switcher.vue';
+	import Switcher from '@/components/general/Switcher.vue';
 
 	export default {
 		name: 'Reminder',
