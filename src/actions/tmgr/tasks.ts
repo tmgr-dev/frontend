@@ -12,8 +12,8 @@ export interface Task {
 	category: number;
 	title: string;
 	status: string;
-	description: string;
-	description_json: object;
+	description: string | null;
+	description_json: Record<string, any> | null;
 	common_time: number;
 	is_daily_routine: boolean;
 	order: number;
@@ -261,14 +261,14 @@ export const fetchLinkMetadata = async (url: string): Promise<LinkResponse> => {
 				title: data.title || '',
 				description: data.description || '',
 				image: {
-					url: data.image || ''
-				}
-			}
+					url: data.image || '',
+				},
+			},
 		};
 	} catch (error) {
 		console.error('Error fetching link metadata:', error);
 		return {
-			success: 0
+			success: 0,
 		};
 	}
 };
