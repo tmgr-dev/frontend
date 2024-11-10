@@ -187,7 +187,9 @@ const teamItems = [
 ]
 
 onBeforeMount(async () => {
-	// dailyRoutinesCount.value = await getDailyTasksCount();
+	if (store.getters.isLoggedIn) {
+		dailyRoutinesCount.value = await getDailyTasksCount();
+	}
 })
 
 const switchOn = computed({
