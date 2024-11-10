@@ -9,8 +9,8 @@
 		:style="disabledStyles"
 		class="flex flex-col justify-center"
 	>
-		<div class="relative flex items-center justify-center gap-2">
-			<div
+		<div class="relative flex items-center justify-center">
+			<!--			<div
 				v-if="lastStartTime"
 				class="select-none opacity-20"
 				style="opacity: 0.2"
@@ -18,25 +18,9 @@
 				<span class="">{{ lastStartTime.hours }} </span>
 				{{ ':' }}
 				<span class="">{{ lastStartTime.minutes }}</span>
-			</div>
+			</div>-->
 
-			<div
-				v-tooltip.top="
-					userSettings.showTooltips
-						? 'Double click to edit the time'
-						: { visible: false }
-				"
-				class="flex select-none items-center gap-3 text-2xl"
-				@dblclick="isShowModalTimer = true"
-			>
-				<span>{{ timer.hours }}</span>
-				<span>{{ timer.minutes }}</span>
-				<span>
-					{{ timer.seconds }}
-				</span>
-			</div>
-
-			<div
+			<!--			<div
 				v-if="approximatelyEndTime && !timeIsOver"
 				class="select-none opacity-20"
 				style="opacity: 0.2"
@@ -44,32 +28,48 @@
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
 				{{ ':' }}
 				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
-			</div>
-
-			<div v-if="timeIsOver">
-				<p class="text-red">Time is over</p>
-			</div>
-
-			<div class="flex justify-center" :class="{ 'mt-2': task.start_time }">
-				<button
-					v-if="!isFullScreen"
-					class="flex border px-2 py-0.5 leading-none outline-none hover:text-white"
-					:class="{
-						'border-red-400 text-red-600 hover:bg-red-400': task.start_time,
-						'border-blue-400 text-blue-600 hover:bg-blue-400': !task.start_time,
-					}"
-					type="button"
-					@click="toggleCountdown"
-				>
-					<span v-if="!task.start_time" class="material-icons">play_arrow</span>
-					<span v-else class="material-icons">stop</span>
-				</button>
-			</div>
+			</div>-->
 
 			<div
-				id="reminder-sound-teleport"
-				class="relative inline-flex rounded-md shadow-sm"
-			/>
+				v-tooltip.top="
+					userSettings.showTooltips
+						? 'Double click to edit the time'
+						: { visible: false }
+				"
+				class="grid select-none grid-cols-3 items-center gap-x-1 text-2xl font-bold"
+				:class="[
+					isTimerActive &&
+						!isTimeOver &&
+						'bg-gradient-to-r from-blue-500 to-green-500 bg-clip-text text-transparent',
+					isTimeOver && 'text-red-500',
+					!isTimerActive && !isTimeOver && 'text-gray-500',
+				]"
+				@dblclick="isShowModalTimer = true"
+			>
+				<span>{{ timer.hours }} :</span> <span>{{ timer.minutes }} :</span>
+				<span>
+					{{ timer.seconds }}
+				</span>
+				<span
+					v-if="isTimeOver"
+					class="col-span-3 text-center text-xs text-red-600"
+				>
+					time is over
+				</span>
+			</div>
+
+			<div class="flex justify-center">
+				<button v-if="!isFullScreen" type="button" @click="toggleTimer">
+					<PlayCircleIcon
+						v-if="!isTimerActive"
+						class="size-7 fill-blue-500/80 hover:fill-blue-500"
+					/>
+					<StopCircleIcon
+						v-else
+						class="size-7 fill-red-500/80 transition hover:fill-red-500"
+					/>
+				</button>
+			</div>
 		</div>
 
 		<!--		<reminder
@@ -130,6 +130,8 @@
 <script setup>
 	import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 	import { useStore } from 'vuex';
+	import { ClockIcon } from '@heroicons/vue/24/outline';
+	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
 	import Reminder from 'src/components/tasks/Reminder.vue';
 	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
 	import Modal from 'src/components/Modal.vue';
@@ -158,9 +160,10 @@
 	// Reactive state
 	const reminderSoundActive = ref(false);
 	const isFullScreen = ref(false);
+	const isTimerActive = ref(false);
 	const approximatelyEndTime = ref(null);
 	const lastStartTime = ref(null);
-	const timeIsOver = ref(false);
+	const isTimeOver = ref(false);
 	const isShowModalTimer = ref(false);
 	const task = reactive({});
 
@@ -192,13 +195,13 @@
 
 	// Methods
 
-	const toggleCountdown = () => {
+	const toggleTimer = () => {
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
 			countdownInterval = null;
-			task.start_time = false;
+			isTimerActive.value = false;
 		} else {
-			task.start_time = true;
+			isTimerActive.value = true;
 			countdownInterval = setInterval(plusSecond, 1000);
 		}
 		emit('toggle');
@@ -245,6 +248,7 @@
 			);
 		}
 
+		isTimerActive.value = true;
 		countdownInterval = setInterval(plusSecond, 1000);
 	};
 
@@ -255,7 +259,7 @@
 
 		const leftTime = task.approximately_time - task.common_time;
 		if (leftTime < 0) {
-			timeIsOver.value = true;
+			isTimeOver.value = true;
 			approximatelyEndTime.value = null;
 			lastStartTime.value = null;
 			return;

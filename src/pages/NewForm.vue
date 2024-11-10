@@ -230,7 +230,7 @@
 	<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 	<div
-		class="flex h-full flex-col gap-4 overflow-y-auto rounded-lg p-6"
+		class="flex h-full flex-col gap-4 overflow-y-auto p-6"
 		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
 	>
 		<header class="flex justify-between">

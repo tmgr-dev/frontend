@@ -8,7 +8,7 @@
 		<div class="absolute inset-0 bg-black/50" @click="zooming" />
 
 		<div
-			class="relative m-auto max-w-full bg-white dark:bg-gray-900 md:rounded-lg"
+			class="relative m-auto max-w-full bg-white dark:bg-gray-900 md:rounded-[8px]"
 			:class="[modalClass, { 'zoom-effect': isZooming }]"
 		>
 			<slot name="modal-body"></slot>
