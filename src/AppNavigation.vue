@@ -3,6 +3,7 @@
 	<div class="flex min-h-screen">
 		<!-- Sidebar -->
 		<aside
+			v-if="$store.getters.isLoggedIn"
 			class="fixed left-0 top-0 h-full transition-all duration-300"
 			:class="[
         isExpanded ? 'w-64' : 'w-16',
@@ -91,10 +92,11 @@
 		<!-- Main Content Area -->
 		<div
 			class="flex-1 transition-all duration-300 w-full"
-			:class="{ 'pl-64': isExpanded, 'pl-16': !isExpanded }"
+			:class="{ 'pl-64': $store.getters.isLoggedIn && isExpanded, 'pl-16': $store.getters.isLoggedIn && !isExpanded }"
 		>
 			<!-- Top Navigation Bar -->
-			<header class="sticky top-0 z-10 bg-white shadow dark:bg-gray-900">
+			<header
+				v-if="$store.getters.isLoggedIn" class="sticky top-0 z-10 bg-white shadow dark:bg-gray-900">
 				<div class="flex items-center justify-between px-4 py-4">
 					<div class="flex items-center">
 						<div class="relative lg:w-96 md:w-60 w-48">
@@ -185,7 +187,7 @@ const teamItems = [
 ]
 
 onBeforeMount(async () => {
-	dailyRoutinesCount.value = await getDailyTasksCount();
+	// dailyRoutinesCount.value = await getDailyTasksCount();
 })
 
 const switchOn = computed({
