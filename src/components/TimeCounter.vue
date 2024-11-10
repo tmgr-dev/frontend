@@ -10,33 +10,18 @@
 		class="flex flex-col justify-center"
 	>
 		<div class="relative flex items-center justify-center">
-			<!--			<div
-				v-if="lastStartTime"
-				class="select-none opacity-20"
-				style="opacity: 0.2"
-			>
-				<span class="">{{ lastStartTime.hours }} </span>
-				{{ ':' }}
-				<span class="">{{ lastStartTime.minutes }}</span>
-			</div>-->
-
-			<!--			<div
-				v-if="approximatelyEndTime && !timeIsOver"
-				class="select-none opacity-20"
-				style="opacity: 0.2"
-			>
-				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
-				{{ ':' }}
-				<span class="countdown-item">{{ approximatelyEndTime.minutes }}</span>
-			</div>-->
+			<TaskTimeInfo
+				:task-id="task.id"
+				:timer="timer"
+				:approximately-end-time="approximatelyEndTime"
+				:last-start-time="lastStartTime"
+				:is-time-over="isTimeOver"
+				:is-timer-active="isTimerActive"
+				@stop-timer="toggleTimer"
+			/>
 
 			<div
-				v-tooltip.top="
-					userSettings.showTooltips
-						? 'Double click to edit the time'
-						: { visible: false }
-				"
-				class="grid select-none grid-cols-3 items-center gap-x-1 text-2xl font-bold"
+				class="flex select-none items-center gap-x-1 text-2xl font-bold"
 				:class="[
 					isTimerActive &&
 						!isTimeOver &&
@@ -46,8 +31,9 @@
 				]"
 				@dblclick="isShowModalTimer = true"
 			>
-				<span>{{ timer.hours }} :</span> <span>{{ timer.minutes }} :</span>
-				<span>
+				<span class="w-11">{{ timer.hours }} :</span>
+				<span class="w-11">{{ timer.minutes }} :</span>
+				<span class="w-9">
 					{{ timer.seconds }}
 				</span>
 				<span
@@ -77,110 +63,51 @@
 			v-model:is-active="reminderSoundActive"
 			:task="task"
 		/>-->
-
-		<Transition name="bounce-right-fade">
-			<Modal v-if="isShowModalTimer" modal-class="w-96 p-10">
-				<template #modal-body>
-					<div class="countdown-modal-edit">
-						<vue-the-mask
-							v-model="timer.hours"
-							:tokens="timeTokens"
-							class="countdown-item"
-							mask="###"
-						/>
-
-						<vue-the-mask
-							v-model="timer.minutes"
-							:tokens="timeTokens"
-							class="countdown-item"
-							mask="F#"
-						/>
-
-						<vue-the-mask
-							v-model="timer.seconds"
-							:tokens="timeTokens"
-							class="countdown-item"
-							mask="F#"
-						/>
-					</div>
-
-					<div class="mt-5 flex flex-nowrap items-center">
-						<button
-							class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
-							type="button"
-							@click="isShowModalTimer = false"
-						>
-							Cancel
-						</button>
-
-						<button
-							class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
-							type="button"
-							@click="updateTimer"
-						>
-							Update
-						</button>
-					</div>
-				</template>
-			</Modal>
-		</Transition>
 	</div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 	import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 	import { useStore } from 'vuex';
-	import { ClockIcon } from '@heroicons/vue/24/outline';
 	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
 	import Reminder from 'src/components/tasks/Reminder.vue';
-	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
+	import { Task, updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
 	import Modal from 'src/components/Modal.vue';
 	import {
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from 'src/utils/timeUtils';
+	import { Button } from 'src/components/ui/button';
+	import TaskTimeInfo from 'src/components/TaskTimeInfo.vue';
+	import { ExtendedTime, Time } from 'src/types';
+	import convertToHHMM from 'src/utils/convertToHHMM';
 
-	const props = defineProps({
-		initTask: {
-			required: true,
-			type: Object,
-		},
-		disabled: {
-			type: Boolean,
-			required: false,
-			default: false,
-		},
-	});
+	interface Props {
+		form: Task;
+		disabled?: boolean;
+	}
 
+	const props = defineProps<Props>();
 	const emit = defineEmits(['toggle', 'update:seconds']);
-
 	const store = useStore();
-	let countdownInterval = null;
+	let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Reactive state
 	const reminderSoundActive = ref(false);
 	const isFullScreen = ref(false);
 	const isTimerActive = ref(false);
-	const approximatelyEndTime = ref(null);
-	const lastStartTime = ref(null);
-	const isTimeOver = ref(false);
-	const isShowModalTimer = ref(false);
-	const task = reactive({});
-
-	const timer = reactive({
-		hours: '00',
-		minutes: '00',
-		seconds: '00',
+	const lastStartTime = ref<Time>({
+		hours: 0,
+		minutes: 0,
 	});
-
-	const timeTokens = {
-		F: {
-			pattern: /[0-5]/,
-		},
-		'#': {
-			pattern: /\d/,
-		},
-	};
+	const isShowModalTimer = ref(false);
+	// @todo fix type
+	const task = reactive<Task>({} as Task);
+	const timer = reactive({
+		hours: 0,
+		minutes: 0,
+		seconds: 0,
+	});
 
 	// Computed
 	const userSettings = computed(() => store.state.userSettings ?? {});
@@ -193,8 +120,25 @@
 			: {};
 	});
 
-	// Methods
+	const approximatelyEndTime = computed<ExtendedTime>(() => {
+		const date = new Date();
+		const secondsLeft =
+			date.getSeconds() + (task.approximately_time - task.common_time);
+		date.setSeconds(
+			date.getSeconds() + (task.approximately_time - task.common_time),
+		);
 
+		return {
+			hours: prepareClockNumber(date.getHours()),
+			minutes: prepareClockNumber(date.getMinutes()),
+			timeLeft: convertToHHMM(secondsLeft < 0 ? 0 : secondsLeft),
+		};
+	});
+	const isTimeOver = computed(
+		() => task.approximately_time - task.common_time < 0,
+	);
+
+	// Methods
 	const toggleTimer = () => {
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
@@ -205,23 +149,6 @@
 			countdownInterval = setInterval(plusSecond, 1000);
 		}
 		emit('toggle');
-	};
-
-	const validateCountdownBeforeUpdate = () => {
-		if (timer.hours === '') timer.hours = '00';
-		if (timer.minutes === '') timer.minutes = '00';
-		if (timer.seconds === '') timer.seconds = '00';
-	};
-
-	const updateTimer = async () => {
-		validateCountdownBeforeUpdate();
-		const seconds = timer.hours * 3600 + +timer.minutes * 60 + +timer.seconds;
-
-		await updateTaskTimeCounter(task.id, {
-			common_time: seconds,
-		});
-
-		isShowModalTimer.value = false;
 	};
 
 	const plusSecond = () => {
@@ -237,14 +164,14 @@
 
 	const initCountdown = () => {
 		if (!task.start_time) {
-			clearInterval(countdownInterval);
-			countdownInterval = null;
+			if (countdownInterval) clearInterval(countdownInterval);
 			return;
 		}
 
 		if (task.start_time) {
 			task.common_time += Math.floor(
-				(new Date() - new Date().setTime(task.start_time * 1000)) / 1000,
+				(new Date().getTime() - new Date().setTime(task.start_time * 1000)) /
+					1000,
 			);
 		}
 
@@ -253,34 +180,16 @@
 	};
 
 	const renderApproximatelyStartTime = () => {
-		if (!task.approximately_time || !task.start_time) {
+		if (!task.approximately_time || !task.start_time || isTimeOver.value) {
 			return;
 		}
 
-		const leftTime = task.approximately_time - task.common_time;
-		if (leftTime < 0) {
-			isTimeOver.value = true;
-			approximatelyEndTime.value = null;
-			lastStartTime.value = null;
-			return;
-		}
-
-		const dt = new Date();
-		dt.setSeconds(
-			dt.getSeconds() + (task.approximately_time - task.common_time),
-		);
-
-		approximatelyEndTime.value = {
-			hours: prepareClockNumber(dt.getHours()),
-			minutes: prepareClockNumber(dt.getMinutes()),
-		};
-
-		const st = new Date();
-		st.setTime(task.start_time * 1000);
+		const date = new Date();
+		date.setTime(task.start_time * 1000);
 
 		lastStartTime.value = {
-			hours: prepareClockNumber(st.getHours()),
-			minutes: prepareClockNumber(st.getMinutes()),
+			hours: prepareClockNumber(date.getHours()),
+			minutes: prepareClockNumber(date.getMinutes()),
 		};
 	};
 
@@ -295,7 +204,7 @@
 
 	// Lifecycle hooks
 	onMounted(() => {
-		Object.assign(task, props.initTask);
+		Object.assign(task, props.form);
 		task.start_time = task.start_time || 0;
 
 		initCountdown();
@@ -303,74 +212,8 @@
 	});
 
 	onUnmounted(() => {
-		clearInterval(countdownInterval);
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+		}
 	});
 </script>
-
-<style lang="scss">
-	.countdown-modal-edit {
-		display: flex;
-		justify-content: center;
-
-		.countdown-item {
-			width: 33%;
-			text-align: center;
-			margin-right: 5px !important;
-		}
-	}
-
-	.countdown-edit {
-		position: absolute;
-		top: -15px;
-		left: calc(100% + 10px);
-	}
-
-	.new-task {
-		.countdown-item {
-			font-size: 2em;
-			border-radius: 5px;
-			padding: 0px 10px;
-			background-color: rgb(51, 51, 51);
-			box-shadow: inset 0px 0px 26px #000;
-			margin-right: 15px;
-			color: white;
-
-			&.seconds {
-				color: #00c300;
-			}
-
-			&:last-child {
-				margin-right: 0;
-			}
-		}
-
-		.new-task-wrappper {
-			font-size: 2em;
-			display: block;
-		}
-
-		.do-fullscreen {
-			position: absolute;
-			bottom: 10px;
-			right: 10px;
-			cursor: pointer;
-		}
-	}
-
-	.new-task.fullscreen {
-		position: fixed;
-		width: 100vw;
-		height: 100vh;
-		z-index: 99999;
-		top: 0;
-		left: 0;
-		margin: 0px;
-		padding-top: 250px;
-		background: #333;
-		border-radius: 0px;
-
-		.fullscreen-toggler {
-			color: white;
-		}
-	}
-</style>

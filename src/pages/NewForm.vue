@@ -281,7 +281,7 @@
 			<div class="ml-auto">
 				<TimeCounter
 					v-if="form.id"
-					:init-task="form"
+					:form="form"
 					:disabled="!form.id"
 					@toggle="toggleTimer"
 				/>
@@ -292,7 +292,7 @@
 			v-model="form.description"
 			class="mb-2 grow md:h-72"
 			:class="[!isModal && 'lg:min-h-96']"
-			:show-preview="!!taskId"
+			:show-preview="taskId && form.description"
 		/>
 
 		<!--	actions	-->
