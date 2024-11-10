@@ -1,10 +1,5 @@
 <template>
-	<div
-		id="backdrop"
-		class="fixed inset-0 z-50 flex"
-		data-name="overlay"
-		@click="close"
-	>
+	<div id="backdrop" class="fixed inset-0 z-50 flex" data-name="overlay">
 		<div class="absolute inset-0 bg-black/50" @click="zooming" />
 
 		<div

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { onMounted, ref } from 'vue';
+	import { onMounted, ref, watch } from 'vue';
 	import { MdEditor, ExposeParam } from 'md-editor-v3';
 	import 'src/assets/styles/md-editor.css';
 	import store from '../store';
@@ -20,12 +20,15 @@
 		editorRef.value?.togglePreviewOnly();
 	};
 
-	onMounted(() => {
-		if (props.showPreview) {
-			editorPreviewActive.value = true;
-			editorRef.value?.togglePreviewOnly(true);
-		}
-	});
+	watch(
+		() => props.showPreview,
+		() => {
+			if (props.showPreview) {
+				editorPreviewActive.value = true;
+				editorRef.value?.togglePreviewOnly(true);
+			}
+		},
+	);
 </script>
 
 <template>

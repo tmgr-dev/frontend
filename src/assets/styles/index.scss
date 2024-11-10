@@ -5,9 +5,9 @@
 @import 'tailwindcss/utilities';
 @import 'task';
 @import 'alert';
-@import 'editor';
 @import 'checkbox';
 @import 'task-form';
+@import 'extensions';
 
 body {
 	overflow-x: hidden;
@@ -25,9 +25,6 @@ body {
 		background-color: darkgrey;
 		outline: 1px solid slategrey;
 	}
-}
-.ql-editor p img {
-	max-height: 200px;
 }
 
 .reset-scroll {
