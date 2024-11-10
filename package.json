@@ -26,6 +26,7 @@
 		"@quasar/extras": "^1.15.9",
 		"@radial-color-picker/vue-color-picker": "^5.0.1",
 		"@vueup/vue-quill": "^1.0.1",
+		"@vueuse/core": "^11.2.0",
 		"axios": "^1.2.2",
 		"canvas-confetti": "^1.6.0",
 		"core-js": "^3.27.1",
