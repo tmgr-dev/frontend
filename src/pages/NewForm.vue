@@ -27,7 +27,7 @@
 		Task,
 		updateTask,
 	} from 'src/actions/tmgr/tasks';
-	import Editor from 'src/components/Editor.vue';
+	import BlockEditor from 'src/components/BlockEditor.vue';
 	import TextField from 'src/components/general/TextField.vue';
 	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
 	import 'vue-multiselect/dist/vue-multiselect.css';
@@ -49,7 +49,11 @@
 	import { Category, getCategories } from 'src/actions/tmgr/categories';
 	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
 	import convertToHHMM from 'src/utils/convertToHHMM';
-	import Countdown from 'src/components/general/Countdown.vue';
+	import { getTaskSettings, Setting } from 'src/actions/tmgr/settings';
+	import Editor from 'src/components/Editor.vue';
+
+	const editorType = ref<string>('markdown');
+	const settings = ref<Setting[]>([]);
 
 	interface Props {
 		isModal: boolean;
@@ -89,17 +93,25 @@
 			(setting: Record<string, string | number>) =>
 				setting.key === 'current_workspace',
 		)?.value;
+		editorType.value = store.state.user?.settings?.find(
+			(setting: Record<string, string | number>) =>
+				setting.key === 'preferred_editor',
+		)?.value || editorType.value;
+		console.log('editorType.value', editorType.value);
 
 		try {
-			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
+			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers, taskSettings] =
 				await Promise.all([
 					getStatuses(),
 					getCategories(),
 					workspaceId && getWorkspaceMembers(workspaceId),
+					getTaskSettings()
 				]);
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
+			settings.value = await getTaskSettings();
+			console.log('settings.value', settings.value);
 		} catch (e) {
 			console.error(e);
 		}
@@ -110,6 +122,25 @@
 			}
 
 			form.value = await getTask(+taskId.value);
+
+			if (editorType.value === 'block') {
+				if (!form.value.description_json && form.value.description) {
+
+					form.value.description_json = {
+						"time":1731156298664,
+						"blocks":[
+							{
+								"id":"Sb8IPG_R7P",
+								"type":"paragraph",
+								"data": {
+									"text": form.value.description
+								}
+							}
+						],"version":"2.30.6"
+					};
+				}
+			}
+
 			assignees.value =
 				(form.value.assignees as WorkspaceMember[])?.map(
 					(assignee) => assignee.id,
@@ -123,6 +154,7 @@
 
 	const createTask = async () => {
 		form.value.assignees = assignees.value;
+		prepareTaskDescription();
 		form.value = await createTaskAction(form.value as Task);
 
 		if (props.isModal) {
@@ -138,6 +170,14 @@
 			});
 		}
 	};
+
+	const prepareTaskDescription = () => {
+		if (editorType.value === 'block') {
+			form.value.description = "";
+		} else {
+			form.value.description_json = undefined;
+		}
+	}
 
 	const removeTask = async () => {
 		if (taskId.value) {
@@ -164,6 +204,7 @@
 		try {
 			isLoading.value = true;
 			form.value.assignees = assignees.value;
+			prepareTaskDescription();
 			if (!form.value.project_category_id) {
 				delete form.value.project_category_id;
 			}
@@ -276,7 +317,17 @@
 			</div>
 		</div>
 
+		<BlockEditor
+			v-if="editorType === 'block'"
+			v-model="form.description_json"
+			placeholder="Type your description here or enter / to see commands or "
+			class="mb-2 grow px-2"
+			:class="[!isModal ? 'lg:min-h-96' : 'md:h-72 overflow-y-scroll']"
+			:show-preview="!!taskId"
+		/>
+
 		<Editor
+			v-if="editorType === 'markdown'"
 			v-model="form.description"
 			class="mb-2 grow md:h-72"
 			:class="[!isModal && 'lg:min-h-96']"

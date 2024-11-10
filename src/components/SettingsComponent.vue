@@ -43,7 +43,16 @@
 							v-model="setting.value"
 							:placeholder="setting.description"
 						/>
-
+						<template v-else-if="setting.component_type === 'select'">
+							<Select
+								v-model="settings.value"
+								:options="setting.default_values.map(val => ({
+												label: val.value,
+												value: val.value
+											}))"
+								:placeholder="setting.description"
+							/>
+						</template>
 						<TextField
 							v-else
 							v-model="setting.value"
@@ -105,6 +114,7 @@
 		DialogTrigger,
 	} from 'src/components/ui/dialog';
 	import { Button } from 'src/components/ui/button';
+	import Select from 'src/components/general/Select.vue';
 
 	const emit = defineEmits(['close']);
 
