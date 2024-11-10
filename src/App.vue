@@ -9,23 +9,21 @@
 		<transition mode="out-in" name="fade">
 
 			<AppNavigation @new-task="handleNewTask">
-				<router-view></router-view>
+				<router-view :key="$route.path" v-slot="{ Component }">
+					<transition
+						:name="transitionName"
+						mode="out-in"
+						@before-leave="beforeLeave"
+						@enter="enter"
+						@after-enter="afterEnter"
+					>
+						<div>
+							<component :is="Component" v-if="showComponent"></component>
+						</div>
+					</transition>
+				</router-view>
 			</AppNavigation>
 		</transition>
-
-		<router-view :key="$route.path" v-slot="{ Component }">
-			<transition
-				:name="transitionName"
-				mode="out-in"
-				@before-leave="beforeLeave"
-				@enter="enter"
-				@after-enter="afterEnter"
-			>
-				<div>
-<!--					<component :is="Component" v-if="showComponent"></component>-->
-				</div>
-			</transition>
-		</router-view>
 
 		<ActiveTasks :tasks="activeTasks" />
 
