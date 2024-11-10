@@ -1,12 +1,6 @@
 <template>
 	<div class="w-48 pr-4">
-		<Select
-			:options="workspaces"
-			v-model="workspaceId"
-			label-key="name"
-			value-key="id"
-			@change="onSelectChange"
-		/>
+		<WorkspaceSelect />
 	</div>
 
 	<ul
@@ -52,6 +46,7 @@
 	import { onBeforeMount, ref, Ref } from 'vue';
 	import { getWorkspaces, Workspace } from 'src/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from 'src/actions/tmgr/user';
+	import WorkspaceSelect from 'src/components/general/WorkspaceSelect.vue';
 
 	defineEmits(['navigated']);
 	const workspaces = ref([] as Workspace[]);
