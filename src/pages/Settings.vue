@@ -108,7 +108,16 @@
 											@updateSettings="updateSettings"
 										/>
 									</template>
-
+									<template v-else-if="setting.component_type === 'select'">
+										<Select
+											v-model="settings[index].value"
+											:options="setting.default_values.map(val => ({
+												label: val.value,
+												value: val.value
+											}))"
+											:placeholder="setting.description"
+										/>
+									</template>
 									<template v-else-if="setting.custom_value_available">
 										<TimeField
 											v-if="setting.component_type === 'time_in_seconds'"

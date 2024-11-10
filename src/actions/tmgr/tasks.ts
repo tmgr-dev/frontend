@@ -2,16 +2,39 @@ import $axios from 'src/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
 import store from 'src/store';
 import objectToQueryString from 'src/utils/objectToQueryString';
+import { FormSetting, Setting } from 'src/actions/tmgr/settings';
+import { User } from 'src/actions/tmgr/user';
 
 export interface Task {
-	id: number;
+	id: number | undefined;
 	approximately_time: number;
+	assignees: Record<string, any>[] | number[];
 	category: number;
 	title: string;
 	status: string;
-	description: string;
+	description: string | null;
+	description_json: Record<string, any> | null;
 	common_time: number;
 	is_daily_routine: boolean;
+	order: number;
+	project_category_id?: number | null;
+	settings?: FormSetting[];
+	start_time: number;
+	status_id: number;
+	user: Pick<User, 'id' | 'name'>;
+	user_id: number;
+	workspace_id?: number;
+}
+interface LinkResponse {
+	success: 1 | 0;
+	link?: string;
+	meta?: {
+		title: string;
+		description: string;
+		image: {
+			url: string;
+		};
+	};
 }
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
@@ -55,7 +78,7 @@ export const createTask = async (task: Task) => {
 export const optimizeWithAI = async (text: string) => {
 	const {
 		data: { data },
-	} = await $axios.post('ai/optimize', {text});
+	} = await $axios.post('ai/optimize', { text });
 
 	return data;
 };
@@ -68,8 +91,11 @@ export const updateTask = async (taskId: number, task: Task) => {
 	return data;
 };
 
-export const updateStatusOfTasks = async (taskIds: Array<number>, statusId: number) => {
-	await $axios.put(`statuses/${statusId}/tasks`, {task_ids: taskIds});
+export const updateStatusOfTasks = async (
+	taskIds: Array<number>,
+	statusId: number,
+) => {
+	await $axios.put(`statuses/${statusId}/tasks`, { task_ids: taskIds });
 };
 
 export const updateTaskPartially = async (taskId: number, task: Task) => {
@@ -222,4 +248,27 @@ export const exportTasks = async (
 	);
 
 	return data;
+};
+
+export const fetchLinkMetadata = async (url: string): Promise<LinkResponse> => {
+	try {
+		const { data } = await $axios.post(`/fetch-link-metadata`, { url });
+
+		return {
+			success: 1,
+			link: url,
+			meta: {
+				title: data.title || '',
+				description: data.description || '',
+				image: {
+					url: data.image || '',
+				},
+			},
+		};
+	} catch (error) {
+		console.error('Error fetching link metadata:', error);
+		return {
+			success: 0,
+		};
+	}
 };
