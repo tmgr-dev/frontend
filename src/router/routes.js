@@ -1,13 +1,13 @@
-//const TaskForm = () => import('src/pages/TaskForm.vue');
-const TaskForm = () => import('src/pages/NewForm.vue');
-const TasksListPage = () => import('pages/TasksListPage.vue');
-const ProjectCategoryList = () => import('src/pages/ProjectCategoryList.vue');
-const ProjectCategoryForm = () => import('src/pages/ProjectCategoryForm.vue');
+//const TaskForm = () => import('@/pages/TaskForm.vue');
+const TaskForm = () => import('@/pages/NewForm.vue');
+const TasksListPage = () => import('@/pages/TasksListPage.vue');
+const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
+const ProjectCategoryForm = () => import('@/pages/ProjectCategoryForm.vue');
 
 const routes = [
 	{
 		path: '/login',
-		component: () => import('src/pages/auth/Login.vue'),
+		component: () => import('@/pages/auth/Login.vue'),
 		name: 'Login',
 		meta: {
 			allowedGuests: true,
@@ -16,7 +16,7 @@ const routes = [
 	},
 	{
 		path: '/login/:platform',
-		component: () => import('src/pages/auth/SocialiteProxy.vue'),
+		component: () => import('@/pages/auth/SocialiteProxy.vue'),
 		name: 'SocialiteProxy',
 		meta: {
 			allowedGuests: true,
@@ -25,7 +25,7 @@ const routes = [
 	},
 	{
 		path: '/register',
-		component: () => import('src/pages/auth/Register.vue'),
+		component: () => import('@/pages/auth/Register.vue'),
 		name: 'Register',
 		meta: {
 			allowedGuests: true,
@@ -34,7 +34,7 @@ const routes = [
 	},
 	{
 		path: '/password/forget',
-		component: () => import('src/pages/auth/ForgetPassword.vue'),
+		component: () => import('@/pages/auth/ForgetPassword.vue'),
 		name: 'ForgetPassword',
 		meta: {
 			allowedGuests: true,
@@ -43,7 +43,7 @@ const routes = [
 	},
 	{
 		path: '/password/reset',
-		component: () => import('src/pages/auth/NewPassword.vue'),
+		component: () => import('@/pages/auth/NewPassword.vue'),
 		name: 'NewPassword',
 		meta: {
 			allowedGuests: true,
@@ -71,7 +71,7 @@ const routes = [
 	},
 	{
 		path: '/board',
-		component: () => import('src/pages/Board.vue'),
+		component: () => import('@/pages/Board.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: true,
@@ -162,7 +162,7 @@ const routes = [
 	},
 	{
 		path: '/settings',
-		component: () => import('src/pages/Settings.vue'),
+		component: () => import('@/pages/Settings.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: true,
@@ -171,7 +171,7 @@ const routes = [
 	},
 	{
 		path: '/profile',
-		component: () => import('src/pages/Profile.vue'),
+		component: () => import('@/pages/Profile.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: true,
@@ -180,7 +180,7 @@ const routes = [
 	},
 	{
 		path: '/workspaces/invitations/:token',
-		component: () => import('src/pages/WorkspaceInvitation.vue'),
+		component: () => import('@/pages/WorkspaceInvitation.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: true,
@@ -189,7 +189,7 @@ const routes = [
 	},
 	{
 		path: '/stats',
-		component: () => import('src/pages/Stats.vue'),
+		component: () => import('@/pages/Stats.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: false,
@@ -200,7 +200,7 @@ const routes = [
 	},
 	{
 		path: '/push-notifications-enable-guide',
-		component: () => import('src/pages/PushNotificationsEnableGuide.vue'),
+		component: () => import('@/pages/PushNotificationsEnableGuide.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: false,
@@ -214,11 +214,11 @@ const routes = [
 	{
 		path: '/:catchAll(.*)*',
 		name: 'NotFound',
-		component: () => import('src/pages/Error404.vue'),
+		component: () => import('@/pages/Error404.vue'),
 	},
 	{
 		path: '/daily-routines',
-		component: () => import('src/pages/DailyRoutine.vue'),
+		component: () => import('@/pages/DailyRoutine.vue'),
 		meta: {
 			transitionName: 'fade-fast',
 			navbarHidden: true,

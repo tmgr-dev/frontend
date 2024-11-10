@@ -46,10 +46,12 @@
 						<template v-else-if="setting.component_type === 'select'">
 							<Select
 								v-model="settings.value"
-								:options="setting.default_values.map(val => ({
-												label: val.value,
-												value: val.value
-											}))"
+								:options="
+									setting.default_values.map((val) => ({
+										label: val.value,
+										value: val.value,
+									}))
+								"
 								:placeholder="setting.description"
 							/>
 						</template>
@@ -93,16 +95,16 @@
 </template>
 
 <script setup lang="ts">
-	import TimeField from 'src/components/general/TimeField.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import TimeField from '@/components/general/TimeField.vue';
+	import TextField from '@/components/general/TextField.vue';
 	import {
 		FormSetting,
 		getTaskSettings,
 		Setting,
 		updateOneTaskSettings,
-	} from 'src/actions/tmgr/settings';
+	} from '@/actions/tmgr/settings';
 	import { onBeforeMount, ref } from 'vue';
-	import { Task } from 'src/actions/tmgr/tasks';
+	import { Task } from '@/actions/tmgr/tasks';
 	import { CogIcon, XMarkIcon } from '@heroicons/vue/20/solid';
 	import {
 		Dialog,
@@ -112,9 +114,9 @@
 		DialogHeader,
 		DialogTitle,
 		DialogTrigger,
-	} from 'src/components/ui/dialog';
-	import { Button } from 'src/components/ui/button';
-	import Select from 'src/components/general/Select.vue';
+	} from '@/components/ui/dialog';
+	import { Button } from '@/components/ui/button';
+	import Select from '@/components/general/Select.vue';
 
 	const emit = defineEmits(['close']);
 

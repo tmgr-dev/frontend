@@ -99,26 +99,26 @@
 </template>
 
 <script>
-	import downloadFile from 'src/utils/downloadFile';
-	import Loader from 'src/components/loaders/Loader.vue';
-	import Confirm from 'src/components/general/Confirm.vue';
-	import TasksListMixin from 'src/mixins/TasksListMixin';
-	import TaskMeta from 'src/components/tasks/TaskMeta.vue';
-	import BounceLoader from 'src/components/loaders/BounceLoader.vue';
-	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
-	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
-	import TaskButtonsInTheList from 'src/components/tasks/TaskButtonsInTheList.vue';
-	import TasksMultipleActionsModal from 'src/components/tasks/TasksMultipleActionsModal.vue';
-	import Modal from 'src/components/Modal.vue';
-	import TaskForm from 'src/pages/TaskForm.vue';
+	import downloadFile from '@/utils/downloadFile';
+	import Loader from '@/components/loaders/Loader.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import TaskMeta from '@/components/tasks/TaskMeta.vue';
+	import BounceLoader from '@/components/loaders/BounceLoader.vue';
+	import DropdownMenu from '@/components/general/DropdownMenu.vue';
+	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
+	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
+	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
+	import Modal from '@/components/Modal.vue';
+	import TaskForm from '@/pages/TaskForm.vue';
 	import {
 		exportTasks,
 		getTask,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
-	} from 'src/actions/tmgr/tasks';
-	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
+	} from '@/actions/tmgr/tasks';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 
 	export default {
 		name: 'TasksListComponent',

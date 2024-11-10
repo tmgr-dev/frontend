@@ -1,6 +1,6 @@
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
-import { Task } from 'src/actions/tmgr/tasks';
+import { Task } from '@/actions/tmgr/tasks';
 
 export const getDailyTasks = async (): Promise<Task[]> => {
 	try {
@@ -45,7 +45,7 @@ export const createDailyTask = async (task: Task) => {
 			data: { data },
 		} = await $axios.post('daily-routines/tasks', {
 			...task,
-			is_daily_routine: true
+			is_daily_routine: true,
 		});
 
 		return data;
@@ -55,7 +55,10 @@ export const createDailyTask = async (task: Task) => {
 	}
 };
 
-export const updateDailyTask = async (taskId: number, updates: Partial<Task>) => {
+export const updateDailyTask = async (
+	taskId: number,
+	updates: Partial<Task>,
+) => {
 	try {
 		const {
 			data: { data },

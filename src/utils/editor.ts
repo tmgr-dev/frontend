@@ -1,4 +1,4 @@
-import { Task } from 'src/actions/tmgr/tasks';
+import { Task } from '@/actions/tmgr/tasks';
 
 export const getBlockEditorDescription = (description: Task['description']) => {
 	return {

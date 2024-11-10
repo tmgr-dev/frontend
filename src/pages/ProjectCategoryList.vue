@@ -11,7 +11,7 @@
 				:items="getBreadcrumbs(parentCategories)"
 			/>
 
-			<div class="right-0 bottom-0 mr-5 mb-2 md:absolute">
+			<div class="bottom-0 right-0 mb-2 mr-5 md:absolute">
 				<router-link
 					v-if="category"
 					:to="`/projects-categories/${category.id}`"
@@ -190,19 +190,19 @@
 	import Confirm from '../components/general/Confirm.vue';
 	import Breadcrumbs from '../components/general/Breadcrumbs.vue';
 	import extractParents from '../utils/extractParents';
-	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
+	import LoadingButtonActions from '@/mixins/LoadingButtonActions';
 	import getBreadcrumbs from '../utils/getBreadcrumbs';
-	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from 'src/components/tasks/TasksList.vue';
-	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
+	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
+	import TasksListComponent from '@/components/tasks/TasksList.vue';
+	import { getTasks, updateTaskPartially } from '@/actions/tmgr/tasks';
 	import {
 		restoreCategory,
 		deleteCategory as deleteCategoryAction,
 		getParentCategory,
 		getSubCategories,
-	} from 'src/actions/tmgr/categories';
-	import Select from 'src/components/general/Select.vue';
-	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
+	} from '@/actions/tmgr/categories';
+	import Select from '@/components/general/Select.vue';
+	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 
 	export default {
 		name: 'ProjectCategoryList',

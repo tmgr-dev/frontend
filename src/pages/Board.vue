@@ -346,41 +346,41 @@
 	</BaseLayout>
 </template>
 <script>
-	import Modal from 'src/components/Modal.vue';
-	import Button from 'src/components/general/Button.vue';
+	import Modal from '@/components/Modal.vue';
+	import Button from '@/components/general/Button.vue';
 	import Draggable from 'vuedraggable';
-	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
+	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
 		getWorkspaceStatuses,
 		updateWorkspaceOrder,
-	} from 'src/actions/tmgr/workspaces';
+	} from '@/actions/tmgr/workspaces';
 	import {
 		getSortedTasksByStatus,
 		updateStatusOfTasks,
 		updateTaskOrders,
 		updateTaskStatus,
-	} from 'src/actions/tmgr/tasks';
-	import { getUser, updateUser } from 'src/actions/tmgr/user';
-	import FiltersBoard from 'src/components/general/FiltersBoard.vue';
-	import Dropdown from 'src/components/general/Dropdown.vue';
+	} from '@/actions/tmgr/tasks';
+	import { getUser, updateUser } from '@/actions/tmgr/user';
+	import FiltersBoard from '@/components/general/FiltersBoard.vue';
+	import Dropdown from '@/components/general/Dropdown.vue';
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
-	import TaskBoardCard from 'src/components/tasks/TaskBoardCard.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import TaskBoardCard from '@/components/tasks/TaskBoardCard.vue';
+	import TextField from '@/components/general/TextField.vue';
 	import {
 		createStatus,
 		deleteStatus,
 		updateStatus,
-	} from 'src/actions/tmgr/statuses';
+	} from '@/actions/tmgr/statuses';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
-	import Select from 'src/components/general/Select.vue';
-	import Confirm from 'src/components/general/Confirm.vue';
-	import { hslToHex, hueFromHex } from 'src/utils/convertColors';
-	import { getCategories } from 'src/actions/tmgr/categories';
-	import FilterIcon from 'src/components/icons/FilterIcon.vue';
+	import Select from '@/components/general/Select.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import { hslToHex, hueFromHex } from '@/utils/convertColors';
+	import { getCategories } from '@/actions/tmgr/categories';
+	import FilterIcon from '@/components/icons/FilterIcon.vue';
 
 	export default {
 		name: 'Board',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { cn } from 'src/utils';
+	import { cn } from '@/utils';
 	import { Check } from 'lucide-vue-next';
 	import {
 		SelectItem,

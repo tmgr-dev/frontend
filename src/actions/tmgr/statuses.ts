@@ -1,5 +1,5 @@
-import $axios from 'src/plugins/axios';
-import { Workspace } from 'src/actions/tmgr/workspaces';
+import $axios from '@/plugins/axios';
+import { Workspace } from '@/actions/tmgr/workspaces';
 
 interface StatusPivot {
 	workspace_id: number;

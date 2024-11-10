@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { cn } from 'src/utils';
+	import { cn } from '@/utils';
 	import {
 		Command,
 		CommandEmpty,
@@ -7,17 +7,17 @@
 		CommandInput,
 		CommandItem,
 		CommandList,
-	} from 'src/components/ui/command';
+	} from '@/components/ui/command';
 	import {
 		Popover,
 		PopoverContent,
 		PopoverTrigger,
-	} from 'src/components/ui/popover';
+	} from '@/components/ui/popover';
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
-	import { Button } from 'src/components/ui/button';
+	import { Button } from '@/components/ui/button';
 	import { UserIcon } from '@heroicons/vue/24/outline';
 	import { ref, computed } from 'vue';
-	import { WorkspaceMember } from 'src/actions/tmgr/workspaces';
+	import { WorkspaceMember } from '@/actions/tmgr/workspaces';
 
 	interface Props {
 		assignees: WorkspaceMember[];

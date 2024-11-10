@@ -58,7 +58,7 @@
 					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4 md:w-1/2">
 						<button
 							v-if="!pusherBeamsUserId"
-							class="border-2 border-green-400 px-5 py-2 text-green-600 text-green-400 transition hover:bg-green-400 hover:text-white"
+							class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
 							@click="togglePushes"
 						>
 							Web Pushes
@@ -77,7 +77,7 @@
 						/>
 						<div class="text-left">
 							<button
-								class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+								class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
 								type="button"
 								@click="updateSettings"
 							>
@@ -111,10 +111,12 @@
 									<template v-else-if="setting.component_type === 'select'">
 										<Select
 											v-model="settings[index].value"
-											:options="setting.default_values.map(val => ({
-												label: val.value,
-												value: val.value
-											}))"
+											:options="
+												setting.default_values.map((val) => ({
+													label: val.value,
+													value: val.value,
+												}))
+											"
 											:placeholder="setting.description"
 										/>
 									</template>
@@ -152,7 +154,7 @@
 
 						<div class="text-left">
 							<button
-								class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+								class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
 								type="button"
 								@click="updateSettings"
 							>
@@ -166,7 +168,10 @@
 						<div class="mt-6 border-t pt-6">
 							<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
 							<div class="flex items-center gap-4">
-								<div v-if="user.telegram_username" class="flex items-center gap-2">
+								<div
+									v-if="user.telegram_username"
+									class="flex items-center gap-2"
+								>
 									<span class="text-green-600">✓</span>
 									<span>Connected as @{{ user.telegram_username }}</span>
 									<button
@@ -178,7 +183,7 @@
 								</div>
 								<button
 									v-else
-									class="rounded bg-blue-500 py-2 px-4 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
+									class="rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
 									@click="generateTelegramLink"
 								>
 									Connect Telegram
@@ -189,12 +194,14 @@
 
 					<div v-if="isDevice" class="flex flex-col gap-3.5 p-4">
 						<div class="">
-							<h3 class="text-lg font-bold mb-4">Smart Device Integration</h3>
+							<h3 class="mb-4 text-lg font-bold">Smart Device Integration</h3>
 
 							<!-- Token Display Section -->
 							<div class="mb-6">
 								<div class="flex flex-col space-y-2">
-									<label class="text-sm font-medium text-gray-700">API Token</label>
+									<label class="text-sm font-medium text-gray-700"
+										>API Token</label
+									>
 									<div class="flex items-center gap-2">
 										<TextField
 											:type="showToken ? 'text' : 'password'"
@@ -209,7 +216,7 @@
 											:class="[
 												showToken
 													? 'text-gray-600 hover:text-gray-800'
-													: 'text-blue-600 hover:text-blue-800'
+													: 'text-blue-600 hover:text-blue-800',
 											]"
 										>
 											{{ showToken ? 'Hide' : 'Show' }}
@@ -224,7 +231,11 @@
 									class="rounded bg-blue-500 px-4 py-2 font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
 									@click="generateSmartDeviceToken"
 								>
-									{{ user.smart_device_token ? 'Generate New Token' : 'Generate Token' }}
+									{{
+										user.smart_device_token
+											? 'Generate New Token'
+											: 'Generate Token'
+									}}
 								</button>
 								<button
 									v-if="user.smart_device_token"
@@ -237,23 +248,39 @@
 
 							<!-- Token Information -->
 							<div class="mt-6">
-								<h4 class="text-sm font-semibold text-gray-700 mb-2">Token Information</h4>
-								<div v-if="user.smart_device_token" class="text-sm text-gray-600">
-									<p>Created: {{ formatDate(user.smart_device_token_created_at) }}</p>
+								<h4 class="mb-2 text-sm font-semibold text-gray-700">
+									Token Information
+								</h4>
+								<div
+									v-if="user.smart_device_token"
+									class="text-sm text-gray-600"
+								>
+									<p>
+										Created:
+										{{ formatDate(user.smart_device_token_created_at) }}
+									</p>
 								</div>
 							</div>
 
 							<!-- Usage Instructions -->
-							<div class="mt-6 bg-gray-50 rounded-md p-4">
-								<h4 class="text-sm font-semibold text-gray-700 mb-2">How to Use</h4>
-								<div class="text-sm text-gray-600 space-y-2">
+							<div class="mt-6 rounded-md bg-gray-50 p-4">
+								<h4 class="mb-2 text-sm font-semibold text-gray-700">
+									How to Use
+								</h4>
+								<div class="space-y-2 text-sm text-gray-600">
 									<p>1. Generate a token using the button above</p>
-									<p>2. Include the token in your device's API requests using the header:</p>
-									<code class="block bg-gray-100 p-2 rounded text-sm font-mono mt-1">
+									<p>
+										2. Include the token in your device's API requests using the
+										header:
+									</p>
+									<code
+										class="mt-1 block rounded bg-gray-100 p-2 font-mono text-sm"
+									>
 										X-Smart-Device-Token: your_token_here
 									</code>
 									<p class="mt-2 text-sm text-gray-500">
-										Keep your token secure. If compromised, generate a new one immediately.
+										Keep your token secure. If compromised, generate a new one
+										immediately.
 									</p>
 								</div>
 							</div>
@@ -274,10 +301,11 @@
 					<template #body-content>
 						<p>{{ confirm.body }}</p>
 
-						<a v-if="confirm.link"
-							 class="mt-2 block text-blue-500 hover:text-blue-700"
-							 :href="confirm.link"
-							 target="_blank"
+						<a
+							v-if="confirm.link"
+							class="mt-2 block text-blue-500 hover:text-blue-700"
+							:href="confirm.link"
+							target="_blank"
 						>
 							Open Telegram
 						</a>
@@ -289,291 +317,296 @@
 </template>
 
 <script>
-import Confirm from 'src/components/general/Confirm.vue';
-import Button from 'src/components/general/Button.vue';
-import CurrentWorkspace from 'src/components/CurrentWorkspace.vue';
-import {
-	getUser,
-	getUserSettingsV2,
-	updateUserSettings,
-	updateUserSettingsV2,
-} from 'src/actions/tmgr/user';
-import { sendNotification } from 'src/actions/tmgr/notifications';
-import Select from 'src/components/general/Select.vue';
-import Switcher from 'src/components/general/Switcher.vue';
-import TimeField from 'src/components/general/TimeField.vue';
-import TextField from 'src/components/general/TextField.vue';
-import Profile from 'src/pages/Profile.vue';
-import { generateLink, unlink } from 'src/actions/tmgr/telegram';
-import { generateSmartDeviceToken, revokeSmartDeviceToken } from 'src/actions/tmgr/smart-devices';
+	import Confirm from '@/components/general/Confirm.vue';
+	import Button from '@/components/general/Button.vue';
+	import CurrentWorkspace from '@/components/CurrentWorkspace.vue';
+	import {
+		getUser,
+		getUserSettingsV2,
+		updateUserSettings,
+		updateUserSettingsV2,
+	} from '@/actions/tmgr/user';
+	import { sendNotification } from '@/actions/tmgr/notifications';
+	import Select from '@/components/general/Select.vue';
+	import Switcher from '@/components/general/Switcher.vue';
+	import TimeField from '@/components/general/TimeField.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import Profile from '@/pages/Profile.vue';
+	import { generateLink, unlink } from '@/actions/tmgr/telegram';
+	import {
+		generateSmartDeviceToken,
+		revokeSmartDeviceToken,
+	} from '@/actions/tmgr/smart-devices';
 
-export default {
-	name: 'Settings',
-	components: {
-		Profile,
-		TextField,
-		TimeField,
-		Switcher,
-		Select,
-		Button,
-		Confirm,
-		CurrentWorkspace,
-	},
-	created() {
-		this.handleTabFromQuery();
-	},
-	data: () => ({
-		availableSettings: [],
-		settings: [],
-		user: {},
-		confirm: null,
-		isNotification: false,
-		isWorkspaceSettings: true,
-		isProfile: false,
-		isDevice: false,
-		telegramLink: null,
-		showToken: false,
-	}),
-	watch: {
-		'$route.query': {
-			handler: 'handleTabFromQuery',
-			immediate: true
-		}
-	},
-	computed: {
-		userSettings() {
-			return this.$store.state.userSettings || {};
+	export default {
+		name: 'Settings',
+		components: {
+			Profile,
+			TextField,
+			TimeField,
+			Switcher,
+			Select,
+			Button,
+			Confirm,
+			CurrentWorkspace,
 		},
-		pusherBeamsUserId() {
-			return this.$store.getters.getPusherBeamsUserId;
+		created() {
+			this.handleTabFromQuery();
 		},
-	},
-	async mounted() {
-		this.user = await getUser();
-		await this.loadSettings();
-	},
-	methods: {
-		formatDate(date) {
-			if (!date) return '';
-			return new Date(date).toLocaleString();
+		data: () => ({
+			availableSettings: [],
+			settings: [],
+			user: {},
+			confirm: null,
+			isNotification: false,
+			isWorkspaceSettings: true,
+			isProfile: false,
+			isDevice: false,
+			telegramLink: null,
+			showToken: false,
+		}),
+		watch: {
+			'$route.query': {
+				handler: 'handleTabFromQuery',
+				immediate: true,
+			},
 		},
+		computed: {
+			userSettings() {
+				return this.$store.state.userSettings || {};
+			},
+			pusherBeamsUserId() {
+				return this.$store.getters.getPusherBeamsUserId;
+			},
+		},
+		async mounted() {
+			this.user = await getUser();
+			await this.loadSettings();
+		},
+		methods: {
+			formatDate(date) {
+				if (!date) return '';
+				return new Date(date).toLocaleString();
+			},
 
-		handleTabFromQuery() {
-			const tab = this.$route.query.tab;
-			if (tab) {
-				switch (tab.toLowerCase()) {
-					case 'notification':
-						this.showNotificationSettings();
-						break;
-					case 'workspace':
-						this.showWorkspaceSettings();
-						break;
-					case 'profile':
-						this.showProfileSettings();
-						break;
-					case 'device':
-						this.showDeviceSettings();
-						break;
-				}
-			}
-		},
-
-		showNotificationSettings() {
-			this.isWorkspaceSettings = false;
-			this.isProfile = false;
-			this.isNotification = true;
-			this.isDevice = false;
-			this.updateQueryParam('notification');
-		},
-
-		showWorkspaceSettings() {
-			this.isNotification = false;
-			this.isWorkspaceSettings = true;
-			this.isProfile = false;
-			this.isDevice = false;
-			this.updateQueryParam('workspace');
-		},
-
-		showProfileSettings() {
-			this.isNotification = false;
-			this.isWorkspaceSettings = false;
-			this.isProfile = true;
-			this.isDevice = false;
-			this.updateQueryParam('profile');
-		},
-
-		showDeviceSettings() {
-			this.isNotification = false;
-			this.isWorkspaceSettings = false;
-			this.isProfile = false;
-			this.isDevice = true;
-			this.updateQueryParam('device');
-		},
-
-		updateQueryParam(tab) {
-			this.$router.push({
-				query: { ...this.$route.query, tab }
-			}).catch(() => {});
-		},
-
-		async generateSmartDeviceToken() {
-			this.showConfirm(
-				'Generate New Token',
-				this.user.smart_device_token
-					? 'Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.'
-					: 'Generate a new token for your smart devices?',
-				async () => {
-					try {
-						const response = await generateSmartDeviceToken();
-						this.user = await getUser();
-						this.confirm = null;
-						this.showAlert('Token generated successfully');
-					} catch (error) {
-						console.error('Failed to generate token:', error);
-						this.showAlert('Failed to generate token', 'error');
+			handleTabFromQuery() {
+				const tab = this.$route.query.tab;
+				if (tab) {
+					switch (tab.toLowerCase()) {
+						case 'notification':
+							this.showNotificationSettings();
+							break;
+						case 'workspace':
+							this.showWorkspaceSettings();
+							break;
+						case 'profile':
+							this.showProfileSettings();
+							break;
+						case 'device':
+							this.showDeviceSettings();
+							break;
 					}
 				}
-			);
-		},
+			},
 
-		async revokeSmartDeviceToken() {
-			this.showConfirm(
-				'Revoke Token',
-				'Are you sure you want to revoke this token? All devices using this token will stop working until reconfigured with a new token.',
-				async () => {
-					try {
-						await revokeSmartDeviceToken();
-						this.user = await getUser();
-						this.confirm = null;
-						this.showAlert('Token revoked successfully');
-					} catch (error) {
-						console.error('Failed to revoke token:', error);
-						this.showAlert('Failed to revoke token', 'error');
-					}
-				}
-			);
-		},
+			showNotificationSettings() {
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isNotification = true;
+				this.isDevice = false;
+				this.updateQueryParam('notification');
+			},
 
-		showAlert(message, type = 'success') {
-			// Implement your alert system here
-			// This could be a toast notification or any other alert mechanism
-			console.log(`${type}: ${message}`);
-		},
+			showWorkspaceSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = true;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.updateQueryParam('workspace');
+			},
 
-		async generateTelegramLink() {
-			try {
-				const link = await generateLink();
+			showProfileSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = true;
+				this.isDevice = false;
+				this.updateQueryParam('profile');
+			},
 
+			showDeviceSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isDevice = true;
+				this.updateQueryParam('device');
+			},
+
+			updateQueryParam(tab) {
+				this.$router
+					.push({
+						query: { ...this.$route.query, tab },
+					})
+					.catch(() => {});
+			},
+
+			async generateSmartDeviceToken() {
 				this.showConfirm(
-					'Connect Telegram',
-					'Click the button below to open Telegram and connect your account. After connecting, you\'ll receive notifications through Telegram.',
-					() => {
-						window.open(link, '_blank');
-						this.confirm = null;
-					},
-					link
-				);
-			} catch (error) {
-				console.error('Failed to generate Telegram link:', error);
-			}
-		},
-
-		async unlinkTelegram() {
-			this.showConfirm(
-				'Unlink Telegram',
-				'Are you sure you want to unlink your Telegram account? You will no longer receive notifications through Telegram.',
-				async () => {
-					try {
-						await unlink();
-						this.user = await getUser();
-						this.confirm = null;
-					} catch (error) {
-						console.error('Failed to unlink Telegram:', error);
-					}
-				}
-			);
-		},
-
-		showConfirm(title, body, action, link = null) {
-			this.confirm = { title, body, action, link };
-		},
-
-		async testWebPushNotifications() {
-			await sendNotification();
-		},
-
-		async togglePushes() {
-			if (this.$store.getters.getPusherBeamsUserId) {
-				await this.$store.getters.getPusherBeamsClient.stop();
-				return this.$store.commit('setPusherBeamsUserId', null);
-			}
-			const userId = this.$store.state.user?.id.toString();
-
-			try {
-				await this.$store.getters.getPusherBeamsClient.start();
-				await this.$store.getters.getPusherBeamsClient.setUserId(
-					userId,
-					this.$store.getters.getPusherTokenProvider,
-				);
-				this.$store.commit('setPusherBeamsUserId', userId);
-			} catch (e) {
-				this.showConfirm(
-					'Notifications registration',
-					'Please check notifications permissions',
-					() => {
-						this.confirm = null;
+					'Generate New Token',
+					this.user.smart_device_token
+						? 'Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.'
+						: 'Generate a new token for your smart devices?',
+					async () => {
+						try {
+							const response = await generateSmartDeviceToken();
+							this.user = await getUser();
+							this.confirm = null;
+							this.showAlert('Token generated successfully');
+						} catch (error) {
+							console.error('Failed to generate token:', error);
+							this.showAlert('Failed to generate token', 'error');
+						}
 					},
 				);
-			}
-		},
+			},
 
-		async loadSettings() {
-			const data = await getUserSettingsV2();
-			this.initSettings(data, this.user.settings);
-			this.availableSettings = data;
-		},
+			async revokeSmartDeviceToken() {
+				this.showConfirm(
+					'Revoke Token',
+					'Are you sure you want to revoke this token? All devices using this token will stop working until reconfigured with a new token.',
+					async () => {
+						try {
+							await revokeSmartDeviceToken();
+							this.user = await getUser();
+							this.confirm = null;
+							this.showAlert('Token revoked successfully');
+						} catch (error) {
+							console.error('Failed to revoke token:', error);
+							this.showAlert('Failed to revoke token', 'error');
+						}
+					},
+				);
+			},
 
-		initSettings(availableSettings, settings = []) {
-			return availableSettings.map((item, index) => {
-				const setting = this.getSettingById(settings, item.id, {
-					id: item.id,
-					value: '',
+			showAlert(message, type = 'success') {
+				// Implement your alert system here
+				// This could be a toast notification or any other alert mechanism
+				console.log(`${type}: ${message}`);
+			},
+
+			async generateTelegramLink() {
+				try {
+					const link = await generateLink();
+
+					this.showConfirm(
+						'Connect Telegram',
+						"Click the button below to open Telegram and connect your account. After connecting, you'll receive notifications through Telegram.",
+						() => {
+							window.open(link, '_blank');
+							this.confirm = null;
+						},
+						link,
+					);
+				} catch (error) {
+					console.error('Failed to generate Telegram link:', error);
+				}
+			},
+
+			async unlinkTelegram() {
+				this.showConfirm(
+					'Unlink Telegram',
+					'Are you sure you want to unlink your Telegram account? You will no longer receive notifications through Telegram.',
+					async () => {
+						try {
+							await unlink();
+							this.user = await getUser();
+							this.confirm = null;
+						} catch (error) {
+							console.error('Failed to unlink Telegram:', error);
+						}
+					},
+				);
+			},
+
+			showConfirm(title, body, action, link = null) {
+				this.confirm = { title, body, action, link };
+			},
+
+			async testWebPushNotifications() {
+				await sendNotification();
+			},
+
+			async togglePushes() {
+				if (this.$store.getters.getPusherBeamsUserId) {
+					await this.$store.getters.getPusherBeamsClient.stop();
+					return this.$store.commit('setPusherBeamsUserId', null);
+				}
+				const userId = this.$store.state.user?.id.toString();
+
+				try {
+					await this.$store.getters.getPusherBeamsClient.start();
+					await this.$store.getters.getPusherBeamsClient.setUserId(
+						userId,
+						this.$store.getters.getPusherTokenProvider,
+					);
+					this.$store.commit('setPusherBeamsUserId', userId);
+				} catch (e) {
+					this.showConfirm(
+						'Notifications registration',
+						'Please check notifications permissions',
+						() => {
+							this.confirm = null;
+						},
+					);
+				}
+			},
+
+			async loadSettings() {
+				const data = await getUserSettingsV2();
+				this.initSettings(data, this.user.settings);
+				this.availableSettings = data;
+			},
+
+			initSettings(availableSettings, settings = []) {
+				return availableSettings.map((item, index) => {
+					const setting = this.getSettingById(settings, item.id, {
+						id: item.id,
+						value: '',
+					});
+					this.settings[index] = setting;
+					item.show_custom_value_input =
+						item.default_values &&
+						item.default_values.findIndex(
+							(val) => val.value === setting.value,
+						) === -1;
 				});
-				this.settings[index] = setting;
-				item.show_custom_value_input =
-					item.default_values &&
-					item.default_values.findIndex(
-						(val) => val.value === setting.value,
-					) === -1;
-			});
-		},
+			},
 
-		getSettingById(settings, id, defaultResult = null) {
-			return settings.find((setting) => setting.id === id) || defaultResult;
-		},
+			getSettingById(settings, id, defaultResult = null) {
+				return settings.find((setting) => setting.id === id) || defaultResult;
+			},
 
-		async updateSettings() {
-			try {
-				const [data] = await Promise.all([
-					updateUserSettingsV2(this.settings),
-					updateUserSettings({ settings: this.userSettings }),
-				]);
-				this.initSettings(this.availableSettings, data.settings);
-				this.showAlert('Settings updated successfully');
-			} catch (e) {
-				console.error(e);
-				this.showAlert('Failed to update settings', 'error');
-			}
+			async updateSettings() {
+				try {
+					const [data] = await Promise.all([
+						updateUserSettingsV2(this.settings),
+						updateUserSettings({ settings: this.userSettings }),
+					]);
+					this.initSettings(this.availableSettings, data.settings);
+					this.showAlert('Settings updated successfully');
+				} catch (e) {
+					console.error(e);
+					this.showAlert('Failed to update settings', 'error');
+				}
+			},
 		},
-	},
-};
+	};
 </script>
 
 <style scoped>
-.settings-container {
-	max-width: 700px;
-	margin: 50px auto;
-	padding: 20px;
-	box-shadow: rgb(233 233 233) 1px 4px 20px;
-}
+	.settings-container {
+		max-width: 700px;
+		margin: 50px auto;
+		padding: 20px;
+		box-shadow: rgb(233 233 233) 1px 4px 20px;
+	}
 </style>
