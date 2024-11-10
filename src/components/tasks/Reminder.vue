@@ -9,30 +9,32 @@
 		</div>
 	</div>
 
-	<teleport v-if="isActiveReminder" to="#reminder-sound-teleport">
+	<div
+		v-if="isActiveReminder"
+		class="relative inline-flex rounded-md shadow-sm"
+	>
 		<Button
 			:color="reminderSoundPlaying ? 'green' : 'gray'"
 			class="leading-none"
 			type="button"
 			@click="reminderSoundPlaying ? stopReminder() : playReminder()"
 		>
-			<span class="material-icons">{{
-				reminderSoundPlaying ? 'volume_up' : 'volume_off'
-			}}</span>
+			<span class="material-icons">
+				{{ reminderSoundPlaying ? 'volume_up' : 'volume_off' }}
+			</span>
 		</Button>
+
 		<span
 			v-if="reminderSoundPlaying"
-			class="absolute top-0 right-0 -mt-1 -mr-2 flex h-5 w-5 cursor-pointer"
+			class="absolute right-0 top-0 -mr-2 -mt-1 flex h-5 w-5 cursor-pointer"
 			@click="stopReminder"
 		>
 			<span
 				class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
-			></span>
-			<span
-				class="relative inline-flex h-5 w-5 rounded-full bg-green-500"
-			></span>
+			/>
+			<span class="relative inline-flex h-5 w-5 rounded-full bg-green-500" />
 		</span>
-	</teleport>
+	</div>
 </template>
 
 <script>
