@@ -1,5 +1,5 @@
 <template>
-	<div class="mr-auto p-4 md:hidden">
+	<div class="fixed -top-2 left-0 z-40 mr-auto p-4 md:hidden">
 		<svg
 			ref="svgElement"
 			xmlns="http://www.w3.org/2000/svg"

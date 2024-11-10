@@ -7,23 +7,22 @@
 		:key="$store.state.appRerenderKey"
 	>
 		<transition mode="out-in" name="fade">
-
-			<AppNavigation @new-task="handleNewTask">
-				<router-view :key="$route.path" v-slot="{ Component }">
-					<transition
-						:name="transitionName"
-						mode="out-in"
-						@before-leave="beforeLeave"
-						@enter="enter"
-						@after-enter="afterEnter"
-					>
-						<div>
-							<component :is="Component" v-if="showComponent"></component>
-						</div>
-					</transition>
-				</router-view>
-			</AppNavigation>
+			<Navbar v-if="$route.meta.navbarHidden" />
 		</transition>
+
+		<router-view :key="$route.path" v-slot="{ Component }">
+			<transition
+				:name="transitionName"
+				mode="out-in"
+				@before-leave="beforeLeave"
+				@enter="enter"
+				@after-enter="afterEnter"
+			>
+				<div>
+					<component :is="Component" v-if="showComponent"></component>
+				</div>
+			</transition>
+		</router-view>
 
 		<ActiveTasks :tasks="activeTasks" />
 
@@ -61,14 +60,12 @@
 	import Alert from 'src/components/general/Alert.vue';
 	import Modal from 'src/components/Modal.vue';
 	import ActiveTasks from 'src/components/ActiveTasks.vue';
-	import AppNavigation from 'src/AppNavigation.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
 	export default defineComponent({
 		name: 'App',
 		components: {
-			AppNavigation,
 			ActiveTasks,
 			Modal,
 			Alert,
@@ -149,10 +146,6 @@
 				if (process.env.MODE === 'electron') {
 					window.myWindowAPI.close();
 				}
-			},
-			handleNewTask () {
-				console.log("open modal");
-				this.$store.commit('setShowCreatingTaskModal');
 			},
 			initBodyHeight() {
 				setTimeout(() => {
