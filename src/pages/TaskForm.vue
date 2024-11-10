@@ -296,7 +296,7 @@
 			>
 				<Transition>
 					<div class="mt-8 text-center" :key="this.form.common_time">
-						<Countdown
+						<TimeCounter
 							v-if="form.id"
 							:init-task="form"
 							@toggle="toggleCountdown"
@@ -319,7 +319,7 @@
 					/>
 
 					<quill-editor
-						class="relative z-10 !mt-2 min-h-[200px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+						class="relative z-10 !mt-2 min-h-[200px] rounded bg-white px-3 py-2 outline-none transition-colors duration-300 dark:bg-gray-800"
 						:class="errors.description && 'border-red-500'"
 						v-model:content="form.description"
 						content-type="html"
@@ -473,10 +473,12 @@
 	import CommentsChat from 'src/components/general/CommentsChat.vue';
 	import store from 'src/store';
 	import Checkpoints from 'src/components/general/Checkpoints.vue';
+	import TimeCounter from 'src/components/TimeCounter.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			TimeCounter,
 			Checkpoints,
 			CommentsChat,
 			Modal,
@@ -868,7 +870,6 @@
 						+this.form.project_category_id || +this.projectCategoryId,
 					);
 
-
 					this.currentCategoryOptionInSelect = this.currentCategory.id;
 
 					if (!!this.form.id || this.currentCategory.settings.length === 0)
@@ -886,8 +887,12 @@
 										new Map(Object.entries(indexes)),
 									);
 									if (this.form.title) {
-										if (this.form.title.includes(this.previousCategoryTaskPrefix)) {
-											let cuttedTitle = this.form.title.split(this.previousCategoryTaskPrefix)[1].trim();
+										if (
+											this.form.title.includes(this.previousCategoryTaskPrefix)
+										) {
+											let cuttedTitle = this.form.title
+												.split(this.previousCategoryTaskPrefix)[1]
+												.trim();
 											this.form.title = `${taskTitlePrefixFromCategory} ${cuttedTitle}`;
 										} else {
 											this.form.title = `${taskTitlePrefixFromCategory} ${this.form.title}`;
@@ -956,7 +961,7 @@
 				}
 				this.updateSeconds(this.form.common_time);
 
-				if (this.form.start_time && this.form.status_id) {
+				/*if (this.form.start_time && this.form.status_id) {
 					const statusCurrent = this.workspaceStatuses.find(
 						(el) => el.type !== 'active',
 					);
@@ -968,7 +973,7 @@
 							this.form.status_id = firstActiveStatus.id;
 						}
 					}
-				}
+				}*/
 				await this.saveTask();
 			},
 			prepareForm() {

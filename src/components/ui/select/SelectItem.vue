@@ -1,0 +1,52 @@
+<script setup lang="ts">
+	import { cn } from 'src/utils';
+	import { Check } from 'lucide-vue-next';
+	import {
+		SelectItem,
+		SelectItemIndicator,
+		type SelectItemProps,
+		SelectItemText,
+		useForwardProps,
+	} from 'radix-vue';
+	import { computed, type HTMLAttributes } from 'vue';
+
+	const props = defineProps<
+		SelectItemProps & { class?: HTMLAttributes['class'] } & {
+			showCheckMark?: boolean;
+		}
+	>();
+
+	const delegatedProps = computed(() => {
+		const { class: _, ...delegated } = props;
+
+		return delegated;
+	});
+
+	const forwardedProps = useForwardProps(delegatedProps);
+</script>
+
+<template>
+	<SelectItem
+		v-bind="forwardedProps"
+		:class="
+			cn(
+				'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+				showCheckMark ? 'pl-8' : 'pl-2',
+				props.class,
+			)
+		"
+	>
+		<span
+			v-if="showCheckMark"
+			class="absolute left-2 flex h-3.5 w-3.5 items-center justify-center"
+		>
+			<SelectItemIndicator>
+				<Check class="h-4 w-4" />
+			</SelectItemIndicator>
+		</span>
+
+		<SelectItemText>
+			<slot />
+		</SelectItemText>
+	</SelectItem>
+</template>

@@ -3,7 +3,7 @@
 
 	<BaseLayout no-copyright>
 		<template #body>
-			<div class="">
+			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-[62px]">
 						<div class="relative md:hidden">
@@ -13,6 +13,7 @@
 							/>
 							<div
 								class="fixed right-0 z-40 mr-2 -mt-16 pt-5 mr-auto flex items-center justify-center p-4"
+<!--								class="fixed left-12 top-0.5 z-40 mr-2 mr-auto flex items-center justify-center p-4"-->
 							>
 								<span
 									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
@@ -87,7 +88,7 @@
 										<div class="column-width h-full rounded-lg px-3 pb-3">
 											<div>
 												<div
-													class="relative flex items-center rounded pt-2 pl-2 pb-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
+													class="relative flex items-center rounded pb-2 pl-2 pt-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
 													:style="{
 														'border-top': `solid 5px ${column.status.color}`,
 													}"
@@ -124,7 +125,7 @@
 																	? `Create task `
 																	: { visible: false }
 															"
-															class="absolute top-0 right-3 opacity-0 transition duration-700 group-hover:opacity-100"
+															class="absolute right-3 top-0 opacity-0 transition duration-700 group-hover:opacity-100"
 														>
 															<div
 																@click="openTaskModal(column)"
@@ -219,7 +220,7 @@
 										arrow_forward_ios
 									</span>
 									<div
-										class="before:to-100% relative flex h-64 w-0.5 items-center bg-gray-100 before:absolute before:right-2 before:-z-10 before:h-5/6 before:w-full before:bg-gradient-to-l before:from-[#000000] before:from-gray-600 before:blur-[4px] dark:bg-neutral-900"
+										class="relative flex h-64 w-0.5 items-center bg-gray-100 before:absolute before:right-2 before:-z-10 before:h-5/6 before:w-full before:bg-gradient-to-l before:from-[#000000] before:from-gray-600 before:to-100% before:blur-[4px] dark:bg-neutral-900"
 									></div>
 								</div>
 							</div>
@@ -272,7 +273,7 @@
 											<button
 												type="button"
 												:style="{ backgroundColor: statusColor }"
-												class="w-2/4 rounded py-2 px-4 font-bold text-white outline-none transition sm:mb-0"
+												class="w-2/4 rounded px-4 py-2 font-bold text-white outline-none transition sm:mb-0"
 												:class="'bg-' + '[' + statusColor + ']'"
 												@click="openPickerModal"
 											>
@@ -282,7 +283,7 @@
 
 										<button
 											@click="saveNewStatus()"
-											class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+											class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 											type="button"
 										>
 											{{ isCreatingStatus ? 'Create' : 'Save' }}
@@ -291,7 +292,7 @@
 										<button
 											v-if="!isCreatingStatus"
 											@click="deleteStatus"
-											class="mt-3 w-full rounded bg-red-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+											class="mt-3 w-full rounded bg-red-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
 											type="button"
 										>
 											Delete
@@ -471,7 +472,6 @@
 			},
 			$route() {
 				this.isMobile = window.innerWidth <= 768;
-				console.log(this.isMobile); // Adjust the screen width threshold as needed
 			},
 
 			chosenUser: function () {

@@ -1,6 +1,6 @@
 <template>
 	<Select
-		v-model="val"
+		v-model="value"
 		:options="workspaces"
 		label-key="name"
 		value-key="id"
@@ -33,7 +33,7 @@
 						@click="createNewWorkspace()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
-						class="mt-3 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+						class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
 						type="button"
 					>
 						Create
@@ -100,7 +100,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+						class="mr-5 mt-5 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
 					>
 						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}
@@ -187,15 +187,7 @@
 	onBeforeMount(async () => {
 		workspaces.value = await getWorkspaces();
 	});
-
-	const val = computed({
-		get() {
-			return props.modelValue;
-		},
-		set(v) {
-			emit('update:modelValue', v);
-		},
-	});
+	const value = defineModel();
 
 	const invitationLink = computed(() => {
 		return `${location.protocol}//${location.host}/workspaces/invitations/${invitationToken.value}`;
@@ -248,7 +240,7 @@
 			errors.value = {};
 
 			const response = await createWorkspaceInvitation(
-				+val.value,
+				+value.value,
 				newWorkspaceInvitation.value,
 			);
 

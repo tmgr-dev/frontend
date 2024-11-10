@@ -1,10 +1,22 @@
 import $axios from 'src/plugins/axios';
 import { Workspace } from 'src/actions/tmgr/workspaces';
 
+interface StatusPivot {
+	workspace_id: number;
+	status_id: number;
+	is_active: number;
+	order: number;
+}
+
 export interface Status {
+	id: number;
 	name: string;
-	type: string;
 	color: string;
+	type: string;
+	user_id: number;
+	created_at: string;
+	updated_at: string;
+	pivot: StatusPivot;
 }
 
 export const getStatuses = async (): Promise<Status[]> => {
