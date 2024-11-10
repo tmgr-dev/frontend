@@ -7,20 +7,11 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from 'src/store';
-	import {
-		computed,
-		onBeforeMount,
-		onMounted,
-		reactive,
-		ref,
-		toRef,
-	} from 'vue';
+	import { computed, onBeforeMount, onMounted, ref, toRef } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
-		addTaskAssignee,
 		createTask as createTaskAction,
 		deleteTask,
-		deleteTaskAssignee,
 		getTask,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
@@ -48,12 +39,9 @@
 	import AssigneesCombobox from 'src/components/AssigneesCombobox.vue';
 	import { Category, getCategories } from 'src/actions/tmgr/categories';
 	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
-	import convertToHHMM from 'src/utils/convertToHHMM';
-	import { getTaskSettings, Setting } from 'src/actions/tmgr/settings';
 	import Editor from 'src/components/Editor.vue';
-
-	const editorType = ref<string>('markdown');
-	const settings = ref<Setting[]>([]);
+	import { EditorType } from 'src/types';
+	import { getBlockEditorDescription } from 'src/utils/editor';
 
 	interface Props {
 		isModal: boolean;
@@ -63,6 +51,8 @@
 	const emit = defineEmits(['close']);
 	const route = useRoute();
 	const router = useRouter();
+
+	const editorType = ref<EditorType>('markdown');
 	const assignees = ref<WorkspaceMember['id'][]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const modalProjectCategoryId = computed(
@@ -93,25 +83,24 @@
 			(setting: Record<string, string | number>) =>
 				setting.key === 'current_workspace',
 		)?.value;
-		editorType.value = store.state.user?.settings?.find(
-			(setting: Record<string, string | number>) =>
-				setting.key === 'preferred_editor',
-		)?.value || editorType.value;
-		console.log('editorType.value', editorType.value);
+
+		editorType.value =
+			store.state.user?.settings?.find(
+				(setting: Record<string, string | number>) =>
+					setting.key === 'preferred_editor',
+			)?.value || editorType.value;
 
 		try {
-			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers, taskSettings] =
+			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
 				await Promise.all([
 					getStatuses(),
 					getCategories(),
 					workspaceId && getWorkspaceMembers(workspaceId),
-					getTaskSettings()
 				]);
+
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
-			settings.value = await getTaskSettings();
-			console.log('settings.value', settings.value);
 		} catch (e) {
 			console.error(e);
 		}
@@ -123,22 +112,14 @@
 
 			form.value = await getTask(+taskId.value);
 
-			if (editorType.value === 'block') {
-				if (!form.value.description_json && form.value.description) {
-
-					form.value.description_json = {
-						"time":1731156298664,
-						"blocks":[
-							{
-								"id":"Sb8IPG_R7P",
-								"type":"paragraph",
-								"data": {
-									"text": form.value.description
-								}
-							}
-						],"version":"2.30.6"
-					};
-				}
+			if (
+				editorType.value === 'block' &&
+				!form.value.description_json &&
+				form.value.description
+			) {
+				form.value.description_json = getBlockEditorDescription(
+					form.value.description,
+				);
 			}
 
 			assignees.value =
@@ -153,31 +134,27 @@
 	});
 
 	const createTask = async () => {
-		form.value.assignees = assignees.value;
-		prepareTaskDescription();
-		form.value = await createTaskAction(form.value as Task);
+		updateFormBeforeQuery();
 
-		if (props.isModal) {
-			history.pushState({}, '', `/${form.value.id}`);
-			emit('close');
-			store.commit('incrementReloadTasksKey');
-		} else {
-			await router.push({
-				name: 'TasksEdit',
-				params: {
-					id: form.value.id,
-				},
-			});
+		try {
+			form.value = await createTaskAction(form.value as Task);
+
+			if (props.isModal) {
+				history.pushState({}, '', `/${form.value.id}`);
+				emit('close');
+				store.commit('incrementReloadTasksKey');
+			} else {
+				await router.push({
+					name: 'TasksEdit',
+					params: {
+						id: form.value.id,
+					},
+				});
+			}
+		} catch (e) {
+			console.error(e);
 		}
 	};
-
-	const prepareTaskDescription = () => {
-		if (editorType.value === 'block') {
-			form.value.description = "";
-		} else {
-			form.value.description_json = undefined;
-		}
-	}
 
 	const removeTask = async () => {
 		if (taskId.value) {
@@ -201,10 +178,11 @@
 	};
 
 	const saveTask = async () => {
+		isLoading.value = true;
+		updateFormBeforeQuery();
+
 		try {
-			isLoading.value = true;
-			form.value.assignees = assignees.value;
-			prepareTaskDescription();
+			// @todo find out whether this needed
 			if (!form.value.project_category_id) {
 				delete form.value.project_category_id;
 			}
@@ -220,6 +198,16 @@
 			console.error(e);
 		} finally {
 			isLoading.value = false;
+		}
+	};
+
+	const updateFormBeforeQuery = () => {
+		form.value.assignees = assignees.value;
+
+		if (editorType.value === 'block') {
+			form.value.description = null;
+		} else {
+			form.value.description_json = null;
 		}
 	};
 
@@ -321,8 +309,8 @@
 			v-if="editorType === 'block'"
 			v-model="form.description_json"
 			placeholder="Type your description here or enter / to see commands or "
-			class="mb-2 grow px-2"
-			:class="[!isModal ? 'lg:min-h-96' : 'md:h-72 overflow-y-scroll']"
+			class="mb-2 grow border px-2"
+			:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
 			:show-preview="!!taskId"
 		/>
 
@@ -388,15 +376,6 @@
 				>
 					<DocumentPlusIcon class="size-6" />
 				</button>
-
-				<!--		<button
-					v-if="isCreatingTask"
-					@click="$emit('cancelCreateTask')"
-					class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
-					type="button"
-				>
-					Cancel
-				</button>-->
 
 				<button
 					v-if="taskId"

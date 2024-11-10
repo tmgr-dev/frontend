@@ -7,3 +7,5 @@ export interface Time {
 export interface ExtendedTime extends Time {
 	timeLeft: string;
 }
+
+export type EditorType = 'markdown' | 'block';
