@@ -1,7 +1,7 @@
 <template>
 	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
-			class="item-center flex cursor-pointer justify-center gap-1 text-black dark:text-white"
+			class="item-center flex cursor-pointer justify-center gap-1 dark:text-white text-black"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
 			<div class="flex items-center overflow-hidden">
@@ -12,10 +12,14 @@
 					{{ store.state.user?.name?.slice(0, 15) }}
 				</span>
 
-				<span v-else>{{ store.state.user?.name }}</span>
+				<span v-else class="text-tmgr-blue dark:text-tmgr-gray">{{ store.state.user?.name }}</span>
 			</div>
 
-			<span class="material-icons text-xl">person</span>
+			<img
+				src="../../assets/img/user.svg"
+				alt="User avatar"
+				class="h-15 w-15 object-cover"
+			>
 		</div>
 
 		<!--	dropdown block	-->
@@ -32,13 +36,13 @@
 						:key="link.id"
 						class="py-1 hover:opacity-75 md:p-2 lg:px-4"
 					>
-						<router-link class="block" :to="link.to">
+						<router-link class="block text-tmgr-blue dark:text-tmgr-gray" :to="link.to" >
 							{{ link.name }}
 						</router-link>
 					</li>
 
 					<li class="py-1 hover:opacity-75 md:p-2 lg:px-4">
-						<a class="block" href="#" @click.prevent="logout">Logout</a>
+						<a class="block text-tmgr-blue dark:text-tmgr-gray" href="#" @click.prevent="logout">Logout</a>
 					</li>
 				</ul>
 
@@ -54,7 +58,7 @@
 					<div class="mt-2 text-neutral-400">workspace users:</div>
 
 					<ul class="h-24 overflow-y-auto">
-						<li class="py-1 sm:px-0" v-for="{ name } in workspaceUsers">
+						<li class="py-1 sm:px-0 text-tmgr-blue dark:text-tmgr-gray" v-for="{ name } in workspaceUsers">
 							{{ name }}
 						</li>
 					</ul>
