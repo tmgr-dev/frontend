@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from 'src/store';
-	import { computed, onBeforeMount, onMounted, ref, toRef } from 'vue';
+	import { computed, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -305,21 +305,20 @@
 			</div>
 		</div>
 
-		<BlockEditor
-			v-if="editorType === 'block'"
-			v-model="form.description_json"
-			placeholder="Type your description here or enter / to see commands or "
-			class="mb-2 grow border px-2"
-			:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
-			:show-preview="!!taskId"
-		/>
-
 		<Editor
 			v-if="editorType === 'markdown'"
 			v-model="form.description"
 			class="mb-2 grow md:h-72"
 			:class="[!isModal && 'lg:min-h-96']"
 			:show-preview="taskId && form.description"
+		/>
+
+		<BlockEditor
+			v-else-if="editorType === 'block'"
+			v-model="form.description_json"
+			placeholder="Type your description here or enter / to see commands or "
+			class="mb-2 grow border px-2"
+			:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
 		/>
 
 		<!--	actions	-->
