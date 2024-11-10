@@ -34,7 +34,7 @@
 		<template #body>
 			<loading-tasks-list v-if="isCategoriesFirstLoading" />
 
-			<div v-if="categories && categories.length > 0" class="mt-10 px-4">
+			<div v-if="categories && categories.length > 0">
 				<div
 					v-for="category in categories"
 					:key="category.id"
