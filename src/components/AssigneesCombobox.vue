@@ -16,7 +16,7 @@
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
 	import { Button } from 'src/components/ui/button';
 	import { UserIcon } from '@heroicons/vue/24/outline';
-	import { ref, defineProps, computed } from 'vue';
+	import { ref, computed } from 'vue';
 	import { WorkspaceMember } from 'src/actions/tmgr/workspaces';
 
 	interface Props {

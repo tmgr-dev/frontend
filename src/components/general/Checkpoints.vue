@@ -1,12 +1,12 @@
 <template>
 	<div v-for="(checkpoint, v) in checkpoints" :key="v" class="mb-1 flex">
 		<div class="relative w-full">
-			<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
+			<span :class="`absolute left-0 top-0 z-10 ml-1.5 mt-1.5`">
 				{{ v + 1 }}
 			</span>
 
 			<textarea
-				class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+				class="max-h-40 min-h-[36px] w-full rounded bg-white px-3 py-2 pl-7 pr-44 pt-2 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
 				:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
 				placeholder="Checkpoint content"
 				v-model="checkpoint.description"
@@ -37,7 +37,6 @@
 </template>
 
 <script setup lang="ts">
-	import { defineProps, defineEmits } from 'vue';
 	interface Checkpoints {
 		inputType: string;
 		description: string;
