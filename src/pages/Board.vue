@@ -12,8 +12,7 @@
 								:isActive="isFiltersModalShown"
 							/>
 							<div
-								class="fixed right-0 z-40 mr-2 -mt-16 pt-5 mr-auto flex items-center justify-center p-4"
-<!--								class="fixed left-12 top-0.5 z-40 mr-2 mr-auto flex items-center justify-center p-4"-->
+								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center p-4 pt-5"
 							>
 								<span
 									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"

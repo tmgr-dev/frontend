@@ -58,7 +58,6 @@
 
 <script setup lang="ts">
 	import { computed, onMounted, watch } from 'vue';
-	import { defineEmits } from 'vue';
 	import Select from 'src/components/general/Select.vue';
 	import TextField from 'src/components/general/TextField.vue';
 
