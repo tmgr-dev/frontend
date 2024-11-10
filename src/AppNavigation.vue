@@ -99,12 +99,13 @@
 				v-if="$store.getters.isLoggedIn" class="sticky top-0 z-10 bg-white shadow dark:bg-gray-900">
 				<div class="flex items-center justify-between px-4 py-4">
 					<div class="flex items-center">
-						<div class="relative lg:w-96 md:w-60 w-48">
+						<div class="relative lg:w-96 md:w-60 w-48" @click="showAlert = true">
               <span class="material-icons absolute left-3 top-2.5 text-gray-400">
                 search
               </span>
 							<input
 								type="text"
+								disabled
 								placeholder="Search folders, tasks"
 								class="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 pl-10 pr-4 focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
 							>
@@ -125,6 +126,15 @@
 			<main class="">
 				<slot></slot>
 			</main>
+			<Transition name="fade">
+				<confirm
+					v-if="showAlert"
+					body="Search under development"
+					title="Feature under development"
+					@onCancel="showAlert = false"
+					@onOk="showAlert = false"
+				/>
+			</Transition>
 		</div>
 	</div>
 </template>
@@ -137,9 +147,11 @@ import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
 import WorkspaceSelect from 'src/components/general/WorkspaceSelect.vue';
 import { getDailyTasksCount } from 'src/actions/tmgr/daily-tasks';
 import AccountDropdown from 'src/components/general/AccountDropdown.vue';
+import Confirm from 'src/components/general/Confirm.vue';
 
 const route = useRoute()
 const dailyRoutinesCount = ref(0)
+const showAlert = ref(false)
 const isDarkMode = ref(false)
 const isExpanded = ref(true)
 
