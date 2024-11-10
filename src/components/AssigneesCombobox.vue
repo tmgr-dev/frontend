@@ -34,8 +34,6 @@
 			assignee.name.toLowerCase().includes(searchValue.value.toLowerCase()),
 		);
 	});
-
-	console.log(assigneeIds.value);
 </script>
 
 <template>

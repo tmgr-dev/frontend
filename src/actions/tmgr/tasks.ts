@@ -13,7 +13,7 @@ export interface Task {
 	description: string;
 	is_daily_routine: boolean;
 	order: number;
-	project_category_id?: number;
+	project_category_id?: number | null;
 	settings?: FormSetting[];
 	start_time: number;
 	status: string;
