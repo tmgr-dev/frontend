@@ -3,7 +3,7 @@
 
 	<BaseLayout no-copyright>
 		<template #body>
-			<div class="">
+			<div class="block justify-center">
 				<div class="w-full overflow-x-auto">
 					<div class="min-h-[62px]">
 						<div class="relative md:hidden">
@@ -12,7 +12,7 @@
 								:isActive="isFiltersModalShown"
 							/>
 							<div
-								class="fixed right-0 z-40 mr-2 -mt-16 pt-5 mr-auto flex items-center justify-center p-4"
+								class="fixed top-0.5 left-12 z-40 mr-2 mr-auto flex items-center justify-center p-4"
 							>
 								<span
 									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
