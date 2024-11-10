@@ -59,23 +59,20 @@
 	const emit = defineEmits(['close']);
 	const route = useRoute();
 	const router = useRouter();
+	const assignees = ref<WorkspaceMember['id'][]>([]);
+	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
+	const modalProjectCategoryId = computed(
+		() => store.state.createTaskInProjectCategoryId,
+	);
 	// @todo find out why v-model doesn't work with reactive
 	//let form = reactive<Partial<Task>>({});
 	let form = ref<Partial<Task>>({
 		// @todo found out what the rudiment this is
 		status: 'created',
 		status_id: store.state.taskStatusId || undefined,
+		project_category_id:
+			+route.params.project_category_id || modalProjectCategoryId.value,
 	});
-	const assignees = ref<WorkspaceMember['id'][]>([]);
-	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
-	const modalProjectCategoryId = computed(
-		() => store.state.createTaskInProjectCategoryId,
-	);
-	const projectCategoryId = computed(() =>
-		form.value?.id
-			? null
-			: route.params.project_category_id || modalProjectCategoryId.value,
-	);
 	const taskId = computed(
 		() => modalTaskId.value || (route.params.id as string),
 	);
@@ -235,7 +232,7 @@
 	>
 		<header class="flex justify-between">
 			<Select v-model="form.status_id">
-				<SelectTrigger class="w-40 border-0">
+				<SelectTrigger class="w-40 border-0 bg-transparent">
 					<SelectValue placeholder="status" />
 				</SelectTrigger>
 				<SelectContent class="border-0 bg-white dark:bg-gray-800">

@@ -152,8 +152,6 @@
 	};
 
 	const plusSecond = () => {
-		console.log('second', task.common_time);
-
 		if (!task.common_time) {
 			task.common_time = 0;
 		}
