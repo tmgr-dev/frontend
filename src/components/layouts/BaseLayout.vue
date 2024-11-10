@@ -1,6 +1,6 @@
 <template>
-	<div class="flex flex-col">
-		<header class="container relative px-4">
+	<div class="flex min-h-screen w-screen flex-col">
+		<header class="container relative mx-auto px-4">
 			<h1
 				class="relative mt-6 pt-1 text-center text-center text-2xl text-blue-800 dark:text-white md:mt-6 md:pt-0 md:text-left md:text-3xl"
 			>
@@ -42,7 +42,7 @@
 			bodyContainerClass: {
 				type: String,
 				required: false,
-				default: 'container',
+				default: 'container mx-auto px-2',
 			},
 		},
 		computed: {
