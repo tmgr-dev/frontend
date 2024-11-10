@@ -80,15 +80,6 @@
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
 	const isLoading = ref(false);
-	const approximatelyEndTime = computed(() => {
-		if (form.value.approximately_time && form.value.common_time) {
-			const secondsLeft =
-				new Date().getSeconds() +
-				(form.value.approximately_time - form.value.common_time);
-
-			return convertToHHMM(secondsLeft < 0 ? 0 : secondsLeft);
-		}
-	});
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
@@ -303,15 +294,6 @@
 				>
 					<ArrowTopRightOnSquareIcon class="size-5" />
 				</a>
-
-				<span
-					v-if="approximatelyEndTime"
-					:class="`text-${
-						approximatelyEndTime === '00:00' ? 'red' : 'gray'
-					}-500 estimated-info hidden py-2 pr-5 md:block`"
-				>
-					Left time: {{ approximatelyEndTime }}
-				</span>
 
 				<span class="relative inline-flex rounded-md shadow-sm">
 					<button
