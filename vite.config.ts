@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
 
+// @todo replace build command in package.json later
+// "build": "vue-tsc -b && vite build",
+
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [vue()],
