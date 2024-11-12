@@ -48,7 +48,7 @@
 		"md-editor-v3": "^4.17.4",
 		"module-alias": "^2.2.2",
 		"moment": "^2.29.4",
-		"npm": "^9.6.5",
+		"npm": "^10.9.0",
 		"popper.js": "^1.16.1",
 		"radix-vue": "^1.9.7",
 		"tailwind-merge": "^2.5.4",
