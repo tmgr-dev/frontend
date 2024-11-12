@@ -17,29 +17,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 19.6.0
+
       - name: Install dependencies
         run: npm ci
-      - name: Create .env
-        run: echo "${{ secrets.ENV_FILE }}" > .env
+
+      - name: Create .env.production
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+
       - name: Build static site
-        run: npm run build # Build your website
+        run: npm run build
+        env:
+          NODE_ENV: production
+
       - name: Install globally Surge
         run: npm install --global surge
+
       - id: deploy
         name: Deploy
         uses: acrossoffwest/deploy-pr-action@v1.6.5
         with:
-          prefix: tmgr # Prefix for deployment URL
-          #robotsTxtPath: dist/spa/robots.txt # Add robots.txt file
-          distDir: dist # Path to dist directory
+          prefix: tmgr
+          distDir: dist
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }} # GitHub token
-          SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email
-          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }} # Surge.sh token
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }}
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+          VITE_APP_ENV: production
 
   on-success-deploying:
     needs: [release]
