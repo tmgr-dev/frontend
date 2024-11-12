@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import dateformat from 'dateformat';
+import dateFormat from 'dateformat';
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -17,15 +17,15 @@ export function getTimeSinceUpdated(updatedAt: Date) {
 	const years = Math.floor(days / 365);
 
 	if (years > 0) {
-		return dateformat(updatedAt, "yyyy 'years' ago");
+		return dateFormat(updatedAt, "yyyy 'years' ago");
 	} else if (months > 0) {
-		return dateformat(updatedAt, "m 'months' ago");
+		return dateFormat(updatedAt, "m 'months' ago");
 	} else if (days > 0) {
-		return dateformat(updatedAt, "d 'days' ago");
+		return dateFormat(updatedAt, "d 'days' ago");
 	} else if (hours > 0) {
-		return dateformat(updatedAt, "h 'hours' ago");
+		return dateFormat(updatedAt, "h 'hours' ago");
 	} else if (minutes > 0) {
-		return dateformat(updatedAt, "m 'minutes' ago");
+		return dateFormat(updatedAt, "m 'minutes' ago");
 	} else {
 		return 'Just now';
 	}
