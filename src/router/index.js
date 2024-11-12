@@ -1,5 +1,5 @@
-import { route } from 'quasar/wrappers';
 import { createRouter, createWebHistory } from 'vue-router';
+import store from '../store';
 import routes from './routes';
 
 /*
@@ -10,44 +10,34 @@ import routes from './routes';
  * async/await or return a Promise which resolves
  * with the Router instance.
  */
-import store from '../store';
+const router = createRouter({
+	scrollBehavior: () => ({ left: 0, top: 0 }),
+	routes,
+	history: createWebHistory(
+		import.meta.env.MODE === 'ssr' ? void 0 : import.meta.env.VUE_ROUTER_BASE,
+	),
+});
 
-const router = route(function (/* { store, ssrContext } */) {
-	const createHistory = createWebHistory;
-
-	const Router = createRouter({
-		scrollBehavior: () => ({ left: 0, top: 0 }),
-		routes,
-
-		// Leave this as is and make changes in quasar.conf.js instead!
-		// quasar.conf.js -> build -> vueRouterMode
-		// quasar.conf.js -> build -> publicPath
-		history: createHistory(
-			process.env.MODE === 'ssr' ? void 0 : process.env.VUE_ROUTER_BASE,
-		),
-	});
-
-	Router.beforeEach((to, from, next) => {
-		store.getters.slideout.close();
-		if (
-			to.matched.some((record) => record.meta.allowedGuests) &&
-			store.getters.isLoggedIn
-		) {
-			if (to.matched.some((record) => record.meta.notOnlyForLoggedUsers)) {
-				return next();
-			}
-			return next({ name: 'CurrentTasksList' });
-		}
-		if (to.matched.some((record) => !record.meta.allowedGuests)) {
-			if (!store.getters.isLoggedIn) {
-				return next({ name: 'Login' });
-			}
+router.beforeEach((to, from, next) => {
+	if (
+		to.matched.some((record) => record.meta.allowedGuests) &&
+		store.getters.isLoggedIn
+	) {
+		if (to.matched.some((record) => record.meta.notOnlyForLoggedUsers)) {
 			return next();
 		}
-		return next();
-	});
 
-	return Router;
+		return next({ name: 'CurrentTasksList' });
+	}
+
+	if (to.matched.some((record) => !record.meta.allowedGuests)) {
+		if (!store.getters.isLoggedIn) {
+			return next({ name: 'Login' });
+		}
+
+		return next();
+	}
+	return next();
 });
 
 export default router;

@@ -1,14 +1,14 @@
 <template>
 	<div
 		v-if="isOpenDropdownMenu"
-		class="fixed inset-0 h-full w-full bg-black opacity-50 cursor-default z-20"
+		class="fixed inset-0 z-20 h-full w-full cursor-default bg-black opacity-50"
 		@click="isOpenDropdownMenu = false"
 	/>
 
-	<div class="lg:hidden z-10">
+	<div class="z-10 lg:hidden">
 		<button @click.prevent="isOpenDropdownMenu = !isOpenDropdownMenu">
 			<svg
-				class="mr-3 md:mr-1 h-12 w-6 fill-current text-grey-dark"
+				class="text-grey-dark mr-3 h-12 w-6 fill-current md:mr-1"
 				viewBox="0 0 20 20"
 				xmlns="http://www.w3.org/2000/svg"
 			>
@@ -21,7 +21,7 @@
 
 	<div
 		v-if="isOpenDropdownMenu"
-		class="absolute right-0 mt-2 py-2 w-48 bg-white rounded-lg z-50"
+		class="absolute right-0 z-50 mt-2 w-48 rounded-lg bg-white py-2"
 		style="top: 80px"
 	>
 		<a

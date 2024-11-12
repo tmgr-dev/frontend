@@ -5,9 +5,9 @@
 @import 'tailwindcss/utilities';
 @import 'task';
 @import 'alert';
-@import 'editor';
 @import 'checkbox';
 @import 'task-form';
+@import 'extensions';
 
 body {
 	overflow-x: hidden;
@@ -69,6 +69,23 @@ button {
 	}
 }
 
+.translate-left-enter-active {
+	animation: translateLeft 0.5s;
+}
+.translate-left-leave-active {
+	animation: translateLeft 0.5s reverse;
+}
+
+@keyframes translateLeft {
+	from {
+		transform: translate3d(1000px, 0, 0);
+	}
+
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+
 .bounce-right-fade-enter-active {
 	animation: bounceInRight 1s;
 }
@@ -109,20 +126,30 @@ button {
 	}
 }
 
-.q-electron-draggable {
-	-webkit-user-select: none;
-	-webkit-app-region: drag;
+.transform-to-block-enter-active {
+	animation: transformToBlock 0.5s ease-in-out;
 }
 
-.q-electron-draggable--exception {
-	-webkit-app-region: no-drag;
+.transform-to-block-leave-active {
+	animation: transformToBlock 0.5s reverse ease-in-out;
+}
+
+@keyframes transformToBlock {
+	from {
+		max-height: 0;
+		opacity: 0;
+	}
+
+	100% {
+		opacity: 1;
+	}
 }
 
 .transform-opacity-right-enter-active {
-	animation: transformOpacityRight .5s;
+	animation: transformOpacityRight 0.5s;
 }
 .transform-opacity-right-leave-active {
-	animation: transformOpacityRight .5s reverse;
+	animation: transformOpacityRight 0.5s reverse;
 }
 
 @keyframes transformOpacityRight {
@@ -135,4 +162,26 @@ button {
 		transform: translate3d(0, 0, 0);
 		opacity: 1;
 	}
+}
+
+.sortable-ghost {
+	opacity: .5;
+	* {
+		opacity: 0;
+	}
+}
+
+.slide-right-enter-active,
+.slide-right-leave-active {
+	transition: all 0.3s ease-out;
+}
+
+.slide-right-enter-from {
+	transform: translateX(-100%);
+	opacity: 0;
+}
+
+.slide-right-leave-to {
+	transform: translateX(100%);
+	opacity: 0;
 }

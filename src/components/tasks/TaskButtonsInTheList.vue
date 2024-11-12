@@ -3,7 +3,7 @@
 		<new-button
 			v-tooltip.top="setTooltipData('Open')"
 			class="mr-2"
-			@click="$store.commit('currentTaskIdForModal', task.id)"
+			@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 		>
 			<span class="material-icons">open_in_new</span>
 		</new-button>
@@ -129,9 +129,9 @@
 </template>
 
 <script>
-	import SetTooltipData from 'src/mixins/SetTooltipData';
-	import Confirm from 'src/components/general/Confirm.vue';
-	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
+	import SetTooltipData from '@/mixins/SetTooltipData';
+	import Confirm from '@/components/general/Confirm.vue';
+	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 
 	export default {
 		name: 'TaskButtonsInTheList',

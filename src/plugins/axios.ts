@@ -1,12 +1,12 @@
 import axios from 'axios';
-import store from 'src/store';
+import store from '@/store';
 
 const $axios = axios.create({
-	baseURL: process.env.VUE_APP_API_BASE_URL,
+	baseURL: import.meta.env.VITE_API_BASE_URL,
 	headers: {
 		common: {
-			Authorization: store.getters.token?.token
-				? `Bearer ${store.getters.token.token}`
+			Authorization: store.state.token?.token
+				? `Bearer ${store.state.token.token}`
 				: '',
 			'X-Requested-With': 'XMLHttpRequest',
 			'Cache-Control': 'no-cache',

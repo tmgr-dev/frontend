@@ -1,14 +1,15 @@
 <template>
-	<teleport to="title"> {{ form.title || h1.main }}&nbsp; </teleport>
+	<teleport to="title">{{ form.title || h1.main }}&nbsp;</teleport>
 
 	<div class="items-between text-center sm:flex">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
-				<modal
+				<Modal
+					id="modal3"
 					v-if="isShowSettingsModal"
 					modal-class="p-6 w-96"
-					@close="isShowSettingsModal = false"
+					@closingModal="closingModal"
 				>
 					<template #modal-body>
 						<form
@@ -75,7 +76,9 @@
 										Assignees
 										<span
 											class="material-icons checkpoint-delete text-lg"
-											@click="isShowModalAssign = true"
+											@click="
+												(isShowModalAssign = true), $store.commit('openModal')
+											"
 										>
 											add
 										</span>
@@ -103,7 +106,7 @@
 							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
-									@click="isShowSettingsModal = false"
+									@click="closingModal"
 									class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
 								>
 									Cancel
@@ -118,15 +121,16 @@
 							</div>
 						</form>
 					</template>
-				</modal>
+				</Modal>
 			</Transition>
 
 			<!-- assigners -->
 			<Transition name="bounce-right-fade">
-				<modal
+				<Modal
+					id="modal4"
 					v-if="isShowModalAssign"
 					modal-class="p-6 w-96"
-					@close="isShowModalAssign = false"
+					@closingModal="closingModal"
 				>
 					<template #modal-body>
 						<form @submit.prevent="" class="text-gray-800 dark:text-tmgr-gray">
@@ -167,7 +171,7 @@
 							<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
-									@click="isShowModalAssign = false"
+									@click="closingModal"
 									class="mr-1 block w-full rounded bg-gray-700 p-2 text-white"
 								>
 									Close
@@ -175,7 +179,7 @@
 							</div>
 						</form>
 					</template>
-				</modal>
+				</Modal>
 			</Transition>
 		</div>
 	</div>
@@ -183,14 +187,16 @@
 	<div
 		ref="modal"
 		:class="{
-			'task-form-container relative mx-auto overflow-hidden rounded-lg bg-white p-3 dark:bg-gray-900':
+			'task-form-container relative mx-auto  overflow-hidden rounded-lg bg-white  p-3 dark:bg-gray-900':
 				isModal,
-			'container mx-auto': !isModal,
+			'container mx-auto p-3': !isModal,
 		}"
 	>
 		<header ref="header">
 			<div
-				:class="`flex items-center justify-between ${isModal ? '' : 'mt-10'}`"
+				:class="`flex  justify-between md:items-center ${
+					isModal ? '' : 'mt-10'
+				}`"
 			>
 				<template v-if="!isCreatingTask">
 					<router-link
@@ -206,38 +212,65 @@
 					>
 						{{ currentCategory ? currentCategory.title : 'tasks' }}
 					</router-link>
-
-					<Select
-						v-model="form.status_id"
-						:options="workspaceStatuses"
-						label-key="name"
-						value-key="id"
-						class="w-36 shrink-0 sm:ml-3 sm:w-40"
-					/>
+					<div class="md:flex">
+						<Select
+							v-model="form.status_id"
+							:options="workspaceStatuses"
+							label-key="name"
+							value-key="id"
+							class="w-36 shrink-0 sm:ml-3 sm:w-40"
+						/>
+						<div
+							v-if="categoriesSelectOptions.length >= 2"
+							class="mt-2 w-36 md:m-0 md:ml-3 md:mr-3"
+						>
+							<Select
+								v-if="!isCreatingTask"
+								placeholder="Select category"
+								:options="categoriesSelectOptions"
+								v-model="form.project_category_id"
+								label-key="title"
+								value-key="id"
+							/>
+						</div>
+					</div>
 
 					<assignee-users
 						:assignees="form.assignees"
 						:is-modal="isModal"
 						avatarsClass="h-8 w-8"
 						:show-assignee-controls="true"
-						@showModal="isShowModalAssign = true"
+						@showModal="(isShowModalAssign = true), $store.commit('openModal')"
 						@deleteAssignee="deleteAssignee"
 					/>
 				</template>
 
 				<p v-else>Creating task</p>
+				<div
+					v-if="categoriesSelectOptions.length >= 2"
+					class="mt-2 md:m-0 md:ml-3 md:mr-3 md:w-48"
+				>
+					<Select
+						v-if="isCreatingTask"
+						placeholder="Select category"
+						:options="categoriesSelectOptions"
+						v-model="form.project_category_id"
+						label-key="title"
+						value-key="id"
+					/>
+				</div>
 
-				<div v-if="isModal" class="ml-auto flex gap-2">
+				<div v-if="isModal" class="ml-auto gap-2 md:flex">
 					<button
 						type="button"
 						class="mr-2 hidden opacity-50 transition-opacity hover:opacity-100 sm:block"
 					>
-						<router-link
+						<a
 							class="material-icons text-2xl text-black dark:text-white"
-							:to="`/${taskId}/edit`"
+							:href="`/${taskId}`"
 						>
 							open_in_new
-						</router-link>
+						</a>
 					</button>
 
 					<button
@@ -254,107 +287,125 @@
 					</button>
 				</div>
 			</div>
-
-			<div class="mt-8 text-center" :key="this.form.common_time">
-				<Countdown
-					v-if="form.id"
-					:init-task="form"
-					@toggle="toggleCountdown"
-					@update:seconds="updateSeconds"
-				/>
-
-				<Countdown
-					v-else
-					disabled
-					:init-task="form"
-					@update:seconds="updateSeconds"
-				/>
-			</div>
 		</header>
-
-		<section role="main" class="mt-10 text-center">
-			<div class="mb-5">
-				<TextField
-					v-model="form.title"
-					:errors="errors.title"
-					placeholder="Task name"
-				/>
-
-				<quill-editor
-					class="relative z-10 !mt-2 min-h-[100px] rounded bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
-					:class="errors.description && 'border-red-500'"
-					v-model:content="form.description"
-					content-type="html"
-					theme="bubble"
-					placeholder="Description"
-				/>
-			</div>
-
-			<div
-				v-if="!isCreatingTask"
-				class="checkpoints-wrapper rounded"
-				:key="checkpointUpdateKey"
+		<div class="h-full justify-center overflow-y-scroll md:flex">
+			<section
+				role="main"
+				class="text-center md:w-1/2"
+				:class="{ 'mt-10': !form.start_time }"
 			>
-				<div class="text-bold flex items-center justify-center gap-2 text-sm">
-					{{
-						form.checkpoints.length ? 'Add a checkpoint' : 'Create checkpoints'
-					}}
-					<span
-						class="material-icons checkpoint-delete text-lg text-gray-500"
-						@click="addCheckpoint"
-					>
-						add
-					</span>
+				<Transition>
+					<div class="mt-8 text-center" :key="this.form.common_time">
+						<TimeCounter
+							v-if="form.id"
+							:init-task="form"
+							@toggle="toggleCountdown"
+							@update:seconds="updateSeconds"
+						/>
+
+						<Countdown
+							v-else
+							disabled
+							:init-task="form"
+							@update:seconds="updateSeconds"
+						/>
+					</div>
+				</Transition>
+				<div class="mb-5">
+					<TextField
+						v-model="form.title"
+						:errors="errors.title"
+						placeholder="Task name"
+					/>
+
+					<quill-editor
+						class="relative z-10 !mt-2 min-h-[200px] rounded bg-white px-3 py-2 outline-none transition-colors duration-300 dark:bg-gray-800"
+						:class="errors.description && 'border-red-500'"
+						v-model:content="form.description"
+						content-type="html"
+						theme="bubble"
+						placeholder="Description"
+					/>
+					<div v-if="form.description?.length" class="my-2 block w-full">
+						<div
+							class="float-right cursor-pointer opacity-50 hover:opacity-100"
+						>
+							<svg
+								v-if="isDescriptionOptimizing"
+								class="h-5 w-5 animate-spin"
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								/>
+							</svg>
+							<svg
+								@click="optimizeWithAI"
+								v-else
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="currentColor"
+								class="h-6 w-6"
+							>
+								<path
+									fill-rule="evenodd"
+									d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z"
+									clip-rule="evenodd"
+								/>
+							</svg>
+						</div>
+					</div>
 				</div>
 
 				<div
-					v-for="(checkpoint, v) in form.checkpoints"
-					:key="v"
-					class="mb-1 flex"
+					v-if="!isCreatingTask"
+					class="checkpoints-wrapper rounded"
+					:key="checkpointUpdateKey"
 				>
-					<div class="relative w-full">
-						<span :class="`absolute left-0 top-0 z-10 mt-1.5 ml-1.5`">
-							{{ v + 1 }}
-						</span>
-
-						<textarea
-							class="max-h-40 min-h-[36px] w-full rounded bg-white py-2 px-3 pr-44 pt-2 pl-7 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-							:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
-							placeholder="Checkpoint content"
-							v-model="checkpoint.description"
-						/>
-
+					<div class="text-bold flex items-center justify-center gap-2 text-sm">
+						{{
+							form.checkpoints.length
+								? 'Add a checkpoint'
+								: 'Create checkpoints'
+						}}
 						<span
-							class="absolute right-0 top-2 flex items-center gap-1 text-sm"
+							class="material-icons checkpoint-delete text-lg text-gray-500"
+							@click="addCheckpoint"
 						>
-							<span class="text-sm">
-								{{ secondsToStringTime(checkpoint.start) }} -
-								{{ secondsToStringTime(checkpoint.end) }}
-							</span>
-
-							<span
-								class="material-icons checkpoint-delete text-base leading-none text-blue-700"
-								@click="changeCheckpointInputField(v)"
-							>
-								edit
-							</span>
-
-							<span
-								class="material-icons checkpoint-delete text-base leading-none text-red-700"
-								@click="deleteCheckpoint(v)"
-							>
-								delete
-							</span>
+							add
 						</span>
 					</div>
+					<checkpoints :checkpoints="form.checkpoints" />
 				</div>
-			</div>
-		</section>
+			</section>
+			<section v-if="!isCreatingTask" class="mt-10 md:w-1/2">
+				<comments-chat
+					:workspaceMembers="workspaceMembers"
+					:assignees="form.assignees"
+					:taskId="taskId"
+					:startTime="form.start_time"
+					:isDataEdited="isDataEdited"
+					ref="commentsChat"
+				/>
+			</section>
+		</div>
 
 		<footer
 			ref="footer"
-			class="shadow-top z-10 w-full rounded-lg p-2 sm:p-5"
-			:class="{ 'mt-10': isPage }"
+			class="shadow-top z-10 mt-10 w-full rounded-lg p-2 sm:p-5"
+			:class="{ 'mt-30': isPage }"
 		>
 			<task-actions
 				:is-creating-task="isCreatingTask"
@@ -390,10 +441,9 @@
 </template>
 
 <script>
-	import moment from 'moment';
-	import TaskActions from 'src/components/tasks/TaskActions.vue';
-	import Countdown from 'src/components/general/Countdown.vue';
-	import Confirm from 'src/components/general/Confirm.vue';
+	import TaskActions from '@/components/tasks/TaskActions.vue';
+	import Countdown from '@/components/general/Countdown.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import {
 		deleteTask,
 		getTask,
@@ -404,23 +454,34 @@
 		addTaskAssignee,
 		deleteTaskAssignee,
 		getTasksIndexes,
-	} from 'src/actions/tmgr/tasks';
+		optimizeWithAI,
+	} from '@/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
 		updateOneTaskSettings,
-	} from 'src/actions/tmgr/settings';
-	import { getCategories, getCategory } from 'src/actions/tmgr/categories';
-	import { getWorkspaceMembers } from 'src/actions/tmgr/workspaces';
-	import Select from 'src/components/general/Select.vue';
-	import Switcher from 'src/components/general/Switcher.vue';
-	import TextField from 'src/components/general/TextField.vue';
-	import TimeField from 'src/components/general/TimeField.vue';
-	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
-	import { titlePatternHandler } from 'src/utils/titlePatternHandler';
+	} from '@/actions/tmgr/settings';
+	import { getCategories, getCategory } from '@/actions/tmgr/categories';
+	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import Select from '@/components/general/Select.vue';
+	import Switcher from '@/components/general/Switcher.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import TimeField from '@/components/general/TimeField.vue';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import { titlePatternHandler } from '@/utils/titlePatternHandler';
+	import Modal from '@/components/Modal.vue';
+	import { mapState } from 'vuex';
+	import CommentsChat from '@/components/general/CommentsChat.vue';
+	import store from '@/store';
+	import Checkpoints from '@/components/general/Checkpoints.vue';
+	import TimeCounter from '@/components/TimeCounter.vue';
 
 	export default {
 		name: 'TaskForm',
 		components: {
+			TimeCounter,
+			Checkpoints,
+			CommentsChat,
+			Modal,
 			AssigneeUsers,
 			TimeField,
 			TextField,
@@ -455,6 +516,7 @@
 		emits: ['close', 'updated'],
 		data() {
 			return {
+				isDescriptionOptimizing: false,
 				isActiveAssignBtns: true,
 				middleBlockHeight: null,
 				confirm: null,
@@ -506,29 +568,43 @@
 				isShowSettingsModal: false,
 				isShowModalAssign: false,
 				categoriesSelectOptions: [],
-				currentCategory: '',
+				currentCategory: null,
+				previousCategoryTaskPrefix: null,
 				approximatelyTime: null,
 				currentCategoryOptionInSelect: null,
 				prevValue: null,
+				edited: false,
+				isProcessing: false,
+				comment: {},
+				isShowAlert: true,
 			};
 		},
 		watch: {
 			form(newVal) {
 				this.setSavedData(newVal);
 			},
+			'form.project_category_id': async function (newVal, oldVal) {
+				this.currentCategory = await getCategory(newVal);
+				this.loadCategory();
+			},
 		},
-		mounted() {
-			document.body.addEventListener('keydown', this.handleEscKeyDown);
+
+		async mounted() {
+			this.$store.commit('resetOpenModals');
+
 			this.handleHistoryState();
+			if (this.categoriesSelectOptions.length === 0) {
+				await this.loadCategories();
+			}
 		},
 		unmounted() {
-			this.$store.dispatch('closeTaskModal');
-			document.body.removeEventListener('keydown', this.handleEscKeyDown);
+			this.$store.commit('closeTaskModal');
 		},
 		computed: {
-			userSettings() {
-				return this.$store.getters.getUserSettings ?? {};
+			store() {
+				return store;
 			},
+			...mapState(['workspaceStatuses']),
 			taskId() {
 				return this.projectCategoryId
 					? null
@@ -540,9 +616,6 @@
 					(this.form.approximately_time - this.form.common_time);
 
 				return this.toHHMM(secondsLeft < 0 ? 0 : secondsLeft);
-			},
-			workspaceStatuses() {
-				return this.$store.getters.statuses;
 			},
 			isCreatingTask() {
 				return !this.taskId;
@@ -589,17 +662,40 @@
 			},
 		},
 		methods: {
+			async optimizeWithAI() {
+				this.isDescriptionOptimizing = true;
+				const result = await optimizeWithAI(
+					`${this.form.title}: ${this.form.description.replace(
+						/(<([^>]+)>)/gi,
+						'',
+					)}`,
+				);
+				this.form.description = result;
+
+				this.isDescriptionOptimizing = false;
+			},
 			handleHistoryState() {
 				if (this.isModal && !this.isCreatingTask) {
-					history.pushState({}, '', `/${this.taskId}/edit`);
+					history.pushState({}, '', `/${this.taskId}`);
 				}
 			},
 			close() {
 				this.$emit('close');
-				this.$store.dispatch('reloadTasks');
+				this.$store.commit('incrementReloadTasksKey');
 			},
-			handleEscKeyDown(event) {
-				if (event.key === 'Escape') {
+
+			closingModal() {
+				if (this.isShowModalAssign) {
+					this.isShowModalAssign = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (this.isShowSettingsModal && !this.isShowModalAssign) {
+					this.isShowSettingsModal = false;
+					this.$store.commit('closeModal');
+					return;
+				}
+				if (!this.isShowSettingsModal && !this.isShowModalAssign) {
 					this.cancelCreateTask();
 				}
 			},
@@ -607,6 +703,9 @@
 				this.confirm = { title, body, action };
 			},
 			async removeTask(task) {
+				if (this.form.start_time) {
+					this.form = await stopTaskTimeCounter(this.taskId);
+				}
 				const deleteTaskConfirmation = async () => {
 					try {
 						task.deleted_at = await deleteTask(this.taskId);
@@ -681,8 +780,9 @@
 					}
 				});
 			},
-			dispatchAutoSave() {
+			async dispatchAutoSave() {
 				this.removeDispatchedAutoSave();
+				this.isShowAlert = false;
 				this.autoSaveTimeout = setTimeout(this.saveTask, 5000);
 			},
 			removeDispatchedAutoSave() {
@@ -710,6 +810,7 @@
 			async showModalCategory() {
 				try {
 					this.isShowSettingsModal = true;
+					this.$store.commit('openModal');
 					if (this.categoriesSelectOptions.length === 0) {
 						await this.loadCategories();
 					}
@@ -722,16 +823,19 @@
 					this.form.project_category_id = this.currentCategoryOptionInSelect;
 				}
 				this.isShowSettingsModal = false;
+				this.$store.commit('closeModal');
+				this.isShowAlert = true;
 				await this.saveTask();
 				await this.loadCategory();
 			},
 			getShortcutSaveListener() {
 				return (e) => {
 					if (
-						e.ctrlKey &&
+						(e.metaKey || e.ctrlKey) &&
 						(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы')
 					) {
 						e.preventDefault();
+						this.isShowAlert = true;
 						this.saveTask();
 					}
 				};
@@ -763,7 +867,7 @@
 			async loadCategory() {
 				if (this.projectCategoryId || this.form.project_category_id) {
 					this.currentCategory = await getCategory(
-						+this.projectCategoryId || +this.form.project_category_id,
+						+this.form.project_category_id || +this.projectCategoryId,
 					);
 
 					this.currentCategoryOptionInSelect = this.currentCategory.id;
@@ -773,14 +877,35 @@
 
 					for (const setting of this.currentCategory.settings) {
 						if (setting.key === 'task_name_pattern_date&time') {
-							const indexes = await getTasksIndexes(this.currentCategory.id);
-							this.form.title = titlePatternHandler(
-								setting.value,
-								new Map(Object.entries(indexes)),
-							);
-						}
-						if (setting.key === 'approximately_time') {
-							this.form.approximately_time = parseInt(setting.value);
+							for (const setting of this.currentCategory.settings) {
+								if (setting.key === 'task_name_pattern_date&time') {
+									const indexes = await getTasksIndexes(
+										this.currentCategory.id,
+									);
+									const taskTitlePrefixFromCategory = titlePatternHandler(
+										setting.value,
+										new Map(Object.entries(indexes)),
+									);
+									if (this.form.title) {
+										if (
+											this.form.title.includes(this.previousCategoryTaskPrefix)
+										) {
+											let cuttedTitle = this.form.title
+												.split(this.previousCategoryTaskPrefix)[1]
+												.trim();
+											this.form.title = `${taskTitlePrefixFromCategory} ${cuttedTitle}`;
+										} else {
+											this.form.title = `${taskTitlePrefixFromCategory} ${this.form.title}`;
+										}
+									} else {
+										this.form.title = taskTitlePrefixFromCategory;
+									}
+									this.previousCategoryTaskPrefix = taskTitlePrefixFromCategory;
+								}
+							}
+							if (setting.key === 'approximately_time') {
+								this.form.approximately_time = parseInt(setting.value);
+							}
 						}
 					}
 				}
@@ -791,8 +916,6 @@
 			async loadModel() {
 				try {
 					this.form = await getTask(this.taskId);
-
-					this.$store.commit('currentOpenedTaskId', this.form.id);
 				} catch (e) {
 					if (e.response?.status === 404) {
 						// @todo show error alert
@@ -829,15 +952,16 @@
 				return this.form.status;
 			},
 			async toggleCountdown() {
+				this.isShowAlert = false;
+
 				if (this.form.start_time) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 				} else {
 					this.form = await startTaskTimeCounter(this.taskId);
 				}
-
 				this.updateSeconds(this.form.common_time);
 
-				if (this.form.start_time && this.form.status_id) {
+				/*if (this.form.start_time && this.form.status_id) {
 					const statusCurrent = this.workspaceStatuses.find(
 						(el) => el.type !== 'active',
 					);
@@ -847,10 +971,10 @@
 						);
 						if (firstActiveStatus) {
 							this.form.status_id = firstActiveStatus.id;
-							await this.saveTask();
 						}
 					}
-				}
+				}*/
+				await this.saveTask();
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -866,7 +990,7 @@
 					this.prepareForm();
 					const data = await createTaskAction(this.form);
 					this.$emit('updated');
-					await this.$store.dispatch('reloadTasks');
+					this.$store.commit('incrementReloadTasksKey');
 
 					if (!this.isCreatingTask) {
 						this.showAlert();
@@ -895,6 +1019,7 @@
 						this.$emit('close');
 					});
 				} else {
+					this.isShowAlert = true;
 					this.saveTask();
 					this.$emit('close');
 				}
@@ -905,7 +1030,7 @@
 					this.prepareForm();
 					const data = await updateTask(this.taskId, this.form);
 					this.$emit('updated');
-					await this.$store.dispatch('reloadTasks');
+					this.$store.commit('incrementReloadTasksKey');
 
 					if (data.approximately_time) {
 						this.approximatelyTime = this.toHHMM(data.approximately_time);
@@ -913,8 +1038,10 @@
 					this.form = data;
 
 					await this.saveSettings(this.settings);
+					if (this.isShowAlert) {
+						this.showAlert('Saved', 'The task was saved');
+					}
 
-					this.showAlert('Saved', 'The task was saved');
 					this.removeDispatchedAutoSave();
 					const id = this.form.id;
 					this.form.id = null;
@@ -934,24 +1061,6 @@
 			},
 			goToCurrentTasks() {
 				this.$router.push('/');
-			},
-			secondsToStringTime(seconds) {
-				const second = seconds % 60;
-				let minute = ((seconds - second) / 60) | 0;
-				const hour = (minute / 60) | 0;
-				minute = minute - hour * 60;
-
-				return `${this.prepareClockNumber(hour)}:${this.prepareClockNumber(
-					minute,
-				)}:${this.prepareClockNumber(second)}`;
-			},
-			stringTimeToSeconds(stringTime) {
-				let times = stringTime.split(':');
-				times = times.map(parseInt);
-				return times[0] * 60 * 60 + times[1] * 60 + times[2];
-			},
-			prepareClockNumber(num) {
-				return num < 10 ? '0' + num : num;
 			},
 			addCheckpoint() {
 				const { form } = this;
@@ -975,16 +1084,6 @@
 				});
 				++this.checkpointUpdateKey;
 			},
-			deleteCheckpoint(checkpointIndex) {
-				this.form.checkpoints.splice(checkpointIndex, 1);
-				++this.checkpointUpdateKey;
-			},
-			changeCheckpointInputField(checkpointIndex) {
-				const inputType = this.form.checkpoints[checkpointIndex].inputType;
-				this.form.checkpoints[checkpointIndex].inputType =
-					!inputType || inputType === 'text' ? 'textarea' : 'text';
-				++this.checkpointUpdateKey;
-			},
 			updateSeconds(seconds) {
 				if (!this.form.checkpoints || this.form.checkpoints.length === 0) {
 					return;
@@ -1005,24 +1104,38 @@
 				}
 				await this.loadCategory();
 				await this.loadTaskSettings();
-				this.$store.getters.pusher
-					.private(`App.User.${this.$store.getters.user.id}`)
+				this.$store.getters.getPusher
+					.private(`App.Workspace.${this.form.workspace_id}`)
+					.on('comment-added', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.addingComment(comment);
+						}
+					})
+					.on('comment-updated', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.editingComment(comment);
+						}
+					})
+					.on('comment-deleted', ({ comment }) => {
+						if (this.taskId === comment.task_id) {
+							this.$refs.commentsChat.deletingComment(comment);
+						}
+					});
+
+				this.$store.getters.getPusher
+					.private(`App.User.${this.$store.state.user.id}`)
 					.on('task-countdown-stopped', ({ task }) => {
 						const isCountdownStarted = !!this.form.start_time;
 						if (!isCountdownStarted) {
 							return;
 						}
 
-						this.setFormDataWithDelay(task).then(() => {
-							this.showAlert('Countdown stopped');
-						});
+						this.setFormDataWithDelay(task);
 					})
 					.on('task-countdown-started', ({ task }) => {
 						const isCountdownStarted = !!this.form.start_time;
 						if (!isCountdownStarted) {
-							this.setFormDataWithDelay(task).then(() => {
-								this.showAlert('Countdown started');
-							});
+							this.setFormDataWithDelay(task);
 						}
 					});
 			},
@@ -1034,28 +1147,6 @@
 </script>
 
 <style lang="scss" scoped>
-	.checkpoint-delete {
-		top: 9px;
-		right: 10px;
-		cursor: pointer;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
-	.checkpoint-index {
-		width: fit-content;
-		top: 7px;
-		left: 10px;
-		cursor: pointer;
-		color: #00c300;
-		opacity: 0.5;
-		&:hover {
-			opacity: 1;
-		}
-	}
-
 	.task-title-span {
 		max-width: 200px;
 		display: inline-block;
