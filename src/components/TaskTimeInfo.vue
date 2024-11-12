@@ -21,7 +21,6 @@
 		approximatelyEndTime: ExtendedTime;
 		timer: Time;
 		isTimerActive: boolean;
-		isTimeOver: boolean;
 	}
 
 	const props = defineProps<Props>();
@@ -98,10 +97,6 @@
 						<div class="text-right text-lg">
 							{{ approximatelyEndTime.hours }} :
 							{{ approximatelyEndTime.minutes }}
-						</div>
-
-						<div v-if="isTimeOver" class="text-center text-sm text-red-500">
-							time is over
 						</div>
 					</div>
 				</div>
