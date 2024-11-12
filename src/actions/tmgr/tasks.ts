@@ -2,7 +2,7 @@ import $axios from '@/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
 import store from '@/store';
 import objectToQueryString from '@/utils/objectToQueryString';
-import { FormSetting, Setting } from '@/actions/tmgr/settings';
+import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
 
 export interface Task {

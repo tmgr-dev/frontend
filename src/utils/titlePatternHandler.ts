@@ -37,7 +37,8 @@ export const titlePatternHandler = (
 		datetimes
 			.map((item) => item.split('#dte}')[0])
 			.filter((item) => item.trim().length > 0)
-			.forEach((item, index) => {
+			.forEach((item) => {
+				console.log(item);
 				datetimeMap.set(`{dts#${item}#dte}`, moment().format(item));
 			});
 		datetimeMap.forEach((v, k) => {

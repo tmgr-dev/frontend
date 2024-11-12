@@ -7,12 +7,13 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
+	import { computed, onBeforeMount, onMounted, ref, toRef } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
 		deleteTask,
 		getTask,
+		getTasksIndexes,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		Task,
@@ -21,7 +22,6 @@
 	import BlockEditor from '@/components/BlockEditor.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
-	import 'vue-multiselect/dist/vue-multiselect.css';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
 		Select,
@@ -42,6 +42,7 @@
 	import Editor from '@/components/Editor.vue';
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
+	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 
 	interface Props {
 		isModal: boolean;
@@ -105,6 +106,8 @@
 			console.error(e);
 		}
 
+		await updateTaskTitle();
+
 		if (taskId.value) {
 			if (props.isModal) {
 				history.pushState({}, '', `/${taskId.value}`);
@@ -128,6 +131,28 @@
 				) || [];
 		}
 	});
+
+	const updateTaskTitle = async () => {
+		if (categories.value.length > 0 && form.value.project_category_id) {
+			const currentCategory = categories.value.find(
+				(category) => category.id === form.value.project_category_id,
+			);
+			const taskNamePatternSetting = currentCategory?.settings?.find(
+				(setting) => setting.key === 'task_name_pattern_date&time',
+			);
+			if (!taskNamePatternSetting || !currentCategory) return;
+
+			try {
+				const indexes = await getTasksIndexes(currentCategory.id);
+				form.value.title = titlePatternHandler(
+					taskNamePatternSetting.value,
+					new Map(Object.entries(indexes)),
+				);
+			} catch (e) {
+				console.error(e);
+			}
+		}
+	};
 
 	onMounted(() => {
 		// window.onkeydown = this.getShortcutSaveListener();

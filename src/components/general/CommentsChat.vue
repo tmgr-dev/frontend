@@ -19,7 +19,7 @@
 							"
 						>
 							{{ comment.message }}
-							{{ moment(comment.updated_at).toNow() }} ago.
+							{{ getTimeSinceUpdated(new Date(comment.updated_at)) }} ago
 						</span>
 
 						<div v-else class="flex flex-col">
@@ -161,9 +161,8 @@
 <script setup lang="ts">
 	import TextField from '@/components/general/TextField.vue';
 	import Button from '@/components/general/Button.vue';
-	import { onBeforeMount, onMounted, Ref, ref, UnwrapRef, watch } from 'vue';
-	import store from '../../store';
-	import moment from 'moment';
+	import { onBeforeMount, Ref, ref, watch } from 'vue';
+	import store from '@/store';
 	import {
 		createComment,
 		deleteComment,
@@ -171,6 +170,7 @@
 		updateComment,
 		createAskingHelpComment,
 	} from '@/actions/tmgr/comments';
+	import { getTimeSinceUpdated } from '@/utils';
 	export interface Assignee {
 		id: number;
 		name: string;
@@ -184,6 +184,8 @@
 		task_id: number;
 		user: Assignee;
 		comment_id?: number;
+		updated_at: string;
+		created_at: string;
 	}
 
 	interface Props {
@@ -227,7 +229,7 @@
 	);
 	watch(
 		() => props.startTime,
-		async (newValue, oldValue) => {
+		async (newValue) => {
 			if (newValue && newValue !== 0) {
 				processing.value = true;
 				const newComment = {
@@ -238,7 +240,7 @@
 			}
 		},
 	);
-	watch(isEditing, (nw) => {
+	watch(isEditing, () => {
 		message.value = editingMessage.value?.message!;
 	});
 
