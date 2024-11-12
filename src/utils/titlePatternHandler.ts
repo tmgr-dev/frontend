@@ -1,4 +1,4 @@
-import moment from 'moment';
+import dateFormat from 'dateformat';
 /*
 	#Pattern rules:
 
@@ -35,11 +35,13 @@ export const titlePatternHandler = (
 	if (result.includes('{dts#')) {
 		let datetimes = result.split('{dts#');
 		datetimes
-			.map((item) => item.split('#dte}')[0])
-			.filter((item) => item.trim().length > 0)
-			.forEach((item) => {
-				console.log(item);
-				datetimeMap.set(`{dts#${item}#dte}`, moment().format(item));
+			.map((format) => format.split('#dte}')[0])
+			.filter((format) => format.trim().length > 0)
+			.forEach((format) => {
+				datetimeMap.set(
+					`{dts#${format}#dte}`,
+					dateFormat(new Date(), format.toLowerCase()),
+				);
 			});
 		datetimeMap.forEach((v, k) => {
 			result = result.replaceAll(k, v);
