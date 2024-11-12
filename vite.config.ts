@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
+import tailwind from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
 
 // @todo replace build command in package.json later
 // "build": "vue-tsc -b && vite build",
@@ -25,6 +27,9 @@ export default defineConfig({
 				},
 				silenceDeprecations: ['legacy-js-api'],
 			},
+		},
+		postcss: {
+			plugins: [tailwind, autoprefixer],
 		},
 	},
 });
