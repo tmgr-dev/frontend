@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, ref, toRef } from 'vue';
+	import { computed, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -44,6 +44,7 @@
 	import { getBlockEditorDescription } from '@/utils/editor';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
+	import { useMagicKeys } from '@vueuse/core';
 
 	interface Props {
 		isModal: boolean;
@@ -287,6 +288,16 @@
 		}
 		await saveTask();
 	};
+
+	useMagicKeys({
+		passive: false,
+		onEventFired(e) {
+			if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
+				e.preventDefault();
+				saveTask();
+			}
+		},
+	});
 </script>
 
 <template>
