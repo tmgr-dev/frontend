@@ -40,7 +40,7 @@
 
 				<div class="mt-2 flex flex-col">
 					<button
-						class="rounded bg-blue-500 py-2 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+						class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
 						type="submit"
 					>
 						<span class="relative">
@@ -73,10 +73,10 @@
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
 	import { ref, onBeforeMount } from 'vue';
-	import { setNewPassword } from 'src/actions/tmgr/auth';
+	import { setNewPassword } from '@/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
-	import AuthBase from 'src/components/layouts/AuthBase.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	import AuthBase from '@/components/layouts/AuthBase.vue';
+	import TextField from '@/components/general/TextField.vue';
 
 	const router = useRouter();
 

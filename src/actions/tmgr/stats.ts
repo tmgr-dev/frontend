@@ -1,4 +1,4 @@
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 
 export const getStats = async () => {
 	const {

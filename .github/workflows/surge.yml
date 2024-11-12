@@ -34,8 +34,8 @@ jobs:
         uses: acrossoffwest/deploy-pr-action@v1.6.5
         with:
           prefix: tmgr # Prefix for deployment URL
-          robotsTxtPath: dist/spa/robots.txt # Add robots.txt file
-          distDir: dist/spa # Path to dist directory
+          #robotsTxtPath: dist/spa/robots.txt # Add robots.txt file
+          distDir: dist # Path to dist directory
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }} # GitHub token
           SURGE_LOGIN: ${{ secrets.SURGE_EMAIL }} # Surge.sh email

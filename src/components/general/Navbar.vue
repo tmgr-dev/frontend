@@ -40,7 +40,7 @@
 				<account-dropdown />
 
 				<div
-					class="mt-auto mb-4 flex items-center justify-between text-black dark:text-white"
+					class="mb-4 mt-auto flex items-center justify-between text-black dark:text-white"
 				>
 					<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 				</div>
@@ -52,9 +52,9 @@
 <script lang="ts" setup>
 	import DayNightSwitch from './DayNightSwitch.vue';
 	import AccountDropdown from './AccountDropdown.vue';
-	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
+	import NavbarMenu from '@/components/general/NavbarMenu.vue';
 	import { computed, ref } from 'vue';
-	import store from 'src/store';
+	import store from '@/store';
 
 	const showMenu = ref(false);
 

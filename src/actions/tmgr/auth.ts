@@ -1,5 +1,5 @@
-import $axios from 'src/plugins/axios';
-import store from 'src/store';
+import $axios from '@/plugins/axios';
+import store from '@/store';
 
 export interface LoginRequest {
 	email: string;

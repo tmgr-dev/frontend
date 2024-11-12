@@ -129,9 +129,9 @@
 </template>
 
 <script>
-	import SetTooltipData from 'src/mixins/SetTooltipData';
-	import Confirm from 'src/components/general/Confirm.vue';
-	import TaskActionsInTheListMixin from 'src/mixins/TaskActionsInTheListMixin';
+	import SetTooltipData from '@/mixins/SetTooltipData';
+	import Confirm from '@/components/general/Confirm.vue';
+	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 
 	export default {
 		name: 'TaskButtonsInTheList',

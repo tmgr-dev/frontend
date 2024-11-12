@@ -1,4 +1,4 @@
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 
 export interface Comment {
 	message: string;
@@ -20,10 +20,13 @@ export const createComment = async (taskId: number, payload: Comment) => {
 	return data;
 };
 
-export const createAskingHelpComment = async (taskId: number, question: string) => {
+export const createAskingHelpComment = async (
+	taskId: number,
+	question: string,
+) => {
 	const {
 		data: { data },
-	} = await $axios.post(`/tasks/${taskId}/comments/help`, {question});
+	} = await $axios.post(`/tasks/${taskId}/comments/help`, { question });
 
 	return data;
 };

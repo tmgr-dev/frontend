@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { onMounted, ref } from 'vue';
 	import { MdEditor, ExposeParam } from 'md-editor-v3';
-	import 'src/assets/styles/md-editor.css';
+	import '@/assets/styles/md-editor.css';
 	import store from '../store';
 	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 

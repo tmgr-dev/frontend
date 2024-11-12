@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
+	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 
 	export interface Assignee {
 		id: number;

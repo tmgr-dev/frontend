@@ -26,7 +26,7 @@
 
 		<div class="text-left">
 			<button
-				class="mt-4 rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
+				class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
 				type="button"
 				@click="saveUser"
 			>
@@ -37,9 +37,9 @@
 </template>
 
 <script>
-	import Button from 'src/components/general/Button.vue';
-	import TextField from 'src/components/general/TextField.vue';
-	import { getUser, updateUser } from 'src/actions/tmgr/user';
+	import Button from '@/components/general/Button.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import { getUser, updateUser } from '@/actions/tmgr/user';
 
 	export default {
 		name: 'Profile',

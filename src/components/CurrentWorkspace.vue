@@ -61,7 +61,7 @@
 			<template #modal-body>
 				<div v-if="!invitationToken">
 					<!-- Email Invitations -->
-					<label class="flex flex-col gap-2 mb-4">
+					<label class="mb-4 flex flex-col gap-2">
 						Email Addresses
 						<textarea
 							v-model="newWorkspaceInvitation.emails"
@@ -70,12 +70,15 @@
 							placeholder="email1@example.com, email2@example.com"
 						></textarea>
 						<span class="text-sm text-gray-500">
-              Separate multiple emails with commas
-            </span>
+							Separate multiple emails with commas
+						</span>
 					</label>
 
 					<!-- Usage Limit (only show if no emails) -->
-					<label v-if="!newWorkspaceInvitation.emails" class="flex flex-col gap-2">
+					<label
+						v-if="!newWorkspaceInvitation.emails"
+						class="flex flex-col gap-2"
+					>
 						Max usage times
 						<TextField
 							type="number"
@@ -85,16 +88,16 @@
 						/>
 					</label>
 
-<!--					&lt;!&ndash; Expiration Date &ndash;&gt;-->
-<!--					<label class="mt-3 flex flex-col gap-2">-->
-<!--						Expired at-->
-<!--						<TextField-->
-<!--							type="datetime-local"-->
-<!--							v-model="newWorkspaceInvitation.expired_at"-->
-<!--							:errors="errors.expired_at"-->
-<!--							placeholder="Expired at"-->
-<!--						/>-->
-<!--					</label>-->
+					<!--					&lt;!&ndash; Expiration Date &ndash;&gt;-->
+					<!--					<label class="mt-3 flex flex-col gap-2">-->
+					<!--						Expired at-->
+					<!--						<TextField-->
+					<!--							type="datetime-local"-->
+					<!--							v-model="newWorkspaceInvitation.expired_at"-->
+					<!--							:errors="errors.expired_at"-->
+					<!--							placeholder="Expired at"-->
+					<!--						/>-->
+					<!--					</label>-->
 
 					<button
 						@click="createNewWorkspaceInvitation()"
@@ -110,17 +113,23 @@
 				<!-- Success State - Show Link -->
 				<div v-else>
 					<div class="mb-4">
-						<h3 class="font-bold text-lg mb-2">Invitation sent!</h3>
-						<p v-if="newWorkspaceInvitation.emails" class="text-sm text-gray-600 mb-4">
+						<h3 class="mb-2 text-lg font-bold">Invitation sent!</h3>
+						<p
+							v-if="newWorkspaceInvitation.emails"
+							class="mb-4 text-sm text-gray-600"
+						>
 							Invitations have been sent to the specified email addresses.
 						</p>
-						<p v-else class="text-sm text-gray-600 mb-4">
+						<p v-else class="mb-4 text-sm text-gray-600">
 							You can share this link with anyone you want to invite:
 						</p>
 					</div>
 
-					<div v-if="!newWorkspaceInvitation.emails" class="flex gap-2 bg-gray-50 p-3 rounded">
-						<code class="text-sm break-all">
+					<div
+						v-if="!newWorkspaceInvitation.emails"
+						class="flex gap-2 rounded bg-gray-50 p-3"
+					>
+						<code class="break-all text-sm">
 							{{ invitationLink }}
 						</code>
 
@@ -129,12 +138,12 @@
 							class="flex-shrink-0"
 							:title="flags.isCopied ? 'Copied!' : 'Copy to clipboard'"
 						>
-              <span
+							<span
 								class="material-icons transition-colors"
 								:class="{ 'text-green-500': flags.isCopied }"
 							>
-                content_copy
-              </span>
+								content_copy
+							</span>
 						</button>
 					</div>
 				</div>
@@ -144,25 +153,26 @@
 </template>
 
 <script setup lang="ts">
-	import { copyToClipboard as copy } from 'quasar';
 	import {
 		createWorkspace,
 		createWorkspaceInvitation,
 		getWorkspaces,
 		Workspace,
 		WorkspaceInvitation,
-	} from 'src/actions/tmgr/workspaces';
-	import Select from 'src/components/general/Select.vue';
-	import TextField from 'src/components/general/TextField.vue';
+	} from '@/actions/tmgr/workspaces';
+	import Select from '@/components/general/Select.vue';
+	import TextField from '@/components/general/TextField.vue';
 	import { computed, onBeforeMount, reactive, Ref, ref } from 'vue';
 	import { AxiosError } from 'axios';
-	import Modal from 'src/components/Modal.vue';
+	import Modal from '@/components/Modal.vue';
+	import { useCopyToClipboard } from '@/composable/useCopyToClipboard.ts';
 
 	interface Props {
 		modelValue: string | number;
 	}
 
 	const props = defineProps<Props>();
+	const value = defineModel<number>();
 	const emit = defineEmits(['update:modelValue', 'updateSettings']);
 
 	const flags = reactive({
@@ -183,11 +193,11 @@
 		emails: '',
 	});
 	const invitationToken = ref('');
+	const [copy] = useCopyToClipboard();
 
 	onBeforeMount(async () => {
 		workspaces.value = await getWorkspaces();
 	});
-	const value = defineModel();
 
 	const invitationLink = computed(() => {
 		return `${location.protocol}//${location.host}/workspaces/invitations/${invitationToken.value}`;
