@@ -155,34 +155,35 @@
 				:timer="timer"
 				:approximately-end-time="approximatelyEndTime"
 				:last-start-time="lastStartTime"
-				:is-time-over="isTimeOver"
 				:is-timer-active="isTimerActive"
 				@stop-timer="toggleTimer"
 			/>
 
-			<div
-				class="flex select-none items-center gap-x-1 text-2xl font-bold"
-				:class="[
-					isTimerActive &&
-						!isTimeOver &&
-						'bg-gradient-to-r from-blue-500 to-green-500 bg-clip-text text-transparent',
-					isTimeOver && 'text-red-500',
-					!isTimerActive && !isTimeOver && 'text-gray-500',
-				]"
-				@dblclick="isShowModalTimer = true"
-			>
-				<span class="w-11">{{ timer.hours }} :</span>
-				<span class="w-11">{{ timer.minutes }} :</span>
-				<span class="w-9">
-					{{ timer.seconds }}
-				</span>
-
-				<span
-					v-if="isTimeOver"
-					class="col-span-3 text-center text-xs text-red-600"
+			<div>
+				<div
+					class="flex select-none items-center gap-x-1 text-2xl font-bold"
+					:class="[
+						isTimerActive &&
+							!isTimeOver &&
+							'bg-gradient-to-r from-blue-500 to-green-500 bg-clip-text text-transparent',
+						isTimeOver && 'text-red-500',
+						!isTimerActive && !isTimeOver && 'text-gray-500',
+					]"
+					@dblclick="isShowModalTimer = true"
 				>
-					time is over
-				</span>
+					<span class="w-11">{{ timer.hours }} :</span>
+					<span class="w-11">{{ timer.minutes }} :</span>
+					<span class="w-9">
+						{{ timer.seconds }}
+					</span>
+				</div>
+
+				<div
+					v-if="isTimeOver"
+					class="text-center text-xs font-bold text-red-500"
+				>
+					Get some rest!
+				</div>
 			</div>
 
 			<div class="flex justify-center">
