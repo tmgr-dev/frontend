@@ -2,7 +2,6 @@
 	<alert ref="alert" />
 
 	<div
-		id="q-app"
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 		:key="$store.state.appRerenderKey"
 	>
