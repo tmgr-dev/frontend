@@ -12,7 +12,9 @@
 	>
 		<div
 			class="relative"
-			:class="{ 'flex items-center justify-center gap-5': !task.start_time }"
+			:class="{
+				'flex items-center justify-center gap-5 pb-4': !task.start_time,
+			}"
 		>
 			<div
 				v-if="lastStartTime"
@@ -29,9 +31,7 @@
 						? 'Double click to edit the time'
 						: { visible: false }
 				"
-				:class="`countdown-wrapper select-none ${
-					lastStartTime ? '' : 'float-left'
-				}`"
+				:class="`countdown-wrapper select-none`"
 				@dblclick="isShowModalTimer = true"
 			>
 				<span class="countdown-item">{{ countdown.hours }}</span>
@@ -84,7 +84,7 @@
 		/>
 
 		<Transition name="bounce-right-fade">
-			<modal v-if="isShowModalTimer" modal-class="w-96 p-10">
+			<Modal v-if="isShowModalTimer" modal-class="w-96 p-10">
 				<template #modal-body>
 					<div class="countdown-modal-edit">
 						<vue-the-mask
@@ -127,21 +127,23 @@
 						</button>
 					</div>
 				</template>
-			</modal>
+			</Modal>
 		</Transition>
 	</div>
 </template>
 
 <script>
-	import Reminder from 'src/components/tasks/Reminder.vue';
-	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-	import { updateTaskTimeCounter } from 'src/actions/tmgr/tasks';
+	import Reminder from '@/components/tasks/Reminder.vue';
+	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
+	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
+	import Modal from '@/components/Modal.vue';
 
 	let countdownInterval = null;
 
 	export default {
 		name: 'Countdown',
 		components: {
+			Modal,
 			Reminder,
 		},
 		mixins: [TimePreparationMixin],
@@ -182,7 +184,7 @@
 		}),
 		computed: {
 			userSettings() {
-				return this.$store.getters.getUserSettings ?? {};
+				return this.$store.state.userSettings ?? {};
 			},
 			disabledStyles() {
 				const disabledStyles = {

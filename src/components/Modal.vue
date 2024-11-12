@@ -1,59 +1,96 @@
 <template>
-	<div
-		class="fixed inset-0 z-50 flex bg-black/50"
-		:data-name="name"
-		@click="close"
-	>
+	<div id="backdrop" class="fixed inset-0 z-50 flex" data-name="overlay">
+		<div class="absolute inset-0 bg-black/50" @click="zooming" />
+
 		<div
-			class="m-auto max-h-[95%] max-w-[95%] rounded-lg bg-white dark:bg-gray-900"
-			:class="modalClass"
+			class="relative m-auto max-w-full bg-white dark:bg-gray-900 md:rounded-[8px]"
+			:class="[modalClass, { 'zoom-effect': isZooming }]"
 		>
 			<slot name="modal-body"></slot>
 		</div>
 	</div>
 </template>
 
-<script>
-	export default {
-		name: 'Modal',
-		emits: ['close'],
-		props: {
-			name: {
-				type: String,
-				required: false,
-			},
-			closeOnBgClick: {
-				type: Boolean,
-				required: false,
-				default: true,
-			},
-			modalClass: {
-				type: String,
-				required: false,
-			},
-		},
-		data() {
-			return {
-				initialUrl: location.href,
-			};
-		},
+<script lang="ts" setup>
+	import { onMounted, onUnmounted, ref } from 'vue';
+	import { useStore } from 'vuex';
 
-		methods: {
-			close(e) {
-				if (this.closeOnBgClick) {
-					if (
-						e.target.classList.contains('overlay') &&
-						e.target.dataset.name === this.name
-					) {
-						this.$emit('close');
-					}
-				}
-			},
-		},
-		unmounted() {
-			if (location.href !== this.initialUrl) {
-				history.pushState({}, '', this.initialUrl);
+	interface Props {
+		modalClass?: string;
+		closeOnBgClick?: boolean;
+	}
+
+	const props = defineProps<Props>();
+	const emit = defineEmits(['close', 'closingModal']);
+	const initialUrl = ref(location.href);
+	const store = useStore();
+
+	onMounted(() => {
+		document.body.classList.add('overflow-hidden');
+		document.addEventListener('keydown', closeByEscape);
+	});
+
+	onUnmounted(() => {
+		document.body.classList.remove('overflow-hidden');
+		if (location.href !== initialUrl.value) {
+			history.pushState({}, '', initialUrl.value);
+		}
+		document.removeEventListener('keydown', closeByEscape);
+	});
+
+	function closeByEscape(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			if (store.state.openModals) {
+				emit('closingModal');
+			} else {
+				emit('close');
 			}
-		},
-	};
+		}
+	}
+
+	function close(e: MouseEvent) {
+		const secondModal = document.querySelector('#modal3');
+		const thirdModal = document.querySelector('#modal4');
+		const target = e.target as HTMLDivElement;
+		if (thirdModal && target == thirdModal) {
+			emit('closingModal');
+			return;
+		}
+		if (target === secondModal) {
+			emit('closingModal');
+			return;
+		} else {
+			if (props.closeOnBgClick) {
+				if (target.dataset.name === 'overlay') {
+					emit('close');
+				}
+			}
+		}
+	}
+
+	const isZooming = ref();
+	function zooming() {
+		isZooming.value = true;
+		setTimeout(() => {
+			isZooming.value = false;
+		}, 300);
+	}
 </script>
+
+<style scoped>
+	@keyframes zoomInOut {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.05);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	.zoom-effect {
+		animation: zoomInOut 0.3s ease-in-out;
+	}
+</style>

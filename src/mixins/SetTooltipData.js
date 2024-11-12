@@ -1,7 +1,7 @@
 export default {
 	computed: {
 		userSettings() {
-			return this.$store.getters.getUserSettings || {};
+			return this.$store.state.userSettings || {};
 		},
 	},
 	methods: {

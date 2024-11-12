@@ -1,8 +1,8 @@
 <template>
-	<div class="flex min-h-screen w-screen flex-col">
-		<header class="container relative mx-auto my-5 px-4">
+	<div class="flex flex-col">
+		<header class="container relative px-4">
 			<h1
-				class="relative mt-6 pt-1 text-center text-center text-2xl text-blue-800 dark:text-white md:mt-0 md:pt-0 md:text-left md:text-3xl"
+				class="relative mt-6 pt-1 text-center text-center text-2xl text-blue-800 dark:text-white md:mt-6 md:pt-0 md:text-left md:text-3xl"
 			>
 				<slot name="header" />
 			</h1>
@@ -18,9 +18,9 @@
 
 		<div
 			v-if="!noCopyright"
-			class="container mx-auto mb-5 mt-auto px-5 pb-5 text-center text-gray-600"
+			class="container mx-auto mb-5 mt-auto px-5 pb-5 text-center text-sm text-gray-600 md:text-base"
 		>
-			<p>
+			<p class="mt-4">
 				Task manager.
 				<a class="text-gray-500" href="#" target="_blank">Tmgr.dev</a>
 			</p>
@@ -42,7 +42,7 @@
 			bodyContainerClass: {
 				type: String,
 				required: false,
-				default: 'container mx-auto px-2',
+				default: 'container',
 			},
 		},
 		computed: {

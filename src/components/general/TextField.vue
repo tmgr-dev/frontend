@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded border bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full rounded border bg-white px-3 py-1 outline-none transition-colors duration-300 dark:bg-gray-800"
 			:class="[
 				'border-neutral-300',
 				inputClass || 'dark:border-transparent',
@@ -11,6 +11,7 @@
 			:name="name"
 			:placeholder="placeholder"
 			v-model="value"
+			:readonly="readonly"
 		/>
 
 		<transition name="fade-left">
@@ -39,8 +40,9 @@
 		name?: string;
 		modelValue: string;
 		placeholder?: string;
+		readonly?: string;
 		inputClass?: string;
-		errors?: [];
+		errors?: Record<any, any>[];
 		showErrorInTooltip?: boolean;
 	}
 
@@ -51,19 +53,10 @@
 		showErrorInTooltip: true,
 		inputClass: '',
 	});
-	const emit = defineEmits(['update:modelValue']);
-
-	const value = computed({
-		get() {
-			return props.modelValue;
-		},
-		set(value) {
-			emit('update:modelValue', value);
-		},
-	});
+	const value = defineModel();
 
 	const hasError = computed(() => {
-		return props.errors?.length > 0 && props.errors[0];
+		return props?.errors && props.errors?.length > 0 && props.errors[0];
 	});
 </script>
 

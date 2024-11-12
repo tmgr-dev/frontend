@@ -11,10 +11,10 @@
 				:items="getBreadcrumbs(parentCategories)"
 			/>
 
-			<div class="right-0 bottom-0 mr-5 mb-2 md:absolute">
+			<div class="bottom-0 right-0 mb-2 mr-5 md:absolute">
 				<router-link
 					v-if="category"
-					:to="`/projects-categories/${category.id}/edit`"
+					:to="`/projects-categories/${category.id}`"
 					class="pr-5 opacity-25 hover:opacity-100"
 					title="Edit category name"
 				>
@@ -34,7 +34,7 @@
 		<template #body>
 			<loading-tasks-list v-if="isCategoriesFirstLoading" />
 
-			<div v-if="categories && categories.length > 0">
+			<div v-if="categories && categories.length > 0" class="mt-10 px-4">
 				<div
 					v-for="category in categories"
 					:key="category.id"
@@ -69,6 +69,9 @@
 											<span class="ml-2 text-gray-700">
 												Projects: {{ category.children_count }}; Tasks:
 												{{ category.tasks_count }}
+											</span>
+											<span v-if="category.user" class="ml-2 text-gray-700">
+												Creator: {{ category?.user?.name }}
 											</span>
 										</div>
 									</div>
@@ -187,19 +190,19 @@
 	import Confirm from '../components/general/Confirm.vue';
 	import Breadcrumbs from '../components/general/Breadcrumbs.vue';
 	import extractParents from '../utils/extractParents';
-	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
+	import LoadingButtonActions from '@/mixins/LoadingButtonActions';
 	import getBreadcrumbs from '../utils/getBreadcrumbs';
-	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from 'src/components/tasks/TasksListComponent.vue';
-	import { getTasks, updateTaskPartially } from 'src/actions/tmgr/tasks';
+	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
+	import TasksListComponent from '@/components/tasks/TasksList.vue';
+	import { getTasks, updateTaskPartially } from '@/actions/tmgr/tasks';
 	import {
 		restoreCategory,
 		deleteCategory as deleteCategoryAction,
 		getParentCategory,
 		getSubCategories,
-	} from 'src/actions/tmgr/categories';
-	import Select from 'src/components/general/Select.vue';
-	import DropdownMenu from 'src/components/general/DropdownMenu.vue';
+	} from '@/actions/tmgr/categories';
+	import Select from '@/components/general/Select.vue';
+	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 
 	export default {
 		name: 'ProjectCategoryList',
@@ -230,7 +233,7 @@
 		}),
 		computed: {
 			workspaceStatuses() {
-				let statuses = this.$store.getters.statuses;
+				let statuses = this.$store.state.workspaceStatuses;
 
 				return [
 					{

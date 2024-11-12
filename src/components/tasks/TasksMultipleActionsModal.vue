@@ -7,7 +7,7 @@
 		>
 			<slot></slot>
 			<a
-				class="absolute top-0 right-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
+				class="absolute right-0 top-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
 				href="#close"
 				@click.prevent="$emit('close')"
 			>
@@ -133,8 +133,8 @@
 </template>
 
 <script>
-	import SetTooltipData from 'src/mixins/SetTooltipData';
-	import VueDraggableResizable from 'src/plugins/VueDraggableResizable/VueDraggableResizable.vue';
+	import SetTooltipData from '@/mixins/SetTooltipData';
+	import VueDraggableResizable from '@/plugins/VueDraggableResizable/VueDraggableResizable.vue';
 
 	export default {
 		name: 'TasksMultipleActionsModal',

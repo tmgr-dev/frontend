@@ -1,5 +1,5 @@
 <template>
-	<div class="relative" :class="[isModal ? 'ml-5' : 'ml-auto']">
+	<div class="relative" :class="[isModal ? 'ml-5' : 'md:ml-auto']">
 		<div class="flex flex-row-reverse">
 			<div
 				v-if="showAssigneeControls"
@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
+	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 
 	export interface Assignee {
 		id: number;
@@ -49,7 +49,7 @@
 		assignees: Assignee[];
 		avatarsClass: string;
 		showAssigneeControls: boolean;
-		isModal: boolean;
+		isModal?: boolean;
 	}
 
 	const props = defineProps<Props>();

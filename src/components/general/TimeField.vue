@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			type="time"
-			class="w-full appearance-none rounded border-0 bg-white py-2 px-3 outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full appearance-none rounded border-0 bg-white px-3 py-2 outline-none transition-colors duration-300 dark:bg-gray-800"
 			:class="[extraClass, errors ? 'with-errors' : '']"
 			:name="name"
 			:placeholder="placeholder"
@@ -18,8 +18,8 @@
 </template>
 
 <script>
-	import getTimeInSeconds from 'src/utils/getTimeInSeconds';
-	import toHHMM from 'src/utils/toHHMM';
+	import getTimeInSeconds from '@/utils/getTimeInSeconds';
+	import convertToHHMM from '@/utils/convertToHHMM';
 
 	// @todo refactor this component. It was just moved from input-field
 
@@ -76,7 +76,7 @@
 		},
 		methods: {
 			getTimeInSeconds,
-			getSecondsInTime: toHHMM,
+			getSecondsInTime: convertToHHMM,
 			updateWidth() {
 				this.screenWidth = window.innerWidth;
 			},

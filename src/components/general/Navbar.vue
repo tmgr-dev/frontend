@@ -1,9 +1,9 @@
 <template>
-	<div class="absolute right-0 z-30 ml-auto p-4 md:hidden">
+	<div class="absolute right-0 z-50 ml-auto p-4 md:hidden">
 		<div
 			class="nav-toggle-menu"
-			:class="{ active: menuIsActive }"
-			@click="$store.getters.slideout.toggle()"
+			:class="{ active: showMenu }"
+			@click="toggleMenu"
 		>
 			<div class="bar1 bg-gray-900 dark:bg-white"></div>
 			<div class="bar2 bg-gray-900 dark:bg-white"></div>
@@ -15,89 +15,61 @@
 		class="hidden bg-white shadow transition-colors duration-300 dark:bg-gray-900 md:block"
 		role="navigation"
 	>
-		<div
-			class="md:flex-no-wrap container mx-auto flex flex-wrap items-center p-4"
-		>
-			<div
-				class="w-full md:flex md:w-auto md:flex-grow md:items-center"
-				:class="{ hidden: isHidden }"
-			>
-				<navbar-menu />
-				<span
-					class="ml-auto mr-4 flex items-center justify-between text-black dark:text-white"
-				>
-					<day-night-switch
-						:key="this.$store.getters.colorScheme"
-						v-model="switchOn"
-					/>
-				</span>
+		<div class="container mx-auto flex p-4">
+			<navbar-menu @navigated="toggleMenu" />
 
-				<account-dropdown />
+			<div
+				class="ml-auto mr-4 flex items-center justify-between text-black dark:text-white"
+			>
+				<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 			</div>
+
+			<account-dropdown />
 		</div>
 	</nav>
+
+	<transition name="translate-left" mode="out-in">
+		<nav
+			v-if="showMenu"
+			class="fixed inset-0 z-40 w-full bg-white shadow transition-colors duration-300 dark:bg-gray-900 md:hidden"
+			role="navigation"
+		>
+			<div class="mt-4 flex h-full flex-col items-center p-4 text-center">
+				<navbar-menu @navigated="toggleMenu" />
+
+				<account-dropdown />
+
+				<div
+					class="mb-4 mt-auto flex items-center justify-between text-black dark:text-white"
+				>
+					<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
+				</div>
+			</div>
+		</nav>
+	</transition>
 </template>
 
-<script>
+<script lang="ts" setup>
 	import DayNightSwitch from './DayNightSwitch.vue';
 	import AccountDropdown from './AccountDropdown.vue';
-	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
+	import NavbarMenu from '@/components/general/NavbarMenu.vue';
+	import { computed, ref } from 'vue';
+	import store from '@/store';
 
-	export default {
-		name: 'Navbar',
-		props: {
-			menuIsActive: {
-				type: Boolean,
-				required: false,
-				default: false,
-			},
-			menuPosition: {
-				type: Number,
-				required: false,
-				default: 0,
-			},
+	const showMenu = ref(false);
+
+	const switchOn = computed({
+		get() {
+			return store.state.colorScheme === 'dark';
 		},
-		components: {
-			NavbarMenu,
-			AccountDropdown,
-			DayNightSwitch,
+		set(value) {
+			store.commit('setColorScheme', value ? 'dark' : 'default');
 		},
-		data: () => ({
-			isHidden: true,
-			links: [
-				{ id: 1, name: 'List', path: '/' },
-				{ id: 2, name: 'Archive', path: '/acrhive' },
-				{ id: 3, name: 'Categories', path: '/projects-categories' },
-			],
-		}),
-		computed: {
-			switchOn: {
-				get() {
-					return this.$store.getters.colorScheme === 'dark';
-				},
-				set(newValue) {
-					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
-				},
-			},
-		},
-	};
+	});
+
+	function toggleMenu() {
+		showMenu.value = !showMenu.value;
+
+		document.body.classList.toggle('overflow-hidden');
+	}
 </script>
-
-<style>
-	.fade-kiosk-list-enter-active,
-	.fade-kiosk-list-leave-active {
-		transition: all 0.9s ease-in-out;
-	}
-
-	.mobile-navbar-menu {
-		/*transform: translateX(-50%);*/
-	}
-
-	.fade-kiosk-list-enter {
-		transform: translateX(100%);
-	}
-
-	.fade-kiosk-list-leave-to {
-		transform: translateX(-100%);
-	}
-</style>

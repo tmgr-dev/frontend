@@ -1,13 +1,13 @@
-import $axios from 'src/plugins/axios';
-import store from 'src/store';
-import { Setting } from 'src/actions/tmgr/settings';
+import $axios from '@/plugins/axios';
+import store from '@/store';
+import { FormSetting } from '@/actions/tmgr/settings';
 
 export interface User {
 	id: number;
 	email: string;
 	role: number;
 	name: string;
-	settings: Setting[];
+	settings: FormSetting[];
 }
 
 export const getUser = async (saveToStore = false) => {
@@ -16,7 +16,7 @@ export const getUser = async (saveToStore = false) => {
 	} = await $axios.get('user');
 
 	if (saveToStore) {
-		store.commit('user', data);
+		store.commit('setUser', data);
 	}
 
 	return data;

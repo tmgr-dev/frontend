@@ -1,144 +1,82 @@
 <template>
 	<alert ref="alert" />
 
-	<div id="q-app" class="text-tmgr-blue dark:text-tmgr-gray" :key="$store.getters.appRerender">
-		<Slideout
-			menu="#menu"
-			panel="#panel"
-			side="right"
-			@on-translate="translateMenu"
-			@on-beforeclose="menuIsActive = false"
-			@on-beforeopen="menuIsActive = true"
-		>
-			<div id="menu" class="overflow-y-hidden" style="overflow-y: hidden">
-				<div class="z-20 px-4 text-right">
-					<navbar-menu />
-					<account-dropdown
-						v-if="$store.getters.isLoggedIn"
-						class="flex justify-end"
-					/>
-					<span
-						class="absolute bottom-0 right-0 pr-4 pb-10 text-black dark:text-white"
+	<div
+		id="q-app"
+		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
+		:key="$store.state.appRerenderKey"
+	>
+		<transition mode="out-in" name="fade">
+			<AppNavigation @new-task="handleNewTask">
+				<router-view :key="$route.path" v-slot="{ Component }">
+					<transition
+						:name="transitionName"
+						mode="out-in"
+						@before-leave="beforeLeave"
+						@enter="enter"
+						@after-enter="afterEnter"
 					>
-						<day-night-switch v-model="switchOn" />
-					</span>
-				</div>
-			</div>
-
-			<div id="panel">
-				<q-scroll-area
-					:style="{
-						height: bodyHeight + 'px',
-					}"
-				>
-					<transition mode="out-in" name="fade">
 						<div>
-							<Navbar
-								v-if="$route.meta.navbarHidden"
-								:menu-is-active="menuIsActive"
-								:menu-position="translateMenuPosition"
-							/>
+							<component :is="Component" v-if="showComponent"></component>
 						</div>
 					</transition>
+				</router-view>
+			</AppNavigation>
+		</transition>
 
-					<router-view :key="$route.path" v-slot="{ Component }">
-						<transition
-							:name="transitionName"
-							mode="out-in"
-							@before-leave="beforeLeave"
-							@enter="enter"
-							@after-enter="afterEnter"
-						>
-							<div>
-								<component :is="Component" v-if="showComponent"></component>
-							</div>
-						</transition>
-					</router-view>
-				</q-scroll-area>
-			</div>
-		</Slideout>
-
-		<div class="fixed left-0 bottom-0 z-10 ml-10 mb-10 mr-2">
-			<span v-for="task in activeTasks" class="mb-5 inline-block">
-				<transition mode="out-in" name="fade">
-					<a
-						v-if="task.id !== $store.getters.currentOpenedTaskId"
-						:href="`/${task.id}/edit`"
-						@click.prevent="$store.commit('currentTaskIdForModal', task.id)"
-					>
-						<span
-							class="relative mr-5 inline-flex rounded-md bg-gray-200 p-2 shadow-sm transition-colors duration-300 dark:bg-gray-800"
-						>
-							<span class="absolute top-0 left-0 -mt-2 -ml-2 flex h-5 w-5">
-								<span
-									class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
-								/>
-								<span
-									class="relative inline-flex h-5 w-5 rounded-full bg-green-500"
-								/>
-							</span>
-
-							<span class="text-tmgr-blue dark:text-tmgr-gray">
-								{{ task.title }}
-							</span>
-						</span>
-					</a>
-				</transition>
-			</span>
-		</div>
+		<ActiveTasks :tasks="activeTasks" />
 
 		<Transition name="bounce-right-fade">
-			<modal
-				name="Task"
+			<Modal
 				v-if="showTaskFormModalWindow"
+				modal-class="h-full w-full md:w-auto md:h-auto"
 				close-on-bg-click
-				modal-class="w-11/12 h-full"
-				@close="$store.dispatch('closeTaskModal')"
+				@close="$store.commit('closeTaskModal')"
 			>
 				<template #modal-body>
-					<task-form
-						:is-modal="true"
+					<NewForm :is-modal="true" @close="$store.commit('closeTaskModal')" />
+
+					<!--					<TaskForm
+						is-modal
 						:modal-project-category-id="
-							$store.getters.createTaskInProjectCategoryId
+							$store.state.createTaskInProjectCategoryId
 						"
-						:modal-task-id="$store.getters.currentTaskIdForModal"
-						:status-id="$store.getters.createTaskInStatusId"
-						@close="$store.dispatch('closeTaskModal')"
-					/>
+						:modal-task-id="$store.state.currentTaskIdForModal"
+						:status-id="$store.state.taskStatusId"
+						@close="$store.commit('closeTaskModal')"
+					/>-->
 				</template>
-			</modal>
+			</Modal>
 		</Transition>
 	</div>
 </template>
 
 <script>
 	import { defineComponent } from 'vue';
-
-	import Navbar from 'src/components/general/Navbar.vue';
-	import NavbarMenu from 'src/components/general/NavbarMenu.vue';
-	import Slideout from 'src/components/Slideout.vue';
-	import TaskForm from 'src/pages/TaskForm.vue';
-	import store from 'src/store';
-	import { getUserSettings } from 'src/actions/tmgr/user';
-	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
-	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
-	import Alert from 'src/components/general/Alert.vue';
-	import AccountDropdown from 'src/components/general/AccountDropdown.vue';
-	import DayNightSwitch from 'src/components/general/DayNightSwitch.vue';
+	import Navbar from '@/components/general/Navbar.vue';
+	import TaskForm from '@/pages/TaskForm.vue';
+	import store from '@/store';
+	import { getUserSettings } from '@/actions/tmgr/user';
+	import { getLaunchedTasks } from '@/actions/tmgr/tasks';
+	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import Alert from '@/components/general/Alert.vue';
+	import Modal from '@/components/Modal.vue';
+	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import NewForm from '@/pages/NewForm.vue';
+	import AppNavigation from '@/AppNavigation.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
-	// TODO: solve slideout & horizontal scroll in the Board
 	export default defineComponent({
 		name: 'App',
 		components: {
-			DayNightSwitch,
-			AccountDropdown,
+			NewForm,
+			AppNavigation,
+			ActiveTasks,
+			Modal,
 			Alert,
 			TaskForm,
 			Navbar,
-			Slideout,
-			NavbarMenu,
 		},
 		data() {
 			return {
@@ -148,8 +86,6 @@
 				activeTasks: [],
 				bodyOverflow: '',
 				bodyHeight: 800,
-				menuIsActive: false,
-				translateMenuPosition: 0,
 			};
 		},
 		computed: {
@@ -158,17 +94,17 @@
 			},
 			switchOn: {
 				get() {
-					return this.$store.getters.colorScheme === 'dark';
+					return this.$store.state.colorScheme === 'dark';
 				},
 				set(newValue) {
-					this.$store.commit('colorScheme', newValue ? 'dark' : 'default');
+					this.$store.commit('setColorScheme', newValue ? 'dark' : 'default');
 				},
 			},
 			showTaskFormModalWindow() {
 				return (
 					this.$route.name !== 'TasksEdit' &&
-					(this.$store.getters.currentTaskIdForModal ||
-						this.$store.getters.showCreateTaskModal)
+					(this.$store.state.currentTaskIdForModal ||
+						this.$store.state.showCreatingTaskModal)
 				);
 			},
 		},
@@ -177,14 +113,11 @@
 				this.showComponent = false;
 				setTimeout(() => (this.showComponent = true), 100);
 			},
+			'$store.state.reloadActiveTasksKey'() {
+				this.loadActiveTasks();
+			},
 		},
 		methods: {
-			closeTaskModal() {
-				this.$store.dispatch('closeTaskModal');
-			},
-			translateMenu(data) {
-				this.translateMenuPosition = data;
-			},
 			beforeLeave(element) {
 				this.prevHeight = getComputedStyle(element).height;
 			},
@@ -201,24 +134,28 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
-				if (!this.$store.getters.user) return;
+				if (!this.$store.state.user) return;
 
 				this.activeTasks = await getLaunchedTasks();
 			},
 			minimize() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.minimize();
 				}
 			},
 			maximize() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.toggleMaximize();
 				}
 			},
 			closeApp() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.close();
 				}
+			},
+			handleNewTask() {
+				console.log('open modal');
+				this.$store.commit('setShowCreatingTaskModal');
 			},
 			initBodyHeight() {
 				setTimeout(() => {
@@ -251,7 +188,6 @@
 			}
 
 			this.$router.beforeEach((to, from, next) => {
-				this.$store.commit('currentOpenedTaskId', null);
 				this.loadActiveTasks();
 				let transitionName = to.meta.transitionName || from.meta.transitionName;
 
@@ -266,24 +202,24 @@
 				next();
 			});
 
-			if (!this.$store.getters.user) {
+			if (!this.$store.state.user) {
 				return;
 			}
-			this.$store.getters.pusherBeamsClient.getUserId().then((userId) => {
+			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
 				if (!userId) {
-					return this.$store.commit('pusherBeamsUserId', userId);
+					return this.$store.commit('setPusherBeamsUserId', userId);
 				}
-				userId = this.$store.getters.user.id.toString();
-				this.$store.getters.pusherBeamsClient.start().then(() => {
-					this.$store.getters.pusherBeamsClient
-						.setUserId(userId, this.$store.getters.pusherTokenProvider)
+				userId = this.$store.state.user.id.toString();
+				this.$store.getters.getPusherBeamsClient.start().then(() => {
+					this.$store.getters.getPusherBeamsClient
+						.setUserId(userId, this.$store.getters.getPusherTokenProvider)
 						.then(() => {
-							this.$store.commit('pusherBeamsUserId', userId);
+							this.$store.commit('setPusherBeamsUserId', userId);
 						});
 				});
 			});
 			this.loadActiveTasks();
-			if (process.env.MODE === 'electron') {
+			if (import.meta.env.MODE === 'electron') {
 				document.body.style.overflow = 'hidden';
 			}
 		},
@@ -293,4 +229,4 @@
 	});
 </script>
 
-<style lang="scss" src="src/assets/styles/index.scss"></style>
+<style lang="scss" src="@/assets/styles/index.scss"></style>

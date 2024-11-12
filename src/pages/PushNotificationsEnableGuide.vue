@@ -138,7 +138,7 @@
 </template>
 
 <script>
-	import Alert from 'src/components/general/Alert.vue';
+	import Alert from '@/components/general/Alert.vue';
 
 	export default {
 		name: 'PushNotificationsEnableGuide',

@@ -1,5 +1,3 @@
-import moment from 'moment';
-
 export default {
 	methods: {
 		secondsToHumanReadableString(seconds) {
@@ -15,15 +13,12 @@ export default {
 			const countdown = {};
 			countdown.hours = this.prepareClockNumber(hour);
 			countdown.minutes = this.prepareClockNumber(minute);
-			countdown.seconds = this.prepareClockNumber(second);
+			countdown.seconds = this.prepareClockNumber(second) || '00';
 
 			return countdown;
 		},
 		prepareClockNumber(num) {
 			return num < 10 ? '0' + num : num;
-		},
-		formatDatetime(datetime) {
-			return moment(datetime).format('DD.MM');
 		},
 	},
 };

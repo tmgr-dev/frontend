@@ -98,7 +98,7 @@
 
 					<div class="mt-8 flex-row justify-center">
 						<button
-							class="mr-5 rounded bg-blue-500 py-2 px-4 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
+							class="mr-5 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
 							type="button"
 							@click.prevent="create"
 						>
@@ -107,7 +107,7 @@
 
 						<button
 							v-if="isCreate"
-							class="rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none"
+							class="rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none"
 							type="button"
 							@click.prevent="create(false)"
 						>
@@ -117,7 +117,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="rounded bg-gray-500 py-2 px-4 font-bold text-white hover:bg-gray-700 focus:outline-none"
+							class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
 							type="button"
 						>
 							Cancel
@@ -130,25 +130,25 @@
 </template>
 
 <script>
-	import extractParents from 'src/utils/extractParents';
-	import Breadcrumbs from 'src/components/general/Breadcrumbs.vue';
-	import getBreadcrumbs from 'src/utils/getBreadcrumbs';
-	import SettingsLoader from 'src/components/loaders/SettingsLoader.vue';
+	import extractParents from '@/utils/extractParents';
+	import Breadcrumbs from '@/components/general/Breadcrumbs.vue';
+	import getBreadcrumbs from '@/utils/getBreadcrumbs';
+	import SettingsLoader from '@/components/loaders/SettingsLoader.vue';
 	import {
 		createCategory,
 		getCategories,
 		getCategory,
 		updateCategory,
-	} from 'src/actions/tmgr/categories';
+	} from '@/actions/tmgr/categories';
 	import {
 		getCategorySettings,
 		updateCategorySettings,
-	} from 'src/actions/tmgr/settings';
-	import generateSlugFromRu from 'src/utils/generateSlugFromRu';
-	import Select from 'src/components/general/Select.vue';
-	import Switcher from 'src/components/general/Switcher.vue';
-	import TextField from 'src/components/general/TextField.vue';
-	import TimeField from 'src/components/general/TimeField.vue';
+	} from '@/actions/tmgr/settings';
+	import generateSlugFromRu from '@/utils/generateSlugFromRu';
+	import Select from '@/components/general/Select.vue';
+	import Switcher from '@/components/general/Switcher.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import TimeField from '@/components/general/TimeField.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',

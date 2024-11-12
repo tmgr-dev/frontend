@@ -1,8 +1,41 @@
-import $axios from 'src/plugins/axios';
+import $axios from '@/plugins/axios';
 import { AxiosRequestConfig } from 'axios';
-import objectToQueryString from 'src/utils/objectToQueryString';
+import store from '@/store';
+import objectToQueryString from '@/utils/objectToQueryString';
+import { FormSetting, Setting } from '@/actions/tmgr/settings';
+import { User } from '@/actions/tmgr/user';
 
-interface Task {}
+export interface Task {
+	id: number | undefined;
+	approximately_time: number;
+	assignees: Record<string, any>[] | number[];
+	category: number;
+	title: string;
+	status: string;
+	description: string | null;
+	description_json: Record<string, any> | null;
+	common_time: number;
+	is_daily_routine: boolean;
+	order: number;
+	project_category_id?: number | null;
+	settings?: FormSetting[];
+	start_time: number;
+	status_id: number;
+	user: Pick<User, 'id' | 'name'>;
+	user_id: number;
+	workspace_id?: number;
+}
+interface LinkResponse {
+	success: 1 | 0;
+	link?: string;
+	meta?: {
+		title: string;
+		description: string;
+		image: {
+			url: string;
+		};
+	};
+}
 
 export const getTasks = async (params: AxiosRequestConfig, current = true) => {
 	const {
@@ -12,10 +45,14 @@ export const getTasks = async (params: AxiosRequestConfig, current = true) => {
 	return data;
 };
 
-export const getTasksIndexes = async (categoryId: null|number = null) => {
+export const getTasksIndexes = async (categoryId: null | number = null) => {
 	const {
-		data: { data: {index} },
-	} = await $axios.get(`tasks/indexes${categoryId ? `?category=${categoryId}` : ''}`);
+		data: {
+			data: { index },
+		},
+	} = await $axios.get(
+		`tasks/indexes${categoryId ? `?category=${categoryId}` : ''}`,
+	);
 
 	return index;
 };
@@ -38,12 +75,27 @@ export const createTask = async (task: Task) => {
 	return data;
 };
 
+export const optimizeWithAI = async (text: string) => {
+	const {
+		data: { data },
+	} = await $axios.post('ai/optimize', { text });
+
+	return data;
+};
+
 export const updateTask = async (taskId: number, task: Task) => {
 	const {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}`, task);
 
 	return data;
+};
+
+export const updateStatusOfTasks = async (
+	taskIds: Array<number>,
+	statusId: number,
+) => {
+	await $axios.put(`statuses/${statusId}/tasks`, { task_ids: taskIds });
 };
 
 export const updateTaskPartially = async (taskId: number, task: Task) => {
@@ -58,6 +110,12 @@ export const deleteTask = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`/tasks/${taskId}`);
+
+	/*
+	 * reload active tasks because somebody may remove active task without stopping countdown,
+	 * and we will need to reload the page to get correct number of active tasks
+	 * */
+	store.commit('incrementReloadActiveTasksKey');
 
 	return data.deleted_at;
 };
@@ -141,6 +199,8 @@ export const startTaskTimeCounter = async (taskId: number) => {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/countdown`);
 
+	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
+
 	return data;
 };
 
@@ -148,6 +208,8 @@ export const stopTaskTimeCounter = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/countdown`);
+
+	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
 
 	return data;
 };
@@ -186,4 +248,27 @@ export const exportTasks = async (
 	);
 
 	return data;
+};
+
+export const fetchLinkMetadata = async (url: string): Promise<LinkResponse> => {
+	try {
+		const { data } = await $axios.post(`/fetch-link-metadata`, { url });
+
+		return {
+			success: 1,
+			link: url,
+			meta: {
+				title: data.title || '',
+				description: data.description || '',
+				image: {
+					url: data.image || '',
+				},
+			},
+		};
+	} catch (error) {
+		console.error('Error fetching link metadata:', error);
+		return {
+			success: 0,
+		};
+	}
 };

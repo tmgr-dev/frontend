@@ -1,5 +1,5 @@
-import $axios from 'src/plugins/axios';
-import store from 'src/store';
+import $axios from '@/plugins/axios';
+import store from '@/store';
 
 export interface Workspace {
 	name: string;
@@ -14,7 +14,13 @@ export const getWorkspaces = async (): Promise<Workspace[]> => {
 	return data;
 };
 
-export const getWorkspaceMembers = async (workspaceId: number) => {
+export interface WorkspaceMember {
+	id: number;
+	name: string;
+}
+export const getWorkspaceMembers = async (
+	workspaceId: number,
+): Promise<WorkspaceMember[]> => {
 	const {
 		data: { data },
 	} = await $axios.get(`/workspaces/${workspaceId}/members`);
@@ -27,7 +33,7 @@ export const getWorkspaceStatuses = async () => {
 		data: { data },
 	} = await $axios.get('workspaces/statuses');
 
-	store.commit('setStatuses', data);
+	store.commit('setWorkspaceStatuses', data);
 
 	return data;
 };
@@ -40,15 +46,34 @@ export const createWorkspace = async (payload: Workspace) => {
 	return data;
 };
 
+export const updateWorkspaceOrder = async (
+	workspaceId: number,
+	payload: [],
+) => {
+	const {
+		data: { data },
+	} = await $axios.put(`workspaces/${workspaceId}/statuses/order`, payload);
+
+	return data;
+};
+
 export interface WorkspaceInvitation {
 	max_usage_times: string;
-	expired_at?: string;
+	expired_at?: Date | null;
+	emails?: string | null;
+}
+
+export interface WorkspaceInvitationResponse {
+	max_usage_times: string;
+	expired_at?: Date | null;
+	token: string;
+	usage_times: number;
 }
 
 export const createWorkspaceInvitation = async (
 	workspaceId: number,
 	payload: WorkspaceInvitation,
-) => {
+): Promise<WorkspaceInvitationResponse> => {
 	const {
 		data: { data },
 	} = await $axios.post(`/workspaces/${workspaceId}/invitations`, payload);
@@ -60,6 +85,11 @@ export const acceptWorkspaceInvitation = async (token: string) => {
 	const {
 		data: { data },
 	} = await $axios.post(`workspaces/invitations/${token}/accept`);
+
+	return data;
+};
+export const workspaceInvitationInfo = async (token: string) => {
+	const { data } = await $axios.get(`workspaces/invitations/${token}/info`);
 
 	return data;
 };

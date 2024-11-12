@@ -1,47 +1,40 @@
 <template>
-	<div class="flex items-center task-category-in-task">
+	<div v-if="props.category?.id" class="group flex items-center gap-1">
 		<router-link
-			v-if="category.id"
-			:to="{ name: 'ProjectCategoryChildrenList', params: { id: category.id } }"
-			class="inline bg-gray-700 text-white py-1 px-2 rounded ml-2 leading-none text-base z-10"
+			:to="{
+				name: 'ProjectCategoryChildrenList',
+				params: { id: props.category.id },
+			}"
+			class="z-10 rounded bg-gray-700 p-1.5 text-xs !leading-none text-white lg:text-sm"
 		>
-			{{ category.title }}
+			{{ props.category.title }}
 		</router-link>
 
 		<a
-			:href="`/${
-				category ? 'project-categories/' + category.id + '/' : ''
-			}tasks/create`"
-			class="opacity-10 hover:opacity-100 ml-1 hidden md:inline add-task-to-category-from-task-category z-10"
+			:href="`/project-categories/${props.category.id}/tasks/create`"
+			class="z-10 hidden opacity-10 hover:opacity-100 group-hover:block"
 			title="Create a task of this category"
 			@click.prevent="
-				$store.commit('createTaskInProjectCategoryId', {
-					projectCategoryId: category.id,
-					statusId,
+				store.commit('createTaskInProjectCategoryId', {
+					projectCategoryId: props.category.id,
+					statusId: props.statusId,
 				})
 			"
 		>
-			<span class="material-icons text-2xl leading-none"
-				>add_circle_outline</span
-			>
+			<PlusCircleIcon class="h-4 w-4 lg:h-6 lg:w-6" />
 		</a>
 	</div>
 </template>
 
-<script>
-	export default {
-		name: 'CategoryBadge',
-		props: {
-			category: {
-				required: true,
-				type: Object,
-			},
-			statusId: {
-				required: false,
-				type: Number,
-				default: null,
-			},
-		},
-		created() {},
-	};
+<script setup lang="ts">
+	import { Category } from '@/actions/tmgr/categories';
+	import store from '@/store';
+	import { PlusCircleIcon } from '@heroicons/vue/24/outline';
+
+	interface Props {
+		category: Category;
+		statusId?: number;
+	}
+
+	const props = defineProps<Props>();
 </script>
