@@ -131,18 +131,18 @@
 </template>
 
 <script>
-	import TasksListMixin from 'src/mixins/TasksListMixin';
-	import LoadingButtonActions from 'src/mixins/LoadingButtonActions';
-	import LoadingTasksList from 'src/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from 'src/components/tasks/TasksList.vue';
-	import Confetti from 'src/components/Confetti.vue';
-	import TaskForm from 'src/pages/TaskForm.vue';
-	import { getTasks, getTasksByStatus } from 'src/actions/tmgr/tasks';
-	import TextField from 'src/components/general/TextField.vue';
-	import { getCategories } from 'src/actions/tmgr/categories';
-	import { hueFromHex } from 'src/utils/convertColors';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import LoadingButtonActions from '@/mixins/LoadingButtonActions';
+	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
+	import TasksListComponent from '@/components/tasks/TasksList.vue';
+	import Confetti from '@/components/Confetti.vue';
+	import TaskForm from '@/pages/TaskForm.vue';
+	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
+	import TextField from '@/components/general/TextField.vue';
+	import { getCategories } from '@/actions/tmgr/categories';
+	import { hueFromHex } from '@/utils/convertColors';
 	import { computed } from 'vue';
-	import Select from 'src/components/general/Select.vue';
+	import Select from '@/components/general/Select.vue';
 
 	export default {
 		name: 'TasksList',

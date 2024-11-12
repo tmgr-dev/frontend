@@ -6,7 +6,7 @@
 		BookmarkIcon,
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
-	import store from 'src/store';
+	import store from '@/store';
 	import { computed, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
@@ -17,31 +17,31 @@
 		stopTaskTimeCounter,
 		Task,
 		updateTask,
-	} from 'src/actions/tmgr/tasks';
-	import BlockEditor from 'src/components/BlockEditor.vue';
-	import TextField from 'src/components/general/TextField.vue';
-	import { getStatuses, Status } from 'src/actions/tmgr/statuses';
+	} from '@/actions/tmgr/tasks';
+	import BlockEditor from '@/components/BlockEditor.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import 'vue-multiselect/dist/vue-multiselect.css';
-	import SettingsComponent from 'src/components/SettingsComponent.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
 		Select,
 		SelectContent,
 		SelectItem,
 		SelectTrigger,
 		SelectValue,
-	} from 'src/components/ui/select';
-	import { Button } from 'src/components/ui/button';
-	import TimeCounter from 'src/components/TimeCounter.vue';
+	} from '@/components/ui/select';
+	import { Button } from '@/components/ui/button';
+	import TimeCounter from '@/components/TimeCounter.vue';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
-	} from 'src/actions/tmgr/workspaces';
-	import AssigneesCombobox from 'src/components/AssigneesCombobox.vue';
-	import { Category, getCategories } from 'src/actions/tmgr/categories';
-	import CategoriesCombobox from 'src/components/CategoriesCombobox.vue';
-	import Editor from 'src/components/Editor.vue';
-	import { EditorType } from 'src/types';
-	import { getBlockEditorDescription } from 'src/utils/editor';
+	} from '@/actions/tmgr/workspaces';
+	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
+	import { Category, getCategories } from '@/actions/tmgr/categories';
+	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
+	import Editor from '@/components/Editor.vue';
+	import { EditorType } from '@/types';
+	import { getBlockEditorDescription } from '@/utils/editor';
 
 	interface Props {
 		isModal: boolean;

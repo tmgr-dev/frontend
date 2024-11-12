@@ -27,8 +27,8 @@
 </template>
 
 <script setup lang="ts">
-	import { Category } from 'src/actions/tmgr/categories';
-	import store from 'src/store';
+	import { Category } from '@/actions/tmgr/categories';
+	import store from '@/store';
 	import { PlusCircleIcon } from '@heroicons/vue/24/outline';
 
 	interface Props {

@@ -1,6 +1,6 @@
-import $axios from 'src/plugins/axios';
-import store from 'src/store';
-import { FormSetting } from 'src/actions/tmgr/settings';
+import $axios from '@/plugins/axios';
+import store from '@/store';
+import { FormSetting } from '@/actions/tmgr/settings';
 
 export interface User {
 	id: number;

@@ -7,7 +7,6 @@
 		:key="$store.state.appRerenderKey"
 	>
 		<transition mode="out-in" name="fade">
-
 			<AppNavigation @new-task="handleNewTask">
 				<router-view :key="$route.path" v-slot="{ Component }">
 					<transition
@@ -54,17 +53,17 @@
 
 <script>
 	import { defineComponent } from 'vue';
-	import Navbar from 'src/components/general/Navbar.vue';
-	import TaskForm from 'src/pages/TaskForm.vue';
-	import store from 'src/store';
-	import { getUserSettings } from 'src/actions/tmgr/user';
-	import { getLaunchedTasks } from 'src/actions/tmgr/tasks';
-	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
-	import Alert from 'src/components/general/Alert.vue';
-	import Modal from 'src/components/Modal.vue';
-	import ActiveTasks from 'src/components/ActiveTasks.vue';
-	import NewForm from 'src/pages/NewForm.vue';
-	import AppNavigation from 'src/AppNavigation.vue';
+	import Navbar from '@/components/general/Navbar.vue';
+	import TaskForm from '@/pages/TaskForm.vue';
+	import store from '@/store';
+	import { getUserSettings } from '@/actions/tmgr/user';
+	import { getLaunchedTasks } from '@/actions/tmgr/tasks';
+	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import Alert from '@/components/general/Alert.vue';
+	import Modal from '@/components/Modal.vue';
+	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import NewForm from '@/pages/NewForm.vue';
+	import AppNavigation from '@/AppNavigation.vue';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -140,22 +139,22 @@
 				this.activeTasks = await getLaunchedTasks();
 			},
 			minimize() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.minimize();
 				}
 			},
 			maximize() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.toggleMaximize();
 				}
 			},
 			closeApp() {
-				if (process.env.MODE === 'electron') {
+				if (import.meta.env.MODE === 'electron') {
 					window.myWindowAPI.close();
 				}
 			},
-			handleNewTask () {
-				console.log("open modal");
+			handleNewTask() {
+				console.log('open modal');
 				this.$store.commit('setShowCreatingTaskModal');
 			},
 			initBodyHeight() {
@@ -220,7 +219,7 @@
 				});
 			});
 			this.loadActiveTasks();
-			if (process.env.MODE === 'electron') {
+			if (import.meta.env.MODE === 'electron') {
 				document.body.style.overflow = 'hidden';
 			}
 		},
@@ -230,4 +229,4 @@
 	});
 </script>
 
-<style lang="scss" src="src/assets/styles/index.scss"></style>
+<style lang="scss" src="@/assets/styles/index.scss"></style>

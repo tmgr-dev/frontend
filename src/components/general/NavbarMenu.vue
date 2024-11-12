@@ -4,7 +4,7 @@
 	</div>
 
 	<ul
-		class="mt-4 flex flex-col gap-2 pt-4 md:mx-0 md:mt-0 md:mr-4 md:flex-row md:items-center md:gap-7 md:border-0 md:pt-0 lg:mr-8"
+		class="mt-4 flex flex-col gap-2 pt-4 md:mx-0 md:mr-4 md:mt-0 md:flex-row md:items-center md:gap-7 md:border-0 md:pt-0 lg:mr-8"
 	>
 		<router-link
 			v-for="link in links"
@@ -40,13 +40,13 @@
 </template>
 
 <script lang="ts" setup>
-	import Button from 'src/components/general/Button.vue';
+	import Button from '@/components/general/Button.vue';
 	import { useStore } from 'vuex';
-	import Select from 'src/components/general/Select.vue';
+	import Select from '@/components/general/Select.vue';
 	import { onBeforeMount, ref, Ref } from 'vue';
-	import { getWorkspaces, Workspace } from 'src/actions/tmgr/workspaces';
-	import { getUser, updateUserSettingsV2, User } from 'src/actions/tmgr/user';
-	import WorkspaceSelect from 'src/components/general/WorkspaceSelect.vue';
+	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
+	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
+	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
 
 	defineEmits(['navigated']);
 	const workspaces = ref([] as Workspace[]);

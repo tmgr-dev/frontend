@@ -159,8 +159,8 @@
 </template>
 
 <script setup lang="ts">
-	import TextField from 'src/components/general/TextField.vue';
-	import Button from 'src/components/general/Button.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import Button from '@/components/general/Button.vue';
 	import { onBeforeMount, onMounted, Ref, ref, UnwrapRef, watch } from 'vue';
 	import store from '../../store';
 	import moment from 'moment';
@@ -170,7 +170,7 @@
 		getComments,
 		updateComment,
 		createAskingHelpComment,
-	} from 'src/actions/tmgr/comments';
+	} from '@/actions/tmgr/comments';
 	export interface Assignee {
 		id: number;
 		name: string;

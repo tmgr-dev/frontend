@@ -2,15 +2,15 @@
 	import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 	import { useStore } from 'vuex';
 	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
-	import { Task } from 'src/actions/tmgr/tasks';
+	import { Task } from '@/actions/tmgr/tasks';
 	import {
 		prepareClockNumber,
 		secondsToCountdownObject,
-	} from 'src/utils/timeUtils';
-	import { Button } from 'src/components/ui/button';
-	import TaskTimeInfo from 'src/components/TaskTimeInfo.vue';
-	import { ExtendedTime, Time } from 'src/types';
-	import convertToHHMM from 'src/utils/convertToHHMM';
+	} from '@/utils/timeUtils';
+	import { Button } from '@/components/ui/button';
+	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
+	import { ExtendedTime, Time } from '@/types';
+	import convertToHHMM from '@/utils/convertToHHMM';
 
 	interface Props {
 		form: Task;

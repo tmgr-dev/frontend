@@ -18,8 +18,8 @@
 </template>
 
 <script>
-	import getTimeInSeconds from 'src/utils/getTimeInSeconds';
-	import convertToHHMM from 'src/utils/convertToHHMM';
+	import getTimeInSeconds from '@/utils/getTimeInSeconds';
+	import convertToHHMM from '@/utils/convertToHHMM';
 
 	// @todo refactor this component. It was just moved from input-field
 

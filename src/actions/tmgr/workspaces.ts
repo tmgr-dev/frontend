@@ -1,5 +1,5 @@
-import $axios from 'src/plugins/axios';
-import store from 'src/store';
+import $axios from '@/plugins/axios';
+import store from '@/store';
 
 export interface Workspace {
 	name: string;
@@ -89,9 +89,7 @@ export const acceptWorkspaceInvitation = async (token: string) => {
 	return data;
 };
 export const workspaceInvitationInfo = async (token: string) => {
-	const {
-		data,
-	} = await $axios.get(`workspaces/invitations/${token}/info`);
+	const { data } = await $axios.get(`workspaces/invitations/${token}/info`);
 
 	return data;
 };

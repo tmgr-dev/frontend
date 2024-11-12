@@ -1,7 +1,7 @@
 <template>
 	<div
 		v-if="tasks?.length > 0"
-		class="fixed left-4 bottom-4 z-10 mr-2 flex flex-col items-start gap-3"
+		class="fixed bottom-4 left-4 z-10 mr-2 flex flex-col items-start gap-3"
 	>
 		<AnimatedRing
 			@click="showActiveTasks = !showActiveTasks"
@@ -42,9 +42,9 @@
 </template>
 
 <script setup lang="ts">
-	import { Task } from 'src/actions/tmgr/tasks';
-	import store from 'src/store';
-	import AnimatedRing from 'src/components/general/AnimatedRing.vue';
+	import { Task } from '@/actions/tmgr/tasks';
+	import store from '@/store';
+	import AnimatedRing from '@/components/general/AnimatedRing.vue';
 	import { ref } from 'vue';
 
 	interface Props {

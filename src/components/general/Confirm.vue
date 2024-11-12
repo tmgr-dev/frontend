@@ -41,7 +41,7 @@
 </template>
 
 <script lang="ts">
-	import Modal from 'src/components/Modal.vue';
+	import Modal from '@/components/Modal.vue';
 
 	interface Props {
 		title: String;

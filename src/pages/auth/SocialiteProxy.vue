@@ -14,7 +14,7 @@
 <script setup lang="ts">
 	import { useRouter, useRoute } from 'vue-router';
 	import { ref } from 'vue';
-	import store from 'src/store';
+	import store from '@/store';
 	import {
 		LoginRequest,
 		loginGoogle,
@@ -22,11 +22,11 @@
 		loginGithub,
 		LoginWithCodeRequest,
 		LoginGoogleRequest,
-	} from 'src/actions/tmgr/auth';
-	import { getUser, getUserSettings } from 'src/actions/tmgr/user';
+	} from '@/actions/tmgr/auth';
+	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { AxiosError } from 'axios';
-	import AuthBase from 'src/components/layouts/AuthBase.vue';
-	import { getWorkspaceStatuses } from 'src/actions/tmgr/workspaces';
+	import AuthBase from '@/components/layouts/AuthBase.vue';
+	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 
 	const router = useRouter();
 	const route = useRoute();

@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="rounded border border-gray-200 bg-gray-100 px-3 pt-3 pb-5 shadow dark:border-gray-700 dark:bg-gray-800"
+		class="rounded border border-gray-200 bg-gray-100 px-3 pb-5 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
 	>
 		<div class="flex justify-between gap-3">
 			<a
@@ -34,10 +34,10 @@
 
 <script>
 	import Badge from '../general/Badge.vue';
-	import TimePreparationMixin from 'src/mixins/TimePreparationMixin';
-	import CategoryBadge from 'src/components/general/CategoryBadge.vue';
-	import AssigneeAvatar from 'src/components/general/AssigneeAvatar.vue';
-	import AssigneeUsers from 'src/components/general/AssigneeUsers.vue';
+	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 
 	export default {
 		mixins: [TimePreparationMixin],
