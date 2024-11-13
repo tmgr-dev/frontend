@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
+	import { computed, onBeforeMount, ref, toRef } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -71,7 +71,7 @@
 			+route.params.project_category_id || modalProjectCategoryId.value,
 	});
 	const taskId = computed(
-		() => modalTaskId.value || (route.params.id as string),
+		() => modalTaskId.value || (route.params.id as string) || form.value?.id,
 	);
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
@@ -166,8 +166,6 @@
 
 			if (props.isModal) {
 				history.pushState({}, '', `/${form.value.id}`);
-				emit('close');
-				store.commit('incrementReloadTasksKey');
 			} else {
 				await router.push({
 					name: 'TasksEdit',
