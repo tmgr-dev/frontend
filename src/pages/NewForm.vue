@@ -282,6 +282,7 @@
 					(el) => el.type === 'active',
 				);
 				if (firstActiveStatus) {
+					suppressAutoSavingForOnce.value = true;
 					form.value.status_id = firstActiveStatus.id;
 				}
 			}

@@ -179,7 +179,7 @@
 				</div>
 
 				<div
-					v-if="isTimeOver"
+					v-if="isTimeOver && isTimerActive"
 					class="text-center text-xs font-bold text-red-500"
 				>
 					Get some rest!
