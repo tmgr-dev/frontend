@@ -1,11 +1,4 @@
 export default {
-	computed: {
-		tasksIndexUrl() {
-			return this.status
-				? `tasks/status/${this.status}?all`
-				: 'tasks/current?all';
-		},
-	},
 	methods: {
 		getTaskFormattedTime(task) {
 			const taskTime = task instanceof Object ? task.common_time : task;
