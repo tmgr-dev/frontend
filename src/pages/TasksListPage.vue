@@ -2,6 +2,13 @@
 	<teleport to="title">
 		{{ h1[$route.name] }}
 	</teleport>
+	<teleport to="#breadcrumb">
+		<BreadcrumbItem class="hidden md:block">
+			<BreadcrumbLink href="#">
+				{{ h1[$route.name] }}
+			</BreadcrumbLink>
+		</BreadcrumbItem>
+	</teleport>
 
 	<BaseLayout>
 		<template #action>
@@ -125,7 +132,6 @@
 			</div>
 
 			<loading-tasks-list v-if="isLoading" class="mx-2" />
-			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
 </template>
@@ -140,13 +146,13 @@
 	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
 	import TextField from '@/components/general/TextField.vue';
 	import { getCategories } from '@/actions/tmgr/categories';
-	import { hueFromHex } from '@/utils/convertColors';
-	import { computed } from 'vue';
 	import Select from '@/components/general/Select.vue';
+	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 
 	export default {
 		name: 'TasksList',
 		components: {
+			BreadcrumbItem, BreadcrumbLink,
 			TextField,
 			TaskForm,
 			Confetti,

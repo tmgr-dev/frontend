@@ -74,31 +74,6 @@
 						</span>
 					</label>
 
-					<!-- Usage Limit (only show if no emails) -->
-					<label
-						v-if="!newWorkspaceInvitation.emails"
-						class="flex flex-col gap-2"
-					>
-						Max usage times
-						<TextField
-							type="number"
-							v-model="newWorkspaceInvitation.max_usage_times"
-							:errors="errors.max_usage_times"
-							placeholder="Leave empty for unlimited"
-						/>
-					</label>
-
-					<!--					&lt;!&ndash; Expiration Date &ndash;&gt;-->
-					<!--					<label class="mt-3 flex flex-col gap-2">-->
-					<!--						Expired at-->
-					<!--						<TextField-->
-					<!--							type="datetime-local"-->
-					<!--							v-model="newWorkspaceInvitation.expired_at"-->
-					<!--							:errors="errors.expired_at"-->
-					<!--							placeholder="Expired at"-->
-					<!--						/>-->
-					<!--					</label>-->
-
 					<button
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
@@ -162,10 +137,11 @@
 	} from '@/actions/tmgr/workspaces';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
-	import { computed, onBeforeMount, reactive, Ref, ref } from 'vue';
+	import { computed, onBeforeMount, reactive, Ref, ref, watch } from 'vue';
 	import { AxiosError } from 'axios';
 	import Modal from '@/components/Modal.vue';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard.ts';
+	import { useRoute } from 'vue-router';
 
 	interface Props {
 		modelValue: string | number;
@@ -174,6 +150,7 @@
 	const props = defineProps<Props>();
 	const value = defineModel<number>();
 	const emit = defineEmits(['update:modelValue', 'updateSettings']);
+	const route = useRoute();
 
 	const flags = reactive({
 		isLoading: false,
@@ -194,9 +171,21 @@
 	});
 	const invitationToken = ref('');
 	const [copy] = useCopyToClipboard();
-
+	watch(
+		() => route.query['add-workspace'],
+		async addWorkspace => {
+			flags.isShowWorkspaceModal = addWorkspace === 'open';
+			delete route.query['add-workspace']
+		},
+		{
+			deep: true
+		}
+	)
 	onBeforeMount(async () => {
+
+		console.log(route.query);
 		workspaces.value = await getWorkspaces();
+		flags.isShowWorkspaceModal = route.query['add-workspace'] === 'open';
 	});
 
 	const invitationLink = computed(() => {
