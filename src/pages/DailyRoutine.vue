@@ -18,7 +18,7 @@
 							placeholder="Enter your routine (enter to add new task)"
 						/>
 						<Button
-							class="my-1 ml-2 w-32 rounded-xl px-2 py-2 text-sm text-white dark:bg-gray-800 dark:hover:bg-gray-700"
+							class="my-1 ml-2 w-32 rounded-xl px-2 py-2 text-sm"
 							@click="createTask"
 						>
 							<span class="relative">Add Task</span>
