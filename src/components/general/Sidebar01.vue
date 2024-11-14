@@ -203,11 +203,9 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 		);
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
-		// store.commit('rerenderApp');
 		document.location.reload();
 	} catch (error) {
 		console.error('Failed to update workspace:', error);
-		// You might want to add error handling here
 	}
 }
 </script>
