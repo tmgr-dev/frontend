@@ -28,7 +28,7 @@
 								<!--								<AnimatedRing class="!absolute -left-2 -top-2 !h-5 !w-5" />-->
 
 								<span
-									class="max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap text-tmgr-blue dark:text-tmgr-gray"
+									class="max-w-[280px] overflow-hidden text-secondary whitespace-nowrap text-tmgr-blue dark:text-tmgr-gray"
 								>
 									{{ task.title }}
 								</span>
