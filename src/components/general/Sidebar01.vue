@@ -75,6 +75,7 @@ import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user.ts';
 import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
 import DarkMode from '@/components/general/DarkMode.vue';
 import store from '@/store';
+import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 
 
 const foldersMoreThanFour = ref<boolean>(false);
@@ -155,20 +156,35 @@ const data = {
 	projects: [],
 }
 
+async function clickLogout() {
+	try {
+		if (store.getters.getPusherBeamsUserId) {
+			await store.getters.getPusherBeamsClient.stop();
+			store.commit('setPusherBeamsUserId', null);
+		}
+		await logoutAction();
+		await store.dispatch('logout');
+	} catch (e) {
+		console.error(e);
+	}
+}
+
 const activeWorkspace = ref(workspaces.value[0])
 
 onBeforeMount(async () => {
-	const [foldersData, userData, workspacesData] = await Promise.all([
-		getTopCategories(),
-		getUser(),
-		getWorkspaces()
-	]);
+	if (store.getters.isLoggedIn) {
+		const [foldersData, userData, workspacesData] = await Promise.all([
+			getTopCategories(),
+			getUser(),
+			getWorkspaces()
+		]);
 
-	foldersMoreThanFour.value = foldersData?.length > 4;
-	folders.value = foldersData.slice(0, 4);
-	user.value = userData;
-	workspaces.value = workspacesData;
-	activeWorkspace.value = workspaces.value?.find((w: Workspace) => w.id === parseInt(user.value?.settings.find(s => s.id === 5)?.value)) as Workspace;
+		foldersMoreThanFour.value = foldersData?.length > 4;
+		folders.value = foldersData.slice(0, 4);
+		user.value = userData;
+		workspaces.value = workspacesData;
+		activeWorkspace.value = workspaces.value?.find((w: Workspace) => w.id === parseInt(user.value?.settings.find(s => s.id === 5)?.value)) as Workspace;
+	}
 })
 
 const setActiveWorkspace = async (workspace: Workspace) => {
@@ -198,7 +214,7 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 
 <template>
 	<SidebarProvider>
-		<Sidebar collapsible="icon">
+		<Sidebar collapsible="icon" v-if="store.getters.isLoggedIn">
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
@@ -396,7 +412,7 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 									</DropdownMenuItem>
 								</DropdownMenuGroup>
 								<DropdownMenuSeparator />
-								<DropdownMenuItem>
+								<DropdownMenuItem class="cursor-pointer" @click="clickLogout">
 									<LogOut />
 									Log out
 								</DropdownMenuItem>
@@ -408,7 +424,7 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 			<SidebarRail />
 		</Sidebar>
 		<SidebarInset>
-			<header class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+			<header v-if="store.getters.isLoggedIn" class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
 				<div class="flex items-center gap-2 px-4">
 					<SidebarTrigger class="-ml-1" />
 					<Separator orientation="vertical" class="mr-2 h-4" />
