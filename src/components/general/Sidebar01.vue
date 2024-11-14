@@ -187,7 +187,8 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 		);
 
 		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
-		store.commit('rerenderApp');
+		// store.commit('rerenderApp');
+		document.location.reload();
 	} catch (error) {
 		console.error('Failed to update workspace:', error);
 		// You might want to add error handling here
@@ -229,7 +230,7 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 								<DropdownMenuItem
 									v-for="(workspace, index) in workspaces"
 									:key="workspace.name"
-									class="gap-2 p-2"
+									class="gap-2 p-2 cursor-pointer"
 									@click="setActiveWorkspace(workspace)"
 								>
 									<div class="flex size-6 items-center justify-center rounded-sm border">
