@@ -2,6 +2,13 @@
 	<teleport to="title">
 		{{ h1[$route.name] }}
 	</teleport>
+	<teleport to="#breadcrumb">
+		<BreadcrumbItem class="hidden md:block">
+			<BreadcrumbLink href="#">
+				{{ h1[$route.name] }}
+			</BreadcrumbLink>
+		</BreadcrumbItem>
+	</teleport>
 
 	<BaseLayout>
 		<template #action>
@@ -143,10 +150,12 @@
 	import { hueFromHex } from '@/utils/convertColors';
 	import { computed } from 'vue';
 	import Select from '@/components/general/Select.vue';
+	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 
 	export default {
 		name: 'TasksList',
 		components: {
+			BreadcrumbItem, BreadcrumbLink,
 			TextField,
 			TaskForm,
 			Confetti,

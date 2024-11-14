@@ -2,7 +2,9 @@ import $axios from '@/plugins/axios';
 import store from '@/store';
 
 export interface Workspace {
+	id: number;
 	name: string;
+	is_default: boolean;
 	type: string;
 }
 

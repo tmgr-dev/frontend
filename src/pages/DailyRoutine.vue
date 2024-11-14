@@ -1,4 +1,11 @@
 <template>
+	<teleport to="#breadcrumb">
+		<BreadcrumbItem class="hidden md:block">
+			<BreadcrumbLink href="#">
+				Daily Routines
+			</BreadcrumbLink>
+		</BreadcrumbItem>
+	</teleport>
 	<BaseLayout no-copyright>
 		<template #body>
 			<!-- Header Section with Input and Stats -->
@@ -212,6 +219,7 @@
 	} from '@/actions/tmgr/daily-tasks';
 	import { Task } from '@/actions/tmgr/tasks';
 	import gsap from 'gsap';
+	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 
 	// Types
 	interface ExtendedTask extends Task {
