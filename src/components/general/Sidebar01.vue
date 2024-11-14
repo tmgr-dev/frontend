@@ -1,8 +1,6 @@
 <script lang="ts">
 export const description
 	= 'A sidebar that collapses to icons.'
-export const iframeHeight = '800px'
-export const containerClass = 'w-full h-full'
 </script>
 
 <script setup lang=ts>
@@ -77,6 +75,7 @@ import DarkMode from '@/components/general/DarkMode.vue';
 import store from '@/store';
 import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
+import { Toaster } from '@/components/ui/toast';
 
 
 const foldersMoreThanFour = ref<boolean>(false);
@@ -452,4 +451,5 @@ const setActiveWorkspace = async (workspace: Workspace) => {
 			</div>
 		</SidebarInset>
 	</SidebarProvider>
+	<Toaster/>
 </template>
