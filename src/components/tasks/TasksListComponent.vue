@@ -20,6 +20,7 @@
 		</Transition>
 
 		<div
+			:key="hasSelectable"
 			v-selectable="
 				hasSelectable ? { selectedGetter, selectedSetter, selectingSetter } : {}
 			"
@@ -54,23 +55,36 @@
 					}"
 					class="rounded-lg shadow-md md:flex"
 				>
-					<div
-						class="relative flex w-full items-center rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
+					<a
+						:href="`/${task.id}`"
+						@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
+						class="relative flex w-full items-center overflow-hidden rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
-						<div class="flex flex-col gap-1">
+						<div class="flex w-full flex-col gap-1">
 							<CategoryBadge
 								v-if="showCategoryBadges"
 								class="shrink-0 self-start"
 								:category="task.category"
 							/>
 
-							<TaskMeta
-								class="max-w-xl xl:max-w-3xl 2xl:max-w-4xl"
-								:show-category-badges="showCategoryBadges"
-								:task="task"
-								:task-time="getTaskFormattedTime(task)"
-								@openTask="$store.commit('setCurrentTaskIdForModal', task.id)"
-							/>
+							<span class="text-sm font-medium lg:text-lg">
+								{{ task.title }}
+							</span>
+
+							<div class="flex items-center gap-2">
+								<span
+									:class="
+										task.start_time ? 'text-green-600' : 'text-orange-600'
+									"
+									class="material-icons text-xs sm:text-base md:text-xl"
+								>
+									alarm
+								</span>
+
+								<span class="text-xs text-gray-700 sm:text-base md:text-base">
+									{{ getTaskFormattedTime(task) }}
+								</span>
+							</div>
 						</div>
 
 						<div class="ml-auto">
@@ -83,7 +97,7 @@
 								@updateStatus="updateStatus"
 							/>
 						</div>
-					</div>
+					</a>
 				</div>
 			</div>
 		</div>
@@ -103,7 +117,6 @@
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
-	import TaskMeta from '@/components/tasks/TaskMeta.vue';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
 	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
@@ -129,7 +142,6 @@
 			Confirm,
 			BounceLoader,
 			Loader,
-			TaskMeta,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
 			DropdownMenu,
