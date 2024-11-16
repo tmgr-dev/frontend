@@ -47,7 +47,7 @@
 			const categoriesData = await getCategories();
 
 			categories.value = [
-				{ id: 0, title: 'All categories' },
+				{ id: -1, title: 'All categories' },
 				...categoriesData.map((category) => ({
 					id: category.id,
 					title: category.title,
@@ -67,9 +67,6 @@
 
 	watch(selectedCategory, async (newCategoryId) => {
 		await loadTasks();
-		tasks.value = tasks.value.filter(
-			(task) => task.category && task.category.id === newCategoryId,
-		);
 	});
 
 	function setLoadingActions(tasks) {
@@ -99,12 +96,16 @@
 				fetchedTasks = await getTasksByStatus(status.value, {
 					params: {
 						search: searchText.value,
+						project_category_id:
+							selectedCategory.value === -1 ? null : selectedCategory.value,
 					},
 				});
 			} else {
 				fetchedTasks = await getTasks({
 					params: {
 						search: searchText.value,
+						project_category_id:
+							selectedCategory.value === -1 ? null : selectedCategory.value,
 					},
 				});
 			}
@@ -172,7 +173,12 @@
 								type="button"
 								title="filters"
 							>
-								<SlidersHorizontalIcon class="size-6 stroke-gray-400" />
+								<SlidersHorizontalIcon
+									class="size-6 stroke-gray-400"
+									:class="[
+										selectedCategory && 'stroke-gray-900 dark:stroke-white',
+									]"
+								/>
 							</button>
 						</DialogTrigger>
 

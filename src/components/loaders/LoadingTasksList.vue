@@ -4,7 +4,7 @@
 			:primaryColor="isNightMode ? '#1a202c' : '#fff'"
 			:secondaryColor="isNightMode ? '#2b3446' : '#f2f5f7'"
 			:speed="0.875"
-			class="task-list-loading"
+			class="task-list-loading w-full"
 			preserveAspectRatio="none"
 			viewBox="0 0 500 180"
 		>
