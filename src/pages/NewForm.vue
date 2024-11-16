@@ -45,10 +45,6 @@
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
-	import { useToast } from '@/components/ui/toast/use-toast';
-	import {
-		FileCheck2
-	} from 'lucide-vue-next'
 
 	interface Props {
 		isModal: boolean;
@@ -207,7 +203,6 @@
 
 	const suppressAutoSavingForOnce = ref(false);
 
-	const toast = useToast();
 	const saveTask = async () => {
 		isLoading.value = true;
 		updateFormBeforeQuery();
@@ -227,21 +222,12 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value = await updateTask(+taskId.value, form.value as Task);
 			store.commit('incrementReloadTasksKey');
-
-			toast.toast({
-				title: 'Task saving',
-				description: 'Successfully saved',
-				action: FileCheck2
-			});
 		} catch (e) {
 			console.error(e);
 		} finally {
 			isLoading.value = false;
-			isAutoSaveEnabled.value = true;
 		}
 	};
-
-	const isAutoSaveEnabled = ref(true);  // Add this ref
 
 	// Modify the useDebouncedAutoSave call:
 	const [isAutoSaving] = useDebouncedAutoSave({
@@ -257,7 +243,6 @@
 		onSave: saveTask,
 		delay: 2000,
 		suppressDebounceForOnce: suppressAutoSavingForOnce,
-		isEnabled: isAutoSaveEnabled
 	});
 
 	const updateFormBeforeQuery = () => {
@@ -409,7 +394,7 @@
 				<span class="relative inline-flex rounded-md shadow-sm">
 					<button
 						v-if="taskId"
-						@click="isAutoSaveEnabled = false; saveTask();"
+						@click="saveTask()"
 						class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
 						type="button"
 						title="save"
