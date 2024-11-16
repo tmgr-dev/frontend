@@ -21,6 +21,7 @@
 	} from '@/components/ui/dialog';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import { Button } from '@/components/ui/button';
+	import store from '@/store';
 
 	const route = useRoute();
 	const selectableTasks = ref(false);
@@ -66,9 +67,8 @@
 		searchTimeout.value = setTimeout(loadTasks, 500);
 	});
 
-	watch(selectedCategory, async (newCategoryId) => {
-		await loadTasks();
-	});
+	watch(selectedCategory, loadTasks);
+	watch(() => store.state.reloadTasksKey, loadTasks);
 
 	function setLoadingActions(tasks) {
 		tasks.forEach((task) => {
