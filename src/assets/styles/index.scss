@@ -126,44 +126,6 @@ button {
 	}
 }
 
-.transform-to-block-enter-active {
-	animation: transformToBlock 0.5s ease-in-out;
-}
-
-.transform-to-block-leave-active {
-	animation: transformToBlock 0.5s reverse ease-in-out;
-}
-
-@keyframes transformToBlock {
-	from {
-		max-height: 0;
-		opacity: 0;
-	}
-
-	100% {
-		opacity: 1;
-	}
-}
-
-.transform-opacity-right-enter-active {
-	animation: transformOpacityRight 0.5s;
-}
-.transform-opacity-right-leave-active {
-	animation: transformOpacityRight 0.5s reverse;
-}
-
-@keyframes transformOpacityRight {
-	from {
-		transform: translate3d(1000px, 0, 0);
-		opacity: 0;
-	}
-
-	100% {
-		transform: translate3d(0, 0, 0);
-		opacity: 1;
-	}
-}
-
 .sortable-ghost {
 	opacity: .5;
 	* {
