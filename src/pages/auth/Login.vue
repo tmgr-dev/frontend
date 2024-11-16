@@ -177,6 +177,7 @@
 			if (store.state.user) {
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
+			document.location.reload();
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;

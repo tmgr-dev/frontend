@@ -23,12 +23,10 @@ export function useDebouncedAutoSave<T>({
 			? () =>
 					fieldsToWatch.reduce((result, key) => {
 						result[key] = formRef.value[key];
-
 						return result;
 					}, {} as Partial<T>)
 			: formRef,
 		async () => {
-			console.log(suppressDebounceForOnce?.value);
 			if (suppressDebounceForOnce?.value) {
 				suppressDebounceForOnce.value = false;
 				return;
@@ -41,11 +39,9 @@ export function useDebouncedAutoSave<T>({
 			}
 
 			saveTimeout = setTimeout(async () => {
-				console.log('saving...');
 				isSaving.value = true;
 				try {
 					await onSave();
-					console.log('saved');
 				} catch (e) {
 					console.error('debounce error', e);
 				} finally {
@@ -57,5 +53,5 @@ export function useDebouncedAutoSave<T>({
 		{ deep: true },
 	);
 
-	return [isSaving.value];
+	return [isSaving];
 }

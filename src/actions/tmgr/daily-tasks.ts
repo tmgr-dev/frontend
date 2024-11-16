@@ -1,5 +1,4 @@
 import $axios from '@/plugins/axios';
-import { AxiosRequestConfig } from 'axios';
 import { Task } from '@/actions/tmgr/tasks';
 
 export const getDailyTasks = async (): Promise<Task[]> => {
