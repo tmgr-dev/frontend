@@ -6,21 +6,23 @@
 		:key="$store.state.appRerenderKey"
 	>
 		<transition mode="out-in" name="fade">
-			<AppNavigation @new-task="handleNewTask">
-				<router-view :key="$route.path" v-slot="{ Component }">
-					<transition
-						:name="transitionName"
-						mode="out-in"
-						@before-leave="beforeLeave"
-						@enter="enter"
-						@after-enter="afterEnter"
-					>
-						<div>
-							<component :is="Component" v-if="showComponent"></component>
-						</div>
-					</transition>
-				</router-view>
-			</AppNavigation>
+			<div class="flex min-h-screen">
+				<CustomSidebar>
+					<router-view :key="$route.path" v-slot="{ Component }">
+						<transition
+							:name="transitionName"
+							mode="out-in"
+							@before-leave="beforeLeave"
+							@enter="enter"
+							@after-enter="afterEnter"
+						>
+							<div>
+								<component :is="Component" v-if="showComponent"></component>
+							</div>
+						</transition>
+					</router-view>
+				</CustomSidebar>
+			</div>
 		</transition>
 
 		<ActiveTasks :tasks="activeTasks" />
@@ -48,10 +50,12 @@
 			</Modal>
 		</Transition>
 	</div>
+
+	<Toaster />
 </template>
 
 <script>
-	import { defineComponent } from 'vue';
+	import { defineComponent, onBeforeMount, ref, watch } from 'vue';
 	import Navbar from '@/components/general/Navbar.vue';
 	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
@@ -62,20 +66,44 @@
 	import Modal from '@/components/Modal.vue';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
 	import NewForm from '@/pages/NewForm.vue';
-	import AppNavigation from '@/AppNavigation.vue';
+	import CustomSidebar from '@/components/general/CustomSidebar.vue';
+	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
+	import { Toaster } from '@/components/ui/toast';
 
 	const DEFAULT_TRANSITION = 'fade';
 
 	export default defineComponent({
 		name: 'App',
 		components: {
+			Toaster,
+			CustomSidebar,
 			NewForm,
-			AppNavigation,
 			ActiveTasks,
 			Modal,
 			Alert,
 			TaskForm,
 			Navbar,
+		},
+		setup() {
+			const dailyRoutinesCount = ref(0);
+			const isExpanded = ref(true);
+
+			onBeforeMount(async () => {
+				if (store.getters.isLoggedIn) {
+					dailyRoutinesCount.value = await getDailyTasksCount();
+				}
+			});
+
+			if (typeof window !== 'undefined') {
+				const savedState = localStorage.getItem('sidebarExpanded');
+				if (savedState !== null) {
+					isExpanded.value = savedState === 'true';
+				}
+
+				watch(isExpanded, (newValue) => {
+					localStorage.setItem('sidebarExpanded', newValue.toString());
+				});
+			}
 		},
 		data() {
 			return {
