@@ -2,60 +2,11 @@
 	<teleport to="title"> Settings </teleport>
 
 	<BaseLayout>
-		<template #header> Settings </template>
-
 		<template #body>
 			<div class="w-full md:flex">
-				<div
-					class="flex justify-between p-4 md:w-1/4 md:flex-col md:justify-start md:gap-4"
-				>
-					<p
-						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
-						@click="showNotificationSettings"
-						:class="[
-							isNotification
-								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
-								: '',
-						]"
-					>
-						Notification
-					</p>
-					<div
-						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
-						@click="showWorkspaceSettings"
-						:class="[
-							isWorkspaceSettings
-								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
-								: '',
-						]"
-					>
-						Workspace settings
-					</div>
-					<div
-						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
-						@click="showProfileSettings"
-						:class="[
-							isProfile
-								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
-								: '',
-						]"
-					>
-						Profile
-					</div>
-					<div
-						class="cursor-pointer font-bold transition-colors duration-300 hover:underline hover:decoration-2 md:text-lg"
-						@click="showDeviceSettings"
-						:class="[
-							isDevice
-								? 'text-blue-800 underline decoration-2 dark:text-amber-400 '
-								: '',
-						]"
-					>
-						Smart Devices
-					</div>
-				</div>
-				<div class="md:w-3/4">
+				<div class="md:w-full">
 					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4 md:w-1/2">
+						<h3 class="mb-4 text-lg font-bold">Notifications</h3>
 						<button
 							v-if="!pusherBeamsUserId"
 							class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
@@ -90,6 +41,7 @@
 						v-if="isWorkspaceSettings"
 						class="flex flex-col gap-3 p-4 md:w-1/2"
 					>
+						<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
 						<div>
 							<div v-for="(setting, index) in availableSettings">
 								<label
@@ -164,6 +116,7 @@
 					</div>
 
 					<div v-if="isProfile" class="flex flex-col gap-3.5 p-2">
+						<h3 class="mb-4 text-lg font-bold">Profile</h3>
 						<profile />
 						<div class="mt-6 border-t pt-6">
 							<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
@@ -337,10 +290,18 @@
 		generateSmartDeviceToken,
 		revokeSmartDeviceToken,
 	} from '@/actions/tmgr/smart-devices';
+	import {
+		BreadcrumbItem,
+		BreadcrumbLink,
+		BreadcrumbSeparator,
+	} from '@/components/ui/breadcrumb';
 
 	export default {
 		name: 'Settings',
 		components: {
+			BreadcrumbSeparator,
+			BreadcrumbItem,
+			BreadcrumbLink,
 			Profile,
 			TextField,
 			TimeField,

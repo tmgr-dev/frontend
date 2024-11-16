@@ -381,10 +381,13 @@
 	import { hslToHex, hueFromHex } from '@/utils/convertColors';
 	import { getCategories } from '@/actions/tmgr/categories';
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
+	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 
 	export default {
 		name: 'Board',
 		components: {
+			BreadcrumbItem,
+			BreadcrumbLink,
 			FilterIcon,
 			TaskBoardCard,
 			EllipsisVerticalIcon,
@@ -903,12 +906,17 @@
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		overflow-y: hidden;
+		width: calc(100vw - 19rem);
+
 		@extend .reset-scroll;
 
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
 			height: calc(100vh - 130px);
+		}
+		@media (max-width: 768px) {
+			width: calc(100vw - 3rem);
 		}
 	}
 	.shadow-radial::before {

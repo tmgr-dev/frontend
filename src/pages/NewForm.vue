@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, onMounted, ref, toRef } from 'vue';
+	import { computed, onBeforeMount, ref, toRef } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -43,6 +43,8 @@
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
+	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
+	import { useMagicKeys } from '@vueuse/core';
 
 	interface Props {
 		isModal: boolean;
@@ -69,7 +71,7 @@
 			+route.params.project_category_id || modalProjectCategoryId.value,
 	});
 	const taskId = computed(
-		() => modalTaskId.value || (route.params.id as string),
+		() => modalTaskId.value || (route.params.id as string) || form.value?.id,
 	);
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
@@ -113,6 +115,7 @@
 				history.pushState({}, '', `/${taskId.value}`);
 			}
 
+			suppressAutoSavingForOnce.value = true;
 			form.value = await getTask(+taskId.value);
 
 			if (
@@ -154,20 +157,15 @@
 		}
 	};
 
-	onMounted(() => {
-		// window.onkeydown = this.getShortcutSaveListener();
-	});
-
 	const createTask = async () => {
 		updateFormBeforeQuery();
 
 		try {
+			suppressAutoSavingForOnce.value = true;
 			form.value = await createTaskAction(form.value as Task);
 
 			if (props.isModal) {
 				history.pushState({}, '', `/${form.value.id}`);
-				emit('close');
-				store.commit('incrementReloadTasksKey');
 			} else {
 				await router.push({
 					name: 'TasksEdit',
@@ -184,6 +182,7 @@
 	const removeTask = async () => {
 		if (taskId.value) {
 			if (form.value.start_time) {
+				suppressAutoSavingForOnce.value = true;
 				form.value = await stopTaskTimeCounter(+taskId.value);
 			}
 
@@ -202,6 +201,8 @@
 		}
 	};
 
+	const suppressAutoSavingForOnce = ref(false);
+
 	const saveTask = async () => {
 		isLoading.value = true;
 		updateFormBeforeQuery();
@@ -211,12 +212,14 @@
 			if (!form.value.project_category_id) {
 				delete form.value.project_category_id;
 			}
+			suppressAutoSavingForOnce.value = true;
 			form.value.approximately_time =
 				Number(
 					form.value.settings?.find((item) => item.key === 'approximately_time')
 						?.value,
 				) || 0;
 
+			suppressAutoSavingForOnce.value = true;
 			form.value = await updateTask(+taskId.value, form.value as Task);
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
@@ -226,9 +229,27 @@
 		}
 	};
 
+	// Modify the useDebouncedAutoSave call:
+	const [isAutoSaving] = useDebouncedAutoSave({
+		formRef: form,
+		fieldsToWatch: [
+			'title',
+			'description',
+			'description_json',
+			'project_category_id',
+			'assignees',
+			'status',
+		],
+		onSave: saveTask,
+		delay: 2000,
+		suppressDebounceForOnce: suppressAutoSavingForOnce,
+	});
+
 	const updateFormBeforeQuery = () => {
+		suppressAutoSavingForOnce.value = true;
 		form.value.assignees = assignees.value;
 
+		suppressAutoSavingForOnce.value = true;
 		if (editorType.value === 'block') {
 			form.value.description = null;
 		} else {
@@ -237,6 +258,7 @@
 	};
 
 	const toggleTimer = async () => {
+		suppressAutoSavingForOnce.value = true;
 		if (form.value.start_time) {
 			form.value = await stopTaskTimeCounter(+taskId.value);
 		} else {
@@ -260,12 +282,23 @@
 					(el) => el.type === 'active',
 				);
 				if (firstActiveStatus) {
+					suppressAutoSavingForOnce.value = true;
 					form.value.status_id = firstActiveStatus.id;
 				}
 			}
 		}
 		await saveTask();
 	};
+
+	useMagicKeys({
+		passive: false,
+		onEventFired(e) {
+			if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
+				e.preventDefault();
+				saveTask();
+			}
+		},
+	});
 </script>
 
 <template>
@@ -361,14 +394,14 @@
 				<span class="relative inline-flex rounded-md shadow-sm">
 					<button
 						v-if="taskId"
-						@click="saveTask"
-						class="relative rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+						@click="saveTask()"
+						class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
 						type="button"
 						title="save"
 					>
-						<!--						<svg
-							v-if="isSaving"
-							class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
+						<svg
+							v-if="isAutoSaving || isLoading"
+							class="size-6 animate-spin text-white"
 							xmlns="http://www.w3.org/2000/svg"
 							fill="none"
 							viewBox="0 0 24 24"
@@ -386,8 +419,9 @@
 								fill="currentColor"
 								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 							/>
-						</svg>-->
-						<span><BookmarkIcon class="size-6" /></span>
+						</svg>
+
+						<BookmarkIcon v-else class="size-6" />
 					</button>
 				</span>
 
