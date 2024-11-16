@@ -49,56 +49,52 @@
 					class="l-0 t-0 absolute z-10"
 				/>
 
-				<div
+				<button
+					type="button"
 					:class="{
 						'border-l-8 border-solid border-green-600': task.start_time,
 					}"
-					class="rounded-lg shadow-md md:flex"
+					class="w-full rounded-lg shadow-md md:flex"
+					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 				>
-					<a
-						:href="`/${task.id}`"
-						@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
-						class="relative flex w-full items-center overflow-hidden rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
+					<div
+						class="w-full space-y-1 rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
-						<div class="flex w-full flex-col gap-1">
-							<CategoryBadge
-								v-if="showCategoryBadges"
-								class="shrink-0 self-start"
-								:category="task.category"
-							/>
+						<CategoryBadge
+							v-if="showCategoryBadges"
+							class="shrink-0 self-start"
+							:category="task.category"
+						/>
 
-							<span class="text-sm font-medium lg:text-lg">
-								{{ task.title }}
+						<div class="text-left text-sm font-medium lg:text-lg">
+							{{ task.title }}
+						</div>
+
+						<div class="flex items-center gap-2">
+							<span
+								:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
+								class="material-icons text-xs sm:text-base md:text-xl"
+							>
+								alarm
 							</span>
 
-							<div class="flex items-center gap-2">
-								<span
-									:class="
-										task.start_time ? 'text-green-600' : 'text-orange-600'
-									"
-									class="material-icons text-xs sm:text-base md:text-xl"
-								>
-									alarm
-								</span>
-
-								<span class="text-xs text-gray-700 sm:text-base md:text-base">
-									{{ getTaskFormattedTime(task) }}
-								</span>
-							</div>
+							<span class="text-xs text-gray-700 sm:text-base md:text-base">
+								{{ getTaskFormattedTime(task) }}
+							</span>
 						</div>
+					</div>
 
-						<div class="ml-auto">
-							<TaskButtonsInTheList
-								:is-loading-actions="isLoadingActions"
-								:showed-buttons="getShowButtons(task)"
-								:task="task"
-								@startCountdown="startCountdown"
-								@stopCountdown="stopCountdown"
-								@updateStatus="updateStatus"
-							/>
-						</div>
-					</a>
-				</div>
+					<div class="ml-auto">
+						<TaskButtonsInTheList
+							:is-loading-actions="isLoadingActions"
+							:showed-buttons="getShowButtons(task)"
+							:task="task"
+							@startCountdown="startCountdown"
+							@stopCountdown="stopCountdown"
+							@updateStatus="updateStatus"
+						/>
+					</div>
+				</button>
 			</div>
 		</div>
 	</div>
@@ -132,10 +128,12 @@
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Button from '@/components/general/Button.vue';
 
 	export default {
 		name: 'TasksListComponent',
 		components: {
+			Button,
 			CategoryBadge,
 			TaskForm,
 			Modal,

@@ -150,11 +150,9 @@
 					</div>
 				</transition>
 
-				<div
-					class="absolute top-14 flex w-[90%] items-center justify-center p-4 md:static"
-				>
+				<div class="flex w-[90%] items-center justify-center p-4 md:static">
 					<div
-						class="mr-3 w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
+						class="w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
 					>
 						<TextField
 							placeholder="search by task name"
