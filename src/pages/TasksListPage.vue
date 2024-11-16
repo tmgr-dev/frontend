@@ -2,13 +2,6 @@
 	<teleport to="title">
 		{{ h1[$route.name] }}
 	</teleport>
-	<teleport to="#breadcrumb">
-		<BreadcrumbItem class="hidden md:block">
-			<BreadcrumbLink href="#">
-				{{ h1[$route.name] }}
-			</BreadcrumbLink>
-		</BreadcrumbItem>
-	</teleport>
 
 	<BaseLayout>
 		<template #action>
@@ -152,7 +145,8 @@
 	export default {
 		name: 'TasksList',
 		components: {
-			BreadcrumbItem, BreadcrumbLink,
+			BreadcrumbItem,
+			BreadcrumbLink,
 			TextField,
 			TaskForm,
 			Confetti,

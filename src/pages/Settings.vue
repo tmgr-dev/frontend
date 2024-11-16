@@ -1,17 +1,5 @@
 <template>
-	<teleport to="title">
-		Settings
-	</teleport>
-	<teleport to="#breadcrumb">
-		<BreadcrumbItem class="hidden md:block">
-			<BreadcrumbLink href="#">
-				<template v-if="isNotification">Notifications</template>
-				<template v-if="isProfile">Profile</template>
-				<template v-if="isWorkspaceSettings">Workspace Settings</template>
-				<template v-if="isDevice">Smart Device</template>
-			</BreadcrumbLink>
-		</BreadcrumbItem>
-	</teleport>
+	<teleport to="title"> Settings </teleport>
 
 	<BaseLayout>
 		<template #body>
@@ -302,13 +290,18 @@
 		generateSmartDeviceToken,
 		revokeSmartDeviceToken,
 	} from '@/actions/tmgr/smart-devices';
-	import { BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+	import {
+		BreadcrumbItem,
+		BreadcrumbLink,
+		BreadcrumbSeparator,
+	} from '@/components/ui/breadcrumb';
 
 	export default {
 		name: 'Settings',
 		components: {
 			BreadcrumbSeparator,
-			BreadcrumbItem, BreadcrumbLink,
+			BreadcrumbItem,
+			BreadcrumbLink,
 			Profile,
 			TextField,
 			TimeField,

@@ -326,6 +326,7 @@
 			},
 			async loadParentCategory() {
 				this.category = await getParentCategory(this.id);
+				this.$store.commit('setMetaTitle', this.category.title || this.h1);
 				this.parentCategories = this.extractParents(this.category);
 			},
 			async loadCategories() {
