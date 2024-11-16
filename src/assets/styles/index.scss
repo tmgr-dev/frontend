@@ -6,8 +6,8 @@
 @import 'task';
 @import 'alert';
 @import 'checkbox';
-@import 'task-form';
 @import 'extensions';
+@import 'transitions';
 
 body {
 	overflow-x: hidden;
@@ -63,87 +63,9 @@ body {
 	}
 }
 
-button {
-	&:focus {
-		outline: none;
-	}
-}
-
-.translate-left-enter-active {
-	animation: translateLeft 0.5s;
-}
-.translate-left-leave-active {
-	animation: translateLeft 0.5s reverse;
-}
-
-@keyframes translateLeft {
-	from {
-		transform: translate3d(1000px, 0, 0);
-	}
-
-	to {
-		transform: translate3d(0, 0, 0);
-	}
-}
-
-.bounce-right-fade-enter-active {
-	animation: bounceInRight 1s;
-}
-.bounce-right-fade-leave-active {
-	transition: 0.5s;
-	opacity: 0;
-}
-
-@keyframes bounceInRight {
-	from,
-	60%,
-	75%,
-	90%,
-	to {
-		animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
-	}
-
-	from {
-		opacity: 0;
-		transform: translate3d(3000px, 0, 0);
-	}
-
-	60% {
-		opacity: 1;
-		transform: translate3d(-25px, 0, 0);
-	}
-
-	75% {
-		transform: translate3d(10px, 0, 0);
-	}
-
-	90% {
-		transform: translate3d(-5px, 0, 0);
-	}
-
-	to {
-		transform: translate3d(0, 0, 0);
-	}
-}
-
 .sortable-ghost {
 	opacity: .5;
 	* {
 		opacity: 0;
 	}
-}
-
-.slide-right-enter-active,
-.slide-right-leave-active {
-	transition: all 0.3s ease-out;
-}
-
-.slide-right-enter-from {
-	transform: translateX(-100%);
-	opacity: 0;
-}
-
-.slide-right-leave-to {
-	transform: translateX(100%);
-	opacity: 0;
 }

@@ -406,8 +406,8 @@
 				</div>
 			</header>
 
-			<div class="flex flex-1 flex-col gap-4">
-				<slot></slot>
+			<div class="flex min-h-max flex-1 flex-col gap-4">
+				<slot />
 			</div>
 		</SidebarInset>
 	</SidebarProvider>
