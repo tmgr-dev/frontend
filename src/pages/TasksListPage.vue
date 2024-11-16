@@ -2,20 +2,28 @@
 	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import Confetti from '@/components/Confetti.vue';
-	import TaskForm from '@/pages/TaskForm.vue';
 	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
 	import TextField from '@/components/general/TextField.vue';
 	import { getCategories } from '@/actions/tmgr/categories';
-	import Select from '@/components/general/Select.vue';
-	import { computed, onMounted, ref } from 'vue';
+	import { computed, onMounted, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
+	import {
+		SquareDashedMousePointerIcon,
+		SlidersHorizontalIcon,
+	} from 'lucide-vue-next';
+	import Button from '@/components/general/Button.vue';
+	import {
+		Dialog,
+		DialogContent,
+		DialogHeader,
+		DialogTitle,
+		DialogTrigger,
+	} from '@/components/ui/dialog/index';
+	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 
 	const route = useRoute();
-	const showCreateTaskForm = ref(false);
 	const selectableTasks = ref(false);
 	const errorLoading = ref(false);
-	const showSearchInput = ref(false);
-	const panel = ref(false);
 	const searchText = ref(null);
 	const searchTimeout = ref(null);
 	const summaryTimeString = ref(null);
@@ -31,7 +39,6 @@
 	const categories = ref([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
-	const tasksListComponentRef = ref(null);
 
 	const status = computed(() => route.meta.status);
 
@@ -53,6 +60,18 @@
 		}
 	});
 
+	watch(searchText, () => {
+		clearTimeout(searchTimeout.value);
+		searchTimeout.value = setTimeout(loadTasks, 500);
+	});
+
+	watch(selectedCategory, async (newCategoryId) => {
+		await loadTasks();
+		tasks.value = tasks.value.filter(
+			(task) => task.category && task.category.id === newCategoryId,
+		);
+	});
+
 	function setLoadingActions(tasks) {
 		tasks.forEach((task) => {
 			isLoadingActions.value[`hide-${task.id}`] = false;
@@ -62,17 +81,6 @@
 			isLoadingActions.value[`activate-${task.id}`] = false;
 			isLoadingActions.value[`delete-${task.id}`] = false;
 		});
-	}
-
-	function findByCategory(id) {
-		if (!id) {
-			return;
-		} else {
-			const filteredTasks = tasks.value.filter(
-				(task) => task.category && task.category.id === id,
-			);
-			tasks.value = filteredTasks;
-		}
 	}
 
 	async function reloadTasks() {
@@ -148,84 +156,66 @@
 					<div
 						class="mr-3 w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
 					>
-						<transition name="transform-opacity-right" mode="out-in">
-							<TextField
-								v-if="showSearchInput"
-								placeholder="Enter task name"
-								v-model="searchText"
-								class="p-2 md:p-0"
-							/>
-						</transition>
-					</div>
-
-					<div
-						v-if="categories.length >= 2"
-						class="w-44 md:m-0 md:ml-3 md:mr-3"
-						:class="{ hidden: !showCategorySelect }"
-					>
-						<transition name="transform-opacity-right" mode="out-in">
-							<Select
-								placeholder="Select category"
-								:options="categories"
-								v-model="selectedCategory"
-								label-key="title"
-								value-key="id"
-								class="p-2 md:p-0"
-							/>
-						</transition>
+						<TextField
+							placeholder="search by task name"
+							v-model="searchText"
+							class="p-2 md:p-0"
+						/>
 					</div>
 				</div>
 
-				<div class="ml-0 mt-14 w-full text-center sm:w-auto md:mt-0 md:flex">
-					<a
-						href="#"
-						@click.prevent="showCategorySelect = !showCategorySelect"
-						title="Search tasks"
-						class="pr-1"
-					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							{{ showCategorySelect ? 'filter_list' : 'filter_alt' }}
-						</span>
-					</a>
-					<a
-						href="#"
-						@click.prevent="showSearchInput = !showSearchInput"
-						title="Search tasks"
-						class="pr-1"
-					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							{{ showSearchInput ? 'search_off' : 'search' }}
-						</span>
-					</a>
+				<div
+					class="ml-0 mt-14 w-full items-center gap-2 text-center sm:w-auto md:mt-0 md:flex"
+				>
+					<Dialog>
+						<DialogTrigger as-child>
+							<button
+								@click="showCategorySelect = !showCategorySelect"
+								type="button"
+								title="filters"
+							>
+								<SlidersHorizontalIcon class="size-6 stroke-gray-400" />
+							</button>
+						</DialogTrigger>
 
-					<button type="button" @click="selectableTasks = !selectableTasks">
-						<svg
-							viewBox="0 0 1024 1024"
-							class="size-10"
-							:class="[selectableTasks ? 'fill-gray-400' : 'fill-gray-700']"
-							xmlns="http://www.w3.org/2000/svg"
+						<DialogContent
+							class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
 						>
-							<path
-								d="M598.186667 955.733333h-0.443734a17.117867 17.117867 0 0 1-15.240533-10.325333L476.859733 699.733333H426.666667a17.066667 17.066667 0 1 1 0-34.133333h35.5328l-136.533334-317.525333a17.066667 17.066667 0 0 1 22.408534-22.408534l317.525333 136.533334V426.666667a17.066667 17.066667 0 1 1 34.133333 0v50.158933l245.640534 104.8064a17.083733 17.083733 0 0 1 0.9216 30.976l-149.486934 74.752 153.924267 153.924267a17.0496 17.0496 0 0 1 0 24.132266l-85.333333 85.333334a17.0496 17.0496 0 0 1-24.132267 0l-153.856-153.856-73.9328 149.3504a17.066667 17.066667 0 0 1-15.291733 9.489066zM682.666667 750.933333a17.066667 17.066667 0 0 1 12.066133 5.000534L853.333333 914.5344 914.5344 853.333333l-158.600533-158.600533a17.015467 17.015467 0 0 1 4.437333-27.323733l137.6768-68.829867-222.037333-94.737067-0.1024-0.034133-301.9776-129.877333 129.860266 301.994666 0.034134 0.068267 95.453866 222.020267 68.096-137.5744A17.066667 17.066667 0 0 1 682.666667 750.933333z m-341.333334-51.2h-85.333333a17.066667 17.066667 0 1 1 0-34.133333h85.333333a17.066667 17.066667 0 1 1 0 34.133333z m-170.666666 0H85.333333a17.066667 17.066667 0 0 1-17.066666-17.066666v-85.333334a17.066667 17.066667 0 1 1 34.133333 0v68.266667h68.266667a17.066667 17.066667 0 1 1 0 34.133333zM85.333333 529.066667a17.066667 17.066667 0 0 1-17.066666-17.066667v-85.333333a17.066667 17.066667 0 0 1 34.133333 0v85.333333a17.066667 17.066667 0 0 1-17.066667 17.066667z m597.333334-170.666667a17.066667 17.066667 0 0 1-17.066667-17.066667v-85.333333a17.066667 17.066667 0 1 1 34.133333 0v85.333333a17.066667 17.066667 0 0 1-17.066666 17.066667zM85.333333 358.4a17.066667 17.066667 0 0 1-17.066666-17.066667v-85.333333a17.066667 17.066667 0 0 1 34.133333 0v85.333333a17.066667 17.066667 0 0 1-17.066667 17.066667z m597.333334-170.666667a17.066667 17.066667 0 0 1-17.066667-17.066666V102.4h-68.266667a17.066667 17.066667 0 1 1 0-34.133333h85.333334a17.066667 17.066667 0 0 1 17.066666 17.066666v85.333334a17.066667 17.066667 0 0 1-17.066666 17.066666zM85.333333 187.733333a17.066667 17.066667 0 0 1-17.066666-17.066666V85.333333a17.066667 17.066667 0 0 1 17.066666-17.066666h85.333334a17.066667 17.066667 0 0 1 0 34.133333H102.4v68.266667a17.066667 17.066667 0 0 1-17.066667 17.066666z m426.666667-85.333333h-85.333333a17.066667 17.066667 0 0 1 0-34.133333h85.333333a17.066667 17.066667 0 1 1 0 34.133333zM341.333333 102.4h-85.333333a17.066667 17.066667 0 0 1 0-34.133333h85.333333a17.066667 17.066667 0 0 1 0 34.133333z"
+							<DialogHeader>
+								<DialogTitle>Filters</DialogTitle>
+							</DialogHeader>
+
+							<CategoriesCombobox
+								:categories="categories"
+								v-model="selectedCategory"
+								class="!w-full"
 							/>
-						</svg>
-					</button>
 
-					<a
-						href="#"
-						title="Add Task"
-						@click="$store.commit('setShowCreatingTaskModal')"
+							<!--							<DialogFooter>
+								<button
+									type="submit"
+									class="w-full rounded bg-tmgr-light-blue p-2 text-white hover:opacity-90"
+								>
+									Save
+								</button>
+							</DialogFooter>-->
+						</DialogContent>
+					</Dialog>
+
+					<button
+						type="button"
+						title="Tasks selection mode"
+						@click="selectableTasks = !selectableTasks"
 					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							add_circle_outline
-						</span>
-					</a>
+						<SquareDashedMousePointerIcon
+							class="size-7"
+							:class="[
+								selectableTasks
+									? 'stroke-tmgr-blue dark:stroke-white'
+									: 'stroke-gray-400',
+							]"
+						/>
+					</button>
 				</div>
 			</div>
 		</template>
@@ -255,147 +245,3 @@
 		</template>
 	</BaseLayout>
 </template>
-
-<!--<script>
-	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
-	import Confetti from '@/components/Confetti.vue';
-	import TaskForm from '@/pages/TaskForm.vue';
-	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
-	import TextField from '@/components/general/TextField.vue';
-	import { getCategories } from '@/actions/tmgr/categories';
-	import Select from '@/components/general/Select.vue';
-
-	export default {
-		name: 'TasksList',
-		components: {
-			TextField,
-			TaskForm,
-			Confetti,
-			LoadingTasksList,
-			TasksListComponent,
-			Select,
-		},
-		data: () => ({
-			showCreateTaskForm: false,
-			errorLoading: false,
-			showSearchInput: false,
-			panel: false,
-			searchText: null,
-			searchTimeout: null,
-			summaryTimeString: null,
-			isLoading: true,
-			h1: {
-				CurrentTasksList: 'Current tasks',
-				HiddenTasksList: 'Hidden tasks',
-				ArchiveTasksList: 'Archive tasks',
-			},
-			tasks: [],
-			isLoadingActions: {},
-			hasAbilityToShowConfetti: false,
-			categories: [],
-			selectedCategory: null,
-			showCategorySelect: false,
-		}),
-		computed: {
-			status() {
-				return this.$route.meta.status;
-			},
-		},
-		async mounted() {
-			const categoriesData = await getCategories();
-			this.categories = [
-				{ id: 0, title: 'All categories' },
-				...categoriesData.map((cat) => ({
-					id: cat.id,
-					title: cat.title,
-				})),
-			];
-		},
-
-		watch: {
-			searchText() {
-				clearTimeout(this.searchTimeout);
-				this.searchTimeout = setTimeout(this.loadTasks, 500);
-			},
-			'$store.getters.reloadTasks'() {
-				this.loadTasks();
-			},
-			async selectedCategory(newCategory, oldCategory) {
-				await this.loadTasks();
-				this.selectedCategory = newCategory;
-				this.findByCategory(this.selectedCategory);
-			},
-		},
-		methods: {
-			findByCategory(id) {
-				if (!id) {
-					return;
-				} else {
-					const tasks = this.tasks.filter(
-						(task) => task.category && task.category.id === id,
-					);
-					this.tasks = tasks;
-				}
-			},
-
-			reloadTasks() {
-				this.hasAbilityToShowConfetti = true;
-				this.loadTasks();
-			},
-
-			async loadTasks() {
-				try {
-					this.isLoading = true;
-					clearTimeout(this.searchTimeout);
-
-					let tasks = [];
-
-					if (this.status) {
-						tasks = await getTasksByStatus(this.status, {
-							params: {
-								search: this.searchText,
-							},
-						});
-					} else {
-						tasks = await getTasks({
-							params: {
-								search: this.searchText,
-							},
-						});
-					}
-
-					this.summaryTimeString = this.formatTime(
-						tasks.reduce((summary, task) => task.common_time + summary, 0),
-					);
-					this.tasks = tasks;
-
-					return tasks;
-				} catch (e) {
-					console.error(e);
-					this.errorLoading = true;
-				} finally {
-					this.isLoading = false;
-				}
-			},
-			selectAll() {
-				if (!this.$refs.tasksListComponent) {
-					return;
-				}
-				this.$refs.tasksListComponent.selectAll();
-			},
-			formatTime(taskTime) {
-				let hours = Math.floor(taskTime / 3600);
-				let minutes = Math.ceil((taskTime % 3600) / 60);
-
-				return `${
-					hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''
-				}  ${minutes} minute${minutes > 1 ? 's' : ''}`;
-			},
-		},
-		async created() {
-			const data = await this.loadTasks();
-			this.setLoadingActions(data);
-		},
-	};
-</script>-->
