@@ -46,7 +46,6 @@
 		editor
 			.save()
 			.then((outputData) => {
-				console.log(event, 'Saving completed: ', outputData);
 				emit('update:modelValue', outputData);
 			})
 			.catch((error) => {

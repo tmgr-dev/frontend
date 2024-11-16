@@ -173,17 +173,15 @@
 	const [copy] = useCopyToClipboard();
 	watch(
 		() => route.query['add-workspace'],
-		async addWorkspace => {
+		async (addWorkspace) => {
 			flags.isShowWorkspaceModal = addWorkspace === 'open';
-			delete route.query['add-workspace']
+			delete route.query['add-workspace'];
 		},
 		{
-			deep: true
-		}
-	)
+			deep: true,
+		},
+	);
 	onBeforeMount(async () => {
-
-		console.log(route.query);
 		workspaces.value = await getWorkspaces();
 		flags.isShowWorkspaceModal = route.query['add-workspace'] === 'open';
 	});

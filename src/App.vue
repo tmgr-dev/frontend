@@ -8,7 +8,7 @@
 		<transition mode="out-in" name="fade">
 			<div class="flex min-h-screen">
 				<CustomSidebar>
-					<router-view :key="$route.path" v-slot="{ Component }">
+					<router-view v-slot="{ Component }">
 						<transition
 							:name="transitionName"
 							mode="out-in"
@@ -181,7 +181,6 @@
 				}
 			},
 			handleNewTask() {
-				console.log('open modal');
 				this.$store.commit('setShowCreatingTaskModal');
 			},
 			initBodyHeight() {

@@ -1,12 +1,5 @@
 <template>
 	<Teleport to="title">{{ title }}</Teleport>
-	<teleport to="#breadcrumb">
-		<BreadcrumbItem class="hidden md:block">
-			<BreadcrumbLink href="#">
-				{{ title }}
-			</BreadcrumbLink>
-		</BreadcrumbItem>
-	</teleport>
 
 	<BaseLayout no-copyright>
 		<template #body>
@@ -393,7 +386,8 @@
 	export default {
 		name: 'Board',
 		components: {
-			BreadcrumbItem, BreadcrumbLink,
+			BreadcrumbItem,
+			BreadcrumbLink,
 			FilterIcon,
 			TaskBoardCard,
 			EllipsisVerticalIcon,

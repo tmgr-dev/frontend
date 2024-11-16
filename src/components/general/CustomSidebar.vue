@@ -8,7 +8,6 @@
 		BreadcrumbList,
 		BreadcrumbSeparator,
 	} from '@/components/ui/breadcrumb';
-
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -29,7 +28,6 @@
 		SidebarHeader,
 		SidebarInset,
 		SidebarMenu,
-		SidebarMenuAction,
 		SidebarMenuButton,
 		SidebarMenuItem,
 		SidebarProvider,
@@ -37,15 +35,10 @@
 		SidebarTrigger,
 	} from '@/components/ui/sidebar';
 	import {
-		AudioWaveform,
 		BadgeCheck,
 		Bell,
 		ChevronsUpDown,
-		Command,
 		Cable,
-		Folder,
-		Forward,
-		GalleryVerticalEnd,
 		LogOut,
 		MoreHorizontal,
 		SquareKanban,
@@ -55,7 +48,6 @@
 		Package,
 		PackageOpen,
 		SquareTerminal,
-		Trash2,
 	} from 'lucide-vue-next';
 	import { onBeforeMount, ref } from 'vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.ts';
@@ -65,82 +57,18 @@
 	import store from '@/store';
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
+	import { useRoute } from 'vue-router';
 
+	const route = useRoute();
 	const user = ref<User>({} as User);
 	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>([]);
 
-	// This is sample data.
 	const data = {
 		user: {
 			name: user.value?.name,
-			email: 'm@example.com',
 			avatar: '/avatars/shadcn.jpg',
 		},
-		teams: [
-			{
-				name: 'Acme Inc',
-				logo: GalleryVerticalEnd,
-				plan: 'Enterprise',
-			},
-			{
-				name: 'Acme Corp.',
-				logo: AudioWaveform,
-				plan: 'Startup',
-			},
-			{
-				name: 'Evil Corp.',
-				logo: Command,
-				plan: 'Free',
-			},
-		],
-		navMain: [
-			{
-				title: 'Tasks',
-				url: '#',
-				icon: SquareTerminal,
-				isActive: true,
-				items: [
-					{
-						title: 'List',
-						url: '/',
-					},
-					{
-						title: 'Board',
-						url: '/board',
-					},
-					{
-						title: 'Folders',
-						url: '/projects-categories',
-					},
-				],
-			},
-			{
-				title: 'Settings',
-				url: '#',
-				icon: Settings2,
-				isActive: true,
-				items: [
-					{
-						title: 'Profile',
-						url: '/settings?tab=profile',
-					},
-					{
-						title: 'Notifications',
-						url: '/settings?tab=notification',
-					},
-					{
-						title: 'Workspace Settings',
-						url: 'settings?tab=workspace',
-					},
-					{
-						title: 'Smart Devices',
-						url: 'settings?tab=device',
-					},
-				],
-			},
-		],
-		projects: [],
 	};
 
 	async function logout() {
@@ -169,7 +97,6 @@
 			categories.value = loadedCategories.slice(0, 4);
 			user.value = userData;
 			workspaces.value = workspacesData;
-			console.log(user.value?.settings);
 			activeWorkspace.value = workspaces.value?.find(
 				(w: Workspace) =>
 					w.id ===
@@ -241,6 +168,7 @@
 								<DropdownMenuLabel class="text-xs text-muted-foreground">
 									Workspaces
 								</DropdownMenuLabel>
+
 								<DropdownMenuItem
 									v-for="(workspace, index) in workspaces"
 									:key="workspace.name"
@@ -262,7 +190,9 @@
 									{{ workspace.name }}
 									<DropdownMenuShortcut>⌘{{ index + 1 }}</DropdownMenuShortcut>
 								</DropdownMenuItem>
+
 								<DropdownMenuSeparator />
+
 								<DropdownMenuItem
 									class="cursor-pointer gap-2 p-2"
 									@click="
@@ -287,6 +217,7 @@
 			<SidebarContent>
 				<SidebarGroup>
 					<SidebarGroupLabel>TMGR.DEV</SidebarGroupLabel>
+
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
@@ -318,50 +249,24 @@
 				</SidebarGroup>
 
 				<SidebarGroup class="group-data-[collapsible=icon]:hidden">
-					<SidebarGroupLabel>Folders</SidebarGroupLabel>
+					<SidebarGroupLabel>Categories</SidebarGroupLabel>
+
 					<SidebarMenu>
 						<SidebarMenuItem v-for="item in categories" :key="item.title">
 							<SidebarMenuButton as-child>
 								<router-link :to="`/projects-categories/${item.id}/children`">
-									<!--									<component :is="item.name" />-->
 									<span>{{ item.title }}</span>
 								</router-link>
 							</SidebarMenuButton>
-							<DropdownMenu>
-								<DropdownMenuTrigger as-child>
-									<SidebarMenuAction show-on-hover>
-										<MoreHorizontal />
-										<span class="sr-only">More</span>
-									</SidebarMenuAction>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent
-									class="w-48 rounded-lg"
-									side="bottom"
-									align="end"
-								>
-									<DropdownMenuItem>
-										<Folder class="text-muted-foreground" />
-										<span>View Project</span>
-									</DropdownMenuItem>
-									<DropdownMenuItem>
-										<Forward class="text-muted-foreground" />
-										<span>Share Project</span>
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem>
-										<Trash2 class="text-muted-foreground" />
-										<span>Delete Project</span>
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
 						</SidebarMenuItem>
+
 						<SidebarMenuItem>
 							<SidebarMenuButton
 								class="text-sidebar-foreground/70"
 								@click="$router.push('/projects-categories')"
 							>
 								<MoreHorizontal class="text-sidebar-foreground/70" />
-								<span>More</span>
+								<span>More categories</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 					</SidebarMenu>
@@ -414,9 +319,9 @@
 											</AvatarFallback>
 										</Avatar>
 										<div class="grid flex-1 text-left text-sm leading-tight">
-											<span class="truncate font-semibold">{{
-												user.name
-											}}</span>
+											<span class="truncate font-semibold">
+												{{ user.name }}
+											</span>
 											<span class="truncate text-xs">{{ user.email }}</span>
 										</div>
 									</div>
@@ -471,6 +376,7 @@
 			</SidebarFooter>
 			<SidebarRail />
 		</Sidebar>
+
 		<SidebarInset>
 			<header
 				v-if="store.getters.isLoggedIn"
@@ -483,16 +389,21 @@
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem class="hidden md:block">
-								<BreadcrumbLink href="#"> TMGR.DEV </BreadcrumbLink>
+								<BreadcrumbLink>
+									<router-link to="/"> TMGR.DEV </router-link>
+								</BreadcrumbLink>
 							</BreadcrumbItem>
+
 							<BreadcrumbSeparator class="hidden md:block" />
+
 							<BreadcrumbItem class="hidden md:block">
-								<div id="breadcrumb"></div>
+								{{ route.meta.title || store.state.metaTitle }}
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
 				</div>
 			</header>
+
 			<div class="flex flex-1 flex-col gap-4 p-4 pt-0">
 				<div class="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min">
 					<slot></slot>
