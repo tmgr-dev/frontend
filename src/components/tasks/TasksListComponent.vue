@@ -24,7 +24,12 @@
 			v-selectable="
 				hasSelectable ? { selectedGetter, selectedSetter, selectingSetter } : {}
 			"
-			class="relative"
+			class="relative border pb-2"
+			:class="[
+				hasSelectable
+					? 'rounded-2xl border-dashed border-orange-200 px-2'
+					: 'border-transparent',
+			]"
 		>
 			<div
 				class="border-black dark:border-gray-400"
@@ -186,6 +191,14 @@
 				default: () => [],
 			},
 		},
+		watch: {
+			hasSelectable(v) {
+				if (!v) {
+					this.selected = [];
+					this.isShowSelectedTasksCommonTime = false;
+				}
+			},
+		},
 		mixins: [TasksListMixin, TaskActionsInTheListMixin],
 		data: () => ({
 			showTaskForm: false,
@@ -289,9 +302,6 @@
 				}
 			},
 			selectedSetter(arr) {
-				if (!this.selected.filter(Boolean).length && !this.selecting.length) {
-					return;
-				}
 				this.selected = arr.map((v, i) =>
 					this.selected[i] && v
 						? false
@@ -301,7 +311,7 @@
 				);
 
 				this.isShowSelectedTasksCommonTime =
-					this.selected.filter(Boolean).length > 1;
+					this.selected.filter(Boolean).length >= 1;
 				this.selecting = [];
 				if (this.isShowSelectedTasksCommonTime) {
 					this.countTimeForModal();

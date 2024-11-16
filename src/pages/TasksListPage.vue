@@ -141,31 +141,23 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="items-center justify-between px-2 md:flex md:flex-nowrap">
+			<div class="flex flex-wrap items-center justify-between gap-2 px-2">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="text-bold my-5 mr-6 shrink-0 text-center text-lg text-opacity-25 sm:w-auto sm:text-xl lg:text-2xl"
+						class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
-				<div class="flex w-[90%] items-center justify-center p-4 md:static">
-					<div
-						class="w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
-					>
-						<TextField
-							placeholder="search by task name"
-							v-model="searchText"
-							class="p-2 md:p-0"
-						/>
-					</div>
-				</div>
+				<div class="ml-auto flex items-center gap-3 text-center">
+					<TextField
+						placeholder="search by task name"
+						v-model="searchText"
+						class="md:p-0"
+					/>
 
-				<div
-					class="ml-0 mt-14 w-full items-center gap-2 text-center sm:w-auto md:mt-0 md:flex"
-				>
 					<Dialog>
 						<DialogTrigger as-child>
 							<button
@@ -194,15 +186,6 @@
 								v-model="selectedCategory"
 								class="!w-full"
 							/>
-
-							<!--							<DialogFooter>
-								<button
-									type="submit"
-									class="w-full rounded bg-tmgr-light-blue p-2 text-white hover:opacity-90"
-								>
-									Save
-								</button>
-							</DialogFooter>-->
 						</DialogContent>
 					</Dialog>
 
@@ -225,27 +208,29 @@
 		</template>
 
 		<template #body>
-			<tasks-list-component
-				v-if="tasks && tasks.length > 0 && !isLoading"
-				:tasks="tasks"
-				:status="status"
-				:is-loading-actions="isLoadingActions"
-				:has-selectable="selectableTasks"
-				@reload-tasks="reloadTasks"
-				ref="tasksListComponent"
-			/>
+			<div class="mt-4">
+				<tasks-list-component
+					v-if="tasks && tasks.length > 0 && !isLoading"
+					:tasks="tasks"
+					:status="status"
+					:is-loading-actions="isLoadingActions"
+					:has-selectable="selectableTasks"
+					@reload-tasks="reloadTasks"
+					ref="tasksListComponent"
+				/>
 
-			<div v-else-if="errorLoading" class="text-center text-xl italic">
-				Something went wrong...
+				<div v-else-if="errorLoading" class="text-center text-xl italic">
+					Something went wrong...
+				</div>
+
+				<div v-else-if="!isLoading" class="text-center text-xl italic">
+					You don't have tasks here
+
+					<confetti v-if="hasAbilityToShowConfetti" />
+				</div>
+
+				<loading-tasks-list v-if="isLoading" class="mx-2" />
 			</div>
-
-			<div v-else-if="!isLoading" class="text-center text-xl italic">
-				You don't have tasks here
-
-				<confetti v-if="hasAbilityToShowConfetti" />
-			</div>
-
-			<loading-tasks-list v-if="isLoading" class="mx-2" />
 		</template>
 	</BaseLayout>
 </template>
