@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, ref, toRef } from 'vue';
+	import { computed, onBeforeMount, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -156,6 +156,8 @@
 			}
 		}
 	};
+
+	watch(() => form.value.project_category_id, updateTaskTitle);
 
 	const createTask = async () => {
 		updateFormBeforeQuery();
