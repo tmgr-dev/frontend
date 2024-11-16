@@ -385,7 +385,9 @@
 				<div class="flex items-center gap-2 px-4">
 					<SidebarTrigger class="-ml-1" />
 					<AddTaskModalTrigger class="-ml-1" />
+
 					<Separator orientation="vertical" class="mr-2 h-4" />
+
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem class="hidden md:block">
@@ -404,10 +406,8 @@
 				</div>
 			</header>
 
-			<div class="flex flex-1 flex-col gap-4 p-4 pt-0">
-				<div class="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min">
-					<slot></slot>
-				</div>
+			<div class="flex flex-1 flex-col gap-4">
+				<slot></slot>
 			</div>
 		</SidebarInset>
 	</SidebarProvider>
