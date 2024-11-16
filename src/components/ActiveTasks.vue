@@ -1,3 +1,23 @@
+<script setup lang="ts">
+	import { Task } from '@/actions/tmgr/tasks';
+	import store from '@/store';
+	import AnimatedRing from '@/components/general/AnimatedRing.vue';
+	import { ref } from 'vue';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
+
+	interface Props {
+		tasks: Task[];
+	}
+
+	defineProps<Props>();
+	const showActiveTasks = ref(false);
+</script>
+
 <template>
 	<div
 		v-if="tasks?.length > 0"
@@ -37,23 +57,3 @@
 		</DropdownMenu>
 	</div>
 </template>
-
-<script setup lang="ts">
-	import { Task } from '@/actions/tmgr/tasks';
-	import store from '@/store';
-	import AnimatedRing from '@/components/general/AnimatedRing.vue';
-	import { ref } from 'vue';
-	import {
-		DropdownMenu,
-		DropdownMenuContent,
-		DropdownMenuItem,
-		DropdownMenuTrigger,
-	} from '@/components/ui/dropdown-menu';
-
-	interface Props {
-		tasks: Task[];
-	}
-
-	defineProps<Props>();
-	const showActiveTasks = ref(false);
-</script>
