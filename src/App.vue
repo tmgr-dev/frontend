@@ -16,9 +16,7 @@
 							@enter="enter"
 							@after-enter="afterEnter"
 						>
-							<div>
-								<component :is="Component" v-if="showComponent"></component>
-							</div>
+							<component :is="Component" v-if="showComponent" />
 						</transition>
 					</router-view>
 				</CustomSidebar>
@@ -27,7 +25,7 @@
 
 		<ActiveTasks :tasks="activeTasks" />
 
-		<Transition name="bounce-right-fade">
+		<Transition name="fade">
 			<Modal
 				v-if="showTaskFormModalWindow"
 				modal-class="h-full w-full md:w-auto md:h-auto"
