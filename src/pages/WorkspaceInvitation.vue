@@ -98,7 +98,6 @@
 				const data = await workspaceInvitationInfo(
 					this.workspaceInvitationToken,
 				);
-				console.log(data);
 				this.workspaceName = data.workspace.name;
 				this.workspaceId = data.workspace.id;
 				this.loading = false;
@@ -119,7 +118,6 @@
 				const settingsWithUpdatedWorkspace = this.user.settings.map(
 					(setting) => {
 						if (setting.key === 'current_workspace') {
-							console.log('this.workspaceId', this.workspaceId);
 							setting.value = this.workspaceId;
 						}
 						return {

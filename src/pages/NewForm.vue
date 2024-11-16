@@ -229,11 +229,13 @@
 		}
 	};
 
+	// Modify the useDebouncedAutoSave call:
 	const [isAutoSaving] = useDebouncedAutoSave({
 		formRef: form,
 		fieldsToWatch: [
 			'title',
 			'description',
+			'description_json',
 			'project_category_id',
 			'assignees',
 			'status',
@@ -392,7 +394,7 @@
 				<span class="relative inline-flex rounded-md shadow-sm">
 					<button
 						v-if="taskId"
-						@click="saveTask"
+						@click="saveTask()"
 						class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
 						type="button"
 						title="save"

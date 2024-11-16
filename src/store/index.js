@@ -7,6 +7,7 @@ const token = localStorage.getItem('token')
 	: null;
 
 const state = {
+	metaTitle: '',
 	token: token,
 	user: localStorage.getItem('user')
 		? JSON.parse(localStorage.getItem('user') || '')
@@ -31,6 +32,9 @@ const getters = {
 };
 
 const mutations = {
+	setMetaTitle(state, title) {
+		state.metaTitle = title;
+	},
 	setToken(state, token) {
 		if (token == null) {
 			localStorage.removeItem('token');
