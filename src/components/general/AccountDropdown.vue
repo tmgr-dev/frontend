@@ -1,27 +1,16 @@
 <template>
 	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
-			class="item-center flex cursor-pointer justify-center gap-1 text-black dark:text-white"
+			class="flex cursor-pointer items-center gap-1 dark:text-white"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
-			<div class="flex items-center overflow-hidden">
-				<span
-					class="w-24 overflow-hidden text-ellipsis whitespace-nowrap"
-					v-if="store.state.user?.name?.length > 15"
-				>
-					{{ store.state.user?.name?.slice(0, 15) }}
+			<div class="max-w-24 overflow-hidden">
+				<span class="truncate" v-if="store.state.user?.name">
+					{{ store.state.user.name }}
 				</span>
-
-				<span v-else class="text-tmgr-blue dark:text-tmgr-gray">{{
-					store.state.user?.name
-				}}</span>
 			</div>
 
-			<img
-				src="../../assets/img/user.svg"
-				alt="User avatar"
-				class="h-15 w-15 object-cover"
-			/>
+			<UserIcon class="size-5" />
 		</div>
 
 		<!--	dropdown block	-->
@@ -92,6 +81,7 @@
 	import Select from '@/components/general/Select.vue';
 	import { onBeforeMount, onMounted, Ref, ref } from 'vue';
 	import store from '@/store';
+	import { UserIcon } from 'lucide-vue-next';
 
 	const emit = defineEmits(['updateSettings']);
 	const isOpenProfileDropdown = ref(false);
