@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, ref, toRef, watch } from 'vue';
+	import { computed, onBeforeMount, ref, toRef } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -118,6 +118,15 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value = await getTask(+taskId.value);
 
+			console.log(
+				form.value.settings?.find((item) => item.key === 'approximately_time'),
+			);
+			form.value.approximately_time =
+				Number(
+					form.value.settings?.find((item) => item.key === 'approximately_time')
+						?.value,
+				) || 0;
+
 			if (
 				editorType.value === 'block' &&
 				!form.value.description_json &&
@@ -204,6 +213,8 @@
 	const suppressAutoSavingForOnce = ref(false);
 
 	const saveTask = async () => {
+		if (!form.value.id) return;
+
 		isLoading.value = true;
 		updateFormBeforeQuery();
 
