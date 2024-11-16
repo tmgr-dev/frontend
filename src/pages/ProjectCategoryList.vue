@@ -193,7 +193,7 @@
 	import LoadingButtonActions from '@/mixins/LoadingButtonActions';
 	import getBreadcrumbs from '../utils/getBreadcrumbs';
 	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from '@/components/tasks/TasksList.vue';
+	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import { getTasks, updateTaskPartially } from '@/actions/tmgr/tasks';
 	import {
 		restoreCategory,
@@ -326,6 +326,7 @@
 			},
 			async loadParentCategory() {
 				this.category = await getParentCategory(this.id);
+				this.$store.commit('setMetaTitle', this.category.title || this.h1);
 				this.parentCategories = this.extractParents(this.category);
 			},
 			async loadCategories() {

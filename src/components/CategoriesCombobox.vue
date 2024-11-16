@@ -22,6 +22,7 @@
 	interface Props {
 		categories: Category[];
 		modelValue: Category['id'];
+		class?: string;
 	}
 
 	const props = defineProps<Props>();
@@ -48,6 +49,7 @@
 					role="combobox"
 					:aria-expanded="openCombobox"
 					class="w-32 justify-between overflow-hidden px-0"
+					:class="props.class"
 				>
 					<span class="truncate">
 						{{
@@ -64,6 +66,7 @@
 
 			<PopoverContent
 				class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
+				:class="props.class"
 			>
 				<Command>
 					<CommandInput
@@ -73,7 +76,7 @@
 						@input="(e) => (searchValue = e.target.value)"
 					/>
 					<CommandEmpty>No category found.</CommandEmpty>
-					<CommandList>
+					<CommandList class="w-80">
 						<CommandGroup>
 							<CommandItem
 								v-for="category in filteredCategories"

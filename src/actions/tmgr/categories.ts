@@ -29,6 +29,14 @@ export const getCategories = async (): Promise<Category[]> => {
 	return data;
 };
 
+export const getTopCategories = async (): Promise<Category[]> => {
+	const {
+		data: { data },
+	} = await $axios.get('project_categories/children/?all=');
+
+	return data;
+};
+
 export const getSubCategories = async (
 	categoryId: number | null,
 	params: AxiosRequestConfig,

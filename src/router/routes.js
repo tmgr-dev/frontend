@@ -53,6 +53,7 @@ const routes = [
 	{
 		path: '/',
 		meta: {
+			title: 'Current tasks',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -73,6 +74,7 @@ const routes = [
 		path: '/board',
 		component: () => import('@/pages/Board.vue'),
 		meta: {
+			title: 'Board',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -81,6 +83,7 @@ const routes = [
 	{
 		path: '/projects-categories',
 		meta: {
+			title: 'Categories',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -90,6 +93,7 @@ const routes = [
 	{
 		path: '/projects-categories/create',
 		meta: {
+			title: 'Create category',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -99,6 +103,7 @@ const routes = [
 	{
 		path: '/projects-categories/:id',
 		meta: {
+			title: 'Edit category',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -164,6 +169,7 @@ const routes = [
 		path: '/settings',
 		component: () => import('@/pages/Settings.vue'),
 		meta: {
+			title: 'Settings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -220,6 +226,7 @@ const routes = [
 		path: '/daily-routines',
 		component: () => import('@/pages/DailyRoutine.vue'),
 		meta: {
+			title: 'Daily routines',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},

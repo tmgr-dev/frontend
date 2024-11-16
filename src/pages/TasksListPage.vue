@@ -1,272 +1,249 @@
+<script setup>
+	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
+	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
+	import Confetti from '@/components/Confetti.vue';
+	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
+	import TextField from '@/components/general/TextField.vue';
+	import { getCategories } from '@/actions/tmgr/categories';
+	import { computed, onMounted, ref, watch } from 'vue';
+	import { useRoute } from 'vue-router';
+	import {
+		SquareDashedMousePointerIcon,
+		SlidersHorizontalIcon,
+	} from 'lucide-vue-next';
+	import {
+		Dialog,
+		DialogContent,
+		DialogHeader,
+		DialogTitle,
+		DialogTrigger,
+		DialogFooter,
+	} from '@/components/ui/dialog';
+	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
+	import { Button } from '@/components/ui/button';
+	import store from '@/store';
+
+	const route = useRoute();
+	const selectableTasks = ref(false);
+	const errorLoading = ref(false);
+	const searchText = ref(null);
+	const searchTimeout = ref(null);
+	const summaryTimeString = ref(null);
+	const isLoading = ref(true);
+	const h1 = {
+		CurrentTasksList: 'Current tasks',
+		HiddenTasksList: 'Hidden tasks',
+		ArchiveTasksList: 'Archive tasks',
+	};
+	const tasks = ref([]);
+	const isLoadingActions = ref({});
+	const hasAbilityToShowConfetti = ref(false);
+	const categories = ref([]);
+	const selectedCategory = ref(null);
+	const showCategorySelect = ref(false);
+
+	const status = computed(() => route.meta.status);
+
+	onMounted(async () => {
+		try {
+			const categoriesData = await getCategories();
+
+			categories.value = [
+				{ id: -1, title: 'All categories' },
+				...categoriesData.map((category) => ({
+					id: category.id,
+					title: category.title,
+				})),
+			];
+			const data = await loadTasks();
+			setLoadingActions(data);
+		} catch (e) {
+			console.error(e);
+		}
+	});
+
+	watch(searchText, () => {
+		clearTimeout(searchTimeout.value);
+		searchTimeout.value = setTimeout(loadTasks, 500);
+	});
+
+	watch(selectedCategory, loadTasks);
+	watch(() => store.state.reloadTasksKey, loadTasks);
+
+	function setLoadingActions(tasks) {
+		tasks.forEach((task) => {
+			isLoadingActions.value[`hide-${task.id}`] = false;
+			isLoadingActions.value[`done-${task.id}`] = false;
+			isLoadingActions.value[`start-${task.id}`] = false;
+			isLoadingActions.value[`stop-${task.id}`] = false;
+			isLoadingActions.value[`activate-${task.id}`] = false;
+			isLoadingActions.value[`delete-${task.id}`] = false;
+		});
+	}
+
+	async function reloadTasks() {
+		hasAbilityToShowConfetti.value = true;
+		await loadTasks();
+	}
+
+	async function loadTasks() {
+		try {
+			isLoading.value = true;
+			clearTimeout(searchTimeout.value);
+
+			let fetchedTasks = [];
+
+			if (status.value) {
+				fetchedTasks = await getTasksByStatus(status.value, {
+					params: {
+						search: searchText.value,
+						project_category_id:
+							selectedCategory.value === -1 ? null : selectedCategory.value,
+					},
+				});
+			} else {
+				fetchedTasks = await getTasks({
+					params: {
+						search: searchText.value,
+						project_category_id:
+							selectedCategory.value === -1 ? null : selectedCategory.value,
+					},
+				});
+			}
+
+			summaryTimeString.value = formatTime(
+				fetchedTasks.reduce((summary, task) => task.common_time + summary, 0),
+			);
+			tasks.value = fetchedTasks;
+
+			return fetchedTasks;
+		} catch (e) {
+			console.error(e);
+			errorLoading.value = true;
+		} finally {
+			isLoading.value = false;
+		}
+	}
+
+	function formatTime(taskTime) {
+		let hours = Math.floor(taskTime / 3600);
+		let minutes = Math.ceil((taskTime % 3600) / 60);
+
+		return `${
+			hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''
+		} ${minutes} minute${minutes > 1 ? 's' : ''}`;
+	}
+</script>
+
 <template>
 	<teleport to="title">
-		{{ h1[$route.name] }}
+		{{ h1[route.name] }}
 	</teleport>
 
 	<BaseLayout>
 		<template #action>
-			<div class="items-center justify-between md:flex md:flex-nowrap">
+			<div class="flex flex-wrap items-center justify-between gap-2 px-2">
 				<transition name="fade">
 					<div
 						v-if="summaryTimeString"
-						class="text-bold my-5 mr-6 shrink-0 text-center text-lg text-opacity-25 sm:w-auto sm:text-xl lg:text-2xl"
+						class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
 					>
 						{{ summaryTimeString }}
 					</div>
 				</transition>
 
-				<div
-					class="absolute top-14 flex w-[90%] items-center justify-center p-4 md:static"
-				>
-					<div
-						class="mr-3 w-1/2 overflow-hidden md:ml-auto md:w-full lg:w-1/3 xl:w-1/5"
-					>
-						<transition name="transform-opacity-right" mode="out-in">
-							<TextField
-								v-if="showSearchInput"
-								placeholder="Enter task name"
-								v-model="searchText"
-								class="p-2 md:p-0"
-							/>
-						</transition>
-					</div>
+				<div class="ml-auto flex items-center gap-2 text-center">
+					<TextField
+						placeholder="search by task name"
+						v-model="searchText"
+						class="md:p-0"
+					/>
 
-					<div
-						v-if="categories.length >= 2"
-						class="w-44 md:m-0 md:ml-3 md:mr-3"
-						:class="{ hidden: !showCategorySelect }"
-					>
-						<transition name="transform-opacity-right" mode="out-in">
-							<Select
-								placeholder="Select category"
-								:options="categories"
+					<Dialog>
+						<DialogTrigger as-child>
+							<button
+								@click="showCategorySelect = !showCategorySelect"
+								type="button"
+								title="filters"
+								class="flex size-8 rounded border p-1.5"
+								:class="[
+									selectedCategory &&
+										selectedCategory !== -1 &&
+										'border-gray-900 dark:border-white',
+								]"
+							>
+								<SlidersHorizontalIcon
+									class="m-auto size-full stroke-gray-400"
+									:class="[
+										selectedCategory &&
+											selectedCategory !== -1 &&
+											'stroke-gray-900 dark:stroke-white',
+									]"
+								/>
+							</button>
+						</DialogTrigger>
+
+						<DialogContent
+							class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+						>
+							<DialogHeader>
+								<DialogTitle>Filters</DialogTitle>
+							</DialogHeader>
+
+							<CategoriesCombobox
+								:categories="categories"
 								v-model="selectedCategory"
-								label-key="title"
-								value-key="id"
-								class="p-2 md:p-0"
+								class="!w-full"
 							/>
-						</transition>
-					</div>
-				</div>
+						</DialogContent>
 
-				<div class="ml-0 mt-14 w-full text-center sm:w-auto md:mt-0 md:flex">
-					<a
-						href="#"
-						@click.prevent="showCategorySelect = !showCategorySelect"
-						title="Search tasks"
-						class="pr-1"
-					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							{{ showCategorySelect ? 'filter_list' : 'filter_alt' }}
-						</span>
-					</a>
-					<a
-						href="#"
-						@click.prevent="showSearchInput = !showSearchInput"
-						title="Search tasks"
-						class="pr-1"
-					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							{{ showSearchInput ? 'search_off' : 'search' }}
-						</span>
-					</a>
+						<DialogFooter> </DialogFooter>
+					</Dialog>
 
-					<a
-						href="#"
-						@click.prevent="selectAll()"
-						title="Select all"
-						class="pr-1"
+					<button
+						@click="selectableTasks = !selectableTasks"
+						type="button"
+						title="Tasks selection mode"
+						class="flex size-8 rounded border p-1.5"
+						:class="[selectableTasks && 'border-gray-900 dark:border-white']"
 					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							done_all
-						</span>
-					</a>
-
-					<a
-						href="#"
-						title="Add Task"
-						@click="$store.commit('setShowCreatingTaskModal')"
-					>
-						<span
-							class="material-icons text-3xl text-gray-700 opacity-75 hover:opacity-100 sm:text-4xl"
-						>
-							add_circle_outline
-						</span>
-					</a>
+						<SquareDashedMousePointerIcon
+							class="m-auto size-full"
+							:class="[
+								selectableTasks
+									? 'stroke-tmgr-blue dark:stroke-white'
+									: 'stroke-gray-400',
+							]"
+						/>
+					</button>
 				</div>
 			</div>
 		</template>
 
 		<template #body>
-			<tasks-list-component
-				v-if="tasks && tasks.length > 0 && !isLoading"
-				:tasks="tasks"
-				:status="status"
-				:is-loading-actions="isLoadingActions"
-				has-selectable
-				@reload-tasks="reloadTasks"
-				ref="tasksListComponent"
-			/>
+			<div class="mt-4">
+				<tasks-list-component
+					v-if="tasks && tasks.length > 0 && !isLoading"
+					:tasks="tasks"
+					:status="status"
+					:is-loading-actions="isLoadingActions"
+					:has-selectable="selectableTasks"
+					@reload-tasks="reloadTasks"
+					ref="tasksListComponent"
+				/>
 
-			<div v-else-if="errorLoading" class="text-center text-xl italic">
-				Something went wrong...
+				<div v-else-if="errorLoading" class="text-center text-xl italic">
+					Something went wrong...
+				</div>
+
+				<div v-else-if="!isLoading" class="text-center text-xl italic">
+					You don't have tasks here
+
+					<confetti v-if="hasAbilityToShowConfetti" />
+				</div>
+
+				<loading-tasks-list v-if="isLoading" class="mx-2" />
 			</div>
-
-			<div v-else-if="!isLoading" class="text-center text-xl italic">
-				You don't have tasks here
-
-				<confetti v-if="hasAbilityToShowConfetti" />
-			</div>
-
-			<loading-tasks-list v-if="isLoading" class="mx-2" />
-			<!--<loader v-if="showLoader" style="margin-top: 2rem" />-->
 		</template>
 	</BaseLayout>
 </template>
-
-<script>
-	import TasksListMixin from '@/mixins/TasksListMixin';
-	import LoadingButtonActions from '@/mixins/LoadingButtonActions';
-	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
-	import TasksListComponent from '@/components/tasks/TasksList.vue';
-	import Confetti from '@/components/Confetti.vue';
-	import TaskForm from '@/pages/TaskForm.vue';
-	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
-	import TextField from '@/components/general/TextField.vue';
-	import { getCategories } from '@/actions/tmgr/categories';
-	import { hueFromHex } from '@/utils/convertColors';
-	import { computed } from 'vue';
-	import Select from '@/components/general/Select.vue';
-
-	export default {
-		name: 'TasksList',
-		components: {
-			TextField,
-			TaskForm,
-			Confetti,
-			LoadingTasksList,
-			TasksListComponent,
-			Select,
-		},
-		mixins: [LoadingButtonActions, TasksListMixin],
-		data: () => ({
-			showCreateTaskForm: false,
-			errorLoading: false,
-			showSearchInput: false,
-			panel: false,
-			searchText: null,
-			searchTimeout: null,
-			summaryTimeString: null,
-			isLoading: true,
-			h1: {
-				CurrentTasksList: 'Current tasks',
-				HiddenTasksList: 'Hidden tasks',
-				ArchiveTasksList: 'Archive tasks',
-			},
-			tasks: [],
-			isLoadingActions: {},
-			hasAbilityToShowConfetti: false,
-			categories: [],
-			selectedCategory: null,
-			showCategorySelect: false,
-		}),
-		computed: {
-			status() {
-				return this.$route.meta.status;
-			},
-		},
-		async mounted() {
-			const categoriesData = await getCategories();
-			this.categories = [
-				{ id: 0, title: 'All categories' },
-				...categoriesData.map((cat) => ({
-					id: cat.id,
-					title: cat.title,
-				})),
-			];
-		},
-
-		watch: {
-			searchText() {
-				clearTimeout(this.searchTimeout);
-				this.searchTimeout = setTimeout(this.loadTasks, 500);
-			},
-			'$store.getters.reloadTasks'() {
-				this.loadTasks();
-			},
-			async selectedCategory(newCategory, oldCategory) {
-				await this.loadTasks();
-				this.selectedCategory = newCategory;
-				this.findByCategory(this.selectedCategory);
-			},
-		},
-		methods: {
-			findByCategory(id) {
-				if (!id) {
-					return;
-				} else {
-					const tasks = this.tasks.filter(
-						(task) => task.category && task.category.id === id,
-					);
-					this.tasks = tasks;
-				}
-			},
-
-			reloadTasks() {
-				this.hasAbilityToShowConfetti = true;
-				this.loadTasks();
-			},
-
-			async loadTasks() {
-				try {
-					this.isLoading = true;
-					clearTimeout(this.searchTimeout);
-
-					let tasks = [];
-
-					if (this.status) {
-						tasks = await getTasksByStatus(this.status, {
-							params: {
-								search: this.searchText,
-							},
-						});
-					} else {
-						tasks = await getTasks({
-							params: {
-								search: this.searchText,
-							},
-						});
-					}
-
-					this.summaryTimeString = this.getTaskFormattedTime(
-						tasks.reduce((summary, task) => task.common_time + summary, 0),
-					);
-					this.tasks = tasks;
-
-					return tasks;
-				} catch (e) {
-					console.error(e);
-					this.errorLoading = true;
-				} finally {
-					this.isLoading = false;
-				}
-			},
-			selectAll() {
-				if (!this.$refs.tasksListComponent) {
-					return;
-				}
-				this.$refs.tasksListComponent.selectAll();
-			},
-		},
-		async created() {
-			const data = await this.loadTasks();
-			this.setLoadingActions(data);
-		},
-	};
-</script>
