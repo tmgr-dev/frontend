@@ -11,15 +11,16 @@
 		SquareDashedMousePointerIcon,
 		SlidersHorizontalIcon,
 	} from 'lucide-vue-next';
-	import Button from '@/components/general/Button.vue';
 	import {
 		Dialog,
 		DialogContent,
 		DialogHeader,
 		DialogTitle,
 		DialogTrigger,
-	} from '@/components/ui/dialog/index';
+		DialogFooter,
+	} from '@/components/ui/dialog';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
+	import { Button } from '@/components/ui/button';
 
 	const route = useRoute();
 	const selectableTasks = ref(false);
@@ -151,7 +152,7 @@
 					</div>
 				</transition>
 
-				<div class="ml-auto flex items-center gap-3 text-center">
+				<div class="ml-auto flex items-center gap-2 text-center">
 					<TextField
 						placeholder="search by task name"
 						v-model="searchText"
@@ -164,11 +165,19 @@
 								@click="showCategorySelect = !showCategorySelect"
 								type="button"
 								title="filters"
+								class="flex size-8 rounded border p-1.5"
+								:class="[
+									selectedCategory &&
+										selectedCategory !== -1 &&
+										'border-gray-900 dark:border-white',
+								]"
 							>
 								<SlidersHorizontalIcon
-									class="size-6 stroke-gray-400"
+									class="m-auto size-full stroke-gray-400"
 									:class="[
-										selectedCategory && 'stroke-gray-900 dark:stroke-white',
+										selectedCategory &&
+											selectedCategory !== -1 &&
+											'stroke-gray-900 dark:stroke-white',
 									]"
 								/>
 							</button>
@@ -187,15 +196,19 @@
 								class="!w-full"
 							/>
 						</DialogContent>
+
+						<DialogFooter> </DialogFooter>
 					</Dialog>
 
 					<button
+						@click="selectableTasks = !selectableTasks"
 						type="button"
 						title="Tasks selection mode"
-						@click="selectableTasks = !selectableTasks"
+						class="flex size-8 rounded border p-1.5"
+						:class="[selectableTasks && 'border-gray-900 dark:border-white']"
 					>
 						<SquareDashedMousePointerIcon
-							class="size-7"
+							class="m-auto size-full"
 							:class="[
 								selectableTasks
 									? 'stroke-tmgr-blue dark:stroke-white'
