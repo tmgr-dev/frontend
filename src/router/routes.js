@@ -64,6 +64,7 @@ const routes = [
 		path: '/archive',
 		component: TasksListPage,
 		meta: {
+			title: 'Archive',
 			status: 'done',
 			transitionName: 'slide',
 			navbarHidden: true,

@@ -1,7 +1,5 @@
 <template>
-	<div
-		class="card my-5 flex flex-col transition duration-300 ease-in-out hover:shadow-sm"
-	>
+	<div class="card flex flex-col transition duration-300 ease-in-out">
 		<div class="card-body py-4">
 			<nav aria-label="breadcrumb" class="text-left">
 				<ol v-if="current" class="breadcrumb md:flex">

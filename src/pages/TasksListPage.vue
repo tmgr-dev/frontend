@@ -23,6 +23,7 @@
 	import store from '@/store';
 	import { Input } from '@/components/ui/input';
 	import { formatTime } from '@/utils/timeUtils.js';
+	import EmptyState from '@/components/EmptyState.vue';
 
 	const route = useRoute();
 	const selectableTasks = ref(false);
@@ -218,17 +219,15 @@
 					ref="tasksListComponent"
 				/>
 
-				<div v-else-if="errorLoading" class="text-center text-xl italic">
+				<div v-else-if="errorLoading" class="text-center text-xl">
 					Something went wrong...
 				</div>
 
-				<div v-else-if="!isLoading" class="text-center text-xl italic">
-					You don't have tasks here
+				<div v-else-if="!isLoading" class="">
+					<EmptyState />
 
 					<confetti v-if="hasAbilityToShowConfetti" />
 				</div>
-
-				<loading-tasks-list v-if="isLoading" class="mx-2" />
 			</div>
 		</template>
 	</BaseLayout>

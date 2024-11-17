@@ -15,7 +15,6 @@
 		DropdownMenuItem,
 		DropdownMenuLabel,
 		DropdownMenuSeparator,
-		DropdownMenuShortcut,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { Separator } from '@/components/ui/separator';
@@ -40,7 +39,6 @@
 		ChevronsUpDown,
 		Cable,
 		LogOut,
-		MoreHorizontal,
 		SquareKanban,
 		Plus,
 		Settings2,
@@ -48,6 +46,9 @@
 		Package,
 		PackageOpen,
 		SquareTerminal,
+		ArchiveIcon,
+		FolderClosedIcon,
+		ClipboardListIcon,
 	} from 'lucide-vue-next';
 	import { onBeforeMount, ref } from 'vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.ts';
@@ -170,7 +171,7 @@
 								</DropdownMenuLabel>
 
 								<DropdownMenuItem
-									v-for="(workspace, index) in workspaces"
+									v-for="workspace in workspaces"
 									:key="workspace.name"
 									class="cursor-pointer gap-2 p-2"
 									@click="setActiveWorkspace(workspace)"
@@ -187,8 +188,8 @@
 											class="size-4 shrink-0"
 										/>
 									</div>
+
 									{{ workspace.name }}
-									<DropdownMenuShortcut>⌘{{ index + 1 }}</DropdownMenuShortcut>
 								</DropdownMenuItem>
 
 								<DropdownMenuSeparator />
@@ -222,7 +223,7 @@
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
 								<router-link to="/">
-									<component :is="SquareTerminal" />
+									<ClipboardListIcon />
 									<span>List</span>
 								</router-link>
 							</SidebarMenuButton>
@@ -231,7 +232,7 @@
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
 								<router-link to="/board">
-									<component :is="SquareKanban" />
+									<SquareKanban />
 									<span>Board</span>
 								</router-link>
 							</SidebarMenuButton>
@@ -240,8 +241,17 @@
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
 								<router-link to="/daily-routines">
-									<component :is="Inbox" />
+									<Inbox />
 									<span>Daily Routines</span>
+								</router-link>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+
+						<SidebarMenuItem>
+							<SidebarMenuButton as-child>
+								<router-link to="/projects-categories">
+									<FolderClosedIcon />
+									<span>Categories</span>
 								</router-link>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
@@ -249,7 +259,7 @@
 				</SidebarGroup>
 
 				<SidebarGroup class="group-data-[collapsible=icon]:hidden">
-					<SidebarGroupLabel>Categories</SidebarGroupLabel>
+					<SidebarGroupLabel>Recent categories</SidebarGroupLabel>
 
 					<SidebarMenu>
 						<SidebarMenuItem v-for="item in categories" :key="item.title">
@@ -259,14 +269,19 @@
 								</router-link>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
+					</SidebarMenu>
+				</SidebarGroup>
 
+				<SidebarGroup>
+					<SidebarGroupLabel>More</SidebarGroupLabel>
+
+					<SidebarMenu>
 						<SidebarMenuItem>
-							<SidebarMenuButton
-								class="text-sidebar-foreground/70"
-								@click="$router.push('/projects-categories')"
-							>
-								<MoreHorizontal class="text-sidebar-foreground/70" />
-								<span>More categories</span>
+							<SidebarMenuButton as-child>
+								<router-link to="/archive">
+									<ArchiveIcon />
+									<span>Archive</span>
+								</router-link>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 					</SidebarMenu>
