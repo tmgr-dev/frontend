@@ -105,18 +105,20 @@
 	};
 
 	const loadTasks = async () => {
-		tasks.value = await getTasks(
-			{
-				params: {
-					project_category_id: route.params.id,
-					status_id: route.params.status,
+		if (route.params.id) {
+			tasks.value = await getTasks(
+				{
+					params: {
+						project_category_id: route.params.id,
+						status_id: route.params.status,
+					},
 				},
-			},
-			false,
-		);
+				false,
+			);
 
-		setLoadingActions(tasks.value);
-		isTasksFirstLoading.value = false;
+			setLoadingActions(tasks.value);
+			isTasksFirstLoading.value = false;
+		}
 	};
 
 	const loadParentCategory = async () => {
@@ -128,16 +130,14 @@
 	};
 
 	const loadCategories = async () => {
-		if (route.params.id) {
-			categories.value = await getSubCategories(route.params.id, {
-				params: {
-					all: '',
-				},
-			});
+		categories.value = await getSubCategories(route.params.id || '', {
+			params: {
+				all: '',
+			},
+		});
 
-			await loadParentCategory();
-			isCategoriesFirstLoading.value = false;
-		}
+		await loadParentCategory();
+		isCategoriesFirstLoading.value = false;
 	};
 
 	const deleteCategory = async (category) => {
@@ -308,7 +308,7 @@
 				</div>
 			</div>
 
-			<div class="mt-10">
+			<div v-if="route.params.id" class="mt-10">
 				<div class="grid grid-cols-2 items-center sm:flex">
 					<h2 class="text-white-800 text-left text-3xl lg:text-center">
 						Tasks
