@@ -3,7 +3,6 @@
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import Confetti from '@/components/Confetti.vue';
 	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
-	import TextField from '@/components/general/TextField.vue';
 	import { getCategories } from '@/actions/tmgr/categories';
 	import { computed, onMounted, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -22,13 +21,15 @@
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import { Button } from '@/components/ui/button';
 	import store from '@/store';
+	import { Input } from '@/components/ui/input';
+	import { formatTime } from '@/utils/timeUtils.js';
+	import EmptyState from '@/components/EmptyState.vue';
 
 	const route = useRoute();
 	const selectableTasks = ref(false);
 	const errorLoading = ref(false);
 	const searchText = ref(null);
 	const searchTimeout = ref(null);
-	const summaryTimeString = ref(null);
 	const isLoading = ref(true);
 	const h1 = {
 		CurrentTasksList: 'Current tasks',
@@ -43,20 +44,18 @@
 	const showCategorySelect = ref(false);
 
 	const status = computed(() => route.meta.status);
+	const summaryTime = computed(() =>
+		formatTime(
+			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
+		),
+	);
 
 	onMounted(async () => {
 		try {
-			const categoriesData = await getCategories();
+			categories.value = await getCategories();
 
-			categories.value = [
-				{ id: -1, title: 'All categories' },
-				...categoriesData.map((category) => ({
-					id: category.id,
-					title: category.title,
-				})),
-			];
-			const data = await loadTasks();
-			setLoadingActions(data);
+			await loadTasks();
+			setLoadingActions(tasks.value);
 		} catch (e) {
 			console.error(e);
 		}
@@ -91,10 +90,8 @@
 			isLoading.value = true;
 			clearTimeout(searchTimeout.value);
 
-			let fetchedTasks = [];
-
 			if (status.value) {
-				fetchedTasks = await getTasksByStatus(status.value, {
+				tasks.value = await getTasksByStatus(status.value, {
 					params: {
 						search: searchText.value,
 						project_category_id:
@@ -102,7 +99,7 @@
 					},
 				});
 			} else {
-				fetchedTasks = await getTasks({
+				tasks.value = await getTasks({
 					params: {
 						search: searchText.value,
 						project_category_id:
@@ -110,13 +107,6 @@
 					},
 				});
 			}
-
-			summaryTimeString.value = formatTime(
-				fetchedTasks.reduce((summary, task) => task.common_time + summary, 0),
-			);
-			tasks.value = fetchedTasks;
-
-			return fetchedTasks;
 		} catch (e) {
 			console.error(e);
 			errorLoading.value = true;
@@ -125,13 +115,8 @@
 		}
 	}
 
-	function formatTime(taskTime) {
-		let hours = Math.floor(taskTime / 3600);
-		let minutes = Math.ceil((taskTime % 3600) / 60);
-
-		return `${
-			hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''
-		} ${minutes} minute${minutes > 1 ? 's' : ''}`;
+	function resetFilters() {
+		selectedCategory.value = null;
 	}
 </script>
 
@@ -145,18 +130,19 @@
 			<div class="flex flex-wrap items-center justify-between gap-2 px-2">
 				<transition name="fade">
 					<div
-						v-if="summaryTimeString"
+						v-if="summaryTime"
 						class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
 					>
-						{{ summaryTimeString }}
+						{{ summaryTime }}
 					</div>
 				</transition>
 
 				<div class="ml-auto flex items-center gap-2 text-center">
-					<TextField
-						placeholder="search by task name"
+					<Input
 						v-model="searchText"
-						class="md:p-0"
+						class="h-8"
+						placeholder="search task"
+						type="search"
 					/>
 
 					<Dialog>
@@ -195,9 +181,10 @@
 								v-model="selectedCategory"
 								class="!w-full"
 							/>
+							<DialogFooter>
+								<Button variant="outline" @click="resetFilters"> reset </Button>
+							</DialogFooter>
 						</DialogContent>
-
-						<DialogFooter> </DialogFooter>
 					</Dialog>
 
 					<button
@@ -232,17 +219,15 @@
 					ref="tasksListComponent"
 				/>
 
-				<div v-else-if="errorLoading" class="text-center text-xl italic">
+				<div v-else-if="errorLoading" class="text-center text-xl">
 					Something went wrong...
 				</div>
 
-				<div v-else-if="!isLoading" class="text-center text-xl italic">
-					You don't have tasks here
+				<div v-else-if="!isLoading" class="">
+					<EmptyState />
 
 					<confetti v-if="hasAbilityToShowConfetti" />
 				</div>
-
-				<loading-tasks-list v-if="isLoading" class="mx-2" />
 			</div>
 		</template>
 	</BaseLayout>

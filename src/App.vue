@@ -16,9 +16,7 @@
 							@enter="enter"
 							@after-enter="afterEnter"
 						>
-							<div>
-								<component :is="Component" v-if="showComponent"></component>
-							</div>
+							<component :is="Component" v-if="showComponent" />
 						</transition>
 					</router-view>
 				</CustomSidebar>
@@ -27,7 +25,7 @@
 
 		<ActiveTasks :tasks="activeTasks" />
 
-		<Transition name="bounce-right-fade">
+		<Transition name="fade">
 			<Modal
 				v-if="showTaskFormModalWindow"
 				modal-class="h-full w-full md:w-auto md:h-auto"
@@ -56,7 +54,6 @@
 
 <script>
 	import { defineComponent, onBeforeMount, ref, watch } from 'vue';
-	import Navbar from '@/components/general/Navbar.vue';
 	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
 	import { getUserSettings } from '@/actions/tmgr/user';
@@ -82,7 +79,6 @@
 			Modal,
 			Alert,
 			TaskForm,
-			Navbar,
 		},
 		setup() {
 			const dailyRoutinesCount = ref(0);
@@ -116,9 +112,6 @@
 			};
 		},
 		computed: {
-			navbarHidden() {
-				return this.$route.name !== 'Index';
-			},
 			switchOn: {
 				get() {
 					return this.$store.state.colorScheme === 'dark';
