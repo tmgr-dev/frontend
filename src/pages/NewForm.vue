@@ -356,7 +356,13 @@
 			<CategoriesCombobox
 				:categories="categories"
 				v-model="form.project_category_id"
-				@update:model-value="updateTaskTitle"
+				@update:model-value="
+					() => {
+						if (!form.title) {
+							updateTaskTitle();
+						}
+					}
+				"
 			/>
 
 			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />
