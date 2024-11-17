@@ -22,7 +22,16 @@
 		FolderClosedIcon,
 		FolderPlusIcon,
 		FolderPenIcon,
+		EllipsisIcon,
+		Trash2Icon,
+		ArchiveRestoreIcon,
 	} from 'lucide-vue-next';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -47,18 +56,15 @@
 		].concat(statuses);
 	});
 
-	const id = computed(() => route.params.id || '');
-	const status = computed(() => route.params.status || '');
-
 	watch(workspaceStatus, (newStatus, prevStatus) => {
 		if (newStatus === prevStatus) {
 			return;
 		}
 
-		if (id.value) {
+		if (route.params.id) {
 			router.push(
 				`/projects-categories/${
-					id.value ? `${id.value}/children` : '/status'
+					route.params.id ? `${route.params.id}/children` : '/status'
 				}/${newStatus}`,
 			);
 		} else {
@@ -102,8 +108,8 @@
 		tasks.value = await getTasks(
 			{
 				params: {
-					project_category_id: id.value,
-					status_id: status.value || null,
+					project_category_id: route.params.id,
+					status_id: route.params.status,
 				},
 			},
 			false,
@@ -114,23 +120,24 @@
 	};
 
 	const loadParentCategory = async () => {
-		category.value = await getParentCategory(id.value);
-		store.commit('setMetaTitle', category.value.title || 'Categories');
-		parentCategories.value = extractParents(category.value);
+		if (route.params.id) {
+			category.value = await getParentCategory(route.params.id);
+			store.commit('setMetaTitle', category.value.title || 'Categories');
+			parentCategories.value = extractParents(category.value);
+		}
 	};
 
 	const loadCategories = async () => {
-		categories.value = await getSubCategories(id.value, {
-			params: {
-				all: '',
-			},
-		});
+		if (route.params.id) {
+			categories.value = await getSubCategories(route.params.id, {
+				params: {
+					all: '',
+				},
+			});
 
-		if (id.value) {
 			await loadParentCategory();
+			isCategoriesFirstLoading.value = false;
 		}
-
-		isCategoriesFirstLoading.value = false;
 	};
 
 	const deleteCategory = async (category) => {
@@ -155,9 +162,11 @@
 		await loadCategories();
 		await loadTasks();
 
-		if (status.value) {
+		if (route.params.status) {
 			workspaceStatus.value =
-				status.value === 'all' ? status.value : parseInt(status.value);
+				route.params.status === 'all'
+					? route.params.status
+					: parseInt(route.params.status);
 		}
 	});
 </script>
@@ -169,7 +178,9 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex items-center justify-between gap-4">
+			<div
+				class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
+			>
 				<breadcrumbs
 					:current="category ? category.title : ''"
 					:drop="drop"
@@ -188,7 +199,12 @@
 
 					<Button
 						@click="
-							() => router.push(`/projects-categories/${id && `${id}/`}create`)
+							() =>
+								router.push(
+									`/projects-categories/${
+										route.params.id && `${route.params.id}/`
+									}create`,
+								)
 						"
 					>
 						<FolderPlusIcon />
@@ -200,22 +216,23 @@
 
 		<template #body>
 			<div
-				class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
+				class="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
 				v-if="categories && categories.length > 0"
 			>
 				<div
 					v-for="category in categories"
 					:key="category.id"
-					:class="`mt-2 ${
-						category.deleted_at !== null ? 'opacity-50 hover:opacity-100' : ''
-					}`"
+					class="mt-2 h-full"
+					:class="[
+						category.deleted_at !== null && 'opacity-40 hover:opacity-50',
+					]"
 					@dragleave="category.hoverClass = ''"
 					@drop="drop($event, category)"
 					@dragenter.prevent="category.hoverClass = 'bg-red-500'"
 					@dragover.prevent="category.hoverClass = 'bg-red-500'"
 				>
 					<div
-						class="cursor-pointer p-2 shadow transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
+						class="relative h-full cursor-pointer p-2 !pr-12 shadow transition hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 						:class="category.hoverClass"
 						@click="
 							$router.push({
@@ -224,59 +241,68 @@
 							})
 						"
 					>
-						<div class="flex items-center justify-between">
-							<div>
-								<h3 class="text-xl font-bold">
-									{{ category.title }}
-								</h3>
+						<h3 class="text-xl font-bold">
+							{{ category.title }}
+						</h3>
 
-								<div class="flex flex-wrap gap-3">
-									<div
-										class="flex items-center gap-1 font-semibold"
-										title="subcategories"
-									>
-										<FolderClosedIcon class="size-4" />
-										<span>{{ category.children_count }}</span>
-									</div>
+						<p v-if="category.deleted_at !== null">
+							(deleted, but can be restored)
+						</p>
 
-									<div
-										class="flex items-center gap-1 font-semibold"
-										title="tasks"
-									>
-										<ClipboardListIcon class="size-4" />
-										<span>{{ category.tasks_count }}</span>
-									</div>
-
-									<span
-										v-if="category.user?.name"
-										class="flex items-center gap-1 font-semibold"
-										title="author"
-									>
-										<CircleUserRoundIcon class="size-4" />
-										{{ category.user.name }}
-									</span>
-								</div>
+						<div class="flex flex-wrap gap-3">
+							<div
+								class="flex items-center gap-1 font-semibold"
+								title="subcategories"
+							>
+								<FolderClosedIcon class="size-4" />
+								<span>{{ category.children_count }}</span>
 							</div>
 
-							<div>
-								<Button
-									v-if="category.deleted_at === null"
-									variant="destructive"
-									@click.stop="deleteCategory(category)"
-									title="delete category"
-								>
-									<span class="material-icons">delete</span>
-								</Button>
-
-								<Button
-									v-else
-									variant="default"
-									@click.stop="restoreCategory(category)"
-									title="restore"
-								>
-									<span class="material-icons">restore_from_trash</span>
-								</Button>
+							<div class="flex items-center gap-1 font-semibold" title="tasks">
+								<ClipboardListIcon class="size-4" />
+								<span>{{ category.tasks_count }}</span>
 							</div>
+
+							<span
+								v-if="category.user?.name"
+								class="flex items-center gap-1 font-semibold"
+								title="author"
+							>
+								<CircleUserRoundIcon class="size-4" />
+								{{ category.user.name }}
+							</span>
+						</div>
+
+						<div class="absolute right-4 top-1/2 z-50 -translate-y-1/2">
+							<DropdownMenu>
+								<DropdownMenuTrigger class="hover:opacity-70" @click.stop>
+									<EllipsisIcon />
+								</DropdownMenuTrigger>
+
+								<DropdownMenuContent class="mr-4 mt-1">
+									<DropdownMenuItem
+										@click="
+											() => router.push(`/projects-categories/${category.id}`)
+										"
+									>
+										<FolderPenIcon />
+										<span>Edit</span>
+									</DropdownMenuItem>
+
+									<DropdownMenuItem
+										v-if="category.deleted_at === null"
+										@click="deleteCategory(category)"
+									>
+										<Trash2Icon />
+										<span>Delete</span>
+									</DropdownMenuItem>
+
+									<DropdownMenuItem v-else @click="restoreCategory(category)">
+										<ArchiveRestoreIcon />
+										<span>Restore</span>
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						</div>
 					</div>
 				</div>
