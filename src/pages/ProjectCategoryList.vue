@@ -32,6 +32,7 @@
 		DropdownMenuItem,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import { Skeleton } from '@/components/ui/skeleton';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -109,8 +110,8 @@
 			tasks.value = await getTasks(
 				{
 					params: {
-						project_category_id: route.params.id,
-						status_id: route.params.status,
+						project_category_id: route.params.id || null,
+						status_id: route.params.status || null,
 					},
 				},
 				false,
@@ -135,9 +136,9 @@
 				all: '',
 			},
 		});
+		isCategoriesFirstLoading.value = false;
 
 		await loadParentCategory();
-		isCategoriesFirstLoading.value = false;
 	};
 
 	const deleteCategory = async (category) => {
@@ -195,6 +196,7 @@
 						@click="() => router.push(`/projects-categories/${category.id}`)"
 					>
 						<FolderPenIcon />
+						{{ category.title }}
 					</Button>
 
 					<Button
@@ -215,6 +217,15 @@
 		</template>
 
 		<template #body>
+			<div
+				v-if="isCategoriesFirstLoading"
+				class="mt-8 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
+			>
+				<Skeleton class="h-24 w-full" />
+				<Skeleton class="hidden h-24 w-full lg:block" />
+				<Skeleton class="hidden h-24 w-full 2xl:block" />
+			</div>
+
 			<div
 				class="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
 				v-if="categories && categories.length > 0"
@@ -339,6 +350,12 @@
 							<span class="material-icons text-3xl">add_circle_outline</span>
 						</button>
 					</div>
+				</div>
+
+				<div v-if="isTasksFirstLoading" class="mt-6 space-y-2 px-2">
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
 				</div>
 
 				<tasks-list-component

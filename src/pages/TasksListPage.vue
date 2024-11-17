@@ -1,5 +1,4 @@
 <script setup>
-	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import Confetti from '@/components/Confetti.vue';
 	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
@@ -24,6 +23,7 @@
 	import { Input } from '@/components/ui/input';
 	import { formatTime } from '@/utils/timeUtils.js';
 	import EmptyState from '@/components/EmptyState.vue';
+	import { Skeleton } from '@/components/ui/skeleton';
 
 	const route = useRoute();
 	const selectableTasks = ref(false);
@@ -227,6 +227,12 @@
 					<EmptyState />
 
 					<confetti v-if="hasAbilityToShowConfetti" />
+				</div>
+
+				<div v-if="isLoading" class="mt-6 space-y-2 px-2">
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
 				</div>
 			</div>
 		</template>
