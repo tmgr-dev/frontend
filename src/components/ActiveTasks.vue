@@ -1,49 +1,14 @@
-<template>
-	<div
-		v-if="tasks?.length > 0"
-		class="fixed bottom-4 left-4 z-10 mr-2 flex flex-col items-start gap-3"
-	>
-		<AnimatedRing
-			@click="showActiveTasks = !showActiveTasks"
-			class="z-10 order-last mb-1"
-			:title="`${tasks.length} active ${tasks.length > 1 ? 'tasks' : 'task'}`"
-		>
-			{{ tasks.length }}
-		</AnimatedRing>
-
-		<Transition name="transform-to-block">
-			<div
-				v-if="showActiveTasks"
-				class="flex max-h-[300px] max-w-xs flex-col gap-1 overflow-y-auto overflow-x-hidden rounded-lg bg-tmgr-blue p-3"
-			>
-				<div v-for="task in tasks">
-					<transition mode="out-in" name="fade">
-						<a
-							:href="`/${task.id}`"
-							@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"
-						>
-							<span
-								class="relative mr-5 inline-flex p-1 shadow-sm transition-colors duration-300"
-							>
-								<span
-									class="max-w-[280px] overflow-hidden text-secondary whitespace-nowrap text-tmgr-blue dark:text-tmgr-gray"
-								>
-									{{ task.title }}
-								</span>
-							</span>
-						</a>
-					</transition>
-				</div>
-			</div>
-		</Transition>
-	</div>
-</template>
-
 <script setup lang="ts">
 	import { Task } from '@/actions/tmgr/tasks';
 	import store from '@/store';
 	import AnimatedRing from '@/components/general/AnimatedRing.vue';
 	import { ref } from 'vue';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
 
 	interface Props {
 		tasks: Task[];
@@ -52,3 +17,43 @@
 	defineProps<Props>();
 	const showActiveTasks = ref(false);
 </script>
+
+<template>
+	<div
+		v-if="tasks?.length > 0"
+		class="fixed right-4 top-4 z-10 flex flex-col items-end gap-3"
+	>
+		<DropdownMenu>
+			<DropdownMenuTrigger>
+				<AnimatedRing
+					@click="showActiveTasks = !showActiveTasks"
+					class="z-10 mb-1"
+					:title="`${tasks.length} active ${
+						tasks.length > 1 ? 'tasks' : 'task'
+					}`"
+				>
+					{{ tasks.length }}
+				</AnimatedRing>
+			</DropdownMenuTrigger>
+
+			<DropdownMenuContent class="mr-4 mt-1">
+				<DropdownMenuItem v-for="task in tasks">
+					<a
+						:href="`/${task.id}`"
+						@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"
+					>
+						<span
+							class="relative mr-5 inline-flex p-1 shadow-sm transition-colors duration-300"
+						>
+							<span
+								class="max-w-64 truncate text-secondary text-tmgr-blue dark:text-tmgr-gray"
+							>
+								{{ task.title }}
+							</span>
+						</span>
+					</a>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	</div>
+</template>

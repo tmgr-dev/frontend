@@ -119,7 +119,6 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
-	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
@@ -147,7 +146,6 @@
 			Loader,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
-			DropdownMenu,
 		},
 		emits: ['reload-tasks'],
 		props: {

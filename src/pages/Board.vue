@@ -349,7 +349,6 @@
 	import Modal from '@/components/Modal.vue';
 	import Button from '@/components/general/Button.vue';
 	import Draggable from 'vuedraggable';
-	import DropdownMenu from '@/components/general/DropdownMenu.vue';
 
 	import {
 		getWorkspaceMembers,
@@ -396,7 +395,6 @@
 			TextField,
 			Modal,
 			FiltersBoard,
-			DropdownMenu,
 			Button,
 			Draggable,
 			ColorPicker,

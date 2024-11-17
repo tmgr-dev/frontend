@@ -118,6 +118,15 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value = await getTask(+taskId.value);
 
+			console.log(
+				form.value.settings?.find((item) => item.key === 'approximately_time'),
+			);
+			form.value.approximately_time =
+				Number(
+					form.value.settings?.find((item) => item.key === 'approximately_time')
+						?.value,
+				) || 0;
+
 			if (
 				editorType.value === 'block' &&
 				!form.value.description_json &&
@@ -204,14 +213,12 @@
 	const suppressAutoSavingForOnce = ref(false);
 
 	const saveTask = async () => {
+		if (!form.value.id) return;
+
 		isLoading.value = true;
 		updateFormBeforeQuery();
 
 		try {
-			// @todo find out whether this needed
-			if (!form.value.project_category_id) {
-				delete form.value.project_category_id;
-			}
 			suppressAutoSavingForOnce.value = true;
 			form.value.approximately_time =
 				Number(
@@ -349,6 +356,7 @@
 			<CategoriesCombobox
 				:categories="categories"
 				v-model="form.project_category_id"
+				@update:model-value="updateTaskTitle"
 			/>
 
 			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />

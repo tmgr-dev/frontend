@@ -1,12 +1,8 @@
 <template>
-	<div
-		class="card my-5 flex flex-col transition duration-300 ease-in-out hover:shadow-sm"
-	>
-		<div class="card-body py-4">
+	<div class="card flex flex-col transition duration-300 ease-in-out">
+		<div class="card-body">
 			<nav aria-label="breadcrumb" class="text-left">
 				<ol v-if="current" class="breadcrumb md:flex">
-					<li class="inline md:hidden">Breadcrumbs:</li>
-
 					<li
 						v-for="(item, i) in items"
 						:key="i"
