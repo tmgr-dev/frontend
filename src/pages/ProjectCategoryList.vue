@@ -204,7 +204,7 @@
 							() =>
 								router.push(
 									`/projects-categories/${
-										route.params.id && `${route.params.id}/`
+										route.params.id ? `${route.params.id}/` : ''
 									}create`,
 								)
 						"
