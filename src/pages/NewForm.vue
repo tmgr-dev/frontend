@@ -242,7 +242,7 @@
 		fieldsToWatch: [
 			'title',
 			'description',
-			'description_json',
+			// 'description_json', // TODO: need to fix update in this editor
 			'project_category_id',
 			'assignees',
 			'status',
