@@ -160,7 +160,7 @@
 			errors.value = {};
 			isLoading.value = true;
 			await loginAction(form.value);
-			await getUser(true);
+			await getUser();
 
 			if (localStorage.getItem('workspace.invitation')) {
 				const token = localStorage.getItem('workspace.invitation');
@@ -177,7 +177,7 @@
 			if (store.state.user) {
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
-			document.location.reload();
+			// document.location.reload();
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;

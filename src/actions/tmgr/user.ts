@@ -10,14 +10,12 @@ export interface User {
 	settings: FormSetting[];
 }
 
-export const getUser = async (saveToStore = false) => {
+export const getUser = async () => {
 	const {
 		data: { data },
 	} = await $axios.get('user');
 
-	if (saveToStore) {
-		store.commit('setUser', data);
-	}
+	store.commit('setUser', data);
 
 	return data;
 };

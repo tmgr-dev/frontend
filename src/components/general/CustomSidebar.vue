@@ -122,7 +122,7 @@
 			);
 
 			await updateUserSettingsV2(settingsWithUpdatedWorkspace);
-			document.location.reload();
+			// document.location.reload();
 		} catch (error) {
 			console.error('Failed to update workspace:', error);
 		}
@@ -367,7 +367,7 @@
 										Notifications
 									</DropdownMenuItem>
 									<DropdownMenuItem
-										@click="$router.push('/settings?tab=workspace')"
+										@click="$router.push('/settings/workspaces')"
 										class="cursor-pointer"
 									>
 										<Settings2 />
