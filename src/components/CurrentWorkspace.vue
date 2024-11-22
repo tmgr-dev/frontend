@@ -220,7 +220,7 @@
 			const workspace = await createWorkspace(newWorkspace.value);
 			workspaces.value.push(workspace);
 			flags.isShowWorkspaceModal = false;
-			window.location.reload();
+			// window.location.reload();
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;

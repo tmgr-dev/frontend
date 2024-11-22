@@ -203,6 +203,7 @@
 		},
 		async created() {
 			if (store.state.user) {
+				console.log(1);
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
 
