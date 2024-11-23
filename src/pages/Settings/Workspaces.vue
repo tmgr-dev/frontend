@@ -1,18 +1,20 @@
-<script setup>
+<script setup lang="ts">
 	import { SaveIcon } from 'lucide-vue-next';
-	import TextField from '@/components/general/TextField.vue';
 	import { Button } from '@/components/ui/button';
-	import CurrentWorkspace from '@/components/CurrentWorkspace.vue';
-	import Select from '@/components/general/Select.vue';
 	import Switcher from '@/components/general/Switcher.vue';
-	import { onBeforeMount, ref } from 'vue';
+	import { onBeforeMount, Ref, ref } from 'vue';
 	import { getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
+	import Combobox from '@/components/Combobox.vue';
+	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.js';
+	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 
 	const settings = ref();
+	const workspaces: Ref<Workspace[]> = ref([]);
 
 	onBeforeMount(async () => {
+		workspaces.value = await getWorkspaces();
 		const loadedSettings = await getUserSettingsV2();
 		const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
 			let settingFromStoreWithValue = store.state.user.settings.find(
@@ -66,29 +68,37 @@
 
 				<div class="relative mb-4">
 					<template v-if="setting.component_type === 'current_workspace'">
-						<CurrentWorkspace v-model="settings[index].value" />
+						<!--						<CurrentWorkspace v-model="settings[index].value" />-->
+						<Combobox
+							:entities="workspaces"
+							v-model="settings[index].value"
+							selected-placeholder="Workspace"
+							value-key="id"
+							label-key="name"
+							input-placeholder="Search workspaces"
+						/>
 					</template>
 					<template v-else-if="setting.component_type === 'select'">
-						<Select
+						<Combobox
+							:entities="setting.default_values"
 							v-model="settings[index].value"
-							:options="
-								setting.default_values.map((val) => ({
-									label: val.value,
-									value: val.value,
-								}))
-							"
-							:placeholder="setting.description"
+							:selected-placeholder="setting.description"
+							value-key="value"
+							label-key="value"
 						/>
 					</template>
 					<template v-else-if="setting.custom_value_available">
 						<Input
 							type="time"
 							v-if="setting.component_type === 'time_in_seconds'"
-							v-model="settings[index].value"
+							:model-value="convertToHHMM(settings[index].value)"
+							@input="
+								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
+							"
 							:placeholder="setting.description"
 						/>
 
-						<TextField
+						<Input
 							v-else
 							v-model="settings[index].value"
 							:placeholder="setting.description"

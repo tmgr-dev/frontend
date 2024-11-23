@@ -38,9 +38,17 @@ export function prepareClockNumber(num) {
 	return num < 10 ? '0' + num : num;
 }
 
-// Если нужно сгруппировать все функции вместе
-export const timeUtils = {
-	secondsToHumanReadableString,
-	secondsToCountdownObject,
-	prepareClockNumber,
-};
+export function timeToSeconds(time) {
+	if (!time) return 0;
+	const [hours, minutes] = time.split(':').map(Number);
+	return hours * 3600 + minutes * 60;
+}
+
+export function convertToHHMM(seconds) {
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+
+	return `${hours.toString().padStart(2, '0')}:${minutes
+		.toString()
+		.padStart(2, '0')}`;
+}
