@@ -24,7 +24,9 @@
 		modelValue: WorkspaceMember['id'];
 	}
 	const props = defineProps<Props>();
-	const assigneeIds = defineModel();
+	const assigneeIds = defineModel<number[]>({
+		default: [],
+	});
 	const openCombobox = ref(false);
 	const searchValue = ref('');
 	const filteredAssignees = computed(() => {
