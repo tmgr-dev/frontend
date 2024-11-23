@@ -1,6 +1,6 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
-import { FormSetting } from '@/actions/tmgr/settings';
+import { FormSetting, Setting } from '@/actions/tmgr/settings';
 
 export interface User {
 	id: number;
@@ -48,7 +48,7 @@ export const updateUserSettings = async <T>(payload: T) => {
 	return data;
 };
 
-export const getUserSettingsV2 = async () => {
+export const getUserSettingsV2 = async (): Promise<Setting[]> => {
 	const {
 		data: { data },
 	} = await $axios.get('v2/user/settings');
