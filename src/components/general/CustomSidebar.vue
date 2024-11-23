@@ -45,7 +45,6 @@
 		Inbox,
 		Package,
 		PackageOpen,
-		SquareTerminal,
 		ArchiveIcon,
 		FolderClosedIcon,
 		ClipboardListIcon,
@@ -89,20 +88,25 @@
 
 	onBeforeMount(async () => {
 		if (store.getters.isLoggedIn) {
-			const [loadedCategories, userData, workspacesData] = await Promise.all([
-				getTopCategories(),
-				getUser(),
-				getWorkspaces(),
-			]);
+			try {
+				const [loadedCategories, userData, workspacesData] = await Promise.all([
+					getTopCategories(),
+					getUser(),
+					getWorkspaces(),
+				]);
 
-			categories.value = loadedCategories.slice(0, 4);
-			user.value = userData;
-			workspaces.value = workspacesData;
-			activeWorkspace.value = workspaces.value?.find(
-				(w: Workspace) =>
-					w.id ===
-					parseInt(user.value?.settings.find((s) => s.id === 5)?.value),
-			) as Workspace;
+				categories.value = loadedCategories.slice(0, 4);
+				user.value = userData;
+				workspaces.value = workspacesData;
+				activeWorkspace.value = workspaces.value?.find(
+					(w: Workspace) =>
+						w.id ==
+						user.value?.settings.find((s) => s.key === 'current_workspace')
+							?.value,
+				) as Workspace;
+			} catch (e) {
+				console.error(e);
+			}
 		}
 	});
 

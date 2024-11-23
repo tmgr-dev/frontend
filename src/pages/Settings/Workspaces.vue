@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { SaveIcon } from 'lucide-vue-next';
+	import { SaveIcon, FolderKanbanIcon, Trash2Icon } from 'lucide-vue-next';
 	import { Button } from '@/components/ui/button';
 	import Switcher from '@/components/general/Switcher.vue';
 	import { onBeforeMount, Ref, ref } from 'vue';
@@ -9,13 +9,28 @@
 	import Combobox from '@/components/Combobox.vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.js';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
+	import { Setting } from '@/actions/tmgr/settings.ts';
 
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
+	const activeWorkspace = ref<number>();
+	const workspaceSetting = ref<Setting>();
 
 	onBeforeMount(async () => {
-		workspaces.value = await getWorkspaces();
-		const loadedSettings = await getUserSettingsV2();
+		const [loadedWorkspaces, loadedSettings] = await Promise.all([
+			getWorkspaces(),
+			getUserSettingsV2(),
+		]);
+		workspaces.value = loadedWorkspaces;
+		activeWorkspace.value =
+			workspaces.value.find(
+				(w: Workspace) =>
+					w.id ==
+					store.state.user.settings.find(
+						(settingInStore) => settingInStore.key === 'current_workspace',
+					).value,
+			)?.id || 0;
+
 		const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
 			let settingFromStoreWithValue = store.state.user.settings.find(
 				(settingInStore) => settingInStore.id === setting.id,
@@ -33,19 +48,26 @@
 			return settingFromStoreWithValue;
 		});
 
-		settings.value = [
-			...mappedSettingWithUserSettings.filter(
-				(setting) => setting.key === 'current_workspace',
-			),
-			...mappedSettingWithUserSettings.filter(
-				(setting) => setting.key !== 'current_workspace',
-			),
-		];
+		settings.value = mappedSettingWithUserSettings.filter(
+			(setting) => setting.key !== 'current_workspace',
+		);
+
+		workspaceSetting.value = mappedSettingWithUserSettings.find(
+			(setting) => setting.key === 'current_workspace',
+		);
 	});
 
 	async function updateSettings() {
 		try {
-			await Promise.all([updateUserSettingsV2(settings.value)]);
+			const updatedSettings = [
+				...settings.value,
+				{
+					...workspaceSetting.value,
+					value: activeWorkspace.value,
+				},
+			];
+
+			await updateUserSettingsV2(updatedSettings);
 		} catch (e) {
 			console.error(e);
 		}
@@ -55,9 +77,39 @@
 <template>
 	<teleport to="title">Workspace settings</teleport>
 
-	<div class="flex max-w-lg flex-col gap-3 p-4">
-		<h3 class="mb-4 text-lg font-bold">Workspace Settings</h3>
-		<div>
+	<div class="container">
+		<header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+			<h3 class="text-lg font-bold">Workspace Settings</h3>
+
+			<div class="flex flex-wrap items-center gap-2">
+				<Button variant="destructive">
+					<Trash2Icon />
+					<span class="hidden lg:inline">Delete workspace</span>
+				</Button>
+
+				<Button variant="default">
+					<FolderKanbanIcon />
+					New workspace
+				</Button>
+			</div>
+		</header>
+
+		<div class="mt-6 max-w-lg">
+			<label class="mb-2 block text-sm font-bold text-gray-700">
+				Current workspace
+			</label>
+
+			<div class="mb-4">
+				<Combobox
+					:entities="workspaces"
+					v-model="activeWorkspace"
+					selected-placeholder="Workspace"
+					value-key="id"
+					label-key="name"
+					input-placeholder="Search workspaces"
+				/>
+			</div>
+
 			<div v-for="(setting, index) in settings">
 				<label
 					:for="`setting-${setting.id}`"
@@ -66,19 +118,8 @@
 					{{ setting.name }}
 				</label>
 
-				<div class="relative mb-4">
-					<template v-if="setting.component_type === 'current_workspace'">
-						<!--						<CurrentWorkspace v-model="settings[index].value" />-->
-						<Combobox
-							:entities="workspaces"
-							v-model="settings[index].value"
-							selected-placeholder="Workspace"
-							value-key="id"
-							label-key="name"
-							input-placeholder="Search workspaces"
-						/>
-					</template>
-					<template v-else-if="setting.component_type === 'select'">
+				<div class="mb-4">
+					<template v-if="setting.component_type === 'select'">
 						<Combobox
 							:entities="setting.default_values"
 							v-model="settings[index].value"
@@ -119,10 +160,10 @@
 			</div>
 		</div>
 
-		<div class="text-left">
+		<footer class="text-left">
 			<Button variant="default" @click="updateSettings">
 				<SaveIcon /> Save
 			</Button>
-		</div>
+		</footer>
 	</div>
 </template>
