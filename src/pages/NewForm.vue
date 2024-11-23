@@ -118,9 +118,6 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value = await getTask(+taskId.value);
 
-			console.log(
-				form.value.settings?.find((item) => item.key === 'approximately_time'),
-			);
 			form.value.approximately_time =
 				Number(
 					form.value.settings?.find((item) => item.key === 'approximately_time')

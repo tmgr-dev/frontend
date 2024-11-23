@@ -4,13 +4,13 @@
 	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
 	import { Task } from '@/actions/tmgr/tasks';
 	import {
+		convertToHHMM,
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from '@/utils/timeUtils';
 	import { Button } from '@/components/ui/button';
 	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
 	import { ExtendedTime, Time } from '@/types';
-	import convertToHHMM from '@/utils/convertToHHMM';
 
 	interface Props {
 		form: Task;
