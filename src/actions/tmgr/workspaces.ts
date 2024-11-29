@@ -40,7 +40,10 @@ export const getWorkspaceStatuses = async () => {
 	return data;
 };
 
-export const createWorkspace = async (payload: Workspace) => {
+export const createWorkspace = async (payload: {
+	name: string;
+	type: string;
+}) => {
 	const {
 		data: { data },
 	} = await $axios.post('workspaces', payload);

@@ -69,7 +69,7 @@
 		</PopoverContent>
 	</Popover>
 
-	<!--	<button
+	<button
 		@click="flags.isShowWorkspaceModal = true"
 		class="relative flex items-end gap-2 py-2"
 	>
@@ -117,12 +117,11 @@
 		<Modal
 			v-if="flags.isShowInvitationModal"
 			:modal-class="`p-6 ${invitationToken ? 'w-auto' : 'w-96'}`"
-			close-on-bg-click
 			@close="closeInvitationModal"
 		>
 			<template #modal-body>
 				<div v-if="!invitationToken">
-					&lt;!&ndash; Email Invitations &ndash;&gt;
+					<!-- Email Invitations -->
 					<label class="mb-4 flex flex-col gap-2">
 						Email Addresses
 						<textarea
@@ -147,7 +146,7 @@
 					</button>
 				</div>
 
-				&lt;!&ndash; Success State - Show Link &ndash;&gt;
+				<!-- Success State - Show Link -->
 				<div v-else>
 					<div class="mb-4">
 						<h3 class="mb-2 text-lg font-bold">Invitation sent!</h3>
@@ -186,7 +185,7 @@
 				</div>
 			</template>
 		</Modal>
-	</Transition>-->
+	</Transition>
 </template>
 
 <script setup lang="ts">
