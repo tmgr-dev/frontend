@@ -9,12 +9,11 @@
 	import Combobox from '@/components/Combobox.vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.js';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
-	import { Setting } from '@/actions/tmgr/settings.ts';
+	import { FormSetting, Setting } from '@/actions/tmgr/settings.ts';
 
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
-	const activeWorkspace = ref<number>();
-	const workspaceSetting = ref<Setting>();
+	const activeWorkspace = ref<FormSetting>();
 
 	onBeforeMount(async () => {
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
@@ -22,14 +21,9 @@
 			getUserSettingsV2(),
 		]);
 		workspaces.value = loadedWorkspaces;
-		activeWorkspace.value =
-			workspaces.value.find(
-				(w: Workspace) =>
-					w.id ==
-					store.state.user.settings.find(
-						(settingInStore) => settingInStore.key === 'current_workspace',
-					).value,
-			)?.id || 0;
+		activeWorkspace.value = store.state.user.settings.find(
+			(settingInStore) => settingInStore.key === 'current_workspace',
+		);
 
 		const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
 			let settingFromStoreWithValue = store.state.user.settings.find(
@@ -51,21 +45,11 @@
 		settings.value = mappedSettingWithUserSettings.filter(
 			(setting) => setting.key !== 'current_workspace',
 		);
-
-		workspaceSetting.value = mappedSettingWithUserSettings.find(
-			(setting) => setting.key === 'current_workspace',
-		);
 	});
 
 	async function updateSettings() {
 		try {
-			const updatedSettings = [
-				...settings.value,
-				{
-					...workspaceSetting.value,
-					value: activeWorkspace.value,
-				},
-			];
+			const updatedSettings = [...settings.value, activeWorkspace.value];
 
 			await updateUserSettingsV2(updatedSettings);
 		} catch (e) {
@@ -95,21 +79,6 @@
 		</header>
 
 		<div class="mt-6 max-w-lg">
-			<label class="mb-2 block text-sm font-bold text-gray-700">
-				Current workspace
-			</label>
-
-			<div class="mb-4">
-				<Combobox
-					:entities="workspaces"
-					v-model="activeWorkspace"
-					selected-placeholder="Workspace"
-					value-key="id"
-					label-key="name"
-					input-placeholder="Search workspaces"
-				/>
-			</div>
-
 			<div v-for="(setting, index) in settings">
 				<label
 					:for="`setting-${setting.id}`"

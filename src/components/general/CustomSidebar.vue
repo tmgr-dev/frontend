@@ -98,11 +98,11 @@
 				categories.value = loadedCategories.slice(0, 4);
 				user.value = userData;
 				workspaces.value = workspacesData;
+				const activeWorkspaceId = user.value?.settings.find(
+					(s) => s.key === 'current_workspace',
+				)?.value;
 				activeWorkspace.value = workspaces.value?.find(
-					(w: Workspace) =>
-						w.id ==
-						user.value?.settings.find((s) => s.key === 'current_workspace')
-							?.value,
+					(workspace: Workspace) => workspace.id == activeWorkspaceId,
 				) as Workspace;
 			} catch (e) {
 				console.error(e);
@@ -118,6 +118,7 @@
 					if (setting.key === 'current_workspace') {
 						setting.value = workspace.id;
 					}
+
 					return {
 						id: setting.id,
 						value: setting.value,
@@ -126,7 +127,7 @@
 			);
 
 			await updateUserSettingsV2(settingsWithUpdatedWorkspace);
-			// document.location.reload();
+			document.location.reload();
 		} catch (error) {
 			console.error('Failed to update workspace:', error);
 		}
