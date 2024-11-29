@@ -2,24 +2,45 @@
 	import { SaveIcon, FolderKanbanIcon, Trash2Icon } from 'lucide-vue-next';
 	import { Button } from '@/components/ui/button';
 	import Switcher from '@/components/general/Switcher.vue';
-	import { onBeforeMount, Ref, ref } from 'vue';
+	import { computed, onBeforeMount, Ref, ref } from 'vue';
 	import { getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
 	import Combobox from '@/components/Combobox.vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.js';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
-	import { FormSetting, Setting } from '@/actions/tmgr/settings.ts';
+	import { FormSetting } from '@/actions/tmgr/settings.ts';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+		AlertDialogTrigger,
+	} from '@/components/ui/alert-dialog';
+	import { deleteWorkspace as deleteWorkspaceAction } from '@/actions/tmgr/workspaces.js';
 
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
 	const activeWorkspace = ref<FormSetting>();
+	const activeWorkspaceType = computed(() => {
+		const foundWorkspace = workspaces.value.find(
+			(workspace) => workspace.id == activeWorkspace.value?.value,
+		);
+
+		return foundWorkspace?.type;
+	});
+	const isLoading = ref(true);
 
 	onBeforeMount(async () => {
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
 			getWorkspaces(),
 			getUserSettingsV2(),
 		]);
+		isLoading.value = false;
 		workspaces.value = loadedWorkspaces;
 		activeWorkspace.value = store.state.user.settings.find(
 			(settingInStore) => settingInStore.key === 'current_workspace',
@@ -56,6 +77,14 @@
 			console.error(e);
 		}
 	}
+
+	async function deleteWorkspace() {
+		try {
+			await deleteWorkspaceAction(activeWorkspace.value!.id);
+		} catch (e) {
+			console.error(e);
+		}
+	}
 </script>
 
 <template>
@@ -66,10 +95,32 @@
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
 			<div class="flex flex-wrap items-center gap-2">
-				<Button variant="destructive">
-					<Trash2Icon />
-					<span class="hidden lg:inline">Delete workspace</span>
-				</Button>
+				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default'">
+					<AlertDialogTrigger as-child>
+						<Button variant="destructive">
+							<Trash2Icon />
+							<span class="hidden lg:inline">Delete workspace</span>
+						</Button>
+					</AlertDialogTrigger>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+							<AlertDialogDescription>
+								This action cannot be undone. This will permanently delete your
+								workspace and remove your data from our servers.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								@click="deleteWorkspace"
+								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							>
+								Delete workspace
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 
 				<Button variant="default">
 					<FolderKanbanIcon />
