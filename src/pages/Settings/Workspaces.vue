@@ -1,5 +1,10 @@
 <script setup lang="ts">
-	import { SaveIcon, FolderKanbanIcon, Trash2Icon } from 'lucide-vue-next';
+	import {
+		SaveIcon,
+		FolderKanbanIcon,
+		Trash2Icon,
+		CircleCheckBigIcon,
+	} from 'lucide-vue-next';
 	import { Button } from '@/components/ui/button';
 	import Switcher from '@/components/general/Switcher.vue';
 	import { computed, onBeforeMount, Ref, ref } from 'vue';
@@ -22,6 +27,9 @@
 		AlertDialogTrigger,
 	} from '@/components/ui/alert-dialog';
 	import { deleteWorkspace as deleteWorkspaceAction } from '@/actions/tmgr/workspaces.js';
+	import { useToast } from '@/components/ui/toast';
+
+	const toaster = useToast();
 
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
@@ -73,6 +81,12 @@
 			const updatedSettings = [...settings.value, activeWorkspace.value];
 
 			await updateUserSettingsV2(updatedSettings);
+			toaster.toast({
+				variant: 'default',
+				title: 'Successfully saved!',
+				action: CircleCheckBigIcon,
+				class: 'bg-green-500 border-0 text-white',
+			});
 		} catch (e) {
 			console.error(e);
 		}
