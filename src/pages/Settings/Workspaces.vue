@@ -12,7 +12,12 @@
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
 	import Combobox from '@/components/Combobox.vue';
-	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.js';
+	import {
+		createWorkspace as createWorkspaceAction,
+		deleteWorkspace as deleteWorkspaceAction,
+		getWorkspaces,
+		Workspace,
+	} from '@/actions/tmgr/workspaces';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import { FormSetting } from '@/actions/tmgr/settings.ts';
 	import {
@@ -26,10 +31,23 @@
 		AlertDialogTitle,
 		AlertDialogTrigger,
 	} from '@/components/ui/alert-dialog';
-	import { deleteWorkspace as deleteWorkspaceAction } from '@/actions/tmgr/workspaces.js';
 	import { useToast } from '@/components/ui/toast';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+		DialogTrigger,
+	} from '@/components/ui/dialog';
+	import { dialogState } from '@/composable/dialog.ts';
 
 	const toaster = useToast();
+	const [isOpen, closeDialog] = dialogState();
+	const newWorkspace = ref({
+		name: '',
+		type: 'test',
+	});
 
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
@@ -92,6 +110,27 @@
 		}
 	}
 
+	async function createWorkspace() {
+		if (newWorkspace.value.name.trim() === '') return;
+
+		try {
+			await createWorkspaceAction(newWorkspace.value);
+			newWorkspace.value.name = '';
+			closeDialog();
+			toaster.toast({
+				title: 'Successfully created!',
+				action: CircleCheckBigIcon,
+				class: 'bg-green-500 border-0 text-white',
+			});
+
+			setTimeout(() => {
+				window.location.reload();
+			}, 100);
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
 	async function deleteWorkspace() {
 		try {
 			await deleteWorkspaceAction(activeWorkspace.value!.id);
@@ -136,10 +175,38 @@
 					</AlertDialogContent>
 				</AlertDialog>
 
-				<Button variant="default">
-					<FolderKanbanIcon />
-					New workspace
-				</Button>
+				<Dialog v-model:open="isOpen">
+					<DialogTrigger as-child>
+						<Button variant="default">
+							<FolderKanbanIcon />
+							New workspace
+						</Button>
+					</DialogTrigger>
+
+					<DialogContent
+						class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+					>
+						<DialogHeader>
+							<DialogTitle>Creating new workspace</DialogTitle>
+						</DialogHeader>
+
+						<Input
+							v-model="newWorkspace.name"
+							placeholder="New workspace name"
+						/>
+
+						<DialogFooter>
+							<Button
+								variant="default"
+								type="submit"
+								:disabled="newWorkspace.name.trim() === ''"
+								@click="createWorkspace"
+							>
+								Create
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
 			</div>
 		</header>
 
