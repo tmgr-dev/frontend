@@ -59,6 +59,14 @@ export const updateWorkspaceOrder = async (
 	return data;
 };
 
+export const deleteWorkspace = async (workspaceId: number) => {
+	const {
+		data: { data },
+	} = await $axios.delete(`workspaces/${workspaceId}`);
+
+	return data;
+};
+
 export interface WorkspaceInvitation {
 	max_usage_times: string;
 	expired_at?: Date | null;
