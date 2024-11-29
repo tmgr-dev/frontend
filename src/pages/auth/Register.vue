@@ -197,7 +197,7 @@
 			errors.value = {};
 			isLoading.value = true;
 			await registerAction(form.value);
-			await getUser(true);
+			await getUser();
 
 			if (localStorage.getItem('workspace.invitation')) {
 				const token = localStorage.getItem('workspace.invitation');
