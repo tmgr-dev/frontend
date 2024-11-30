@@ -54,7 +54,6 @@
 								@click="selectTask(task)"
 								:class="`${selectedTask?.id == task.id ? 'bg-gray-50 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-800'} task-item relative m-2 cursor-pointer rounded-xl border px-5 py-3.5 dark:border-0 `"
 							>
-								{{ task.id }} - {{ selectedTask?.id }}
 								<div class="task-content flex w-full items-center justify-between">
 									<!-- Left Side: Checkbox and Title -->
 									<div class="flex items-center">
