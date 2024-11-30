@@ -52,7 +52,7 @@
 								:key="task.id"
 								:data-task-id="task.id"
 								@click="selectTask(task)"
-								:class="`${selectedTask?.id == task.id ? 'bg-gray-50 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-800'} task-item relative m-2 cursor-pointer rounded-xl border px-5 py-3.5 dark:border-0 `"
+								:class="`${selectedTask?.id == task.id && !selectedTask?.is_recurring ? 'bg-gray-50 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-800'} task-item relative m-2 cursor-pointer rounded-xl border px-5 py-3.5 dark:border-0 `"
 							>
 								<div class="task-content flex w-full items-center justify-between">
 									<!-- Left Side: Checkbox and Title -->
@@ -160,9 +160,9 @@ import {
 	completeDailyTask,
 	archiveDailyTask,
 	getArchivedDailyTasksCount,
-	updateDailyTask,
+	updateDailyTask, getDailyTask
 } from '@/actions/tmgr/daily-tasks';
-import type { Task } from '@/actions/tmgr/tasks';
+import { getTask, Task } from '@/actions/tmgr/tasks';
 import TaskDetails from '@/components/TaskDetails.vue';
 
 // Types
@@ -191,9 +191,8 @@ onMounted(async () => {
 });
 
 // Task Management
-function selectTask(task: ExtendedTask) {
-	selectedTask.value = null;
-	selectedTask.value = { ...task };
+async function selectTask(task: ExtendedTask) {
+	selectedTask.value = await getDailyTask(task.id);
 }
 
 async function createTask() {

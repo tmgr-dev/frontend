@@ -96,6 +96,14 @@ export const archiveDailyTask = async (taskId: number) => {
 	}
 };
 
+export const getDailyTask = async (taskId: number) => {
+	const {
+		data: { data },
+	} = await $axios.get(`daily-routines/tasks/${taskId}`);
+
+	return data;
+};
+
 export const deleteDailyTask = async (taskId: number) => {
 	try {
 		const { data } = await $axios.delete(`daily-routines/tasks/${taskId}`);
