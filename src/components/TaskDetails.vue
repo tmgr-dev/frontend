@@ -1,11 +1,11 @@
 <template>
-	<div class="h-full w-full overflow-y-auto p-6">
+	<div class="h-full w-full overflow-y-auto">
 		<!-- Header -->
-		<div class="mb-4 flex items-center justify-between">
-			<h2 class="text-xl font-semibold">Task Details</h2>
+		<div class="flex items-center justify-between">
+			<div class="text-xl font-semibold"></div>
 			<button
 				@click="$emit('close')"
-				class="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+				class="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -28,22 +28,11 @@
 			<!-- Basic Info Section -->
 			<section class="space-y-4">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
-					<TextField v-model="taskData.title" class="mt-1 w-full" />
+					<TextField v-model="taskData.title" class="mt-1 w-full rounded-md dark:border dark:border-gray-300 py-2 dark:border-gray-600 dark:bg-gray-800" placeholder="Enter your routine here..."/>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-					<select v-model="taskData.status" class="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
-						<option value="backlog">Backlog</option>
-						<option value="completed">Completed</option>
-						<option value="archived">Archived</option>
-					</select>
-				</div>
-
-				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
-					<textarea v-model="taskData.description" rows="4" class="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800" />
+					<textarea v-model="taskData.description" placeholder="Enter your routine's description here." rows="4" class="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800" />
 				</div>
 			</section>
 
@@ -108,53 +97,53 @@
 					</div>
 
 					<!-- Multiple Times per Day -->
-					<div class="mt-4">
-						<div class="flex items-center justify-between">
-							<span @click="taskData.recurrence.multiple_times = !taskData.recurrence.multiple_times">Multiple Times</span>
-							<Switch :checked="taskData.recurrence.multiple_times" @update:checked="taskData.recurrence.multiple_times = !taskData.recurrence.multiple_times" />
-						</div>
+<!--					<div class="mt-4">-->
+<!--						<div class="flex items-center justify-between">-->
+<!--							<span @click="taskData.recurrence.multiple_times = !taskData.recurrence.multiple_times">Multiple Times</span>-->
+<!--							<Switch :checked="taskData.recurrence.multiple_times" @update:checked="taskData.recurrence.multiple_times = !taskData.recurrence.multiple_times" />-->
+<!--						</div>-->
 
-						<div v-if="taskData.recurrence.multiple_times" class="mt-2 space-y-2">
-							<div v-for="(time, index) in taskData.recurrence.times" :key="index" class="flex items-center space-x-2">
-								<select
-									v-model="time.hours"
-									class="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-								>
-									<option v-for="hour in 24" :key="hour-1" :value="hour-1">
-										{{ String(hour-1).padStart(2, '0') }}
-									</option>
-								</select>
-								<span class="text-gray-500">:</span>
-								<select
-									v-model="time.minutes"
-									class="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-								>
-									<option v-for="minute in [0, 15, 30, 45]" :key="minute" :value="minute">
-										{{ String(minute).padStart(2, '0') }}
-									</option>
-								</select>
-								<button
-									@click="removeTime(index)"
-									class="rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-red-500"
-								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<line x1="18" y1="6" x2="6" y2="18"></line>
-										<line x1="6" y1="6" x2="18" y2="18"></line>
-									</svg>
-								</button>
-							</div>
-							<button
-								@click="addTime"
-								class="mt-2 flex items-center text-sm text-blue-500 hover:text-blue-600"
-							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1">
-									<line x1="12" y1="5" x2="12" y2="19"></line>
-									<line x1="5" y1="12" x2="19" y2="12"></line>
-								</svg>
-								Add Another Time
-							</button>
-						</div>
-					</div>
+<!--						<div v-if="taskData.recurrence.multiple_times" class="mt-2 space-y-2">-->
+<!--							<div v-for="(time, index) in taskData.recurrence.times" :key="index" class="flex items-center space-x-2">-->
+<!--								<select-->
+<!--									v-model="time.hours"-->
+<!--									class="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--								>-->
+<!--									<option v-for="hour in 24" :key="hour-1" :value="hour-1">-->
+<!--										{{ String(hour-1).padStart(2, '0') }}-->
+<!--									</option>-->
+<!--								</select>-->
+<!--								<span class="text-gray-500">:</span>-->
+<!--								<select-->
+<!--									v-model="time.minutes"-->
+<!--									class="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--								>-->
+<!--									<option v-for="minute in [0, 15, 30, 45]" :key="minute" :value="minute">-->
+<!--										{{ String(minute).padStart(2, '0') }}-->
+<!--									</option>-->
+<!--								</select>-->
+<!--								<button-->
+<!--									@click="removeTime(index)"-->
+<!--									class="rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-red-500"-->
+<!--								>-->
+<!--									<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">-->
+<!--										<line x1="18" y1="6" x2="6" y2="18"></line>-->
+<!--										<line x1="6" y1="6" x2="18" y2="18"></line>-->
+<!--									</svg>-->
+<!--								</button>-->
+<!--							</div>-->
+<!--							<button-->
+<!--								@click="addTime"-->
+<!--								class="mt-2 flex items-center text-sm text-blue-500 hover:text-blue-600"-->
+<!--							>-->
+<!--								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1">-->
+<!--									<line x1="12" y1="5" x2="12" y2="19"></line>-->
+<!--									<line x1="5" y1="12" x2="19" y2="12"></line>-->
+<!--								</svg>-->
+<!--								Add Another Time-->
+<!--							</button>-->
+<!--						</div>-->
+<!--					</div>-->
 				</div>
 				<div v-if="true" class="space-y-4">
 					<!-- Frequency -->
