@@ -295,6 +295,7 @@
 		BreadcrumbLink,
 		BreadcrumbSeparator,
 	} from '@/components/ui/breadcrumb';
+	import store from '@/store/index.js';
 
 	export default {
 		name: 'Settings',

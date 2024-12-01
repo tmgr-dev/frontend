@@ -40,7 +40,10 @@ export const getWorkspaceStatuses = async () => {
 	return data;
 };
 
-export const createWorkspace = async (payload: Workspace) => {
+export const createWorkspace = async (payload: {
+	name: string;
+	type: string;
+}) => {
 	const {
 		data: { data },
 	} = await $axios.post('workspaces', payload);
@@ -55,6 +58,14 @@ export const updateWorkspaceOrder = async (
 	const {
 		data: { data },
 	} = await $axios.put(`workspaces/${workspaceId}/statuses/order`, payload);
+
+	return data;
+};
+
+export const deleteWorkspace = async (workspaceId: number) => {
+	const {
+		data: { data },
+	} = await $axios.delete(`workspaces/${workspaceId}`);
 
 	return data;
 };
