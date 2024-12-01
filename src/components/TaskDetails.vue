@@ -73,7 +73,7 @@
 				</div>
 			</section>
 			<!-- Recurrence Section -->
-			<section  v-else class="space-y-4 rounded-lg border p-4 dark:border-gray-700">
+			<section  v-else class="space-y-4 rounded-lg border dark:border-gray-700">
 				<div class="">
 					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Time</label>
 					<div class="mt-1 flex items-center space-x-4" v-if="taskData.recurrence.time">
@@ -162,8 +162,9 @@
 							>
 								<option value="DAILY">Day(s)</option>
 								<option value="WEEKLY">Week(s)</option>
-								<option value="MONTHLY">Month(s)</option>
-								<option value="YEARLY">Year(s)</option>
+<!--								TODO: TO BE CONTINUED-->
+<!--								<option value="MONTHLY">Month(s)</option>-->
+<!--								<option value="YEARLY">Year(s)</option>-->
 							</select>
 						</div>
 					</div>
@@ -171,7 +172,7 @@
 					<!-- Weekly Options -->
 					<div v-if="taskData.recurrence.frequency === 'WEEKLY'" class="space-y-2">
 						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Repeat On</label>
-						<div class="flex flex-wrap gap-2">
+						<div class="flex flex-wrap gap-2 justify-between">
 							<button
 								v-for="day in weekDays"
 								:key="day.value"
@@ -188,68 +189,93 @@
 						</div>
 					</div>
 
-					<!-- Monthly Options -->
-					<div v-if="taskData.recurrence.frequency === 'MONTHLY'" class="space-y-2">
-						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Repeat On</label>
-						<select
-							v-model="taskData.recurrence.day_of_frequency"
-							class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-						>
-							<option v-for="day in 31" :key="day" :value="day">Day {{ day }}</option>
-						</select>
-					</div>
+<!--					&lt;!&ndash; Monthly Options &ndash;&gt;-->
+<!--					<div v-if="taskData.recurrence.frequency === 'MONTHLY'" class="space-y-2">-->
+<!--						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Repeat On</label>-->
+<!--						<select-->
+<!--							v-model="taskData.recurrence.day_of_frequency"-->
+<!--							class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--						>-->
+<!--							<option v-for="day in 31" :key="day" :value="day">Day {{ day }}</option>-->
+<!--						</select>-->
+<!--					</div>-->
 
-					<!-- Date Range -->
-					<div class="space-y-2">
-						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Range</label>
-						<div class="grid grid-cols-2 gap-4">
-							<div>
-								<label class="block text-xs text-gray-500">Start Date</label>
-								<input
-									type="date"
-									v-model="taskData.recurrence.start_at"
-									class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-								/>
-							</div>
-							<div>
-								<label class="block text-xs text-gray-500">End Date (Optional)</label>
-								<input
-									type="date"
-									v-model="taskData.recurrence.end_at"
-									class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-								/>
-							</div>
-						</div>
-					</div>
+<!--					&lt;!&ndash; Date Range &ndash;&gt;-->
+<!--					<div class="space-y-2">-->
+<!--						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Range</label>-->
+<!--						<div class="grid grid-cols-2 gap-4">-->
+<!--							<div>-->
+<!--								<label class="block text-xs text-gray-500">Start Date</label>-->
+<!--								<input-->
+<!--									type="date"-->
+<!--									v-model="taskData.recurrence.start_at"-->
+<!--									class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--								/>-->
+<!--							</div>-->
+<!--							<div>-->
+<!--								<label class="block text-xs text-gray-500">End Date (Optional)</label>-->
+<!--								<input-->
+<!--									type="date"-->
+<!--									v-model="taskData.recurrence.end_at"-->
+<!--									class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--								/>-->
+<!--							</div>-->
+<!--						</div>-->
+<!--					</div>-->
 
-					<!-- Occurrences Limit -->
-					<div>
-						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Number of Occurrences</label>
-						<input
-							type="number"
-							v-model="taskData.recurrence.occurrences"
-							min="1"
-							placeholder="Leave empty for unlimited"
-							class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
-						/>
-					</div>
+<!--					&lt;!&ndash; Occurrences Limit &ndash;&gt;-->
+<!--					<div>-->
+<!--						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Number of Occurrences</label>-->
+<!--						<input-->
+<!--							type="number"-->
+<!--							v-model="taskData.recurrence.occurrences"-->
+<!--							min="1"-->
+<!--							placeholder="Leave empty for unlimited"-->
+<!--							class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"-->
+<!--						/>-->
+<!--					</div>-->
 				</div>
 			</section>
 
-			<!-- Save Button -->
-			<div class="pt-4">
-				<Button class="w-full" @click="saveChanges">Save Changes</Button>
+			<!-- Task controls -->
+			<div class="pb-4 flex gap-2 justify-end">
+				<Button class="w-full dark:bg-gray-800 dark:hover:bg-gray-500 dark:focus:bg-gray-600 p-2 rounded-xl" @click="saveChanges">Save Changes</Button>
+				<Button
+					class="dark:bg-gray-800 dark:hover:bg-gray-500 dark:focus:bg-gray-600 p-2 rounded-xl"
+					@click="completeTask"
+				>
+					<Check class="text-green-600"/>
+				</Button>
+				<Button
+					class="dark:bg-gray-800 dark:hover:bg-gray-500 dark:focus:bg-gray-600 p-2 rounded-xl"
+					@click="archiveTask"
+				>
+					<Archive class="text-yellow-600"/>
+				</Button>
+				<Button
+					class="dark:bg-gray-800 dark:hover:bg-gray-500 dark:focus:bg-gray-600 p-2 rounded-xl"
+					@click="deleteTask"
+				>
+					<Delete class="text-red-600"/>
+				</Button>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { Archive, Check, Delete } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import TextField from '@/components/general/TextField.vue';
 import Button from '@/components/general/Button.vue';
 import type { Task } from '@/actions/tmgr/tasks';
 import { Switch } from '@/components/ui/switch';
+import {
+	archiveDailyTask,
+	completeDailyTask,
+	completeDailyTaskInstance,
+	deleteDailyTask
+} from '@/actions/tmgr/daily-tasks.ts';
 
 interface Time {
 	hours: number;
@@ -299,6 +325,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'update', task: ExtendedTask): void
+	(e: 'reload'): void
 	(e: 'close'): void
 }>();
 
@@ -365,5 +392,25 @@ function saveChanges() {
 		delete dataToSave.recurrence;
 	}
 	emit('update', dataToSave);
+}
+async function completeTask() {
+	console.log(taskData.value);
+	if (taskData.value.instance_id) {
+		await completeDailyTaskInstance(taskData.value.id, taskData.value.instance_id);
+	} else {
+		await completeDailyTask(taskData.value.id);
+	}
+	emit('reload');
+	emit('close');
+}
+async function archiveTask() {
+	await archiveDailyTask(taskData.value.id);
+	emit('reload');
+	emit('close');
+}
+async function deleteTask() {
+	await deleteDailyTask(taskData.value.id);
+	emit('reload');
+	emit('close');
 }
 </script>

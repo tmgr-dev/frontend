@@ -137,11 +137,12 @@
 
 						<!-- Task Detail Panel -->
 						<Transition name="slide">
-							<div v-if="selectedTask" class="right-0 top-0 w-1/2 cursor-pointer rounded-xl border px-5 py-3.5 bg-gray-50 dark:border-0 dark:bg-gray-800 dark:bg-gray-700">
+							<div v-if="selectedTask" class="right-0 top-0 w-1/2 cursor-pointer rounded-xl border px-5 py-3.5 bg-gray-50 dark:border-0 dark:bg-gray-700">
 								<TaskDetails
 									:key="selectedTask?.id"
 									:task="selectedTask"
 									@update="handleTaskUpdate"
+									@reload="reload"
 									@close="selectedTask = null"
 								/>
 							</div>
@@ -193,17 +194,22 @@ const selectedTask = ref<ExtendedTask | null>(null);
 // Computed
 const completedCount = ref<number>(0);
 
-// Lifecycle
-onMounted(async () => {
+const reload = async () => {
 	tasks.value = await getDailyTasks();
 	archivedTasksCount.value = await getArchivedDailyTasksCount();
 	allTasksCount.value = await getDailyTasksCount();
 	completedCount.value = await getCompletedDailyTasksCount();
+}
+
+// Lifecycle
+onMounted(async () => {
+	await reload();
 });
 
 // Task Management
 async function selectTask(task: ExtendedTask) {
 	selectedTask.value = await getDailyTask(task.id);
+	selectedTask.value.instance_id = task.instance_id;
 }
 
 async function createTask() {
