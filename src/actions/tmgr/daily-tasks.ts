@@ -38,6 +38,18 @@ export const getDailyTasksCount = async (): Promise<Number> => {
 	}
 };
 
+export const getCompletedDailyTasksCount = async (): Promise<Number> => {
+	try {
+		const {
+			data: { count },
+		} = await $axios.get(`daily-routines/tasks/completed/count`);
+		return count;
+	} catch (error) {
+		console.error('Failed to fetch completed daily tasks count:', error);
+		throw error;
+	}
+};
+
 export const createDailyTask = async (task: Task) => {
 	try {
 		const {
@@ -110,6 +122,25 @@ export const deleteDailyTask = async (taskId: number) => {
 		return data;
 	} catch (error) {
 		console.error('Failed to delete daily task:', error);
+		throw error;
+	}
+};
+
+export const deleteDailyTaskInstance = async (taskId: number, taskInstanceId: number) => {
+	try {
+		const { data } = await $axios.delete(`daily-routines/tasks/${taskId}/instances/${taskInstanceId}`);
+		return data;
+	} catch (error) {
+		console.error('Failed to delete daily task\'s instance:', error);
+		throw error;
+	}
+};
+
+export const completeDailyTaskInstance = async (taskId: number, taskInstanceId: number) => {
+	try {
+		await $axios.post(`daily-routines/tasks/${taskId}/instances/${taskInstanceId}/complete`);
+	} catch (error) {
+		console.error('Failed to complete daily task\'s instance:', error);
 		throw error;
 	}
 };
