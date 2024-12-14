@@ -4,17 +4,19 @@
 		FolderKanbanIcon,
 		Trash2Icon,
 		CircleCheckBigIcon,
+		LogOutIcon,
 	} from 'lucide-vue-next';
 	import { Button } from '@/components/ui/button';
 	import Switcher from '@/components/general/Switcher.vue';
 	import { computed, onBeforeMount, Ref, ref } from 'vue';
-	import { getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { getUserSettings, getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
 	import Combobox from '@/components/Combobox.vue';
 	import {
 		createWorkspace as createWorkspaceAction,
 		deleteWorkspace as deleteWorkspaceAction,
+		exitWorkspace as exitWorkspaceAction,
 		getWorkspaces,
 		Workspace,
 	} from '@/actions/tmgr/workspaces';
@@ -59,6 +61,13 @@
 
 		return foundWorkspace?.type;
 	});
+	const isOwndedActiveWorkspace = computed(() => {
+		const foundWorkspace = workspaces.value.find(
+			(workspace) => workspace.id == activeWorkspace.value?.value,
+		);
+
+		return foundWorkspace?.user_id === store.state.user.id;
+	});
 	const isLoading = ref(true);
 
 	onBeforeMount(async () => {
@@ -68,6 +77,7 @@
 		]);
 		isLoading.value = false;
 		workspaces.value = loadedWorkspaces;
+		console.log(store.state.user.settings);
 		activeWorkspace.value = store.state.user.settings.find(
 			(settingInStore) => settingInStore.key === 'current_workspace',
 		);
@@ -133,7 +143,23 @@
 
 	async function deleteWorkspace() {
 		try {
-			await deleteWorkspaceAction(activeWorkspace.value!.id);
+			await deleteWorkspaceAction(parseInt(activeWorkspace.value!.value));
+			await getUserSettings();
+			setTimeout(() => {
+				window.location.reload();
+			}, 100);
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	async function exitWorkspace() {
+		try {
+			await exitWorkspaceAction(parseInt(activeWorkspace.value!.value));
+			await getUserSettings();
+			setTimeout(() => {
+				window.location.reload();
+			}, 100);
 		} catch (e) {
 			console.error(e);
 		}
@@ -148,7 +174,7 @@
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
 			<div class="flex flex-wrap items-center gap-2">
-				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default'">
+				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default' && isOwndedActiveWorkspace">
 					<AlertDialogTrigger as-child>
 						<Button variant="destructive">
 							<Trash2Icon />
@@ -159,8 +185,8 @@
 						<AlertDialogHeader>
 							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
 							<AlertDialogDescription>
-								This action cannot be undone. This will permanently delete your
-								workspace and remove your data from our servers.
+								This action cannot be undone. This will delete your
+								workspace.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
@@ -170,6 +196,32 @@
 								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
 							>
 								Delete workspace
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+
+				<AlertDialog v-if="!isLoading && !isOwndedActiveWorkspace">
+					<AlertDialogTrigger as-child>
+						<Button variant="destructive">
+							<LogOutIcon />
+							<span class="hidden lg:inline">Exit from workspace</span>
+						</Button>
+					</AlertDialogTrigger>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+							<AlertDialogDescription>
+								This action cannot be undone by yourself. If you wanna come back to this workspace ask a member of this workspace to send you an invitation again.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								@click="exitWorkspace"
+								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							>
+								Exit from workspace
 							</AlertDialogAction>
 						</AlertDialogFooter>
 					</AlertDialogContent>

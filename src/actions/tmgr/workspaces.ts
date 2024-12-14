@@ -6,6 +6,7 @@ export interface Workspace {
 	name: string;
 	is_default: boolean;
 	type: string;
+	user_id: number;
 }
 
 export const getWorkspaces = async (): Promise<Workspace[]> => {
@@ -66,6 +67,14 @@ export const deleteWorkspace = async (workspaceId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`workspaces/${workspaceId}`);
+
+	return data;
+};
+
+export const exitWorkspace = async (workspaceId: number) => {
+	const {
+		data: { data },
+	} = await $axios.post(`workspaces/${workspaceId}/exit`);
 
 	return data;
 };
