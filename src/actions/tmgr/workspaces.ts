@@ -80,7 +80,7 @@ export const exitWorkspace = async (workspaceId: number) => {
 };
 
 export interface WorkspaceInvitation {
-	max_usage_times: string;
+	max_usage_times?: number;
 	expired_at?: Date | null;
 	emails?: string | null;
 }
