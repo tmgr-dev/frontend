@@ -9,9 +9,7 @@ const token = localStorage.getItem('token')
 const state = {
 	metaTitle: '',
 	token: token,
-	user: localStorage.getItem('user')
-		? JSON.parse(localStorage.getItem('user') || '')
-		: null,
+	user: {},
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
@@ -51,8 +49,6 @@ const mutations = {
 		state.appRerenderKey++;
 	},
 	setUser(state, user) {
-		localStorage.setItem('user', JSON.stringify(user));
-
 		state.user = user;
 	},
 	incrementReloadTasksKey(state) {
@@ -114,7 +110,7 @@ const actions = {
 			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
 		}
 
-		location.reload();
+		// location.reload();
 	},
 };
 

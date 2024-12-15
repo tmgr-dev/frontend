@@ -19,7 +19,7 @@
 
 <script>
 	import getTimeInSeconds from '@/utils/getTimeInSeconds';
-	import convertToHHMM from '@/utils/convertToHHMM';
+	import { convertToHHMM } from '@/utils/timeUtils.js';
 
 	// @todo refactor this component. It was just moved from input-field
 
