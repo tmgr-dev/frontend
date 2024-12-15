@@ -3,6 +3,7 @@
 		SaveIcon,
 		FolderKanbanIcon,
 		Trash2Icon,
+		UserPlus,
 		CircleCheckBigIcon,
 		LogOutIcon,
 	} from 'lucide-vue-next';
@@ -16,6 +17,7 @@
 	import Combobox from '@/components/Combobox.vue';
 	import {
 		createWorkspace as createWorkspaceAction,
+		createWorkspaceInvitation as createWorkspaceInvitationAction,
 		deleteWorkspace as deleteWorkspaceAction,
 		exitWorkspace as exitWorkspaceAction,
 		getWorkspaces,
@@ -44,12 +46,20 @@
 		DialogTrigger,
 	} from '@/components/ui/dialog';
 	import { dialogState } from '@/composable/dialog.ts';
+	import { Textarea } from '@/components/ui/textarea';
+	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
 
 	const toaster = useToast();
 	const [isOpen, closeDialog] = dialogState();
+	const [isOpenInvitation, closeInvitationDialog] = dialogState();
 	const newWorkspace = ref({
 		name: '',
 		type: 'test',
+	});
+	const invitationEmails = ref('');
+	const invitationEmailsValidationError = ref<ValidationResult>({
+		isValid: true,
+		errors: []
 	});
 
 	const route = useRoute();
@@ -98,6 +108,10 @@
 			deep: true
 		}
 	);
+
+	watch(invitationEmails, newValue => {
+		invitationEmailsValidationError.value = validateEmailString(newValue);
+	})
 
 	onBeforeMount(async () => {
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
@@ -171,6 +185,30 @@
 		}
 	}
 
+	async function sendInvitations() {
+		invitationEmailsValidationError.value = {
+			isValid: true,
+			errors: []
+		};
+		const emails = invitationEmails.value.trim().replaceAll('\n', '');
+		if (emails === '') return;
+
+		const validationResult = validateEmailString(emails);
+
+		if (!validationResult.isValid) {
+			invitationEmailsValidationError.value = validationResult;
+			return;
+		}
+
+		if (!activeWorkspace?.value?.value) {
+			return;
+		}
+
+		await createWorkspaceInvitationAction(activeWorkspace.value?.value, { emails });
+		isOpenInvitation.value = false;
+		invitationEmails.value = '';
+	}
+
 	async function updateUserSettings () {
 		await getUserSettings();
 		setTimeout(() => {
@@ -205,59 +243,6 @@
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
 			<div class="flex flex-wrap items-center gap-2">
-				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default' && isOwnedActiveWorkspace">
-					<AlertDialogTrigger as-child>
-						<Button variant="destructive">
-							<Trash2Icon />
-							<span class="hidden lg:inline">Delete workspace</span>
-						</Button>
-					</AlertDialogTrigger>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-							<AlertDialogDescription>
-								This action cannot be undone. This will delete your
-								workspace.
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction
-								@click="deleteWorkspace"
-								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
-							>
-								Delete workspace
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
-
-				<AlertDialog v-if="!isLoading && !isOwnedActiveWorkspace">
-					<AlertDialogTrigger as-child>
-						<Button variant="destructive">
-							<LogOutIcon />
-							<span class="hidden lg:inline">Exit from workspace</span>
-						</Button>
-					</AlertDialogTrigger>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-							<AlertDialogDescription>
-								This action cannot be undone by yourself. If you wanna come back to this workspace ask a member of this workspace to send you an invitation again.
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction
-								@click="exitWorkspace"
-								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
-							>
-								Exit from workspace
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
-
 				<Dialog v-model:open="isOpen">
 					<DialogTrigger as-child>
 						<Button variant="default">
@@ -290,6 +275,92 @@
 						</DialogFooter>
 					</DialogContent>
 				</Dialog>
+				<Dialog v-model:open="isOpenInvitation">
+					<DialogTrigger as-child>
+						<Button variant="default">
+							<UserPlus />
+							<span class="hidden lg:inline">Invite</span>
+						</Button>
+					</DialogTrigger>
+
+					<DialogContent
+						class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+					>
+						<DialogHeader>
+							<DialogTitle>Send invitation(s)</DialogTitle>
+						</DialogHeader>
+
+						<Textarea
+							v-model="invitationEmails"
+							rows="5"
+							:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
+						/>
+						<span class="text-red-500 whitespace-pre" v-if="!invitationEmailsValidationError.isValid && invitationEmails !== ''">
+							{{ invitationEmailsValidationError.errors?.join(`\n`) }}
+						</span>
+						<DialogFooter>
+							<Button
+								variant="default"
+								type="submit"
+								:disabled="!invitationEmailsValidationError.isValid || invitationEmails.trim() === ''"
+								@click="sendInvitations"
+							>
+								Send
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default' && isOwnedActiveWorkspace">
+					<AlertDialogTrigger as-child>
+						<Button variant="destructive">
+							<Trash2Icon />
+							<span class="hidden lg:inline">Delete workspace</span>
+						</Button>
+					</AlertDialogTrigger>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+							<AlertDialogDescription>
+								This action cannot be undone. This will delete your
+								workspace.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								@click="deleteWorkspace"
+								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							>
+								Delete workspace
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+				<AlertDialog v-if="!isLoading && !isOwnedActiveWorkspace">
+					<AlertDialogTrigger as-child>
+						<Button variant="destructive">
+							<LogOutIcon />
+							<span class="hidden lg:inline">Exit from workspace</span>
+						</Button>
+					</AlertDialogTrigger>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+							<AlertDialogDescription>
+								This action cannot be undone by yourself. If you wanna come back to this workspace ask a member of this workspace to send you an invitation again.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								@click="exitWorkspace"
+								class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							>
+								Exit from workspace
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			</div>
 		</header>
 

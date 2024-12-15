@@ -79,6 +79,7 @@
 			}
 			await logoutAction();
 			await store.dispatch('logout');
+			location.reload();
 		} catch (e) {
 			console.error(e);
 		}
