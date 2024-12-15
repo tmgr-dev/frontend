@@ -202,7 +202,7 @@
 								<DropdownMenuItem
 									class="cursor-pointer gap-2 p-2"
 									@click="
-										$router.push('/settings?tab=workspace&add-workspace=open')
+										$router.push('/settings/workspaces?create')
 									"
 								>
 									<div
