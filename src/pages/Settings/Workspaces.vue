@@ -8,7 +8,8 @@
 	} from 'lucide-vue-next';
 	import { Button } from '@/components/ui/button';
 	import Switcher from '@/components/general/Switcher.vue';
-	import { computed, onBeforeMount, Ref, ref } from 'vue';
+	import { computed, onBeforeMount, Ref, ref, watch } from 'vue';
+	import { useRoute, useRouter } from 'vue-router';
 	import { getUserSettings, getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
@@ -51,6 +52,8 @@
 		type: 'test',
 	});
 
+	const route = useRoute();
+	const router = useRouter();
 	const settings = ref();
 	const workspaces: Ref<Workspace[]> = ref([]);
 	const activeWorkspace = ref<FormSetting>();
@@ -61,7 +64,7 @@
 
 		return foundWorkspace?.type;
 	});
-	const isOwndedActiveWorkspace = computed(() => {
+	const isOwnedActiveWorkspace = computed(() => {
 		const foundWorkspace = workspaces.value.find(
 			(workspace) => workspace.id == activeWorkspace.value?.value,
 		);
@@ -70,21 +73,48 @@
 	});
 	const isLoading = ref(true);
 
+	function openCreateWorkspaceModalIfQueryParamHasCreateKey (query: any) {
+		if (query.hasOwnProperty('create')) {
+			router.push(route.path);
+		}
+	}
+
+	watch(isOpen, (newValue) => {
+		if (!newValue) {
+			openCreateWorkspaceModalIfQueryParamHasCreateKey(route.query);
+		}
+	});
+
+	watch(
+		route,
+		(to) => {
+			if (!isOpen.value && to.query.hasOwnProperty('create')) {
+				isOpen.value = true;
+			}
+		},
+		{
+			flush: 'pre',
+			immediate: true,
+			deep: true
+		}
+	);
+
 	onBeforeMount(async () => {
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
 			getWorkspaces(),
 			getUserSettingsV2(),
 		]);
+		isOpen.value = route.query.hasOwnProperty('create');
 		isLoading.value = false;
 		workspaces.value = loadedWorkspaces;
 		console.log(store.state.user.settings);
 		activeWorkspace.value = store.state.user.settings.find(
-			(settingInStore) => settingInStore.key === 'current_workspace',
+			(settingInStore: any) => settingInStore.key === 'current_workspace',
 		);
 
 		const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
 			let settingFromStoreWithValue = store.state.user.settings.find(
-				(settingInStore) => settingInStore.id === setting.id,
+				(settingInStore: any) => settingInStore.id === setting.id,
 			);
 			settingFromStoreWithValue = settingFromStoreWithValue
 				? {
@@ -141,13 +171,17 @@
 		}
 	}
 
+	async function updateUserSettings () {
+		await getUserSettings();
+		setTimeout(() => {
+			window.location.reload();
+		}, 100);
+	}
+
 	async function deleteWorkspace() {
 		try {
-			await deleteWorkspaceAction(parseInt(activeWorkspace.value!.value));
-			await getUserSettings();
-			setTimeout(() => {
-				window.location.reload();
-			}, 100);
+			await deleteWorkspaceAction(parseInt(<string>activeWorkspace.value!.value));
+			await updateUserSettings();
 		} catch (e) {
 			console.error(e);
 		}
@@ -155,11 +189,8 @@
 
 	async function exitWorkspace() {
 		try {
-			await exitWorkspaceAction(parseInt(activeWorkspace.value!.value));
-			await getUserSettings();
-			setTimeout(() => {
-				window.location.reload();
-			}, 100);
+			await exitWorkspaceAction(parseInt(<string>activeWorkspace.value!.value));
+			await updateUserSettings();
 		} catch (e) {
 			console.error(e);
 		}
@@ -174,7 +205,7 @@
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
 			<div class="flex flex-wrap items-center gap-2">
-				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default' && isOwndedActiveWorkspace">
+				<AlertDialog v-if="!isLoading && activeWorkspaceType !== 'default' && isOwnedActiveWorkspace">
 					<AlertDialogTrigger as-child>
 						<Button variant="destructive">
 							<Trash2Icon />
@@ -201,7 +232,7 @@
 					</AlertDialogContent>
 				</AlertDialog>
 
-				<AlertDialog v-if="!isLoading && !isOwndedActiveWorkspace">
+				<AlertDialog v-if="!isLoading && !isOwnedActiveWorkspace">
 					<AlertDialogTrigger as-child>
 						<Button variant="destructive">
 							<LogOutIcon />
