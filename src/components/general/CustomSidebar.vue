@@ -45,7 +45,6 @@
 		Inbox,
 		Package,
 		PackageOpen,
-		SquareTerminal,
 		ArchiveIcon,
 		FolderClosedIcon,
 		ClipboardListIcon,
@@ -80,6 +79,7 @@
 			}
 			await logoutAction();
 			await store.dispatch('logout');
+			location.reload();
 		} catch (e) {
 			console.error(e);
 		}
@@ -89,20 +89,25 @@
 
 	onBeforeMount(async () => {
 		if (store.getters.isLoggedIn) {
-			const [loadedCategories, userData, workspacesData] = await Promise.all([
-				getTopCategories(),
-				getUser(),
-				getWorkspaces(),
-			]);
+			try {
+				const [loadedCategories, userData, workspacesData] = await Promise.all([
+					getTopCategories(),
+					getUser(),
+					getWorkspaces(),
+				]);
 
-			categories.value = loadedCategories.slice(0, 4);
-			user.value = userData;
-			workspaces.value = workspacesData;
-			activeWorkspace.value = workspaces.value?.find(
-				(w: Workspace) =>
-					w.id ===
-					parseInt(user.value?.settings.find((s) => s.id === 5)?.value),
-			) as Workspace;
+				categories.value = loadedCategories.slice(0, 4);
+				user.value = userData;
+				workspaces.value = workspacesData;
+				const activeWorkspaceId = user.value?.settings.find(
+					(s) => s.key === 'current_workspace',
+				)?.value;
+				activeWorkspace.value = workspaces.value?.find(
+					(workspace: Workspace) => workspace.id == activeWorkspaceId,
+				) as Workspace;
+			} catch (e) {
+				console.error(e);
+			}
 		}
 	});
 
@@ -114,6 +119,7 @@
 					if (setting.key === 'current_workspace') {
 						setting.value = workspace.id;
 					}
+
 					return {
 						id: setting.id,
 						value: setting.value,
@@ -161,7 +167,7 @@
 							</DropdownMenuTrigger>
 
 							<DropdownMenuContent
-								class="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+								class="max-h-[30rem] w-[--radix-dropdown-menu-trigger-width] min-w-56 overflow-y-auto rounded-lg"
 								align="start"
 								side="bottom"
 								:side-offset="4"
@@ -197,7 +203,7 @@
 								<DropdownMenuItem
 									class="cursor-pointer gap-2 p-2"
 									@click="
-										$router.push('/settings?tab=workspace&add-workspace=open')
+										$router.push('/settings/workspaces?create')
 									"
 								>
 									<div
@@ -367,7 +373,7 @@
 										Notifications
 									</DropdownMenuItem>
 									<DropdownMenuItem
-										@click="$router.push('/settings?tab=workspace')"
+										@click="$router.push('/settings/workspaces')"
 										class="cursor-pointer"
 									>
 										<Settings2 />

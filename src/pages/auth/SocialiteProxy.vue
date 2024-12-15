@@ -72,7 +72,7 @@
 				default:
 					await router.push('login');
 			}
-			await getUser(true);
+			await getUser();
 			await router.push({ name: 'CurrentTasksList' });
 
 			if (store.state.user) {
