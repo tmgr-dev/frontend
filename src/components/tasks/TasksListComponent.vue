@@ -101,6 +101,47 @@
 					</div>
 				</button>
 			</div>
+
+			<!-- Add pagination controls -->
+			<div v-if="pagination.total > pagination.per_page" class="mt-4 flex items-center justify-between px-4">
+				<div class="flex items-center gap-2">
+					<span class="text-sm text-gray-600">
+						Showing {{ pagination.from }} to {{ pagination.to }} of {{ pagination.total }} tasks
+					</span>
+					
+					<select 
+						v-model="perPage" 
+						@change="onPerPageChange"
+						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+					>
+						<option :value="10">10 per page</option>
+						<option :value="25">25 per page</option>
+						<option :value="50">50 per page</option>
+					</select>
+				</div>
+				
+				<div class="flex items-center gap-2">
+					<button
+						:disabled="pagination.current_page === 1"
+						@click="onPageChange(pagination.current_page - 1)"
+						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+					>
+						Previous
+					</button>
+					
+					<span class="text-sm text-gray-600">
+						Page {{ pagination.current_page }} of {{ pagination.last_page }}
+					</span>
+					
+					<button
+						:disabled="pagination.current_page === pagination.last_page"
+						@click="onPageChange(pagination.current_page + 1)"
+						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+					>
+						Next
+					</button>
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -113,7 +154,7 @@
 	/>
 </template>
 
-<script>
+<script lang="ts">
 	import downloadFile from '@/utils/downloadFile';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -130,9 +171,12 @@
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
+		Task,
+		PaginationMeta,
 	} from '@/actions/tmgr/tasks';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Button from '@/components/general/Button.vue';
+	import { PropType } from 'vue';
 
 	export default {
 		name: 'TasksListComponent',
@@ -147,11 +191,11 @@
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
 		},
-		emits: ['reload-tasks'],
+		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
 			tasks: {
+				type: Array as PropType<Task[]>,
 				required: false,
-				type: Array,
 				default: () => [],
 			},
 			status: {
@@ -188,6 +232,18 @@
 				required: false,
 				default: () => [],
 			},
+			pagination: {
+				type: Object as PropType<PaginationMeta>,
+				required: true,
+				default: () => ({
+					current_page: 1,
+					per_page: 10,
+					total: 0,
+					last_page: 1,
+					from: 0,
+					to: 0
+				})
+			}
 		},
 		watch: {
 			hasSelectable(v) {
@@ -196,6 +252,12 @@
 					this.isShowSelectedTasksCommonTime = false;
 				}
 			},
+			'pagination.per_page': {
+				immediate: true,
+				handler(value) {
+					this.perPage = value;
+				}
+			}
 		},
 		mixins: [TasksListMixin, TaskActionsInTheListMixin],
 		data: () => ({
@@ -208,6 +270,7 @@
 			showTimeInModal: false,
 			timeForModal: null,
 			loadingActionsForMultipleTasks: [],
+			perPage: 10
 		}),
 		methods: {
 			closeTaskModal() {
@@ -362,6 +425,16 @@
 
 				this.countTimeForModal();
 			},
+			onPageChange(page: number) {
+				if (page < 1 || page > this.pagination.last_page) return;
+				this.$emit('page-change', page);
+				this.resetSelectedTasks();
+			},
+			onPerPageChange() {
+				if (this.perPage === this.pagination.per_page) return;
+				this.$emit('per-page-change', this.perPage);
+				this.resetSelectedTasks();
+			}
 		},
 	};
 </script>
