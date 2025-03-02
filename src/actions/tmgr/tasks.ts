@@ -25,6 +25,7 @@ export interface Task {
 	user_id: number;
 	workspace_id?: number;
 }
+
 interface LinkResponse {
 	success: 1 | 0;
 	link?: string;
@@ -37,10 +38,38 @@ interface LinkResponse {
 	};
 }
 
-export const getTasks = async (params: AxiosRequestConfig, current = true) => {
-	const {
-		data: { data },
-	} = await $axios.get(`tasks/${current ? 'current' : ''}?all`, params);
+export interface PaginationMeta {
+	current_page: number;
+	per_page: number;
+	total: number;
+	last_page: number;
+	from: number;
+	to: number;
+}
+
+export interface PaginatedResponse<T> {
+	data: T[];
+	meta: PaginationMeta;
+}
+
+interface GetTasksParams extends AxiosRequestConfig {
+	page?: number;
+	per_page?: number;
+	params?: {
+		search?: string | null;
+		project_category_id?: number | null;
+		[key: string]: any;
+	};
+}
+
+export const getTasks = async (params: GetTasksParams, current = true): Promise<PaginatedResponse<Task>> => {
+	const { data } = await $axios.get(`tasks/${current ? 'current' : ''}`, {
+		params: {
+			page: params.page,
+			per_page: params.per_page,
+			...params.params
+		}
+	});
 
 	return data;
 };
@@ -130,11 +159,15 @@ export const restoreDeletedTask = async (taskId: number) => {
 
 export const getTasksByStatus = async (
 	statusId: number,
-	params: AxiosRequestConfig,
-) => {
-	const {
-		data: { data },
-	} = await $axios.get(`tasks/status/${statusId}?all`, params);
+	params: GetTasksParams
+): Promise<PaginatedResponse<Task>> => {
+	const { data } = await $axios.get(`tasks/status/${statusId}`, {
+		params: {
+			page: params.page,
+			per_page: params.per_page,
+			...params.params
+		}
+	});
 
 	return data;
 };
