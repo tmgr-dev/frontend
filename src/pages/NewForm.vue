@@ -48,6 +48,8 @@
 
 	interface Props {
 		isModal: boolean;
+		statusId?: number;
+		modalProjectCategoryId?: number;
 	}
 
 	const props = defineProps<Props>();
@@ -56,23 +58,38 @@
 	const router = useRouter();
 
 	const editorType = ref<EditorType>('markdown');
-	const assignees = ref<WorkspaceMember['id'][]>([]);
+	const isEditorLoading = ref(true);
+	const assignees = ref<number[]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
 	);
-	// @todo find out why v-model doesn't work with reactive
-	//let form = reactive<Partial<Task>>({});
-	let form = ref<Partial<Task>>({
-		// @todo found out what the rudiment this is
+	const form = ref<Task>({
+		title: '',
+		description: '',
+		description_json: null,
+		approximately_time: 0,
+		assignees: [],
 		status: 'created',
-		status_id: store.state.taskStatusId || undefined,
-		project_category_id:
-			+route.params.project_category_id || modalProjectCategoryId.value,
+		status_id: props.statusId ?? 0,
+		project_category_id: props.modalProjectCategoryId ?? null,
+		common_time: 0,
+		is_daily_routine: false,
+		order: 0,
+		start_time: 0,
+		user_id: store.state.user?.id || 0,
+		workspace_id: undefined,
+		id: undefined,
+		category: 0,
+		user: {
+			id: store.state.user?.id || 0,
+			name: store.state.user?.name || ''
+		}
 	});
-	const taskId = computed(
-		() => modalTaskId.value || (route.params.id as string) || form.value?.id,
-	);
+	const taskId = computed(() => {
+		const id = modalTaskId.value || route.params.id;
+		return id ? Number(id) : undefined;
+	});
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
@@ -81,17 +98,27 @@
 		() => store.state.workspaceStatuses as Status[],
 	);
 
+	const statusIdStr = computed({
+		get: () => form.value.status_id?.toString() || '',
+		set: (value: string) => {
+			form.value.status_id = parseInt(value, 10);
+		},
+	});
+
 	onBeforeMount(async () => {
+		isEditorLoading.value = true;
 		const workspaceId = store.state.user?.settings?.find(
 			(setting: Record<string, string | number>) =>
 				setting.key === 'current_workspace',
 		)?.value;
 
-		editorType.value =
-			store.state.user?.settings?.find(
-				(setting: Record<string, string | number>) =>
-					setting.key === 'preferred_editor',
-			)?.value || editorType.value;
+		// Get preferred editor from settings with proper fallback
+		const preferredEditor = store.state.user?.settings?.find(
+			(setting: Record<string, string | number>) =>
+				setting.key === 'preferred_editor',
+		)?.value as EditorType | undefined;
+		
+		editorType.value = preferredEditor || 'markdown';
 
 		try {
 			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
@@ -116,29 +143,38 @@
 			}
 
 			suppressAutoSavingForOnce.value = true;
-			form.value = await getTask(+taskId.value);
+			const taskData = await getTask(taskId.value);
+			
+			// Ensure approximately_time is a number
+			taskData.approximately_time = typeof taskData.approximately_time === 'string' 
+				? parseInt(taskData.approximately_time, 10) || 0 
+				: taskData.approximately_time || 0;
+			
+			form.value = taskData;
 
-			form.value.approximately_time =
-				Number(
-					form.value.settings?.find((item) => item.key === 'approximately_time')
-						?.value,
-				) || 0;
-
-			if (
-				editorType.value === 'block' &&
-				!form.value.description_json &&
-				form.value.description
-			) {
-				form.value.description_json = getBlockEditorDescription(
-					form.value.description,
-				);
+			// Update approximately_time from settings if available
+			const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
+			if (approxTime !== undefined) {
+				form.value.approximately_time = typeof approxTime === 'string' 
+					? parseInt(approxTime, 10) || 0 
+					: Number(approxTime) || 0;
 			}
 
-			assignees.value =
-				(form.value.assignees as WorkspaceMember[])?.map(
-					(assignee) => assignee.id,
-				) || [];
+			// Handle editor type and content conversion
+			if (editorType.value === 'block' && !form.value.description_json && form.value.description) {
+				form.value.description_json = getBlockEditorDescription(form.value.description);
+			}
+
+			// Handle assignees
+			if (form.value.assignees) {
+				const taskAssignees = form.value.assignees as WorkspaceMember[];
+				assignees.value = taskAssignees.map(assignee => assignee.id);
+			} else {
+				assignees.value = [];
+			}
 		}
+		
+		isEditorLoading.value = false;
 	});
 
 	const updateTaskTitle = async () => {
@@ -189,11 +225,11 @@
 		if (taskId.value) {
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(+taskId.value);
+				form.value = await stopTaskTimeCounter(taskId.value);
 			}
 
 			try {
-				await deleteTask(+taskId.value);
+				await deleteTask(taskId.value);
 
 				if (props.isModal) {
 					emit('close');
@@ -209,22 +245,28 @@
 
 	const suppressAutoSavingForOnce = ref(false);
 
+	const updateFormBeforeQuery = () => {
+		suppressAutoSavingForOnce.value = true;
+		// Ensure assignees is properly typed as Record<string, any>[] | number[]
+		form.value.assignees = assignees.value;
+
+		suppressAutoSavingForOnce.value = true;
+		if (editorType.value === 'block') {
+			form.value.description = null;
+		} else {
+			form.value.description_json = null;
+		}
+	};
+
 	const saveTask = async () => {
-		if (!form.value.id) return;
+		if (!taskId.value) return;
 
 		isLoading.value = true;
 		updateFormBeforeQuery();
 
 		try {
 			suppressAutoSavingForOnce.value = true;
-			form.value.approximately_time =
-				Number(
-					form.value.settings?.find((item) => item.key === 'approximately_time')
-						?.value,
-				) || 0;
-
-			suppressAutoSavingForOnce.value = true;
-			form.value = await updateTask(+taskId.value, form.value as Task);
+			form.value = await updateTask(taskId.value, form.value as Task);
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
@@ -233,7 +275,50 @@
 		}
 	};
 
-	// Modify the useDebouncedAutoSave call:
+	const deleteCurrentTask = async () => {
+		if (!taskId.value) return;
+
+		isLoading.value = true;
+
+		try {
+			if (form.value.start_time) {
+				suppressAutoSavingForOnce.value = true;
+				form.value = await stopTaskTimeCounter(taskId.value);
+			}
+
+			await deleteTask(taskId.value);
+
+			if (props.isModal) {
+				emit('close');
+			} else {
+				router.push('/');
+			}
+		} catch (e) {
+			console.error(e);
+		} finally {
+			isLoading.value = false;
+		}
+	};
+
+	const toggleTimer = async () => {
+		if (!taskId.value) return;
+
+		isLoading.value = true;
+
+		try {
+			suppressAutoSavingForOnce.value = true;
+			if (form.value.start_time) {
+				form.value = await stopTaskTimeCounter(taskId.value);
+			} else {
+				form.value = await startTaskTimeCounter(taskId.value);
+			}
+		} catch (e) {
+			console.error(e);
+		} finally {
+			isLoading.value = false;
+		}
+	};
+
 	const [isAutoSaving] = useDebouncedAutoSave({
 		formRef: form,
 		fieldsToWatch: [
@@ -248,51 +333,6 @@
 		delay: 2000,
 		suppressDebounceForOnce: suppressAutoSavingForOnce,
 	});
-
-	const updateFormBeforeQuery = () => {
-		suppressAutoSavingForOnce.value = true;
-		form.value.assignees = assignees.value;
-
-		suppressAutoSavingForOnce.value = true;
-		if (editorType.value === 'block') {
-			form.value.description = null;
-		} else {
-			form.value.description_json = null;
-		}
-	};
-
-	const toggleTimer = async () => {
-		suppressAutoSavingForOnce.value = true;
-		if (form.value.start_time) {
-			form.value = await stopTaskTimeCounter(+taskId.value);
-		} else {
-			form.value = await startTaskTimeCounter(+taskId.value);
-		}
-
-		/*if (
-			Array.isArray(form.value.checkpoints) &&
-			form.value.checkpoints.length > 0
-		) {
-			form.value.checkpoints[form.value.checkpoints.length - 1].end =
-				form.value.common_time;
-		}*/
-
-		if (form.value.start_time && form.value.status_id) {
-			const statusCurrent = workspaceStatuses.value.find(
-				(el) => el.type !== 'active',
-			);
-			if (statusCurrent) {
-				const firstActiveStatus = workspaceStatuses.value.find(
-					(el) => el.type === 'active',
-				);
-				if (firstActiveStatus) {
-					suppressAutoSavingForOnce.value = true;
-					form.value.status_id = firstActiveStatus.id;
-				}
-			}
-		}
-		await saveTask();
-	};
 
 	useMagicKeys({
 		passive: false,
@@ -313,7 +353,7 @@
 		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
 	>
 		<header class="flex justify-between">
-			<Select v-model="form.status_id">
+			<Select v-model="statusIdStr">
 				<SelectTrigger class="w-40 border-0 bg-transparent">
 					<SelectValue placeholder="status" />
 				</SelectTrigger>
@@ -321,7 +361,7 @@
 					<SelectItem
 						class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
 						v-for="status in statuses"
-						:value="status.id"
+						:value="status.id.toString()"
 						:show-check-mark="false"
 					>
 						<span
@@ -362,7 +402,12 @@
 				"
 			/>
 
-			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />
+			<div>
+				<AssigneesCombobox
+					:assignees="workspaceMembers" 
+					v-model="assignees as any"
+				/>
+			</div>
 
 			<div class="ml-auto">
 				<TimeCounter
@@ -374,21 +419,24 @@
 			</div>
 		</div>
 
-		<Editor
-			v-if="editorType === 'markdown'"
-			v-model="form.description"
-			class="mb-2 grow md:h-72"
-			:class="[!isModal && 'lg:min-h-96']"
-			:show-preview="taskId && form.description"
-		/>
+		<div v-if="isEditorLoading" class="mb-2 grow md:h-72 animate-pulse bg-gray-100 dark:bg-gray-800 rounded"></div>
+		<template v-else>
+			<Editor
+				v-if="editorType === 'markdown'"
+				v-model="form.description"
+				class="mb-2 grow md:h-72"
+				:class="[!isModal && 'lg:min-h-96']"
+				:show-preview="!!(taskId && form.description)"
+			/>
 
-		<BlockEditor
-			v-else-if="editorType === 'block'"
-			v-model="form.description_json"
-			placeholder="Type your description here or enter / to see commands or "
-			class="mb-2 grow border px-2"
-			:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
-		/>
+			<BlockEditor
+				v-else-if="editorType === 'block'"
+				v-model="form.description_json"
+				placeholder="Type your description here or enter / to see commands or "
+				class="mb-2 grow border px-2"
+				:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
+			/>
+		</template>
 
 		<!--	actions	-->
 		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
@@ -448,7 +496,7 @@
 
 				<button
 					v-if="taskId"
-					@click="removeTask"
+					@click="deleteCurrentTask"
 					title="Delete"
 					class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
 				>
