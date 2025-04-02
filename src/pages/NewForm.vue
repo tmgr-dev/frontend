@@ -46,6 +46,31 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 
+	// Helper to get preferred editor with local storage fallback
+	const getPreferredEditorWithFallback = (): EditorType => {
+		// First try to get from store
+		const preferredEditor = store.state.user?.settings?.find(
+			(setting: Record<string, string | number>) =>
+				setting.key === 'preferred_editor',
+		)?.value as EditorType | undefined;
+		
+		if (preferredEditor) {
+			// If found in store, save to localStorage for future fallback
+			localStorage.setItem('preferred_editor', preferredEditor);
+			return preferredEditor;
+		}
+		
+		// If not in store, try to get from localStorage
+		const savedEditor = localStorage.getItem('preferred_editor') as EditorType | null;
+		return savedEditor || 'markdown';
+	};
+
+	// Helper to set editor type and persist to localStorage
+	const setEditorType = (type: EditorType) => {
+		editorType.value = type;
+		localStorage.setItem('preferred_editor', type);
+	};
+
 	interface Props {
 		isModal: boolean;
 		statusId?: number;
@@ -57,7 +82,8 @@
 	const route = useRoute();
 	const router = useRouter();
 
-	const editorType = ref<EditorType>('markdown');
+	// Initialize with stored preference immediately rather than default
+	const editorType = ref<EditorType>(getPreferredEditorWithFallback());
 	const isEditorLoading = ref(true);
 	const assignees = ref<number[]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
@@ -120,7 +146,9 @@
 					setting.key === 'preferred_editor',
 			)?.value as EditorType | undefined;
 			
-			editorType.value = preferredEditor || 'markdown';
+			if (preferredEditor) {
+				setEditorType(preferredEditor);
+			}
 
 			// Load all required data in parallel
 			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
@@ -150,6 +178,15 @@
 				taskData.approximately_time = typeof taskData.approximately_time === 'string' 
 					? parseInt(taskData.approximately_time, 10) || 0 
 					: taskData.approximately_time || 0;
+				
+				// Before setting form value, check if we need to adjust editor type based on content
+				if (taskData.description_json && !taskData.description) {
+					// If task has JSON content but no markdown, use block editor
+					setEditorType('block');
+				} else if (taskData.description && !taskData.description_json) {
+					// If task has markdown but no JSON, use markdown editor
+					setEditorType('markdown');
+				}
 				
 				form.value = taskData;
 
@@ -260,9 +297,21 @@
 		form.value.assignees = assignees.value;
 
 		suppressAutoSavingForOnce.value = true;
+		
+		// Set up form data based on the current editor type
 		if (editorType.value === 'block') {
+			// When using block editor, ensure JSON is present
+			if (!form.value.description_json && form.value.description) {
+				form.value.description_json = getBlockEditorDescription(form.value.description);
+			}
+			// Clear the markdown description since we're using block editor
 			form.value.description = null;
 		} else {
+			// When using markdown editor, ensure description content is not lost
+			if (form.value.description_json && !form.value.description) {
+				form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
+			}
+			// Clear the JSON description since we're using markdown editor
 			form.value.description_json = null;
 		}
 	};
@@ -352,6 +401,19 @@
 			}
 		},
 	});
+
+	// Add a function to toggle between editor types
+	const toggleEditorType = () => {
+		// Save current content before switching
+		updateFormBeforeQuery();
+		
+		// Toggle and save the editor type
+		const newType = editorType.value === 'markdown' ? 'block' : 'markdown';
+		setEditorType(newType);
+		
+		// Update form data for the new editor type
+		updateFormBeforeQuery();
+	};
 </script>
 
 <template>
@@ -428,31 +490,46 @@
 			</div>
 		</div>
 
-		<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
-			<div class="text-center">
-				<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-					<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-				</div>
-				<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
-			</div>
-		</div>
-		<template v-else>
-			<Editor
-				v-if="editorType === 'markdown'"
-				v-model="form.description"
-				class="mb-2 grow md:h-72"
-				:class="[!isModal && 'lg:min-h-96']"
-				:show-preview="!!(taskId && form.description)"
-			/>
+		<!-- Editor section with toggle button -->
+		<div class="relative">
+			<!-- Editor type toggle button -->
+			<button 
+				@click="toggleEditorType" 
+				class="absolute right-2 top-2 z-10 rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+				title="Switch editor type"
+			>
+				{{ editorType === 'markdown' ? 'Switch to Block Editor' : 'Switch to Markdown' }}
+			</button>
 
-			<BlockEditor
-				v-else-if="editorType === 'block'"
-				v-model="form.description_json"
-				placeholder="Type your description here or enter / to see commands or "
-				class="mb-2 grow border px-2"
-				:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
-			/>
-		</template>
+			<!-- Loading state -->
+			<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
+				<div class="text-center">
+					<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+						<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+					</div>
+					<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
+				</div>
+			</div>
+			
+			<!-- Editor components -->
+			<template v-else>
+				<Editor
+					v-if="editorType === 'markdown'"
+					v-model="form.description"
+					class="mb-2 grow md:h-72"
+					:class="[!isModal && 'lg:min-h-96']"
+					:show-preview="!!(taskId && form.description)"
+				/>
+
+				<BlockEditor
+					v-else-if="editorType === 'block'"
+					v-model="form.description_json"
+					placeholder="Type your description here or enter / to see commands or "
+					class="mb-2 grow border px-2"
+					:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
+				/>
+			</template>
+		</div>
 
 		<!--	actions	-->
 		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
