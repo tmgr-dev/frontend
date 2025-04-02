@@ -401,19 +401,6 @@
 			}
 		},
 	});
-
-	// Add a function to toggle between editor types
-	const toggleEditorType = () => {
-		// Save current content before switching
-		updateFormBeforeQuery();
-		
-		// Toggle and save the editor type
-		const newType = editorType.value === 'markdown' ? 'block' : 'markdown';
-		setEditorType(newType);
-		
-		// Update form data for the new editor type
-		updateFormBeforeQuery();
-	};
 </script>
 
 <template>
@@ -492,15 +479,6 @@
 
 		<!-- Editor section with toggle button -->
 		<div class="relative">
-			<!-- Editor type toggle button -->
-			<button 
-				@click="toggleEditorType" 
-				class="absolute right-2 top-2 z-10 rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-				title="Switch editor type"
-			>
-				{{ editorType === 'markdown' ? 'Switch to Block Editor' : 'Switch to Markdown' }}
-			</button>
-
 			<!-- Loading state -->
 			<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
 				<div class="text-center">
