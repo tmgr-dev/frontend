@@ -107,74 +107,83 @@
 
 	onBeforeMount(async () => {
 		isEditorLoading.value = true;
-		const workspaceId = store.state.user?.settings?.find(
-			(setting: Record<string, string | number>) =>
-				setting.key === 'current_workspace',
-		)?.value;
-
-		// Get preferred editor from settings with proper fallback
-		const preferredEditor = store.state.user?.settings?.find(
-			(setting: Record<string, string | number>) =>
-				setting.key === 'preferred_editor',
-		)?.value as EditorType | undefined;
-		
-		editorType.value = preferredEditor || 'markdown';
-
 		try {
+			// First, get the workspaceId and preferred editor from settings
+			const workspaceId = store.state.user?.settings?.find(
+				(setting: Record<string, string | number>) =>
+					setting.key === 'current_workspace',
+			)?.value;
+
+			// Get preferred editor from settings with proper fallback
+			const preferredEditor = store.state.user?.settings?.find(
+				(setting: Record<string, string | number>) =>
+					setting.key === 'preferred_editor',
+			)?.value as EditorType | undefined;
+			
+			editorType.value = preferredEditor || 'markdown';
+
+			// Load all required data in parallel
 			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
 				await Promise.all([
 					getStatuses(),
 					getCategories(),
-					workspaceId && getWorkspaceMembers(workspaceId),
+					workspaceId ? getWorkspaceMembers(workspaceId) : [],
 				]);
 
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
+
+			// Only after all data is loaded, update the task title
+			await updateTaskTitle();
+
+			// Load task data if we have a task ID
+			if (taskId.value) {
+				if (props.isModal) {
+					history.pushState({}, '', `/${taskId.value}`);
+				}
+
+				suppressAutoSavingForOnce.value = true;
+				const taskData = await getTask(taskId.value);
+				
+				// Ensure approximately_time is a number
+				taskData.approximately_time = typeof taskData.approximately_time === 'string' 
+					? parseInt(taskData.approximately_time, 10) || 0 
+					: taskData.approximately_time || 0;
+				
+				form.value = taskData;
+
+				// Update approximately_time from settings if available
+				const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
+				if (approxTime !== undefined) {
+					form.value.approximately_time = typeof approxTime === 'string' 
+						? parseInt(approxTime, 10) || 0 
+						: Number(approxTime) || 0;
+				}
+
+				// Handle editor type and content conversion - this is critical
+				// Make sure we use the correct editor type based on content
+				if (editorType.value === 'block' && !form.value.description_json && form.value.description) {
+					form.value.description_json = getBlockEditorDescription(form.value.description);
+				} else if (editorType.value === 'markdown' && form.value.description_json && !form.value.description) {
+					// If we're in markdown mode but only have JSON description, convert or provide a fallback
+					form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
+				}
+
+				// Handle assignees
+				if (form.value.assignees) {
+					const taskAssignees = form.value.assignees as WorkspaceMember[];
+					assignees.value = taskAssignees.map(assignee => assignee.id);
+				} else {
+					assignees.value = [];
+				}
+			}
 		} catch (e) {
-			console.error(e);
+			console.error('Error loading task data:', e);
+		} finally {
+			// Set loading to false only after everything is done
+			isEditorLoading.value = false;
 		}
-
-		await updateTaskTitle();
-
-		if (taskId.value) {
-			if (props.isModal) {
-				history.pushState({}, '', `/${taskId.value}`);
-			}
-
-			suppressAutoSavingForOnce.value = true;
-			const taskData = await getTask(taskId.value);
-			
-			// Ensure approximately_time is a number
-			taskData.approximately_time = typeof taskData.approximately_time === 'string' 
-				? parseInt(taskData.approximately_time, 10) || 0 
-				: taskData.approximately_time || 0;
-			
-			form.value = taskData;
-
-			// Update approximately_time from settings if available
-			const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
-			if (approxTime !== undefined) {
-				form.value.approximately_time = typeof approxTime === 'string' 
-					? parseInt(approxTime, 10) || 0 
-					: Number(approxTime) || 0;
-			}
-
-			// Handle editor type and content conversion
-			if (editorType.value === 'block' && !form.value.description_json && form.value.description) {
-				form.value.description_json = getBlockEditorDescription(form.value.description);
-			}
-
-			// Handle assignees
-			if (form.value.assignees) {
-				const taskAssignees = form.value.assignees as WorkspaceMember[];
-				assignees.value = taskAssignees.map(assignee => assignee.id);
-			} else {
-				assignees.value = [];
-			}
-		}
-		
-		isEditorLoading.value = false;
 	});
 
 	const updateTaskTitle = async () => {
@@ -419,7 +428,14 @@
 			</div>
 		</div>
 
-		<div v-if="isEditorLoading" class="mb-2 grow md:h-72 animate-pulse bg-gray-100 dark:bg-gray-800 rounded"></div>
+		<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
+			<div class="text-center">
+				<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+					<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+				</div>
+				<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
+			</div>
+		</div>
 		<template v-else>
 			<Editor
 				v-if="editorType === 'markdown'"
