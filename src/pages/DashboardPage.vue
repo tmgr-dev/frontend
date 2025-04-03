@@ -167,8 +167,12 @@ function handlePerPageChange(perPage: number) {
 }
 
 .heatmap-section {
-  @apply border border-gray-200 rounded-lg p-4;
-  min-height: 30rem;
+  @apply rounded-lg;
+  color: #fff;
+  background-color: transparent;
+  border: none;
+  min-height: auto;
+  padding: 0;
 }
 
 .section-header {
