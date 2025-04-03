@@ -151,6 +151,7 @@
 	<div v-if="task" :style="disabledStyles" class="flex flex-col justify-center">
 		<div class="relative flex items-center justify-center">
 			<TaskTimeInfo
+				v-if="task.id"
 				:task-id="task.id"
 				:timer="timer"
 				:approximately-end-time="approximatelyEndTime"

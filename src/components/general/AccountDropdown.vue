@@ -79,9 +79,10 @@
 	} from '@/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import Select from '@/components/general/Select.vue';
-	import { onBeforeMount, onMounted, Ref, ref } from 'vue';
+	import { onBeforeMount, onMounted, Ref, ref, computed } from 'vue';
 	import store from '@/store';
 	import { UserIcon } from 'lucide-vue-next';
+	import { generateWorkspaceUrl } from '@/utils/url';
 
 	const emit = defineEmits(['updateSettings']);
 	const isOpenProfileDropdown = ref(false);
@@ -94,7 +95,10 @@
 		{
 			id: 2,
 			name: 'Archive',
-			to: '/archive',
+			get to() {
+				const workspace = workspaces.value.find(w => w.id === workspaceId.value);
+				return workspace?.code ? `/${workspace.code}/archive` : '/archive';
+			}
 		},
 	];
 	const $wrapper: Ref<HTMLDivElement | null> = ref(null);

@@ -1,10 +1,9 @@
 <template>
 	<div v-if="!task.deleted_at" class="z-10 hidden items-center lg:flex">
-		<new-button
+		<button
 			v-if="showedButtons.done"
 			v-tooltip.top="setTooltipData('Done')"
-			class="mr-2"
-			button-class="bg-blue-700 hover:bg-blue-600"
+			class="mr-2 rounded bg-blue-700 px-2 py-1 text-white hover:bg-blue-600"
 			@click="$emit('updateStatus', task, 'done', `done-${task.id}`)"
 		>
 			<span class="relative">
@@ -15,13 +14,12 @@
 				>
 				<loader v-if="isLoadingActions[`done-${task.id}`]" is-mini />
 			</span>
-		</new-button>
+		</button>
 
-		<new-button
+		<button
 			v-if="showedButtons.activate"
 			v-tooltip.top="setTooltipData('Reactivate')"
-			class="mr-2"
-			button-class="bg-purple-700 hover:bg-purple-600"
+			class="mr-2 rounded bg-purple-700 px-2 py-1 text-white hover:bg-purple-600"
 			@click="$emit('updateStatus', task, 'active', `activate-${task.id}`)"
 		>
 			<span class="relative">
@@ -32,13 +30,12 @@
 				>
 				<loader v-if="isLoadingActions[`activate-${task.id}`]" is-mini />
 			</span>
-		</new-button>
+		</button>
 
-		<new-button
+		<button
 			v-if="showedButtons.hide"
 			v-tooltip.top="setTooltipData('Hide')"
-			class="mr-2"
-			button-class="bg-gray-700 hover:bg-gray-600"
+			class="mr-2 rounded bg-gray-700 px-2 py-1 text-white hover:bg-gray-600"
 			@click="$emit('updateStatus', task, 'hidden', `hide-${task.id}`)"
 		>
 			<span class="relative">
@@ -47,13 +44,12 @@
 				>
 				<loader v-if="isLoadingActions[`hide-${task.id}`]" is-mini />
 			</span>
-		</new-button>
+		</button>
 
-		<new-button
+		<button
 			v-if="showedButtons.deleteTask"
 			v-tooltip.top="setTooltipData('Delete task')"
-			class="mr-2"
-			button-class="bg-red-700 hover:bg-red-600"
+			class="mr-2 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600"
 			@click="removeTask(task, `delete-${task.id}`)"
 		>
 			<span class="relative">
@@ -64,17 +60,17 @@
 				>
 				<loader v-if="isLoadingActions[`delete-${task.id}`]" is-mini />
 			</span>
-		</new-button>
+		</button>
 	</div>
 
 	<div v-else class="z-10 hidden items-center lg:flex">
-		<new-button
+		<button
 			v-tooltip.top="setTooltipData('Restore from trash')"
-			class="mr-2"
+			class="mr-2 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600"
 			@click="restoreTask(task)"
 		>
 			<span class="material-icons">restore_from_trash</span>
-		</new-button>
+		</button>
 	</div>
 
 	<Transition name="fade">

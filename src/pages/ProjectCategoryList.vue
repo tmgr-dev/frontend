@@ -274,6 +274,18 @@
 		loadCategories();
 	};
 
+	const getWorkspaceCode = () => {
+		const currentWorkspaceId = store.state.user?.settings?.find(
+			setting => setting.key === 'current_workspace'
+		)?.value;
+		
+		const currentWorkspace = store.state.workspaces?.find(
+			workspace => Number(workspace.id) === Number(currentWorkspaceId)
+		);
+		
+		return currentWorkspace?.code;
+	};
+
 	onMounted(async () => {
 		// Initialize pagination from URL query parameters
 		if (route.query.categories_page) {
@@ -329,14 +341,22 @@
 					</Button>
 
 					<Button
-						@click="
-							() =>
+						@click="() => {
+							const workspaceCode = getWorkspaceCode();
+							if (workspaceCode) {
+								router.push(
+									`/${workspaceCode}/categories/${
+										route.params.id ? `${route.params.id}/` : ''
+									}create`
+								);
+							} else {
 								router.push(
 									`/projects-categories/${
 										route.params.id ? `${route.params.id}/` : ''
-									}create`,
-								)
-						"
+									}create`
+								);
+							}
+						}"
 					>
 						<FolderPlusIcon />
 						{{ route.params.id ? 'Create subcategory' : 'Create category' }}
@@ -376,10 +396,18 @@
 							class="relative h-full cursor-pointer p-2 !pr-12 shadow transition hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 							:class="category.hoverClass"
 							@click="
-								$router.push({
-									name: 'ProjectCategoryChildrenList',
-									params: { id: category.id },
-								})
+								const workspaceCode = getWorkspaceCode();
+								if (workspaceCode) {
+									$router.push({
+										name: 'WorkspaceCategoryChildren',
+										params: { workspace_code: workspaceCode, id: category.id }
+									});
+								} else {
+									$router.push({
+										name: 'ProjectCategoryChildrenList',
+										params: { id: category.id }
+									});
+								}
 							"
 						>
 							<h3 class="text-xl font-bold">
@@ -423,7 +451,14 @@
 									<DropdownMenuContent class="mr-4 mt-1">
 										<DropdownMenuItem
 											@click="
-												() => router.push(`/projects-categories/${category.id}`)
+												() => {
+													const workspaceCode = getWorkspaceCode();
+													if (workspaceCode) {
+														router.push(`/${workspaceCode}/categories/${category.id}`);
+													} else {
+														router.push(`/projects-categories/${category.id}`);
+													}
+												}
 											"
 										>
 											<FolderPenIcon />

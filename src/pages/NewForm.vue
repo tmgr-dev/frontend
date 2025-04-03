@@ -45,6 +45,7 @@
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
+	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 
 	// Helper to get preferred editor with local storage fallback
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -168,7 +169,23 @@
 			// Load task data if we have a task ID
 			if (taskId.value) {
 				if (props.isModal) {
-					history.pushState({}, '', `/${taskId.value}`);
+					// Update URL if in modal
+					const currentWorkspaceId = store.state.user?.settings?.find(
+						(setting: Record<string, any>) => setting.key === 'current_workspace'
+					)?.value;
+					
+					const currentWorkspace = (store.state.workspaces || []).find(
+						(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
+					);
+					
+					// Only update URL if we have a workspace and we're in modal mode
+					if (currentWorkspace) {
+						const url = generateTaskUrl(taskId.value, currentWorkspace, null);
+						if (url && url !== '/') {
+							history.replaceState({}, '', url);
+							store.state.urlManuallyChanged = true;
+						}
+					}
 				}
 
 				suppressAutoSavingForOnce.value = true;
@@ -252,15 +269,33 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value = await createTaskAction(form.value as Task);
 
+			// Get current workspace
+			const currentWorkspaceId = store.state.user?.settings?.find(
+				(setting: Record<string, any>) => setting.key === 'current_workspace'
+			)?.value;
+			
+			const currentWorkspace = (store.state.workspaces || []).find(
+				(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+			);
+			
+			const category = 
+				form.value.category && typeof form.value.category === 'object'
+					? form.value.category
+					: null;
+			
 			if (props.isModal) {
-				history.pushState({}, '', `/${form.value.id}`);
+				const url = generateTaskUrl(form.value.id as number, currentWorkspace, category);
+				if (url && url !== '/') {
+					history.replaceState({}, '', url);
+					store.state.urlManuallyChanged = true;
+				}
 			} else {
-				await router.push({
-					name: 'TasksEdit',
-					params: {
-						id: form.value.id,
-					},
-				});
+				const url = generateTaskUrl(form.value.id as number, currentWorkspace, category);
+				if (url && url !== '/') {
+					await router.push(url);
+				} else {
+					console.error('Invalid URL generated for task navigation');
+				}
 			}
 		} catch (e) {
 			console.error(e);
@@ -281,7 +316,16 @@
 					emit('close');
 					store.commit('incrementReloadTasksKey');
 				} else {
-					await router.replace('/');
+					// Get current workspace
+					const currentWorkspaceId = store.state.user?.settings?.find(
+						(setting: Record<string, any>) => setting.key === 'current_workspace'
+					)?.value;
+					
+					const currentWorkspace = (store.state.workspaces || []).find(
+						(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+					);
+					
+					await router.replace(generateWorkspaceUrl('list', currentWorkspace));
 				}
 			} catch (e) {
 				console.error(e);
@@ -401,179 +445,201 @@
 			}
 		},
 	});
+
+	const generateTaskUrlForAdvancedForm = () => {
+		if (!taskId.value) return '/';
+		
+		// Get current workspace
+		const currentWorkspaceId = store.state.user?.settings?.find(
+			(setting: Record<string, any>) => setting.key === 'current_workspace'
+		)?.value;
+		
+		const currentWorkspace = (store.state.workspaces || []).find(
+			(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+		);
+		
+		const category = 
+			form.value.category && typeof form.value.category === 'object'
+				? form.value.category
+				: null;
+		
+		return generateTaskUrl(taskId.value, currentWorkspace, category);
+	};
 </script>
 
 <template>
-	<teleport to="title">{{ form.title }}&nbsp;</teleport>
+	<div class="new-form-container">
+		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
-	<div
-		class="flex h-full flex-col gap-4 overflow-y-auto p-6"
-		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
-	>
-		<header class="flex justify-between">
-			<Select v-model="statusIdStr">
-				<SelectTrigger class="w-40 border-0 bg-transparent">
-					<SelectValue placeholder="status" />
-				</SelectTrigger>
-				<SelectContent class="border-0 bg-white dark:bg-gray-800">
-					<SelectItem
-						class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-						v-for="status in statuses"
-						:value="status.id.toString()"
-						:show-check-mark="false"
-					>
-						<span
-							class="mr-3 inline-block size-2 shrink-0 rounded-full"
-							:style="{ backgroundColor: status.color }"
-						/>
-						{{ status.name }}
-					</SelectItem>
-				</SelectContent>
-			</Select>
+		<div
+			class="flex h-full flex-col gap-4 overflow-y-auto p-6"
+			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
+		>
+			<header class="flex justify-between">
+				<Select v-model="statusIdStr">
+					<SelectTrigger class="w-40 border-0 bg-transparent">
+						<SelectValue placeholder="status" />
+					</SelectTrigger>
+					<SelectContent class="border-0 bg-white dark:bg-gray-800">
+						<SelectItem
+							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+							v-for="status in statuses"
+							:value="status.id.toString()"
+							:show-check-mark="false"
+						>
+							<span
+								class="mr-3 inline-block size-2 shrink-0 rounded-full"
+								:style="{ backgroundColor: status.color }"
+							/>
+							{{ status.name }}
+						</SelectItem>
+					</SelectContent>
+				</Select>
 
-			<SettingsComponent v-if="!isModal" :form="form" />
+				<SettingsComponent v-if="!isModal" :form="form" />
 
-			<button v-if="isModal" @click="emit('close')">
-				<XMarkIcon
-					class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
-				/>
-			</button>
-		</header>
+				<button v-if="isModal" @click="emit('close')">
+					<XMarkIcon
+						class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+					/>
+				</button>
+			</header>
 
-		<TextField
-			v-model="form.title"
-			class="w-full"
-			input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
-			placeholder="Task name"
-		/>
-
-		<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
-			<CategoriesCombobox
-				:categories="categories"
-				v-model="form.project_category_id"
-				@update:model-value="
-					() => {
-						if (!form.title) {
-							updateTaskTitle();
-						}
-					}
-				"
+			<TextField
+				v-model="form.title"
+				class="w-full"
+				input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
+				placeholder="Task name"
 			/>
 
-			<div>
-				<AssigneesCombobox
-					:assignees="workspaceMembers" 
-					v-model="assignees as any"
+			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
+				<CategoriesCombobox
+					:categories="categories"
+					v-model="form.project_category_id"
+					@update:model-value="
+						() => {
+							if (!form.title) {
+								updateTaskTitle();
+							}
+						}
+					"
 				/>
-			</div>
 
-			<div class="ml-auto">
-				<TimeCounter
-					v-if="form.id"
-					:form="form"
-					:disabled="!form.id"
-					@toggle="toggleTimer"
-				/>
-			</div>
-		</div>
+				<div>
+					<AssigneesCombobox
+						:assignees="workspaceMembers" 
+						v-model="assignees as any"
+					/>
+				</div>
 
-		<!-- Editor section with toggle button -->
-		<div class="relative">
-			<!-- Loading state -->
-			<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
-				<div class="text-center">
-					<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-						<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-					</div>
-					<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
+				<div class="ml-auto">
+					<TimeCounter
+						v-if="form.id"
+						:form="form"
+						:disabled="!form.id"
+						@toggle="toggleTimer"
+					/>
 				</div>
 			</div>
-			
-			<!-- Editor components -->
-			<template v-else>
-				<Editor
-					v-if="editorType === 'markdown'"
-					v-model="form.description"
-					class="mb-2 grow md:h-72"
-					:class="[!isModal && 'lg:min-h-96']"
-					:show-preview="!!(taskId && form.description)"
-				/>
 
-				<BlockEditor
-					v-else-if="editorType === 'block'"
-					v-model="form.description_json"
-					placeholder="Type your description here or enter / to see commands or "
-					class="mb-2 grow border px-2"
-					:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
-				/>
-			</template>
-		</div>
+			<!-- Editor section with toggle button -->
+			<div class="relative">
+				<!-- Loading state -->
+				<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
+					<div class="text-center">
+						<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+							<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+						</div>
+						<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
+					</div>
+				</div>
+				
+				<!-- Editor components -->
+				<template v-else>
+					<Editor
+						v-if="editorType === 'markdown'"
+						v-model="form.description"
+						class="mb-2 grow md:h-72"
+						:class="[!isModal && 'lg:min-h-96']"
+						:show-preview="!!(taskId && form.description)"
+					/>
 
-		<!--	actions	-->
-		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
-			<div class="flex justify-end gap-3 text-center">
-				<a
-					v-if="isModal && taskId"
-					:href="`/${taskId}`"
-					title="Open advanced form"
-					class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
-				>
-					<ArrowTopRightOnSquareIcon class="size-5" />
-				</a>
+					<BlockEditor
+						v-else-if="editorType === 'block'"
+						v-model="form.description_json"
+						placeholder="Type your description here or enter / to see commands or "
+						class="mb-2 grow border px-2"
+						:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
+					/>
+				</template>
+			</div>
 
-				<span class="relative inline-flex rounded-md shadow-sm">
+			<!--	actions	-->
+			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
+				<div class="flex justify-end gap-3 text-center">
+					<a
+						v-if="isModal && taskId"
+						:href="generateTaskUrlForAdvancedForm()"
+						title="Open advanced form"
+						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+					>
+						<ArrowTopRightOnSquareIcon class="size-5" />
+					</a>
+
+					<span class="relative inline-flex rounded-md shadow-sm">
+						<button
+							v-if="taskId"
+							@click="saveTask()"
+							class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+							type="button"
+							title="save"
+						>
+							<svg
+								v-if="isAutoSaving || isLoading"
+								class="size-6 animate-spin text-white"
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								/>
+							</svg>
+
+							<BookmarkIcon v-else class="size-6" />
+						</button>
+					</span>
+
+					<button
+						v-if="!taskId"
+						@click="createTask"
+						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+						type="button"
+						title="Create"
+					>
+						<DocumentPlusIcon class="size-6" />
+					</button>
+
 					<button
 						v-if="taskId"
-						@click="saveTask()"
-						class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
-						type="button"
-						title="save"
+						@click="deleteCurrentTask"
+						title="Delete"
+						class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
 					>
-						<svg
-							v-if="isAutoSaving || isLoading"
-							class="size-6 animate-spin text-white"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="none"
-							viewBox="0 0 24 24"
-						>
-							<circle
-								class="opacity-25"
-								cx="12"
-								cy="12"
-								r="10"
-								stroke="currentColor"
-								stroke-width="4"
-							/>
-							<path
-								class="opacity-75"
-								fill="currentColor"
-								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-							/>
-						</svg>
-
-						<BookmarkIcon v-else class="size-6" />
+						<TrashIcon class="size-5" />
 					</button>
-				</span>
-
-				<button
-					v-if="!taskId"
-					@click="createTask"
-					class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
-					type="button"
-					title="Create"
-				>
-					<DocumentPlusIcon class="size-6" />
-				</button>
-
-				<button
-					v-if="taskId"
-					@click="deleteCurrentTask"
-					title="Delete"
-					class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
-				>
-					<TrashIcon class="size-5" />
-				</button>
-			</div>
-		</footer>
+				</div>
+			</footer>
+		</div>
 	</div>
 </template>
