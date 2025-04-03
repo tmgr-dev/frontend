@@ -9,7 +9,11 @@ export interface Task {
 	id: number | undefined;
 	approximately_time: number;
 	assignees: Record<string, any>[] | number[];
-	category: number;
+	category: number | {
+		id: number;
+		title: string;
+		code: string;
+	};
 	title: string;
 	status: string;
 	description: string | null;

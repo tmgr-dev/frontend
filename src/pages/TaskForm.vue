@@ -267,7 +267,7 @@
 					>
 						<a
 							class="material-icons text-2xl text-black dark:text-white"
-							:href="`/${taskId}`"
+							:href="getTaskUrl(taskId)"
 						>
 							open_in_new
 						</a>
@@ -474,6 +474,7 @@
 	import store from '@/store';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import TimeCounter from '@/components/TimeCounter.vue';
+	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 
 	export default {
 		name: 'TaskForm',
@@ -577,6 +578,8 @@
 				isProcessing: false,
 				comment: {},
 				isShowAlert: true,
+				workspaces: [],
+				loading: true,
 			};
 		},
 		watch: {
@@ -676,7 +679,7 @@
 			},
 			handleHistoryState() {
 				if (this.isModal && !this.isCreatingTask) {
-					history.pushState({}, '', `/${this.taskId}`);
+					history.replaceState({}, '', `/${this.taskId}`);
 				}
 			},
 			close() {
@@ -996,12 +999,20 @@
 						this.showAlert();
 					}
 					if (!this.isModal) {
-						await this.$router.push({
-							name: 'TasksEdit',
-							params: {
-								id: data.id,
-							},
-						});
+						const currentWorkspaceId = this.$store.state.user?.settings?.find(
+							setting => setting.key === 'current_workspace'
+						)?.value;
+						
+						const currentWorkspace = this.workspaces.find(
+							workspace => workspace.id === currentWorkspaceId
+						);
+						
+						const category = 
+							data.category && typeof data.category === 'object'
+								? data.category
+								: null;
+								
+						await this.$router.push(generateTaskUrl(data.id, currentWorkspace, category));
 					} else {
 						this.form = data;
 						this.handleHistoryState();
@@ -1060,7 +1071,15 @@
 				}
 			},
 			goToCurrentTasks() {
-				this.$router.push('/');
+				const currentWorkspaceId = this.$store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				const currentWorkspace = this.workspaces.find(
+					workspace => workspace.id === currentWorkspaceId
+				);
+				
+				this.$router.push(generateWorkspaceUrl('list', currentWorkspace));
 			},
 			addCheckpoint() {
 				const { form } = this;
@@ -1091,6 +1110,36 @@
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds;
 			},
 			async initComponent() {
+				this.loading = true;
+				
+				// Load workspaces
+				try {
+					this.workspaces = await this.$store.dispatch('loadWorkspaces');
+				} catch (error) {
+					console.error('Failed to load workspaces:', error);
+				}
+				
+				if (this.isCreatingTask) {
+					this.form = {
+						title: '',
+						description: '',
+						assignees: [],
+						project_category_id: this.projectCategoryId,
+					};
+				} else if (this.taskId) {
+					try {
+						this.form = await getTask(this.taskId);
+					} catch (e) {
+						// eslint-disable-next-line
+						console.error(e);
+						
+						// redirect to a 404
+						if (e.response && e.response.status === 404) {
+							this.$router.push('/not-found');
+						}
+					}
+				}
+
 				if (this.taskId) {
 					await this.loadModel();
 					this.workspaceMembers = await getWorkspaceMembers(
@@ -1138,10 +1187,50 @@
 							this.setFormDataWithDelay(task);
 						}
 					});
+
+				this.loading = false;
+			},
+			getTaskUrl(taskId) {
+				if (!this.workspaces || !this.workspaces.length) {
+					return `/${taskId}`;
+				}
+				
+				const currentWorkspaceId = this.$store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				const currentWorkspace = this.workspaces.find(
+					workspace => workspace.id === currentWorkspaceId
+				);
+				
+				const category = 
+					this.form && this.form.category && typeof this.form.category === 'object'
+						? this.form.category
+						: null;
+				
+				return generateTaskUrl(taskId, currentWorkspace, category);
 			},
 		},
 		async created() {
-			await this.initComponent();
+			try {
+				await this.initComponent();
+				this.$watch(
+					'taskId',
+					async function (val) {
+						if (val) {
+							await this.initComponent();
+						}
+					},
+					{
+						immediate: true,
+					},
+				);
+				this.loading = false;
+			} catch (e) {
+				// eslint-disable-next-line
+				console.error(e);
+				this.loading = false;
+			}
 		},
 	};
 </script>

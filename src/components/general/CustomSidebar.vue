@@ -49,7 +49,7 @@
 		FolderClosedIcon,
 		ClipboardListIcon,
 	} from 'lucide-vue-next';
-	import { onBeforeMount, ref } from 'vue';
+	import { onBeforeMount, ref, computed, onMounted, watch } from 'vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.ts';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
@@ -57,9 +57,11 @@
 	import store from '@/store';
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
-	import { useRoute } from 'vue-router';
+	import { useRoute, useRouter } from 'vue-router';
+	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
 
 	const route = useRoute();
+	const router = useRouter();
 	const user = ref<User>({} as User);
 	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>([]);
@@ -111,9 +113,66 @@
 		}
 	});
 
+	// Watch for changes to the current workspace in the store
+	watch(() => store.state.user?.settings, (newSettings) => {
+		if (newSettings && workspaces.value.length > 0) {
+			const currentWorkspaceId = newSettings.find(
+				(setting: any) => setting.key === 'current_workspace'
+			)?.value;
+			
+			if (currentWorkspaceId) {
+				const newActiveWorkspace = workspaces.value.find(
+					(workspace: Workspace) => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (newActiveWorkspace && activeWorkspace.value?.id !== newActiveWorkspace.id) {
+					console.log(`Updating active workspace in sidebar from ${activeWorkspace.value?.name} to ${newActiveWorkspace.name}`);
+					activeWorkspace.value = newActiveWorkspace;
+				}
+			}
+		}
+	}, { deep: true });
+
+	// Also watch for app rerenders
+	watch(() => store.state.appRerenderKey, async () => {
+		if (store.getters.isLoggedIn && workspaces.value.length > 0) {
+			// Re-check the current workspace from settings
+			const currentWorkspaceId = store.state.user?.settings?.find(
+				(setting: any) => setting.key === 'current_workspace'
+			)?.value;
+			
+			if (currentWorkspaceId) {
+				const newActiveWorkspace = workspaces.value.find(
+					(workspace: Workspace) => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (newActiveWorkspace) {
+					activeWorkspace.value = newActiveWorkspace;
+				}
+			}
+		}
+	});
+
 	const setActiveWorkspace = async (workspace: Workspace) => {
+		// Update UI immediately
 		activeWorkspace.value = workspace;
+		
 		try {
+			// Update the URL to match the new workspace code
+			const currentPath = window.location.pathname;
+			const pathParts = currentPath.split('/');
+			
+			// If the URL starts with a workspace code, replace it
+			if (pathParts.length > 1 && pathParts[1]) {
+				// Replace the workspace code in the URL
+				pathParts[1] = workspace.code;
+				const newPath = pathParts.join('/');
+				
+				// Use history.replaceState to update the URL without navigating
+				history.replaceState({}, '', newPath);
+			}
+			
+			// Prepare settings update for backend
 			const settingsWithUpdatedWorkspace = user.value?.settings.map(
 				(setting) => {
 					if (setting.key === 'current_workspace') {
@@ -127,12 +186,41 @@
 				},
 			);
 
+			// Update settings in backend
 			await updateUserSettingsV2(settingsWithUpdatedWorkspace);
-			document.location.reload();
+			
+			// Update store without a page reload
+			store.commit('setUser', {
+				...store.state.user,
+				settings: settingsWithUpdatedWorkspace
+			});
+			
+			// Update the workspace setting directly
+			store.commit('updateUserWorkspaceSetting', {
+				workspaceId: workspace.id
+			});
+			
+			// Trigger UI updates
+			store.commit('rerenderApp');
 		} catch (error) {
 			console.error('Failed to update workspace:', error);
+			// If there's an error, fall back to page reload
+			document.location.reload();
 		}
 	};
+
+	// Get the current workspace from store
+	const currentWorkspace = computed(() => {
+		const currentWorkspaceId = store.state.user?.settings?.find(
+			(setting: any) => setting.key === 'current_workspace'
+		)?.value;
+		
+		return store.state.workspaces.find(
+			(workspace: any) => Number(workspace.id) === Number(currentWorkspaceId)
+		);
+	});
+
+	const archiveUrl = computed(() => generateWorkspaceUrl('archive', activeWorkspace.value));
 </script>
 
 <template>
@@ -150,10 +238,7 @@
 									<div
 										class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
 									>
-										<component
-											:is="activeWorkspace?.logo || PackageOpen"
-											class="size-4"
-										/>
+										<PackageOpen class="size-4" />
 									</div>
 
 									<div class="grid flex-1 text-left text-sm leading-tight">
@@ -228,7 +313,9 @@
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
-								<router-link to="/">
+								<router-link :to="activeWorkspace?.code 
+									? `/${activeWorkspace.code}/list` 
+									: '/list'">
 									<ClipboardListIcon />
 									<span>List</span>
 								</router-link>
@@ -237,7 +324,9 @@
 
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
-								<router-link to="/board">
+								<router-link :to="activeWorkspace?.code 
+									? `/${activeWorkspace.code}/board` 
+									: '/board'">
 									<SquareKanban />
 									<span>Board</span>
 								</router-link>
@@ -246,7 +335,7 @@
 
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
-								<router-link to="/daily-routines">
+								<router-link to="/routines">
 									<Inbox />
 									<span>Daily Routines</span>
 								</router-link>
@@ -255,7 +344,9 @@
 
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
-								<router-link to="/projects-categories">
+								<router-link :to="activeWorkspace?.code 
+									? `/${activeWorkspace.code}/categories` 
+									: '/projects-categories'">
 									<FolderClosedIcon />
 									<span>Categories</span>
 								</router-link>
@@ -270,7 +361,7 @@
 					<SidebarMenu>
 						<SidebarMenuItem v-for="item in categories" :key="item.title">
 							<SidebarMenuButton as-child>
-								<router-link :to="`/projects-categories/${item.id}/children`">
+								<router-link :to="activeWorkspace?.code ? generateCategoryUrl(item.id, activeWorkspace) : `/projects-categories/${item.id}/children`">
 									<span>{{ item.title }}</span>
 								</router-link>
 							</SidebarMenuButton>
@@ -284,7 +375,7 @@
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
-								<router-link to="/archive">
+								<router-link :to="activeWorkspace?.code ? `/${activeWorkspace.code}/archive` : '/archive'">
 									<ArchiveIcon />
 									<span>Archive</span>
 								</router-link>
@@ -413,7 +504,9 @@
 						<BreadcrumbList>
 							<BreadcrumbItem class="hidden md:block">
 								<BreadcrumbLink>
-									<router-link to="/"> TMGR.DEV </router-link>
+									<router-link :to="activeWorkspace?.code ? `/${activeWorkspace.code}/list` : '/list'"> 
+										TMGR.DEV 
+									</router-link>
 								</BreadcrumbLink>
 							</BreadcrumbItem>
 

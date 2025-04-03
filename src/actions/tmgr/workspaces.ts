@@ -7,6 +7,7 @@ export interface Workspace {
 	is_default: boolean;
 	type: string;
 	user_id: number;
+	code: string;
 }
 
 export const getWorkspaces = async (): Promise<Workspace[]> => {
