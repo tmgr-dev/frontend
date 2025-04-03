@@ -3,6 +3,7 @@ const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
 const ProjectCategoryForm = () => import('@/pages/ProjectCategoryForm.vue');
+const DashboardPage = () => import('@/pages/DashboardPage.vue');
 
 // Helper function to get current workspace
 const getCurrentWorkspaceCode = () => {
@@ -107,14 +108,14 @@ const routes = [
 	// Legacy routes - keep for backward compatibility
 	{
 		path: '/',
-		component: TasksListPage,
+		component: DashboardPage,
 		meta: {
-			title: 'Current tasks',
+			title: 'Dashboard',
 			transitionName: 'slide',
 			navbarHidden: true,
 			requiresAuth: true,
 		},
-		name: 'RootTasksList',
+		name: 'Dashboard',
 	},
 	// Define a direct route for the list page (legacy approach)
 	{
