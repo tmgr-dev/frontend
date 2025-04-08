@@ -46,35 +46,8 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 
-	// Helper to get preferred editor with local storage fallback
-	const getPreferredEditorWithFallback = (): EditorType => {
-		// First try to get from store
-		const preferredEditor = store.state.user?.settings?.find(
-			(setting: Record<string, string | number>) =>
-				setting.key === 'preferred_editor',
-		)?.value as EditorType | undefined;
-		
-		if (preferredEditor) {
-			// If found in store, save to localStorage for future fallback
-			localStorage.setItem('preferred_editor', preferredEditor);
-			return preferredEditor;
-		}
-		
-		// If not in store, try to get from localStorage
-		const savedEditor = localStorage.getItem('preferred_editor') as EditorType | null;
-		return savedEditor || 'markdown';
-	};
-
-	// Helper to set editor type and persist to localStorage
-	const setEditorType = (type: EditorType) => {
-		editorType.value = type;
-		localStorage.setItem('preferred_editor', type);
-	};
-
 	interface Props {
 		isModal: boolean;
-		statusId?: number;
-		modalProjectCategoryId?: number;
 	}
 
 	const props = defineProps<Props>();
@@ -82,40 +55,24 @@
 	const route = useRoute();
 	const router = useRouter();
 
-	// Initialize with stored preference immediately rather than default
-	const editorType = ref<EditorType>(getPreferredEditorWithFallback());
-	const isEditorLoading = ref(true);
-	const assignees = ref<number[]>([]);
+	const editorType = ref<EditorType>('markdown');
+	const assignees = ref<WorkspaceMember['id'][]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
 	);
-	const form = ref<Task>({
-		title: '',
-		description: '',
-		description_json: null,
-		approximately_time: 0,
-		assignees: [],
+	// @todo find out why v-model doesn't work with reactive
+	//let form = reactive<Partial<Task>>({});
+	let form = ref<Partial<Task>>({
+		// @todo found out what the rudiment this is
 		status: 'created',
-		status_id: props.statusId ?? 0,
-		project_category_id: props.modalProjectCategoryId ?? null,
-		common_time: 0,
-		is_daily_routine: false,
-		order: 0,
-		start_time: 0,
-		user_id: store.state.user?.id || 0,
-		workspace_id: undefined,
-		id: undefined,
-		category: 0,
-		user: {
-			id: store.state.user?.id || 0,
-			name: store.state.user?.name || ''
-		}
+		status_id: store.state.taskStatusId || undefined,
+		project_category_id:
+			+route.params.project_category_id || modalProjectCategoryId.value,
 	});
-	const taskId = computed(() => {
-		const id = modalTaskId.value || route.params.id;
-		return id ? Number(id) : undefined;
-	});
+	const taskId = computed(
+		() => modalTaskId.value || (route.params.id as string) || form.value?.id,
+	);
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
@@ -124,102 +81,63 @@
 		() => store.state.workspaceStatuses as Status[],
 	);
 
-	const statusIdStr = computed({
-		get: () => form.value.status_id?.toString() || '',
-		set: (value: string) => {
-			form.value.status_id = parseInt(value, 10);
-		},
-	});
-
 	onBeforeMount(async () => {
-		isEditorLoading.value = true;
-		try {
-			// First, get the workspaceId and preferred editor from settings
-			const workspaceId = store.state.user?.settings?.find(
-				(setting: Record<string, string | number>) =>
-					setting.key === 'current_workspace',
-			)?.value;
+		const workspaceId = store.state.user?.settings?.find(
+			(setting: Record<string, string | number>) =>
+				setting.key === 'current_workspace',
+		)?.value;
 
-			// Get preferred editor from settings with proper fallback
-			const preferredEditor = store.state.user?.settings?.find(
+		editorType.value =
+			store.state.user?.settings?.find(
 				(setting: Record<string, string | number>) =>
 					setting.key === 'preferred_editor',
-			)?.value as EditorType | undefined;
-			
-			if (preferredEditor) {
-				setEditorType(preferredEditor);
-			}
+			)?.value || editorType.value;
 
-			// Load all required data in parallel
+		try {
 			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
 				await Promise.all([
 					getStatuses(),
 					getCategories(),
-					workspaceId ? getWorkspaceMembers(workspaceId) : [],
+					workspaceId && getWorkspaceMembers(workspaceId),
 				]);
 
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
-
-			// Only after all data is loaded, update the task title
-			await updateTaskTitle();
-
-			// Load task data if we have a task ID
-			if (taskId.value) {
-				if (props.isModal) {
-					history.pushState({}, '', `/${taskId.value}`);
-				}
-
-				suppressAutoSavingForOnce.value = true;
-				const taskData = await getTask(taskId.value);
-				
-				// Ensure approximately_time is a number
-				taskData.approximately_time = typeof taskData.approximately_time === 'string' 
-					? parseInt(taskData.approximately_time, 10) || 0 
-					: taskData.approximately_time || 0;
-				
-				// Before setting form value, check if we need to adjust editor type based on content
-				if (taskData.description_json && !taskData.description) {
-					// If task has JSON content but no markdown, use block editor
-					setEditorType('block');
-				} else if (taskData.description && !taskData.description_json) {
-					// If task has markdown but no JSON, use markdown editor
-					setEditorType('markdown');
-				}
-				
-				form.value = taskData;
-
-				// Update approximately_time from settings if available
-				const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
-				if (approxTime !== undefined) {
-					form.value.approximately_time = typeof approxTime === 'string' 
-						? parseInt(approxTime, 10) || 0 
-						: Number(approxTime) || 0;
-				}
-
-				// Handle editor type and content conversion - this is critical
-				// Make sure we use the correct editor type based on content
-				if (editorType.value === 'block' && !form.value.description_json && form.value.description) {
-					form.value.description_json = getBlockEditorDescription(form.value.description);
-				} else if (editorType.value === 'markdown' && form.value.description_json && !form.value.description) {
-					// If we're in markdown mode but only have JSON description, convert or provide a fallback
-					form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
-				}
-
-				// Handle assignees
-				if (form.value.assignees) {
-					const taskAssignees = form.value.assignees as WorkspaceMember[];
-					assignees.value = taskAssignees.map(assignee => assignee.id);
-				} else {
-					assignees.value = [];
-				}
-			}
 		} catch (e) {
-			console.error('Error loading task data:', e);
-		} finally {
-			// Set loading to false only after everything is done
-			isEditorLoading.value = false;
+			console.error(e);
+		}
+
+		await updateTaskTitle();
+
+		if (taskId.value) {
+			if (props.isModal) {
+				history.pushState({}, '', `/${taskId.value}`);
+			}
+
+			suppressAutoSavingForOnce.value = true;
+			form.value = await getTask(+taskId.value);
+
+			form.value.approximately_time =
+				Number(
+					form.value.settings?.find((item) => item.key === 'approximately_time')
+						?.value,
+				) || 0;
+
+			if (
+				editorType.value === 'block' &&
+				!form.value.description_json &&
+				form.value.description
+			) {
+				form.value.description_json = getBlockEditorDescription(
+					form.value.description,
+				);
+			}
+
+			assignees.value =
+				(form.value.assignees as WorkspaceMember[])?.map(
+					(assignee) => assignee.id,
+				) || [];
 		}
 	});
 
@@ -271,11 +189,11 @@
 		if (taskId.value) {
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(taskId.value);
+				form.value = await stopTaskTimeCounter(+taskId.value);
 			}
 
 			try {
-				await deleteTask(taskId.value);
+				await deleteTask(+taskId.value);
 
 				if (props.isModal) {
 					emit('close');
@@ -291,40 +209,22 @@
 
 	const suppressAutoSavingForOnce = ref(false);
 
-	const updateFormBeforeQuery = () => {
-		suppressAutoSavingForOnce.value = true;
-		// Ensure assignees is properly typed as Record<string, any>[] | number[]
-		form.value.assignees = assignees.value;
-
-		suppressAutoSavingForOnce.value = true;
-		
-		// Set up form data based on the current editor type
-		if (editorType.value === 'block') {
-			// When using block editor, ensure JSON is present
-			if (!form.value.description_json && form.value.description) {
-				form.value.description_json = getBlockEditorDescription(form.value.description);
-			}
-			// Clear the markdown description since we're using block editor
-			form.value.description = null;
-		} else {
-			// When using markdown editor, ensure description content is not lost
-			if (form.value.description_json && !form.value.description) {
-				form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
-			}
-			// Clear the JSON description since we're using markdown editor
-			form.value.description_json = null;
-		}
-	};
-
 	const saveTask = async () => {
-		if (!taskId.value) return;
+		if (!form.value.id) return;
 
 		isLoading.value = true;
 		updateFormBeforeQuery();
 
 		try {
 			suppressAutoSavingForOnce.value = true;
-			form.value = await updateTask(taskId.value, form.value as Task);
+			form.value.approximately_time =
+				Number(
+					form.value.settings?.find((item) => item.key === 'approximately_time')
+						?.value,
+				) || 0;
+
+			suppressAutoSavingForOnce.value = true;
+			form.value = await updateTask(+taskId.value, form.value as Task);
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
@@ -333,50 +233,7 @@
 		}
 	};
 
-	const deleteCurrentTask = async () => {
-		if (!taskId.value) return;
-
-		isLoading.value = true;
-
-		try {
-			if (form.value.start_time) {
-				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(taskId.value);
-			}
-
-			await deleteTask(taskId.value);
-
-			if (props.isModal) {
-				emit('close');
-			} else {
-				router.push('/');
-			}
-		} catch (e) {
-			console.error(e);
-		} finally {
-			isLoading.value = false;
-		}
-	};
-
-	const toggleTimer = async () => {
-		if (!taskId.value) return;
-
-		isLoading.value = true;
-
-		try {
-			suppressAutoSavingForOnce.value = true;
-			if (form.value.start_time) {
-				form.value = await stopTaskTimeCounter(taskId.value);
-			} else {
-				form.value = await startTaskTimeCounter(taskId.value);
-			}
-		} catch (e) {
-			console.error(e);
-		} finally {
-			isLoading.value = false;
-		}
-	};
-
+	// Modify the useDebouncedAutoSave call:
 	const [isAutoSaving] = useDebouncedAutoSave({
 		formRef: form,
 		fieldsToWatch: [
@@ -391,6 +248,51 @@
 		delay: 2000,
 		suppressDebounceForOnce: suppressAutoSavingForOnce,
 	});
+
+	const updateFormBeforeQuery = () => {
+		suppressAutoSavingForOnce.value = true;
+		form.value.assignees = assignees.value;
+
+		suppressAutoSavingForOnce.value = true;
+		if (editorType.value === 'block') {
+			form.value.description = null;
+		} else {
+			form.value.description_json = null;
+		}
+	};
+
+	const toggleTimer = async () => {
+		suppressAutoSavingForOnce.value = true;
+		if (form.value.start_time) {
+			form.value = await stopTaskTimeCounter(+taskId.value);
+		} else {
+			form.value = await startTaskTimeCounter(+taskId.value);
+		}
+
+		/*if (
+			Array.isArray(form.value.checkpoints) &&
+			form.value.checkpoints.length > 0
+		) {
+			form.value.checkpoints[form.value.checkpoints.length - 1].end =
+				form.value.common_time;
+		}*/
+
+		if (form.value.start_time && form.value.status_id) {
+			const statusCurrent = workspaceStatuses.value.find(
+				(el) => el.type !== 'active',
+			);
+			if (statusCurrent) {
+				const firstActiveStatus = workspaceStatuses.value.find(
+					(el) => el.type === 'active',
+				);
+				if (firstActiveStatus) {
+					suppressAutoSavingForOnce.value = true;
+					form.value.status_id = firstActiveStatus.id;
+				}
+			}
+		}
+		await saveTask();
+	};
 
 	useMagicKeys({
 		passive: false,
@@ -411,7 +313,7 @@
 		:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
 	>
 		<header class="flex justify-between">
-			<Select v-model="statusIdStr">
+			<Select v-model="form.status_id">
 				<SelectTrigger class="w-40 border-0 bg-transparent">
 					<SelectValue placeholder="status" />
 				</SelectTrigger>
@@ -419,7 +321,7 @@
 					<SelectItem
 						class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
 						v-for="status in statuses"
-						:value="status.id.toString()"
+						:value="status.id"
 						:show-check-mark="false"
 					>
 						<span
@@ -460,12 +362,7 @@
 				"
 			/>
 
-			<div>
-				<AssigneesCombobox
-					:assignees="workspaceMembers" 
-					v-model="assignees as any"
-				/>
-			</div>
+			<AssigneesCombobox :assignees="workspaceMembers" v-model="assignees" />
 
 			<div class="ml-auto">
 				<TimeCounter
@@ -477,37 +374,21 @@
 			</div>
 		</div>
 
-		<!-- Editor section with toggle button -->
-		<div class="relative">
-			<!-- Loading state -->
-			<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
-				<div class="text-center">
-					<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-						<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-					</div>
-					<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
-				</div>
-			</div>
-			
-			<!-- Editor components -->
-			<template v-else>
-				<Editor
-					v-if="editorType === 'markdown'"
-					v-model="form.description"
-					class="mb-2 grow md:h-72"
-					:class="[!isModal && 'lg:min-h-96']"
-					:show-preview="!!(taskId && form.description)"
-				/>
+		<Editor
+			v-if="editorType === 'markdown'"
+			v-model="form.description"
+			class="mb-2 grow md:h-72"
+			:class="[!isModal && 'lg:min-h-96']"
+			:show-preview="taskId && form.description"
+		/>
 
-				<BlockEditor
-					v-else-if="editorType === 'block'"
-					v-model="form.description_json"
-					placeholder="Type your description here or enter / to see commands or "
-					class="mb-2 grow border px-2"
-					:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
-				/>
-			</template>
-		</div>
+		<BlockEditor
+			v-else-if="editorType === 'block'"
+			v-model="form.description_json"
+			placeholder="Type your description here or enter / to see commands or "
+			class="mb-2 grow border px-2"
+			:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
+		/>
 
 		<!--	actions	-->
 		<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
@@ -567,7 +448,7 @@
 
 				<button
 					v-if="taskId"
-					@click="deleteCurrentTask"
+					@click="removeTask"
 					title="Delete"
 					class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
 				>
