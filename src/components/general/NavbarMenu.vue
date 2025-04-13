@@ -40,13 +40,12 @@
 </template>
 
 <script lang="ts" setup>
-	import Button from '@/components/general/Button.vue';
 	import { useStore } from 'vuex';
-	import Select from '@/components/general/Select.vue';
-	import { onBeforeMount, ref, Ref } from 'vue';
+	import { onBeforeMount, ref, Ref, computed } from 'vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
+	import { generateWorkspaceUrl } from '@/utils/url';
 
 	defineEmits(['navigated']);
 	const workspaces = ref([] as Workspace[]);
@@ -92,10 +91,18 @@
 	const showCreatingTaskModal = () => {
 		store.commit('setShowCreatingTaskModal');
 	};
-	const links = [
-		{ id: 1, name: 'List', path: '/' },
-		{ id: 2, name: 'Board', path: '/board' },
-		{ id: 3, name: 'Categories', path: '/projects-categories' },
-		{ id: 4, name: 'Daily routines', path: '/daily-routines' },
-	];
+	
+	const currentWorkspace = computed(() => {
+		return workspaces.value.find(
+			(workspace) => workspace.id == workspaceId.value
+		);
+	});
+	
+	const links = computed(() => [
+		{ id: 1, name: 'Dashboard', path: generateWorkspaceUrl('dashboard', currentWorkspace.value) },
+		{ id: 2, name: 'List', path: generateWorkspaceUrl('list', currentWorkspace.value) },
+		{ id: 3, name: 'Board', path: generateWorkspaceUrl('board', currentWorkspace.value) },
+		{ id: 4, name: 'Categories', path: generateWorkspaceUrl('categories', currentWorkspace.value) },
+		{ id: 5, name: 'Daily Routines', path: '/routines' },
+	]);
 </script>

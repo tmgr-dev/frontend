@@ -65,6 +65,25 @@
 
 			await loadTasks();
 			setLoadingActions(tasks.value);
+
+			// Check if we're on the root path and have a current workspace
+			if (route.path === '/' && store.state.workspaces?.length) {
+				// Get current workspace ID
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				// Find the workspace by ID
+				const currentWorkspace = store.state.workspaces.find(
+					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (currentWorkspace?.code) {
+					// Set a page title that includes workspace name
+					document.title = `${currentWorkspace.name} Tasks`;
+					store.commit('setMetaTitle', `${currentWorkspace.name} Tasks`);
+				}
+			}
 		} catch (e) {
 			console.error(e);
 		}

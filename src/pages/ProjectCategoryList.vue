@@ -46,6 +46,7 @@
 	const isLoadingActions = ref({});
 	const loadingActionTasksIds = ref([]);
 	const workspaceStatus = ref('all');
+	const workspaceCode = ref(null);
 	
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -274,6 +275,18 @@
 		loadCategories();
 	};
 
+	const getWorkspaceCode = () => {
+		const currentWorkspaceId = store.state.user?.settings?.find(
+			setting => setting.key === 'current_workspace'
+		)?.value;
+		
+		const currentWorkspace = store.state.workspaces?.find(
+			workspace => Number(workspace.id) === Number(currentWorkspaceId)
+		);
+		console.log('Current workspace code:', currentWorkspace?.code);
+		return currentWorkspace?.code;
+	};
+
 	onMounted(async () => {
 		// Initialize pagination from URL query parameters
 		if (route.query.categories_page) {
@@ -288,7 +301,7 @@
 		if (route.query.per_page) {
 			pagination.value.per_page = parseInt(String(route.query.per_page));
 		}
-
+		workspaceCode.value = getWorkspaceCode();
 		await loadCategories();
 		await loadTasks();
 
@@ -311,32 +324,47 @@
 			<div
 				class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
 			>
-				<breadcrumbs
-					:current="category ? category.title : ''"
-					:drop="drop"
-					:items="getBreadcrumbs(parentCategories)"
-				/>
+				<div class="flex items-center gap-2">
+					<breadcrumbs
+						:current="category ? category.title : ''"
+						:drop="drop"
+						:items="getBreadcrumbs(parentCategories)"
+					/>
+				</div>
 
 				<div class="flex gap-3">
 					<Button
 						v-if="category"
 						:title="`Edit ${category.title} category`"
 						variant="outline"
-						@click="() => router.push(`/projects-categories/${category.id}`)"
+						@click="() => {
+							if (workspaceCode) {
+								router.push(`/${workspaceCode}/categories/${category.id}`);
+							} else {
+								router.push(`/projects-categories/${category.id}`);
+							}
+						}"
 					>
 						<FolderPenIcon />
 						{{ category.title }}
 					</Button>
 
 					<Button
-						@click="
-							() =>
+						@click="() => {
+							if (workspaceCode) {
+								router.push(
+									`/${workspaceCode}/categories/${
+										route.params.id ? `${route.params.id}/` : ''
+									}create`
+								);
+							} else {
 								router.push(
 									`/projects-categories/${
 										route.params.id ? `${route.params.id}/` : ''
-									}create`,
-								)
-						"
+									}create`
+								);
+							}
+						}"
 					>
 						<FolderPlusIcon />
 						{{ route.params.id ? 'Create subcategory' : 'Create category' }}
@@ -376,10 +404,17 @@
 							class="relative h-full cursor-pointer p-2 !pr-12 shadow transition hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 							:class="category.hoverClass"
 							@click="
-								$router.push({
-									name: 'ProjectCategoryChildrenList',
-									params: { id: category.id },
-								})
+								if (workspaceCode) {
+									$router.push({
+										name: 'WorkspaceCategoryChildren',
+										params: { workspace_code: workspaceCode, id: category.id }
+									});
+								} else {
+									$router.push({
+										name: 'ProjectCategoryChildrenList',
+										params: { id: category.id }
+									});
+								}
 							"
 						>
 							<h3 class="text-xl font-bold">
@@ -423,7 +458,13 @@
 									<DropdownMenuContent class="mr-4 mt-1">
 										<DropdownMenuItem
 											@click="
-												() => router.push(`/projects-categories/${category.id}`)
+												() => {
+													if (workspaceCode) {
+														router.push(`/${workspaceCode}/categories/${category.id}`);
+													} else {
+														router.push(`/projects-categories/${category.id}`);
+													}
+												}
 											"
 										>
 											<FolderPenIcon />
@@ -452,7 +493,7 @@
 				<!-- Add categories pagination controls -->
 				<div v-if="categories && categories.length > 0" class="mt-4 flex items-center justify-between px-4">
 					<div class="flex items-center gap-2">
-						<span class="text-sm text-gray-600">
+						<span class="text-sm text-gray-600 dark:text-gray-300">
 							Showing {{ categoriesPagination.from }} to {{ categoriesPagination.to }} of {{ categoriesPagination.total }} categories
 						</span>
 						
@@ -476,7 +517,7 @@
 							Previous
 						</Button>
 						
-						<span class="text-sm text-gray-600">
+						<span class="text-sm text-gray-600 dark:text-gray-300">
 							Page {{ categoriesPagination.current_page }} of {{ categoriesPagination.last_page }}
 						</span>
 						
@@ -511,17 +552,17 @@
 							<span class="material-icons text-3xl">done_all</span>
 						</button>
 
-						<button
-							class="opacity-25 hover:opacity-100"
-							title="Add task to category"
+						<Button
+							title="Create a task in this category"
 							@click="
 								$store.commit('createTaskInProjectCategoryId', {
-									projectCategoryId: id,
+									projectCategoryId: route.params.id,
 								})
 							"
 						>
-							<span class="material-icons text-3xl">add_circle_outline</span>
-						</button>
+							<span class="material-icons text-lg mr-1">add_circle_outline</span>
+							Create task
+						</Button>
 					</div>
 				</div>
 
