@@ -549,10 +549,60 @@
 
 			async updateSettings() {
 				try {
+					// Store original editor value to check if it changes
+					const originalEditorSetting = this.settings.find(setting => setting.key === 'preferred_editor');
+					const originalEditorValue = originalEditorSetting?.value;
+					
 					const [data] = await Promise.all([
 						updateUserSettingsV2(this.settings),
 						updateUserSettings({ settings: this.userSettings }),
 					]);
+					
+					// Find and save preferred_editor to localStorage with improved reliability
+					const preferredEditorSetting = this.settings.find(setting => setting.key === 'preferred_editor');
+					if (preferredEditorSetting) {
+						// Make sure we convert to string and handle null/undefined values
+						let editorValue = preferredEditorSetting.value 
+							? String(preferredEditorSetting.value).toLowerCase().trim() 
+							: '';
+						
+						// Validate the editor value
+						if (editorValue && (editorValue === 'block' || editorValue === 'markdown')) {
+							console.log('Saving editor preference to localStorage:', editorValue);
+							localStorage.setItem('preferred_editor', editorValue);
+							
+							// Also update the editor value in the Vuex store
+							if (this.$store.state.user && this.$store.state.user.settings) {
+								// Update the store's user settings directly 
+								this.$store.state.user.settings = this.$store.state.user.settings.map(setting => {
+									if (setting.key === 'preferred_editor') {
+										return { ...setting, value: editorValue };
+									}
+									return setting;
+								});
+							}
+							
+							// If editor setting has changed, reload the page to apply changes immediately
+							const normalizedOriginalValue = originalEditorValue
+								? String(originalEditorValue).toLowerCase().trim()
+								: '';
+								
+							if (normalizedOriginalValue !== editorValue) {
+								this.showAlert('Editor updated. Reloading page...');
+								
+								// Force localStorage update one more time to ensure it's saved before reload
+								localStorage.setItem('preferred_editor', editorValue);
+								
+								setTimeout(() => {
+									window.location.reload();
+								}, 500);
+								return;
+							}
+						} else if (editorValue) {
+							console.error('Invalid editor value:', editorValue);
+						}
+					}
+					
 					this.initSettings(this.availableSettings, data.settings);
 					this.showAlert('Settings updated successfully');
 				} catch (e) {

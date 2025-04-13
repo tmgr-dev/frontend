@@ -151,8 +151,71 @@
 	async function updateSettings() {
 		try {
 			const updatedSettings = [...settings.value, activeWorkspace.value];
+			
+			// Store original editor value to check if it changes
+			const preferredEditorSetting = settings.value.find((setting: any) => setting.key === 'preferred_editor');
+			const originalEditorValue = preferredEditorSetting?.value;
+			
+			// Always update localStorage if preferred_editor setting exists
+			// This ensures the value is consistently saved
+			if (preferredEditorSetting) {
+				// Make sure we convert to string and handle null/undefined values
+				let editorValue = preferredEditorSetting.value 
+					? String(preferredEditorSetting.value).toLowerCase().trim() 
+					: '';
+					
+				// Validate the editor value
+				if (editorValue && (editorValue === 'block' || editorValue === 'markdown')) {
+					console.log('Saving editor preference to localStorage:', editorValue);
+					localStorage.setItem('preferred_editor', editorValue);
+					
+					// Also update the editor value in the Vuex store
+					if (store.state.user && store.state.user.settings) {
+						// Update the store's user settings directly 
+						store.state.user.settings = store.state.user.settings.map((setting: any) => {
+							if (setting.key === 'preferred_editor') {
+								return { ...setting, value: editorValue };
+							}
+							return setting;
+						});
+					}
+				} else if (editorValue) {
+					console.error('Invalid editor value:', editorValue);
+				}
+			}
 
 			await updateUserSettingsV2(updatedSettings);
+			
+			// If editor setting has changed, reload the page to apply changes immediately
+			if (preferredEditorSetting) {
+				const normalizedNewValue = preferredEditorSetting.value 
+					? String(preferredEditorSetting.value).toLowerCase().trim()
+					: '';
+				
+				const normalizedOriginalValue = originalEditorValue
+					? String(originalEditorValue).toLowerCase().trim()
+					: '';
+				
+				if (normalizedNewValue && normalizedNewValue !== normalizedOriginalValue) {
+					toaster.toast({
+						variant: 'default',
+						title: 'Editor updated. Reloading page...',
+						action: CircleCheckBigIcon,
+						class: 'bg-green-500 border-0 text-white',
+					});
+					
+					// Force localStorage update one more time to ensure it's saved before reload
+					if (normalizedNewValue === 'block' || normalizedNewValue === 'markdown') {
+						localStorage.setItem('preferred_editor', normalizedNewValue);
+					}
+					
+					setTimeout(() => {
+						window.location.reload();
+					}, 500);
+					return;
+				}
+			}
+			
 			toaster.toast({
 				variant: 'default',
 				title: 'Successfully saved!',
@@ -204,7 +267,11 @@
 			return;
 		}
 
-		await createWorkspaceInvitationAction(activeWorkspace.value?.value, { emails });
+		const workspaceId = activeWorkspace.value.value;
+		await createWorkspaceInvitationAction(
+			typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId, 
+			{ emails }
+		);
 		isOpenInvitation.value = false;
 		invitationEmails.value = '';
 	}
@@ -218,8 +285,11 @@
 
 	async function deleteWorkspace() {
 		try {
-			await deleteWorkspaceAction(parseInt(<string>activeWorkspace.value!.value));
-			await updateUserSettings();
+			const workspaceId = activeWorkspace.value?.value;
+			if (workspaceId) {
+				await deleteWorkspaceAction(typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId);
+				await updateUserSettings();
+			}
 		} catch (e) {
 			console.error(e);
 		}
@@ -227,8 +297,11 @@
 
 	async function exitWorkspace() {
 		try {
-			await exitWorkspaceAction(parseInt(<string>activeWorkspace.value!.value));
-			await updateUserSettings();
+			const workspaceId = activeWorkspace.value?.value;
+			if (workspaceId) {
+				await exitWorkspaceAction(typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId);
+				await updateUserSettings();
+			}
 		} catch (e) {
 			console.error(e);
 		}
