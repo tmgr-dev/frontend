@@ -195,6 +195,33 @@
 				setEditorType(preferredEditor);
 			}
 
+			// Check if we have a new task with checkpoints in localStorage when creating a new task
+			if (!taskId.value && modalProjectCategoryId.value) {
+				const savedTaskData = localStorage.getItem('newTaskWithCheckpoints');
+				if (savedTaskData) {
+					try {
+						const parsedData = JSON.parse(savedTaskData);
+						form.value = { ...form.value, ...parsedData };
+						
+						// Initialize assignees if present
+						if (form.value.assignees && form.value.assignees.length) {
+							assignees.value = form.value.assignees.map((item) => {
+								if (typeof item === 'object') {
+									return item.id;
+								}
+								return item;
+							});
+						}
+						
+						// Clear the saved data to prevent it from being used again
+						localStorage.removeItem('newTaskWithCheckpoints');
+					} catch (e) {
+						console.error('Error parsing saved task data:', e);
+						localStorage.removeItem('newTaskWithCheckpoints');
+					}
+				}
+			}
+
 			// Load all required data in parallel
 			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
 				await Promise.all([
@@ -550,6 +577,49 @@
 			}
 		}
 	}, { immediate: true });
+
+	// Get unchecked checkpoints from the current task
+	const getUncheckedCheckpoints = () => {
+		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
+			return [];
+		}
+		
+		return form.value.checkpoints.filter(checkpoint => !checkpoint.checked).map(checkpoint => ({
+			...checkpoint,
+			start: 0,
+			end: 0
+		}));
+	};
+	
+	// Create a new task with the unchecked checkpoints from the current task
+	const createTaskWithCheckpoints = () => {
+		const uncheckedCheckpoints = getUncheckedCheckpoints();
+		
+		// Create a copy of the current form data without ID and with reset times
+		const newTaskData = { 
+			...form.value,
+			id: undefined,
+			title: `${form.value.title} (copy)`,
+			common_time: 0,
+			start_time: 0,
+			checkpoints: uncheckedCheckpoints
+		};
+		
+		// Create a new task with this data
+		store.commit('setShowCreatingTaskModal', form.value.status_id);
+		store.commit('createTaskInProjectCategoryId', { 
+			projectCategoryId: form.value.project_category_id,
+			statusId: form.value.status_id
+		});
+		
+		// Store the new task data in localStorage to be used when new task form opens
+		localStorage.setItem('newTaskWithCheckpoints', JSON.stringify(newTaskData));
+		
+		// Close current task modal if we're in modal mode
+		if (props.isModal) {
+			emit('close');
+		}
+	};
 </script>
 
 <template>
@@ -753,6 +823,20 @@
 					>
 						<ArrowTopRightOnSquareIcon class="size-5" />
 					</a>
+
+					<button
+						v-if="(taskId || form.id) && getUncheckedCheckpoints().length > 0"
+						@click="createTaskWithCheckpoints"
+						class="rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none flex items-center gap-1"
+						type="button"
+						title="Copy unchecked checkpoints to new task"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+						</svg>
+						<span class="hidden sm:inline">Copy Tasks</span>
+					</button>
 
 					<button
 						v-if="(taskId || form.id) && (!form.checkpoints || form.checkpoints.length === 0)"
