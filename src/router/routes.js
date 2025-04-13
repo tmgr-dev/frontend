@@ -116,6 +116,26 @@ const routes = [
 			requiresAuth: true,
 		},
 		name: 'Dashboard',
+		beforeEnter: (to) => {
+			// Try to redirect to workspace path if possible
+			const store = window.app?.$store;
+			if (store && store.getters.isLoggedIn) {
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				const currentWorkspace = store.state.workspaces?.find(
+					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (currentWorkspace?.code) {
+					return {
+						path: `/${currentWorkspace.code}/dashboard`,
+						query: to.query
+					};
+				}
+			}
+		}
 	},
 	// Define a direct route for the list page (legacy approach)
 	{
@@ -402,6 +422,16 @@ const routes = [
 	},
 	
 	// New URL structure routes
+	{
+		path: '/:workspace_code/dashboard',
+		component: DashboardPage,
+		meta: {
+			title: 'Workspace Dashboard',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceDashboard',
+	},
 	{
 		path: '/:workspace_code/list',
 		component: TasksListPage,

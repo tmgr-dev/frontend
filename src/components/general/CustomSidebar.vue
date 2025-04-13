@@ -48,6 +48,7 @@
 		ArchiveIcon,
 		FolderClosedIcon,
 		ClipboardListIcon,
+		LayoutDashboard,
 	} from 'lucide-vue-next';
 	import { onBeforeMount, ref, computed, onMounted, watch } from 'vue';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.ts';
@@ -311,6 +312,17 @@
 					<SidebarGroupLabel>TMGR.DEV</SidebarGroupLabel>
 
 					<SidebarMenu>
+						<SidebarMenuItem>
+							<SidebarMenuButton as-child>
+								<router-link :to="activeWorkspace?.code 
+									? `/${activeWorkspace.code}/dashboard` 
+									: '/'">
+									<LayoutDashboard />
+									<span>Dashboard</span>
+								</router-link>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+
 						<SidebarMenuItem>
 							<SidebarMenuButton as-child>
 								<router-link :to="activeWorkspace?.code 
