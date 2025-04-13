@@ -124,6 +124,7 @@
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
 	const isLoading = ref(false);
 	const checkpointUpdateKey = ref(0);
+	const isCheckpointsExpanded = ref(false);
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
@@ -134,6 +135,11 @@
 			form.value.status_id = parseInt(value, 10);
 		},
 	});
+	
+	// Toggle checkpoints expanded state
+	const toggleCheckpointsExpanded = () => {
+		isCheckpointsExpanded.value = !isCheckpointsExpanded.value;
+	};
 
 	// Add a checkpoint to the task
 	const addCheckpoint = () => {
@@ -545,12 +551,12 @@
 </script>
 
 <template>
-	<div class="new-form-container">
+	<div class="new-form-container h-full">
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 		<div
 			class="flex h-full flex-col gap-4 overflow-y-auto p-6"
-			:class="[isModal ? 'md:w-[700px]' : 'container mx-auto pt-14']"
+			:class="[isModal ? 'md:w-[700px] max-h-[calc(100vh-40px)]' : 'container mx-auto pt-14']"
 		>
 			<header class="flex justify-between">
 				<Select v-model="statusIdStr">
@@ -621,7 +627,7 @@
 			</div>
 
 			<!-- Editor section with toggle button -->
-			<div class="relative">
+			<div class="relative flex-1 min-h-0">
 				<!-- Loading state -->
 				<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
 					<div class="text-center">
@@ -647,36 +653,90 @@
 						v-model="form.description_json"
 						placeholder="Type your description here or enter / to see commands or "
 						class="mb-2 grow border px-2"
-						:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
+						:class="[!isModal ? 'lg:min-h-96' : 'md:h-72']"
 					/>
 				</template>
 				
-				<!-- Checkpoints section directly under editor - only visible when editing a task (has ID) -->
+				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div
-					v-if="taskId || form.id"
-					class="checkpoints-wrapper rounded mt-3 py-2 px-3 border border-gray-200 dark:border-gray-700"
+					v-if="(taskId || form.id) && !isCheckpointsExpanded && form.checkpoints && form.checkpoints.length > 0"
+					class="checkpoints-wrapper rounded mt-3 py-0 border border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900 transition-all duration-300"
+					:class="[isModal ? 'max-h-[320px] overflow-y-auto' : '']"
 					:key="checkpointUpdateKey"
 				>
-					<div class="text-bold flex items-center justify-between gap-2 text-sm mb-2 border-b pb-2">
-						<span>
-							{{
-								form.checkpoints && form.checkpoints.length
-									? 'Task Checkpoints'
-									: 'Create Checkpoints'
-							}}
-						</span>
-						<button 
-							class="text-gray-500 hover:text-gray-700 cursor-pointer"
-							@click="addCheckpoint"
-						>
-							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
-								<circle cx="12" cy="12" r="10"></circle>
-								<line x1="12" y1="8" x2="12" y2="16"></line>
-								<line x1="8" y1="12" x2="16" y2="12"></line>
-							</svg>
-						</button>
+					<div 
+						class="sticky top-0 z-20 flex items-center justify-between gap-2 text-sm py-3 px-3 border-b border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900"
+					>
+						<span class="font-medium">Task Checkpoints</span>
+						<div class="flex items-center gap-2">
+							<button 
+								class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+								@click="addCheckpoint"
+								title="Add new checkpoint"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
+									<circle cx="12" cy="12" r="10"></circle>
+									<line x1="12" y1="8" x2="12" y2="16"></line>
+									<line x1="8" y1="12" x2="16" y2="12"></line>
+								</svg>
+							</button>
+							
+							<button 
+								class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 cursor-pointer ml-1"
+								@click="toggleCheckpointsExpanded"
+								title="Expand checkpoints"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-maximize-2">
+									<polyline points="15 3 21 3 21 9"></polyline>
+									<polyline points="9 21 3 21 3 15"></polyline>
+									<line x1="21" y1="3" x2="14" y2="10"></line>
+									<line x1="3" y1="21" x2="10" y2="14"></line>
+								</svg>
+							</button>
+						</div>
 					</div>
-					<checkpoints :checkpoints="form.checkpoints || []" />
+					<div class="px-3 py-2">
+						<checkpoints :checkpoints="form.checkpoints || []" />
+					</div>
+				</div>
+				
+				<!-- Fullscreen modal for checkpoints -->
+				<div 
+					v-if="isCheckpointsExpanded"
+					class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+					@click.self="toggleCheckpointsExpanded"
+				>
+					<div class="bg-white dark:bg-slate-900 w-[90%] h-[90%] max-w-4xl rounded-lg shadow-lg overflow-auto">
+						<div class="sticky top-0 z-20 flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900">
+							<h2 class="text-lg font-bold">Task Checkpoints</h2>
+							<div class="flex items-center gap-3">
+								<button 
+									class="flex items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+									@click="addCheckpoint"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
+										<circle cx="12" cy="12" r="10"></circle>
+										<line x1="12" y1="8" x2="12" y2="16"></line>
+										<line x1="8" y1="12" x2="16" y2="12"></line>
+									</svg>
+									Add checkpoint
+								</button>
+								<button 
+									class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+									@click="toggleCheckpointsExpanded"
+									title="Close expanded view"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x">
+										<line x1="18" y1="6" x2="6" y2="18"></line>
+										<line x1="6" y1="6" x2="18" y2="18"></line>
+									</svg>
+								</button>
+							</div>
+						</div>
+						<div class="p-4">
+							<checkpoints :checkpoints="form.checkpoints || []" />
+						</div>
+					</div>
 				</div>
 			</div>
 			
@@ -691,6 +751,20 @@
 					>
 						<ArrowTopRightOnSquareIcon class="size-5" />
 					</a>
+
+					<button
+						v-if="(taskId || form.id) && (!form.checkpoints || form.checkpoints.length === 0)"
+						@click="addCheckpoint"
+						class="rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none flex items-center gap-1"
+						type="button"
+						title="Add Checkpoint"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle">
+							<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+							<polyline points="22 4 12 14.01 9 11.01"></polyline>
+						</svg>
+						<span class="hidden sm:inline">Add Checkpoint</span>
+					</button>
 
 					<span class="relative inline-flex rounded-md shadow-sm">
 						<button
