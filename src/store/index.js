@@ -123,17 +123,13 @@ const mutations = {
 
 const actions = {
 	logout() {
-		const theme = localStorage.getItem('colorScheme');
 		const workspaceInvitationToken = localStorage.getItem(
 			'workspace.invitation',
 		);
 		localStorage.clear();
-		localStorage.setItem('colorScheme', theme);
 		if (workspaceInvitationToken) {
 			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
 		}
-
-		// location.reload();
 	},
 	
 	async loadWorkspaces({ commit }) {
