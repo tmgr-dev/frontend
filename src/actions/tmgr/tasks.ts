@@ -28,6 +28,13 @@ export interface Task {
 	user: Pick<User, 'id' | 'name'>;
 	user_id: number;
 	workspace_id?: number;
+	checkpoints?: Array<{
+		description: string;
+		start: number;
+		end: number;
+		checked: boolean;
+		inputType: string;
+	}>;
 }
 
 interface LinkResponse {

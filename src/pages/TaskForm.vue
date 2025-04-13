@@ -1100,6 +1100,7 @@
 					description: 'New one',
 					start: currentTime,
 					end: currentTime,
+					checked: false
 				});
 				++this.checkpointUpdateKey;
 			},

@@ -46,6 +46,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
+	import Checkpoints from '@/components/general/Checkpoints.vue';
 
 	// Helper to get preferred editor with local storage fallback
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -111,7 +112,8 @@
 		user: {
 			id: store.state.user?.id || 0,
 			name: store.state.user?.name || ''
-		}
+		},
+		checkpoints: []
 	});
 	const taskId = computed(() => {
 		const id = modalTaskId.value || route.params.id;
@@ -121,6 +123,7 @@
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
 	const isLoading = ref(false);
+	const checkpointUpdateKey = ref(0);
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
@@ -131,6 +134,40 @@
 			form.value.status_id = parseInt(value, 10);
 		},
 	});
+
+	// Add a checkpoint to the task
+	const addCheckpoint = () => {
+		const { value: formValue } = form;
+		if (!formValue.checkpoints) {
+			formValue.checkpoints = [];
+		}
+		const timeSinceStartTime = !formValue.start_time
+			? 0
+			: Math.floor(
+					(new Date().getTime() - new Date().setTime(formValue.start_time * 1000)) / 1000,
+				);
+		const currentTime = formValue.common_time + timeSinceStartTime;
+		if (formValue.checkpoints.length > 0) {
+			const prevCheckpointIndex = formValue.checkpoints.length - 1;
+			formValue.checkpoints[prevCheckpointIndex].end = currentTime;
+		}
+		formValue.checkpoints.push({
+			description: 'New one',
+			start: currentTime,
+			end: currentTime,
+			checked: false,
+			inputType: 'text'
+		});
+		checkpointUpdateKey.value++;
+	};
+	
+	// Update seconds for the last checkpoint
+	const updateSeconds = (seconds: number) => {
+		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
+			return;
+		}
+		form.value.checkpoints[form.value.checkpoints.length - 1].end = seconds;
+	};
 
 	onBeforeMount(async () => {
 		isEditorLoading.value = true;
@@ -211,6 +248,11 @@
 				}
 				
 				form.value = taskData;
+				
+				// Initialize checkpoints array if not present
+				if (!form.value.checkpoints) {
+					form.value.checkpoints = [];
+				}
 
 				// Update approximately_time from settings if available
 				const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
@@ -573,6 +615,7 @@
 						:form="form"
 						:disabled="!form.id"
 						@toggle="toggleTimer"
+						@update:seconds="updateSeconds"
 					/>
 				</div>
 			</div>
@@ -607,8 +650,36 @@
 						:class="[!isModal ? 'lg:min-h-96' : 'overflow-y-scroll md:h-72']"
 					/>
 				</template>
+				
+				<!-- Checkpoints section directly under editor - only visible when editing a task (has ID) -->
+				<div
+					v-if="taskId || form.id"
+					class="checkpoints-wrapper rounded mt-3 py-2 px-3 border border-gray-200 dark:border-gray-700"
+					:key="checkpointUpdateKey"
+				>
+					<div class="text-bold flex items-center justify-between gap-2 text-sm mb-2 border-b pb-2">
+						<span>
+							{{
+								form.checkpoints && form.checkpoints.length
+									? 'Task Checkpoints'
+									: 'Create Checkpoints'
+							}}
+						</span>
+						<button 
+							class="text-gray-500 hover:text-gray-700 cursor-pointer"
+							@click="addCheckpoint"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
+								<circle cx="12" cy="12" r="10"></circle>
+								<line x1="12" y1="8" x2="12" y2="16"></line>
+								<line x1="8" y1="12" x2="16" y2="12"></line>
+							</svg>
+						</button>
+					</div>
+					<checkpoints :checkpoints="form.checkpoints || []" />
+				</div>
 			</div>
-
+			
 			<!--	actions	-->
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 				<div class="flex justify-end gap-3 text-center">

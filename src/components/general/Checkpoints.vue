@@ -5,9 +5,21 @@
 				{{ v + 1 }}
 			</span>
 
+			<div class="absolute left-6 top-2 z-10">
+				<input 
+					type="checkbox"
+					class="h-4 w-4 cursor-pointer rounded border-gray-300"
+					:checked="checkpoint.checked"
+					@change="toggleCheckpoint(v)"
+				/>
+			</div>
+
 			<textarea
-				class="max-h-40 min-h-[36px] w-full rounded bg-white px-3 py-2 pl-7 pr-44 pt-2 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
-				:class="[checkpoint.inputType === 'text' ? 'h-9' : '']"
+				class="max-h-40 min-h-[36px] w-full rounded bg-white px-3 py-2 pl-12 pr-44 pt-2 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+				:class="[
+					checkpoint.inputType === 'text' ? 'h-9' : '',
+					checkpoint.checked ? 'line-through text-gray-500' : ''
+				]"
 				placeholder="Checkpoint content"
 				v-model="checkpoint.description"
 			/>
@@ -37,11 +49,14 @@
 </template>
 
 <script setup lang="ts">
+	import { onMounted } from 'vue';
+	
 	interface Checkpoints {
 		inputType: string;
 		description: string;
 		start: number;
 		end: number;
+		checked: boolean;
 	}
 
 	const props = defineProps({
@@ -50,6 +65,18 @@
 			required: true,
 		},
 	});
+	
+	// Initialize checked property for existing checkpoints
+	onMounted(() => {
+		if (props.checkpoints && props.checkpoints.length > 0) {
+			props.checkpoints.forEach(checkpoint => {
+				if (checkpoint.checked === undefined) {
+					checkpoint.checked = false;
+				}
+			});
+		}
+	});
+	
 	const secondsToStringTime = (seconds: number) => {
 		const second = seconds % 60;
 		let minute = ((seconds - second) / 60) | 0;
@@ -71,6 +98,14 @@
 
 	function deleteCheckpoint(index: number) {
 		props.checkpoints.splice(index, 1);
+	}
+	
+	function toggleCheckpoint(index: number) {
+		if (props.checkpoints[index].checked === undefined) {
+			props.checkpoints[index].checked = true;
+		} else {
+			props.checkpoints[index].checked = !props.checkpoints[index].checked;
+		}
 	}
 </script>
 
