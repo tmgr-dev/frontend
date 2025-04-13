@@ -46,6 +46,7 @@
 	const isLoadingActions = ref({});
 	const loadingActionTasksIds = ref([]);
 	const workspaceStatus = ref('all');
+	const workspaceCode = ref(null);
 	
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -282,7 +283,7 @@
 		const currentWorkspace = store.state.workspaces?.find(
 			workspace => Number(workspace.id) === Number(currentWorkspaceId)
 		);
-		
+		console.log('Current workspace code:', currentWorkspace?.code);
 		return currentWorkspace?.code;
 	};
 
@@ -300,7 +301,7 @@
 		if (route.query.per_page) {
 			pagination.value.per_page = parseInt(String(route.query.per_page));
 		}
-
+		workspaceCode.value = getWorkspaceCode();
 		await loadCategories();
 		await loadTasks();
 
@@ -334,7 +335,13 @@
 						v-if="category"
 						:title="`Edit ${category.title} category`"
 						variant="outline"
-						@click="() => router.push(`/projects-categories/${category.id}`)"
+						@click="() => {
+							if (workspaceCode) {
+								router.push(`/${workspaceCode}/categories/${category.id}`);
+							} else {
+								router.push(`/projects-categories/${category.id}`);
+							}
+						}"
 					>
 						<FolderPenIcon />
 						{{ category.title }}
@@ -342,7 +349,6 @@
 
 					<Button
 						@click="() => {
-							const workspaceCode = getWorkspaceCode();
 							if (workspaceCode) {
 								router.push(
 									`/${workspaceCode}/categories/${
@@ -396,7 +402,6 @@
 							class="relative h-full cursor-pointer p-2 !pr-12 shadow transition hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
 							:class="category.hoverClass"
 							@click="
-								const workspaceCode = getWorkspaceCode();
 								if (workspaceCode) {
 									$router.push({
 										name: 'WorkspaceCategoryChildren',
@@ -452,7 +457,6 @@
 										<DropdownMenuItem
 											@click="
 												() => {
-													const workspaceCode = getWorkspaceCode();
 													if (workspaceCode) {
 														router.push(`/${workspaceCode}/categories/${category.id}`);
 													} else {

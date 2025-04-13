@@ -545,17 +545,36 @@ const routes = [
 	// Add missing ProjectCategoryChildrenList route
 	{
 		path: '/projects-categories/:id/children',
+		component: ProjectCategoryList,
 		meta: {
 			title: 'Category Children',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
-		component: ProjectCategoryList,
 		name: 'ProjectCategoryChildrenList',
+		beforeEnter: (to) => {
+			// Try to redirect to workspace path if possible
+			const store = window.app?.$store;
+			if (store && store.getters.isLoggedIn) {
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				const currentWorkspace = store.state.workspaces?.find(
+					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (currentWorkspace?.code) {
+					return {
+						path: `/${currentWorkspace.code}/categories/${to.params.id}/children`,
+						query: to.query
+					};
+				}
+			}
+		}
 	},
 	
 	// Always leave this as last one,
-	// but you can also remove it
 	{
 		path: '/:catchAll(.*)*',
 		name: 'NotFound',
