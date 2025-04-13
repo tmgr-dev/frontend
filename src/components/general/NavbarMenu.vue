@@ -99,9 +99,10 @@
 	});
 	
 	const links = computed(() => [
-		{ id: 1, name: 'List', path: generateWorkspaceUrl('list', currentWorkspace.value) },
-		{ id: 2, name: 'Board', path: generateWorkspaceUrl('board', currentWorkspace.value) },
-		{ id: 3, name: 'Categories', path: generateWorkspaceUrl('categories', currentWorkspace.value) },
-		{ id: 4, name: 'Daily Routines', path: '/routines' },
+		{ id: 1, name: 'Dashboard', path: generateWorkspaceUrl('dashboard', currentWorkspace.value) },
+		{ id: 2, name: 'List', path: generateWorkspaceUrl('list', currentWorkspace.value) },
+		{ id: 3, name: 'Board', path: generateWorkspaceUrl('board', currentWorkspace.value) },
+		{ id: 4, name: 'Categories', path: generateWorkspaceUrl('categories', currentWorkspace.value) },
+		{ id: 5, name: 'Daily Routines', path: '/routines' },
 	]);
 </script>
