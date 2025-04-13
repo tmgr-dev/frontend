@@ -757,7 +757,7 @@
 					v-if="editorType === 'markdown'"
 					v-model="form.description"
 					class="mb-2 grow md:h-72"
-					:class="[!isModal && 'lg:min-h-96']"
+					:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
 					:show-preview="!!(taskId && form.description)"
 				/>
 
@@ -765,8 +765,8 @@
 					v-else-if="editorType === 'block'"
 					v-model="form.description_json"
 					placeholder="Type your description here or enter / to see commands or "
-					class="mb-2 grow border px-2"
-					:class="[!isModal ? 'lg:min-h-96' : 'md:h-72']"
+					class="mb-2 grow border px-2 block-editor-container"
+					:class="[!isModal ? 'lg:min-h-96' : 'md:max-h-[350px] min-h-[200px] md:overflow-y-auto']"
 				/>
 
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
@@ -779,7 +779,7 @@
 					<div
 						class="sticky top-0 z-20 flex items-center justify-between gap-2 text-sm py-3 px-3 border-b border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900"
 					>
-						<span class="font-medium">Task Checkpoints</span>
+						<span class="font-medium">Task Checkpoints ({{ form.checkpoints.length }})</span>
 						<div class="flex items-center gap-2">
 							<button
 								class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
@@ -875,7 +875,7 @@
 							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
 							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 						</svg>
-						<span class="hidden sm:inline">Copy Tasks</span>
+						<span class="hidden sm:inline">Copy Unchecked Checkpoints</span>
 					</button>
 
 					<button
@@ -949,3 +949,48 @@
 		</div>
 	</div>
 </template>
+
+<style>
+/* Fix for modal windows with block editor content */
+.block-editor-container {
+	/* Ensure the container expands properly but doesn't overflow */
+	display: flex;
+	flex-direction: column;
+	min-height: 200px !important; /* Force minimum height */
+}
+
+/* Ensure editor is given enough space in modal */
+.block-editor-container .editorjs {
+	flex: 1;
+	min-height: 150px !important; /* Minimum height for the actual editor */
+}
+
+/* Improve list display in modal windows */
+.block-editor-container .ce-block {
+	max-width: 100%;
+	padding: 0 4px;
+}
+
+/* Adjust list number/bullet positioning */
+.block-editor-container .cdx-list__item-content,
+.block-editor-container .cdx-checklist__item {
+	position: relative;
+	padding-right: 12px;
+}
+
+/* Fix for modals to ensure content is visible and scrollable */
+.new-form-container.h-full .md\:max-h-\[350px\] {
+	overflow-y: auto;
+	contain: content;
+}
+
+/* Fix for long words/strings in lists */
+.cdx-list__item {
+	word-break: break-word;
+}
+
+/* Ensure multi-line bullet points format correctly */
+.cdx-list__item-content {
+	white-space: normal;
+}
+</style>
