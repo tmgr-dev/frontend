@@ -542,6 +542,18 @@ const routes = [
 	// IMPORTANT: We're removing all component routes for /projects-categories/*
 	// since they're already defined as redirects earlier in the file
 	
+	// Add missing ProjectCategoryChildrenList route
+	{
+		path: '/projects-categories/:id/children',
+		meta: {
+			title: 'Category Children',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		component: ProjectCategoryList,
+		name: 'ProjectCategoryChildrenList',
+	},
+	
 	// Always leave this as last one,
 	// but you can also remove it
 	{
