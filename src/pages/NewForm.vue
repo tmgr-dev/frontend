@@ -136,7 +136,7 @@
 			form.value.status_id = parseInt(value, 10);
 		},
 	});
-	
+
 	// Toggle checkpoints expanded state
 	const toggleCheckpointsExpanded = () => {
 		isCheckpointsExpanded.value = !isCheckpointsExpanded.value;
@@ -167,7 +167,7 @@
 		});
 		checkpointUpdateKey.value++;
 	};
-	
+
 	// Update seconds for the last checkpoint
 	const updateSeconds = (seconds: number) => {
 		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
@@ -202,7 +202,7 @@
 					try {
 						const parsedData = JSON.parse(savedTaskData);
 						form.value = { ...form.value, ...parsedData };
-						
+
 						// Initialize assignees if present
 						if (form.value.assignees && form.value.assignees.length) {
 							assignees.value = form.value.assignees.map((item) => {
@@ -212,7 +212,7 @@
 								return item;
 							});
 						}
-						
+
 						// Clear the saved data to prevent it from being used again
 						localStorage.removeItem('newTaskWithCheckpoints');
 					} catch (e) {
@@ -233,7 +233,7 @@
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
-			
+
 			// Set first status as default for new tasks if no specific status was provided
 			if (!taskId.value && !form.value.status_id && statuses.value?.length > 0) {
 				form.value.status_id = statuses.value[0].id;
@@ -249,11 +249,11 @@
 					const currentWorkspaceId = store.state.user?.settings?.find(
 						(setting: Record<string, any>) => setting.key === 'current_workspace'
 					)?.value;
-					
+
 					const currentWorkspace = (store.state.workspaces || []).find(
 						(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
 					);
-					
+
 					// Only update URL if we have a workspace and we're in modal mode
 					if (currentWorkspace) {
 						const url = generateTaskUrl(taskId.value, currentWorkspace, null);
@@ -282,7 +282,7 @@
 				}
 				
 				form.value = taskData;
-				
+
 				// Initialize checkpoints array if not present
 				if (!form.value.checkpoints) {
 					form.value.checkpoints = [];
@@ -349,7 +349,7 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			form.value = await createTaskAction(form.value as Task);
-			
+
 			// Set current task ID in the store to transition to edit mode
 			if (form.value.id) {
 				store.commit('setCurrentTaskIdForModal', form.value.id);
@@ -359,16 +359,16 @@
 			const currentWorkspaceId = store.state.user?.settings?.find(
 				(setting: Record<string, any>) => setting.key === 'current_workspace'
 			)?.value;
-			
+
 			const currentWorkspace = (store.state.workspaces || []).find(
 				(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
 			);
-			
-			const category = 
+
+			const category =
 				form.value.category && typeof form.value.category === 'object'
 					? form.value.category
 					: null;
-			
+
 			if (props.isModal) {
 				const url = generateTaskUrl(form.value.id as number, currentWorkspace, category);
 				if (url && url !== '/') {
@@ -383,7 +383,7 @@
 					console.error('Invalid URL generated for task navigation');
 				}
 			}
-			
+
 			// Trigger reload of tasks list
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
@@ -409,11 +409,11 @@
 					const currentWorkspaceId = store.state.user?.settings?.find(
 						(setting: Record<string, any>) => setting.key === 'current_workspace'
 					)?.value;
-					
+
 					const currentWorkspace = (store.state.workspaces || []).find(
 						(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
 					);
-					
+
 					await router.replace(generateWorkspaceUrl('list', currentWorkspace));
 				}
 			} catch (e) {
@@ -541,22 +541,22 @@
 
 	const generateTaskUrlForAdvancedForm = () => {
 		if (!taskId.value && !form.value.id) return '/';
-		
+
 		// Get current workspace
 		const currentWorkspaceId = store.state.user?.settings?.find(
 			(setting: Record<string, any>) => setting.key === 'current_workspace'
 		)?.value;
-		
+
 		const currentWorkspace = (store.state.workspaces || []).find(
 			(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
 		);
-		
+
 		// Use the new URL format: /:workspace_code/tasks/:task_id
 		const id = taskId.value || form.value.id as number;
 		if (currentWorkspace?.code) {
 			return `/${currentWorkspace.code}/tasks/${id}`;
 		}
-		
+
 		// Fallback to the old format if no workspace code is available
 		return `/${id}`;
 	};
@@ -565,12 +565,12 @@
 	watch(modalProjectCategoryId, (newCategoryId) => {
 		if (newCategoryId && !taskId.value) {
 			form.value.project_category_id = newCategoryId;
-			
+
 			// Ensure a status is selected (use first status if none is already selected)
 			if (!form.value.status_id && statuses.value && statuses.value.length > 0) {
 				form.value.status_id = statuses.value[0].id;
 			}
-			
+
 			// If categories are already loaded, try to update the title based on category pattern
 			if (categories.value.length > 0) {
 				updateTaskTitle();
@@ -583,20 +583,20 @@
 		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
 			return [];
 		}
-		
+
 		return form.value.checkpoints.filter(checkpoint => !checkpoint.checked).map(checkpoint => ({
 			...checkpoint,
 			start: 0,
 			end: 0
 		}));
 	};
-	
+
 	// Create a new task with the unchecked checkpoints from the current task
 	const createTaskWithCheckpoints = () => {
 		const uncheckedCheckpoints = getUncheckedCheckpoints();
-		
+
 		// Create a copy of the current form data without ID and with reset times
-		const newTaskData = { 
+		const newTaskData = {
 			...form.value,
 			id: undefined,
 			title: `${form.value.title} (copy)`,
@@ -604,17 +604,17 @@
 			start_time: 0,
 			checkpoints: uncheckedCheckpoints
 		};
-		
+
 		// Create a new task with this data
 		store.commit('setShowCreatingTaskModal', form.value.status_id);
-		store.commit('createTaskInProjectCategoryId', { 
+		store.commit('createTaskInProjectCategoryId', {
 			projectCategoryId: form.value.project_category_id,
 			statusId: form.value.status_id
 		});
-		
+
 		// Store the new task data in localStorage to be used when new task form opens
 		localStorage.setItem('newTaskWithCheckpoints', JSON.stringify(newTaskData));
-		
+
 		// Close current task modal if we're in modal mode
 		if (props.isModal) {
 			emit('close');
@@ -682,7 +682,7 @@
 
 				<div>
 					<AssigneesCombobox
-						:assignees="workspaceMembers" 
+						:assignees="workspaceMembers"
 						v-model="assignees as any"
 					/>
 				</div>
@@ -709,7 +709,7 @@
 						<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
 					</div>
 				</div>
-				
+
 				<!-- Editor components -->
 				<template v-else>
 					<Editor
@@ -728,7 +728,7 @@
 						:class="[!isModal ? 'lg:min-h-96' : 'md:h-72']"
 					/>
 				</template>
-				
+
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div
 					v-if="(taskId || form.id) && !isCheckpointsExpanded && form.checkpoints && form.checkpoints.length > 0"
@@ -736,12 +736,12 @@
 					:class="[isModal ? 'max-h-[320px] overflow-y-auto' : '']"
 					:key="checkpointUpdateKey"
 				>
-					<div 
+					<div
 						class="sticky top-0 z-20 flex items-center justify-between gap-2 text-sm py-3 px-3 border-b border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900"
 					>
 						<span class="font-medium">Task Checkpoints</span>
 						<div class="flex items-center gap-2">
-							<button 
+							<button
 								class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
 								@click="addCheckpoint"
 								title="Add new checkpoint"
@@ -752,8 +752,8 @@
 									<line x1="8" y1="12" x2="16" y2="12"></line>
 								</svg>
 							</button>
-							
-							<button 
+
+							<button
 								class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 cursor-pointer ml-1"
 								@click="toggleCheckpointsExpanded"
 								title="Expand checkpoints"
@@ -771,9 +771,9 @@
 						<checkpoints :checkpoints="form.checkpoints || []" />
 					</div>
 				</div>
-				
+
 				<!-- Fullscreen modal for checkpoints -->
-				<div 
+				<div
 					v-if="isCheckpointsExpanded"
 					class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
 					@click.self="toggleCheckpointsExpanded"
@@ -782,7 +782,7 @@
 						<div class="sticky top-0 z-20 flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900">
 							<h2 class="text-lg font-bold">Task Checkpoints</h2>
 							<div class="flex items-center gap-3">
-								<button 
+								<button
 									class="flex items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
 									@click="addCheckpoint"
 								>
@@ -793,7 +793,7 @@
 									</svg>
 									Add checkpoint
 								</button>
-								<button 
+								<button
 									class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
 									@click="toggleCheckpointsExpanded"
 									title="Close expanded view"
@@ -811,7 +811,7 @@
 					</div>
 				</div>
 			</div>
-			
+
 			<!--	actions	-->
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 				<div class="flex justify-end gap-3 text-center">
