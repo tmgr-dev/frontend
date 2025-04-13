@@ -8,15 +8,29 @@ interface Props<T> {
 	suppressDebounceForOnce?: Ref<boolean>;
 }
 
+// Define the return type clearly
+type DebouncedAutoSaveReturn = [
+	isSaving: Ref<boolean>,
+	cancelPendingAutoSave: () => void
+];
+
 export function useDebouncedAutoSave<T>({
 	formRef,
 	onSave,
 	fieldsToWatch,
-	delay,
+	delay = 2000,
 	suppressDebounceForOnce,
-}: Props<T>) {
+}: Props<T>): DebouncedAutoSaveReturn {
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-	let isSaving = ref(false);
+	const isSaving = ref(false);
+	
+	// Function to cancel any pending auto-saves
+	const cancelPendingAutoSave = () => {
+		if (saveTimeout) {
+			clearTimeout(saveTimeout);
+			saveTimeout = null;
+		}
+	};
 
 	watch(
 		fieldsToWatch
@@ -27,18 +41,28 @@ export function useDebouncedAutoSave<T>({
 					}, {} as Partial<T>)
 			: formRef,
 		async () => {
+			// Check if we should suppress this auto-save
 			if (suppressDebounceForOnce?.value) {
 				suppressDebounceForOnce.value = false;
+				cancelPendingAutoSave(); // Cancel any pending auto-saves
 				return;
 			}
 
+			// Don't schedule new saves if already saving
 			if (isSaving.value) return;
 
-			if (saveTimeout) {
-				clearTimeout(saveTimeout);
-			}
+			// Cancel any previous pending saves
+			cancelPendingAutoSave();
 
+			// Schedule a new save
 			saveTimeout = setTimeout(async () => {
+				// Check again before saving in case suppress flag was set after timeout was scheduled
+				if (suppressDebounceForOnce?.value) {
+					suppressDebounceForOnce.value = false;
+					saveTimeout = null;
+					return;
+				}
+				
 				isSaving.value = true;
 				try {
 					await onSave();
@@ -53,5 +77,6 @@ export function useDebouncedAutoSave<T>({
 		{ deep: true },
 	);
 
-	return [isSaving];
+	// Return both the saving state and a function to cancel pending saves
+	return [isSaving, cancelPendingAutoSave];
 }
