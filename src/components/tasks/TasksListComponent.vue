@@ -105,14 +105,14 @@
 			<!-- Add pagination controls -->
 			<div v-if="pagination.total > pagination.per_page" class="mt-4 flex items-center justify-between px-4">
 				<div class="flex items-center gap-2">
-					<span class="text-sm text-gray-600">
+					<span class="text-sm text-gray-600 dark:text-gray-300">
 						Showing {{ pagination.from }} to {{ pagination.to }} of {{ pagination.total }} tasks
 					</span>
 					
 					<select 
 						v-model="perPage" 
 						@change="onPerPageChange"
-						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>
@@ -124,19 +124,19 @@
 					<button
 						:disabled="pagination.current_page === 1"
 						@click="onPageChange(pagination.current_page - 1)"
-						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
 						Previous
 					</button>
 					
-					<span class="text-sm text-gray-600">
+					<span class="text-sm text-gray-600 dark:text-gray-300">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
 					
 					<button
 						:disabled="pagination.current_page === pagination.last_page"
 						@click="onPageChange(pagination.current_page + 1)"
-						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
 						Next
 					</button>

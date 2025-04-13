@@ -491,7 +491,7 @@
 				<!-- Add categories pagination controls -->
 				<div v-if="categories && categories.length > 0" class="mt-4 flex items-center justify-between px-4">
 					<div class="flex items-center gap-2">
-						<span class="text-sm text-gray-600">
+						<span class="text-sm text-gray-600 dark:text-gray-300">
 							Showing {{ categoriesPagination.from }} to {{ categoriesPagination.to }} of {{ categoriesPagination.total }} categories
 						</span>
 						
@@ -515,7 +515,7 @@
 							Previous
 						</Button>
 						
-						<span class="text-sm text-gray-600">
+						<span class="text-sm text-gray-600 dark:text-gray-300">
 							Page {{ categoriesPagination.current_page }} of {{ categoriesPagination.last_page }}
 						</span>
 						
