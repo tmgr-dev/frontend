@@ -971,40 +971,71 @@
 	display: flex;
 	flex-direction: column;
 	min-height: 200px !important; /* Force minimum height */
+	width: 100%;
+	padding: 0 !important;
+	position: relative;
+	overflow: visible !important; /* Ensure toolbar and buttons can appear outside */
 }
 
 /* Ensure editor is given enough space in modal */
 .block-editor-container .editorjs {
 	flex: 1;
-	min-height: 150px !important; /* Minimum height for the actual editor */
+	min-height: 500px !important; /* Minimum height for the actual editor */
+	width: 100% !important;
+	box-sizing: border-box;
+	position: relative !important; /* Ensure proper positioning context */
 }
 
 /* Improve list display in modal windows */
 .block-editor-container .ce-block {
 	max-width: 100%;
 	padding: 0 4px;
-}
-
-/* Adjust list number/bullet positioning */
-.block-editor-container .cdx-list__item-content,
-.block-editor-container .cdx-checklist__item {
-	position: relative;
-	padding-right: 12px;
+	box-sizing: border-box;
 }
 
 /* Fix for modals to ensure content is visible and scrollable */
 .new-form-container.h-full .md\:max-h-\[350px\] {
 	overflow-y: auto;
 	contain: content;
+	position: relative;
+	padding-left: 10px;
 }
 
 /* Fix for long words/strings in lists */
-.cdx-list__item {
+.cdx-list__item, .ce-paragraph {
 	word-break: break-word;
+	white-space: normal !important;
+	max-width: 95% !important; /* Ensure text wraps properly */
 }
 
 /* Ensure multi-line bullet points format correctly */
 .cdx-list__item-content {
 	white-space: normal;
+}
+
+/* Fix the placement of toolbar for small screens */
+@media (max-width: 768px) {
+	.block-editor-container .editorjs {
+		margin-left: 25px !important;
+		width: calc(100% - 25px) !important;
+	}
+	
+	.ce-toolbar__plus {
+		left: -20px !important;
+	}
+}
+
+/* Fix for the very long strings with no spaces shown in your screenshot */
+.ce-paragraph, .cdx-list__item, .cdx-checklist__item {
+	overflow-wrap: break-word !important;
+	word-wrap: break-word !important;
+	-ms-word-break: break-all !important;
+	word-break: break-word !important;
+	max-width: 95% !important; /* Allow some margin */
+}
+
+/* Fix for z-index issues with toolbar in modal */
+.ce-toolbar {
+	z-index: 10 !important;
 }
 </style>
