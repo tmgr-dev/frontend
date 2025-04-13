@@ -168,3 +168,55 @@
 		editor.destroy();
 	});
 </script>
+
+<style>
+/* Fix for modal windows with many list/checklist items */
+.editorjs {
+	/* Ensure the editor itself is properly sized */
+	height: 100%;
+	min-height: 500px; /* Minimum height to ensure visibility */
+	max-height: 100%;
+	overflow-y: auto;
+}
+
+/* Fix for checklist items to prevent overflow */
+.cdx-checklist__item, .ce-block__content {
+	word-break: break-word;
+	overflow-wrap: break-word;
+}
+
+/* Make list items display properly in modal */
+.cdx-list__item {
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	padding-right: 8px;
+}
+
+/* Limit bullet point text length in modal */
+.cdx-list {
+	max-width: 100%;
+	padding-right: 16px;
+}
+
+/* Improve readability in dark mode */
+.dark .ce-block--selected .ce-block__content {
+	background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Ensure content is visible within the modal */
+.ce-block__content {
+	max-width: calc(100% - 20px);
+	margin: 0 auto;
+}
+
+/* Better checkbox appearance in checklists */
+.cdx-checklist__item-checkbox {
+	flex-shrink: 0;
+}
+
+/* Better text handling in checklist items */
+.cdx-checklist__item-text {
+	flex-grow: 1;
+	word-break: break-word;
+}
+</style>
