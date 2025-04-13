@@ -508,10 +508,21 @@
 		updateFormBeforeQuery();
 
 		try {
+			// Set suppressAutoSavingForOnce to true before saving to prevent auto-save during manual save
 			suppressAutoSavingForOnce.value = true;
+			
+			// Cancel any pending auto-saves
+			if (typeof cancelPendingAutoSave === 'function') {
+				cancelPendingAutoSave();
+			}
+			
 			const id = taskId.value || form.value.id as number;
 			form.value = await updateTask(id, form.value as Task);
 			store.commit('incrementReloadTasksKey');
+			
+			// Ensure no auto-save will happen after this manual save
+			// We need to set this after the save operation completes
+			suppressAutoSavingForOnce.value = true;
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -566,7 +577,8 @@
 		}
 	};
 
-	const [isAutoSaving] = useDebouncedAutoSave({
+	// Use explicit type annotations to help TypeScript understand the types
+	const autosaveResult = useDebouncedAutoSave({
 		formRef: form,
 		fieldsToWatch: [
 			'title',
@@ -580,6 +592,8 @@
 		delay: 2000,
 		suppressDebounceForOnce: suppressAutoSavingForOnce,
 	});
+	const isAutoSaving = autosaveResult[0];
+	const cancelPendingAutoSave = autosaveResult[1] as () => void;
 
 	useMagicKeys({
 		passive: false,
