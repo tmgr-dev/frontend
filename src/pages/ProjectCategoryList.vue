@@ -550,17 +550,17 @@
 							<span class="material-icons text-3xl">done_all</span>
 						</button>
 
-						<button
-							class="opacity-25 hover:opacity-100"
-							title="Add task to category"
+						<Button
+							title="Create a task in this category"
 							@click="
 								$store.commit('createTaskInProjectCategoryId', {
-									projectCategoryId: id,
+									projectCategoryId: route.params.id,
 								})
 							"
 						>
-							<span class="material-icons text-3xl">add_circle_outline</span>
-						</button>
+							<span class="material-icons text-lg mr-1">add_circle_outline</span>
+							Create task
+						</Button>
 					</div>
 				</div>
 

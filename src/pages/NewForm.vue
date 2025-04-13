@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, ref, toRef } from 'vue';
+	import { computed, onBeforeMount, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -99,7 +99,7 @@
 		assignees: [],
 		status: 'created',
 		status_id: props.statusId ?? 0,
-		project_category_id: props.modalProjectCategoryId ?? null,
+		project_category_id: modalProjectCategoryId.value ?? null,
 		common_time: 0,
 		is_daily_routine: false,
 		order: 0,
@@ -162,6 +162,11 @@
 			statuses.value = loadedStatuses;
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
+			
+			// Set first status as default for new tasks if no specific status was provided
+			if (!taskId.value && !form.value.status_id && statuses.value?.length > 0) {
+				form.value.status_id = statuses.value[0].id;
+			}
 
 			// Only after all data is loaded, update the task title
 			await updateTaskTitle();
@@ -268,6 +273,11 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			form.value = await createTaskAction(form.value as Task);
+			
+			// Set current task ID in the store to transition to edit mode
+			if (form.value.id) {
+				store.commit('setCurrentTaskIdForModal', form.value.id);
+			}
 
 			// Get current workspace
 			const currentWorkspaceId = store.state.user?.settings?.find(
@@ -297,6 +307,9 @@
 					console.error('Invalid URL generated for task navigation');
 				}
 			}
+			
+			// Trigger reload of tasks list
+			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
 		}
@@ -361,14 +374,15 @@
 	};
 
 	const saveTask = async () => {
-		if (!taskId.value) return;
+		if (!taskId.value && !form.value.id) return;
 
 		isLoading.value = true;
 		updateFormBeforeQuery();
 
 		try {
 			suppressAutoSavingForOnce.value = true;
-			form.value = await updateTask(taskId.value, form.value as Task);
+			const id = taskId.value || form.value.id as number;
+			form.value = await updateTask(id, form.value as Task);
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
@@ -378,20 +392,22 @@
 	};
 
 	const deleteCurrentTask = async () => {
-		if (!taskId.value) return;
+		if (!taskId.value && !form.value.id) return;
 
 		isLoading.value = true;
 
 		try {
+			const id = taskId.value || form.value.id as number;
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(taskId.value);
+				form.value = await stopTaskTimeCounter(id);
 			}
 
-			await deleteTask(taskId.value);
+			await deleteTask(id);
 
 			if (props.isModal) {
 				emit('close');
+				store.commit('incrementReloadTasksKey');
 			} else {
 				router.push('/');
 			}
@@ -403,16 +419,17 @@
 	};
 
 	const toggleTimer = async () => {
-		if (!taskId.value) return;
+		if (!taskId.value && !form.value.id) return;
 
 		isLoading.value = true;
 
 		try {
 			suppressAutoSavingForOnce.value = true;
+			const id = taskId.value || form.value.id as number;
 			if (form.value.start_time) {
-				form.value = await stopTaskTimeCounter(taskId.value);
+				form.value = await stopTaskTimeCounter(id);
 			} else {
-				form.value = await startTaskTimeCounter(taskId.value);
+				form.value = await startTaskTimeCounter(id);
 			}
 		} catch (e) {
 			console.error(e);
@@ -447,7 +464,7 @@
 	});
 
 	const generateTaskUrlForAdvancedForm = () => {
-		if (!taskId.value) return '/';
+		if (!taskId.value && !form.value.id) return '/';
 		
 		// Get current workspace
 		const currentWorkspaceId = store.state.user?.settings?.find(
@@ -463,8 +480,26 @@
 				? form.value.category
 				: null;
 		
-		return generateTaskUrl(taskId.value, currentWorkspace, category);
+		const id = taskId.value || form.value.id as number;
+		return generateTaskUrl(id, currentWorkspace, category);
 	};
+
+	// Watch for changes to modalProjectCategoryId and update form accordingly
+	watch(modalProjectCategoryId, (newCategoryId) => {
+		if (newCategoryId && !taskId.value) {
+			form.value.project_category_id = newCategoryId;
+			
+			// Ensure a status is selected (use first status if none is already selected)
+			if (!form.value.status_id && statuses.value && statuses.value.length > 0) {
+				form.value.status_id = statuses.value[0].id;
+			}
+			
+			// If categories are already loaded, try to update the title based on category pattern
+			if (categories.value.length > 0) {
+				updateTaskTitle();
+			}
+		}
+	}, { immediate: true });
 </script>
 
 <template>
@@ -578,7 +613,7 @@
 			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
 				<div class="flex justify-end gap-3 text-center">
 					<a
-						v-if="isModal && taskId"
+						v-if="isModal && (taskId || form.id)"
 						:href="generateTaskUrlForAdvancedForm()"
 						title="Open advanced form"
 						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
@@ -588,7 +623,7 @@
 
 					<span class="relative inline-flex rounded-md shadow-sm">
 						<button
-							v-if="taskId"
+							v-if="taskId || form.id"
 							@click="saveTask()"
 							class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
 							type="button"
@@ -621,7 +656,7 @@
 					</span>
 
 					<button
-						v-if="!taskId"
+						v-if="!taskId && !form.id"
 						@click="createTask"
 						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 						type="button"
@@ -631,7 +666,7 @@
 					</button>
 
 					<button
-						v-if="taskId"
+						v-if="taskId || form.id"
 						@click="deleteCurrentTask"
 						title="Delete"
 						class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
