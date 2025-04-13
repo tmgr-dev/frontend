@@ -48,29 +48,61 @@
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 
-	// Helper to get preferred editor with local storage fallback
+	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
-		// First try to get from store
+		// First try to get from localStorage since it's faster
+		const savedEditor = localStorage.getItem('preferred_editor');
+		// Normalize the saved value to handle potential case issues or malformed values
+		if (savedEditor) {
+			const normalizedEditor = savedEditor.toLowerCase().trim();
+			// Only return valid editor types
+			if (normalizedEditor === 'block' || normalizedEditor === 'markdown') {
+				console.log('Using from localStorage:', normalizedEditor);
+				return normalizedEditor as EditorType;
+			}
+			// If invalid, remove from localStorage to avoid future issues
+			console.log('Invalid localStorage editor value:', savedEditor, 'removing it');
+			localStorage.removeItem('preferred_editor');
+		}
+		
+		// If not in localStorage or invalid value, try to get from store
 		const preferredEditor = store.state.user?.settings?.find(
 			(setting: Record<string, string | number>) =>
 				setting.key === 'preferred_editor',
 		)?.value as EditorType | undefined;
 		
 		if (preferredEditor) {
-			// If found in store, save to localStorage for future fallback
-			localStorage.setItem('preferred_editor', preferredEditor);
-			return preferredEditor;
+			// Convert to a normalized value
+			const normalizedEditor = typeof preferredEditor === 'string' 
+				? preferredEditor.toLowerCase().trim() 
+				: String(preferredEditor).toLowerCase().trim();
+				
+			// Only use valid editor types
+			if (normalizedEditor === 'block' || normalizedEditor === 'markdown') {
+				// If found in store, save to localStorage for future fallback
+				console.log('Using from store settings:', normalizedEditor);
+				localStorage.setItem('preferred_editor', normalizedEditor);
+				return normalizedEditor as EditorType;
+			}
 		}
 		
-		// If not in store, try to get from localStorage
-		const savedEditor = localStorage.getItem('preferred_editor') as EditorType | null;
-		return savedEditor || 'markdown';
+		// Default to markdown if no preference is found anywhere
+		console.log('No valid editor preference found, defaulting to markdown');
+		return 'markdown';
 	};
 
 	// Helper to set editor type and persist to localStorage
 	const setEditorType = (type: EditorType) => {
-		editorType.value = type;
-		localStorage.setItem('preferred_editor', type);
+		// Normalize the type to ensure consistency
+		const normalizedType = type.toLowerCase().trim() as EditorType;
+		if (normalizedType !== 'block' && normalizedType !== 'markdown') {
+			console.error('Invalid editor type:', type);
+			return;
+		}
+		
+		editorType.value = normalizedType;
+		console.log('Setting editor type to:', normalizedType);
+		localStorage.setItem('preferred_editor', normalizedType);
 	};
 
 	interface Props {
@@ -177,7 +209,19 @@
 	};
 
 	onBeforeMount(async () => {
-		isEditorLoading.value = true;
+		// Initialize editor immediately from localStorage with better validation
+		try {
+			// Set the editor type using the helper to ensure consistency
+			editorType.value = getPreferredEditorWithFallback();
+			console.log('Editor initialized to:', editorType.value);
+		} catch (err) {
+			console.error('Error initializing editor preference:', err);
+			editorType.value = 'markdown'; // Fallback to markdown in case of errors
+		}
+		
+		// We can stop loading the editor right away since we have a value
+		isEditorLoading.value = false;
+		
 		try {
 			// First, get the workspaceId and preferred editor from settings
 			const workspaceId = store.state.user?.settings?.find(
@@ -185,14 +229,25 @@
 					setting.key === 'current_workspace',
 			)?.value;
 
-			// Get preferred editor from settings with proper fallback
+			// Get preferred editor from settings for future use
+			// If settings value is different from localStorage, we'll update localStorage
 			const preferredEditor = store.state.user?.settings?.find(
 				(setting: Record<string, string | number>) =>
 					setting.key === 'preferred_editor',
 			)?.value as EditorType | undefined;
 			
 			if (preferredEditor) {
-				setEditorType(preferredEditor);
+				// Normalize the server value
+				const normalizedServerEditor = typeof preferredEditor === 'string' 
+					? preferredEditor.toLowerCase().trim() 
+					: String(preferredEditor).toLowerCase().trim();
+				
+				// Only update if it's a valid type and different from current
+				if ((normalizedServerEditor === 'block' || normalizedServerEditor === 'markdown') 
+					&& normalizedServerEditor !== editorType.value) {
+					console.log('Editor preference in store differs from localStorage, updating to:', normalizedServerEditor);
+					setEditorType(normalizedServerEditor as EditorType);
+				}
 			}
 
 			// Check if we have a new task with checkpoints in localStorage when creating a new task
@@ -315,9 +370,6 @@
 			}
 		} catch (e) {
 			console.error('Error loading task data:', e);
-		} finally {
-			// Set loading to false only after everything is done
-			isEditorLoading.value = false;
 		}
 	});
 
@@ -700,34 +752,22 @@
 
 			<!-- Editor section with toggle button -->
 			<div class="relative flex-1 min-h-0">
-				<!-- Loading state -->
-				<div v-if="isEditorLoading" class="mb-2 grow md:h-72 flex items-center justify-center animate-pulse bg-gray-100 dark:bg-gray-800 rounded">
-					<div class="text-center">
-						<div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-							<span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-						</div>
-						<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading editor...</p>
-					</div>
-				</div>
+				<!-- Editor components - no loading state needed since we use localStorage -->
+				<Editor
+					v-if="editorType === 'markdown'"
+					v-model="form.description"
+					class="mb-2 grow md:h-72"
+					:class="[!isModal && 'lg:min-h-96']"
+					:show-preview="!!(taskId && form.description)"
+				/>
 
-				<!-- Editor components -->
-				<template v-else>
-					<Editor
-						v-if="editorType === 'markdown'"
-						v-model="form.description"
-						class="mb-2 grow md:h-72"
-						:class="[!isModal && 'lg:min-h-96']"
-						:show-preview="!!(taskId && form.description)"
-					/>
-
-					<BlockEditor
-						v-else-if="editorType === 'block'"
-						v-model="form.description_json"
-						placeholder="Type your description here or enter / to see commands or "
-						class="mb-2 grow border px-2"
-						:class="[!isModal ? 'lg:min-h-96' : 'md:h-72']"
-					/>
-				</template>
+				<BlockEditor
+					v-else-if="editorType === 'block'"
+					v-model="form.description_json"
+					placeholder="Type your description here or enter / to see commands or "
+					class="mb-2 grow border px-2"
+					:class="[!isModal ? 'lg:min-h-96' : 'md:h-72']"
+				/>
 
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div
