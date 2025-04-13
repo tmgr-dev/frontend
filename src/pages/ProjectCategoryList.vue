@@ -324,11 +324,13 @@
 			<div
 				class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
 			>
-				<breadcrumbs
-					:current="category ? category.title : ''"
-					:drop="drop"
-					:items="getBreadcrumbs(parentCategories)"
-				/>
+				<div class="flex items-center gap-2">
+					<breadcrumbs
+						:current="category ? category.title : ''"
+						:drop="drop"
+						:items="getBreadcrumbs(parentCategories)"
+					/>
+				</div>
 
 				<div class="flex gap-3">
 					<Button
