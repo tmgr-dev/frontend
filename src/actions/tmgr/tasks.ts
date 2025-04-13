@@ -9,7 +9,11 @@ export interface Task {
 	id: number | undefined;
 	approximately_time: number;
 	assignees: Record<string, any>[] | number[];
-	category: number;
+	category: number | {
+		id: number;
+		title: string;
+		code: string;
+	};
 	title: string;
 	status: string;
 	description: string | null;
@@ -24,6 +28,13 @@ export interface Task {
 	user: Pick<User, 'id' | 'name'>;
 	user_id: number;
 	workspace_id?: number;
+	checkpoints?: Array<{
+		description: string;
+		start: number;
+		end: number;
+		checked: boolean;
+		inputType: string;
+	}>;
 }
 
 interface LinkResponse {
