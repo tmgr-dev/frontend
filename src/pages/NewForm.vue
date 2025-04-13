@@ -116,7 +116,8 @@
 		checkpoints: []
 	});
 	const taskId = computed(() => {
-		const id = modalTaskId.value || route.params.id;
+		// Handle all URL formats: '/19', '/workspace/tasks/19', '/:workspace_code/:category_code/:task_number'
+		const id = modalTaskId.value || route.params.id || route.params.task_id || route.params.taskId;
 		return id ? Number(id) : undefined;
 	});
 	const statuses = ref<Status[]>();
@@ -520,16 +521,17 @@
 		)?.value;
 		
 		const currentWorkspace = (store.state.workspaces || []).find(
-			(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+			(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
 		);
 		
-		const category = 
-			form.value.category && typeof form.value.category === 'object'
-				? form.value.category
-				: null;
-		
+		// Use the new URL format: /:workspace_code/tasks/:task_id
 		const id = taskId.value || form.value.id as number;
-		return generateTaskUrl(id, currentWorkspace, category);
+		if (currentWorkspace?.code) {
+			return `/${currentWorkspace.code}/tasks/${id}`;
+		}
+		
+		// Fallback to the old format if no workspace code is available
+		return `/${id}`;
 	};
 
 	// Watch for changes to modalProjectCategoryId and update form accordingly
