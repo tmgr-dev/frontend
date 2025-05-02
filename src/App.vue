@@ -8,7 +8,7 @@
 		<transition mode="out-in" name="fade">
 			<div class="flex min-h-screen">
 				<CustomSidebar>
-					<router-view v-slot="{ Component }">
+					<router-view v-slot="{ Component, route }" :key="route?.fullPath">
 						<transition
 							:name="transitionName"
 							mode="out-in"

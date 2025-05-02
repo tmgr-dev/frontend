@@ -45,7 +45,7 @@
 					<div class="mb-8 text-center text-gray-500">Sign up with</div>
 
 					<!-- Social Login Buttons -->
-					<div class="mb-8 flex justify-center space-x-4">
+					<div class="mb-4 flex justify-center space-x-4">
 						<button
 							class="rounded-full bg-gray-200 p-3 hover:bg-gray-300"
 							@click="loginWithSocialite('google')"
@@ -64,6 +64,16 @@
 						>
 							<GitHubIcon class="h-6 w-6" />
 						</button>
+					</div>
+					<!-- Telegram Login Widget Container -->
+					<div id="telegram-register-widget-container" class="mb-8 flex justify-center">
+						<TelegramLoginWidget 
+							:bot-name="telegramBotName" 
+							:auth-url="telegramAuthUrl" 
+							widget-size="medium"
+							v-if="telegramBotName"
+						/>
+						<div v-else class="text-red-500 text-xs">Telegram Bot Name not configured.</div>					
 					</div>
 
 					<div class="relative mb-8">
@@ -173,15 +183,18 @@
 
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
-	import { ref } from 'vue';
+	import { ref, onMounted } from 'vue';
 	import { Register, register as registerAction } from '@/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
 	import { getUser } from '@/actions/tmgr/user';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
+	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 
 	const router = useRouter();
+	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
+	const telegramAuthUrl = `${import.meta.env.VITE_API_BASE_URL}auth/login/telegram/redirect`;
 
 	const isLoading = ref(false);
 	const errors = ref({});
@@ -221,6 +234,7 @@
 	}
 
 	async function loginWithSocialite(platform: string) {
+		if (platform === 'telegram') return;
 		document.location.href = `${
 			import.meta.env.VITE_API_BASE_URL
 		}auth/login/${platform}`;
