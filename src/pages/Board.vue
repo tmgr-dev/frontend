@@ -1,10 +1,10 @@
 <template>
 	<Teleport to="title">{{ title }}</Teleport>
 
-	<BaseLayout no-copyright>
+	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
-			<div class="block justify-center">
-				<div class="w-full overflow-x-auto">
+			<div class="flex flex-col justify-center flex-1">
+				<div class="w-full overflow-x-auto flex flex-col h-full">
 					<div class="min-h-[62px]">
 						<div class="relative md:hidden">
 							<FilterIcon
@@ -566,9 +566,10 @@
 				if (this.isCreatingStatus) {
 					try {
 						await createStatus(this.workspaceId, newStatus);
-						this.showAlert('Save', 'The status was created');
+						// this.showAlert('Save', 'The status was created');
 						this.closeModal();
-						this.$store.commit('rerenderApp');
+						await this.loadColumns();
+						await this.loadTasks();
 					} catch (error) {
 						if (error) {
 							this.errors = error.response?.data?.errors;
@@ -578,9 +579,10 @@
 				if (!this.isCreatingStatus) {
 					try {
 						await updateStatus(this.statusId, newStatus);
-						this.showAlert('Saved', 'The status was edited');
+						// this.showAlert('Saved', 'The status was edited');
 						this.closeModal();
-						this.$store.commit('rerenderApp');
+						await this.loadColumns();
+						await this.loadTasks();
 					} catch (error) {
 						if (error) {
 							this.errors = error.response?.data?.errors;
@@ -595,8 +597,10 @@
 				const deleteStatusConfirmation = async () => {
 					await deleteStatus(this.statusId);
 					this.closeModal();
-					this.showAlert('Saved', 'The status was deleted');
-					this.$store.commit('rerenderApp');
+					this.confirm = undefined;
+					// this.showAlert('Saved', 'The status was deleted');
+					await this.loadColumns();
+					await this.loadTasks();
 				};
 				this.showConfirm(
 					'Delete status',
@@ -606,6 +610,7 @@
 			},
 			openStatusModal(column) {
 				this.isShowStatusModal = true;
+				this.isCreatingStatus = false;
 				this.statusType = column.status.type;
 				this.statusName = column.status.name;
 				this.statusColor = column.status.color;
@@ -902,6 +907,7 @@
 		display: flex;
 
 		flex-wrap: nowrap;
+		flex-grow: 1;
 		overflow-x: auto;
 		overflow-y: hidden;
 		width: calc(100vw - 19rem);
@@ -911,7 +917,6 @@
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			height: calc(100vh - 130px);
 		}
 		@media (max-width: 768px) {
 			width: calc(100vw - 3rem);
