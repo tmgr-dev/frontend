@@ -22,6 +22,8 @@
 		loginGithub,
 		LoginWithCodeRequest,
 		LoginGoogleRequest,
+		loginTelegram,
+		setTokenAndHeaders,
 	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { AxiosError } from 'axios';
@@ -41,6 +43,31 @@
 	const message = ref('Wait for redirect...');
 	const errors = ref({});
 	async function login() {
+		// Check for token from Telegram Widget redirect
+		if (route.query.token) {
+			try {
+				isLoading.value = true;
+				const token = route.query.token as string;
+				setTokenAndHeaders(token);
+
+				// Fetch user data and redirect
+				await getUser();
+				if (store.state.user) {
+					await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
+				}
+				await router.push({ name: 'CurrentTasksList' });
+				store.commit('rerenderApp'); // Assuming this is needed after login
+				return; // Exit early
+			} catch (error: unknown) {
+				message.value = 'Failed to process Telegram login. Redirecting...';
+				console.error('Telegram token processing error:', error);
+				setTimeout(() => router.push('/login'), 3000);
+				throw error;
+			} finally {
+				isLoading.value = false;
+			}
+		}
+
 		const platform = route.params.platform;
 		try {
 			message.value = '';
@@ -68,6 +95,12 @@
 						prompt: route.query?.prompt as string,
 					};
 					await loginGoogle(googlePayload);
+					break;
+				case 'telegram':
+					const telegramPayload: LoginWithCodeRequest = {
+						code: route.query?.code as string,
+					};
+					await loginTelegram(telegramPayload);
 					break;
 				default:
 					await router.push('login');
