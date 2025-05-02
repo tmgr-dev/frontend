@@ -53,7 +53,7 @@
 							</Transition>
 						</div>
 
-						<div class="hidden md:block">
+						<div class="hidden items-center md:flex">
 							<FiltersBoard
 								v-if="workspaceUsers.length"
 								:workspaceUsers="workspaceUsers"
@@ -66,7 +66,19 @@
 								@handleSearchTextChanged="handleSearchTextChanged"
 								@loadTasks="loadTasks"
 								@loadColumns="loadColumns"
-							/>
+							>
+								<template #actions-start>
+									<!-- Add Status Icon Button -->
+									<button
+										@click="openCreateStatusModal"
+										class="mr-4 cursor-pointer text-gray-500 hover:text-black dark:text-gray-600 dark:hover:text-white"
+										title="Add Status"
+									>
+										<span class="cursor-pointer material-icons text-2xl">add</span>
+									</button>
+									<!-- End Add Status Icon Button -->
+								</template>
+							</FiltersBoard>
 						</div>
 					</div>
 
@@ -189,40 +201,6 @@
 									</div>
 								</template>
 							</Draggable>
-						</div>
-
-						<div
-							class="fixed right-2 z-10 h-full w-12 flex-col"
-							v-if="columns.length > 0"
-						>
-							<span
-								@click="
-									() => {
-										isShowStatusModal = true;
-										isCreatingStatus = true;
-										$store.commit('openModal');
-									}
-								"
-								class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
-							>
-								add
-							</span>
-							<div class="relative my-2 flex h-screen items-center">
-								<div
-									v-if="hasHorizontalScroll"
-									class="flex h-full items-center"
-								>
-									<span
-										@click="scrollHorizontally"
-										class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
-									>
-										arrow_forward_ios
-									</span>
-									<div
-										class="relative flex h-64 w-0.5 items-center bg-gray-100 before:absolute before:right-2 before:-z-10 before:h-5/6 before:w-full before:bg-gradient-to-l before:from-[#000000] before:from-gray-600 before:to-100% before:blur-[4px] dark:bg-neutral-900"
-									></div>
-								</div>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -816,6 +794,12 @@
 			},
 			handleUpdateDraggable(value) {
 				this.activeDraggable = value;
+			},
+			openCreateStatusModal() {
+				this.isShowStatusModal = true;
+				this.isCreatingStatus = true;
+				this.clearStatus(); // Clear fields for new status
+				this.$store.commit('openModal');
 			},
 		},
 		async beforeMount() {
