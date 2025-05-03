@@ -33,6 +33,7 @@
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { Skeleton } from '@/components/ui/skeleton';
+	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -47,6 +48,7 @@
 	const loadingActionTasksIds = ref([]);
 	const workspaceStatus = ref('all');
 	const workspaceCode = ref(null);
+	const permissionDenied = ref(false);
 	
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -288,28 +290,36 @@
 	};
 
 	onMounted(async () => {
-		// Initialize pagination from URL query parameters
-		if (route.query.categories_page) {
-			categoriesPagination.value.current_page = parseInt(String(route.query.categories_page));
-		}
-		if (route.query.categories_per_page) {
-			categoriesPagination.value.per_page = parseInt(String(route.query.categories_per_page));
-		}
-		if (route.query.page) {
-			pagination.value.current_page = parseInt(String(route.query.page));
-		}
-		if (route.query.per_page) {
-			pagination.value.per_page = parseInt(String(route.query.per_page));
-		}
-		workspaceCode.value = getWorkspaceCode();
-		await loadCategories();
-		await loadTasks();
+		try {
+			workspaceCode.value = route.params.workspace_code || store.state.user?.workspace_code;
+			workspaceStatus.value = route.params.status || 'all';
 
-		if (route.params.status) {
-			workspaceStatus.value =
-				route.params.status === 'all'
-					? route.params.status
-					: parseInt(route.params.status);
+			// Initialize pagination from URL query parameters
+			if (route.query.categories_page) {
+				categoriesPagination.value.current_page = parseInt(String(route.query.categories_page));
+			}
+			if (route.query.categories_per_page) {
+				categoriesPagination.value.per_page = parseInt(String(route.query.categories_per_page));
+			}
+			if (route.query.page) {
+				pagination.value.current_page = parseInt(String(route.query.page));
+			}
+			if (route.query.per_page) {
+				pagination.value.per_page = parseInt(String(route.query.per_page));
+			}
+			await Promise.all([
+				loadCategories(),
+				loadTasks(),
+			]);
+		} catch (error) {
+			console.error('Error loading category page data:', error);
+			if (error.response?.status === 403) {
+				permissionDenied.value = true;
+				isCategoriesFirstLoading.value = false;
+				isTasksFirstLoading.value = false;
+			} else {
+				// Handle other errors (e.g., show a generic error message)
+			}
 		}
 	});
 </script>
@@ -318,8 +328,9 @@
 	<teleport to="title">
 		{{ category ? category.title : 'Categories' }}
 	</teleport>
+	<ForbiddenAccess v-if="permissionDenied" />
 
-	<BaseLayout>
+	<BaseLayout v-else>
 		<template #action>
 			<div
 				class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
