@@ -86,6 +86,13 @@
 							<span class="text-xs text-gray-700 sm:text-base md:text-base">
 								{{ getTaskFormattedTime(task) }}
 							</span>
+							
+							<AssigneeUsers
+								:assignees="task.assignees" 
+								avatarsClass="h-6 w-6" 
+								:show-assignee-controls="false"
+								class="ml-2"
+							/>
 						</div>
 					</div>
 
@@ -177,6 +184,7 @@
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Button from '@/components/general/Button.vue';
 	import { PropType } from 'vue';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 
 	export default {
 		name: 'TasksListComponent',
@@ -190,6 +198,7 @@
 			Loader,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
+			AssigneeUsers
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
