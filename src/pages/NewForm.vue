@@ -47,6 +47,7 @@
 	import { useMagicKeys } from '@vueuse/core';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
+	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -161,6 +162,7 @@
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
+	const permissionDenied = ref(false);
 
 	const statusIdStr = computed({
 		get: () => form.value.status_id?.toString() || '',
@@ -368,8 +370,11 @@
 					assignees.value = [];
 				}
 			}
-		} catch (e) {
+		} catch (e: any) {
 			console.error('Error loading task data:', e);
+			if (e.response?.status === 403) {
+				permissionDenied.value = true;
+			}
 		}
 	});
 
@@ -689,7 +694,11 @@
 </script>
 
 <template>
-	<div class="new-form-container h-full">
+	<div v-if="permissionDenied" class="flex items-center justify-center p-10 min-h-[300px]">
+		<ForbiddenAccess :show-back-button="false" />
+	</div>
+
+	<div v-else class="new-form-container h-full">
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 		<div
