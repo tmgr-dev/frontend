@@ -24,7 +24,7 @@
 	}
 
 	const props = defineProps<Props>();
-	const emit = defineEmits(['stopTimer']);
+	const emit = defineEmits(['stopTimer', 'update:timer']);
 	const isEditMode = ref(false);
 	const isLoading = ref(false);
 	const timeTokens = {
@@ -52,6 +52,7 @@
 			await updateTaskTimeCounter(props.taskId, {
 				common_time: seconds,
 			});
+			emit('update:timer', seconds);
 		} catch (e) {
 			console.error(e);
 		} finally {
