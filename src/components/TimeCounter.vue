@@ -62,7 +62,7 @@
 		};
 	});
 	const isTimeOver = computed(
-		() => task.approximately_time - task.common_time < 0,
+		() => (task.approximately_time || 3600) - task.common_time < 0,
 	);
 
 	// Methods
@@ -158,6 +158,12 @@
 				:last-start-time="lastStartTime"
 				:is-timer-active="isTimerActive"
 				@stop-timer="toggleTimer"
+				@update:timer="
+					(seconds) => {
+						task.common_time = seconds;
+						renderTime();
+					}
+				"
 			/>
 
 			<div>

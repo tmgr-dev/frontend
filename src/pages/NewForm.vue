@@ -62,22 +62,23 @@
 				return normalizedEditor as EditorType;
 			}
 			// If invalid, remove from localStorage to avoid future issues
-			console.log('Invalid localStorage editor value:', savedEditor, 'removing it');
+			console.log(
+				'Invalid localStorage editor value:',
+				savedEditor,
+				'removing it',
+			);
 			localStorage.removeItem('preferred_editor');
 		}
-		
+
 		// If not in localStorage or invalid value, try to get from store
 		const preferredEditor = store.state.user?.settings?.find(
 			(setting: Record<string, string | number>) =>
 				setting.key === 'preferred_editor',
 		)?.value as EditorType | undefined;
-		
+
 		if (preferredEditor) {
-			// Convert to a normalized value
-			const normalizedEditor = typeof preferredEditor === 'string' 
-				? preferredEditor.toLowerCase().trim() 
-				: String(preferredEditor).toLowerCase().trim();
-				
+			const normalizedEditor = String(preferredEditor).toLowerCase().trim();
+
 			// Only use valid editor types
 			if (normalizedEditor === 'block' || normalizedEditor === 'markdown') {
 				// If found in store, save to localStorage for future fallback
@@ -86,7 +87,7 @@
 				return normalizedEditor as EditorType;
 			}
 		}
-		
+
 		// Default to markdown if no preference is found anywhere
 		console.log('No valid editor preference found, defaulting to markdown');
 		return 'markdown';
@@ -100,7 +101,7 @@
 			console.error('Invalid editor type:', type);
 			return;
 		}
-		
+
 		editorType.value = normalizedType;
 		console.log('Setting editor type to:', normalizedType);
 		localStorage.setItem('preferred_editor', normalizedType);
@@ -144,13 +145,17 @@
 		category: 0,
 		user: {
 			id: store.state.user?.id || 0,
-			name: store.state.user?.name || ''
+			name: store.state.user?.name || '',
 		},
-		checkpoints: []
+		checkpoints: [],
 	});
 	const taskId = computed(() => {
 		// Handle all URL formats: '/19', '/workspace/tasks/19', '/:workspace_code/:category_code/:task_number'
-		const id = modalTaskId.value || route.params.id || route.params.task_id || route.params.taskId;
+		const id =
+			modalTaskId.value ||
+			route.params.id ||
+			route.params.task_id ||
+			route.params.taskId;
 		return id ? Number(id) : undefined;
 	});
 	const statuses = ref<Status[]>();
@@ -185,8 +190,10 @@
 		const timeSinceStartTime = !formValue.start_time
 			? 0
 			: Math.floor(
-					(new Date().getTime() - new Date().setTime(formValue.start_time * 1000)) / 1000,
-				);
+					(new Date().getTime() -
+						new Date().setTime(formValue.start_time * 1000)) /
+						1000,
+			  );
 		const currentTime = formValue.common_time + timeSinceStartTime;
 		if (formValue.checkpoints.length > 0) {
 			const prevCheckpointIndex = formValue.checkpoints.length - 1;
@@ -197,7 +204,7 @@
 			start: currentTime,
 			end: currentTime,
 			checked: false,
-			inputType: 'text'
+			inputType: 'text',
 		});
 		checkpointUpdateKey.value++;
 	};
@@ -220,10 +227,10 @@
 			console.error('Error initializing editor preference:', err);
 			editorType.value = 'markdown'; // Fallback to markdown in case of errors
 		}
-		
+
 		// We can stop loading the editor right away since we have a value
 		isEditorLoading.value = false;
-		
+
 		try {
 			// First, get the workspaceId and preferred editor from settings
 			const workspaceId = store.state.user?.settings?.find(
@@ -237,17 +244,24 @@
 				(setting: Record<string, string | number>) =>
 					setting.key === 'preferred_editor',
 			)?.value as EditorType | undefined;
-			
+
 			if (preferredEditor) {
 				// Normalize the server value
-				const normalizedServerEditor = typeof preferredEditor === 'string' 
-					? preferredEditor.toLowerCase().trim() 
-					: String(preferredEditor).toLowerCase().trim();
-				
+				const normalizedServerEditor =
+					typeof preferredEditor === 'string'
+						? preferredEditor.toLowerCase().trim()
+						: String(preferredEditor).toLowerCase().trim();
+
 				// Only update if it's a valid type and different from current
-				if ((normalizedServerEditor === 'block' || normalizedServerEditor === 'markdown') 
-					&& normalizedServerEditor !== editorType.value) {
-					console.log('Editor preference in store differs from localStorage, updating to:', normalizedServerEditor);
+				if (
+					(normalizedServerEditor === 'block' ||
+						normalizedServerEditor === 'markdown') &&
+					normalizedServerEditor !== editorType.value
+				) {
+					console.log(
+						'Editor preference in store differs from localStorage, updating to:',
+						normalizedServerEditor,
+					);
 					setEditorType(normalizedServerEditor as EditorType);
 				}
 			}
@@ -292,7 +306,11 @@
 			workspaceMembers.value = loadedWorkspaceMembers;
 
 			// Set first status as default for new tasks if no specific status was provided
-			if (!taskId.value && !form.value.status_id && statuses.value?.length > 0) {
+			if (
+				!taskId.value &&
+				!form.value.status_id &&
+				statuses.value?.length > 0
+			) {
 				form.value.status_id = statuses.value[0].id;
 			}
 
@@ -304,11 +322,13 @@
 				if (props.isModal) {
 					// Update URL if in modal
 					const currentWorkspaceId = store.state.user?.settings?.find(
-						(setting: Record<string, any>) => setting.key === 'current_workspace'
+						(setting: Record<string, any>) =>
+							setting.key === 'current_workspace',
 					)?.value;
 
 					const currentWorkspace = (store.state.workspaces || []).find(
-						(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
+						(workspace: Record<string, any>) =>
+							Number(workspace.id) === Number(currentWorkspaceId),
 					);
 
 					// Only update URL if we have a workspace and we're in modal mode
@@ -323,12 +343,13 @@
 
 				suppressAutoSavingForOnce.value = true;
 				const taskData = await getTask(taskId.value);
-				
+
 				// Ensure approximately_time is a number
-				taskData.approximately_time = typeof taskData.approximately_time === 'string' 
-					? parseInt(taskData.approximately_time, 10) || 0 
-					: taskData.approximately_time || 0;
-				
+				taskData.approximately_time =
+					typeof taskData.approximately_time === 'string'
+						? parseInt(taskData.approximately_time, 10) || 0
+						: taskData.approximately_time || 0;
+
 				// Before setting form value, check if we need to adjust editor type based on content
 				if (taskData.description_json && !taskData.description) {
 					// If task has JSON content but no markdown, use block editor
@@ -337,7 +358,7 @@
 					// If task has markdown but no JSON, use markdown editor
 					setEditorType('markdown');
 				}
-				
+
 				form.value = taskData;
 
 				// Initialize checkpoints array if not present
@@ -346,26 +367,40 @@
 				}
 
 				// Update approximately_time from settings if available
-				const approxTime = form.value.settings?.find(item => item.key === 'approximately_time')?.value;
+				const approxTime = form.value.settings?.find(
+					(item) => item.key === 'approximately_time',
+				)?.value;
 				if (approxTime !== undefined) {
-					form.value.approximately_time = typeof approxTime === 'string' 
-						? parseInt(approxTime, 10) || 0 
-						: Number(approxTime) || 0;
+					form.value.approximately_time =
+						typeof approxTime === 'string'
+							? parseInt(approxTime, 10) || 0
+							: Number(approxTime) || 0;
 				}
 
 				// Handle editor type and content conversion - this is critical
 				// Make sure we use the correct editor type based on content
-				if (editorType.value === 'block' && !form.value.description_json && form.value.description) {
-					form.value.description_json = getBlockEditorDescription(form.value.description);
-				} else if (editorType.value === 'markdown' && form.value.description_json && !form.value.description) {
+				if (
+					editorType.value === 'block' &&
+					!form.value.description_json &&
+					form.value.description
+				) {
+					form.value.description_json = getBlockEditorDescription(
+						form.value.description,
+					);
+				} else if (
+					editorType.value === 'markdown' &&
+					form.value.description_json &&
+					!form.value.description
+				) {
 					// If we're in markdown mode but only have JSON description, convert or provide a fallback
-					form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
+					form.value.description =
+						form.value.description_json?.blocks?.[0]?.data?.text || '';
 				}
 
 				// Handle assignees
 				if (form.value.assignees) {
 					const taskAssignees = form.value.assignees as WorkspaceMember[];
-					assignees.value = taskAssignees.map(assignee => assignee.id);
+					assignees.value = taskAssignees.map((assignee) => assignee.id);
 				} else {
 					assignees.value = [];
 				}
@@ -414,11 +449,11 @@
 
 			// Get current workspace
 			const currentWorkspaceId = store.state.user?.settings?.find(
-				(setting: Record<string, any>) => setting.key === 'current_workspace'
+				(setting: Record<string, any>) => setting.key === 'current_workspace',
 			)?.value;
 
 			const currentWorkspace = (store.state.workspaces || []).find(
-				(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+				(workspace: Record<string, any>) => workspace.id === currentWorkspaceId,
 			);
 
 			const category =
@@ -427,13 +462,21 @@
 					: null;
 
 			if (props.isModal) {
-				const url = generateTaskUrl(form.value.id as number, currentWorkspace, category);
+				const url = generateTaskUrl(
+					form.value.id as number,
+					currentWorkspace,
+					category,
+				);
 				if (url && url !== '/') {
 					history.replaceState({}, '', url);
 					store.state.urlManuallyChanged = true;
 				}
 			} else {
-				const url = generateTaskUrl(form.value.id as number, currentWorkspace, category);
+				const url = generateTaskUrl(
+					form.value.id as number,
+					currentWorkspace,
+					category,
+				);
 				if (url && url !== '/') {
 					await router.push(url);
 				} else {
@@ -464,11 +507,13 @@
 				} else {
 					// Get current workspace
 					const currentWorkspaceId = store.state.user?.settings?.find(
-						(setting: Record<string, any>) => setting.key === 'current_workspace'
+						(setting: Record<string, any>) =>
+							setting.key === 'current_workspace',
 					)?.value;
 
 					const currentWorkspace = (store.state.workspaces || []).find(
-						(workspace: Record<string, any>) => workspace.id === currentWorkspaceId
+						(workspace: Record<string, any>) =>
+							workspace.id === currentWorkspaceId,
 					);
 
 					await router.replace(generateWorkspaceUrl('list', currentWorkspace));
@@ -487,19 +532,22 @@
 		form.value.assignees = assignees.value;
 
 		suppressAutoSavingForOnce.value = true;
-		
+
 		// Set up form data based on the current editor type
 		if (editorType.value === 'block') {
 			// When using block editor, ensure JSON is present
 			if (!form.value.description_json && form.value.description) {
-				form.value.description_json = getBlockEditorDescription(form.value.description);
+				form.value.description_json = getBlockEditorDescription(
+					form.value.description,
+				);
 			}
 			// Clear the markdown description since we're using block editor
 			form.value.description = null;
 		} else {
 			// When using markdown editor, ensure description content is not lost
 			if (form.value.description_json && !form.value.description) {
-				form.value.description = form.value.description_json?.blocks?.[0]?.data?.text || '';
+				form.value.description =
+					form.value.description_json?.blocks?.[0]?.data?.text || '';
 			}
 			// Clear the JSON description since we're using markdown editor
 			form.value.description_json = null;
@@ -515,16 +563,16 @@
 		try {
 			// Set suppressAutoSavingForOnce to true before saving to prevent auto-save during manual save
 			suppressAutoSavingForOnce.value = true;
-			
+
 			// Cancel any pending auto-saves
 			if (typeof cancelPendingAutoSave === 'function') {
 				cancelPendingAutoSave();
 			}
-			
-			const id = taskId.value || form.value.id as number;
+
+			const id = taskId.value || (form.value.id as number);
 			form.value = await updateTask(id, form.value as Task);
 			store.commit('incrementReloadTasksKey');
-			
+
 			// Ensure no auto-save will happen after this manual save
 			// We need to set this after the save operation completes
 			suppressAutoSavingForOnce.value = true;
@@ -541,7 +589,7 @@
 		isLoading.value = true;
 
 		try {
-			const id = taskId.value || form.value.id as number;
+			const id = taskId.value || (form.value.id as number);
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
 				form.value = await stopTaskTimeCounter(id);
@@ -569,7 +617,7 @@
 
 		try {
 			suppressAutoSavingForOnce.value = true;
-			const id = taskId.value || form.value.id as number;
+			const id = taskId.value || (form.value.id as number);
 			if (form.value.start_time) {
 				form.value = await stopTaskTimeCounter(id);
 			} else {
@@ -615,15 +663,16 @@
 
 		// Get current workspace
 		const currentWorkspaceId = store.state.user?.settings?.find(
-			(setting: Record<string, any>) => setting.key === 'current_workspace'
+			(setting: Record<string, any>) => setting.key === 'current_workspace',
 		)?.value;
 
 		const currentWorkspace = (store.state.workspaces || []).find(
-			(workspace: Record<string, any>) => Number(workspace.id) === Number(currentWorkspaceId)
+			(workspace: Record<string, any>) =>
+				Number(workspace.id) === Number(currentWorkspaceId),
 		);
 
 		// Use the new URL format: /:workspace_code/tasks/:task_id
-		const id = taskId.value || form.value.id as number;
+		const id = taskId.value || (form.value.id as number);
 		if (currentWorkspace?.code) {
 			return `/${currentWorkspace.code}/tasks/${id}`;
 		}
@@ -633,21 +682,29 @@
 	};
 
 	// Watch for changes to modalProjectCategoryId and update form accordingly
-	watch(modalProjectCategoryId, (newCategoryId) => {
-		if (newCategoryId && !taskId.value) {
-			form.value.project_category_id = newCategoryId;
+	watch(
+		modalProjectCategoryId,
+		(newCategoryId) => {
+			if (newCategoryId && !taskId.value) {
+				form.value.project_category_id = newCategoryId;
 
-			// Ensure a status is selected (use first status if none is already selected)
-			if (!form.value.status_id && statuses.value && statuses.value.length > 0) {
-				form.value.status_id = statuses.value[0].id;
-			}
+				// Ensure a status is selected (use first status if none is already selected)
+				if (
+					!form.value.status_id &&
+					statuses.value &&
+					statuses.value.length > 0
+				) {
+					form.value.status_id = statuses.value[0].id;
+				}
 
-			// If categories are already loaded, try to update the title based on category pattern
-			if (categories.value.length > 0) {
-				updateTaskTitle();
+				// If categories are already loaded, try to update the title based on category pattern
+				if (categories.value.length > 0) {
+					updateTaskTitle();
+				}
 			}
-		}
-	}, { immediate: true });
+		},
+		{ immediate: true },
+	);
 
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
@@ -655,11 +712,13 @@
 			return [];
 		}
 
-		return form.value.checkpoints.filter(checkpoint => !checkpoint.checked).map(checkpoint => ({
-			...checkpoint,
-			start: 0,
-			end: 0
-		}));
+		return form.value.checkpoints
+			.filter((checkpoint) => !checkpoint.checked)
+			.map((checkpoint) => ({
+				...checkpoint,
+				start: 0,
+				end: 0,
+			}));
 	};
 
 	// Create a new task with the unchecked checkpoints from the current task
@@ -673,14 +732,14 @@
 			title: `${form.value.title} (copy)`,
 			common_time: 0,
 			start_time: 0,
-			checkpoints: uncheckedCheckpoints
+			checkpoints: uncheckedCheckpoints,
 		};
 
 		// Create a new task with this data
 		store.commit('setShowCreatingTaskModal', form.value.status_id);
 		store.commit('createTaskInProjectCategoryId', {
 			projectCategoryId: form.value.project_category_id,
-			statusId: form.value.status_id
+			statusId: form.value.status_id,
 		});
 
 		// Store the new task data in localStorage to be used when new task form opens
@@ -694,7 +753,10 @@
 </script>
 
 <template>
-	<div v-if="permissionDenied" class="flex items-center justify-center p-10 min-h-[300px]">
+	<div
+		v-if="permissionDenied"
+		class="flex min-h-[300px] items-center justify-center p-10"
+	>
 		<ForbiddenAccess :show-back-button="false" />
 	</div>
 
@@ -703,7 +765,11 @@
 
 		<div
 			class="flex h-full flex-col gap-4 overflow-y-auto p-6"
-			:class="[isModal ? 'md:w-[700px] max-h-[calc(100vh-40px)]' : 'container mx-auto pt-14']"
+			:class="[
+				isModal
+					? 'max-h-[calc(100vh-40px)] md:w-[700px]'
+					: 'container mx-auto pt-14',
+			]"
 		>
 			<header class="flex justify-between">
 				<Select v-model="statusIdStr">
@@ -774,7 +840,7 @@
 			</div>
 
 			<!-- Editor section with toggle button -->
-			<div class="relative flex-1 min-h-0">
+			<div class="relative min-h-0 flex-1">
 				<!-- Editor components - no loading state needed since we use localStorage -->
 				<Editor
 					v-if="editorType === 'markdown'"
@@ -788,28 +854,50 @@
 					v-else-if="editorType === 'block'"
 					v-model="form.description_json"
 					placeholder="Type your description here or enter / to see commands or "
-					class="mb-2 grow border px-2 block-editor-container"
-					:class="[!isModal ? 'lg:min-h-96' : 'md:max-h-[350px] min-h-[200px] md:overflow-y-auto']"
+					class="block-editor-container mb-2 grow border px-2"
+					:class="[
+						!isModal
+							? 'lg:min-h-96'
+							: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
+					]"
 				/>
 
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div
-					v-if="(taskId || form.id) && !isCheckpointsExpanded && form.checkpoints && form.checkpoints.length > 0"
-					class="checkpoints-wrapper rounded mt-3 py-0 border border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900 transition-all duration-300"
+					v-if="
+						(taskId || form.id) &&
+						!isCheckpointsExpanded &&
+						form.checkpoints &&
+						form.checkpoints.length > 0
+					"
+					class="checkpoints-wrapper mt-3 rounded border border-gray-200 bg-slate-100 py-0 transition-all duration-300 dark:border-gray-700 dark:bg-slate-900"
 					:class="[isModal ? 'max-h-[320px] overflow-y-auto' : '']"
 					:key="checkpointUpdateKey"
 				>
 					<div
-						class="sticky top-0 z-20 flex items-center justify-between gap-2 text-sm py-3 px-3 border-b border-gray-200 dark:border-gray-700 bg-slate-100 dark:bg-slate-900"
+						class="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
 					>
-						<span class="font-medium">Task Checkpoints ({{ form.checkpoints.length }})</span>
+						<span class="font-medium"
+							>Task Checkpoints ({{ form.checkpoints.length }})</span
+						>
 						<div class="flex items-center gap-2">
 							<button
-								class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+								class="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
 								@click="addCheckpoint"
 								title="Add new checkpoint"
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="20"
+									height="20"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="feather feather-plus-circle"
+								>
 									<circle cx="12" cy="12" r="10"></circle>
 									<line x1="12" y1="8" x2="12" y2="16"></line>
 									<line x1="8" y1="12" x2="16" y2="12"></line>
@@ -817,11 +905,22 @@
 							</button>
 
 							<button
-								class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 cursor-pointer ml-1"
+								class="ml-1 cursor-pointer text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
 								@click="toggleCheckpointsExpanded"
 								title="Expand checkpoints"
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-maximize-2">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="20"
+									height="20"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="feather feather-maximize-2"
+								>
 									<polyline points="15 3 21 3 21 9"></polyline>
 									<polyline points="9 21 3 21 3 15"></polyline>
 									<line x1="21" y1="3" x2="14" y2="10"></line>
@@ -841,27 +940,52 @@
 					class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
 					@click.self="toggleCheckpointsExpanded"
 				>
-					<div class="bg-white dark:bg-slate-900 w-[90%] h-[90%] max-w-4xl rounded-lg shadow-lg overflow-auto">
-						<div class="sticky top-0 z-20 flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900">
+					<div
+						class="h-[90%] w-[90%] max-w-4xl overflow-auto rounded-lg bg-white shadow-lg dark:bg-slate-900"
+					>
+						<div
+							class="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900"
+						>
 							<h2 class="text-lg font-bold">Task Checkpoints</h2>
 							<div class="flex items-center gap-3">
 								<button
-									class="flex items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+									class="flex cursor-pointer items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
 									@click="addCheckpoint"
 								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="feather feather-plus-circle"
+									>
 										<circle cx="12" cy="12" r="10"></circle>
 										<line x1="12" y1="8" x2="12" y2="16"></line>
 										<line x1="8" y1="12" x2="16" y2="12"></line>
 									</svg>
-									Add checkpoint
 								</button>
 								<button
 									class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
 									@click="toggleCheckpointsExpanded"
 									title="Close expanded view"
 								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="24"
+										height="24"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="feather feather-x"
+									>
 										<line x1="18" y1="6" x2="6" y2="18"></line>
 										<line x1="6" y1="6" x2="18" y2="18"></line>
 									</svg>
@@ -890,29 +1014,53 @@
 					<button
 						v-if="(taskId || form.id) && getUncheckedCheckpoints().length > 0"
 						@click="createTaskWithCheckpoints"
-						class="rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none flex items-center gap-1"
+						class="flex items-center gap-1 rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none"
 						type="button"
 						title="Copy unchecked checkpoints to new task"
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
 							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+							<path
+								d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+							></path>
 						</svg>
-						<span class="hidden sm:inline">Copy Unchecked Checkpoints</span>
 					</button>
 
 					<button
-						v-if="(taskId || form.id) && (!form.checkpoints || form.checkpoints.length === 0)"
+						v-if="
+							(taskId || form.id) &&
+							(!form.checkpoints || form.checkpoints.length === 0)
+						"
 						@click="addCheckpoint"
-						class="rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none flex items-center gap-1"
+						class="flex items-center gap-1 rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none"
 						type="button"
 						title="Add Checkpoint"
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="feather feather-check-circle"
+						>
 							<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
 							<polyline points="22 4 12 14.01 9 11.01"></polyline>
 						</svg>
-						<span class="hidden sm:inline">Add Checkpoint</span>
 					</button>
 
 					<span class="relative inline-flex rounded-md shadow-sm">
@@ -974,77 +1122,80 @@
 </template>
 
 <style>
-/* Fix for modal windows with block editor content */
-.block-editor-container {
-	/* Ensure the container expands properly but doesn't overflow */
-	display: flex;
-	flex-direction: column;
-	min-height: 200px !important; /* Force minimum height */
-	width: 100%;
-	padding: 0 !important;
-	position: relative;
-	overflow: visible !important; /* Ensure toolbar and buttons can appear outside */
-}
+	/* Fix for modal windows with block editor content */
+	.block-editor-container {
+		/* Ensure the container expands properly but doesn't overflow */
+		display: flex;
+		flex-direction: column;
+		min-height: 200px !important; /* Force minimum height */
+		width: 100%;
+		padding: 0 !important;
+		position: relative;
+		overflow: visible !important; /* Ensure toolbar and buttons can appear outside */
+	}
 
-/* Ensure editor is given enough space in modal */
-.block-editor-container .editorjs {
-	flex: 1;
-	min-height: 500px !important; /* Minimum height for the actual editor */
-	width: 100% !important;
-	box-sizing: border-box;
-	position: relative !important; /* Ensure proper positioning context */
-}
-
-/* Improve list display in modal windows */
-.block-editor-container .ce-block {
-	max-width: 100%;
-	padding: 0 4px;
-	box-sizing: border-box;
-}
-
-/* Fix for modals to ensure content is visible and scrollable */
-.new-form-container.h-full .md\:max-h-\[350px\] {
-	overflow-y: auto;
-	contain: content;
-	position: relative;
-	padding-left: 10px;
-}
-
-/* Fix for long words/strings in lists */
-.cdx-list__item, .ce-paragraph {
-	word-break: break-word;
-	white-space: normal !important;
-	max-width: 95% !important; /* Ensure text wraps properly */
-}
-
-/* Ensure multi-line bullet points format correctly */
-.cdx-list__item-content {
-	white-space: normal;
-}
-
-/* Fix the placement of toolbar for small screens */
-@media (max-width: 768px) {
+	/* Ensure editor is given enough space in modal */
 	.block-editor-container .editorjs {
-		margin-left: 25px !important;
-		width: calc(100% - 25px) !important;
+		flex: 1;
+		min-height: 500px !important; /* Minimum height for the actual editor */
+		width: 100% !important;
+		box-sizing: border-box;
+		position: relative !important; /* Ensure proper positioning context */
 	}
-	
-	.ce-toolbar__plus {
-		left: -20px !important;
+
+	/* Improve list display in modal windows */
+	.block-editor-container .ce-block {
+		max-width: 100%;
+		padding: 0 4px;
+		box-sizing: border-box;
 	}
-}
 
-/* Fix for the very long strings with no spaces shown in your screenshot */
-.ce-paragraph, .cdx-list__item, .cdx-checklist__item {
-	overflow-wrap: break-word !important;
-	word-wrap: break-word !important;
-	-ms-word-break: break-all !important;
-	word-break: break-word !important;
-	max-width: 95% !important; /* Allow some margin */
-}
+	/* Fix for modals to ensure content is visible and scrollable */
+	.new-form-container.h-full .md\:max-h-\[350px\] {
+		overflow-y: auto;
+		contain: content;
+		position: relative;
+		padding-left: 10px;
+	}
 
-/* Fix for z-index issues with toolbar in modal */
-.ce-toolbar {
-	z-index: 10 !important;
-}
+	/* Fix for long words/strings in lists */
+	.cdx-list__item,
+	.ce-paragraph {
+		word-break: break-word;
+		white-space: normal !important;
+		max-width: 95% !important; /* Ensure text wraps properly */
+	}
+
+	/* Ensure multi-line bullet points format correctly */
+	.cdx-list__item-content {
+		white-space: normal;
+	}
+
+	/* Fix the placement of toolbar for small screens */
+	@media (max-width: 768px) {
+		.block-editor-container .editorjs {
+			margin-left: 25px !important;
+			width: calc(100% - 25px) !important;
+		}
+
+		.ce-toolbar__plus {
+			left: -20px !important;
+		}
+	}
+
+	/* Fix for the very long strings with no spaces shown in your screenshot */
+	.ce-paragraph,
+	.cdx-list__item,
+	.cdx-checklist__item {
+		overflow-wrap: break-word !important;
+		word-wrap: break-word !important;
+		-ms-word-break: break-all !important;
+		word-break: break-word !important;
+		max-width: 95% !important; /* Allow some margin */
+	}
+
+	/* Fix for z-index issues with toolbar in modal */
+	.ce-toolbar {
+		z-index: 10 !important;
+	}
 </style>
