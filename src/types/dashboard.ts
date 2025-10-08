@@ -638,6 +638,7 @@ export interface UseDashboardReturn {
   // Actions
   loadDashboard: () => Promise<void>;
   loadMoreActivities: () => Promise<void>;
+  loadHeatmap: (params?: HeatmapParams) => Promise<void>;
   refreshSection: (section: keyof Omit<DashboardLoadingStates, 'loadingMore' | 'initialLoad' | 'refreshing'>) => Promise<void>;
   refreshDashboard: () => Promise<void>;
   clearError: () => void;

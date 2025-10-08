@@ -618,6 +618,7 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
     // Actions
     loadDashboard,
     loadMoreActivities,
+    loadHeatmap,
     refreshSection,
     refreshDashboard,
     clearError,
