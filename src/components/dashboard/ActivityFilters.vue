@@ -241,5 +241,3 @@ watch(() => props.modelValue, (newValue) => {
   }
 }
 </style>
-</template>
-</invoke>

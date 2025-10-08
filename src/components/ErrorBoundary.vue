@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onErrorCaptured, onMounted } from 'vue';
+import { ref, computed, onErrorCaptured, onMounted, onUnmounted } from 'vue';
 import Button from '@/components/ui/button/Button.vue';
 import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 

@@ -1,5 +1,6 @@
 import { ref, computed, watch, onUnmounted } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
+import store from '@/store';
 import { getActivityFeed, withRetry } from '@/actions/tmgr/dashboard';
 import { usePusher } from './usePusher';
 import type {
@@ -83,7 +84,6 @@ export function useActivityFeed(workspaceId?: number): UseActivityFeedReturn {
     if (workspaceId) return workspaceId;
     
     // Try to get from store or route params
-    const store = (window as any).$store;
     if (store?.state?.workspace?.current?.id) {
       return store.state.workspace.current.id;
     }

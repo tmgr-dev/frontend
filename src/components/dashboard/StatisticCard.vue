@@ -168,5 +168,3 @@ const handleClick = () => {
 <style scoped>
 /* Additional custom styles if needed */
 </style>
-</template>
-</invoke>
