@@ -241,5 +241,3 @@ watch(() => props.member.current_task?.timer_running, (isRunning) => {
 <style scoped>
 /* Additional custom styles if needed */
 </style>
-</template>
-</invoke>

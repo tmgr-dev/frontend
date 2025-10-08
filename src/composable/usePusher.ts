@@ -90,7 +90,7 @@ export function usePusher(): UsePusherReturn {
   };
 
   // Initialize Echo connection
-  const initializeEcho = (): void => {
+  const initializeEcho = async (): Promise<void> => {
     if (echoInstance) {
       return; // Already initialized
     }
@@ -103,7 +103,7 @@ export function usePusher(): UsePusherReturn {
       
       // Set up Pusher globally (required by Laravel Echo)
       if (typeof window !== 'undefined') {
-        const Pusher = require('pusher-js');
+        const { default: Pusher } = await import('pusher-js');
         (window as any).Pusher = Pusher;
       }
 

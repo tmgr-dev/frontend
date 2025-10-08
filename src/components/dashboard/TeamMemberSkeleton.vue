@@ -27,5 +27,3 @@
 <script setup lang="ts">
 import Skeleton from '@/components/ui/skeleton/Skeleton.vue';
 </script>
-</template>
-</invoke>

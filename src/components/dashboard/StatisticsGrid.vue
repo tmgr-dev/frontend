@@ -175,5 +175,3 @@ const handleCardClick = (filter?: Record<string, any>) => {
   @apply w-full;
 }
 </style>
-</template>
-</invoke>

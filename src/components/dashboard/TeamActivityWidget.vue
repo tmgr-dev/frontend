@@ -29,7 +29,7 @@
     
     <div class="team-activity-content">
       <!-- Loading skeleton -->
-      <template v-if="loading && (!teamActivity || teamActivity.members.length === 0)">
+      <template v-if="loading && (!teamActivity || !teamActivity.members || teamActivity.members.length === 0)">
         <div class="space-y-3">
           <TeamMemberSkeleton 
             v-for="i in 3" 
@@ -39,7 +39,7 @@
       </template>
       
       <!-- Team members list -->
-      <template v-else-if="teamActivity && teamActivity.members.length > 0">
+      <template v-else-if="teamActivity && teamActivity.members && teamActivity.members.length > 0">
         <div class="space-y-3">
           <TeamMemberItem
             v-for="member in teamActivity.members"
@@ -175,5 +175,3 @@ const inviteMembers = () => {
   @apply bg-gray-300 dark:bg-gray-600 rounded hover:bg-gray-400 dark:hover:bg-gray-500;
 }
 </style>
-</template>
-</invoke>

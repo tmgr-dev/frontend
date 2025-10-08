@@ -1,5 +1,6 @@
 import { ref, computed, reactive, onUnmounted } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
+import store from '@/store';
 import {
   getDashboardStatistics,
   getActivityFeed,
@@ -81,20 +82,49 @@ const createRetryingState = (retryCount: number): DetailedLoadingState => ({
  * Dashboard composable for managing dashboard state and operations
  * Provides reactive state management for all dashboard data sections
  */
-export function useDashboard(workspaceId?: number): UseDashboardReturn {
+export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardReturn {
   // Get workspace ID from current context if not provided
-  const getCurrentWorkspaceId = (): number => {
-    if (workspaceId) return workspaceId;
+  const getCurrentWorkspaceId = (): number | null => {
+    // Handle both direct number and ref
+    const wsId = typeof workspaceId === 'object' && 'value' in workspaceId 
+      ? workspaceId.value 
+      : workspaceId;
+    
+    if (wsId && wsId > 0) return wsId;
     
     // Try to get from store or route params
-    // This would need to be implemented based on your app's architecture
-    const store = (window as any).$store;
+    
+    // Try different store structures
     if (store?.state?.workspace?.current?.id) {
       return store.state.workspace.current.id;
     }
     
-    // Fallback - this should be replaced with proper workspace detection
-    throw new Error('Workspace ID is required for dashboard operations');
+    // Try workspaces array with current workspace setting
+    if (store?.state?.workspaces?.length) {
+      const currentWorkspaceId = store.state.user?.settings?.find(
+        (setting: { key: string, value: any }) => setting.key === 'current_workspace'
+      )?.value;
+      
+      // If we have a current workspace setting, validate it exists in user's workspaces
+      if (currentWorkspaceId) {
+        const currentWorkspace = store.state.workspaces.find(
+          (workspace: { id: number, name: string, code: string }) => 
+            Number(workspace.id) === Number(currentWorkspaceId)
+        );
+        
+        if (currentWorkspace?.id) {
+          return currentWorkspace.id;
+        }
+      }
+      
+      // Fallback to first workspace (but only if user has workspaces)
+      if (store.state.workspaces[0]?.id) {
+        return store.state.workspaces[0].id;
+      }
+    }
+    
+    // No valid workspace found
+    return null;
   };
 
   // Reactive state for dashboard data
@@ -181,6 +211,10 @@ export function useDashboard(workspaceId?: number): UseDashboardReturn {
     
     try {
       const wsId = getCurrentWorkspaceId();
+      if (!wsId) {
+        throw new Error('No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.');
+      }
+      console.log('Loading statistics for workspace ID:', wsId);
       
       const result = await withRetry(
         () => getDashboardStatistics(wsId, { cache: true }),
@@ -223,6 +257,9 @@ export function useDashboard(workspaceId?: number): UseDashboardReturn {
     
     try {
       const wsId = getCurrentWorkspaceId();
+      if (!wsId) {
+        throw new Error('No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.');
+      }
       
       const params: ActivityFeedParams = {
         page,
@@ -291,6 +328,10 @@ export function useDashboard(workspaceId?: number): UseDashboardReturn {
     
     try {
       const wsId = getCurrentWorkspaceId();
+      if (!wsId) {
+        throw new Error('No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.');
+      }
+      console.log('Loading heatmap for workspace ID:', wsId);
       
       const heatmapParams: HeatmapParams = {
         year: new Date().getFullYear(),
@@ -335,6 +376,9 @@ export function useDashboard(workspaceId?: number): UseDashboardReturn {
     
     try {
       const wsId = getCurrentWorkspaceId();
+      if (!wsId) {
+        throw new Error('No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.');
+      }
       
       const taskParams: RecentTasksParams = {
         limit: 10,
@@ -378,6 +422,9 @@ export function useDashboard(workspaceId?: number): UseDashboardReturn {
     
     try {
       const wsId = getCurrentWorkspaceId();
+      if (!wsId) {
+        throw new Error('No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.');
+      }
 
       const result = await withRetry(
         () => getTeamActivity(wsId, { cache: true }),

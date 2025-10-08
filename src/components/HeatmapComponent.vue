@@ -10,6 +10,7 @@ interface Props {
   year?: number;
   loading?: boolean;
   error?: ActionError | null;
+  data?: HeatmapData | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -30,6 +31,9 @@ const emit = defineEmits<{
 const heatmapData = ref<HeatmapData | null>(null);
 const internalLoading = ref(false);
 const internalError = ref<ActionError | null>(null);
+
+// Use provided data or internal data
+const currentHeatmapData = computed(() => props.data || heatmapData.value);
 
 // Computed loading and error states
 const isLoading = computed(() => props.loading || internalLoading.value);
@@ -65,6 +69,9 @@ const activityLevels = [
 // Load heatmap data from API
 const loadHeatmapData = async () => {
   if (isLoading.value) return;
+  
+  // If data is provided via props, don't load from API
+  if (props.data) return;
   
   try {
     internalLoading.value = true;
@@ -118,10 +125,10 @@ const generateYearDates = (year: number): string[] => {
 
 // Transform API data into a map for quick lookup
 const contributionMap = computed(() => {
-  if (!heatmapData.value?.contributions) return new Map<string, ContributionData>();
+  if (!currentHeatmapData.value?.contributions) return new Map<string, ContributionData>();
   
   const map = new Map<string, ContributionData>();
-  heatmapData.value.contributions.forEach(contribution => {
+  currentHeatmapData.value.contributions.forEach(contribution => {
     map.set(contribution.date, contribution);
   });
   return map;
@@ -279,11 +286,11 @@ const calendarGrid = computed(() => {
 
 // Computed values for display
 const totalContributions = computed(() => {
-  return heatmapData.value?.total_contributions || 0;
+  return currentHeatmapData.value?.total_contributions || 0;
 });
 
 const streakInfo = computed(() => {
-  return heatmapData.value?.streak || { current: 0, longest: 0 };
+  return currentHeatmapData.value?.streak || { current: 0, longest: 0 };
 });
 
 // Smooth data update with transition
@@ -318,7 +325,7 @@ onMounted(() => {
 <template>
   <div class="activity-heatmap-container">
     <!-- Loading State -->
-    <div v-if="isLoading && !heatmapData" class="loading-state">
+    <div v-if="isLoading && !currentHeatmapData" class="loading-state">
       <div class="contribution-header">
         <div class="skeleton-stats">
           <div class="skeleton-text w-64 h-6 mb-2"></div>

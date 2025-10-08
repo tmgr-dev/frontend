@@ -43,24 +43,57 @@ import {
 const route = useRoute();
 const router = useRouter();
 
-// Get current workspace ID
+// Get current workspace ID with better error handling
 const getCurrentWorkspaceId = (): number => {
-  if (store.state.workspaces?.length) {
-    const currentWorkspaceId = store.state.user?.settings?.find(
-      (setting: { key: string, value: any }) => setting.key === 'current_workspace'
-    )?.value;
+  try {
+    if (store.state.workspaces?.length) {
+      const currentWorkspaceId = store.state.user?.settings?.find(
+        (setting: { key: string, value: any }) => setting.key === 'current_workspace'
+      )?.value;
+      
+      if (currentWorkspaceId) {
+        const currentWorkspace = store.state.workspaces.find(
+          (workspace: { id: number, name: string, code: string }) => 
+            Number(workspace.id) === Number(currentWorkspaceId)
+        );
+        
+        if (currentWorkspace?.id) {
+          return Number(currentWorkspace.id);
+        }
+      }
+      
+      // Fallback to first workspace if current workspace setting is not found
+      const firstWorkspace = store.state.workspaces[0];
+      if (firstWorkspace?.id) {
+        return Number(firstWorkspace.id);
+      }
+    }
     
-    const currentWorkspace = store.state.workspaces.find(
-      (workspace: { id: number, name: string, code: string }) => 
-        Number(workspace.id) === Number(currentWorkspaceId)
-    );
+    // Check route params as fallback
+    const routeWorkspaceId = route.params.workspaceId || route.query.workspaceId;
+    if (routeWorkspaceId && !isNaN(Number(routeWorkspaceId))) {
+      return Number(routeWorkspaceId);
+    }
     
-    return currentWorkspace?.id || 1;
+    // Final fallback
+    return 1;
+  } catch (error) {
+    console.warn('Error getting workspace ID:', error);
+    return 1;
   }
-  return 1;
 };
 
 const workspaceId = ref(getCurrentWorkspaceId());
+
+// Watch for store changes to update workspace ID
+watch(() => store.state.workspaces, (newWorkspaces) => {
+  if (newWorkspaces?.length) {
+    const newWorkspaceId = getCurrentWorkspaceId();
+    if (newWorkspaceId !== workspaceId.value) {
+      workspaceId.value = newWorkspaceId;
+    }
+  }
+}, { deep: true });
 
 // Dashboard composable
 const {
@@ -80,7 +113,7 @@ const {
   isInitialLoad,
   addActivity,
   updateStatistics
-} = useDashboard(workspaceId.value);
+} = useDashboard(workspaceId);
 
 // Activity feed composable
 const {
@@ -92,7 +125,7 @@ const {
   disableRealTime: disableActivityRealTime,
   canLoadMore,
   hasFilters: hasActivityFilters
-} = useActivityFeed(workspaceId.value);
+} = useActivityFeed(workspaceId);
 
 // Pusher composable for real-time updates
 const {
@@ -646,6 +679,12 @@ onMounted(async () => {
     // Setup keyboard navigation
     document.addEventListener('keydown', handleKeyboardNavigation);
     
+    // Ensure workspaces are loaded before loading dashboard
+    if (!store.state.workspaces?.length) {
+      console.log('Loading workspaces before dashboard initialization...');
+      await store.dispatch('loadWorkspaces');
+    }
+    
     // Load dashboard data
     await loadDashboard();
     
@@ -928,6 +967,7 @@ onUnmounted(() => {
               :aria-describedby="heatmapData ? 'heatmap-summary' : 'heatmap-loading'"
             >
               <HeatmapComponent 
+                :workspace-id="workspaceId"
                 :data="heatmapData"
                 :loading="loadingStates.heatmap.isLoading"
                 :error="loadingStates.heatmap.error"

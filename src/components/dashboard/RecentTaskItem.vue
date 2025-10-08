@@ -148,7 +148,6 @@ import {
   ClockIcon,
   UserIcon,
   ExclamationTriangleIcon,
-  ExclamationIcon,
   ArrowUpIcon,
   ArrowRightIcon,
   ArrowDownIcon
@@ -182,7 +181,7 @@ const formattedDate = computed(() => {
 
 const priorityIcon = computed(() => {
   const iconMap = {
-    urgent: ExclamationIcon,
+    urgent: ExclamationTriangleIcon,
     high: ArrowUpIcon,
     medium: ArrowRightIcon,
     low: ArrowDownIcon
@@ -320,5 +319,3 @@ watch(() => props.task.timer_running, (isRunning) => {
 <style scoped>
 /* Additional custom styles if needed */
 </style>
-</template>
-</invoke>
