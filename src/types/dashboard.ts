@@ -128,7 +128,7 @@ export interface RecentTask {
   id: number;
   title: string;
   description?: string;
-  status: {
+  status?: {
     id: number;
     name: string;
     type: string;

@@ -34,6 +34,7 @@
 		"@heroicons/vue": "^2.0.17",
 		"@pusher/push-notifications-web": "^1.1.0",
 		"@radial-color-picker/vue-color-picker": "^5.0.1",
+		"@silverwind/vue3-calendar-heatmap": "^2.0.6",
 		"@vueuse/core": "^11.3.0",
 		"axios": "^1.2.2",
 		"canvas-confetti": "^1.6.0",
@@ -53,7 +54,6 @@
 		"vue": "^3.5.12",
 		"vue-content-loader": "^2.0.1",
 		"vue-router": "^4.1.6",
-		"vue3-calendar-heatmap": "^2.0.5",
 		"vuedraggable": "^4.1.0",
 		"vuex": "^4.1.0"
 	},

@@ -492,7 +492,7 @@ export async function exampleDashboardActionsUsage() {
     console.log('Recent Tasks:', recentTasksResult.data.map(task => ({
       id: task.id,
       title: task.title,
-      status: task.status.name,
+      status: task.status?.name || 'Unknown',
       timerRunning: task.timer_running,
       isOverdue: task.is_overdue
     })));
