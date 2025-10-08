@@ -99,7 +99,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { getUserHeatmap } from '@/actions/tmgr/dashboard';
 import type { HeatmapData, ActionError } from '@/types/dashboard';
 // Import vue3-calendar-heatmap according to documentation
-import { CalendarHeatmap } from 'vue3-calendar-heatmap';
+import { CalendarHeatmap } from '@silverwind/vue3-calendar-heatmap';
 
 // Props
 interface Props {

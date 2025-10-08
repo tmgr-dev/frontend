@@ -14,7 +14,7 @@
         <div class="flex items-center space-x-2 mb-2">
           <div 
             :class="statusIndicatorClasses"
-            :title="task.status.name"
+            :title="task.status?.name || 'Unknown'"
           ></div>
           <h4 class="text-sm font-medium text-gray-900 dark:text-white truncate">
             {{ task.title }}
@@ -103,6 +103,7 @@
         
         <!-- Status Dropdown -->
         <Select 
+          v-if="task.status"
           :model-value="task.status.id.toString()" 
           @update:model-value="handleStatusChange"
         >
@@ -125,6 +126,11 @@
             </SelectItem>
           </SelectContent>
         </Select>
+        
+        <!-- Fallback when no status -->
+        <div v-else class="w-24 h-8 text-xs flex items-center justify-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-md">
+          No Status
+        </div>
       </div>
     </div>
   </div>
@@ -215,7 +221,7 @@ const timerButtonClasses = computed(() => {
 const statusIndicatorClasses = computed(() => {
   return cn(
     'w-3 h-3 rounded-full flex-shrink-0',
-    `bg-[${props.task.status.color || '#6B7280'}]`
+    `bg-[${props.task.status?.color || '#6B7280'}]`
   );
 });
 
@@ -232,7 +238,7 @@ const itemClasses = computed(() => {
 const accessibilityLabel = computed(() => {
   const parts = [
     `Task: ${props.task.title}`,
-    `Status: ${props.task.status.name}`,
+    `Status: ${props.task.status?.name || 'Unknown'}`,
     `Assigned to: ${props.task.user.name}`,
     `Updated: ${props.task.updated_at_human}`
   ];
