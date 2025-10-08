@@ -84,6 +84,7 @@ const getCurrentWorkspaceId = (): number => {
 };
 
 const workspaceId = ref(getCurrentWorkspaceId());
+const heatmapYear = ref(new Date().getFullYear());
 
 // Watch for store changes to update workspace ID
 watch(() => store.state.workspaces, (newWorkspaces) => {
@@ -105,6 +106,7 @@ const {
   loadingStates,
   error: dashboardError,
   loadDashboard,
+  loadHeatmap,
   refreshSection,
   refreshDashboard,
   clearError,
@@ -415,6 +417,17 @@ const handleTaskClick = (task: RecentTask) => {
 
 const handleMemberClick = (member: TeamMemberStatus) => {
   router.push(`/profile/${member.id}`);
+};
+
+// Handle heatmap year change
+const handleHeatmapYearChange = async (year: number) => {
+  heatmapYear.value = year;
+  
+  // Reload heatmap data for the new year
+  await loadHeatmap({
+    year: year,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  });
 };
 
 // Optimistic update handlers
@@ -894,6 +907,69 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Activity Heatmap Section -->
+        <section 
+          class="dashboard-section"
+          aria-labelledby="heatmap-heading"
+          tabindex="0"
+          role="region"
+        >
+          <div class="mb-4">
+            <h2 id="heatmap-heading" class="text-xl font-semibold text-gray-900 dark:text-white">
+              Activity Heatmap
+            </h2>
+            <p 
+              class="text-sm text-gray-600 dark:text-gray-400"
+              id="heatmap-description"
+            >
+              Your contribution activity over the past year. Each square represents a day, with darker colors indicating more activity.
+            </p>
+          </div>
+          
+          <Transition
+            name="fade-slide"
+            mode="out-in"
+          >
+            <div 
+              :key="heatmapData ? 'loaded' : 'loading'"
+              class="heatmap-container"
+              role="img"
+              :aria-label="heatmapData ? `Activity heatmap showing ${heatmapData.total_contributions} total contributions` : 'Activity heatmap loading'"
+              :aria-describedby="heatmapData ? 'heatmap-summary' : 'heatmap-loading'"
+            >
+              <HeatmapComponent 
+                :workspace-id="workspaceId"
+                :year="heatmapYear"
+                :data="heatmapData"
+                :loading="loadingStates.heatmap.isLoading"
+                :error="loadingStates.heatmap.error"
+                @update:year="handleHeatmapYearChange"
+              />
+              
+              <!-- Heatmap summary for screen readers -->
+              <div 
+                v-if="heatmapData"
+                id="heatmap-summary"
+                class="sr-only"
+              >
+                Total contributions: {{ heatmapData.total_contributions }}. 
+                Current streak: {{ heatmapData.streak?.current || 0 }} days. 
+                Longest streak: {{ heatmapData.streak?.longest || 0 }} days.
+              </div>
+              
+              <!-- Loading announcement -->
+              <div 
+                v-if="loadingStates.heatmap.isLoading"
+                id="heatmap-loading"
+                class="sr-only"
+                aria-live="polite"
+              >
+                Loading activity heatmap
+              </div>
+            </div>
+          </Transition>
+        </section>
+
         <!-- Statistics Grid -->
         <section 
           class="dashboard-section"
@@ -934,67 +1010,6 @@ onUnmounted(() => {
           >
             Grid of workspace statistics including task counts, time tracking, and team metrics. Use arrow keys to navigate between cards.
           </div>
-        </section>
-
-        <!-- Activity Heatmap Section -->
-        <section 
-          class="dashboard-section"
-          aria-labelledby="heatmap-heading"
-          tabindex="0"
-          role="region"
-        >
-          <div class="mb-4">
-            <h2 id="heatmap-heading" class="text-xl font-semibold text-gray-900 dark:text-white">
-              Activity Heatmap
-            </h2>
-            <p 
-              class="text-sm text-gray-600 dark:text-gray-400"
-              id="heatmap-description"
-            >
-              Your contribution activity over the past year. Each square represents a day, with darker colors indicating more activity.
-            </p>
-          </div>
-          
-          <Transition
-            name="fade-slide"
-            mode="out-in"
-          >
-            <div 
-              :key="heatmapData ? 'loaded' : 'loading'"
-              class="heatmap-container"
-              role="img"
-              :aria-label="heatmapData ? `Activity heatmap showing ${heatmapData.total_contributions} total contributions` : 'Activity heatmap loading'"
-              :aria-describedby="heatmapData ? 'heatmap-summary' : 'heatmap-loading'"
-            >
-              <HeatmapComponent 
-                :workspace-id="workspaceId"
-                :data="heatmapData"
-                :loading="loadingStates.heatmap.isLoading"
-                :error="loadingStates.heatmap.error"
-              />
-              
-              <!-- Heatmap summary for screen readers -->
-              <div 
-                v-if="heatmapData"
-                id="heatmap-summary"
-                class="sr-only"
-              >
-                Total contributions: {{ heatmapData.total_contributions }}. 
-                Current streak: {{ heatmapData.streak?.current || 0 }} days. 
-                Longest streak: {{ heatmapData.streak?.longest || 0 }} days.
-              </div>
-              
-              <!-- Loading announcement -->
-              <div 
-                v-if="loadingStates.heatmap.isLoading"
-                id="heatmap-loading"
-                class="sr-only"
-                aria-live="polite"
-              >
-                Loading activity heatmap
-              </div>
-            </div>
-          </Transition>
         </section>
 
         <!-- Main Dashboard Grid -->

@@ -4,6 +4,7 @@
     <div class="heatmap-header">
       <div class="year-controls">
         <button 
+          v-if="canGoToPreviousYear"
           @click="previousYear" 
           :disabled="isLoading"
           class="year-btn"
@@ -12,25 +13,15 @@
         </button>
         <h3 class="year-title">{{ props.year }}</h3>
         <button 
+          v-if="canGoToNextYear"
           @click="nextYear" 
-          :disabled="isLoading || props.year >= new Date().getFullYear()"
+          :disabled="isLoading"
           class="year-btn"
         >
           →
         </button>
       </div>
       
-      <div class="heatmap-controls">
-        <label class="control-item">
-          <input 
-            type="checkbox" 
-            v-model="includeWeekends" 
-            @change="onIncludeWeekendsChange"
-            :disabled="isLoading"
-          >
-          Include weekends
-        </label>
-      </div>
     </div>
 
     <!-- Loading state -->
@@ -60,6 +51,7 @@
           :vertical="vertical"
           :no-data-text="noDataText"
           :max="max"
+          :class-for-value="classForValue"
           @click="onDateClick"
         />
         
@@ -69,21 +61,6 @@
         </div>
       </div>
 
-      <!-- Stats -->
-      <div class="heatmap-stats">
-        <div class="stat-item">
-          <span class="stat-label">Total contributions:</span>
-          <span class="stat-value">{{ totalContributions }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Current streak:</span>
-          <span class="stat-value">{{ streakInfo.current }} days</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Longest streak:</span>
-          <span class="stat-value">{{ streakInfo.longest }} days</span>
-        </div>
-      </div>
     </div>
 
     <!-- Empty state -->
@@ -130,7 +107,6 @@ const emit = defineEmits<{
 const heatmapData = ref<HeatmapData | null>(null);
 const internalLoading = ref(false);
 const internalError = ref<ActionError | null>(null);
-const includeWeekends = ref(true);
 
 // Use provided data or internal data
 const currentHeatmapData = computed(() => props.data || heatmapData.value);
@@ -139,20 +115,16 @@ const currentHeatmapData = computed(() => props.data || heatmapData.value);
 const isLoading = computed(() => props.loading || internalLoading.value);
 const currentError = computed(() => props.error || internalError.value);
 
-// Computed stats
-const totalContributions = computed(() => {
-  if (!currentHeatmapData.value) return 0;
-  return currentHeatmapData.value.contributions.reduce((sum, contrib) => sum + contrib.count, 0);
+// Computed properties for navigation arrows
+const canGoToPreviousYear = computed(() => {
+  return props.year > 2020; // Don't show left arrow if we're at or before 2020
 });
 
-const streakInfo = computed(() => {
-  if (!currentHeatmapData.value) return { current: 0, longest: 0 };
-  const streak = (currentHeatmapData.value as any).streak;
-  return {
-    current: streak?.current || 0,
-    longest: streak?.longest || 0
-  };
+const canGoToNextYear = computed(() => {
+  const currentYear = new Date().getFullYear();
+  return props.year < currentYear; // Don't show right arrow if we're at current year or beyond
 });
+
 
 // Transform API data for vue3-calendar-heatmap
 const heatmapValues = computed(() => {
@@ -178,7 +150,7 @@ const endDate = computed(() => {
   }
 });
 
-const rangeColor = ['#ebedf0', '#c6e48b', '#7bc96f', '#239a3b', '#196127'];
+const rangeColor = ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'];
 const tooltipUnit = 'contributions';
 const round = 2;
 const vertical = false;
@@ -187,6 +159,22 @@ const max = computed(() => {
   if (!currentHeatmapData.value?.contributions) return 0;
   return Math.max(...currentHeatmapData.value.contributions.map(c => c.count));
 });
+
+// Function to determine CSS class for each value
+const classForValue = (value: any) => {
+  if (!value || !value.count) {
+    return 'color-empty';
+  }
+  
+  const count = value.count;
+  const maxValue = max.value;
+  
+  if (maxValue === 0) return 'color-empty';
+  
+  // Calculate the scale based on the contribution count
+  const scale = Math.ceil((count / maxValue) * 4);
+  return `color-scale-${Math.min(scale, 4)}`;
+};
 
 // Load heatmap data from API
 const loadHeatmapData = async () => {
@@ -204,8 +192,7 @@ const loadHeatmapData = async () => {
     const result = await getUserHeatmap(props.workspaceId, {
       year: props.year,
       user_id: props.userId,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      include_weekends: includeWeekends.value
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
     
     if (result.success && result.data) {
@@ -239,10 +226,6 @@ const nextYear = () => {
   emit('update:year', props.year + 1);
 };
 
-// Controls
-const onIncludeWeekendsChange = () => {
-  loadHeatmapData();
-};
 
 // Retry function
 const retry = () => {
@@ -287,6 +270,7 @@ onMounted(() => {
 .year-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -316,24 +300,6 @@ onMounted(() => {
   color: #333;
 }
 
-.heatmap-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.control-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 14px;
-  color: #666;
-  cursor: pointer;
-}
-
-.control-item input[type="checkbox"] {
-  margin: 0;
-}
 
 .loading-container {
   display: flex;
@@ -404,6 +370,31 @@ onMounted(() => {
   position: relative;
 }
 
+/* Override heatmap colors to ensure they're applied correctly */
+.heatmap-wrapper :deep(.react-calendar-heatmap) {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-empty) {
+  fill: #ebedf0;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-1) {
+  fill: #9be9a8;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-2) {
+  fill: #40c463;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-3) {
+  fill: #30a14e;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-4) {
+  fill: #216e39;
+}
+
 .custom-heatmap {
   width: 100%;
   overflow-x: auto;
@@ -421,32 +412,6 @@ onMounted(() => {
 }
 
 
-.heatmap-stats {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 20px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 6px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 4px;
-}
-
-.stat-value {
-  display: block;
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-}
 
 .empty-state {
   display: flex;
@@ -473,16 +438,25 @@ onMounted(() => {
     color: #e0e0e0;
   }
   
-  .stat-value {
-    color: #e0e0e0;
+  /* Dark mode heatmap colors */
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-empty) {
+    fill: #161b22;
   }
   
-  .heatmap-stats {
-    background: #2d2d2d;
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-1) {
+    fill: #0e4429;
   }
   
-  .stat-label {
-    color: #999;
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-2) {
+    fill: #006d32;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-3) {
+    fill: #26a641;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-4) {
+    fill: #39d353;
   }
 }
 </style>

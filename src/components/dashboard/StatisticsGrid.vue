@@ -1,6 +1,6 @@
 <template>
   <div class="statistics-grid">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
       <StatisticCard
         v-for="stat in statisticCards"
         :key="stat.key"
@@ -173,5 +173,33 @@ const handleCardClick = (filter?: Record<string, any>) => {
 <style scoped>
 .statistics-grid {
   @apply w-full;
+}
+
+/* 1 column when width < 700px */
+@media (max-width: 699px) {
+  .statistics-grid .grid {
+    grid-template-columns: repeat(1, 1fr);
+  }
+}
+
+/* 2 columns when width < 980px */
+@media (min-width: 700px) and (max-width: 979px) {
+  .statistics-grid .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 3 columns when width < 1290px */
+@media (min-width: 980px) and (max-width: 1289px) {
+  .statistics-grid .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* 4 columns on screens >= 1290px */
+@media (min-width: 1290px) {
+  .statistics-grid .grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 </style>
