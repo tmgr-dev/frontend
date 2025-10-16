@@ -71,11 +71,33 @@ export const updateDailyTask = async (
 	updates: Partial<Task>,
 ) => {
 	try {
-		const {
-			data: { data },
-		} = await $axios.put(`daily-routines/tasks/${taskId}`, updates);
+		const data = updates as any;
+		const payload: any = {
+			title: data.title,
+			description: data.description || '',
+			status: typeof data.status === 'string' ? data.status : 'backlog',
+			project_category_id: data.project_category_id || null,
+			order: data.order || null,
+			user_id: data.user_id,
+			checkpoints: data.checkpoints || [],
+			approximately_time: data.approximately_time || null,
+			settings: data.settings || null,
+			is_daily_routine: true,
+			is_recurring: data.is_recurring || false,
+			scheduled_date: data.scheduled_date || null,
+			scheduled_time: data.scheduled_time || null
+		};
 
-		return data;
+		// Only include recurrence if is_recurring is true
+		if (data.is_recurring && data.recurrence) {
+			payload.recurrence = data.recurrence;
+		}
+
+		const {
+			data: { data: result },
+		} = await $axios.put(`daily-routines/tasks/${taskId}`, payload);
+
+		return result;
 	} catch (error) {
 		console.error('Failed to update daily task:', error);
 		throw error;

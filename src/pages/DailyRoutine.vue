@@ -63,7 +63,7 @@
 											<button
 												@click.stop="completeTask(task)"
 												class="mr-3 rounded-full p-1 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
-												:class="{ 'text-green-500': task.status === 'completed' }"
+												:class="{ 'text-green-500': task.status?.toLowerCase() === 'completed' }"
 											>
 												<svg
 													xmlns="http://www.w3.org/2000/svg"
@@ -79,7 +79,7 @@
 													<path d="M20 6 9 17l-5-5" />
 												</svg>
 											</button>
-											<span :class="{ 'line-through': task.status === 'completed' }">
+											<span :class="{ 'line-through': task.status?.toLowerCase() === 'completed' }">
                       {{ task.title }}
                     </span>
 										</div>
@@ -87,7 +87,7 @@
 										<!-- Right Side: Action Buttons -->
 										<div class="flex items-center">
 											<button
-												v-if="task.status === 'completed'"
+												v-if="task.status?.toLowerCase() === 'completed'"
 												@click.stop="archiveTask(task)"
 												class="mr-2 rounded-full p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-blue-500 dark:hover:bg-gray-700"
 											>
@@ -250,9 +250,18 @@ async function completeTask(task: ExtendedTask) {
 			const result = await completeDailyTask(task.id);
 			const taskIndex = tasks.value.findIndex((t) => t.id === task.id);
 			if (taskIndex !== -1) {
-				tasks.value[taskIndex] = { ...result, isAnimating: false };
+				const statusName = result.status?.name || 'Unknown';
+				const updatedTask = {
+					...result,
+					status: statusName,
+					instance_id: null,
+					is_instance: false,
+					isAnimating: false
+				};
+				tasks.value[taskIndex] = updatedTask;
 			}
 		}
+		completedCount.value = await getCompletedDailyTasksCount();
 	} catch (error) {
 		console.error('Failed to complete task:', error);
 	}
@@ -288,6 +297,7 @@ async function archiveTask(task: ExtendedTask) {
 			selectedTask.value = null;
 		}
 		archivedTasksCount.value = await getArchivedDailyTasksCount();
+		completedCount.value = await getCompletedDailyTasksCount();
 	} catch (error) {
 		console.error('Failed to archive task:', error);
 	}

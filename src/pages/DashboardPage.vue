@@ -186,6 +186,13 @@ const pageTitle = computed(() => {
     : 'Dashboard';
 });
 
+const workspaceUsersList = computed(() => {
+  return teamActivity.value?.members?.map(member => ({
+    id: member.id,
+    name: member.name
+  })) || [];
+});
+
 const hasAnyError = computed(() => {
   return hasError.value || hasGlobalError.value || !!connectionError.value || isOffline.value;
 });
@@ -953,6 +960,7 @@ onUnmounted(() => {
               :has-more="canLoadMore"
               :loading-more="activityLoadingMore"
               :workspace-id="workspaceId"
+              :workspace-users="workspaceUsersList"
               @load-more="loadMoreActivities"
               @refresh="() => refreshSection('activities')"
               @filter-change="handleActivityFiltersChange"
