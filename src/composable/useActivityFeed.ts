@@ -78,10 +78,15 @@ const createDefaultSort = (): SortOption => ({
  * Activity feed composable for managing activity list state and operations
  * Provides filtering, sorting, pagination, and real-time updates
  */
-export function useActivityFeed(workspaceId?: number): UseActivityFeedReturn {
+export function useActivityFeed(workspaceId?: number | { value: number }): UseActivityFeedReturn {
   // Get workspace ID from context if not provided
   const getCurrentWorkspaceId = (): number => {
-    if (workspaceId) return workspaceId;
+    // Handle both direct number and ref
+    const wsId = typeof workspaceId === 'object' && 'value' in workspaceId 
+      ? workspaceId.value 
+      : workspaceId;
+    
+    if (wsId && wsId > 0) return wsId;
     
     // Try to get from store or route params
     if (store?.state?.workspace?.current?.id) {

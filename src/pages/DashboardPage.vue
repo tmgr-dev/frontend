@@ -8,7 +8,6 @@ import BaseLayout from '@/components/layouts/BaseLayout.vue';
 import HeatmapComponent from '@/components/HeatmapComponent.vue';
 import StatisticsGrid from '@/components/dashboard/StatisticsGrid.vue';
 import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
-import RecentTasksList from '@/components/dashboard/RecentTasksList.vue';
 import TeamActivityWidget from '@/components/dashboard/TeamActivityWidget.vue';
 
 // UI components
@@ -101,7 +100,6 @@ const {
   statistics,
   activities,
   heatmapData,
-  recentTasks,
   teamActivity,
   loadingStates,
   error: dashboardError,
@@ -126,7 +124,9 @@ const {
   enableRealTime: enableActivityRealTime,
   disableRealTime: disableActivityRealTime,
   canLoadMore,
-  hasFilters: hasActivityFilters
+  hasFilters: hasActivityFilters,
+  loading: feedLoading,
+  loadingMore: feedLoadingMore
 } = useActivityFeed(workspaceId);
 
 // Pusher composable for real-time updates
@@ -212,6 +212,18 @@ const combinedErrorMessage = computed(() => {
 
 const isRealTimeActive = computed(() => {
   return isPusherConnected.value && !isOffline.value;
+});
+
+const displayedActivities = computed(() => {
+  return hasActivityFilters.value ? feedActivities.value : activities.value;
+});
+
+const activityLoading = computed(() => {
+  return hasActivityFilters.value ? feedLoading.value : loadingStates.value.activities.isLoading;
+});
+
+const activityLoadingMore = computed(() => {
+  return hasActivityFilters.value ? feedLoadingMore.value : loadingStates.value.loadingMore;
 });
 
 // Enhanced error handling
@@ -409,9 +421,6 @@ const handleActivityClick = (activity: Activity) => {
 };
 
 const handleTaskClick = (task: RecentTask) => {
-  // Optimistic update: mark task as viewed
-  optimisticallyUpdateTask(task.id, { last_viewed_at: new Date().toISOString() });
-  
   router.push(`/tasks/${task.id}`);
 };
 
@@ -431,89 +440,10 @@ const handleHeatmapYearChange = async (year: number) => {
 };
 
 // Optimistic update handlers
-const optimisticallyUpdateTask = (taskId: number, updates: Partial<RecentTask>) => {
-  // Update the task in the recent tasks list immediately
-  if (recentTasks.value) {
-    const taskIndex = recentTasks.value.findIndex(t => t.id === taskId);
-    if (taskIndex !== -1) {
-      recentTasks.value[taskIndex] = { ...recentTasks.value[taskIndex], ...updates };
-    }
-  }
-};
-
 const optimisticallyUpdateStatistics = (updates: Partial<DashboardStatistics>) => {
   // Update statistics immediately for better UX
   if (statistics.value) {
     updateStatistics(updates);
-  }
-};
-
-// Task action handlers with optimistic updates
-const handleTaskTimerToggle = async (task: RecentTask) => {
-  try {
-    // Optimistic update
-    const isRunning = !task.timer_running;
-    optimisticallyUpdateTask(task.id, { 
-      timer_running: isRunning,
-      timer_started_at: isRunning ? new Date().toISOString() : null
-    });
-    
-    // Update statistics optimistically
-    if (isRunning) {
-      optimisticallyUpdateStatistics({
-        active_timers: (statistics.value?.active_timers || 0) + 1
-      });
-    } else {
-      optimisticallyUpdateStatistics({
-        active_timers: Math.max((statistics.value?.active_timers || 1) - 1, 0)
-      });
-    }
-    
-    // Make API call (this would be implemented in the actual task service)
-    // await taskService.toggleTimer(task.id);
-    
-    console.log(`Timer ${isRunning ? 'started' : 'stopped'} for task ${task.id}`);
-  } catch (error) {
-    // Revert optimistic update on error
-    optimisticallyUpdateTask(task.id, { 
-      timer_running: task.timer_running,
-      timer_started_at: task.timer_started_at
-    });
-    
-    handleError(error, 'timer toggle');
-  }
-};
-
-const handleTaskStatusChange = async (task: RecentTask, statusId: number) => {
-  try {
-    const oldStatusId = task.status_id;
-    
-    // Optimistic update
-    optimisticallyUpdateTask(task.id, { 
-      status_id: statusId,
-      updated_at: new Date().toISOString()
-    });
-    
-    // Update statistics optimistically
-    if (statusId === 3) { // Assuming 3 is completed status
-      optimisticallyUpdateStatistics({
-        completed_today: (statistics.value?.completed_today || 0) + 1,
-        active_tasks: Math.max((statistics.value?.active_tasks || 1) - 1, 0)
-      });
-    }
-    
-    // Make API call (this would be implemented in the actual task service)
-    // await taskService.updateStatus(task.id, statusId);
-    
-    console.log(`Task ${task.id} status changed to ${statusId}`);
-  } catch (error) {
-    // Revert optimistic update on error
-    optimisticallyUpdateTask(task.id, { 
-      status_id: task.status_id,
-      updated_at: task.updated_at
-    });
-    
-    handleError(error, 'status change');
   }
 };
 
@@ -630,11 +560,6 @@ const handleKeyboardNavigation = (event: KeyboardEvent) => {
         document.querySelector('[aria-labelledby="activity-heading"]')?.focus();
         break;
       case '4':
-        event.preventDefault();
-        // Focus on recent tasks
-        document.querySelector('[aria-labelledby="recent-tasks-heading"]')?.focus();
-        break;
-      case '5':
         event.preventDefault();
         // Focus on team activity
         document.querySelector('[aria-labelledby="team-activity-heading"]')?.focus();
@@ -1023,16 +948,16 @@ onUnmounted(() => {
           >
             <h2 id="activity-heading" class="sr-only">Recent Activity Feed</h2>
             <ActivityFeed
-              :activities="activities || []"
-              :loading="loadingStates.activities.isLoading"
+              :activities="displayedActivities || []"
+              :loading="activityLoading"
               :has-more="canLoadMore"
-              :loading-more="loadingStates.loadingMore"
+              :loading-more="activityLoadingMore"
               :workspace-id="workspaceId"
               @load-more="loadMoreActivities"
               @refresh="() => refreshSection('activities')"
               @filter-change="handleActivityFiltersChange"
               @activity-click="handleActivityClick"
-              :aria-describedby="loadingStates.activities.isLoading ? 'activity-loading' : 'activity-description'"
+              :aria-describedby="activityLoading ? 'activity-loading' : 'activity-description'"
             />
             
             <!-- Activity feed description -->
@@ -1045,7 +970,7 @@ onUnmounted(() => {
             
             <!-- Loading announcement -->
             <div 
-              v-if="loadingStates.activities.isLoading"
+              v-if="activityLoading"
               id="activity-loading"
               class="sr-only"
               aria-live="polite"
@@ -1060,50 +985,6 @@ onUnmounted(() => {
             role="complementary"
             aria-label="Dashboard sidebar with recent tasks and team activity"
           >
-            <!-- Recent Tasks -->
-            <section 
-              class="mb-6"
-              aria-labelledby="recent-tasks-heading"
-              tabindex="0"
-              role="region"
-            >
-              <h3 id="recent-tasks-heading" class="sr-only">Recent Tasks</h3>
-              <Transition
-                name="slide-up"
-                mode="out-in"
-              >
-                <RecentTasksList
-                  :key="recentTasks?.length || 0"
-                  :tasks="recentTasks || []"
-                  :loading="loadingStates.recentTasks.isLoading"
-                  @refresh="() => refreshSection('recentTasks')"
-                  @task-click="handleTaskClick"
-                  @timer-toggle="handleTaskTimerToggle"
-                  @status-change="handleTaskStatusChange"
-                  @create-task="() => router.push('/tasks/new')"
-                  :aria-describedby="loadingStates.recentTasks.isLoading ? 'tasks-loading' : 'tasks-description'"
-                />
-              </Transition>
-              
-              <!-- Tasks description -->
-              <div 
-                id="tasks-description"
-                class="sr-only"
-              >
-                List of recently updated tasks. Use arrow keys to navigate, Enter to open task, Space to toggle timer.
-              </div>
-              
-              <!-- Loading announcement -->
-              <div 
-                v-if="loadingStates.recentTasks.isLoading"
-                id="tasks-loading"
-                class="sr-only"
-                aria-live="polite"
-              >
-                Loading recent tasks
-              </div>
-            </section>
-
             <!-- Team Activity -->
             <section 
               aria-labelledby="team-activity-heading"
