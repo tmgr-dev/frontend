@@ -8,6 +8,7 @@
         <ActivityFilters 
           v-model="filters" 
           @update:model-value="handleFiltersChange"
+          :workspace-users="workspaceUsers"
         />
         <Button
           variant="ghost"
@@ -102,11 +103,13 @@ interface Props {
   hasMore?: boolean;
   loadingMore?: boolean;
   workspaceId: number;
+  workspaceUsers?: Array<{ id: number; name: string; }>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   hasMore: false,
-  loadingMore: false
+  loadingMore: false,
+  workspaceUsers: () => []
 });
 
 const emit = defineEmits<{
