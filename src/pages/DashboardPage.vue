@@ -1238,35 +1238,35 @@ onUnmounted(() => {
   @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6;
 }
 
-/* Dashboard Grid Layout */
+/* Dashboard Grid Layout - Single Column */
 .dashboard-grid {
-  @apply grid grid-cols-1 lg:grid-cols-3 gap-6;
+  @apply flex flex-col gap-6;
 }
 
 .dashboard-main-content {
-  @apply lg:col-span-2;
+  @apply w-full;
 }
 
 .dashboard-sidebar {
-  @apply lg:col-span-1 space-y-6;
+  @apply w-full flex flex-col space-y-6;
 }
 
 /* Responsive Design */
 @media (max-width: 1024px) {
   .dashboard-grid {
-    @apply grid-cols-1;
+    @apply flex flex-col;
   }
   
   .dashboard-sidebar {
-    @apply grid grid-cols-1 md:grid-cols-2 gap-6;
+    @apply flex flex-col;
   }
 }
 
 @media (max-width: 768px) {
   .dashboard-container {
-    @apply px-2 py-4;
+    @apply px-4;
   }
-  
+
   .dashboard-header {
     @apply mb-6;
   }
@@ -1280,17 +1280,17 @@ onUnmounted(() => {
   }
   
   .dashboard-sidebar {
-    @apply grid-cols-1;
+    @apply flex-col;
   }
 }
 
 @media (max-width: 640px) {
   .dashboard-container {
-    @apply px-1 py-2;
+    @apply px-2 py-2;
   }
   
-  .dashboard-header h1 {
-    @apply text-2xl;
+  .dashboard-grid {
+    @apply flex-col;
   }
 }
 
@@ -1402,7 +1402,7 @@ onUnmounted(() => {
   }
   
   .dashboard-grid {
-    @apply grid-cols-1;
+    @apply flex-col;
   }
 }
 

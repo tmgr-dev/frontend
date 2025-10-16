@@ -145,28 +145,28 @@ const statisticCards = computed<StatisticCardData[]>(() => [
 ]);
 
 const handleCardClick = (filter?: Record<string, any>) => {
-  if (!filter) return;
+  // if (!filter) return;
   
-  emit('navigate-to-filtered', filter);
+  // emit('navigate-to-filtered', filter);
   
-  // Navigate to appropriate route based on filter
-  if (filter.view === 'team') {
-    router.push('/team');
-  } else if (filter.view === 'time_tracking') {
-    router.push('/stats');
-  } else if (filter.view === 'daily_routine') {
-    router.push('/daily-routine');
-  } else {
-    // Navigate to tasks list with filters
-    const query: Record<string, string> = {};
-    if (filter.status && filter.status !== 'all') {
-      query.status = filter.status;
-    }
-    if (filter.period) {
-      query.period = filter.period;
-    }
-    router.push({ path: '/tasks', query });
-  }
+  // // Navigate to appropriate route based on filter
+  // if (filter.view === 'team') {
+  //   router.push('/team');
+  // } else if (filter.view === 'time_tracking') {
+  //   router.push('/stats');
+  // } else if (filter.view === 'daily_routine') {
+  //   router.push('/daily-routine');
+  // } else {
+  //   // Navigate to tasks list with filters
+  //   const query: Record<string, string> = {};
+  //   if (filter.status && filter.status !== 'all') {
+  //     query.status = filter.status;
+  //   }
+  //   if (filter.period) {
+  //     query.period = filter.period;
+  //   }
+  //   router.push({ path: '/tasks', query });
+  // }
 };
 </script>
 
