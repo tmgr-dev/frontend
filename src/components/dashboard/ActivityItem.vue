@@ -55,17 +55,6 @@
           {{ activity.description }}
         </p>
         
-        <!-- Activity Metadata -->
-        <div v-if="hasMetadata" class="mt-2 flex flex-wrap gap-2">
-          <span
-            v-for="(value, key) in displayMetadata"
-            :key="key"
-            class="inline-flex items-center px-2 py-1 rounded-md text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-          >
-            <span class="font-medium">{{ formatMetadataKey(key) }}:</span>
-            <span class="ml-1">{{ value }}</span>
-          </span>
-        </div>
       </div>
     </div>
   </div>
@@ -179,42 +168,6 @@ const itemClasses = computed(() => {
     'focus:ring-offset-2 dark:focus:ring-offset-gray-800'
   );
 });
-
-const hasMetadata = computed(() => {
-  return props.activity.metadata && Object.keys(props.activity.metadata).length > 0;
-});
-
-const displayMetadata = computed(() => {
-  if (!hasMetadata.value) return {};
-  
-  // Filter and format metadata for display
-  const metadata = props.activity.metadata;
-  const displayData: Record<string, any> = {};
-  
-  // Common metadata fields to display
-  const displayFields = [
-    'task_title',
-    'old_status',
-    'new_status',
-    'category_name',
-    'file_name',
-    'comment_content'
-  ];
-  
-  displayFields.forEach(field => {
-    if (metadata[field] !== undefined) {
-      displayData[field] = metadata[field];
-    }
-  });
-  
-  return displayData;
-});
-
-const formatMetadataKey = (key: string): string => {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, l => l.toUpperCase());
-};
 
 const accessibilityLabel = computed(() => {
   return `${props.activity.user.name} ${props.activity.description} ${props.activity.timestamp_human}`;
