@@ -11,50 +11,57 @@
     <div class="flex items-start space-x-3">
       <!-- Activity Icon -->
       <div :class="iconClasses">
-        <component :is="activityIcon" class="h-4 w-4" />
+        <component :is="activityIcon" class="h-5 w-5" />
       </div>
       
       <!-- Activity Content -->
       <div class="flex-1 min-w-0">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-2">
-            <!-- User Avatar -->
-            <img
-              v-if="activity.user.avatar"
-              :src="activity.user.avatar"
-              :alt="activity.user.name"
-              class="w-6 h-6 rounded-full"
-            />
-            <div
-              v-else
-              class="w-6 h-6 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center"
-            >
-              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
-                {{ userInitials }}
-              </span>
-            </div>
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1">
+            <!-- Activity Title (Action) -->
+            <h3 class="font-semibold text-gray-900 dark:text-white text-sm leading-tight">
+              {{ activity.title }}
+            </h3>
             
-            <!-- User Name -->
-            <span class="text-sm font-medium text-gray-900 dark:text-white">
-              {{ activity.user.name }}
-            </span>
+            <!-- Activity Subject (Resource name) -->
+            <p v-if="activity.subject_name" class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+              {{ activity.subject_name }}
+            </p>
           </div>
           
           <!-- Timestamp -->
           <time 
             :datetime="activity.created_at"
-            class="text-xs text-gray-500 dark:text-gray-400"
+            class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap flex-shrink-0"
             :title="formattedDate"
           >
             {{ activity.timestamp_human }}
           </time>
         </div>
         
-        <!-- Activity Description -->
-        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-          {{ activity.description }}
-        </p>
-        
+        <!-- User Info -->
+        <div class="mt-2 flex items-center space-x-2">
+          <!-- User Avatar -->
+          <img
+            v-if="activity.user.avatar"
+            :src="activity.user.avatar"
+            :alt="activity.user.name"
+            class="w-5 h-5 rounded-full"
+          />
+          <div
+            v-else
+            class="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center flex-shrink-0"
+          >
+            <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+              {{ userInitials }}
+            </span>
+          </div>
+          
+          <!-- User Name -->
+          <span class="text-xs text-gray-600 dark:text-gray-400">
+            by {{ activity.user.name }}
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -62,7 +69,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Activity, ActivityType } from '@/types/dashboard';
+import type { Activity } from '@/types/dashboard';
 import { cn } from '@/utils';
 import {
   PlusIcon,
@@ -154,7 +161,7 @@ const iconClasses = computed(() => {
     routine_completed: 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400'
   };
   
-  const baseClasses = 'flex items-center justify-center w-8 h-8 rounded-full';
+  const baseClasses = 'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
   const colorClass = colorMap[props.activity.type] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
   
   return cn(baseClasses, colorClass);
@@ -162,8 +169,8 @@ const iconClasses = computed(() => {
 
 const itemClasses = computed(() => {
   return cn(
-    'p-3 rounded-lg border border-gray-200 dark:border-gray-700',
-    'hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150',
+    'p-4 rounded-lg transition-colors duration-150',
+    'hover:bg-gray-50 dark:hover:bg-gray-700/30',
     'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400',
     'focus:ring-offset-2 dark:focus:ring-offset-gray-800'
   );
