@@ -5,7 +5,7 @@ import store from '@/store';
 import BaseLayout from '@/components/layouts/BaseLayout.vue';
 
 // Dashboard components
-import HeatmapComponent from '@/components/HeatmapComponent.vue';
+import HeatmapCalendar from '@/components/general/HeatmapCalendar.vue';
 import StatisticsGrid from '@/components/dashboard/StatisticsGrid.vue';
 import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
 import TeamActivityWidget from '@/components/dashboard/TeamActivityWidget.vue';
@@ -83,7 +83,6 @@ const getCurrentWorkspaceId = (): number => {
 };
 
 const workspaceId = ref(getCurrentWorkspaceId());
-const heatmapYear = ref(new Date().getFullYear());
 
 // Watch for store changes to update workspace ID
 watch(() => store.state.workspaces, (newWorkspaces) => {
@@ -433,17 +432,6 @@ const handleTaskClick = (task: RecentTask) => {
 
 const handleMemberClick = (member: TeamMemberStatus) => {
   router.push(`/profile/${member.id}`);
-};
-
-// Handle heatmap year change
-const handleHeatmapYearChange = async (year: number) => {
-  heatmapYear.value = year;
-  
-  // Reload heatmap data for the new year
-  await loadHeatmap({
-    year: year,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-  });
 };
 
 // Optimistic update handlers
@@ -869,14 +857,31 @@ onUnmounted(() => {
               :aria-label="heatmapData ? `Activity heatmap showing ${heatmapData.total_contributions} total contributions` : 'Activity heatmap loading'"
               :aria-describedby="heatmapData ? 'heatmap-summary' : 'heatmap-loading'"
             >
-              <HeatmapComponent 
-                :workspace-id="workspaceId"
-                :year="heatmapYear"
+              <div v-if="loadingStates.heatmap.isLoading" class="flex flex-col items-center justify-center py-20">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-tmgr-blue mb-4"></div>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Loading heatmap data...</p>
+              </div>
+              
+              <div v-else-if="loadingStates.heatmap.error" class="flex flex-col items-center justify-center py-20">
+                <ExclamationTriangleIcon class="h-12 w-12 text-red-500 mb-4" />
+                <p class="text-sm text-red-600 dark:text-red-400 mb-4">
+                  Failed to load heatmap data
+                </p>
+                <Button @click="refreshSection('heatmap')" variant="outline" size="sm">
+                  <ArrowPathIcon class="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+              
+              <HeatmapCalendar 
+                v-else-if="heatmapData"
                 :data="heatmapData"
-                :loading="loadingStates.heatmap.isLoading"
-                :error="loadingStates.heatmap.error"
-                @update:year="handleHeatmapYearChange"
+                :theme="store.state.colorScheme"
               />
+              
+              <div v-else class="flex flex-col items-center justify-center py-20">
+                <p class="text-sm text-gray-600 dark:text-gray-400">No contribution data available</p>
+              </div>
               
               <!-- Heatmap summary for screen readers -->
               <div 
