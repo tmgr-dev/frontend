@@ -35,6 +35,10 @@ export interface Task {
 		checked: boolean;
 		inputType: string;
 	}>;
+	is_recurring?: boolean;
+	scheduled_date?: string | null;
+	scheduled_time?: { hours: number; minutes: number } | null;
+	recurrence?: Record<string, any> | null;
 }
 
 interface LinkResponse {
