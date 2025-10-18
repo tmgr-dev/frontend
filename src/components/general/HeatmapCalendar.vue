@@ -10,66 +10,70 @@
       </div>
     </div>
 
-    <div class="relative w-full">
-      <div class="grid grid-cols-[auto_1fr] gap-4">
-        <div class="flex flex-col justify-around" style="height: 105px;">
-          <div :class="['text-[9px] leading-none', textColorClass]">Mon</div>
-          <div :class="['text-[9px] leading-none', textColorClass]">Wed</div>
-          <div :class="['text-[9px] leading-none', textColorClass]">Fri</div>
+    <div class="w-full overflow-x-auto scroll-smooth">
+      <div class="min-w-[600px]">
+        <div class="relative">
+          <div class="grid grid-cols-[auto_1fr] gap-4">
+            <div class="flex flex-col justify-around" style="height: 105px;">
+              <div :class="['text-[9px] leading-none', textColorClass]">Mon</div>
+              <div :class="['text-[9px] leading-none', textColorClass]">Wed</div>
+              <div :class="['text-[9px] leading-none', textColorClass]">Fri</div>
+            </div>
+
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between mb-2 px-[1px]">
+                <div 
+                  v-for="month in monthLabels" 
+                  :key="month.label"
+                  :class="['text-[9px]', textColorClass]"
+                >
+                  {{ month.label }}
+                </div>
+              </div>
+
+              <div class="grid gap-[2px]" :style="weekGridStyle">
+                <div 
+                  v-for="(week, weekIndex) in calendarGrid" 
+                  :key="weekIndex"
+                  class="grid gap-[2px]"
+                  :style="dayGridStyle"
+                >
+                  <div
+                    v-for="day in week"
+                    :key="day.date"
+                    :class="getSquareClass(day)"
+                    class="rounded-[2px] transition-transform duration-200 hover:scale-110 cursor-pointer"
+                    :style="squareStyle"
+                    @mouseenter="handleSquareHover(day, $event)"
+                    @mouseleave="handleSquareLeave"
+                    :title="getTooltipText(day)"
+                  />
+                </div>
+              </div>
+
+              <div class="flex items-center justify-end gap-2 mt-3">
+                <span :class="['text-[9px]', textColorClass]">Less</span>
+                <div class="flex gap-[3px]">
+                  <div :class="['w-[11px] h-[11px] rounded-[2px]', emptySquareClass]" />
+                  <div :class="['w-[11px] h-[11px] rounded-[2px]', level1Class]" />
+                  <div :class="['w-[11px] h-[11px] rounded-[2px]', level2Class]" />
+                  <div :class="['w-[11px] h-[11px] rounded-[2px]', level3Class]" />
+                  <div :class="['w-[11px] h-[11px] rounded-[2px]', level4Class]" />
+                </div>
+                <span :class="['text-[9px]', textColorClass]">More</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="hoveredDate"
+            class="absolute z-50 pointer-events-none px-2 py-1 rounded text-xs whitespace-nowrap"
+            :class="theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-800 text-white'"
+            :style="tooltipStyle"
+          >
+            {{ hoveredDate.count }} {{ hoveredDate.count === 1 ? 'contribution' : 'contributions' }} on {{ formatDate(hoveredDate.date) }}
+          </div>
         </div>
-
-        <div class="flex-1 min-w-0">
-          <div class="flex justify-between mb-2 px-[1px]">
-            <div 
-              v-for="month in monthLabels" 
-              :key="month.label"
-              :class="['text-[9px]', textColorClass]"
-            >
-              {{ month.label }}
-            </div>
-          </div>
-
-          <div class="grid gap-[2px]" :style="weekGridStyle">
-            <div 
-              v-for="(week, weekIndex) in calendarGrid" 
-              :key="weekIndex"
-              class="grid gap-[2px]"
-              :style="dayGridStyle"
-            >
-              <div
-                v-for="day in week"
-                :key="day.date"
-                :class="getSquareClass(day)"
-                class="rounded-[2px] transition-transform duration-200 hover:scale-110 cursor-pointer"
-                :style="squareStyle"
-                @mouseenter="handleSquareHover(day, $event)"
-                @mouseleave="handleSquareLeave"
-                :title="getTooltipText(day)"
-              />
-            </div>
-          </div>
-
-          <div class="flex items-center justify-end gap-2 mt-3">
-            <span :class="['text-[9px]', textColorClass]">Less</span>
-            <div class="flex gap-[3px]">
-              <div :class="['w-[11px] h-[11px] rounded-[2px]', emptySquareClass]" />
-              <div :class="['w-[11px] h-[11px] rounded-[2px]', level1Class]" />
-              <div :class="['w-[11px] h-[11px] rounded-[2px]', level2Class]" />
-              <div :class="['w-[11px] h-[11px] rounded-[2px]', level3Class]" />
-              <div :class="['w-[11px] h-[11px] rounded-[2px]', level4Class]" />
-            </div>
-            <span :class="['text-[9px]', textColorClass]">More</span>
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="hoveredDate"
-        class="absolute z-50 pointer-events-none px-2 py-1 rounded text-xs whitespace-nowrap"
-        :class="theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-800 text-white'"
-        :style="tooltipStyle"
-      >
-        {{ hoveredDate.count }} {{ hoveredDate.count === 1 ? 'contribution' : 'contributions' }} on {{ formatDate(hoveredDate.date) }}
       </div>
     </div>
   </div>
@@ -316,6 +320,25 @@ export default defineComponent({
 <style lang="scss" scoped>
 .heatmap-calendar {
   user-select: none;
+}
+
+.overflow-x-auto {
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.5);
+    border-radius: 4px;
+    
+    &:hover {
+      background: rgba(156, 163, 175, 0.7);
+    }
+  }
 }
 </style>
 

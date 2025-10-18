@@ -85,10 +85,11 @@ const getCurrentWorkspaceId = (): number => {
 const workspaceId = ref(getCurrentWorkspaceId());
 
 // Watch for store changes to update workspace ID
-watch(() => store.state.workspaces, (newWorkspaces) => {
-  if (newWorkspaces?.length) {
+watch(() => store.state.user?.settings, (newSettings) => {
+  if (newSettings) {
     const newWorkspaceId = getCurrentWorkspaceId();
     if (newWorkspaceId !== workspaceId.value) {
+      console.log(`Dashboard: Workspace changed from ${workspaceId.value} to ${newWorkspaceId}`);
       workspaceId.value = newWorkspaceId;
     }
   }
