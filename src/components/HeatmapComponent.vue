@@ -1,311 +1,462 @@
-<script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-
-// Full year of data (365 days)
-const days = 365;
-const activityData = ref<number[]>([]);
-const activityLabels = ref<string[]>([]);
-const mostActive = ref(20);
-
-// Random total contributions
-const totalContributions = ref(Math.floor(Math.random() * 300) + 100);
-
-// Days of week for y-axis
-const daysOfWeek = ['Mon', 'Wed', 'Fri'];
-
-// Months for x-axis
-const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-
-// Activity level descriptions
-const activityLevels = [
-  'No activity',
-  'Low activity',
-  'Medium activity',
-  'High activity',
-  'Very high activity'
-];
-
-// Generate random activity data for a year
-const generateActivityData = () => {
-  const data = [];
-  
-  for (let i = 0; i < days; i++) {
-    // Higher probability of no activity (0)
-    const random = Math.random();
-    let activity = 0;
-    
-    if (random > 0.75) {
-      activity = Math.floor(Math.random() * 5) + 1; // 1-5
-    } else if (random > 0.9) {
-      activity = Math.floor(Math.random() * 5) + 5; // 5-10
-    } else if (random > 0.97) {
-      activity = Math.floor(Math.random() * 10) + 10; // 10-20
-    }
-    
-    data.push(activity);
-  }
-  
-  return data;
-};
-
-// Generate dates for the past year
-const generateDates = () => {
-  const dates = [];
-  const today = new Date();
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    dates.push(date.toISOString().split('T')[0]);
-  }
-  
-  return dates;
-};
-
-// Function to determine activity level (0-4) for CSS class
-const getActivityLevel = (count: number) => {
-  if (count === 0) return 0;
-  if (count < 4) return 1;
-  if (count < 8) return 2;
-  if (count < 12) return 3;
-  return 4;
-};
-
-// Format date for tooltip
-const formatDate = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { 
-    weekday: 'long',
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric'
-  });
-};
-
-// Define the type for a cell
-interface GridCell {
-  value: number | null;
-  date: string | null;
-  index: number | null;
-}
-
-// Generate 7x53 grid (53 weeks x 7 days)
-const calendarGrid = computed(() => {
-  const grid: GridCell[][] = [];
-  
-  // Initialize with empty grid
-  for (let row = 0; row < 7; row++) {
-    const rowData: GridCell[] = [];
-    for (let col = 0; col < 53; col++) {
-      rowData.push({ value: null, date: null, index: null });
-    }
-    grid.push(rowData);
-  }
-  
-  // Fill grid with data
-  if (activityData.value.length > 0) {
-    let currentDay = new Date(activityLabels.value[0]);
-    let dayOfWeek = currentDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Adjust to 0 = Monday, 6 = Sunday
-    
-    let week = 0;
-    
-    for (let i = 0; i < activityData.value.length; i++) {
-      grid[dayOfWeek][week] = {
-        value: activityData.value[i],
-        date: activityLabels.value[i],
-        index: i
-      };
-      
-      dayOfWeek++;
-      if (dayOfWeek >= 7) {
-        dayOfWeek = 0;
-        week++;
-      }
-    }
-  }
-  
-  return grid;
-});
-
-onMounted(() => {
-  activityLabels.value = generateDates();
-  activityData.value = generateActivityData();
-});
-</script>
-
 <template>
-  <div class="activity-heatmap-container">
-    <div class="contribution-header">
-      <div class="font-medium text-xl">{{ totalContributions }} contributions in the last year</div>
+  <div>
+    <!-- Header with year and controls -->
+    <div class="heatmap-header">
+      <div class="year-controls">
+        <button 
+          v-if="canGoToPreviousYear"
+          @click="previousYear" 
+          :disabled="isLoading"
+          class="year-btn"
+        >
+          ←
+        </button>
+        <h3 class="year-title">{{ props.year }}</h3>
+        <button 
+          v-if="canGoToNextYear"
+          @click="nextYear" 
+          :disabled="isLoading"
+          class="year-btn"
+        >
+          →
+        </button>
+      </div>
+      
     </div>
-    
-    <div class="calendar-container">
-      <div class="months-header">
-        <div class="month-names">
-          <div class="empty-cell"></div>
-          <div v-for="month in months" :key="month" class="month-label">{{ month }}</div>
-        </div>
-      </div>
-      
-      <div class="calendar-body">
-        <div class="day-labels">
-          <div v-for="day in daysOfWeek" :key="day" class="day-label">{{ day }}</div>
-        </div>
+
+    <!-- Loading state -->
+    <div v-if="isLoading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>Loading heatmap data...</p>
+    </div>
+
+    <!-- Error state -->
+    <div v-else-if="currentError" class="error-container">
+      <div class="error-icon">⚠️</div>
+      <p class="error-message">{{ currentError }}</p>
+      <button @click="retry" class="retry-btn">Retry</button>
+    </div>
+
+    <!-- Heatmap visualization -->
+    <div v-else-if="currentHeatmapData" class="heatmap-visualization">
+      <!-- Vue3 Calendar Heatmap -->
+      <div class="heatmap-wrapper">
+        <calendar-heatmap
+          v-if="heatmapValues.length > 0"
+          :values="heatmapValues"
+          :end-date="endDate"
+          :range-color="rangeColor"
+          :tooltip-unit="tooltipUnit"
+          :round="round"
+          :vertical="vertical"
+          :no-data-text="noDataText"
+          :max="max"
+          :class-for-value="classForValue"
+          @click="onDateClick"
+        />
         
-        <div class="calendar-grid">
-          <div v-for="(row, rowIndex) in calendarGrid" :key="`row-${rowIndex}`" class="calendar-row">
-            <div 
-              v-for="(cell, colIndex) in row" 
-              :key="`cell-${rowIndex}-${colIndex}`"
-              class="calendar-cell" 
-              :class="[
-                cell.value !== null ? `activity-level-${getActivityLevel(cell.value)}` : 'empty-cell'
-              ]"
-              :title="cell.date ? `${formatDate(cell.date)}: ${cell.value} contributions` : ''"
-            ></div>
-          </div>
+        <!-- No data fallback -->
+        <div v-else class="no-data-fallback">
+          <p>No contribution data available for {{ props.year }}</p>
         </div>
       </div>
-      
-      <div class="calendar-footer">
-        <div class="activity-info">
-          <span>Less</span>
-          <div class="activity-level-boxes">
-            <div class="activity-level-box activity-level-0"></div>
-            <div class="activity-level-box activity-level-1"></div>
-            <div class="activity-level-box activity-level-2"></div>
-            <div class="activity-level-box activity-level-3"></div>
-            <div class="activity-level-box activity-level-4"></div>
-          </div>
-          <span>More</span>
-        </div>
-      </div>
+
+    </div>
+
+    <!-- Empty state -->
+    <div v-else class="empty-state">
+      <div class="empty-icon">📅</div>
+      <p>No contribution data available</p>
     </div>
   </div>
 </template>
 
+<script setup lang="ts">
+import { ref, onMounted, computed, watch } from 'vue';
+import { getUserHeatmap } from '@/actions/tmgr/dashboard';
+import type { HeatmapData, ActionError } from '@/types/dashboard';
+// Import vue3-calendar-heatmap according to documentation
+import { CalendarHeatmap } from '@silverwind/vue3-calendar-heatmap';
+
+// Props
+interface Props {
+  workspaceId: number;
+  userId?: number;
+  year?: number;
+  loading?: boolean;
+  error?: ActionError | null;
+  data?: HeatmapData | null;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  year: () => new Date().getFullYear(),
+  loading: false,
+  error: null
+});
+
+// Emits
+const emit = defineEmits<{
+  'update:loading': [loading: boolean];
+  'update:error': [error: ActionError | null];
+  'update:year': [year: number];
+  'date-click': [date: string, count: number];
+  'retry': [];
+}>();
+
+// State
+const heatmapData = ref<HeatmapData | null>(null);
+const internalLoading = ref(false);
+const internalError = ref<ActionError | null>(null);
+
+// Use provided data or internal data
+const currentHeatmapData = computed(() => props.data || heatmapData.value);
+
+// Computed loading and error states
+const isLoading = computed(() => props.loading || internalLoading.value);
+const currentError = computed(() => props.error || internalError.value);
+
+// Computed properties for navigation arrows
+const canGoToPreviousYear = computed(() => {
+  return props.year > 2020; // Don't show left arrow if we're at or before 2020
+});
+
+const canGoToNextYear = computed(() => {
+  const currentYear = new Date().getFullYear();
+  return props.year < currentYear; // Don't show right arrow if we're at current year or beyond
+});
+
+
+// Transform API data for vue3-calendar-heatmap
+const heatmapValues = computed(() => {
+  if (!currentHeatmapData.value?.contributions) {
+    return [];
+  }
+  
+  return currentHeatmapData.value.contributions.map(contrib => ({
+    date: contrib.date,
+    count: contrib.count
+  }));
+});
+
+// Calendar heatmap configuration
+const endDate = computed(() => {
+  const year = props.year;
+  const currentYear = new Date().getFullYear();
+  
+  if (year === currentYear) {
+    return new Date(); // Current date for current year
+  } else {
+    return new Date(year, 11, 31); // End of the specified year
+  }
+});
+
+const rangeColor = ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'];
+const tooltipUnit = 'contributions';
+const round = 2;
+const vertical = false;
+const noDataText = 'No contributions';
+const max = computed(() => {
+  if (!currentHeatmapData.value?.contributions) return 0;
+  return Math.max(...currentHeatmapData.value.contributions.map(c => c.count));
+});
+
+// Function to determine CSS class for each value
+const classForValue = (value: any) => {
+  if (!value || !value.count) {
+    return 'color-empty';
+  }
+  
+  const count = value.count;
+  const maxValue = max.value;
+  
+  if (maxValue === 0) return 'color-empty';
+  
+  // Calculate the scale based on the contribution count
+  const scale = Math.ceil((count / maxValue) * 4);
+  return `color-scale-${Math.min(scale, 4)}`;
+};
+
+// Load heatmap data from API
+const loadHeatmapData = async () => {
+  if (isLoading.value) return;
+  
+  // If data is provided via props, don't load from API
+  if (props.data) return;
+  
+  try {
+    internalLoading.value = true;
+    internalError.value = null;
+    emit('update:loading', true);
+    emit('update:error', null);
+    
+    const result = await getUserHeatmap(props.workspaceId, {
+      year: props.year,
+      user_id: props.userId,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    });
+    
+    if (result.success && result.data) {
+      heatmapData.value = result.data;
+    } else if (result.error) {
+      internalError.value = result.error;
+      emit('update:error', result.error);
+    }
+  } catch (error) {
+    const actionError: ActionError = {
+      message: 'Failed to load heatmap data',
+      type: 'network',
+      timestamp: new Date().toISOString(),
+      recoverable: true,
+      details: error
+    };
+    internalError.value = actionError;
+    emit('update:error', actionError);
+  } finally {
+    internalLoading.value = false;
+    emit('update:loading', false);
+  }
+};
+
+// Year navigation
+const previousYear = () => {
+  emit('update:year', props.year - 1);
+};
+
+const nextYear = () => {
+  emit('update:year', props.year + 1);
+};
+
+
+// Retry function
+const retry = () => {
+  emit('retry');
+  loadHeatmapData();
+};
+
+// Handle date click
+const onDateClick = (event: any) => {
+  const date = event.date;
+  const count = event.count || 0;
+  emit('date-click', date, count);
+};
+
+
+// Watch for year changes
+watch(() => props.year, () => {
+  loadHeatmapData();
+});
+
+// Lifecycle
+onMounted(() => {
+  loadHeatmapData();
+});
+</script>
+
 <style scoped>
-.activity-heatmap-container {
-  @apply w-full max-w-6xl mx-auto px-4;
+.heatmap-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.heatmap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.year-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.year-btn {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.year-btn:hover:not(:disabled) {
+  background: #e9ecef;
+}
+
+.year-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.year-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #dc3545;
+}
+
+.error-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.error-message {
+  margin: 0 0 15px 0;
+  text-align: center;
+}
+
+.retry-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #0056b3;
+}
+
+.heatmap-visualization {
+  margin-bottom: 20px;
+}
+
+.heatmap-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  min-height: 200px;
+  position: relative;
+}
+
+/* Override heatmap colors to ensure they're applied correctly */
+.heatmap-wrapper :deep(.react-calendar-heatmap) {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-empty) {
+  fill: #ebedf0;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-1) {
+  fill: #9be9a8;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-2) {
+  fill: #40c463;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-3) {
+  fill: #30a14e;
+}
+
+.heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-4) {
+  fill: #216e39;
+}
+
+.custom-heatmap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.no-data-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: #f8f9fa;
   border-radius: 6px;
+  border: 2px dashed #dee2e6;
+  color: #666;
 }
 
-.contribution-header {
-  @apply flex justify-between items-center py-4;
+
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #666;
 }
 
-.contribution-controls {
-  @apply flex items-center gap-2;
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 10px;
 }
 
-.settings-button {
-  @apply bg-gray-100 dark:bg-[#21262d] rounded-md px-3 py-1 text-sm border border-gray-300 dark:border-[#30363d] hover:border-gray-400 dark:hover:border-[#8b949e];
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .heatmap-container {
+    background: #1a1a1a;
+    color: #e0e0e0;
+  }
+  
+  .year-title {
+    color: #e0e0e0;
+  }
+  
+  /* Dark mode heatmap colors */
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-empty) {
+    fill: #161b22;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-1) {
+    fill: #0e4429;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-2) {
+    fill: #006d32;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-3) {
+    fill: #26a641;
+  }
+  
+  .heatmap-wrapper :deep(.react-calendar-heatmap .color-scale-4) {
+    fill: #39d353;
+  }
 }
-
-.year-button {
-  @apply bg-blue-600 dark:bg-[#1064eb] border-blue-600 dark:border-[#1064eb] hover:bg-blue-700 dark:hover:bg-[#1a7bf5] hover:border-blue-700 dark:hover:border-[#1a7bf5] text-white;
-}
-
-.calendar-container {
-  @apply border border-gray-300 dark:border-[#30363d] rounded-md overflow-hidden mb-8;
-}
-
-.months-header {
-  @apply border-b border-gray-300 dark:border-[#30363d] px-2 py-1;
-}
-
-.month-names {
-  @apply flex;
-}
-
-.empty-cell {
-  @apply w-9;
-}
-
-.month-label {
-  @apply text-xs text-center flex-1 text-gray-600 dark:text-gray-400;
-}
-
-.calendar-body {
-  @apply flex p-2;
-}
-
-.day-labels {
-  @apply flex flex-col justify-between pr-2 py-1;
-}
-
-.day-label {
-  @apply text-xs h-4 text-right text-gray-600 dark:text-gray-400;
-}
-
-.calendar-grid {
-  @apply flex-1;
-}
-
-.calendar-row {
-  @apply flex h-4 mb-[3px];
-}
-
-.calendar-cell {
-  @apply w-[11px] h-[11px] mr-[3px] rounded-sm;
-}
-
-/* Light mode activity levels */
-.light .activity-level-0, :root:not(.dark) .activity-level-0 {
-  @apply bg-gray-100;
-}
-
-.light .activity-level-1, :root:not(.dark) .activity-level-1 {
-  @apply bg-green-100;
-}
-
-.light .activity-level-2, :root:not(.dark) .activity-level-2 {
-  @apply bg-green-300;
-}
-
-.light .activity-level-3, :root:not(.dark) .activity-level-3 {
-  @apply bg-green-500;
-}
-
-.light .activity-level-4, :root:not(.dark) .activity-level-4 {
-  @apply bg-green-700;
-}
-
-/* Dark mode activity levels */
-.dark .activity-level-0 {
-  @apply bg-[#161b22];
-}
-
-.dark .activity-level-1 {
-  @apply bg-[#0e4429];
-}
-
-.dark .activity-level-2 {
-  @apply bg-[#006d32];
-}
-
-.dark .activity-level-3 {
-  @apply bg-[#26a641];
-}
-
-.dark .activity-level-4 {
-  @apply bg-[#39d353];
-}
-
-.calendar-footer {
-  @apply flex justify-end px-4 py-2 border-t border-gray-300 dark:border-[#30363d];
-}
-
-.activity-info {
-  @apply flex items-center text-xs gap-2 text-gray-600 dark:text-gray-400;
-}
-
-.activity-level-boxes {
-  @apply flex gap-1;
-}
-
-.activity-level-box {
-  @apply w-[10px] h-[10px] rounded-sm;
-}
-</style> 
+</style>
