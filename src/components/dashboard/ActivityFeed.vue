@@ -195,7 +195,11 @@ onUnmounted(() => {
 }
 
 .activity-list {
-  @apply max-h-96 overflow-y-auto;
+  @apply max-h-[600px] overflow-y-auto;
+}
+
+.activity-list > * + * {
+  @apply border-t border-gray-100 dark:border-gray-700/50;
 }
 
 /* Custom scrollbar */

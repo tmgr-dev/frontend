@@ -64,6 +64,8 @@ export interface ActivityUser {
 export interface Activity {
   id: number;
   type: ActivityType | string;
+  title: string;
+  subject_name: string;
   description: string;
   user: ActivityUser;
   workspace_id: number;
