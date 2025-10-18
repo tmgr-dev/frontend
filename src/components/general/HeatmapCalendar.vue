@@ -1,8 +1,8 @@
 <template>
-  <div class="heatmap-calendar">
+  <div class="heatmap-calendar w-full">
     <div class="mb-6">
       <div :class="['text-sm font-medium mb-1', textColorClass]">
-        {{ data.total_contributions }} contributions in the last year
+        {{ data.total_contributions }} contributions in {{ currentYear }}
       </div>
       <div :class="['text-xs', textColorClass]">
         Current streak: {{ data.streak.current }} {{ data.streak.current === 1 ? 'day' : 'days' }} • 
@@ -10,37 +10,38 @@
       </div>
     </div>
 
-    <div class="relative">
-      <div class="flex gap-2">
-        <div class="flex flex-col justify-around py-6" style="height: 100px;">
+    <div class="relative w-full">
+      <div class="grid grid-cols-[auto_1fr] gap-4">
+        <div class="flex flex-col justify-around" style="height: 105px;">
           <div :class="['text-[9px] leading-none', textColorClass]">Mon</div>
           <div :class="['text-[9px] leading-none', textColorClass]">Wed</div>
           <div :class="['text-[9px] leading-none', textColorClass]">Fri</div>
         </div>
 
-        <div class="flex-1">
-          <div class="flex gap-1 mb-2">
+        <div class="flex-1 min-w-0">
+          <div class="flex justify-between mb-2 px-[1px]">
             <div 
               v-for="month in monthLabels" 
               :key="month.label"
               :class="['text-[9px]', textColorClass]"
-              :style="{ marginLeft: month.offset + 'px', width: month.width + 'px' }"
             >
               {{ month.label }}
             </div>
           </div>
 
-          <div class="flex gap-[3px]">
+          <div class="grid gap-[2px]" :style="weekGridStyle">
             <div 
               v-for="(week, weekIndex) in calendarGrid" 
               :key="weekIndex"
-              class="flex flex-col gap-[3px]"
+              class="grid gap-[2px]"
+              :style="dayGridStyle"
             >
               <div
                 v-for="day in week"
                 :key="day.date"
                 :class="getSquareClass(day)"
-                class="w-[11px] h-[11px] rounded-[2px] transition-transform duration-200 hover:scale-110 cursor-pointer"
+                class="rounded-[2px] transition-transform duration-200 hover:scale-110 cursor-pointer"
+                :style="squareStyle"
                 @mouseenter="handleSquareHover(day, $event)"
                 @mouseleave="handleSquareLeave"
                 :title="getTooltipText(day)"
@@ -105,6 +106,10 @@ export default defineComponent({
     };
   },
   computed: {
+    currentYear() {
+      return new Date().getFullYear();
+    },
+    
     contributionMap() {
       const map = {};
       this.data.contributions.forEach(item => {
@@ -115,9 +120,9 @@ export default defineComponent({
     
     calendarGrid() {
       const grid = [];
-      const today = new Date();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - 364);
+      const year = this.currentYear;
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31);
       
       let currentDate = new Date(startDate);
       const dayOfWeek = currentDate.getDay();
@@ -125,12 +130,11 @@ export default defineComponent({
       currentDate.setDate(currentDate.getDate() - daysToMonday);
       
       let week = [];
-      const totalDays = 364 + daysToMonday + (6 - ((364 + daysToMonday) % 7));
       
-      for (let i = 0; i < totalDays; i++) {
+      while (currentDate <= endDate || week.length > 0) {
         const dateStr = this.formatDateYMD(currentDate);
         const count = this.contributionMap[dateStr] || 0;
-        const isInRange = currentDate >= startDate && currentDate <= today;
+        const isInRange = currentDate >= startDate && currentDate <= endDate;
         
         week.push({
           date: dateStr,
@@ -145,10 +149,8 @@ export default defineComponent({
         }
         
         currentDate.setDate(currentDate.getDate() + 1);
-      }
-      
-      if (week.length > 0) {
-        grid.push(week);
+        
+        if (currentDate > endDate && week.length === 0) break;
       }
       
       return grid;
@@ -156,20 +158,11 @@ export default defineComponent({
     
     monthLabels() {
       const labels = [];
-      const today = new Date();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - 364);
+      const year = this.currentYear;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       
-      const dayOfWeek = startDate.getDay();
-      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const gridStartDate = new Date(startDate);
-      gridStartDate.setDate(gridStartDate.getDate() - daysToMonday);
-      
-      let currentMonth = null;
-      let monthStartWeek = 0;
-      const squareWidth = 11;
-      const gapWidth = 3;
-      const weekWidth = squareWidth + gapWidth;
+      let lastMonth = -1;
+      const monthFirstWeek = new Array(12).fill(-1);
       
       this.calendarGrid.forEach((week, weekIndex) => {
         const firstValidDay = week.find(day => day.isInRange);
@@ -177,31 +170,45 @@ export default defineComponent({
           const date = new Date(firstValidDay.date);
           const month = date.getMonth();
           
-          if (currentMonth !== month) {
-            if (currentMonth !== null && weekIndex > monthStartWeek) {
-              const monthDate = new Date(date);
-              monthDate.setMonth(month - 1);
-              labels.push({
-                label: this.getMonthName(monthDate.getMonth()),
-                offset: monthStartWeek * weekWidth,
-                width: (weekIndex - monthStartWeek) * weekWidth
-              });
-            }
-            currentMonth = month;
-            monthStartWeek = weekIndex;
+          if (month !== lastMonth && monthFirstWeek[month] === -1) {
+            monthFirstWeek[month] = weekIndex;
+            lastMonth = month;
           }
         }
       });
       
-      if (currentMonth !== null) {
-        labels.push({
-          label: this.getMonthName(currentMonth),
-          offset: monthStartWeek * weekWidth,
-          width: (this.calendarGrid.length - monthStartWeek) * weekWidth
-        });
-      }
+      months.forEach((monthName, index) => {
+        if (monthFirstWeek[index] !== -1) {
+          labels.push({
+            label: monthName,
+            weekIndex: monthFirstWeek[index]
+          });
+        }
+      });
       
       return labels;
+    },
+    
+    weekGridStyle() {
+      const weeks = this.calendarGrid.length;
+      return {
+        gridTemplateColumns: `repeat(${weeks}, 1fr)`,
+        gridAutoFlow: 'column'
+      };
+    },
+    
+    dayGridStyle() {
+      return {
+        gridTemplateRows: 'repeat(7, 1fr)',
+        gridAutoFlow: 'row'
+      };
+    },
+    
+    squareStyle() {
+      return {
+        width: '100%',
+        aspectRatio: '1 / 1'
+      };
     },
     
     textColorClass() {
@@ -301,11 +308,6 @@ export default defineComponent({
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
-    },
-    
-    getMonthName(month) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return months[month];
     }
   }
 });
