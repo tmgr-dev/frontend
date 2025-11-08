@@ -1,0 +1,9 @@
+node_modules
+.cursorrules
+docker
+!docker/nginx/conf.d/default.conf.example
+dist
+config
+.github
+.git
+.gitignore
