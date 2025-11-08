@@ -33,7 +33,7 @@
 	onUnmounted(() => {
 		document.body.classList.remove('overflow-hidden');
 		if (location.href !== initialUrl.value) {
-			history.pushState({}, '', initialUrl.value);
+			history.replaceState({}, '', initialUrl.value);
 		}
 		document.removeEventListener('keydown', closeByEscape);
 	});

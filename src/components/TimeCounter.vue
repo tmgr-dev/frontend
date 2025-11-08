@@ -4,13 +4,13 @@
 	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
 	import { Task } from '@/actions/tmgr/tasks';
 	import {
+		convertToHHMM,
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from '@/utils/timeUtils';
 	import { Button } from '@/components/ui/button';
 	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
 	import { ExtendedTime, Time } from '@/types';
-	import convertToHHMM from '@/utils/convertToHHMM';
 
 	interface Props {
 		form: Task;
@@ -62,7 +62,7 @@
 		};
 	});
 	const isTimeOver = computed(
-		() => task.approximately_time - task.common_time < 0,
+		() => (task.approximately_time || 3600) - task.common_time < 0,
 	);
 
 	// Methods
@@ -151,12 +151,19 @@
 	<div v-if="task" :style="disabledStyles" class="flex flex-col justify-center">
 		<div class="relative flex items-center justify-center">
 			<TaskTimeInfo
+				v-if="task.id"
 				:task-id="task.id"
 				:timer="timer"
 				:approximately-end-time="approximatelyEndTime"
 				:last-start-time="lastStartTime"
 				:is-timer-active="isTimerActive"
 				@stop-timer="toggleTimer"
+				@update:timer="
+					(seconds) => {
+						task.common_time = seconds;
+						renderTime();
+					}
+				"
 			/>
 
 			<div>

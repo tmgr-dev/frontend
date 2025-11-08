@@ -8,7 +8,7 @@
 		<transition mode="out-in" name="fade">
 			<div class="flex min-h-screen">
 				<CustomSidebar>
-					<router-view v-slot="{ Component }">
+					<router-view v-slot="{ Component, route }" :key="route?.fullPath">
 						<transition
 							:name="transitionName"
 							mode="out-in"
@@ -30,20 +30,10 @@
 				v-if="showTaskFormModalWindow"
 				modal-class="h-full w-full md:w-auto md:h-auto"
 				close-on-bg-click
-				@close="$store.commit('closeTaskModal')"
+				@close="handleModalClose"
 			>
 				<template #modal-body>
-					<NewForm :is-modal="true" @close="$store.commit('closeTaskModal')" />
-
-					<!--					<TaskForm
-						is-modal
-						:modal-project-category-id="
-							$store.state.createTaskInProjectCategoryId
-						"
-						:modal-task-id="$store.state.currentTaskIdForModal"
-						:status-id="$store.state.taskStatusId"
-						@close="$store.commit('closeTaskModal')"
-					/>-->
+					<NewForm :is-modal="true" @close="handleModalClose" />
 				</template>
 			</Modal>
 		</Transition>
@@ -57,8 +47,8 @@
 	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
 	import { getUserSettings } from '@/actions/tmgr/user';
-	import { getLaunchedTasks } from '@/actions/tmgr/tasks';
-	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import { getLaunchedTasks, getTask } from '@/actions/tmgr/tasks';
+	import { getWorkspaceStatuses, getWorkspaces } from '@/actions/tmgr/workspaces';
 	import Alert from '@/components/general/Alert.vue';
 	import Modal from '@/components/Modal.vue';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
@@ -66,6 +56,8 @@
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { Toaster } from '@/components/ui/toast';
+	import { generateTaskUrl } from '@/utils/url';
+	import { updateUserSettingsV2 } from '@/actions/tmgr/user';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -121,6 +113,14 @@
 				},
 			},
 			showTaskFormModalWindow() {
+				const taskId = this.$store.state.currentTaskIdForModal;
+				
+				// Update browser URL when viewing a task in modal
+				if (taskId && this.$route.name !== 'TasksEdit') {
+					// Update URL asynchronously
+					this.updateTaskModalUrl(taskId);
+				}
+				
 				return (
 					this.$route.name !== 'TasksEdit' &&
 					(this.$store.state.currentTaskIdForModal ||
@@ -136,6 +136,37 @@
 			'$store.state.reloadActiveTasksKey'() {
 				this.loadActiveTasks();
 			},
+			'$route.params.workspace_code': {
+				async handler(workspaceCode) {
+					if (workspaceCode && this.$store.getters.isLoggedIn) {
+						// If URL has workspace code, check if it matches current workspace
+						const workspaces = this.$store.state.workspaces;
+						if (!workspaces || !workspaces.length) {
+							await this.loadWorkspaces();
+						}
+						
+						const currentWorkspaceId = this.$store.state.user?.settings?.find(
+							setting => setting.key === 'current_workspace'
+						)?.value;
+						
+						const currentWorkspace = this.$store.state.workspaces.find(
+							workspace => Number(workspace.id) === Number(currentWorkspaceId)
+						);
+						
+						// Find workspace by code from URL
+						const workspaceFromUrl = this.$store.state.workspaces.find(
+							workspace => workspace.code === workspaceCode
+						);
+						
+						// If workspace from URL exists and is different from current workspace, switch to it
+						if (workspaceFromUrl && (!currentWorkspace || currentWorkspace.code !== workspaceCode)) {
+							console.log(`Switching workspace from ${currentWorkspace?.code} to ${workspaceCode}`);
+							await this.changeWorkspace(workspaceFromUrl);
+						}
+					}
+				},
+				immediate: true
+			}
 		},
 		methods: {
 			beforeLeave(element) {
@@ -154,9 +185,15 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
-				if (!this.$store.state.user) return;
-
-				this.activeTasks = await getLaunchedTasks();
+				try {
+					if (!this.$store.state.user) return;
+					
+					const tasks = await getLaunchedTasks();
+					this.activeTasks = tasks || [];
+				} catch (error) {
+					console.error('Error loading active tasks:', error);
+					this.activeTasks = [];
+				}
 			},
 			minimize() {
 				if (import.meta.env.MODE === 'electron') {
@@ -200,23 +237,162 @@
 				}
 				return el.offsetHeight;
 			},
+			ensureWorkspacesLoaded() {
+				if (!this.$store.state.workspaces || this.$store.state.workspaces.length === 0) {
+					this.$store.dispatch('loadWorkspaces');
+				}
+			},
+			async updateTaskModalUrl(taskId) {
+				try {
+					// Ensure workspaces are loaded
+					let workspaces = this.$store.state.workspaces;
+					if (!workspaces || !workspaces.length) {
+						workspaces = await getWorkspaces();
+						this.$store.commit('setWorkspaces', workspaces);
+					}
+					
+					// Get current workspace ID and ensure it's a number
+					const currentWorkspaceId = Number(this.$store.state.user?.settings?.find(
+						setting => setting.key === 'current_workspace'
+					)?.value);
+					
+					// Find workspace by ID, converting workspace.id to number for comparison
+					const currentWorkspace = workspaces.find(
+						workspace => Number(workspace.id) === currentWorkspaceId
+					);
+					
+					if (!currentWorkspace) {
+						console.error('Current workspace not found. Available workspaces:', workspaces, 'Current workspace ID:', currentWorkspaceId);
+						return;
+					}
+					
+					// Fetch task data directly from API
+					const task = await getTask(taskId);
+					const category = task?.category && typeof task.category === 'object' ? task.category : null;
+					
+					// Generate the proper URL with workspace code
+					const newPath = generateTaskUrl(taskId, currentWorkspace, category);
+					const currentPath = window.location.pathname;
+					
+					// Only update if the URL isn't already set to this task and the URL is valid
+					if (newPath && newPath !== '/' && currentPath !== newPath) {
+						// Use replaceState instead of pushState to avoid adding new history entries
+						history.replaceState({}, '', newPath);
+						this.$store.state.urlManuallyChanged = true;
+					}
+				} catch (error) {
+					console.error('Error updating task modal URL:', error);
+				}
+			},
+			handleModalClose() {
+				// Restore original URL if it was changed for the modal
+				if (this.$store.state.urlManuallyChanged) {
+					// Get the URL without the task ID
+					const currentPath = window.location.pathname;
+					const pathParts = currentPath.split('/');
+					
+					// If we have a numeric task ID at the end, remove it
+					if (/^\d+$/.test(pathParts[pathParts.length - 1])) {
+						pathParts.pop();
+						const newPath = pathParts.join('/') || '/';
+						history.replaceState({}, '', newPath);
+					}
+				}
+				
+				// Close the modal
+				this.$store.commit('closeTaskModal');
+			},
+			async loadWorkspaces() {
+				try {
+					const workspaces = await getWorkspaces();
+					this.$store.commit('setWorkspaces', workspaces);
+					return workspaces;
+				} catch (error) {
+					console.error('Error loading workspaces:', error);
+					return [];
+				}
+			},
+			async changeWorkspace(workspace) {
+				try {
+					// Get current user settings
+					const settings = this.$store.state.user?.settings || [];
+					
+					// Find the current workspace setting
+					const workspaceSetting = settings.find(
+						setting => setting.key === 'current_workspace'
+					);
+					
+					if (workspaceSetting) {
+						// Prepare updated settings
+						const updatedSettings = settings.map(setting => {
+							if (setting.key === 'current_workspace') {
+								return {
+									id: setting.id,
+									value: workspace.id
+								};
+							}
+							return {
+								id: setting.id,
+								value: setting.value
+							};
+						});
+						
+						// Update user settings in the backend
+						await updateUserSettingsV2(updatedSettings);
+						
+						// Create a new user object with updated settings to ensure reactivity
+						const updatedUser = {
+							...this.$store.state.user,
+							settings: updatedSettings
+						};
+						
+						// Update store without reloading the page
+						this.$store.commit('setUser', updatedUser);
+						
+						// Also update the workspace setting directly for components watching that specifically
+						this.$store.commit('updateUserWorkspaceSetting', {
+							workspaceId: workspace.id
+						});
+						
+						// Force reload active tasks with new workspace context
+						await this.loadActiveTasks();
+						
+						// Update the meta title if needed
+						if (this.$route.meta.title) {
+							this.$store.commit('setMetaTitle', this.$route.meta.title);
+						}
+						
+						// Force UI components to update by triggering an app rerender
+						this.$store.commit('rerenderApp');
+						
+						console.log('Workspace successfully changed to:', workspace.name);
+					}
+				} catch (error) {
+					console.error('Error changing workspace:', error);
+				}
+			},
 		},
 		async created() {
 			if (store.state.user) {
-				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
+				await Promise.all([
+					getUserSettings(), 
+					getWorkspaceStatuses(),
+					this.$store.dispatch('loadWorkspaces')
+				]);
+				await this.loadActiveTasks();
 			}
 
 			this.$router.beforeEach((to, from, next) => {
 				this.loadActiveTasks();
-				let transitionName = to.meta.transitionName || from.meta.transitionName;
+				let routeTransitionName = to.meta.transitionName || from.meta.transitionName;
 
-				if (transitionName === 'slide') {
+				if (routeTransitionName === 'slide') {
 					const toDepth = to.path.split('/').length;
 					const fromDepth = from.path.split('/').length;
-					transitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
+					routeTransitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
 				}
 
-				this.transitionName = transitionName || DEFAULT_TRANSITION;
+				this.transitionName = routeTransitionName || DEFAULT_TRANSITION;
 
 				next();
 			});
@@ -237,7 +413,6 @@
 						});
 				});
 			});
-			this.loadActiveTasks();
 			if (import.meta.env.MODE === 'electron') {
 				document.body.style.overflow = 'hidden';
 			}

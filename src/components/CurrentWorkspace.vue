@@ -1,11 +1,73 @@
 <template>
-	<Select
-		v-model="value"
+	<!--		<Select
+		v-model="modelValue"
 		:options="workspaces"
 		label-key="name"
-		value-key="id"
-		@updateSettings="() => $emit('updateSettings')"
-	/>
+		modelValue-key="id"
+	/>-->
+	<Popover v-model:open="openCombobox">
+		<PopoverTrigger as-child>
+			<Button
+				variant="outline"
+				role="combobox"
+				size="lg"
+				:aria-expanded="openCombobox"
+				class="w-full justify-between overflow-hidden px-4"
+			>
+				<span class="truncate">
+					{{
+						modelValue
+							? workspaces.find((workspace) => workspace.id == modelValue)?.name
+							: 'Workspace'
+					}}
+				</span>
+				<ChevronsUpDown class="ml-1 h-4 w-4 shrink-0 opacity-50" />
+			</Button>
+		</PopoverTrigger>
+
+		<PopoverContent
+			class="rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
+		>
+			<Command>
+				<CommandInput
+					class="h-9"
+					wrapper-class="dark:border-gray-600"
+					placeholder="Search category..."
+					@input="(e) => (searchValue = e.target.value)"
+				/>
+				<CommandEmpty>No category found.</CommandEmpty>
+				<CommandList class="w-80">
+					<CommandGroup>
+						<CommandItem
+							v-for="workspace in filteredWorkspaces"
+							:key="workspace.id"
+							:value="workspace.id"
+							@select="
+								(e) => {
+									if (e.detail.value) {
+										modelValue = e.detail.value;
+										searchValue = '';
+									}
+									openCombobox = false;
+								}
+							"
+							class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+						>
+							{{ workspace.name }}
+							<Check
+								:class="
+									cn(
+										'ml-auto h-4 w-4',
+										modelValue === workspace.id ? 'opacity-100' : 'opacity-0',
+									)
+								"
+							/>
+						</CommandItem>
+					</CommandGroup>
+				</CommandList>
+			</Command>
+		</PopoverContent>
+	</Popover>
 
 	<button
 		@click="flags.isShowWorkspaceModal = true"
@@ -55,7 +117,6 @@
 		<Modal
 			v-if="flags.isShowInvitationModal"
 			:modal-class="`p-6 ${invitationToken ? 'w-auto' : 'w-96'}`"
-			close-on-bg-click
 			@close="closeInvitationModal"
 		>
 			<template #modal-body>
@@ -135,20 +196,35 @@
 		Workspace,
 		WorkspaceInvitation,
 	} from '@/actions/tmgr/workspaces';
-	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import { computed, onBeforeMount, reactive, Ref, ref, watch } from 'vue';
 	import { AxiosError } from 'axios';
 	import Modal from '@/components/Modal.vue';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard.ts';
 	import { useRoute } from 'vue-router';
+	import { cn } from '@/utils';
+	import { Check, ChevronsUpDown } from 'lucide-vue-next';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
+	import {
+		Command,
+		CommandEmpty,
+		CommandGroup,
+		CommandInput,
+		CommandItem,
+		CommandList,
+	} from '@/components/ui/command';
+	import { Button } from '@/components/ui/button';
 
 	interface Props {
 		modelValue: string | number;
 	}
 
 	const props = defineProps<Props>();
-	const value = defineModel<number>();
+	const modelValue = defineModel<number>(0);
 	const emit = defineEmits(['update:modelValue', 'updateSettings']);
 	const route = useRoute();
 
@@ -158,7 +234,17 @@
 		isShowInvitationModal: false,
 		isShowWorkspaceModal: false,
 	});
+	const openCombobox = ref(false);
+	const searchValue = ref('');
 	const workspaces: Ref<Workspace[]> = ref([]);
+	const filteredWorkspaces = computed(() => {
+		if (!searchValue.value) return workspaces.value;
+
+		return workspaces.value.filter((workspace) =>
+			workspace.name.toLowerCase().includes(searchValue.value.toLowerCase()),
+		);
+	});
+
 	const errors = ref({});
 	const newWorkspace: Ref<Workspace> = ref({
 		name: '',
@@ -220,7 +306,7 @@
 			const workspace = await createWorkspace(newWorkspace.value);
 			workspaces.value.push(workspace);
 			flags.isShowWorkspaceModal = false;
-			window.location.reload();
+			// window.location.reload();
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
@@ -237,7 +323,7 @@
 			errors.value = {};
 
 			const response = await createWorkspaceInvitation(
-				+value.value,
+				+modelValue.value,
 				newWorkspaceInvitation.value,
 			);
 

@@ -1,10 +1,10 @@
 <template>
 	<Teleport to="title">{{ title }}</Teleport>
 
-	<BaseLayout no-copyright>
+	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
-			<div class="block justify-center">
-				<div class="w-full overflow-x-auto">
+			<div class="flex flex-col justify-center flex-1">
+				<div class="w-full overflow-x-auto flex flex-col h-full">
 					<div class="min-h-[62px]">
 						<div class="relative md:hidden">
 							<FilterIcon
@@ -53,7 +53,7 @@
 							</Transition>
 						</div>
 
-						<div class="hidden md:block">
+						<div class="hidden items-center md:flex">
 							<FiltersBoard
 								v-if="workspaceUsers.length"
 								:workspaceUsers="workspaceUsers"
@@ -66,7 +66,19 @@
 								@handleSearchTextChanged="handleSearchTextChanged"
 								@loadTasks="loadTasks"
 								@loadColumns="loadColumns"
-							/>
+							>
+								<template #actions-start>
+									<!-- Add Status Icon Button -->
+									<button
+										@click="openCreateStatusModal"
+										class="mr-4 cursor-pointer text-gray-500 hover:text-black dark:text-gray-600 dark:hover:text-white"
+										title="Add Status"
+									>
+										<span class="cursor-pointer material-icons text-2xl">add</span>
+									</button>
+									<!-- End Add Status Icon Button -->
+								</template>
+							</FiltersBoard>
 						</div>
 					</div>
 
@@ -189,40 +201,6 @@
 									</div>
 								</template>
 							</Draggable>
-						</div>
-
-						<div
-							class="fixed right-2 z-10 h-full w-12 flex-col"
-							v-if="columns.length > 0"
-						>
-							<span
-								@click="
-									() => {
-										isShowStatusModal = true;
-										isCreatingStatus = true;
-										$store.commit('openModal');
-									}
-								"
-								class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
-							>
-								add
-							</span>
-							<div class="relative my-2 flex h-screen items-center">
-								<div
-									v-if="hasHorizontalScroll"
-									class="flex h-full items-center"
-								>
-									<span
-										@click="scrollHorizontally"
-										class="material-icons cursor-pointer text-2xl text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
-									>
-										arrow_forward_ios
-									</span>
-									<div
-										class="relative flex h-64 w-0.5 items-center bg-gray-100 before:absolute before:right-2 before:-z-10 before:h-5/6 before:w-full before:bg-gradient-to-l before:from-[#000000] before:from-gray-600 before:to-100% before:blur-[4px] dark:bg-neutral-900"
-									></div>
-								</div>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -566,9 +544,10 @@
 				if (this.isCreatingStatus) {
 					try {
 						await createStatus(this.workspaceId, newStatus);
-						this.showAlert('Save', 'The status was created');
+						// this.showAlert('Save', 'The status was created');
 						this.closeModal();
-						this.$store.commit('rerenderApp');
+						await this.loadColumns();
+						await this.loadTasks();
 					} catch (error) {
 						if (error) {
 							this.errors = error.response?.data?.errors;
@@ -578,9 +557,10 @@
 				if (!this.isCreatingStatus) {
 					try {
 						await updateStatus(this.statusId, newStatus);
-						this.showAlert('Saved', 'The status was edited');
+						// this.showAlert('Saved', 'The status was edited');
 						this.closeModal();
-						this.$store.commit('rerenderApp');
+						await this.loadColumns();
+						await this.loadTasks();
 					} catch (error) {
 						if (error) {
 							this.errors = error.response?.data?.errors;
@@ -595,8 +575,10 @@
 				const deleteStatusConfirmation = async () => {
 					await deleteStatus(this.statusId);
 					this.closeModal();
-					this.showAlert('Saved', 'The status was deleted');
-					this.$store.commit('rerenderApp');
+					this.confirm = undefined;
+					// this.showAlert('Saved', 'The status was deleted');
+					await this.loadColumns();
+					await this.loadTasks();
 				};
 				this.showConfirm(
 					'Delete status',
@@ -606,6 +588,7 @@
 			},
 			openStatusModal(column) {
 				this.isShowStatusModal = true;
+				this.isCreatingStatus = false;
 				this.statusType = column.status.type;
 				this.statusName = column.status.name;
 				this.statusColor = column.status.color;
@@ -812,6 +795,12 @@
 			handleUpdateDraggable(value) {
 				this.activeDraggable = value;
 			},
+			openCreateStatusModal() {
+				this.isShowStatusModal = true;
+				this.isCreatingStatus = true;
+				this.clearStatus(); // Clear fields for new status
+				this.$store.commit('openModal');
+			},
 		},
 		async beforeMount() {
 			const user = await getUser();
@@ -902,6 +891,7 @@
 		display: flex;
 
 		flex-wrap: nowrap;
+		flex-grow: 1;
 		overflow-x: auto;
 		overflow-y: hidden;
 		width: calc(100vw - 19rem);
@@ -911,7 +901,6 @@
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			height: calc(100vh - 130px);
 		}
 		@media (max-width: 768px) {
 			width: calc(100vw - 3rem);

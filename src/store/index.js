@@ -1,6 +1,7 @@
 import filterModule from '@/store/modules/boardFilters';
 import pusherModule from '@/store/modules/pusher';
 import { createStore } from 'vuex';
+import { getWorkspaces } from '@/actions/tmgr/workspaces';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -9,9 +10,7 @@ const token = localStorage.getItem('token')
 const state = {
 	metaTitle: '',
 	token: token,
-	user: localStorage.getItem('user')
-		? JSON.parse(localStorage.getItem('user') || '')
-		: null,
+	user: {},
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
@@ -21,10 +20,12 @@ const state = {
 	reloadTasksKey: 0, // for the board
 	appRerenderKey: 0,
 	workspaceStatuses: [],
+	workspaces: [],
 	userSettings: {
 		showTooltips: true,
 	},
 	openModals: 0,
+	urlManuallyChanged: false, // Track whether URL was manually changed by our code
 };
 
 const getters = {
@@ -35,6 +36,12 @@ const mutations = {
 	setMetaTitle(state, title) {
 		state.metaTitle = title;
 	},
+	setWorkspaceStatuses(state, data) {
+		state.workspaceStatuses = data;
+	},
+	setWorkspaces(state, workspaces) {
+		state.workspaces = workspaces;
+	},
 	setToken(state, token) {
 		if (token == null) {
 			localStorage.removeItem('token');
@@ -44,15 +51,7 @@ const mutations = {
 
 		state.token = token;
 	},
-	setWorkspaceStatuses(state, data) {
-		state.workspaceStatuses = data;
-	},
-	rerenderApp(state) {
-		state.appRerenderKey++;
-	},
 	setUser(state, user) {
-		localStorage.setItem('user', JSON.stringify(user));
-
 		state.user = user;
 	},
 	incrementReloadTasksKey(state) {
@@ -84,6 +83,9 @@ const mutations = {
 			colorScheme === 'dark' ? 'dark' : '';
 	},
 	closeTaskModal(state) {
+		// Instead of using history.back() which can cause navigation issues,
+		// simply reset state flags and let the modal close naturally
+		state.urlManuallyChanged = false;
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = null;
 		state.showCreatingTaskModal = false;
@@ -100,22 +102,46 @@ const mutations = {
 	resetOpenModals(state) {
 		state.openModals = 0;
 	},
+	rerenderApp(state) {
+		state.appRerenderKey++;
+	},
+	updateUserWorkspaceSetting(state, { workspaceId }) {
+		if (state.user && state.user.settings) {
+			// Update the current_workspace setting
+			state.user.settings = state.user.settings.map(setting => {
+				if (setting.key === 'current_workspace') {
+					return {
+						...setting,
+						value: workspaceId
+					};
+				}
+				return setting;
+			});
+		}
+	},
 };
 
 const actions = {
 	logout() {
-		const theme = localStorage.getItem('colorScheme');
 		const workspaceInvitationToken = localStorage.getItem(
 			'workspace.invitation',
 		);
 		localStorage.clear();
-		localStorage.setItem('colorScheme', theme);
 		if (workspaceInvitationToken) {
 			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
 		}
-
-		location.reload();
 	},
+	
+	async loadWorkspaces({ commit }) {
+		try {
+			const workspaces = await getWorkspaces();
+			commit('setWorkspaces', workspaces);
+			return workspaces;
+		} catch (error) {
+			console.error('Error loading workspaces:', error);
+			return [];
+		}
+	}
 };
 
 const modules = {
