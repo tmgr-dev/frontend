@@ -6,6 +6,8 @@ export interface Workspace {
 	name: string;
 	is_default: boolean;
 	type: string;
+	user_id: number;
+	code: string;
 }
 
 export const getWorkspaces = async (): Promise<Workspace[]> => {
@@ -40,7 +42,10 @@ export const getWorkspaceStatuses = async () => {
 	return data;
 };
 
-export const createWorkspace = async (payload: Workspace) => {
+export const createWorkspace = async (payload: {
+	name: string;
+	type: string;
+}) => {
 	const {
 		data: { data },
 	} = await $axios.post('workspaces', payload);
@@ -59,8 +64,24 @@ export const updateWorkspaceOrder = async (
 	return data;
 };
 
+export const deleteWorkspace = async (workspaceId: number) => {
+	const {
+		data: { data },
+	} = await $axios.delete(`workspaces/${workspaceId}`);
+
+	return data;
+};
+
+export const exitWorkspace = async (workspaceId: number) => {
+	const {
+		data: { data },
+	} = await $axios.post(`workspaces/${workspaceId}/exit`);
+
+	return data;
+};
+
 export interface WorkspaceInvitation {
-	max_usage_times: string;
+	max_usage_times?: number;
 	expired_at?: Date | null;
 	emails?: string | null;
 }

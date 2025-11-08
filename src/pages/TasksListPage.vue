@@ -1,11 +1,10 @@
-<script setup>
-	import LoadingTasksList from '@/components/loaders/LoadingTasksList.vue';
+<script setup lang="ts">
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import Confetti from '@/components/Confetti.vue';
-	import { getTasks, getTasksByStatus } from '@/actions/tmgr/tasks';
+	import { getTasks, getTasksByStatus, Task, PaginationMeta } from '@/actions/tmgr/tasks';
 	import { getCategories } from '@/actions/tmgr/categories';
 	import { computed, onMounted, ref, watch } from 'vue';
-	import { useRoute } from 'vue-router';
+	import { useRoute, useRouter } from 'vue-router';
 	import {
 		SquareDashedMousePointerIcon,
 		SlidersHorizontalIcon,
@@ -24,8 +23,10 @@
 	import { Input } from '@/components/ui/input';
 	import { formatTime } from '@/utils/timeUtils.js';
 	import EmptyState from '@/components/EmptyState.vue';
+	import { Skeleton } from '@/components/ui/skeleton';
 
 	const route = useRoute();
+	const router = useRouter();
 	const selectableTasks = ref(false);
 	const errorLoading = ref(false);
 	const searchText = ref(null);
@@ -36,17 +37,25 @@
 		HiddenTasksList: 'Hidden tasks',
 		ArchiveTasksList: 'Archive tasks',
 	};
-	const tasks = ref([]);
+	const tasks = ref<Task[]>([]);
 	const isLoadingActions = ref({});
 	const hasAbilityToShowConfetti = ref(false);
 	const categories = ref([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
+	const pagination = ref<PaginationMeta>({
+		current_page: Number(route.query.page) || 1,
+		per_page: Number(route.query.per_page) || 10,
+		total: 0,
+		last_page: 1,
+		from: 0,
+		to: 0
+	});
 
 	const status = computed(() => route.meta.status);
 	const summaryTime = computed(() =>
 		formatTime(
-			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
+			pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0),
 		),
 	);
 
@@ -56,6 +65,25 @@
 
 			await loadTasks();
 			setLoadingActions(tasks.value);
+
+			// Check if we're on the root path and have a current workspace
+			if (route.path === '/' && store.state.workspaces?.length) {
+				// Get current workspace ID
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				// Find the workspace by ID
+				const currentWorkspace = store.state.workspaces.find(
+					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+				
+				if (currentWorkspace?.code) {
+					// Set a page title that includes workspace name
+					document.title = `${currentWorkspace.name} Tasks`;
+					store.commit('setMetaTitle', `${currentWorkspace.name} Tasks`);
+				}
+			}
 		} catch (e) {
 			console.error(e);
 		}
@@ -90,29 +118,54 @@
 			isLoading.value = true;
 			clearTimeout(searchTimeout.value);
 
+			const params = {
+				params: {
+					search: searchText.value,
+					project_category_id: selectedCategory.value === -1 ? null : selectedCategory.value,
+				},
+				page: pagination.value.current_page,
+				per_page: pagination.value.per_page
+			};
+
+			let response;
 			if (status.value) {
-				tasks.value = await getTasksByStatus(status.value, {
-					params: {
-						search: searchText.value,
-						project_category_id:
-							selectedCategory.value === -1 ? null : selectedCategory.value,
-					},
-				});
+				response = await getTasksByStatus(status.value, params);
 			} else {
-				tasks.value = await getTasks({
-					params: {
-						search: searchText.value,
-						project_category_id:
-							selectedCategory.value === -1 ? null : selectedCategory.value,
-					},
-				});
+				response = await getTasks(params);
 			}
+
+			tasks.value = response.data;
+			pagination.value = response.meta;
+			setLoadingActions(tasks.value);
 		} catch (e) {
 			console.error(e);
 			errorLoading.value = true;
 		} finally {
 			isLoading.value = false;
 		}
+	}
+
+	function handlePageChange(page: number) {
+		pagination.value.current_page = page;
+		updateRouteQuery();
+		loadTasks();
+	}
+
+	function handlePerPageChange(perPage: number) {
+		pagination.value.per_page = perPage;
+		pagination.value.current_page = 1; // Reset to first page when changing items per page
+		updateRouteQuery();
+		loadTasks();
+	}
+
+	function updateRouteQuery() {
+		router.push({
+			query: {
+				...route.query,
+				page: pagination.value.current_page,
+				per_page: pagination.value.per_page
+			}
+		});
 	}
 
 	function resetFilters() {
@@ -215,7 +268,10 @@
 					:status="status"
 					:is-loading-actions="isLoadingActions"
 					:has-selectable="selectableTasks"
+					:pagination="pagination"
 					@reload-tasks="reloadTasks"
+					@page-change="handlePageChange"
+					@per-page-change="handlePerPageChange"
 					ref="tasksListComponent"
 				/>
 
@@ -227,6 +283,12 @@
 					<EmptyState />
 
 					<confetti v-if="hasAbilityToShowConfetti" />
+				</div>
+
+				<div v-if="isLoading" class="mt-6 space-y-2 px-2">
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
+					<Skeleton class="h-28 w-full" />
 				</div>
 			</div>
 		</template>

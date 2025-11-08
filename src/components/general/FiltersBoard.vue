@@ -4,6 +4,7 @@
 			class="mr-20 flex min-h-[62px] w-full flex-col items-center justify-between rounded md:flex-row"
 		>
 			<div class="mr-3 flex items-center">
+				<slot name="actions-start"></slot>
 				<input
 					class="h-4 w-4 cursor-pointer rounded-lg focus:outline-none"
 					type="checkbox"

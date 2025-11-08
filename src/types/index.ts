@@ -9,3 +9,6 @@ export interface ExtendedTime extends Time {
 }
 
 export type EditorType = 'markdown' | 'block';
+
+// Export all dashboard types
+export * from './dashboard';

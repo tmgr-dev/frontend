@@ -36,6 +36,12 @@ const setAxiosHeaderBearerToken = ({
 	$axios.defaults.headers.common.Authorization = `Bearer ${token.token}`;
 };
 
+export const setTokenAndHeaders = (token: string): void => {
+	const tokenData = { token: token }; // Wrap the string in an object to match LoginToken structure if needed by store
+	store.commit('setToken', tokenData);
+	$axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+};
+
 export const login = (payload: LoginRequest): Promise<void> => {
 	return $axios.post('auth/login', payload).then(setAxiosHeaderBearerToken);
 };
@@ -55,6 +61,12 @@ export const loginGoogle = (payload: LoginGoogleRequest): Promise<void> => {
 export const loginApple = (payload: LoginWithCodeRequest): Promise<void> => {
 	return $axios
 		.post(`auth/login/apple/accept`, payload)
+		.then(setAxiosHeaderBearerToken);
+};
+
+export const loginTelegram = (payload: LoginWithCodeRequest): Promise<void> => {
+	return $axios
+		.post(`auth/login/telegram/redirect`, payload)
 		.then(setAxiosHeaderBearerToken);
 };
 

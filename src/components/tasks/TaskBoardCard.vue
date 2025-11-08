@@ -5,7 +5,7 @@
 		<div class="flex justify-between gap-3">
 			<a
 				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-				:href="`/${task.id}`"
+				:href="getTaskUrl(task)"
 				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
 			>
 				{{ task.title }}
@@ -38,6 +38,8 @@
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import { mapState } from 'vuex';
+	import { generateTaskUrl } from '@/utils/url';
 
 	export default {
 		mixins: [TimePreparationMixin],
@@ -54,6 +56,18 @@
 			},
 		},
 		computed: {
+			...mapState({
+				workspaces: state => state.workspaces || [],
+				currentWorkspaceId: state => {
+					const setting = state.user?.settings?.find(
+						setting => setting.key === 'current_workspace'
+					);
+					return setting ? setting.value : null;
+				}
+			}),
+			currentWorkspace() {
+				return this.workspaces.find(workspace => workspace.id === this.currentWorkspaceId);
+			},
 			badgeColor() {
 				const mappings = {
 					Design: 'purple',
@@ -68,5 +82,14 @@
 				return this.$store.state.user;
 			},
 		},
+		methods: {
+			getTaskUrl(task) {
+				return generateTaskUrl(
+					task.id,
+					this.currentWorkspace,
+					task.category && typeof task.category === 'object' ? task.category : null
+				);
+			}
+		}
 	};
 </script>

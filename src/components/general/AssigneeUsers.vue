@@ -20,7 +20,7 @@
 					v-for="(assignee, i) in assignees"
 					:key="assignee.id"
 					:class="[
-						'group relative flex shrink-0 cursor-default rounded-full border-green-400 bg-green-600 shadow shadow-neutral-300',
+						'group relative flex shrink-0 cursor-default rounded-full border-gray-500 bg-gray-600 shadow shadow-gray-400',
 						avatarsClass,
 						{ '-mr-2': i > 0 },
 					]"

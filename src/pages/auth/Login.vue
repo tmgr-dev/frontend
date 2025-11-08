@@ -21,8 +21,8 @@
 				<!-- Registration Link -->
 				<p class="text-center text-sm md:text-lg">
 					Have no account?
-					<router-link to="/register" class="font-bold text-gray-600"
-						>Registration</router-link
+					<a href="/register" class="font-bold text-gray-600"
+						>Registration</a
 					>
 				</p>
 				<!-- Illustration -->
@@ -45,7 +45,7 @@
 					<div class="mb-8 text-center text-gray-500">Sign in with</div>
 
 					<!-- Social Login Buttons -->
-					<div class="mb-8 flex justify-center space-x-4">
+					<div class="mb-4 flex justify-center space-x-4">
 						<button
 							class="rounded-full bg-gray-200 p-3 hover:bg-gray-300"
 							@click="loginWithSocialite('google')"
@@ -65,6 +65,16 @@
 							<GitHubIcon class="h-6 w-6" />
 						</button>
 					</div>
+
+					<div id="telegram-register-widget-container" class="mb-8 flex justify-center">
+						<TelegramLoginWidget 
+							:bot-name="telegramBotName" 
+							:auth-url="telegramAuthUrl" 
+							widget-size="medium"
+							v-if="telegramBotName"
+						/>
+						<div v-else class="text-red-500 text-xs">Telegram Bot Name not configured.</div>					
+					</div>	
 
 					<div class="relative mb-8">
 						<div class="absolute inset-0 flex items-center">
@@ -133,7 +143,7 @@
 
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
-	import { ref } from 'vue';
+	import { ref, onMounted } from 'vue';
 	import { LoginRequest, login as loginAction } from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { AxiosError } from 'axios';
@@ -142,8 +152,11 @@
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
+	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 
 	const router = useRouter();
+	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
+	const telegramAuthUrl = `${import.meta.env.VITE_API_BASE_URL}auth/login/telegram/redirect`;
 
 	const form = ref({
 		email: '',
@@ -160,7 +173,7 @@
 			errors.value = {};
 			isLoading.value = true;
 			await loginAction(form.value);
-			await getUser(true);
+			await getUser();
 
 			if (localStorage.getItem('workspace.invitation')) {
 				const token = localStorage.getItem('workspace.invitation');
@@ -177,7 +190,8 @@
 			if (store.state.user) {
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
-			document.location.reload();
+
+			store.commit('rerenderApp');
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
@@ -190,8 +204,22 @@
 	}
 
 	async function loginWithSocialite(platform: string) {
+		if (platform === 'telegram') return;
 		document.location.href = `${
 			import.meta.env.VITE_API_BASE_URL
 		}auth/login/${platform}`;
 	}
+
+	onMounted(() => {
+		if (document.getElementById('telegram-login-widget-container')) {
+			const script = document.createElement('script');
+			script.async = true;
+			script.src = 'https://telegram.org/js/telegram-widget.js?22';
+			script.setAttribute('data-telegram-login', telegramBotName || '');
+			script.setAttribute('data-size', 'medium');
+			script.setAttribute('data-auth-url', telegramAuthUrl);
+			script.setAttribute('data-request-access', 'write');
+			document.getElementById('telegram-login-widget-container')?.appendChild(script);
+		}
+	});
 </script>
