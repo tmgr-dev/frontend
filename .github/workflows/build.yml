@@ -1,0 +1,123 @@
+name: Build and Push Docker Image to Docker Hub
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  IMAGE_NAME: acrossoffwest/tmgr-ui
+
+jobs:
+  build:
+    name: push docker image to hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: check repository
+        uses: actions/checkout@v4
+
+      - name: login to docker registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{secrets.DOCKERHUB_USERNAME}}
+          password: ${{secrets.DOCKERHUB_TOKEN}}
+
+      - name: Get the tag name
+        id: get_tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: build and push docker image to registry
+        uses: docker/build-push-action@v5
+        with:
+          context: ./
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}
+            ${{ env.IMAGE_NAME }}:latest
+          build-args: |
+            APP_URL=${{ secrets.APP_URL }}
+            VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+            VITE_PUSHER_BEAMS_INSTANCE_ID=${{ secrets.VITE_PUSHER_BEAMS_INSTANCE_ID }}
+            VITE_PUSHER_APP_ID=${{ secrets.VITE_PUSHER_APP_ID }}
+            VITE_PUSHER_KEY=${{ secrets.VITE_PUSHER_KEY }}
+            VITE_PUSHER_SECRET=${{ secrets.VITE_PUSHER_SECRET }}
+            VITE_PUSHER_CLUSTER=${{ secrets.VITE_PUSHER_CLUSTER }}
+            VITE_TELEGRAM_BOT_NAME=${{ secrets.VITE_TELEGRAM_BOT_NAME }}
+
+      - name: Send build failure notification
+        if: failure()
+        run: |
+          curl -X POST https://notifications.aow.space/ \
+            -H "Content-Type: application/json" \
+            -d '{
+              "message": "❌ tmgr-ui build failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "receivers": [-4858229201]
+            }'
+
+  deploy:
+    needs: [ build ]
+    if: success()
+    name: Deploy App
+    runs-on: ubuntu-latest
+    steps:
+      - name: check repository
+        uses: actions/checkout@v4
+
+      - name: Get the tag name
+        id: get_tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Update deployment file
+        run: TAG=$(echo $GITHUB_SHA | head -c7) && sed -i 's|<IMAGE>|${{ env.IMAGE_NAME }}:'${{ env.TAG_NAME }}'|' $GITHUB_WORKSPACE/config/deployment.yml
+
+      - name: Create and save kube config for k8s
+        run: rm -rf ~/.kube && mkdir ~/.kube && cd ~/.kube && touch config && echo "${{ secrets.HETZNER_CLUSTER_CONFIG }}" > config
+
+      - name: Create Docker Hub Secret
+        continue-on-error: true
+        run: kubectl create secret docker-registry dockerhub-secret -n applications --docker-server=https://index.docker.io/v1/ --docker-username=${{secrets.DOCKERHUB_USERNAME}} --docker-password=${{secrets.DOCKERHUB_TOKEN}}
+
+      - name: Delete existing secret
+        run: kubectl delete secret tmgr-ui-secret -n applications
+        continue-on-error: true
+
+      - name: Create Kubernetes Secret
+        run: |
+          kubectl create secret generic tmgr-ui-secret -n applications \
+            --from-literal=APP_URL="${{ secrets.APP_URL }}" \
+            --from-literal=VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
+            --from-literal=VITE_PUSHER_BEAMS_INSTANCE_ID=${{ secrets.VITE_PUSHER_BEAMS_INSTANCE_ID }} \
+            --from-literal=VITE_PUSHER_APP_ID="${{ secrets.VITE_PUSHER_APP_ID }}" \
+            --from-literal=VITE_PUSHER_KEY=${{ secrets.VITE_PUSHER_KEY }} \
+            --from-literal=VITE_PUSHER_SECRET=${{ secrets.VITE_PUSHER_SECRET }} \
+            --from-literal=VITE_PUSHER_CLUSTER=${{ secrets.VITE_PUSHER_CLUSTER }} \
+            --from-literal=VITE_TELEGRAM_BOT_NAME=${{ secrets.VITE_TELEGRAM_BOT_NAME }}
+
+      - name: Deploy to DigitalOcean Kubernetes
+        run: kubectl apply -f $GITHUB_WORKSPACE/config/deployment.yml
+
+      - name: Verify deployment
+        run: kubectl rollout status -n applications deployment/tmgr-ui
+
+      - name: Remove k8s configs
+        run: rm -rf ~/.kube
+
+      - name: Send success notification
+        if: success()
+        run: |
+          curl -X POST https://notifications.aow.space/ \
+            -H "Content-Type: application/json" \
+            -d '{
+              "message": "✅ tmgr-ui deployment successful!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}",
+              "receivers": [-4858229201]
+            }'
+
+      - name: Send failure notification
+        if: failure()
+        run: |
+          curl -X POST https://notifications.aow.space/ \
+            -H "Content-Type: application/json" \
+            -d '{
+              "message": "❌ tmgr-ui deployment failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "receivers": [-4858229201]
+            }'

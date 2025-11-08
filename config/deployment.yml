@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tmgr-ui
+  labels:
+    app: tmgr-ui
+  namespace: applications
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tmgr-ui
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app: tmgr-ui
+    spec:
+      containers:
+        - name: tmgr-ui
+          envFrom:
+            - secretRef:
+                name: tmgr-ui-secret
+          image: <IMAGE>
+          ports:
+            - containerPort: 80
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+      imagePullSecrets:
+        - name: dockerhub-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tmgr-ui-service
+  namespace: applications
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+  selector:
+    app: tmgr-ui
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tmgr-ui-service-proxy
+  namespace: default
+spec:
+  type: ExternalName
+  externalName: tmgr-ui-service.applications.svc.cluster.local
