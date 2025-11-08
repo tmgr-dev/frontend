@@ -51,7 +51,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "message": "❌ tmgr-ui build failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "receivers": [-4858229201]
+              "receivers": [-1001837078387]
             }'
 
   deploy:
@@ -109,7 +109,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "message": "✅ tmgr-ui deployment successful!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}",
-              "receivers": [-4858229201]
+              "receivers": [-1001837078387]
             }'
 
       - name: Send failure notification
@@ -119,5 +119,5 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "message": "❌ tmgr-ui deployment failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "receivers": [-4858229201]
+              "receivers": [-1001837078387]
             }'
