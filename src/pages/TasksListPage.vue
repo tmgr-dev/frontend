@@ -3,7 +3,7 @@
 	import Confetti from '@/components/Confetti.vue';
 	import { getTasks, getTasksByStatus, Task, PaginationMeta } from '@/actions/tmgr/tasks';
 	import { getCategories } from '@/actions/tmgr/categories';
-	import { computed, onMounted, ref, watch } from 'vue';
+	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		SquareDashedMousePointerIcon,
@@ -59,6 +59,12 @@
 		),
 	);
 
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && selectableTasks.value) {
+			selectableTasks.value = false;
+		}
+	}
+
 	onMounted(async () => {
 		try {
 			categories.value = await getCategories();
@@ -84,9 +90,15 @@
 					store.commit('setMetaTitle', `${currentWorkspace.name} Tasks`);
 				}
 			}
+
+			window.addEventListener('keydown', handleKeyDown);
 		} catch (e) {
 			console.error(e);
 		}
+	});
+
+	onUnmounted(() => {
+		window.removeEventListener('keydown', handleKeyDown);
 	});
 
 	watch(searchText, () => {

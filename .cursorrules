@@ -1,0 +1,842 @@
+# Task Manager UI - Cursor Rules
+
+## Project Overview
+Vue 3 + Vite SPA for task management system with time tracking capabilities.
+
+## Tech Stack
+- **Framework**: Vue 3 with Options API (primary) and Composition API (selective)
+- **Build Tool**: Vite
+- **Language**: TypeScript for types/actions/utilities, JavaScript for components/store/routes
+- **State Management**: Vuex
+- **Styling**: Tailwind CSS + SCSS
+- **UI Components**: shadcn-vue, Radix Vue (headless components)
+- **Icons**: lucide-vue-next
+- **HTTP Client**: Axios
+- **Rich Text**: Editor.js
+- **Real-time**: Pusher
+
+## Core Principles
+- Do NOT write comments unless necessary for complex logic
+- Examine project structure before making changes
+- Do NOT rename existing methods and fields
+- Do NOT perform major refactoring unless explicitly requested
+- Prefer explicit over implicit code
+- Follow existing naming conventions
+
+## Component Structure
+
+### Options API (Primary Pattern)
+Use Options API with `defineComponent` for most components:
+
+```vue
+<template>
+  <!-- Template code -->
+</template>
+
+<script>
+import { defineComponent } from 'vue';
+
+export default defineComponent({
+  name: 'ComponentName',
+  components: {},
+  props: {
+    propName: {
+      type: String,
+      required: true
+    }
+  },
+  emits: ['event-name'],
+  data() {
+    return {
+      localState: null
+    };
+  },
+  computed: {
+    computedValue() {
+      return this.propName.toUpperCase();
+    }
+  },
+  watch: {
+    propName: {
+      handler(newVal, oldVal) {
+        // Watch logic
+      },
+      immediate: false,
+      deep: false
+    }
+  },
+  methods: {
+    handleAction() {
+      this.$emit('event-name', data);
+    }
+  },
+  created() {},
+  mounted() {},
+  unmounted() {}
+});
+</script>
+
+<style lang="scss" scoped>
+/* Component styles */
+</style>
+```
+
+### Composition API (For Composables & Advanced Reactivity)
+Use `setup()` function (NOT `<script setup>`) for advanced reactivity needs:
+
+```vue
+<script>
+import { defineComponent, ref, computed, watch, onMounted } from 'vue';
+
+export default defineComponent({
+  name: 'ComponentName',
+  setup() {
+    const state = ref(null);
+    const computed = computed(() => state.value?.property);
+    
+    watch(state, (newVal) => {
+      // Watch logic
+    });
+    
+    onMounted(() => {
+      // Mount logic
+    });
+    
+    return {
+      state,
+      computed
+    };
+  }
+});
+</script>
+```
+
+**IMPORTANT**: Never use `<script setup>` syntax - this project uses explicit Options API/Composition API patterns.
+
+## File Organization
+
+### Directory Structure
+```
+src/
+├── actions/           # API calls (TypeScript)
+│   └── tmgr/         # Task manager API actions
+├── components/        # Reusable components
+│   ├── ui/           # shadcn-vue components
+│   ├── general/      # General app components
+│   ├── dashboard/    # Dashboard-specific components
+│   ├── tasks/        # Task-specific components
+│   └── modals/       # Modal components
+├── composable/        # Composable functions (TypeScript)
+├── pages/            # Route/page components
+├── router/           # Route configuration
+├── store/            # Vuex store modules
+├── types/            # TypeScript type definitions
+├── utils/            # Utility functions
+├── assets/           # Static assets (styles, images)
+└── plugins/          # Plugin configurations
+```
+
+### Naming Conventions
+- **Components**: PascalCase (e.g., `TaskCard.vue`, `ActivityFeed.vue`)
+- **Composables**: camelCase with 'use' prefix (e.g., `useDashboard.ts`, `useActivityFeed.ts`)
+- **Actions**: camelCase (e.g., `fetchTasks.ts`, `updateTask.ts`)
+- **Types**: PascalCase for interfaces/types (e.g., `Task`, `Workspace`)
+- **Store modules**: camelCase (e.g., `filters.js`, `pusher.js`)
+
+## TypeScript Usage
+
+### API Actions Pattern
+Place in `src/actions/tmgr/`:
+
+```typescript
+import { $axios } from '@/plugins/axios';
+import type { AxiosResponse } from 'axios';
+
+export interface TaskResponse {
+  id: number;
+  title: string;
+  status: string;
+}
+
+export interface CreateTaskPayload {
+  title: string;
+  workspace_id: number;
+}
+
+export async function fetchTasks(workspaceId: number): Promise<TaskResponse[]> {
+  const response: AxiosResponse<TaskResponse[]> = await $axios.get(
+    `/workspaces/${workspaceId}/tasks`
+  );
+  return response.data;
+}
+
+export async function createTask(payload: CreateTaskPayload): Promise<TaskResponse> {
+  const response: AxiosResponse<TaskResponse> = await $axios.post('/tasks', payload);
+  return response.data;
+}
+```
+
+### Type Definitions
+Place in `src/types/`:
+
+```typescript
+export interface Task {
+  id: number;
+  title: string;
+  description: string | null;
+  status_id: number;
+  workspace_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Workspace {
+  id: number;
+  name: string;
+  code: string;
+  created_at: string;
+}
+```
+
+### Composables Pattern
+Place in `src/composable/`:
+
+```typescript
+import { ref, computed, type Ref } from 'vue';
+import { fetchTasks, type TaskResponse } from '@/actions/tmgr/tasks';
+
+export function useTasks(workspaceId: Ref<number> | number) {
+  const tasks = ref<TaskResponse[]>([]);
+  const loading = ref(false);
+  const error = ref<Error | null>(null);
+  
+  const taskCount = computed(() => tasks.value.length);
+  
+  async function loadTasks() {
+    loading.value = true;
+    error.value = null;
+    try {
+      const id = typeof workspaceId === 'number' ? workspaceId : workspaceId.value;
+      tasks.value = await fetchTasks(id);
+    } catch (e) {
+      error.value = e as Error;
+    } finally {
+      loading.value = false;
+    }
+  }
+  
+  return {
+    tasks,
+    loading,
+    error,
+    taskCount,
+    loadTasks
+  };
+}
+```
+
+## State Management (Vuex)
+
+### Store Structure
+```
+store/
+├── index.js          # Root store
+├── filters.js        # Filter state module
+├── pusher.js         # Pusher/real-time module
+└── ...
+```
+
+### Accessing Store
+In components:
+```javascript
+// Get state
+this.$store.state.propertyName
+
+// Get getters
+this.$store.getters.getterName
+
+// Commit mutations (synchronous)
+this.$store.commit('mutationName', payload)
+
+// Dispatch actions (asynchronous)
+this.$store.dispatch('actionName', payload)
+```
+
+### Module Pattern
+```javascript
+export default {
+  state: {
+    items: []
+  },
+  getters: {
+    itemCount: (state) => state.items.length
+  },
+  mutations: {
+    SET_ITEMS(state, items) {
+      state.items = items;
+    }
+  },
+  actions: {
+    async loadItems({ commit }) {
+      const items = await fetchItems();
+      commit('SET_ITEMS', items);
+    }
+  }
+};
+```
+
+### Persisted State
+Critical state persisted to localStorage:
+- Authentication token
+- Color scheme (dark/light mode)
+- Current workspace
+- User preferences
+
+## Styling Guidelines
+
+### Tailwind CSS (Primary)
+Use utility classes as the primary styling method:
+
+```vue
+<template>
+  <div class="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+      Title
+    </h2>
+    <button class="px-4 py-2 bg-tmgr-blue text-white rounded hover:bg-tmgr-light-blue">
+      Action
+    </button>
+  </div>
+</template>
+```
+
+### Custom Colors
+Defined in `tailwind.config.js`:
+- `tmgr-blue`: Primary brand color
+- `tmgr-light-blue`: Secondary/hover states
+- `tmgr-gray`: Neutral tones
+
+### Dark Mode
+Always support dark mode using `dark:` prefix:
+```html
+<div class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+  Content
+</div>
+```
+
+Dark mode toggle managed via Vuex store and persisted to localStorage.
+
+### SCSS (For Complex Styles)
+Use scoped SCSS for component-specific complex styles:
+
+```vue
+<style lang="scss" scoped>
+.component-wrapper {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  
+  .item {
+    transition: transform 0.2s ease;
+    
+    &:hover {
+      transform: translateY(-2px);
+    }
+  }
+}
+</style>
+```
+
+### Global Styles
+Import from `src/assets/styles/`:
+- Base styles
+- Typography
+- Utilities
+
+## Routing
+
+### Route Definition
+In `src/router/`:
+
+```javascript
+{
+  path: '/:workspace_code/tasks/:id',
+  name: 'task-detail',
+  component: () => import('@/pages/TaskDetailPage.vue'),
+  meta: {
+    requiresAuth: true,
+    title: 'Task Details',
+    transition: 'slide-left'
+  }
+}
+```
+
+### Route Guards
+```javascript
+router.beforeEach((to, from, next) => {
+  if (to.meta.requiresAuth && !isAuthenticated()) {
+    next({ name: 'login' });
+  } else {
+    next();
+  }
+});
+```
+
+### Navigation
+```javascript
+// Programmatic navigation
+this.$router.push({ name: 'task-detail', params: { id: 123 } });
+
+// With query params
+this.$router.push({ 
+  name: 'tasks', 
+  query: { status: 'active' } 
+});
+```
+
+## API Integration
+
+### Axios Configuration
+Use the configured instance:
+```javascript
+import { $axios } from '@/plugins/axios';
+
+// GET request
+const response = await $axios.get('/endpoint');
+
+// POST request
+const response = await $axios.post('/endpoint', payload);
+
+// With params
+const response = await $axios.get('/endpoint', {
+  params: { filter: 'active' }
+});
+```
+
+### Error Handling
+```typescript
+async function fetchData() {
+  try {
+    const response = await $axios.get('/endpoint');
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      console.error('API Error:', error.response.data);
+      throw new Error(error.response.data.message);
+    } else if (error.request) {
+      console.error('Network Error:', error.request);
+      throw new Error('Network error occurred');
+    } else {
+      console.error('Error:', error.message);
+      throw error;
+    }
+  }
+}
+```
+
+## Project-Specific Patterns
+
+### Workspace Context
+Always include workspace context in URLs and API calls:
+```javascript
+// URL pattern
+`/${this.$store.state.currentWorkspace.code}/tasks`
+
+// API call
+await $axios.get(`/workspaces/${workspaceId}/tasks`);
+```
+
+### Modal System
+Modal state controlled via Vuex:
+```javascript
+// Open modal
+this.$store.commit('SET_CURRENT_TASK_ID_FOR_MODAL', taskId);
+
+// Close modal
+this.$store.commit('SET_CURRENT_TASK_ID_FOR_MODAL', null);
+
+// Get modal state
+this.$store.state.currentTaskIdForModal
+```
+
+Sync with browser URL:
+```javascript
+if (taskId) {
+  history.replaceState(null, '', `#task-${taskId}`);
+} else {
+  history.replaceState(null, '', location.pathname);
+}
+```
+
+### Active Task Timer
+Track running timers globally:
+```javascript
+// Check if task is running
+this.$store.getters.isTaskRunning(taskId)
+
+// Get active task
+this.$store.state.activeTaskId
+
+// Update active task
+this.$store.commit('SET_ACTIVE_TASK', taskId);
+```
+
+### Theme Toggle
+```javascript
+// Get current theme
+this.$store.state.colorScheme // 'light' or 'dark'
+
+// Toggle theme
+this.$store.dispatch('toggleColorScheme');
+
+// Apply to HTML element
+document.documentElement.classList.toggle('dark', isDark);
+```
+
+### Pusher Integration
+Real-time updates via Vuex module:
+```javascript
+// Subscribe to channel
+this.$store.dispatch('pusher/subscribe', {
+  channel: `workspace.${workspaceId}`,
+  event: 'TaskUpdated',
+  handler: this.handleTaskUpdate
+});
+
+// Unsubscribe
+this.$store.dispatch('pusher/unsubscribe', {
+  channel: `workspace.${workspaceId}`
+});
+```
+
+## UI Components
+
+### shadcn-vue Components
+Import from `src/components/ui/`:
+```vue
+<script>
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+
+export default defineComponent({
+  components: {
+    Button,
+    Input,
+    Select
+  }
+});
+</script>
+```
+
+### Icons (lucide-vue-next)
+```vue
+<template>
+  <Plus :size="20" :stroke-width="2" />
+  <Check class="w-5 h-5 text-green-500" />
+</template>
+
+<script>
+import { Plus, Check } from 'lucide-vue-next';
+
+export default defineComponent({
+  components: { Plus, Check }
+});
+</script>
+```
+
+### Accessibility
+- Use semantic HTML elements
+- Include ARIA labels where needed
+- Support keyboard navigation
+- Maintain focus management in modals
+- Test with screen readers
+
+## Performance Optimization
+
+### Lazy Loading Routes
+```javascript
+component: () => import('@/pages/TaskDetailPage.vue')
+```
+
+### Virtual Scrolling
+For large lists, use vue-virtual-scroller or similar:
+```vue
+<RecycleScroller
+  :items="tasks"
+  :item-size="80"
+  key-field="id"
+  v-slot="{ item }"
+>
+  <TaskCard :task="item" />
+</RecycleScroller>
+```
+
+### Debouncing
+For search inputs and frequent operations:
+```javascript
+import { debounce } from 'lodash-es';
+
+export default defineComponent({
+  methods: {
+    handleSearch: debounce(function(query) {
+      this.search(query);
+    }, 300)
+  }
+});
+```
+
+### Computed Properties
+Memoize expensive computations:
+```javascript
+computed: {
+  filteredTasks() {
+    return this.tasks.filter(task => 
+      task.status === this.selectedStatus
+    );
+  }
+}
+```
+
+### Watchers
+Use wisely with immediate and deep options:
+```javascript
+watch: {
+  'filter.status': {
+    handler(newVal) {
+      this.loadTasks();
+    },
+    immediate: false
+  },
+  filterObject: {
+    handler(newVal) {
+      this.applyFilters();
+    },
+    deep: true
+  }
+}
+```
+
+## Testing
+
+### Jest Configuration
+Tests located near components or in `tests/` folder.
+
+### Component Testing
+```javascript
+import { mount } from '@vue/test-utils';
+import TaskCard from '@/components/tasks/TaskCard.vue';
+
+describe('TaskCard', () => {
+  it('renders task title', () => {
+    const wrapper = mount(TaskCard, {
+      props: {
+        task: { id: 1, title: 'Test Task' }
+      }
+    });
+    expect(wrapper.text()).toContain('Test Task');
+  });
+});
+```
+
+### Mock API Calls
+```javascript
+jest.mock('@/actions/tmgr/tasks', () => ({
+  fetchTasks: jest.fn().mockResolvedValue([
+    { id: 1, title: 'Task 1' }
+  ])
+}));
+```
+
+## Development Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Development server
+npm run dev
+
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+
+# Run tests
+npm run test
+
+# Format code
+npm run format
+```
+
+## Common Patterns
+
+### Loading States
+```vue
+<template>
+  <div v-if="loading">Loading...</div>
+  <div v-else-if="error">Error: {{ error.message }}</div>
+  <div v-else>
+    <!-- Content -->
+  </div>
+</template>
+
+<script>
+export default defineComponent({
+  data() {
+    return {
+      loading: false,
+      error: null
+    };
+  }
+});
+</script>
+```
+
+### Form Handling
+```vue
+<template>
+  <form @submit.prevent="handleSubmit">
+    <input v-model="form.title" type="text" required />
+    <button type="submit" :disabled="submitting">
+      {{ submitting ? 'Saving...' : 'Save' }}
+    </button>
+  </form>
+</template>
+
+<script>
+export default defineComponent({
+  data() {
+    return {
+      form: {
+        title: ''
+      },
+      submitting: false
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      this.submitting = true;
+      try {
+        await this.saveTask(this.form);
+        this.$emit('saved');
+      } catch (error) {
+        console.error('Save failed:', error);
+      } finally {
+        this.submitting = false;
+      }
+    }
+  }
+});
+</script>
+```
+
+### Conditional Rendering
+```vue
+<template>
+  <div v-if="hasPermission">Admin Content</div>
+  <div v-else-if="isAuthenticated">User Content</div>
+  <div v-else>Guest Content</div>
+  
+  <div v-show="isVisible">Toggle Visibility</div>
+</template>
+```
+
+### List Rendering
+```vue
+<template>
+  <div v-for="task in tasks" :key="task.id">
+    <TaskCard :task="task" @click="handleTaskClick(task)" />
+  </div>
+</template>
+```
+
+## Security Considerations
+
+- Never commit sensitive data (API keys, tokens)
+- Validate user input before sending to API
+- Sanitize rich text content (Editor.js)
+- Use HTTPS for all API calls
+- Implement CSRF protection
+- Check authentication status before sensitive operations
+- Validate workspace access before displaying data
+
+## Code Quality Standards
+
+### DO
+- Follow existing patterns and conventions
+- Use TypeScript for type definitions and API actions
+- Implement proper error handling
+- Test critical user flows
+- Maintain accessibility standards
+- Support dark mode in all components
+- Keep components focused and reusable
+- Use proper prop validation
+- Emit events for parent communication
+- Clean up event listeners in unmounted()
+
+### DO NOT
+- Write comments unless absolutely necessary
+- Use `<script setup>` syntax
+- Rename existing methods/fields without good reason
+- Perform major refactoring without explicit request
+- Skip form validation
+- Ignore loading/error states
+- Create components without proper types
+- Mix TypeScript and JavaScript in same file
+- Use `var` keyword (use `const` or `let`)
+- Mutate props directly
+- Access parent data directly (use props/events)
+
+## Editor.js Integration
+
+For rich text editing:
+```javascript
+import EditorJS from '@editorjs/editorjs';
+
+const editor = new EditorJS({
+  holder: 'editorjs',
+  tools: {
+    // Configure tools
+  },
+  data: existingContent,
+  onChange: async () => {
+    const content = await editor.save();
+    this.handleContentChange(content);
+  }
+});
+```
+
+## PWA Support
+
+Service worker configured for offline capabilities:
+- Cache static assets
+- Cache API responses
+- Handle offline/online status
+- Show update prompts
+
+## Multi-language Ready
+
+Translation structure prepared in resources/lang:
+```javascript
+// Future i18n integration
+this.$t('tasks.title')
+this.$t('common.save')
+```
+
+## Debugging Tools
+
+### Vue Devtools
+Use Vue Devtools browser extension for:
+- Component inspection
+- Vuex state tracking
+- Event monitoring
+- Performance profiling
+
+### Network Monitoring
+Monitor API calls via browser DevTools Network tab.
+
+### Error Tracking
+Sentry integration available for production error tracking.
+
