@@ -123,14 +123,14 @@
 													<div
 														class="group relative flex h-6 w-full items-center"
 													>
-														<div class="flex w-5/6 justify-between">
-															<span class="text-sm">
-																{{ column.title }}
-															</span>
-															<span class="text-sm">
-																{{ column.summary }}
-															</span>
-														</div>
+													<div class="flex w-5/6 justify-between">
+														<span class="text-sm">
+															{{ column.title }} <span v-if="column.taskCount !== undefined">({{ column.taskCount }})</span>
+														</span>
+														<span class="text-sm">
+															{{ column.summary }}
+														</span>
+													</div>
 
 														<div
 															v-tooltip.left="
@@ -805,15 +805,21 @@
 					);
 				}
 				this.columns = this.columns.map((column, i) => {
-					const summary = this.filteredTasksArray[i].reduce(
+					const tasksInColumn = this.filteredTasksArray[i];
+					const taskCount = tasksInColumn.length;
+					const summary = tasksInColumn.reduce(
 						(acc, task) => task.common_time + acc,
 						0,
 					);
 					const summaryInHours = this.formatTime(summary);
 
-					const newColumn = { ...column, summary: summaryInHours };
+					const newColumn = { 
+						...column, 
+						summary: summaryInHours,
+						taskCount: taskCount
+					};
 
-					newColumn.tasks = this.filteredTasksArray[i];
+					newColumn.tasks = tasksInColumn;
 
 					return newColumn;
 				});

@@ -963,12 +963,14 @@
 				if (isTimerRunning) {
 					this.form = await stopTaskTimeCounter(this.taskId);
 					this.updateSeconds(this.form.common_time);
+					this.$store.commit('incrementReloadTasksKey');
 					await this.saveTask();
 					return;
 				}
 
 				this.form = await startTaskTimeCounter(this.taskId);
 				this.updateSeconds(this.form.common_time);
+				this.$store.commit('incrementReloadTasksKey');
 				await this.saveTask();
 
 				const taskStatus = this.workspaceStatuses?.find(s => s.id === this.form.status_id);

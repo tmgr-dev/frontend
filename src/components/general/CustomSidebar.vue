@@ -525,7 +525,7 @@
 							<BreadcrumbSeparator class="hidden md:block" />
 
 							<BreadcrumbItem class="hidden md:block">
-								{{ route.meta.title || store.state.metaTitle }}
+								{{ store.state.metaTitle || route.meta.title }}
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>

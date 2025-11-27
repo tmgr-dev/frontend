@@ -1,5 +1,8 @@
 <template>
 	<div
+		:class="{
+			'border-l-8 border-solid border-green-600 dark:border-green-500': task.start_time,
+		}"
 		class="rounded border border-gray-200 bg-gray-100 px-3 pb-5 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
 	>
 		<div class="flex justify-between gap-3">
@@ -19,9 +22,37 @@
 		</div>
 
 		<div class="mt-4 flex items-center justify-between">
-			<span class="text-sm text-gray-600">
-				{{ secondsToHumanReadableString(task.common_time) }}
-			</span>
+			<div class="flex items-center gap-2">
+				<span
+					:class="task.start_time ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'"
+					class="material-icons text-sm"
+				>
+					alarm
+				</span>
+				<span class="text-sm text-gray-600 dark:text-gray-400">
+					{{ secondsToHumanReadableString(displayTask.common_time) }}
+				</span>
+				<button
+					v-if="!task.start_time"
+					v-tooltip.top="setTooltipData('Start timer')"
+					:disabled="isLoadingTimer"
+					class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
+					@click.stop="handleStartTimer"
+				>
+					<span v-if="!isLoadingTimer" class="material-icons text-sm leading-none">play_arrow</span>
+					<Loader v-else is-mini />
+				</button>
+				<button
+					v-else
+					v-tooltip.top="setTooltipData('Stop timer')"
+					:disabled="isLoadingTimer"
+					class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
+					@click.stop="handleStopTimer"
+				>
+					<span v-if="!isLoadingTimer" class="material-icons text-sm leading-none">stop</span>
+					<Loader v-else is-mini />
+				</button>
+			</div>
 
 			<CategoryBadge
 				class="flex-row-reverse"
@@ -35,25 +66,40 @@
 <script>
 	import Badge from '../general/Badge.vue';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import SetTooltipData from '@/mixins/SetTooltipData';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import Loader from '@/components/loaders/Loader.vue';
 	import { mapState } from 'vuex';
 	import { generateTaskUrl } from '@/utils/url';
+	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus } from '@/actions/tmgr/tasks';
+	import { getStatuses } from '@/actions/tmgr/statuses';
 
 	export default {
-		mixins: [TimePreparationMixin],
+		mixins: [TimePreparationMixin, TasksListMixin, SetTooltipData],
 		components: {
 			AssigneeUsers,
 			AssigneeAvatar,
 			CategoryBadge,
 			Badge,
+			Loader,
 		},
+		emits: ['timer-started', 'timer-stopped'],
 		props: {
 			task: {
 				type: Object,
 				default: () => ({}),
 			},
+		},
+		data() {
+			return {
+				timerInterval: null,
+				currentDisplayTime: 0,
+				isLoadingTimer: false,
+				statuses: [],
+			};
 		},
 		computed: {
 			...mapState({
@@ -81,6 +127,50 @@
 			user() {
 				return this.$store.state.user;
 			},
+			displayTask() {
+				if (!this.task.start_time) {
+					return this.task;
+				}
+				return {
+					...this.task,
+					common_time: this.currentDisplayTime,
+				};
+			},
+		},
+		watch: {
+			task: {
+				handler(newTask) {
+					this.currentDisplayTime = newTask.common_time || 0;
+					if (newTask.start_time) {
+						if (!this.timerInterval) {
+							this.startTimer();
+						}
+					} else {
+						this.stopTimer();
+					}
+				},
+				deep: true,
+				immediate: true,
+			},
+			'task.start_time'(newVal, oldVal) {
+				if (newVal && !oldVal) {
+					this.startTimer();
+				} else if (!newVal && oldVal) {
+					this.stopTimer();
+				}
+			},
+			'task.common_time'() {
+				if (!this.task.start_time) {
+					this.currentDisplayTime = this.task.common_time || 0;
+				}
+			},
+		},
+		async created() {
+			try {
+				this.statuses = await getStatuses();
+			} catch (e) {
+				console.error('Failed to load statuses:', e);
+			}
 		},
 		methods: {
 			getTaskUrl(task) {
@@ -89,7 +179,79 @@
 					this.currentWorkspace,
 					task.category && typeof task.category === 'object' ? task.category : null
 				);
-			}
-		}
+			},
+			async handleStartTimer() {
+				if (!this.task.id || this.isLoadingTimer) return;
+				
+				this.isLoadingTimer = true;
+				try {
+					const updatedTask = await startTaskTimeCounter(this.task.id);
+					Object.assign(this.task, updatedTask);
+					this.$store.commit('incrementReloadTasksKey');
+					this.$emit('timer-started', updatedTask);
+					
+					const taskStatus = this.statuses.find(s => s.id === this.task.status_id);
+					if (taskStatus && taskStatus.type === 'default') {
+						const activeStatus = this.statuses.find(s => s.type === 'active');
+						if (activeStatus) {
+							const shouldSwitch = confirm(
+								`Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`
+							);
+							if (shouldSwitch) {
+								await updateTaskStatus(this.task.id, activeStatus.id);
+								this.task.status_id = activeStatus.id;
+								this.$store.commit('incrementReloadTasksKey');
+							}
+						}
+					}
+				} catch (e) {
+					console.error('Failed to start timer:', e);
+				} finally {
+					this.isLoadingTimer = false;
+				}
+			},
+			async handleStopTimer() {
+				if (!this.task.id || this.isLoadingTimer) return;
+				
+				this.isLoadingTimer = true;
+				try {
+					const updatedTask = await stopTaskTimeCounter(this.task.id);
+					Object.assign(this.task, updatedTask);
+					this.$store.commit('incrementReloadTasksKey');
+					this.$emit('timer-stopped', updatedTask);
+				} catch (e) {
+					console.error('Failed to stop timer:', e);
+				} finally {
+					this.isLoadingTimer = false;
+				}
+			},
+			updateTimer() {
+				if (!this.task.start_time) {
+					return;
+				}
+				const now = Math.floor(Date.now() / 1000);
+				const elapsed = now - this.task.start_time;
+				this.currentDisplayTime = (this.task.common_time || 0) + elapsed;
+			},
+			startTimer() {
+				if (this.timerInterval) {
+					clearInterval(this.timerInterval);
+				}
+				this.updateTimer();
+				this.timerInterval = setInterval(() => {
+					this.updateTimer();
+				}, 1000);
+			},
+			stopTimer() {
+				if (this.timerInterval) {
+					clearInterval(this.timerInterval);
+					this.timerInterval = null;
+				}
+				this.currentDisplayTime = this.task.common_time || 0;
+			},
+		},
+		beforeUnmount() {
+			this.stopTimer();
+		},
 	};
 </script>

@@ -77,15 +77,36 @@
 
 						<div class="flex items-center gap-2">
 							<span
-								:class="task.start_time ? 'text-green-600' : 'text-orange-600'"
+								:class="task.start_time ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'"
 								class="material-icons text-xs sm:text-base md:text-xl"
 							>
 								alarm
 							</span>
 
-							<span class="text-xs text-gray-700 sm:text-base md:text-base">
+							<span class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base">
 								{{ getTaskFormattedTime(task) }}
 							</span>
+							
+							<button
+								v-if="!task.start_time"
+								v-tooltip.top="setTooltipData('Start timer')"
+								:disabled="isLoadingActions[`start-${task.id}`]"
+								class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
+								@click.stop="startCountdown(task, `start-${task.id}`)"
+							>
+								<span v-if="!isLoadingActions[`start-${task.id}`]" class="material-icons text-xs sm:text-sm leading-none">play_arrow</span>
+								<Loader v-else is-mini />
+							</button>
+							<button
+								v-else
+								v-tooltip.top="setTooltipData('Stop timer')"
+								:disabled="isLoadingActions[`stop-${task.id}`]"
+								class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
+								@click.stop="stopCountdown(task, `stop-${task.id}`)"
+							>
+								<span v-if="!isLoadingActions[`stop-${task.id}`]" class="material-icons text-xs sm:text-sm leading-none">stop</span>
+								<Loader v-else is-mini />
+							</button>
 							
 							<AssigneeUsers
 								:assignees="task.assignees" 
@@ -166,6 +187,7 @@
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
+	import SetTooltipData from '@/mixins/SetTooltipData';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
@@ -269,7 +291,7 @@
 				}
 			}
 		},
-		mixins: [TasksListMixin, TaskActionsInTheListMixin],
+		mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
 		data: () => ({
 			showTaskForm: false,
 			modalTaskId: null,

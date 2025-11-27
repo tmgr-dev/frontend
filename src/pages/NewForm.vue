@@ -627,6 +627,7 @@
 				suppressAutoSavingForOnce.value = true;
 				const id = taskId.value || (form.value.id as number);
 				form.value = await stopTaskTimeCounter(id);
+				store.commit('incrementReloadTasksKey');
 			} catch (e) {
 				console.error(e);
 			} finally {
@@ -640,6 +641,7 @@
 			suppressAutoSavingForOnce.value = true;
 			const id = taskId.value || (form.value.id as number);
 			form.value = await startTaskTimeCounter(id);
+			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
 		} finally {

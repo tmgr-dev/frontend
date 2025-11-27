@@ -99,9 +99,20 @@
 				);
 				
 				if (currentWorkspace?.code) {
-					// Set a page title that includes workspace name
-					document.title = `${currentWorkspace.name} Tasks`;
-					store.commit('setMetaTitle', `${currentWorkspace.name} Tasks`);
+					// Set a page title that includes workspace name and task count
+					const baseTitle = `${currentWorkspace.name} Tasks`;
+					const titleWithCount = pagination.value.total !== undefined 
+						? `${baseTitle} (${pagination.value.total})` 
+						: baseTitle;
+					document.title = baseTitle;
+					store.commit('setMetaTitle', titleWithCount);
+				} else {
+					// Update metaTitle with task count for regular routes
+					const baseTitle = h1[route.name] || 'Task List';
+					const titleWithCount = pagination.value.total !== undefined 
+						? `${baseTitle} (${pagination.value.total})` 
+						: baseTitle;
+					store.commit('setMetaTitle', titleWithCount);
 				}
 			}
 
@@ -122,6 +133,12 @@
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
+	watch(() => pagination.value.total, () => {
+		if (pagination.value.total !== undefined) {
+			const baseTitle = h1[route.name] || 'Task List';
+			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
+		}
+	});
 
 	function setLoadingActions(tasks) {
 		tasks.forEach((task) => {
@@ -163,6 +180,9 @@
 			tasks.value = response.data;
 			pagination.value = response.meta;
 			setLoadingActions(tasks.value);
+			
+			const baseTitle = h1[route.name] || 'Task List';
+			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
 		} catch (e) {
 			console.error(e);
 			errorLoading.value = true;
