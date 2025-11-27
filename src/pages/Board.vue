@@ -179,24 +179,65 @@
 												</div>
 											</div>
 
-											<Draggable
-												v-model="column.tasks"
-												:animation="200"
-												group="tasks"
-												item-key="id"
-												@end="onEnd"
-												:disabled="isMobile"
-												:data-status="column.status.id"
-												class="board-card flex-1 min-h-0"
-											>
-												<template #item="{ element: task }">
-													<TaskBoardCard
-														:task="task"
-														class="my-5 cursor-move"
-														:data-task="jsonEncode(task)"
-													/>
-												</template>
-											</Draggable>
+											<div class="board-card flex-1 min-h-0 flex flex-col">
+												<Draggable
+													v-model="column.tasks"
+													:animation="200"
+													group="tasks"
+													item-key="id"
+													@end="onEnd"
+													:disabled="isMobile"
+													:data-status="column.status.id"
+													:data-column-id="column.status.id"
+													class="board-card-draggable flex-1 min-h-0"
+												>
+													<template #item="{ element: task }">
+														<TaskBoardCard
+															:task="task"
+															class="my-5 cursor-move"
+															:data-task="jsonEncode(task)"
+														/>
+													</template>
+												</Draggable>
+
+												<Teleport v-if="tasksLoaded" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
+													<div class="flex-shrink-0 px-2 mt-2">
+														<div v-if="creatingTaskColumnId !== column.status.id" class="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+															<button
+																@click="startCreatingTask(column)"
+																class="flex items-center gap-2 w-full py-2 px-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
+															>
+																<span class="material-icons text-lg">add</span>
+																<span>Add task</span>
+															</button>
+														</div>
+														<div v-else class="flex flex-col gap-2">
+															<input
+																v-model="newTaskTitle"
+																@keyup.enter="createQuickTask(column)"
+																@keyup.esc="cancelCreatingTask"
+																@blur="handleInputBlur"
+																placeholder="Enter task title..."
+																class="task-title-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-tmgr-blue dark:focus:ring-tmgr-light-blue"
+															/>
+															<div class="flex gap-2">
+																<button
+																	@click="createQuickTask(column)"
+																	class="flex-1 px-3 py-1.5 text-sm bg-tmgr-blue hover:bg-blue-600 text-white rounded-lg transition-colors"
+																>
+																	Add
+																</button>
+																<button
+																	@click="cancelCreatingTask"
+																	class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
+																>
+																	Cancel
+																</button>
+															</div>
+														</div>
+													</div>
+												</Teleport>
+											</div>
 										</div>
 									</div>
 								</template>
@@ -339,6 +380,7 @@
 		updateStatusOfTasks,
 		updateTaskOrders,
 		updateTaskStatus,
+		createTask,
 	} from '@/actions/tmgr/tasks';
 	import { getUser, updateUser } from '@/actions/tmgr/user';
 	import FiltersBoard from '@/components/general/FiltersBoard.vue';
@@ -442,6 +484,9 @@
 			hasHorizontalScroll: false,
 			isMobile: window.innerWidth <= 768,
 			statuses: null,
+			creatingTaskColumnId: null,
+			newTaskTitle: '',
+			tasksLoaded: false,
 		}),
 
 		watch: {
@@ -732,6 +777,7 @@
 				}
 			},
 			async loadTasks() {
+				this.tasksLoaded = false;
 				const tasksPromises = this.columns.map((column) =>
 					this.loadTasksByStatus(column.status),
 				);
@@ -767,6 +813,7 @@
 				
 				this.$nextTick(() => {
 					this.updateScrollContainers();
+					this.tasksLoaded = true;
 				});
 			},
 			async loadTasksByStatus(status) {
@@ -821,6 +868,75 @@
 						}
 					});
 				});
+			},
+			startCreatingTask(column) {
+				this.creatingTaskColumnId = column.status.id;
+				this.newTaskTitle = '';
+				this.$nextTick(() => {
+					const input = document.querySelector('.task-title-input');
+					if (input) {
+						input.focus();
+					}
+				});
+			},
+			cancelCreatingTask() {
+				this.creatingTaskColumnId = null;
+				this.newTaskTitle = '';
+			},
+			handleInputBlur() {
+				if (!this.newTaskTitle.trim()) {
+					setTimeout(() => {
+						if (!this.newTaskTitle.trim()) {
+							this.cancelCreatingTask();
+						}
+					}, 200);
+				}
+			},
+			async createQuickTask(column) {
+				if (!this.newTaskTitle.trim()) {
+					return;
+				}
+
+				const taskTitle = this.newTaskTitle.trim();
+				this.newTaskTitle = '';
+				this.creatingTaskColumnId = null;
+
+				try {
+					const user = this.$store.state.user;
+					const currentWorkspaceId = this.workspaceId;
+
+					const newTask = {
+						title: taskTitle,
+						description: '',
+						description_json: null,
+						approximately_time: 0,
+						assignees: [],
+						status: column.status.type || 'created',
+						status_id: column.status.id,
+						project_category_id: null,
+						common_time: 0,
+						is_daily_routine: false,
+						order: 0,
+						start_time: 0,
+						user_id: user?.id || 0,
+						workspace_id: currentWorkspaceId,
+						id: undefined,
+						category: 0,
+						user: {
+							id: user?.id || 0,
+							name: user?.name || '',
+						},
+						checkpoints: [],
+					};
+
+					const createdTask = await createTask(newTask);
+					this.$store.commit('incrementReloadTasksKey');
+					await this.loadTasks();
+				} catch (error) {
+					console.error('Failed to create task:', error);
+					this.newTaskTitle = taskTitle;
+					this.creatingTaskColumnId = column.status.id;
+				}
 			},
 		},
 		async beforeMount() {
@@ -954,12 +1070,15 @@
 	}
 
 	.board-card {
-		@extend .custom-scroll;
-		overflow-x: hidden;
-		overflow-y: auto;
 		margin-top: 20px;
 		height: calc(100% - 50px);
 		max-height: calc(100vh - 200px);
+	}
+
+	.board-card-draggable {
+		@extend .custom-scroll;
+		overflow-x: hidden;
+		overflow-y: auto;
 
 		div:first-child {
 			margin-top: 0 !important;
