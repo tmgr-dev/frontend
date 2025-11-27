@@ -3,9 +3,9 @@
 
 	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
-			<div class="flex flex-col justify-center flex-1">
-				<div class="w-full overflow-x-auto flex flex-col h-full">
-					<div class="min-h-[62px]">
+			<div class="flex flex-col justify-center flex-1 min-h-0">
+				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
+					<div class="min-h-[62px] flex-shrink-0">
 						<div class="relative md:hidden">
 							<FilterIcon
 								@click="isFiltersModalShown = !isFiltersModalShown"
@@ -96,8 +96,8 @@
 							>
 								<template #item="{ element: column }">
 									<div class="board-container__item pr-2">
-										<div class="column-width h-full rounded-lg px-3 pb-3">
-											<div>
+										<div class="column-width h-full rounded-lg px-3 pb-3 flex flex-col">
+											<div class="flex-shrink-0">
 												<div
 													class="relative flex items-center rounded pb-2 pl-2 pt-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
 													:style="{
@@ -187,7 +187,7 @@
 												@end="onEnd"
 												:disabled="isMobile"
 												:data-status="column.status.id"
-												class="board-card"
+												class="board-card flex-1 min-h-0"
 											>
 												<template #item="{ element: task }">
 													<TaskBoardCard
@@ -447,6 +447,13 @@
 		watch: {
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
+			},
+			'$store.state.currentTaskIdForModal'(newVal, oldVal) {
+				if (oldVal && !newVal) {
+					this.$nextTick(() => {
+						this.updateScrollContainers();
+					});
+				}
 			},
 			$route() {
 				this.isMobile = window.innerWidth <= 768;
@@ -757,6 +764,10 @@
 
 					return newColumn;
 				});
+				
+				this.$nextTick(() => {
+					this.updateScrollContainers();
+				});
 			},
 			async loadTasksByStatus(status) {
 				this.tasks = await getSortedTasksByStatus(status?.id || status, {
@@ -801,6 +812,16 @@
 				this.clearStatus(); // Clear fields for new status
 				this.$store.commit('openModal');
 			},
+			updateScrollContainers() {
+				this.$nextTick(() => {
+					const boardCards = document.querySelectorAll('.board-card');
+					boardCards.forEach((card) => {
+						if (card.scrollHeight > card.clientHeight) {
+							card.style.overflowY = 'auto';
+						}
+					});
+				});
+			},
 		},
 		async beforeMount() {
 			const user = await getUser();
@@ -833,6 +854,10 @@
 			this.hasHorizontalScroll =
 				document.querySelector('.board-container').scrollWidth >
 				document.querySelector('.board-container').clientWidth;
+			
+			this.$nextTick(() => {
+				this.updateScrollContainers();
+			});
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
@@ -889,22 +914,34 @@
 
 	.board-container {
 		display: flex;
-
 		flex-wrap: nowrap;
 		flex-grow: 1;
 		overflow-x: auto;
 		overflow-y: hidden;
 		width: calc(100vw - 19rem);
+		height: 100%;
+		min-height: 0;
 
 		@extend .reset-scroll;
 
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
 		}
 		@media (max-width: 768px) {
 			width: calc(100vw - 3rem);
 		}
+	}
+
+	.column-width {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		min-height: 0;
 	}
 	.shadow-radial::before {
 		content: '';
@@ -918,9 +955,11 @@
 
 	.board-card {
 		@extend .custom-scroll;
-		overflow-x: auto;
+		overflow-x: hidden;
+		overflow-y: auto;
 		margin-top: 20px;
 		height: calc(100% - 50px);
+		max-height: calc(100vh - 200px);
 
 		div:first-child {
 			margin-top: 0 !important;
