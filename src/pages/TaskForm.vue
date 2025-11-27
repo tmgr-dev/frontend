@@ -455,6 +455,7 @@
 		deleteTaskAssignee,
 		getTasksIndexes,
 		optimizeWithAI,
+		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
@@ -957,27 +958,41 @@
 			async toggleCountdown() {
 				this.isShowAlert = false;
 
-				if (this.form.start_time) {
+				const isTimerRunning = this.form.start_time && this.form.start_time > 0;
+				
+				if (isTimerRunning) {
 					this.form = await stopTaskTimeCounter(this.taskId);
-				} else {
-					this.form = await startTaskTimeCounter(this.taskId);
+					this.updateSeconds(this.form.common_time);
+					await this.saveTask();
+					return;
 				}
-				this.updateSeconds(this.form.common_time);
 
-				/*if (this.form.start_time && this.form.status_id) {
-					const statusCurrent = this.workspaceStatuses.find(
-						(el) => el.type !== 'active',
-					);
-					if (statusCurrent) {
-						const firstActiveStatus = this.workspaceStatuses.find(
-							(el) => el.type === 'active',
-						);
-						if (firstActiveStatus) {
-							this.form.status_id = firstActiveStatus.id;
-						}
-					}
-				}*/
+				this.form = await startTaskTimeCounter(this.taskId);
+				this.updateSeconds(this.form.common_time);
 				await this.saveTask();
+
+				const taskStatus = this.workspaceStatuses?.find(s => s.id === this.form.status_id);
+				
+				if (taskStatus && taskStatus.type === 'default') {
+					const activeStatus = this.workspaceStatuses?.find(s => s.type === 'active');
+					
+					if (activeStatus) {
+						this.showConfirm(
+							'Task in Backlog',
+							`Task "${this.form.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
+							async () => {
+								try {
+									await updateTaskStatus(this.taskId, activeStatus.id);
+									this.form.status_id = activeStatus.id;
+									this.$store.commit('incrementReloadTasksKey');
+									await this.saveTask();
+								} catch (e) {
+									console.error('Failed to change status:', e);
+								}
+							}
+						);
+					}
+				}
 			},
 			prepareForm() {
 				if (this.form.project_category_id === '') {
@@ -1258,3 +1273,4 @@
 		}
 	}
 </style>
+

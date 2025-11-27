@@ -18,6 +18,7 @@
 		stopTaskTimeCounter,
 		Task,
 		updateTask,
+		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import BlockEditor from '@/components/BlockEditor.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -48,6 +49,7 @@
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -610,23 +612,90 @@
 		}
 	};
 
+	const backlogStatusChangeConfirm = ref<{
+		taskId: number;
+	} | null>(null);
+
 	const toggleTimer = async () => {
 		if (!taskId.value && !form.value.id) return;
 
-		isLoading.value = true;
+		const isTimerRunning = form.value.start_time && form.value.start_time > 0;
 
+		if (isTimerRunning) {
+			isLoading.value = true;
+			try {
+				suppressAutoSavingForOnce.value = true;
+				const id = taskId.value || (form.value.id as number);
+				form.value = await stopTaskTimeCounter(id);
+			} catch (e) {
+				console.error(e);
+			} finally {
+				isLoading.value = false;
+			}
+			return;
+		}
+
+		isLoading.value = true;
 		try {
 			suppressAutoSavingForOnce.value = true;
 			const id = taskId.value || (form.value.id as number);
-			if (form.value.start_time) {
-				form.value = await stopTaskTimeCounter(id);
-			} else {
-				form.value = await startTaskTimeCounter(id);
-			}
+			form.value = await startTaskTimeCounter(id);
 		} catch (e) {
 			console.error(e);
 		} finally {
 			isLoading.value = false;
+		}
+
+		const currentStatuses = statuses.value || workspaceStatuses.value || [];
+		const taskStatus = currentStatuses.find(s => s.id === form.value.status_id);
+		
+		if (taskStatus && taskStatus.type === 'default') {
+			const activeStatus = currentStatuses.find(s => s.type === 'active');
+			
+			if (activeStatus) {
+				backlogStatusChangeConfirm.value = {
+					taskId: taskId.value || (form.value.id as number)
+				};
+				showBacklogStatusChangeConfirm.value = true;
+			}
+		}
+	};
+
+	const showBacklogStatusChangeConfirm = ref(false);
+
+	const backlogConfirmBody = computed(() => {
+		const currentStatuses = statuses.value || workspaceStatuses.value || [];
+		const activeStatus = currentStatuses.find(s => s.type === 'active');
+		const activeStatusName = activeStatus?.name || 'active';
+		return `Task "${form.value.title}" is in backlog. Switch to "${activeStatusName}" status?`;
+	});
+
+	const handleBacklogStatusChangeConfirm = async () => {
+		if (!backlogStatusChangeConfirm.value) return;
+		
+		const currentStatuses = statuses.value || workspaceStatuses.value || [];
+		const activeStatus = currentStatuses.find(s => s.type === 'active');
+		
+		if (!activeStatus) {
+			console.error('No active status found');
+			showBacklogStatusChangeConfirm.value = false;
+			backlogStatusChangeConfirm.value = null;
+			return;
+		}
+
+		isLoading.value = true;
+		try {
+			suppressAutoSavingForOnce.value = true;
+			const id = backlogStatusChangeConfirm.value.taskId;
+			await updateTaskStatus(id, activeStatus.id);
+			form.value.status_id = activeStatus.id;
+			store.commit('incrementReloadTasksKey');
+		} catch (e) {
+			console.error('Failed to change status:', e);
+		} finally {
+			isLoading.value = false;
+			showBacklogStatusChangeConfirm.value = false;
+			backlogStatusChangeConfirm.value = null;
 		}
 	};
 
@@ -1118,6 +1187,14 @@
 				</div>
 			</footer>
 		</div>
+
+		<Confirm
+			v-if="showBacklogStatusChangeConfirm"
+			title="Task in Backlog"
+			:body="backlogConfirmBody"
+			@onCancel="showBacklogStatusChangeConfirm = false; backlogStatusChangeConfirm = null"
+			@onOk="handleBacklogStatusChangeConfirm"
+		/>
 	</div>
 </template>
 
