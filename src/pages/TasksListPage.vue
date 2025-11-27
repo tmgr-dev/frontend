@@ -24,6 +24,9 @@
 	import { formatTime } from '@/utils/timeUtils.js';
 	import EmptyState from '@/components/EmptyState.vue';
 	import { Skeleton } from '@/components/ui/skeleton';
+	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import { getUser } from '@/actions/tmgr/user';
+	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -43,6 +46,8 @@
 	const categories = ref([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
+	const workspaceUsers = ref<Array<{ id: number; name: string }>>([]);
+	const workspaceId = ref<number>(0);
 	const pagination = ref<PaginationMeta>({
 		current_page: Number(route.query.page) || 1,
 		per_page: Number(route.query.per_page) || 10,
@@ -68,6 +73,15 @@
 	onMounted(async () => {
 		try {
 			categories.value = await getCategories();
+
+			const user = await getUser();
+			const workspaceSetting = user.settings?.find(
+				(setting) => setting.key === 'current_workspace',
+			);
+			if (workspaceSetting) {
+				workspaceId.value = +workspaceSetting.value;
+				workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
+			}
 
 			await loadTasks();
 			setLoadingActions(tasks.value);
@@ -192,17 +206,24 @@
 
 	<BaseLayout>
 		<template #action>
-			<div class="flex flex-wrap items-center justify-between gap-2 px-2">
-				<transition name="fade">
-					<div
-						v-if="summaryTime"
-						class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
-					>
-						{{ summaryTime }}
-					</div>
-				</transition>
+			<div class="flex flex-col gap-2 px-2">
+				<div class="w-full py-2">
+					<WorkspaceUsers
+						:users="workspaceUsers"
+						:workspace-id="workspaceId"
+					/>
+				</div>
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<transition name="fade">
+						<div
+							v-if="summaryTime"
+							class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
+						>
+							{{ summaryTime }}
+						</div>
+					</transition>
 
-				<div class="ml-auto flex items-center gap-2 text-center">
+					<div class="ml-auto flex items-center gap-2 text-center">
 					<Input
 						v-model="searchText"
 						class="h-8"
@@ -268,6 +289,7 @@
 							]"
 						/>
 					</button>
+					</div>
 				</div>
 			</div>
 		</template>
