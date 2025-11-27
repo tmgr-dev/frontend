@@ -156,8 +156,8 @@
 		v-if="confirm"
 		:body="confirm.body"
 		:title="confirm.title"
-		@onCancel="confirm = undefined"
-		@onOk="confirm.action()"
+		@onCancel="confirm = undefined; backlogStatusChangeConfirm = null"
+		@onOk="confirm.action(); confirm = undefined; backlogStatusChangeConfirm = null"
 	/>
 </template>
 
@@ -181,6 +181,7 @@
 		Task,
 		PaginationMeta,
 	} from '@/actions/tmgr/tasks';
+	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Button from '@/components/general/Button.vue';
 	import { PropType } from 'vue';
@@ -279,8 +280,17 @@
 			showTimeInModal: false,
 			timeForModal: null,
 			loadingActionsForMultipleTasks: [],
-			perPage: 10
+			perPage: 10,
+			statuses: [] as Status[],
+			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null
 		}),
+		async created() {
+			try {
+				this.statuses = await getStatuses();
+			} catch (e) {
+				console.error('Failed to load statuses:', e);
+			}
+		},
 		methods: {
 			closeTaskModal() {
 				this.$store.commit('closeTaskModal');
@@ -291,11 +301,62 @@
 				await this.loadTasks();
 				this.isLoadingActions[dotId] = false;
 			},
-			async startCountdown(task, dotId) {
-				this.isLoadingActions[dotId] = true;
+			async startCountdown(task: Task, dotId: string | null) {
+				if (!task.id) return;
+				
+				if (dotId) {
+					this.isLoadingActions[dotId] = true;
+				}
 				await startTaskTimeCounter(task.id);
 				await this.loadTasks();
-				this.isLoadingActions[dotId] = false;
+				if (dotId) {
+					this.isLoadingActions[dotId] = false;
+				}
+
+				const taskStatus = this.statuses.find(s => s.id === task.status_id);
+				
+				if (taskStatus && taskStatus.type === 'default') {
+					this.backlogStatusChangeConfirm = { task, dotId };
+					this.showBacklogStatusChangeConfirm();
+				}
+			},
+			showBacklogStatusChangeConfirm() {
+				if (!this.backlogStatusChangeConfirm) return;
+				
+				const { task, dotId } = this.backlogStatusChangeConfirm;
+				const activeStatus = this.statuses.find(s => s.type === 'active');
+				
+				if (!activeStatus || !task.id) {
+					console.error('No active status found or task has no id');
+					this.backlogStatusChangeConfirm = null;
+					return;
+				}
+				
+				this.showConfirm(
+					'Task in Backlog',
+					`Task "${task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
+					async () => {
+						if (!this.backlogStatusChangeConfirm || !task.id) return;
+						
+						const { task: confirmTask, dotId: confirmDotId } = this.backlogStatusChangeConfirm;
+						if (confirmDotId) {
+							this.isLoadingActions[confirmDotId] = true;
+						}
+						
+						try {
+							await updateTaskStatus(confirmTask.id!, activeStatus.id);
+							this.$store.commit('incrementReloadTasksKey');
+							await this.loadTasks();
+						} catch (e) {
+							console.error('Failed to change status:', e);
+						} finally {
+							if (confirmDotId) {
+								this.isLoadingActions[confirmDotId] = false;
+							}
+							this.backlogStatusChangeConfirm = null;
+						}
+					}
+				);
 			},
 			onDragStart(event, task) {
 				event.dataTransfer.setData('task-id', task.id);
