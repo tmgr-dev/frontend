@@ -4,13 +4,15 @@
 	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
 			<div class="flex flex-col justify-center flex-1 min-h-0">
+				<div class="w-full px-4 py-2 mb-2">
+					<WorkspaceUsers
+						:users="workspaceUsersWithoutAll"
+						:workspace-id="workspaceId"
+					/>
+				</div>
 				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
 					<div class="min-h-[62px] flex-shrink-0">
 						<div class="relative md:hidden">
-							<FilterIcon
-								@click="isFiltersModalShown = !isFiltersModalShown"
-								:isActive="isFiltersModalShown"
-							/>
 							<div
 								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center p-4 pt-5"
 							>
@@ -401,6 +403,7 @@
 	import { getCategories } from '@/actions/tmgr/categories';
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
+	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 
 	export default {
 		name: 'Board',
@@ -420,6 +423,7 @@
 			ColorPicker,
 			Select,
 			Confirm,
+			WorkspaceUsers,
 		},
 
 		data: () => ({
@@ -517,6 +521,9 @@
 		computed: {
 			userSettings() {
 				return this.$store.state.userSettings ?? {};
+			},
+			workspaceUsersWithoutAll() {
+				return this.workspaceUsers.filter(user => user.id !== 0);
 			},
 		},
 		methods: {
