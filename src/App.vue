@@ -133,6 +133,15 @@
 				this.showComponent = false;
 				setTimeout(() => (this.showComponent = true), 100);
 			},
+			'$route.name'(to, from) {
+				if (to !== from) {
+					if (this.$route.meta.title) {
+						this.$store.commit('setMetaTitle', this.$route.meta.title);
+					} else {
+						this.$store.commit('setMetaTitle', '');
+					}
+				}
+			},
 			'$store.state.reloadActiveTasksKey'() {
 				this.loadActiveTasks();
 			},
@@ -393,6 +402,14 @@
 				}
 
 				this.transitionName = routeTransitionName || DEFAULT_TRANSITION;
+
+				if (to.name !== from.name) {
+					if (to.meta.title && !to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
+						this.$store.commit('setMetaTitle', to.meta.title);
+					} else if (!to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
+						this.$store.commit('setMetaTitle', '');
+					}
+				}
 
 				next();
 			});
