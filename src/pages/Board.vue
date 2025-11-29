@@ -168,6 +168,15 @@
 																Edit status
 															</a>
 														</MenuItem>
+														<MenuItem v-if="column.tasks.length > 0">
+															<a
+																href="#"
+																class="block px-4 py-2 text-sm text-neutral-600"
+																@click.prevent="openMoveTasksModal(column)"
+															>
+																Move all tasks to...
+															</a>
+														</MenuItem>
 														<MenuItem v-if="column.status.type === 'completed'">
 															<a
 																href="#"
@@ -354,6 +363,43 @@
 								</div>
 							</template>
 						</Modal>
+						<Modal
+							v-if="isShowMoveTasksModal"
+							modal-class="p-6 w-96"
+							close-on-bg-click
+							@close="closeMoveTasksModal"
+						>
+							<template #modal-body>
+								<div>
+									<h1 class="mb-4 text-center text-xl font-semibold">
+										Move all tasks to
+									</h1>
+									<p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
+										Move {{ sourceColumnForMove?.tasks.length }} task(s) from "{{ sourceColumnForMove?.title }}" to:
+									</p>
+									<div class="space-y-2">
+										<button
+											v-for="column in availableColumnsForMove"
+											:key="column.status.id"
+											@click="moveAllTasksToColumn(column)"
+											class="w-full rounded-lg border-2 px-4 py-3 text-left font-medium transition-all hover:bg-gray-50 dark:hover:bg-gray-800"
+											:style="{ borderLeftColor: column.status.color, borderLeftWidth: '4px' }"
+										>
+											<div class="flex items-center justify-between">
+												<span class="text-gray-900 dark:text-gray-100">{{ column.title }}</span>
+												<span class="text-xs text-gray-500 dark:text-gray-400">({{ column.taskCount }})</span>
+											</div>
+										</button>
+									</div>
+									<button
+										@click="closeMoveTasksModal"
+										class="mt-4 w-full rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+									>
+										Cancel
+									</button>
+								</div>
+							</template>
+						</Modal>
 					</div>
 				</Transition>
 			</div>
@@ -495,6 +541,8 @@
 			creatingTaskColumnId: null,
 			newTaskTitle: '',
 			tasksLoaded: false,
+			isShowMoveTasksModal: false,
+			sourceColumnForMove: null,
 		}),
 
 		watch: {
@@ -528,6 +576,14 @@
 			},
 			workspaceUsersWithoutAll() {
 				return this.workspaceUsers.filter(user => user.id !== 0);
+			},
+			availableColumnsForMove() {
+				if (!this.sourceColumnForMove) {
+					return [];
+				}
+				return this.columns.filter(
+					col => col.status.id !== this.sourceColumnForMove.status.id
+				);
 			},
 		},
 		methods: {
@@ -765,6 +821,51 @@
 				}
 				await updateStatusOfTasks(taskIds, archiveStatus.id);
 				await this.loadTasks();
+			},
+			openMoveTasksModal(column) {
+				this.sourceColumnForMove = column;
+				this.isShowMoveTasksModal = true;
+				this.$store.commit('openModal');
+			},
+			closeMoveTasksModal() {
+				this.isShowMoveTasksModal = false;
+				this.sourceColumnForMove = null;
+				this.$store.commit('closeModal');
+			},
+			async moveAllTasksToColumn(targetColumn) {
+				if (!this.sourceColumnForMove || !targetColumn) {
+					return;
+				}
+				
+				const { tasks } = this.sourceColumnForMove;
+				if (tasks.length === 0) {
+					this.closeMoveTasksModal();
+					return;
+				}
+				
+				const taskIds = tasks.map((t) => t.id);
+				const targetStatusId = targetColumn.status.id;
+				const sourceColumnTitle = this.sourceColumnForMove.title;
+				const targetColumnTitle = targetColumn.title;
+				const taskCount = tasks.length;
+				
+				const confirmMove = async () => {
+					try {
+						await updateStatusOfTasks(taskIds, targetStatusId);
+						this.confirm = undefined;
+						await this.loadTasks();
+					} catch (error) {
+						console.error('Failed to move tasks:', error);
+						this.confirm = undefined;
+					}
+				};
+				
+				this.closeMoveTasksModal();
+				this.showConfirm(
+					'Move all tasks',
+					`Move ${taskCount} task(s) from "${sourceColumnTitle}" to "${targetColumnTitle}"?`,
+					confirmMove,
+				);
 			},
 			findColumn(status) {
 				const { columns } = this;
