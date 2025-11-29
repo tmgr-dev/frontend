@@ -198,6 +198,10 @@
 															:task="task"
 															class="my-5 cursor-move"
 															:data-task="jsonEncode(task)"
+															@move-to-top="handleMoveToTop(task, column)"
+															@move-to-bottom="handleMoveToBottom(task, column)"
+															@task-deleted="loadTasks"
+															@task-archived="loadTasks"
 														/>
 													</template>
 												</Draggable>
@@ -710,6 +714,30 @@
 				await updateTaskOrders({
 					tasks: orders,
 				});
+			},
+			async handleMoveToTop(task, column) {
+				const taskIndex = column.tasks.findIndex(t => t.id === task.id);
+				if (taskIndex === -1 || taskIndex === 0) {
+					return;
+				}
+				
+				column.tasks.splice(taskIndex, 1);
+				column.tasks.unshift(task);
+				
+				await this.$nextTick();
+				await this.saveOrders(column.status.id);
+			},
+			async handleMoveToBottom(task, column) {
+				const taskIndex = column.tasks.findIndex(t => t.id === task.id);
+				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
+					return;
+				}
+				
+				column.tasks.splice(taskIndex, 1);
+				column.tasks.push(task);
+				
+				await this.$nextTick();
+				await this.saveOrders(column.status.id);
 			},
 			findTask(status, taskId) {
 				const column = this.findColumn(status);

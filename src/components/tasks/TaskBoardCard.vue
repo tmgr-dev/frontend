@@ -14,11 +14,49 @@
 				{{ task.title }}
 			</a>
 
-			<AssigneeUsers
-				:assignees="task.assignees"
-				:show-assignee-controls="false"
-				avatarsClass="h-6 w-6"
-			/>
+			<div class="flex items-start gap-2">
+				<AssigneeUsers
+					:assignees="task.assignees"
+					:show-assignee-controls="false"
+					avatarsClass="h-6 w-6"
+				/>
+
+				<DropdownMenu>
+					<DropdownMenuTrigger as-child>
+						<button
+							class="flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+							@click.stop
+						>
+							<MoreVertical class="h-4 w-4" />
+						</button>
+					</DropdownMenuTrigger>
+
+					<DropdownMenuContent align="end" class="w-48">
+						<DropdownMenuItem @click="handleOpenModal">
+							<Eye class="mr-2 h-4 w-4" />
+							<span>Open details</span>
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem @click="handleMoveToTop">
+							<ArrowUpToLine class="mr-2 h-4 w-4" />
+							<span>Move to top</span>
+						</DropdownMenuItem>
+						<DropdownMenuItem @click="handleMoveToBottom">
+							<ArrowDownToLine class="mr-2 h-4 w-4" />
+							<span>Move to bottom</span>
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem @click="handleArchive">
+							<ArchiveIcon class="mr-2 h-4 w-4" />
+							<span>Archive</span>
+						</DropdownMenuItem>
+						<DropdownMenuItem @click="handleDelete" class="text-red-600 dark:text-red-400">
+							<Trash2 class="mr-2 h-4 w-4" />
+							<span>Delete</span>
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
 		</div>
 
 		<div class="mt-4 flex items-center justify-between">
@@ -72,9 +110,17 @@
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import Loader from '@/components/loaders/Loader.vue';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuSeparator,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
+	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye } from 'lucide-vue-next';
 	import { mapState } from 'vuex';
 	import { generateTaskUrl } from '@/utils/url';
-	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus } from '@/actions/tmgr/tasks';
+	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, deleteTask } from '@/actions/tmgr/tasks';
 	import { getStatuses } from '@/actions/tmgr/statuses';
 
 	export default {
@@ -85,8 +131,19 @@
 			CategoryBadge,
 			Badge,
 			Loader,
+			DropdownMenu,
+			DropdownMenuContent,
+			DropdownMenuItem,
+			DropdownMenuSeparator,
+			DropdownMenuTrigger,
+			MoreVertical,
+			ArrowUpToLine,
+			ArrowDownToLine,
+			Trash2,
+			ArchiveIcon,
+			Eye,
 		},
-		emits: ['timer-started', 'timer-stopped'],
+		emits: ['timer-started', 'timer-stopped', 'move-to-top', 'move-to-bottom', 'task-deleted', 'task-archived'],
 		props: {
 			task: {
 				type: Object,
@@ -248,6 +305,49 @@
 					this.timerInterval = null;
 				}
 				this.currentDisplayTime = this.task.common_time || 0;
+			},
+			handleOpenModal() {
+				this.$store.commit('setCurrentTaskIdForModal', this.task.id);
+			},
+			handleMoveToTop() {
+				this.$emit('move-to-top', this.task);
+			},
+			handleMoveToBottom() {
+				this.$emit('move-to-bottom', this.task);
+			},
+			async handleArchive() {
+				if (!confirm(`Are you sure you want to archive "${this.task.title}"?`)) {
+					return;
+				}
+				
+				try {
+					const archiveStatus = this.statuses.find(s => s.type === 'archived');
+					if (!archiveStatus) {
+						alert('Archive status not found. Please create an archive status first.');
+						return;
+					}
+					
+					await updateTaskStatus(this.task.id, archiveStatus.id);
+					this.$emit('task-archived', this.task);
+					this.$store.commit('incrementReloadTasksKey');
+				} catch (e) {
+					console.error('Failed to archive task:', e);
+					alert('Failed to archive task. Please try again.');
+				}
+			},
+			async handleDelete() {
+				if (!confirm(`Are you sure you want to delete "${this.task.title}"?`)) {
+					return;
+				}
+				
+				try {
+					await deleteTask(this.task.id);
+					this.$emit('task-deleted', this.task);
+					this.$store.commit('incrementReloadTasksKey');
+				} catch (e) {
+					console.error('Failed to delete task:', e);
+					alert('Failed to delete task. Please try again.');
+				}
 			},
 		},
 		beforeUnmount() {
