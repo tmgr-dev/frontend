@@ -225,13 +225,35 @@ const statusIndicatorClasses = computed(() => {
   );
 });
 
+const isTimeExceeded = computed(() => {
+  const approximatelyTime = getApproximatelyTime();
+  if (!approximatelyTime || approximatelyTime <= 0) {
+    return false;
+  }
+  const currentTime = (props.task as any).common_time || 0;
+  return currentTime > approximatelyTime;
+});
+
+const getApproximatelyTime = () => {
+  const task = props.task as any;
+  if (task.approximately_time) {
+    return parseInt(String(task.approximately_time), 10);
+  }
+  const setting = task.settings?.find((s: any) => s.key === 'approximately_time');
+  if (setting) {
+    return parseInt(String(setting.value || setting.pivot?.value), 10);
+  }
+  return 0;
+};
+
 const itemClasses = computed(() => {
   return cn(
     'p-3 rounded-lg border border-gray-200 dark:border-gray-700',
     'hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150',
     'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400',
     'focus:ring-offset-2 dark:focus:ring-offset-gray-800',
-    props.task.is_overdue && 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10'
+    props.task.is_overdue && 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10',
+    isTimeExceeded.value && 'border-l-4 border-l-red-500 dark:border-l-red-400'
   );
 });
 
