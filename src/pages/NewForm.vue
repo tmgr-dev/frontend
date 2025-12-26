@@ -752,6 +752,18 @@
 		return `/${id}`;
 	};
 
+	const currentUserId = computed(() => store.state.user?.id);
+
+	const isAssignedToMe = computed(() => {
+		if (!currentUserId.value) return false;
+		return assignees.value.includes(currentUserId.value);
+	});
+
+	const assignToMe = () => {
+		if (!currentUserId.value || isAssignedToMe.value) return;
+		assignees.value = [...assignees.value, currentUserId.value];
+	};
+
 	// Watch for changes to modalProjectCategoryId and update form accordingly
 	watch(
 		modalProjectCategoryId,
@@ -894,11 +906,20 @@
 					"
 				/>
 
-				<div>
+				<div class="flex items-center gap-2">
 					<AssigneesCombobox
 						:assignees="workspaceMembers"
 						v-model="assignees as any"
 					/>
+					<button
+						v-if="!isAssignedToMe"
+						type="button"
+						@click="assignToMe"
+						class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
+						title="Assign to me"
+					>
+						<span class="material-icons text-sm">person_add</span>
+					</button>
 				</div>
 
 				<div class="ml-auto">
