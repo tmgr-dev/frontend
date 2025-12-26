@@ -9,7 +9,7 @@ export interface FormSetting {
 }
 
 export interface Setting extends Omit<FormSetting, 'value'> {
-	component_type: 'time_in_seconds' | 'integer';
+	component_type: 'time_in_seconds' | 'integer' | 'select';
 	custom_value_available: boolean;
 	default_values: any[];
 	rules: string;

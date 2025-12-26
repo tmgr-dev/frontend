@@ -29,7 +29,7 @@
 					</span>
 				</div>
 
-				<div v-for="(setting, index) in settings" id="settings" class="mt-4">
+				<div v-for="setting in settings" :key="setting.id" id="settings" class="mt-4">
 					<label
 						:for="`setting-${setting.id}`"
 						class="mb-2 block text-left text-sm font-bold"
@@ -45,7 +45,7 @@
 						/>
 						<template v-else-if="setting.component_type === 'select'">
 							<Select
-								v-model="settings.value"
+								v-model="setting.value"
 								:options="
 									setting.default_values.map((val) => ({
 										label: val.value,
@@ -103,9 +103,9 @@
 		Setting,
 		updateOneTaskSettings,
 	} from '@/actions/tmgr/settings';
-	import { onBeforeMount, ref } from 'vue';
+	import { onBeforeMount, ref, watch } from 'vue';
 	import { Task } from '@/actions/tmgr/tasks';
-	import { CogIcon, XMarkIcon } from '@heroicons/vue/20/solid';
+	import { CogIcon } from '@heroicons/vue/20/solid';
 	import {
 		Dialog,
 		DialogContent,
@@ -115,29 +115,54 @@
 		DialogTitle,
 		DialogTrigger,
 	} from '@/components/ui/dialog';
-	import { Button } from '@/components/ui/button';
 	import Select from '@/components/general/Select.vue';
 
 	const emit = defineEmits(['close']);
+
+	interface SettingWithValue extends Setting {
+		value: any;
+	}
 
 	interface Props {
 		form: Task;
 	}
 
 	const props = defineProps<Props>();
-	const settings = ref<Setting[]>([]);
+	const settings = ref<SettingWithValue[]>([]);
+	const settingsSchema = ref<Setting[]>([]);
 
 	onBeforeMount(async () => {
-		await loadTaskSettings();
+		settingsSchema.value = await getTaskSettings();
+		mergeSettingsWithFormValues();
 	});
 
-	async function loadTaskSettings() {
-		settings.value = await getTaskSettings();
+	watch(
+		() => props.form.settings,
+		() => {
+			mergeSettingsWithFormValues();
+		},
+		{ deep: true }
+	);
+
+	function mergeSettingsWithFormValues() {
+		if (!settingsSchema.value.length) return;
+		
+		settings.value = settingsSchema.value.map((setting: Setting) => {
+			const taskSetting = props.form.settings?.find(
+				(s: any) => s.id === setting.id || s.key === setting.key
+			) as any;
+			
+			return {
+				...setting,
+				value: taskSetting?.value ?? taskSetting?.pivot?.value ?? '',
+			};
+		});
 	}
 
-	async function saveSettings(settings: FormSetting) {
+	async function saveSettings(formSettings: FormSetting) {
+		if (!props.form.id) return;
 		try {
-			await updateOneTaskSettings(props.form.id, settings);
+			await updateOneTaskSettings(props.form.id, formSettings);
 		} catch (e) {
 			console.error(e);
 			throw e;
