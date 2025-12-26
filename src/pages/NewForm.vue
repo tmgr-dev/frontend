@@ -863,13 +863,15 @@
 					</SelectContent>
 				</Select>
 
-				<SettingsComponent v-if="!isModal" :form="form" />
+				<div class="flex items-center gap-3">
+					<SettingsComponent :form="form" />
 
-				<button v-if="isModal" @click="emit('close')">
-					<XMarkIcon
-						class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
-					/>
-				</button>
+					<button v-if="isModal" @click="emit('close')">
+						<XMarkIcon
+							class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
+						/>
+					</button>
+				</div>
 			</header>
 
 			<TextField
