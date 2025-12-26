@@ -58,6 +58,7 @@
 					type="button"
 					:class="{
 						'border-l-8 border-solid border-green-600': task.start_time,
+						'border-b-4 border-b-red-500 dark:border-b-red-400': isTimeExceeded(task),
 					}"
 					class="w-full rounded-lg shadow-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
@@ -77,7 +78,7 @@
 
 						<div class="flex items-center gap-2">
 							<span
-								:class="task.start_time ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'"
+								:class="isTimeExceeded(task) ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
 								class="material-icons text-xs sm:text-base md:text-xl"
 							>
 								alarm
@@ -392,6 +393,24 @@
 					stop: !task.start_time,
 					deleteTask: this.status === 'hidden' || this.status === 'done',
 				};
+			},
+			getApproximatelyTime(task: Task) {
+				if (task.approximately_time) {
+					return parseInt(String(task.approximately_time), 10);
+				}
+				const setting = task.settings?.find((s: any) => s.key === 'approximately_time');
+				if (setting) {
+					return parseInt(String(setting.value || setting.pivot?.value), 10);
+				}
+				return 0;
+			},
+			isTimeExceeded(task: Task) {
+				const approximatelyTime = this.getApproximatelyTime(task);
+				if (!approximatelyTime || approximatelyTime <= 0) {
+					return false;
+				}
+				const currentTime = task.common_time || 0;
+				return currentTime > approximatelyTime;
 			},
 			async updateStatus(task, status, dotId = null, loadTasks = true) {
 				try {

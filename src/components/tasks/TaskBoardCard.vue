@@ -2,6 +2,7 @@
 	<div
 		:class="{
 			'border-l-8 border-solid border-green-600 dark:border-green-500': task.start_time,
+			'border-b-4 border-b-red-500 dark:border-b-red-400': isTimeExceeded,
 		}"
 		class="rounded border border-gray-200 bg-gray-100 px-3 pb-5 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
 	>
@@ -62,7 +63,7 @@
 		<div class="mt-4 flex items-center justify-between">
 			<div class="flex items-center gap-2">
 				<span
-					:class="task.start_time ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'"
+					:class="isTimeExceeded ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
 					class="material-icons text-sm"
 				>
 					alarm
@@ -193,6 +194,14 @@
 					common_time: this.currentDisplayTime,
 				};
 			},
+			isTimeExceeded() {
+				const approximatelyTime = this.getApproximatelyTime();
+				if (!approximatelyTime || approximatelyTime <= 0) {
+					return false;
+				}
+				const currentTime = this.displayTask.common_time || 0;
+				return currentTime > approximatelyTime;
+			},
 		},
 		watch: {
 			task: {
@@ -236,6 +245,16 @@
 					this.currentWorkspace,
 					task.category && typeof task.category === 'object' ? task.category : null
 				);
+			},
+			getApproximatelyTime() {
+				if (this.task.approximately_time) {
+					return parseInt(this.task.approximately_time, 10);
+				}
+				const setting = this.task.settings?.find(s => s.key === 'approximately_time');
+				if (setting) {
+					return parseInt(setting.value || setting.pivot?.value, 10);
+				}
+				return 0;
 			},
 			async handleStartTimer() {
 				if (!this.task.id || this.isLoadingTimer) return;
