@@ -205,17 +205,18 @@
 													:force-fallback="true"
 													:touch-start-threshold="3"
 												>
-													<template #item="{ element: task }">
-														<TaskBoardCard
-															:task="task"
-															class="my-5"
-															:data-task="jsonEncode(task)"
-															@move-to-top="handleMoveToTop(task, column)"
-															@move-to-bottom="handleMoveToBottom(task, column)"
-															@task-deleted="loadTasks"
-															@task-archived="loadTasks"
-														/>
-													</template>
+												<template #item="{ element: task }">
+													<TaskBoardCard
+														:task="task"
+														:statuses="statuses"
+														class="my-5"
+														:data-task="jsonEncode(task)"
+														@move-to-top="handleMoveToTop(task, column)"
+														@move-to-bottom="handleMoveToBottom(task, column)"
+														@task-deleted="loadTasks"
+														@task-archived="loadTasks"
+													/>
+												</template>
 												</Draggable>
 
 												<Teleport v-if="tasksLoaded" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
