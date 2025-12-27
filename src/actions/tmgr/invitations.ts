@@ -35,3 +35,10 @@ export const revokeInvitation = async (
 	await $axios.delete(`workspaces/${workspaceId}/invitations/${invitationId}`);
 };
 
+export const resendInvitation = async (
+	workspaceId: number,
+	invitationId: number
+): Promise<void> => {
+	await $axios.post(`workspaces/${workspaceId}/invitations/${invitationId}/resend`);
+};
+
