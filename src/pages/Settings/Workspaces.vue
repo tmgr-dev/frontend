@@ -25,6 +25,7 @@
 	} from '@/actions/tmgr/workspaces';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import { FormSetting } from '@/actions/tmgr/settings.ts';
+	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -509,5 +510,9 @@
 				<SaveIcon /> Save
 			</Button>
 		</footer>
+
+		<div class="mt-8 border-t pt-6">
+			<WorkspaceInvitationsList />
+		</div>
 	</div>
 </template>
