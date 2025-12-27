@@ -64,7 +64,7 @@
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 				>
 					<div
-						class="w-full space-y-1 rounded-lg bg-white p-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
+						class="w-full space-y-1 rounded-lg bg-white px-4 pb-2 pt-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
 						<CategoryBadge
 							v-if="showCategoryBadges"
@@ -109,12 +109,22 @@
 								<Loader v-else is-mini />
 							</button>
 							
-							<AssigneeUsers
-								:assignees="task.assignees" 
-								avatarsClass="h-6 w-6" 
-								:show-assignee-controls="false"
-								class="ml-2"
-							/>
+						<AssigneeUsers
+							:assignees="task.assignees" 
+							avatarsClass="h-6 w-6" 
+							:show-assignee-controls="false"
+							class="ml-2"
+						/>
+						</div>
+
+						<div v-if="task.created_at" class="mt-1 flex gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
+							<span :title="'Created: ' + formatFullDate(task.created_at)">
+								{{ formatRelativeTime(task.created_at) }}
+							</span>
+							<span v-if="task.updated_at && task.updated_at !== task.created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate(task.updated_at)">
+								<span class="material-icons" style="font-size: 9px;">edit</span>
+								{{ formatRelativeTime(task.updated_at) }}
+							</span>
 						</div>
 					</div>
 
@@ -185,6 +195,7 @@
 
 <script lang="ts">
 	import downloadFile from '@/utils/downloadFile';
+	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
@@ -441,6 +452,22 @@
 			},
 			showConfirm(title, body, action) {
 				this.confirm = { title, body, action };
+			},
+			formatRelativeTime(dateString: string) {
+				return formatRelativeTime(dateString);
+			},
+			formatFullDate(dateString: string) {
+				if (!dateString) return '';
+				const date = new Date(dateString);
+				return date.toLocaleString('en-US', {
+					year: 'numeric',
+					month: 'long',
+					day: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit',
+					hour12: false
+				});
 			},
 			deleteSelectedTasks() {
 				const deleteMultipleTasks = async () => {
