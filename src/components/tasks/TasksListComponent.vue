@@ -363,55 +363,53 @@
 				})
 			}
 		},
-		watch: {
-			hasSelectable(v) {
-				if (!v) {
-					this.selected = [];
-					this.isShowSelectedTasksCommonTime = false;
-				}
-			},
-			'pagination.per_page': {
-				immediate: true,
-				handler(value) {
-					this.perPage = value;
-				}
+	watch: {
+		hasSelectable(v) {
+			if (!v) {
+				this.selected = [];
+				this.isShowSelectedTasksCommonTime = false;
 			}
 		},
-		mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
-		data: () => ({
-			showTaskForm: false,
-			modalTaskId: null,
-			confirm: null,
-			isShowSelectedTasksCommonTime: false,
-			selected: [],
-			selecting: [],
-			showTimeInModal: false,
-			timeForModal: null,
-			loadingActionsForMultipleTasks: [],
-			perPage: 10,
-			statuses: [] as Status[],
-			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
-			hoveredTaskId: null as number | null,
-			assigneePopoverOpen: {} as Record<number, boolean>,
-			workspaceMembers: [] as WorkspaceMember[],
-		}),
-		async created() {
-			try {
-				this.statuses = await getStatuses();
-			} catch (e) {
-				console.error('Failed to load statuses:', e);
+		'pagination.per_page': {
+			immediate: true,
+			handler(value) {
+				this.perPage = value;
 			}
 		},
-		watch: {
-			assigneePopoverOpen: {
-				deep: true,
-				handler(newVal) {
-					if (Object.values(newVal).some(v => v)) {
-						this.loadWorkspaceMembers();
-					}
+		assigneePopoverOpen: {
+			deep: true,
+			handler(newVal) {
+				if (Object.values(newVal).some(v => v)) {
+					this.loadWorkspaceMembers();
 				}
 			}
-		},
+		}
+	},
+	mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
+	data: () => ({
+		showTaskForm: false,
+		modalTaskId: null,
+		confirm: null,
+		isShowSelectedTasksCommonTime: false,
+		selected: [],
+		selecting: [],
+		showTimeInModal: false,
+		timeForModal: null,
+		loadingActionsForMultipleTasks: [],
+		perPage: 10,
+		statuses: [] as Status[],
+		backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
+		hoveredTaskId: null as number | null,
+		assigneePopoverOpen: {} as Record<number, boolean>,
+		workspaceMembers: [] as WorkspaceMember[],
+	}),
+	async created() {
+		try {
+			this.statuses = await getStatuses();
+		} catch (e) {
+			console.error('Failed to load statuses:', e);
+		}
+	},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
