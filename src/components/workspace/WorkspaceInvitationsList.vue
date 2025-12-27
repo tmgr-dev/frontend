@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted, computed } from 'vue';
+	import { ref, onMounted, computed, watch } from 'vue';
 	import { Button } from '@/components/ui/button';
 	import { getWorkspaceInvitations, revokeInvitation, resendInvitation, type WorkspaceInvitation } from '@/actions/tmgr/invitations';
 	import { useToast } from '@/components/ui/toast';
@@ -255,6 +255,12 @@
 
 	onMounted(() => {
 		loadInvitations();
+	});
+
+	watch(currentWorkspaceId, (newValue, oldValue) => {
+		if (newValue && newValue !== oldValue) {
+			loadInvitations();
+		}
 	});
 
 	defineExpose({
