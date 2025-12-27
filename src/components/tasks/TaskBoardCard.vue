@@ -10,9 +10,10 @@
 			<a
 				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
 				:href="getTaskUrl(task)"
+				:title="task.title?.length > 60 ? task.title : ''"
 				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
 			>
-				{{ task.title }}
+				{{ truncateTitle(task.title) }}
 			</a>
 
 			<div class="flex items-start gap-2">
@@ -250,6 +251,10 @@
 			}
 		},
 		methods: {
+			truncateTitle(title) {
+				if (!title) return '';
+				return title.length > 60 ? title.substring(0, 60) + '...' : title;
+			},
 			getTaskUrl(task) {
 				return generateTaskUrl(
 					task.id,
