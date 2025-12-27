@@ -187,7 +187,6 @@
 	import { generateTaskUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, updateTaskPartially, deleteTask } from '@/actions/tmgr/tasks';
-	import { getStatuses } from '@/actions/tmgr/statuses';
 
 	export default {
 		mixins: [TimePreparationMixin, TasksListMixin, SetTooltipData],
@@ -220,24 +219,27 @@
 			UserPlus,
 			Check,
 		},
-		emits: ['timer-started', 'timer-stopped', 'move-to-top', 'move-to-bottom', 'task-deleted', 'task-archived'],
-		props: {
-			task: {
-				type: Object,
-				default: () => ({}),
-			},
+	emits: ['timer-started', 'timer-stopped', 'move-to-top', 'move-to-bottom', 'task-deleted', 'task-archived'],
+	props: {
+		task: {
+			type: Object,
+			default: () => ({}),
 		},
-		data() {
-			return {
-				timerInterval: null,
-				currentDisplayTime: 0,
-				isLoadingTimer: false,
-				statuses: [],
-				isHovered: false,
-				showAssigneePopover: false,
-				workspaceMembers: [],
-			};
+		statuses: {
+			type: Array,
+			default: () => [],
 		},
+	},
+	data() {
+		return {
+			timerInterval: null,
+			currentDisplayTime: 0,
+			isLoadingTimer: false,
+			isHovered: false,
+			showAssigneePopover: false,
+			workspaceMembers: [],
+		};
+	},
 		computed: {
 			...mapState({
 				workspaces: state => state.workspaces || [],
@@ -315,14 +317,7 @@
 				}
 			},
 		},
-		async created() {
-			try {
-				this.statuses = await getStatuses();
-			} catch (e) {
-				console.error('Failed to load statuses:', e);
-			}
-		},
-		methods: {
+	methods: {
 			truncateTitle(title) {
 				if (!title) return '';
 				return title.length > 60 ? title.substring(0, 60) + '...' : title;
