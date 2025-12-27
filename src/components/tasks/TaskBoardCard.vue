@@ -5,6 +5,8 @@
 			'border-b-4 border-b-red-500 dark:border-b-red-400': isTimeExceeded,
 		}"
 		class="rounded border border-gray-200 bg-gray-100 px-3 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
+		@mouseenter="isHovered = true"
+		@mouseleave="isHovered = false"
 	>
 		<div class="flex justify-between gap-3">
 			<a
@@ -17,11 +19,52 @@
 			</a>
 
 			<div class="flex items-start gap-2">
-				<AssigneeUsers
-					:assignees="task.assignees"
-					:show-assignee-controls="false"
-					avatarsClass="h-6 w-6"
-				/>
+				<Popover v-model:open="showAssigneePopover">
+					<PopoverTrigger as-child>
+						<button
+							v-show="task.assignees?.length || isHovered || showAssigneePopover"
+							class="flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 group"
+							@click.stop
+							:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
+						>
+							<UserPlus 
+								v-if="showAssigneePopover || !task.assignees?.length" 
+								class="h-4 w-4" 
+							/>
+							<template v-else>
+								<UserPlus class="hidden h-4 w-4 group-hover:block" />
+								<AssigneeUsers
+									class="group-hover:hidden"
+									:assignees="task.assignees"
+									:show-assignee-controls="false"
+									avatarsClass="h-4 w-4"
+								/>
+							</template>
+						</button>
+					</PopoverTrigger>
+					<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
+						<Command>
+							<CommandInput placeholder="Search members..." class="h-9" />
+							<CommandEmpty>No members found.</CommandEmpty>
+							<CommandList>
+								<CommandGroup>
+									<CommandItem
+										v-for="member in workspaceMembers"
+										:key="member.id"
+										:value="member.id"
+										@select="toggleAssignee(member.id)"
+										class="cursor-pointer"
+									>
+										<Check
+											:class="['mr-2 h-4 w-4', isAssigned(member.id) ? 'opacity-100' : 'opacity-0']"
+										/>
+										{{ member.name }}
+									</CommandItem>
+								</CommandGroup>
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
 
 				<DropdownMenu>
 					<DropdownMenuTrigger as-child>
@@ -129,11 +172,14 @@
 		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
-	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye } from 'lucide-vue-next';
+	import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+	import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye, UserPlus, Check } from 'lucide-vue-next';
 	import { mapState } from 'vuex';
+	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { generateTaskUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
-	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, deleteTask } from '@/actions/tmgr/tasks';
+	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, updateTaskPartially, deleteTask } from '@/actions/tmgr/tasks';
 	import { getStatuses } from '@/actions/tmgr/statuses';
 
 	export default {
@@ -149,12 +195,23 @@
 			DropdownMenuItem,
 			DropdownMenuSeparator,
 			DropdownMenuTrigger,
+			Popover,
+			PopoverContent,
+			PopoverTrigger,
+			Command,
+			CommandEmpty,
+			CommandGroup,
+			CommandInput,
+			CommandItem,
+			CommandList,
 			MoreVertical,
 			ArrowUpToLine,
 			ArrowDownToLine,
 			Trash2,
 			ArchiveIcon,
 			Eye,
+			UserPlus,
+			Check,
 		},
 		emits: ['timer-started', 'timer-stopped', 'move-to-top', 'move-to-bottom', 'task-deleted', 'task-archived'],
 		props: {
@@ -169,6 +226,9 @@
 				currentDisplayTime: 0,
 				isLoadingTimer: false,
 				statuses: [],
+				isHovered: false,
+				showAssigneePopover: false,
+				workspaceMembers: [],
 			};
 		},
 		computed: {
@@ -242,6 +302,11 @@
 					this.currentDisplayTime = this.task.common_time || 0;
 				}
 			},
+			showAssigneePopover(newVal) {
+				if (newVal) {
+					this.loadWorkspaceMembers();
+				}
+			},
 		},
 		async created() {
 			try {
@@ -254,6 +319,43 @@
 			truncateTitle(title) {
 				if (!title) return '';
 				return title.length > 60 ? title.substring(0, 60) + '...' : title;
+			},
+			async loadWorkspaceMembers() {
+				if (this.workspaceMembers.length > 0) return;
+				try {
+					const workspaceId = this.currentWorkspaceId || this.$store.state.user?.settings?.find(s => s.key === 'current_workspace')?.value;
+					if (workspaceId) {
+						this.workspaceMembers = await getWorkspaceMembers(workspaceId);
+					}
+				} catch (e) {
+					console.error('Failed to load workspace members:', e);
+				}
+			},
+			isAssigned(memberId) {
+				return this.task.assignees?.some(a => a.id === memberId) || false;
+			},
+			async toggleAssignee(memberId) {
+				const currentAssigneeIds = this.task.assignees?.map(a => a.id) || [];
+				let newAssigneeIds;
+				
+				if (currentAssigneeIds.includes(memberId)) {
+					newAssigneeIds = currentAssigneeIds.filter(id => id !== memberId);
+				} else {
+					newAssigneeIds = [...currentAssigneeIds, memberId];
+				}
+				
+				try {
+					await updateTaskPartially(this.task.id, { assignees: newAssigneeIds });
+					const member = this.workspaceMembers.find(m => m.id === memberId);
+					if (currentAssigneeIds.includes(memberId)) {
+						this.task.assignees = this.task.assignees.filter(a => a.id !== memberId);
+					} else if (member) {
+						if (!this.task.assignees) this.task.assignees = [];
+						this.task.assignees.push(member);
+					}
+				} catch (e) {
+					console.error('Failed to update assignees:', e);
+				}
 			},
 			getTaskUrl(task) {
 				return generateTaskUrl(
