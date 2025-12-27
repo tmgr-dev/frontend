@@ -70,12 +70,12 @@
 					<div class="flex items-start gap-2">
 						<div 
 							v-if="draggable"
-							class="task-drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 pt-0.5"
+							class="task-drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 pt-0.5 select-none touch-none"
 							:draggable="true"
 							@dragstart="onDragStart($event, task)"
 							@click.stop
 						>
-							<span class="material-icons text-base">drag_indicator</span>
+							<span class="material-icons text-base pointer-events-none">drag_indicator</span>
 						</div>
 						<div class="flex-1">
 							<CategoryBadge
