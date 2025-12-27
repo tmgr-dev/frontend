@@ -197,11 +197,13 @@
 													group="tasks"
 													item-key="id"
 													@end="onEnd"
-													:disabled="isMobile"
+													:disabled="false"
 													:data-status="column.status.id"
 													:data-column-id="column.status.id"
 													class="board-card-draggable flex-1 min-h-0"
 													handle=".task-drag-handle"
+													:force-fallback="true"
+													:touch-start-threshold="3"
 												>
 													<template #item="{ element: task }">
 														<TaskBoardCard

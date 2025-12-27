@@ -10,8 +10,8 @@
 	>
 		<div class="flex items-center justify-between mb-2">
 			<div class="flex items-center gap-2">
-				<div class="task-drag-handle flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-					<span class="material-icons text-sm">drag_indicator</span>
+				<div class="task-drag-handle flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 select-none touch-none">
+					<span class="material-icons text-sm pointer-events-none">drag_indicator</span>
 				</div>
 
 				<template v-if="displayTask.common_time > 0">
