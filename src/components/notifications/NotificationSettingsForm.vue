@@ -184,7 +184,7 @@ export default defineComponent({
 
 		const hasTelegram = computed(() => {
 			const user = store.getters['user/getUser'];
-			return user?.telegram_id != null;
+			return user?.telegram_id != null || user?.telegram_username != null;
 		});
 
 		const loadSettings = async () => {
