@@ -6,12 +6,12 @@
 			<div class="w-full md:flex">
 				<div class="md:w-full">
 					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4">
-						<h3 class="mb-4 text-lg font-bold">Уведомления</h3>
+						<h3 class="mb-4 text-lg font-bold">Notifications</h3>
 						
 						<NotificationSettingsForm />
 
 						<div class="mt-8 border-t pt-6">
-							<h4 class="mb-4 text-md font-semibold">Push-уведомления (устаревшее)</h4>
+							<h4 class="mb-4 text-md font-semibold">Push notifications (legacy)</h4>
 							<div class="flex flex-col gap-3 md:w-1/2">
 								<button
 									v-if="!pusherBeamsUserId"
