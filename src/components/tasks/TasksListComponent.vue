@@ -117,13 +117,17 @@
 						/>
 						</div>
 
-						<div v-if="task.created_at" class="mt-1 flex gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
-							<span :title="'Created: ' + formatFullDate(task.created_at)">
+						<div class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
+							<span v-if="task.created_at" :title="'Created: ' + formatFullDate(task.created_at)">
 								{{ formatRelativeTime(task.created_at) }}
 							</span>
 							<span v-if="task.updated_at && task.updated_at !== task.created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate(task.updated_at)">
 								<span class="material-icons" style="font-size: 9px;">edit</span>
 								{{ formatRelativeTime(task.updated_at) }}
+							</span>
+							<span class="ml-auto flex items-center gap-1">
+								<span>{{ getStatusName(task) }}</span>
+								<span class="inline-block h-2 w-2 rounded-full" :style="{ backgroundColor: getStatusColor(task) }"></span>
 							</span>
 						</div>
 					</div>
@@ -329,6 +333,14 @@
 			truncateTitle(title: string) {
 				if (!title) return '';
 				return title.length > 60 ? title.substring(0, 60) + '...' : title;
+			},
+			getStatusColor(task: Task) {
+				const status = this.statuses.find((s: any) => s.id === task.status_id);
+				return status?.color || '#6b7280';
+			},
+			getStatusName(task: Task) {
+				const status = this.statuses.find((s: any) => s.id === task.status_id);
+				return status?.name || '';
 			},
 			closeTaskModal() {
 				this.$store.commit('closeTaskModal');
