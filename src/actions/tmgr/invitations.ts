@@ -12,6 +12,11 @@ export interface WorkspaceInvitation {
 	is_permanent: boolean;
 	created_at: string;
 	updated_at: string;
+	user?: {
+		id: number;
+		name: string;
+		email: string;
+	};
 }
 
 export const getWorkspaceInvitations = async (
