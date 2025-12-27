@@ -6,14 +6,24 @@
 			<div class="notifications-page">
 				<div class="page-header">
 					<h1 class="page-title">Notifications</h1>
-					<button
-						v-if="unreadCount > 0"
-						@click="handleMarkAllAsRead"
-						class="mark-all-btn"
-						:disabled="loading"
-					>
-						Mark all as read
-					</button>
+					<div class="header-actions">
+						<button
+							@click="handleGoToSettings"
+							class="settings-btn"
+							title="Notification Settings"
+						>
+							<Settings :size="20" />
+							<span>Settings</span>
+						</button>
+						<button
+							v-if="unreadCount > 0"
+							@click="handleMarkAllAsRead"
+							class="mark-all-btn"
+							:disabled="loading"
+						>
+							Mark all as read
+						</button>
+					</div>
 				</div>
 
 				<div v-if="loading && notifications.length === 0" class="loading-state">
@@ -59,7 +69,7 @@
 <script>
 import { defineComponent, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Bell } from 'lucide-vue-next';
+import { Bell, Settings } from 'lucide-vue-next';
 import BaseLayout from '@/components/layouts/BaseLayout.vue';
 import NotificationItem from '@/components/notifications/NotificationItem.vue';
 import { useNotifications } from '@/composable/useNotifications';
@@ -69,6 +79,7 @@ export default defineComponent({
 	components: {
 		BaseLayout,
 		Bell,
+		Settings,
 		NotificationItem,
 	},
 	setup() {
@@ -140,6 +151,10 @@ export default defineComponent({
 			loadNotifications();
 		};
 
+		const handleGoToSettings = () => {
+			router.push('/settings?tab=notification');
+		};
+
 		onMounted(() => {
 			loadNotifications();
 		});
@@ -155,6 +170,7 @@ export default defineComponent({
 			handleDelete,
 			handleLoadMore,
 			handleRetry,
+			handleGoToSettings,
 		};
 	},
 });
@@ -178,6 +194,40 @@ export default defineComponent({
 	font-size: 2rem;
 	font-weight: 700;
 	margin: 0;
+}
+
+.header-actions {
+	display: flex;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.settings-btn {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	background-color: white;
+	color: var(--tmgr-blue);
+	border: 2px solid var(--tmgr-blue);
+	border-radius: 0.375rem;
+	cursor: pointer;
+	font-weight: 500;
+	transition: background-color 0.2s;
+
+	&:hover {
+		background-color: rgba(59, 130, 246, 0.1);
+	}
+
+	.dark & {
+		background-color: transparent;
+		border-color: var(--tmgr-light-blue);
+		color: var(--tmgr-light-blue);
+
+		&:hover {
+			background-color: rgba(96, 165, 250, 0.1);
+		}
+	}
 }
 
 .mark-all-btn {
