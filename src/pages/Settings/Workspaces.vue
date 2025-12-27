@@ -89,9 +89,21 @@
 		}
 	}
 
+	function openInviteModalIfQueryParamHasInviteKey (query: any) {
+		if (query.hasOwnProperty('invite')) {
+			router.push(route.path);
+		}
+	}
+
 	watch(isOpen, (newValue) => {
 		if (!newValue) {
 			openCreateWorkspaceModalIfQueryParamHasCreateKey(route.query);
+		}
+	});
+
+	watch(isOpenInvitation, (newValue) => {
+		if (!newValue) {
+			openInviteModalIfQueryParamHasInviteKey(route.query);
 		}
 	});
 
@@ -100,6 +112,9 @@
 		(to) => {
 			if (!isOpen.value && to.query.hasOwnProperty('create')) {
 				isOpen.value = true;
+			}
+			if (!isOpenInvitation.value && to.query.hasOwnProperty('invite')) {
+				isOpenInvitation.value = true;
 			}
 		},
 		{
@@ -119,6 +134,7 @@
 			getUserSettingsV2(),
 		]);
 		isOpen.value = route.query.hasOwnProperty('create');
+		isOpenInvitation.value = route.query.hasOwnProperty('invite');
 		isLoading.value = false;
 		workspaces.value = loadedWorkspaces;
 		console.log(store.state.user.settings);

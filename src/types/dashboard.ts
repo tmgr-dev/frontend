@@ -618,6 +618,7 @@ export interface EventHandlers {
   onDashboardUpdated?: (statistics: Partial<DashboardStatistics>) => void;
   onTaskUpdated?: (task: RecentTask) => void;
   onMemberStatusChanged?: (member: TeamMemberStatus) => void;
+  onNotificationCreated?: (data: any) => void;
   onError?: (error: ActionError) => void;
   onReconnect?: () => void;
 }
