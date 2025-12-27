@@ -433,6 +433,16 @@ const routes = [
 		name: 'WorkspaceDashboard',
 	},
 	{
+		path: '/:workspace_code/notifications',
+		component: () => import('@/pages/NotificationsPage.vue'),
+		meta: {
+			title: 'Notifications',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		name: 'Notifications',
+	},
+	{
 		path: '/:workspace_code/list',
 		component: TasksListPage,
 		meta: {

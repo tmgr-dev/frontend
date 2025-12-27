@@ -49,15 +49,17 @@
 		FolderClosedIcon,
 		ClipboardListIcon,
 		LayoutDashboard,
+		UserPlus,
 	} from 'lucide-vue-next';
 	import { onBeforeMount, ref, computed, onMounted, watch } from 'vue';
-	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces.ts';
-	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user.ts';
+	import { getWorkspaces, Workspace, exitWorkspace } from '@/actions/tmgr/workspaces.ts';
+	import { getUser, updateUserSettingsV2, User, getUserSettings } from '@/actions/tmgr/user.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
 	import DarkMode from '@/components/general/DarkMode.vue';
 	import store from '@/store';
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
+	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
 
@@ -210,6 +212,36 @@
 		}
 	};
 
+	const handleExitWorkspace = async (workspace: Workspace, event: Event) => {
+		event.stopPropagation();
+		
+		if (!confirm(`Are you sure you want to leave "${workspace.name}" workspace?`)) {
+			return;
+		}
+		
+		try {
+			await exitWorkspace(workspace.id);
+			await getUserSettings();
+			window.location.reload();
+		} catch (error) {
+			console.error('Failed to exit workspace:', error);
+			alert('Failed to exit workspace. Please try again.');
+		}
+	};
+
+	const canLeaveWorkspace = (workspace: Workspace) => {
+		// Can't leave default workspace
+		if (workspace.type === 'default' || workspace.is_default) {
+			return false;
+		}
+		// Can leave if not the owner
+		if (workspace.user_id && workspace.user_id !== store.state.user?.id) {
+			return true;
+		}
+		// Show for all non-default workspaces
+		return true;
+	};
+
 	// Get the current workspace from store
 	const currentWorkspace = computed(() => {
 		const currentWorkspaceId = store.state.user?.settings?.find(
@@ -281,7 +313,16 @@
 										/>
 									</div>
 
-									{{ workspace.name }}
+									<span class="flex-1">{{ workspace.name }}</span>
+
+									<button
+										v-if="canLeaveWorkspace(workspace)"
+										@click.stop="handleExitWorkspace(workspace, $event)"
+										class="ml-auto flex size-6 items-center justify-center rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+										title="Leave workspace"
+									>
+										<LogOut class="size-4" />
+									</button>
 								</DropdownMenuItem>
 
 								<DropdownMenuSeparator />
@@ -299,6 +340,22 @@
 									</div>
 									<div class="font-medium text-muted-foreground">
 										Add workspace
+									</div>
+								</DropdownMenuItem>
+
+								<DropdownMenuItem
+									class="cursor-pointer gap-2 p-2"
+									@click="
+										$router.push('/settings/workspaces?invite')
+									"
+								>
+									<div
+										class="flex size-6 items-center justify-center rounded-md border bg-background"
+									>
+										<UserPlus class="size-4" />
+									</div>
+									<div class="font-medium text-muted-foreground">
+										Invite members
 									</div>
 								</DropdownMenuItem>
 							</DropdownMenuContent>
@@ -506,7 +563,7 @@
 				v-if="store.getters.isLoggedIn"
 				class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
 			>
-				<div class="flex items-center gap-2 px-4">
+				<div class="flex items-center gap-2 px-4 flex-1">
 					<SidebarTrigger class="-ml-1" />
 					<AddTaskModalTrigger class="-ml-1" />
 
@@ -529,6 +586,10 @@
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
+
+					<div class="ml-auto flex items-center gap-2">
+						<NotificationBell />
+					</div>
 				</div>
 			</header>
 

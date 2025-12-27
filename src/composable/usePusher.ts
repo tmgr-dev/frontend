@@ -241,6 +241,12 @@ export function usePusher(): UsePusherReturn {
         });
       }
 
+      if (events.onNotificationCreated) {
+        channel.listen('notification.created', (data: any) => {
+          events.onNotificationCreated?.(data);
+        });
+      }
+
       // Handle connection errors
       if (events.onError) {
         channel.error((error: any) => {

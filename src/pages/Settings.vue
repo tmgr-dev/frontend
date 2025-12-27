@@ -5,35 +5,43 @@
 		<template #body>
 			<div class="w-full md:flex">
 				<div class="md:w-full">
-					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4 md:w-1/2">
-						<h3 class="mb-4 text-lg font-bold">Notifications</h3>
-						<button
-							v-if="!pusherBeamsUserId"
-							class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
-							@click="togglePushes"
-						>
-							Web Pushes
-						</button>
+					<div v-if="isNotification" class="flex flex-col gap-3.5 p-4">
+						<h3 class="mb-4 text-lg font-bold">Уведомления</h3>
+						
+						<NotificationSettingsForm />
 
-						<button
-							class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
-							@click="testWebPushNotifications"
-						>
-							Test web push notifications
-						</button>
-						<Switcher
-							name="show_tooltips"
-							v-model="userSettings.showTooltips"
-							placeholder="Show tooltips"
-						/>
-						<div class="text-left">
-							<button
-								class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
-								type="button"
-								@click="updateSettings"
-							>
-								Save
-							</button>
+						<div class="mt-8 border-t pt-6">
+							<h4 class="mb-4 text-md font-semibold">Push-уведомления (устаревшее)</h4>
+							<div class="flex flex-col gap-3 md:w-1/2">
+								<button
+									v-if="!pusherBeamsUserId"
+									class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
+									@click="togglePushes"
+								>
+									Web Pushes
+								</button>
+
+								<button
+									class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
+									@click="testWebPushNotifications"
+								>
+									Test web push notifications
+								</button>
+								<Switcher
+									name="show_tooltips"
+									v-model="userSettings.showTooltips"
+									placeholder="Show tooltips"
+								/>
+								<div class="text-left">
+									<button
+										class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+										type="button"
+										@click="updateSettings"
+									>
+										Save
+									</button>
+								</div>
+							</div>
 						</div>
 					</div>
 
@@ -285,6 +293,7 @@
 	import TimeField from '@/components/general/TimeField.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import Profile from '@/pages/Profile.vue';
+	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
 	import { generateLink, unlink } from '@/actions/tmgr/telegram';
 	import {
 		generateSmartDeviceToken,
@@ -311,6 +320,7 @@
 			Button,
 			Confirm,
 			CurrentWorkspace,
+			NotificationSettingsForm,
 		},
 		created() {
 			this.handleTabFromQuery();
