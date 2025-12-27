@@ -201,11 +201,12 @@
 													:data-status="column.status.id"
 													:data-column-id="column.status.id"
 													class="board-card-draggable flex-1 min-h-0"
+													handle=".task-drag-handle"
 												>
 													<template #item="{ element: task }">
 														<TaskBoardCard
 															:task="task"
-															class="my-5 cursor-move"
+															class="my-5"
 															:data-task="jsonEncode(task)"
 															@move-to-top="handleMoveToTop(task, column)"
 															@move-to-bottom="handleMoveToBottom(task, column)"
