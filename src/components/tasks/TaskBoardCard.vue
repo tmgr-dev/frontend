@@ -8,17 +8,47 @@
 		@mouseenter="isHovered = true"
 		@mouseleave="isHovered = false"
 	>
-		<div class="flex justify-between gap-3">
-			<a
-				class="w-44 break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-				:href="getTaskUrl(task)"
-				:title="task.title?.length > 60 ? task.title : ''"
-				@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
-			>
-				{{ truncateTitle(task.title) }}
-			</a>
+		<div class="flex items-center justify-between mb-2">
+			<div class="flex items-center gap-2">
+				<div class="task-drag-handle flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+					<span class="material-icons text-sm">drag_indicator</span>
+				</div>
 
-			<div class="flex items-start gap-2">
+				<template v-if="displayTask.common_time > 0">
+					<span
+						:class="isTimeExceeded ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
+						class="material-icons text-sm"
+					>
+						alarm
+					</span>
+					<span class="text-xs text-gray-600 dark:text-gray-400">
+						{{ secondsToHumanReadableString(displayTask.common_time) }}
+					</span>
+				</template>
+				
+				<button
+					v-if="!task.start_time"
+					v-tooltip.top="setTooltipData('Start timer')"
+					:disabled="isLoadingTimer"
+					class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
+					@click.stop="handleStartTimer"
+				>
+					<span v-if="!isLoadingTimer" class="material-icons text-xs leading-none">play_arrow</span>
+					<Loader v-else is-mini />
+				</button>
+				<button
+					v-else
+					v-tooltip.top="setTooltipData('Stop timer')"
+					:disabled="isLoadingTimer"
+					class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
+					@click.stop="handleStopTimer"
+				>
+					<span v-if="!isLoadingTimer" class="material-icons text-xs leading-none">stop</span>
+					<Loader v-else is-mini />
+				</button>
+			</div>
+
+			<div class="flex items-center gap-2">
 				<Popover v-model:open="showAssigneePopover">
 					<PopoverTrigger as-child>
 						<button
@@ -104,39 +134,16 @@
 			</div>
 		</div>
 
-		<div class="mt-4 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<span
-					:class="isTimeExceeded ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
-					class="material-icons text-sm"
-				>
-					alarm
-				</span>
-				<span class="text-sm text-gray-600 dark:text-gray-400">
-					{{ secondsToHumanReadableString(displayTask.common_time) }}
-				</span>
-				<button
-					v-if="!task.start_time"
-					v-tooltip.top="setTooltipData('Start timer')"
-					:disabled="isLoadingTimer"
-					class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
-					@click.stop="handleStartTimer"
-				>
-					<span v-if="!isLoadingTimer" class="material-icons text-sm leading-none">play_arrow</span>
-					<Loader v-else is-mini />
-				</button>
-				<button
-					v-else
-					v-tooltip.top="setTooltipData('Stop timer')"
-					:disabled="isLoadingTimer"
-					class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
-					@click.stop="handleStopTimer"
-				>
-					<span v-if="!isLoadingTimer" class="material-icons text-sm leading-none">stop</span>
-					<Loader v-else is-mini />
-				</button>
-			</div>
+		<a
+			class="block break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
+			:href="getTaskUrl(task)"
+			:title="task.title?.length > 60 ? task.title : ''"
+			@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
+		>
+			{{ truncateTitle(task.title) }}
+		</a>
 
+		<div class="mt-2">
 			<CategoryBadge
 				class="flex-row-reverse"
 				:category="task.category"

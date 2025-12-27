@@ -45,9 +45,8 @@
 					'opacity-50 hover:opacity-100': task.deleted_at,
 				}"
 				:data-task-id="task.id"
-				:draggable="draggable"
+				:draggable="false"
 				class="selectable relative mt-2 w-full rounded-lg px-2"
-				@dragstart="onDragStart($event, task)"
 			>
 				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
@@ -68,15 +67,28 @@
 					<div
 						class="w-full space-y-1 rounded-lg bg-white px-4 pb-2 pt-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
-						<CategoryBadge
-							v-if="showCategoryBadges"
-							class="shrink-0 self-start"
-							:category="task.category"
-						/>
-
-						<div class="text-left text-sm font-medium lg:text-lg" :title="task.title?.length > 60 ? task.title : ''">
-							{{ truncateTitle(task.title) }}
+					<div class="flex items-start gap-2">
+						<div 
+							v-if="draggable"
+							class="task-drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 pt-0.5"
+							:draggable="true"
+							@dragstart="onDragStart($event, task)"
+							@click.stop
+						>
+							<span class="material-icons text-base">drag_indicator</span>
 						</div>
+						<div class="flex-1">
+							<CategoryBadge
+								v-if="showCategoryBadges"
+								class="shrink-0 self-start"
+								:category="task.category"
+							/>
+
+							<div class="text-left text-sm font-medium lg:text-lg" :title="task.title?.length > 60 ? task.title : ''">
+								{{ truncateTitle(task.title) }}
+							</div>
+						</div>
+					</div>
 
 						<div class="flex items-center gap-2">
 							<span
