@@ -380,6 +380,49 @@
 					console.error('Error changing workspace:', error);
 				}
 			},
+			getCurrentWorkspaceIndex() {
+				const workspaces = this.$store.state.workspaces;
+				if (!workspaces || !workspaces.length) return -1;
+				
+				const currentWorkspaceId = this.$store.state.user?.settings?.find(
+					setting => setting.key === 'current_workspace'
+				)?.value;
+				
+				return workspaces.findIndex(
+					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				);
+			},
+			handleWorkspaceHotkeys(event) {
+				if (!this.$store.getters.isLoggedIn) return;
+				
+				const workspaces = this.$store.state.workspaces;
+				if (!workspaces || !workspaces.length) return;
+				
+				const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+				
+				if (isCtrlOrCmd && event.altKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+					event.preventDefault();
+					
+					const currentIndex = this.getCurrentWorkspaceIndex();
+					if (currentIndex === -1) return;
+					
+					let targetIndex;
+					if (event.key === 'ArrowRight') {
+						targetIndex = (currentIndex + 1) % workspaces.length;
+					} else {
+						targetIndex = currentIndex === 0 ? workspaces.length - 1 : currentIndex - 1;
+					}
+					
+					this.changeWorkspace(workspaces[targetIndex]);
+				} else if (isCtrlOrCmd && /^[1-9]$/.test(event.key)) {
+					event.preventDefault();
+					
+					const workspaceIndex = parseInt(event.key) - 1;
+					if (workspaceIndex < workspaces.length) {
+						this.changeWorkspace(workspaces[workspaceIndex]);
+					}
+				}
+			},
 		},
 		async created() {
 			if (store.state.user) {
@@ -436,6 +479,10 @@
 		},
 		mounted() {
 			this.initBodyHeight();
+			window.addEventListener('keydown', this.handleWorkspaceHotkeys);
+		},
+		beforeUnmount() {
+			window.removeEventListener('keydown', this.handleWorkspaceHotkeys);
 		},
 	});
 </script>
