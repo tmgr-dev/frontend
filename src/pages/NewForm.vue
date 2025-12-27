@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, onBeforeMount, ref, toRef, watch } from 'vue';
+	import { computed, nextTick, onBeforeMount, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -21,7 +21,6 @@
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import BlockEditor from '@/components/BlockEditor.vue';
-	import TextField from '@/components/general/TextField.vue';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
@@ -171,6 +170,17 @@
 		() => store.state.workspaceStatuses as Status[],
 	);
 	const permissionDenied = ref(false);
+	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
+
+	const autoResizeTitle = () => {
+		if (titleTextarea.value) {
+			titleTextarea.value.style.height = 'auto';
+			titleTextarea.value.style.height = titleTextarea.value.scrollHeight + 'px';
+		}
+	};
+
+	const isTitleNearLimit = computed(() => (form.value.title?.length || 0) >= 230);
+	const isTitleAtLimit = computed(() => (form.value.title?.length || 0) >= 255);
 
 	const statusIdStr = computed({
 		get: () => form.value.status_id?.toString() || '',
@@ -407,6 +417,8 @@
 				} else {
 					assignees.value = [];
 				}
+
+				nextTick(() => autoResizeTitle());
 			}
 		} catch (e: any) {
 			console.error('Error loading task data:', e);
@@ -901,12 +913,22 @@
 				</div>
 			</header>
 
-			<TextField
-				v-model="form.title"
-				class="w-full"
-				input-class="w-full text-lg font-bold border-0 !px-0 !bg-transparent"
-				placeholder="Task name"
-			/>
+			<div class="relative">
+				<textarea
+					v-model="form.title"
+					ref="titleTextarea"
+					class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
+					:class="{ 'text-red-500': isTitleAtLimit }"
+					placeholder="Task name"
+					rows="1"
+					maxlength="255"
+					@input="autoResizeTitle"
+				/>
+				<div v-if="isTitleNearLimit" class="mt-1 flex items-center gap-1 text-xs" :class="isTitleAtLimit ? 'text-red-500' : 'text-orange-400'">
+					<span class="material-icons" style="font-size: 14px;">warning</span>
+					<span>{{ form.title?.length || 0 }}/255 characters</span>
+				</div>
+			</div>
 
 			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
 				<CategoriesCombobox

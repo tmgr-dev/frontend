@@ -72,8 +72,8 @@
 							:category="task.category"
 						/>
 
-						<div class="text-left text-sm font-medium lg:text-lg">
-							{{ task.title }}
+						<div class="text-left text-sm font-medium lg:text-lg" :title="task.title?.length > 60 ? task.title : ''">
+							{{ truncateTitle(task.title) }}
 						</div>
 
 						<div class="flex items-center gap-2">
@@ -326,6 +326,10 @@
 			}
 		},
 		methods: {
+			truncateTitle(title: string) {
+				if (!title) return '';
+				return title.length > 60 ? title.substring(0, 60) + '...' : title;
+			},
 			closeTaskModal() {
 				this.$store.commit('closeTaskModal');
 			},
