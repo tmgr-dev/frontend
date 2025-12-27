@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="relative m-auto font-sans text-base text-white"
+		class="relative m-auto font-sans text-xs text-white"
 		v-tooltip.bottom="`${assignee.name}`"
 	>
 		{{ assignee.name.charAt(0).toUpperCase() }}

@@ -62,6 +62,8 @@
 					}"
 					class="w-full rounded-lg shadow-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
+					@mouseenter="hoveredTaskId = task.id"
+					@mouseleave="hoveredTaskId = null"
 				>
 					<div
 						class="w-full space-y-1 rounded-lg bg-white px-4 pb-2 pt-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
@@ -109,12 +111,52 @@
 								<Loader v-else is-mini />
 							</button>
 							
-						<AssigneeUsers
-							:assignees="task.assignees" 
-							avatarsClass="h-6 w-6" 
-							:show-assignee-controls="false"
-							class="ml-2"
-						/>
+						<Popover v-model:open="assigneePopoverOpen[task.id]">
+								<PopoverTrigger as-child>
+									<button
+										v-show="task.assignees?.length || hoveredTaskId === task.id || assigneePopoverOpen[task.id]"
+										class="ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 group"
+										@click.stop
+										:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
+									>
+										<UserPlus 
+											v-if="assigneePopoverOpen[task.id] || !task.assignees?.length" 
+											class="h-5 w-5 text-gray-500 dark:text-gray-400" 
+										/>
+										<template v-else>
+											<UserPlus class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400" />
+											<AssigneeUsers
+												class="group-hover:hidden"
+												:assignees="task.assignees" 
+												avatarsClass="h-6 w-6" 
+												:show-assignee-controls="false"
+											/>
+										</template>
+									</button>
+								</PopoverTrigger>
+								<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
+									<Command>
+										<CommandInput placeholder="Search members..." class="h-9" />
+										<CommandEmpty>No members found.</CommandEmpty>
+										<CommandList>
+											<CommandGroup>
+												<CommandItem
+													v-for="member in workspaceMembers"
+													:key="member.id"
+													:value="member.id"
+													@select="toggleAssignee(task, member.id)"
+													class="cursor-pointer"
+												>
+													<Check
+														:class="['mr-2 h-4 w-4', isAssignedTo(task, member.id) ? 'opacity-100' : 'opacity-0']"
+													/>
+													{{ member.name }}
+												</CommandItem>
+											</CommandGroup>
+										</CommandList>
+									</Command>
+								</PopoverContent>
+							</Popover>
 						</div>
 
 						<div class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
@@ -216,14 +258,19 @@
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
+		updateTaskPartially,
 		Task,
 		PaginationMeta,
 	} from '@/actions/tmgr/tasks';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
+	import { getWorkspaceMembers, WorkspaceMember } from '@/actions/tmgr/workspaces';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Button from '@/components/general/Button.vue';
 	import { PropType } from 'vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+	import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+	import { UserPlus, Check } from 'lucide-vue-next';
 
 	export default {
 		name: 'TasksListComponent',
@@ -237,7 +284,18 @@
 			Loader,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
-			AssigneeUsers
+			AssigneeUsers,
+			Popover,
+			PopoverContent,
+			PopoverTrigger,
+			Command,
+			CommandEmpty,
+			CommandGroup,
+			CommandInput,
+			CommandItem,
+			CommandList,
+			UserPlus,
+			Check,
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
@@ -320,7 +378,10 @@
 			loadingActionsForMultipleTasks: [],
 			perPage: 10,
 			statuses: [] as Status[],
-			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null
+			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
+			hoveredTaskId: null as number | null,
+			assigneePopoverOpen: {} as Record<number, boolean>,
+			workspaceMembers: [] as WorkspaceMember[],
 		}),
 		async created() {
 			try {
@@ -329,10 +390,31 @@
 				console.error('Failed to load statuses:', e);
 			}
 		},
+		watch: {
+			assigneePopoverOpen: {
+				deep: true,
+				handler(newVal) {
+					if (Object.values(newVal).some(v => v)) {
+						this.loadWorkspaceMembers();
+					}
+				}
+			}
+		},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
 				return title.length > 60 ? title.substring(0, 60) + '...' : title;
+			},
+			async loadWorkspaceMembers() {
+				if (this.workspaceMembers.length > 0) return;
+				try {
+					const workspaceId = this.$store.state.user?.settings?.find((s: any) => s.key === 'current_workspace')?.value;
+					if (workspaceId) {
+						this.workspaceMembers = await getWorkspaceMembers(workspaceId);
+					}
+				} catch (e) {
+					console.error('Failed to load workspace members:', e);
+				}
 			},
 			getStatusColor(task: Task) {
 				const status = this.statuses.find((s: any) => s.id === task.status_id);
@@ -341,6 +423,32 @@
 			getStatusName(task: Task) {
 				const status = this.statuses.find((s: any) => s.id === task.status_id);
 				return status?.name || '';
+			},
+			isAssignedTo(task: Task, memberId: number) {
+				return task.assignees?.some((a: any) => a.id === memberId) || false;
+			},
+			async toggleAssignee(task: Task, memberId: number) {
+				const currentAssigneeIds = task.assignees?.map((a: any) => a.id) || [];
+				let newAssigneeIds: number[];
+				
+				if (currentAssigneeIds.includes(memberId)) {
+					newAssigneeIds = currentAssigneeIds.filter((id: number) => id !== memberId);
+				} else {
+					newAssigneeIds = [...currentAssigneeIds, memberId];
+				}
+				
+				try {
+					await updateTaskPartially(task.id!, { assignees: newAssigneeIds } as any);
+					const member = this.workspaceMembers.find((m: WorkspaceMember) => m.id === memberId);
+					if (currentAssigneeIds.includes(memberId)) {
+						task.assignees = task.assignees?.filter((a: any) => a.id !== memberId);
+					} else if (member) {
+						if (!task.assignees) task.assignees = [];
+						(task.assignees as any[]).push(member);
+					}
+				} catch (e) {
+					console.error('Failed to update assignees:', e);
+				}
 			},
 			closeTaskModal() {
 				this.$store.commit('closeTaskModal');
