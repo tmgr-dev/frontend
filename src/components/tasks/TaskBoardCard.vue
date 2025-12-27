@@ -4,7 +4,7 @@
 			'border-l-8 border-solid border-green-600 dark:border-green-500': task.start_time,
 			'border-b-4 border-b-red-500 dark:border-b-red-400': isTimeExceeded,
 		}"
-		class="rounded border border-gray-200 bg-gray-100 px-3 pb-5 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
+		class="rounded border border-gray-200 bg-gray-100 px-3 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
 	>
 		<div class="flex justify-between gap-3">
 			<a
@@ -99,6 +99,16 @@
 				:status-id="task.status_id"
 			/>
 		</div>
+
+		<div class="mt-2 flex flex-wrap gap-x-2 pb-2 text-[9px] text-gray-400/60 dark:text-gray-500/60">
+			<span v-if="task.created_at" :title="'Created: ' + formatFullDate(task.created_at)">
+				{{ formatRelativeTime(task.created_at) }}
+			</span>
+			<span v-if="task.updated_at && task.updated_at !== task.created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate(task.updated_at)">
+				<span class="material-icons" style="font-size: 10px;">edit</span>
+				{{ formatRelativeTime(task.updated_at) }}
+			</span>
+		</div>
 	</div>
 </template>
 
@@ -121,6 +131,7 @@
 	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye } from 'lucide-vue-next';
 	import { mapState } from 'vuex';
 	import { generateTaskUrl } from '@/utils/url';
+	import { formatRelativeTime } from '@/utils/timeUtils';
 	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, deleteTask } from '@/actions/tmgr/tasks';
 	import { getStatuses } from '@/actions/tmgr/statuses';
 
@@ -255,6 +266,22 @@
 					return parseInt(setting.value || setting.pivot?.value, 10);
 				}
 				return 0;
+			},
+			formatRelativeTime(dateString) {
+				return formatRelativeTime(dateString);
+			},
+			formatFullDate(dateString) {
+				if (!dateString) return '';
+				const date = new Date(dateString);
+				return date.toLocaleString('en-US', {
+					year: 'numeric',
+					month: 'long',
+					day: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit',
+					hour12: false
+				});
 			},
 			async handleStartTimer() {
 				if (!this.task.id || this.isLoadingTimer) return;

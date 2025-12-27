@@ -47,6 +47,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
+	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -754,6 +755,20 @@
 
 	const currentUserId = computed(() => store.state.user?.id);
 
+	const formatFullDate = (dateString: string) => {
+		if (!dateString) return '';
+		const date = new Date(dateString);
+		return date.toLocaleString('en-US', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false
+		});
+	};
+
 	const isAssignedToMe = computed(() => {
 		if (!currentUserId.value) return false;
 		return assignees.value.includes(currentUserId.value);
@@ -1209,6 +1224,15 @@
 					>
 						<TrashIcon class="size-5" />
 					</button>
+				</div>
+				<div v-if="taskId || form.id" class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-gray-400/70 dark:text-gray-500/70">
+					<span v-if="(form as any).created_at" :title="'Created: ' + formatFullDate((form as any).created_at)">
+						{{ formatRelativeTime((form as any).created_at) }}
+					</span>
+					<span v-if="(form as any).updated_at && (form as any).updated_at !== (form as any).created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate((form as any).updated_at)">
+						<span class="material-icons" style="font-size: 11px;">edit</span>
+						{{ formatRelativeTime((form as any).updated_at) }}
+					</span>
 				</div>
 			</footer>
 		</div>
