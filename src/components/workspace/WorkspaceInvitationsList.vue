@@ -83,15 +83,27 @@
 					</p>
 				</div>
 
-				<Button
-					variant="destructive"
-					size="sm"
-					@click="handleRevoke(invitation.id)"
-					:disabled="revoking === invitation.id || invitation.is_accepted || isExpired(invitation)"
-					:title="isExpired(invitation) ? 'Cannot revoke expired invitation' : invitation.is_accepted ? 'Cannot revoke accepted invitation' : 'Revoke invitation'"
-				>
-					{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}
-				</Button>
+				<div class="flex gap-2">
+					<Button
+						v-if="invitation.email && !invitation.is_accepted && !isExpired(invitation)"
+						variant="outline"
+						size="sm"
+						@click="handleResend(invitation.id)"
+						:disabled="resending === invitation.id"
+						title="Resend invitation email"
+					>
+						{{ resending === invitation.id ? 'Sending...' : 'Resend' }}
+					</Button>
+					<Button
+						variant="destructive"
+						size="sm"
+						@click="handleRevoke(invitation.id)"
+						:disabled="revoking === invitation.id || invitation.is_accepted || isExpired(invitation)"
+						:title="isExpired(invitation) ? 'Cannot revoke expired invitation' : invitation.is_accepted ? 'Cannot revoke accepted invitation' : 'Revoke invitation'"
+					>
+						{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}
+					</Button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -100,7 +112,7 @@
 <script setup lang="ts">
 	import { ref, onMounted, computed } from 'vue';
 	import { Button } from '@/components/ui/button';
-	import { getWorkspaceInvitations, revokeInvitation, type WorkspaceInvitation } from '@/actions/tmgr/invitations';
+	import { getWorkspaceInvitations, revokeInvitation, resendInvitation, type WorkspaceInvitation } from '@/actions/tmgr/invitations';
 	import { useToast } from '@/components/ui/toast';
 	import { CircleCheckBigIcon } from 'lucide-vue-next';
 	import store from '@/store';
@@ -110,6 +122,7 @@
 	const loading = ref(false);
 	const error = ref<string | null>(null);
 	const revoking = ref<number | null>(null);
+	const resending = ref<number | null>(null);
 	const currentFilter = ref<'all' | 'active' | 'expired' | 'accepted'>('all');
 
 	const filters = [
@@ -199,6 +212,34 @@
 			console.error('Error revoking invitation:', err);
 		} finally {
 			revoking.value = null;
+		}
+	};
+
+	const handleResend = async (invitationId: number) => {
+		if (!currentWorkspaceId.value) return;
+
+		resending.value = invitationId;
+
+		try {
+			await resendInvitation(Number(currentWorkspaceId.value), invitationId);
+			
+			toaster.toast({
+				title: 'Invitation resent',
+				description: 'Email has been sent successfully',
+				action: CircleCheckBigIcon,
+				class: 'bg-green-500 border-0 text-white',
+			});
+		} catch (err: any) {
+			const errorMessage = err.response?.data?.message || 'Failed to resend invitation';
+			error.value = errorMessage;
+			toaster.toast({
+				title: 'Error',
+				description: errorMessage,
+				variant: 'destructive',
+			});
+			console.error('Error resending invitation:', err);
+		} finally {
+			resending.value = null;
 		}
 	};
 
