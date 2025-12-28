@@ -117,6 +117,15 @@
 		}
 	});
 
+	watch(
+		() => store.state.reloadTasksKey,
+		() => {
+			if (route.params.id) {
+				loadTasks();
+			}
+		}
+	);
+
 	function setLoadingActions(tasks) {
 		tasks.forEach((task) => {
 			isLoadingActions.value[`hide-${task.id}`] = false;
