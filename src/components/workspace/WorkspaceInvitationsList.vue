@@ -107,11 +107,21 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- Revoke Confirm Dialog -->
+	<Confirm
+		v-if="showRevokeConfirm"
+		title="Revoke invitation"
+		body="Are you sure you want to revoke this invitation?"
+		@on-ok="confirmRevoke"
+		@on-cancel="cancelRevoke"
+	/>
 </template>
 
 <script setup lang="ts">
 	import { ref, onMounted, computed, watch } from 'vue';
 	import { Button } from '@/components/ui/button';
+	import Confirm from '@/components/general/Confirm.vue';
 	import { getWorkspaceInvitations, revokeInvitation, resendInvitation, type WorkspaceInvitation } from '@/actions/tmgr/invitations';
 	import { useToast } from '@/components/ui/toast';
 	import { CircleCheckBigIcon } from 'lucide-vue-next';
@@ -124,6 +134,8 @@
 	const revoking = ref<number | null>(null);
 	const resending = ref<number | null>(null);
 	const currentFilter = ref<'all' | 'active' | 'expired' | 'accepted'>('all');
+	const showRevokeConfirm = ref(false);
+	const invitationToRevoke = ref<number | null>(null);
 
 	const filters = [
 		{ label: 'All', value: 'all' as const },
@@ -186,15 +198,20 @@
 		}
 	};
 
-	const handleRevoke = async (invitationId: number) => {
+	const handleRevoke = (invitationId: number) => {
 		if (!currentWorkspaceId.value) return;
-		if (!confirm('Are you sure you want to revoke this invitation?')) return;
+		invitationToRevoke.value = invitationId;
+		showRevokeConfirm.value = true;
+	};
 
-		revoking.value = invitationId;
+	const confirmRevoke = async () => {
+		if (!currentWorkspaceId.value || !invitationToRevoke.value) return;
+
+		revoking.value = invitationToRevoke.value;
 
 		try {
-			await revokeInvitation(Number(currentWorkspaceId.value), invitationId);
-			invitations.value = invitations.value.filter(inv => inv.id !== invitationId);
+			await revokeInvitation(Number(currentWorkspaceId.value), invitationToRevoke.value);
+			invitations.value = invitations.value.filter(inv => inv.id !== invitationToRevoke.value);
 			
 			toaster.toast({
 				title: 'Invitation revoked',
@@ -212,7 +229,14 @@
 			console.error('Error revoking invitation:', err);
 		} finally {
 			revoking.value = null;
+			showRevokeConfirm.value = false;
+			invitationToRevoke.value = null;
 		}
+	};
+
+	const cancelRevoke = () => {
+		showRevokeConfirm.value = false;
+		invitationToRevoke.value = null;
 	};
 
 	const handleResend = async (invitationId: number) => {
