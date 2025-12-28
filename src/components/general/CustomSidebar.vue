@@ -56,6 +56,7 @@
 	import { getUser, updateUserSettingsV2, User, getUserSettings } from '@/actions/tmgr/user.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
 	import DarkMode from '@/components/general/DarkMode.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import store from '@/store';
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
@@ -68,6 +69,8 @@
 	const user = ref<User>({} as User);
 	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>([]);
+	const showExitConfirm = ref(false);
+	const workspaceToExit = ref<Workspace | null>(null);
 
 	const data = {
 		user: {
@@ -212,21 +215,31 @@
 		}
 	};
 
-	const handleExitWorkspace = async (workspace: Workspace, event: Event) => {
+	const handleExitWorkspace = (workspace: Workspace, event: Event) => {
 		event.stopPropagation();
-		
-		if (!confirm(`Are you sure you want to leave "${workspace.name}" workspace?`)) {
-			return;
-		}
+		workspaceToExit.value = workspace;
+		showExitConfirm.value = true;
+	};
+
+	const confirmExitWorkspace = async () => {
+		if (!workspaceToExit.value) return;
 		
 		try {
-			await exitWorkspace(workspace.id);
+			await exitWorkspace(workspaceToExit.value.id);
 			await getUserSettings();
 			window.location.reload();
 		} catch (error) {
 			console.error('Failed to exit workspace:', error);
 			alert('Failed to exit workspace. Please try again.');
+		} finally {
+			showExitConfirm.value = false;
+			workspaceToExit.value = null;
 		}
+	};
+
+	const cancelExitWorkspace = () => {
+		showExitConfirm.value = false;
+		workspaceToExit.value = null;
 	};
 
 	const canLeaveWorkspace = (workspace: Workspace) => {
@@ -598,4 +611,13 @@
 			</div>
 		</SidebarInset>
 	</SidebarProvider>
+
+	<!-- Exit Workspace Confirm Dialog -->
+	<Confirm
+		v-if="showExitConfirm"
+		title="Leave workspace"
+		:body="`Are you sure you want to leave '${workspaceToExit?.name}' workspace?`"
+		@on-ok="confirmExitWorkspace"
+		@on-cancel="cancelExitWorkspace"
+	/>
 </template>
