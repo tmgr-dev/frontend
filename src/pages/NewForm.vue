@@ -153,6 +153,11 @@
 		checkpoints: [],
 	});
 	const taskId = computed(() => {
+		// If we're in task creation mode, don't use route params (they might be category ID)
+		if (store.state.showCreatingTaskModal && !modalTaskId.value) {
+			return undefined;
+		}
+		
 		// Handle all URL formats: '/19', '/workspace/tasks/19', '/:workspace_code/:category_code/:task_number'
 		const id =
 			modalTaskId.value ||
