@@ -98,12 +98,12 @@
 											>
 												person_remove
 											</span>
-										</div>
 									</div>
 								</div>
 							</div>
+						</div>
 
-							<div class="mt-6 flex flex-nowrap items-center">
+						<div class="mt-6 flex flex-nowrap items-center">
 								<button
 									type="button"
 									@click="closingModal"
@@ -399,6 +399,16 @@
 					:isDataEdited="isDataEdited"
 					ref="commentsChat"
 				/>
+
+				<!-- Task Relations -->
+				<div class="mt-6">
+					<TaskRelations
+						v-if="form.id"
+						:task-id="form.id"
+						:relations="form.relationTypeWithTask"
+						@update="reloadTask"
+					/>
+				</div>
 			</section>
 		</div>
 
@@ -444,6 +454,7 @@
 	import TaskActions from '@/components/tasks/TaskActions.vue';
 	import Countdown from '@/components/general/Countdown.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import {
 		deleteTask,
 		getTask,
@@ -484,6 +495,7 @@
 			Checkpoints,
 			CommentsChat,
 			Modal,
+			TaskRelations,
 			AssigneeUsers,
 			TimeField,
 			TextField,
@@ -1127,36 +1139,45 @@
 				}
 				this.form.checkpoints[this.form.checkpoints.length - 1].end = seconds;
 			},
-			async initComponent() {
-				this.loading = true;
-				
-				// Load workspaces
+		async reloadTask() {
+			if (this.taskId) {
 				try {
-					this.workspaces = await this.$store.dispatch('loadWorkspaces');
-				} catch (error) {
-					console.error('Failed to load workspaces:', error);
+					this.form = await getTask(this.taskId);
+				} catch (e) {
+					console.error('Failed to reload task:', e);
 				}
-				
-				if (this.isCreatingTask) {
-					this.form = {
-						title: '',
-						description: '',
-						assignees: [],
-						project_category_id: this.projectCategoryId,
-					};
-				} else if (this.taskId) {
-					try {
-						this.form = await getTask(this.taskId);
-					} catch (e) {
-						// eslint-disable-next-line
-						console.error(e);
-						
-						// redirect to a 404
-						if (e.response && e.response.status === 404) {
-							this.$router.push('/not-found');
-						}
+			}
+		},
+		async initComponent() {
+			this.loading = true;
+			
+			// Load workspaces
+			try {
+				this.workspaces = await this.$store.dispatch('loadWorkspaces');
+			} catch (error) {
+				console.error('Failed to load workspaces:', error);
+			}
+			
+			if (this.isCreatingTask) {
+				this.form = {
+					title: '',
+					description: '',
+					assignees: [],
+					project_category_id: this.projectCategoryId,
+				};
+			} else if (this.taskId) {
+				try {
+					this.form = await getTask(this.taskId);
+				} catch (e) {
+					// eslint-disable-next-line
+					console.error(e);
+					
+					// redirect to a 404
+					if (e.response && e.response.status === 404) {
+						this.$router.push('/not-found');
 					}
 				}
+			}
 
 				if (this.taskId) {
 					await this.loadModel();

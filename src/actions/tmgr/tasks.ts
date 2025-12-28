@@ -39,6 +39,7 @@ export interface Task {
 	scheduled_date?: string | null;
 	scheduled_time?: { hours: number; minutes: number } | null;
 	recurrence?: Record<string, any> | null;
+	relationTypeWithTask?: any[];
 }
 
 interface LinkResponse {

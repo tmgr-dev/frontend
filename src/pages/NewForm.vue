@@ -48,6 +48,7 @@
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
+	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 
@@ -427,6 +428,25 @@
 			}
 		}
 	});
+
+	const reloadTask = async () => {
+		if (!taskId.value) return;
+		try {
+			suppressAutoSavingForOnce.value = true;
+			const taskData = await getTask(taskId.value);
+			form.value = taskData;
+		} catch (e: any) {
+			console.error('Error reloading task:', e);
+		}
+	};
+
+	const handleOpenLinkedTask = (linkedTaskId: number) => {
+		if (props.isModal) {
+			store.state.currentTaskIdForModal = linkedTaskId;
+		} else {
+			router.push(`/${store.getters['user/getCurrentWorkspace']?.code || 'default'}/tasks/${linkedTaskId}`);
+		}
+	};
 
 	const updateTaskTitle = async () => {
 		if (categories.value.length > 0 && form.value.project_category_id) {
@@ -816,6 +836,49 @@
 		{ immediate: true },
 	);
 
+	watch(
+		modalTaskId,
+		async (newTaskId, oldTaskId) => {
+			if (props.isModal && newTaskId && newTaskId !== oldTaskId) {
+				suppressAutoSavingForOnce.value = true;
+				try {
+					const taskData = await getTask(newTaskId);
+					
+					taskData.approximately_time =
+						typeof taskData.approximately_time === 'string'
+							? parseInt(taskData.approximately_time, 10) || 0
+							: taskData.approximately_time || 0;
+
+					form.value = taskData;
+
+					if (!form.value.checkpoints) {
+						form.value.checkpoints = [];
+					}
+
+					if (form.value.assignees) {
+						const taskAssignees = form.value.assignees as WorkspaceMember[];
+						assignees.value = taskAssignees.map((assignee) => assignee.id);
+					} else {
+						assignees.value = [];
+					}
+
+					const currentWorkspace = store.getters['user/getCurrentWorkspace'];
+					if (currentWorkspace) {
+						const url = generateTaskUrl(newTaskId, currentWorkspace, null);
+						if (url && url !== '/') {
+							history.replaceState({}, '', url);
+							store.state.urlManuallyChanged = true;
+						}
+					}
+
+					nextTick(() => autoResizeTitle());
+				} catch (e: any) {
+					console.error('Error loading linked task:', e);
+				}
+			}
+		},
+	);
+
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
 		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
@@ -874,14 +937,15 @@
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 		<div
-			class="flex h-full flex-col gap-4 overflow-y-auto p-6"
+			class="flex h-full flex-col"
 			:class="[
 				isModal
 					? 'max-h-[calc(100vh-40px)] md:w-[700px]'
 					: 'container mx-auto pt-14',
 			]"
 		>
-			<header class="flex justify-between">
+			<!-- HEADER - Fixed at top -->
+			<header class="flex shrink-0 justify-between p-6 pb-4">
 				<Select v-model="statusIdStr">
 					<SelectTrigger class="w-40 border-0 bg-transparent">
 						<SelectValue placeholder="status" />
@@ -913,24 +977,26 @@
 				</div>
 			</header>
 
-			<div class="relative">
-				<textarea
-					v-model="form.title"
-					ref="titleTextarea"
-					class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
-					:class="{ 'text-red-500': isTitleAtLimit }"
-					placeholder="Task name"
-					rows="1"
-					maxlength="255"
-					@input="autoResizeTitle"
-				/>
-				<div v-if="isTitleNearLimit" class="mt-1 flex items-center gap-1 text-xs" :class="isTitleAtLimit ? 'text-red-500' : 'text-orange-400'">
-					<span class="material-icons" style="font-size: 14px;">warning</span>
-					<span>{{ form.title?.length || 0 }}/255 characters</span>
+			<!-- MAIN - Scrollable content area -->
+			<main class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4">
+				<div class="relative">
+					<textarea
+						v-model="form.title"
+						ref="titleTextarea"
+						class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
+						:class="{ 'text-red-500': isTitleAtLimit }"
+						placeholder="Task name"
+						rows="1"
+						maxlength="255"
+						@input="autoResizeTitle"
+					/>
+					<div v-if="isTitleNearLimit" class="mt-1 flex items-center gap-1 text-xs" :class="isTitleAtLimit ? 'text-red-500' : 'text-orange-400'">
+						<span class="material-icons" style="font-size: 14px;">warning</span>
+						<span>{{ form.title?.length || 0 }}/255 characters</span>
+					</div>
 				</div>
-			</div>
 
-			<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
+				<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
 				<CategoriesCombobox
 					:categories="categories"
 					v-model="form.project_category_id"
@@ -943,55 +1009,56 @@
 					"
 				/>
 
-				<div class="flex items-center gap-2">
-					<AssigneesCombobox
-						:assignees="workspaceMembers"
-						v-model="assignees as any"
-					/>
-					<button
-						v-if="!isAssignedToMe"
-						type="button"
-						@click="assignToMe"
-						class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
-						title="Assign to me"
-					>
-						<span class="material-icons text-sm">person_add</span>
-					</button>
+					<div class="flex items-center gap-2">
+						<AssigneesCombobox
+							:assignees="workspaceMembers"
+							v-model="assignees as any"
+						/>
+						<button
+							v-if="!isAssignedToMe"
+							type="button"
+							@click="assignToMe"
+							class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
+							title="Assign to me"
+						>
+							<span class="material-icons text-sm">person_add</span>
+						</button>
+					</div>
+
+					<div class="ml-auto">
+						<TimeCounter
+							v-if="form.id"
+							:form="form"
+							:disabled="!form.id"
+							@toggle="toggleTimer"
+							@update:seconds="updateSeconds"
+						/>
+					</div>
 				</div>
 
-				<div class="ml-auto">
-					<TimeCounter
-						v-if="form.id"
-						:form="form"
-						:disabled="!form.id"
-						@toggle="toggleTimer"
-						@update:seconds="updateSeconds"
+				<!-- Editor section with toggle button -->
+				<div class="relative">
+					<!-- Editor components - no loading state needed since we use localStorage -->
+					<Editor
+						v-if="editorType === 'markdown'"
+						v-model="form.description"
+						class="mb-2 grow md:h-72"
+						:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
+						:show-preview="!!(taskId && form.description)"
+					/>
+
+					<BlockEditor
+						v-else-if="editorType === 'block'"
+						v-model="form.description_json"
+						placeholder="Type your description here or enter / to see commands or "
+						class="block-editor-container mb-2 grow border px-2"
+						:class="[
+							!isModal
+								? 'lg:min-h-96'
+								: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
+						]"
 					/>
 				</div>
-			</div>
-
-			<!-- Editor section with toggle button -->
-			<div class="relative min-h-0 flex-1">
-				<!-- Editor components - no loading state needed since we use localStorage -->
-				<Editor
-					v-if="editorType === 'markdown'"
-					v-model="form.description"
-					class="mb-2 grow md:h-72"
-					:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
-					:show-preview="!!(taskId && form.description)"
-				/>
-
-				<BlockEditor
-					v-else-if="editorType === 'block'"
-					v-model="form.description_json"
-					placeholder="Type your description here or enter / to see commands or "
-					class="block-editor-container mb-2 grow border px-2"
-					:class="[
-						!isModal
-							? 'lg:min-h-96'
-							: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
-					]"
-				/>
 
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div
@@ -1001,12 +1068,13 @@
 						form.checkpoints &&
 						form.checkpoints.length > 0
 					"
-					class="checkpoints-wrapper mt-3 rounded border border-gray-200 bg-slate-100 py-0 transition-all duration-300 dark:border-gray-700 dark:bg-slate-900"
-					:class="[isModal ? 'max-h-[320px] overflow-y-auto' : '']"
+					class="checkpoints-wrapper flex flex-col rounded border border-gray-200 bg-slate-100 dark:border-gray-700 dark:bg-slate-900"
+					:class="[isModal ? 'max-h-[320px]' : '']"
 					:key="checkpointUpdateKey"
 				>
+					<!-- Header - Fixed -->
 					<div
-						class="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
+						class="shrink-0 flex items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
 					>
 						<span class="font-medium"
 							>Task Checkpoints ({{ form.checkpoints.length }})</span
@@ -1060,7 +1128,8 @@
 							</button>
 						</div>
 					</div>
-					<div class="px-3 py-2">
+					<!-- Content - Scrollable -->
+					<div class="flex-1 overflow-y-auto px-3 py-2">
 						<checkpoints :checkpoints="form.checkpoints || []" />
 					</div>
 				</div>
@@ -1128,10 +1197,20 @@
 						</div>
 					</div>
 				</div>
-			</div>
 
-			<!--	actions	-->
-			<footer ref="footer" class="shadow-top z-10 mt-auto w-full rounded-lg">
+				<!-- Task Relations -->
+				<div v-show="form.id">
+					<TaskRelations
+						:task-id="form.id!"
+						:relations="form.relationTypeWithTask"
+						@update="reloadTask"
+						@open-task="handleOpenLinkedTask"
+					/>
+				</div>
+			</main>
+
+			<!-- FOOTER - Fixed at bottom -->
+			<footer ref="footer" class="shrink-0 px-6 py-4">
 				<div class="flex justify-end gap-3 text-center">
 					<a
 						v-if="isModal && (taskId || form.id)"
