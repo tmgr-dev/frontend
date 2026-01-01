@@ -7,7 +7,7 @@
 	} from '@heroicons/vue/20/solid';
 	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, nextTick, onBeforeMount, ref, toRef, watch } from 'vue';
+	import { computed, nextTick, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -416,21 +416,37 @@
 						form.value.description_json?.blocks?.[0]?.data?.text || '';
 				}
 
-				// Handle assignees
-				if (form.value.assignees) {
-					const taskAssignees = form.value.assignees as WorkspaceMember[];
-					assignees.value = taskAssignees.map((assignee) => assignee.id);
-				} else {
-					assignees.value = [];
-				}
+			// Handle assignees
+			if (form.value.assignees) {
+				const taskAssignees = form.value.assignees as WorkspaceMember[];
+				assignees.value = taskAssignees.map((assignee) => assignee.id);
+			} else {
+				assignees.value = [];
+			}
 
-				nextTick(() => autoResizeTitle());
+			nextTick(() => {
+				autoResizeTitle();
+				titleTextarea.value?.focus();
+			});
 			}
 		} catch (e: any) {
 			console.error('Error loading task data:', e);
 			if (e.response?.status === 403) {
 				permissionDenied.value = true;
 			}
+		}
+	});
+
+	onMounted(() => {
+		// Only focus on title for new tasks
+		// Pattern is already applied in onBeforeMount, so we just need to focus
+		if (!taskId.value && props.isModal) {
+			// Wait for modal transition and DOM to be fully ready
+			setTimeout(() => {
+				nextTick(() => {
+					titleTextarea.value?.focus();
+				});
+			}, 350);
 		}
 	});
 
@@ -458,10 +474,11 @@
 			const currentCategory = categories.value.find(
 				(category) => category.id === form.value.project_category_id,
 			);
-			const taskNamePatternSetting = currentCategory?.settings?.find(
-				(setting) => setting.key === 'task_name_pattern_date&time',
-			);
-			if (!taskNamePatternSetting || !currentCategory) return;
+		const taskNamePatternSetting = currentCategory?.settings?.find(
+			(setting) => setting.key === 'task_name_pattern_date&time',
+		);
+		console.log(categories.value, form.value.project_category_id, taskNamePatternSetting, currentCategory);
+		if (!taskNamePatternSetting || !currentCategory) return;
 
 			try {
 				const indexes = await getTasksIndexes(currentCategory.id);
@@ -819,7 +836,7 @@
 	// Watch for changes to modalProjectCategoryId and update form accordingly
 	watch(
 		modalProjectCategoryId,
-		(newCategoryId) => {
+		async (newCategoryId) => {
 			if (newCategoryId && !taskId.value) {
 				form.value.project_category_id = newCategoryId;
 
@@ -832,13 +849,9 @@
 					form.value.status_id = statuses.value[0].id;
 				}
 
-				// If categories are already loaded, try to update the title based on category pattern
-				if (categories.value.length > 0) {
-					updateTaskTitle();
-				}
+				await updateTaskTitle();
 			}
 		},
-		{ immediate: true },
 	);
 
 	watch(
@@ -867,22 +880,26 @@
 						assignees.value = [];
 					}
 
-					const currentWorkspace = store.getters['user/getCurrentWorkspace'];
-					if (currentWorkspace) {
-						const url = generateTaskUrl(newTaskId, currentWorkspace, null);
-						if (url && url !== '/') {
-							history.replaceState({}, '', url);
-							store.state.urlManuallyChanged = true;
-						}
+				const currentWorkspace = store.getters['user/getCurrentWorkspace'];
+				if (currentWorkspace) {
+					const url = generateTaskUrl(newTaskId, currentWorkspace, null);
+					if (url && url !== '/') {
+						history.replaceState({}, '', url);
+						store.state.urlManuallyChanged = true;
 					}
+				}
 
-					nextTick(() => autoResizeTitle());
+				nextTick(() => {
+					autoResizeTitle();
+					titleTextarea.value?.focus();
+				});
 				} catch (e: any) {
 					console.error('Error loading linked task:', e);
 				}
 			}
 		},
 	);
+
 
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
@@ -1203,15 +1220,15 @@
 					</div>
 				</div>
 
-				<!-- Task Relations -->
-				<div v-show="form.id">
-					<TaskRelations
-						:task-id="form.id!"
-						:relations="form.relationTypeWithTask"
-						@update="reloadTask"
-						@open-task="handleOpenLinkedTask"
-					/>
-				</div>
+			<!-- Task Relations -->
+			<div v-if="form.id">
+				<TaskRelations
+					:task-id="form.id"
+					:relations="form.relationTypeWithTask"
+					@update="reloadTask"
+					@open-task="handleOpenLinkedTask"
+				/>
+			</div>
 			</main>
 
 			<!-- FOOTER - Fixed at bottom -->
