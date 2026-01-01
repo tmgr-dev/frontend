@@ -22,6 +22,14 @@
 					>
 						refresh
 					</span>
+					<span
+						v-if="hasActiveFilters"
+						@click="clearFilters"
+						class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-red-200"
+						title="Clear all filters"
+					>
+					clear
+					</span>
 				</div>
 				<TextField
 					placeholder="Search"
@@ -124,6 +132,21 @@
 			store.commit('updateSelectedUser', value);
 		},
 	});
+
+	const hasActiveFilters = computed(() => {
+		return !!(searchText.value || selectedCategory.value || selectedUser.value);
+	});
+
+	const clearFilters = () => {
+		searchText.value = null;
+		selectedCategory.value = 0;
+		selectedUser.value = 0;
+		
+		router.push({
+			...currentRoute,
+			query: {},
+		});
+	};
 
 	const buildQuery = () => {
 		const query: Record<string, string> = {};
