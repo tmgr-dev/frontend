@@ -32,6 +32,13 @@ export const getWorkspaceMembers = async (
 	return data;
 };
 
+export const removeMemberFromWorkspace = async (
+	workspaceId: number,
+	userId: number,
+): Promise<void> => {
+	await $axios.delete(`/workspaces/${workspaceId}/members/${userId}`);
+};
+
 export const getWorkspaceStatuses = async () => {
 	const {
 		data: { data },
