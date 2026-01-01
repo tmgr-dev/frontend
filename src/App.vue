@@ -332,6 +332,26 @@
 					);
 					
 					if (workspaceSetting) {
+						// Update the URL to match the new workspace code
+						const currentPath = window.location.pathname;
+						const pathParts = currentPath.split('/');
+						
+						// Check if current page is workspace-independent (like /routines, /settings, /profile)
+						const workspaceIndependentPages = ['routines', 'settings', 'profile'];
+						const isWorkspaceIndependent = workspaceIndependentPages.some(
+							page => currentPath.includes(`/${page}`)
+						);
+						
+						if (!isWorkspaceIndependent && pathParts.length > 1 && pathParts[1]) {
+							// Replace the workspace code in the URL for workspace-aware pages only
+							pathParts[1] = workspace.code;
+							const newPath = pathParts.join('/');
+							
+							// Use history.replaceState to update the URL without navigating
+							history.replaceState({}, '', newPath);
+						}
+						// For workspace-independent pages, don't change the URL at all
+						
 						// Prepare updated settings
 						const updatedSettings = settings.map(setting => {
 							if (setting.key === 'current_workspace') {
