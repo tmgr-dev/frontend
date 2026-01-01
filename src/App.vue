@@ -32,9 +32,13 @@
 				close-on-bg-click
 				@close="handleModalClose"
 			>
-				<template #modal-body>
-					<NewForm :is-modal="true" @close="handleModalClose" />
-				</template>
+			<template #modal-body>
+				<NewForm 
+					:is-modal="true" 
+					:key="`${$store.state.currentTaskIdForModal || 'new'}-${$store.state.createTaskInProjectCategoryId || 'none'}`"
+					@close="handleModalClose" 
+				/>
+			</template>
 			</Modal>
 		</Transition>
 	</div>
