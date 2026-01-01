@@ -1,18 +1,20 @@
 <template>
 	<div class="flex items-center">
 		<div class="flex -space-x-2">
-			<div
+			<button
 				v-for="user in users"
 				:key="user.id"
+				type="button"
 				:class="[
-					'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-blue-500 to-blue-600 shadow-md transition-all hover:scale-110 hover:z-20 cursor-default',
+					'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-blue-500 to-blue-600 shadow-md transition-all hover:scale-110 hover:z-20 cursor-pointer',
 				]"
-				v-tooltip.bottom="user.name"
+				v-tooltip.bottom="`${user.name} - Click to view all members`"
+				@click="showMembersModal = true"
 			>
 				<span class="text-sm font-medium text-white">
 					{{ user.name.charAt(0).toUpperCase() }}
 				</span>
-			</div>
+			</button>
 			
 			<Dialog v-model:open="isInviteDialogOpen">
 				<DialogTrigger as-child>
@@ -52,6 +54,12 @@
 			</DialogContent>
 			</Dialog>
 		</div>
+
+		<WorkspaceMembersModal
+			v-model="showMembersModal"
+			:workspace-id="workspaceId"
+			@member-removed="handleMemberRemoved"
+		/>
 	</div>
 </template>
 
@@ -63,6 +71,7 @@
 	import { createWorkspaceInvitation } from '@/actions/tmgr/workspaces';
 	import { validateEmailString, ValidationResult } from '@/utils/emails';
 	import { useToast } from '@/components/ui/toast';
+	import WorkspaceMembersModal from '@/components/workspace/WorkspaceMembersModal.vue';
 
 	export interface WorkspaceUser {
 		id: number;
@@ -78,6 +87,7 @@
 	const toaster = useToast();
 	
 	const isInviteDialogOpen = ref(false);
+	const showMembersModal = ref(false);
 	const invitationEmails = ref('');
 	const isSending = ref(false);
 	const invitationEmailsValidationError = ref<ValidationResult>({
@@ -119,6 +129,10 @@
 		} finally {
 			isSending.value = false;
 		}
+	}
+
+	function handleMemberRemoved(memberId: number) {
+		console.log('Member removed:', memberId);
 	}
 </script>
 

@@ -26,6 +26,9 @@
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import { FormSetting } from '@/actions/tmgr/settings.ts';
 	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
+	import { getWorkspaceMembers, removeMemberFromWorkspace, type WorkspaceMember } from '@/actions/tmgr/workspaces';
+	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+	import Loader from '@/components/loaders/Loader.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -83,6 +86,11 @@
 		return foundWorkspace?.user_id === store.state.user.id;
 	});
 	const isLoading = ref(true);
+	const members = ref<WorkspaceMember[]>([]);
+	const loadingMembers = ref(false);
+	const removingMemberId = ref<number | null>(null);
+	const memberToRemove = ref<WorkspaceMember | null>(null);
+	const showRemoveMemberDialog = ref(false);
 
 	function openCreateWorkspaceModalIfQueryParamHasCreateKey (query: any) {
 		if (query.hasOwnProperty('create')) {
@@ -323,6 +331,84 @@
 			console.error(e);
 		}
 	}
+
+	async function loadMembers() {
+		const workspaceId = activeWorkspace.value?.value;
+		if (!workspaceId) return;
+
+		loadingMembers.value = true;
+		try {
+			const parsedWorkspaceId = typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId;
+			members.value = await getWorkspaceMembers(parsedWorkspaceId);
+		} catch (e) {
+			console.error('Error loading members:', e);
+			toaster.toast({
+				title: 'Error',
+				description: 'Failed to load workspace members',
+				variant: 'destructive',
+			});
+		} finally {
+			loadingMembers.value = false;
+		}
+	}
+
+	function getInitials(name: string) {
+		return name
+			.split(' ')
+			.map(part => part.charAt(0))
+			.join('')
+			.toUpperCase()
+			.slice(0, 2);
+	}
+
+	function canRemoveMember(member: WorkspaceMember) {
+		const workspaceId = activeWorkspace.value?.value;
+		const workspace = workspaces.value.find(w => w.id == workspaceId);
+		return workspace?.user_id === store.state.user.id && member.id !== workspace?.user_id;
+	}
+
+	function handleRemoveMember(member: WorkspaceMember) {
+		memberToRemove.value = member;
+		showRemoveMemberDialog.value = true;
+	}
+
+	async function confirmRemoveMember() {
+		if (!memberToRemove.value) return;
+
+		const workspaceId = activeWorkspace.value?.value;
+		if (!workspaceId) return;
+
+		removingMemberId.value = memberToRemove.value.id;
+		showRemoveMemberDialog.value = false;
+
+		try {
+			const parsedWorkspaceId = typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId;
+			await removeMemberFromWorkspace(parsedWorkspaceId, memberToRemove.value.id);
+			
+			toaster.toast({
+				title: 'Member removed',
+				description: `${memberToRemove.value.name} has been removed from the workspace`,
+			});
+			
+			await loadMembers();
+		} catch (e: any) {
+			console.error('Error removing member:', e);
+			toaster.toast({
+				title: 'Error',
+				description: e.response?.data?.message || 'Failed to remove member',
+				variant: 'destructive',
+			});
+		} finally {
+			removingMemberId.value = null;
+			memberToRemove.value = null;
+		}
+	}
+
+	watch(activeWorkspace, () => {
+		if (activeWorkspace.value) {
+			loadMembers();
+		}
+	}, { immediate: true });
 </script>
 
 <template>
@@ -505,14 +591,88 @@
 			</div>
 		</div>
 
-		<footer class="text-left">
-			<Button variant="default" @click="updateSettings">
-				<SaveIcon /> Save
-			</Button>
-		</footer>
+	<footer class="text-left">
+		<Button variant="default" @click="updateSettings">
+			<SaveIcon /> Save
+		</Button>
+	</footer>
 
-		<div class="mt-8 border-t pt-6">
-			<WorkspaceInvitationsList />
+	<div class="mt-8 border-t pt-6">
+		<div class="flex items-center justify-between mb-4">
+			<h4 class="text-md font-semibold">Workspace Members</h4>
 		</div>
+
+		<div v-if="loadingMembers" class="flex items-center justify-center py-8">
+			<Loader />
+		</div>
+
+		<div v-else-if="members.length === 0" class="text-center py-8 text-gray-500">
+			<p>No members found</p>
+		</div>
+
+		<div v-else class="space-y-3">
+			<div
+				v-for="member in members"
+				:key="member.id"
+				class="flex items-center justify-between p-3 border rounded-lg dark:border-gray-700"
+			>
+				<div class="flex items-center gap-3 flex-1">
+					<Avatar class="h-10 w-10">
+						<AvatarFallback>
+							{{ getInitials(member.name) }}
+						</AvatarFallback>
+					</Avatar>
+					
+					<div class="flex-1">
+						<div class="flex items-center gap-2">
+							<p class="font-medium">{{ member.name }}</p>
+							<span
+								v-if="member.id === workspaces.find(w => w.id == activeWorkspace?.value)?.user_id"
+								class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+							>
+								Owner
+							</span>
+						</div>
+					</div>
+				</div>
+
+				<Button
+					v-if="canRemoveMember(member)"
+					@click="handleRemoveMember(member)"
+					variant="destructive"
+					size="sm"
+					:disabled="removingMemberId !== null"
+				>
+					<Loader v-if="removingMemberId === member.id" is-mini class="mr-2" />
+					Remove
+				</Button>
+			</div>
+		</div>
+	</div>
+
+	<div class="mt-8 border-t pt-6">
+		<WorkspaceInvitationsList />
+	</div>
+
+		<AlertDialog v-model:open="showRemoveMemberDialog">
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove Member</AlertDialogTitle>
+					<AlertDialogDescription>
+						Are you sure you want to remove <strong>{{ memberToRemove?.name }}</strong> from this workspace?
+						This action cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel @click="showRemoveMemberDialog = false">Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						@click="confirmRemoveMember"
+						class="bg-red-600 hover:bg-red-700 text-white"
+					>
+						Remove
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	</div>
 </template>
