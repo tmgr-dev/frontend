@@ -33,6 +33,7 @@
 		SidebarRail,
 		SidebarTrigger,
 	} from '@/components/ui/sidebar';
+	import SidebarMobileCloser from '@/components/ui/sidebar/SidebarMobileCloser.vue';
 	import {
 		BadgeCheck,
 		Bell,
@@ -271,7 +272,8 @@
 
 <template>
 	<SidebarProvider>
-		<Sidebar collapsible="icon" v-if="store.getters.isLoggedIn">
+		<SidebarMobileCloser>
+			<Sidebar collapsible="icon" v-if="store.getters.isLoggedIn">
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
@@ -571,45 +573,46 @@
 			<SidebarRail />
 		</Sidebar>
 
-		<SidebarInset>
-			<header
-				v-if="store.getters.isLoggedIn"
-				class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
-			>
-				<div class="flex items-center gap-2 px-4 flex-1">
-					<SidebarTrigger class="-ml-1" />
-					<AddTaskModalTrigger class="-ml-1" />
+			<SidebarInset>
+				<header
+					v-if="store.getters.isLoggedIn"
+					class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+				>
+					<div class="flex items-center gap-2 px-4 flex-1">
+						<SidebarTrigger class="-ml-1" />
+						<AddTaskModalTrigger class="-ml-1" />
 
-					<Separator orientation="vertical" class="mr-2 h-4" />
+						<Separator orientation="vertical" class="mr-2 h-4" />
 
-					<Breadcrumb>
-						<BreadcrumbList>
-							<BreadcrumbItem class="hidden md:block">
-								<BreadcrumbLink>
-									<router-link :to="activeWorkspace?.code ? `/${activeWorkspace.code}/list` : '/list'"> 
-										TMGR.DEV 
-									</router-link>
-								</BreadcrumbLink>
-							</BreadcrumbItem>
+						<Breadcrumb>
+							<BreadcrumbList>
+								<BreadcrumbItem class="hidden md:block">
+									<BreadcrumbLink>
+										<router-link :to="activeWorkspace?.code ? `/${activeWorkspace.code}/list` : '/list'"> 
+											TMGR.DEV 
+										</router-link>
+									</BreadcrumbLink>
+								</BreadcrumbItem>
 
-							<BreadcrumbSeparator class="hidden md:block" />
+								<BreadcrumbSeparator class="hidden md:block" />
 
-							<BreadcrumbItem class="hidden md:block">
-								{{ store.state.metaTitle || route.meta.title }}
-							</BreadcrumbItem>
-						</BreadcrumbList>
-					</Breadcrumb>
+								<BreadcrumbItem class="hidden md:block">
+									{{ store.state.metaTitle || route.meta.title }}
+								</BreadcrumbItem>
+							</BreadcrumbList>
+						</Breadcrumb>
 
-					<div class="ml-auto flex items-center gap-2">
-						<NotificationBell />
+						<div class="ml-auto flex items-center gap-2">
+							<NotificationBell />
+						</div>
 					</div>
-				</div>
-			</header>
+				</header>
 
-			<div class="flex min-h-max flex-1 flex-col gap-4">
-				<slot />
-			</div>
-		</SidebarInset>
+				<div class="flex min-h-max flex-1 flex-col gap-4">
+					<slot />
+				</div>
+			</SidebarInset>
+		</SidebarMobileCloser>
 	</SidebarProvider>
 
 	<!-- Exit Workspace Confirm Dialog -->
