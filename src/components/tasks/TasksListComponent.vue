@@ -532,13 +532,13 @@
 			loadTasks() {
 				this.$emit('reload-tasks');
 			},
-			getShowButtons(task) {
-				return {
-					start: task.start_time,
-					stop: !task.start_time,
-					deleteTask: this.status === 'hidden' || this.status === 'done',
-				};
-			},
+		getShowButtons(task) {
+			return {
+				start: task.start_time,
+				stop: !task.start_time,
+				deleteTask: this.status === 'hidden',
+			};
+		},
 			getApproximatelyTime(task: Task) {
 				if (task.approximately_time) {
 					return parseInt(String(task.approximately_time), 10);
