@@ -16,6 +16,9 @@ module.exports = {
 			},
 		},
 		extend: {
+			screens: {
+				'xl-custom': '1080px',
+			},
 			fontFamily: {
 				sans: ['Quicksand', 'sans-serif'],
 			},

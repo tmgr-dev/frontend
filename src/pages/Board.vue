@@ -12,9 +12,9 @@
 				</div>
 				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
 					<div class="min-h-[62px] flex-shrink-0">
-						<div class="relative md:hidden">
+						<div class="relative xl-custom:hidden">
 							<div
-								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center p-4 pt-5"
+								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center gap-2 p-4 pt-5"
 							>
 								<span
 									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
@@ -27,6 +27,12 @@
 								>
 									refresh
 								</span>
+								<span
+									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
+									@click="isFiltersModalShown = true"
+								>
+									filter_list
+								</span>
 							</div>
 
 							<Transition name="bounce-right-fade">
@@ -37,25 +43,50 @@
 									@close="isFiltersModalShown = false"
 								>
 									<template #modal-body>
-										<FiltersBoard
-											v-if="workspaceUsers.length"
-											:workspaceUsers="workspaceUsers"
-											:categories="categories"
-											:chosen-user.sync="chosenUser"
-											@update:chosenUser="handleChosenUserUpdate"
-											@handleChosenCategory="handleChosenCategory"
-											:activeDraggable="activeDraggable"
-											@handleUpdateDraggable="handleUpdateDraggable"
-											@handleSearchTextChanged="handleSearchTextChanged"
-											@loadTasks="loadTasks"
-											@loadColumns="loadColumns"
-										/>
+										<div class="relative">
+											<button
+												type="button"
+												class="absolute -right-2 -top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
+												@click="isFiltersModalShown = false"
+											>
+												<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
+													close
+												</span>
+											</button>
+											<div class="pt-10">
+												<FiltersBoard
+												v-if="workspaceUsers.length"
+												:workspaceUsers="workspaceUsers"
+												:categories="categories"
+												:chosen-user.sync="chosenUser"
+												@update:chosenUser="handleChosenUserUpdate"
+												@handleChosenCategory="handleChosenCategory"
+												:activeDraggable="activeDraggable"
+												@handleUpdateDraggable="handleUpdateDraggable"
+												@handleSearchTextChanged="handleSearchTextChanged"
+												@loadTasks="loadTasks"
+												@loadColumns="loadColumns"
+												:isMobileModal="true"
+												@close-modal="isFiltersModalShown = false"
+												@open-reorder-modal="openMobileReorderModal"
+											>
+												<template #actions-start>
+													<button
+														@click="openCreateStatusModal"
+														class="w-full px-4 py-2 text-sm text-left bg-tmgr-blue hover:bg-blue-600 text-white rounded-lg transition-colors"
+													>
+														Add status
+													</button>
+												</template>
+											</FiltersBoard>
+											</div>
+										</div>
 									</template>
 								</Modal>
 							</Transition>
 						</div>
 
-						<div class="hidden items-center md:flex">
+						<div class="hidden items-center xl-custom:flex">
 							<FiltersBoard
 								v-if="workspaceUsers.length"
 								:workspaceUsers="workspaceUsers"
@@ -70,15 +101,13 @@
 								@loadColumns="loadColumns"
 							>
 								<template #actions-start>
-									<!-- Add Status Icon Button -->
-									<button
-										@click="openCreateStatusModal"
-										class="mr-4 cursor-pointer text-gray-500 hover:text-black dark:text-gray-600 dark:hover:text-white"
-										title="Add Status"
+									<a
+										href="#"
+										class="block px-4 py-2 text-sm text-neutral-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+										@click.prevent="openCreateStatusModal"
 									>
-										<span class="cursor-pointer material-icons text-2xl">add</span>
-									</button>
-									<!-- End Add Status Icon Button -->
+										Add status
+									</a>
 								</template>
 							</FiltersBoard>
 						</div>
@@ -424,6 +453,76 @@
 								</div>
 							</template>
 						</Modal>
+						<Modal
+							v-if="isShowMobileReorderModal"
+							modal-class="p-6 w-96"
+							close-on-bg-click
+							@close="closeMobileReorderModal"
+						>
+							<template #modal-body>
+								<div>
+									<div class="relative mb-4">
+										<h1 class="text-center text-xl font-semibold">
+											Reorder Statuses
+										</h1>
+										<button
+											type="button"
+											class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+											@click="closeMobileReorderModal"
+										>
+											<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
+												close
+											</span>
+										</button>
+									</div>
+									<p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
+										Hold and drag the six dots icon to reorder
+									</p>
+									<Draggable
+										v-model="mobileReorderColumns"
+										:animation="200"
+										item-key="status.id"
+										handle=".drag-handle"
+										class="space-y-2"
+									>
+										<template #item="{ element: column }">
+											<div
+												class="flex items-center gap-3 rounded-lg border-2 px-4 py-3 bg-white dark:bg-gray-800"
+												:style="{ borderLeftColor: column.status.color, borderLeftWidth: '4px' }"
+											>
+												<div class="drag-handle cursor-move flex items-center">
+													<EllipsisVerticalIcon
+														class="h-4 w-4 text-gray-400"
+														aria-hidden="true"
+													/>
+													<EllipsisVerticalIcon
+														class="-ml-2 h-4 w-4 text-gray-400"
+														aria-hidden="true"
+													/>
+												</div>
+												<div class="flex-1">
+													<span class="text-gray-900 dark:text-gray-100 font-medium">{{ column.title }}</span>
+												</div>
+											</div>
+										</template>
+									</Draggable>
+									<div class="mt-4 flex gap-2">
+										<button
+											@click="saveMobileReorder"
+											class="flex-1 rounded-lg bg-tmgr-blue px-4 py-2 font-medium text-white transition hover:bg-blue-600"
+										>
+											Save Order
+										</button>
+										<button
+											@click="closeMobileReorderModal"
+											class="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+										>
+											Cancel
+										</button>
+									</div>
+								</div>
+							</template>
+						</Modal>
 					</div>
 				</Transition>
 			</div>
@@ -567,6 +666,8 @@
 			tasksLoaded: false,
 			isShowMoveTasksModal: false,
 			sourceColumnForMove: null,
+			isShowMobileReorderModal: false,
+			mobileReorderColumns: [],
 		}),
 
 		watch: {
@@ -861,6 +962,31 @@
 				this.isShowMoveTasksModal = false;
 				this.sourceColumnForMove = null;
 				this.$store.commit('closeModal');
+			},
+			openMobileReorderModal() {
+				this.mobileReorderColumns = JSON.parse(JSON.stringify(this.columns));
+				this.isShowMobileReorderModal = true;
+				this.$store.commit('openModal');
+			},
+			closeMobileReorderModal() {
+				this.isShowMobileReorderModal = false;
+				this.mobileReorderColumns = [];
+				this.$store.commit('closeModal');
+			},
+			async saveMobileReorder() {
+				const sortedStats = this.mobileReorderColumns.map((col, index) => {
+					col.status.pivot.order = index + 1;
+					const { status_id, order } = col.status.pivot;
+					return { status_id, order };
+				});
+
+				await updateWorkspaceOrder(this.workspaceId, {
+					statuses_with_order: sortedStats,
+				});
+				
+				await this.loadColumns();
+				await this.loadTasks();
+				this.closeMobileReorderModal();
 			},
 			async moveAllTasksToColumn(targetColumn) {
 				if (!this.sourceColumnForMove || !targetColumn) {
