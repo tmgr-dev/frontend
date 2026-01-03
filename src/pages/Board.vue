@@ -274,16 +274,25 @@
 							@close="closeModal"
 							@closing-modal="closingModal"
 						>
-							<template #modal-body>
-								<div>
-									<div v-if="!isShowColorPicker">
-										<h1
-											v-if="isCreatingStatus"
-											class="mb-3 text-center text-xl"
-										>
-											Create status
-										</h1>
-										<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
+						<template #modal-body>
+							<div>
+								<div v-if="!isShowColorPicker" class="relative">
+									<button
+										type="button"
+										class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+										@click="closeModal"
+									>
+										<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
+											close
+										</span>
+									</button>
+									<h1
+										v-if="isCreatingStatus"
+										class="mb-3 text-center text-xl"
+									>
+										Create status
+									</h1>
+									<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
 										<label class="mb-3 flex flex-col gap-2 font-medium">
 											Status name :
 											<TextField
@@ -346,26 +355,37 @@
 							@close="closePickerModal"
 							@closing-modal="closingModal"
 						>
-							<template #modal-body>
-								<div class="relative p-8">
-									<button
-										type="button"
-										class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
+						<template #modal-body>
+							<div class="relative p-8">
+								<button
+									type="button"
+									class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
+								>
+									<span
+										class="material-icons text-2xl text-black dark:text-white"
+										@click="closePickerModal"
 									>
-										<span
-											class="material-icons text-2xl text-black dark:text-white"
-											@click="closePickerModal"
-										>
-											close
-										</span>
-									</button>
-									<color-picker
-										:hue="color.hue"
-										@input="onInput"
-										@select="onColorSelect"
-									/>
-								</div>
-							</template>
+										close
+									</span>
+								</button>
+							<color-picker
+								:hue="color.hue"
+								:saturation="color.saturation"
+								:luminosity="color.luminosity"
+								:alpha="color.alpha"
+								variant="persistent"
+								@input="onInput"
+								@select="onColorSelect"
+							/>
+							<button
+								@click="applyColor"
+								class="mt-6 w-full rounded bg-tmgr-blue px-4 py-3 font-bold text-white outline-none transition hover:bg-blue-600"
+								type="button"
+							>
+								Apply
+							</button>
+							</div>
+						</template>
 						</Modal>
 						<Modal
 							v-if="isShowMoveTasksModal"
@@ -597,17 +617,23 @@
 					behavior: 'smooth',
 				});
 			},
-			onColorSelect() {
-				const hexColor = hslToHex(
-					this.color.hue,
-					this.color.saturation,
-					this.color.luminosity,
-				);
-				this.statusColor = hexColor;
-				setTimeout(() => {
-					this.isShowColorPicker = false;
-				}, 1000);
-			},
+		onColorSelect() {
+			const hexColor = hslToHex(
+				this.color.hue,
+				this.color.saturation,
+				this.color.luminosity,
+			);
+			this.statusColor = hexColor;
+		},
+		applyColor() {
+			const hexColor = hslToHex(
+				this.color.hue,
+				this.color.saturation,
+				this.color.luminosity,
+			);
+			this.statusColor = hexColor;
+			this.closePickerModal();
+		},
 			handleFilter() {
 				this.isFiltersModalShown = !this.isFiltersModalShown;
 			},
@@ -624,10 +650,10 @@
 			handleChosenCategory(newChosenCategory) {
 				this.chosenCategory = newChosenCategory;
 			},
-			openPickerModal() {
-				this.isShowColorPicker = true;
-				$store.commit('openModal');
-			},
+		openPickerModal() {
+			this.isShowColorPicker = true;
+			this.$store.commit('openModal');
+		},
 			closingModal() {
 				if (this.isShowStatusModal && this.isShowColorPicker) {
 					this.isShowColorPicker = false;
@@ -1127,8 +1153,11 @@
 	};
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
 	@import '@radial-color-picker/vue-color-picker/dist/vue-color-picker.min.css';
+</style>
+
+<style lang="scss" scoped>
 	.settings-container {
 		max-width: 700px;
 		margin: 50px auto;
