@@ -58,11 +58,28 @@
 	});
 
 	const status = computed(() => route.meta.status);
-	const summaryTime = computed(() =>
-		formatTime(
-			pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0),
-		),
+	const totalSeconds = computed(() => 
+		pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0)
 	);
+	
+	const summaryTime = computed(() => formatTime(totalSeconds.value));
+	
+	const timeStats = computed(() => {
+		const seconds = totalSeconds.value;
+		const hours = seconds / 3600;
+		const days = hours / 24;
+		const workingDays = hours / 8;
+		const workingMonths = hours / 160;
+		const workingYears = hours / 2000;
+		
+		return {
+			hours: hours.toFixed(1),
+			totalDays: days.toFixed(1),
+			workingDays: workingDays.toFixed(1),
+			workingMonths: workingMonths.toFixed(2),
+			workingYears: workingYears.toFixed(2),
+		};
+	});
 
 	function handleKeyDown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && selectableTasks.value) {
@@ -233,17 +250,49 @@
 						:workspace-id="workspaceId"
 					/>
 				</div>
-				<div class="flex flex-wrap items-center justify-between gap-2">
+				<div class="flex flex-col gap-2">
 					<transition name="fade">
 						<div
-							v-if="summaryTime"
-							class="text-bold mr-6 shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
+							v-if="summaryTime && status === 'done'"
+							class="flex w-full flex-wrap items-center justify-around gap-2 rounded-lg border border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-2 dark:border-gray-700 dark:from-gray-800 dark:to-gray-900"
+						>
+							<div class="flex min-w-[100px] flex-1 items-center justify-center">
+								<div class="text-center">
+									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Time</div>
+									<div class="text-lg font-bold text-tmgr-blue dark:text-tmgr-light-blue">{{ summaryTime }}</div>
+								</div>
+							</div>
+							<div class="flex min-w-[100px] flex-1 items-center justify-center">
+								<div class="text-center">
+									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Days</div>
+									<div class="text-lg font-bold text-green-600 dark:text-green-400">{{ timeStats.workingDays }}</div>
+									<div class="text-[9px] text-gray-500 dark:text-gray-400">(8h/day)</div>
+								</div>
+							</div>
+							<div class="flex min-w-[100px] flex-1 items-center justify-center">
+								<div class="text-center">
+									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Months</div>
+									<div class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ timeStats.workingMonths }}</div>
+									<div class="text-[9px] text-gray-500 dark:text-gray-400">(160h/month)</div>
+								</div>
+							</div>
+							<div class="flex min-w-[100px] flex-1 items-center justify-center">
+								<div class="text-center">
+									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Years</div>
+									<div class="text-lg font-bold text-orange-600 dark:text-orange-400">{{ timeStats.workingYears }}</div>
+									<div class="text-[9px] text-gray-500 dark:text-gray-400">(2000h/year)</div>
+								</div>
+							</div>
+						</div>
+						<div
+							v-else-if="summaryTime"
+							class="text-bold w-full shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
 						>
 							{{ summaryTime }}
 						</div>
 					</transition>
 
-					<div class="ml-auto flex items-center gap-2 text-center">
+					<div class="flex w-full items-center justify-end gap-2">
 					<Input
 						v-model="searchText"
 						class="h-8"
