@@ -39,6 +39,7 @@
 					</span>
 				</div>
 				<TextField
+					v-if="isUserFeatureEnabled('board.search_input')"
 					placeholder="Search"
 					v-model="searchText"
 					input-class="py-1 w-full xl-custom:w-48 dark:border-transparent"
@@ -46,7 +47,7 @@
 
 				<div>
 					<div
-						v-if="categories.length >= 2"
+						v-if="isFeatureEnabled('categories') && isUserFeatureEnabled('board.category_filter') && categories.length >= 2"
 						class="w-full xl-custom:m-0 xl-custom:ml-3 xl-custom:mr-3 xl-custom:w-48"
 					>
 						<Select
@@ -58,7 +59,7 @@
 						/>
 					</div>
 				</div>
-				<div v-if="workspaceUsers.length >= 2" class="w-full xl-custom:mt-0 xl-custom:w-48">
+				<div v-if="isUserFeatureEnabled('board.user_filter') && workspaceUsers.length >= 2" class="w-full xl-custom:mt-0 xl-custom:w-48">
 					<Select
 						placeholder="Select user"
 						:options="workspaceUsers"
@@ -142,6 +143,7 @@
 
 	import { useStore } from 'vuex';
 	import { useRouter } from 'vue-router';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 	interface State {
 		selectedCategory: number;
@@ -169,6 +171,7 @@
 	const store = useStore();
 	const router = useRouter();
 	const currentRoute = router.currentRoute.value;
+	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 
 	const selectedCategory = computed({
 		get: () => (store.state as { filter: State }).filter.selectedCategory,

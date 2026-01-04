@@ -48,6 +48,7 @@
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -129,6 +130,8 @@
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
 	);
+	const { isFeatureEnabled } = useFeatureToggles();
+
 	const form = ref<Task>({
 		title: '',
 		description: '',
@@ -1031,25 +1034,25 @@
 					"
 				/>
 
-					<div class="flex items-center gap-2">
-						<AssigneesCombobox
-							:assignees="workspaceMembers"
-							v-model="assignees as any"
-						/>
-						<button
-							v-if="!isAssignedToMe"
-							type="button"
-							@click="assignToMe"
-							class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
-							title="Assign to me"
-						>
-							<span class="material-icons text-sm">person_add</span>
-						</button>
-					</div>
+				<div v-if="isFeatureEnabled('task.assignees')" class="flex items-center gap-2">
+					<AssigneesCombobox
+						:assignees="workspaceMembers"
+						v-model="assignees as any"
+					/>
+					<button
+						v-if="!isAssignedToMe"
+						type="button"
+						@click="assignToMe"
+						class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
+						title="Assign to me"
+					>
+						<span class="material-icons text-sm">person_add</span>
+					</button>
+				</div>
 
 					<div class="ml-auto">
 						<TimeCounter
-							v-if="form.id"
+							v-if="form.id && isFeatureEnabled('task.countdown')"
 							:form="form"
 							:disabled="!form.id"
 							@toggle="toggleTimer"
@@ -1221,7 +1224,15 @@
 				</div>
 
 			<!-- Task Relations -->
-			<div v-if="form.id">
+			<div
+				v-if="
+					form.id &&
+					(
+						isFeatureEnabled('task.relations') ||
+						(form.relationTypeWithTask && form.relationTypeWithTask.length > 0)
+					)
+				"
+			>
 				<TaskRelations
 					:task-id="form.id"
 					:relations="form.relationTypeWithTask"
@@ -1243,8 +1254,12 @@
 						<ArrowTopRightOnSquareIcon class="size-5" />
 					</a>
 
-					<button
-						v-if="(taskId || form.id) && getUncheckedCheckpoints().length > 0"
+						<button
+							v-if="
+								isFeatureEnabled('task.checkpoints') &&
+								(taskId || form.id) &&
+								getUncheckedCheckpoints().length > 0
+							"
 						@click="createTaskWithCheckpoints"
 						class="flex items-center gap-1 rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none"
 						type="button"
@@ -1270,6 +1285,7 @@
 
 					<button
 						v-if="
+							isFeatureEnabled('task.checkpoints') &&
 							(taskId || form.id) &&
 							(!form.checkpoints || form.checkpoints.length === 0)
 						"

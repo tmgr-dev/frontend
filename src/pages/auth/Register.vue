@@ -183,16 +183,19 @@
 
 <script setup lang="ts">
 	import { useRouter } from 'vue-router';
+	import { useStore } from 'vuex';
 	import { ref, onMounted } from 'vue';
 	import { Register, register as registerAction } from '@/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
-	import { getUser } from '@/actions/tmgr/user';
+	import { getUser, getUserSettings } from '@/actions/tmgr/user';
+	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
 	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 
 	const router = useRouter();
+	const store = useStore();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 	const telegramAuthUrl = `${import.meta.env.VITE_API_BASE_URL}auth/login/telegram/redirect`;
 
@@ -221,8 +224,29 @@
 					},
 				});
 			} else {
-				await router.push({ name: 'CurrentTasksList' });
+				if (store.state.user) {
+					await Promise.all([
+						getUserSettings(), 
+						getWorkspaceStatuses(),
+						store.dispatch('featureToggles/loadUserToggles')
+					]);
+				}
+
+				const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					s => s.key === 'current_workspace'
+				)?.value;
+				const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+				const workspaceCode = workspace?.code;
+
+				if (workspaceCode) {
+					await router.push(`/${workspaceCode}/${landingPage}`);
+				} else {
+					await router.push({ name: 'CurrentTasksList' });
+				}
 			}
+
+			store.commit('rerenderApp');
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;

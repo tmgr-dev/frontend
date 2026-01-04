@@ -38,6 +38,11 @@ import {
   WifiIcon,
   SignalSlashIcon 
 } from '@heroicons/vue/24/outline';
+import { LayoutDashboard } from 'lucide-vue-next';
+
+// Feature Gate
+import FeatureGate from '@/components/general/FeatureGate.vue';
+import DashboardPreview from '@/components/previews/DashboardPreview.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -648,6 +653,16 @@ onUnmounted(() => {
     {{ pageTitle }}
   </teleport>
 
+  <FeatureGate
+    feature-key="dashboard"
+    title="Dashboard"
+    description="Get insights into your productivity with statistics, activity heatmaps, and real-time team updates."
+    :icon="LayoutDashboard"
+  >
+    <template #preview>
+      <DashboardPreview />
+    </template>
+
   <BaseLayout>
     <template #body>
       <!-- Skip to content link for keyboard navigation -->
@@ -1109,6 +1124,8 @@ onUnmounted(() => {
       </ErrorBoundary>
     </template>
   </BaseLayout>
+
+  </FeatureGate>
 </template>
 
 <style scoped>

@@ -1,4 +1,14 @@
 <template>
+	<FeatureGate
+		feature-key="daily_routines"
+		title="Daily Routines"
+		description="Create recurring tasks and track your daily habits. Build consistent routines and monitor your progress over time."
+		:icon="CalendarCheck"
+	>
+		<template #preview>
+			<DailyRoutinesPreview />
+		</template>
+
 	<BaseLayout>
 		<template #body>
 			<div class="relative flex h-full overflow-hidden mb-10">
@@ -152,12 +162,17 @@
 			</div>
 		</template>
 	</BaseLayout>
+
+	</FeatureGate>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import TextField from '@/components/general/TextField.vue';
 import Button from '@/components/general/Button.vue';
+import FeatureGate from '@/components/general/FeatureGate.vue';
+import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
+import { CalendarCheck } from 'lucide-vue-next';
 import {
 	createDailyTask,
 	getDailyTasks,

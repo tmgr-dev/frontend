@@ -48,53 +48,53 @@
 				</button>
 			</div>
 
-			<div class="flex items-center gap-2">
-				<Popover v-model:open="showAssigneePopover">
-					<PopoverTrigger as-child>
-						<button
-							v-show="task.assignees?.length || isHovered || showAssigneePopover"
-							class="flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 group"
-							@click.stop
-							:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
-						>
-							<UserPlus 
-								v-if="showAssigneePopover || !task.assignees?.length" 
-								class="h-4 w-4" 
+		<div class="flex items-center gap-2">
+			<Popover v-if="isFeatureEnabled('task.assignees')" v-model:open="showAssigneePopover">
+				<PopoverTrigger as-child>
+					<button
+						v-show="task.assignees?.length || isHovered || showAssigneePopover"
+						class="flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 group"
+						@click.stop
+						:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
+					>
+						<UserPlus 
+							v-if="showAssigneePopover || !task.assignees?.length" 
+							class="h-4 w-4" 
+						/>
+						<template v-else>
+							<UserPlus class="hidden h-4 w-4 group-hover:block" />
+							<AssigneeUsers
+								class="group-hover:hidden"
+								:assignees="task.assignees"
+								:show-assignee-controls="false"
+								avatarsClass="h-4 w-4"
 							/>
-							<template v-else>
-								<UserPlus class="hidden h-4 w-4 group-hover:block" />
-								<AssigneeUsers
-									class="group-hover:hidden"
-									:assignees="task.assignees"
-									:show-assignee-controls="false"
-									avatarsClass="h-4 w-4"
-								/>
-							</template>
-						</button>
-					</PopoverTrigger>
-					<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
-						<Command>
-							<CommandInput placeholder="Search members..." class="h-9" />
-							<CommandEmpty>No members found.</CommandEmpty>
-							<CommandList>
-								<CommandGroup>
-									<CommandItem
-										v-for="member in workspaceMembers"
-										:key="member.id"
-										:value="member.id"
-										@select="toggleAssignee(member.id)"
-										class="cursor-pointer"
-									>
-										<Check
-											:class="['mr-2 h-4 w-4', isAssigned(member.id) ? 'opacity-100' : 'opacity-0']"
-										/>
-										{{ member.name }}
-									</CommandItem>
-								</CommandGroup>
-							</CommandList>
-						</Command>
-					</PopoverContent>
-				</Popover>
+						</template>
+					</button>
+				</PopoverTrigger>
+				<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
+					<Command>
+						<CommandInput placeholder="Search members..." class="h-9" />
+						<CommandEmpty>No members found.</CommandEmpty>
+						<CommandList>
+							<CommandGroup>
+								<CommandItem
+									v-for="member in workspaceMembers"
+									:key="member.id"
+									:value="member.id"
+									@select="toggleAssignee(member.id)"
+									class="cursor-pointer"
+								>
+									<Check
+										:class="['mr-2 h-4 w-4', isAssigned(member.id) ? 'opacity-100' : 'opacity-0']"
+									/>
+									{{ member.name }}
+								</CommandItem>
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
 
 				<DropdownMenu>
 					<DropdownMenuTrigger as-child>
@@ -187,9 +187,14 @@
 	import { generateTaskUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import { startTaskTimeCounter, stopTaskTimeCounter, updateTaskStatus, updateTaskPartially, deleteTask } from '@/actions/tmgr/tasks';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 	export default {
 		mixins: [TimePreparationMixin, TasksListMixin, SetTooltipData],
+		setup() {
+			const { isFeatureEnabled } = useFeatureToggles();
+			return { isFeatureEnabled };
+		},
 		components: {
 			AssigneeUsers,
 			AssigneeAvatar,

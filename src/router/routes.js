@@ -381,6 +381,16 @@ const routes = [
 		name: 'WorkspaceSettings',
 	},
 	{
+		path: '/settings/features',
+		component: () => import('@/pages/Settings/FeatureToggles.vue'),
+		meta: {
+			title: 'Feature Settings',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'FeatureSettings',
+	},
+	{
 		path: '/profile',
 		component: () => import('@/pages/Profile.vue'),
 		meta: {

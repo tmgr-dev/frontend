@@ -90,7 +90,10 @@
 						</div>
 					</div>
 
-						<div class="flex items-center gap-2">
+						<div
+							v-if="isFeatureEnabled('task.countdown')"
+							class="flex items-center gap-2"
+						>
 							<span
 								:class="isTimeExceeded(task) ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
 								class="material-icons text-xs sm:text-base md:text-xl"
@@ -122,53 +125,53 @@
 								<span v-if="!isLoadingActions[`stop-${task.id}`]" class="material-icons text-xs sm:text-sm leading-none">stop</span>
 								<Loader v-else is-mini />
 							</button>
-							
-						<Popover v-model:open="assigneePopoverOpen[task.id]">
-								<PopoverTrigger as-child>
-									<button
-										v-show="task.assignees?.length || hoveredTaskId === task.id || assigneePopoverOpen[task.id]"
-										class="ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 group"
-										@click.stop
-										:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
-									>
-										<UserPlus 
-											v-if="assigneePopoverOpen[task.id] || !task.assignees?.length" 
-											class="h-5 w-5 text-gray-500 dark:text-gray-400" 
+						
+					<Popover v-if="isFeatureEnabled('task.assignees')" v-model:open="assigneePopoverOpen[task.id]">
+							<PopoverTrigger as-child>
+								<button
+									v-show="task.assignees?.length || hoveredTaskId === task.id || assigneePopoverOpen[task.id]"
+									class="ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 group"
+									@click.stop
+									:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
+								>
+									<UserPlus 
+										v-if="assigneePopoverOpen[task.id] || !task.assignees?.length" 
+										class="h-5 w-5 text-gray-500 dark:text-gray-400" 
+									/>
+									<template v-else>
+										<UserPlus class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400" />
+										<AssigneeUsers
+											class="group-hover:hidden"
+											:assignees="task.assignees" 
+											avatarsClass="h-6 w-6" 
+											:show-assignee-controls="false"
 										/>
-										<template v-else>
-											<UserPlus class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400" />
-											<AssigneeUsers
-												class="group-hover:hidden"
-												:assignees="task.assignees" 
-												avatarsClass="h-6 w-6" 
-												:show-assignee-controls="false"
-											/>
-										</template>
-									</button>
-								</PopoverTrigger>
-								<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
-									<Command>
-										<CommandInput placeholder="Search members..." class="h-9" />
-										<CommandEmpty>No members found.</CommandEmpty>
-										<CommandList>
-											<CommandGroup>
-												<CommandItem
-													v-for="member in workspaceMembers"
-													:key="member.id"
-													:value="member.id"
-													@select="toggleAssignee(task, member.id)"
-													class="cursor-pointer"
-												>
-													<Check
-														:class="['mr-2 h-4 w-4', isAssignedTo(task, member.id) ? 'opacity-100' : 'opacity-0']"
-													/>
-													{{ member.name }}
-												</CommandItem>
-											</CommandGroup>
-										</CommandList>
-									</Command>
-								</PopoverContent>
-							</Popover>
+									</template>
+								</button>
+							</PopoverTrigger>
+							<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
+								<Command>
+									<CommandInput placeholder="Search members..." class="h-9" />
+									<CommandEmpty>No members found.</CommandEmpty>
+									<CommandList>
+										<CommandGroup>
+											<CommandItem
+												v-for="member in workspaceMembers"
+												:key="member.id"
+												:value="member.id"
+												@select="toggleAssignee(task, member.id)"
+												class="cursor-pointer"
+											>
+												<Check
+													:class="['mr-2 h-4 w-4', isAssignedTo(task, member.id) ? 'opacity-100' : 'opacity-0']"
+												/>
+												{{ member.name }}
+											</CommandItem>
+										</CommandGroup>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
 						</div>
 
 						<div class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
@@ -275,14 +278,15 @@
 		PaginationMeta,
 	} from '@/actions/tmgr/tasks';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
-	import { getWorkspaceMembers, WorkspaceMember } from '@/actions/tmgr/workspaces';
-	import CategoryBadge from '@/components/general/CategoryBadge.vue';
-	import Button from '@/components/general/Button.vue';
-	import { PropType } from 'vue';
-	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
-	import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-	import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-	import { UserPlus, Check } from 'lucide-vue-next';
+import { getWorkspaceMembers, WorkspaceMember } from '@/actions/tmgr/workspaces';
+import CategoryBadge from '@/components/general/CategoryBadge.vue';
+import Button from '@/components/general/Button.vue';
+import { PropType } from 'vue';
+import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { UserPlus, Check } from 'lucide-vue-next';
+import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 	export default {
 		name: 'TasksListComponent',
@@ -386,23 +390,27 @@
 		}
 	},
 	mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
-	data: () => ({
-		showTaskForm: false,
-		modalTaskId: null,
-		confirm: null,
-		isShowSelectedTasksCommonTime: false,
-		selected: [],
-		selecting: [],
-		showTimeInModal: false,
-		timeForModal: null,
-		loadingActionsForMultipleTasks: [],
-		perPage: 10,
-		statuses: [] as Status[],
-		backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
-		hoveredTaskId: null as number | null,
-		assigneePopoverOpen: {} as Record<number, boolean>,
-		workspaceMembers: [] as WorkspaceMember[],
-	}),
+	data() {
+		const { isFeatureEnabled } = useFeatureToggles();
+		return {
+			isFeatureEnabled,
+			showTaskForm: false,
+			modalTaskId: null,
+			confirm: null,
+			isShowSelectedTasksCommonTime: false,
+			selected: [],
+			selecting: [],
+			showTimeInModal: false,
+			timeForModal: null,
+			loadingActionsForMultipleTasks: [],
+			perPage: 10,
+			statuses: [] as Status[],
+			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
+			hoveredTaskId: null as number | null,
+			assigneePopoverOpen: {} as Record<number, boolean>,
+			workspaceMembers: [] as WorkspaceMember[],
+		};
+	},
 	async created() {
 		try {
 			this.statuses = await getStatuses();

@@ -34,6 +34,9 @@
 	} from '@/components/ui/dropdown-menu';
 	import { Skeleton } from '@/components/ui/skeleton';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
+	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import CategoriesPreview from '@/components/previews/CategoriesPreview.vue';
+	import { FolderOpen } from 'lucide-vue-next';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -339,7 +342,18 @@
 	</teleport>
 	<ForbiddenAccess v-if="permissionDenied" />
 
-	<BaseLayout v-else>
+	<FeatureGate
+		v-else
+		feature-key="categories"
+		title="Project Categories"
+		description="Organize your tasks into categories and subcategories. Create a hierarchical structure for better project management."
+		:icon="FolderOpen"
+	>
+		<template #preview>
+			<CategoriesPreview />
+		</template>
+
+	<BaseLayout>
 		<template #action>
 			<div
 				class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
@@ -612,4 +626,6 @@
 			</div>
 		</template>
 	</BaseLayout>
+
+	</FeatureGate>
 </template>

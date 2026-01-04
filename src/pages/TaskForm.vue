@@ -297,7 +297,7 @@
 				<Transition>
 					<div class="mt-8 text-center" :key="this.form.common_time">
 						<TimeCounter
-							v-if="form.id"
+							v-if="form.id && isFeatureEnabled('task.countdown')"
 							:init-task="form"
 							@toggle="toggleCountdown"
 							@update:seconds="updateSeconds"
@@ -401,9 +401,17 @@
 				/>
 
 				<!-- Task Relations -->
-				<div class="mt-6">
+				<div
+					class="mt-6"
+					v-if="
+						form.id &&
+						(
+							isFeatureEnabled('task.relations') ||
+							(form.relationTypeWithTask && form.relationTypeWithTask.length > 0)
+						)
+					"
+				>
 					<TaskRelations
-						v-if="form.id"
 						:task-id="form.id"
 						:relations="form.relationTypeWithTask"
 						@update="reloadTask"

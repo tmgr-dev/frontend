@@ -184,11 +184,26 @@
 					},
 				});
 			} else {
-				await router.push({ name: 'CurrentTasksList' });
-			}
+				if (store.state.user) {
+					await Promise.all([
+						getUserSettings(), 
+						getWorkspaceStatuses(),
+						store.dispatch('featureToggles/loadUserToggles')
+					]);
+				}
 
-			if (store.state.user) {
-				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
+				const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+				const currentWorkspaceId = store.state.user?.settings?.find(
+					s => s.key === 'current_workspace'
+				)?.value;
+				const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+				const workspaceCode = workspace?.code;
+
+				if (workspaceCode) {
+					await router.push(`/${workspaceCode}/${landingPage}`);
+				} else {
+					await router.push({ name: 'CurrentTasksList' });
+				}
 			}
 
 			store.commit('rerenderApp');

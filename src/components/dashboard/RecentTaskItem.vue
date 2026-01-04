@@ -89,6 +89,7 @@
       <div class="flex items-center space-x-2 ml-4">
         <!-- Timer Button -->
         <Button
+          v-if="isFeatureEnabled('task.countdown')"
           variant="ghost"
           size="sm"
           @click.stop="handleTimerToggle"
@@ -158,6 +159,7 @@ import {
   ArrowRightIcon,
   ArrowDownIcon
 } from '@heroicons/vue/24/outline';
+import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 interface Props {
   task: RecentTask;
@@ -177,6 +179,8 @@ const emit = defineEmits<{
   'timer-toggle': [task: RecentTask];
   'status-change': [statusId: number];
 }>();
+
+const { isFeatureEnabled } = useFeatureToggles();
 
 const timerInterval = ref<NodeJS.Timeout | null>(null);
 const timerDuration = ref<string>('');
