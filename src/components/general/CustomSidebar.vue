@@ -51,6 +51,7 @@
 		ClipboardListIcon,
 		LayoutDashboard,
 		UserPlus,
+		Sliders,
 	} from 'lucide-vue-next';
 	import { onBeforeMount, ref, computed, onMounted, watch } from 'vue';
 	import { getWorkspaces, Workspace, exitWorkspace } from '@/actions/tmgr/workspaces.ts';
@@ -64,9 +65,11 @@
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 	const route = useRoute();
 	const router = useRouter();
+	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 	const user = ref<User>({} as User);
 	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>([]);
@@ -103,6 +106,7 @@
 					getTopCategories(),
 					getUser(),
 					getWorkspaces(),
+					store.dispatch('featureToggles/loadUserToggles'),
 				]);
 
 				categories.value = loadedCategories.slice(0, 4);
@@ -114,6 +118,11 @@
 				activeWorkspace.value = workspaces.value?.find(
 					(workspace: Workspace) => workspace.id == activeWorkspaceId,
 				) as Workspace;
+				
+				// Load workspace feature toggles for the active workspace
+				if (activeWorkspace.value?.id) {
+					await store.dispatch('featureToggles/loadWorkspaceToggles', activeWorkspace.value.id);
+				}
 			} catch (e) {
 				console.error(e);
 			}
@@ -206,6 +215,9 @@
 			store.commit('updateUserWorkspaceSetting', {
 				workspaceId: workspace.id
 			});
+			
+			// Load feature toggles for new workspace
+			await store.dispatch('featureToggles/loadWorkspaceToggles', workspace.id);
 			
 			// Trigger UI updates
 			store.commit('rerenderApp');
@@ -384,7 +396,7 @@
 					<SidebarGroupLabel>TMGR.DEV</SidebarGroupLabel>
 
 					<SidebarMenu>
-						<SidebarMenuItem>
+						<SidebarMenuItem v-if="isFeatureEnabled('dashboard')">
 							<SidebarMenuButton as-child>
 								<router-link :to="activeWorkspace?.code 
 									? `/${activeWorkspace.code}/dashboard` 
@@ -406,7 +418,7 @@
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 
-						<SidebarMenuItem>
+						<SidebarMenuItem v-if="isFeatureEnabled('board')">
 							<SidebarMenuButton as-child>
 								<router-link :to="activeWorkspace?.code 
 									? `/${activeWorkspace.code}/board` 
@@ -417,7 +429,7 @@
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 
-						<SidebarMenuItem>
+						<SidebarMenuItem v-if="isFeatureEnabled('daily_routines')">
 							<SidebarMenuButton as-child>
 								<router-link to="/routines">
 									<Inbox />
@@ -426,7 +438,7 @@
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 
-						<SidebarMenuItem>
+						<SidebarMenuItem v-if="isFeatureEnabled('categories')">
 							<SidebarMenuButton as-child>
 								<router-link :to="activeWorkspace?.code 
 									? `/${activeWorkspace.code}/categories` 
@@ -439,7 +451,7 @@
 					</SidebarMenu>
 				</SidebarGroup>
 
-				<SidebarGroup class="group-data-[collapsible=icon]:hidden">
+				<SidebarGroup v-if="isFeatureEnabled('categories')" class="group-data-[collapsible=icon]:hidden">
 					<SidebarGroupLabel>Recent categories</SidebarGroupLabel>
 
 					<SidebarMenu>
@@ -553,6 +565,13 @@
 									>
 										<Settings2 />
 										Workspace Settings
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										@click="$router.push('/settings/features')"
+										class="cursor-pointer"
+									>
+										<Sliders />
+										Feature Settings
 									</DropdownMenuItem>
 									<DropdownMenuItem>
 										<DarkMode />

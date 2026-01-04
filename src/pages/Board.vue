@@ -1,6 +1,16 @@
 <template>
 	<Teleport to="title">{{ title }}</Teleport>
 
+	<FeatureGate
+		feature-key="board"
+		title="Kanban Board"
+		description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
+		:icon="SquareKanban"
+	>
+		<template #preview>
+			<BoardPreview />
+		</template>
+
 	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
 			<div class="flex flex-col justify-center flex-1 min-h-0">
@@ -538,6 +548,8 @@
 			</Transition>
 		</template>
 	</BaseLayout>
+
+	</FeatureGate>
 </template>
 <script>
 	import Modal from '@/components/Modal.vue';
@@ -577,6 +589,9 @@
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import BoardPreview from '@/components/previews/BoardPreview.vue';
+	import { SquareKanban } from 'lucide-vue-next';
 
 	export default {
 		name: 'Board',
@@ -597,6 +612,9 @@
 			Select,
 			Confirm,
 			WorkspaceUsers,
+			FeatureGate,
+			BoardPreview,
+			SquareKanban,
 		},
 
 		data: () => ({
@@ -1263,15 +1281,17 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-			this.color.hue = hueFromHex(this.statusColor);
+		this.color.hue = hueFromHex(this.statusColor);
 
+		const boardContainer = document.querySelector('.board-container');
+		if (boardContainer) {
 			this.hasHorizontalScroll =
-				document.querySelector('.board-container').scrollWidth >
-				document.querySelector('.board-container').clientWidth;
+				boardContainer.scrollWidth > boardContainer.clientWidth;
 			
 			this.$nextTick(() => {
 				this.updateScrollContainers();
 			});
+		}
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
