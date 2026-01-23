@@ -195,6 +195,13 @@
 								<span class="material-icons" style="font-size: 9px;">edit</span>
 								{{ formatRelativeTime(task.updated_at) }}
 							</span>
+							<span 
+								v-if="getTaskOvertime(task)" 
+								class="text-[9px] font-medium text-red-500 dark:text-red-400"
+								title="Overtime"
+							>
+								+{{ getTaskOvertime(task) }}
+							</span>
 							<span class="ml-auto flex items-center gap-1">
 								<span>{{ getStatusName(task) }}</span>
 								<span class="inline-block h-2 w-2 rounded-full" :style="{ backgroundColor: getStatusColor(task) }"></span>
@@ -582,6 +589,27 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 				}
 				const currentTime = task.common_time || 0;
 				return currentTime > approximatelyTime;
+			},
+			getTaskOvertime(task: Task) {
+				const approximatelyTime = this.getApproximatelyTime(task);
+				if (!approximatelyTime || approximatelyTime <= 0) {
+					return null;
+				}
+				const currentTime = task.common_time || 0;
+				const overtime = currentTime - approximatelyTime;
+				if (overtime <= 0) {
+					return null;
+				}
+				const hours = Math.floor(overtime / 3600);
+				const minutes = Math.floor((overtime % 3600) / 60);
+				const parts = [];
+				if (hours > 0) {
+					parts.push(`${hours}h`);
+				}
+				if (minutes > 0) {
+					parts.push(`${minutes}m`);
+				}
+				return parts.length > 0 ? parts.join(' ') : null;
 			},
 			async updateStatus(task, status, dotId = null, loadTasks = true) {
 				try {

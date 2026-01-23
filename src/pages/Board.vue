@@ -168,6 +168,13 @@
 														</span>
 														<span class="text-sm">
 															{{ column.summary }}
+															<span 
+																v-if="column.overtime" 
+																class="ml-1 text-red-500 dark:text-red-400"
+																title="Overtime"
+															>
+																+{{ column.overtime }}
+															</span>
 														</span>
 													</div>
 
@@ -1086,6 +1093,42 @@
 					return `${hoursDecimal.toFixed(2)} h`;
 				}
 			},
+			getApproximatelyTime(task) {
+				if (task.approximately_time) {
+					return parseInt(task.approximately_time, 10);
+				}
+				const setting = task.settings?.find(s => s.key === 'approximately_time');
+				if (setting) {
+					return parseInt(setting.value || setting.pivot?.value, 10);
+				}
+				return 0;
+			},
+			formatOvertime(overtimeSeconds) {
+				if (overtimeSeconds <= 0) return null;
+				const hours = Math.floor(overtimeSeconds / 3600);
+				const minutes = Math.floor((overtimeSeconds % 3600) / 60);
+				const parts = [];
+				if (hours > 0) {
+					parts.push(`${hours}h`);
+				}
+				if (minutes > 0) {
+					parts.push(`${minutes}m`);
+				}
+				return parts.length > 0 ? parts.join(' ') : null;
+			},
+			calculateColumnOvertime(tasks) {
+				let overtime = 0;
+				for (const task of tasks) {
+					const approximatelyTime = this.getApproximatelyTime(task);
+					if (approximatelyTime > 0) {
+						const currentTime = task.common_time || 0;
+						if (currentTime > approximatelyTime) {
+							overtime += currentTime - approximatelyTime;
+						}
+					}
+				}
+				return overtime;
+			},
 			async loadTasks() {
 				this.tasksLoaded = false;
 				const tasksPromises = this.columns.map((column) =>
@@ -1115,11 +1158,14 @@
 						0,
 					);
 					const summaryInHours = this.formatTime(summary);
+					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
+					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
 					const newColumn = { 
 						...column, 
 						summary: summaryInHours,
-						taskCount: taskCount
+						taskCount: taskCount,
+						overtime: overtimeFormatted
 					};
 
 					newColumn.tasks = tasksInColumn;

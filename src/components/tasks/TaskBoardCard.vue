@@ -159,6 +159,13 @@
 				<span class="material-icons" style="font-size: 10px;">edit</span>
 				{{ formatRelativeTime(task.updated_at) }}
 			</span>
+			<span 
+				v-if="overtime" 
+				class="font-medium text-red-500 dark:text-red-400"
+				title="Overtime"
+			>
+				+{{ overtime }}
+			</span>
 		</div>
 	</div>
 </template>
@@ -287,6 +294,27 @@
 				}
 				const currentTime = this.displayTask.common_time || 0;
 				return currentTime > approximatelyTime;
+			},
+			overtime() {
+				const approximatelyTime = this.getApproximatelyTime();
+				if (!approximatelyTime || approximatelyTime <= 0) {
+					return null;
+				}
+				const currentTime = this.displayTask.common_time || 0;
+				const overtimeSeconds = currentTime - approximatelyTime;
+				if (overtimeSeconds <= 0) {
+					return null;
+				}
+				const hours = Math.floor(overtimeSeconds / 3600);
+				const minutes = Math.floor((overtimeSeconds % 3600) / 60);
+				const parts = [];
+				if (hours > 0) {
+					parts.push(`${hours}h`);
+				}
+				if (minutes > 0) {
+					parts.push(`${minutes}m`);
+				}
+				return parts.length > 0 ? parts.join(' ') : null;
 			},
 		},
 		watch: {
