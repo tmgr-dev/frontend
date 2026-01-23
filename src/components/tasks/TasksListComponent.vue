@@ -19,6 +19,19 @@
 			</div>
 		</Transition>
 
+		<div v-if="hasSelectable" class="flex items-center gap-2 px-4 pb-2">
+			<button
+				@click="selectAll"
+				type="button"
+				class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+			>
+				{{ allSelected ? 'Deselect all' : 'Select all' }}
+			</button>
+			<span v-if="selected.filter(Boolean).length > 0" class="text-sm text-gray-500 dark:text-gray-400">
+				Selected: {{ selected.filter(Boolean).length }} of {{ tasks.length }}
+			</span>
+		</div>
+
 		<div
 			:key="hasSelectable"
 			v-selectable="
@@ -418,6 +431,11 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			console.error('Failed to load statuses:', e);
 		}
 	},
+	computed: {
+		allSelected() {
+			return this.tasks.length > 0 && this.selected.length === this.tasks.length && this.selected.every(Boolean);
+		}
+	},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
@@ -699,11 +717,14 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 				}
 			},
 			selectAll() {
-				this.selected = this.tasks.map(() => true);
-				this.isShowSelectedTasksCommonTime =
-					this.selected.filter(Boolean).length > 1;
-
-				this.countTimeForModal();
+				if (this.allSelected) {
+					this.selected = [];
+					this.isShowSelectedTasksCommonTime = false;
+				} else {
+					this.selected = this.tasks.map(() => true);
+					this.isShowSelectedTasksCommonTime = this.selected.length > 0;
+					this.countTimeForModal();
+				}
 			},
 			onPageChange(page: number) {
 				if (page < 1 || page > this.pagination.last_page) return;
