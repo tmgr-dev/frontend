@@ -81,6 +81,45 @@
 		};
 	});
 
+	function getApproximatelyTime(task: Task) {
+		if ((task as any).approximately_time) {
+			return parseInt(String((task as any).approximately_time), 10);
+		}
+		const setting = (task as any).settings?.find((s: any) => s.key === 'approximately_time');
+		if (setting) {
+			return parseInt(String(setting.value || setting.pivot?.value), 10);
+		}
+		return 0;
+	}
+
+	const totalOvertime = computed(() => {
+		let overtime = 0;
+		for (const task of tasks.value) {
+			const approximatelyTime = getApproximatelyTime(task);
+			if (approximatelyTime > 0) {
+				const currentTime = task.common_time || 0;
+				if (currentTime > approximatelyTime) {
+					overtime += currentTime - approximatelyTime;
+				}
+			}
+		}
+		return overtime;
+	});
+
+	const formattedTotalOvertime = computed(() => {
+		if (totalOvertime.value <= 0) return null;
+		const hours = Math.floor(totalOvertime.value / 3600);
+		const minutes = Math.floor((totalOvertime.value % 3600) / 60);
+		const parts = [];
+		if (hours > 0) {
+			parts.push(`${hours}h`);
+		}
+		if (minutes > 0) {
+			parts.push(`${minutes}m`);
+		}
+		return parts.length > 0 ? parts.join(' ') : null;
+	});
+
 	function handleKeyDown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && selectableTasks.value) {
 			selectableTasks.value = false;
@@ -283,12 +322,25 @@
 									<div class="text-[9px] text-gray-500 dark:text-gray-400">(2000h/year)</div>
 								</div>
 							</div>
+							<div v-if="formattedTotalOvertime" class="flex min-w-[100px] flex-1 items-center justify-center">
+								<div class="text-center">
+									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Overtime</div>
+									<div class="text-lg font-bold text-red-600 dark:text-red-400">+{{ formattedTotalOvertime }}</div>
+								</div>
+							</div>
 						</div>
 						<div
 							v-else-if="summaryTime"
 							class="text-bold w-full shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
 						>
 							{{ summaryTime }}
+							<span 
+								v-if="formattedTotalOvertime" 
+								class="ml-2 text-red-500 dark:text-red-400"
+								title="Total Overtime"
+							>
+								+{{ formattedTotalOvertime }}
+							</span>
 						</div>
 					</transition>
 
