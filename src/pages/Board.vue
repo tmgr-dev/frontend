@@ -21,7 +21,7 @@
 					/>
 				</div>
 				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
-					<div class="min-h-[62px] flex-shrink-0">
+					<div class="min-h-[62px] flex-shrink-0 max-sm:min-h-0">
 						<div class="relative xl-custom:hidden">
 							<div
 								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center gap-2 p-4 pt-5"
@@ -123,6 +123,7 @@
 						</div>
 					</div>
 
+					<div class="board-wrapper">
 					<div class="board-container">
 						<div class="w-fit" ref="cont1">
 							<Draggable
@@ -308,6 +309,7 @@
 								</template>
 							</Draggable>
 						</div>
+					</div>
 					</div>
 				</div>
 
@@ -1395,13 +1397,47 @@
 		}
 	}
 
+	.board-wrapper {
+		position: relative;
+		flex-grow: 1;
+		min-height: 0;
+		height: 100%;
+
+		&::after {
+			content: '';
+			position: absolute;
+			top: 20px;
+			right: 0;
+			bottom: 20px;
+			width: 24px;
+			background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.15));
+			pointer-events: none;
+			z-index: 10;
+			border-radius: 20px 0 0 20px;
+		}
+
+		@media (max-width: 768px) {
+			&::after {
+				top: 10px;
+				bottom: 10px;
+				width: 20px;
+				background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.18));
+				border-radius: 16px 0 0 16px;
+			}
+		}
+	}
+
+	:global(.dark) .board-wrapper::after {
+		background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.15));
+	}
+
 	.board-container {
 		display: flex;
 		flex-wrap: nowrap;
 		flex-grow: 1;
 		overflow-x: auto;
 		overflow-y: hidden;
-		width: calc(100vw - 19rem);
+		width: calc(100vw - var(--sidebar-width, 16rem) - 1rem);
 		height: 100%;
 		min-height: 0;
 
@@ -1415,8 +1451,9 @@
 			flex-direction: column;
 			min-height: 0;
 		}
+
 		@media (max-width: 768px) {
-			width: calc(100vw - 3rem);
+			width: 100vw;
 		}
 	}
 
