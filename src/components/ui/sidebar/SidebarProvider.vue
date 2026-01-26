@@ -2,7 +2,7 @@
 import { cn } from '@/utils'
 import { useEventListener, useMediaQuery, useVModel } from '@vueuse/core';
 import { TooltipProvider } from 'radix-vue'
-import { computed, type HTMLAttributes, type Ref, ref } from 'vue'
+import { computed, type HTMLAttributes, onMounted, onUnmounted, type Ref, ref } from 'vue'
 import { provideSidebarContext, SIDEBAR_COOKIE_MAX_AGE, SIDEBAR_COOKIE_NAME, SIDEBAR_KEYBOARD_SHORTCUT, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON } from './utils'
 
 const props = withDefaults(defineProps<{
@@ -49,6 +49,66 @@ useEventListener('keydown', (event: KeyboardEvent) => {
 		event.preventDefault()
 		toggleSidebar()
 	}
+})
+
+const SWIPE_THRESHOLD = 50
+const EDGE_ZONE = 30
+let touchStartX = 0
+let touchStartY = 0
+let isSwiping = false
+let swipeDirection: 'open' | 'close' | null = null
+
+function handleTouchStart(event: TouchEvent) {
+	if (!isMobile.value) return
+
+	const touch = event.touches[0]
+
+	if (!openMobile.value && touch.clientX <= EDGE_ZONE) {
+		touchStartX = touch.clientX
+		touchStartY = touch.clientY
+		isSwiping = true
+		swipeDirection = 'open'
+	} else if (openMobile.value) {
+		touchStartX = touch.clientX
+		touchStartY = touch.clientY
+		isSwiping = true
+		swipeDirection = 'close'
+	}
+}
+
+function handleTouchMove(event: TouchEvent) {
+	if (!isSwiping || !isMobile.value) return
+
+	const touch = event.touches[0]
+	const deltaX = touch.clientX - touchStartX
+	const deltaY = Math.abs(touch.clientY - touchStartY)
+
+	if (swipeDirection === 'open' && deltaX > SWIPE_THRESHOLD && deltaX > deltaY) {
+		setOpenMobile(true)
+		isSwiping = false
+		swipeDirection = null
+	} else if (swipeDirection === 'close' && deltaX < -SWIPE_THRESHOLD && Math.abs(deltaX) > deltaY) {
+		setOpenMobile(false)
+		isSwiping = false
+		swipeDirection = null
+	}
+}
+
+function handleTouchEnd() {
+	isSwiping = false
+	swipeDirection = null
+}
+
+onMounted(() => {
+	document.addEventListener('touchstart', handleTouchStart, { passive: true })
+	document.addEventListener('touchmove', handleTouchMove, { passive: true })
+	document.addEventListener('touchend', handleTouchEnd, { passive: true })
+})
+
+onUnmounted(() => {
+	document.removeEventListener('touchstart', handleTouchStart)
+	document.removeEventListener('touchmove', handleTouchMove)
+	document.removeEventListener('touchend', handleTouchEnd)
 })
 
 // We add a state so that we can do data-state="expanded" or "collapsed".

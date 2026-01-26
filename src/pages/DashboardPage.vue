@@ -1199,10 +1199,29 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   .dashboard-container {
     @apply px-2 py-2;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   
   .dashboard-grid {
     @apply flex-col;
+  }
+  
+  .dashboard-section {
+    @apply mb-4;
+  }
+  
+  .dashboard-header {
+    @apply mb-4 pb-2;
+  }
+  
+  .dashboard-header h1 {
+    @apply text-xl;
+  }
+  
+  .heatmap-container {
+    @apply p-3;
+    overflow-x: hidden;
   }
 }
 
