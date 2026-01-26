@@ -52,6 +52,9 @@
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import TaskChat from '@/components/tasks/TaskChat.vue';
+	import { getComments } from '@/actions/tmgr/comments';
+	import { MessageCircle } from 'lucide-vue-next';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -155,6 +158,10 @@
 		},
 		checkpoints: [],
 	});
+	
+	const isChatOpen = ref(!props.isModal);
+	const commentsCount = ref(0);
+	
 	const taskId = computed(() => {
 		// If we're in task creation mode, don't use route params (they might be category ID)
 		if (store.state.showCreatingTaskModal && !modalTaskId.value) {
@@ -451,6 +458,11 @@
 				});
 			}, 350);
 		}
+		
+		// Load comments count if task exists
+		if (taskId.value) {
+			loadCommentsCount();
+		}
 	});
 
 	const reloadTask = async () => {
@@ -459,9 +471,27 @@
 			suppressAutoSavingForOnce.value = true;
 			const taskData = await getTask(taskId.value);
 			form.value = taskData;
+			loadCommentsCount();
 		} catch (e: any) {
 			console.error('Error reloading task:', e);
 		}
+	};
+
+	const loadCommentsCount = async () => {
+		if (!form.value.id) {
+			commentsCount.value = 0;
+			return;
+		}
+		try {
+			const comments = await getComments(form.value.id);
+			commentsCount.value = comments.length;
+		} catch (e) {
+			console.error('Error loading comments count:', e);
+		}
+	};
+	
+	const toggleChat = () => {
+		isChatOpen.value = !isChatOpen.value;
 	};
 
 	const handleOpenLinkedTask = (linkedTaskId: number) => {
@@ -962,13 +992,16 @@
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 		<div
-			class="flex h-full flex-col"
+			class="flex h-full overflow-hidden transition-all duration-300"
 			:class="[
 				isModal
-					? 'max-h-[calc(100vh-40px)] md:w-[700px]'
-					: 'container mx-auto pt-14',
+					? 'md:max-h-[60vh] flex-col md:flex-row'
+					: 'container mx-auto pt-14 flex-col md:flex-row',
+				isChatOpen && form.id ? 'md:w-[1050px]' : 'md:w-[700px]'
 			]"
 		>
+			<!-- Form Panel -->
+			<div class="flex h-full flex-col md:w-[700px] flex-shrink-0 min-h-0">
 			<!-- HEADER - Fixed at top -->
 			<header class="flex shrink-0 justify-between p-6 pb-4">
 				<Select v-model="statusIdStr">
@@ -993,6 +1026,19 @@
 
 				<div class="flex items-center gap-3">
 					<SettingsComponent :form="form" />
+
+					<!-- Chat toggle button -->
+					<button 
+						v-if="form.id" 
+						@click="toggleChat"
+						class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors"
+						:class="isChatOpen 
+							? 'bg-tmgr-blue text-white' 
+							: 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'"
+					>
+						<MessageCircle class="size-5" />
+						<span v-if="commentsCount > 0" class="text-xs font-medium">{{ commentsCount }}</span>
+					</button>
 
 					<button v-if="isModal" @click="emit('close')">
 						<XMarkIcon
@@ -1375,6 +1421,48 @@
 				</div>
 			</footer>
 		</div>
+		<!-- End Form Panel -->
+
+		<!-- Chat Panel - Desktop -->
+		<transition name="slide-chat">
+			<div 
+				v-if="form.id && isChatOpen" 
+				class="chat-panel-animated w-[350px] border-l border-gray-200 dark:border-gray-800 hidden md:block"
+				:class="isModal ? '' : 'self-start'"
+				:style="isModal ? 'max-height: 60vh;' : 'height: 600px;'"
+			>
+				<TaskChat :task-id="form.id" style="height: 100%;" @comments-loaded="(count: number) => commentsCount = count" />
+			</div>
+		</transition>
+		
+		<!-- Mobile Chat Overlay -->
+		<teleport to="body">
+			<transition name="slide-mobile-chat">
+				<div 
+					v-if="form.id && isChatOpen" 
+					class="fixed inset-0 z-50 md:hidden"
+				>
+					<!-- Backdrop -->
+					<div 
+						class="absolute inset-0 bg-black/50"
+						@click="toggleChat"
+					></div>
+					<!-- Chat Panel -->
+					<div 
+						class="absolute top-0 right-0 h-full w-[85vw] max-w-[350px] bg-white dark:bg-gray-900 shadow-xl"
+					>
+						<TaskChat 
+							:task-id="form.id" 
+							style="height: 100%;" 
+							@comments-loaded="(count: number) => commentsCount = count"
+							show-close-button
+							@close="toggleChat"
+						/>
+					</div>
+				</div>
+			</transition>
+		</teleport>
+		</div>
 
 		<Confirm
 			v-if="showBacklogStatusChangeConfirm"
@@ -1462,5 +1550,71 @@
 	/* Fix for z-index issues with toolbar in modal */
 	.ce-toolbar {
 		z-index: 10 !important;
+	}
+
+	/* Chat panel - full height */
+	.chat-panel {
+		height: 100%;
+		flex-shrink: 0;
+	}
+
+	/* Chat panel animated */
+	.chat-panel-animated {
+		flex-shrink: 0;
+	}
+
+	/* Slide animation for chat */
+	.slide-chat-enter-active,
+	.slide-chat-leave-active {
+		transition: all 0.3s ease;
+	}
+
+	.slide-chat-enter-from {
+		width: 0;
+		opacity: 0;
+		overflow: hidden;
+	}
+
+	.slide-chat-leave-to {
+		width: 0;
+		opacity: 0;
+		overflow: hidden;
+	}
+
+	.slide-chat-enter-to,
+	.slide-chat-leave-from {
+		width: 350px;
+		opacity: 1;
+	}
+
+	/* Mobile chat slide animation */
+	.slide-mobile-chat-enter-active,
+	.slide-mobile-chat-leave-active {
+		transition: opacity 0.3s ease;
+	}
+
+	.slide-mobile-chat-enter-active > div:last-child,
+	.slide-mobile-chat-leave-active > div:last-child {
+		transition: transform 0.3s ease;
+	}
+
+	.slide-mobile-chat-enter-from,
+	.slide-mobile-chat-leave-to {
+		opacity: 0;
+	}
+
+	.slide-mobile-chat-enter-from > div:last-child,
+	.slide-mobile-chat-leave-to > div:last-child {
+		transform: translateX(100%);
+	}
+
+	.slide-mobile-chat-enter-to,
+	.slide-mobile-chat-leave-from {
+		opacity: 1;
+	}
+
+	.slide-mobile-chat-enter-to > div:last-child,
+	.slide-mobile-chat-leave-from > div:last-child {
+		transform: translateX(0);
 	}
 </style>
