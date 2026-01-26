@@ -627,7 +627,7 @@
 					</div>
 				</header>
 
-				<div class="flex min-h-max flex-1 flex-col gap-4">
+				<div class="flex min-h-max flex-1 flex-col gap-4 max-sm:overflow-x-hidden">
 					<slot />
 				</div>
 			</SidebarInset>
