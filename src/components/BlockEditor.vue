@@ -209,6 +209,17 @@
 	background-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Fix text selection in dark mode - ensure text remains readable */
+.dark .editorjs ::selection {
+	background-color: rgba(59, 130, 246, 0.5);
+	color: #ffffff;
+}
+
+.dark .editorjs ::-moz-selection {
+	background-color: rgba(59, 130, 246, 0.5);
+	color: #ffffff;
+}
+
 /* Ensure content is visible within the modal */
 .ce-block__content {
 	max-width: 100% !important; /* Override EditorJS default */
