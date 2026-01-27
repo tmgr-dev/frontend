@@ -30,6 +30,30 @@
 						/>
 					</div>
 
+					<div class="mb-4">
+						<label
+							class="mb-2 block text-sm font-bold text-gray-700"
+							for="categoryCode"
+						>
+							Category Code
+							<span class="text-xs font-normal text-gray-500">
+								(for GitHub integration)
+							</span>
+						</label>
+
+						<TextField
+							v-model="form.code"
+							:errors="errors.code"
+							placeholder="e.g., PROJ, FEAT, BUG"
+							@input="sanitizeCode"
+						/>
+						
+						<small class="text-xs text-gray-500">
+							Only uppercase letters (A-Z), numbers (0-9), and hyphens (-) are allowed. 
+							Used in task references like <code class="rounded bg-gray-100 px-1 dark:bg-gray-800">{{ form.code || 'CODE' }}-123</code>
+						</small>
+					</div>
+
 					<label class="mb-2 block text-sm font-bold text-gray-700">
 						Parent category
 					</label>
@@ -96,6 +120,16 @@
 						</div>
 					</div>
 
+					<CategoryGitHubSettings
+						v-if="!isCreate && form.id"
+						:category-id="form.id"
+						:is-create="isCreate"
+						@connected="onGitHubConnected"
+						@disconnected="onGitHubDisconnected"
+						@synced="onGitHubSynced"
+						@relinked="onGitHubRelinked"
+					/>
+
 					<div class="mt-8 flex-row justify-center">
 						<button
 							class="mr-5 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
@@ -149,10 +183,12 @@
 	import Switcher from '@/components/general/Switcher.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import TimeField from '@/components/general/TimeField.vue';
+	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			CategoryGitHubSettings,
 			TimeField,
 			TextField,
 			Switcher,
@@ -165,6 +201,7 @@
 				h1: null,
 				form: {
 					title: '',
+					code: '',
 					project_category_id: this.$route.params.project_category_id || null,
 					slug: '',
 				},
@@ -254,6 +291,15 @@
 					return category.id === id;
 				});
 			},
+			sanitizeCode() {
+				if (!this.form.code) return;
+				
+				this.form.code = this.form.code
+					.toUpperCase()
+					.replace(/[^A-Z0-9\-]/g, '-')
+					.replace(/-+/g, '-')
+					.replace(/^-+|-+$/g, '');
+			},
 			async create(withRoutePush = true) {
 				if (!this.form.project_category_id) {
 					delete this.form.project_category_id;
@@ -301,6 +347,19 @@
 				return this.isCreate ? 'Add' : 'Edit';
 			},
 			generateSlugFromRu,
+			onGitHubConnected(repoName) {
+				this.showAlert('Success', `Connected to ${repoName}`);
+			},
+			onGitHubDisconnected() {
+				this.showAlert('Success', 'Repository disconnected');
+			},
+			onGitHubSynced() {
+				this.showAlert('Success', 'Repository synced successfully');
+			},
+			onGitHubRelinked(stats) {
+				const total = stats.commits + stats.branches + stats.pull_requests;
+				this.showAlert('Success', `Relinked ${total} items: ${stats.commits} commits, ${stats.branches} branches, ${stats.pull_requests} PRs`);
+			},
 		},
 	};
 </script>

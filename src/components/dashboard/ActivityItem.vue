@@ -84,7 +84,12 @@ import {
   ChatBubbleLeftIcon,
   FolderIcon,
   DocumentIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  CodeBracketIcon,
+  ArrowsPointingOutIcon,
+  XMarkIcon,
+  LinkIcon,
+  LinkSlashIcon
 } from '@heroicons/vue/24/outline';
 
 interface Props {
@@ -131,7 +136,17 @@ const activityIcon = computed(() => {
     file_deleted: TrashIcon,
     member_joined: UserPlusIcon,
     member_left: UserMinusIcon,
-    routine_completed: CheckIcon
+    routine_completed: CheckIcon,
+    git_commit_pushed: CodeBracketIcon,
+    git_branch_created: ArrowsPointingOutIcon,
+    git_branch_deleted: TrashIcon,
+    git_pr_opened: ArrowPathIcon,
+    git_pr_closed: XMarkIcon,
+    git_pr_merged: CheckIcon,
+    git_repo_connected: LinkIcon,
+    git_repo_disconnected: LinkSlashIcon,
+    github_app_installed: LinkIcon,
+    github_app_uninstalled: LinkSlashIcon
   };
   
   return iconMap[props.activity.type] || PlusIcon;
@@ -158,7 +173,17 @@ const iconClasses = computed(() => {
     file_deleted: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
     member_joined: 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
     member_left: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-    routine_completed: 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400'
+    routine_completed: 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
+    git_commit_pushed: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_branch_created: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_branch_deleted: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_pr_opened: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_pr_closed: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_pr_merged: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_repo_connected: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    git_repo_disconnected: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    github_app_installed: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    github_app_uninstalled: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400'
   };
   
   const baseClasses = 'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
