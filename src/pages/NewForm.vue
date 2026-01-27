@@ -1000,8 +1000,11 @@
 				isChatOpen && form.id ? 'md:w-[1050px]' : 'md:w-[700px]'
 			]"
 		>
-			<!-- Form Panel -->
-			<div class="flex h-full flex-col md:w-[700px] flex-shrink-0 min-h-0">
+		<!-- Form Panel -->
+		<div 
+			class="flex flex-col md:w-[700px] flex-shrink-0 min-h-0"
+			:class="isModal ? 'overflow-hidden' : 'h-full'"
+		>
 			<!-- HEADER - Fixed at top -->
 			<header class="flex shrink-0 justify-between p-6 pb-4">
 				<Select v-model="statusIdStr">
@@ -1048,8 +1051,8 @@
 				</div>
 			</header>
 
-			<!-- MAIN - Scrollable content area -->
-			<main class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4">
+		<!-- MAIN - Scrollable content area -->
+		<main class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4 min-h-0">
 				<div class="relative">
 					<textarea
 						v-model="form.title"
