@@ -5,7 +5,7 @@
 		DocumentPlusIcon,
 		BookmarkIcon,
 	} from '@heroicons/vue/20/solid';
-	import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
+	import { ArrowTopRightOnSquareIcon, CodeBracketIcon } from '@heroicons/vue/24/outline';
 	import store from '@/store';
 	import { computed, nextTick, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -52,8 +52,11 @@
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
+	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import { Textarea } from '@/components/ui/textarea';
+	import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 	import { createComment, createAskingHelpComment } from '@/actions/tmgr/comments';
+	import { getTaskGitActivity } from '@/actions/tmgr/github';
 	import { Send, Sparkles } from 'lucide-vue-next';
 
 	// Helper to get preferred editor with local storage as primary source
@@ -190,6 +193,14 @@
 	const isCommentInputExpanded = ref(false);
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
 	const commentsCount = ref(0);
+	const showGitActivityModal = ref(false);
+	const gitActivityCount = ref(0);
+
+	const currentCategoryCode = computed(() => {
+		if (!form.value.project_category_id || !categories.value.length) return null;
+		const category = categories.value.find((c: Category) => c.id === form.value.project_category_id);
+		return category?.code || null;
+	});
 
 	const autoResizeTitle = () => {
 		if (titleTextarea.value) {
@@ -437,6 +448,8 @@
 				assignees.value = [];
 			}
 
+			await loadGitActivity();
+
 			nextTick(() => {
 				autoResizeTitle();
 				titleTextarea.value?.focus();
@@ -480,6 +493,26 @@
 			store.state.currentTaskIdForModal = linkedTaskId;
 		} else {
 			router.push(`/${store.getters['user/getCurrentWorkspace']?.code || 'default'}/tasks/${linkedTaskId}`);
+		}
+	};
+
+	const loadGitActivity = async () => {
+		if (!form.value.id) {
+			console.log('[Git Activity] No task ID, skipping');
+			return;
+		}
+		try {
+			console.log('[Git Activity] Loading for task:', form.value.id);
+			const activity = await getTaskGitActivity(form.value.id);
+			const count = 
+				(activity.commits?.length || 0) + 
+				(activity.branches?.length || 0) + 
+				(activity.pull_requests?.length || 0);
+			gitActivityCount.value = count;
+			console.log('[Git Activity] Loaded count:', count, activity);
+		} catch (e) {
+			console.error('[Git Activity] Failed to load:', e);
+			gitActivityCount.value = 0;
 		}
 	};
 
@@ -918,6 +951,8 @@
 					autoResizeTitle();
 					titleTextarea.value?.focus();
 				});
+
+				await loadGitActivity();
 				} catch (e: any) {
 					console.error('Error loading linked task:', e);
 				}
@@ -1121,6 +1156,19 @@
 					</button>
 				</div>
 
+				<button
+					v-if="form.id"
+					type="button"
+					@click="showGitActivityModal = true"
+					class="relative flex items-center justify-center rounded bg-violet-500/80 px-2 py-1.5 text-xs text-white hover:bg-violet-500 dark:bg-violet-600/70 dark:hover:bg-violet-600/90"
+					title="Git Activity"
+				>
+					<CodeBracketIcon class="h-4 w-4" />
+					<span v-if="gitActivityCount > 0" class="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-semibold">
+						{{ gitActivityCount }}
+					</span>
+				</button>
+
 					<div class="ml-auto">
 						<TimeCounter
 							v-if="form.id && isFeatureEnabled('task.countdown')"
@@ -1314,6 +1362,7 @@
 
 	<!-- Comments Section -->
 	<TaskComments v-if="form.id" ref="taskCommentsRef" :task-id="form.id" class="mt-4" @update:count="commentsCount = $event" />
+
 	</main>
 
 		<!-- FOOTER - Fixed at bottom -->
@@ -1505,6 +1554,20 @@
 			@onCancel="showBacklogStatusChangeConfirm = false; backlogStatusChangeConfirm = null"
 			@onOk="handleBacklogStatusChangeConfirm"
 		/>
+
+		<Dialog v-model:open="showGitActivityModal">
+			<DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle>Git Activity</DialogTitle>
+				</DialogHeader>
+				<TaskGitActivity
+					v-if="form.id"
+					:task-id="form.id"
+					:category-code="currentCategoryCode || 'TASK'"
+					@update:count="gitActivityCount = $event"
+				/>
+			</DialogContent>
+		</Dialog>
 	</div>
 </template>
 

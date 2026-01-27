@@ -6,6 +6,7 @@ import App from './App.vue';
 import components from '@/globalComponents.ts';
 import store from '@/store';
 import router from '@/router';
+import alertPlugin from '@/alert';
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));
 
@@ -24,5 +25,7 @@ app.use(Tooltip, {
 app.use(Selectable);
 app.use(router);
 app.use(store);
+
+alertPlugin({ app });
 
 app.mount('#app');
