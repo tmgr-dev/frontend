@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<teleport to="title"> Settings </teleport>
-
 		<BaseLayout>
 		<template #body>
 			<div class="w-full md:flex">
@@ -307,6 +305,7 @@
 		BreadcrumbSeparator,
 	} from '@/components/ui/breadcrumb';
 	import store from '@/store/index.js';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Settings',
@@ -354,6 +353,7 @@
 			},
 		},
 		async mounted() {
+			setDocumentTitle('Settings');
 			this.user = await getUser();
 			await this.loadSettings();
 		},

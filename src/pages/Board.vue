@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<Teleport to="title">{{ title }}</Teleport>
-
 		<FeatureGate
 		feature-key="board"
 		title="Kanban Board"
@@ -607,6 +605,7 @@
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
 	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
 	import { SquareKanban } from 'lucide-vue-next';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Board',
@@ -1329,6 +1328,8 @@
 			}
 		},
 		async mounted() {
+			setDocumentTitle(this.title);
+			
 			const categoriesData = await getCategories();
 			this.categories = [
 				{ id: 0, title: 'All categories' },

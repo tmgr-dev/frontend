@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<teleport to="title">Invitation to the workspace</teleport>
-
 		<BaseLayout>
 		<template #header>
 			<div class="mt-10 w-full text-center">
@@ -73,6 +71,7 @@
 		workspaceInvitationInfo,
 	} from '@/actions/tmgr/workspaces';
 	import store from '@/store';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'WorkspaceInvitation',
@@ -95,6 +94,7 @@
 		},
 
 		async mounted() {
+			setDocumentTitle('Workspace Invitation');
 			try {
 				this.user = await getUser();
 				const data = await workspaceInvitationInfo(

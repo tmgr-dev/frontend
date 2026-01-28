@@ -1,9 +1,5 @@
 <template>
 	<div>
-		<teleport to="title">
-			How to enable or disable Push Notifications on Chrome, Firefox & Safari
-			Browser?
-		</teleport>
 		<BaseLayout>
 		<template #header>
 			How to enable or disable Push Notifications on Chrome, Firefox & Safari
@@ -141,9 +137,13 @@
 
 <script>
 	import Alert from '@/components/general/Alert.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'PushNotificationsEnableGuide',
 		components: { Alert },
+		mounted() {
+			setDocumentTitle('Push Notifications Guide');
+		},
 	};
 </script>

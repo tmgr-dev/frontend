@@ -193,6 +193,7 @@
 	import TimeField from '@/components/general/TimeField.vue';
 	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
 	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -237,6 +238,7 @@
 			},
 		},
 		async mounted() {
+			setDocumentTitle(this.h1);
 			this.setFormTexts();
 
 			if (!this.isCreate) {

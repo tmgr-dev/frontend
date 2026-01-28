@@ -66,6 +66,7 @@
 	import { useRoute, useRouter } from 'vue-router';
 	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -84,6 +85,7 @@
 	}, (newTitle) => {
 		if (newTitle && !store.state.metaTitle) {
 			store.commit('setMetaTitle', newTitle);
+			setDocumentTitle(newTitle as string);
 		}
 	}, { immediate: true });
 	const user = ref<User>({} as User);

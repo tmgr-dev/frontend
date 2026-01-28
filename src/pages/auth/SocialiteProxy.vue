@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<teleport to="title">Login</teleport>
-
 		<AuthBase>
 			<template #title>Welcome back!</template>
 			<template #body>
@@ -15,7 +13,7 @@
 
 <script setup lang="ts">
 	import { useRouter, useRoute } from 'vue-router';
-	import { ref } from 'vue';
+	import { ref, onMounted } from 'vue';
 	import store from '@/store';
 	import {
 		LoginRequest,
@@ -31,6 +29,7 @@
 	import { AxiosError } from 'axios';
 	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const router = useRouter();
 	const route = useRoute();
@@ -162,5 +161,6 @@
 		}
 	}
 
+	setDocumentTitle('Login');
 	login();
 </script>

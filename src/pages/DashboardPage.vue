@@ -22,6 +22,7 @@ import { usePusher } from '@/composable/usePusher';
 import { useActivityFeed } from '@/composable/useActivityFeed';
 import { useNetworkStatus } from '@/composable/useNetworkStatus';
 import { useErrorHandler } from '@/composable/useErrorHandler';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 // Types
 import type { 
@@ -613,7 +614,7 @@ const handleDashboardUpdateAccessible = (updates: Partial<DashboardStatistics>) 
 onMounted(async () => {
   try {
     // Set page title
-    document.title = pageTitle.value;
+    setDocumentTitle(pageTitle.value);
     store.commit('setMetaTitle', pageTitle.value);
     
     // Setup keyboard navigation
@@ -651,10 +652,6 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <teleport to="title">
-      {{ pageTitle }}
-    </teleport>
-
     <FeatureGate
     feature-key="dashboard"
     title="Dashboard"
