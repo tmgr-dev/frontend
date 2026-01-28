@@ -37,7 +37,7 @@
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span
-					:class="`countdown-item ` + (countdownInterval ? `seconds` : ``)"
+					:class="`countdown-item ` + (countdownIntervalId ? `seconds` : ``)"
 					>{{ countdown.seconds }}</span
 				>
 			</div>
@@ -138,8 +138,6 @@
 	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import Modal from '@/components/Modal.vue';
 
-	let countdownInterval = null;
-
 	export default {
 		name: 'Countdown',
 		components: {
@@ -173,7 +171,7 @@
 					pattern: /\d/,
 				},
 			},
-			countdownInterval: null,
+			countdownIntervalId: null,
 			countdown: {
 				hours: '00',
 				minutes: '00',
@@ -196,9 +194,9 @@
 		},
 		methods: {
 			toggleCountdown() {
-				if (countdownInterval) {
-					clearInterval(countdownInterval);
-					countdownInterval = null;
+				if (this.countdownIntervalId) {
+					clearInterval(this.countdownIntervalId);
+					this.countdownIntervalId = null;
 				}
 				this.$emit('toggle');
 			},
@@ -246,14 +244,13 @@
 			},
 			initCountdown() {
 				if (!this.task.start_time) {
-					clearInterval(countdownInterval);
-					countdownInterval = null;
+					clearInterval(this.countdownIntervalId);
+					this.countdownIntervalId = null;
 					return;
 				}
 
 				this.prepareCommonTime();
-				countdownInterval = setInterval(this.plusSecond, 1000);
-				this.countdownInterval = true;
+				this.countdownIntervalId = setInterval(this.plusSecond, 1000);
 			},
 			renderTime() {
 				this.countdown = this.secondsToCountdownObject(this.task.common_time);
@@ -300,7 +297,7 @@
 			this.renderTime();
 		},
 		beforeUnmount() {
-			clearInterval(countdownInterval);
+			clearInterval(this.countdownIntervalId);
 		},
 	};
 </script>
