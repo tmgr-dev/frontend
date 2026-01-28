@@ -1463,20 +1463,8 @@
 						/>
 					</div>
 
-					<!-- Comments Section -->
-					<TaskComments
-						v-if="form.id"
-						ref="taskCommentsRef"
-						:task-id="form.id"
-						class="mt-4"
-						@update:count="commentsCount = $event"
-					/>
-				</main>
-
-				<!-- FOOTER - Fixed at bottom -->
-				<footer ref="footer" class="shrink-0 px-6 py-4">
 					<!-- Comment Input -->
-					<div v-if="form.id" class="mb-4">
+					<div v-if="form.id" class="mt-4">
 						<!-- Collapsed State - Single Line -->
 						<div
 							v-if="!isCommentInputExpanded"
@@ -1534,6 +1522,18 @@
 						</div>
 					</div>
 
+					<!-- Comments Section -->
+					<TaskComments
+						v-if="form.id"
+						ref="taskCommentsRef"
+						:task-id="form.id"
+						class="mt-4"
+						@update:count="commentsCount = $event"
+					/>
+				</main>
+
+				<!-- FOOTER - Fixed at bottom -->
+				<footer ref="footer" class="shrink-0 px-6 py-4">
 					<div class="flex justify-end gap-3 text-center">
 						<a
 							v-if="isModal && (taskId || form.id)"
