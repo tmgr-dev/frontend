@@ -44,6 +44,7 @@
 	import {
 		Dialog,
 		DialogContent,
+		DialogDescription,
 		DialogFooter,
 		DialogHeader,
 		DialogTitle,
@@ -412,9 +413,10 @@
 </script>
 
 <template>
-	<teleport to="title">Workspace settings</teleport>
+	<div>
+		<teleport to="title">Workspace settings</teleport>
 
-	<div class="container">
+		<div class="container">
 		<header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
@@ -432,6 +434,7 @@
 					>
 						<DialogHeader>
 							<DialogTitle>Creating new workspace</DialogTitle>
+							<DialogDescription class="sr-only">Enter a name for your new workspace</DialogDescription>
 						</DialogHeader>
 
 						<Input
@@ -464,6 +467,7 @@
 					>
 						<DialogHeader>
 							<DialogTitle>Send invitation(s)</DialogTitle>
+							<DialogDescription class="sr-only">Enter email addresses to invite members to this workspace</DialogDescription>
 						</DialogHeader>
 
 						<Textarea
@@ -674,5 +678,6 @@
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
+		</div>
 	</div>
 </template>

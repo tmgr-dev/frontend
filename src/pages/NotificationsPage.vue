@@ -1,7 +1,8 @@
 <template>
-	<teleport to="title">Notifications</teleport>
+	<div>
+		<teleport to="title">Notifications</teleport>
 
-	<BaseLayout>
+		<BaseLayout>
 		<template #body>
 			<div class="notifications-page">
 				<div class="page-header">
@@ -63,7 +64,8 @@
 				</div>
 			</div>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>

@@ -69,6 +69,7 @@
 	import {
 		Dialog,
 		DialogContent,
+		DialogDescription,
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
@@ -1685,6 +1686,7 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Git Activity</DialogTitle>
+					<DialogDescription class="sr-only">View git commits and pull requests related to this task</DialogDescription>
 				</DialogHeader>
 				<TaskGitActivity
 					v-if="form.id"
@@ -1699,6 +1701,7 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Cursor AI Agent</DialogTitle>
+					<DialogDescription class="sr-only">Run AI agent to help with this task</DialogDescription>
 				</DialogHeader>
 				<TaskCursorAgent
 					v-if="form.id"

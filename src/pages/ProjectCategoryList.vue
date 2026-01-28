@@ -337,12 +337,13 @@
 </script>
 
 <template>
-	<teleport to="title">
-		{{ category ? category.title : 'Categories' }}
-	</teleport>
-	<ForbiddenAccess v-if="permissionDenied" />
+	<div>
+		<teleport to="title">
+			{{ category ? category.title : 'Categories' }}
+		</teleport>
+		<ForbiddenAccess v-if="permissionDenied" />
 
-	<FeatureGate
+		<FeatureGate
 		v-else
 		feature-key="categories"
 		title="Project Categories"
@@ -627,5 +628,6 @@
 		</template>
 	</BaseLayout>
 
-	</FeatureGate>
+		</FeatureGate>
+	</div>
 </template>

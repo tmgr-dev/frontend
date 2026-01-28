@@ -1,7 +1,8 @@
 <template>
-	<teleport to="title"> Settings </teleport>
+	<div>
+		<teleport to="title"> Settings </teleport>
 
-	<BaseLayout>
+		<BaseLayout>
 		<template #body>
 			<div class="w-full md:flex">
 				<div class="md:w-full">
@@ -274,7 +275,8 @@
 				</confirm>
 			</Transition>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>

@@ -1,4 +1,4 @@
-import { ref, onUnmounted, nextTick } from 'vue';
+import { ref, onUnmounted, nextTick, getCurrentInstance } from 'vue';
 import type { Ref } from 'vue';
 import Echo from 'laravel-echo';
 import type {
@@ -414,10 +414,12 @@ export function usePusher(): UsePusherReturn {
     unsubscribe(channelName);
   };
 
-  // Auto-cleanup on unmount
-  onUnmounted(() => {
-    disconnect();
-  });
+  // Auto-cleanup on unmount (only if called within component setup)
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      disconnect();
+    });
+  }
 
   // Initialize connection immediately
   initializeEcho();

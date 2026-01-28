@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type Component } from 'vue';
 import { useStore } from 'vuex';
 import { useFeatureToggles } from '@/composable/useFeatureToggles';
 import { Lock } from 'lucide-vue-next';
@@ -72,7 +72,7 @@ interface Props {
 	featureKey: string;
 	title: string;
 	description: string;
-	icon?: object;
+	icon?: Component;
 }
 
 const props = defineProps<Props>();

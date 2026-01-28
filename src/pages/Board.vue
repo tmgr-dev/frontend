@@ -1,7 +1,8 @@
 <template>
-	<Teleport to="title">{{ title }}</Teleport>
+	<div>
+		<Teleport to="title">{{ title }}</Teleport>
 
-	<FeatureGate
+		<FeatureGate
 		feature-key="board"
 		title="Kanban Board"
 		description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
@@ -558,7 +559,8 @@
 		</template>
 	</BaseLayout>
 
-	</FeatureGate>
+		</FeatureGate>
+	</div>
 </template>
 <script>
 	import Modal from '@/components/Modal.vue';
@@ -623,7 +625,12 @@
 			WorkspaceUsers,
 			FeatureGate,
 			BoardPreview,
-			SquareKanban,
+		},
+
+		setup() {
+			return {
+				SquareKanban,
+			};
 		},
 
 		data: () => ({

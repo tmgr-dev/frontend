@@ -99,7 +99,7 @@
 							</div>
 							<div class="flex-1">
 								<CategoryBadge
-									v-if="showCategoryBadges"
+									v-if="showCategoryBadges && task.category"
 									class="shrink-0 self-start"
 									:category="task.category"
 								/>

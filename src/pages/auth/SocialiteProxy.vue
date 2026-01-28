@@ -1,14 +1,16 @@
 <template>
-	<teleport to="title">Login</teleport>
+	<div>
+		<teleport to="title">Login</teleport>
 
-	<AuthBase>
-		<template #title>Welcome back!</template>
-		<template #body>
-			<div class="text-center">
-				{{ message }}
-			</div>
-		</template>
-	</AuthBase>
+		<AuthBase>
+			<template #title>Welcome back!</template>
+			<template #body>
+				<div class="text-center">
+					{{ message }}
+				</div>
+			</template>
+		</AuthBase>
+	</div>
 </template>
 
 <script setup lang="ts">

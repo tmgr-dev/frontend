@@ -1,6 +1,7 @@
 <template>
-	<teleport to="title"> Statistics </teleport>
-	<BaseLayout>
+	<div>
+		<teleport to="title"> Statistics </teleport>
+		<BaseLayout>
 		<template #header> </template>
 		<template #body>
 			<div
@@ -56,7 +57,8 @@
 				</table>
 			</div>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>
