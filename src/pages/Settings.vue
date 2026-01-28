@@ -49,9 +49,9 @@
 						v-if="isWorkspaceSettings"
 						class="flex flex-col gap-3 p-4 md:w-1/2"
 					>
-						<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
-						<div>
-							<div v-for="(setting, index) in availableSettings">
+					<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
+					<div>
+						<div v-for="(setting, index) in availableSettings" :key="setting.id">
 								<label
 									:for="`setting-${setting.id}`"
 									class="mb-2 block text-sm font-bold text-gray-700"

@@ -61,8 +61,8 @@
 				</AnimatedRing>
 			</DropdownMenuTrigger>
 
-			<DropdownMenuContent class="mr-4 mt-1">
-				<DropdownMenuItem v-for="task in tasks">
+		<DropdownMenuContent class="mr-4 mt-1">
+			<DropdownMenuItem v-for="task in tasks" :key="task.id">
 					<a
 						:href="getTaskUrl(task)"
 						@click.prevent="store.commit('setCurrentTaskIdForModal', task.id)"

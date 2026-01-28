@@ -42,11 +42,12 @@
 									/>
 								</label>
 
-								<div
-									v-for="(setting, index) in availableSettings"
-									id="settings"
-									class="mt-4"
-								>
+							<div
+								v-for="(setting, index) in availableSettings"
+								:key="setting.id"
+								id="settings"
+								class="mt-4"
+							>
 									<label
 										:for="`setting-${setting.id}`"
 										class="mb-2 block text-left text-sm font-bold"
@@ -84,11 +85,12 @@
 										</span>
 									</div>
 
-									<div
-										v-if="form.assignees && form.assignees.length"
-										v-for="assignee in form.assignees"
-										class="mt-2 flex gap-2"
-									>
+								<div
+									v-if="form.assignees && form.assignees.length"
+									v-for="assignee in form.assignees"
+									:key="assignee.id"
+									class="mt-2 flex gap-2"
+								>
 										<div class="flex items-center gap-1.5">
 											{{ assignee.name }}
 
@@ -621,9 +623,10 @@
 				await this.loadCategories();
 			}
 		},
-		unmounted() {
-			this.$store.commit('closeTaskModal');
-		},
+	unmounted() {
+		this.removeDispatchedAutoSave();
+		this.$store.commit('closeTaskModal');
+	},
 		computed: {
 			store() {
 				return store;

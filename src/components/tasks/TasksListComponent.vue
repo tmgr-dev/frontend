@@ -54,7 +54,7 @@
 
 			<div
 				v-for="(task, i) in tasks"
-				:key="i"
+				:key="task.id"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
@@ -72,11 +72,11 @@
 				<button
 					type="button"
 					:class="{
-						'border-l-4 border-l-green-600 dark:border-l-green-500':
-							task.start_time,
-						'border-b border-b-red-500 dark:border-b-red-400':
-							isTimeExceeded(task),
-					}"
+					'border-l-4 border-l-green-600 dark:border-l-green-500':
+						task.start_time,
+					'border-b border-b-red-500 dark:border-b-red-400':
+						taskTimeExceeded[task.id],
+				}"
 					class="w-full rounded-lg shadow-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
@@ -104,12 +104,12 @@
 									:category="task.category"
 								/>
 
-								<div
-									class="text-left text-sm font-medium lg:text-lg"
-									:title="task.title?.length > 60 ? task.title : ''"
-								>
-									{{ truncateTitle(task.title) }}
-								</div>
+							<div
+								class="text-left text-sm font-medium lg:text-lg"
+								:title="task.title?.length > 60 ? task.title : ''"
+							>
+								{{ taskTitles[task.id] }}
+							</div>
 							</div>
 						</div>
 
@@ -117,22 +117,22 @@
 							v-if="isFeatureEnabled('task.countdown')"
 							class="flex items-center gap-2"
 						>
-							<span
-								:class="
-									isTimeExceeded(task)
-										? 'text-red-600 dark:text-red-400'
-										: 'text-green-600 dark:text-green-400'
-								"
-								class="material-icons text-xs sm:text-base md:text-xl"
-							>
-								alarm
-							</span>
+						<span
+							:class="
+								taskTimeExceeded[task.id]
+									? 'text-red-600 dark:text-red-400'
+									: 'text-green-600 dark:text-green-400'
+							"
+							class="material-icons text-xs sm:text-base md:text-xl"
+						>
+							alarm
+						</span>
 
-							<span
-								class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
-							>
-								{{ getTaskFormattedTime(task) }}
-							</span>
+						<span
+							class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
+						>
+							{{ taskFormattedTimes[task.id] }}
+						</span>
 
 							<button
 								v-if="!task.start_time"
@@ -239,19 +239,19 @@
 						<div
 							class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50"
 						>
-							<TaskTimeInfo
-								:created-at="task.created_at"
-								:updated-at="task.updated_at"
-								:overtime="getTaskOvertime(task)"
-							/>
+						<TaskTimeInfo
+							:created-at="task.created_at"
+							:updated-at="task.updated_at"
+							:overtime="taskOvertimes[task.id]"
+						/>
 
-							<span class="ml-auto flex items-center gap-1">
-								<span>{{ getStatusName(task) }}</span>
-								<span
-									class="inline-block h-2 w-2 rounded-full"
-									:style="{ backgroundColor: getStatusColor(task) }"
-								/>
-							</span>
+						<span class="ml-auto flex items-center gap-1">
+							<span>{{ taskStatusNames[task.id] }}</span>
+							<span
+								class="inline-block h-2 w-2 rounded-full"
+								:style="{ backgroundColor: taskStatusColors[task.id] }"
+							/>
+						</span>
 						</div>
 					</div>
 
@@ -515,15 +515,51 @@
 				console.error('Failed to load statuses:', e);
 			}
 		},
-		computed: {
-			allSelected() {
-				return (
-					this.tasks.length > 0 &&
-					this.selected.length === this.tasks.length &&
-					this.selected.every(Boolean)
-				);
-			},
+	computed: {
+		allSelected() {
+			return (
+				this.tasks.length > 0 &&
+				this.selected.length === this.tasks.length &&
+				this.selected.every(Boolean)
+			);
 		},
+		taskTitles() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.truncateTitle(task.title);
+				return acc;
+			}, {});
+		},
+		taskTimeExceeded() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.isTimeExceeded(task);
+				return acc;
+			}, {});
+		},
+		taskFormattedTimes() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.getTaskFormattedTime(task);
+				return acc;
+			}, {});
+		},
+		taskOvertimes() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.getTaskOvertime(task);
+				return acc;
+			}, {});
+		},
+		taskStatusNames() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.getStatusName(task);
+				return acc;
+			}, {});
+		},
+		taskStatusColors() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = this.getStatusColor(task);
+				return acc;
+			}, {});
+		},
+	},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
