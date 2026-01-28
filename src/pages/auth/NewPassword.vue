@@ -1,7 +1,8 @@
 <template>
-	<teleport to="title"> New Password </teleport>
+	<div>
+		<teleport to="title"> New Password </teleport>
 
-	<AuthBase>
+		<AuthBase>
 		<template #title>New Password</template>
 
 		<template #body>
@@ -67,7 +68,8 @@
 				Login
 			</router-link>
 		</template>
-	</AuthBase>
+		</AuthBase>
+	</div>
 </template>
 
 <script setup lang="ts">

@@ -18,7 +18,6 @@
 	import { computed, ref } from 'vue';
 
 	interface Props {
-		modelValue: string | number;
 		entities: any[];
 		labelKey: string;
 		valueKey: string;
@@ -28,7 +27,7 @@
 	}
 
 	const props = defineProps<Props>();
-	const modelValue = defineModel<number>();
+	const modelValue = defineModel<string | number | null>();
 	const emit = defineEmits(['update:modelValue']);
 	const openCombobox = ref(false);
 	const searchValue = ref('');

@@ -649,11 +649,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <teleport to="title">
-    {{ pageTitle }}
-  </teleport>
+  <div>
+    <teleport to="title">
+      {{ pageTitle }}
+    </teleport>
 
-  <FeatureGate
+    <FeatureGate
     feature-key="dashboard"
     title="Dashboard"
     description="Get insights into your productivity with statistics, activity heatmaps, and real-time team updates."
@@ -1116,7 +1117,8 @@ onUnmounted(() => {
     </template>
   </BaseLayout>
 
-  </FeatureGate>
+    </FeatureGate>
+  </div>
 </template>
 
 <style scoped>

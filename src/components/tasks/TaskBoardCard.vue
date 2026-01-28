@@ -179,7 +179,7 @@
 			{{ truncateTitle(task.title) }}
 		</a>
 
-		<div class="mt-2">
+		<div v-if="task.category" class="mt-2">
 			<CategoryBadge
 				class="flex-row-reverse"
 				:category="task.category"

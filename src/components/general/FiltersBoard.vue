@@ -135,8 +135,8 @@
 	}
 	interface Props {
 		workspaceUsers: UserOption[];
-		chosenUser: object;
-		activeDraggable: boolean;
+		chosenUser?: object | null;
+		activeDraggable?: boolean;
 		categories: CategoryOption[];
 		isMobileModal?: boolean;
 	}

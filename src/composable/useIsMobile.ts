@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, getCurrentInstance } from 'vue';
 
 export function useIsMobile(breakpoint: number = 768) {
 	const isMobile = ref(false);
@@ -7,18 +7,21 @@ export function useIsMobile(breakpoint: number = 768) {
 		isMobile.value = window.innerWidth <= breakpoint;
 	};
 
-	onMounted(() => {
-		// Check initially
+	if (getCurrentInstance()) {
+		onMounted(() => {
+			checkIsMobile();
+			window.addEventListener('resize', checkIsMobile);
+		});
+
+		onUnmounted(() => {
+			window.removeEventListener('resize', checkIsMobile);
+		});
+	} else {
 		checkIsMobile();
-
-		// Add resize listener
-		window.addEventListener('resize', checkIsMobile);
-	});
-
-	onUnmounted(() => {
-		// Clean up
-		window.removeEventListener('resize', checkIsMobile);
-	});
+		if (typeof window !== 'undefined') {
+			window.addEventListener('resize', checkIsMobile);
+		}
+	}
 
 	return {
 		isMobile,

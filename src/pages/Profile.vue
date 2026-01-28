@@ -1,7 +1,8 @@
 <template>
-	<teleport to="title">Profile</teleport>
+	<div>
+		<teleport to="title">Profile</teleport>
 
-	<div class="flex max-w-lg flex-col gap-3">
+		<div class="flex max-w-lg flex-col gap-3">
 		<TextField
 			v-model="user.name"
 			:errors="errors.name"
@@ -32,6 +33,7 @@
 			>
 				Save
 			</button>
+		</div>
 		</div>
 	</div>
 </template>

@@ -128,6 +128,8 @@
 
 	onMounted(async () => {
 		try {
+			document.title = h1[route.name] || 'Task List';
+			
 			categories.value = await getCategories();
 
 			const user = await getUser();
@@ -189,6 +191,11 @@
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
+	watch(() => route.name, (newName) => {
+		if (newName) {
+			document.title = h1[newName] || 'Task List';
+		}
+	});
 	watch(() => pagination.value.total, () => {
 		if (pagination.value.total !== undefined) {
 			const baseTitle = h1[route.name] || 'Task List';
@@ -276,10 +283,6 @@
 </script>
 
 <template>
-	<teleport to="title">
-		{{ h1[route.name] }}
-	</teleport>
-
 	<BaseLayout>
 		<template #action>
 			<div class="flex flex-col gap-2 px-2">

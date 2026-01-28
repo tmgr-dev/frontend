@@ -1,7 +1,8 @@
 <template>
-	<teleport to="title">Invitation to the workspace</teleport>
+	<div>
+		<teleport to="title">Invitation to the workspace</teleport>
 
-	<BaseLayout>
+		<BaseLayout>
 		<template #header>
 			<div class="mt-10 w-full text-center">
 				<h1 class="mb-4 text-2xl font-bold">Workspace Invitation</h1>
@@ -61,7 +62,8 @@
 				</div>
 			</div>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>

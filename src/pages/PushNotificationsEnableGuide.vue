@@ -1,9 +1,10 @@
 <template>
-	<teleport to="title">
-		How to enable or disable Push Notifications on Chrome, Firefox & Safari
-		Browser?
-	</teleport>
-	<BaseLayout>
+	<div>
+		<teleport to="title">
+			How to enable or disable Push Notifications on Chrome, Firefox & Safari
+			Browser?
+		</teleport>
+		<BaseLayout>
 		<template #header>
 			How to enable or disable Push Notifications on Chrome, Firefox & Safari
 			Browser?
@@ -134,7 +135,8 @@
 
 			<alert ref="alert" />
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>
