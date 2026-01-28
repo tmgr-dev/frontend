@@ -12,6 +12,7 @@
 	import store from '@/store';
 	import {
 		computed,
+		defineAsyncComponent,
 		nextTick,
 		onBeforeMount,
 		onMounted,
@@ -31,7 +32,7 @@
 		updateTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	import BlockEditor from '@/components/BlockEditor.vue';
+	const BlockEditor = defineAsyncComponent(() => import('@/components/BlockEditor.vue'));
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
@@ -49,7 +50,7 @@
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
 	import { Category, getCategories } from '@/actions/tmgr/categories';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	import Editor from '@/components/Editor.vue';
+	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';

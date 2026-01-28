@@ -17,12 +17,7 @@
 				<a
 					:href="href"
 					:class="{ 'font-bold': isActive }"
-					@click.prevent="
-						() => {
-							navigate();
-							$emit('navigated');
-						}
-					"
+					@click.prevent="handleNavigate(navigate)"
 				>
 					{{ link.name }}
 				</a>
@@ -47,7 +42,7 @@
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
 	import { generateWorkspaceUrl } from '@/utils/url';
 
-	defineEmits(['navigated']);
+	const emit = defineEmits(['navigated']);
 	const workspaces = ref([] as Workspace[]);
 	const user = ref({} as User);
 	const workspaceId: Ref<number> = ref(0);
@@ -105,4 +100,9 @@
 		{ id: 4, name: 'Categories', path: generateWorkspaceUrl('categories', currentWorkspace.value) },
 		{ id: 5, name: 'Daily Routines', path: '/routines' },
 	]);
+
+	const handleNavigate = (navigate: () => void) => {
+		navigate();
+		emit('navigated');
+	};
 </script>
