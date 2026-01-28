@@ -1161,13 +1161,14 @@
 						<SelectTrigger class="w-40 border-0 bg-transparent">
 							<SelectValue placeholder="status" />
 						</SelectTrigger>
-						<SelectContent class="border-0 bg-white dark:bg-gray-800">
-							<SelectItem
-								class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-								v-for="status in statuses"
-								:value="status.id.toString()"
-								:show-check-mark="false"
-							>
+					<SelectContent class="border-0 bg-white dark:bg-gray-800">
+						<SelectItem
+							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+							v-for="status in statuses"
+							:key="status.id"
+							:value="status.id.toString()"
+							:show-check-mark="false"
+						>
 								<span
 									class="mr-3 inline-block size-2 shrink-0 rounded-full"
 									:style="{ backgroundColor: status.color }"

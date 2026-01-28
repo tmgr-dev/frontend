@@ -665,15 +665,6 @@ onUnmounted(() => {
 
   <BaseLayout>
     <template #body>
-      <!-- Skip to content link for keyboard navigation -->
-      <a 
-        href="#main-content"
-        class="skip-to-content"
-        @click="$event.target.blur()"
-      >
-        Skip to main content
-      </a>
-      
       <ErrorBoundary
         ref="errorBoundaryRef"
         fallback-title="Dashboard Error"
@@ -1520,16 +1511,6 @@ onUnmounted(() => {
 }
 
 /* Skip to content link */
-.skip-to-content {
-  @apply absolute top-0 left-0 bg-blue-600 text-white px-4 py-2 rounded-br-md z-50;
-  transform: translateY(-100%);
-  transition: transform 0.2s ease-in-out;
-}
-
-.skip-to-content:focus {
-  transform: translateY(0);
-}
-
 /* Screen reader only content */
 .sr-only {
   position: absolute;

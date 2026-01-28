@@ -4,10 +4,6 @@ import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
-// @todo replace build command in package.json later
-// "build": "vue-tsc -b && vite build",
-
-// https://vite.dev/config/
 export default defineConfig({
 	plugins: [vue()],
 	resolve: {
@@ -23,7 +19,7 @@ export default defineConfig({
 			scss: {
 				quietDeps: true,
 				logger: {
-					warn: () => {}, // Отключает все предупреждения
+					warn: () => {},
 				},
 				silenceDeprecations: ['legacy-js-api'],
 			},
@@ -31,5 +27,77 @@ export default defineConfig({
 		postcss: {
 			plugins: [tailwind, autoprefixer],
 		},
+	},
+	build: {
+		target: 'es2020',
+		minify: 'terser',
+		terserOptions: {
+			compress: {
+				drop_console: true,
+				drop_debugger: true,
+			},
+		},
+		rollupOptions: {
+			output: {
+				manualChunks: {
+					'vendor-vue': ['vue', 'vue-router', 'vuex'],
+					'vendor-editor': [
+						'@editorjs/editorjs',
+						'@editorjs/header',
+						'@editorjs/list',
+						'@editorjs/checklist',
+						'@editorjs/code',
+						'@editorjs/delimiter',
+						'@editorjs/embed',
+						'@editorjs/image',
+						'@editorjs/inline-code',
+						'@editorjs/link',
+						'@editorjs/marker',
+						'@editorjs/quote',
+						'@editorjs/raw',
+						'@editorjs/table',
+						'@editorjs/warning',
+						'@calumk/editorjs-columns',
+						'@bomdi/codebox',
+						'editorjs-drag-drop',
+					],
+					'vendor-ui': [
+						'@headlessui/vue',
+						'radix-vue',
+						'@vueuse/core',
+						'lucide-vue-next',
+						'@radial-color-picker/vue-color-picker',
+					],
+					'vendor-utils': [
+						'axios',
+						'date-fns',
+						'gsap',
+						'canvas-confetti',
+						'vuedraggable',
+					],
+					'vendor-markdown': ['md-editor-v3'],
+					'vendor-pusher': [
+						'@pusher/push-notifications-web',
+						'pusher-js',
+						'laravel-echo',
+					],
+				},
+				chunkFileNames: 'assets/js/[name]-[hash].js',
+				entryFileNames: 'assets/js/[name]-[hash].js',
+				assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
+			},
+		},
+		chunkSizeWarningLimit: 1000,
+		cssCodeSplit: true,
+		sourcemap: false,
+	},
+	optimizeDeps: {
+		include: [
+			'vue',
+			'vue-router',
+			'vuex',
+			'axios',
+			'@vueuse/core',
+		],
 	},
 });

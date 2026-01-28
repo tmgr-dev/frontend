@@ -67,10 +67,10 @@
 						/>
 					</div>
 
-					<div v-if="!isCreate">
-						<SettingsLoader v-if="isLoading" class="mt-5" />
+				<div v-if="!isCreate">
+					<SettingsLoader v-if="isLoading" class="mt-5" />
 
-						<div v-for="(setting, index) in availableSettings">
+					<div v-for="(setting, index) in availableSettings" :key="setting.id">
 							<label
 								:for="`setting-${setting.id}`"
 								class="mb-2 block text-sm font-bold text-gray-700"

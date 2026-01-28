@@ -541,7 +541,7 @@
 		</header>
 
 		<div class="mt-6 max-w-lg">
-			<div v-for="(setting, index) in settings">
+			<div v-for="(setting, index) in settings" :key="setting.id">
 				<label
 					:for="`setting-${setting.id}`"
 					class="mb-2 block text-sm font-bold text-gray-700"

@@ -3,6 +3,8 @@ import pusherModule from '@/store/modules/pusher';
 import featureTogglesModule from '@/store/modules/featureToggles';
 import { createStore } from 'vuex';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { requestCache } from '@/utils/requestCache';
+import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -17,20 +19,33 @@ const state = {
 	createTaskInProjectCategoryId: null,
 	taskStatusId: null,
 	showCreatingTaskModal: false,
-	reloadActiveTasksKey: 0, // for the App component
-	reloadTasksKey: 0, // for the board
+	reloadActiveTasksKey: 0,
+	reloadTasksKey: 0,
 	appRerenderKey: 0,
 	workspaceStatuses: [],
+	workspaceStatusesById: {},
 	workspaces: [],
+	workspacesById: {},
+	userSettingsMap: {},
 	userSettings: {
 		showTooltips: true,
 	},
 	openModals: 0,
-	urlManuallyChanged: false, // Track whether URL was manually changed by our code
+	urlManuallyChanged: false,
 };
 
 const getters = {
 	isLoggedIn: (state) => state.token !== null,
+	workspaceById: (state) => (id) => state.workspacesById[id],
+	workspaceStatusById: (state) => (id) => state.workspaceStatusesById[id],
+	userSettingByKey: (state) => (key) => state.userSettingsMap[key],
+	currentWorkspaceId: (state) => {
+		return state.userSettingsMap['current_workspace']?.value || null;
+	},
+	currentWorkspace: (state, getters) => {
+		const workspaceId = getters.currentWorkspaceId;
+		return workspaceId ? state.workspacesById[workspaceId] : null;
+	},
 };
 
 const mutations = {
@@ -38,10 +53,32 @@ const mutations = {
 		state.metaTitle = title;
 	},
 	setWorkspaceStatuses(state, data) {
-		state.workspaceStatuses = data;
+		if (Array.isArray(data)) {
+			state.workspaceStatuses = data;
+			state.workspaceStatusesById = data.reduce((acc, status) => {
+				if (status && status.id) {
+					acc[status.id] = status;
+				}
+				return acc;
+			}, {});
+		} else {
+			state.workspaceStatuses = Object.values(data);
+			state.workspaceStatusesById = data;
+		}
 	},
 	setWorkspaces(state, workspaces) {
-		state.workspaces = workspaces;
+		if (Array.isArray(workspaces)) {
+			state.workspaces = workspaces;
+			state.workspacesById = workspaces.reduce((acc, workspace) => {
+				if (workspace && workspace.id) {
+					acc[workspace.id] = workspace;
+				}
+				return acc;
+			}, {});
+		} else {
+			state.workspaces = Object.values(workspaces);
+			state.workspacesById = workspaces;
+		}
 	},
 	setToken(state, token) {
 		if (token == null) {
@@ -54,6 +91,12 @@ const mutations = {
 	},
 	setUser(state, user) {
 		state.user = user;
+		if (user && user.settings && Array.isArray(user.settings)) {
+			state.userSettingsMap = user.settings.reduce((acc, setting) => {
+				acc[setting.key] = setting;
+				return acc;
+			}, {});
+		}
 	},
 	incrementReloadTasksKey(state) {
 		state.reloadTasksKey++;
@@ -108,16 +151,21 @@ const mutations = {
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
 		if (state.user && state.user.settings) {
-			// Update the current_workspace setting
-			state.user.settings = state.user.settings.map(setting => {
-				if (setting.key === 'current_workspace') {
-					return {
-						...setting,
-						value: workspaceId
-					};
-				}
-				return setting;
-			});
+			const settingIndex = state.user.settings.findIndex(
+				s => s.key === 'current_workspace'
+			);
+			if (settingIndex !== -1) {
+				state.user.settings[settingIndex] = {
+					...state.user.settings[settingIndex],
+					value: workspaceId
+				};
+			}
+			if (state.userSettingsMap['current_workspace']) {
+				state.userSettingsMap['current_workspace'] = {
+					...state.userSettingsMap['current_workspace'],
+					value: workspaceId
+				};
+			}
 		}
 	},
 };
@@ -131,6 +179,9 @@ const actions = {
 		if (workspaceInvitationToken) {
 			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
 		}
+		
+		requestCache.clear();
+		requestDeduplicator.clear();
 	},
 	
 	async loadWorkspaces({ commit }) {
