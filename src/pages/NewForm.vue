@@ -910,7 +910,11 @@
 		onEventFired(e) {
 			if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
 				e.preventDefault();
-				saveTask();
+				if (!taskId.value && !form.value.id) {
+					createTask();
+				} else {
+					saveTask();
+				}
 			}
 		},
 	});
