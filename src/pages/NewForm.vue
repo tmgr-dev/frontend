@@ -54,6 +54,7 @@
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
+	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 	import { createComment, createAskingHelpComment } from '@/actions/tmgr/comments';
@@ -1257,6 +1258,9 @@
 						]"
 					/>
 				</div>
+
+				<!-- Task Attachments -->
+				<TaskAttachments v-if="taskId || form.id" :task-id="taskId || form.id" />
 
 				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 				<div

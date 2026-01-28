@@ -369,8 +369,6 @@
 					</div>
 				</div>
 
-				<task-attachments v-if="!isCreatingTask" :task-id="taskId" />
-
 				<div
 					v-if="!isCreatingTask"
 					class="checkpoints-wrapper rounded"
@@ -465,7 +463,6 @@
 	import Countdown from '@/components/general/Countdown.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
-	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import {
 		deleteTask,
 		getTask,
@@ -515,7 +512,6 @@
 			Confirm,
 			Countdown,
 			TaskActions,
-			TaskAttachments,
 		},
 		props: {
 			isModal: {
