@@ -16,6 +16,7 @@
 	import store from '@/store';
 	import { Button } from '@/components/ui/button';
 	import EmptyState from '@/components/EmptyState.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import {
 		ClipboardListIcon,
 		CircleUserRoundIcon,
@@ -301,6 +302,11 @@
 		return currentWorkspace?.code;
 	};
 
+	watch(category, (newCategory) => {
+		const title = newCategory ? newCategory.title : 'Categories';
+		setDocumentTitle(title);
+	}, { immediate: true });
+
 	onMounted(async () => {
 		try {
 			workspaceCode.value = route.params.workspace_code || store.state.user?.workspace_code;
@@ -338,9 +344,6 @@
 
 <template>
 	<div>
-		<teleport to="title">
-			{{ category ? category.title : 'Categories' }}
-		</teleport>
 		<ForbiddenAccess v-if="permissionDenied" />
 
 		<FeatureGate

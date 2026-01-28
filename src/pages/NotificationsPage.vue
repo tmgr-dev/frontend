@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<teleport to="title">Notifications</teleport>
-
 		<BaseLayout>
 		<template #body>
 			<div class="notifications-page min-h-96">
@@ -75,6 +73,7 @@ import { Bell, Settings } from 'lucide-vue-next';
 import BaseLayout from '@/components/layouts/BaseLayout.vue';
 import NotificationItem from '@/components/notifications/NotificationItem.vue';
 import { useNotifications } from '@/composable/useNotifications';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 export default defineComponent({
 	name: 'NotificationsPage',
@@ -158,6 +157,7 @@ export default defineComponent({
 		};
 
 		onMounted(() => {
+			setDocumentTitle('Notifications');
 			loadNotifications();
 		});
 

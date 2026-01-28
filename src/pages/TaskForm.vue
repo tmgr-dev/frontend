@@ -1,7 +1,5 @@
 <template>
 	<div>
-		<teleport to="title">{{ form.title || h1.main }}&nbsp;</teleport>
-
 		<div class="items-between text-center sm:flex">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<!--	Settings modal		-->

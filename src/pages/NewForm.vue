@@ -60,6 +60,7 @@
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -1041,6 +1042,12 @@
 		}
 	});
 
+	watch(() => form.value.title, (newTitle: string) => {
+		if (!props.isModal && newTitle) {
+			setDocumentTitle(newTitle);
+		}
+	}, { immediate: true });
+
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
 		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
@@ -1142,8 +1149,6 @@
 	</div>
 
 	<div v-else class="new-form-container h-full">
-		<teleport to="title">{{ form.title }}&nbsp;</teleport>
-
 		<div
 			class="flex transition-all duration-300 md:w-[700px]"
 			:class="[

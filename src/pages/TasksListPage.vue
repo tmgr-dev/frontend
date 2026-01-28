@@ -27,6 +27,7 @@
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { getUser } from '@/actions/tmgr/user';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -38,7 +39,10 @@
 	const h1 = {
 		CurrentTasksList: 'Current tasks',
 		HiddenTasksList: 'Hidden tasks',
-		ArchiveTasksList: 'Archive tasks',
+		ArchiveTasksList: 'Archive',
+		ArchiveTasksListWithWorkspace: 'Archive',
+		WorkspaceTasksList: 'Tasks',
+		FallbackTasksList: 'Current tasks',
 	};
 	const tasks = ref<Task[]>([]);
 	const isLoadingActions = ref({});
@@ -128,7 +132,7 @@
 
 	onMounted(async () => {
 		try {
-			document.title = h1[route.name] || 'Task List';
+			setDocumentTitle(h1[route.name] || 'Task List');
 			
 			categories.value = await getCategories();
 
@@ -162,7 +166,7 @@
 					const titleWithCount = pagination.value.total !== undefined 
 						? `${baseTitle} (${pagination.value.total})` 
 						: baseTitle;
-					document.title = baseTitle;
+					setDocumentTitle(baseTitle);
 					store.commit('setMetaTitle', titleWithCount);
 				} else {
 					// Update metaTitle with task count for regular routes
@@ -193,7 +197,7 @@
 	watch(() => store.state.reloadTasksKey, loadTasks);
 	watch(() => route.name, (newName) => {
 		if (newName) {
-			document.title = h1[newName] || 'Task List';
+			setDocumentTitle(h1[newName] || 'Task List');
 		}
 	});
 	watch(() => pagination.value.total, () => {

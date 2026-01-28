@@ -1,8 +1,4 @@
 <template>
-	<teleport to="title">
-		{{ countdown.hours }}:{{ countdown.minutes }}:{{ countdown.seconds }}
-	</teleport>
-
 	<div
 		v-if="task"
 		id="task"
@@ -137,6 +133,7 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import Modal from '@/components/Modal.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Countdown',
@@ -289,12 +286,24 @@
 				};
 			},
 		},
+		watch: {
+			countdown: {
+				deep: true,
+				handler(newCountdown) {
+					const timerTitle = `${newCountdown.hours}:${newCountdown.minutes}:${newCountdown.seconds}`;
+					setDocumentTitle(timerTitle);
+				},
+			},
+		},
 		mounted() {
 			this.task = { ...this.initTask };
 			this.task.start_time = this.task.start_time || 0;
 
 			this.initCountdown();
 			this.renderTime();
+			
+			const timerTitle = `${this.countdown.hours}:${this.countdown.minutes}:${this.countdown.seconds}`;
+			setDocumentTitle(timerTitle);
 		},
 		beforeUnmount() {
 			clearInterval(this.countdownIntervalId);

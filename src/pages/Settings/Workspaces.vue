@@ -12,6 +12,7 @@
 	import { computed, onBeforeMount, Ref, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { getUserSettings, getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
 	import Combobox from '@/components/Combobox.vue';
@@ -139,6 +140,7 @@
 	})
 
 	onBeforeMount(async () => {
+		setDocumentTitle('Workspace Settings');
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
 			getWorkspaces(),
 			getUserSettingsV2(),
@@ -414,8 +416,6 @@
 
 <template>
 	<div>
-		<teleport to="title">Workspace settings</teleport>
-
 		<div class="container">
 		<header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 			<h3 class="text-lg font-bold">Workspace Settings</h3>

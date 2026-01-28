@@ -176,6 +176,7 @@ import { computed, onMounted, ref } from 'vue';
 import TextField from '@/components/general/TextField.vue';
 import Button from '@/components/general/Button.vue';
 import FeatureGate from '@/components/general/FeatureGate.vue';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
 import { SkeletonListItem } from '@/components/ui/skeleton';
 import { CalendarCheck } from 'lucide-vue-next';
@@ -230,6 +231,7 @@ const reload = async () => {
 
 // Lifecycle
 onMounted(async () => {
+	setDocumentTitle('Daily Routines');
 	await reload();
 });
 

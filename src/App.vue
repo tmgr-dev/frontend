@@ -55,6 +55,7 @@
 	import { Toaster } from '@/components/ui/toast';
 	import { generateTaskUrl } from '@/utils/url';
 	import { updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -138,8 +139,10 @@
 				if (to !== from) {
 					if (this.$route.meta.title) {
 						this.$store.commit('setMetaTitle', this.$route.meta.title);
+						setDocumentTitle(this.$route.meta.title);
 					} else {
 						this.$store.commit('setMetaTitle', '');
+						setDocumentTitle();
 					}
 				}
 			},
@@ -390,6 +393,7 @@
 						// Update the meta title if needed
 						if (this.$route.meta.title) {
 							this.$store.commit('setMetaTitle', this.$route.meta.title);
+							setDocumentTitle(this.$route.meta.title);
 						}
 						
 						// Force UI components to update by triggering an app rerender
@@ -470,8 +474,10 @@
 				if (to.name !== from.name) {
 					if (to.meta.title && !to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
 						this.$store.commit('setMetaTitle', to.meta.title);
+						setDocumentTitle(to.meta.title);
 					} else if (!to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
 						this.$store.commit('setMetaTitle', '');
+						setDocumentTitle();
 					}
 				}
 
