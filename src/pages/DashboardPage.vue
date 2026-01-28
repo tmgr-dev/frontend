@@ -855,12 +855,7 @@ onUnmounted(() => {
             </p>
           </div>
           
-          <Transition
-            name="fade-slide"
-            mode="out-in"
-          >
             <div 
-              :key="heatmapData ? 'loaded' : 'loading'"
               class="heatmap-container"
               role="img"
               :aria-label="heatmapData ? `Activity heatmap showing ${heatmapData.total_contributions} total contributions` : 'Activity heatmap loading'"
@@ -910,7 +905,6 @@ onUnmounted(() => {
                 Loading activity heatmap
               </div>
             </div>
-          </Transition>
         </section>
 
         <!-- Statistics Grid -->
@@ -923,18 +917,12 @@ onUnmounted(() => {
           <h2 id="statistics-heading" class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
             Workspace Statistics
           </h2>
-          <Transition
-            name="fade-slide"
-            mode="out-in"
-          >
             <StatisticsGrid
-              :key="statistics ? 'loaded' : 'loading'"
               :statistics="statistics || {}"
               :loading="loadingStates.statistics.isLoading"
               @navigate-to-filtered="handleStatisticCardClick"
               :aria-describedby="loadingStates.statistics.isLoading ? 'statistics-loading' : 'statistics-description'"
             />
-          </Transition>
           
           <!-- Loading announcement -->
           <div 
@@ -1011,12 +999,7 @@ onUnmounted(() => {
               role="region"
             >
               <h3 id="team-activity-heading" class="sr-only">Team Activity</h3>
-              <Transition
-                name="slide-up"
-                mode="out-in"
-              >
                 <TeamActivityWidget
-                  :key="teamActivity?.online_members || 0"
                   :team-activity="teamActivity"
                   :loading="loadingStates.teamActivity.isLoading"
                   @refresh="() => refreshSection('teamActivity')"
@@ -1025,7 +1008,6 @@ onUnmounted(() => {
                   @invite-members="() => router.push('/workspace/invite')"
                   :aria-describedby="loadingStates.teamActivity.isLoading ? 'team-loading' : 'team-description'"
                 />
-              </Transition>
               
               <!-- Team activity description -->
               <div 
