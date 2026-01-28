@@ -47,7 +47,7 @@
 </template>
 
 <script>
-	import { defineComponent, onBeforeMount, ref, watch } from 'vue';
+	import { defineComponent, defineAsyncComponent, onBeforeMount, ref, watch } from 'vue';
 	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
 	import { getUserSettings } from '@/actions/tmgr/user';
@@ -56,7 +56,7 @@
 	import Alert from '@/components/general/Alert.vue';
 	import Modal from '@/components/Modal.vue';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
-	import NewForm from '@/pages/NewForm.vue';
+	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { Toaster } from '@/components/ui/toast';

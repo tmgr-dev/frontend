@@ -2,6 +2,7 @@
 	font-family: 'Material Icons';
 	font-style: normal;
 	font-weight: 400;
+	font-display: swap;
 	src: url(../fonts/material-icons.woff2) format('woff2');
 }
 
@@ -25,12 +26,14 @@
 	font-family: 'CodecPro';
 	font-style: normal;
 	font-weight: 400;
+	font-display: swap;
 	src: url(../fonts/CodecPro-News.woff2) format('woff2');
 }
 
 @font-face {
 	font-family: 'CodecPro Bold';
 	font-style: normal;
+	font-display: swap;
 	src: url(../fonts/CodecPro-Bold.woff2) format('woff2');
 }
 

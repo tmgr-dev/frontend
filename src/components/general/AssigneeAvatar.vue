@@ -26,5 +26,8 @@
 		showRemovingAssignee: Boolean;
 	}
 
-	const props = defineProps<Props>();
+	defineProps<Props>();
+	defineEmits<{
+		deleteAssign: [id: number];
+	}>();
 </script>

@@ -524,41 +524,60 @@
 				this.selected.every(Boolean)
 			);
 		},
-		taskTitles() {
+		taskComputedData() {
 			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.truncateTitle(task.title);
+				acc[task.id] = {
+					title: this.truncateTitle(task.title),
+					timeExceeded: this.isTimeExceeded(task),
+					formattedTime: this.getTaskFormattedTime(task),
+					overtime: this.getTaskOvertime(task),
+					statusName: this.getStatusName(task),
+					statusColor: this.getStatusColor(task),
+				};
 				return acc;
-			}, {});
+			}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+		},
+		taskTitles() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].title;
+			}
+			return data;
 		},
 		taskTimeExceeded() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.isTimeExceeded(task);
-				return acc;
-			}, {});
+			const data: Record<number, boolean> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].timeExceeded;
+			}
+			return data;
 		},
 		taskFormattedTimes() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.getTaskFormattedTime(task);
-				return acc;
-			}, {});
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].formattedTime;
+			}
+			return data;
 		},
 		taskOvertimes() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.getTaskOvertime(task);
-				return acc;
-			}, {});
+			const data: Record<number, string | null> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].overtime;
+			}
+			return data;
 		},
 		taskStatusNames() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.getStatusName(task);
-				return acc;
-			}, {});
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusName;
+			}
+			return data;
 		},
 		taskStatusColors() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = this.getStatusColor(task);
-				return acc;
-			}, {});
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusColor;
+			}
+			return data;
 		},
 	},
 		methods: {

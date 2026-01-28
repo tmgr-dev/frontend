@@ -1,11 +1,92 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
 export default defineConfig({
-	plugins: [vue()],
+	plugins: [
+		vue(),
+		VitePWA({
+			registerType: 'autoUpdate',
+			devOptions: {
+				enabled: true,
+			},
+			includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'safari-pinned-tab.svg'],
+			manifest: {
+				name: 'TMGR - Task Manager',
+				short_name: 'TMGR',
+				description: 'Task management system with time tracking',
+				theme_color: '#555555',
+				background_color: '#1a1a1a',
+				display: 'standalone',
+				icons: [
+					{
+						src: 'favicon-32x32.png',
+						sizes: '32x32',
+						type: 'image/png',
+					},
+					{
+						src: 'apple-touch-icon.png',
+						sizes: '180x180',
+						type: 'image/png',
+					},
+					{
+						src: 'android-chrome-192x192.png',
+						sizes: '192x192',
+						type: 'image/png',
+					},
+					{
+						src: 'android-chrome-512x512.png',
+						sizes: '512x512',
+						type: 'image/png',
+						purpose: 'any maskable',
+					},
+				],
+			},
+			workbox: {
+				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+				importScripts: ['https://js.pusher.com/beams/service-worker.js'],
+				runtimeCaching: [
+					{
+						urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+						handler: 'CacheFirst',
+						options: {
+							cacheName: 'google-fonts-stylesheets',
+							expiration: {
+								maxEntries: 10,
+								maxAgeSeconds: 60 * 60 * 24 * 365,
+							},
+						},
+					},
+					{
+						urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+						handler: 'CacheFirst',
+						options: {
+							cacheName: 'google-fonts-webfonts',
+							expiration: {
+								maxEntries: 30,
+								maxAgeSeconds: 60 * 60 * 24 * 365,
+							},
+						},
+					},
+					{
+						urlPattern: /\/api\/.*/i,
+						handler: 'NetworkFirst',
+						options: {
+							cacheName: 'api-cache',
+							expiration: {
+								maxEntries: 100,
+								maxAgeSeconds: 60 * 5,
+							},
+							networkTimeoutSeconds: 10,
+						},
+					},
+				],
+			},
+		}),
+	],
 	resolve: {
 		alias: [
 			{
