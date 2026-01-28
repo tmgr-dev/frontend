@@ -411,7 +411,7 @@
 		<template #body>
 			<div
 				v-if="isCategoriesFirstLoading"
-				class="mt-8 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
+				class="mt-8 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3 min-h-48"
 			>
 				<Skeleton class="h-24 w-full" />
 				<Skeleton class="hidden h-24 w-full lg:block" />
@@ -602,7 +602,7 @@
 					</div>
 				</div>
 
-				<div v-if="isTasksFirstLoading" class="mt-6 space-y-2 px-2">
+				<div v-if="isTasksFirstLoading" class="mt-6 space-y-2 px-2 min-h-96">
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />

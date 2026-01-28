@@ -125,7 +125,10 @@
 					</div>
 
 					<div class="board-wrapper">
-					<div class="board-container">
+					<!-- Loading skeleton -->
+					<BoardSkeleton v-if="!tasksLoaded" :columns-count="columns.length || 4" />
+
+					<div v-show="tasksLoaded" class="board-container">
 						<div class="w-fit" ref="cont1">
 							<Draggable
 								ref="cont2"
@@ -602,6 +605,7 @@
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
+	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
 	import { SquareKanban } from 'lucide-vue-next';
 
 	export default {
