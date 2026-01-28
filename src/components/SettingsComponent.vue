@@ -65,12 +65,15 @@
 			</div>
 
 			<DialogFooter>
-				<button
-					type="submit"
-					class="w-full rounded bg-tmgr-light-blue p-2 text-white hover:opacity-90"
-				>
-					Save
-				</button>
+				<DialogClose as-child>
+					<button
+						type="button"
+						class="w-full rounded bg-tmgr-light-blue p-2 text-white hover:opacity-90"
+						@click="handleSave"
+					>
+						Save
+					</button>
+				</DialogClose>
 			</DialogFooter>
 		</DialogContent>
 	</Dialog>
@@ -98,16 +101,17 @@
 	import TimeField from '@/components/general/TimeField.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import {
-		FormSetting,
 		getTaskSettings,
 		Setting,
-		updateOneTaskSettings,
+		SettingPayload,
+		updateTaskSettings,
 	} from '@/actions/tmgr/settings';
 	import { onBeforeMount, ref, watch } from 'vue';
 	import { Task } from '@/actions/tmgr/tasks';
 	import { CogIcon } from '@heroicons/vue/20/solid';
 	import {
 		Dialog,
+		DialogClose,
 		DialogContent,
 		DialogDescription,
 		DialogFooter,
@@ -159,13 +163,17 @@
 		});
 	}
 
-	async function saveSettings(formSettings: FormSetting) {
-		if (!props.form.id) return;
+	async function handleSave() {
+		if (!props.form.id || !settings.value.length) return;
+		
 		try {
-			await updateOneTaskSettings(props.form.id, formSettings);
+			const payload: SettingPayload[] = settings.value.map((setting) => ({
+				id: setting.id,
+				value: setting.value,
+			}));
+			await updateTaskSettings(props.form.id, payload);
 		} catch (e) {
-			console.error(e);
-			throw e;
+			console.error('Failed to save settings:', e);
 		}
 	}
 </script>

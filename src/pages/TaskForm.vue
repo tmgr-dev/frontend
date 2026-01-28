@@ -482,7 +482,7 @@
 	} from '@/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
-		updateOneTaskSettings,
+		updateTaskSettings,
 	} from '@/actions/tmgr/settings';
 	import { getCategories, getCategory } from '@/actions/tmgr/categories';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
@@ -778,7 +778,7 @@
 				return settings.find((setting) => setting.id === id) || defaultResult;
 			},
 			async saveSettings(settings) {
-				const data = await updateOneTaskSettings(this.form.id, settings);
+				const data = await updateTaskSettings(this.form.id, settings);
 				this.initSettings(this.availableSettings, data.settings);
 			},
 			async handleAssign(userId) {
