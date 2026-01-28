@@ -1145,17 +1145,17 @@
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
 		<div
-			class="flex h-full overflow-hidden transition-all duration-300 md:w-[700px]"
+			class="flex transition-all duration-300 md:w-[700px]"
 			:class="[
 				isModal
-					? 'flex-col md:max-h-[60vh] md:flex-row'
-					: 'container mx-auto flex-col pt-14 md:flex-row',
+					? 'h-full max-h-[100dvh] flex-col overflow-hidden md:h-auto md:max-h-[60vh] md:flex-col'
+					: 'h-full container mx-auto flex-col pt-14 md:flex-row',
 			]"
 		>
 			<!-- Form Panel -->
 			<div
-				class="flex min-h-0 flex-shrink-0 flex-col md:w-[700px]"
-				:class="isModal ? 'overflow-hidden' : 'h-full'"
+				class="flex min-h-0 flex-1 flex-col md:w-[700px]"
+				:class="{ 'md:max-h-[60vh]': isModal }"
 			>
 				<!-- HEADER - Fixed at top -->
 				<header class="flex shrink-0 justify-between p-6 pb-4">
