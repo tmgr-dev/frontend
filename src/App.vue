@@ -6,9 +6,12 @@
 		:key="$store.state.appRerenderKey"
 	>
 			<div class="flex min-h-screen">
+				<!-- CHANGES: Added keep-alive for cached views -->
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
-							<component :is="Component" v-if="showComponent" :key="route?.fullPath" />
+						<keep-alive :include="keepAliveComponents">
+							<component :is="Component" v-if="showComponent" :key="route?.meta?.keepAlive ? route?.name : route?.fullPath" />
+						</keep-alive>
 					</router-view>
 				</CustomSidebar>
 			</div>
@@ -98,6 +101,10 @@
 			};
 		},
 		computed: {
+			// CHANGES: Added keepAliveComponents for route caching
+			keepAliveComponents() {
+				return ['DashboardPage', 'TasksListPage'];
+			},
 			switchOn: {
 				get() {
 					return this.$store.state.colorScheme === 'dark';

@@ -1,5 +1,6 @@
 <template>
-  <div class="statistics-grid">
+  <!-- CHANGES: Added min-h-32 to prevent CLS -->
+  <div class="statistics-grid min-h-32">
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
       <StatisticCard
         v-for="stat in statisticCards"

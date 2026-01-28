@@ -1102,28 +1102,28 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Dashboard Container */
+/* CHANGES: Consolidated and simplified CSS - removed duplicates, kept essential styles only */
+/* Bundle size reduction: ~40% less CSS */
+
+/* Dashboard Layout */
 .dashboard-container {
-  @apply w-full max-w-7xl mx-auto px-4 py-6;
-  min-height: 100vh;
+  @apply w-full max-w-7xl mx-auto px-4 py-6 min-h-screen;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 163 175) transparent;
 }
 
-/* Dashboard Header */
 .dashboard-header {
   @apply mb-8 pb-4 border-b border-gray-200 dark:border-gray-700;
 }
 
-/* Dashboard Sections */
 .dashboard-section {
-  @apply mb-8;
+  @apply mb-8 transition-all duration-200 ease-in-out;
 }
 
-/* Heatmap Section */
 .heatmap-container {
   @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 min-h-48;
 }
 
-/* Dashboard Grid Layout - Single Column */
 .dashboard-grid {
   @apply flex flex-col gap-6;
 }
@@ -1137,16 +1137,6 @@ onUnmounted(() => {
 }
 
 /* Responsive Design */
-@media (max-width: 1024px) {
-  .dashboard-grid {
-    @apply flex flex-col;
-  }
-  
-  .dashboard-sidebar {
-    @apply flex flex-col;
-  }
-}
-
 @media (max-width: 768px) {
   .dashboard-container {
     @apply px-4;
@@ -1163,21 +1153,11 @@ onUnmounted(() => {
   .dashboard-section {
     @apply mb-6;
   }
-  
-  .dashboard-sidebar {
-    @apply flex-col;
-  }
 }
 
 @media (max-width: 640px) {
   .dashboard-container {
-    @apply px-2 py-2;
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-  
-  .dashboard-grid {
-    @apply flex-col;
+    @apply px-2 py-2 overflow-x-hidden overflow-y-auto;
   }
   
   .dashboard-section {
@@ -1193,149 +1173,13 @@ onUnmounted(() => {
   }
   
   .heatmap-container {
-    @apply p-3;
-    overflow-x: hidden;
+    @apply p-3 overflow-x-hidden;
   }
 }
 
-/* Accessibility Improvements */
-@media (prefers-reduced-motion: reduce) {
-  .animate-spin {
-    animation: none;
-  }
-  
-  .animate-pulse {
-    animation: none;
-  }
-}
-
-/* High Contrast Mode Support */
-@media (prefers-contrast: high) {
-  .dashboard-container {
-    @apply border-2 border-gray-900 dark:border-gray-100;
-  }
-  
-  .dashboard-section {
-    @apply border-2 border-gray-900 dark:border-gray-100 rounded-lg p-4;
-    background: white;
-    color: black;
-  }
-  
-  .dark .dashboard-section {
-    background: black;
-    color: white;
-  }
-  
-  /* Ensure sufficient contrast for interactive elements */
-  .dashboard-container button,
-  .dashboard-container a {
-    @apply border-2 border-gray-900 dark:border-gray-100;
-  }
-  
-  /* Error states with high contrast */
-  .error-state {
-    @apply border-2 border-red-900 bg-red-100 text-red-900;
-  }
-  
-  .dark .error-state {
-    @apply border-red-100 bg-red-900 text-red-100;
-  }
-  
-  /* Success states with high contrast */
-  .success-state {
-    @apply border-2 border-green-900 bg-green-100 text-green-900;
-  }
-  
-  .dark .success-state {
-    @apply border-green-100 bg-green-900 text-green-100;
-  }
-}
-
-/* Focus Styles for Keyboard Navigation */
-.dashboard-container :focus {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
-}
-
-.dashboard-container button:focus,
-.dashboard-container a:focus {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
-}
-
-/* Loading States */
-.loading-skeleton {
-  @apply animate-pulse bg-gray-200 dark:bg-gray-700 rounded;
-}
-
-/* Error States */
-.error-state {
-  @apply bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200;
-}
-
-/* Success States */
-.success-state {
-  @apply bg-green-50 border border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200;
-}
-
-/* Connection Status Indicators */
-.connection-indicator {
-  @apply fixed bottom-4 right-4 z-50 rounded-lg p-3 shadow-lg transition-all duration-300;
-}
-
-.connection-indicator.online {
-  @apply bg-green-100 border border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200;
-}
-
-.connection-indicator.offline {
-  @apply bg-yellow-100 border border-yellow-300 text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-200;
-}
-
-.connection-indicator.error {
-  @apply bg-red-100 border border-red-300 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200;
-}
-
-/* Print Styles */
-@media print {
-  .dashboard-container {
-    @apply max-w-none px-0;
-  }
-  
-  .dashboard-header button,
-  .connection-indicator,
-  .fixed {
-    @apply hidden;
-  }
-  
-  .dashboard-grid {
-    @apply flex-col;
-  }
-}
-
-/* Dark Mode Specific Adjustments */
-@media (prefers-color-scheme: dark) {
-  .dashboard-container {
-    color-scheme: dark;
-  }
-}
-
-/* Smooth Transitions */
-.dashboard-section,
-.dashboard-grid > * {
-  @apply transition-all duration-200 ease-in-out;
-}
-
-/* Hover Effects */
-.dashboard-section:hover {
-  @apply transform translate-y-0;
-}
-
-/* Custom Scrollbar for Dashboard */
-.dashboard-container {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(156 163 175) transparent;
-}
-
+/* Custom Scrollbar */
 .dashboard-container::-webkit-scrollbar {
-  @apply w-2;
+  width: 0.5rem;
 }
 
 .dashboard-container::-webkit-scrollbar-track {
@@ -1347,210 +1191,83 @@ onUnmounted(() => {
 }
 
 .dashboard-container::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500 dark:bg-gray-500;
+  @apply bg-gray-500;
 }
 
-/* Transition Animations */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: all 0.3s ease-in-out;
+/* Focus States */
+.dashboard-section:focus-within {
+  @apply ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
 }
 
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(10px);
-}
-
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.25s ease-out;
-}
-
-.slide-up-enter-from {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.slide-up-leave-to {
-  opacity: 0;
-  transform: translateY(-20px);
-}
-
-/* Real-time Update Animations */
+/* Animations */
 @keyframes pulse-subtle {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.8;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
 }
 
 .animate-pulse-subtle {
   animation: pulse-subtle 1s ease-in-out;
 }
 
-@keyframes slide-in-notification {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.slide-in-notification {
-  animation: slide-in-notification 0.3s ease-out;
-}
-
-/* Statistics Update Animation */
 .statistics-grid.animate-pulse {
   animation: pulse-subtle 0.5s ease-in-out;
 }
 
-/* Activity Feed Real-time Indicators */
 .activity-item.new-activity {
   @apply bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800;
   animation: pulse-subtle 2s ease-in-out;
 }
 
-/* Team Member Status Indicators */
 .team-member.status-changed {
   animation: pulse-subtle 1s ease-in-out;
 }
 
-/* Connection Status Transitions */
-.connection-status-enter-active,
-.connection-status-leave-active {
-  transition: all 0.3s ease-in-out;
-}
-
-.connection-status-enter-from,
-.connection-status-leave-to {
-  opacity: 0;
-  transform: translateY(10px) scale(0.95);
-}
-
-/* Loading State Improvements */
+/* Loading Skeleton with Shimmer */
 .loading-skeleton {
-  @apply animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700;
+  @apply animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 rounded;
   background-size: 200% 100%;
   animation: loading-shimmer 1.5s infinite;
 }
 
 @keyframes loading-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-/* Optimistic Update Feedback */
-.optimistic-update {
-  @apply opacity-75;
-  transition: opacity 0.2s ease-in-out;
-}
-
-.optimistic-update.confirmed {
-  @apply opacity-100;
-}
-
-.optimistic-update.failed {
-  @apply opacity-100 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800;
-  animation: shake 0.5s ease-in-out;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  75% { transform: translateX(5px); }
-}
-
-/* Hover Effects for Interactive Elements */
-.dashboard-section:hover {
-  @apply transform translate-y-0;
-  transition: transform 0.2s ease-in-out;
-}
-
-.interactive-card:hover {
-  @apply transform scale-105 shadow-lg;
-  transition: all 0.2s ease-in-out;
-}
-
-/* Focus Improvements for Better Accessibility */
-.dashboard-container *:focus-visible {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
-  transition: box-shadow 0.15s ease-in-out;
-}
-
-/* Skip to content link */
-/* Screen reader only content */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Keyboard navigation indicators */
-.dashboard-section:focus-within {
-  @apply ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
-}
-
-/* Better focus indicators for interactive elements */
-.dashboard-container button:focus-visible,
-.dashboard-container a:focus-visible,
-.dashboard-container [tabindex]:focus-visible {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
-  box-shadow: 0 0 0 2px var(--ring-offset-color), 0 0 0 4px var(--ring-color);
-}
-
-/* High contrast focus indicators */
-@media (prefers-contrast: high) {
-  .dashboard-container *:focus-visible {
-    @apply ring-4 ring-blue-900 dark:ring-blue-100;
-    box-shadow: 0 0 0 2px white, 0 0 0 6px black;
-  }
-  
-  .dark .dashboard-container *:focus-visible {
-    box-shadow: 0 0 0 2px black, 0 0 0 6px white;
-  }
-}
-
-/* Reduced Motion Support */
+/* Accessibility: Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
-  .fade-slide-enter-active,
-  .fade-slide-leave-active,
-  .slide-up-enter-active,
-  .slide-up-leave-active,
-  .connection-status-enter-active,
-  .connection-status-leave-active {
-    transition: none;
-  }
-  
+  .animate-spin,
   .animate-pulse,
   .animate-pulse-subtle,
   .loading-skeleton {
     animation: none;
   }
   
-  .dashboard-section,
-  .interactive-card {
+  .dashboard-section {
     transition: none;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .dashboard-container {
+    @apply border-2 border-gray-900 dark:border-gray-100;
+  }
+  
+  .dashboard-section {
+    @apply border-2 border-gray-900 dark:border-gray-100 rounded-lg p-4 bg-white text-black dark:bg-black dark:text-white;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .dashboard-container {
+    @apply max-w-none px-0;
+  }
+  
+  .dashboard-header button,
+  .fixed {
+    display: none;
   }
 }
 </style> 
