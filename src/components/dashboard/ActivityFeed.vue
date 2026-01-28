@@ -195,7 +195,7 @@ onUnmounted(() => {
 }
 
 .activity-list {
-  @apply max-h-[600px] overflow-y-auto;
+  @apply max-h-[600px] min-h-64 overflow-y-auto;
 }
 
 .activity-list > * + * {

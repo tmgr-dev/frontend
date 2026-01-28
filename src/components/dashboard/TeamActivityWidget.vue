@@ -159,7 +159,7 @@ const inviteMembers = () => {
 }
 
 .team-activity-content {
-  @apply max-h-80 overflow-y-auto;
+  @apply max-h-80 min-h-48 overflow-y-auto;
 }
 
 /* Custom scrollbar */

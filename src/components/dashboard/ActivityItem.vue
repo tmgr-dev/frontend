@@ -46,7 +46,8 @@
             v-if="activity.user.avatar"
             :src="activity.user.avatar"
             :alt="activity.user.name"
-            class="w-5 h-5 rounded-full"
+            class="w-5 h-5 rounded-full object-cover"
+            loading="lazy"
           />
           <div
             v-else

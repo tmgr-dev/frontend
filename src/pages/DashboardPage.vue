@@ -6,6 +6,7 @@ import BaseLayout from '@/components/layouts/BaseLayout.vue';
 
 // Dashboard components
 import HeatmapCalendar from '@/components/general/HeatmapCalendar.vue';
+import HeatmapSkeleton from '@/components/dashboard/HeatmapSkeleton.vue';
 import StatisticsGrid from '@/components/dashboard/StatisticsGrid.vue';
 import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
 import TeamActivityWidget from '@/components/dashboard/TeamActivityWidget.vue';
@@ -865,10 +866,7 @@ onUnmounted(() => {
               :aria-label="heatmapData ? `Activity heatmap showing ${heatmapData.total_contributions} total contributions` : 'Activity heatmap loading'"
               :aria-describedby="heatmapData ? 'heatmap-summary' : 'heatmap-loading'"
             >
-              <div v-if="loadingStates.heatmap.isLoading" class="flex flex-col items-center justify-center py-20">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-tmgr-blue mb-4"></div>
-                <p class="text-sm text-gray-600 dark:text-gray-400">Loading heatmap data...</p>
-              </div>
+              <HeatmapSkeleton v-if="loadingStates.heatmap.isLoading" />
               
               <div v-else-if="loadingStates.heatmap.error" class="flex flex-col items-center justify-center py-20">
                 <ExclamationTriangleIcon class="h-12 w-12 text-red-500 mb-4" />
@@ -1140,7 +1138,7 @@ onUnmounted(() => {
 
 /* Heatmap Section */
 .heatmap-container {
-  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6;
+  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 min-h-48;
 }
 
 /* Dashboard Grid Layout - Single Column */
@@ -1149,11 +1147,11 @@ onUnmounted(() => {
 }
 
 .dashboard-main-content {
-  @apply w-full;
+  @apply w-full min-h-96;
 }
 
 .dashboard-sidebar {
-  @apply w-full flex flex-col space-y-6;
+  @apply w-full flex flex-col space-y-6 min-h-64;
 }
 
 /* Responsive Design */

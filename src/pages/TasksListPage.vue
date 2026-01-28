@@ -419,7 +419,7 @@
 		</template>
 
 		<template #body>
-			<div class="mt-4">
+			<div class="mt-4 min-h-96">
 				<tasks-list-component
 					v-if="tasks && tasks.length > 0 && !isLoading"
 					:tasks="tasks"

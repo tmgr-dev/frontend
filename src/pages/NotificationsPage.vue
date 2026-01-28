@@ -4,7 +4,7 @@
 
 		<BaseLayout>
 		<template #body>
-			<div class="notifications-page">
+			<div class="notifications-page min-h-96">
 				<div class="page-header">
 					<h1 class="page-title">Notifications</h1>
 					<div class="header-actions">
