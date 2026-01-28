@@ -9,6 +9,7 @@
 		deleteCategory as deleteCategoryAction,
 		getParentCategory,
 		getSubCategories,
+		transferCategory as transferCategoryAction,
 	} from '@/actions/tmgr/categories';
 	import Select from '@/components/general/Select.vue';
 	import { ref, computed, watch, onMounted } from 'vue';
@@ -25,6 +26,7 @@
 		EllipsisIcon,
 		Trash2Icon,
 		ArchiveRestoreIcon,
+		ArrowRightLeftIcon,
 	} from 'lucide-vue-next';
 	import {
 		DropdownMenu,
@@ -34,6 +36,9 @@
 	} from '@/components/ui/dropdown-menu';
 	import { Skeleton } from '@/components/ui/skeleton';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
+	import Modal from '@/components/Modal.vue';
+	import Select from '@/components/general/Select.vue';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -49,6 +54,10 @@
 	const workspaceStatus = ref('all');
 	const workspaceCode = ref(null);
 	const permissionDenied = ref(false);
+	const isTransferModalShown = ref(false);
+	const categoryToTransfer = ref(null);
+	const targetWorkspaceId = ref(null);
+	const availableWorkspaces = ref([]);
 	
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -253,6 +262,41 @@
 		} catch (e) {
 			console.error(e);
 		}
+	};
+
+	const openTransferModal = async (category) => {
+		categoryToTransfer.value = category;
+		const workspaces = await getWorkspaces();
+		const currentWorkspaceId = store.state.user?.settings?.find(
+			setting => setting.key === 'current_workspace'
+		)?.value;
+		availableWorkspaces.value = workspaces.filter(
+			workspace => workspace.id !== Number(currentWorkspaceId)
+		);
+		isTransferModalShown.value = true;
+	};
+
+	const transferCategory = async () => {
+		if (!categoryToTransfer.value || !targetWorkspaceId.value) {
+			return;
+		}
+
+		try {
+			await transferCategoryAction(categoryToTransfer.value.id, targetWorkspaceId.value);
+			isTransferModalShown.value = false;
+			categoryToTransfer.value = null;
+			targetWorkspaceId.value = null;
+			await loadCategories();
+			await loadTasks();
+		} catch (e) {
+			console.error('Error transferring category:', e);
+		}
+	};
+
+	const closeTransferModal = () => {
+		isTransferModalShown.value = false;
+		categoryToTransfer.value = null;
+		targetWorkspaceId.value = null;
 	};
 
 	const handlePageChange = (page) => {
@@ -484,6 +528,14 @@
 
 										<DropdownMenuItem
 											v-if="category.deleted_at === null"
+											@click="openTransferModal(category)"
+										>
+											<ArrowRightLeftIcon />
+											<span>Transfer to Workspace</span>
+										</DropdownMenuItem>
+
+										<DropdownMenuItem
+											v-if="category.deleted_at === null"
 											@click="deleteCategory(category)"
 										>
 											<Trash2Icon />
@@ -600,6 +652,51 @@
 					<EmptyState />
 				</div>
 			</div>
+
+			<!-- Transfer Category Modal -->
+			<Modal
+				v-if="isTransferModalShown"
+				modal-class="p-6 w-96"
+				@close="closeTransferModal"
+			>
+				<template #modal-body>
+					<h3 class="mb-4 text-xl font-bold">
+						Transfer Category to Workspace
+					</h3>
+					<p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+						Select the workspace to transfer "{{ categoryToTransfer?.title }}" with all its subcategories and tasks.
+					</p>
+					
+					<div class="mb-4">
+						<label class="mb-2 block text-sm font-bold text-gray-700 dark:text-gray-300">
+							Target Workspace
+						</label>
+						<Select
+							v-model="targetWorkspaceId"
+							:options="availableWorkspaces"
+							label-key="name"
+							value-key="id"
+							placeholder="Select workspace..."
+							class="w-full"
+						/>
+					</div>
+
+					<div class="flex justify-end gap-3">
+						<Button
+							variant="outline"
+							@click="closeTransferModal"
+						>
+							Cancel
+						</Button>
+						<Button
+							:disabled="!targetWorkspaceId"
+							@click="transferCategory"
+						>
+							Transfer
+						</Button>
+					</div>
+				</template>
+			</Modal>
 		</template>
 	</BaseLayout>
 </template>
