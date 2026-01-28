@@ -53,11 +53,13 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
+	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 	import { createComment, createAskingHelpComment } from '@/actions/tmgr/comments';
 	import { getTaskGitActivity } from '@/actions/tmgr/github';
-	import { Send, Sparkles } from 'lucide-vue-next';
+	import { getCursorAgents, sendFollowUp } from '@/actions/tmgr/cursor';
+	import { Send, Sparkles, Bot } from 'lucide-vue-next';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -195,11 +197,26 @@
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
+	const showCursorAgentModal = ref(false);
+	const cursorAgents = ref([]);
 
 	const currentCategoryCode = computed(() => {
 		if (!form.value.project_category_id || !categories.value.length) return null;
 		const category = categories.value.find((c: Category) => c.id === form.value.project_category_id);
 		return category?.code || null;
+	});
+
+	const currentCategory = computed(() => {
+		if (!form.value.project_category_id || !categories.value.length) return null;
+		return categories.value.find((c: Category) => c.id === form.value.project_category_id);
+	});
+
+	const hasActiveAgent = computed(() => {
+		return cursorAgents.value.some((a: any) => a.status === 'RUNNING');
+	});
+
+	const canRunWithCursor = computed(() => {
+		return form.value.id && currentCategoryCode.value;
 	});
 
 	const autoResizeTitle = () => {
@@ -449,6 +466,7 @@
 			}
 
 			await loadGitActivity();
+			await loadCursorAgents();
 
 			nextTick(() => {
 				autoResizeTitle();
@@ -513,6 +531,31 @@
 		} catch (e) {
 			console.error('[Git Activity] Failed to load:', e);
 			gitActivityCount.value = 0;
+		}
+	};
+
+	const loadCursorAgents = async () => {
+		if (!form.value.id) return;
+		try {
+			cursorAgents.value = await getCursorAgents(form.value.id);
+		} catch (e) {
+			console.error('[Cursor] Failed to load agents:', e);
+			cursorAgents.value = [];
+		}
+	};
+
+	const sendToCursor = async () => {
+		const activeAgent = cursorAgents.value.find((a: any) => a.status === 'RUNNING');
+		if (!activeAgent || !newComment.value.trim()) return;
+
+		try {
+			await sendFollowUp(form.value.id, activeAgent.id, newComment.value);
+			newComment.value = '';
+			if (taskCommentsRef.value) {
+				taskCommentsRef.value.loadComments();
+			}
+		} catch (e) {
+			console.error('[Cursor] Failed to send follow-up:', e);
 		}
 	};
 
@@ -953,6 +996,7 @@
 				});
 
 				await loadGitActivity();
+				await loadCursorAgents();
 				} catch (e: any) {
 					console.error('Error loading linked task:', e);
 				}
@@ -1098,6 +1142,16 @@
 				</Select>
 
 			<div class="flex items-center gap-3">
+				<button
+					v-if="canRunWithCursor"
+					type="button"
+					@click="showCursorAgentModal = true"
+					class="relative flex items-center justify-center rounded bg-purple-500/80 px-2 py-1.5 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
+					title="Run with Cursor Agent"
+				>
+					<Bot class="h-4 w-4" />
+				</button>
+
 				<SettingsComponent :form="form" />
 
 				<button v-if="isModal" @click="emit('close')">
@@ -1409,6 +1463,15 @@
 					>
 						<Sparkles class="h-4 w-4" />
 					</button>
+					<button
+						v-if="hasActiveAgent"
+						:disabled="!newComment?.trim() || isSendingComment"
+						@click="sendToCursor"
+						class="flex h-9 w-9 items-center justify-center rounded bg-purple-500 text-white transition hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-purple-600 dark:hover:bg-purple-700"
+						title="Send to Cursor Agent"
+					>
+						<Bot class="h-4 w-4" />
+					</button>
 				</div>
 			</div>
 		</div>
@@ -1565,6 +1628,21 @@
 					:task-id="form.id"
 					:category-code="currentCategoryCode || 'TASK'"
 					@update:count="gitActivityCount = $event"
+				/>
+			</DialogContent>
+		</Dialog>
+
+		<Dialog v-model:open="showCursorAgentModal">
+			<DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle>Cursor AI Agent</DialogTitle>
+				</DialogHeader>
+				<TaskCursorAgent
+					v-if="form.id"
+					:task-id="form.id"
+					@launched="loadCursorAgents"
+					@stopped="loadCursorAgents"
+					@followup-sent="taskCommentsRef?.loadComments()"
 				/>
 			</DialogContent>
 		</Dialog>

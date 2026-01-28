@@ -130,6 +130,14 @@
 						@relinked="onGitHubRelinked"
 					/>
 
+					<CategoryCursorSettings
+						v-if="!isCreate && form.id"
+						:category-id="form.id"
+						:is-create="isCreate"
+						@cursor-configured="onCursorConfigured"
+						@cursor-removed="onCursorRemoved"
+					/>
+
 					<div class="mt-8 flex-row justify-center">
 						<button
 							class="mr-5 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
@@ -184,10 +192,12 @@
 	import TextField from '@/components/general/TextField.vue';
 	import TimeField from '@/components/general/TimeField.vue';
 	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
+	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
 
 	export default {
 		name: 'ProjectCategoryForm',
 		components: {
+			CategoryCursorSettings,
 			CategoryGitHubSettings,
 			TimeField,
 			TextField,
@@ -359,6 +369,12 @@
 			onGitHubRelinked(stats) {
 				const total = stats.commits + stats.branches + stats.pull_requests;
 				this.showAlert('Success', `Relinked ${total} items: ${stats.commits} commits, ${stats.branches} branches, ${stats.pull_requests} PRs`);
+			},
+			onCursorConfigured() {
+				this.showAlert('Success', 'Cursor API key configured successfully');
+			},
+			onCursorRemoved() {
+				this.showAlert('Success', 'Cursor API key removed');
 			},
 		},
 	};
