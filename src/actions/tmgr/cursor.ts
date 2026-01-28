@@ -8,8 +8,9 @@ export async function launchCursorAgent(taskId: number, sourceBranch?: string): 
   return response.data.agent;
 }
 
-export async function getGitHubBranches(taskId: number): Promise<GitHubBranch[]> {
-  const response = await $axios.get(`/tasks/${taskId}/cursor-agent/branches`);
+export async function getGitHubBranches(taskId: number, search?: string): Promise<GitHubBranch[]> {
+  const params = search ? { search } : {};
+  const response = await $axios.get(`/tasks/${taskId}/cursor-agent/branches`, { params });
   return response.data.branches;
 }
 
