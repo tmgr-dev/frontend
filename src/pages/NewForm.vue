@@ -5,9 +5,20 @@
 		DocumentPlusIcon,
 		BookmarkIcon,
 	} from '@heroicons/vue/20/solid';
-	import { ArrowTopRightOnSquareIcon, CodeBracketIcon } from '@heroicons/vue/24/outline';
+	import {
+		ArrowTopRightOnSquareIcon,
+		CodeBracketIcon,
+	} from '@heroicons/vue/24/outline';
 	import store from '@/store';
-	import { computed, nextTick, onBeforeMount, onMounted, ref, toRef, watch } from 'vue';
+	import {
+		computed,
+		nextTick,
+		onBeforeMount,
+		onMounted,
+		ref,
+		toRef,
+		watch,
+	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -55,11 +66,20 @@
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import { Textarea } from '@/components/ui/textarea';
-	import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-	import { createComment, createAskingHelpComment } from '@/actions/tmgr/comments';
+	import {
+		Dialog,
+		DialogContent,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
+	import {
+		createComment,
+		createAskingHelpComment,
+	} from '@/actions/tmgr/comments';
 	import { getTaskGitActivity } from '@/actions/tmgr/github';
 	import { getCursorAgents, sendFollowUp } from '@/actions/tmgr/cursor';
 	import { Send, Sparkles, Bot } from 'lucide-vue-next';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -163,13 +183,13 @@
 		},
 		checkpoints: [],
 	});
-	
+
 	const taskId = computed(() => {
 		// If we're in task creation mode, don't use route params (they might be category ID)
 		if (store.state.showCreatingTaskModal && !modalTaskId.value) {
 			return undefined;
 		}
-		
+
 		// Handle all URL formats: '/19', '/workspace/tasks/19', '/:workspace_code/:category_code/:task_number'
 		const id =
 			modalTaskId.value ||
@@ -201,14 +221,20 @@
 	const cursorAgents = ref([]);
 
 	const currentCategoryCode = computed(() => {
-		if (!form.value.project_category_id || !categories.value.length) return null;
-		const category = categories.value.find((c: Category) => c.id === form.value.project_category_id);
+		if (!form.value.project_category_id || !categories.value.length)
+			return null;
+		const category = categories.value.find(
+			(c: Category) => c.id === form.value.project_category_id,
+		);
 		return category?.code || null;
 	});
 
 	const currentCategory = computed(() => {
-		if (!form.value.project_category_id || !categories.value.length) return null;
-		return categories.value.find((c: Category) => c.id === form.value.project_category_id);
+		if (!form.value.project_category_id || !categories.value.length)
+			return null;
+		return categories.value.find(
+			(c: Category) => c.id === form.value.project_category_id,
+		);
 	});
 
 	const hasActiveAgent = computed(() => {
@@ -222,11 +248,14 @@
 	const autoResizeTitle = () => {
 		if (titleTextarea.value) {
 			titleTextarea.value.style.height = 'auto';
-			titleTextarea.value.style.height = titleTextarea.value.scrollHeight + 'px';
+			titleTextarea.value.style.height =
+				titleTextarea.value.scrollHeight + 'px';
 		}
 	};
 
-	const isTitleNearLimit = computed(() => (form.value.title?.length || 0) >= 230);
+	const isTitleNearLimit = computed(
+		() => (form.value.title?.length || 0) >= 230,
+	);
 	const isTitleAtLimit = computed(() => (form.value.title?.length || 0) >= 255);
 
 	const statusIdStr = computed({
@@ -457,21 +486,21 @@
 						form.value.description_json?.blocks?.[0]?.data?.text || '';
 				}
 
-			// Handle assignees
-			if (form.value.assignees) {
-				const taskAssignees = form.value.assignees as WorkspaceMember[];
-				assignees.value = taskAssignees.map((assignee) => assignee.id);
-			} else {
-				assignees.value = [];
-			}
+				// Handle assignees
+				if (form.value.assignees) {
+					const taskAssignees = form.value.assignees as WorkspaceMember[];
+					assignees.value = taskAssignees.map((assignee) => assignee.id);
+				} else {
+					assignees.value = [];
+				}
 
-			await loadGitActivity();
-			await loadCursorAgents();
+				await loadGitActivity();
+				await loadCursorAgents();
 
-			nextTick(() => {
-				autoResizeTitle();
-				titleTextarea.value?.focus();
-			});
+				nextTick(() => {
+					autoResizeTitle();
+					titleTextarea.value?.focus();
+				});
 			}
 		} catch (e: any) {
 			console.error('Error loading task data:', e);
@@ -505,12 +534,15 @@
 		}
 	};
 
-
 	const handleOpenLinkedTask = (linkedTaskId: number) => {
 		if (props.isModal) {
 			store.state.currentTaskIdForModal = linkedTaskId;
 		} else {
-			router.push(`/${store.getters['user/getCurrentWorkspace']?.code || 'default'}/tasks/${linkedTaskId}`);
+			router.push(
+				`/${
+					store.getters['user/getCurrentWorkspace']?.code || 'default'
+				}/tasks/${linkedTaskId}`,
+			);
 		}
 	};
 
@@ -522,9 +554,9 @@
 		try {
 			console.log('[Git Activity] Loading for task:', form.value.id);
 			const activity = await getTaskGitActivity(form.value.id);
-			const count = 
-				(activity.commits?.length || 0) + 
-				(activity.branches?.length || 0) + 
+			const count =
+				(activity.commits?.length || 0) +
+				(activity.branches?.length || 0) +
 				(activity.pull_requests?.length || 0);
 			gitActivityCount.value = count;
 			console.log('[Git Activity] Loaded count:', count, activity);
@@ -545,7 +577,9 @@
 	};
 
 	const sendToCursor = async () => {
-		const activeAgent = cursorAgents.value.find((a: any) => a.status === 'RUNNING');
+		const activeAgent = cursorAgents.value.find(
+			(a: any) => a.status === 'RUNNING',
+		);
 		if (!activeAgent || !newComment.value.trim()) return;
 
 		try {
@@ -564,11 +598,16 @@
 			const currentCategory = categories.value.find(
 				(category) => category.id === form.value.project_category_id,
 			);
-		const taskNamePatternSetting = currentCategory?.settings?.find(
-			(setting) => setting.key === 'task_name_pattern_date&time',
-		);
-		console.log(categories.value, form.value.project_category_id, taskNamePatternSetting, currentCategory);
-		if (!taskNamePatternSetting || !currentCategory) return;
+			const taskNamePatternSetting = currentCategory?.settings?.find(
+				(setting) => setting.key === 'task_name_pattern_date&time',
+			);
+			console.log(
+				categories.value,
+				form.value.project_category_id,
+				taskNamePatternSetting,
+				currentCategory,
+			);
+			if (!taskNamePatternSetting || !currentCategory) return;
 
 			try {
 				const indexes = await getTasksIndexes(currentCategory.id);
@@ -794,14 +833,16 @@
 		}
 
 		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const taskStatus = currentStatuses.find(s => s.id === form.value.status_id);
-		
+		const taskStatus = currentStatuses.find(
+			(s) => s.id === form.value.status_id,
+		);
+
 		if (taskStatus && taskStatus.type === 'default') {
-			const activeStatus = currentStatuses.find(s => s.type === 'active');
-			
+			const activeStatus = currentStatuses.find((s) => s.type === 'active');
+
 			if (activeStatus) {
 				backlogStatusChangeConfirm.value = {
-					taskId: taskId.value || (form.value.id as number)
+					taskId: taskId.value || (form.value.id as number),
 				};
 				showBacklogStatusChangeConfirm.value = true;
 			}
@@ -812,17 +853,17 @@
 
 	const backlogConfirmBody = computed(() => {
 		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const activeStatus = currentStatuses.find(s => s.type === 'active');
+		const activeStatus = currentStatuses.find((s) => s.type === 'active');
 		const activeStatusName = activeStatus?.name || 'active';
 		return `Task "${form.value.title}" is in backlog. Switch to "${activeStatusName}" status?`;
 	});
 
 	const handleBacklogStatusChangeConfirm = async () => {
 		if (!backlogStatusChangeConfirm.value) return;
-		
+
 		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const activeStatus = currentStatuses.find(s => s.type === 'active');
-		
+		const activeStatus = currentStatuses.find((s) => s.type === 'active');
+
 		if (!activeStatus) {
 			console.error('No active status found');
 			showBacklogStatusChangeConfirm.value = false;
@@ -909,7 +950,7 @@
 			hour: '2-digit',
 			minute: '2-digit',
 			second: '2-digit',
-			hour12: false
+			hour12: false,
 		});
 	};
 
@@ -924,25 +965,22 @@
 	};
 
 	// Watch for changes to modalProjectCategoryId and update form accordingly
-	watch(
-		modalProjectCategoryId,
-		async (newCategoryId) => {
-			if (newCategoryId && !taskId.value) {
-				form.value.project_category_id = newCategoryId;
+	watch(modalProjectCategoryId, async (newCategoryId) => {
+		if (newCategoryId && !taskId.value) {
+			form.value.project_category_id = newCategoryId;
 
-				// Ensure a status is selected (use first status if none is already selected)
-				if (
-					!form.value.status_id &&
-					statuses.value &&
-					statuses.value.length > 0
-				) {
-					form.value.status_id = statuses.value[0].id;
-				}
-
-				await updateTaskTitle();
+			// Ensure a status is selected (use first status if none is already selected)
+			if (
+				!form.value.status_id &&
+				statuses.value &&
+				statuses.value.length > 0
+			) {
+				form.value.status_id = statuses.value[0].id;
 			}
-		},
-	);
+
+			await updateTaskTitle();
+		}
+	});
 
 	watch(isCommentInputExpanded, (expanded) => {
 		if (expanded) {
@@ -955,31 +993,29 @@
 		}
 	});
 
-	watch(
-		modalTaskId,
-		async (newTaskId, oldTaskId) => {
-			if (props.isModal && newTaskId && newTaskId !== oldTaskId) {
-				suppressAutoSavingForOnce.value = true;
-				try {
-					const taskData = await getTask(newTaskId);
-					
-					taskData.approximately_time =
-						typeof taskData.approximately_time === 'string'
-							? parseInt(taskData.approximately_time, 10) || 0
-							: taskData.approximately_time || 0;
+	watch(modalTaskId, async (newTaskId, oldTaskId) => {
+		if (props.isModal && newTaskId && newTaskId !== oldTaskId) {
+			suppressAutoSavingForOnce.value = true;
+			try {
+				const taskData = await getTask(newTaskId);
 
-					form.value = taskData;
+				taskData.approximately_time =
+					typeof taskData.approximately_time === 'string'
+						? parseInt(taskData.approximately_time, 10) || 0
+						: taskData.approximately_time || 0;
 
-					if (!form.value.checkpoints) {
-						form.value.checkpoints = [];
-					}
+				form.value = taskData;
 
-					if (form.value.assignees) {
-						const taskAssignees = form.value.assignees as WorkspaceMember[];
-						assignees.value = taskAssignees.map((assignee) => assignee.id);
-					} else {
-						assignees.value = [];
-					}
+				if (!form.value.checkpoints) {
+					form.value.checkpoints = [];
+				}
+
+				if (form.value.assignees) {
+					const taskAssignees = form.value.assignees as WorkspaceMember[];
+					assignees.value = taskAssignees.map((assignee) => assignee.id);
+				} else {
+					assignees.value = [];
+				}
 
 				const currentWorkspace = store.getters['user/getCurrentWorkspace'];
 				if (currentWorkspace) {
@@ -997,13 +1033,11 @@
 
 				await loadGitActivity();
 				await loadCursorAgents();
-				} catch (e: any) {
-					console.error('Error loading linked task:', e);
-				}
+			} catch (e: any) {
+				console.error('Error loading linked task:', e);
 			}
-		},
-	);
-
+		}
+	});
 
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
@@ -1051,7 +1085,8 @@
 	};
 
 	const sendComment = async () => {
-		if (!newComment.value.trim() || isSendingComment.value || !form.value.id) return;
+		if (!newComment.value.trim() || isSendingComment.value || !form.value.id)
+			return;
 
 		isSendingComment.value = true;
 		try {
@@ -1071,7 +1106,8 @@
 	};
 
 	const askAIComment = async () => {
-		if (!newComment.value.trim() || isSendingComment.value || !form.value.id) return;
+		if (!newComment.value.trim() || isSendingComment.value || !form.value.id)
+			return;
 
 		isSendingComment.value = true;
 		try {
@@ -1106,254 +1142,201 @@
 	<div v-else class="new-form-container h-full">
 		<teleport to="title">{{ form.title }}&nbsp;</teleport>
 
-	<div
-		class="flex h-full overflow-hidden transition-all duration-300 md:w-[700px]"
-		:class="[
-			isModal
-				? 'md:max-h-[60vh] flex-col md:flex-row'
-				: 'container mx-auto pt-14 flex-col md:flex-row'
-		]"
-	>
-		<!-- Form Panel -->
-		<div 
-			class="flex flex-col md:w-[700px] flex-shrink-0 min-h-0"
-			:class="isModal ? 'overflow-hidden' : 'h-full'"
+		<div
+			class="flex h-full overflow-hidden transition-all duration-300 md:w-[700px]"
+			:class="[
+				isModal
+					? 'flex-col md:max-h-[60vh] md:flex-row'
+					: 'container mx-auto flex-col pt-14 md:flex-row',
+			]"
 		>
-			<!-- HEADER - Fixed at top -->
-			<header class="flex shrink-0 justify-between p-6 pb-4">
-				<Select v-model="statusIdStr">
-					<SelectTrigger class="w-40 border-0 bg-transparent">
-						<SelectValue placeholder="status" />
-					</SelectTrigger>
-					<SelectContent class="border-0 bg-white dark:bg-gray-800">
-						<SelectItem
-							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-							v-for="status in statuses"
-							:value="status.id.toString()"
-							:show-check-mark="false"
+			<!-- Form Panel -->
+			<div
+				class="flex min-h-0 flex-shrink-0 flex-col md:w-[700px]"
+				:class="isModal ? 'overflow-hidden' : 'h-full'"
+			>
+				<!-- HEADER - Fixed at top -->
+				<header class="flex shrink-0 justify-between p-6 pb-4">
+					<Select v-model="statusIdStr">
+						<SelectTrigger class="w-40 border-0 bg-transparent">
+							<SelectValue placeholder="status" />
+						</SelectTrigger>
+						<SelectContent class="border-0 bg-white dark:bg-gray-800">
+							<SelectItem
+								class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+								v-for="status in statuses"
+								:value="status.id.toString()"
+								:show-check-mark="false"
+							>
+								<span
+									class="mr-3 inline-block size-2 shrink-0 rounded-full"
+									:style="{ backgroundColor: status.color }"
+								/>
+								{{ status.name }}
+							</SelectItem>
+						</SelectContent>
+					</Select>
+
+					<div class="flex items-center gap-3">
+						<button
+							v-if="canRunWithCursor"
+							type="button"
+							@click="showCursorAgentModal = true"
+							class="relative flex items-center justify-center rounded bg-purple-500/80 px-2 py-1.5 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
+							title="Run with Cursor Agent"
 						>
-							<span
-								class="mr-3 inline-block size-2 shrink-0 rounded-full"
-								:style="{ backgroundColor: status.color }"
+							<Bot class="h-4 w-4" />
+						</button>
+
+						<SettingsComponent :form="form" />
+
+						<button v-if="isModal" @click="emit('close')">
+							<XMarkIcon
+								class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
 							/>
-							{{ status.name }}
-						</SelectItem>
-					</SelectContent>
-				</Select>
-
-			<div class="flex items-center gap-3">
-				<button
-					v-if="canRunWithCursor"
-					type="button"
-					@click="showCursorAgentModal = true"
-					class="relative flex items-center justify-center rounded bg-purple-500/80 px-2 py-1.5 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
-					title="Run with Cursor Agent"
-				>
-					<Bot class="h-4 w-4" />
-				</button>
-
-				<SettingsComponent :form="form" />
-
-				<button v-if="isModal" @click="emit('close')">
-						<XMarkIcon
-							class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
-						/>
-					</button>
-				</div>
-			</header>
-
-		<!-- MAIN - Scrollable content area -->
-		<main class="flex flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4 min-h-0">
-				<div class="relative">
-					<textarea
-						v-model="form.title"
-						ref="titleTextarea"
-						class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
-						:class="{ 'text-red-500': isTitleAtLimit }"
-						placeholder="Task name"
-						rows="1"
-						maxlength="255"
-						@input="autoResizeTitle"
-					/>
-					<div v-if="isTitleNearLimit" class="mt-1 flex items-center gap-1 text-xs" :class="isTitleAtLimit ? 'text-red-500' : 'text-orange-400'">
-						<span class="material-icons" style="font-size: 14px;">warning</span>
-						<span>{{ form.title?.length || 0 }}/255 characters</span>
+						</button>
 					</div>
-				</div>
+				</header>
 
-				<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
-				<CategoriesCombobox
-					:categories="categories"
-					v-model="form.project_category_id"
-					@update:model-value="
-						() => {
-							if (!form.title) {
-								updateTaskTitle();
-							}
-						}
-					"
-				/>
-
-				<div v-if="isFeatureEnabled('task.assignees')" class="flex items-center gap-2">
-					<AssigneesCombobox
-						:assignees="workspaceMembers"
-						v-model="assignees as any"
-					/>
-					<button
-						v-if="!isAssignedToMe"
-						type="button"
-						@click="assignToMe"
-						class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
-						title="Assign to me"
-					>
-						<span class="material-icons text-sm">person_add</span>
-					</button>
-				</div>
-
-				<button
-					v-if="form.id"
-					type="button"
-					@click="showGitActivityModal = true"
-					class="relative flex items-center justify-center rounded bg-violet-500/80 px-2 py-1.5 text-xs text-white hover:bg-violet-500 dark:bg-violet-600/70 dark:hover:bg-violet-600/90"
-					title="Git Activity"
+				<!-- MAIN - Scrollable content area -->
+				<main
+					class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4"
 				>
-					<CodeBracketIcon class="h-4 w-4" />
-					<span v-if="gitActivityCount > 0" class="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-semibold">
-						{{ gitActivityCount }}
-					</span>
-				</button>
-
-					<div class="ml-auto">
-						<TimeCounter
-							v-if="form.id && isFeatureEnabled('task.countdown')"
-							:form="form"
-							:disabled="!form.id"
-							@toggle="toggleTimer"
-							@update:seconds="updateSeconds"
+					<div class="relative">
+						<textarea
+							v-model="form.title"
+							ref="titleTextarea"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
+							:class="{ 'text-red-500': isTitleAtLimit }"
+							placeholder="Task name"
+							rows="1"
+							maxlength="255"
+							@input="autoResizeTitle"
 						/>
-					</div>
-				</div>
-
-				<!-- Editor section with toggle button -->
-				<div class="relative">
-					<!-- Editor components - no loading state needed since we use localStorage -->
-					<Editor
-						v-if="editorType === 'markdown'"
-						v-model="form.description"
-						class="mb-2 grow md:h-72"
-						:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
-						:show-preview="!!(taskId && form.description)"
-					/>
-
-					<BlockEditor
-						v-else-if="editorType === 'block'"
-						v-model="form.description_json"
-						placeholder="Type your description here or enter / to see commands or "
-						class="block-editor-container mb-2 grow border px-2"
-						:class="[
-							!isModal
-								? 'lg:min-h-96'
-								: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
-						]"
-					/>
-				</div>
-
-				<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
-				<div
-					v-if="
-						(taskId || form.id) &&
-						!isCheckpointsExpanded &&
-						form.checkpoints &&
-						form.checkpoints.length > 0
-					"
-					class="checkpoints-wrapper flex flex-col rounded border border-gray-200 bg-slate-100 dark:border-gray-700 dark:bg-slate-900"
-					:class="[isModal ? 'max-h-[320px]' : '']"
-					:key="checkpointUpdateKey"
-				>
-					<!-- Header - Fixed -->
-					<div
-						class="shrink-0 flex items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
-					>
-						<span class="font-medium"
-							>Task Checkpoints ({{ form.checkpoints.length }})</span
+						<div
+							v-if="isTitleNearLimit"
+							class="mt-1 flex items-center gap-1 text-xs"
+							:class="isTitleAtLimit ? 'text-red-500' : 'text-orange-400'"
 						>
-						<div class="flex items-center gap-2">
-							<button
-								class="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-								@click="addCheckpoint"
-								title="Add new checkpoint"
+							<span class="material-icons" style="font-size: 14px"
+								>warning</span
 							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="20"
-									height="20"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									class="feather feather-plus-circle"
-								>
-									<circle cx="12" cy="12" r="10"></circle>
-									<line x1="12" y1="8" x2="12" y2="16"></line>
-									<line x1="8" y1="12" x2="16" y2="12"></line>
-								</svg>
-							</button>
-
-							<button
-								class="ml-1 cursor-pointer text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-								@click="toggleCheckpointsExpanded"
-								title="Expand checkpoints"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="20"
-									height="20"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									class="feather feather-maximize-2"
-								>
-									<polyline points="15 3 21 3 21 9"></polyline>
-									<polyline points="9 21 3 21 3 15"></polyline>
-									<line x1="21" y1="3" x2="14" y2="10"></line>
-									<line x1="3" y1="21" x2="10" y2="14"></line>
-								</svg>
-							</button>
+							<span>{{ form.title?.length || 0 }}/255 characters</span>
 						</div>
 					</div>
-					<!-- Content - Scrollable -->
-					<div class="flex-1 overflow-y-auto px-3 py-2">
-						<checkpoints :checkpoints="form.checkpoints || []" />
-					</div>
-				</div>
 
-				<!-- Fullscreen modal for checkpoints -->
-				<div
-					v-if="isCheckpointsExpanded"
-					class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-					@click.self="toggleCheckpointsExpanded"
-				>
-					<div
-						class="h-[90%] w-[90%] max-w-4xl overflow-auto rounded-lg bg-white shadow-lg dark:bg-slate-900"
-					>
+					<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
+						<CategoriesCombobox
+							:categories="categories"
+							v-model="form.project_category_id"
+							@update:model-value="
+								() => {
+									if (!form.title) {
+										updateTaskTitle();
+									}
+								}
+							"
+						/>
+
 						<div
-							class="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900"
+							v-if="isFeatureEnabled('task.assignees')"
+							class="flex items-center gap-2"
 						>
-							<h2 class="text-lg font-bold">Task Checkpoints</h2>
-							<div class="flex items-center gap-3">
+							<AssigneesCombobox
+								:assignees="workspaceMembers"
+								v-model="assignees as any"
+							/>
+							<button
+								v-if="!isAssignedToMe"
+								type="button"
+								@click="assignToMe"
+								class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
+								title="Assign to me"
+							>
+								<span class="material-icons text-sm">person_add</span>
+							</button>
+						</div>
+
+						<button
+							v-if="form.id"
+							type="button"
+							@click="showGitActivityModal = true"
+							class="relative flex items-center justify-center rounded bg-violet-500/80 px-2 py-1.5 text-xs text-white hover:bg-violet-500 dark:bg-violet-600/70 dark:hover:bg-violet-600/90"
+							title="Git Activity"
+						>
+							<CodeBracketIcon class="h-4 w-4" />
+							<span
+								v-if="gitActivityCount > 0"
+								class="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-semibold"
+							>
+								{{ gitActivityCount }}
+							</span>
+						</button>
+
+						<div class="ml-auto">
+							<TimeCounter
+								v-if="form.id && isFeatureEnabled('task.countdown')"
+								:form="form"
+								:disabled="!form.id"
+								@toggle="toggleTimer"
+								@update:seconds="updateSeconds"
+							/>
+						</div>
+					</div>
+
+					<!-- Editor section with toggle button -->
+					<div class="relative">
+						<!-- Editor components - no loading state needed since we use localStorage -->
+						<Editor
+							v-if="editorType === 'markdown'"
+							v-model="form.description"
+							class="mb-2 grow md:h-72"
+							:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
+							:show-preview="!!(taskId && form.description)"
+						/>
+
+						<BlockEditor
+							v-else-if="editorType === 'block'"
+							v-model="form.description_json"
+							placeholder="Type your description here or enter / to see commands or "
+							class="block-editor-container mb-2 grow border px-2"
+							:class="[
+								!isModal
+									? 'lg:min-h-96'
+									: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
+							]"
+						/>
+					</div>
+
+					<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
+					<div
+						v-if="
+							(taskId || form.id) &&
+							!isCheckpointsExpanded &&
+							form.checkpoints &&
+							form.checkpoints.length > 0
+						"
+						class="checkpoints-wrapper flex flex-col rounded border border-gray-200 bg-slate-100 dark:border-gray-700 dark:bg-slate-900"
+						:class="[isModal ? 'max-h-[320px]' : '']"
+						:key="checkpointUpdateKey"
+					>
+						<!-- Header - Fixed -->
+						<div
+							class="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
+						>
+							<span class="font-medium"
+								>Task Checkpoints ({{ form.checkpoints.length }})</span
+							>
+							<div class="flex items-center gap-2">
 								<button
-									class="flex cursor-pointer items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+									class="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
 									@click="addCheckpoint"
+									title="Add new checkpoint"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
-										width="16"
-										height="16"
+										width="20"
+										height="20"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
@@ -1367,124 +1350,199 @@
 										<line x1="8" y1="12" x2="16" y2="12"></line>
 									</svg>
 								</button>
+
 								<button
-									class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+									class="ml-1 cursor-pointer text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
 									@click="toggleCheckpointsExpanded"
-									title="Close expanded view"
+									title="Expand checkpoints"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
-										width="24"
-										height="24"
+										width="20"
+										height="20"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
 										stroke-width="2"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-										class="feather feather-x"
+										class="feather feather-maximize-2"
 									>
-										<line x1="18" y1="6" x2="6" y2="18"></line>
-										<line x1="6" y1="6" x2="18" y2="18"></line>
+										<polyline points="15 3 21 3 21 9"></polyline>
+										<polyline points="9 21 3 21 3 15"></polyline>
+										<line x1="21" y1="3" x2="14" y2="10"></line>
+										<line x1="3" y1="21" x2="10" y2="14"></line>
 									</svg>
 								</button>
 							</div>
 						</div>
-						<div class="p-4">
+						<!-- Content - Scrollable -->
+						<div class="flex-1 overflow-y-auto px-3 py-2">
 							<checkpoints :checkpoints="form.checkpoints || []" />
 						</div>
 					</div>
-				</div>
 
-			<!-- Task Relations -->
-			<div
-				v-if="
-					form.id &&
-					(
-						isFeatureEnabled('task.relations') ||
-						(form.relationTypeWithTask && form.relationTypeWithTask.length > 0)
-					)
-				"
-			>
-			<TaskRelations
-				:task-id="form.id"
-				:relations="form.relationTypeWithTask"
-				@update="reloadTask"
-				@open-task="handleOpenLinkedTask"
-			/>
-		</div>
-
-	<!-- Comments Section -->
-	<TaskComments v-if="form.id" ref="taskCommentsRef" :task-id="form.id" class="mt-4" @update:count="commentsCount = $event" />
-
-	</main>
-
-		<!-- FOOTER - Fixed at bottom -->
-		<footer ref="footer" class="shrink-0 px-6 py-4">
-		<!-- Comment Input -->
-		<div v-if="form.id" class="mb-4">
-		<!-- Collapsed State - Single Line -->
-		<div 
-			v-if="!isCommentInputExpanded"
-			@click="isCommentInputExpanded = true"
-			class="flex h-10 cursor-text items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-500 transition hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500"
-		>
-			<span>Add a comment...</span>
-			<span v-if="commentsCount > 0" class="text-xs text-gray-400 dark:text-gray-500">
-				{{ commentsCount }} {{ commentsCount === 1 ? 'comment' : 'comments' }}
-			</span>
-		</div>
-			
-			<!-- Expanded State - Textarea with Buttons -->
-			<div v-else class="flex gap-2" @mousedown.stop>
-				<Textarea
-					ref="commentTextarea"
-					v-model="newComment"
-					placeholder="Add a comment..."
-					class="min-h-[80px] max-h-[120px] resize-none text-sm"
-					@keydown.enter.exact.prevent="sendComment"
-					@keydown.esc="handleCommentEsc"
-					autofocus
-				/>
-				<div class="flex flex-col gap-1">
-					<button
-						:disabled="!newComment?.trim() || isSendingComment"
-						@click="sendComment"
-						class="flex h-9 w-9 items-center justify-center rounded bg-tmgr-blue text-white transition hover:bg-tmgr-blue/90 disabled:opacity-50 disabled:cursor-not-allowed"
-						title="Send comment (Enter)"
+					<!-- Fullscreen modal for checkpoints -->
+					<div
+						v-if="isCheckpointsExpanded"
+						class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+						@click.self="toggleCheckpointsExpanded"
 					>
-						<Send class="h-4 w-4" />
-					</button>
-					<button
-						:disabled="!newComment?.trim() || isSendingComment"
-						@click="askAIComment"
-						class="flex h-9 w-9 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-						title="Ask AI"
-					>
-						<Sparkles class="h-4 w-4" />
-					</button>
-					<button
-						v-if="hasActiveAgent"
-						:disabled="!newComment?.trim() || isSendingComment"
-						@click="sendToCursor"
-						class="flex h-9 w-9 items-center justify-center rounded bg-purple-500 text-white transition hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-purple-600 dark:hover:bg-purple-700"
-						title="Send to Cursor Agent"
-					>
-						<Bot class="h-4 w-4" />
-					</button>
-				</div>
-			</div>
-		</div>
+						<div
+							class="h-[90%] w-[90%] max-w-4xl overflow-auto rounded-lg bg-white shadow-lg dark:bg-slate-900"
+						>
+							<div
+								class="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900"
+							>
+								<h2 class="text-lg font-bold">Task Checkpoints</h2>
+								<div class="flex items-center gap-3">
+									<button
+										class="flex cursor-pointer items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+										@click="addCheckpoint"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="16"
+											height="16"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="feather feather-plus-circle"
+										>
+											<circle cx="12" cy="12" r="10"></circle>
+											<line x1="12" y1="8" x2="12" y2="16"></line>
+											<line x1="8" y1="12" x2="16" y2="12"></line>
+										</svg>
+									</button>
+									<button
+										class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+										@click="toggleCheckpointsExpanded"
+										title="Close expanded view"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="24"
+											height="24"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="feather feather-x"
+										>
+											<line x1="18" y1="6" x2="6" y2="18"></line>
+											<line x1="6" y1="6" x2="18" y2="18"></line>
+										</svg>
+									</button>
+								</div>
+							</div>
+							<div class="p-4">
+								<checkpoints :checkpoints="form.checkpoints || []" />
+							</div>
+						</div>
+					</div>
 
-			<div class="flex justify-end gap-3 text-center">
-					<a
-						v-if="isModal && (taskId || form.id)"
-						:href="generateTaskUrlForAdvancedForm()"
-						title="Open advanced form"
-						class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+					<!-- Task Relations -->
+					<div
+						v-if="
+							form.id &&
+							(isFeatureEnabled('task.relations') ||
+								(form.relationTypeWithTask &&
+									form.relationTypeWithTask.length > 0))
+						"
 					>
-						<ArrowTopRightOnSquareIcon class="size-5" />
-					</a>
+						<TaskRelations
+							:task-id="form.id"
+							:relations="form.relationTypeWithTask"
+							@update="reloadTask"
+							@open-task="handleOpenLinkedTask"
+						/>
+					</div>
+
+					<!-- Comments Section -->
+					<TaskComments
+						v-if="form.id"
+						ref="taskCommentsRef"
+						:task-id="form.id"
+						class="mt-4"
+						@update:count="commentsCount = $event"
+					/>
+				</main>
+
+				<!-- FOOTER - Fixed at bottom -->
+				<footer ref="footer" class="shrink-0 px-6 py-4">
+					<!-- Comment Input -->
+					<div v-if="form.id" class="mb-4">
+						<!-- Collapsed State - Single Line -->
+						<div
+							v-if="!isCommentInputExpanded"
+							@click="isCommentInputExpanded = true"
+							class="flex h-10 cursor-text items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-500 transition hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500"
+						>
+							<span>Add a comment...</span>
+							<span
+								v-if="commentsCount > 0"
+								class="text-xs text-gray-400 dark:text-gray-500"
+							>
+								{{ commentsCount }}
+								{{ commentsCount === 1 ? 'comment' : 'comments' }}
+							</span>
+						</div>
+
+						<!-- Expanded State - Textarea with Buttons -->
+						<div v-else class="flex gap-2" @mousedown.stop>
+							<Textarea
+								ref="commentTextarea"
+								v-model="newComment"
+								placeholder="Add a comment..."
+								class="max-h-[120px] min-h-[80px] resize-none text-sm"
+								@keydown.enter.exact.prevent="sendComment"
+								@keydown.esc="handleCommentEsc"
+								autofocus
+							/>
+							<div class="flex flex-col gap-1">
+								<button
+									:disabled="!newComment?.trim() || isSendingComment"
+									@click="sendComment"
+									class="flex h-9 w-9 items-center justify-center rounded bg-tmgr-blue text-white transition hover:bg-tmgr-blue/90 disabled:cursor-not-allowed disabled:opacity-50"
+									title="Send comment (Enter)"
+								>
+									<Send class="h-4 w-4" />
+								</button>
+								<button
+									:disabled="!newComment?.trim() || isSendingComment"
+									@click="askAIComment"
+									class="flex h-9 w-9 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+									title="Ask AI"
+								>
+									<Sparkles class="h-4 w-4" />
+								</button>
+								<button
+									v-if="hasActiveAgent"
+									:disabled="!newComment?.trim() || isSendingComment"
+									@click="sendToCursor"
+									class="flex h-9 w-9 items-center justify-center rounded bg-purple-500 text-white transition hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-700"
+									title="Send to Cursor Agent"
+								>
+									<Bot class="h-4 w-4" />
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<div class="flex justify-end gap-3 text-center">
+						<a
+							v-if="isModal && (taskId || form.id)"
+							:href="generateTaskUrlForAdvancedForm()"
+							title="Open advanced form"
+							class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+						>
+							<ArrowTopRightOnSquareIcon class="size-5" />
+						</a>
 
 						<button
 							v-if="
@@ -1492,134 +1550,138 @@
 								(taskId || form.id) &&
 								getUncheckedCheckpoints().length > 0
 							"
-						@click="createTaskWithCheckpoints"
-						class="flex items-center gap-1 rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none"
-						type="button"
-						title="Copy unchecked checkpoints to new task"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-							<path
-								d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-							></path>
-						</svg>
-					</button>
-
-					<button
-						v-if="
-							isFeatureEnabled('task.checkpoints') &&
-							(taskId || form.id) &&
-							(!form.checkpoints || form.checkpoints.length === 0)
-						"
-						@click="addCheckpoint"
-						class="flex items-center gap-1 rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none"
-						type="button"
-						title="Add Checkpoint"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							class="feather feather-check-circle"
-						>
-							<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-							<polyline points="22 4 12 14.01 9 11.01"></polyline>
-						</svg>
-					</button>
-
-					<span class="relative inline-flex rounded-md shadow-sm">
-						<button
-							v-if="taskId || form.id"
-							@click="saveTask()"
-							class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+							@click="createTaskWithCheckpoints"
+							class="flex items-center gap-1 rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none"
 							type="button"
-							title="save"
+							title="Copy unchecked checkpoints to new task"
 						>
 							<svg
-								v-if="isAutoSaving || isLoading"
-								class="size-6 animate-spin text-white"
 								xmlns="http://www.w3.org/2000/svg"
-								fill="none"
+								width="20"
+								height="20"
 								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
 							>
-								<circle
-									class="opacity-25"
-									cx="12"
-									cy="12"
-									r="10"
-									stroke="currentColor"
-									stroke-width="4"
-								/>
+								<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
 								<path
-									class="opacity-75"
-									fill="currentColor"
-									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-								/>
+									d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+								></path>
 							</svg>
-
-							<BookmarkIcon v-else class="size-6" />
 						</button>
-					</span>
 
-					<button
-						v-if="!taskId && !form.id"
-						@click="createTask"
-						class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
-						type="button"
-						title="Create"
-					>
-						<DocumentPlusIcon class="size-6" />
-					</button>
+						<button
+							v-if="
+								isFeatureEnabled('task.checkpoints') &&
+								(taskId || form.id) &&
+								(!form.checkpoints || form.checkpoints.length === 0)
+							"
+							@click="addCheckpoint"
+							class="flex items-center gap-1 rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none"
+							type="button"
+							title="Add Checkpoint"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="20"
+								height="20"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="feather feather-check-circle"
+							>
+								<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+								<polyline points="22 4 12 14.01 9 11.01"></polyline>
+							</svg>
+						</button>
 
-					<button
+						<span class="relative inline-flex rounded-md shadow-sm">
+							<button
+								v-if="taskId || form.id"
+								@click="saveTask()"
+								class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+								type="button"
+								title="save"
+							>
+								<svg
+									v-if="isAutoSaving || isLoading"
+									class="size-6 animate-spin text-white"
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+								>
+									<circle
+										class="opacity-25"
+										cx="12"
+										cy="12"
+										r="10"
+										stroke="currentColor"
+										stroke-width="4"
+									/>
+									<path
+										class="opacity-75"
+										fill="currentColor"
+										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+									/>
+								</svg>
+
+								<BookmarkIcon v-else class="size-6" />
+							</button>
+						</span>
+
+						<button
+							v-if="!taskId && !form.id"
+							@click="createTask"
+							class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+							type="button"
+							title="Create"
+						>
+							<DocumentPlusIcon class="size-6" />
+						</button>
+
+						<button
+							v-if="taskId || form.id"
+							@click="deleteCurrentTask"
+							title="Delete"
+							class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
+						>
+							<TrashIcon class="size-5" />
+						</button>
+					</div>
+
+					<div
 						v-if="taskId || form.id"
-						@click="deleteCurrentTask"
-						title="Delete"
-						class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
+						class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-gray-400/70 dark:text-gray-500/70"
 					>
-						<TrashIcon class="size-5" />
-					</button>
-				</div>
-				<div v-if="taskId || form.id" class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-gray-400/70 dark:text-gray-500/70">
-					<span v-if="(form as any).created_at" :title="'Created: ' + formatFullDate((form as any).created_at)">
-						{{ formatRelativeTime((form as any).created_at) }}
-					</span>
-					<span v-if="(form as any).updated_at && (form as any).updated_at !== (form as any).created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate((form as any).updated_at)">
-						<span class="material-icons" style="font-size: 11px;">edit</span>
-						{{ formatRelativeTime((form as any).updated_at) }}
-					</span>
-				</div>
-			</footer>
-	</div>
-	<!-- End Form Panel -->
-	</div>
+						<TaskTimeInfo
+							:created-at="form.created_at"
+							:updated-at="form.updated_at"
+						/>
+					</div>
+				</footer>
+			</div>
+			<!-- End Form Panel -->
+		</div>
 
 		<Confirm
 			v-if="showBacklogStatusChangeConfirm"
 			title="Task in Backlog"
 			:body="backlogConfirmBody"
-			@onCancel="showBacklogStatusChangeConfirm = false; backlogStatusChangeConfirm = null"
+			@onCancel="
+				showBacklogStatusChangeConfirm = false;
+				backlogStatusChangeConfirm = null;
+			"
 			@onOk="handleBacklogStatusChangeConfirm"
 		/>
 
 		<Dialog v-model:open="showGitActivityModal">
-			<DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
+			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Git Activity</DialogTitle>
 				</DialogHeader>
@@ -1633,7 +1695,7 @@
 		</Dialog>
 
 		<Dialog v-model:open="showCursorAgentModal">
-			<DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
+			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Cursor AI Agent</DialogTitle>
 				</DialogHeader>
