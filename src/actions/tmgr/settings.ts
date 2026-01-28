@@ -36,13 +36,18 @@ export const getTaskSettings = async (useCache: boolean = true) => {
 	return data;
 };
 
-export const updateOneTaskSettings = async (
+export interface SettingPayload {
+	id: number;
+	value: string | number;
+}
+
+export const updateTaskSettings = async (
 	taskId: number,
-	payload: FormSetting,
+	settings: SettingPayload[],
 ) => {
 	const {
 		data: { data },
-	} = await $axios.put(`/tasks/${taskId}/settings`, payload);
+	} = await $axios.put(`/tasks/${taskId}/settings`, settings);
 
 	return data;
 };
