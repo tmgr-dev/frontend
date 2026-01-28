@@ -160,6 +160,14 @@
 				{{ formatRelativeTime(task.updated_at) }}
 			</span>
 			<span 
+				v-if="task.comments_count" 
+				class="flex items-center gap-0.5"
+				:title="`${task.comments_count} comment${task.comments_count !== 1 ? 's' : ''}`"
+			>
+				<MessageCircle :size="10" :stroke-width="2" />
+				{{ task.comments_count }}
+			</span>
+			<span 
 				v-if="overtime" 
 				class="font-medium text-red-500 dark:text-red-400"
 				title="Overtime"
@@ -188,7 +196,7 @@
 	} from '@/components/ui/dropdown-menu';
 	import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 	import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye, UserPlus, Check } from 'lucide-vue-next';
+	import { MoreVertical, ArrowUpToLine, ArrowDownToLine, Trash2, ArchiveIcon, Eye, UserPlus, Check, MessageCircle } from 'lucide-vue-next';
 	import { mapState } from 'vuex';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { generateTaskUrl } from '@/utils/url';
@@ -230,6 +238,7 @@
 			Eye,
 			UserPlus,
 			Check,
+			MessageCircle,
 		},
 	emits: ['timer-started', 'timer-stopped', 'move-to-top', 'move-to-bottom', 'task-deleted', 'task-archived'],
 	props: {
