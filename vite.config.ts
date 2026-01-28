@@ -35,6 +35,7 @@ export default defineConfig({
 			compress: {
 				drop_console: true,
 				drop_debugger: true,
+				pure_funcs: ['console.log', 'console.info', 'console.debug'],
 			},
 		},
 		rollupOptions: {
@@ -46,10 +47,8 @@ export default defineConfig({
 						'@editorjs/header',
 						'@editorjs/list',
 						'@editorjs/checklist',
-						'@editorjs/code',
 						'@editorjs/delimiter',
 						'@editorjs/embed',
-						'@editorjs/image',
 						'@editorjs/inline-code',
 						'@editorjs/link',
 						'@editorjs/marker',
@@ -57,7 +56,6 @@ export default defineConfig({
 						'@editorjs/raw',
 						'@editorjs/table',
 						'@editorjs/warning',
-						'@calumk/editorjs-columns',
 						'@bomdi/codebox',
 						'editorjs-drag-drop',
 					],
@@ -71,7 +69,6 @@ export default defineConfig({
 					'vendor-utils': [
 						'axios',
 						'date-fns',
-						'gsap',
 						'canvas-confetti',
 						'vuedraggable',
 					],
@@ -87,9 +84,10 @@ export default defineConfig({
 				assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
 			},
 		},
-		chunkSizeWarningLimit: 1000,
+		chunkSizeWarningLimit: 500,
 		cssCodeSplit: true,
 		sourcemap: false,
+		assetsInlineLimit: 4096,
 	},
 	optimizeDeps: {
 		include: [

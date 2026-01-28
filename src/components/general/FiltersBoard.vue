@@ -120,6 +120,7 @@
 	import TextField from '@/components/general/TextField.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import { MenuItem } from '@headlessui/vue';
+	import { useDebounceFn } from '@vueuse/core';
 
 	export interface UserOption {
 		id: number;
@@ -227,6 +228,13 @@
 		return query;
 	};
 
+	const debouncedRouterPush = useDebounceFn(() => {
+		router.push({
+			...currentRoute,
+			query: buildQuery(),
+		});
+	}, 300);
+
 	onMounted(() => {
 		const query = currentRoute.query;
 
@@ -248,10 +256,7 @@
 			'update:chosenUser',
 			props.workspaceUsers.find((option) => option.id === selectedUser.value),
 		);
-		router.push({
-			...currentRoute.query,
-			query: buildQuery(),
-		});
+		debouncedRouterPush();
 	});
 
 	watch(selectedCategory, () => {
@@ -259,19 +264,12 @@
 			'handleChosenCategory',
 			props.categories.find((option) => option.id === selectedCategory.value),
 		);
-		router.push({
-			...currentRoute.query,
-			query: buildQuery(),
-		});
+		debouncedRouterPush();
 	});
 
 	watch(searchText, (newValue) => {
 		emit('handleSearchTextChanged', newValue);
-
-		router.push({
-			...currentRoute.query,
-			query: buildQuery(),
-		});
+		debouncedRouterPush();
 	});
 	const loadTasks = () => {
 		emit('loadColumns');

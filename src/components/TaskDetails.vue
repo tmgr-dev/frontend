@@ -355,11 +355,11 @@ function addTime() {
 function removeTime(index: number) {
 	taskData.value.recurrence!.times.splice(index, 1);
 }
-watch(() => props.task, (newTask) => {
+watch(() => props.task.id, () => {
 	taskData.value = {
-		...newTask,
-		is_recurring: newTask.recurrence !== undefined,
-		recurrence: newTask.recurrence || {
+		...props.task,
+		is_recurring: props.task.recurrence !== undefined,
+		recurrence: props.task.recurrence || {
 			frequency: 'DAILY',
 			interval: 1,
 			time: defaultTime,
@@ -367,7 +367,7 @@ watch(() => props.task, (newTask) => {
 			start_at: new Date().toISOString().split('T')[0]
 		}
 	};
-}, { deep: true });
+}, { immediate: true });
 
 function toggleWeekDay(day: string) {
 	if (!taskData.value.recurrence!.days_of_week) {

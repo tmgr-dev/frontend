@@ -55,6 +55,7 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="task.id"
+				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id]]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
@@ -346,7 +347,7 @@
 	import TaskForm from '@/pages/TaskForm.vue';
 	import {
 		exportTasks,
-		getTask,
+		deleteTask,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
@@ -791,14 +792,13 @@
 				const deleteMultipleTasks = async () => {
 					try {
 						this.loadingActionsForMultipleTasks.push('delete');
-						for (let i = 0; i < this.tasks.length; ++i) {
-							if (!this.selected[i]) {
-								continue;
-							}
-							const data = await getTask(this.tasks[i].id);
-
-							this.tasks[i].deleted_at = data.deleted_at;
-						}
+						const selectedTasks = this.tasks.filter((_, i) => this.selected[i]);
+						const deletePromises = selectedTasks.map(async (task) => {
+							const deletedAt = await deleteTask(task.id);
+							task.deleted_at = deletedAt;
+							return task;
+						});
+						await Promise.all(deletePromises);
 					} catch (e) {
 						console.error(e);
 					} finally {
