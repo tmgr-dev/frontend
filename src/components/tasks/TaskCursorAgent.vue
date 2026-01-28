@@ -26,19 +26,47 @@
             <div class="h-6 w-6 animate-spin rounded-full border-3 border-violet-500 border-t-transparent"></div>
           </div>
           
-          <div v-else-if="branches.length" class="space-y-4">
+          <div v-else-if="branches.length || branchSearch" class="space-y-4">
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Source Branch
               </label>
-              <select
-                v-model="selectedBranch"
-                class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
-              >
-                <option v-for="branch in branches" :key="branch.name" :value="branch.name">
-                  {{ branch.name }}{{ branch.protected ? ' 🔒' : '' }}
-                </option>
-              </select>
+              <input
+                v-model="branchSearch"
+                @input="onBranchSearch"
+                type="text"
+                placeholder="Search branches..."
+                class="mb-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              />
+              <div v-if="loadingBranches" class="flex items-center justify-center py-2">
+                <div class="h-4 w-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent"></div>
+                <span class="ml-2 text-xs text-gray-500">Searching...</span>
+              </div>
+              <template v-else-if="branches.length">
+                <select
+                  v-model="selectedBranch"
+                  :size="Math.min(branches.length, 8)"
+                  class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                >
+                  <option v-for="branch in branches" :key="branch.name" :value="branch.name">
+                    {{ branch.name }}{{ branch.protected ? ' 🔒' : '' }}
+                  </option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ branches.length }} branch{{ branches.length !== 1 ? 'es' : '' }} found
+                </p>
+              </template>
+              <div v-else class="py-4 text-center">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  No branches found for "{{ branchSearch }}"
+                </p>
+                <button
+                  @click="branchSearch = ''; loadBranchesFromGitHub()"
+                  class="mt-2 text-sm text-violet-600 hover:underline dark:text-violet-400"
+                >
+                  Clear search
+                </button>
+              </div>
             </div>
             
             <button
@@ -59,7 +87,7 @@
               {{ branchesError || 'Failed to load branches' }}
             </p>
             <button
-              @click="loadBranchesFromGitHub"
+              @click="branchSearch = ''; loadBranchesFromGitHub()"
               class="text-sm text-violet-600 hover:underline dark:text-violet-400"
             >
               Try again
@@ -209,6 +237,8 @@ export default defineComponent({
       agents: [],
       branches: [],
       selectedBranch: null,
+      branchSearch: '',
+      searchTimeout: null,
       loading: true,
       loadingBranches: false,
       launching: false,
@@ -272,14 +302,18 @@ export default defineComponent({
         this.loading = false;
       }
     },
-    async loadBranchesFromGitHub() {
+    async loadBranchesFromGitHub(search = null) {
       try {
         this.loadingBranches = true;
         this.branchesError = null;
-        this.branches = await getGitHubBranches(this.taskId);
+        this.branches = await getGitHubBranches(this.taskId, search);
         
-        if (this.branches.length > 0) {
+        if (this.branches.length > 0 && !this.selectedBranch) {
           this.selectedBranch = this.branches.find(b => b.name === 'master' || b.name === 'main')?.name || this.branches[0].name;
+        }
+        
+        if (this.branches.length > 0 && !this.branches.find(b => b.name === this.selectedBranch)) {
+          this.selectedBranch = this.branches[0].name;
         }
       } catch (e) {
         console.error('Failed to load branches:', e);
@@ -287,6 +321,15 @@ export default defineComponent({
       } finally {
         this.loadingBranches = false;
       }
+    },
+    onBranchSearch() {
+      if (this.searchTimeout) {
+        clearTimeout(this.searchTimeout);
+      }
+      
+      this.searchTimeout = setTimeout(() => {
+        this.loadBranchesFromGitHub(this.branchSearch || undefined);
+      }, 300);
     },
     async launchAgent() {
       try {
