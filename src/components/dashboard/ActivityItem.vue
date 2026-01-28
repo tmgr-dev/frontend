@@ -146,7 +146,11 @@ const activityIcon = computed(() => {
     git_repo_connected: LinkIcon,
     git_repo_disconnected: LinkSlashIcon,
     github_app_installed: LinkIcon,
-    github_app_uninstalled: LinkSlashIcon
+    github_app_uninstalled: LinkSlashIcon,
+    cursor_agent_started: PlayIcon,
+    cursor_agent_finished: CheckIcon,
+    cursor_agent_failed: XMarkIcon,
+    cursor_agent_stopped: StopIcon
   };
   
   return iconMap[props.activity.type] || PlusIcon;
@@ -183,7 +187,11 @@ const iconClasses = computed(() => {
     git_repo_connected: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
     git_repo_disconnected: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
     github_app_installed: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-    github_app_uninstalled: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400'
+    github_app_uninstalled: 'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+    cursor_agent_started: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+    cursor_agent_finished: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+    cursor_agent_failed: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+    cursor_agent_stopped: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400'
   };
   
   const baseClasses = 'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
