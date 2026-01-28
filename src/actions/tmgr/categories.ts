@@ -112,3 +112,16 @@ export const restoreCategory = async (categoryId: number) => {
 
 	return data.deleted_at;
 };
+
+export const transferCategory = async (
+	categoryId: number,
+	targetWorkspaceId: number,
+) => {
+	const {
+		data: { data },
+	} = await $axios.post(`project_categories/${categoryId}/transfer`, {
+		target_workspace_id: targetWorkspaceId,
+	});
+
+	return data;
+};
