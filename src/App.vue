@@ -5,23 +5,13 @@
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 		:key="$store.state.appRerenderKey"
 	>
-		<transition mode="out-in" name="fade">
 			<div class="flex min-h-screen">
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
-						<transition
-							:name="transitionName"
-							mode="out-in"
-							@before-leave="beforeLeave"
-							@enter="enter"
-							@after-enter="afterEnter"
-						>
 							<component :is="Component" v-if="showComponent" :key="route?.fullPath" />
-						</transition>
 					</router-view>
 				</CustomSidebar>
 			</div>
-		</transition>
 
 		<ActiveTasks :tasks="activeTasks" />
 
