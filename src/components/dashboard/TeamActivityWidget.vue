@@ -1,5 +1,6 @@
 <template>
-  <div class="team-activity-widget">
+  <!-- CHANGES: Added min-h-64 to prevent CLS -->
+  <div class="team-activity-widget min-h-64">
     <div class="team-activity-header flex items-center justify-between mb-4">
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
         Team Activity

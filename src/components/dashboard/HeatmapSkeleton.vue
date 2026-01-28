@@ -3,7 +3,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 </script>
 
 <template>
-  <div class="w-full">
+  <!-- CHANGES: Added min-h-48 to match heatmap-container and prevent CLS -->
+  <div class="w-full min-h-48">
     <div class="mb-6 space-y-2">
       <Skeleton class="h-4 w-48" />
       <Skeleton class="h-3 w-64" />
