@@ -196,6 +196,14 @@
 								{{ formatRelativeTime(task.updated_at) }}
 							</span>
 							<span 
+								v-if="task.comments_count" 
+								class="flex items-center gap-0.5"
+								:title="`${task.comments_count} comment${task.comments_count !== 1 ? 's' : ''}`"
+							>
+								<MessageCircle :size="9" :stroke-width="2" />
+								{{ task.comments_count }}
+							</span>
+							<span 
 								v-if="getTaskOvertime(task)" 
 								class="text-[9px] font-medium text-red-500 dark:text-red-400"
 								title="Overtime"
@@ -305,7 +313,7 @@ import { PropType } from 'vue';
 import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { UserPlus, Check } from 'lucide-vue-next';
+import { UserPlus, Check, MessageCircle } from 'lucide-vue-next';
 import { useFeatureToggles } from '@/composable/useFeatureToggles';
 
 	export default {
@@ -332,6 +340,7 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			CommandList,
 			UserPlus,
 			Check,
+			MessageCircle,
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
