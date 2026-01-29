@@ -12,7 +12,7 @@
 </template>
 
 <script lang="ts" setup>
-	import { onMounted, onUnmounted, ref } from 'vue';
+	import { onMounted, onUnmounted, ref, computed } from 'vue';
 	import { useStore } from 'vuex';
 
 	interface Props {
@@ -24,10 +24,17 @@
 	const emit = defineEmits(['close', 'closingModal']);
 	const initialUrl = ref(location.href);
 	const store = useStore();
+	const modalId = ref(`modal-${Date.now()}-${Math.random()}`);
+
+	const isTopmostModal = computed(() => {
+		const stack = store.state.modalStack;
+		return stack.length > 0 && stack[stack.length - 1] === modalId.value;
+	});
 
 	onMounted(() => {
 		document.body.classList.add('overflow-hidden');
 		document.addEventListener('keydown', closeByEscape);
+		store.commit('pushModalToStack', modalId.value);
 	});
 
 	onUnmounted(() => {
@@ -36,11 +43,12 @@
 			history.replaceState({}, '', initialUrl.value);
 		}
 		document.removeEventListener('keydown', closeByEscape);
+		store.commit('removeModalFromStack', modalId.value);
 	});
 
 	function closeByEscape(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			if (store.state.openModals) {
+		if (e.key === 'Escape' && isTopmostModal.value) {
+			if (store.state.openModals > 1) {
 				emit('closingModal');
 			} else {
 				emit('close');

@@ -56,6 +56,7 @@ export interface RootState {
   userSettingsMap: Record<string, UserSetting>;
   userSettings: UserSettings;
   openModals: number;
+  modalStack: string[];
   urlManuallyChanged: boolean;
 }
 
