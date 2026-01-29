@@ -32,7 +32,9 @@
 		updateTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	const BlockEditor = defineAsyncComponent(() => import('@/components/BlockEditor.vue'));
+	const BlockEditor = defineAsyncComponent(
+		() => import('@/components/BlockEditor.vue'),
+	);
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
@@ -67,6 +69,7 @@
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
+	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import {
 		Dialog,
@@ -1046,11 +1049,15 @@
 		}
 	});
 
-	watch(() => form.value.title, (newTitle: string) => {
-		if (!props.isModal && newTitle) {
-			setDocumentTitle(newTitle);
-		}
-	}, { immediate: true });
+	watch(
+		() => form.value.title,
+		(newTitle: string) => {
+			if (!props.isModal && newTitle) {
+				setDocumentTitle(newTitle);
+			}
+		},
+		{ immediate: true },
+	);
 
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
@@ -1158,7 +1165,7 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] flex-col overflow-hidden md:h-auto md:max-h-[60vh] md:flex-col'
-					: 'h-full container mx-auto flex-col pt-14 md:flex-row',
+					: 'container mx-auto h-full flex-col pt-14 md:flex-row',
 			]"
 		>
 			<!-- Form Panel -->
@@ -1172,14 +1179,14 @@
 						<SelectTrigger class="w-40 border-0 bg-transparent">
 							<SelectValue placeholder="status" />
 						</SelectTrigger>
-					<SelectContent class="border-0 bg-white dark:bg-gray-800">
-						<SelectItem
-							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-							v-for="status in statuses"
-							:key="status.id"
-							:value="status.id.toString()"
-							:show-check-mark="false"
-						>
+						<SelectContent class="border-0 bg-white dark:bg-gray-800">
+							<SelectItem
+								class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+								v-for="status in statuses"
+								:key="status.id"
+								:value="status.id.toString()"
+								:show-check-mark="false"
+							>
 								<span
 									class="mr-3 inline-block size-2 shrink-0 rounded-full"
 									:style="{ backgroundColor: status.color }"
@@ -1319,6 +1326,12 @@
 							]"
 						/>
 					</div>
+
+					<!-- Task Attachments -->
+					<!--					<TaskAttachments
+						v-if="taskId || form.id"
+						:task-id="taskId || form.id"
+					/>-->
 
 					<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 					<div
@@ -1475,7 +1488,7 @@
 						/>
 					</div>
 
-					<!-- Comment Input -->
+					<!--  Comment Input -->
 					<div v-if="form.id" class="mt-4">
 						<!-- Collapsed State - Single Line -->
 						<div
@@ -1487,8 +1500,7 @@
 							<span
 								v-if="commentsCount > 0"
 								class="text-xs text-gray-400 dark:text-gray-500"
-							>
-								{{ commentsCount }}
+								>{{ commentsCount }}
 								{{ commentsCount === 1 ? 'comment' : 'comments' }}
 							</span>
 						</div>
@@ -1696,7 +1708,10 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Git Activity</DialogTitle>
-					<DialogDescription class="sr-only">View git commits and pull requests related to this task</DialogDescription>
+					<DialogDescription class="sr-only"
+						>View git commits and pull requests related to this
+						task</DialogDescription
+					>
 				</DialogHeader>
 				<TaskGitActivity
 					v-if="form.id"
@@ -1711,7 +1726,9 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Cursor AI Agent</DialogTitle>
-					<DialogDescription class="sr-only">Run AI agent to help with this task</DialogDescription>
+					<DialogDescription class="sr-only"
+						>Run AI agent to help with this task</DialogDescription
+					>
 				</DialogHeader>
 				<TaskCursorAgent
 					v-if="form.id"
