@@ -26,6 +26,19 @@ jobs:
         id: get_tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
+      - name: Get commit list
+        id: get_commits
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 2 | tail -n 1)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%an)" -10)
+          else
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)")
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: build and push docker image to registry
         uses: docker/build-push-action@v5
         with:
@@ -42,15 +55,21 @@ jobs:
             VITE_PUSHER_KEY=${{ secrets.VITE_PUSHER_KEY }}
             VITE_PUSHER_SECRET=${{ secrets.VITE_PUSHER_SECRET }}
             VITE_PUSHER_CLUSTER=${{ secrets.VITE_PUSHER_CLUSTER }}
+            VITE_PUSHER_HOST=${{ secrets.VITE_PUSHER_HOST }}
+            VITE_PUSHER_PORT=${{ secrets.VITE_PUSHER_PORT }}
+            VITE_PUSHER_SCHEME=${{ secrets.VITE_PUSHER_SCHEME }}
             VITE_TELEGRAM_BOT_NAME=${{ secrets.VITE_TELEGRAM_BOT_NAME }}
+            VITE_NTFY_SERVER_URL=${{ secrets.VITE_NTFY_SERVER_URL }}
+            VITE_NTFY_DEFAULT_TOPIC=${{ secrets.VITE_NTFY_DEFAULT_TOPIC }}
 
       - name: Send build failure notification
         if: failure()
         run: |
+          COMMITS_ESCAPED=$(echo "${{ env.COMMITS }}" | sed 's/"/\\"/g')
           curl -X POST https://notifications.aow.space/ \
             -H "Content-Type: application/json" \
             -d '{
-              "message": "❌ tmgr-ui build failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "message": "❌ tmgr-ui build failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n📋 Commits:\n'"$COMMITS_ESCAPED"'\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
               "receivers": [-1001837078387]
             }'
 
@@ -66,6 +85,19 @@ jobs:
       - name: Get the tag name
         id: get_tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Get commit list
+        id: get_commits_deploy
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 2 | tail -n 1)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%an)" -10)
+          else
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)")
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Update deployment file
         run: TAG=$(echo $GITHUB_SHA | head -c7) && sed -i 's|<IMAGE>|${{ env.IMAGE_NAME }}:'${{ env.TAG_NAME }}'|' $GITHUB_WORKSPACE/config/deployment.yml
@@ -105,19 +137,21 @@ jobs:
       - name: Send success notification
         if: success()
         run: |
+          COMMITS_ESCAPED=$(echo "${{ env.COMMITS }}" | sed 's/"/\\"/g')
           curl -X POST https://notifications.aow.space/ \
             -H "Content-Type: application/json" \
             -d '{
-              "message": "✅ tmgr-ui deployment successful!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}",
+              "message": "✅ tmgr-ui deployment successful!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n\n📋 Commits:\n'"$COMMITS_ESCAPED"'",
               "receivers": [-1001837078387]
             }'
 
       - name: Send failure notification
         if: failure()
         run: |
+          COMMITS_ESCAPED=$(echo "${{ env.COMMITS }}" | sed 's/"/\\"/g')
           curl -X POST https://notifications.aow.space/ \
             -H "Content-Type: application/json" \
             -d '{
-              "message": "❌ tmgr-ui deployment failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "message": "❌ tmgr-ui deployment failed!\n🔖 Version: ${{ env.TAG_NAME }}\n🕐 Time: '"$(date)"'\n📝 Commit: ${{ github.sha }}\n👤 Author: ${{ github.actor }}\n📋 Commits:\n'"$COMMITS_ESCAPED"'\n🔗 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
               "receivers": [-1001837078387]
             }'
