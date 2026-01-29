@@ -1,9 +1,8 @@
 <template>
-	<teleport to="title">Notifications</teleport>
-
-	<BaseLayout>
+	<div>
+		<BaseLayout>
 		<template #body>
-			<div class="notifications-page">
+			<div class="notifications-page min-h-96">
 				<div class="page-header">
 					<h1 class="page-title">Notifications</h1>
 					<div class="header-actions">
@@ -63,7 +62,8 @@
 				</div>
 			</div>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>
@@ -73,6 +73,7 @@ import { Bell, Settings } from 'lucide-vue-next';
 import BaseLayout from '@/components/layouts/BaseLayout.vue';
 import NotificationItem from '@/components/notifications/NotificationItem.vue';
 import { useNotifications } from '@/composable/useNotifications';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 export default defineComponent({
 	name: 'NotificationsPage',
@@ -156,6 +157,7 @@ export default defineComponent({
 		};
 
 		onMounted(() => {
+			setDocumentTitle('Notifications');
 			loadNotifications();
 		});
 

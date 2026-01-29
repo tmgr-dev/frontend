@@ -1,8 +1,4 @@
 <template>
-	<teleport to="title">
-		{{ countdown.hours }}:{{ countdown.minutes }}:{{ countdown.seconds }}
-	</teleport>
-
 	<div
 		v-if="task"
 		id="task"
@@ -37,7 +33,7 @@
 				<span class="countdown-item">{{ countdown.hours }}</span>
 				<span class="countdown-item">{{ countdown.minutes }}</span>
 				<span
-					:class="`countdown-item ` + (countdownInterval ? `seconds` : ``)"
+					:class="`countdown-item ` + (countdownIntervalId ? `seconds` : ``)"
 					>{{ countdown.seconds }}</span
 				>
 			</div>
@@ -137,8 +133,7 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import Modal from '@/components/Modal.vue';
-
-	let countdownInterval = null;
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Countdown',
@@ -173,7 +168,7 @@
 					pattern: /\d/,
 				},
 			},
-			countdownInterval: null,
+			countdownIntervalId: null,
 			countdown: {
 				hours: '00',
 				minutes: '00',
@@ -196,9 +191,9 @@
 		},
 		methods: {
 			toggleCountdown() {
-				if (countdownInterval) {
-					clearInterval(countdownInterval);
-					countdownInterval = null;
+				if (this.countdownIntervalId) {
+					clearInterval(this.countdownIntervalId);
+					this.countdownIntervalId = null;
 				}
 				this.$emit('toggle');
 			},
@@ -246,14 +241,13 @@
 			},
 			initCountdown() {
 				if (!this.task.start_time) {
-					clearInterval(countdownInterval);
-					countdownInterval = null;
+					clearInterval(this.countdownIntervalId);
+					this.countdownIntervalId = null;
 					return;
 				}
 
 				this.prepareCommonTime();
-				countdownInterval = setInterval(this.plusSecond, 1000);
-				this.countdownInterval = true;
+				this.countdownIntervalId = setInterval(this.plusSecond, 1000);
 			},
 			renderTime() {
 				this.countdown = this.secondsToCountdownObject(this.task.common_time);
@@ -292,15 +286,27 @@
 				};
 			},
 		},
+		watch: {
+			countdown: {
+				deep: true,
+				handler(newCountdown) {
+					const timerTitle = `${newCountdown.hours}:${newCountdown.minutes}:${newCountdown.seconds}`;
+					setDocumentTitle(timerTitle);
+				},
+			},
+		},
 		mounted() {
 			this.task = { ...this.initTask };
 			this.task.start_time = this.task.start_time || 0;
 
 			this.initCountdown();
 			this.renderTime();
+			
+			const timerTitle = `${this.countdown.hours}:${this.countdown.minutes}:${this.countdown.seconds}`;
+			setDocumentTitle(timerTitle);
 		},
 		beforeUnmount() {
-			clearInterval(countdownInterval);
+			clearInterval(this.countdownIntervalId);
 		},
 	};
 </script>

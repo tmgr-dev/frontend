@@ -12,7 +12,7 @@
 	import store from '@/store';
 	import {
 		computed,
-		nextTick,
+		defineAsyncComponent,nextTick,
 		onBeforeMount,
 		onMounted,
 		ref,
@@ -31,7 +31,7 @@
 		updateTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	import BlockEditor from '@/components/BlockEditor.vue';
+	const BlockEditor = defineAsyncComponent(() => import('@/components/BlockEditor.vue'));
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
@@ -49,7 +49,7 @@
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
 	import { Category, getCategories } from '@/actions/tmgr/categories';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	import Editor from '@/components/Editor.vue';
+	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
@@ -59,6 +59,7 @@
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -70,7 +71,7 @@
 	import {
 		Dialog,
 		DialogContent,
-		DialogHeader,
+		DialogDescription,DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import {
@@ -80,6 +81,7 @@
 	import { getTaskGitActivity } from '@/actions/tmgr/github';
 	import { getCursorAgents, sendFollowUp } from '@/actions/tmgr/cursor';
 	import { Send, Sparkles, Bot } from 'lucide-vue-next';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -910,7 +912,11 @@
 		onEventFired(e) {
 			if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
 				e.preventDefault();
-				saveTask();
+				if (!taskId.value && !form.value.id) {
+					createTask();
+				} else {
+					saveTask();
+				}
 			}
 		},
 	});
@@ -1039,6 +1045,12 @@
 		}
 	});
 
+	watch(() => form.value.title, (newTitle: string) => {
+		if (!props.isModal && newTitle) {
+			setDocumentTitle(newTitle);
+		}
+	}, { immediate: true });
+
 	// Get unchecked checkpoints from the current task
 	const getUncheckedCheckpoints = () => {
 		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
@@ -1140,20 +1152,18 @@
 	</div>
 
 	<div v-else class="new-form-container h-full">
-		<teleport to="title">{{ form.title }}&nbsp;</teleport>
-
 		<div
-			class="flex h-full overflow-hidden transition-all duration-300 md:w-[700px]"
+			class="flex transition-all duration-300 md:w-[700px]"
 			:class="[
 				isModal
-					? 'flex-col md:max-h-[60vh] md:flex-row'
-					: 'container mx-auto flex-col pt-14 md:flex-row',
+					? 'h-full max-h-[100dvh] flex-col overflow-hidden md:h-auto md:max-h-[60vh] md:flex-col'
+					: 'h-full container mx-auto flex-col pt-14 md:flex-row',
 			]"
 		>
 			<!-- Form Panel -->
 			<div
-				class="flex min-h-0 flex-shrink-0 flex-col md:w-[700px]"
-				:class="isModal ? 'overflow-hidden' : 'h-full'"
+				class="flex min-h-0 flex-1 flex-col md:w-[700px]"
+				:class="{ 'md:max-h-[60vh]': isModal }"
 			>
 				<!-- HEADER - Fixed at top -->
 				<header class="flex shrink-0 justify-between p-6 pb-4">
@@ -1161,13 +1171,14 @@
 						<SelectTrigger class="w-40 border-0 bg-transparent">
 							<SelectValue placeholder="status" />
 						</SelectTrigger>
-						<SelectContent class="border-0 bg-white dark:bg-gray-800">
-							<SelectItem
-								class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-								v-for="status in statuses"
-								:value="status.id.toString()"
-								:show-check-mark="false"
-							>
+					<SelectContent class="border-0 bg-white dark:bg-gray-800">
+						<SelectItem
+							class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+							v-for="status in statuses"
+							:key="status.id"
+							:value="status.id.toString()"
+							:show-check-mark="false"
+						>
 								<span
 									class="mr-3 inline-block size-2 shrink-0 rounded-full"
 									:style="{ backgroundColor: status.color }"
@@ -1466,20 +1477,8 @@
 						/>
 					</div>
 
-					<!-- Comments Section -->
-					<TaskComments
-						v-if="form.id"
-						ref="taskCommentsRef"
-						:task-id="form.id"
-						class="mt-4"
-						@update:count="commentsCount = $event"
-					/>
-				</main>
-
-				<!-- FOOTER - Fixed at bottom -->
-				<footer ref="footer" class="shrink-0 px-6 py-4">
-					<!-- Comment Input -->
-					<div v-if="form.id" class="mb-4">
+					<!--  Comment Input -->
+					<div v-if="form.id" class="mt-4">
 						<!-- Collapsed State - Single Line -->
 						<div
 							v-if="!isCommentInputExpanded"
@@ -1490,8 +1489,8 @@
 							<span
 								v-if="commentsCount > 0"
 								class="text-xs text-gray-400 dark:text-gray-500"
-							>
-								{{ commentsCount }}
+
+								>{{ commentsCount }}
 								{{ commentsCount === 1 ? 'comment' : 'comments' }}
 							</span>
 						</div>
@@ -1537,6 +1536,18 @@
 						</div>
 					</div>
 
+					<!-- Comments Section -->
+					<TaskComments
+						v-if="form.id"
+						ref="taskCommentsRef"
+						:task-id="form.id"
+						class="mt-4"
+						@update:count="commentsCount = $event"
+					/>
+				</main>
+
+				<!-- FOOTER - Fixed at bottom -->
+				<footer ref="footer" class="shrink-0 px-6 py-4">
 					<div class="flex justify-end gap-3 text-center">
 						<a
 							v-if="isModal && (taskId || form.id)"
@@ -1657,24 +1668,15 @@
 							<TrashIcon class="size-5" />
 						</button>
 					</div>
+
 					<div
 						v-if="taskId || form.id"
 						class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-gray-400/70 dark:text-gray-500/70"
 					>
-						<span
-							v-if="(form as any).created_at"
-							:title="'Created: ' + formatFullDate((form as any).created_at)"
-						>
-							{{ formatRelativeTime((form as any).created_at) }}
-						</span>
-						<span
-							v-if="(form as any).updated_at && (form as any).updated_at !== (form as any).created_at"
-							class="flex items-center gap-0.5"
-							:title="'Edited: ' + formatFullDate((form as any).updated_at)"
-						>
-							<span class="material-icons" style="font-size: 11px">edit</span>
-							{{ formatRelativeTime((form as any).updated_at) }}
-						</span>
+						<TaskTimeInfo
+							:created-at="form.created_at"
+							:updated-at="form.updated_at"
+						/>
 					</div>
 				</footer>
 			</div>
@@ -1696,6 +1698,7 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Git Activity</DialogTitle>
+					<DialogDescription class="sr-only">View git commits and pull requests related to this task</DialogDescription>
 				</DialogHeader>
 				<TaskGitActivity
 					v-if="form.id"
@@ -1710,6 +1713,7 @@
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Cursor AI Agent</DialogTitle>
+					<DialogDescription class="sr-only">Run AI agent to help with this task</DialogDescription>
 				</DialogHeader>
 				<TaskCursorAgent
 					v-if="form.id"

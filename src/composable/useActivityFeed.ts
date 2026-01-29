@@ -1,4 +1,4 @@
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
 import store from '@/store';
 import { getActivityFeed, withRetry } from '@/actions/tmgr/dashboard';
@@ -446,11 +446,13 @@ export function useActivityFeed(workspaceId?: number | { value: number }): UseAc
     { deep: true }
   );
 
-  // Cleanup on unmount
-  onUnmounted(() => {
-    disableRealTime();
-    clearTimeout((window as any).activityFilterTimeout);
-  });
+  // Cleanup on unmount (only if called within component setup)
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      disableRealTime();
+      clearTimeout((window as any).activityFilterTimeout);
+    });
+  }
 
   return {
     // State

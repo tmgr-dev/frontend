@@ -16,7 +16,8 @@
             v-if="member.avatar"
             :src="member.avatar"
             :alt="member.name"
-            class="w-10 h-10 rounded-full"
+            class="w-10 h-10 rounded-full object-cover"
+            loading="lazy"
           />
           <div
             v-else

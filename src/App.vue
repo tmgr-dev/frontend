@@ -5,23 +5,16 @@
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 		:key="$store.state.appRerenderKey"
 	>
-		<transition mode="out-in" name="fade">
 			<div class="flex min-h-screen">
+				<!-- CHANGES: Added keep-alive for cached views -->
 				<CustomSidebar>
-					<router-view v-slot="{ Component, route }" :key="route?.fullPath">
-						<transition
-							:name="transitionName"
-							mode="out-in"
-							@before-leave="beforeLeave"
-							@enter="enter"
-							@after-enter="afterEnter"
-						>
-							<component :is="Component" v-if="showComponent" />
-						</transition>
+					<router-view v-slot="{ Component, route }">
+						<keep-alive :include="keepAliveComponents">
+							<component :is="Component" v-if="showComponent" :key="route?.meta?.keepAlive ? route?.name : route?.fullPath" />
+						</keep-alive>
 					</router-view>
 				</CustomSidebar>
 			</div>
-		</transition>
 
 		<ActiveTasks :tasks="activeTasks" />
 
@@ -47,7 +40,7 @@
 </template>
 
 <script>
-	import { defineComponent, onBeforeMount, ref, watch } from 'vue';
+	import { defineComponent, defineAsyncComponent, onBeforeMount, ref, watch } from 'vue';
 	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
 	import { getUserSettings } from '@/actions/tmgr/user';
@@ -56,12 +49,13 @@
 	import Alert from '@/components/general/Alert.vue';
 	import Modal from '@/components/Modal.vue';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
-	import NewForm from '@/pages/NewForm.vue';
+	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { Toaster } from '@/components/ui/toast';
 	import { generateTaskUrl } from '@/utils/url';
 	import { updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -108,6 +102,10 @@
 			};
 		},
 		computed: {
+			// CHANGES: Added keepAliveComponents for route caching
+			keepAliveComponents() {
+				return ['DashboardPage', 'TasksListPage'];
+			},
 			switchOn: {
 				get() {
 					return this.$store.state.colorScheme === 'dark';
@@ -141,8 +139,10 @@
 				if (to !== from) {
 					if (this.$route.meta.title) {
 						this.$store.commit('setMetaTitle', this.$route.meta.title);
+						setDocumentTitle(this.$route.meta.title);
 					} else {
 						this.$store.commit('setMetaTitle', '');
+						setDocumentTitle();
 					}
 				}
 			},
@@ -393,6 +393,7 @@
 						// Update the meta title if needed
 						if (this.$route.meta.title) {
 							this.$store.commit('setMetaTitle', this.$route.meta.title);
+							setDocumentTitle(this.$route.meta.title);
 						}
 						
 						// Force UI components to update by triggering an app rerender
@@ -473,8 +474,10 @@
 				if (to.name !== from.name) {
 					if (to.meta.title && !to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
 						this.$store.commit('setMetaTitle', to.meta.title);
+						setDocumentTitle(to.meta.title);
 					} else if (!to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
 						this.$store.commit('setMetaTitle', '');
+						setDocumentTitle();
 					}
 				}
 

@@ -56,12 +56,13 @@
 
 					<div class="mt-2 text-neutral-400">workspace users:</div>
 
-					<ul class="h-24 overflow-y-auto">
-						<li
-							class="py-1 text-tmgr-blue dark:text-tmgr-gray sm:px-0"
-							v-for="{ name } in workspaceUsers"
-						>
-							{{ name }}
+				<ul class="h-24 overflow-y-auto">
+					<li
+						class="py-1 text-tmgr-blue dark:text-tmgr-gray sm:px-0"
+						v-for="(user, index) in workspaceUsers"
+						:key="user.id || index"
+					>
+						{{ user.name }}
 						</li>
 					</ul>
 				</div>
@@ -79,7 +80,7 @@
 	} from '@/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import Select from '@/components/general/Select.vue';
-	import { onBeforeMount, onMounted, Ref, ref, computed } from 'vue';
+	import { onBeforeMount, onMounted, onUnmounted, Ref, ref, computed } from 'vue';
 	import store from '@/store';
 	import { UserIcon } from 'lucide-vue-next';
 	import { generateWorkspaceUrl } from '@/utils/url';
@@ -126,12 +127,18 @@
 		}
 	});
 
-	onMounted(async () => {
-		document.addEventListener('click', (e: MouseEvent) => {
-			if (!$wrapper.value?.contains(e.target as Node)) {
-				isOpenProfileDropdown.value = false;
-			}
-		});
+	const clickHandler = (e: MouseEvent) => {
+		if (!$wrapper.value?.contains(e.target as Node)) {
+			isOpenProfileDropdown.value = false;
+		}
+	};
+
+	onMounted(() => {
+		document.addEventListener('click', clickHandler);
+	});
+
+	onUnmounted(() => {
+		document.removeEventListener('click', clickHandler);
 	});
 
 	async function onSelectChange(workspaceId: number) {

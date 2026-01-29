@@ -219,11 +219,16 @@
 		async (newValue) => {
 			if (newValue) {
 				processing.value = true;
-				const newComment = {
-					message: `Task changed `,
-				};
-				await createComment(props.taskId, newComment);
-				processing.value = false;
+				try {
+					const newComment = {
+						message: `Task changed `,
+					};
+					await createComment(props.taskId, newComment);
+				} catch (error) {
+					console.error('Failed to create task changed comment:', error);
+				} finally {
+					processing.value = false;
+				}
 			}
 		},
 	);
@@ -232,11 +237,16 @@
 		async (newValue) => {
 			if (newValue && newValue !== 0) {
 				processing.value = true;
-				const newComment = {
-					message: `Timer starts`,
-				};
-				await createComment(props.taskId, newComment);
-				processing.value = false;
+				try {
+					const newComment = {
+						message: `Timer starts`,
+					};
+					await createComment(props.taskId, newComment);
+				} catch (error) {
+					console.error('Failed to create timer start comment:', error);
+				} finally {
+					processing.value = false;
+				}
 			}
 		},
 	);

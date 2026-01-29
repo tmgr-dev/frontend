@@ -55,7 +55,7 @@ export function convertToHHMM(seconds) {
 
 export function formatRelativeTime(dateString) {
 	if (!dateString) return '';
-	
+
 	const date = new Date(dateString);
 	const now = new Date();
 	const diffMs = now - date;
@@ -67,11 +67,11 @@ export function formatRelativeTime(dateString) {
 	if (diffMinutes < 1) {
 		return 'just now';
 	} else if (diffMinutes < 60) {
-		return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+		return `${diffMinutes}m ago`;
 	} else if (diffHours < 24) {
-		return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+		return `${diffHours}h ago`;
 	} else if (diffDays < 7) {
-		return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+		return `${diffDays}d ago`;
 	} else {
 		const isCurrentYear = date.getFullYear() === now.getFullYear();
 		if (!isCurrentYear) {
@@ -85,7 +85,7 @@ export function formatRelativeTime(dateString) {
 			day: 'numeric',
 			hour: '2-digit',
 			minute: '2-digit',
-			hour12: false
+			hour12: false,
 		});
 	}
 }

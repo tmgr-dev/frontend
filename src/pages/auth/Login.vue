@@ -147,6 +147,7 @@
 	import { LoginRequest, login as loginAction } from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { AxiosError } from 'axios';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import store from '@/store';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
@@ -226,6 +227,7 @@
 	}
 
 	onMounted(() => {
+		setDocumentTitle('Login');
 		if (document.getElementById('telegram-login-widget-container')) {
 			const script = document.createElement('script');
 			script.async = true;

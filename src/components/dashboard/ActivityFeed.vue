@@ -1,5 +1,6 @@
 <template>
-  <div class="activity-feed">
+  <!-- CHANGES: Added min-h-96 to prevent CLS -->
+  <div class="activity-feed min-h-96">
     <div class="activity-header flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
         Recent Activity
@@ -195,7 +196,7 @@ onUnmounted(() => {
 }
 
 .activity-list {
-  @apply max-h-[600px] overflow-y-auto;
+  @apply max-h-[600px] min-h-64 overflow-y-auto;
 }
 
 .activity-list > * + * {
