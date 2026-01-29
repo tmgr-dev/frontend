@@ -1361,25 +1361,38 @@
 			if (this.workspaceId) {
 				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(this.workspaceId, {
 					onTaskUpdated: (task, action) => {
+						const taskStatusId = Number(task.status_id);
+						
 						if (action === 'created') {
-							const column = this.columns.find(c => c.id === task.status_id);
+							const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
 							if (column) {
-								column.tasks.unshift(task);
+								const exists = column.tasks.some(t => t.id === task.id);
+								if (!exists) {
+									column.tasks.unshift(task);
+								}
 							}
 						} else if (action === 'updated') {
+							let found = false;
 							for (const column of this.columns) {
 								const index = column.tasks.findIndex(t => t.id === task.id);
 								if (index !== -1) {
-									if (column.id === task.status_id) {
-										column.tasks[index] = task;
+									found = true;
+									if (Number(column.status?.id) === taskStatusId) {
+										column.tasks.splice(index, 1, task);
 									} else {
 										column.tasks.splice(index, 1);
-										const newColumn = this.columns.find(c => c.id === task.status_id);
+										const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
 										if (newColumn) {
 											newColumn.tasks.unshift(task);
 										}
 									}
 									break;
+								}
+							}
+							if (!found) {
+								const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+								if (column) {
+									column.tasks.unshift(task);
 								}
 							}
 						} else if (action === 'deleted') {

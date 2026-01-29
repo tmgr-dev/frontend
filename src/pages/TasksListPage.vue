@@ -153,14 +153,15 @@
 					onTaskUpdated: (task, action) => {
 						if (action === 'created') {
 							const matchesStatus = !status.value || task.status === status.value;
-							if (matchesStatus) {
+							const exists = tasks.value.some(t => t.id === task.id);
+							if (matchesStatus && !exists) {
 								tasks.value.unshift(task);
 								pagination.value.total++;
 							}
 						} else if (action === 'updated') {
 							const index = tasks.value.findIndex(t => t.id === task.id);
 							if (index !== -1) {
-								tasks.value[index] = task;
+								tasks.value.splice(index, 1, task);
 							}
 						} else if (action === 'deleted') {
 							tasks.value = tasks.value.filter(t => t.id !== task.id);
