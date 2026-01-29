@@ -312,6 +312,36 @@
 						/>
 					</div>
 				</Transition>
+				
+				<!-- External Update Notification -->
+				<Transition name="fade">
+					<div
+						v-if="hasExternalUpdate"
+						class="mb-4 flex items-center justify-between rounded-lg border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-600 dark:bg-yellow-900/20"
+					>
+						<div class="flex items-center gap-2">
+							<span class="material-icons text-yellow-500">sync</span>
+							<span class="text-sm text-yellow-700 dark:text-yellow-300">
+								This task was updated by another user
+							</span>
+						</div>
+						<div class="flex gap-2">
+							<button
+								@click="applyExternalUpdate"
+								class="rounded bg-yellow-500 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-600"
+							>
+								Apply Changes
+							</button>
+							<button
+								@click="dismissExternalUpdate"
+								class="rounded border border-yellow-400 px-3 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-100 dark:text-yellow-300 dark:hover:bg-yellow-900"
+							>
+								Dismiss
+							</button>
+						</div>
+					</div>
+				</Transition>
+				
 				<div class="mb-5">
 					<TextField
 						v-model="form.title"
@@ -497,6 +527,7 @@
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import TimeCounter from '@/components/TimeCounter.vue';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
+	import { usePusher } from '@/composable/usePusher';
 
 	export default {
 		name: 'TaskForm',
@@ -538,6 +569,10 @@
 			},
 		},
 		emits: ['close', 'updated'],
+		setup() {
+			const pusher = usePusher();
+			return { pusher };
+		},
 		data() {
 			return {
 				isDescriptionOptimizing: false,
@@ -548,6 +583,11 @@
 				availableSettings: [],
 				settings: [],
 				isSaving: false,
+				hasExternalUpdate: false,
+				externalUpdateData: null,
+				subscribedWorkspaceId: null,
+				pusherSubscriptionId: '',
+				instanceId: `task-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 				autoSaveTimeout: null,
 				workspaceMembers: [],
 				watchingFields: [
@@ -622,10 +662,58 @@
 			if (this.categoriesSelectOptions.length === 0) {
 				await this.loadCategories();
 			}
+			
+			const workspaceSetting = this.$store.state.user?.settings?.find(
+				setting => setting.key === 'current_workspace'
+			);
+			if (workspaceSetting) {
+				this.subscribedWorkspaceId = +workspaceSetting.value;
+				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(this.subscribedWorkspaceId, {
+					onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
+						console.log('[TaskForm] onTaskUpdated received:', { taskId: task.id, myTaskId: this.taskId, action, sourceInstanceId, myInstanceId: this.instanceId });
+						if (task.id !== this.taskId) return;
+						if (sourceInstanceId === this.instanceId) return;
+						
+						if (action === 'updated') {
+							const hasMeaningfulChanges = this.hasTaskMeaningfulChanges(task);
+							console.log('[TaskForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
+								currentDescription: this.form.description?.substring?.(0, 50),
+								incomingDescription: task.description?.substring?.(0, 50),
+								currentTitle: this.form.title,
+								incomingTitle: task.title
+							});
+							if (hasMeaningfulChanges) {
+								this.hasExternalUpdate = true;
+								this.externalUpdateData = task;
+							}
+						} else if (action === 'deleted') {
+							this.$emit('close');
+						}
+					},
+					onCommentAdded: (comment) => {
+						if (comment.task_id === this.taskId) {
+							this.$refs.commentsChat?.addingComment?.(comment);
+						}
+					},
+					onCommentUpdated: (comment) => {
+						if (comment.task_id === this.taskId) {
+							this.$refs.commentsChat?.editingComment?.(comment);
+						}
+					},
+					onCommentDeleted: (comment) => {
+						if (comment.task_id === this.taskId) {
+							this.$refs.commentsChat?.deletingComment?.(comment);
+						}
+					}
+				});
+			}
 		},
 	unmounted() {
 		this.removeDispatchedAutoSave();
 		this.$store.commit('closeTaskModal');
+		if (this.subscribedWorkspaceId && this.pusherSubscriptionId) {
+			this.pusher.unsubscribeHandlerFromWorkspace(this.subscribedWorkspaceId, this.pusherSubscriptionId);
+		}
 	},
 		computed: {
 			store() {
@@ -689,6 +777,37 @@
 			},
 		},
 		methods: {
+			applyExternalUpdate() {
+				if (this.externalUpdateData) {
+					Object.assign(this.form, this.externalUpdateData);
+					this.hasExternalUpdate = false;
+					this.externalUpdateData = null;
+				}
+			},
+			dismissExternalUpdate() {
+				this.hasExternalUpdate = false;
+			},
+			hasTaskMeaningfulChanges(incoming) {
+				const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'expired_at', 'approximately_time', 'checkpoints'];
+				for (const field of fieldsToCompare) {
+					const currentVal = this.form[field];
+					const incomingVal = incoming[field];
+					
+					let isDifferent = false;
+					if (typeof currentVal === 'object' || typeof incomingVal === 'object') {
+						isDifferent = JSON.stringify(currentVal) !== JSON.stringify(incomingVal);
+					} else {
+						isDifferent = String(currentVal ?? '') !== String(incomingVal ?? '');
+					}
+					
+					if (isDifferent) {
+						console.log(`[TaskForm] Field "${field}" differs:`, { current: currentVal, incoming: incomingVal });
+						return true;
+					}
+				}
+				console.log('[TaskForm] No meaningful changes detected');
+				return false;
+			},
 			async optimizeWithAI() {
 				this.isDescriptionOptimizing = true;
 				const result = await optimizeWithAI(
@@ -1079,7 +1198,7 @@
 				try {
 					this.isSaving = true;
 					this.prepareForm();
-					const data = await updateTask(this.taskId, this.form);
+					const data = await updateTask(this.taskId, this.form, this.instanceId);
 					this.$emit('updated');
 					this.$store.commit('incrementReloadTasksKey');
 

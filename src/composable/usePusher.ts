@@ -1,4 +1,4 @@
-import { ref, onUnmounted, nextTick, getCurrentInstance } from 'vue';
+import { ref, nextTick } from 'vue';
 import type { Ref } from 'vue';
 import Echo from 'laravel-echo';
 import type {
@@ -17,16 +17,27 @@ type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error' | '
 // Channel subscription interface
 interface ChannelSubscription {
   channel: any;
-  events: EventHandlers;
+  handlers: Map<string, EventHandlers>;
   isPrivate: boolean;
 }
 
-// Pusher configuration interface
+// Generate unique subscription ID
+let subscriptionIdCounter = 0;
+const generateSubscriptionId = (): string => {
+  return `sub_${++subscriptionIdCounter}_${Date.now()}`;
+};
+
+// Pusher configuration interface (Soketi compatible)
 interface PusherConfig {
   key: string;
   cluster: string;
+  wsHost: string;
+  wsPort: number;
+  wssPort: number;
   authEndpoint: string;
   forceTLS: boolean;
+  disableStats: boolean;
+  enabledTransports: string[];
   auth: {
     headers: {
       Accept: string;
@@ -35,27 +46,25 @@ interface PusherConfig {
   };
 }
 
+// Singleton state - shared across all usePusher instances
+const isConnected = ref(false);
+const connectionState = ref<ConnectionState>('disconnected');
+const connectionError = ref<ActionError | null>(null);
+let echoInstance: Echo | null = null;
+const subscriptions = new Map<string, ChannelSubscription>();
+const reconnectConfig = {
+  maxAttempts: 5,
+  delay: 1000,
+  exponentialBackoff: true,
+  currentAttempt: 0
+};
+
 /**
  * Pusher composable for managing real-time connections and events
  * Provides connection management, channel subscriptions, and event handling
+ * Uses singleton pattern - all instances share the same Echo connection
  */
 export function usePusher(): UsePusherReturn {
-  // Connection state
-  const isConnected = ref(false);
-  const connectionState = ref<ConnectionState>('disconnected');
-  const connectionError = ref<ActionError | null>(null);
-  
-  // Echo instance and subscriptions
-  let echoInstance: Echo | null = null;
-  const subscriptions = new Map<string, ChannelSubscription>();
-  
-  // Reconnection configuration
-  const reconnectConfig = {
-    maxAttempts: 5,
-    delay: 1000,
-    exponentialBackoff: true,
-    currentAttempt: 0
-  };
 
   // Get authentication token
   const getAuthToken = (): string | null => {
@@ -71,15 +80,22 @@ export function usePusher(): UsePusherReturn {
     return null;
   };
 
-  // Create Pusher configuration
+  // Create Pusher configuration (Soketi compatible)
   const createPusherConfig = (): PusherConfig => {
     const token = getAuthToken();
+    const scheme = (import.meta as any).env.VITE_PUSHER_SCHEME || 'http';
+    const port = parseInt((import.meta as any).env.VITE_PUSHER_PORT || '6001', 10);
     
     return {
       key: (import.meta as any).env.VITE_PUSHER_KEY,
-      cluster: (import.meta as any).env.VITE_PUSHER_CLUSTER,
+      cluster: 'mt1',
+      wsHost: (import.meta as any).env.VITE_PUSHER_HOST || 'localhost',
+      wsPort: port,
+      wssPort: port,
       authEndpoint: (import.meta as any).env.VITE_API_BASE_URL + 'broadcasting/auth',
-      forceTLS: true,
+      forceTLS: scheme === 'https',
+      disableStats: true,
+      enabledTransports: ['ws', 'wss'],
       auth: {
         headers: {
           Accept: 'application/json',
@@ -194,88 +210,142 @@ export function usePusher(): UsePusherReturn {
     }, delay);
   };
 
-  // Subscribe to a channel with event handlers
-  const subscribe = (channelName: string, events: EventHandlers): void => {
+  // Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
+  const subscribe = (channelName: string, events: EventHandlers): string => {
+    console.log(`[usePusher] subscribe called for channel: ${channelName}, echoInstance exists: ${!!echoInstance}`);
+    
     if (!echoInstance) {
       initializeEcho();
     }
 
     if (!echoInstance) {
       console.error('Failed to initialize Echo for subscription');
-      return;
+      return '';
     }
 
+    const subscriptionId = generateSubscriptionId();
+    console.log(`[usePusher] Generated subscriptionId: ${subscriptionId}`);
+
     try {
+      // Check if we already have a subscription to this channel
+      const existingSubscription = subscriptions.get(channelName);
+      console.log(`[usePusher] Existing subscription: ${!!existingSubscription}, total subscriptions: ${subscriptions.size}`);
+      
+      if (existingSubscription) {
+        // Add new handler to existing channel subscription
+        existingSubscription.handlers.set(subscriptionId, events);
+        console.log(`[usePusher] Added handler ${subscriptionId} to existing channel: ${channelName}, total handlers: ${existingSubscription.handlers.size}`);
+        return subscriptionId;
+      }
+
       // Determine if it's a private channel
       const isPrivate = channelName.startsWith('private-') || 
-                       channelName.includes('workspace.') || 
-                       channelName.includes('user.');
+                       channelName.includes('App.Workspace.') || 
+                       channelName.includes('App.User.');
 
       // Create channel subscription
       const channel = isPrivate 
         ? echoInstance.private(channelName)
         : echoInstance.channel(channelName);
 
-      // Set up event listeners
-      if (events.onActivityCreated) {
-        channel.listen('ActivityCreated', (data: { activity: Activity }) => {
-          events.onActivityCreated?.(data.activity);
-        });
-      }
+      // Create handlers map and add the first handler
+      const handlers = new Map<string, EventHandlers>();
+      handlers.set(subscriptionId, events);
 
-      if (events.onDashboardUpdated) {
-        channel.listen('DashboardUpdated', (data: { statistics: Partial<DashboardStatistics> }) => {
-          events.onDashboardUpdated?.(data.statistics);
-        });
-      }
+      // Set up event listeners that dispatch to ALL handlers
+      channel.listen('.activity.created', (data: { activity: Activity }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onActivityCreated?.(data.activity));
+        }
+      });
 
-      if (events.onTaskUpdated) {
-        channel.listen('TaskUpdated', (data: { task: RecentTask }) => {
-          events.onTaskUpdated?.(data.task);
-        });
-      }
+      channel.listen('.dashboard.updated', (data: { statistics: Partial<DashboardStatistics> }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onDashboardUpdated?.(data.statistics));
+        }
+      });
 
-      if (events.onMemberStatusChanged) {
-        channel.listen('MemberStatusChanged', (data: { member: TeamMemberStatus }) => {
-          events.onMemberStatusChanged?.(data.member);
-        });
-      }
+      channel.listen('.task.updated', (data: { task: any, action: 'created' | 'updated' | 'deleted', updated_by_user_id: number, source_instance_id?: string }) => {
+        console.log('[usePusher] Received .task.updated event:', data);
+        const sub = subscriptions.get(channelName);
+        console.log('[usePusher] Found subscription:', !!sub, 'handlers count:', sub?.handlers?.size);
+        if (sub) {
+          sub.handlers.forEach((h, id) => {
+            console.log('[usePusher] Calling handler:', id);
+            h.onTaskUpdated?.(data.task, data.action, data.updated_by_user_id, data.source_instance_id);
+          });
+        }
+      });
 
-      if (events.onNotificationCreated) {
-        channel.listen('notification.created', (data: any) => {
-          events.onNotificationCreated?.(data);
-        });
-      }
+      channel.listen('.comment-added', (data: { comment: any }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onCommentAdded?.(data.comment));
+        }
+      });
+
+      channel.listen('.comment-updated', (data: { comment: any }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onCommentUpdated?.(data.comment));
+        }
+      });
+
+      channel.listen('.comment-deleted', (data: { comment: any }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onCommentDeleted?.(data.comment));
+        }
+      });
+
+      channel.listen('.member.status.changed', (data: { member: TeamMemberStatus }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onMemberStatusChanged?.(data.member));
+        }
+      });
+
+      channel.listen('.notification.created', (data: any) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onNotificationCreated?.(data));
+        }
+      });
 
       // Handle connection errors
-      if (events.onError) {
-        channel.error((error: any) => {
-          const actionError: ActionError = {
-            message: error.message || 'Channel subscription error',
-            type: 'network',
-            timestamp: new Date().toISOString(),
-            recoverable: true,
-            details: error
-          };
-          events.onError?.(actionError);
-        });
-      }
+      channel.error((error: any) => {
+        const actionError: ActionError = {
+          message: error.message || 'Channel subscription error',
+          type: 'network',
+          timestamp: new Date().toISOString(),
+          recoverable: true,
+          details: error
+        };
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onError?.(actionError));
+        }
+      });
 
       // Handle reconnection
-      if (events.onReconnect) {
-        channel.subscribed(() => {
-          events.onReconnect?.();
-        });
-      }
+      channel.subscribed(() => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onReconnect?.());
+        }
+      });
 
-      // Store subscription
+      // Store subscription with handlers map
       subscriptions.set(channelName, {
         channel,
-        events,
+        handlers,
         isPrivate
       });
 
-      console.log(`Subscribed to channel: ${channelName}`);
+      console.log(`Subscribed to channel: ${channelName} with handler ${subscriptionId}`);
+      return subscriptionId;
 
     } catch (error) {
       console.error(`Failed to subscribe to channel ${channelName}:`, error);
@@ -289,10 +359,32 @@ export function usePusher(): UsePusherReturn {
         };
         events.onError(actionError);
       }
+      return '';
     }
   };
 
-  // Unsubscribe from a channel
+  // Unsubscribe a specific handler from a channel
+  const unsubscribeHandler = (channelName: string, subscriptionId: string): void => {
+    const subscription = subscriptions.get(channelName);
+    
+    if (subscription) {
+      subscription.handlers.delete(subscriptionId);
+      console.log(`Removed handler ${subscriptionId} from channel: ${channelName}`);
+      
+      // If no more handlers, leave the channel entirely
+      if (subscription.handlers.size === 0 && echoInstance) {
+        try {
+          echoInstance.leave(channelName);
+          subscriptions.delete(channelName);
+          console.log(`Left channel: ${channelName} (no more handlers)`);
+        } catch (error) {
+          console.error(`Failed to leave channel ${channelName}:`, error);
+        }
+      }
+    }
+  };
+
+  // Unsubscribe from a channel entirely (removes all handlers)
   const unsubscribe = (channelName: string): void => {
     const subscription = subscriptions.get(channelName);
     
@@ -329,12 +421,15 @@ export function usePusher(): UsePusherReturn {
         // Reinitialize Echo
         initializeEcho();
         
-        // Resubscribe to all channels
+        // Resubscribe to all channels with all their handlers
         const channelsToResubscribe = Array.from(subscriptions.entries());
         subscriptions.clear();
         
         for (const [channelName, subscription] of channelsToResubscribe) {
-          subscribe(channelName, subscription.events);
+          // Resubscribe each handler individually
+          for (const [, handler] of subscription.handlers) {
+            subscribe(channelName, handler);
+          }
         }
       });
       
@@ -390,39 +485,40 @@ export function usePusher(): UsePusherReturn {
     reconnectAttempts: reconnectConfig.currentAttempt
   });
 
-  // Subscribe to workspace-specific events
-  const subscribeToWorkspace = (workspaceId: number, events: EventHandlers): void => {
-    const channelName = `workspace.${workspaceId}`;
-    subscribe(channelName, events);
+  // Subscribe to workspace-specific events - returns subscription ID
+  const subscribeToWorkspace = (workspaceId: number, events: EventHandlers): string => {
+    const channelName = `App.Workspace.${workspaceId}`;
+    return subscribe(channelName, events);
   };
 
-  // Subscribe to user-specific events
-  const subscribeToUser = (userId: number, events: EventHandlers): void => {
-    const channelName = `user.${userId}`;
-    subscribe(channelName, events);
+  // Subscribe to user-specific events - returns subscription ID
+  const subscribeToUser = (userId: number, events: EventHandlers): string => {
+    const channelName = `App.User.${userId}`;
+    return subscribe(channelName, events);
   };
 
-  // Unsubscribe from workspace events
+  // Unsubscribe a specific handler from workspace events
+  const unsubscribeHandlerFromWorkspace = (workspaceId: number, subscriptionId: string): void => {
+    const channelName = `App.Workspace.${workspaceId}`;
+    unsubscribeHandler(channelName, subscriptionId);
+  };
+
+  // Unsubscribe from workspace events entirely (all handlers)
   const unsubscribeFromWorkspace = (workspaceId: number): void => {
-    const channelName = `workspace.${workspaceId}`;
+    const channelName = `App.Workspace.${workspaceId}`;
     unsubscribe(channelName);
   };
 
   // Unsubscribe from user events
   const unsubscribeFromUser = (userId: number): void => {
-    const channelName = `user.${userId}`;
+    const channelName = `App.User.${userId}`;
     unsubscribe(channelName);
   };
 
-  // Auto-cleanup on unmount (only if called within component setup)
-  if (getCurrentInstance()) {
-    onUnmounted(() => {
-      disconnect();
-    });
+  // Initialize connection if not already connected (singleton pattern)
+  if (!echoInstance) {
+    initializeEcho();
   }
-
-  // Initialize connection immediately
-  initializeEcho();
 
   return {
     // Connection state
@@ -433,6 +529,7 @@ export function usePusher(): UsePusherReturn {
     // Actions
     subscribe,
     unsubscribe,
+    unsubscribeHandler,
     unsubscribeAll,
     reconnect,
     disconnect,
@@ -442,6 +539,7 @@ export function usePusher(): UsePusherReturn {
     subscribeToWorkspace,
     subscribeToUser,
     unsubscribeFromWorkspace,
+    unsubscribeHandlerFromWorkspace,
     unsubscribeFromUser,
     
     // Utility

@@ -606,6 +606,7 @@
 	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
 	import { SquareKanban } from 'lucide-vue-next';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { usePusher } from '@/composable/usePusher';
 
 	export default {
 		name: 'Board',
@@ -631,8 +632,10 @@
 		},
 
 		setup() {
+			const pusher = usePusher();
 			return {
 				SquareKanban,
+				pusher,
 			};
 		},
 
@@ -705,6 +708,8 @@
 			sourceColumnForMove: null,
 			isShowMobileReorderModal: false,
 			mobileReorderColumns: [],
+			newCommentTaskIds: new Set(),
+			pusherSubscriptionId: '',
 		}),
 
 		watch: {
@@ -1352,9 +1357,71 @@
 				this.updateScrollContainers();
 			});
 		}
+		
+			if (this.workspaceId) {
+				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(this.workspaceId, {
+					onTaskUpdated: (task, action) => {
+						const taskStatusId = Number(task.status_id);
+						
+						if (action === 'created') {
+							const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+							if (column) {
+								const exists = column.tasks.some(t => t.id === task.id);
+								if (!exists) {
+									column.tasks.unshift(task);
+								}
+							}
+						} else if (action === 'updated') {
+							let found = false;
+							for (const column of this.columns) {
+								const index = column.tasks.findIndex(t => t.id === task.id);
+								if (index !== -1) {
+									found = true;
+									if (Number(column.status?.id) === taskStatusId) {
+										column.tasks.splice(index, 1, task);
+									} else {
+										column.tasks.splice(index, 1);
+										const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+										if (newColumn) {
+											newColumn.tasks.unshift(task);
+										}
+									}
+									break;
+								}
+							}
+							if (!found) {
+								const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+								if (column) {
+									column.tasks.unshift(task);
+								}
+							}
+						} else if (action === 'deleted') {
+							for (const column of this.columns) {
+								const index = column.tasks.findIndex(t => t.id === task.id);
+								if (index !== -1) {
+									column.tasks.splice(index, 1);
+									break;
+								}
+							}
+						}
+					},
+					onCommentAdded: (comment) => {
+						for (const column of this.columns) {
+							const taskExists = column.tasks.some(t => t.id === comment.task_id);
+							if (taskExists) {
+								this.newCommentTaskIds.add(comment.task_id);
+								break;
+							}
+						}
+					}
+				});
+			}
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
+			if (this.workspaceId && this.pusherSubscriptionId) {
+				this.pusher.unsubscribeHandlerFromWorkspace(this.workspaceId, this.pusherSubscriptionId);
+			}
 		},
 	};
 </script>
