@@ -65,6 +65,7 @@
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -241,9 +242,23 @@
 	const isLoading = ref(false);
 	const checkpointUpdateKey = ref(0);
 	const isCheckpointsExpanded = ref(false);
+	const checkpointsModalId = `checkpoints-${Date.now()}-${Math.random()}`;
+	const { registerModal, unregisterModal } = useModalEscHandler();
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
+
+	watch(isCheckpointsExpanded, (isOpen: boolean) => {
+		if (isOpen) {
+			store.commit('pushModalToStack', checkpointsModalId);
+			registerModal(checkpointsModalId, () => {
+				isCheckpointsExpanded.value = false;
+			});
+		} else {
+			unregisterModal(checkpointsModalId);
+			store.commit('removeModalFromStack', checkpointsModalId);
+		}
+	});
 	const permissionDenied = ref(false);
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
@@ -606,6 +621,8 @@
 	});
 	
 	onUnmounted(() => {
+		unregisterModal(checkpointsModalId);
+		store.commit('removeModalFromStack', checkpointsModalId);
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
 			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
 		}
