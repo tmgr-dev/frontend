@@ -9,9 +9,18 @@
 @import 'extensions';
 @import 'transitions';
 
+html {
+	background-color: #fff;
+	
+	&.dark {
+		background-color: #111827;
+	}
+}
+
 body {
 	overflow-x: hidden;
 	font-family: 'CodecPro', sans-serif;
+	background-color: inherit;
 
 	&::-webkit-scrollbar {
 		width: 7px;

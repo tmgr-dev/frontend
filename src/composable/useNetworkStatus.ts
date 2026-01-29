@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, getCurrentInstance } from 'vue';
 import type { Ref } from 'vue';
 
 export interface NetworkStatus {
@@ -124,42 +124,45 @@ export function useNetworkStatus(): UseNetworkStatusReturn {
     offlineCallbacks.push(callback);
   };
 
-  // Setup event listeners
-  onMounted(() => {
-    // Basic online/offline events
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    // Connection change events (mobile networks)
-    const connection = (navigator as any).connection || 
-                      (navigator as any).mozConnection || 
-                      (navigator as any).webkitConnection;
-    
-    if (connection) {
-      connection.addEventListener('change', handleConnectionChange);
-    }
-    
-    // Initial status update
-    updateNetworkStatus();
-  });
+  // Setup and cleanup event listeners (only if called within component setup)
+  if (getCurrentInstance()) {
+    onMounted(() => {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      
+      const connection = (navigator as any).connection || 
+                        (navigator as any).mozConnection || 
+                        (navigator as any).webkitConnection;
+      
+      if (connection) {
+        connection.addEventListener('change', handleConnectionChange);
+      }
+      
+      updateNetworkStatus();
+    });
 
-  // Cleanup event listeners
-  onUnmounted(() => {
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
-    
-    const connection = (navigator as any).connection || 
-                      (navigator as any).mozConnection || 
-                      (navigator as any).webkitConnection;
-    
-    if (connection) {
-      connection.removeEventListener('change', handleConnectionChange);
+    onUnmounted(() => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      
+      const connection = (navigator as any).connection || 
+                        (navigator as any).mozConnection || 
+                        (navigator as any).webkitConnection;
+      
+      if (connection) {
+        connection.removeEventListener('change', handleConnectionChange);
+      }
+      
+      onlineCallbacks.length = 0;
+      offlineCallbacks.length = 0;
+    });
+  } else {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      updateNetworkStatus();
     }
-    
-    // Clear callbacks
-    onlineCallbacks.length = 0;
-    offlineCallbacks.length = 0;
-  });
+  }
 
   return {
     isOnline,

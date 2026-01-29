@@ -1,23 +1,26 @@
-import dateFormat from 'dateformat';
-/*
-	#Pattern rules:
+import { format as dateFnsFormat } from 'date-fns';
 
-	## Index:
-	{index#[type of index]}
-	[type of index]:
-		1. workspace = Index will generated based on number of tasks in the workspace
-		2. category = Index will generated based on number of tasks in the category
+const formatMappings: Record<string, string> = {
+	'yyyy': 'yyyy',
+	'yy': 'yy',
+	'mm': 'MM',
+	'dd': 'dd',
+	'hh': 'HH',
+	'h': 'H',
+	'ii': 'mm',
+	'i': 'm',
+	'ss': 'ss',
+	's': 's',
+};
 
-	## Date Time:
-	{datetime#[]}
-		Format of date time pattern is the ISO 8601(https://www.w3.org/TR/NOTE-datetime)
-		ex.: YYYY-MM-DD
-	_____________________
-	Example:
+const convertFormat = (legacyFormat: string): string => {
+	let converted = legacyFormat.toLowerCase();
+	Object.entries(formatMappings).forEach(([legacy, dateFns]) => {
+		converted = converted.replace(new RegExp(legacy, 'g'), dateFns);
+	});
+	return converted;
+};
 
-	Input: "TMGR-{index#workspace}: {dts#H:S:i#dte}"
-	Output: "TMGR-1: 22:12:01"
- */
 export const titlePatternHandler = (
 	rawString: string,
 	indexes: Map<string, number> = new Map([
@@ -40,7 +43,7 @@ export const titlePatternHandler = (
 			.forEach((format) => {
 				datetimeMap.set(
 					`{dts#${format}#dte}`,
-					dateFormat(new Date(), format.toLowerCase()),
+					dateFnsFormat(new Date(), convertFormat(format)),
 				);
 			});
 		datetimeMap.forEach((v, k) => {

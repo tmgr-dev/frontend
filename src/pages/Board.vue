@@ -1,7 +1,6 @@
 <template>
-	<Teleport to="title">{{ title }}</Teleport>
-
-	<FeatureGate
+	<div>
+		<FeatureGate
 		feature-key="board"
 		title="Kanban Board"
 		description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
@@ -124,7 +123,10 @@
 					</div>
 
 					<div class="board-wrapper">
-					<div class="board-container">
+					<!-- Loading skeleton -->
+					<BoardSkeleton v-if="!tasksLoaded" :columns-count="columns.length || 4" />
+
+					<div v-show="tasksLoaded" class="board-container">
 						<div class="w-fit" ref="cont1">
 							<Draggable
 								ref="cont2"
@@ -558,7 +560,8 @@
 		</template>
 	</BaseLayout>
 
-	</FeatureGate>
+		</FeatureGate>
+	</div>
 </template>
 <script>
 	import Modal from '@/components/Modal.vue';
@@ -600,7 +603,9 @@
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
+	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
 	import { SquareKanban } from 'lucide-vue-next';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Board',
@@ -623,7 +628,12 @@
 			WorkspaceUsers,
 			FeatureGate,
 			BoardPreview,
-			SquareKanban,
+		},
+
+		setup() {
+			return {
+				SquareKanban,
+			};
 		},
 
 		data: () => ({
@@ -1318,6 +1328,8 @@
 			}
 		},
 		async mounted() {
+			setDocumentTitle(this.title);
+			
 			const categoriesData = await getCategories();
 			this.categories = [
 				{ id: 0, title: 'All categories' },

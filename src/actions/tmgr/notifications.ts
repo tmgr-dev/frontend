@@ -1,4 +1,6 @@
 import $axios from '@/plugins/axios';
+import { requestCache } from '@/utils/requestCache';
+import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 export interface Notification {
 	id: number;
@@ -67,17 +69,32 @@ export const getNotifications = async (
 };
 
 export const getUnreadCount = async (): Promise<number> => {
-	const response = await $axios.get('/notifications/unread-count');
-	return response.data.count;
+	const cacheKey = 'notifications-unread-count';
+	
+	return requestDeduplicator.deduplicate(cacheKey, async () => {
+		const cached = requestCache.get<number>(cacheKey);
+		if (cached !== null) {
+			return cached;
+		}
+
+		const response = await $axios.get('/notifications/unread-count');
+		const count = response.data.count;
+		
+		requestCache.set(cacheKey, count, 10000);
+		
+		return count;
+	});
 };
 
 export const markAsRead = async (id: number): Promise<Notification> => {
 	const response = await $axios.post(`/notifications/${id}/read`);
+	requestCache.invalidate('notifications-unread-count');
 	return response.data.notification;
 };
 
 export const markAllAsRead = async (): Promise<number> => {
 	const response = await $axios.post('/notifications/read-all');
+	requestCache.invalidate('notifications-unread-count');
 	return response.data.count;
 };
 

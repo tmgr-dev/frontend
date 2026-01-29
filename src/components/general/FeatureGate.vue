@@ -1,7 +1,14 @@
 <template>
 	<div class="relative">
+		<!-- Loading state: show nothing until feature toggles are loaded -->
+		<template v-if="!isTogglesLoaded">
+			<div class="min-h-96 flex items-center justify-center">
+				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
+			</div>
+		</template>
+
 		<!-- Feature enabled: show actual content -->
-		<template v-if="isEnabled">
+		<template v-else-if="isEnabled">
 			<slot />
 		</template>
 
@@ -63,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type Component } from 'vue';
 import { useStore } from 'vuex';
 import { useFeatureToggles } from '@/composable/useFeatureToggles';
 import { Lock } from 'lucide-vue-next';
@@ -72,13 +79,13 @@ interface Props {
 	featureKey: string;
 	title: string;
 	description: string;
-	icon?: object;
+	icon?: Component;
 }
 
 const props = defineProps<Props>();
 
 const store = useStore();
-const { isFeatureEnabled } = useFeatureToggles();
+const { isFeatureEnabled, isLoaded: isTogglesLoaded } = useFeatureToggles();
 const isLoading = ref(false);
 
 const iconComponent = computed(() => props.icon || Lock);

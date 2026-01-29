@@ -18,7 +18,6 @@
 	import { computed, ref } from 'vue';
 
 	interface Props {
-		modelValue: string | number;
 		entities: any[];
 		labelKey: string;
 		valueKey: string;
@@ -28,7 +27,7 @@
 	}
 
 	const props = defineProps<Props>();
-	const modelValue = defineModel<number>();
+	const modelValue = defineModel<string | number | null>();
 	const emit = defineEmits(['update:modelValue']);
 	const openCombobox = ref(false);
 	const searchValue = ref('');
@@ -41,6 +40,14 @@
 				.includes(searchValue.value.toLowerCase()),
 		);
 	});
+
+	const handleSelect = (e: { detail: { value: string | number | null } }) => {
+		if (e.detail.value) {
+			modelValue.value = e.detail.value;
+			searchValue.value = '';
+		}
+		openCombobox.value = false;
+	};
 </script>
 
 <template>
@@ -83,15 +90,7 @@
 							v-for="entity in filteredEntities"
 							:key="entity.id"
 							:value="entity[valueKey]"
-							@select="
-								(e) => {
-									if (e.detail.value) {
-										modelValue = e.detail.value;
-										searchValue = '';
-									}
-									openCombobox = false;
-								}
-							"
+							@select="handleSelect"
 							class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
 						>
 							{{ entity[labelKey] }}

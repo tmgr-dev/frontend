@@ -1,7 +1,6 @@
 <template>
-	<teleport to="title"> Settings </teleport>
-
-	<BaseLayout>
+	<div>
+		<BaseLayout>
 		<template #body>
 			<div class="w-full md:flex">
 				<div class="md:w-full">
@@ -49,9 +48,9 @@
 						v-if="isWorkspaceSettings"
 						class="flex flex-col gap-3 p-4 md:w-1/2"
 					>
-						<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
-						<div>
-							<div v-for="(setting, index) in availableSettings">
+					<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
+					<div>
+						<div v-for="(setting, index) in availableSettings" :key="setting.id">
 								<label
 									:for="`setting-${setting.id}`"
 									class="mb-2 block text-sm font-bold text-gray-700"
@@ -274,7 +273,8 @@
 				</confirm>
 			</Transition>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>
@@ -305,6 +305,7 @@
 		BreadcrumbSeparator,
 	} from '@/components/ui/breadcrumb';
 	import store from '@/store/index.js';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Settings',
@@ -352,6 +353,7 @@
 			},
 		},
 		async mounted() {
+			setDocumentTitle('Settings');
 			this.user = await getUser();
 			await this.loadSettings();
 		},

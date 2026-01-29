@@ -1,5 +1,6 @@
 import { AxiosRequestConfig } from 'axios';
 import $axios from '@/plugins/axios';
+import { requestCache } from '@/utils/requestCache';
 
 export interface Category {
 	children_count: number;
@@ -40,10 +41,23 @@ export interface PaginatedResponse<T> {
 	};
 }
 
-export const getCategories = async (): Promise<Category[]> => {
+export const getCategories = async (useCache: boolean = true): Promise<Category[]> => {
+	const cacheKey = 'categories';
+	
+	if (useCache) {
+		const cached = requestCache.get<Category[]>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get('project_categories?all');
+
+	if (useCache) {
+		requestCache.set(cacheKey, data, 300000);
+	}
 
 	return data;
 };
@@ -86,6 +100,8 @@ export const createCategory = async (payload: Category) => {
 		data: { data },
 	} = await $axios.post('project_categories', payload);
 
+	requestCache.invalidate('categories');
+
 	return data;
 };
 
@@ -93,6 +109,8 @@ export const updateCategory = async (categoryId: number, payload: Category) => {
 	const {
 		data: { data },
 	} = await $axios.put(`project_categories/${categoryId}`, payload);
+
+	requestCache.invalidate('categories');
 
 	return data;
 };
@@ -102,6 +120,8 @@ export const deleteCategory = async (categoryId: number) => {
 		data: { data },
 	} = await $axios.delete(`project_categories/${categoryId}`);
 
+	requestCache.invalidate('categories');
+
 	return data.deleted_at;
 };
 
@@ -109,6 +129,8 @@ export const restoreCategory = async (categoryId: number) => {
 	const {
 		data: { data },
 	} = await $axios.post(`project_categories/${categoryId}/restore`);
+
+	requestCache.invalidate('categories');
 
 	return data.deleted_at;
 };

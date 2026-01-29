@@ -36,7 +36,7 @@
 			v-if="showDropdownButtons"
 			ref="dropdown"
 		>
-			<template v-for="(action, i) in actions">
+			<template v-for="(action, i) in actions" :key="i">
 				<button
 					:class="`w-full px-4 ${buttonClass}`"
 					type="button"

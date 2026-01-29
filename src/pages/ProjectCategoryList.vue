@@ -16,6 +16,7 @@
 	import store from '@/store';
 	import { Button } from '@/components/ui/button';
 	import EmptyState from '@/components/EmptyState.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import {
 		ClipboardListIcon,
 		CircleUserRoundIcon,
@@ -301,6 +302,11 @@
 		return currentWorkspace?.code;
 	};
 
+	watch(category, (newCategory) => {
+		const title = newCategory ? newCategory.title : 'Categories';
+		setDocumentTitle(title);
+	}, { immediate: true });
+
 	onMounted(async () => {
 		try {
 			workspaceCode.value = route.params.workspace_code || store.state.user?.workspace_code;
@@ -337,12 +343,10 @@
 </script>
 
 <template>
-	<teleport to="title">
-		{{ category ? category.title : 'Categories' }}
-	</teleport>
-	<ForbiddenAccess v-if="permissionDenied" />
+	<div>
+		<ForbiddenAccess v-if="permissionDenied" />
 
-	<FeatureGate
+		<FeatureGate
 		v-else
 		feature-key="categories"
 		title="Project Categories"
@@ -410,7 +414,7 @@
 		<template #body>
 			<div
 				v-if="isCategoriesFirstLoading"
-				class="mt-8 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
+				class="mt-8 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3 min-h-48"
 			>
 				<Skeleton class="h-24 w-full" />
 				<Skeleton class="hidden h-24 w-full lg:block" />
@@ -601,7 +605,7 @@
 					</div>
 				</div>
 
-				<div v-if="isTasksFirstLoading" class="mt-6 space-y-2 px-2">
+				<div v-if="isTasksFirstLoading" class="mt-6 space-y-2 px-2 min-h-96">
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />
@@ -627,5 +631,6 @@
 		</template>
 	</BaseLayout>
 
-	</FeatureGate>
+		</FeatureGate>
+	</div>
 </template>

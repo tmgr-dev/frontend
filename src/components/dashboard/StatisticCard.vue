@@ -113,9 +113,10 @@ const trendIcon = computed(() => {
   return props.trend?.isPositive ? ArrowTrendingUpIcon : ArrowTrendingDownIcon;
 });
 
+// CHANGES: Added min-h-28 to prevent CLS
 const cardClasses = computed(() => {
   return cn(
-    'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4',
+    'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 min-h-28',
     'hover:shadow-md dark:hover:shadow-lg transition-all duration-200',
     'cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2',
     'focus:ring-blue-500 dark:focus:ring-blue-400',

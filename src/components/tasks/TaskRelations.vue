@@ -188,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, h } from 'vue';
+import { ref, onMounted, onUnmounted, computed, h } from 'vue';
 import Confirm from '@/components/general/Confirm.vue';
 import {
 	getTaskRelationTypes,
@@ -401,6 +401,12 @@ const cancelAdding = () => {
 
 onMounted(() => {
 	loadRelationTypes();
+});
+
+onUnmounted(() => {
+	if (searchTimeout) {
+		clearTimeout(searchTimeout);
+	}
 });
 </script>
 
