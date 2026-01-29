@@ -1,11 +1,3 @@
-import * as PusherPushNotifications from '@pusher/push-notifications-web';
+import ntfyClient from './ntfy-client';
 
-let client = {};
-
-if ('PushManager' in window) {
-	client = new PusherPushNotifications.Client({
-		instanceId: import.meta.env.VITE_PUSHER_BEAMS_INSTANCE_ID,
-	});
-}
-
-export default client;
+export default ntfyClient;

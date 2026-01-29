@@ -28,6 +28,7 @@
 	import { getUser } from '@/actions/tmgr/user';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { usePusher } from '@/composable/usePusher';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -52,6 +53,10 @@
 	const showCategorySelect = ref(false);
 	const workspaceUsers = ref<Array<{ id: number; name: string }>>([]);
 	const workspaceId = ref<number>(0);
+	const newCommentTaskIds = ref<Set<number>>(new Set());
+	const pusherSubscriptionId = ref<string>('');
+	
+	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
 	const pagination = ref<PaginationMeta>({
 		current_page: Number(route.query.page) || 1,
 		per_page: Number(route.query.per_page) || 10,
@@ -143,6 +148,33 @@
 			if (workspaceSetting) {
 				workspaceId.value = +workspaceSetting.value;
 				workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
+				
+				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
+					onTaskUpdated: (task, action) => {
+						if (action === 'created') {
+							const matchesStatus = !status.value || task.status === status.value;
+							const exists = tasks.value.some(t => t.id === task.id);
+							if (matchesStatus && !exists) {
+								tasks.value.unshift(task);
+								pagination.value.total++;
+							}
+						} else if (action === 'updated') {
+							const index = tasks.value.findIndex(t => t.id === task.id);
+							if (index !== -1) {
+								tasks.value.splice(index, 1, task);
+							}
+						} else if (action === 'deleted') {
+							tasks.value = tasks.value.filter(t => t.id !== task.id);
+							pagination.value.total = Math.max(0, pagination.value.total - 1);
+						}
+					},
+					onCommentAdded: (comment) => {
+						const taskExists = tasks.value.some(t => t.id === comment.task_id);
+						if (taskExists) {
+							newCommentTaskIds.value.add(comment.task_id);
+						}
+					}
+				});
 			}
 
 			await loadTasks();
@@ -186,6 +218,9 @@
 
 	onUnmounted(() => {
 		window.removeEventListener('keydown', handleKeyDown);
+		if (workspaceId.value && pusherSubscriptionId.value) {
+			unsubscribeHandlerFromWorkspace(workspaceId.value, pusherSubscriptionId.value);
+		}
 	});
 
 	watch(searchText, () => {
