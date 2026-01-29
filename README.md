@@ -70,3 +70,5 @@ First of all you have to create .env file
 
     # Example:
     VITE_API_BASE_URL=http://taskmanager.localhost/api/
+
+# TO BE CONTINUED...
