@@ -146,10 +146,11 @@ export const optimizeWithAI = async (text: string) => {
 	return data;
 };
 
-export const updateTask = async (taskId: number, task: Task) => {
+export const updateTask = async (taskId: number, task: Task, sourceInstanceId?: string) => {
+	const config = sourceInstanceId ? { headers: { 'X-Source-Instance-Id': sourceInstanceId } } : {};
 	const {
 		data: { data },
-	} = await $axios.put(`tasks/${taskId}`, task);
+	} = await $axios.put(`tasks/${taskId}`, task, config);
 
 	requestCache.invalidate(`task-${taskId}`);
 	requestCache.invalidate(/^tasks-status-/);

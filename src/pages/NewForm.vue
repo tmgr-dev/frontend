@@ -16,10 +16,12 @@
 		nextTick,
 		onBeforeMount,
 		onMounted,
+		onUnmounted,
 		ref,
 		toRef,
 		watch,
 	} from 'vue';
+	import { usePusher } from '@/composable/usePusher';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		createTask as createTaskAction,
@@ -162,6 +164,35 @@
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const { isFeatureEnabled } = useFeatureToggles();
+	
+	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
+	const hasExternalUpdate = ref(false);
+	const externalUpdateData = ref<Task | null>(null);
+	const subscribedWorkspaceId = ref<number | null>(null);
+	const pusherSubscriptionId = ref<string>('');
+	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
+		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'expired_at', 'approximately_time', 'checkpoints'];
+		for (const field of fieldsToCompare) {
+			const currentVal = current[field as keyof Task];
+			const incomingVal = incoming[field];
+			
+			let isDifferent = false;
+			if (typeof currentVal === 'object' || typeof incomingVal === 'object') {
+				isDifferent = JSON.stringify(currentVal) !== JSON.stringify(incomingVal);
+			} else {
+				isDifferent = String(currentVal ?? '') !== String(incomingVal ?? '');
+			}
+			
+			if (isDifferent) {
+				console.log(`[NewForm] Field "${field}" differs:`, { current: currentVal, incoming: incomingVal });
+				return true;
+			}
+		}
+		console.log('[NewForm] No meaningful changes detected');
+		return false;
+	};
 
 	const form = ref<Task>({
 		title: '',
@@ -524,7 +555,71 @@
 				});
 			}, 350);
 		}
+		
+		const workspaceSetting = store.state.user?.settings?.find(
+			(setting: any) => setting.key === 'current_workspace'
+		);
+		if (workspaceSetting) {
+			subscribedWorkspaceId.value = +workspaceSetting.value;
+			pusherSubscriptionId.value = subscribeToWorkspace(subscribedWorkspaceId.value, {
+				onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
+					console.log('[NewForm] onTaskUpdated received:', { taskId: task.id, myTaskId: taskId.value, action, sourceInstanceId, myInstanceId: instanceId });
+					if (task.id !== taskId.value) return;
+					if (sourceInstanceId === instanceId) return;
+					
+					if (action === 'updated') {
+						const hasMeaningfulChanges = hasTaskMeaningfulChanges(form.value, task);
+						console.log('[NewForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
+							currentDescription: form.value.description?.substring?.(0, 50),
+							incomingDescription: task.description?.substring?.(0, 50),
+							currentTitle: form.value.title,
+							incomingTitle: task.title
+						});
+						if (hasMeaningfulChanges) {
+							hasExternalUpdate.value = true;
+							externalUpdateData.value = task;
+						}
+					} else if (action === 'deleted') {
+						emit('close');
+					}
+				},
+				onCommentAdded: (comment) => {
+					if (comment.task_id === taskId.value) {
+						taskCommentsRef.value?.loadComments?.();
+					}
+				},
+				onCommentUpdated: (comment) => {
+					if (comment.task_id === taskId.value) {
+						taskCommentsRef.value?.loadComments?.();
+					}
+				},
+				onCommentDeleted: (comment) => {
+					if (comment.task_id === taskId.value) {
+						taskCommentsRef.value?.loadComments?.();
+					}
+				}
+			});
+		}
 	});
+	
+	onUnmounted(() => {
+		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
+			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
+		}
+	});
+	
+	const applyExternalUpdate = () => {
+		if (externalUpdateData.value) {
+			Object.assign(form.value, externalUpdateData.value);
+			hasExternalUpdate.value = false;
+			externalUpdateData.value = null;
+		}
+	};
+	
+	const dismissExternalUpdate = () => {
+		hasExternalUpdate.value = false;
+		externalUpdateData.value = null;
+	};
 
 	const reloadTask = async () => {
 		if (!taskId.value) return;
@@ -759,7 +854,7 @@
 			}
 
 			const id = taskId.value || (form.value.id as number);
-			form.value = await updateTask(id, form.value as Task);
+			form.value = await updateTask(id, form.value as Task, instanceId);
 			store.commit('incrementReloadTasksKey');
 
 			// Ensure no auto-save will happen after this manual save
@@ -1210,6 +1305,35 @@
 				<main
 					class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4"
 				>
+					<!-- External Update Notification -->
+					<Transition name="fade">
+						<div
+							v-if="hasExternalUpdate"
+							class="flex items-center justify-between rounded-lg border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-600 dark:bg-yellow-900/20"
+						>
+							<div class="flex items-center gap-2">
+								<span class="material-icons text-yellow-500">sync</span>
+								<span class="text-sm text-yellow-700 dark:text-yellow-300">
+									This task was updated by another user
+								</span>
+							</div>
+							<div class="flex gap-2">
+								<button
+									@click="applyExternalUpdate"
+									class="rounded bg-yellow-500 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-600"
+								>
+									Apply Changes
+								</button>
+								<button
+									@click="dismissExternalUpdate"
+									class="rounded border border-yellow-400 px-3 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-100 dark:text-yellow-300 dark:hover:bg-yellow-900"
+								>
+									Dismiss
+								</button>
+							</div>
+						</div>
+					</Transition>
+					
 					<div class="relative">
 						<textarea
 							v-model="form.title"
