@@ -7,3 +7,12 @@
 		</div>
 	</div>
 </template>
+
+<script setup>
+import { onMounted } from 'vue';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
+
+onMounted(() => {
+	setDocumentTitle('Page Not Found');
+});
+</script>

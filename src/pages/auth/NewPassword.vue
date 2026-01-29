@@ -1,7 +1,6 @@
 <template>
-	<teleport to="title"> New Password </teleport>
-
-	<AuthBase>
+	<div>
+		<AuthBase>
 		<template #title>New Password</template>
 
 		<template #body>
@@ -67,7 +66,8 @@
 				Login
 			</router-link>
 		</template>
-	</AuthBase>
+		</AuthBase>
+	</div>
 </template>
 
 <script setup lang="ts">
@@ -77,6 +77,7 @@
 	import { AxiosError } from 'axios';
 	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import TextField from '@/components/general/TextField.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const router = useRouter();
 
@@ -90,6 +91,7 @@
 	const token = ref('');
 
 	onBeforeMount(() => {
+		setDocumentTitle('New Password');
 		const params = new URLSearchParams(location.search);
 		token.value = params.get('token') || '';
 

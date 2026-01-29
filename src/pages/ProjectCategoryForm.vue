@@ -67,10 +67,10 @@
 						/>
 					</div>
 
-					<div v-if="!isCreate">
-						<SettingsLoader v-if="isLoading" class="mt-5" />
+				<div v-if="!isCreate">
+					<SettingsLoader v-if="isLoading" class="mt-5" />
 
-						<div v-for="(setting, index) in availableSettings">
+					<div v-for="(setting, index) in availableSettings" :key="setting.id">
 							<label
 								:for="`setting-${setting.id}`"
 								class="mb-2 block text-sm font-bold text-gray-700"
@@ -193,6 +193,7 @@
 	import TimeField from '@/components/general/TimeField.vue';
 	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
 	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -237,6 +238,7 @@
 			},
 		},
 		async mounted() {
+			setDocumentTitle(this.h1);
 			this.setFormTexts();
 
 			if (!this.isCreate) {

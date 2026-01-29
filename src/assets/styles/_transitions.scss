@@ -10,15 +10,10 @@
 
 .fade-fast-enter-active,
 .fade-fast-leave-active {
-	transition-duration: 0.5s;
+	transition-duration: 0.25s;
 	transition-property: height, opacity;
 	transition-timing-function: ease;
 	overflow: hidden;
-}
-
-.fade-fast-enter-active,
-.fade-fast-leave-active {
-	transition-duration: 0.25s;
 }
 
 .fade-fast-enter-from,

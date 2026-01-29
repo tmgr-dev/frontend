@@ -33,7 +33,7 @@ export interface UseErrorHandlerReturn {
   setError: (error: ActionError | Error | string) => void;
   clearError: () => void;
   retry: (retryFn: () => Promise<void>) => Promise<boolean>;
-  handleError: (error: any, context?: string) => ActionError;
+  handleError: (error: unknown, context?: string) => ActionError;
   
   // Utilities
   isNetworkError: (error: ActionError) => boolean;
@@ -141,7 +141,7 @@ export function useErrorHandler(config: RetryConfig = {}): UseErrorHandlerReturn
   };
 
   // Error handling functions
-  const normalizeError = (error: any): ActionError => {
+  const normalizeError = (error: unknown): ActionError => {
     if (typeof error === 'string') {
       return {
         message: error,
@@ -162,14 +162,15 @@ export function useErrorHandler(config: RetryConfig = {}): UseErrorHandlerReturn
     }
     
     if (error && typeof error === 'object') {
+      const errObj = error as Record<string, unknown>;
       return {
-        message: error.message || 'Unknown error',
-        type: error.type || 'unknown',
-        timestamp: error.timestamp || new Date().toISOString(),
-        recoverable: error.recoverable !== false,
-        status: error.status,
-        details: error.details,
-        stack: error.stack
+        message: (errObj.message as string) || 'Unknown error',
+        type: (errObj.type as string) || 'unknown',
+        timestamp: (errObj.timestamp as string) || new Date().toISOString(),
+        recoverable: errObj.recoverable !== false,
+        status: errObj.status as number | undefined,
+        details: errObj.details as Record<string, unknown> | undefined,
+        stack: errObj.stack as string | undefined
       };
     }
     
@@ -203,7 +204,7 @@ export function useErrorHandler(config: RetryConfig = {}): UseErrorHandlerReturn
     };
   };
 
-  const handleError = (error: any, context?: string): ActionError => {
+  const handleError = (error: unknown, context?: string): ActionError => {
     const normalizedError = normalizeError(error);
     
     // Add context if provided

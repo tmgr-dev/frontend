@@ -1,7 +1,6 @@
 <template>
-	<teleport to="title">{{ form.title || h1.main }}&nbsp;</teleport>
-
-	<div class="items-between text-center sm:flex">
+	<div>
+		<div class="items-between text-center sm:flex">
 		<div ref="editing_task_category" v-if="!isCreatingTask">
 			<!--	Settings modal		-->
 			<Transition name="bounce-right-fade">
@@ -42,11 +41,12 @@
 									/>
 								</label>
 
-								<div
-									v-for="(setting, index) in availableSettings"
-									id="settings"
-									class="mt-4"
-								>
+							<div
+								v-for="(setting, index) in availableSettings"
+								:key="setting.id"
+								id="settings"
+								class="mt-4"
+							>
 									<label
 										:for="`setting-${setting.id}`"
 										class="mb-2 block text-left text-sm font-bold"
@@ -84,11 +84,12 @@
 										</span>
 									</div>
 
-									<div
-										v-if="form.assignees && form.assignees.length"
-										v-for="assignee in form.assignees"
-										class="mt-2 flex gap-2"
-									>
+								<div
+									v-if="form.assignees && form.assignees.length"
+									v-for="assignee in form.assignees"
+									:key="assignee.id"
+									class="mt-2 flex gap-2"
+								>
 										<div class="flex items-center gap-1.5">
 											{{ assignee.name }}
 
@@ -455,7 +456,8 @@
 			@onOk="confirm.action()"
 			@onCancel="confirm = undefined"
 		/>
-	</Transition>
+		</Transition>
+	</div>
 </template>
 
 <script>
@@ -478,7 +480,7 @@
 	} from '@/actions/tmgr/tasks';
 	import {
 		getTaskSettings,
-		updateOneTaskSettings,
+		updateTaskSettings,
 	} from '@/actions/tmgr/settings';
 	import { getCategories, getCategory } from '@/actions/tmgr/categories';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
@@ -621,9 +623,10 @@
 				await this.loadCategories();
 			}
 		},
-		unmounted() {
-			this.$store.commit('closeTaskModal');
-		},
+	unmounted() {
+		this.removeDispatchedAutoSave();
+		this.$store.commit('closeTaskModal');
+	},
 		computed: {
 			store() {
 				return store;
@@ -773,7 +776,7 @@
 				return settings.find((setting) => setting.id === id) || defaultResult;
 			},
 			async saveSettings(settings) {
-				const data = await updateOneTaskSettings(this.form.id, settings);
+				const data = await updateTaskSettings(this.form.id, settings);
 				this.initSettings(this.availableSettings, data.settings);
 			},
 			async handleAssign(userId) {

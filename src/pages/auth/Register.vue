@@ -188,6 +188,7 @@
 	import { Register, register as registerAction } from '@/actions/tmgr/auth';
 	import { AxiosError } from 'axios';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
@@ -263,4 +264,8 @@
 			import.meta.env.VITE_API_BASE_URL
 		}auth/login/${platform}`;
 	}
+
+	onMounted(() => {
+		setDocumentTitle('Register');
+	});
 </script>

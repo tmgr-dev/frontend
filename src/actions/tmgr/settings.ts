@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import { requestCache } from '@/utils/requestCache';
 
 export interface FormSetting {
 	id: number;
@@ -16,29 +17,56 @@ export interface Setting extends Omit<FormSetting, 'value'> {
 	variable_type: 'string' | 'integer';
 }
 
-export const getTaskSettings = async () => {
+export const getTaskSettings = async (useCache: boolean = true) => {
+	const cacheKey = 'task-settings';
+	
+	if (useCache) {
+		const cached = requestCache.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get('tasks/settings');
 
+	requestCache.set(cacheKey, data, 300000);
+
 	return data;
 };
 
-export const updateOneTaskSettings = async (
+export interface SettingPayload {
+	id: number;
+	value: string | number;
+}
+
+export const updateTaskSettings = async (
 	taskId: number,
-	payload: FormSetting,
+	settings: SettingPayload[],
 ) => {
 	const {
 		data: { data },
-	} = await $axios.put(`/tasks/${taskId}/settings`, payload);
+	} = await $axios.put(`/tasks/${taskId}/settings`, settings);
 
 	return data;
 };
 
-export const getCategorySettings = async () => {
+export const getCategorySettings = async (useCache: boolean = true) => {
+	const cacheKey = 'category-settings';
+	
+	if (useCache) {
+		const cached = requestCache.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get('project_categories/settings');
+
+	requestCache.set(cacheKey, data, 300000);
 
 	return data;
 };

@@ -1,7 +1,6 @@
 <template>
-	<teleport to="title">Profile</teleport>
-
-	<div class="flex max-w-lg flex-col gap-3">
+	<div>
+		<div class="flex max-w-lg flex-col gap-3">
 		<TextField
 			v-model="user.name"
 			:errors="errors.name"
@@ -33,6 +32,7 @@
 				Save
 			</button>
 		</div>
+		</div>
 	</div>
 </template>
 
@@ -40,6 +40,7 @@
 	import Button from '@/components/general/Button.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import { getUser, updateUser } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Profile',
@@ -56,6 +57,7 @@
 			errors: {},
 		}),
 		async mounted() {
+			setDocumentTitle('Profile');
 			// @todo try to get from store this data first
 			this.user = await getUser(); // inside we put response to store. @todo think how to reorganize it or don't care
 		},

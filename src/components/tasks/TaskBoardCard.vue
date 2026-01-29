@@ -179,7 +179,7 @@
 			{{ truncateTitle(task.title) }}
 		</a>
 
-		<div class="mt-2">
+		<div v-if="task.category" class="mt-2">
 			<CategoryBadge
 				class="flex-row-reverse"
 				:category="task.category"
@@ -389,31 +389,23 @@
 			},
 		},
 		watch: {
-			task: {
-				handler(newTask) {
-					this.currentDisplayTime = newTask.common_time || 0;
-					if (newTask.start_time) {
-						if (!this.timerInterval) {
-							this.startTimer();
-						}
-					} else {
+			'task.start_time': {
+				handler(newVal, oldVal) {
+					if (newVal && !this.timerInterval) {
+						this.startTimer();
+					} else if (!newVal) {
 						this.stopTimer();
 					}
 				},
-				deep: true,
 				immediate: true,
 			},
-			'task.start_time'(newVal, oldVal) {
-				if (newVal && !oldVal) {
-					this.startTimer();
-				} else if (!newVal && oldVal) {
-					this.stopTimer();
-				}
-			},
-			'task.common_time'() {
-				if (!this.task.start_time) {
-					this.currentDisplayTime = this.task.common_time || 0;
-				}
+			'task.common_time': {
+				handler(newVal) {
+					if (!this.task.start_time) {
+						this.currentDisplayTime = newVal || 0;
+					}
+				},
+				immediate: true,
 			},
 			showAssigneePopover(newVal) {
 				if (newVal) {

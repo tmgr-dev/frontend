@@ -55,11 +55,16 @@
 						<!-- Task List -->
 						<div
 							:class="[
-								'transition-all duration-300 ease-in-out',
+								'transition-all duration-300 ease-in-out min-h-64',
 								selectedTask ? 'w-1/2' : 'w-full'
 							]"
 						>
-							<TransitionGroup name="task-list" tag="ul" class="">
+							<!-- Loading skeleton -->
+							<div v-if="isLoading" class="space-y-2 mx-2">
+								<SkeletonListItem v-for="n in 5" :key="n" class="rounded-xl border dark:border-0 dark:bg-gray-800" :show-avatar="false" />
+							</div>
+
+							<TransitionGroup v-else name="task-list" tag="ul" class="">
 								<li
 									v-for="task in tasks"
 									:key="task.id"
@@ -171,7 +176,9 @@ import { computed, onMounted, ref } from 'vue';
 import TextField from '@/components/general/TextField.vue';
 import Button from '@/components/general/Button.vue';
 import FeatureGate from '@/components/general/FeatureGate.vue';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
+import { SkeletonListItem } from '@/components/ui/skeleton';
 import { CalendarCheck } from 'lucide-vue-next';
 import {
 	createDailyTask,
@@ -205,19 +212,26 @@ const allTasksCount = ref<number>(0);
 const archivedTasksCount = ref<number>(0);
 const form = ref<Task>({ title: '', status: 'backlog' } as Task);
 const selectedTask = ref<ExtendedTask | null>(null);
+const isLoading = ref<boolean>(true);
 
 // Computed
 const completedCount = ref<number>(0);
 
 const reload = async () => {
-	tasks.value = await getDailyTasks();
-	archivedTasksCount.value = await getArchivedDailyTasksCount();
-	allTasksCount.value = await getDailyTasksCount();
-	completedCount.value = await getCompletedDailyTasksCount();
+	isLoading.value = true;
+	try {
+		tasks.value = await getDailyTasks();
+		archivedTasksCount.value = await getArchivedDailyTasksCount();
+		allTasksCount.value = await getDailyTasksCount();
+		completedCount.value = await getCompletedDailyTasksCount();
+	} finally {
+		isLoading.value = false;
+	}
 }
 
 // Lifecycle
 onMounted(async () => {
+	setDocumentTitle('Daily Routines');
 	await reload();
 });
 

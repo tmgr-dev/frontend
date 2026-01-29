@@ -11,6 +11,7 @@
 	import { Button } from '@/components/ui/button';
 	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
 	import { ExtendedTime, Time } from '@/types';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	interface Props {
 		form: Task;
@@ -113,6 +114,8 @@
 		timer.hours = newTimer.hours;
 		timer.minutes = newTimer.minutes;
 		timer.seconds = newTimer.seconds;
+		
+		setDocumentTitle(`${timer.hours}:${timer.minutes}:${timer.seconds}`);
 
 		if (!task.approximately_time || !task.start_time || isTimeOver.value) {
 			return;
@@ -144,10 +147,6 @@
 </script>
 
 <template>
-	<teleport to="title">
-		{{ timer.hours }}:{{ timer.minutes }}:{{ timer.seconds }}
-	</teleport>
-
 	<div v-if="task" :style="disabledStyles" class="flex flex-col justify-center">
 		<div class="relative flex items-center justify-center">
 			<TaskTimeInfo

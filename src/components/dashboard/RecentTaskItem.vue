@@ -70,7 +70,8 @@
               :src="assignee.avatar || generateAvatarUrl(assignee.name)"
               :alt="assignee.name"
               :title="assignee.name"
-              class="w-5 h-5 rounded-full border border-white dark:border-gray-800"
+              class="w-5 h-5 rounded-full border border-white dark:border-gray-800 object-cover"
+              loading="lazy"
             />
             <div
               v-if="task.assignees.length > 3"

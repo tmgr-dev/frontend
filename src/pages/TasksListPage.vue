@@ -27,6 +27,7 @@
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { getUser } from '@/actions/tmgr/user';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -38,7 +39,10 @@
 	const h1 = {
 		CurrentTasksList: 'Current tasks',
 		HiddenTasksList: 'Hidden tasks',
-		ArchiveTasksList: 'Archive tasks',
+		ArchiveTasksList: 'Archive',
+		ArchiveTasksListWithWorkspace: 'Archive',
+		WorkspaceTasksList: 'Tasks',
+		FallbackTasksList: 'Current tasks',
 	};
 	const tasks = ref<Task[]>([]);
 	const isLoadingActions = ref({});
@@ -128,6 +132,8 @@
 
 	onMounted(async () => {
 		try {
+			setDocumentTitle(h1[route.name] || 'Task List');
+			
 			categories.value = await getCategories();
 
 			const user = await getUser();
@@ -160,7 +166,7 @@
 					const titleWithCount = pagination.value.total !== undefined 
 						? `${baseTitle} (${pagination.value.total})` 
 						: baseTitle;
-					document.title = baseTitle;
+					setDocumentTitle(baseTitle);
 					store.commit('setMetaTitle', titleWithCount);
 				} else {
 					// Update metaTitle with task count for regular routes
@@ -189,6 +195,11 @@
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
+	watch(() => route.name, (newName) => {
+		if (newName) {
+			setDocumentTitle(h1[newName] || 'Task List');
+		}
+	});
 	watch(() => pagination.value.total, () => {
 		if (pagination.value.total !== undefined) {
 			const baseTitle = h1[route.name] || 'Task List';
@@ -276,10 +287,6 @@
 </script>
 
 <template>
-	<teleport to="title">
-		{{ h1[route.name] }}
-	</teleport>
-
 	<BaseLayout>
 		<template #action>
 			<div class="flex flex-col gap-2 px-2">
@@ -416,7 +423,7 @@
 		</template>
 
 		<template #body>
-			<div class="mt-4">
+			<div class="mt-4 min-h-96">
 				<tasks-list-component
 					v-if="tasks && tasks.length > 0 && !isLoading"
 					:tasks="tasks"

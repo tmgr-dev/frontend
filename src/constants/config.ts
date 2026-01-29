@@ -1,0 +1,36 @@
+export const APP_CONFIG = {
+	PAGINATION: {
+		DEFAULT_PER_PAGE: 10,
+		OPTIONS: [10, 25, 50] as const,
+		MAX_PER_PAGE: 100,
+	},
+	
+	EXPORT: {
+		DEFAULT_PER_HOUR_RATE: 1000,
+		SUPPORTED_FORMATS: ['csv', 'xlsx', 'jpg'] as const,
+	},
+	
+	WORKING_HOURS: {
+		PER_DAY: 8,
+		PER_WEEK: 40,
+		PER_MONTH: 160,
+		PER_YEAR: 2000,
+	},
+	
+	TASK: {
+		TITLE_MAX_LENGTH: 60,
+		DESCRIPTION_MAX_LENGTH: 10000,
+	},
+	
+	UI: {
+		SIDEBAR_WIDTH: 280,
+		MOBILE_BREAKPOINT: 768,
+		TOAST_DURATION: 3000,
+	},
+	
+	TIMER: {
+		UPDATE_INTERVAL: 1000,
+	},
+} as const;
+
+export type AppConfig = typeof APP_CONFIG;

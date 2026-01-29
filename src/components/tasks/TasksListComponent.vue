@@ -54,7 +54,8 @@
 
 			<div
 				v-for="(task, i) in tasks"
-				:key="i"
+				:key="task.id"
+				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id]]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
@@ -72,11 +73,11 @@
 				<button
 					type="button"
 					:class="{
-						'border-l-4 border-l-green-600 dark:border-l-green-500':
-							task.start_time,
-						'border-b border-b-red-500 dark:border-b-red-400':
-							isTimeExceeded(task),
-					}"
+					'border-l-4 border-l-green-600 dark:border-l-green-500':
+						task.start_time,
+					'border-b border-b-red-500 dark:border-b-red-400':
+						taskTimeExceeded[task.id],
+				}"
 					class="w-full rounded-lg shadow-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
@@ -99,17 +100,17 @@
 							</div>
 							<div class="flex-1">
 								<CategoryBadge
-									v-if="showCategoryBadges"
+									v-if="showCategoryBadges && task.category"
 									class="shrink-0 self-start"
 									:category="task.category"
 								/>
 
-								<div
-									class="text-left text-sm font-medium lg:text-lg"
-									:title="task.title?.length > 60 ? task.title : ''"
-								>
-									{{ truncateTitle(task.title) }}
-								</div>
+							<div
+								class="text-left text-sm font-medium lg:text-lg"
+								:title="task.title?.length > 60 ? task.title : ''"
+							>
+								{{ taskTitles[task.id] }}
+							</div>
 							</div>
 						</div>
 
@@ -117,22 +118,22 @@
 							v-if="isFeatureEnabled('task.countdown')"
 							class="flex items-center gap-2"
 						>
-							<span
-								:class="
-									isTimeExceeded(task)
-										? 'text-red-600 dark:text-red-400'
-										: 'text-green-600 dark:text-green-400'
-								"
-								class="material-icons text-xs sm:text-base md:text-xl"
-							>
-								alarm
-							</span>
+						<span
+							:class="
+								taskTimeExceeded[task.id]
+									? 'text-red-600 dark:text-red-400'
+									: 'text-green-600 dark:text-green-400'
+							"
+							class="material-icons text-xs sm:text-base md:text-xl"
+						>
+							alarm
+						</span>
 
-							<span
-								class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
-							>
-								{{ getTaskFormattedTime(task) }}
-							</span>
+						<span
+							class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
+						>
+							{{ taskFormattedTimes[task.id] }}
+						</span>
 
 							<button
 								v-if="!task.start_time"
@@ -239,19 +240,19 @@
 						<div
 							class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50"
 						>
-							<TaskTimeInfo
-								:created-at="task.created_at"
-								:updated-at="task.updated_at"
-								:overtime="getTaskOvertime(task)"
-							/>
+						<TaskTimeInfo
+							:created-at="task.created_at"
+							:updated-at="task.updated_at"
+							:overtime="taskOvertimes[task.id]"
+						/>
 
-							<span class="ml-auto flex items-center gap-1">
-								<span>{{ getStatusName(task) }}</span>
-								<span
-									class="inline-block h-2 w-2 rounded-full"
-									:style="{ backgroundColor: getStatusColor(task) }"
-								/>
-							</span>
+						<span class="ml-auto flex items-center gap-1">
+							<span>{{ taskStatusNames[task.id] }}</span>
+							<span
+								class="inline-block h-2 w-2 rounded-full"
+								:style="{ backgroundColor: taskStatusColors[task.id] }"
+							/>
+						</span>
 						</div>
 					</div>
 
@@ -346,7 +347,7 @@
 	import TaskForm from '@/pages/TaskForm.vue';
 	import {
 		exportTasks,
-		getTask,
+		deleteTask,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
@@ -515,15 +516,70 @@
 				console.error('Failed to load statuses:', e);
 			}
 		},
-		computed: {
-			allSelected() {
-				return (
-					this.tasks.length > 0 &&
-					this.selected.length === this.tasks.length &&
-					this.selected.every(Boolean)
-				);
-			},
+	computed: {
+		allSelected() {
+			return (
+				this.tasks.length > 0 &&
+				this.selected.length === this.tasks.length &&
+				this.selected.every(Boolean)
+			);
 		},
+		taskComputedData() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = {
+					title: this.truncateTitle(task.title),
+					timeExceeded: this.isTimeExceeded(task),
+					formattedTime: this.getTaskFormattedTime(task),
+					overtime: this.getTaskOvertime(task),
+					statusName: this.getStatusName(task),
+					statusColor: this.getStatusColor(task),
+				};
+				return acc;
+			}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+		},
+		taskTitles() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].title;
+			}
+			return data;
+		},
+		taskTimeExceeded() {
+			const data: Record<number, boolean> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].timeExceeded;
+			}
+			return data;
+		},
+		taskFormattedTimes() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].formattedTime;
+			}
+			return data;
+		},
+		taskOvertimes() {
+			const data: Record<number, string | null> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].overtime;
+			}
+			return data;
+		},
+		taskStatusNames() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusName;
+			}
+			return data;
+		},
+		taskStatusColors() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusColor;
+			}
+			return data;
+		},
+	},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
@@ -755,14 +811,13 @@
 				const deleteMultipleTasks = async () => {
 					try {
 						this.loadingActionsForMultipleTasks.push('delete');
-						for (let i = 0; i < this.tasks.length; ++i) {
-							if (!this.selected[i]) {
-								continue;
-							}
-							const data = await getTask(this.tasks[i].id);
-
-							this.tasks[i].deleted_at = data.deleted_at;
-						}
+						const selectedTasks = this.tasks.filter((_, i) => this.selected[i]);
+						const deletePromises = selectedTasks.map(async (task) => {
+							const deletedAt = await deleteTask(task.id);
+							task.deleted_at = deletedAt;
+							return task;
+						});
+						await Promise.all(deletePromises);
 					} catch (e) {
 						console.error(e);
 					} finally {
