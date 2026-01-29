@@ -43,6 +43,7 @@ requestCache.clear();
 ### Инвалидация кэша
 
 Кэш автоматически инвалидируется при:
+
 - Создании/обновлении/удалении ресурсов
 - Logout пользователя
 - Истечении TTL
@@ -108,12 +109,12 @@ getWorkspaces(); // Переиспользует тот же Promise ⚡
 state: {
   workspaces: [
     { id: 1, name: 'Workspace 1' },
-    { id: 2, name: 'Workspace 2' }
-  ]
+    { id: 2, name: 'Workspace 2' },
+  ];
 }
 
 // Доступ O(n)
-const workspace = state.workspaces.find(w => w.id === 1);
+const workspace = state.workspaces.find((w) => w.id === 1);
 ```
 
 ### После
@@ -204,14 +205,14 @@ onUnmounted(() => {
 </template>
 
 <script>
-computed: {
-  taskTitles() {
-    return this.tasks.reduce((acc, task) => {
-      acc[task.id] = this.getTaskTitle(task);
-      return acc;
-    }, {});
+  computed: {
+    taskTitles() {
+      return this.tasks.reduce((acc, task) => {
+        acc[task.id] = this.getTaskTitle(task);
+        return acc;
+      }, {});
+    }
   }
-}
 </script>
 ```
 
@@ -232,23 +233,6 @@ computed: {
 - `vendor-utils`: Утилиты (axios, date-fns, GSAP)
 - `vendor-markdown`: Markdown редактор
 - `vendor-pusher`: Pusher и Laravel Echo
-
-## 8. Development Logger
-
-Вместо прямого использования `console.log`:
-
-```typescript
-import { devLog, devError, prodError } from '@/utils/devLogger';
-
-// Логируется только в development
-devLog('Debug info', data);
-
-// Логируется только в development
-devError('Dev error', error);
-
-// Логируется всегда (для критических ошибок)
-prodError('Critical error', error);
-```
 
 ## Ожидаемые улучшения
 
