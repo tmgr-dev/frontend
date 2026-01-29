@@ -616,9 +616,12 @@ export interface DashboardEvent {
 export interface EventHandlers {
   onActivityCreated?: (activity: Activity) => void;
   onDashboardUpdated?: (statistics: Partial<DashboardStatistics>) => void;
-  onTaskUpdated?: (task: RecentTask) => void;
+  onTaskUpdated?: (task: any, action: 'created' | 'updated' | 'deleted', updatedByUserId?: number, sourceInstanceId?: string) => void;
   onMemberStatusChanged?: (member: TeamMemberStatus) => void;
   onNotificationCreated?: (data: any) => void;
+  onCommentAdded?: (comment: any) => void;
+  onCommentUpdated?: (comment: any) => void;
+  onCommentDeleted?: (comment: any) => void;
   onError?: (error: ActionError) => void;
   onReconnect?: () => void;
 }
@@ -667,18 +670,20 @@ export interface UsePusherReturn {
   connectionState: Ref<'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting'>;
   connectionError: Ref<ActionError | null>;
   
-  // Actions
-  subscribe: (channel: string, events: EventHandlers) => void;
+  // Actions - subscribe returns subscription ID for multiple handlers support
+  subscribe: (channel: string, events: EventHandlers) => string;
   unsubscribe: (channel: string) => void;
+  unsubscribeHandler: (channel: string, subscriptionId: string) => void;
   unsubscribeAll: () => void;
   reconnect: () => void;
   disconnect: () => void;
   emit: (event: string, data: any) => void;
   
-  // Convenience methods
-  subscribeToWorkspace: (workspaceId: number, events: EventHandlers) => void;
-  subscribeToUser: (userId: number, events: EventHandlers) => void;
+  // Convenience methods - return subscription ID
+  subscribeToWorkspace: (workspaceId: number, events: EventHandlers) => string;
+  subscribeToUser: (userId: number, events: EventHandlers) => string;
   unsubscribeFromWorkspace: (workspaceId: number) => void;
+  unsubscribeHandlerFromWorkspace: (workspaceId: number, subscriptionId: string) => void;
   unsubscribeFromUser: (userId: number) => void;
   
   // Utility

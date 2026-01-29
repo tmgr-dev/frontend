@@ -19,6 +19,7 @@ interface UseNotificationsReturn {
 	currentPage: import('vue').Ref<number>;
 	totalPages: import('vue').Ref<number>;
 	hasMore: import('vue').ComputedRef<boolean>;
+	hasNewNotification: import('vue').Ref<boolean>;
 	loadNotifications: (page?: number) => Promise<void>;
 	loadMore: () => Promise<void>;
 	refreshUnreadCount: () => Promise<void>;
@@ -27,6 +28,7 @@ interface UseNotificationsReturn {
 	removeNotification: (id: number) => Promise<void>;
 	subscribeToRealtime: (userId: number) => void;
 	unsubscribeFromRealtime: (userId: number) => void;
+	clearNewNotificationIndicator: () => void;
 }
 
 export function useNotifications(): UseNotificationsReturn {
@@ -36,10 +38,12 @@ export function useNotifications(): UseNotificationsReturn {
 	const error = ref<ActionError | null>(null);
 	const currentPage = ref<number>(1);
 	const totalPages = ref<number>(1);
+	const hasNewNotification = ref<boolean>(false);
 	const perPage = 20;
 
 	const pusher = usePusher();
 	let isSubscribed = false;
+	let pulseTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	const hasMore = computed(() => currentPage.value < totalPages.value);
 
@@ -145,6 +149,22 @@ export function useNotifications(): UseNotificationsReturn {
 		if (notifications.value.length > 100) {
 			notifications.value = notifications.value.slice(0, 100);
 		}
+		
+		hasNewNotification.value = true;
+		if (pulseTimeout) {
+			clearTimeout(pulseTimeout);
+		}
+		pulseTimeout = setTimeout(() => {
+			hasNewNotification.value = false;
+		}, 5000);
+	};
+	
+	const clearNewNotificationIndicator = () => {
+		hasNewNotification.value = false;
+		if (pulseTimeout) {
+			clearTimeout(pulseTimeout);
+			pulseTimeout = null;
+		}
 	};
 
 	const subscribeToRealtime = (userId: number): void => {
@@ -189,6 +209,7 @@ export function useNotifications(): UseNotificationsReturn {
 		currentPage,
 		totalPages,
 		hasMore,
+		hasNewNotification,
 		loadNotifications,
 		loadMore,
 		refreshUnreadCount,
@@ -197,6 +218,7 @@ export function useNotifications(): UseNotificationsReturn {
 		removeNotification,
 		subscribeToRealtime,
 		unsubscribeFromRealtime,
+		clearNewNotificationIndicator,
 	};
 }
 

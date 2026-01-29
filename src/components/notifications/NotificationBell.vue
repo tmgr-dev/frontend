@@ -1,10 +1,18 @@
 <template>
 	<div class="notification-bell">
-		<DropdownMenu>
+		<DropdownMenu @update:open="handleDropdownOpen">
 			<DropdownMenuTrigger as-child>
-				<button class="notification-bell-button relative" aria-label="Notifications">
-					<Bell :size="20" />
-					<span v-if="unreadCount > 0" class="notification-badge">
+				<button 
+					class="notification-bell-button relative" 
+					:class="{ 'has-new-notification': hasNewNotification }"
+					aria-label="Notifications"
+				>
+					<Bell :size="20" :class="{ 'animate-bell': hasNewNotification }" />
+					<span 
+						v-if="unreadCount > 0" 
+						class="notification-badge"
+						:class="{ 'animate-bounce-gentle': hasNewNotification }"
+					>
 						{{ unreadCount > 99 ? '99+' : unreadCount }}
 					</span>
 				</button>
@@ -87,6 +95,7 @@ export default defineComponent({
 			notifications,
 			unreadCount,
 			loading,
+			hasNewNotification,
 			loadNotifications,
 			refreshUnreadCount,
 			markNotificationAsRead,
@@ -94,6 +103,7 @@ export default defineComponent({
 			removeNotification,
 			subscribeToRealtime,
 			unsubscribeFromRealtime,
+			clearNewNotificationIndicator,
 		} = useNotifications();
 
 		const displayedNotifications = computed(() => {
@@ -160,6 +170,12 @@ export default defineComponent({
 			const workspaceCode = getCurrentWorkspaceCode();
 			router.push(`/${workspaceCode}/notifications`);
 		};
+		
+		const handleDropdownOpen = (isOpen) => {
+			if (isOpen) {
+				clearNewNotificationIndicator();
+			}
+		};
 
 		onMounted(async () => {
 			await loadNotifications();
@@ -183,10 +199,12 @@ export default defineComponent({
 			displayedNotifications,
 			unreadCount,
 			loading,
+			hasNewNotification,
 			handleNotificationClick,
 			handleMarkAllAsRead,
 			handleDelete,
 			handleViewAll,
+			handleDropdownOpen,
 		};
 	},
 });
@@ -234,6 +252,46 @@ export default defineComponent({
 	font-weight: 600;
 	border-radius: 9px;
 	line-height: 1;
+	
+	&.animate-bounce-gentle {
+		animation: bounce-gentle 0.5s ease-in-out infinite;
+	}
+}
+
+.has-new-notification {
+	.notification-badge {
+		background-color: #dc2626;
+		box-shadow: 0 0 8px rgba(220, 38, 38, 0.6);
+	}
+}
+
+.animate-bell {
+	animation: bell-ring 0.5s ease-in-out;
+	animation-iteration-count: 3;
+}
+
+@keyframes bell-ring {
+	0%, 100% {
+		transform: rotate(0deg);
+	}
+	25% {
+		transform: rotate(15deg);
+	}
+	50% {
+		transform: rotate(-15deg);
+	}
+	75% {
+		transform: rotate(10deg);
+	}
+}
+
+@keyframes bounce-gentle {
+	0%, 100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-3px);
+	}
 }
 
 .notification-dropdown {

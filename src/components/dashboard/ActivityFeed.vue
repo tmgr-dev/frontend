@@ -160,10 +160,10 @@ const handleDashboardUpdate = (data: any) => {
 // Watch for workspace changes to resubscribe
 watch(() => props.workspaceId, (newWorkspaceId, oldWorkspaceId) => {
   if (oldWorkspaceId) {
-    unsubscribe(`workspace.${oldWorkspaceId}`);
+    unsubscribe(`App.Workspace.${oldWorkspaceId}`);
   }
   if (newWorkspaceId) {
-    subscribe(`workspace.${newWorkspaceId}`, {
+    subscribe(`App.Workspace.${newWorkspaceId}`, {
       onActivityCreated: handleNewActivity,
       onDashboardUpdated: handleDashboardUpdate
     });
@@ -172,7 +172,7 @@ watch(() => props.workspaceId, (newWorkspaceId, oldWorkspaceId) => {
 
 onMounted(() => {
   if (props.workspaceId) {
-    subscribe(`workspace.${props.workspaceId}`, {
+    subscribe(`App.Workspace.${props.workspaceId}`, {
       onActivityCreated: handleNewActivity,
       onDashboardUpdated: handleDashboardUpdate
     });
@@ -181,7 +181,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (props.workspaceId) {
-    unsubscribe(`workspace.${props.workspaceId}`);
+    unsubscribe(`App.Workspace.${props.workspaceId}`);
   }
 });
 </script>
