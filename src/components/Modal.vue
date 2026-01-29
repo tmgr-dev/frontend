@@ -14,7 +14,7 @@
 <script lang="ts" setup>
 	import { onMounted, onUnmounted, ref } from 'vue';
 	import { useStore } from 'vuex';
-	import { useModalEscHandler } from '@/composable/useModalEscHandler';
+import { useModalEscHandler } from '@/composable/useModalEscHandler.ts';
 
 	interface Props {
 		modalClass?: string;
