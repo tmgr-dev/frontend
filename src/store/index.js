@@ -31,6 +31,7 @@ const state = {
 		showTooltips: true,
 	},
 	openModals: 0,
+	modalStack: [],
 	urlManuallyChanged: false,
 };
 
@@ -145,6 +146,20 @@ const mutations = {
 	},
 	resetOpenModals(state) {
 		state.openModals = 0;
+	},
+	pushModalToStack(state, modalId) {
+		if (!state.modalStack.includes(modalId)) {
+			state.modalStack.push(modalId);
+		}
+	},
+	removeModalFromStack(state, modalId) {
+		const index = state.modalStack.indexOf(modalId);
+		if (index > -1) {
+			state.modalStack.splice(index, 1);
+		}
+	},
+	clearModalStack(state) {
+		state.modalStack = [];
 	},
 	rerenderApp(state) {
 		state.appRerenderKey++;
