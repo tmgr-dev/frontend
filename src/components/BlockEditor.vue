@@ -26,10 +26,26 @@
 	const emit = defineEmits(['update:modelValue']);
 	let editor;
 	let updatingModel = false;
+	let isEditorReady = false;
+	let dragDropInitialized = false;
 
-	// model -> view
+	function initDragDrop() {
+		if (dragDropInitialized || !editor || !editor.configuration?.holder) {
+			return;
+		}
+		try {
+			new DragDrop(editor);
+			dragDropInitialized = true;
+		} catch (e) {
+			console.warn('DragDrop initialization failed:', e);
+		}
+	}
+
 	function modelToView() {
-		new DragDrop(editor);
+		if (!isEditorReady || !editor) {
+			return;
+		}
+		initDragDrop();
 		if (!props.modelValue) {
 			return;
 		}
@@ -157,15 +173,22 @@
 					},
 				},
 			},
-			minHeight: 'auto',
-			data: props.modelValue,
-			onReady: modelToView,
-			onChange: viewToModel,
-		});
+		minHeight: 'auto',
+		data: props.modelValue,
+		onReady: () => {
+			isEditorReady = true;
+			modelToView();
+		},
+		onChange: viewToModel,
+	});
 	});
 
 	onUnmounted(() => {
-		editor.destroy();
+		isEditorReady = false;
+		dragDropInitialized = false;
+		if (editor) {
+			editor.destroy();
+		}
 	});
 </script>
 

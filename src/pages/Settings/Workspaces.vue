@@ -12,6 +12,7 @@
 	import { computed, onBeforeMount, Ref, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { getUserSettings, getUserSettingsV2, updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { Input } from '@/components/ui/input';
 	import store from '@/store';
 	import Combobox from '@/components/Combobox.vue';
@@ -44,6 +45,7 @@
 	import {
 		Dialog,
 		DialogContent,
+		DialogDescription,
 		DialogFooter,
 		DialogHeader,
 		DialogTitle,
@@ -138,6 +140,7 @@
 	})
 
 	onBeforeMount(async () => {
+		setDocumentTitle('Workspace Settings');
 		const [loadedWorkspaces, loadedSettings] = await Promise.all([
 			getWorkspaces(),
 			getUserSettingsV2(),
@@ -412,9 +415,8 @@
 </script>
 
 <template>
-	<teleport to="title">Workspace settings</teleport>
-
-	<div class="container">
+	<div>
+		<div class="container">
 		<header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 			<h3 class="text-lg font-bold">Workspace Settings</h3>
 
@@ -432,6 +434,7 @@
 					>
 						<DialogHeader>
 							<DialogTitle>Creating new workspace</DialogTitle>
+							<DialogDescription class="sr-only">Enter a name for your new workspace</DialogDescription>
 						</DialogHeader>
 
 						<Input
@@ -464,6 +467,7 @@
 					>
 						<DialogHeader>
 							<DialogTitle>Send invitation(s)</DialogTitle>
+							<DialogDescription class="sr-only">Enter email addresses to invite members to this workspace</DialogDescription>
 						</DialogHeader>
 
 						<Textarea
@@ -541,7 +545,7 @@
 		</header>
 
 		<div class="mt-6 max-w-lg">
-			<div v-for="(setting, index) in settings">
+			<div v-for="(setting, index) in settings" :key="setting.id">
 				<label
 					:for="`setting-${setting.id}`"
 					class="mb-2 block text-sm font-bold text-gray-700"
@@ -674,5 +678,6 @@
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
+		</div>
 	</div>
 </template>

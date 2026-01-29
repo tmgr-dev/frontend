@@ -27,7 +27,10 @@
 			>
 				{{ allSelected ? 'Deselect all' : 'Select all' }}
 			</button>
-			<span v-if="selected.filter(Boolean).length > 0" class="text-sm text-gray-500 dark:text-gray-400">
+			<span
+				v-if="selected.filter(Boolean).length > 0"
+				class="text-sm text-gray-500 dark:text-gray-400"
+			>
 				Selected: {{ selected.filter(Boolean).length }} of {{ tasks.length }}
 			</span>
 		</div>
@@ -51,7 +54,8 @@
 
 			<div
 				v-for="(task, i) in tasks"
-				:key="i"
+				:key="task.id"
+				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id]]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
@@ -69,9 +73,11 @@
 				<button
 					type="button"
 					:class="{
-						'border-l-8 border-solid border-green-600': task.start_time,
-						'border-b-4 border-b-red-500 dark:border-b-red-400': isTimeExceeded(task),
-					}"
+					'border-l-4 border-l-green-600 dark:border-l-green-500':
+						task.start_time,
+					'border-b border-b-red-500 dark:border-b-red-400':
+						taskTimeExceeded[task.id],
+				}"
 					class="w-full rounded-lg shadow-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
@@ -80,44 +86,55 @@
 					<div
 						class="w-full space-y-1 rounded-lg bg-white px-4 pb-2 pt-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
 					>
-					<div class="flex items-start gap-2">
-						<div 
-							v-if="draggable"
-							class="task-drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 pt-0.5 select-none touch-none"
-							:draggable="true"
-							@dragstart="onDragStart($event, task)"
-							@click.stop
-						>
-							<span class="material-icons text-base pointer-events-none">drag_indicator</span>
-						</div>
-						<div class="flex-1">
-							<CategoryBadge
-								v-if="showCategoryBadges"
-								class="shrink-0 self-start"
-								:category="task.category"
-							/>
+						<div class="flex items-start gap-2">
+							<div
+								v-if="draggable"
+								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
+								:draggable="true"
+								@dragstart="onDragStart($event, task)"
+								@click.stop
+							>
+								<span class="material-icons pointer-events-none text-base"
+									>drag_indicator</span
+								>
+							</div>
+							<div class="flex-1">
+								<CategoryBadge
+									v-if="showCategoryBadges && task.category"
+									class="shrink-0 self-start"
+									:category="task.category"
+								/>
 
-							<div class="text-left text-sm font-medium lg:text-lg" :title="task.title?.length > 60 ? task.title : ''">
-								{{ truncateTitle(task.title) }}
+							<div
+								class="text-left text-sm font-medium lg:text-lg"
+								:title="task.title?.length > 60 ? task.title : ''"
+							>
+								{{ taskTitles[task.id] }}
+							</div>
 							</div>
 						</div>
-					</div>
 
 						<div
 							v-if="isFeatureEnabled('task.countdown')"
 							class="flex items-center gap-2"
 						>
-							<span
-								:class="isTimeExceeded(task) ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
-								class="material-icons text-xs sm:text-base md:text-xl"
-							>
-								alarm
-							</span>
+						<span
+							:class="
+								taskTimeExceeded[task.id]
+									? 'text-red-600 dark:text-red-400'
+									: 'text-green-600 dark:text-green-400'
+							"
+							class="material-icons text-xs sm:text-base md:text-xl"
+						>
+							alarm
+						</span>
 
-							<span class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base">
-								{{ getTaskFormattedTime(task) }}
-							</span>
-							
+						<span
+							class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
+						>
+							{{ taskFormattedTimes[task.id] }}
+						</span>
+
 							<button
 								v-if="!task.start_time"
 								v-tooltip.top="setTooltipData('Start timer')"
@@ -125,7 +142,11 @@
 								class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
 								@click.stop="startCountdown(task, `start-${task.id}`)"
 							>
-								<span v-if="!isLoadingActions[`start-${task.id}`]" class="material-icons text-xs sm:text-sm leading-none">play_arrow</span>
+								<span
+									v-if="!isLoadingActions[`start-${task.id}`]"
+									class="material-icons text-xs leading-none sm:text-sm"
+									>play_arrow</span
+								>
 								<Loader v-else is-mini />
 							</button>
 							<button
@@ -135,77 +156,103 @@
 								class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
 								@click.stop="stopCountdown(task, `stop-${task.id}`)"
 							>
-								<span v-if="!isLoadingActions[`stop-${task.id}`]" class="material-icons text-xs sm:text-sm leading-none">stop</span>
+								<span
+									v-if="!isLoadingActions[`stop-${task.id}`]"
+									class="material-icons text-xs leading-none sm:text-sm"
+									>stop</span
+								>
 								<Loader v-else is-mini />
 							</button>
-						
-					<Popover v-if="isFeatureEnabled('task.assignees')" v-model:open="assigneePopoverOpen[task.id]">
-							<PopoverTrigger as-child>
-								<button
-									v-show="task.assignees?.length || hoveredTaskId === task.id || assigneePopoverOpen[task.id]"
-									class="ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 group"
-									@click.stop
-									:title="task.assignees?.length ? 'Change assignee' : 'Assign someone'"
-								>
-									<UserPlus 
-										v-if="assigneePopoverOpen[task.id] || !task.assignees?.length" 
-										class="h-5 w-5 text-gray-500 dark:text-gray-400" 
-									/>
-									<template v-else>
-										<UserPlus class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400" />
-										<AssigneeUsers
-											class="group-hover:hidden"
-											:assignees="task.assignees" 
-											avatarsClass="h-6 w-6" 
-											:show-assignee-controls="false"
+
+							<Popover
+								v-if="isFeatureEnabled('task.assignees')"
+								v-model:open="assigneePopoverOpen[task.id]"
+							>
+								<PopoverTrigger as-child>
+									<button
+										v-show="
+											task.assignees?.length ||
+											hoveredTaskId === task.id ||
+											assigneePopoverOpen[task.id]
+										"
+										class="group ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+										@click.stop
+										:title="
+											task.assignees?.length
+												? 'Change assignee'
+												: 'Assign someone'
+										"
+									>
+										<UserPlus
+											v-if="
+												assigneePopoverOpen[task.id] || !task.assignees?.length
+											"
+											class="h-5 w-5 text-gray-500 dark:text-gray-400"
 										/>
-									</template>
-								</button>
-							</PopoverTrigger>
-							<PopoverContent class="z-50 w-52 p-0" align="start" side="bottom" @click.stop>
-								<Command>
-									<CommandInput placeholder="Search members..." class="h-9" />
-									<CommandEmpty>No members found.</CommandEmpty>
-									<CommandList>
-										<CommandGroup>
-											<CommandItem
-												v-for="member in workspaceMembers"
-												:key="member.id"
-												:value="member.id"
-												@select="toggleAssignee(task, member.id)"
-												class="cursor-pointer"
-											>
-												<Check
-													:class="['mr-2 h-4 w-4', isAssignedTo(task, member.id) ? 'opacity-100' : 'opacity-0']"
-												/>
-												{{ member.name }}
-											</CommandItem>
-										</CommandGroup>
-									</CommandList>
-								</Command>
-							</PopoverContent>
-						</Popover>
+										<template v-else>
+											<UserPlus
+												class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400"
+											/>
+											<AssigneeUsers
+												class="group-hover:hidden"
+												:assignees="task.assignees"
+												avatarsClass="h-6 w-6"
+												:show-assignee-controls="false"
+											/>
+										</template>
+									</button>
+								</PopoverTrigger>
+								<PopoverContent
+									class="z-50 w-52 p-0"
+									align="start"
+									side="bottom"
+									@click.stop
+								>
+									<Command>
+										<CommandInput placeholder="Search members..." class="h-9" />
+										<CommandEmpty>No members found.</CommandEmpty>
+										<CommandList>
+											<CommandGroup>
+												<CommandItem
+													v-for="member in workspaceMembers"
+													:key="member.id"
+													:value="member.id"
+													@select="toggleAssignee(task, member.id)"
+													class="cursor-pointer"
+												>
+													<Check
+														:class="[
+															'mr-2 h-4 w-4',
+															isAssignedTo(task, member.id)
+																? 'opacity-100'
+																: 'opacity-0',
+														]"
+													/>
+													{{ member.name }}
+												</CommandItem>
+											</CommandGroup>
+										</CommandList>
+									</Command>
+								</PopoverContent>
+							</Popover>
 						</div>
 
-						<div class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50">
-							<span v-if="task.created_at" :title="'Created: ' + formatFullDate(task.created_at)">
-								{{ formatRelativeTime(task.created_at) }}
-							</span>
-							<span v-if="task.updated_at && task.updated_at !== task.created_at" class="flex items-center gap-0.5" :title="'Edited: ' + formatFullDate(task.updated_at)">
-								<span class="material-icons" style="font-size: 9px;">edit</span>
-								{{ formatRelativeTime(task.updated_at) }}
-							</span>
-							<span 
-								v-if="getTaskOvertime(task)" 
-								class="text-[9px] font-medium text-red-500 dark:text-red-400"
-								title="Overtime"
-							>
-								+{{ getTaskOvertime(task) }}
-							</span>
-							<span class="ml-auto flex items-center gap-1">
-								<span>{{ getStatusName(task) }}</span>
-								<span class="inline-block h-2 w-2 rounded-full" :style="{ backgroundColor: getStatusColor(task) }"></span>
-							</span>
+						<div
+							class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50"
+						>
+						<TaskTimeInfo
+							:created-at="task.created_at"
+							:updated-at="task.updated_at"
+							:overtime="taskOvertimes[task.id]"
+						/>
+
+						<span class="ml-auto flex items-center gap-1">
+							<span>{{ taskStatusNames[task.id] }}</span>
+							<span
+								class="inline-block h-2 w-2 rounded-full"
+								:style="{ backgroundColor: taskStatusColors[task.id] }"
+							/>
+						</span>
 						</div>
 					</div>
 
@@ -223,14 +270,18 @@
 			</div>
 
 			<!-- Add pagination controls -->
-			<div v-if="pagination.total > pagination.per_page" class="mt-4 flex items-center justify-between px-4">
+			<div
+				v-if="pagination.total > pagination.per_page"
+				class="mt-4 flex items-center justify-between px-4"
+			>
 				<div class="flex items-center gap-2">
 					<span class="text-sm text-gray-600 dark:text-gray-300">
-						Showing {{ pagination.from }} to {{ pagination.to }} of {{ pagination.total }} tasks
+						Showing {{ pagination.from }} to {{ pagination.to }} of
+						{{ pagination.total }} tasks
 					</span>
-					
-					<select 
-						v-model="perPage" 
+
+					<select
+						v-model="perPage"
 						@change="onPerPageChange"
 						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
@@ -239,7 +290,7 @@
 						<option :value="50">50 per page</option>
 					</select>
 				</div>
-				
+
 				<div class="flex items-center gap-2">
 					<button
 						:disabled="pagination.current_page === 1"
@@ -248,11 +299,11 @@
 					>
 						Previous
 					</button>
-					
+
 					<span class="text-sm text-gray-600 dark:text-gray-300">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
-					
+
 					<button
 						:disabled="pagination.current_page === pagination.last_page"
 						@click="onPageChange(pagination.current_page + 1)"
@@ -269,8 +320,15 @@
 		v-if="confirm"
 		:body="confirm.body"
 		:title="confirm.title"
-		@onCancel="confirm = undefined; backlogStatusChangeConfirm = null"
-		@onOk="confirm.action(); confirm = undefined; backlogStatusChangeConfirm = null"
+		@onCancel="
+			confirm = undefined;
+			backlogStatusChangeConfirm = null;
+		"
+		@onOk="
+			confirm.action();
+			confirm = undefined;
+			backlogStatusChangeConfirm = null;
+		"
 	/>
 </template>
 
@@ -289,7 +347,7 @@
 	import TaskForm from '@/pages/TaskForm.vue';
 	import {
 		exportTasks,
-		getTask,
+		deleteTask,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		updateTaskStatus,
@@ -298,19 +356,35 @@
 		PaginationMeta,
 	} from '@/actions/tmgr/tasks';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
-import { getWorkspaceMembers, WorkspaceMember } from '@/actions/tmgr/workspaces';
-import CategoryBadge from '@/components/general/CategoryBadge.vue';
-import Button from '@/components/general/Button.vue';
-import { PropType } from 'vue';
-import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { UserPlus, Check } from 'lucide-vue-next';
-import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import {
+		getWorkspaceMembers,
+		WorkspaceMember,
+	} from '@/actions/tmgr/workspaces';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Button from '@/components/general/Button.vue';
+	import { PropType } from 'vue';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
+	import {
+		Command,
+		CommandEmpty,
+		CommandGroup,
+		CommandInput,
+		CommandItem,
+		CommandList,
+	} from '@/components/ui/command';
+	import { UserPlus, Check, ClockPlus } from 'lucide-vue-next';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
 	export default {
 		name: 'TasksListComponent',
 		components: {
+			TaskTimeInfo,
 			Button,
 			CategoryBadge,
 			TaskForm,
@@ -332,6 +406,7 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			CommandList,
 			UserPlus,
 			Check,
+			ClockPlus,
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
@@ -383,65 +458,127 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 					total: 0,
 					last_page: 1,
 					from: 0,
-					to: 0
-				})
-			}
+					to: 0,
+				}),
+			},
 		},
-	watch: {
-		hasSelectable(v) {
-			if (!v) {
-				this.selected = [];
-				this.isShowSelectedTasksCommonTime = false;
-			}
-		},
-		'pagination.per_page': {
-			immediate: true,
-			handler(value) {
-				this.perPage = value;
-			}
-		},
-		assigneePopoverOpen: {
-			deep: true,
-			handler(newVal) {
-				if (Object.values(newVal).some(v => v)) {
-					this.loadWorkspaceMembers();
+		watch: {
+			hasSelectable(v) {
+				if (!v) {
+					this.selected = [];
+					this.isShowSelectedTasksCommonTime = false;
 				}
+			},
+			'pagination.per_page': {
+				immediate: true,
+				handler(value) {
+					this.perPage = value;
+				},
+			},
+			assigneePopoverOpen: {
+				deep: true,
+				handler(newVal) {
+					if (Object.values(newVal).some((v) => v)) {
+						this.loadWorkspaceMembers();
+					}
+				},
+			},
+		},
+		mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
+		data() {
+			const { isFeatureEnabled } = useFeatureToggles();
+			return {
+				isFeatureEnabled,
+				showTaskForm: false,
+				modalTaskId: null,
+				confirm: null,
+				isShowSelectedTasksCommonTime: false,
+				selected: [],
+				selecting: [],
+				showTimeInModal: false,
+				timeForModal: null,
+				loadingActionsForMultipleTasks: [],
+				perPage: 10,
+				statuses: [] as Status[],
+				backlogStatusChangeConfirm: null as {
+					task: Task;
+					dotId: string | null;
+				} | null,
+				hoveredTaskId: null as number | null,
+				assigneePopoverOpen: {} as Record<number, boolean>,
+				workspaceMembers: [] as WorkspaceMember[],
+			};
+		},
+		async created() {
+			try {
+				this.statuses = await getStatuses();
+			} catch (e) {
+				console.error('Failed to load statuses:', e);
 			}
-		}
-	},
-	mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
-	data() {
-		const { isFeatureEnabled } = useFeatureToggles();
-		return {
-			isFeatureEnabled,
-			showTaskForm: false,
-			modalTaskId: null,
-			confirm: null,
-			isShowSelectedTasksCommonTime: false,
-			selected: [],
-			selecting: [],
-			showTimeInModal: false,
-			timeForModal: null,
-			loadingActionsForMultipleTasks: [],
-			perPage: 10,
-			statuses: [] as Status[],
-			backlogStatusChangeConfirm: null as { task: Task; dotId: string | null } | null,
-			hoveredTaskId: null as number | null,
-			assigneePopoverOpen: {} as Record<number, boolean>,
-			workspaceMembers: [] as WorkspaceMember[],
-		};
-	},
-	async created() {
-		try {
-			this.statuses = await getStatuses();
-		} catch (e) {
-			console.error('Failed to load statuses:', e);
-		}
-	},
+		},
 	computed: {
 		allSelected() {
-			return this.tasks.length > 0 && this.selected.length === this.tasks.length && this.selected.every(Boolean);
-		}
+			return (
+				this.tasks.length > 0 &&
+				this.selected.length === this.tasks.length &&
+				this.selected.every(Boolean)
+			);
+		},
+		taskComputedData() {
+			return this.tasks.reduce((acc, task) => {
+				acc[task.id] = {
+					title: this.truncateTitle(task.title),
+					timeExceeded: this.isTimeExceeded(task),
+					formattedTime: this.getTaskFormattedTime(task),
+					overtime: this.getTaskOvertime(task),
+					statusName: this.getStatusName(task),
+					statusColor: this.getStatusColor(task),
+				};
+				return acc;
+			}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+		},
+		taskTitles() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].title;
+			}
+			return data;
+		},
+		taskTimeExceeded() {
+			const data: Record<number, boolean> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].timeExceeded;
+			}
+			return data;
+		},
+		taskFormattedTimes() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].formattedTime;
+			}
+			return data;
+		},
+		taskOvertimes() {
+			const data: Record<number, string | null> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].overtime;
+			}
+			return data;
+		},
+		taskStatusNames() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusName;
+			}
+			return data;
+		},
+		taskStatusColors() {
+			const data: Record<number, string> = {};
+			for (const id in this.taskComputedData) {
+				data[id] = this.taskComputedData[id].statusColor;
+			}
+			return data;
+		},
 	},
 		methods: {
 			truncateTitle(title: string) {
@@ -451,7 +588,9 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			async loadWorkspaceMembers() {
 				if (this.workspaceMembers.length > 0) return;
 				try {
-					const workspaceId = this.$store.state.user?.settings?.find((s: any) => s.key === 'current_workspace')?.value;
+					const workspaceId = this.$store.state.user?.settings?.find(
+						(s: any) => s.key === 'current_workspace',
+					)?.value;
 					if (workspaceId) {
 						this.workspaceMembers = await getWorkspaceMembers(workspaceId);
 					}
@@ -473,18 +612,26 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			async toggleAssignee(task: Task, memberId: number) {
 				const currentAssigneeIds = task.assignees?.map((a: any) => a.id) || [];
 				let newAssigneeIds: number[];
-				
+
 				if (currentAssigneeIds.includes(memberId)) {
-					newAssigneeIds = currentAssigneeIds.filter((id: number) => id !== memberId);
+					newAssigneeIds = currentAssigneeIds.filter(
+						(id: number) => id !== memberId,
+					);
 				} else {
 					newAssigneeIds = [...currentAssigneeIds, memberId];
 				}
-				
+
 				try {
-					await updateTaskPartially(task.id!, { assignees: newAssigneeIds } as any);
-					const member = this.workspaceMembers.find((m: WorkspaceMember) => m.id === memberId);
+					await updateTaskPartially(task.id!, {
+						assignees: newAssigneeIds,
+					} as any);
+					const member = this.workspaceMembers.find(
+						(m: WorkspaceMember) => m.id === memberId,
+					);
 					if (currentAssigneeIds.includes(memberId)) {
-						task.assignees = task.assignees?.filter((a: any) => a.id !== memberId);
+						task.assignees = task.assignees?.filter(
+							(a: any) => a.id !== memberId,
+						);
 					} else if (member) {
 						if (!task.assignees) task.assignees = [];
 						(task.assignees as any[]).push(member);
@@ -504,7 +651,7 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			},
 			async startCountdown(task: Task, dotId: string | null) {
 				if (!task.id) return;
-				
+
 				if (dotId) {
 					this.isLoadingActions[dotId] = true;
 				}
@@ -514,8 +661,8 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 					this.isLoadingActions[dotId] = false;
 				}
 
-				const taskStatus = this.statuses.find(s => s.id === task.status_id);
-				
+				const taskStatus = this.statuses.find((s) => s.id === task.status_id);
+
 				if (taskStatus && taskStatus.type === 'default') {
 					this.backlogStatusChangeConfirm = { task, dotId };
 					this.showBacklogStatusChangeConfirm();
@@ -523,27 +670,28 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			},
 			showBacklogStatusChangeConfirm() {
 				if (!this.backlogStatusChangeConfirm) return;
-				
+
 				const { task, dotId } = this.backlogStatusChangeConfirm;
-				const activeStatus = this.statuses.find(s => s.type === 'active');
-				
+				const activeStatus = this.statuses.find((s) => s.type === 'active');
+
 				if (!activeStatus || !task.id) {
 					console.error('No active status found or task has no id');
 					this.backlogStatusChangeConfirm = null;
 					return;
 				}
-				
+
 				this.showConfirm(
 					'Task in Backlog',
 					`Task "${task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
 					async () => {
 						if (!this.backlogStatusChangeConfirm || !task.id) return;
-						
-						const { task: confirmTask, dotId: confirmDotId } = this.backlogStatusChangeConfirm;
+
+						const { task: confirmTask, dotId: confirmDotId } =
+							this.backlogStatusChangeConfirm;
 						if (confirmDotId) {
 							this.isLoadingActions[confirmDotId] = true;
 						}
-						
+
 						try {
 							await updateTaskStatus(confirmTask.id!, activeStatus.id);
 							this.$store.commit('incrementReloadTasksKey');
@@ -556,7 +704,7 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 							}
 							this.backlogStatusChangeConfirm = null;
 						}
-					}
+					},
 				);
 			},
 			onDragStart(event, task) {
@@ -565,18 +713,20 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 			loadTasks() {
 				this.$emit('reload-tasks');
 			},
-		getShowButtons(task) {
-			return {
-				start: task.start_time,
-				stop: !task.start_time,
-				deleteTask: this.status === 'hidden',
-			};
-		},
+			getShowButtons(task) {
+				return {
+					start: task.start_time,
+					stop: !task.start_time,
+					deleteTask: this.status === 'hidden',
+				};
+			},
 			getApproximatelyTime(task: Task) {
 				if (task.approximately_time) {
 					return parseInt(String(task.approximately_time), 10);
 				}
-				const setting = task.settings?.find((s: any) => s.key === 'approximately_time');
+				const setting = task.settings?.find(
+					(s: any) => s.key === 'approximately_time',
+				);
 				if (setting) {
 					return parseInt(String(setting.value || setting.pivot?.value), 10);
 				}
@@ -654,21 +804,20 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 					hour: '2-digit',
 					minute: '2-digit',
 					second: '2-digit',
-					hour12: false
+					hour12: false,
 				});
 			},
 			deleteSelectedTasks() {
 				const deleteMultipleTasks = async () => {
 					try {
 						this.loadingActionsForMultipleTasks.push('delete');
-						for (let i = 0; i < this.tasks.length; ++i) {
-							if (!this.selected[i]) {
-								continue;
-							}
-							const data = await getTask(this.tasks[i].id);
-
-							this.tasks[i].deleted_at = data.deleted_at;
-						}
+						const selectedTasks = this.tasks.filter((_, i) => this.selected[i]);
+						const deletePromises = selectedTasks.map(async (task) => {
+							const deletedAt = await deleteTask(task.id);
+							task.deleted_at = deletedAt;
+							return task;
+						});
+						await Promise.all(deletePromises);
 					} catch (e) {
 						console.error(e);
 					} finally {
@@ -763,7 +912,7 @@ import { useFeatureToggles } from '@/composable/useFeatureToggles';
 				if (this.perPage === this.pagination.per_page) return;
 				this.$emit('per-page-change', this.perPage);
 				this.resetSelectedTasks();
-			}
+			},
 		},
 	};
 </script>

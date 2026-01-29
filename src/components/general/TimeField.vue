@@ -81,11 +81,14 @@
 				this.screenWidth = window.innerWidth;
 			},
 		},
-		created() {
-			this.updateWidth();
-			window.addEventListener('resize', this.updateWidth);
-		},
-	};
+	created() {
+		this.updateWidth();
+		window.addEventListener('resize', this.updateWidth);
+	},
+	beforeUnmount() {
+		window.removeEventListener('resize', this.updateWidth);
+	},
+};
 </script>
 
 <style scoped lang="scss">

@@ -1,4 +1,4 @@
-import { ref, computed, reactive, onUnmounted } from 'vue';
+import { ref, computed, reactive, onUnmounted, getCurrentInstance } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
 import store from '@/store';
 import {
@@ -596,10 +596,12 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
     };
   };
 
-  // Auto-cleanup on unmount
-  onUnmounted(() => {
-    cleanup();
-  });
+  // Auto-cleanup on unmount (only if called within component setup)
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      cleanup();
+    });
+  }
 
   return {
     // State

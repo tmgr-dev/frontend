@@ -1,5 +1,6 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
+import { requestCache } from '@/utils/requestCache';
 
 export interface Workspace {
 	id: number;
@@ -10,10 +11,23 @@ export interface Workspace {
 	code: string;
 }
 
-export const getWorkspaces = async (): Promise<Workspace[]> => {
+export const getWorkspaces = async (useCache: boolean = true): Promise<Workspace[]> => {
+	const cacheKey = 'workspaces';
+	
+	if (useCache) {
+		const cached = requestCache.get<Workspace[]>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get('workspaces');
+
+	if (useCache) {
+		requestCache.set(cacheKey, data, 300000);
+	}
 
 	return data;
 };
@@ -24,10 +38,24 @@ export interface WorkspaceMember {
 }
 export const getWorkspaceMembers = async (
 	workspaceId: number,
+	useCache: boolean = true,
 ): Promise<WorkspaceMember[]> => {
+	const cacheKey = `workspace-${workspaceId}-members`;
+	
+	if (useCache) {
+		const cached = requestCache.get<WorkspaceMember[]>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get(`/workspaces/${workspaceId}/members`);
+
+	if (useCache) {
+		requestCache.set(cacheKey, data, 300000);
+	}
 
 	return data;
 };
@@ -37,14 +65,30 @@ export const removeMemberFromWorkspace = async (
 	userId: number,
 ): Promise<void> => {
 	await $axios.delete(`/workspaces/${workspaceId}/members/${userId}`);
+	
+	requestCache.invalidate(`workspace-${workspaceId}-members`);
 };
 
-export const getWorkspaceStatuses = async () => {
+export const getWorkspaceStatuses = async (useCache: boolean = true) => {
+	const cacheKey = 'workspace-statuses';
+	
+	if (useCache) {
+		const cached = requestCache.get(cacheKey);
+		if (cached) {
+			store.commit('setWorkspaceStatuses', cached);
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get('workspaces/statuses');
 
 	store.commit('setWorkspaceStatuses', data);
+
+	if (useCache) {
+		requestCache.set(cacheKey, data, 300000);
+	}
 
 	return data;
 };
@@ -56,6 +100,8 @@ export const createWorkspace = async (payload: {
 	const {
 		data: { data },
 	} = await $axios.post('workspaces', payload);
+
+	requestCache.invalidate('workspaces');
 
 	return data;
 };
@@ -75,6 +121,9 @@ export const deleteWorkspace = async (workspaceId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`workspaces/${workspaceId}`);
+
+	requestCache.invalidate('workspaces');
+	requestCache.invalidate(`workspace-${workspaceId}-members`);
 
 	return data;
 };

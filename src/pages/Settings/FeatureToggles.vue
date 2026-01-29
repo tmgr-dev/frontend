@@ -102,6 +102,7 @@ import { computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useToast } from '@/components/ui/toast';
 import { CircleCheckBig as CircleCheckBigIcon } from 'lucide-vue-next';
+import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 const store = useStore();
 const toaster = useToast();
@@ -236,6 +237,7 @@ const updateUserToggle = async (key, value) => {
 };
 
 onMounted(async () => {
+	setDocumentTitle('Feature Settings');
 	if (!store.state.workspaces || store.state.workspaces.length === 0) {
 		const { getWorkspaces } = await import('@/actions/tmgr/workspaces');
 		const workspaces = await getWorkspaces();

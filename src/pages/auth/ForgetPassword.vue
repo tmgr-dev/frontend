@@ -115,11 +115,16 @@
 </template>
 
 <script setup lang="ts">
-	import { ref } from 'vue';
+	import { ref, onMounted } from 'vue';
 	import { AxiosError } from 'axios';
 	import { resetPassword } from '@/actions/tmgr/auth';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const email = ref('');
+
+	onMounted(() => {
+		setDocumentTitle('Reset Password');
+	});
 	const message = ref('');
 	const isLoading = ref(false);
 	const errors = ref({});

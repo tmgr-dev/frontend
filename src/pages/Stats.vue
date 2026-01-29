@@ -1,6 +1,6 @@
 <template>
-	<teleport to="title"> Statistics </teleport>
-	<BaseLayout>
+	<div>
+		<BaseLayout>
 		<template #header> </template>
 		<template #body>
 			<div
@@ -56,11 +56,13 @@
 				</table>
 			</div>
 		</template>
-	</BaseLayout>
+		</BaseLayout>
+	</div>
 </template>
 
 <script>
 	import { getStats } from '@/actions/tmgr/stats';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
 		name: 'Stats',
@@ -72,6 +74,7 @@
 			},
 		}),
 		async created() {
+			setDocumentTitle('Statistics');
 			this.stats = await getStats();
 		},
 		methods: {},

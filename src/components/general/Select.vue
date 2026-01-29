@@ -42,8 +42,8 @@
 	interface Props {
 		labelKey?: string;
 		valueKey?: string;
-		placeholder: string;
-		modelValue: string;
+		placeholder?: string;
+		modelValue?: string | number | null;
 		options: optionType[];
 		selectClass?: string;
 		errors?: [];

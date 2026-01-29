@@ -432,6 +432,7 @@ const routes = [
 	},
 	
 	// New URL structure routes
+	// CHANGES: Added keepAlive meta for cached views
 	{
 		path: '/:workspace_code/dashboard',
 		component: DashboardPage,
@@ -439,6 +440,7 @@ const routes = [
 			title: 'Workspace Dashboard',
 			transitionName: 'slide',
 			navbarHidden: true,
+			keepAlive: true,
 		},
 		name: 'WorkspaceDashboard',
 	},
@@ -459,6 +461,7 @@ const routes = [
 			title: 'Task List',
 			transitionName: 'slide',
 			navbarHidden: true,
+			keepAlive: true,
 		},
 		name: 'WorkspaceTasksList',
 	},

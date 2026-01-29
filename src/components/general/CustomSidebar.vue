@@ -53,7 +53,7 @@
 		UserPlus,
 		Sliders,
 	} from 'lucide-vue-next';
-	import { onBeforeMount, ref, computed, onMounted, watch } from 'vue';
+	import { onBeforeMount, ref, computed, watch } from 'vue';
 	import { getWorkspaces, Workspace, exitWorkspace } from '@/actions/tmgr/workspaces.ts';
 	import { getUser, updateUserSettingsV2, User, getUserSettings } from '@/actions/tmgr/user.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
@@ -66,10 +66,28 @@
 	import { useRoute, useRouter } from 'vue-router';
 	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const route = useRoute();
 	const router = useRouter();
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
+	
+	const metaTitle = computed(() => {
+		return store.state.metaTitle || '';
+	});
+	
+	watch(() => {
+		try {
+			return route?.meta?.title;
+		} catch {
+			return null;
+		}
+	}, (newTitle) => {
+		if (newTitle && !store.state.metaTitle) {
+			store.commit('setMetaTitle', newTitle);
+			setDocumentTitle(newTitle as string);
+		}
+	}, { immediate: true });
 	const user = ref<User>({} as User);
 	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>([]);
@@ -616,7 +634,7 @@
 								<BreadcrumbSeparator class="hidden md:block" />
 
 								<BreadcrumbItem class="hidden md:block">
-									{{ store.state.metaTitle || route.meta.title }}
+									{{ metaTitle }}
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>

@@ -4,6 +4,8 @@ import store from '@/store';
 import objectToQueryString from '@/utils/objectToQueryString';
 import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
+import { requestCache } from '@/utils/requestCache';
+import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 export interface Task {
 	id: number | undefined;
@@ -102,12 +104,25 @@ export const getTasksIndexes = async (categoryId: null | number = null) => {
 	return index;
 };
 
-export const getTask = async (taskId: number) => {
+export const getTask = async (taskId: number, useCache: boolean = false): Promise<Task> => {
+	const cacheKey = `task-${taskId}`;
+	
+	if (useCache) {
+		const cached = requestCache.get<Task>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
+
 	const {
 		data: { data },
 	} = await $axios.get(`tasks/${taskId}`);
 
 	data.common_time = data.common_time || 0;
+
+	if (useCache) {
+		requestCache.set(cacheKey, data, 60000);
+	}
 
 	return data;
 };
@@ -116,6 +131,9 @@ export const createTask = async (task: Task) => {
 	const {
 		data: { data },
 	} = await $axios.post('tasks', task);
+
+	requestCache.invalidate(/^tasks-status-/);
+	requestCache.invalidate(/^task-/);
 
 	return data;
 };
@@ -133,6 +151,9 @@ export const updateTask = async (taskId: number, task: Task) => {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}`, task);
 
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
+
 	return data;
 };
 
@@ -148,6 +169,9 @@ export const updateTaskPartially = async (taskId: number, task: Task) => {
 		data: { data },
 	} = await $axios.patch(`tasks/${taskId}`, task);
 
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
+
 	return data;
 };
 
@@ -156,10 +180,8 @@ export const deleteTask = async (taskId: number) => {
 		data: { data },
 	} = await $axios.delete(`/tasks/${taskId}`);
 
-	/*
-	 * reload active tasks because somebody may remove active task without stopping countdown,
-	 * and we will need to reload the page to get correct number of active tasks
-	 * */
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
 	store.commit('incrementReloadActiveTasksKey');
 
 	return data.deleted_at;
@@ -169,6 +191,9 @@ export const restoreDeletedTask = async (taskId: number) => {
 	const {
 		data: { data },
 	} = await $axios.post(`/tasks/${taskId}/restore`);
+
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
 
 	return data.deleted_at;
 };
@@ -191,21 +216,56 @@ export const getTasksByStatus = async (
 export const getSortedTasksByStatus = async (
 	statusId: number,
 	params: AxiosRequestConfig,
+	useCache: boolean = false,
 ) => {
-	const {
-		data: { data },
-	} = await $axios.get(`tasks/status/${statusId}?all`, params);
+	const cacheKey = requestCache.generateKey(`tasks/status/${statusId}`, params);
+	
+	if (useCache) {
+		const cached = requestCache.get<Task[]>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
 
-	// @todo simplify it
-	return data.sort((a: { order: number }, b: { order: number }) => {
-		if (a.order < b.order) {
-			return -1;
+	return requestDeduplicator.deduplicate(cacheKey, async () => {
+		const {
+			data: { data },
+		} = await $axios.get(`tasks/status/${statusId}?all`, params);
+
+		const sorted = data.sort((a: { order: number }, b: { order: number }) => {
+			if (a.order < b.order) {
+				return -1;
+			}
+			if (a.order > b.order) {
+				return 1;
+			}
+			return 0;
+		});
+
+		if (useCache) {
+			requestCache.set(cacheKey, sorted, 30000);
 		}
-		if (a.order > b.order) {
-			return 1;
-		}
-		return 0;
+
+		return sorted;
 	});
+};
+
+export const getBatchTasksByStatuses = async (
+	statusIds: number[],
+	params: AxiosRequestConfig = {},
+): Promise<Record<number, Task[]>> => {
+	const results = await Promise.all(
+		statusIds.map(statusId => 
+			getSortedTasksByStatus(statusId, params, true)
+				.then(tasks => ({ statusId, tasks }))
+				.catch(() => ({ statusId, tasks: [] }))
+		)
+	);
+
+	return results.reduce((acc, { statusId, tasks }) => {
+		acc[statusId] = tasks;
+		return acc;
+	}, {} as Record<number, Task[]>);
 };
 
 export const updateTaskStatus = async (
@@ -215,6 +275,9 @@ export const updateTaskStatus = async (
 	const {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}/${status}`);
+
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
 
 	return data;
 };
@@ -240,6 +303,8 @@ export const deleteTaskAssignee = async (taskId: number, userId: number) => {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/assign/${userId}`);
 
+	requestCache.invalidate(`task-${taskId}`);
+
 	return data.assignees;
 };
 
@@ -248,7 +313,8 @@ export const startTaskTimeCounter = async (taskId: number) => {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/countdown`);
 
-	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
+	requestCache.invalidate(`task-${taskId}`);
+	store.commit('incrementReloadActiveTasksKey');
 
 	return data;
 };
@@ -258,7 +324,8 @@ export const stopTaskTimeCounter = async (taskId: number) => {
 		data: { data },
 	} = await $axios.delete(`tasks/${taskId}/countdown`);
 
-	store.commit('incrementReloadActiveTasksKey'); // reload active tasks
+	requestCache.invalidate(`task-${taskId}`);
+	store.commit('incrementReloadActiveTasksKey');
 
 	return data;
 };
@@ -271,6 +338,8 @@ export const updateTaskTimeCounter = async (
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}/time`, payload);
 
+	requestCache.invalidate(`task-${taskId}`);
+
 	return data;
 };
 
@@ -281,6 +350,8 @@ type taskOrder = {
 
 export const updateTaskOrders = async (payload: { tasks: taskOrder[] }) => {
 	await $axios.put('/tasks/update-orders', payload);
+	
+	requestCache.invalidate(/^tasks-status-/);
 };
 
 type exportType = 'csv' | 'jpg' | 'xlsx';
