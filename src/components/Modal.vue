@@ -12,8 +12,9 @@
 </template>
 
 <script lang="ts" setup>
-	import { onMounted, onUnmounted, ref, computed } from 'vue';
+	import { onMounted, onUnmounted, ref } from 'vue';
 	import { useStore } from 'vuex';
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 
 	interface Props {
 		modalClass?: string;
@@ -25,56 +26,37 @@
 	const initialUrl = ref(location.href);
 	const store = useStore();
 	const modalId = ref(`modal-${Date.now()}-${Math.random()}`);
-
-	const isTopmostModal = computed(() => {
-		const stack = store.state.modalStack;
-		return stack.length > 0 && stack[stack.length - 1] === modalId.value;
-	});
+	const isClosing = ref(false);
+	const { registerModal, unregisterModal } = useModalEscHandler();
 
 	onMounted(() => {
 		document.body.classList.add('overflow-hidden');
-		document.addEventListener('keydown', closeByEscape);
 		store.commit('pushModalToStack', modalId.value);
-	});
 
-	onUnmounted(() => {
-		document.body.classList.remove('overflow-hidden');
-		if (location.href !== initialUrl.value) {
-			history.replaceState({}, '', initialUrl.value);
-		}
-		document.removeEventListener('keydown', closeByEscape);
-		store.commit('removeModalFromStack', modalId.value);
-	});
+		registerModal(modalId.value, ({ hasUnderlying }) => {
+			if (isClosing.value) return;
+			isClosing.value = true;
 
-	function closeByEscape(e: KeyboardEvent) {
-		if (e.key === 'Escape' && isTopmostModal.value) {
-			if (store.state.openModals > 1) {
+			if (hasUnderlying) {
 				emit('closingModal');
 			} else {
 				emit('close');
 			}
-		}
-	}
+		});
+	});
 
-	function close(e: MouseEvent) {
-		const secondModal = document.querySelector('#modal3');
-		const thirdModal = document.querySelector('#modal4');
-		const target = e.target as HTMLDivElement;
-		if (thirdModal && target == thirdModal) {
-			emit('closingModal');
-			return;
+	onUnmounted(() => {
+		unregisterModal(modalId.value);
+		store.commit('removeModalFromStack', modalId.value);
+
+		if (store.state.modalStack.length === 0) {
+			document.body.classList.remove('overflow-hidden');
 		}
-		if (target === secondModal) {
-			emit('closingModal');
-			return;
-		} else {
-			if (props.closeOnBgClick) {
-				if (target.dataset.name === 'overlay') {
-					emit('close');
-				}
-			}
+
+		if (location.href !== initialUrl.value) {
+			history.replaceState({}, '', initialUrl.value);
 		}
-	}
+	});
 
 	const isZooming = ref();
 	function zooming() {
