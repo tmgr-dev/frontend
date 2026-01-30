@@ -497,53 +497,53 @@
 					hour12: false,
 				});
 			},
-			async handleStartTimer() {
-				if (!this.task.id || this.isLoadingTimer) return;
+		async handleStartTimer() {
+			if (!this.task.id || this.isLoadingTimer) return;
 
-				this.isLoadingTimer = true;
-				try {
-					const updatedTask = await startTaskTimeCounter(this.task.id);
-					Object.assign(this.task, updatedTask);
-					this.$store.commit('incrementReloadTasksKey');
-					this.$emit('timer-started', updatedTask);
+			this.isLoadingTimer = true;
+			try {
+				const updatedTask = await startTaskTimeCounter(this.task.id);
+				Object.assign(this.task, updatedTask);
+				this.$store.commit('updateSingleTask', updatedTask);
+				this.$emit('timer-started', updatedTask);
 
-					const taskStatus = this.statuses.find(
-						(s) => s.id === this.task.status_id,
-					);
-					if (taskStatus && taskStatus.type === 'default') {
-						const activeStatus = this.statuses.find((s) => s.type === 'active');
-						if (activeStatus) {
-							const shouldSwitch = confirm(
-								`Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
-							);
-							if (shouldSwitch) {
-								await updateTaskStatus(this.task.id, activeStatus.id);
-								this.task.status_id = activeStatus.id;
-								this.$store.commit('incrementReloadTasksKey');
-							}
+				const taskStatus = this.statuses.find(
+					(s) => s.id === this.task.status_id,
+				);
+				if (taskStatus && taskStatus.type === 'default') {
+					const activeStatus = this.statuses.find((s) => s.type === 'active');
+					if (activeStatus) {
+						const shouldSwitch = confirm(
+							`Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
+						);
+						if (shouldSwitch) {
+							await updateTaskStatus(this.task.id, activeStatus.id);
+							this.task.status_id = activeStatus.id;
+							this.$store.commit('updateSingleTask', this.task);
 						}
 					}
-				} catch (e) {
-					console.error('Failed to start timer:', e);
-				} finally {
-					this.isLoadingTimer = false;
 				}
-			},
-			async handleStopTimer() {
-				if (!this.task.id || this.isLoadingTimer) return;
+			} catch (e) {
+				console.error('Failed to start timer:', e);
+			} finally {
+				this.isLoadingTimer = false;
+			}
+		},
+		async handleStopTimer() {
+			if (!this.task.id || this.isLoadingTimer) return;
 
-				this.isLoadingTimer = true;
-				try {
-					const updatedTask = await stopTaskTimeCounter(this.task.id);
-					Object.assign(this.task, updatedTask);
-					this.$store.commit('incrementReloadTasksKey');
-					this.$emit('timer-stopped', updatedTask);
-				} catch (e) {
-					console.error('Failed to stop timer:', e);
-				} finally {
-					this.isLoadingTimer = false;
-				}
-			},
+			this.isLoadingTimer = true;
+			try {
+				const updatedTask = await stopTaskTimeCounter(this.task.id);
+				Object.assign(this.task, updatedTask);
+				this.$store.commit('updateSingleTask', updatedTask);
+				this.$emit('timer-stopped', updatedTask);
+			} catch (e) {
+				console.error('Failed to stop timer:', e);
+			} finally {
+				this.isLoadingTimer = false;
+			}
+		},
 			updateTimer() {
 				if (!this.task.start_time) {
 					return;

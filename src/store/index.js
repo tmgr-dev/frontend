@@ -33,6 +33,8 @@ const state = {
 	openModals: 0,
 	modalStack: [],
 	urlManuallyChanged: false,
+	updatedTaskData: null,
+	updatedTaskKey: 0,
 };
 
 const getters = {
@@ -80,6 +82,10 @@ const mutations = {
 			state.workspaces = Object.values(workspaces);
 			state.workspacesById = workspaces;
 		}
+	},
+	updateSingleTask(state, task) {
+		state.updatedTaskData = task;
+		state.updatedTaskKey = (state.updatedTaskKey || 0) + 1;
 	},
 	setToken(state, token) {
 		if (token == null) {

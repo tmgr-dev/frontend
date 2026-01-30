@@ -788,7 +788,6 @@
 				}
 			}
 
-			// Trigger reload of tasks list
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			console.error(e);
@@ -875,7 +874,7 @@
 
 			const id = taskId.value || (form.value.id as number);
 			form.value = await updateTask(id, form.value as Task, instanceId);
-			store.commit('incrementReloadTasksKey');
+			store.commit('updateSingleTask', form.value);
 
 			// Ensure no auto-save will happen after this manual save
 			// We need to set this after the save operation completes
@@ -929,7 +928,7 @@
 				suppressAutoSavingForOnce.value = true;
 				const id = taskId.value || (form.value.id as number);
 				form.value = await stopTaskTimeCounter(id);
-				store.commit('incrementReloadTasksKey');
+				store.commit('updateSingleTask', form.value);
 			} catch (e) {
 				console.error(e);
 			} finally {
@@ -943,7 +942,7 @@
 			suppressAutoSavingForOnce.value = true;
 			const id = taskId.value || (form.value.id as number);
 			form.value = await startTaskTimeCounter(id);
-			store.commit('incrementReloadTasksKey');
+			store.commit('updateSingleTask', form.value);
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -995,7 +994,7 @@
 			const id = backlogStatusChangeConfirm.value.taskId;
 			await updateTaskStatus(id, activeStatus.id);
 			form.value.status_id = activeStatus.id;
-			store.commit('incrementReloadTasksKey');
+			store.commit('updateSingleTask', form.value);
 		} catch (e) {
 			console.error('Failed to change status:', e);
 		} finally {
