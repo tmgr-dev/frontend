@@ -99,26 +99,22 @@ defineExpose({
 </script>
 
 <template>
-	<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+	<div class="task-comments">
 		<!-- Header -->
-		<div class="flex items-center gap-2 mb-3">
+		<div class="flex items-center gap-2 mb-3 border-t border-gray-200 dark:border-gray-700 pt-4">
 			<MessageCircle class="h-4 w-4 text-gray-600 dark:text-gray-400" />
 			<span class="text-sm font-medium text-gray-900 dark:text-white">Activity</span>
 			<span v-if="commentsCount > 0" class="text-xs text-gray-500 dark:text-gray-400">
-				{{ commentsCount }}
+				({{ commentsCount }})
 			</span>
 		</div>
 
 		<!-- Comments List -->
-		<div v-if="isLoading" class="flex items-center justify-center py-4">
-			<div class="h-5 w-5 animate-spin rounded-full border-2 border-tmgr-blue border-t-transparent"></div>
+		<div v-if="isLoading" class="flex items-center justify-center py-2">
+			<div class="h-4 w-4 animate-spin rounded-full border-2 border-tmgr-blue border-t-transparent"></div>
 		</div>
 
-		<div v-else-if="comments.length === 0" class="py-2 text-xs text-gray-500 dark:text-gray-400">
-			No comments yet
-		</div>
-
-		<div v-else class="space-y-3">
+		<div v-else-if="comments.length > 0" class="space-y-3">
 			<div
 				v-for="comment in sortedComments"
 				:key="comment.id"
