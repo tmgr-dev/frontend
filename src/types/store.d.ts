@@ -58,6 +58,8 @@ export interface RootState {
   openModals: number;
   modalStack: string[];
   urlManuallyChanged: boolean;
+  updatedTaskData: any | null;
+  updatedTaskKey: number;
 }
 
 export interface RootGetters {
