@@ -712,31 +712,37 @@
 			pusherSubscriptionId: '',
 		}),
 
-		watch: {
-			'$store.state.reloadTasksKey'() {
-				this.loadTasks();
-			},
-			'$store.state.currentTaskIdForModal'(newVal, oldVal) {
-				if (oldVal && !newVal) {
-					this.$nextTick(() => {
-						this.updateScrollContainers();
-					});
-				}
-			},
-			$route() {
-				this.isMobile = window.innerWidth <= 768;
-			},
-
-			chosenUser: function () {
-				this.loadTasks();
-			},
-			searchText: function () {
-				this.loadTasks();
-			},
-			chosenCategory: function () {
-				this.loadTasks();
-			},
+	watch: {
+		'$store.state.reloadTasksKey'() {
+			this.loadTasks();
 		},
+		'$store.state.updatedTaskKey'() {
+			const updatedTask = this.$store.state.updatedTaskData;
+			if (updatedTask) {
+				this.updateSingleTaskInBoard(updatedTask);
+			}
+		},
+		'$store.state.currentTaskIdForModal'(newVal, oldVal) {
+			if (oldVal && !newVal) {
+				this.$nextTick(() => {
+					this.updateScrollContainers();
+				});
+			}
+		},
+		$route() {
+			this.isMobile = window.innerWidth <= 768;
+		},
+
+		chosenUser: function () {
+			this.loadTasks();
+		},
+		searchText: function () {
+			this.loadTasks();
+		},
+		chosenCategory: function () {
+			this.loadTasks();
+		},
+	},
 		computed: {
 			userSettings() {
 				return this.$store.state.userSettings ?? {};
@@ -754,6 +760,56 @@
 			},
 		},
 		methods: {
+			updateSingleTaskInBoard(updatedTask) {
+				let taskFound = false;
+				const taskStatusId = Number(updatedTask.status_id);
+				
+				for (const column of this.columns) {
+					const taskIndex = column.tasks.findIndex(t => t.id === updatedTask.id);
+					
+					if (taskIndex !== -1) {
+						taskFound = true;
+						const currentColumnStatusId = Number(column.status?.id);
+						
+						if (currentColumnStatusId === taskStatusId) {
+							this.$set(column.tasks, taskIndex, updatedTask);
+						} else {
+							column.tasks.splice(taskIndex, 1);
+							const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+							if (newColumn) {
+								newColumn.tasks.unshift(updatedTask);
+							}
+						}
+						break;
+					}
+				}
+				
+				if (!taskFound) {
+					const targetColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
+					if (targetColumn) {
+						targetColumn.tasks.unshift(updatedTask);
+					}
+				}
+				
+				this.columns = this.columns.map((column) => {
+					const tasksInColumn = column.tasks;
+					const taskCount = tasksInColumn.length;
+					const summary = tasksInColumn.reduce(
+						(acc, task) => task.common_time + acc,
+						0,
+					);
+					const summaryInHours = this.formatTime(summary);
+					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
+					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
+
+					return { 
+						...column, 
+						summary: summaryInHours,
+						taskCount: taskCount,
+						overtime: overtimeFormatted
+					};
+				});
+			},
 			scrollHorizontally() {
 				document.querySelector('.board-container').scrollTo({
 					left: document.querySelector('.board-container').scrollLeft + 200,

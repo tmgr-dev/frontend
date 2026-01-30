@@ -230,6 +230,12 @@
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
+	watch(() => store.state.updatedTaskKey, () => {
+		const updatedTask = store.state.updatedTaskData;
+		if (updatedTask) {
+			updateSingleTaskInList(updatedTask);
+		}
+	});
 	watch(() => route.name, (newName) => {
 		if (newName) {
 			setDocumentTitle(h1[newName] || 'Task List');
@@ -318,6 +324,27 @@
 
 	function resetFilters() {
 		selectedCategory.value = null;
+	}
+
+	function updateSingleTaskInList(updatedTask: Task) {
+		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
+		
+		if (taskIndex !== -1) {
+			const shouldStayInList = !status.value || updatedTask.status === status.value;
+			
+			if (shouldStayInList) {
+				tasks.value.splice(taskIndex, 1, updatedTask);
+			} else {
+				tasks.value.splice(taskIndex, 1);
+				pagination.value.total = Math.max(0, pagination.value.total - 1);
+			}
+		} else {
+			const shouldBeInList = !status.value || updatedTask.status === status.value;
+			if (shouldBeInList) {
+				tasks.value.unshift(updatedTask);
+				pagination.value.total++;
+			}
+		}
 	}
 </script>
 
