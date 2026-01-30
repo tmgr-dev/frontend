@@ -197,13 +197,13 @@
 .editorjs {
 	/* Ensure the editor itself is properly sized */
 	height: 100%;
-	min-height: 500px; /* Set minimum height to 500px */
+	min-height: 200px;
 	max-height: 100%;
-	overflow-y: auto;
-	margin-left: 0px; /* Slightly less margin to give more content space */
+	overflow-y: visible;
+	margin-left: 0px;
 	padding-left: 0px !important;
 	width: calc(100% - 30px);
-	position: relative; /* Ensure proper positioning context */
+	position: relative;
 }
 
 /* Fix for checklist items to prevent overflow */

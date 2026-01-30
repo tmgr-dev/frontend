@@ -1455,17 +1455,17 @@
 							:show-preview="!!(taskId && form.description)"
 						/>
 
-						<BlockEditor
-							v-else-if="editorType === 'block'"
-							v-model="form.description_json"
-							placeholder="Type your description here or enter / to see commands or "
-							class="block-editor-container mb-2 grow border px-2"
-							:class="[
-								!isModal
-									? 'lg:min-h-96'
-									: 'min-h-[200px] md:max-h-[350px] md:overflow-y-auto',
-							]"
-						/>
+					<BlockEditor
+						v-else-if="editorType === 'block'"
+						v-model="form.description_json"
+						placeholder="Type your description here or enter / to see commands or "
+						class="block-editor-container mb-2 grow border px-2"
+						:class="[
+							!isModal
+								? 'lg:min-h-96'
+								: 'min-h-[200px]',
+						]"
+					/>
 					</div>
 
 					<!-- Task Attachments -->
@@ -1899,10 +1899,10 @@
 	/* Ensure editor is given enough space in modal */
 	.block-editor-container .editorjs {
 		flex: 1;
-		min-height: 500px !important; /* Minimum height for the actual editor */
+		min-height: 200px !important;
 		width: 100% !important;
 		box-sizing: border-box;
-		position: relative !important; /* Ensure proper positioning context */
+		position: relative !important;
 	}
 
 	/* Improve list display in modal windows */
@@ -1913,9 +1913,9 @@
 	}
 
 	/* Fix for modals to ensure content is visible and scrollable */
-	.new-form-container.h-full .md\:max-h-\[350px\] {
-		overflow-y: auto;
-		contain: content;
+	.new-form-container.h-full .block-editor-container {
+		overflow-y: visible;
+		contain: none;
 		position: relative;
 		padding-left: 10px;
 	}
