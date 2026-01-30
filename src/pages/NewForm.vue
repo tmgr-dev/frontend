@@ -65,7 +65,6 @@
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -241,24 +240,11 @@
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
 	const isLoading = ref(false);
 	const checkpointUpdateKey = ref(0);
-	const isCheckpointsExpanded = ref(false);
-	const checkpointsModalId = `checkpoints-${Date.now()}-${Math.random()}`;
-	const { registerModal, unregisterModal } = useModalEscHandler();
+	const isCheckpointsModalOpen = ref(false);
 	const workspaceStatuses = computed<Status[]>(
 		() => store.state.workspaceStatuses as Status[],
 	);
 
-	watch(isCheckpointsExpanded, (isOpen: boolean) => {
-		if (isOpen) {
-			store.commit('pushModalToStack', checkpointsModalId);
-			registerModal(checkpointsModalId, () => {
-				isCheckpointsExpanded.value = false;
-			});
-		} else {
-			unregisterModal(checkpointsModalId);
-			store.commit('removeModalFromStack', checkpointsModalId);
-		}
-	});
 	const permissionDenied = ref(false);
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
@@ -267,6 +253,9 @@
 	const isCommentInputExpanded = ref(false);
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
 	const commentsCount = ref(0);
+	const attachmentsCount = ref(0);
+	const attachmentsRef = ref<InstanceType<typeof TaskAttachments> | null>(null);
+	const relationsRef = ref<InstanceType<typeof TaskRelations> | null>(null);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
@@ -316,11 +305,6 @@
 			form.value.status_id = parseInt(value, 10);
 		},
 	});
-
-	// Toggle checkpoints expanded state
-	const toggleCheckpointsExpanded = () => {
-		isCheckpointsExpanded.value = !isCheckpointsExpanded.value;
-	};
 
 	// Add a checkpoint to the task
 	const addCheckpoint = () => {
@@ -621,8 +605,6 @@
 	});
 	
 	onUnmounted(() => {
-		unregisterModal(checkpointsModalId);
-		store.commit('removeModalFromStack', checkpointsModalId);
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
 			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
 		}
@@ -1469,145 +1451,114 @@
 					</div>
 
 					<!-- Task Attachments -->
-					<!--					<TaskAttachments
-						v-if="taskId || form.id"
-						:task-id="taskId || form.id"
-					/>-->
-
-					<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
-					<div
-						v-if="
-							(taskId || form.id) &&
-							!isCheckpointsExpanded &&
-							form.checkpoints &&
-							form.checkpoints.length > 0
-						"
-						class="checkpoints-wrapper flex flex-col rounded border border-gray-200 bg-slate-100 dark:border-gray-700 dark:bg-slate-900"
-						:class="[isModal ? 'max-h-[320px]' : '']"
-						:key="checkpointUpdateKey"
-					>
-						<!-- Header - Fixed -->
-						<div
-							class="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
+					<div v-if="taskId || form.id" class="mt-1">
+						<!-- Show "+ Add attachment" when no attachments exist -->
+						<button
+							v-if="attachmentsCount === 0"
+							@click="attachmentsRef?.handleAddFiles()"
+							class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
 						>
-							<span class="font-medium"
-								>Task Checkpoints ({{ form.checkpoints.length }})</span
-							>
-							<div class="flex items-center gap-2">
-								<button
-									class="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-									@click="addCheckpoint"
-									title="Add new checkpoint"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="feather feather-plus-circle"
-									>
-										<circle cx="12" cy="12" r="10"></circle>
-										<line x1="12" y1="8" x2="12" y2="16"></line>
-										<line x1="8" y1="12" x2="16" y2="12"></line>
-									</svg>
-								</button>
-
-								<button
-									class="ml-1 cursor-pointer text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-									@click="toggleCheckpointsExpanded"
-									title="Expand checkpoints"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="feather feather-maximize-2"
-									>
-										<polyline points="15 3 21 3 21 9"></polyline>
-										<polyline points="9 21 3 21 3 15"></polyline>
-										<line x1="21" y1="3" x2="14" y2="10"></line>
-										<line x1="3" y1="21" x2="10" y2="14"></line>
-									</svg>
-								</button>
-							</div>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+							</svg>
+							<span>Add attachment</span>
+						</button>
+						<!-- Show header with count when attachments exist -->
+						<div v-if="attachmentsCount > 0" class="mb-2 text-sm text-gray-600 dark:text-gray-400">
+							Attachments <span class="text-xs text-gray-400">({{ attachmentsCount }})</span>
 						</div>
-						<!-- Content - Scrollable -->
-						<div class="flex-1 overflow-y-auto px-3 py-2">
-							<checkpoints :checkpoints="form.checkpoints || []" />
-						</div>
+						<TaskAttachments
+							ref="attachmentsRef"
+							:task-id="taskId || form.id"
+							:hide-empty-state="true"
+							@update:count="attachmentsCount = $event"
+						/>
 					</div>
 
-					<!-- Fullscreen modal for checkpoints -->
+					<!-- Checkpoints section -->
 					<div
-						v-if="isCheckpointsExpanded"
-						class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-						@click.self="toggleCheckpointsExpanded"
+						v-if="(taskId || form.id) && isFeatureEnabled('task.checkpoints')"
+						class="mt-1"
 					>
+						<!-- Show "+ Add checkpoint" when no checkpoints exist -->
+						<button
+							v-if="!form.checkpoints || form.checkpoints.length === 0"
+							@click="addCheckpoint"
+							class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+							</svg>
+							<span>Add checkpoint</span>
+						</button>
+						
+						<!-- Show checkpoints when they exist (always open) -->
+						<div v-else :key="checkpointUpdateKey">
+							<div class="mb-2 flex items-center gap-3">
+								<span class="text-sm text-gray-600 dark:text-gray-400">
+									Checkpoints <span class="text-xs text-gray-400">({{ form.checkpoints.length }})</span>
+								</span>
+								<button
+									@click="isCheckpointsModalOpen = true"
+									class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+									title="Open fullscreen"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+										<path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" />
+									</svg>
+								</button>
+							</div>
+							<button
+								@click="addCheckpoint"
+								class="mb-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+									<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+								</svg>
+								<span>Add</span>
+							</button>
+							<div class="rounded border border-gray-200 bg-slate-100 p-2 dark:border-gray-700 dark:bg-slate-900">
+								<checkpoints :checkpoints="form.checkpoints || []" />
+							</div>
+						</div>
+						
+						<!-- Fullscreen modal for checkpoints -->
 						<div
-							class="h-[90%] w-[90%] max-w-4xl overflow-auto rounded-lg bg-white shadow-lg dark:bg-slate-900"
+							v-if="isCheckpointsModalOpen"
+							class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+							@click.self="isCheckpointsModalOpen = false"
 						>
 							<div
-								class="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900"
+								class="h-[90%] w-[90%] max-w-4xl overflow-auto rounded-lg bg-white shadow-lg dark:bg-slate-900"
 							>
-								<h2 class="text-lg font-bold">Task Checkpoints</h2>
-								<div class="flex items-center gap-3">
-									<button
-										class="flex cursor-pointer items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-										@click="addCheckpoint"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="16"
-											height="16"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="feather feather-plus-circle"
+								<div
+									class="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900"
+								>
+									<h2 class="text-lg font-bold">Task Checkpoints</h2>
+									<div class="flex items-center gap-3">
+										<button
+											class="flex cursor-pointer items-center gap-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+											@click="addCheckpoint"
 										>
-											<circle cx="12" cy="12" r="10"></circle>
-											<line x1="12" y1="8" x2="12" y2="16"></line>
-											<line x1="8" y1="12" x2="16" y2="12"></line>
-										</svg>
-									</button>
-									<button
-										class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-										@click="toggleCheckpointsExpanded"
-										title="Close expanded view"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="24"
-											height="24"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="feather feather-x"
+											<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+											</svg>
+											<span class="text-sm">Add</span>
+										</button>
+										<button
+											class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+											@click="isCheckpointsModalOpen = false"
+											title="Close"
 										>
-											<line x1="18" y1="6" x2="6" y2="18"></line>
-											<line x1="6" y1="6" x2="18" y2="18"></line>
-										</svg>
-									</button>
+											<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+											</svg>
+										</button>
+									</div>
 								</div>
-							</div>
-							<div class="p-4">
-								<checkpoints :checkpoints="form.checkpoints || []" />
+								<div class="p-4">
+									<checkpoints :checkpoints="form.checkpoints || []" />
+								</div>
 							</div>
 						</div>
 					</div>
@@ -1620,10 +1571,28 @@
 								(form.relationTypeWithTask &&
 									form.relationTypeWithTask.length > 0))
 						"
+						class="mt-1"
 					>
+						<!-- Show "+ Add link" when no relations exist -->
+						<button
+							v-if="!form.relationTypeWithTask || form.relationTypeWithTask.length === 0"
+							@click="relationsRef?.openAddModal()"
+							class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+							</svg>
+							<span>Add link</span>
+						</button>
+						<!-- Show header when relations exist -->
+						<div v-if="form.relationTypeWithTask?.length > 0" class="mb-2 text-sm text-gray-600 dark:text-gray-400">
+							Linked Tasks <span class="text-xs text-gray-400">({{ form.relationTypeWithTask.length }})</span>
+						</div>
 						<TaskRelations
+							ref="relationsRef"
 							:task-id="form.id"
 							:relations="form.relationTypeWithTask"
+							:hide-add-button="!form.relationTypeWithTask || form.relationTypeWithTask.length === 0"
 							@update="reloadTask"
 							@open-task="handleOpenLinkedTask"
 						/>
@@ -1687,12 +1656,20 @@
 						</div>
 					</div>
 
-					<!-- Comments Section -->
+					<!-- Comments Section - only show if there are comments -->
 					<TaskComments
-						v-if="form.id"
+						v-if="form.id && commentsCount > 0"
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						class="mt-4"
+						@update:count="commentsCount = $event"
+					/>
+					<!-- Hidden loader to get initial count -->
+					<TaskComments
+						v-if="form.id && commentsCount === 0"
+						ref="taskCommentsRef"
+						:task-id="form.id"
+						class="hidden"
 						@update:count="commentsCount = $event"
 					/>
 				</main>
@@ -1735,34 +1712,6 @@
 								<path
 									d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
 								></path>
-							</svg>
-						</button>
-
-						<button
-							v-if="
-								isFeatureEnabled('task.checkpoints') &&
-								(taskId || form.id) &&
-								(!form.checkpoints || form.checkpoints.length === 0)
-							"
-							@click="addCheckpoint"
-							class="flex items-center gap-1 rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none"
-							type="button"
-							title="Add Checkpoint"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="20"
-								height="20"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="feather feather-check-circle"
-							>
-								<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-								<polyline points="22 4 12 14.01 9 11.01"></polyline>
 							</svg>
 						</button>
 

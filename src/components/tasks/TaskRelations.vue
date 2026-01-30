@@ -1,26 +1,19 @@
 <template>
-	<div class="rounded border bg-white dark:bg-gray-900 shadow-sm">
-		<!-- Compact Header -->
-		<div class="flex items-center justify-between px-3 py-2 border-b dark:border-gray-700">
-			<div class="flex items-center gap-1.5">
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-				</svg>
-				<h3 class="text-sm font-semibold">Linked Tasks</h3>
-			</div>
-			<button
-				@click="isAddingRelation = true"
-				class="inline-flex items-center justify-center gap-1 rounded text-xs font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-6 px-2"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-					<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-				</svg>
-				Link
-			</button>
-		</div>
+	<div class="task-relations">
+		<!-- Add link button (hidden when hideAddButton is true) -->
+		<button
+			v-if="!hideAddButton"
+			@click="isAddingRelation = true"
+			class="mb-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+				<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+			</svg>
+			<span>Add link</span>
+		</button>
 
-		<!-- Compact Content - only show when there are relations -->
-		<div v-if="relations && relations.length > 0" class="p-3">
+		<!-- Content - only show when there are relations -->
+		<div v-if="relations && relations.length > 0">
 			<!-- Grouped Relations -->
 			<div class="space-y-3">
 				<div v-for="(group, type) in groupedRelations" :key="type" class="space-y-1">
@@ -64,10 +57,13 @@
 				</div>
 			</div>
 		</div>
-	</div>
 
-	<!-- Compact Modal -->
-	<div v-if="isAddingRelation" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" @click="cancelAdding">
+		<div v-else-if="!hideAddButton" class="text-sm text-gray-500 dark:text-gray-400">
+			No linked tasks yet
+		</div>
+
+		<!-- Compact Modal -->
+		<div v-if="isAddingRelation" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" @click="cancelAdding">
 		<div 
 			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-2 border dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-lg rounded-lg"
 			@click.stop
@@ -175,16 +171,17 @@
 				</button>
 			</div>
 		</div>
-	</div>
+		</div>
 
-	<!-- Confirm Dialog -->
-	<Confirm
-		v-if="showRemoveConfirm"
-		title="Remove link"
-		:body="`Remove link '${relationToRemove?.relation_type.name}' to task #${relationToRemove?.related_task.id}?`"
-		@on-ok="confirmRemoveRelation"
-		@on-cancel="cancelRemoveRelation"
-	/>
+		<!-- Confirm Dialog -->
+		<Confirm
+			v-if="showRemoveConfirm"
+			title="Remove link"
+			:body="`Remove link '${relationToRemove?.relation_type.name}' to task #${relationToRemove?.related_task.id}?`"
+			@on-ok="confirmRemoveRelation"
+			@on-cancel="cancelRemoveRelation"
+		/>
+	</div>
 </template>
 
 <script setup lang="ts">
@@ -203,6 +200,7 @@ import {
 const props = defineProps<{
 	taskId: number;
 	relations?: TaskRelation[];
+	hideAddButton?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -407,6 +405,14 @@ onUnmounted(() => {
 	if (searchTimeout) {
 		clearTimeout(searchTimeout);
 	}
+});
+
+const openAddModal = () => {
+	isAddingRelation.value = true;
+};
+
+defineExpose({
+	openAddModal
 });
 </script>
 
