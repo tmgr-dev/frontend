@@ -375,6 +375,7 @@ export const exportTasks = async (
 		`exports/tasks/${exportType}?${objectToQueryString(params)}`,
 		{
 			responseType: 'blob',
+			timeout: 600000,
 		},
 	);
 
