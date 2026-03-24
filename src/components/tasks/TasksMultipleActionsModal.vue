@@ -47,11 +47,14 @@
 						</optgroup>
 					</select>
 					<button
-						class="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+						class="flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
 						:disabled="isLoading"
 						@click="executeAction"
 					>
-						<loader v-if="isLoading" is-mini />
+						<template v-if="isLoading">
+							<loader is-mini />
+							<span>{{ elapsedTime }}s</span>
+						</template>
 						<span v-else>Execute</span>
 					</button>
 				</div>
@@ -75,6 +78,8 @@
 			return {
 				exportSettings: {},
 				selectedAction: 'export:csv',
+				elapsedTime: 0,
+				timerInterval: null,
 			};
 		},
 		props: {
@@ -92,6 +97,22 @@
 			isLoading() {
 				return this.isLoadingActions.length > 0;
 			},
+		},
+		watch: {
+			isLoading(loading) {
+				if (loading) {
+					this.elapsedTime = 0;
+					this.timerInterval = setInterval(() => {
+						this.elapsedTime++;
+					}, 1000);
+				} else {
+					clearInterval(this.timerInterval);
+					this.timerInterval = null;
+				}
+			},
+		},
+		beforeUnmount() {
+			clearInterval(this.timerInterval);
 		},
 		methods: {
 			executeAction() {
