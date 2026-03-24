@@ -357,9 +357,19 @@ export const updateTaskOrders = async (payload: { tasks: taskOrder[] }) => {
 
 type exportType = 'csv' | 'jpg' | 'xlsx';
 
+interface ExportSettings {
+	round_hours_up?: boolean;
+	zero_expected_weekends?: boolean;
+	weekend_days?: number[];
+	custom_holidays?: string[];
+	parse_date_from_title?: boolean;
+	include_explanations?: boolean;
+	week_start?: number;
+}
+
 export const exportTasks = async (
 	exportType: exportType,
-	params: { ids: number[]; per_hour: number },
+	params: { ids: number[]; per_hour: number } & ExportSettings,
 ) => {
 	const { data } = await $axios.get(
 		`exports/tasks/${exportType}?${objectToQueryString(params)}`,
