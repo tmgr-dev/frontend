@@ -1,147 +1,81 @@
 <template>
-	<div class="draggable-block">
-		<vue-draggable-resizable
-			:resizable="false"
-			:w="250"
-			class-name="rounded bg-green-600 py-5 px-2"
-		>
-			<slot></slot>
-			<a
-				class="absolute right-0 top-0 pr-1 pt-1 text-gray-400 hover:text-gray-100"
-				href="#close"
-				@click.prevent="$emit('close')"
-			>
-				<span class="material-icons text-bold">close</span>
-			</a>
-			<div class="mt-2 flex w-full flex-wrap justify-center">
-				<button
-					v-tooltip.top="setTooltipData('Done')"
-					class="mr-1 mt-2 rounded bg-green-700 py-2 text-white hover:bg-green-800"
-					@click="$emit('updateStatus', 'done')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('done')"
-							class="material-icons text-bold"
-							>done</span
-						>
-						<loader v-if="isLoadingActions.includes('done')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Archive')"
-					class="mr-1 mt-2 rounded bg-red-700 py-2 text-white hover:bg-red-800"
-					@click="$emit('updateStatus', '15')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('15')"
-							class="material-icons text-bold"
-							>archive</span
-						>
-						<loader v-if="isLoadingActions.includes('15')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Reactivate')"
-					class="mr-1 mt-2 rounded bg-purple-700 py-2 text-white hover:bg-purple-600"
-					@click="$emit('updateStatus', 'active')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('active')"
-							class="material-icons text-bold"
-							>refresh</span
-						>
-						<loader v-if="isLoadingActions.includes('active')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Hide')"
-					class="mr-1 mt-2 rounded bg-gray-700 py-2 text-white hover:bg-gray-600"
-					@click="$emit('updateStatus', 'hidden')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('hidden')"
-							class="material-icons"
-							>visibility_off</span
-						>
-						<loader v-if="isLoadingActions.includes('hidden')" is-mini />
-					</span>
-				</button>
-				<button
-					v-if="status === 'hidden' || status === 'done'"
-					v-tooltip.top="setTooltipData('Delete')"
-					class="mt-2 rounded bg-red-700 py-2 text-white hover:bg-red-600"
-					@click="$emit('remove')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('delete')"
-							class="material-icons"
-							>delete</span
-						>
-						<loader v-if="isLoadingActions.includes('delete')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Export to CSV')"
-					class="mt-2 rounded bg-blue-700 py-2 text-white hover:bg-blue-600"
-					@click="$emit('export')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('csv')"
-							class="material-icons"
-							>description</span
-						>
-						<loader v-if="isLoadingActions.includes('csv')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Export to JPEG')"
-					class="ml-1 mt-2 rounded bg-blue-700 py-2 text-white hover:bg-blue-600"
-					@click="$emit('export', 'jpg')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('jpg')"
-							class="material-icons"
-							>image</span
-						>
-						<loader v-if="isLoadingActions.includes('jpg')" is-mini />
-					</span>
-				</button>
-				<button
-					v-tooltip.top="setTooltipData('Export to XLSX')"
-					class="ml-1 mt-2 rounded bg-blue-700 py-2 text-white hover:bg-blue-600"
-					@click="$emit('export', 'xlsx')"
-				>
-					<span class="relative">
-						<span
-							v-if="!isLoadingActions.includes('xlsx')"
-							class="material-icons"
-							>list</span
-						>
-						<loader v-if="isLoadingActions.includes('xlsx')" is-mini />
-					</span>
-				</button>
+	<Modal modal-class="w-[420px] p-6" @close="$emit('close')" @closingModal="$emit('close')">
+		<template #modal-body>
+			<div class="text-tmgr-blue dark:text-gray-300">
+				<div class="flex items-center justify-between">
+					<div class="text-xl font-bold">Batch Actions</div>
+					<a
+						class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+						href="#close"
+						@click.prevent="$emit('close')"
+					>
+						<span class="material-icons">close</span>
+					</a>
+				</div>
+
+				<slot></slot>
+
+				<export-settings-panel
+					@update:settings="exportSettings = $event"
+				/>
+
+				<div class="mt-4 flex items-center gap-2">
+					<select
+						v-model="selectedAction"
+						class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+					>
+						<optgroup label="Status">
+							<option value="status:done">Done</option>
+							<option value="status:15">Archive</option>
+							<option value="status:active">Reactivate</option>
+							<option value="status:hidden">Hide</option>
+							<option
+								v-if="
+									status === 'hidden' || status === 'done'
+								"
+								value="delete"
+							>
+								Delete
+							</option>
+						</optgroup>
+						<optgroup label="Export">
+							<option value="export:csv">Export to CSV</option>
+							<option value="export:jpg">Export to JPEG</option>
+							<option value="export:xlsx">
+								Export to XLSX
+							</option>
+						</optgroup>
+					</select>
+					<button
+						class="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+						:disabled="isLoading"
+						@click="executeAction"
+					>
+						<loader v-if="isLoading" is-mini />
+						<span v-else>Execute</span>
+					</button>
+				</div>
 			</div>
-		</vue-draggable-resizable>
-	</div>
+		</template>
+	</Modal>
 </template>
 
 <script>
-	import SetTooltipData from '@/mixins/SetTooltipData';
-	import VueDraggableResizable from '@/plugins/VueDraggableResizable/VueDraggableResizable.vue';
+	import Modal from '@/components/Modal.vue';
+	import ExportSettingsPanel from '@/components/tasks/ExportSettingsPanel.vue';
 
 	export default {
 		name: 'TasksMultipleActionsModal',
-		emits: ['export', 'remove', 'updateStatus'],
-		mixins: [SetTooltipData],
+		emits: ['export', 'remove', 'updateStatus', 'close'],
 		components: {
-			VueDraggableResizable,
+			Modal,
+			ExportSettingsPanel,
+		},
+		data() {
+			return {
+				exportSettings: {},
+				selectedAction: 'export:csv',
+			};
 		},
 		props: {
 			status: {
@@ -154,16 +88,29 @@
 				required: true,
 			},
 		},
+		computed: {
+			isLoading() {
+				return this.isLoadingActions.length > 0;
+			},
+		},
+		methods: {
+			executeAction() {
+				const action = this.selectedAction;
+				if (action.startsWith('status:')) {
+					this.$emit(
+						'updateStatus',
+						action.replace('status:', ''),
+					);
+				} else if (action.startsWith('export:')) {
+					const type = action.replace('export:', '');
+					this.$emit('export', {
+						type,
+						settings: this.exportSettings,
+					});
+				} else if (action === 'delete') {
+					this.$emit('remove');
+				}
+			},
+		},
 	};
 </script>
-
-<style scoped>
-	button {
-		width: 45px;
-		height: 40px;
-	}
-
-	.loader {
-		margin: auto;
-	}
-</style>

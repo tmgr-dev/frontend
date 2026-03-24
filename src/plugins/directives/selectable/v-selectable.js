@@ -43,9 +43,21 @@ export default {
 			},
 
 			updated(el, binding, vnode, oldVnode) {
-				if (!!el && !el.selectable) {
-					// Vue.js v1 - init selectable
+				if (!el) return;
+
+				const hasHandlers = binding.value && Object.keys(binding.value).length > 0;
+				const hadHandlers = binding.oldValue && Object.keys(binding.oldValue).length > 0;
+
+				if (hasHandlers && !el.selectable) {
 					initSelectable(el, el.dataset, binding.value);
+				} else if (hasHandlers && !hadHandlers && el.selectable) {
+					// Re-init: switched from empty {} to real handlers
+					el.selectable.detach();
+					el.selectable = null;
+					initSelectable(el, el.dataset, binding.value);
+				} else if (!hasHandlers && el.selectable) {
+					el.selectable.detach();
+					el.selectable = null;
 				}
 			},
 
@@ -53,8 +65,10 @@ export default {
 				if (!el) {
 					el = this.el;
 				}
-				el.selectable.detach();
-				el.selectable = null;
+				if (el && el.selectable) {
+					el.selectable.detach();
+					el.selectable = null;
+				}
 			},
 		});
 	},

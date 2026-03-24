@@ -1,23 +1,19 @@
 <template>
 	<div class="relative w-full items-center justify-center">
-		<Transition name="bounce">
-			<div>
-				<TasksMultipleActionsModal
-					v-if="isShowSelectedTasksCommonTime"
-					:is-loading-actions="loadingActionsForMultipleTasks"
-					:status="status"
-					@close="closeTimeInModal"
-					@export="exportSelectedTasks"
-					@remove="deleteSelectedTasks"
-					@updateStatus="updateStatusForSelectedTasks"
-				>
-					<p class="text-center text-white">
-						<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
-						{{ timeForModal }}
-					</p>
-				</TasksMultipleActionsModal>
-			</div>
-		</Transition>
+		<TasksMultipleActionsModal
+			v-if="isShowSelectedTasksCommonTime"
+			:is-loading-actions="loadingActionsForMultipleTasks"
+			:status="status"
+			@close="closeTimeInModal"
+			@export="exportSelectedTasks"
+			@remove="deleteSelectedTasks"
+			@updateStatus="updateStatusForSelectedTasks"
+		>
+			<p class="text-center text-gray-800 dark:text-gray-200">
+				<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
+				{{ timeForModal }}
+			</p>
+		</TasksMultipleActionsModal>
 
 		<div v-if="hasSelectable" class="flex items-center gap-2 px-4 pb-2">
 			<button
@@ -36,7 +32,6 @@
 		</div>
 
 		<div
-			:key="hasSelectable"
 			v-selectable="
 				hasSelectable ? { selectedGetter, selectedSetter, selectingSetter } : {}
 			"
@@ -873,7 +868,10 @@
 				this.isShowSelectedTasksCommonTime = false;
 				this.resetSelectedTasks();
 			},
-			async exportSelectedTasks(exportType = 'csv') {
+			async exportSelectedTasks(payload = {}) {
+				const exportType = typeof payload === 'string' ? payload : (payload.type || 'csv');
+				const settings = typeof payload === 'string' ? {} : (payload.settings || {});
+
 				this.loadingActionsForMultipleTasks.push(exportType);
 				const tasksIds = this.getSelectedTasks().map(({ id }) => id);
 
@@ -881,6 +879,7 @@
 					const data = await exportTasks(exportType, {
 						ids: tasksIds,
 						per_hour: 1000,
+						...settings,
 					});
 
 					downloadFile(data, 'export.' + exportType);
