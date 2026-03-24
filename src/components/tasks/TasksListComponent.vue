@@ -23,11 +23,19 @@
 			>
 				{{ allSelected ? 'Deselect all' : 'Select all' }}
 			</button>
+			<button
+				v-if="selected.filter(Boolean).length > 0"
+				@click="showProcessModal"
+				type="button"
+				class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+			>
+				Process ({{ selected.filter(Boolean).length }})
+			</button>
 			<span
 				v-if="selected.filter(Boolean).length > 0"
 				class="text-sm text-gray-500 dark:text-gray-400"
 			>
-				Selected: {{ selected.filter(Boolean).length }} of {{ tasks.length }}
+				{{ selectedSummary }}
 			</span>
 		</div>
 
@@ -519,6 +527,26 @@
 				this.selected.every(Boolean)
 			);
 		},
+		selectedSummary() {
+			const tasks = this.getSelectedTasks();
+			if (!tasks.length) return '';
+			const totalSeconds = tasks.reduce((s, t) => s + (t.common_time || 0), 0);
+			const totalHours = (totalSeconds / 3600).toFixed(1);
+			let overtimeSeconds = 0;
+			for (const task of tasks) {
+				const expected = this.getApproximatelyTime(task);
+				const actual = task.common_time || 0;
+				if (expected > 0 && actual > expected) {
+					overtimeSeconds += actual - expected;
+				}
+			}
+			const overtimeHours = (overtimeSeconds / 3600).toFixed(1);
+			let text = `${tasks.length} of ${this.tasks.length} · ${totalHours}h`;
+			if (overtimeSeconds > 0) {
+				text += ` · +${overtimeHours}h overtime`;
+			}
+			return text;
+		},
 		taskComputedData() {
 			return this.tasks.reduce((acc, task) => {
 				acc[task.id] = {
@@ -841,12 +869,7 @@
 						: !v && this.selected[i],
 				);
 
-				this.isShowSelectedTasksCommonTime =
-					this.selected.filter(Boolean).length >= 1;
 				this.selecting = [];
-				if (this.isShowSelectedTasksCommonTime) {
-					this.countTimeForModal();
-				}
 			},
 			countTimeForModal() {
 				const time = this.getSelectedTasks().reduce(
@@ -892,14 +915,16 @@
 						);
 				}
 			},
+			showProcessModal() {
+				this.countTimeForModal();
+				this.isShowSelectedTasksCommonTime = true;
+			},
 			selectAll() {
 				if (this.allSelected) {
 					this.selected = [];
 					this.isShowSelectedTasksCommonTime = false;
 				} else {
 					this.selected = this.tasks.map(() => true);
-					this.isShowSelectedTasksCommonTime = this.selected.length > 0;
-					this.countTimeForModal();
 				}
 			},
 			onPageChange(page: number) {
