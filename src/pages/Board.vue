@@ -288,6 +288,8 @@
 													class="board-card-draggable flex-1 min-h-0"
 													handle=".task-drag-handle"
 													:force-fallback="true"
+													:fallback-on-body="true"
+													:fallback-tolerance="3"
 													:touch-start-threshold="3"
 												>
 												<template #item="{ element: task }">
@@ -304,18 +306,9 @@
 												</template>
 												</Draggable>
 
-												<Teleport v-if="tasksLoaded" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
+												<Teleport v-if="tasksLoaded && creatingTaskColumnId === column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
 													<div class="flex-shrink-0 px-1 mt-2">
-														<div v-if="creatingTaskColumnId !== column.status.id">
-															<button
-																@click="startCreatingTask(column)"
-																class="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-															>
-																<span class="material-icons text-sm">add</span>
-																<span>Add task</span>
-															</button>
-														</div>
-														<div v-else class="flex flex-col gap-2">
+														<div class="flex flex-col gap-2">
 															<input
 																v-model="newTaskTitle"
 																@keyup.enter="createQuickTask(column)"
@@ -1329,30 +1322,33 @@
 				});
 			},
 			async loadTasksByStatus(status) {
-				this.tasks = await getSortedTasksByStatus(status?.id || status, {
+				let tasks = await getSortedTasksByStatus(status?.id || status, {
 					params: {
 						'order[column]': 'order',
 						'order[direction]': 'asc',
 					},
 				});
-				if (this.$store.state.filter.selectedUser) {
-					this.chosenUser = this.workspaceUsers.find(
-						(user) => user.id === this.$store.state.filter.selectedUser,
+				const selectedUserId = this.$store.state.filter.selectedUser;
+				if (selectedUserId) {
+					const chosenUser = this.workspaceUsers.find(
+						(user) => user.id === selectedUserId,
 					);
-					this.tasks = this.tasks.filter((item) =>
-						item.assignees.find(
-							(assignee) =>
-								assignee.id === this.chosenUser.id &&
-								assignee.name === this.chosenUser.name,
-						),
-					);
+					if (chosenUser) {
+						tasks = tasks.filter((item) =>
+							item.assignees?.find(
+								(assignee) =>
+									assignee.id === chosenUser.id &&
+									assignee.name === chosenUser.name,
+							),
+						);
+					}
 				}
 				if (this.chosenCategory?.id) {
-					this.tasks = this.tasks.filter(
+					tasks = tasks.filter(
 						(task) => task.project_category_id === this.chosenCategory.id,
 					);
 				}
-				return this.tasks;
+				return tasks;
 			},
 			async saveUser() {
 				try {
