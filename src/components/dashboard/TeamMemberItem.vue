@@ -48,14 +48,14 @@
           </div>
           
           <!-- Current Task or Last Activity -->
-          <div class="text-xs text-gray-500 dark:text-gray-400">
+          <div class="text-xs text-ink-subtle">
             <template v-if="member.current_task">
               <div class="flex items-center space-x-1">
-                <PlayIcon v-if="member.current_task.timer_running" class="h-3 w-3 text-green-500" />
+                <PlayIcon v-if="member.current_task.timer_running" class="h-3 w-3 text-status-done" />
                 <ClockIcon v-else class="h-3 w-3" />
                 <button
                   @click.stop="handleTaskClick(member.current_task.id)"
-                  class="hover:text-blue-600 dark:hover:text-blue-400 truncate max-w-32"
+                  class="hover:text-brand-fg truncate max-w-32"
                   :title="member.current_task.title"
                 >
                   {{ member.current_task.title }}
@@ -155,11 +155,10 @@ const statusIndicatorClasses = computed(() => {
 
 const itemClasses = computed(() => {
   return cn(
-    'p-3 rounded-lg border border-gray-200 dark:border-gray-700',
-    'hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150',
-    'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400',
-    'focus:ring-offset-2 dark:focus:ring-offset-gray-800',
-    props.member.is_online && 'border-green-200 dark:border-green-800'
+    'p-3 rounded-card border border-line bg-surface',
+    'hover:bg-surface-hover hover:border-line-strong transition-colors duration-150',
+    'cursor-pointer focus:outline-none focus:shadow-tmgr-focus',
+    props.member.is_online && 'border-status-done/40'
   );
 });
 
