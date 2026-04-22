@@ -1553,7 +1553,7 @@
 								<UserCircleIcon class="h-3.5 w-3.5" />
 								<span>Author</span>
 							</div>
-							<div class="min-w-0 text-xs text-ink">
+							<div class="min-w-0 flex h-7 items-center text-sm text-ink">
 								{{ form.user.name }}
 							</div>
 						</template>
@@ -1630,14 +1630,14 @@
 					<!-- Editor section with toggle button -->
 					<div
 						class="relative"
-						:class="isModal ? 'h-[320px] overflow-hidden rounded-md border border-line bg-surface-sunken description-editor-wrapper' : ''"
+						:class="isModal ? 'min-h-[260px] max-h-[420px] overflow-y-auto rounded-md border border-line bg-surface-sunken description-editor-wrapper' : ''"
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
 							v-if="editorType === 'markdown'"
 							v-model="form.description"
-							class="mb-0 grow"
-							:class="[!isModal ? 'md:h-72 lg:min-h-96' : 'h-full']"
+							class="mb-0"
+							:class="[!isModal ? 'md:h-72 lg:min-h-96' : '']"
 							:show-preview="!!(taskId && form.description)"
 						/>
 
@@ -1645,11 +1645,11 @@
 						v-else-if="editorType === 'block'"
 						v-model="form.description_json"
 						placeholder="Type your description here or enter / to see commands or "
-						class="block-editor-container mb-0 grow px-2"
+						class="block-editor-container mb-0 px-2"
 						:class="[
 							!isModal
 								? 'border lg:min-h-96'
-								: 'h-full overflow-y-auto',
+								: 'min-h-[240px]',
 						]"
 					/>
 					</div>
@@ -2137,22 +2137,10 @@
 		z-index: 10 !important;
 	}
 
-	/* Fill description editor wrapper height (modal/side-panel) */
-	.description-editor-wrapper {
-		display: flex;
-		flex-direction: column;
-	}
-	.description-editor-wrapper > .md-editor,
-	.description-editor-wrapper > .md-editor-dark {
-		flex: 1 1 auto;
-		min-height: 0 !important;
-		height: 100% !important;
+	/* Description editor wrapper (modal/side-panel) — scroll inside wrapper, let editor size naturally */
+	.description-editor-wrapper .md-editor,
+	.description-editor-wrapper .md-editor-dark {
 		border: 0 !important;
-	}
-	.description-editor-wrapper > .block-editor-container {
-		flex: 1 1 auto;
-		min-height: 0 !important;
-		height: 100%;
-		overflow-y: auto;
+		background: transparent !important;
 	}
 </style>

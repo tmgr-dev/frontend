@@ -30,10 +30,10 @@ module.exports = {
 				'xl-custom': '1080px',
 			},
 			fontFamily: {
-				sans: ['Quicksand', 'sans-serif'],
-				display: ['Geist', 'Quicksand', 'sans-serif'],
+				sans: ['Inter', 'Quicksand', 'sans-serif'],
+				display: ['Inter', 'Quicksand', 'sans-serif'],
 				serif: ['Instrument Serif', 'Georgia', 'serif'],
-				mono: ['Geist Mono', 'ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
+				mono: ['JetBrains Mono', 'ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
 			},
 			colors: {
 				'tmgr-blue': '#2c3e50',

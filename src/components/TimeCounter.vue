@@ -126,7 +126,6 @@
 		v-if="task"
 		:style="disabledStyles"
 		class="flex items-center gap-3 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
-		:class="isTimerActive && !isTimeOver ? 'ring-1 ring-status-done/30' : ''"
 	>
 		<button
 			type="button"

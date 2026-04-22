@@ -16,7 +16,7 @@
 
 		<div class="mb-2 flex items-center gap-1.5 -ml-0.5">
 			<div
-				class="task-drag-handle flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint opacity-0 transition-opacity duration-150 hover:text-ink-subtle group-hover:opacity-100 active:cursor-grabbing"
+				class="task-drag-handle flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint transition-colors duration-150 hover:text-ink-subtle active:cursor-grabbing"
 				:title="'Drag to reorder'"
 			>
 				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
@@ -161,7 +161,7 @@
 		</div>
 
 		<a
-			class="mb-2.5 block break-words text-sm font-semibold leading-snug tracking-tight text-ink hover:text-brand"
+			class="mb-2.5 block break-words text-sm font-normal leading-snug tracking-tight text-ink hover:text-brand"
 			:href="getTaskUrl(task)"
 			:title="task.title"
 			@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"

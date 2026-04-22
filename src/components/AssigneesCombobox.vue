@@ -91,6 +91,7 @@
 											} else {
 												assigneeIds.push(e.detail.value);
 											}
+											openCombobox = false;
 										}
 									}
 								"

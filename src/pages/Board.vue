@@ -39,8 +39,11 @@
 									<span class="material-icons text-xl">filter_list</span>
 								</button>
 							</div>
+						</div>
 
-							<div class="hidden items-center xl-custom:flex ml-auto">
+						<!-- Desktop filters teleported into top header (right of breadcrumbs) -->
+						<Teleport to="#page-header-actions" :disabled="!headerSlotReady">
+							<div class="hidden items-center xl-custom:flex">
 								<FiltersBoard
 									v-if="workspaceUsers.length"
 									:workspaceUsers="workspaceUsers"
@@ -65,7 +68,7 @@
 									</template>
 								</FiltersBoard>
 							</div>
-						</div>
+						</Teleport>
 
 						<div class="relative xl-custom:hidden">
 
@@ -711,6 +714,7 @@
 			confirm: null,
 			tasks: [],
 			isFiltersModalShown: false,
+			headerSlotReady: false,
 			hasHorizontalScroll: false,
 			isMobile: window.innerWidth <= 768,
 			statuses: null,
@@ -1440,7 +1444,11 @@
 		},
 		async mounted() {
 			setDocumentTitle(this.title);
-			
+
+			this.$nextTick(() => {
+				this.headerSlotReady = !!document.getElementById('page-header-actions');
+			});
+
 			const categoriesData = await getCategories();
 			this.categories = [
 				{ id: 0, title: 'All categories' },
