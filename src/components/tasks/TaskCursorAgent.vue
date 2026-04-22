@@ -1,18 +1,18 @@
 <template>
   <div>
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent"></div>
+      <div class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
     </div>
 
     <div v-else class="space-y-4">
-      <div class="rounded-lg border border-gray-300 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-800">
+      <div class="rounded-card border border-line bg-surface-sunken p-4">
         <button
           @click="showLaunchForm = !showLaunchForm"
-          class="flex w-full items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300"
+          class="flex w-full items-center justify-between text-sm font-medium text-ink"
         >
           <span>Launch New Agent</span>
           <svg
-            :class="['h-5 w-5 transition-transform', showLaunchForm ? 'rotate-180' : '']"
+            :class="['h-5 w-5 transition-transform text-ink-subtle', showLaunchForm ? 'rotate-180' : '']"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -20,15 +20,15 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
           </svg>
         </button>
-        
+
         <div v-if="showLaunchForm" class="mt-4">
           <div v-if="loadingBranches" class="flex items-center justify-center py-4">
-            <div class="h-6 w-6 animate-spin rounded-full border-3 border-violet-500 border-t-transparent"></div>
+            <div class="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent"></div>
           </div>
-          
+
           <div v-else-if="branches.length || branchSearch" class="space-y-4">
             <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label class="mb-2 block text-sm font-medium text-ink">
                 Source Branch
               </label>
               <input
@@ -36,43 +36,43 @@
                 @input="onBranchSearch"
                 type="text"
                 placeholder="Search branches..."
-                class="mb-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
               />
               <div v-if="loadingBranches" class="flex items-center justify-center py-2">
-                <div class="h-4 w-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent"></div>
-                <span class="ml-2 text-xs text-gray-500">Searching...</span>
+                <div class="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent"></div>
+                <span class="ml-2 text-xs text-ink-subtle">Searching...</span>
               </div>
               <template v-else-if="branches.length">
                 <select
                   v-model="selectedBranch"
                   :size="Math.min(branches.length, 8)"
-                  class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                  class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-line-strong focus:outline-none"
                 >
                   <option v-for="branch in branches" :key="branch.name" :value="branch.name">
                     {{ branch.name }}{{ branch.protected ? ' 🔒' : '' }}
                   </option>
                 </select>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-xs text-ink-subtle">
                   {{ branches.length }} branch{{ branches.length !== 1 ? 'es' : '' }} found
                 </p>
               </template>
               <div v-else class="py-4 text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-ink-subtle">
                   No branches found for "{{ branchSearch }}"
                 </p>
                 <button
                   @click="branchSearch = ''; loadBranchesFromGitHub()"
-                  class="mt-2 text-sm text-violet-600 hover:underline dark:text-violet-400"
+                  class="mt-2 text-sm text-brand hover:underline"
                 >
                   Clear search
                 </button>
               </div>
             </div>
-            
+
             <button
               @click="launchAgent"
               :disabled="launching || !selectedBranch"
-              class="flex w-full items-center justify-center gap-2 rounded bg-violet-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-600 disabled:opacity-50"
+              class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-50"
             >
               <svg v-if="!launching" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
@@ -81,14 +81,14 @@
               {{ launching ? 'Launching...' : 'Launch Cursor Agent' }}
             </button>
           </div>
-          
+
           <div v-else class="text-center">
-            <p class="mb-2 text-sm text-red-600 dark:text-red-400">
+            <p class="mb-2 text-sm text-status-fix-fg">
               {{ branchesError || 'Failed to load branches' }}
             </p>
             <button
               @click="branchSearch = ''; loadBranchesFromGitHub()"
-              class="text-sm text-violet-600 hover:underline dark:text-violet-400"
+              class="text-sm text-brand hover:underline"
             >
               Try again
             </button>
@@ -96,37 +96,37 @@
         </div>
       </div>
 
-      <div v-if="!agents.length" class="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-800">
-        <svg class="mx-auto mb-3 h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div v-if="!agents.length" class="rounded-card border border-line bg-surface-sunken p-8 text-center">
+        <svg class="mx-auto mb-3 h-12 w-12 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
         </svg>
-        <p class="text-gray-600 dark:text-gray-400">
+        <p class="text-ink-subtle">
           No agents launched yet
         </p>
       </div>
 
       <div v-else class="space-y-3">
-        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Agent History <span class="text-xs text-gray-500 dark:text-gray-400">({{ agents.length }})</span>
+        <h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+          Agent History <span class="tabular-nums">({{ agents.length }})</span>
         </h3>
-        
+
         <div
           v-for="agent in agents"
           :key="agent.id"
-          class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+          class="rounded-card border border-line bg-surface-sunken p-4"
         >
         <div class="mb-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span
               :class="[
-                'rounded px-2 py-1 text-xs font-semibold',
+                'rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide',
                 agent.status === 'RUNNING'
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                  ? 'bg-status-progress-bg text-status-progress-fg'
                   : agent.status === 'FINISHED'
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                  ? 'bg-status-done-bg text-status-done-fg'
                   : agent.status === 'FAILED'
-                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                  ? 'bg-status-fix-bg text-status-fix-fg'
+                  : 'bg-surface text-ink-subtle border border-line'
               ]"
             >
               {{ agent.status }}
@@ -134,14 +134,14 @@
             <button
               v-if="agent.status === 'CREATING' || agent.status === 'RUNNING'"
               @click="loadAgents"
-              class="rounded p-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+              class="rounded-pill p-1 text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
               title="Refresh status"
             >
               <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
               </svg>
             </button>
-            <span class="text-sm text-gray-600 dark:text-gray-400">
+            <span class="text-xs text-ink-subtle">
               {{ formatDate(agent.created_at) }}
             </span>
           </div>
@@ -150,19 +150,19 @@
             v-if="agent.status === 'RUNNING'"
             @click="stopAgent(agent.id)"
             :disabled="stopping"
-            class="rounded bg-red-500 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
+            class="rounded-md bg-status-fix px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {{ stopping ? 'Stopping...' : 'Stop' }}
           </button>
         </div>
 
-        <div v-if="agent.branch_name" class="mb-2 text-sm text-gray-700 dark:text-gray-300">
-          <span class="font-medium">Branch:</span>
-          <code class="ml-1 rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700">{{ agent.branch_name }}</code>
+        <div v-if="agent.branch_name" class="mb-2 text-sm text-ink">
+          <span class="font-medium text-ink-subtle">Branch:</span>
+          <code class="ml-1 rounded bg-surface px-2 py-0.5 text-xs font-mono text-ink border border-line">{{ agent.branch_name }}</code>
         </div>
 
-        <div v-if="agent.summary" class="mb-2 text-sm text-gray-700 dark:text-gray-300">
-          <span class="font-medium">Summary:</span>
+        <div v-if="agent.summary" class="mb-2 text-sm text-ink">
+          <span class="font-medium text-ink-subtle">Summary:</span>
           <p class="mt-1">{{ agent.summary }}</p>
         </div>
 
@@ -170,7 +170,7 @@
           <a
             :href="agent.pr_url"
             target="_blank"
-            class="inline-flex items-center gap-1 text-sm text-violet-600 hover:underline dark:text-violet-400"
+            class="inline-flex items-center gap-1 text-sm text-brand hover:underline"
           >
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
@@ -179,12 +179,12 @@
           </a>
         </div>
 
-        <div v-if="agent.error_message" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div v-if="agent.error_message" class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg p-3 text-sm text-status-fix-fg">
           {{ agent.error_message }}
         </div>
 
         <div v-if="agent.status === 'RUNNING'" class="mt-4 space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label class="block text-sm font-medium text-ink">
             Send Follow-up Instruction
           </label>
           <div class="flex gap-2">
@@ -192,13 +192,13 @@
               v-model="followUpPrompt"
               type="text"
               placeholder="Type additional instructions..."
-              class="flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
               @keyup.enter="sendFollowUpToAgent(agent.id)"
             />
             <button
               @click="sendFollowUpToAgent(agent.id)"
               :disabled="!followUpPrompt || sendingFollowUp"
-              class="rounded bg-violet-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-600 disabled:opacity-50"
+              class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-50"
             >
               {{ sendingFollowUp ? 'Sending...' : 'Send' }}
             </button>
@@ -207,7 +207,7 @@
         </div>
       </div>
 
-      <div v-if="error" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+      <div v-if="error" class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg p-3 text-sm text-status-fix-fg">
         {{ error }}
       </div>
     </div>
@@ -253,7 +253,7 @@ export default defineComponent({
   },
   computed: {
     hasActiveAgents() {
-      return this.agents.some(agent => 
+      return this.agents.some(agent =>
         agent.status === 'CREATING' || agent.status === 'RUNNING'
       );
     },
@@ -261,10 +261,10 @@ export default defineComponent({
   watch: {
     agents: {
       handler(newAgents) {
-        const hasActive = newAgents.some(agent => 
+        const hasActive = newAgents.some(agent =>
           agent.status === 'CREATING' || agent.status === 'RUNNING'
         );
-        
+
         if (hasActive && !this.pollingInterval) {
           console.log('Starting polling - found active agents');
           this.startPolling();
@@ -279,7 +279,7 @@ export default defineComponent({
   async mounted() {
     await this.loadAgents();
     await this.loadBranchesFromGitHub();
-    
+
     if (!this.agents.length) {
       this.showLaunchForm = true;
     }
@@ -307,11 +307,11 @@ export default defineComponent({
         this.loadingBranches = true;
         this.branchesError = null;
         this.branches = await getGitHubBranches(this.taskId, search);
-        
+
         if (this.branches.length > 0 && !this.selectedBranch) {
           this.selectedBranch = this.branches.find(b => b.name === 'master' || b.name === 'main')?.name || this.branches[0].name;
         }
-        
+
         if (this.branches.length > 0 && !this.branches.find(b => b.name === this.selectedBranch)) {
           this.selectedBranch = this.branches[0].name;
         }
@@ -326,7 +326,7 @@ export default defineComponent({
       if (this.searchTimeout) {
         clearTimeout(this.searchTimeout);
       }
-      
+
       this.searchTimeout = setTimeout(() => {
         this.loadBranchesFromGitHub(this.branchSearch || undefined);
       }, 300);
@@ -394,9 +394,9 @@ export default defineComponent({
         console.log('Polling already active');
         return;
       }
-      
+
       console.log('Starting polling every 5 seconds');
-      
+
       this.pollingInterval = setInterval(async () => {
         console.log('Polling for agent status updates...');
         try {

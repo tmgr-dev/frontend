@@ -19,20 +19,17 @@
 		<ActiveTasks :tasks="activeTasks" />
 
 		<Transition name="fade">
-			<Modal
+			<TaskSidePanel
 				v-if="showTaskFormModalWindow"
-				modal-class="h-full w-full md:w-auto md:h-auto"
 				close-on-bg-click
 				@close="handleModalClose"
 			>
-			<template #modal-body>
-				<NewForm 
-					:is-modal="true" 
+				<NewForm
+					:is-modal="true"
 					:key="`${$store.state.currentTaskIdForModal || 'new'}-${$store.state.createTaskInProjectCategoryId || 'none'}`"
-					@close="handleModalClose" 
+					@close="handleModalClose"
 				/>
-			</template>
-			</Modal>
+			</TaskSidePanel>
 		</Transition>
 	</div>
 
@@ -48,6 +45,7 @@
 	import { getWorkspaceStatuses, getWorkspaces } from '@/actions/tmgr/workspaces';
 	import Alert from '@/components/general/Alert.vue';
 	import Modal from '@/components/Modal.vue';
+	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
@@ -67,6 +65,7 @@
 			NewForm,
 			ActiveTasks,
 			Modal,
+			TaskSidePanel,
 			Alert,
 			TaskForm,
 		},

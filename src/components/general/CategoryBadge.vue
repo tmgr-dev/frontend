@@ -18,7 +18,7 @@
 				name: 'ProjectCategoryChildrenList',
 				params: { id: props.category.id },
 			}"
-			class="z-10 rounded bg-gray-700 p-1.5 text-xs !leading-none text-white lg:text-sm"
+			class="z-10 inline-flex items-center rounded-pill bg-tag-bg px-2 py-0.5 text-2xs font-bold uppercase tracking-wide !leading-none text-tag-fg"
 		>
 			{{ props.category.title }}
 		</router-link>
@@ -31,10 +31,10 @@
 				})
 			"
 			type="button"
-			class="z-20 hidden opacity-10 hover:opacity-100 group-hover:block"
+			class="z-20 hidden opacity-40 hover:opacity-100 group-hover:block text-ink-muted"
 			title="Create a task of this category"
 		>
-			<PlusCircleIcon class="h-4 w-4 lg:h-6 lg:w-6" />
+			<PlusCircleIcon class="h-3.5 w-3.5" />
 		</button>
 	</div>
 </template>

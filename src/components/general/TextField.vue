@@ -2,10 +2,9 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded border bg-white px-3 py-1 outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-ink placeholder:text-ink-subtle outline-none transition-colors duration-300 focus:border-line-strong"
 			:class="[
-				'border-neutral-300',
-				inputClass || 'dark:border-transparent',
+				inputClass,
 				hasError && '!border-red-500 placeholder:text-red-400',
 			]"
 			:name="name"

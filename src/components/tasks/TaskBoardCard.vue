@@ -1,200 +1,211 @@
 <template>
 	<div
-		:class="{
-			'border-l-4 border-l-green-600 dark:border-l-green-500': task.start_time,
-			'border-b border-b-red-500 dark:border-b-red-400': isTimeExceeded,
-		}"
-		class="rounded border border-gray-200 bg-gray-100 px-3 pt-3 shadow dark:border-gray-700 dark:bg-gray-800"
+		class="group relative flex flex-col rounded-card border border-line bg-surface px-[14px] py-[14px] font-display shadow-tmgr-xs transition-all duration-150 hover:shadow-tmgr-md"
 		@mouseenter="isHovered = true"
 		@mouseleave="isHovered = false"
 	>
-		<div class="mb-2 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<div
-					class="task-drag-handle flex cursor-grab touch-none select-none items-center justify-center text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
-				>
-					<span class="material-icons pointer-events-none text-sm">
-						drag_indicator
-					</span>
-				</div>
+		<span
+			class="pointer-events-none absolute left-0 top-[10px] bottom-[10px] w-[3px] rounded-full"
+			:class="
+				task.start_time
+					? 'bg-status-done opacity-90'
+					: 'bg-line-strong opacity-60'
+			"
+			aria-hidden="true"
+		></span>
 
-				<template v-if="displayTask.common_time > 0">
-					<span
-						:class="
-							isTimeExceeded
-								? 'text-red-600 dark:text-red-400'
-								: 'text-green-600 dark:text-green-400'
-						"
-						class="material-icons text-sm"
-					>
-						alarm
-					</span>
-					<span class="text-xs text-gray-600 dark:text-gray-400">
-						{{ secondsToHumanReadableString(displayTask.common_time) }}
-					</span>
-				</template>
-
-				<button
-					v-if="!task.start_time"
-					v-tooltip.top="setTooltipData('Start timer')"
-					:disabled="isLoadingTimer"
-					class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
-					@click.stop="handleStartTimer"
-				>
-					<span
-						v-if="!isLoadingTimer"
-						class="material-icons text-xs leading-none"
-					>
-						play_arrow
-					</span>
-					<Loader v-else is-mini />
-				</button>
-				<button
-					v-else
-					v-tooltip.top="setTooltipData('Stop timer')"
-					:disabled="isLoadingTimer"
-					class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
-					@click.stop="handleStopTimer"
-				>
-					<span
-						v-if="!isLoadingTimer"
-						class="material-icons text-xs leading-none"
-					>
-						stop
-					</span>
-					<Loader v-else is-mini />
-				</button>
+		<div class="mb-2 flex items-center gap-1.5 -ml-0.5">
+			<div
+				class="task-drag-handle flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint opacity-0 transition-opacity duration-150 hover:text-ink-subtle group-hover:opacity-100 active:cursor-grabbing"
+				:title="'Drag to reorder'"
+			>
+				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
 			</div>
 
-			<div class="flex items-center gap-2">
-				<Popover
-					v-if="isFeatureEnabled('task.assignees')"
-					v-model:open="showAssigneePopover"
-				>
-					<PopoverTrigger as-child>
-						<button
-							v-show="
-								task.assignees?.length || isHovered || showAssigneePopover
-							"
-							class="group flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-							@click.stop
-							:title="
-								task.assignees?.length ? 'Change assignee' : 'Assign someone'
-							"
-						>
+			<button
+				v-if="task.start_time"
+				v-tooltip.top="setTooltipData('Stop timer')"
+				:disabled="isLoadingTimer"
+				class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold tabular-nums text-status-done-fg transition-colors hover:opacity-90 disabled:opacity-50"
+				@click.stop="handleStopTimer"
+			>
+				<Loader v-if="isLoadingTimer" is-mini />
+				<template v-else>
+					<span
+						class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
+					></span>
+					<Pause class="h-2.5 w-2.5 fill-current" />
+					<span>{{ formattedDisplayTime }}</span>
+				</template>
+			</button>
+			<button
+				v-else
+				v-tooltip.top="setTooltipData('Start timer')"
+				:disabled="isLoadingTimer"
+				class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold tabular-nums text-ink-muted transition-colors hover:bg-line disabled:opacity-50"
+				:class="{ 'text-status-fix-fg': isTimeExceeded }"
+				@click.stop="handleStartTimer"
+			>
+				<Loader v-if="isLoadingTimer" is-mini />
+				<template v-else>
+					<Play class="h-2.5 w-2.5 fill-current" />
+					<span v-if="displayTask.common_time > 0">
+						{{ formattedDisplayTime }}
+					</span>
+					<span v-else>0m</span>
+				</template>
+			</button>
+
+			<span class="flex-1"></span>
+
+			<Popover
+				v-if="isFeatureEnabled('task.assignees')"
+				v-model:open="showAssigneePopover"
+			>
+				<PopoverTrigger as-child>
+					<button
+						v-show="task.assignees?.length || isHovered || showAssigneePopover"
+						class="group/assignee flex items-center justify-center rounded-pill text-ink-subtle transition-colors hover:text-ink"
+						@click.stop
+						:title="
+							task.assignees?.length ? 'Change assignee' : 'Assign someone'
+						"
+					>
+						<UserPlus
+							v-if="showAssigneePopover || !task.assignees?.length"
+							class="h-[22px] w-[22px] rounded-pill bg-surface-sunken p-1"
+						/>
+						<template v-else>
 							<UserPlus
-								v-if="showAssigneePopover || !task.assignees?.length"
-								class="h-4 w-4"
+								class="hidden h-[22px] w-[22px] rounded-pill bg-surface-sunken p-1 group-hover/assignee:block"
 							/>
-							<template v-else>
-								<UserPlus class="hidden h-4 w-4 group-hover:block" />
-								<AssigneeUsers
-									class="group-hover:hidden"
-									:assignees="task.assignees"
-									:show-assignee-controls="false"
-									avatarsClass="h-4 w-4"
-								/>
-							</template>
-						</button>
-					</PopoverTrigger>
-					<PopoverContent
-						class="z-50 w-52 p-0"
-						align="start"
-						side="bottom"
+							<AssigneeUsers
+								class="group-hover/assignee:hidden"
+								:assignees="task.assignees"
+								:show-assignee-controls="false"
+								avatarsClass="h-[22px] w-[22px]"
+							/>
+						</template>
+					</button>
+				</PopoverTrigger>
+				<PopoverContent
+					class="z-50 w-52 p-0"
+					align="start"
+					side="bottom"
+					@click.stop
+				>
+					<Command>
+						<CommandInput placeholder="Search members..." class="h-9" />
+						<CommandEmpty>No members found.</CommandEmpty>
+						<CommandList>
+							<CommandGroup>
+								<CommandItem
+									v-for="member in workspaceMembers"
+									:key="member.id"
+									:value="member.id"
+									@select="toggleAssignee(member.id)"
+									class="cursor-pointer"
+								>
+									<Check
+										:class="[
+											'mr-2 h-4 w-4',
+											isAssigned(member.id) ? 'opacity-100' : 'opacity-0',
+										]"
+									/>
+									{{ member.name }}
+								</CommandItem>
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
+
+			<DropdownMenu>
+				<DropdownMenuTrigger as-child>
+					<button
+						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
 						@click.stop
 					>
-						<Command>
-							<CommandInput placeholder="Search members..." class="h-9" />
-							<CommandEmpty>No members found.</CommandEmpty>
-							<CommandList>
-								<CommandGroup>
-									<CommandItem
-										v-for="member in workspaceMembers"
-										:key="member.id"
-										:value="member.id"
-										@select="toggleAssignee(member.id)"
-										class="cursor-pointer"
-									>
-										<Check
-											:class="[
-												'mr-2 h-4 w-4',
-												isAssigned(member.id) ? 'opacity-100' : 'opacity-0',
-											]"
-										/>
-										{{ member.name }}
-									</CommandItem>
-								</CommandGroup>
-							</CommandList>
-						</Command>
-					</PopoverContent>
-				</Popover>
+						<MoreVertical class="h-3.5 w-3.5" />
+					</button>
+				</DropdownMenuTrigger>
 
-				<DropdownMenu>
-					<DropdownMenuTrigger as-child>
-						<button
-							class="flex items-center justify-center rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-							@click.stop
-						>
-							<MoreVertical class="h-4 w-4" />
-						</button>
-					</DropdownMenuTrigger>
-
-					<DropdownMenuContent align="end" class="w-48">
-						<DropdownMenuItem @click="handleOpenModal">
-							<Eye class="mr-2 h-4 w-4" />
-							<span>Open details</span>
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem @click="handleMoveToTop">
-							<ArrowUpToLine class="mr-2 h-4 w-4" />
-							<span>Move to top</span>
-						</DropdownMenuItem>
-						<DropdownMenuItem @click="handleMoveToBottom">
-							<ArrowDownToLine class="mr-2 h-4 w-4" />
-							<span>Move to bottom</span>
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem @click="handleArchive">
-							<ArchiveIcon class="mr-2 h-4 w-4" />
-							<span>Archive</span>
-						</DropdownMenuItem>
-						<DropdownMenuItem
-							@click="handleDelete"
-							class="text-red-600 dark:text-red-400"
-						>
-							<Trash2 class="mr-2 h-4 w-4" />
-							<span>Delete</span>
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</div>
+				<DropdownMenuContent align="end" class="w-48">
+					<DropdownMenuItem @click="handleOpenModal">
+						<Eye class="mr-2 h-4 w-4" />
+						<span>Open details</span>
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem @click="handleMoveToTop">
+						<ArrowUpToLine class="mr-2 h-4 w-4" />
+						<span>Move to top</span>
+					</DropdownMenuItem>
+					<DropdownMenuItem @click="handleMoveToBottom">
+						<ArrowDownToLine class="mr-2 h-4 w-4" />
+						<span>Move to bottom</span>
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem @click="handleArchive">
+						<ArchiveIcon class="mr-2 h-4 w-4" />
+						<span>Archive</span>
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						@click="handleDelete"
+						class="text-status-fix-fg"
+					>
+						<Trash2 class="mr-2 h-4 w-4" />
+						<span>Delete</span>
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
 		</div>
 
 		<a
-			class="block break-words font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
+			class="mb-2.5 block break-words text-sm font-semibold leading-snug tracking-tight text-ink hover:text-brand"
 			:href="getTaskUrl(task)"
-			:title="task.title?.length > 60 ? task.title : ''"
+			:title="task.title"
 			@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
 		>
-			{{ truncateTitle(task.title) }}
+			{{ task.title }}
 		</a>
 
-		<div v-if="task.category" class="mt-2">
+		<div
+			v-if="checklistProgress"
+			class="mb-2.5 flex items-center gap-2"
+		>
+			<div class="h-1 flex-1 overflow-hidden rounded-full bg-surface-sunken">
+				<div
+					class="h-full rounded-full transition-all duration-300"
+					:class="
+						checklistProgress.percent === 100
+							? 'bg-status-done'
+							: 'bg-brand'
+					"
+					:style="{ width: `${checklistProgress.percent}%` }"
+				></div>
+			</div>
+			<span class="text-2xs tabular-nums text-ink-subtle">
+				{{ checklistProgress.checked }}/{{ checklistProgress.total }}
+			</span>
+		</div>
+
+		<div class="flex flex-wrap items-center gap-1.5">
 			<CategoryBadge
-				class="flex-row-reverse"
+				v-if="task.category"
 				:category="task.category"
 				:status-id="task.status_id"
 			/>
-		</div>
 
-		<div
-			class="mt-2 flex flex-wrap gap-x-2 pb-2 text-[9px] text-gray-400/60 dark:text-gray-500/60"
-		>
-			<TaskTimeInfo
-				:created-at="task.created_at"
-				:updated-at="task.updated_at"
-				:overtime="overtime"
-			/>
+			<span class="flex-1"></span>
+
+			<span
+				v-if="formattedDate"
+				class="flex items-center gap-1 text-2xs tabular-nums"
+				:class="overtime ? 'text-status-fix-fg' : 'text-ink-subtle'"
+			>
+				<Clock class="h-3 w-3" />
+				{{ formattedDate }}
+			</span>
 		</div>
 	</div>
 </template>
@@ -240,7 +251,12 @@
 		ClockPlus,
 		FilePenLine,
 		Siren,
+		GripVertical,
+		Play,
+		Pause,
+		Clock,
 	} from 'lucide-vue-next';
+	import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns';
 	import { mapState } from 'vuex';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { generateTaskUrl } from '@/utils/url';
@@ -292,6 +308,10 @@
 			Eye,
 			UserPlus,
 			Check,
+			GripVertical,
+			Play,
+			Pause,
+			Clock,
 		},
 		emits: [
 			'timer-started',
@@ -386,6 +406,47 @@
 					parts.push(`${minutes}m`);
 				}
 				return parts.length > 0 ? parts.join(' ') : null;
+			},
+			categoryCode() {
+				const cat = this.task.category;
+				if (cat && typeof cat === 'object' && cat.code) {
+					return String(cat.code).toLowerCase();
+				}
+				return null;
+			},
+			checklistProgress() {
+				const items = this.task.checkpoints;
+				if (!Array.isArray(items) || items.length === 0) {
+					return null;
+				}
+				const total = items.length;
+				const checked = items.filter((c) => c && c.checked).length;
+				return {
+					checked,
+					total,
+					percent: Math.round((checked / total) * 100),
+				};
+			},
+			formattedDisplayTime() {
+				const seconds = this.displayTask.common_time || 0;
+				if (seconds <= 0) return '0m';
+				const hours = Math.floor(seconds / 3600);
+				const minutes = Math.floor((seconds % 3600) / 60);
+				if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+				if (hours > 0) return `${hours}h`;
+				return `${minutes}m`;
+			},
+			formattedDate() {
+				const dateStr = this.task.updated_at || this.task.created_at;
+				if (!dateStr) return null;
+				try {
+					const d = new Date(dateStr);
+					if (isToday(d)) return 'Today';
+					if (isYesterday(d)) return 'Yesterday';
+					return format(d, 'MMM d');
+				} catch (e) {
+					return null;
+				}
 			},
 		},
 		watch: {

@@ -1,3 +1,4 @@
+@import 'design-tokens';
 @import 'app';
 @import 'fonts';
 @import 'tailwindcss/base';
@@ -10,17 +11,18 @@
 @import 'transitions';
 
 html {
-	background-color: #fff;
-	
+	background-color: var(--bg);
+
 	&.dark {
-		background-color: #111827;
+		background-color: var(--bg);
 	}
 }
 
 body {
 	overflow-x: hidden;
 	font-family: 'CodecPro', sans-serif;
-	background-color: inherit;
+	background-color: var(--bg);
+	color: var(--fg);
 
 	&::-webkit-scrollbar {
 		width: 7px;

@@ -64,16 +64,20 @@
 <template>
 	<Dialog v-model:open="isOpen">
 		<DialogTrigger as-child>
-			<button type="button" class="Info">
-				<InformationCircleIcon class="mr-2 size-6" />
+			<button
+				type="button"
+				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+				title="Task time info"
+			>
+				<InformationCircleIcon class="size-4" />
 			</button>
 		</DialogTrigger>
 
 		<DialogContent
-			class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+			class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 		>
 			<DialogHeader>
-				<DialogTitle>Task time information</DialogTitle>
+				<DialogTitle class="text-ink">Task time information</DialogTitle>
 			</DialogHeader>
 
 			<div class="space-y-2">
@@ -81,9 +85,9 @@
 					v-if="lastStartTime.hours || lastStartTime.minutes"
 					class="flex items-center justify-between"
 				>
-					<span class="opacity-60">Last start time:</span>
+					<span class="text-ink-subtle">Last start time:</span>
 
-					<span class="text-lg">
+					<span class="font-mono text-lg tabular-nums">
 						{{ lastStartTime.hours }} : {{ lastStartTime.minutes }}
 					</span>
 				</div>
@@ -92,10 +96,10 @@
 					v-if="approximatelyEndTime.hours || approximatelyEndTime.minutes"
 					class="flex items-center justify-between"
 				>
-					<span class="opacity-60">Approximately end time:</span>
+					<span class="text-ink-subtle">Approximately end time:</span>
 
 					<div>
-						<div class="text-right text-lg">
+						<div class="text-right font-mono text-lg tabular-nums">
 							{{ approximatelyEndTime.hours }} :
 							{{ approximatelyEndTime.minutes }}
 						</div>
@@ -106,61 +110,67 @@
 					v-if="approximatelyEndTime.timeLeft"
 					class="flex items-center justify-between"
 				>
-					<span class="opacity-60">Time left:</span>
-					<span class="text-lg">{{ approximatelyEndTime.timeLeft }}</span>
+					<span class="text-ink-subtle">Time left:</span>
+					<span class="font-mono text-lg tabular-nums">{{ approximatelyEndTime.timeLeft }}</span>
 				</div>
 
 				<!--		Edit time		-->
-				<Button
-					variant="outline"
-					class="w-full rounded"
+				<button
+					type="button"
+					class="flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink hover:bg-surface-hover"
 					@click="isEditMode = !isEditMode"
 				>
 					<PencilIcon class="size-4" />
 					{{ isEditMode ? 'Hide edit time mode' : 'Edit time mode' }}
-				</Button>
+				</button>
 
 				<div v-if="isEditMode" class="text-center">
-					<p v-if="isTimerActive">
+					<p v-if="isTimerActive" class="text-sm text-ink-muted">
 						You can edit time, but first you need to stop the timer
 					</p>
-					<p v-else>Edit the time and press the save button</p>
+					<p v-else class="text-sm text-ink-muted">Edit the time and press the save button</p>
 
-					<div class="mt-2 flex justify-center text-black">
+					<div class="mt-2 flex justify-center gap-1 font-mono tabular-nums">
 						<VueTheMask
 							v-model="timer.hours"
-							class="w-10 bg-transparent text-center text-2xl font-bold outline-none dark:text-white"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="###"
 						/>
-
+						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
 							v-model="timer.minutes"
-							class="w-10 bg-transparent text-center text-2xl font-bold outline-none dark:text-white"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="F#"
 						/>
-
+						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
 							v-model="timer.seconds"
-							class="w-10 bg-transparent text-center text-2xl font-bold outline-none dark:text-white"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="F#"
 						/>
 					</div>
 
-					<div class="mt-2 text-center">
-						<Button
+					<div class="mt-3 text-center">
+						<button
 							v-if="isTimerActive"
-							variant="default"
+							type="button"
+							class="rounded-md bg-status-fix px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
 							@click="emit('stopTimer')"
 						>
-							stop the timer
-						</Button>
+							Stop the timer
+						</button>
 
-						<Button v-else variant="default" @click="updateTimer">
-							save
-						</Button>
+						<button
+							v-else
+							type="button"
+							class="rounded-md bg-status-done px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+							@click="updateTimer"
+						>
+							Save
+						</button>
 					</div>
 				</div>
 			</div>

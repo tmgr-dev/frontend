@@ -6,23 +6,24 @@
 				:key="user.id"
 				type="button"
 				:class="[
-					'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-blue-500 to-blue-600 shadow-md transition-all hover:scale-110 hover:z-20 cursor-pointer',
+					'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer',
+					avatarColor(user.id),
 				]"
 				v-tooltip.bottom="`${user.name} - Click to view all members`"
 				@click="showMembersModal = true"
 			>
-				<span class="text-sm font-medium text-white">
+				<span class="text-sm font-semibold text-white">
 					{{ user.name.charAt(0).toUpperCase() }}
 				</span>
 			</button>
-			
+
 			<Dialog v-model:open="isInviteDialogOpen">
 				<DialogTrigger as-child>
 					<button
-						class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-gray-400 to-gray-500 dark:from-gray-600 dark:to-gray-700 shadow-md transition-all hover:scale-110 hover:z-20 cursor-pointer"
+						class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer hover:text-ink"
 						v-tooltip.bottom="'Invite user'"
 					>
-						<span class="material-icons text-sm text-white">add</span>
+						<span class="material-icons text-sm">add</span>
 					</button>
 				</DialogTrigger>
 
@@ -133,6 +134,20 @@
 
 	function handleMemberRemoved(memberId: number) {
 		console.log('Member removed:', memberId);
+	}
+
+	const avatarPalette = [
+		'bg-status-fix',
+		'bg-status-progress',
+		'bg-status-testing',
+		'bg-status-done',
+		'bg-status-todo',
+		'bg-brand',
+	];
+
+	function avatarColor(id: number): string {
+		const idx = Math.abs(id) % avatarPalette.length;
+		return avatarPalette[idx];
 	}
 </script>
 
