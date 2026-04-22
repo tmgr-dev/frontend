@@ -33,12 +33,16 @@
 	user-select: none;
 }
 
-.selectable.selecting {
-	background-color: yellow;
+.selectable.selecting > button,
+.selectable.selecting > a {
+	box-shadow: 0 0 0 2px var(--brand-color), var(--shadow-md);
+	background-color: var(--brand-bg-color);
 }
 
-.selectable.selected {
-	background-color: orange;
+.selectable.selected > button,
+.selectable.selected > a {
+	box-shadow: 0 0 0 2px var(--brand-color), var(--shadow-sm);
+	background-color: var(--brand-bg-color);
 }
 
 .task-category-in-task {

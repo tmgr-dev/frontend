@@ -12,12 +12,12 @@
 
 		<template #body>
 			<div
-				class="mx-auto mt-5 max-w-xl rounded bg-white px-8 py-6 shadow-md transition-colors duration-300 dark:bg-gray-900"
+				class="mx-auto mt-6 max-w-xl rounded-card border border-line bg-surface px-8 py-7 shadow-tmgr-sm"
 			>
 				<form class="w-full">
-					<div class="mb-4">
+					<div class="mb-5">
 						<label
-							class="mb-2 block text-sm font-bold text-gray-700"
+							class="mb-2 block text-sm font-semibold text-ink"
 							for="categoryName"
 						>
 							Project category name
@@ -30,13 +30,13 @@
 						/>
 					</div>
 
-					<div class="mb-4">
+					<div class="mb-5">
 						<label
-							class="mb-2 block text-sm font-bold text-gray-700"
+							class="mb-2 block text-sm font-semibold text-ink"
 							for="categoryCode"
 						>
 							Category Code
-							<span class="text-xs font-normal text-gray-500">
+							<span class="text-xs font-normal text-ink-subtle">
 								(for GitHub integration)
 							</span>
 						</label>
@@ -47,18 +47,18 @@
 							placeholder="e.g., PROJ, FEAT, BUG"
 							@input="sanitizeCode"
 						/>
-						
-						<small class="text-xs text-gray-500">
-							Only uppercase letters (A-Z), numbers (0-9), and hyphens (-) are allowed. 
-							Used in task references like <code class="rounded bg-gray-100 px-1 dark:bg-gray-800">{{ form.code || 'CODE' }}-123</code>
+
+						<small class="mt-1 block text-xs text-ink-subtle">
+							Only uppercase letters (A-Z), numbers (0-9), and hyphens (-) are allowed.
+							Used in task references like <code class="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-ink">{{ form.code || 'CODE' }}-123</code>
 						</small>
 					</div>
 
-					<label class="mb-2 block text-sm font-bold text-gray-700">
+					<label class="mb-2 block text-sm font-semibold text-ink">
 						Parent category
 					</label>
 
-					<div class="relative mb-4">
+					<div class="relative mb-5">
 						<Select
 							v-model="form.project_category_id"
 							:options="categories"
@@ -73,12 +73,12 @@
 					<div v-for="(setting, index) in availableSettings" :key="setting.id">
 							<label
 								:for="`setting-${setting.id}`"
-								class="mb-2 block text-sm font-bold text-gray-700"
+								class="mb-2 block text-sm font-semibold text-ink"
 							>
 								{{ setting.name }}
 							</label>
 
-							<div class="relative mb-4">
+							<div class="relative mb-5">
 								<Select
 									v-if="!setting.show_custom_value_input"
 									:options="setting.default_values"
@@ -102,7 +102,7 @@
 									/>
 								</div>
 
-								<small v-if="!setting.show_custom_value_input">
+								<small v-if="!setting.show_custom_value_input" class="text-ink-subtle">
 									{{ setting.description }}
 								</small>
 
@@ -138,9 +138,9 @@
 						@cursor-removed="onCursorRemoved"
 					/>
 
-					<div class="mt-8 flex-row justify-center">
+					<div class="mt-8 flex flex-wrap items-center gap-3">
 						<button
-							class="mr-5 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
+							class="h-10 rounded-pill bg-brand px-5 text-sm font-semibold text-white shadow-tmgr-xs transition-opacity hover:opacity-90 focus:outline-none"
 							type="button"
 							@click.prevent="create"
 						>
@@ -149,7 +149,7 @@
 
 						<button
 							v-if="isCreate"
-							class="rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none"
+							class="h-10 rounded-pill border border-brand bg-brand-bg px-5 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand/10 focus:outline-none"
 							type="button"
 							@click.prevent="create(false)"
 						>
@@ -159,7 +159,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
+							class="flex h-10 items-center rounded-pill border border-line bg-surface px-5 text-sm font-semibold text-ink hover:bg-surface-hover focus:outline-none"
 							type="button"
 						>
 							Cancel

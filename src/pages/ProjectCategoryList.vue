@@ -435,11 +435,11 @@
 						]"
 						@dragleave="category.hoverClass = ''"
 						@drop="drop($event, category)"
-						@dragenter.prevent="category.hoverClass = 'bg-red-500'"
-						@dragover.prevent="category.hoverClass = 'bg-red-500'"
+						@dragenter.prevent="category.hoverClass = 'ring-2 ring-status-fix/60'"
+						@dragover.prevent="category.hoverClass = 'ring-2 ring-status-fix/60'"
 					>
 						<div
-							class="relative h-full cursor-pointer p-2 !pr-12 shadow transition hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800 md:p-5"
+							class="relative h-full cursor-pointer rounded-card border border-line bg-surface p-5 pr-12 shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md"
 							:class="category.hoverClass"
 							@click="
 								if (workspaceCode) {
@@ -455,42 +455,45 @@
 								}
 							"
 						>
-							<h3 class="text-xl font-bold">
+							<h3 class="mb-3 text-lg font-semibold text-ink">
 								{{ category.title }}
 							</h3>
 
-							<p v-if="category.deleted_at !== null">
+							<p v-if="category.deleted_at !== null" class="mb-2 text-sm text-ink-subtle italic">
 								(deleted, but can be restored)
 							</p>
 
-							<div class="flex flex-wrap gap-3">
+							<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-muted">
 								<div
-									class="flex items-center gap-1 font-semibold"
+									class="flex items-center gap-1.5"
 									title="subcategories"
 								>
-									<FolderClosedIcon class="size-4" />
-									<span>{{ category.children_count }}</span>
+									<FolderClosedIcon class="h-4 w-4 text-ink-subtle" />
+									<span class="font-medium text-ink">{{ category.children_count }}</span>
 								</div>
 
-								<div class="flex items-center gap-1 font-semibold" title="tasks">
-									<ClipboardListIcon class="size-4" />
-									<span>{{ category.tasks_count }}</span>
+								<div class="flex items-center gap-1.5" title="tasks">
+									<ClipboardListIcon class="h-4 w-4 text-ink-subtle" />
+									<span class="font-medium text-ink">{{ category.tasks_count }}</span>
 								</div>
 
 								<span
 									v-if="category.user?.name"
-									class="flex items-center gap-1 font-semibold"
+									class="flex items-center gap-1.5"
 									title="author"
 								>
-									<CircleUserRoundIcon class="size-4" />
-									{{ category.user.name }}
+									<CircleUserRoundIcon class="h-4 w-4 text-ink-subtle" />
+									<span class="font-medium text-ink">{{ category.user.name }}</span>
 								</span>
 							</div>
 
-							<div class="absolute right-4 top-1/2 z-50 -translate-y-1/2">
+							<div class="absolute right-3 top-3 z-50">
 								<DropdownMenu>
-									<DropdownMenuTrigger class="hover:opacity-70" @click.stop>
-										<EllipsisIcon />
+									<DropdownMenuTrigger
+										class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+										@click.stop
+									>
+										<EllipsisIcon class="h-4 w-4" />
 									</DropdownMenuTrigger>
 
 									<DropdownMenuContent class="mr-4 mt-1">
@@ -529,12 +532,12 @@
 				</div>
 
 				<!-- Add categories pagination controls -->
-				<div v-if="categories && categories.length > 0" class="mt-4 flex items-center justify-between px-4">
-					<div class="flex items-center gap-2">
-						<span class="text-sm text-gray-600 dark:text-gray-300">
+				<div v-if="categories && categories.length > 0" class="mt-6 flex items-center justify-between px-2">
+					<div class="flex items-center gap-3">
+						<span class="text-sm text-ink-subtle">
 							Showing {{ categoriesPagination.from }} to {{ categoriesPagination.to }} of {{ categoriesPagination.total }} categories
 						</span>
-						
+
 						<Select
 							v-model="categoriesPagination.per_page"
 							:options="categoriesPerPageOptions"
@@ -544,26 +547,26 @@
 							@update:modelValue="handleCategoriesPerPageChange"
 						/>
 					</div>
-					
+
 					<div v-if="categoriesPagination.total > categoriesPagination.per_page" class="flex items-center gap-2">
 						<Button
 							:disabled="categoriesPagination.current_page === 1"
 							@click="handleCategoriesPageChange(categoriesPagination.current_page - 1)"
 							variant="outline"
-							class="px-3 py-1"
+							class="h-9 rounded-pill"
 						>
 							Previous
 						</Button>
-						
-						<span class="text-sm text-gray-600 dark:text-gray-300">
+
+						<span class="px-2 text-sm text-ink-subtle">
 							Page {{ categoriesPagination.current_page }} of {{ categoriesPagination.last_page }}
 						</span>
-						
+
 						<Button
 							:disabled="categoriesPagination.current_page === categoriesPagination.last_page"
 							@click="handleCategoriesPageChange(categoriesPagination.current_page + 1)"
 							variant="outline"
-							class="px-3 py-1"
+							class="h-9 rounded-pill"
 						>
 							Next
 						</Button>

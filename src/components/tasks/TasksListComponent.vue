@@ -15,11 +15,11 @@
 			</p>
 		</TasksMultipleActionsModal>
 
-		<div v-if="hasSelectable" class="flex items-center gap-2 px-4 pb-2">
+		<div v-if="hasSelectable" class="flex items-center gap-2 px-2 pb-2">
 			<button
 				@click="selectAll"
 				type="button"
-				class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+				class="h-9 rounded-pill border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-hover"
 			>
 				{{ allSelected ? 'Deselect all' : 'Select all' }}
 			</button>
@@ -27,13 +27,13 @@
 				v-if="selected.filter(Boolean).length > 0"
 				@click="showProcessModal"
 				type="button"
-				class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+				class="h-9 rounded-pill bg-status-done px-4 text-sm font-medium text-white shadow-tmgr-xs hover:opacity-90"
 			>
 				Process ({{ selected.filter(Boolean).length }})
 			</button>
 			<span
 				v-if="selected.filter(Boolean).length > 0"
-				class="text-sm text-gray-500 dark:text-gray-400"
+				class="text-sm text-ink-subtle"
 			>
 				{{ selectedSummary }}
 			</span>
@@ -46,7 +46,7 @@
 			class="relative border pb-2"
 			:class="[
 				hasSelectable
-					? 'rounded-2xl border-dashed border-orange-200 px-2'
+					? 'rounded-card border-dashed border-brand/40 px-2'
 					: 'border-transparent',
 			]"
 		>
@@ -66,7 +66,7 @@
 				}"
 				:data-task-id="task.id"
 				:draggable="false"
-				class="selectable relative mt-2 w-full rounded-lg px-2"
+				class="selectable relative mt-3 w-full"
 			>
 				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
@@ -76,23 +76,88 @@
 				<button
 					type="button"
 					:class="{
-					'border-l-4 border-l-green-600 dark:border-l-green-500':
+					'border-l-[3px] border-l-status-done':
 						task.start_time,
-					'border-b border-b-red-500 dark:border-b-red-400':
-						taskTimeExceeded[task.id],
 				}"
-					class="w-full rounded-lg shadow-md md:flex"
+					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:shadow-tmgr-md hover:border-line-strong md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
 					@mouseleave="hoveredTaskId = null"
 				>
-					<div
-						class="w-full space-y-1 rounded-lg bg-white px-4 pb-2 pt-4 transition-colors duration-300 hover:bg-gray-100 dark:bg-gray-900 hover:dark:bg-gray-800"
+					<Popover
+						v-if="isFeatureEnabled('task.assignees')"
+						v-model:open="assigneePopoverOpen[task.id]"
 					>
-						<div class="flex items-start gap-2">
+						<PopoverTrigger as-child>
+							<button
+								class="group/assignee absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+								@click.stop
+								:title="
+									task.assignees?.length
+										? 'Change assignee'
+										: 'Assign someone'
+								"
+							>
+								<UserPlus
+									v-if="
+										assigneePopoverOpen[task.id] || !task.assignees?.length
+									"
+									class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
+								/>
+								<template v-else>
+									<UserPlus
+										class="hidden h-6 w-6 rounded-pill bg-surface-sunken p-1 group-hover/assignee:block"
+									/>
+									<AssigneeUsers
+										class="group-hover/assignee:hidden"
+										:assignees="task.assignees"
+										avatarsClass="h-6 w-6"
+										:show-assignee-controls="false"
+									/>
+								</template>
+							</button>
+						</PopoverTrigger>
+						<PopoverContent
+							class="z-50 w-52 p-0"
+							align="end"
+							side="bottom"
+							@click.stop
+						>
+							<Command>
+								<CommandInput placeholder="Search members..." class="h-9" />
+								<CommandEmpty>No members found.</CommandEmpty>
+								<CommandList>
+									<CommandGroup>
+										<CommandItem
+											v-for="member in workspaceMembers"
+											:key="member.id"
+											:value="member.id"
+											@select="toggleAssignee(task, member.id)"
+											class="cursor-pointer"
+										>
+											<Check
+												:class="[
+													'mr-2 h-4 w-4',
+													isAssignedTo(task, member.id)
+														? 'opacity-100'
+														: 'opacity-0',
+												]"
+											/>
+											{{ member.name }}
+										</CommandItem>
+									</CommandGroup>
+								</CommandList>
+							</Command>
+						</PopoverContent>
+					</Popover>
+
+					<div
+						class="w-full px-4 py-3 transition-colors duration-150 group-hover/list-item:bg-surface-hover"
+					>
+						<div class="flex items-start gap-2 pr-9">
 							<div
 								v-if="draggable"
-								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
+								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
 								:draggable="true"
 								@dragstart="onDragStart($event, task)"
 								@click.stop
@@ -101,15 +166,15 @@
 									>drag_indicator</span
 								>
 							</div>
-							<div class="flex-1">
+							<div class="flex-1 min-w-0">
 								<CategoryBadge
 									v-if="showCategoryBadges && task.category"
-									class="shrink-0 self-start"
+									class="mb-2 shrink-0 self-start"
 									:category="task.category"
 								/>
 
 							<div
-								class="text-left text-sm font-medium lg:text-lg"
+								class="text-left text-base font-medium leading-snug text-ink"
 								:title="task.title?.length > 60 ? task.title : ''"
 							>
 								{{ taskTitles[task.id] }}
@@ -119,21 +184,20 @@
 
 						<div
 							v-if="isFeatureEnabled('task.countdown')"
-							class="flex items-center gap-2"
+							class="mt-3 flex items-center gap-2"
 						>
-						<span
+						<AlarmClock
+							class="h-4 w-4"
 							:class="
 								taskTimeExceeded[task.id]
-									? 'text-red-600 dark:text-red-400'
-									: 'text-green-600 dark:text-green-400'
+									? 'text-status-fix'
+									: 'text-status-done'
 							"
-							class="material-icons text-xs sm:text-base md:text-xl"
-						>
-							alarm
-						</span>
+						/>
 
 						<span
-							class="text-xs text-gray-700 dark:text-gray-400 sm:text-base md:text-base"
+							class="text-sm text-ink"
+							:class="taskTimeExceeded[task.id] && 'text-status-fix-fg'"
 						>
 							{{ taskFormattedTimes[task.id] }}
 						</span>
@@ -142,106 +206,32 @@
 								v-if="!task.start_time"
 								v-tooltip.top="setTooltipData('Start timer')"
 								:disabled="isLoadingActions[`start-${task.id}`]"
-								class="flex items-center justify-center rounded bg-green-500/80 p-0.5 text-white hover:bg-green-500 disabled:opacity-50 dark:bg-green-600/70 dark:hover:bg-green-600/90"
+								class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 								@click.stop="startCountdown(task, `start-${task.id}`)"
 							>
-								<span
+								<Play
 									v-if="!isLoadingActions[`start-${task.id}`]"
-									class="material-icons text-xs leading-none sm:text-sm"
-									>play_arrow</span
-								>
+									class="h-3 w-3 fill-current"
+								/>
 								<Loader v-else is-mini />
 							</button>
 							<button
 								v-else
 								v-tooltip.top="setTooltipData('Stop timer')"
 								:disabled="isLoadingActions[`stop-${task.id}`]"
-								class="flex items-center justify-center rounded bg-red-500/80 p-0.5 text-white hover:bg-red-500 disabled:opacity-50 dark:bg-red-600/70 dark:hover:bg-red-600/90"
+								class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 								@click.stop="stopCountdown(task, `stop-${task.id}`)"
 							>
-								<span
+								<Square
 									v-if="!isLoadingActions[`stop-${task.id}`]"
-									class="material-icons text-xs leading-none sm:text-sm"
-									>stop</span
-								>
+									class="h-2.5 w-2.5 fill-current"
+								/>
 								<Loader v-else is-mini />
 							</button>
-
-							<Popover
-								v-if="isFeatureEnabled('task.assignees')"
-								v-model:open="assigneePopoverOpen[task.id]"
-							>
-								<PopoverTrigger as-child>
-									<button
-										v-show="
-											task.assignees?.length ||
-											hoveredTaskId === task.id ||
-											assigneePopoverOpen[task.id]
-										"
-										class="group ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-										@click.stop
-										:title="
-											task.assignees?.length
-												? 'Change assignee'
-												: 'Assign someone'
-										"
-									>
-										<UserPlus
-											v-if="
-												assigneePopoverOpen[task.id] || !task.assignees?.length
-											"
-											class="h-5 w-5 text-gray-500 dark:text-gray-400"
-										/>
-										<template v-else>
-											<UserPlus
-												class="hidden h-5 w-5 text-gray-500 group-hover:block dark:text-gray-400"
-											/>
-											<AssigneeUsers
-												class="group-hover:hidden"
-												:assignees="task.assignees"
-												avatarsClass="h-6 w-6"
-												:show-assignee-controls="false"
-											/>
-										</template>
-									</button>
-								</PopoverTrigger>
-								<PopoverContent
-									class="z-50 w-52 p-0"
-									align="start"
-									side="bottom"
-									@click.stop
-								>
-									<Command>
-										<CommandInput placeholder="Search members..." class="h-9" />
-										<CommandEmpty>No members found.</CommandEmpty>
-										<CommandList>
-											<CommandGroup>
-												<CommandItem
-													v-for="member in workspaceMembers"
-													:key="member.id"
-													:value="member.id"
-													@select="toggleAssignee(task, member.id)"
-													class="cursor-pointer"
-												>
-													<Check
-														:class="[
-															'mr-2 h-4 w-4',
-															isAssignedTo(task, member.id)
-																? 'opacity-100'
-																: 'opacity-0',
-														]"
-													/>
-													{{ member.name }}
-												</CommandItem>
-											</CommandGroup>
-										</CommandList>
-									</Command>
-								</PopoverContent>
-							</Popover>
 						</div>
 
 						<div
-							class="mt-1 flex items-center gap-x-2 pt-1 text-[9px] text-gray-400/50 dark:text-gray-500/50"
+							class="mt-3 flex items-center gap-x-3 text-2xs text-ink-faint"
 						>
 						<TaskTimeInfo
 							:created-at="task.created_at"
@@ -249,7 +239,7 @@
 							:overtime="taskOvertimes[task.id]"
 						/>
 
-						<span class="ml-auto flex items-center gap-1">
+						<span class="ml-auto flex items-center gap-1.5 text-ink-subtle">
 							<span>{{ taskStatusNames[task.id] }}</span>
 							<span
 								class="inline-block h-2 w-2 rounded-full"
@@ -275,10 +265,10 @@
 			<!-- Add pagination controls -->
 			<div
 				v-if="pagination.total > pagination.per_page"
-				class="mt-4 flex items-center justify-between px-4"
+				class="mt-6 flex items-center justify-between px-2"
 			>
-				<div class="flex items-center gap-2">
-					<span class="text-sm text-gray-600 dark:text-gray-300">
+				<div class="flex items-center gap-3">
+					<span class="text-sm text-ink-subtle">
 						Showing {{ pagination.from }} to {{ pagination.to }} of
 						{{ pagination.total }} tasks
 					</span>
@@ -286,7 +276,7 @@
 					<select
 						v-model="perPage"
 						@change="onPerPageChange"
-						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>
@@ -298,19 +288,19 @@
 					<button
 						:disabled="pagination.current_page === 1"
 						@click="onPageChange(pagination.current_page - 1)"
-						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm text-ink hover:bg-surface-hover disabled:opacity-40"
 					>
 						Previous
 					</button>
 
-					<span class="text-sm text-gray-600 dark:text-gray-300">
+					<span class="px-2 text-sm text-ink-subtle">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
 
 					<button
 						:disabled="pagination.current_page === pagination.last_page"
 						@click="onPageChange(pagination.current_page + 1)"
-						class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm text-ink hover:bg-surface-hover disabled:opacity-40"
 					>
 						Next
 					</button>
@@ -380,7 +370,7 @@
 		CommandItem,
 		CommandList,
 	} from '@/components/ui/command';
-	import { UserPlus, Check, ClockPlus } from 'lucide-vue-next';
+	import { UserPlus, Check, ClockPlus, Play, Square, AlarmClock } from 'lucide-vue-next';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
@@ -410,6 +400,9 @@
 			UserPlus,
 			Check,
 			ClockPlus,
+			Play,
+			Square,
+			AlarmClock,
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
 		props: {
@@ -667,10 +660,22 @@
 				this.$store.commit('closeTaskModal');
 			},
 			async stopCountdown(task, dotId) {
-				this.isLoadingActions[dotId] = true;
-				await stopTaskTimeCounter(task.id);
-				await this.loadTasks();
-				this.isLoadingActions[dotId] = false;
+				if (!task?.id) return;
+				if (dotId) this.isLoadingActions[dotId] = true;
+				try {
+					const updatedTask = await stopTaskTimeCounter(task.id);
+					if (updatedTask && typeof updatedTask === 'object') {
+						Object.assign(task, updatedTask);
+						this.$store.commit('updateSingleTask', updatedTask);
+					} else {
+						task.start_time = 0;
+					}
+					this.$emit('reload-tasks');
+				} catch (e) {
+					console.error('Failed to stop timer:', e);
+				} finally {
+					if (dotId) this.isLoadingActions[dotId] = false;
+				}
 			},
 			async startCountdown(task: Task, dotId: string | null) {
 				if (!task.id) return;
@@ -678,17 +683,25 @@
 				if (dotId) {
 					this.isLoadingActions[dotId] = true;
 				}
-				await startTaskTimeCounter(task.id);
-				await this.loadTasks();
-				if (dotId) {
-					this.isLoadingActions[dotId] = false;
-				}
+				try {
+					const updatedTask = await startTaskTimeCounter(task.id);
+					if (updatedTask && typeof updatedTask === 'object') {
+						Object.assign(task, updatedTask);
+						this.$store.commit('updateSingleTask', updatedTask);
+					} else {
+						task.start_time = Math.floor(Date.now() / 1000);
+					}
+					this.$emit('reload-tasks');
 
-				const taskStatus = this.statuses.find((s) => s.id === task.status_id);
-
-				if (taskStatus && taskStatus.type === 'default') {
-					this.backlogStatusChangeConfirm = { task, dotId };
-					this.showBacklogStatusChangeConfirm();
+					const taskStatus = this.statuses.find((s) => s.id === task.status_id);
+					if (taskStatus && taskStatus.type === 'default') {
+						this.backlogStatusChangeConfirm = { task, dotId };
+						this.showBacklogStatusChangeConfirm();
+					}
+				} catch (e) {
+					console.error('Failed to start timer:', e);
+				} finally {
+					if (dotId) this.isLoadingActions[dotId] = false;
 				}
 			},
 			showBacklogStatusChangeConfirm() {

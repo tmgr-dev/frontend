@@ -358,54 +358,44 @@
 						:workspace-id="workspaceId"
 					/>
 				</div>
-				<div class="flex flex-col gap-2">
+				<div class="flex flex-col gap-3">
 					<transition name="fade">
 						<div
 							v-if="summaryTime && status === 'done'"
-							class="flex w-full flex-wrap items-center justify-around gap-2 rounded-lg border border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-2 dark:border-gray-700 dark:from-gray-800 dark:to-gray-900"
+							class="grid w-full grid-cols-2 gap-3 rounded-card border border-line bg-surface px-4 py-3 sm:grid-cols-4"
 						>
-							<div class="flex min-w-[100px] flex-1 items-center justify-center">
-								<div class="text-center">
-									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Time</div>
-									<div class="text-lg font-bold text-tmgr-blue dark:text-tmgr-light-blue">{{ summaryTime }}</div>
-								</div>
+							<div class="flex flex-col items-center justify-center text-center">
+								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Total Time</div>
+								<div class="text-xl font-semibold tabular-nums text-ink">{{ summaryTime }}</div>
 							</div>
-							<div class="flex min-w-[100px] flex-1 items-center justify-center">
-								<div class="text-center">
-									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Days</div>
-									<div class="text-lg font-bold text-green-600 dark:text-green-400">{{ timeStats.workingDays }}</div>
-									<div class="text-[9px] text-gray-500 dark:text-gray-400">(8h/day)</div>
-								</div>
+							<div class="flex flex-col items-center justify-center text-center">
+								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Days</div>
+								<div class="text-xl font-semibold text-status-done-fg">{{ timeStats.workingDays }}</div>
+								<div class="text-2xs text-ink-faint">(8h/day)</div>
 							</div>
-							<div class="flex min-w-[100px] flex-1 items-center justify-center">
-								<div class="text-center">
-									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Months</div>
-									<div class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ timeStats.workingMonths }}</div>
-									<div class="text-[9px] text-gray-500 dark:text-gray-400">(160h/month)</div>
-								</div>
+							<div class="flex flex-col items-center justify-center text-center">
+								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Months</div>
+								<div class="text-xl font-semibold text-status-testing-fg">{{ timeStats.workingMonths }}</div>
+								<div class="text-2xs text-ink-faint">(160h/month)</div>
 							</div>
-							<div class="flex min-w-[100px] flex-1 items-center justify-center">
-								<div class="text-center">
-									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Working Years</div>
-									<div class="text-lg font-bold text-orange-600 dark:text-orange-400">{{ timeStats.workingYears }}</div>
-									<div class="text-[9px] text-gray-500 dark:text-gray-400">(2000h/year)</div>
-								</div>
+							<div class="flex flex-col items-center justify-center text-center">
+								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Years</div>
+								<div class="text-xl font-semibold text-status-progress-fg">{{ timeStats.workingYears }}</div>
+								<div class="text-2xs text-ink-faint">(2000h/year)</div>
 							</div>
-							<div v-if="formattedTotalOvertime" class="flex min-w-[100px] flex-1 items-center justify-center">
-								<div class="text-center">
-									<div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Overtime</div>
-									<div class="text-lg font-bold text-red-600 dark:text-red-400">+{{ formattedTotalOvertime }}</div>
-								</div>
+							<div v-if="formattedTotalOvertime" class="col-span-2 flex flex-col items-center justify-center text-center sm:col-span-4">
+								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Overtime</div>
+								<div class="text-xl font-semibold text-status-fix-fg">+{{ formattedTotalOvertime }}</div>
 							</div>
 						</div>
 						<div
 							v-else-if="summaryTime"
-							class="text-bold w-full shrink-0 text-center text-lg text-opacity-25 sm:text-xl lg:text-2xl"
+							class="w-full shrink-0 text-center text-2xl font-semibold tabular-nums text-ink sm:text-3xl"
 						>
 							{{ summaryTime }}
-							<span 
-								v-if="formattedTotalOvertime" 
-								class="ml-2 text-red-500 dark:text-red-400"
+							<span
+								v-if="formattedTotalOvertime"
+								class="ml-2 text-status-fix-fg"
 								title="Total Overtime"
 							>
 								+{{ formattedTotalOvertime }}
@@ -414,12 +404,14 @@
 					</transition>
 
 					<div class="flex w-full items-center justify-end gap-2">
-					<Input
-						v-model="searchText"
-						class="h-8"
-						placeholder="search task"
-						type="search"
-					/>
+					<div class="relative flex-1">
+						<input
+							v-model="searchText"
+							placeholder="search task"
+							type="search"
+							class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-line-strong"
+						/>
+					</div>
 
 					<Dialog>
 						<DialogTrigger as-child>
@@ -427,26 +419,19 @@
 								@click="showCategorySelect = !showCategorySelect"
 								type="button"
 								title="filters"
-								class="flex size-8 rounded border p-1.5"
+								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 								:class="[
-									selectedCategory &&
-										selectedCategory !== -1 &&
-										'border-gray-900 dark:border-white',
+									selectedCategory && selectedCategory !== -1
+										? 'border-brand text-brand'
+										: 'border-line',
 								]"
 							>
-								<SlidersHorizontalIcon
-									class="m-auto size-full stroke-gray-400"
-									:class="[
-										selectedCategory &&
-											selectedCategory !== -1 &&
-											'stroke-gray-900 dark:stroke-white',
-									]"
-								/>
+								<SlidersHorizontalIcon class="h-4 w-4" />
 							</button>
 						</DialogTrigger>
 
 						<DialogContent
-							class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+							class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 						>
 							<DialogHeader>
 								<DialogTitle>Filters</DialogTitle>
@@ -467,17 +452,12 @@
 						@click="selectableTasks = !selectableTasks"
 						type="button"
 						title="Tasks selection mode"
-						class="flex size-8 rounded border p-1.5"
-						:class="[selectableTasks && 'border-gray-900 dark:border-white']"
+						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
+						:class="[
+							selectableTasks ? 'border-brand text-brand' : 'border-line',
+						]"
 					>
-						<SquareDashedMousePointerIcon
-							class="m-auto size-full"
-							:class="[
-								selectableTasks
-									? 'stroke-tmgr-blue dark:stroke-white'
-									: 'stroke-gray-400',
-							]"
-						/>
+						<SquareDashedMousePointerIcon class="h-4 w-4" />
 					</button>
 					</div>
 				</div>
