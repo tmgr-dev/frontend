@@ -56,10 +56,16 @@
     <!-- Date Range Filter -->
     <Popover>
       <PopoverTrigger as-child>
-        <Button variant="outline" size="sm" class="w-32">
-          <CalendarIcon class="h-4 w-4 mr-2" />
-          {{ dateRangeLabel }}
-        </Button>
+        <button
+          type="button"
+          class="flex h-10 w-32 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-start text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background"
+        >
+          <span class="flex items-center gap-2 truncate">
+            <CalendarIcon class="h-4 w-4 shrink-0 opacity-70" />
+            <span class="truncate">{{ dateRangeLabel }}</span>
+          </span>
+          <ChevronDown class="h-4 w-4 shrink-0 opacity-50" />
+        </button>
       </PopoverTrigger>
       <PopoverContent class="w-auto p-0" align="start">
         <div class="p-3 space-y-2">
@@ -78,15 +84,15 @@
     </Popover>
 
     <!-- Clear Filters -->
-    <Button
+    <button
       v-if="hasActiveFilters"
-      variant="ghost"
-      size="sm"
+      type="button"
       @click="clearFilters"
-      class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      class="flex h-10 w-10 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+      aria-label="Clear filters"
     >
       <XMarkIcon class="h-4 w-4" />
-    </Button>
+    </button>
   </div>
 </template>
 
@@ -108,6 +114,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { CalendarIcon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { ChevronDown } from 'lucide-vue-next';
 
 interface Props {
   modelValue: ActivityFiltersType;

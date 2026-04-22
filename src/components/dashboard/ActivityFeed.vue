@@ -2,7 +2,7 @@
   <!-- CHANGES: Added min-h-96 to prevent CLS -->
   <div class="activity-feed min-h-96">
     <div class="activity-header flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+      <h2 class="text-lg font-semibold text-ink">
         Recent Activity
       </h2>
       <div class="flex items-center space-x-2">
@@ -188,11 +188,11 @@ onUnmounted(() => {
 
 <style scoped>
 .activity-feed {
-  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6;
+  @apply rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
 }
 
 .activity-header {
-  @apply border-b border-gray-200 dark:border-gray-700 pb-4 mb-4;
+  @apply border-b border-line pb-4 mb-4;
 }
 
 .activity-list {
@@ -200,7 +200,7 @@ onUnmounted(() => {
 }
 
 .activity-list > * + * {
-  @apply border-t border-gray-100 dark:border-gray-700/50;
+  @apply border-t border-line;
 }
 
 /* Custom scrollbar */

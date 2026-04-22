@@ -2,12 +2,12 @@
   <!-- CHANGES: Added min-h-64 to prevent CLS -->
   <div class="team-activity-widget min-h-64">
     <div class="team-activity-header flex items-center justify-between mb-4">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+      <h3 class="text-lg font-semibold text-ink">
         Team Activity
       </h3>
       <div class="flex items-center space-x-2">
-        <div class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+        <div class="flex items-center space-x-1 text-xs text-ink-subtle">
+          <div class="w-2 h-2 bg-status-done rounded-full animate-pulse"></div>
           <span>{{ onlineCount }} online</span>
         </div>
         <Button
@@ -52,29 +52,29 @@
         </div>
         
         <!-- Team summary -->
-        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="mt-4 pt-4 border-t border-line">
           <div class="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div class="text-lg font-semibold text-gray-900 dark:text-white">
+              <div class="text-lg font-semibold tabular-nums text-ink">
                 {{ teamActivity.total_members }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
                 Total Members
               </div>
             </div>
             <div>
-              <div class="text-lg font-semibold text-green-600 dark:text-green-400">
+              <div class="text-lg font-semibold tabular-nums text-status-done-fg">
                 {{ teamActivity.online_members }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
                 Online Now
               </div>
             </div>
             <div>
-              <div class="text-lg font-semibold text-blue-600 dark:text-blue-400">
+              <div class="text-lg font-semibold tabular-nums text-status-progress-fg">
                 {{ teamActivity.active_timers }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
                 Active Timers
               </div>
             </div>
@@ -152,11 +152,11 @@ const inviteMembers = () => {
 
 <style scoped>
 .team-activity-widget {
-  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6;
+  @apply rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
 }
 
 .team-activity-header {
-  @apply border-b border-gray-200 dark:border-gray-700 pb-4 mb-4;
+  @apply border-b border-line pb-4 mb-4;
 }
 
 .team-activity-content {
@@ -169,7 +169,7 @@ const inviteMembers = () => {
 }
 
 .team-activity-content::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-700 rounded;
+  @apply bg-surface-sunken rounded;
 }
 
 .team-activity-content::-webkit-scrollbar-thumb {

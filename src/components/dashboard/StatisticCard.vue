@@ -8,43 +8,37 @@
     role="button"
     :aria-label="`${title}: ${displayValue}. ${description || ''} Click to view details.`"
   >
-    <div class="flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div :class="iconClasses">
-          <component :is="iconComponent" class="h-5 w-5" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-            {{ title }}
+    <div class="flex items-start gap-3">
+      <div :class="iconClasses">
+        <component :is="iconComponent" class="h-5 w-5" />
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-2xs font-bold uppercase tracking-wide text-ink-subtle truncate">
+          {{ title }}
+        </p>
+        <div class="mt-1 flex items-baseline gap-2">
+          <p :class="valueClasses">
+            <template v-if="loading">
+              <Skeleton class="h-8 w-16" />
+            </template>
+            <template v-else>
+              {{ displayValue }}
+            </template>
           </p>
-          <div class="flex items-baseline space-x-2">
-            <p :class="valueClasses">
-              <template v-if="loading">
-                <Skeleton class="h-8 w-16" />
-              </template>
-              <template v-else>
-                {{ displayValue }}
-              </template>
-            </p>
-            <div v-if="trend && !loading" :class="trendClasses">
-              <component :is="trendIcon" class="h-3 w-3" />
-              <span class="text-xs font-medium">
-                {{ Math.abs(trend.value) }}%
-              </span>
-            </div>
+          <div v-if="trend && !loading" :class="trendClasses">
+            <component :is="trendIcon" class="h-3 w-3" />
+            <span class="text-xs font-medium">
+              {{ Math.abs(trend.value) }}%
+            </span>
           </div>
         </div>
+        <p v-if="description && !loading" class="mt-2 text-xs text-ink-muted">
+          {{ description }}
+        </p>
+        <div v-if="loading" class="mt-2">
+          <Skeleton class="h-3 w-24" />
+        </div>
       </div>
-    </div>
-    
-    <div v-if="description && !loading" class="mt-2">
-      <p class="text-xs text-gray-500 dark:text-gray-400">
-        {{ description }}
-      </p>
-    </div>
-    
-    <div v-if="loading" class="mt-2">
-      <Skeleton class="h-3 w-24" />
     </div>
   </div>
 </template>
@@ -113,49 +107,46 @@ const trendIcon = computed(() => {
   return props.trend?.isPositive ? ArrowTrendingUpIcon : ArrowTrendingDownIcon;
 });
 
-// CHANGES: Added min-h-28 to prevent CLS
 const cardClasses = computed(() => {
   return cn(
-    'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 min-h-28',
-    'hover:shadow-md dark:hover:shadow-lg transition-all duration-200',
-    'cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2',
-    'focus:ring-blue-500 dark:focus:ring-blue-400',
-    'transform hover:scale-[1.02] active:scale-[0.98]',
+    'rounded-card border border-line bg-surface p-4 min-h-28 shadow-tmgr-xs',
+    'hover:shadow-tmgr-md hover:border-line-strong transition-all duration-150',
+    'cursor-pointer focus:outline-none focus:shadow-tmgr-focus',
     props.loading && 'animate-pulse'
   );
 });
 
 const iconClasses = computed(() => {
   const colorMap = {
-    blue: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-    green: 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-    orange: 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
-    red: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-    purple: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-    indigo: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400'
+    blue: 'bg-status-progress-bg text-status-progress-fg',
+    green: 'bg-status-done-bg text-status-done-fg',
+    orange: 'bg-status-fix-bg text-status-fix-fg',
+    red: 'bg-status-fix-bg text-status-fix-fg',
+    purple: 'bg-status-testing-bg text-status-testing-fg',
+    indigo: 'bg-brand-bg text-brand-fg',
   };
-  
+
   return cn(
-    'flex items-center justify-center w-10 h-10 rounded-lg',
+    'flex items-center justify-center w-10 h-10 rounded-card shrink-0',
     colorMap[props.color]
   );
 });
 
 const valueClasses = computed(() => {
   return cn(
-    'text-2xl font-bold text-gray-900 dark:text-white',
+    'text-2xl font-semibold tabular-nums text-ink',
     props.loading && 'opacity-0'
   );
 });
 
 const trendClasses = computed(() => {
   if (!props.trend) return '';
-  
+
   return cn(
-    'flex items-center space-x-1',
-    props.trend.isPositive 
-      ? 'text-green-600 dark:text-green-400' 
-      : 'text-red-600 dark:text-red-400'
+    'flex items-center gap-1',
+    props.trend.isPositive
+      ? 'text-status-done-fg'
+      : 'text-status-fix-fg'
   );
 });
 

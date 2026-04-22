@@ -11,31 +11,51 @@ const props = withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <div class="flex gap-4 overflow-x-auto pb-4 min-h-96">
+  <div class="flex h-full min-h-[600px] gap-3 overflow-x-auto pb-4">
     <div
       v-for="n in columnsCount"
       :key="n"
-      class="w-72 flex-shrink-0 rounded-lg bg-gray-100 dark:bg-gray-800 p-4"
+      class="flex w-[300px] flex-shrink-0 flex-col px-1"
     >
-      <div class="mb-4 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <Skeleton class="h-3 w-3 rounded-full" />
-          <Skeleton class="h-4 w-20" />
+      <!-- Status bar -->
+      <Skeleton class="mb-2.5 h-[3px] rounded-full" />
+
+      <!-- Column header -->
+      <div class="mb-2 flex items-center gap-2 px-1">
+        <Skeleton class="h-5 w-20 rounded-pill" />
+        <Skeleton class="h-3 w-4" />
+        <div class="ml-auto flex items-center gap-2">
+          <Skeleton class="h-3 w-10" />
+          <Skeleton class="h-5 w-5 rounded" />
         </div>
-        <Skeleton class="h-5 w-6 rounded-full" />
       </div>
 
-      <div class="space-y-3">
+      <!-- Cards -->
+      <div class="mt-2 space-y-3 px-1">
         <div
           v-for="card in (n % 2 === 0 ? 2 : 3)"
           :key="card"
-          class="rounded-lg bg-white dark:bg-gray-700 p-4 shadow-sm"
+          class="relative rounded-card border border-line bg-surface p-[14px] shadow-tmgr-xs"
         >
-          <Skeleton class="mb-2 h-4 w-3/4" />
-          <Skeleton class="h-3 w-1/2" />
-          <div class="mt-3 flex items-center gap-2">
-            <Skeleton class="h-6 w-6 rounded-full" />
-            <Skeleton class="h-3 w-16" />
+          <!-- Left accent bar -->
+          <span class="pointer-events-none absolute left-0 top-[10px] bottom-[10px] w-[3px] rounded-full bg-line-strong opacity-40" aria-hidden="true"></span>
+
+          <!-- Header row: handle + timer pill + assignee -->
+          <div class="mb-2.5 flex items-center gap-1.5">
+            <Skeleton class="h-3.5 w-3.5" />
+            <Skeleton class="h-[22px] w-12 rounded-pill" />
+            <Skeleton class="ml-auto h-[22px] w-[22px] rounded-pill" />
+          </div>
+
+          <!-- Title (1-2 lines) -->
+          <Skeleton class="mb-1.5 h-3.5 w-11/12" />
+          <Skeleton v-if="card % 2 === 1" class="mb-3 h-3.5 w-2/3" />
+          <div v-else class="mb-3"></div>
+
+          <!-- Footer: category badge + date -->
+          <div class="flex items-center justify-between">
+            <Skeleton class="h-5 w-20 rounded-pill" />
+            <Skeleton class="h-3 w-12" />
           </div>
         </div>
       </div>

@@ -685,35 +685,34 @@ onUnmounted(() => {
         <header class="dashboard-header" role="banner">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <h1 
-                class="text-3xl font-bold text-gray-900 dark:text-white"
+              <h1
+                class="text-2xl font-bold text-ink sm:text-3xl"
                 id="dashboard-title"
               >
                 {{ pageTitle }}
               </h1>
-              
+
               <!-- Connection Status Indicator -->
-              <div 
+              <div
                 v-if="showConnectionStatus || !isRealTimeActive"
-                class="flex items-center gap-2"
-                :class="{
-                  'text-green-600 dark:text-green-400': isRealTimeActive,
-                  'text-red-600 dark:text-red-400': !isRealTimeActive
-                }"
+                class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide"
+                :class="isRealTimeActive
+                  ? 'bg-status-done-bg text-status-done-fg'
+                  : 'bg-status-fix-bg text-status-fix-fg'"
                 role="status"
                 :aria-label="isRealTimeActive ? 'Real-time updates active' : 'Real-time updates inactive'"
               >
-                <WifiIcon 
-                  v-if="isRealTimeActive" 
-                  class="h-4 w-4" 
+                <WifiIcon
+                  v-if="isRealTimeActive"
+                  class="h-3 w-3"
                   aria-hidden="true"
                 />
-                <SignalSlashIcon 
-                  v-else 
-                  class="h-4 w-4" 
+                <SignalSlashIcon
+                  v-else
+                  class="h-3 w-3"
                   aria-hidden="true"
                 />
-                <span class="text-xs font-medium">
+                <span>
                   {{ isRealTimeActive ? 'Live' : 'Offline' }}
                 </span>
               </div>
@@ -841,11 +840,11 @@ onUnmounted(() => {
           role="region"
         >
           <div class="mb-4">
-            <h2 id="heatmap-heading" class="text-xl font-semibold text-gray-900 dark:text-white">
+            <h2 id="heatmap-heading" class="text-lg font-semibold text-ink">
               Activity Heatmap
             </h2>
-            <p 
-              class="text-sm text-gray-600 dark:text-gray-400"
+            <p
+              class="mt-1 text-sm text-ink-muted"
               id="heatmap-description"
             >
               Your contribution activity over the past year. Each square represents a day, with darker colors indicating more activity.
@@ -911,7 +910,7 @@ onUnmounted(() => {
           tabindex="0"
           role="region"
         >
-          <h2 id="statistics-heading" class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+          <h2 id="statistics-heading" class="text-lg font-semibold text-ink mb-4">
             Workspace Statistics
           </h2>
             <StatisticsGrid
@@ -1110,7 +1109,7 @@ onUnmounted(() => {
 }
 
 .dashboard-header {
-  @apply mb-8 pb-4 border-b border-gray-200 dark:border-gray-700;
+  @apply mb-8 pb-4 border-b border-line;
 }
 
 .dashboard-section {
@@ -1118,7 +1117,7 @@ onUnmounted(() => {
 }
 
 .heatmap-container {
-  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 min-h-48;
+  @apply rounded-card border border-line bg-surface p-6 min-h-48 shadow-tmgr-xs;
 }
 
 .dashboard-grid {
@@ -1184,7 +1183,7 @@ onUnmounted(() => {
 }
 
 .dashboard-container::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 dark:bg-gray-600 rounded-full;
+  @apply bg-line rounded-full;
 }
 
 .dashboard-container::-webkit-scrollbar-thumb:hover {
