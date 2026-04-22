@@ -72,50 +72,50 @@
 	<!-- Compact Modal -->
 	<div v-if="isAddingRelation" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" @click="cancelAdding">
 		<div
-			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-2 border border-line bg-surface text-ink p-3 shadow-tmgr-lg rounded-card"
+			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border border-line bg-surface text-ink p-5 shadow-tmgr-lg rounded-card"
 			@click.stop
 		>
 			<!-- Dialog Header -->
 			<div class="flex items-center justify-between">
-				<h2 class="text-sm font-semibold">Link Issue</h2>
+				<h2 class="text-base font-semibold">Link Issue</h2>
 				<button
 					@click="cancelAdding"
-					class="rounded opacity-70 hover:opacity-100"
+					class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
 						<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
 					</svg>
 				</button>
 			</div>
 
 			<!-- Dialog Content -->
-			<div class="grid gap-2">
+			<div class="grid gap-3">
 				<!-- Task Search -->
-				<div class="grid gap-1">
-					<label class="text-xs font-medium">Issue</label>
+				<div class="grid gap-1.5">
+					<label class="text-xs font-medium text-ink-subtle">Issue</label>
 					<div class="relative">
-						<svg xmlns="http://www.w3.org/2000/svg" class="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+						<svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" viewBox="0 0 20 20" fill="currentColor">
 							<path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
 						</svg>
 						<input
 							v-model="taskSearchQuery"
 							type="text"
-							placeholder="Search..."
-							class="flex h-7 w-full rounded-md border border-line bg-surface-sunken text-ink px-2 pl-7 text-xs focus-visible:outline-none focus-visible:border-line-strong"
+							placeholder="Search…"
+							class="flex h-10 w-full rounded-md border border-line bg-surface-sunken text-ink px-3 pl-9 text-sm placeholder:text-ink-subtle focus-visible:outline-none focus-visible:border-line-strong"
 							@input="handleTaskSearch((($event.target as HTMLInputElement)?.value || ''))"
 						/>
 					</div>
 
-					<div v-if="taskSearchQuery && (searchResults.length > 0 || isSearching)" class="rounded-md border border-line bg-surface-sunken max-h-40 overflow-auto">
-						<div v-if="isSearching" class="py-4 text-center text-xs text-ink-subtle">
-							Searching...
+					<div v-if="taskSearchQuery && (searchResults.length > 0 || isSearching)" class="rounded-md border border-line bg-surface-sunken max-h-48 overflow-auto">
+						<div v-if="isSearching" class="py-3 text-center text-sm text-ink-subtle">
+							Searching…
 						</div>
 						<button
 							v-for="task in searchResults"
 							:key="task.id"
 							@click="selectTask(task)"
 							:class="[
-								'relative flex w-full items-center px-2 py-1 text-xs outline-none hover:bg-surface-hover',
+								'relative flex w-full items-center px-3 py-2 text-sm outline-none hover:bg-surface-hover',
 								selectedTask?.id === task.id ? 'bg-surface-hover' : ''
 							]"
 						>
@@ -125,14 +125,14 @@
 				</div>
 
 				<!-- Relationship Type -->
-				<div class="grid gap-1">
-					<label class="text-xs font-medium">Type</label>
+				<div class="grid gap-1.5">
+					<label class="text-xs font-medium text-ink-subtle">Type</label>
 					<div class="relative">
 						<select
 							v-model="newRelation.typeId"
-							class="flex h-7 w-full rounded-md border border-line bg-surface-sunken text-ink px-2 text-xs focus:outline-none focus:border-line-strong appearance-none"
+							class="flex h-10 w-full rounded-md border border-line bg-surface-sunken text-ink px-3 text-sm focus:outline-none focus:border-line-strong appearance-none"
 						>
-							<option value="">Select...</option>
+							<option value="">Select…</option>
 							<option
 								v-for="type in relationTypes"
 								:key="type.id"
@@ -141,40 +141,40 @@
 								{{ type.name }}
 							</option>
 						</select>
-						<svg xmlns="http://www.w3.org/2000/svg" class="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 opacity-50 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+						<svg xmlns="http://www.w3.org/2000/svg" class="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
 							<path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
 						</svg>
 					</div>
 				</div>
 
 				<!-- Preview -->
-				<div v-if="selectedTask && selectedRelationType" class="rounded-md border border-line bg-surface-sunken px-2 py-1.5">
-					<p class="text-xs text-ink-subtle">
+				<div v-if="selectedTask && selectedRelationType" class="rounded-md border border-line bg-surface-sunken px-3 py-2">
+					<p class="text-sm text-ink-subtle">
 						<span class="font-medium text-ink">{{ selectedRelationType }}</span>
-						<span class="font-mono">#{{ selectedTask.id }}</span>
+						<span class="ml-1.5 font-mono">#{{ selectedTask.id }}</span>
 					</p>
 				</div>
 
 				<!-- Error Message -->
-				<div v-if="error" class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg px-2 py-1.5">
-					<p class="text-xs text-status-fix-fg">{{ error }}</p>
+				<div v-if="error" class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg px-3 py-2">
+					<p class="text-sm text-status-fix-fg">{{ error }}</p>
 				</div>
 			</div>
 
 			<!-- Dialog Footer -->
-			<div class="flex justify-end gap-1.5">
+			<div class="flex justify-end gap-2">
 				<button
 					@click="cancelAdding"
-					class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-line bg-surface text-ink hover:bg-surface-hover h-7 px-3"
+					class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-line bg-surface text-ink hover:bg-surface-hover h-9 px-4"
 				>
 					Cancel
 				</button>
 				<button
 					@click="handleAddRelation"
 					:disabled="!selectedTask || !newRelation.typeId || isLoading"
-					class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 bg-brand text-white hover:bg-brand-hover h-7 px-3"
+					class="inline-flex items-center justify-center rounded-md text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50 bg-brand text-white hover:bg-brand-hover h-9 px-4"
 				>
-					{{ isLoading ? 'Linking...' : 'Link' }}
+					{{ isLoading ? 'Linking…' : 'Link' }}
 				</button>
 			</div>
 		</div>

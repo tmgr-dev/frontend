@@ -639,7 +639,8 @@
 							</BreadcrumbList>
 						</Breadcrumb>
 
-						<div class="ml-auto flex items-center gap-2">
+						<div id="page-header-actions" class="ml-auto flex flex-1 items-center justify-end gap-2 min-w-0"></div>
+						<div class="flex items-center gap-2">
 							<NotificationBell />
 						</div>
 					</div>
