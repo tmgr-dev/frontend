@@ -123,7 +123,7 @@
 			<DropdownMenu>
 				<DropdownMenuTrigger as-child>
 					<button
-						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
+						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
 						@click.stop
 					>
 						<MoreVertical class="h-3.5 w-3.5" />
@@ -562,32 +562,51 @@
 			if (!this.task.id || this.isLoadingTimer) return;
 
 			this.isLoadingTimer = true;
+			let updatedTask = null;
 			try {
-				const updatedTask = await startTaskTimeCounter(this.task.id);
-				Object.assign(this.task, updatedTask);
+				updatedTask = await startTaskTimeCounter(this.task.id);
+			} catch (e) {
+				console.error('Failed to start timer:', e);
+				this.isLoadingTimer = false;
+				return;
+			}
+
+			if (updatedTask && typeof updatedTask === 'object') {
+				this.task.start_time = updatedTask.start_time;
+				this.task.common_time = updatedTask.common_time;
+				if (updatedTask.status_id !== undefined) {
+					this.task.status_id = updatedTask.status_id;
+				}
 				this.$store.commit('updateSingleTask', updatedTask);
 				this.$emit('timer-started', updatedTask);
+			} else {
+				this.task.start_time = Math.floor(Date.now() / 1000);
+			}
 
-				const taskStatus = this.statuses.find(
-					(s) => s.id === this.task.status_id,
-				);
-				if (taskStatus && taskStatus.type === 'default') {
-					const activeStatus = this.statuses.find((s) => s.type === 'active');
-					if (activeStatus) {
+			this.isLoadingTimer = false;
+
+			const taskStatus = this.statuses.find(
+				(s) => s.id === this.task.status_id,
+			);
+			if (taskStatus && taskStatus.type === 'default') {
+				const activeStatus = this.statuses.find((s) => s.type === 'active');
+				if (activeStatus) {
+					await this.$nextTick();
+					setTimeout(async () => {
 						const shouldSwitch = confirm(
 							`Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
 						);
 						if (shouldSwitch) {
-							await updateTaskStatus(this.task.id, activeStatus.id);
-							this.task.status_id = activeStatus.id;
-							this.$store.commit('updateSingleTask', this.task);
+							try {
+								await updateTaskStatus(this.task.id, activeStatus.id);
+								this.task.status_id = activeStatus.id;
+								this.$store.commit('updateSingleTask', this.task);
+							} catch (e) {
+								console.error('Failed to update status:', e);
+							}
 						}
-					}
+					}, 0);
 				}
-			} catch (e) {
-				console.error('Failed to start timer:', e);
-			} finally {
-				this.isLoadingTimer = false;
 			}
 		},
 		async handleStopTimer() {
@@ -596,9 +615,14 @@
 			this.isLoadingTimer = true;
 			try {
 				const updatedTask = await stopTaskTimeCounter(this.task.id);
-				Object.assign(this.task, updatedTask);
-				this.$store.commit('updateSingleTask', updatedTask);
-				this.$emit('timer-stopped', updatedTask);
+				if (updatedTask && typeof updatedTask === 'object') {
+					this.task.start_time = updatedTask.start_time;
+					this.task.common_time = updatedTask.common_time;
+					this.$store.commit('updateSingleTask', updatedTask);
+					this.$emit('timer-stopped', updatedTask);
+				} else {
+					this.task.start_time = null;
+				}
 			} catch (e) {
 				console.error('Failed to stop timer:', e);
 			} finally {

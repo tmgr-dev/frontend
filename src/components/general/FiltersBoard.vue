@@ -81,9 +81,11 @@
 				class="h-9 w-40 lg:w-48 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
 			>
 				<option :value="0">All categories</option>
-				<option v-for="cat in categories" :key="cat.id" :value="cat.id">
-					{{ cat.title }}
-				</option>
+				<template v-for="cat in categories" :key="cat.id">
+					<option v-if="cat.id !== 0" :value="cat.id">
+						{{ cat.title }}
+					</option>
+				</template>
 			</select>
 			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
 		</div>
@@ -98,9 +100,11 @@
 				class="h-9 w-32 lg:w-40 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
 			>
 				<option :value="0">All users</option>
-				<option v-for="u in workspaceUsers" :key="u.id" :value="u.id">
-					{{ u.name }}
-				</option>
+				<template v-for="u in workspaceUsers" :key="u.id">
+					<option v-if="u.id !== 0" :value="u.id">
+						{{ u.name }}
+					</option>
+				</template>
 			</select>
 			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
 		</div>

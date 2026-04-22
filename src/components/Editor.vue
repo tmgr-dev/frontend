@@ -75,4 +75,16 @@
 	.md-editor-dark:not(.md-editor-fullscreen) {
 		--md-bk-color: transparent;
 	}
+
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) {
+		--md-bk-color: var(--bg-sunken);
+		--md-bk-color-outstand: var(--bg-sunken);
+	}
+
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-content,
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-input,
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-preview-wrapper,
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-preview {
+		background-color: var(--bg-sunken) !important;
+	}
 </style>

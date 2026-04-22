@@ -14,7 +14,7 @@
 		<template #body>
 			<div class="flex flex-col justify-center flex-1 min-h-0 pl-4">
 				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
-					<div class="min-h-[56px] flex-shrink-0 max-sm:min-h-0 px-4 py-2">
+					<div class="min-h-[56px] flex-shrink-0 max-sm:min-h-0 px-4 py-2 xl-custom:hidden">
 						<div class="flex items-center gap-3 flex-wrap xl-custom:flex-nowrap">
 							<WorkspaceUsers
 								:users="workspaceUsersWithoutAll"
@@ -41,9 +41,14 @@
 							</div>
 						</div>
 
-						<!-- Desktop filters teleported into top header (right of breadcrumbs) -->
+						<!-- Desktop: WorkspaceUsers + filters teleported into top header (right of breadcrumbs) -->
 						<Teleport to="#page-header-actions" :disabled="!headerSlotReady">
-							<div class="hidden items-center xl-custom:flex">
+							<div class="hidden items-center gap-3 xl-custom:flex">
+								<WorkspaceUsers
+									:users="workspaceUsersWithoutAll"
+									:workspace-id="workspaceId"
+								/>
+								<div class="h-5 w-px bg-line shrink-0"></div>
 								<FiltersBoard
 									v-if="workspaceUsers.length"
 									:workspaceUsers="workspaceUsers"
@@ -69,6 +74,7 @@
 								</FiltersBoard>
 							</div>
 						</Teleport>
+					</div>
 
 						<div class="relative xl-custom:hidden">
 
@@ -122,8 +128,6 @@
 								</Modal>
 							</Transition>
 						</div>
-
-					</div>
 
 					<div class="board-wrapper">
 					<!-- Loading skeleton -->
@@ -214,39 +218,55 @@
 														</button>
 
 														<Dropdown>
-															<MenuItem>
+															<MenuItem v-slot="{ active }">
 																<a
 																	href="#"
-																	class="block px-4 py-2 text-sm text-neutral-600"
+																	:class="[
+																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																		active ? 'bg-surface-hover' : '',
+																	]"
 																	@click.prevent="openTaskModal(column)"
 																>
+																	<span class="material-icons text-base text-ink-subtle">add</span>
 																	Create a task
 																</a>
 															</MenuItem>
-															<MenuItem>
+															<MenuItem v-slot="{ active }">
 																<a
 																	href="#"
-																	class="block px-4 py-2 text-sm text-neutral-600"
+																	:class="[
+																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																		active ? 'bg-surface-hover' : '',
+																	]"
 																	@click.prevent="openStatusModal(column)"
 																>
+																	<span class="material-icons text-base text-ink-subtle">edit</span>
 																	Edit status
 																</a>
 															</MenuItem>
-															<MenuItem v-if="column.tasks.length > 0">
+															<MenuItem v-if="column.tasks.length > 0" v-slot="{ active }">
 																<a
 																	href="#"
-																	class="block px-4 py-2 text-sm text-neutral-600"
+																	:class="[
+																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																		active ? 'bg-surface-hover' : '',
+																	]"
 																	@click.prevent="openMoveTasksModal(column)"
 																>
-																	Move all tasks to...
+																	<span class="material-icons text-base text-ink-subtle">swap_horiz</span>
+																	Move all tasks to…
 																</a>
 															</MenuItem>
-															<MenuItem v-if="column.status.type === 'completed'">
+															<MenuItem v-if="column.status.type === 'completed'" v-slot="{ active }">
 																<a
 																	href="#"
-																	class="block px-4 py-2 text-sm text-neutral-600"
+																	:class="[
+																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																		active ? 'bg-surface-hover' : '',
+																	]"
 																	@click.prevent="archiveColumnTasks(column)"
 																>
+																	<span class="material-icons text-base text-ink-subtle">archive</span>
 																	Archive all
 																</a>
 															</MenuItem>
@@ -804,12 +824,15 @@
 						const currentColumnStatusId = Number(column.status?.id);
 						
 						if (currentColumnStatusId === taskStatusId) {
-							this.$set(column.tasks, taskIndex, updatedTask);
+							const merged = { ...column.tasks[taskIndex], ...updatedTask };
+							column.tasks.splice(taskIndex, 1, merged);
 						} else {
+							const existing = column.tasks[taskIndex];
+							const merged = { ...existing, ...updatedTask };
 							column.tasks.splice(taskIndex, 1);
 							const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
 							if (newColumn) {
-								newColumn.tasks.unshift(updatedTask);
+								newColumn.tasks.unshift(merged);
 							}
 						}
 						break;
@@ -1674,9 +1697,10 @@
 	}
 
 	.board-card {
-		margin-top: 20px;
-		height: calc(100% - 50px);
-		max-height: calc(100vh - 200px);
+		margin-top: 8px;
+		flex: 1 1 0%;
+		min-height: 0;
+		max-height: calc(100vh - 110px);
 	}
 
 	.board-card-draggable {
@@ -1684,6 +1708,7 @@
 		overflow-x: hidden;
 		overflow-y: auto;
 		padding-right: 4px;
+		padding-bottom: 12px;
 
 		div:first-child {
 			margin-top: 0 !important;
