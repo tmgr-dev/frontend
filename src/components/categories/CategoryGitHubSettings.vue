@@ -1,57 +1,59 @@
 <template>
-  <div v-if="!isCreate" class="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
-    <h3 class="mb-4 text-lg font-bold text-gray-800 dark:text-gray-200">
+  <div v-if="!isCreate" class="mt-6 border-t border-line pt-6">
+    <h3 class="mb-4 text-base font-semibold text-ink">
       GitHub Integration
     </h3>
 
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+      <div class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
     </div>
 
-    <div v-else-if="!status.has_installation" class="rounded-lg border border-gray-300 bg-gray-50 p-6 dark:border-gray-600 dark:bg-gray-800">
-      <div class="mb-4">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
-        </svg>
+    <div v-else-if="!status.has_installation" class="rounded-card border border-line bg-surface-sunken p-6 shadow-tmgr-xs">
+      <div class="mb-4 flex justify-center">
+        <div class="flex h-12 w-12 items-center justify-center rounded-pill bg-surface text-ink-subtle">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+          </svg>
+        </div>
       </div>
-      <h4 class="mb-2 text-center text-lg font-semibold text-gray-700 dark:text-gray-300">
+      <h4 class="mb-2 text-center text-base font-semibold text-ink">
         Connect GitHub Repository
       </h4>
-      <p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
+      <p class="mx-auto mb-5 max-w-md text-center text-sm text-ink-muted">
         Link your GitHub repository to automatically track commits, branches, and pull requests
       </p>
       <button
         @click="installGitHubApp"
         :disabled="installing"
-        class="mx-auto block rounded bg-gray-800 px-6 py-2 font-semibold text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600"
+        class="mx-auto flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
       >
-        <span v-if="installing">Installing...</span>
+        <span v-if="installing">Installing…</span>
         <span v-else>Install GitHub App</span>
       </button>
     </div>
 
     <div v-else-if="!status.repository" class="space-y-4">
-      <div class="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-        <p class="text-sm text-green-700 dark:text-green-400">
+      <div class="rounded-card border border-status-done/40 bg-status-done-bg p-4">
+        <p class="text-sm text-status-done-fg">
           ✓ GitHub App is installed. Select a repository to connect:
         </p>
       </div>
 
-      <div v-if="status.available_repositories.length === 0" class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
-        <p class="text-sm text-yellow-700 dark:text-yellow-400">
+      <div v-if="status.available_repositories.length === 0" class="rounded-card border border-status-fix/40 bg-status-fix-bg p-4">
+        <p class="text-sm text-status-fix-fg">
           No repositories available. Make sure the GitHub App has access to your repositories.
         </p>
       </div>
 
       <div v-else>
-        <label class="mb-2 block text-sm font-bold text-gray-700 dark:text-gray-300">
+        <label class="mb-2 block text-sm font-semibold text-ink">
           Select Repository
         </label>
         <select
           v-model="selectedRepo"
-          class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-700 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+          class="h-10 w-full rounded-card border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
         >
-          <option :value="null">-- Select repository --</option>
+          <option :value="null">— Select repository —</option>
           <option
             v-for="repo in status.available_repositories"
             :key="repo.id"
@@ -64,71 +66,71 @@
         <button
           @click="connectRepository"
           :disabled="!selectedRepo || connecting"
-          class="mt-4 rounded bg-blue-500 px-6 py-2 font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+          class="mt-4 inline-flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span v-if="connecting">Connecting...</span>
+          <span v-if="connecting">Connecting…</span>
           <span v-else>Connect Repository</span>
         </button>
       </div>
     </div>
 
     <div v-else class="space-y-4">
-      <div class="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-        <div class="flex items-center justify-between">
+      <div class="rounded-card border border-status-done/40 bg-status-done-bg p-4">
+        <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="font-semibold text-green-800 dark:text-green-300">
+            <p class="text-sm font-semibold text-status-done-fg">
               Connected to
               <a
                 :href="`https://github.com/${status.repository.full_name}`"
                 target="_blank"
-                class="underline hover:text-green-900 dark:hover:text-green-200"
+                class="underline hover:opacity-80"
               >
                 {{ status.repository.full_name }}
               </a>
             </p>
-            <p v-if="status.repository.last_synced_at" class="mt-1 text-xs text-green-700 dark:text-green-400">
+            <p v-if="status.repository.last_synced_at" class="mt-1 text-xs text-status-done-fg/80">
               Last synced: {{ formatDate(status.repository.last_synced_at) }}
             </p>
           </div>
-          <svg class="h-6 w-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="h-5 w-5 shrink-0 text-status-done-fg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
           </svg>
         </div>
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <button
           @click="syncRepository"
           :disabled="syncing"
-          class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
+          class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
         >
-          <span v-if="syncing">Syncing...</span>
+          <span v-if="syncing">Syncing…</span>
           <span v-else>Sync Now</span>
         </button>
 
         <button
           @click="relinkRepository"
           :disabled="relinking"
-          class="rounded bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-600 disabled:opacity-50"
+          class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover disabled:opacity-50"
           title="Relink existing commits/branches to tasks"
         >
-          <span v-if="relinking">Relinking...</span>
+          <span v-if="relinking">Relinking…</span>
           <span v-else>Relink Tasks</span>
         </button>
 
         <button
           @click="disconnectRepository"
           :disabled="disconnecting"
-          class="rounded bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+          class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix/40 bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
         >
-          <span v-if="disconnecting">Disconnecting...</span>
+          <span v-if="disconnecting">Disconnecting…</span>
           <span v-else>Disconnect</span>
         </button>
       </div>
     </div>
 
-    <div v-if="error" class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-      <p class="text-sm text-red-700 dark:text-red-400">{{ error }}</p>
+    <div v-if="error" class="mt-4 rounded-card border border-status-fix/40 bg-status-fix-bg p-4">
+      <p class="text-sm text-status-fix-fg">{{ error }}</p>
     </div>
   </div>
 </template>

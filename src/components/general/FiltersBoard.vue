@@ -77,15 +77,17 @@
 			class="relative shrink-0"
 		>
 			<select
-				v-model="selectedCategory"
+				v-model.number="selectedCategory"
 				class="h-9 w-40 lg:w-48 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
 			>
 				<option :value="0">All categories</option>
-				<template v-for="cat in categories" :key="cat.id">
-					<option v-if="cat.id !== 0" :value="cat.id">
-						{{ cat.title }}
-					</option>
-				</template>
+				<option
+					v-for="cat in categoryOptions"
+					:key="cat.id"
+					:value="cat.id"
+				>
+					{{ cat.title }}
+				</option>
 			</select>
 			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
 		</div>
@@ -96,15 +98,17 @@
 			class="relative shrink-0"
 		>
 			<select
-				v-model="selectedUser"
+				v-model.number="selectedUser"
 				class="h-9 w-32 lg:w-40 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
 			>
 				<option :value="0">All users</option>
-				<template v-for="u in workspaceUsers" :key="u.id">
-					<option v-if="u.id !== 0" :value="u.id">
-						{{ u.name }}
-					</option>
-				</template>
+				<option
+					v-for="u in userOptions"
+					:key="u.id"
+					:value="u.id"
+				>
+					{{ u.name }}
+				</option>
 			</select>
 			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
 		</div>
@@ -244,6 +248,13 @@
 	const hasActiveFilters = computed(() => {
 		return !!(searchText.value || selectedCategory.value || selectedUser.value);
 	});
+
+	const categoryOptions = computed(() =>
+		props.categories.filter((c) => c.id !== 0),
+	);
+	const userOptions = computed(() =>
+		props.workspaceUsers.filter((u) => u.id !== 0),
+	);
 
 	const clearFilters = () => {
 		searchText.value = null;

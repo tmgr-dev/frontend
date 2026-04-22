@@ -1,29 +1,31 @@
 <template>
-  <div v-if="!isCreate" class="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
-    <h3 class="mb-4 text-lg font-bold text-gray-800 dark:text-gray-200">
+  <div v-if="!isCreate" class="mt-6 border-t border-line pt-6">
+    <h3 class="mb-4 text-base font-semibold text-ink">
       Cursor AI Integration
     </h3>
 
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent"></div>
+      <div class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
     </div>
 
-    <div v-else-if="!configured" class="rounded-lg border border-gray-300 bg-gray-50 p-6 dark:border-gray-600 dark:bg-gray-800">
-      <div class="mb-4">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-        </svg>
+    <div v-else-if="!configured" class="rounded-card border border-line bg-surface-sunken p-6 shadow-tmgr-xs">
+      <div class="mb-4 flex justify-center">
+        <div class="flex h-12 w-12 items-center justify-center rounded-pill bg-surface text-ink-subtle">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+        </div>
       </div>
-      <h4 class="mb-2 text-center text-lg font-semibold text-gray-700 dark:text-gray-300">
+      <h4 class="mb-2 text-center text-base font-semibold text-ink">
         Configure Cursor AI Agent
       </h4>
-      <p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
+      <p class="mx-auto mb-5 max-w-md text-center text-sm text-ink-muted">
         Add your Cursor API key to enable AI-powered code generation for this category
       </p>
 
-      <div class="mt-4 space-y-4">
+      <div class="mt-4 space-y-3">
         <div>
-          <label for="cursorApiKey" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label for="cursorApiKey" class="mb-1.5 block text-sm font-semibold text-ink">
             Cursor API Key
           </label>
           <input
@@ -31,66 +33,66 @@
             v-model="apiKey"
             type="password"
             placeholder="cur_xxxxxxxxxxxxxxxx"
-            class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+            class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
           />
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <p class="mt-1.5 text-xs text-ink-muted">
             Get your API key from
-            <a href="https://cursor.com/dashboard?tab=cloud-agents" target="_blank" class="text-violet-600 hover:underline dark:text-violet-400">
+            <a href="https://cursor.com/dashboard?tab=cloud-agents" target="_blank" class="text-brand-fg hover:underline">
               Cursor Dashboard
             </a>
           </p>
         </div>
 
-        <div v-if="error" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div v-if="error" class="rounded-card border border-status-fix/40 bg-status-fix-bg p-3 text-sm text-status-fix-fg">
           {{ error }}
         </div>
 
         <button
           @click="saveKey"
           :disabled="!apiKey || saving"
-          class="w-full rounded bg-violet-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-600 disabled:opacity-50"
+          class="h-10 w-full rounded-pill bg-brand text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
         >
-          {{ saving ? 'Validating...' : 'Save API Key' }}
+          {{ saving ? 'Validating…' : 'Save API Key' }}
         </button>
       </div>
     </div>
 
     <div v-else class="space-y-4">
-      <div class="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
-        <div class="flex items-center justify-between">
+      <div class="rounded-card border border-brand/30 bg-brand-bg p-4">
+        <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="font-semibold text-violet-800 dark:text-violet-300">
+            <p class="text-sm font-semibold text-brand-fg">
               Cursor AI Agent Configured
             </p>
-            <p class="mt-1 text-xs text-violet-700 dark:text-violet-400">
+            <p class="mt-1 text-xs text-brand-fg/80">
               Ready to assist with code generation for this category
             </p>
           </div>
-          <svg class="h-6 w-6 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="h-5 w-5 shrink-0 text-brand-fg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
           </svg>
         </div>
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <button
           @click="editing = true"
-          class="rounded bg-gray-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-600"
+          class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover"
         >
           Update Key
         </button>
         <button
           @click="removeKey"
           :disabled="removing"
-          class="rounded bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
+          class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix/40 bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
         >
-          {{ removing ? 'Removing...' : 'Remove Key' }}
+          {{ removing ? 'Removing…' : 'Remove Key' }}
         </button>
       </div>
 
-      <div v-if="editing" class="mt-4 space-y-4 rounded-lg border border-gray-300 bg-white p-4 dark:border-gray-600 dark:bg-gray-800">
+      <div v-if="editing" class="mt-4 space-y-3 rounded-card border border-line bg-surface-sunken p-4">
         <div>
-          <label for="cursorApiKeyEdit" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label for="cursorApiKeyEdit" class="mb-1.5 block text-sm font-semibold text-ink">
             New Cursor API Key
           </label>
           <input
@@ -98,11 +100,11 @@
             v-model="apiKey"
             type="password"
             placeholder="cur_xxxxxxxxxxxxxxxx"
-            class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+            class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
           />
         </div>
 
-        <div v-if="error" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div v-if="error" class="rounded-card border border-status-fix/40 bg-status-fix-bg p-3 text-sm text-status-fix-fg">
           {{ error }}
         </div>
 
@@ -110,13 +112,13 @@
           <button
             @click="saveKey"
             :disabled="!apiKey || saving"
-            class="rounded bg-violet-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-600 disabled:opacity-50"
+            class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
           >
-            {{ saving ? 'Validating...' : 'Save' }}
+            {{ saving ? 'Validating…' : 'Save' }}
           </button>
           <button
             @click="cancelEdit"
-            class="rounded bg-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-400 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover"
           >
             Cancel
           </button>
