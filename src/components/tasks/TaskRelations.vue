@@ -1,16 +1,19 @@
 <template>
-	<div class="rounded border bg-white dark:bg-gray-900 shadow-sm">
-		<!-- Compact Header -->
-		<div class="flex items-center justify-between px-3 py-2 border-b dark:border-gray-700">
+	<div class="rounded-card border border-line bg-surface-sunken">
+		<!-- Compact Header (hidden when triggered from properties grid) -->
+		<div
+			v-if="!hideHeader"
+			class="flex items-center justify-between px-3 py-2 border-b border-line"
+		>
 			<div class="flex items-center gap-1.5">
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
 				</svg>
-				<h3 class="text-sm font-semibold">Linked Tasks</h3>
+				<h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Linked Tasks</h3>
 			</div>
 			<button
 				@click="isAddingRelation = true"
-				class="inline-flex items-center justify-center gap-1 rounded text-xs font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-6 px-2"
+				class="inline-flex items-center justify-center gap-1 rounded-pill text-xs font-medium transition-colors bg-brand text-white hover:bg-brand-hover h-6 px-2.5"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
 					<path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
@@ -25,8 +28,8 @@
 			<div class="space-y-3">
 				<div v-for="(group, type) in groupedRelations" :key="type" class="space-y-1">
 					<div class="flex items-center gap-1">
-						<component :is="getRelationIcon(type)" class="h-3 w-3 text-gray-500" />
-						<h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+						<component :is="getRelationIcon(type)" class="h-3 w-3 text-ink-subtle" />
+						<h4 class="text-2xs font-bold text-ink-subtle uppercase tracking-wide">
 							{{ type }}
 						</h4>
 					</div>
@@ -35,17 +38,17 @@
 						<div
 							v-for="relation in group"
 							:key="relation.id"
-							class="group flex items-center justify-between rounded border dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+							class="group flex items-center justify-between rounded-md border border-line bg-surface px-2 py-1.5 hover:bg-surface-hover transition-colors"
 						>
-							<div 
+							<div
 								class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
 								@click="emit('openTask', relation.related_task.id)"
 							>
-								<span class="text-xs font-mono text-gray-500 dark:text-gray-400">
+								<span class="text-xs font-mono text-ink-subtle">
 									#{{ relation.related_task.id }}
 								</span>
-								<span 
-									class="text-xs text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
+								<span
+									class="text-xs text-ink hover:text-brand"
 									:title="relation.related_task.title"
 								>
 									{{ truncateTitle(relation.related_task.title) }}
@@ -53,7 +56,7 @@
 							</div>
 							<button
 								@click="handleRemoveRelation(relation)"
-								class="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center rounded transition-colors hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 h-5 w-5 ml-1"
+								class="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center rounded transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg h-5 w-5 ml-1"
 							>
 								<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
 									<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -68,8 +71,8 @@
 
 	<!-- Compact Modal -->
 	<div v-if="isAddingRelation" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" @click="cancelAdding">
-		<div 
-			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-2 border dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-lg rounded-lg"
+		<div
+			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-2 border border-line bg-surface text-ink p-3 shadow-tmgr-lg rounded-card"
 			@click.stop
 		>
 			<!-- Dialog Header -->
@@ -98,13 +101,13 @@
 							v-model="taskSearchQuery"
 							type="text"
 							placeholder="Search..."
-							class="flex h-7 w-full rounded border dark:border-gray-700 bg-white dark:bg-gray-800 px-2 pl-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+							class="flex h-7 w-full rounded-md border border-line bg-surface-sunken text-ink px-2 pl-7 text-xs focus-visible:outline-none focus-visible:border-line-strong"
 							@input="handleTaskSearch((($event.target as HTMLInputElement)?.value || ''))"
 						/>
 					</div>
-					
-					<div v-if="taskSearchQuery && (searchResults.length > 0 || isSearching)" class="rounded border dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md max-h-40 overflow-auto">
-						<div v-if="isSearching" class="py-4 text-center text-xs text-gray-500">
+
+					<div v-if="taskSearchQuery && (searchResults.length > 0 || isSearching)" class="rounded-md border border-line bg-surface-sunken max-h-40 overflow-auto">
+						<div v-if="isSearching" class="py-4 text-center text-xs text-ink-subtle">
 							Searching...
 						</div>
 						<button
@@ -112,11 +115,11 @@
 							:key="task.id"
 							@click="selectTask(task)"
 							:class="[
-								'relative flex w-full items-center px-2 py-1 text-xs outline-none hover:bg-gray-100 dark:hover:bg-gray-700',
-								selectedTask?.id === task.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+								'relative flex w-full items-center px-2 py-1 text-xs outline-none hover:bg-surface-hover',
+								selectedTask?.id === task.id ? 'bg-surface-hover' : ''
 							]"
 						>
-							<span class="truncate text-gray-900 dark:text-gray-100">{{ task.title }}</span>
+							<span class="truncate text-ink">{{ task.title }}</span>
 						</button>
 					</div>
 				</div>
@@ -127,7 +130,7 @@
 					<div class="relative">
 						<select
 							v-model="newRelation.typeId"
-							class="flex h-7 w-full rounded border dark:border-gray-700 bg-white dark:bg-gray-800 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none"
+							class="flex h-7 w-full rounded-md border border-line bg-surface-sunken text-ink px-2 text-xs focus:outline-none focus:border-line-strong appearance-none"
 						>
 							<option value="">Select...</option>
 							<option
@@ -145,16 +148,16 @@
 				</div>
 
 				<!-- Preview -->
-				<div v-if="selectedTask && selectedRelationType" class="rounded border dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2 py-1.5">
-					<p class="text-xs text-gray-500 dark:text-gray-400">
-						<span class="font-medium text-gray-900 dark:text-gray-100">{{ selectedRelationType }}</span>
+				<div v-if="selectedTask && selectedRelationType" class="rounded-md border border-line bg-surface-sunken px-2 py-1.5">
+					<p class="text-xs text-ink-subtle">
+						<span class="font-medium text-ink">{{ selectedRelationType }}</span>
 						<span class="font-mono">#{{ selectedTask.id }}</span>
 					</p>
 				</div>
 
 				<!-- Error Message -->
-				<div v-if="error" class="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-2 py-1.5">
-					<p class="text-xs text-red-700 dark:text-red-400">{{ error }}</p>
+				<div v-if="error" class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg px-2 py-1.5">
+					<p class="text-xs text-status-fix-fg">{{ error }}</p>
 				</div>
 			</div>
 
@@ -162,14 +165,14 @@
 			<div class="flex justify-end gap-1.5">
 				<button
 					@click="cancelAdding"
-					class="inline-flex items-center justify-center rounded text-xs font-medium transition-colors border dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 h-6 px-2"
+					class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-line bg-surface text-ink hover:bg-surface-hover h-7 px-3"
 				>
 					Cancel
 				</button>
 				<button
 					@click="handleAddRelation"
 					:disabled="!selectedTask || !newRelation.typeId || isLoading"
-					class="inline-flex items-center justify-center rounded text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 h-6 px-2"
+					class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 bg-brand text-white hover:bg-brand-hover h-7 px-3"
 				>
 					{{ isLoading ? 'Linking...' : 'Link' }}
 				</button>
@@ -200,10 +203,13 @@ import {
 	type RelatedTask
 } from '@/actions/tmgr/taskRelations';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	taskId: number;
 	relations?: TaskRelation[];
-}>();
+	hideHeader?: boolean;
+}>(), {
+	hideHeader: false,
+});
 
 const emit = defineEmits<{
 	(e: 'update'): void;
@@ -226,6 +232,12 @@ const searchResults = ref<RelatedTask[]>([]);
 const selectedTask = ref<RelatedTask | null>(null);
 
 let searchTimeout: number | null = null;
+
+defineExpose({
+	startAdding: () => {
+		isAddingRelation.value = true;
+	},
+});
 
 
 const groupedRelations = computed(() => {

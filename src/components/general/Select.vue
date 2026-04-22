@@ -1,8 +1,8 @@
 <template>
 	<div class="relative">
 		<div
-			class="w-full appearance-none rounded bg-white transition-colors duration-300 dark:bg-gray-800"
-			:class="[hasError && ' border  border-red-500 ']"
+			class="w-full appearance-none rounded-md border border-line bg-surface text-ink transition-colors duration-300"
+			:class="[hasError && '!border-red-500']"
 		>
 			<vue-select
 				:label="labelKey"
@@ -89,15 +89,35 @@
 </script>
 
 <style>
-	html.dark .vs__dropdown-menu {
-		background: #1f2937;
+	.vs__dropdown-menu {
+		background: var(--bg-raised);
+		border-color: var(--line-color);
+		color: var(--fg);
 	}
 
-	html.dark .vs__dropdown-option {
-		color: #656b75;
+	.vs__dropdown-option {
+		color: var(--fg);
 	}
+
+	.vs__dropdown-option--highlight {
+		background: var(--bg-hover);
+		color: var(--fg);
+	}
+
 	.vs__search {
-		color: #b3b3b3;
+		color: var(--fg);
+	}
+
+	.vs__search::placeholder {
+		color: var(--fg-subtle);
+	}
+
+	.vs__selected {
+		color: var(--fg);
+	}
+
+	.vs__open-indicator {
+		fill: var(--fg-subtle);
 	}
 	.vs__selected-options {
 		flex-wrap: nowrap;

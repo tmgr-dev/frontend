@@ -1,38 +1,30 @@
 <template>
 	<Dialog>
 		<DialogTrigger as-child>
-			<button type="button" title="Settings">
-				<CogIcon
-					class="size-6 fill-gray-400 transition hover:fill-black dark:hover:fill-white"
-				/>
+			<button
+				type="button"
+				title="Settings"
+				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+			>
+				<CogIcon class="size-4" />
 			</button>
 		</DialogTrigger>
 
 		<DialogContent
-			class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+			class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 		>
 			<DialogHeader>
-				<DialogTitle>Settings</DialogTitle>
-				<DialogDescription>
+				<DialogTitle class="text-ink">Settings</DialogTitle>
+				<DialogDescription class="text-ink-muted">
 					Make changes to the task settings here. Click save when you're done.
 				</DialogDescription>
 			</DialogHeader>
 
 			<div>
-				<div
-					v-if="form.user"
-					class="estimated-info border-b border-neutral-200 py-1 pr-5 text-start dark:border-neutral-600"
-				>
-					Author:
-					<span class="text-neutral-600 dark:text-neutral-300">
-						{{ form.user.name }}
-					</span>
-				</div>
-
 				<div v-for="setting in settings" :key="setting.id" id="settings" class="mt-4">
 					<label
 						:for="`setting-${setting.id}`"
-						class="mb-2 block text-left text-sm font-bold"
+						class="mb-2 block text-left text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 					>
 						{{ setting.name }}
 					</label>
@@ -68,7 +60,7 @@
 				<DialogClose as-child>
 					<button
 						type="button"
-						class="w-full rounded bg-tmgr-light-blue p-2 text-white hover:opacity-90"
+						class="w-full rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
 						@click="handleSave"
 					>
 						Save

@@ -12,37 +12,62 @@
 
 	<BaseLayout no-copyright :body-container-class="''">
 		<template #body>
-			<div class="flex flex-col justify-center flex-1 min-h-0">
-				<div class="w-full px-4 py-2 mb-2">
-					<WorkspaceUsers
-						:users="workspaceUsersWithoutAll"
-						:workspace-id="workspaceId"
-					/>
-				</div>
+			<div class="flex flex-col justify-center flex-1 min-h-0 pl-4">
 				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
-					<div class="min-h-[62px] flex-shrink-0 max-sm:min-h-0">
-						<div class="relative xl-custom:hidden">
-							<div
-								class="fixed right-0 z-40 -mt-16 mr-auto flex items-center justify-center gap-2 p-4 pt-5"
-							>
-								<span
-									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
-									@click="
-										async () => {
-											await loadColumns();
-											await loadTasks();
-										}
-									"
+					<div class="min-h-[56px] flex-shrink-0 max-sm:min-h-0 px-4 py-2">
+						<div class="flex items-center gap-3 flex-wrap xl-custom:flex-nowrap">
+							<WorkspaceUsers
+								:users="workspaceUsersWithoutAll"
+								:workspace-id="workspaceId"
+							/>
+
+							<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
+								<button
+									type="button"
+									class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+									title="Refresh"
+									@click="async () => { await loadColumns(); await loadTasks(); }"
 								>
-									refresh
-								</span>
-								<span
-									class="material-icons cursor-pointer duration-300 ease-in-out hover:scale-95 hover:text-blue-200"
+									<span class="material-icons text-xl">refresh</span>
+								</button>
+								<button
+									type="button"
+									class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+									title="Filters"
 									@click="isFiltersModalShown = true"
 								>
-									filter_list
-								</span>
+									<span class="material-icons text-xl">filter_list</span>
+								</button>
 							</div>
+
+							<div class="hidden items-center xl-custom:flex ml-auto">
+								<FiltersBoard
+									v-if="workspaceUsers.length"
+									:workspaceUsers="workspaceUsers"
+									:categories="categories"
+									:chosen-user.sync="chosenUser"
+									@update:chosenUser="handleChosenUserUpdate"
+									@handleChosenCategory="handleChosenCategory"
+									:activeDraggable="activeDraggable"
+									@handleUpdateDraggable="handleUpdateDraggable"
+									@handleSearchTextChanged="handleSearchTextChanged"
+									@loadTasks="loadTasks"
+									@loadColumns="loadColumns"
+								>
+									<template #actions-start>
+										<a
+											href="#"
+											class="block px-4 py-2 text-sm text-ink hover:bg-surface-hover"
+											@click.prevent="openCreateStatusModal"
+										>
+											Add status
+										</a>
+									</template>
+								</FiltersBoard>
+							</div>
+						</div>
+
+						<div class="relative xl-custom:hidden">
 
 							<Transition name="bounce-right-fade">
 								<Modal
@@ -95,31 +120,6 @@
 							</Transition>
 						</div>
 
-						<div class="hidden items-center xl-custom:flex">
-							<FiltersBoard
-								v-if="workspaceUsers.length"
-								:workspaceUsers="workspaceUsers"
-								:categories="categories"
-								:chosen-user.sync="chosenUser"
-								@update:chosenUser="handleChosenUserUpdate"
-								@handleChosenCategory="handleChosenCategory"
-								:activeDraggable="activeDraggable"
-								@handleUpdateDraggable="handleUpdateDraggable"
-								@handleSearchTextChanged="handleSearchTextChanged"
-								@loadTasks="loadTasks"
-								@loadColumns="loadColumns"
-							>
-								<template #actions-start>
-									<a
-										href="#"
-										class="block px-4 py-2 text-sm text-neutral-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-										@click.prevent="openCreateStatusModal"
-									>
-										Add status
-									</a>
-								</template>
-							</FiltersBoard>
-						</div>
 					</div>
 
 					<div class="board-wrapper">
@@ -140,17 +140,20 @@
 							>
 								<template #item="{ element: column }">
 									<div class="board-container__item pr-2">
-										<div class="column-width h-full rounded-lg px-3 pb-3 flex flex-col">
+										<div class="column-width h-full px-1 pb-3 flex flex-col">
 											<div class="flex-shrink-0">
 												<div
-													class="relative flex items-center rounded pb-2 pl-2 pt-2 font-sans text-sm font-semibold tracking-wide text-tmgr-blue dark:text-tmgr-gray"
-													:style="{
-														'border-top': `solid 5px ${column.status.color}`,
-													}"
+													class="h-[3px] rounded-full mb-2.5 mx-1"
+													:style="{ backgroundColor: column.status.color || null }"
+													:class="!column.status.color ? getStatusToneBg(column.status) : ''"
+												></div>
+
+												<div
+													class="group relative flex items-center gap-2 px-1 mb-2"
 												>
 													<div
 														v-if="activeDraggable"
-														class="mr-2 flex items-center hover:cursor-move"
+														class="flex items-center hover:cursor-move text-ink-faint"
 													>
 														<EllipsisVerticalIcon
 															class="h-3"
@@ -162,80 +165,90 @@
 														/>
 													</div>
 
-													<div
-														class="group relative flex h-6 w-full items-center"
+													<span
+														class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-bold uppercase tracking-wide"
+														:class="getStatusBadgeClass(column.status)"
 													>
-													<div class="flex w-5/6 justify-between">
-														<span class="text-sm">
-															{{ column.title }} <span v-if="column.taskCount !== undefined">({{ column.taskCount }})</span>
-														</span>
-														<span class="text-sm">
+														<span
+															class="h-1.5 w-1.5 rounded-full"
+															:style="{ backgroundColor: column.status.color || 'currentColor' }"
+														></span>
+														{{ column.title }}
+													</span>
+
+													<span
+														v-if="column.taskCount !== undefined"
+														class="text-xs tabular-nums text-ink-subtle"
+													>
+														{{ column.taskCount }}
+													</span>
+
+													<div class="ml-auto flex items-center gap-2">
+														<span
+															v-if="column.summary"
+															class="font-mono text-2xs tabular-nums text-ink-subtle"
+														>
 															{{ column.summary }}
-															<span 
-																v-if="column.overtime" 
-																class="ml-1 text-red-500 dark:text-red-400"
+															<span
+																v-if="column.overtime"
+																class="ml-1 text-status-fix-fg"
 																title="Overtime"
 															>
 																+{{ column.overtime }}
 															</span>
 														</span>
-													</div>
 
-														<div
+														<button
 															v-tooltip.left="
 																userSettings.showTooltips
-																	? `Create task `
+																	? `Create task`
 																	: { visible: false }
 															"
-															class="absolute right-3 top-0 opacity-0 transition duration-700 group-hover:opacity-100"
+															class="opacity-0 transition-opacity group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-hover hover:text-ink"
+															@click="openTaskModal(column)"
 														>
-															<div
-																@click="openTaskModal(column)"
-																class="material-icons cursor-pointer text-gray-500 hover:text-black dark:text-gray-700 dark:hover:text-white"
-															>
-																add
-															</div>
-														</div>
-													</div>
+															<span class="material-icons text-base">add</span>
+														</button>
 
-													<Dropdown class="ml-auto pr-2">
-														<MenuItem>
-															<a
-																href="#"
-																class="block px-4 py-2 text-sm text-neutral-600"
-																@click.prevent="openTaskModal(column)"
-															>
-																Create a task
-															</a>
-														</MenuItem>
-														<MenuItem>
-															<a
-																href="#"
-																class="block px-4 py-2 text-sm text-neutral-600"
-																@click.prevent="openStatusModal(column)"
-															>
-																Edit status
-															</a>
-														</MenuItem>
-														<MenuItem v-if="column.tasks.length > 0">
-															<a
-																href="#"
-																class="block px-4 py-2 text-sm text-neutral-600"
-																@click.prevent="openMoveTasksModal(column)"
-															>
-																Move all tasks to...
-															</a>
-														</MenuItem>
-														<MenuItem v-if="column.status.type === 'completed'">
-															<a
-																href="#"
-																class="block px-4 py-2 text-sm text-neutral-600"
-																@click.prevent="archiveColumnTasks(column)"
-															>
-																Archive all
-															</a>
-														</MenuItem>
-													</Dropdown>
+														<Dropdown>
+															<MenuItem>
+																<a
+																	href="#"
+																	class="block px-4 py-2 text-sm text-neutral-600"
+																	@click.prevent="openTaskModal(column)"
+																>
+																	Create a task
+																</a>
+															</MenuItem>
+															<MenuItem>
+																<a
+																	href="#"
+																	class="block px-4 py-2 text-sm text-neutral-600"
+																	@click.prevent="openStatusModal(column)"
+																>
+																	Edit status
+																</a>
+															</MenuItem>
+															<MenuItem v-if="column.tasks.length > 0">
+																<a
+																	href="#"
+																	class="block px-4 py-2 text-sm text-neutral-600"
+																	@click.prevent="openMoveTasksModal(column)"
+																>
+																	Move all tasks to...
+																</a>
+															</MenuItem>
+															<MenuItem v-if="column.status.type === 'completed'">
+																<a
+																	href="#"
+																	class="block px-4 py-2 text-sm text-neutral-600"
+																	@click.prevent="archiveColumnTasks(column)"
+																>
+																	Archive all
+																</a>
+															</MenuItem>
+														</Dropdown>
+													</div>
 												</div>
 											</div>
 
@@ -269,13 +282,13 @@
 												</Draggable>
 
 												<Teleport v-if="tasksLoaded" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
-													<div class="flex-shrink-0 px-2 mt-2">
-														<div v-if="creatingTaskColumnId !== column.status.id" class="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+													<div class="flex-shrink-0 px-1 mt-2">
+														<div v-if="creatingTaskColumnId !== column.status.id">
 															<button
 																@click="startCreatingTask(column)"
-																class="flex items-center gap-2 w-full py-2 px-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
+																class="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 															>
-																<span class="material-icons text-lg">add</span>
+																<span class="material-icons text-sm">add</span>
 																<span>Add task</span>
 															</button>
 														</div>
@@ -286,18 +299,18 @@
 																@keyup.esc="cancelCreatingTask"
 																@blur="handleInputBlur"
 																placeholder="Enter task title..."
-																class="task-title-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-tmgr-blue dark:focus:ring-tmgr-light-blue"
+																class="task-title-input w-full px-3 py-2 text-sm border border-line rounded-md bg-surface text-ink focus:outline-none focus:shadow-tmgr-focus"
 															/>
 															<div class="flex gap-2">
 																<button
 																	@click="createQuickTask(column)"
-																	class="flex-1 px-3 py-1.5 text-sm bg-tmgr-blue hover:bg-blue-600 text-white rounded-lg transition-colors"
+																	class="flex-1 px-3 py-1.5 text-sm bg-brand text-white rounded-md transition-colors hover:bg-brand-hover"
 																>
 																	Add
 																</button>
 																<button
 																	@click="cancelCreatingTask"
-																	class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
+																	class="px-3 py-1.5 text-sm bg-surface-sunken hover:bg-line text-ink-muted rounded-md transition-colors"
 																>
 																	Cancel
 																</button>
@@ -758,6 +771,21 @@
 					col => col.status.id !== this.sourceColumnForMove.status.id
 				);
 			},
+			sprintSummary() {
+				const counts = { total: 0, inProgress: 0, done: 0, hidden: 0 };
+				for (const col of this.columns) {
+					const n = col.taskCount ?? col.tasks?.length ?? 0;
+					if (col.status?.type === 'archived') continue;
+					counts.total += n;
+					if (col.status?.type === 'active') counts.inProgress += n;
+					else if (col.status?.type === 'completed') counts.done += n;
+					else if (col.status?.type === 'hidden') counts.hidden += n;
+				}
+				const percent = counts.total
+					? Math.round((counts.done / counts.total) * 100)
+					: 0;
+				return { ...counts, percent };
+			},
 		},
 		methods: {
 			updateSingleTaskInBoard(updatedTask) {
@@ -815,6 +843,28 @@
 					left: document.querySelector('.board-container').scrollLeft + 200,
 					behavior: 'smooth',
 				});
+			},
+			getStatusToneBg(status) {
+				const type = status?.type;
+				const map = {
+					default: 'bg-status-todo',
+					active: 'bg-status-progress',
+					hidden: 'bg-status-fix',
+					completed: 'bg-status-done',
+					archived: 'bg-line-strong',
+				};
+				return map[type] || 'bg-line-strong';
+			},
+			getStatusBadgeClass(status) {
+				const type = status?.type;
+				const map = {
+					default: 'bg-status-todo-bg text-status-todo-fg',
+					active: 'bg-status-progress-bg text-status-progress-fg',
+					hidden: 'bg-status-fix-bg text-status-fix-fg',
+					completed: 'bg-status-done-bg text-status-done-fg',
+					archived: 'bg-surface-sunken text-ink-subtle',
+				};
+				return map[type] || 'bg-surface-sunken text-ink-muted';
 			},
 		onColorSelect() {
 			const hexColor = hslToHex(
@@ -1520,15 +1570,22 @@
 
 	.custom-scroll {
 		&::-webkit-scrollbar {
-			width: 1px;
+			width: 6px;
 		}
 
 		&::-webkit-scrollbar-track {
-			box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+			background: transparent;
+			box-shadow: none;
+			margin-block: 8px;
 		}
 
 		&::-webkit-scrollbar-thumb {
-			background-color: #727272;
+			background-color: var(--line-strong-color);
+			border-radius: 999px;
+		}
+
+		&::-webkit-scrollbar-thumb:hover {
+			background-color: var(--fg-faint);
 		}
 	}
 
@@ -1618,6 +1675,7 @@
 		@extend .custom-scroll;
 		overflow-x: hidden;
 		overflow-y: auto;
+		padding-right: 4px;
 
 		div:first-child {
 			margin-top: 0 !important;

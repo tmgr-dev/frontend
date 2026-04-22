@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			type="time"
-			class="w-full appearance-none rounded border-0 bg-white px-3 py-2 outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full appearance-none rounded-md border border-line bg-surface-sunken text-ink px-3 py-2 outline-none transition-colors duration-300 focus:border-line-strong"
 			:class="[extraClass, errors ? 'with-errors' : '']"
 			:name="name"
 			:placeholder="placeholder"

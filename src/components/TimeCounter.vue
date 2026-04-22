@@ -1,14 +1,13 @@
 <script setup lang="ts">
 	import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 	import { useStore } from 'vuex';
-	import { PlayCircleIcon, StopCircleIcon } from '@heroicons/vue/24/solid';
+	import { Play, Pause } from 'lucide-vue-next';
 	import { Task } from '@/actions/tmgr/tasks';
 	import {
 		convertToHHMM,
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from '@/utils/timeUtils';
-	import { Button } from '@/components/ui/button';
 	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
 	import { ExtendedTime, Time } from '@/types';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -23,29 +22,14 @@
 	const store = useStore();
 	let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
-	// Reactive state
 	const isTimerActive = ref(false);
-	const lastStartTime = ref<Time>({
-		hours: 0,
-		minutes: 0,
-	});
+	const lastStartTime = ref<Time>({ hours: 0, minutes: 0 });
 	const isShowModalTimer = ref(false);
-	// @todo fix type
 	const task = reactive<Task>({} as Task);
-	const timer = reactive({
-		hours: 0,
-		minutes: 0,
-		seconds: 0,
-	});
+	const timer = reactive({ hours: 0, minutes: 0, seconds: 0 });
 
-	// Computed
 	const disabledStyles = computed(() => {
-		return props.disabled
-			? {
-					opacity: 0.2,
-					'pointer-events': 'none',
-			  }
-			: {};
+		return props.disabled ? { opacity: 0.4, 'pointer-events': 'none' } : {};
 	});
 
 	const approximatelyEndTime = computed<ExtendedTime>(() => {
@@ -55,27 +39,23 @@
 		date.setSeconds(
 			date.getSeconds() + (task.approximately_time - task.common_time),
 		);
-
 		return {
 			hours: prepareClockNumber(date.getHours()),
 			minutes: prepareClockNumber(date.getMinutes()),
 			timeLeft: convertToHHMM(secondsLeft < 0 ? 0 : secondsLeft),
 		};
 	});
+
 	const isTimeOver = computed(
 		() => (task.approximately_time || 3600) - task.common_time < 0,
 	);
 
-	// Methods
 	const toggleTimer = () => {
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
 			countdownInterval = null;
 			isTimerActive.value = false;
-			lastStartTime.value = {
-				hours: 0,
-				minutes: 0,
-			};
+			lastStartTime.value = { hours: 0, minutes: 0 };
 		} else {
 			isTimerActive.value = true;
 			countdownInterval = setInterval(plusSecond, 1000);
@@ -97,14 +77,12 @@
 			if (countdownInterval) clearInterval(countdownInterval);
 			return;
 		}
-
 		if (task.start_time) {
 			task.common_time += Math.floor(
 				(new Date().getTime() - new Date().setTime(task.start_time * 1000)) /
 					1000,
 			);
 		}
-
 		isTimerActive.value = true;
 		countdownInterval = setInterval(plusSecond, 1000);
 	};
@@ -114,7 +92,7 @@
 		timer.hours = newTimer.hours;
 		timer.minutes = newTimer.minutes;
 		timer.seconds = newTimer.seconds;
-		
+
 		setDocumentTitle(`${timer.hours}:${timer.minutes}:${timer.seconds}`);
 
 		if (!task.approximately_time || !task.start_time || isTimeOver.value) {
@@ -123,18 +101,15 @@
 
 		const date = new Date();
 		date.setTime(task.start_time * 1000);
-
 		lastStartTime.value = {
 			hours: prepareClockNumber(date.getHours()),
 			minutes: prepareClockNumber(date.getMinutes()),
 		};
 	};
 
-	// Lifecycle hooks
 	onMounted(() => {
 		Object.assign(task, props.form);
 		task.start_time = task.start_time || 0;
-
 		initCountdown();
 		renderTime();
 	});
@@ -147,63 +122,86 @@
 </script>
 
 <template>
-	<div v-if="task" :style="disabledStyles" class="flex flex-col justify-center">
-		<div class="relative flex items-center justify-center">
-			<TaskTimeInfo
-				v-if="task.id"
-				:task-id="task.id"
-				:timer="timer"
-				:approximately-end-time="approximatelyEndTime"
-				:last-start-time="lastStartTime"
-				:is-timer-active="isTimerActive"
-				@stop-timer="toggleTimer"
-				@update:timer="
-					(seconds) => {
-						task.common_time = seconds;
-						renderTime();
-					}
-				"
-			/>
+	<div
+		v-if="task"
+		:style="disabledStyles"
+		class="flex items-center gap-3 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
+		:class="isTimerActive && !isTimeOver ? 'ring-1 ring-status-done/30' : ''"
+	>
+		<button
+			type="button"
+			@click="toggleTimer"
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-tmgr-sm transition-all hover:opacity-90"
+			:class="
+				isTimerActive
+					? isTimeOver
+						? 'bg-status-fix'
+						: 'bg-status-done'
+					: 'bg-brand'
+			"
+			:title="isTimerActive ? 'Stop timer' : 'Start timer'"
+		>
+			<Pause v-if="isTimerActive" class="h-5 w-5 fill-current" />
+			<Play v-else class="h-5 w-5 fill-current" />
+		</button>
 
-			<div>
-				<div
-					class="flex select-none items-center gap-x-1 text-2xl font-bold"
-					:class="[
-						isTimerActive &&
-							!isTimeOver &&
-							'bg-gradient-to-r from-blue-500 to-green-500 bg-clip-text text-transparent',
-						isTimeOver && 'text-red-500',
-						!isTimerActive && !isTimeOver && 'text-gray-500',
-					]"
-					@dblclick="isShowModalTimer = true"
+		<div class="flex min-w-0 flex-1 flex-col">
+			<div class="flex items-center gap-2">
+				<span
+					class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 				>
-					<span class="w-11">{{ timer.hours }} :</span>
-					<span class="w-11">{{ timer.minutes }} :</span>
-					<span class="w-9">
-						{{ timer.seconds }}
-					</span>
-				</div>
-
-				<div
-					v-if="isTimeOver && isTimerActive"
-					class="text-center text-xs font-bold text-red-500"
+					Time tracked
+				</span>
+				<span
+					v-if="isTimerActive && !isTimeOver"
+					class="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wide text-status-done-fg"
 				>
-					Get some rest!
-				</div>
+					<span
+						class="h-1.5 w-1.5 rounded-full bg-status-done animate-tmgr-pulse"
+					></span>
+					Running
+				</span>
+				<span
+					v-else-if="isTimeOver && isTimerActive"
+					class="text-2xs font-bold uppercase tracking-wide text-status-fix-fg"
+				>
+					Over time
+				</span>
 			</div>
 
-			<div class="flex justify-center">
-				<button type="button" @click="toggleTimer">
-					<PlayCircleIcon
-						v-if="!isTimerActive"
-						class="size-7 fill-blue-500/80 hover:fill-blue-500"
-					/>
-					<StopCircleIcon
-						v-else
-						class="size-7 fill-red-500/80 transition hover:fill-red-500"
-					/>
-				</button>
+			<div
+				class="flex select-none items-baseline gap-0.5 whitespace-nowrap font-mono text-xl font-semibold tabular-nums"
+				:class="[
+					isTimerActive &&
+						!isTimeOver &&
+						'text-status-done-fg',
+					isTimeOver && 'text-status-fix-fg',
+					!isTimerActive && !isTimeOver && 'text-ink',
+				]"
+				@dblclick="isShowModalTimer = true"
+			>
+				<span>{{ timer.hours }}</span>
+				<span>:</span>
+				<span>{{ timer.minutes }}</span>
+				<span>:</span>
+				<span class="text-base text-ink-muted">{{ timer.seconds }}</span>
 			</div>
 		</div>
+
+		<TaskTimeInfo
+			v-if="task.id"
+			:task-id="task.id"
+			:timer="timer"
+			:approximately-end-time="approximatelyEndTime"
+			:last-start-time="lastStartTime"
+			:is-timer-active="isTimerActive"
+			@stop-timer="toggleTimer"
+			@update:timer="
+				(seconds: number) => {
+					task.common_time = seconds;
+					renderTime();
+				}
+			"
+		/>
 	</div>
 </template>

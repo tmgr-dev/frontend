@@ -16,9 +16,9 @@
 
 		<textarea
 			:ref="(el) => setTextareaRef(el, v)"
-			class="w-full resize-none overflow-hidden rounded bg-white px-3 py-2 pl-12 pr-44 pt-2 leading-tight outline-none transition-colors duration-300 dark:bg-gray-800"
+			class="w-full resize-none overflow-hidden rounded-md bg-surface text-ink px-3 py-2 pl-12 pr-44 pt-2 leading-tight outline-none transition-colors duration-300"
 			:class="[
-				checkpoint.checked ? 'line-through text-gray-500' : ''
+				checkpoint.checked ? 'line-through text-ink-subtle' : ''
 			]"
 			:style="{ height: 'auto' }"
 			placeholder="Checkpoint content"
@@ -28,9 +28,9 @@
 		/>
 
 			<span class="absolute right-0 top-2 flex items-center gap-1 text-sm">
-				<span 
-					v-if="!checkpoint.isEditingTime" 
-					class="cursor-pointer text-sm transition-colors hover:text-blue-600 dark:hover:text-blue-400"
+				<span
+					v-if="!checkpoint.isEditingTime"
+					class="cursor-pointer text-sm text-ink-muted transition-colors hover:text-brand"
 					@click="startEditingTime(v)"
 					title="Click to edit time"
 				>
@@ -47,7 +47,7 @@
 						type="text"
 						v-model="timeEditBuffer[v].start"
 						placeholder="00:00:00"
-						class="w-20 rounded border border-gray-300 px-1 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700"
+						class="w-20 rounded-md border border-line bg-surface text-ink px-1 py-0.5 text-xs"
 						@keydown.enter="saveTimeEdit(v)"
 						@keydown.esc="cancelTimeEdit(v)"
 					/>
@@ -56,19 +56,19 @@
 						type="text"
 						v-model="timeEditBuffer[v].end"
 						placeholder="00:00:00"
-						class="w-20 rounded border border-gray-300 px-1 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700"
+						class="w-20 rounded-md border border-line bg-surface text-ink px-1 py-0.5 text-xs"
 						@keydown.enter="saveTimeEdit(v)"
 						@keydown.esc="cancelTimeEdit(v)"
 					/>
 					<span
-						class="material-icons cursor-pointer text-base leading-none text-green-600 hover:text-green-700"
+						class="material-icons cursor-pointer text-base leading-none text-status-done-fg hover:opacity-80"
 						@click="saveTimeEdit(v)"
 						title="Save (Enter)"
 					>
 						check
 					</span>
 					<span
-						class="material-icons cursor-pointer text-base leading-none text-red-600 hover:text-red-700"
+						class="material-icons cursor-pointer text-base leading-none text-status-fix-fg hover:opacity-80"
 						@click="cancelTimeEdit(v)"
 						title="Cancel (Esc)"
 					>
@@ -78,7 +78,7 @@
 
 				<span
 					v-if="!checkpoint.isEditingTime"
-					class="material-icons checkpoint-delete text-base leading-none text-blue-700"
+					class="material-icons checkpoint-delete text-base leading-none text-brand"
 					@click="changeCheckpointInputField(v as number)"
 					title="Toggle single/multi-line"
 				>
@@ -87,7 +87,7 @@
 
 				<span
 					v-if="!checkpoint.isEditingTime"
-					class="material-icons checkpoint-delete text-base leading-none text-red-700"
+					class="material-icons checkpoint-delete text-base leading-none text-status-fix-fg"
 					@click="deleteCheckpoint(v as number)"
 					title="Delete checkpoint"
 				>

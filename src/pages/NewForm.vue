@@ -3,11 +3,17 @@
 		XMarkIcon,
 		TrashIcon,
 		DocumentPlusIcon,
-		BookmarkIcon,
 	} from '@heroicons/vue/20/solid';
+	import { Save } from 'lucide-vue-next';
 	import {
 		ArrowTopRightOnSquareIcon,
 		CodeBracketIcon,
+		UserIcon,
+		UserCircleIcon,
+		FolderIcon,
+		PlayCircleIcon,
+		PauseCircleIcon,
+		LinkIcon,
 	} from '@heroicons/vue/24/outline';
 	import store from '@/store';
 	import {
@@ -262,6 +268,11 @@
 	const permissionDenied = ref(false);
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
+	const taskRelationsRef = ref<InstanceType<typeof TaskRelations> | null>(null);
+
+	function openLinkDialog() {
+		taskRelationsRef.value?.startAdding?.();
+	}
 	const newComment = ref('');
 	const isSendingComment = ref(false);
 	const isCommentInputExpanded = ref(false);
@@ -309,6 +320,16 @@
 		() => (form.value.title?.length || 0) >= 230,
 	);
 	const isTitleAtLimit = computed(() => (form.value.title?.length || 0) >= 255);
+
+	const checklistDoneCount = computed(() => {
+		const items = form.value.checkpoints || [];
+		return items.filter((c: any) => c && c.checked).length;
+	});
+	const checklistPercent = computed(() => {
+		const items = form.value.checkpoints || [];
+		if (!items.length) return 0;
+		return Math.round((checklistDoneCount.value / items.length) * 100);
+	});
 
 	const statusIdStr = computed({
 		get: () => form.value.status_id?.toString() || '',
@@ -1215,6 +1236,17 @@
 		}
 	};
 
+	const scrollMainToBottom = () => {
+		nextTick(() => {
+			const mainEl = document.querySelector(
+				'.new-form-container main',
+			) as HTMLElement | null;
+			if (mainEl) {
+				mainEl.scrollTo({ top: mainEl.scrollHeight, behavior: 'smooth' });
+			}
+		});
+	};
+
 	const sendComment = async () => {
 		if (!newComment.value.trim() || isSendingComment.value || !form.value.id)
 			return;
@@ -1227,8 +1259,9 @@
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
 			if (taskCommentsRef.value) {
-				taskCommentsRef.value.loadComments();
+				await taskCommentsRef.value.loadComments();
 			}
+			scrollMainToBottom();
 		} catch (error) {
 			console.error('Failed to send comment:', error);
 		} finally {
@@ -1270,67 +1303,88 @@
 		<ForbiddenAccess :show-back-button="false" />
 	</div>
 
-	<div v-else class="new-form-container h-full">
+	<div v-else class="new-form-container h-full" :class="{ 'font-display text-ink': isModal }">
 		<div
-			class="flex transition-all duration-300 md:w-[700px]"
+			class="flex transition-all duration-300"
 			:class="[
 				isModal
-					? 'h-full max-h-[100dvh] flex-col overflow-hidden md:h-auto md:max-h-[60vh] md:flex-col'
-					: 'container mx-auto h-full flex-col pt-14 md:flex-row',
+					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
+					: 'container mx-auto h-full flex-col pt-14 md:w-[700px] md:flex-row',
 			]"
 		>
 			<!-- Form Panel -->
 			<div
-				class="flex min-h-0 flex-1 flex-col md:w-[700px]"
-				:class="{ 'md:max-h-[60vh]': isModal }"
+				class="flex min-h-0 flex-1 flex-col"
+				:class="isModal ? 'w-full' : 'md:w-[700px]'"
 			>
 				<!-- HEADER - Fixed at top -->
-				<header class="flex shrink-0 justify-between p-6 pb-4">
-					<Select v-model="statusIdStr">
-						<SelectTrigger class="w-40 border-0 bg-transparent">
-							<SelectValue placeholder="status" />
-						</SelectTrigger>
-						<SelectContent class="border-0 bg-white dark:bg-gray-800">
-							<SelectItem
-								class="cursor-pointer text-gray-900 hover:bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
-								v-for="status in statuses"
-								:key="status.id"
-								:value="status.id.toString()"
-								:show-check-mark="false"
+				<header
+					class="flex shrink-0 items-center justify-between gap-2 border-b border-line"
+					:class="isModal ? 'px-[14px] py-2.5' : 'p-6 pb-4'"
+				>
+					<div class="flex items-center gap-2 min-w-0">
+						<Select v-model="statusIdStr">
+							<SelectTrigger
+								:class="
+									isModal
+										? 'h-7 gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover w-auto'
+										: 'w-40 border-0 bg-transparent'
+								"
 							>
-								<span
-									class="mr-3 inline-block size-2 shrink-0 rounded-full"
-									:style="{ backgroundColor: status.color }"
-								/>
-								{{ status.name }}
-							</SelectItem>
-						</SelectContent>
-					</Select>
+								<SelectValue placeholder="status" />
+							</SelectTrigger>
+							<SelectContent class="bg-popover text-popover-foreground">
+								<SelectItem
+									class="cursor-pointer text-ink hover:!bg-surface-hover hover:!text-ink focus:!bg-surface-hover focus:!text-ink"
+									v-for="status in statuses"
+									:key="status.id"
+									:value="status.id.toString()"
+									:show-check-mark="false"
+								>
+									<span
+										class="mr-3 inline-block size-2 shrink-0 rounded-full"
+										:style="{ backgroundColor: status.color }"
+									/>
+									{{ status.name }}
+								</SelectItem>
+							</SelectContent>
+						</Select>
+						<span
+							v-if="isModal && (taskId || form.id)"
+							class="font-mono text-2xs text-ink-subtle truncate"
+						>
+							TMGR-T{{ taskId || form.id }}
+						</span>
+					</div>
 
-					<div class="flex items-center gap-3">
+					<div class="flex items-center gap-2">
 						<button
 							v-if="canRunWithCursor"
 							type="button"
 							@click="showCursorAgentModal = true"
-							class="relative flex items-center justify-center rounded bg-purple-500/80 px-2 py-1.5 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
+							class="relative flex h-7 items-center justify-center rounded-pill bg-purple-500/80 px-2 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
 							title="Run with Cursor Agent"
 						>
-							<Bot class="h-4 w-4" />
+							<Bot class="h-3.5 w-3.5" />
 						</button>
 
 						<SettingsComponent :form="form" />
 
-						<button v-if="isModal" @click="emit('close')">
-							<XMarkIcon
-								class="size-5 fill-neutral-600 hover:fill-black dark:hover:fill-white"
-							/>
+						<button
+							v-if="isModal"
+							@click="emit('close')"
+							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+							title="Close (Esc)"
+						>
+							<XMarkIcon class="size-4" />
 						</button>
 					</div>
 				</header>
 
 				<!-- MAIN - Scrollable content area -->
 				<main
-					class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4"
+					class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden"
+					:class="isModal ? 'px-6 pt-5 pb-4' : 'px-6 pb-4'"
 				>
 					<!-- External Update Notification -->
 					<Transition name="fade">
@@ -1365,8 +1419,13 @@
 						<textarea
 							v-model="form.title"
 							ref="titleTextarea"
-							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-bold outline-none"
-							:class="{ 'text-red-500': isTitleAtLimit }"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-none placeholder:text-ink-faint"
+							:class="[
+								isModal
+									? 'text-2xl font-semibold leading-snug tracking-tight text-ink'
+									: 'text-lg font-bold',
+								{ 'text-status-fix-fg': isTitleAtLimit },
+							]"
 							placeholder="Task name"
 							rows="1"
 							maxlength="255"
@@ -1384,7 +1443,124 @@
 						</div>
 					</div>
 
-					<div class="grid grid-cols-2 gap-4 md:flex md:items-center">
+					<!-- Hero TIMER block (modal/side-panel mode) -->
+					<TimeCounter
+						v-if="isModal && form.id && isFeatureEnabled('task.countdown')"
+						:form="form"
+						:disabled="!form.id"
+						@toggle="toggleTimer"
+						@update:seconds="updateSeconds"
+					/>
+
+					<!-- Properties grid (modal/side-panel mode) -->
+					<div
+						v-if="isModal"
+						class="grid gap-y-3 gap-x-4 text-sm"
+						style="grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);"
+					>
+						<div class="flex items-center gap-2 text-ink-subtle">
+							<UserIcon class="h-3.5 w-3.5" />
+							<span>Assignee</span>
+						</div>
+						<div
+							v-if="isFeatureEnabled('task.assignees')"
+							class="flex min-w-0 items-center gap-2"
+						>
+							<AssigneesCombobox
+								:assignees="workspaceMembers"
+								v-model="assignees as any"
+							/>
+							<button
+								v-if="!isAssignedToMe"
+								type="button"
+								@click="assignToMe"
+								class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-brand-fg hover:opacity-90"
+								title="Assign to me"
+							>
+								<span class="material-icons" style="font-size: 14px">person_add</span>
+							</button>
+						</div>
+						<div v-else class="text-ink-faint">—</div>
+
+						<div class="flex items-center gap-2 text-ink-subtle">
+							<FolderIcon class="h-3.5 w-3.5" />
+							<span>Category</span>
+						</div>
+						<div class="min-w-0">
+							<CategoriesCombobox
+								:categories="categories"
+								v-model="form.project_category_id"
+								@update:model-value="
+									() => {
+										if (!form.title) {
+											updateTaskTitle();
+										}
+									}
+								"
+							/>
+						</div>
+
+						<template v-if="form.id">
+							<div class="flex items-center gap-2 text-ink-subtle">
+								<CodeBracketIcon class="h-3.5 w-3.5" />
+								<span>Git activity</span>
+							</div>
+							<div class="min-w-0">
+								<button
+									type="button"
+									@click="showGitActivityModal = true"
+									class="inline-flex h-7 items-center gap-1 rounded-pill bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover border border-line"
+								>
+									<CodeBracketIcon class="h-3.5 w-3.5" />
+									<span>{{ gitActivityCount > 0 ? `${gitActivityCount} events` : 'View activity' }}</span>
+								</button>
+							</div>
+						</template>
+
+						<template
+							v-if="
+								form.id &&
+								(isFeatureEnabled('task.relations') ||
+									(form.relationTypeWithTask &&
+										form.relationTypeWithTask.length > 0))
+							"
+						>
+							<div class="flex items-center gap-2 text-ink-subtle">
+								<LinkIcon class="h-3.5 w-3.5" />
+								<span>Linked tasks</span>
+							</div>
+							<div class="min-w-0 flex items-center gap-2">
+								<span
+									v-if="form.relationTypeWithTask && form.relationTypeWithTask.length"
+									class="text-xs tabular-nums text-ink"
+								>
+									{{ form.relationTypeWithTask.length }}
+									{{ form.relationTypeWithTask.length === 1 ? 'link' : 'links' }}
+								</span>
+								<button
+									type="button"
+									@click="openLinkDialog"
+									class="inline-flex h-7 items-center gap-1 rounded-pill bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover border border-line"
+								>
+									<span class="material-icons" style="font-size: 14px">add</span>
+									<span>Link</span>
+								</button>
+							</div>
+						</template>
+
+						<template v-if="form.user">
+							<div class="flex items-center gap-2 text-ink-subtle">
+								<UserCircleIcon class="h-3.5 w-3.5" />
+								<span>Author</span>
+							</div>
+							<div class="min-w-0 text-xs text-ink">
+								{{ form.user.name }}
+							</div>
+						</template>
+					</div>
+
+					<!-- Legacy non-modal toolbar -->
+					<div v-else class="grid grid-cols-2 gap-4 md:flex md:items-center">
 						<CategoriesCombobox
 							:categories="categories"
 							v-model="form.project_category_id"
@@ -1443,14 +1619,25 @@
 						</div>
 					</div>
 
+					<!-- DESCRIPTION label (modal mode) -->
+					<div
+						v-if="isModal"
+						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+					>
+						Description
+					</div>
+
 					<!-- Editor section with toggle button -->
-					<div class="relative">
+					<div
+						class="relative"
+						:class="isModal ? 'h-[320px] overflow-hidden rounded-md border border-line bg-surface-sunken description-editor-wrapper' : ''"
+					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
 							v-if="editorType === 'markdown'"
 							v-model="form.description"
-							class="mb-2 grow md:h-72"
-							:class="[!isModal ? 'lg:min-h-96' : 'min-h-[200px]']"
+							class="mb-0 grow"
+							:class="[!isModal ? 'md:h-72 lg:min-h-96' : 'h-full']"
 							:show-preview="!!(taskId && form.description)"
 						/>
 
@@ -1458,11 +1645,11 @@
 						v-else-if="editorType === 'block'"
 						v-model="form.description_json"
 						placeholder="Type your description here or enter / to see commands or "
-						class="block-editor-container mb-2 grow border px-2"
+						class="block-editor-container mb-0 grow px-2"
 						:class="[
 							!isModal
-								? 'lg:min-h-96'
-								: 'min-h-[200px]',
+								? 'border lg:min-h-96'
+								: 'h-full overflow-y-auto',
 						]"
 					/>
 					</div>
@@ -1473,6 +1660,62 @@
 						:task-id="taskId || form.id"
 					/>-->
 
+					<!-- CHECKPOINTS empty state (modal): "+ Add checkpoint" inline button -->
+					<button
+						v-if="
+							isModal &&
+							isFeatureEnabled('task.checkpoints') &&
+							(taskId || form.id) &&
+							(!form.checkpoints || form.checkpoints.length === 0)
+						"
+						type="button"
+						@click="addCheckpoint"
+						class="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-line-strong bg-transparent px-3 py-2 text-sm text-ink-subtle transition hover:bg-surface-sunken hover:text-ink"
+						title="Track time for sub-tasks"
+					>
+						<span class="material-icons" style="font-size: 16px">timer</span>
+						Add checkpoint
+					</button>
+
+					<!-- CHECKPOINTS label + progress (new design) -->
+					<div
+						v-if="
+							isModal &&
+							(taskId || form.id) &&
+							!isCheckpointsExpanded &&
+							form.checkpoints &&
+							form.checkpoints.length > 0
+						"
+						class="flex items-center justify-between gap-3"
+					>
+						<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+							Checkpoints
+						</span>
+						<span class="text-xs tabular-nums text-ink-subtle">
+							{{ checklistDoneCount }}/{{ form.checkpoints.length }} done
+						</span>
+					</div>
+					<div
+						v-if="
+							isModal &&
+							(taskId || form.id) &&
+							!isCheckpointsExpanded &&
+							form.checkpoints &&
+							form.checkpoints.length > 0
+						"
+						class="-mt-3 h-1.5 overflow-hidden rounded-full bg-surface-sunken"
+					>
+						<div
+							class="h-full rounded-full transition-all duration-300"
+							:class="
+								checklistDoneCount === form.checkpoints.length
+									? 'bg-status-done'
+									: 'bg-brand'
+							"
+							:style="{ width: `${checklistPercent}%` }"
+						></div>
+					</div>
+
 					<!-- Checkpoints section directly under editor - only visible when editing a task with checkpoints -->
 					<div
 						v-if="
@@ -1481,20 +1724,17 @@
 							form.checkpoints &&
 							form.checkpoints.length > 0
 						"
-						class="checkpoints-wrapper flex flex-col rounded border border-gray-200 bg-slate-100 dark:border-gray-700 dark:bg-slate-900"
+						class="checkpoints-wrapper flex flex-col rounded-card border border-line bg-surface-sunken"
 						:class="[isModal ? 'max-h-[320px]' : '']"
 						:key="checkpointUpdateKey"
 					>
-						<!-- Header - Fixed -->
+						<!-- Header - Fixed (actions only; section label is rendered above) -->
 						<div
-							class="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-slate-100 px-3 py-3 text-sm dark:border-gray-700 dark:bg-slate-900"
+							class="flex shrink-0 items-center justify-end gap-2 border-b border-line px-3 py-2 text-sm"
 						>
-							<span class="font-medium"
-								>Task Checkpoints ({{ form.checkpoints.length }})</span
-							>
 							<div class="flex items-center gap-2">
 								<button
-									class="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+									class="cursor-pointer text-ink-subtle hover:text-brand"
 									@click="addCheckpoint"
 									title="Add new checkpoint"
 								>
@@ -1517,7 +1757,7 @@
 								</button>
 
 								<button
-									class="ml-1 cursor-pointer text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+									class="ml-1 cursor-pointer text-ink-subtle hover:text-ink"
 									@click="toggleCheckpointsExpanded"
 									title="Expand checkpoints"
 								>
@@ -1621,72 +1861,16 @@
 						"
 					>
 						<TaskRelations
+							ref="taskRelationsRef"
 							:task-id="form.id"
 							:relations="form.relationTypeWithTask"
+							:hide-header="true"
 							@update="reloadTask"
 							@open-task="handleOpenLinkedTask"
 						/>
 					</div>
 
-					<!--  Comment Input -->
-					<div v-if="form.id" class="mt-4">
-						<!-- Collapsed State - Single Line -->
-						<div
-							v-if="!isCommentInputExpanded"
-							@click="isCommentInputExpanded = true"
-							class="flex h-10 cursor-text items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-500 transition hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500"
-						>
-							<span>Add a comment...</span>
-							<span
-								v-if="commentsCount > 0"
-								class="text-xs text-gray-400 dark:text-gray-500"
-								>{{ commentsCount }}
-								{{ commentsCount === 1 ? 'comment' : 'comments' }}
-							</span>
-						</div>
-
-						<!-- Expanded State - Textarea with Buttons -->
-						<div v-else class="flex gap-2" @mousedown.stop>
-							<Textarea
-								ref="commentTextarea"
-								v-model="newComment"
-								placeholder="Add a comment..."
-								class="max-h-[120px] min-h-[80px] resize-none text-sm"
-								@keydown.enter.exact.prevent="sendComment"
-								@keydown.esc="handleCommentEsc"
-								autofocus
-							/>
-							<div class="flex flex-col gap-1">
-								<button
-									:disabled="!newComment?.trim() || isSendingComment"
-									@click="sendComment"
-									class="flex h-9 w-9 items-center justify-center rounded bg-tmgr-blue text-white transition hover:bg-tmgr-blue/90 disabled:cursor-not-allowed disabled:opacity-50"
-									title="Send comment (Enter)"
-								>
-									<Send class="h-4 w-4" />
-								</button>
-								<button
-									:disabled="!newComment?.trim() || isSendingComment"
-									@click="askAIComment"
-									class="flex h-9 w-9 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-									title="Ask AI"
-								>
-									<Sparkles class="h-4 w-4" />
-								</button>
-								<button
-									v-if="hasActiveAgent"
-									:disabled="!newComment?.trim() || isSendingComment"
-									@click="sendToCursor"
-									class="flex h-9 w-9 items-center justify-center rounded bg-purple-500 text-white transition hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-700"
-									title="Send to Cursor Agent"
-								>
-									<Bot class="h-4 w-4" />
-								</button>
-							</div>
-						</div>
-					</div>
-
-					<!-- Comments Section -->
+					<!-- Comments Section (scrolls with main) -->
 					<TaskComments
 						v-if="form.id"
 						ref="taskCommentsRef"
@@ -1694,84 +1878,74 @@
 						class="mt-4"
 						@update:count="commentsCount = $event"
 					/>
+
 				</main>
 
 				<!-- FOOTER - Fixed at bottom -->
-				<footer ref="footer" class="shrink-0 px-6 py-4">
-					<div class="flex justify-end gap-3 text-center">
+				<footer
+					ref="footer"
+					class="shrink-0 border-t border-line px-6 py-3"
+					:class="isModal ? 'bg-surface' : ''"
+				>
+					<!-- Comment composer (modal only, above action buttons) -->
+					<div
+						v-if="isModal && form.id"
+						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
+						@mousedown.stop
+					>
+						<input
+							ref="commentTextarea"
+							v-model="newComment"
+							placeholder="Write a comment…"
+							class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-none"
+							@keydown.enter.prevent="sendComment"
+							@keydown.esc="newComment = ''"
+						/>
+
+						<button
+							v-if="hasActiveAgent"
+							:disabled="!newComment?.trim() || isSendingComment"
+							@click="sendToCursor"
+							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+							title="Send to Cursor Agent"
+						>
+							<Bot class="h-4 w-4" />
+						</button>
+						<button
+							:disabled="!newComment?.trim() || isSendingComment"
+							@click="askAIComment"
+							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+							title="Ask AI"
+						>
+							<Sparkles class="h-4 w-4" />
+						</button>
+						<button
+							:disabled="!newComment?.trim() || isSendingComment"
+							@click="sendComment"
+							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+							title="Send comment (Enter)"
+						>
+							<Send class="h-3.5 w-3.5" />
+						</button>
+					</div>
+
+					<div class="flex flex-wrap justify-end gap-2 text-center">
 						<a
 							v-if="isModal && (taskId || form.id)"
 							:href="generateTaskUrlForAdvancedForm()"
 							title="Open advanced form"
-							class="mr-auto rounded bg-gray-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-gray-600"
+							class="mr-auto inline-flex items-center justify-center rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
 						>
 							<ArrowTopRightOnSquareIcon class="size-5" />
 						</a>
-
-						<button
-							v-if="
-								isFeatureEnabled('task.checkpoints') &&
-								(taskId || form.id) &&
-								getUncheckedCheckpoints().length > 0
-							"
-							@click="createTaskWithCheckpoints"
-							class="flex items-center gap-1 rounded bg-indigo-500 px-4 py-2 font-bold text-white transition hover:bg-indigo-600 focus:outline-none"
-							type="button"
-							title="Copy unchecked checkpoints to new task"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="20"
-								height="20"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							>
-								<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-								<path
-									d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-								></path>
-							</svg>
-						</button>
-
-						<button
-							v-if="
-								isFeatureEnabled('task.checkpoints') &&
-								(taskId || form.id) &&
-								(!form.checkpoints || form.checkpoints.length === 0)
-							"
-							@click="addCheckpoint"
-							class="flex items-center gap-1 rounded bg-emerald-500 px-4 py-2 font-bold text-white transition hover:bg-emerald-600 focus:outline-none"
-							type="button"
-							title="Add Checkpoint"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="20"
-								height="20"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="feather feather-check-circle"
-							>
-								<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-								<polyline points="22 4 12 14.01 9 11.01"></polyline>
-							</svg>
-						</button>
 
 						<span class="relative inline-flex rounded-md shadow-sm">
 							<button
 								v-if="taskId || form.id"
 								@click="saveTask()"
-								class="relative w-14 rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-700 focus:outline-none"
+								class="relative inline-flex items-center justify-center gap-1.5 rounded-md bg-status-done px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 focus:outline-none"
 								type="button"
-								title="save"
+								title="Save"
 							>
 								<svg
 									v-if="isAutoSaving || isLoading"
@@ -1795,25 +1969,26 @@
 									/>
 								</svg>
 
-								<BookmarkIcon v-else class="size-6" />
+								<Save v-else class="size-5" />
 							</button>
 						</span>
 
 						<button
 							v-if="!taskId && !form.id"
 							@click="createTask"
-							class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+							class="inline-flex items-center justify-center gap-1.5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover focus:outline-none"
 							type="button"
 							title="Create"
 						>
-							<DocumentPlusIcon class="size-6" />
+							<DocumentPlusIcon class="size-5" />
+							Create
 						</button>
 
 						<button
 							v-if="taskId || form.id"
 							@click="deleteCurrentTask"
 							title="Delete"
-							class="rounded bg-red-500/70 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-600"
+							class="inline-flex items-center justify-center rounded-md bg-status-fix px-3 py-2 text-white outline-none transition hover:opacity-90"
 						>
 							<TrashIcon class="size-5" />
 						</button>
@@ -1821,7 +1996,7 @@
 
 					<div
 						v-if="taskId || form.id"
-						class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-gray-400/70 dark:text-gray-500/70"
+						class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-ink-faint"
 					>
 						<TaskTimeInfo
 							:created-at="form.created_at"
@@ -1863,9 +2038,11 @@
 		</Dialog>
 
 		<Dialog v-model:open="showCursorAgentModal">
-			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
+			<DialogContent
+				class="max-h-[80vh] max-w-3xl overflow-y-auto rounded-card border border-line bg-surface text-ink"
+			>
 				<DialogHeader>
-					<DialogTitle>Cursor AI Agent</DialogTitle>
+					<DialogTitle class="text-ink">Cursor AI Agent</DialogTitle>
 					<DialogDescription class="sr-only"
 						>Run AI agent to help with this task</DialogDescription
 					>
@@ -1958,5 +2135,24 @@
 	/* Fix for z-index issues with toolbar in modal */
 	.ce-toolbar {
 		z-index: 10 !important;
+	}
+
+	/* Fill description editor wrapper height (modal/side-panel) */
+	.description-editor-wrapper {
+		display: flex;
+		flex-direction: column;
+	}
+	.description-editor-wrapper > .md-editor,
+	.description-editor-wrapper > .md-editor-dark {
+		flex: 1 1 auto;
+		min-height: 0 !important;
+		height: 100% !important;
+		border: 0 !important;
+	}
+	.description-editor-wrapper > .block-editor-container {
+		flex: 1 1 auto;
+		min-height: 0 !important;
+		height: 100%;
+		overflow-y: auto;
 	}
 </style>
