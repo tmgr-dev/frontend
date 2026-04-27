@@ -178,6 +178,7 @@
 		distractPomodoro,
 	} from '@/actions/tmgr/pomodoro';
 	import PomodoroSettingsModal from '@/components/tasks/PomodoroSettingsModal.vue';
+	import { playPomodoroSound } from '@/utils/pomodoroSound';
 
 	const PHASE_META: Record<
 		PomodoroPhase,
@@ -447,6 +448,9 @@
 
 			watch(computedRemainingMs, (val: number) => {
 				if (val <= 0 && state.value?.running) {
+					if (settings.value.notify !== 'silent') {
+						playPomodoroSound(settings.value.sound, settings.value.volume);
+					}
 					advancePhase(settings.value.autoStart);
 				}
 			});

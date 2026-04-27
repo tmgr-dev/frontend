@@ -97,7 +97,7 @@
 									? 'bg-[rgba(232,90,79,.18)] font-semibold text-[#e85a4f]'
 									: 'text-white/65 hover:bg-white/5'
 							"
-							@click="set('sound', s.id)"
+							@click="pickSound(s.id)"
 						>
 							{{ s.label }}
 						</button>
@@ -142,6 +142,7 @@
 		PomodoroSettings,
 		savePomodoroSettings,
 	} from '@/actions/tmgr/pomodoro';
+	import { playPomodoroSound } from '@/utils/pomodoroSound';
 
 	const SettingLabel = defineComponent({
 		name: 'PomoSettingLabel',
@@ -356,6 +357,11 @@
 				draft.value = { ...draft.value, [key]: val };
 			};
 
+			const pickSound = (id: string) => {
+				set('sound', id);
+				playPomodoroSound(id, draft.value.volume);
+			};
+
 			const handleSave = async () => {
 				saving.value = true;
 				try {
@@ -371,6 +377,7 @@
 				draft,
 				saving,
 				set,
+				pickSound,
 				handleSave,
 				notifyOptions: [
 					{ value: 'silent', label: 'Silent', icon: Eye },
