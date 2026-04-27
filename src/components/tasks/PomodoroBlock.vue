@@ -1,20 +1,7 @@
 <template>
-	<div>
-		<!-- Disabled state: Enable button -->
-		<button
-			v-if="!loading && !state"
-			type="button"
-			class="flex w-full items-center justify-center gap-2 rounded-card border border-dashed border-line bg-surface-sunken/40 px-3 py-3 text-xs font-medium text-ink-subtle transition hover:border-line-strong hover:text-ink"
-			:disabled="enabling"
-			@click="handleEnable"
-		>
-			<span aria-hidden="true">🍅</span>
-			{{ enabling ? 'Enabling…' : 'Enable Pomodoro' }}
-		</button>
-
+	<div v-if="state">
 		<!-- Active card -->
 		<div
-			v-else-if="state"
 			class="relative overflow-hidden rounded-card border border-line bg-surface-sunken px-4 py-3.5"
 		>
 			<div

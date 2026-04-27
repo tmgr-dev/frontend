@@ -283,6 +283,20 @@
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
 	const cursorAgents = ref([]);
+	const pomodoroBlockRef = ref<any>(null);
+	const pomodoroEnabled = computed(() => !!pomodoroBlockRef.value?.state);
+	const pomodoroBusy = computed(
+		() => !!pomodoroBlockRef.value?.enabling || !!pomodoroBlockRef.value?.loading,
+	);
+	const togglePomodoro = async () => {
+		const inst = pomodoroBlockRef.value;
+		if (!inst) return;
+		if (inst.state) {
+			await inst.handleDisable();
+		} else {
+			await inst.handleEnable();
+		}
+	};
 
 	const currentCategoryCode = computed(() => {
 		if (!form.value.project_category_id || !categories.value.length)
@@ -1360,6 +1374,22 @@
 
 					<div class="flex items-center gap-2">
 						<button
+							v-if="form.id"
+							type="button"
+							@click="togglePomodoro"
+							:disabled="pomodoroBusy"
+							:class="[
+								'relative flex h-7 w-7 items-center justify-center rounded-pill text-sm leading-none transition disabled:opacity-50',
+								pomodoroEnabled
+									? 'bg-[rgba(232,90,79,0.15)] text-[#e85a4f] hover:bg-[rgba(232,90,79,0.25)]'
+									: 'text-ink-subtle hover:bg-surface-hover hover:text-ink',
+							]"
+							:title="pomodoroEnabled ? 'Disable Pomodoro' : 'Enable Pomodoro'"
+						>
+							<span aria-hidden="true">🍅</span>
+						</button>
+
+						<button
 							v-if="canRunWithCursor"
 							type="button"
 							@click="showCursorAgentModal = true"
@@ -1456,6 +1486,7 @@
 					<!-- Pomodoro block (per-task, opt-in) -->
 					<PomodoroBlock
 						v-if="isModal && form.id"
+						ref="pomodoroBlockRef"
 						:task-id="form.id"
 					/>
 
