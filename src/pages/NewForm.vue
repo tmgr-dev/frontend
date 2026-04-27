@@ -53,6 +53,7 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import TimeCounter from '@/components/TimeCounter.vue';
+	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
@@ -1450,6 +1451,12 @@
 						:disabled="!form.id"
 						@toggle="toggleTimer"
 						@update:seconds="updateSeconds"
+					/>
+
+					<!-- Pomodoro block (per-task, opt-in) -->
+					<PomodoroBlock
+						v-if="isModal && form.id"
+						:task-id="form.id"
 					/>
 
 					<!-- Properties grid (modal/side-panel mode) -->
