@@ -48,6 +48,14 @@ export const updateUserSettings = async <T>(payload: T) => {
 	return data;
 };
 
+export const patchUserSettings = async (settings: Record<string, any>) => {
+	const {
+		data: { data },
+	} = await $axios.patch('user/settings', { settings });
+
+	return data;
+};
+
 export const getUserSettingsV2 = async (): Promise<Setting[]> => {
 	const {
 		data: { data },
