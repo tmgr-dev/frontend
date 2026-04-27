@@ -288,6 +288,9 @@
 	const pomodoroBusy = computed(
 		() => !!pomodoroBlockRef.value?.enabling || !!pomodoroBlockRef.value?.loading,
 	);
+	const mainTimerRunning = computed(
+		() => !!form.value.start_time && form.value.start_time > 0,
+	);
 	const togglePomodoro = async () => {
 		const inst = pomodoroBlockRef.value;
 		if (!inst) return;
@@ -296,6 +299,10 @@
 		} else {
 			await inst.handleEnable();
 		}
+	};
+	const handlePomodoroRequestMainStart = async () => {
+		if (mainTimerRunning.value) return;
+		await toggleTimer();
 	};
 
 	const currentCategoryCode = computed(() => {
@@ -1488,6 +1495,8 @@
 						v-if="isModal && form.id"
 						ref="pomodoroBlockRef"
 						:task-id="form.id"
+						:main-timer-running="mainTimerRunning"
+						@request-main-start="handlePomodoroRequestMainStart"
 					/>
 
 					<!-- Properties grid (modal/side-panel mode) -->
@@ -1662,6 +1671,8 @@
 						v-if="!isModal && form.id"
 						ref="pomodoroBlockRef"
 						:task-id="form.id"
+						:main-timer-running="mainTimerRunning"
+						@request-main-start="handlePomodoroRequestMainStart"
 					/>
 
 					<!-- DESCRIPTION label (modal mode) -->

@@ -214,8 +214,10 @@
 		},
 		props: {
 			taskId: { type: Number, required: true },
+			mainTimerRunning: { type: Boolean, default: false },
 		},
-		setup(props) {
+		emits: ['request-main-start'],
+		setup(props, { emit }) {
 			const state = ref<PomodoroState | null>(null);
 			const settings = ref<PomodoroSettings>({ ...DEFAULT_POMODORO_SETTINGS });
 			const settingsOpen = ref(false);
@@ -325,6 +327,9 @@
 
 			const start = async () => {
 				if (!state.value) return;
+				if (!props.mainTimerRunning) {
+					emit('request-main-start');
+				}
 				const remaining =
 					state.value.remaining_ms > 0
 						? state.value.remaining_ms
@@ -428,6 +433,15 @@
 					advancePhase(settings.value.autoStart);
 				}
 			});
+
+			watch(
+				() => props.mainTimerRunning,
+				(running) => {
+					if (!running && state.value?.running) {
+						pause();
+					}
+				},
+			);
 
 			watch(
 				() => props.taskId,
