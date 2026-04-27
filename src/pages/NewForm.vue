@@ -1483,7 +1483,7 @@
 						@update:seconds="updateSeconds"
 					/>
 
-					<!-- Pomodoro block (per-task, opt-in) -->
+					<!-- Pomodoro block (per-task, opt-in) — modal placement -->
 					<PomodoroBlock
 						v-if="isModal && form.id"
 						ref="pomodoroBlockRef"
@@ -1656,6 +1656,13 @@
 							/>
 						</div>
 					</div>
+
+					<!-- Pomodoro block (per-task, opt-in) — standalone placement -->
+					<PomodoroBlock
+						v-if="!isModal && form.id"
+						ref="pomodoroBlockRef"
+						:task-id="form.id"
+					/>
 
 					<!-- DESCRIPTION label (modal mode) -->
 					<div
