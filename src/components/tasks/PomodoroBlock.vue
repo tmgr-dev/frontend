@@ -296,11 +296,26 @@
 				settings.value = getPomodoroSettings();
 			};
 
+			const lsKey = (taskId: number) => `pomo-enabled-${taskId}`;
+
 			const load = async () => {
 				loading.value = true;
 				try {
 					refreshSettings();
-					state.value = await getPomodoroState(props.taskId);
+					try {
+						state.value = await getPomodoroState(props.taskId);
+					} catch (e) {
+						console.error('[Pomodoro] failed to load state', e);
+						state.value = null;
+					}
+					if (!state.value && localStorage.getItem(lsKey(props.taskId)) === '1') {
+						try {
+							state.value = await enablePomodoro(props.taskId);
+						} catch (e) {
+							console.error('[Pomodoro] failed to re-enable from localStorage', e);
+							localStorage.removeItem(lsKey(props.taskId));
+						}
+					}
 					if (state.value?.running) startTicker();
 				} finally {
 					loading.value = false;
@@ -409,6 +424,7 @@
 				try {
 					refreshSettings();
 					state.value = await enablePomodoro(props.taskId);
+					localStorage.setItem(lsKey(props.taskId), '1');
 				} finally {
 					enabling.value = false;
 				}
@@ -418,6 +434,7 @@
 				stopTicker();
 				await disablePomodoro(props.taskId);
 				state.value = null;
+				localStorage.removeItem(lsKey(props.taskId));
 			};
 
 			const onSettingsSaved = (next: PomodoroSettings) => {
