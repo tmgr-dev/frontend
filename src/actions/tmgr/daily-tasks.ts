@@ -1,5 +1,6 @@
 import $axios from '@/plugins/axios';
 import { Task } from '@/actions/tmgr/tasks';
+import type { RoutineEntry, YearStats, IcsImportResult } from '@/types/dailyRoutine';
 
 export const getDailyTasks = async (): Promise<Task[]> => {
 	try {
@@ -165,4 +166,70 @@ export const completeDailyTaskInstance = async (taskId: number, taskInstanceId: 
 		console.error('Failed to complete daily task\'s instance:', error);
 		throw error;
 	}
+};
+
+// ───── New: calendar virtual expansion ─────
+
+export const expandRoutineRange = async (from: string, to: string): Promise<RoutineEntry[]> => {
+	const { data: { data } } = await $axios.get('daily-routines/expand', { params: { from, to } });
+	return data;
+};
+
+export const expandRoutineYearStats = async (year: number): Promise<YearStats> => {
+	const { data: { data } } = await $axios.get('daily-routines/expand/stats', { params: { year } });
+	return data;
+};
+
+export const completeRoutineOn = async (taskId: number, date: string) => {
+	const { data: { data } } = await $axios.post(`daily-routines/tasks/${taskId}/complete-on`, { date });
+	return data as { instance_id: number; task_id: number; date: string; status: string; completed: boolean };
+};
+
+export const rescheduleRoutineInstance = async (
+	taskId: number,
+	instanceId: number | 'virtual',
+	scheduledFor: string,
+) => {
+	const { data: { data } } = await $axios.patch(
+		`daily-routines/tasks/${taskId}/instances/${instanceId}`,
+		{ scheduled_for: scheduledFor }
+	);
+	return data;
+};
+
+export const quickCreateRoutine = async (payload: {
+	title: string;
+	date?: string;
+	time?: string;
+	category?: string;
+}) => {
+	const { data: { data } } = await $axios.post('daily-routines/tasks/quick', payload);
+	return data;
+};
+
+export const importRoutinesIcs = async (
+	file: File,
+	mode: 'skip' | 'replace' = 'skip',
+): Promise<IcsImportResult> => {
+	const fd = new FormData();
+	fd.append('file', file);
+	fd.append('mode', mode);
+	const { data } = await $axios.post('daily-routines/ics/import', fd, {
+		headers: { 'Content-Type': 'multipart/form-data' },
+	});
+	return data as IcsImportResult;
+};
+
+export const exportRoutinesIcsUrl = (ids?: number[]): string => {
+	const base = (($axios.defaults.baseURL as string) || '').replace(/\/$/, '');
+	const qs = ids && ids.length ? `?ids=${ids.join(',')}` : '';
+	return `${base}/daily-routines/ics/export${qs}`;
+};
+
+export const downloadRoutinesIcs = async (ids?: number[]): Promise<Blob> => {
+	const { data } = await $axios.get('daily-routines/ics/export', {
+		params: ids && ids.length ? { ids: ids.join(',') } : {},
+		responseType: 'blob',
+	});
+	return data as Blob;
 };

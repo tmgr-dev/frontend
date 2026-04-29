@@ -1,6 +1,7 @@
 import filterModule from '@/store/modules/boardFilters';
 import pusherModule from '@/store/modules/pusher';
 import featureTogglesModule from '@/store/modules/featureToggles';
+import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import { createStore } from 'vuex';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { requestCache } from '@/utils/requestCache';
@@ -221,6 +222,7 @@ const modules = {
 	pusher: pusherModule,
 	filter: filterModule,
 	featureToggles: featureTogglesModule,
+	dailyRoutines: dailyRoutinesModule,
 };
 
 export default createStore({
