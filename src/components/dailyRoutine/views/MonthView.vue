@@ -14,7 +14,7 @@
 			class="grid flex-1"
 			:style="{
 				gridTemplateColumns: 'repeat(7, 1fr)',
-				gridTemplateRows: 'repeat(6, 1fr)',
+				gridTemplateRows: 'repeat(6, minmax(110px, 1fr))',
 			}"
 		>
 			<div
@@ -40,18 +40,17 @@
 				<div
 					v-for="e in byDay[i].slice(0, maxChips)"
 					:key="e.task_id + '-' + e.date"
-					class="flex items-center gap-1 truncate rounded-sm px-1.5 py-0.5 text-[10px] cursor-pointer"
+					class="flex items-center gap-1 truncate rounded-sm px-1.5 py-0.5 text-[10px] cursor-pointer text-ink dark:text-white"
 					:style="{
 						background: hexAlpha(e.routine_category.color, 0.2),
 						borderLeft: `2px solid ${e.routine_category.color}`,
-						color: '#fff',
-						opacity: e.completed ? 0.45 : 1,
+						opacity: e.completed ? 0.55 : 1,
 						textDecoration: e.completed ? 'line-through' : 'none',
 					}"
 					:title="e.title"
 					@click.stop="$emit('toggle', e)"
 				>
-					<span v-if="e.time" class="text-[10px] tabular-nums text-white/60">{{ e.time }}</span>
+					<span v-if="e.time" class="text-[10px] tabular-nums text-ink-subtle dark:text-white/60">{{ e.time }}</span>
 					<span class="truncate">{{ e.title }}</span>
 				</div>
 				<div v-if="byDay[i].length > maxChips" class="px-1.5 text-[10px] text-ink-subtle">

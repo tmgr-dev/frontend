@@ -6,7 +6,7 @@
 			type="button"
 			:title="v.label"
 			:class="[
-				'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+				'inline-flex items-center gap-1.5 rounded-[calc(var(--radius-lg)-2px)] px-2.5 py-1.5 text-xs font-medium transition-colors',
 				model === v.id
 					? 'bg-surface text-ink shadow-tmgr-xs'
 					: 'text-ink-subtle hover:text-ink',

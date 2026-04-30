@@ -47,12 +47,11 @@
 					<div
 						v-for="e in allDayByDay[i]"
 						:key="e.task_id + '-' + e.date"
-						class="dr-week-chip relative cursor-pointer truncate rounded-sm px-1.5 py-0.5 pr-5 text-2xs"
+						class="dr-week-chip relative cursor-pointer truncate rounded-sm px-1.5 py-0.5 pr-5 text-2xs text-ink dark:text-white"
 						:style="{
 							background: hexAlpha(e.routine_category.color, 0.2),
 							borderLeft: `2px solid ${e.routine_category.color}`,
-							color: '#fff',
-							opacity: e.completed ? 0.5 : 1,
+							opacity: e.completed ? 0.55 : 1,
 							textDecoration: e.completed ? 'line-through' : 'none',
 						}"
 						:title="e.title"

@@ -15,43 +15,28 @@
 					<!-- Top toolbar -->
 					<div class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4">
 						<div class="flex flex-wrap items-center gap-2.5">
-							<div
-								class="flex flex-1 items-center gap-2 rounded-card border border-line bg-surface px-3 py-1.5 shadow-tmgr-xs"
-							>
-								<input
-									v-model="quickTitle"
-									:placeholder="isMobile ? 'Add routine…' : 'Enter your routine (enter to add new task)'"
-									class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
-									@keyup.enter="onQuickAdd"
-								/>
-								<button
-									type="button"
-									class="h-8 shrink-0 rounded-pill bg-brand px-3.5 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover"
-									@click="onQuickAdd"
-								>
-									{{ isMobile ? 'Add' : 'Add Task' }}
-								</button>
-							</div>
-							<div class="flex shrink-0 gap-1.5">
+							<div class="flex flex-1 shrink-0 gap-1.5">
 								<CountChip :n="counts.routines" label="ROUTINES" />
 								<CountChip :n="counts.completed" label="DONE" :color="'#22c55e'" />
 								<CountChip v-if="!isMobile" :n="counts.archived" label="ARCHIVED" />
 							</div>
 							<button
 								type="button"
-								class="flex h-8 w-8 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
-								title="Import .ics"
+								class="flex h-8 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+								title="Import .ics calendar"
 								@click="triggerImport"
 							>
-								<DRIcon name="upload" :size="14" stroke="currentColor" />
+								<Upload :size="14" stroke-width="2" />
+								<span v-if="!isMobile">Import</span>
 							</button>
 							<button
 								type="button"
-								class="flex h-8 w-8 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
-								title="Export .ics"
+								class="flex h-8 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+								title="Export .ics calendar"
 								@click="onExport"
 							>
-								<DRIcon name="download" :size="14" stroke="currentColor" />
+								<Download :size="14" stroke-width="2" />
+								<span v-if="!isMobile">Export</span>
 							</button>
 							<input
 								ref="fileRef"
@@ -189,6 +174,16 @@
 						@save="onSaveRoutine"
 						@delete="onDeleteRoutine"
 					/>
+
+					<button
+						type="button"
+						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand/40 md:bottom-6 md:right-6 md:h-14 md:w-14"
+						title="New routine (N)"
+						aria-label="New routine"
+						@click="onNewRoutine"
+					>
+						<Plus :size="22" stroke-width="2.4" />
+					</button>
 				</div>
 			</template>
 		</BaseLayout>
@@ -196,13 +191,13 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, ref, watch } from 'vue';
+	import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
 	import { SkeletonListItem } from '@/components/ui/skeleton';
-	import { CalendarCheck } from 'lucide-vue-next';
+	import { CalendarCheck, Plus, Upload, Download } from 'lucide-vue-next';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
 	import {
@@ -236,7 +231,6 @@
 
 	const view = ref<ViewId>('list');
 	const cursor = ref<Date>(new Date());
-	const quickTitle = ref('');
 	const editingRoutine = ref<any | null>(null);
 
 	const entries = computed<RoutineEntry[]>(() => store.state.dailyRoutines.entries);
@@ -339,14 +333,41 @@
 		setDocumentTitle('Daily Routines');
 		bind(rootRef.value);
 		reload();
+		window.addEventListener('keydown', onShortcutKey);
 	});
 
-	async function onQuickAdd() {
-		const title = quickTitle.value.trim();
-		if (!title) return;
-		await quickCreateRoutine({ title });
-		quickTitle.value = '';
-		await reload();
+	onBeforeUnmount(() => {
+		window.removeEventListener('keydown', onShortcutKey);
+	});
+
+	function onNewRoutine() {
+		const now = new Date();
+		const h = now.getHours();
+		const m = now.getMinutes() < 30 ? 30 : 0;
+		const hours = m === 0 ? (h + 1) % 24 : h;
+		editingRoutine.value = {
+			id: null,
+			title: '',
+			description: '',
+			time: { h: hours, m },
+			frequency: 'NONE',
+			_draftDate: fmtDate(cursor.value),
+			recurrence: {
+				time: { hours, minutes: m },
+				duration_min: 30,
+			},
+		};
+	}
+
+	function onShortcutKey(e: KeyboardEvent) {
+		if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+		const t = e.target as HTMLElement | null;
+		if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+		if (editingRoutine.value) return;
+		if (e.key === 'n' || e.key === 'N') {
+			e.preventDefault();
+			onNewRoutine();
+		}
 	}
 
 	async function onToggle(entry: RoutineEntry) {
