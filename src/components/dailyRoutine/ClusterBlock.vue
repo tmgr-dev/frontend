@@ -8,8 +8,8 @@
 		<div class="flex h-1.5" :style="{ flexShrink: 0 }">
 			<span v-for="(c, i) in stripes" :key="i" class="flex-1" :style="{ background: c }" />
 		</div>
-		<div v-if="mode === 'stack'" class="flex flex-col gap-0.5 p-1.5 text-2xs text-white">
-			<div class="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70">
+		<div v-if="mode === 'stack'" class="flex flex-col gap-0.5 p-1.5 text-2xs text-ink dark:text-white">
+			<div class="flex items-center justify-between text-[10px] uppercase tracking-wider text-ink-subtle dark:text-white/70">
 				<span>{{ events.length }} events</span>
 				<span>{{ rangeLabel }}</span>
 			</div>
@@ -21,13 +21,13 @@
 					:title="(ev.source.entry || ev.source).title"
 				>
 					<span class="h-1 w-1 shrink-0 rounded-pill" :style="{ background: (ev.source.entry || ev.source).routine_category.color }" />
-					<span class="text-[10px] tabular-nums text-white/70">{{ (ev.source.entry || ev.source).time }}</span>
+					<span class="text-[10px] tabular-nums text-ink-subtle dark:text-white/70">{{ (ev.source.entry || ev.source).time }}</span>
 					<span class="truncate">{{ (ev.source.entry || ev.source).title }}</span>
 				</div>
-				<div v-if="hidden > 0" class="text-[10px] text-white/55">+ {{ hidden }} more</div>
+				<div v-if="hidden > 0" class="text-[10px] text-ink-subtle dark:text-white/55">+ {{ hidden }} more</div>
 			</div>
 		</div>
-		<div v-else class="flex h-full items-center justify-center px-1 text-2xs font-semibold text-white/80">
+		<div v-else class="flex h-full items-center justify-center px-1 text-2xs font-semibold text-ink dark:text-white/80">
 			+{{ events.length }}
 		</div>
 	</div>
@@ -98,7 +98,7 @@
 		height: `${height.value}px`,
 		left: props.mode === 'stack' ? '4px' : '3px',
 		right: props.mode === 'stack' ? '6px' : '3px',
-		background: 'rgba(255,255,255,.04)',
+		background: 'rgba(127,127,127,.08)',
 	}));
 
 	function onOpen(e: MouseEvent) {

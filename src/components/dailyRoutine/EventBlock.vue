@@ -8,23 +8,23 @@
 	>
 		<div
 			v-if="!isShort"
-			class="truncate pr-5 text-xs font-medium text-white"
+			class="truncate pr-5 text-xs font-medium text-ink dark:text-white"
 			:class="entry.completed ? 'line-through' : ''"
 		>
 			{{ entry.title }}
 		</div>
 		<div
 			v-if="!isShort"
-			class="mt-0.5 truncate pr-5 text-[10px] text-white/60"
+			class="mt-0.5 truncate pr-5 text-[10px] text-ink-subtle dark:text-white/60"
 		>
 			{{ entry.time }}<span v-if="endTimeStr"> – {{ endTimeStr }}</span>
 		</div>
 		<div
 			v-else
-			class="flex items-center gap-1.5 truncate pr-5 text-[11px] font-medium text-white"
+			class="flex items-center gap-1.5 truncate pr-5 text-[11px] font-medium text-ink dark:text-white"
 			:class="entry.completed ? 'line-through' : ''"
 		>
-			<span class="shrink-0 tabular-nums text-white/70">{{ entry.time }}</span>
+			<span class="shrink-0 tabular-nums text-ink-subtle dark:text-white/70">{{ entry.time }}</span>
 			<span class="truncate">{{ entry.title }}</span>
 		</div>
 		<button
