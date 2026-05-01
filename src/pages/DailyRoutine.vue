@@ -234,7 +234,19 @@
 	const fileRef = ref<HTMLInputElement | null>(null);
 	const { width, isMobile, isTablet, bind } = useDailyRoutineViewport();
 
-	const view = ref<ViewId>('list');
+	const VIEW_STORAGE_KEY = 'tmgr.dailyRoutines.view';
+	const ALLOWED_VIEWS: ViewId[] = ['list', 'day', 'week', 'month', 'year'];
+	function loadStoredView(): ViewId {
+		try {
+			const v = localStorage.getItem(VIEW_STORAGE_KEY);
+			if (v && (ALLOWED_VIEWS as string[]).includes(v)) return v as ViewId;
+		} catch {}
+		return 'list';
+	}
+	const view = ref<ViewId>(loadStoredView());
+	watch(view, v => {
+		try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch {}
+	});
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
 
