@@ -92,6 +92,9 @@ router.beforeEach(async (to, from, next) => {
 			if (store.state.featureToggles?.workspaceToggles?.dashboard?.enabled) {
 				allowedLanding.push('dashboard');
 			}
+			if (store.state.featureToggles?.workspaceToggles?.daily_routines?.enabled) {
+				allowedLanding.push('daily_routines');
+			}
 			if (!allowedLanding.includes(finalLanding)) {
 				finalLanding = allowedLanding[0];
 				// persist fix
@@ -99,11 +102,15 @@ router.beforeEach(async (to, from, next) => {
 					default_landing_page: finalLanding,
 				});
 			}
-			
+
+			if (finalLanding === 'daily_routines') {
+				return next('/routines');
+			}
+
 			if (workspaceCode) {
 				return next(`/${workspaceCode}/${finalLanding}`);
 			}
-			
+
 			// fallback: first workspace to landing page
 			if (store.state.workspaces?.[0]?.code) {
 				return next(`/${store.state.workspaces[0].code}/${finalLanding}`);

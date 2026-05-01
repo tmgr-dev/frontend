@@ -45,7 +45,7 @@
 							class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-600 dark:bg-gray-700"
 						>
 							<option v-for="option in selectOptions(feature)" :key="option" :value="option">
-								{{ option.charAt(0).toUpperCase() + option.slice(1) }}
+								{{ formatOptionLabel(option) }}
 							</option>
 						</select>
 						
@@ -113,8 +113,16 @@ const landingOptions = computed(() => {
 	const options = ['list'];
 	if (workspaceToggles.value?.board?.enabled) options.push('board');
 	if (workspaceToggles.value?.dashboard?.enabled) options.push('dashboard');
+	if (workspaceToggles.value?.daily_routines?.enabled) options.push('daily_routines');
 	return options;
 });
+
+const formatOptionLabel = (option) => {
+	return option
+		.split('_')
+		.map(word => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ');
+};
 
 const currentWorkspaceId = computed(() => {
 	const setting = store.state.user?.settings?.find(s => s.key === 'current_workspace');
