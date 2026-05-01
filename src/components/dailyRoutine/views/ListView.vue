@@ -1,6 +1,13 @@
 <template>
 	<div class="flex flex-1 flex-col gap-4 overflow-auto">
-		<section v-if="unscheduled.length">
+		<section
+			v-if="unscheduled.length || dragActive"
+			class="rounded-card transition-colors"
+			:class="hoverKey === `unsched:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			data-dr-drop
+			data-dr-kind="unscheduled"
+			:data-dr-date="todayIso"
+		>
 			<header class="flex items-center justify-between gap-2 px-1 pb-2">
 				<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
 					Unscheduled <span class="text-ink-subtle">{{ unscheduled.length }}</span>
@@ -27,7 +34,13 @@
 				/>
 			</div>
 		</section>
-		<section>
+		<section
+			class="rounded-card transition-colors"
+			:class="hoverKey === `day:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			data-dr-drop
+			data-dr-kind="day-cell"
+			:data-dr-date="todayIso"
+		>
 			<header class="px-1 pb-2 text-[10px] font-bold uppercase tracking-wider text-brand">
 				Today <span class="text-ink-subtle">{{ scheduled.length }}</span>
 			</header>
@@ -51,6 +64,16 @@
 	import { computed } from 'vue';
 	import RoutineRow from '../RoutineRow.vue';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+
+	const { active, hoverKey } = useRoutineDrag();
+	const dragActive = computed(() => !!active.value);
+
+	function isoToday(): string {
+		const d = new Date();
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	}
+	const todayIso = isoToday();
 
 	const props = defineProps<{
 		entries: RoutineEntry[];

@@ -1,12 +1,14 @@
 <template>
 	<div
-		class="group relative flex items-center gap-3 overflow-hidden rounded-card border bg-surface px-3.5 py-3 shadow-tmgr-xs transition-all"
+		class="group relative flex items-center gap-3 overflow-hidden rounded-card border bg-surface px-3.5 py-3 shadow-tmgr-xs transition-all touch-none"
 		:class="[
 			selected
 				? 'border-brand bg-brand-bg shadow-tmgr-md'
 				: 'border-line hover:border-line-strong hover:shadow-tmgr-md cursor-pointer',
+			isBeingDragged ? 'opacity-30' : '',
 		]"
-		@click="$emit('select', entry)"
+		@click="onClick"
+		@pointerdown="onPointerDown($event, entry)"
 	>
 		<span
 			class="absolute left-0 top-0 bottom-0 w-[3px]"
@@ -88,13 +90,14 @@
 	import DRIcon from './DRIcon.vue';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { entryRecurrenceLabel } from '@/utils/dailyRoutines/recurrenceLabel';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 
 	const props = defineProps<{
 		entry: RoutineEntry;
 		selected?: boolean;
 	}>();
 
-	defineEmits<{
+	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
 		(e: 'delete', entry: RoutineEntry): void;
@@ -103,4 +106,17 @@
 	}>();
 
 	const frequencyLabel = computed(() => entryRecurrenceLabel(props.entry));
+
+	const { active, onPointerDown } = useRoutineDrag();
+	const isBeingDragged = computed(
+		() =>
+			active.value &&
+			active.value.task_id === props.entry.task_id &&
+			active.value.date === props.entry.date,
+	);
+
+	function onClick() {
+		if (active.value) return;
+		emit('select', props.entry);
+	}
 </script>

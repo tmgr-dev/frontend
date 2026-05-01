@@ -80,8 +80,35 @@
 							</div>
 						</ERSection>
 
+						<!-- Schedule mode (only for non-recurring) -->
+						<ERSection v-if="draft.frequency === 'NONE'" label="Schedule">
+							<label class="flex items-center gap-2 rounded-card border border-line bg-surface-sunken px-3 py-2.5 text-sm text-ink cursor-pointer">
+								<input
+									v-model="draft.unscheduled"
+									type="checkbox"
+									class="h-4 w-4 accent-brand"
+								/>
+								<span class="flex-1">Unscheduled (no specific date/time)</span>
+							</label>
+						</ERSection>
+
+						<!-- Date (non-recurring + scheduled) -->
+						<ERSection
+							v-if="draft.frequency === 'NONE' && !draft.unscheduled"
+							label="Date"
+						>
+							<input
+								v-model="draft.scheduledDate"
+								type="date"
+								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm text-ink outline-none focus:border-line-strong"
+							/>
+						</ERSection>
+
 						<!-- Time + Duration -->
-						<div class="grid grid-cols-2 gap-2.5">
+						<div
+							v-if="!(draft.frequency === 'NONE' && draft.unscheduled)"
+							class="grid grid-cols-2 gap-2.5"
+						>
 							<ERSection label="Time">
 								<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
 									<DRIcon name="clock" :size="13" :stroke="catColor" />
@@ -283,6 +310,8 @@
 		dayOfMonth: number;
 		month: number;
 		reminderMin: number | null;
+		unscheduled: boolean;
+		scheduledDate: string;
 	}
 
 	const props = defineProps<{
@@ -297,20 +326,50 @@
 
 	const titleRef = ref<HTMLInputElement | null>(null);
 
+	function todayIso(): string {
+		const d = new Date();
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+
+	function parseTimeStr(s: any): { h: number; m: number } | null {
+		if (typeof s !== 'string') return null;
+		const parts = s.split(':');
+		if (parts.length < 2) return null;
+		const h = parseInt(parts[0], 10);
+		const m = parseInt(parts[1], 10);
+		if (isNaN(h) || isNaN(m)) return null;
+		return { h, m };
+	}
+
+	const r = props.routine ?? {};
+	const initialFreq = (r.recurrence?.frequency ?? r.frequency ?? 'NONE') as RoutineFrequency;
+	const taskTime = parseTimeStr(r.scheduled_time);
+	const hasTime =
+		r.time?.h != null ||
+		r.recurrence?.time?.hours != null ||
+		taskTime !== null;
+	const hasDate = !!(r.scheduled_date || r._draftDate);
+	const isExistingNone = r.id != null && initialFreq === 'NONE';
+
 	const initial: RoutineDraft = {
-		id: props.routine?.id ?? null,
-		title: props.routine?.title ?? '',
-		description: props.routine?.description ?? '',
-		cat: (props.routine?.routine_category?.id ?? props.routine?.cat ?? 'none') as RoutineCategoryId,
-		timeH: props.routine?.time?.h ?? props.routine?.recurrence?.time?.hours ?? 9,
-		timeM: props.routine?.time?.m ?? props.routine?.recurrence?.time?.minutes ?? 0,
-		durationMin: props.routine?.recurrence?.duration_min ?? props.routine?.durationMin ?? 30,
-		frequency: (props.routine?.recurrence?.frequency ?? props.routine?.frequency ?? 'NONE') as RoutineFrequency,
-		interval: props.routine?.recurrence?.interval ?? 1,
-		daysOfWeek: dowsToIndices(props.routine?.recurrence?.days_of_week ?? []),
-		dayOfMonth: props.routine?.recurrence?.day_of_frequency ?? new Date().getDate(),
-		month: props.routine?.recurrence?.month ?? 0,
-		reminderMin: props.routine?.recurrence?.reminder_min ?? null,
+		id: r.id ?? null,
+		title: r.title ?? '',
+		description: r.description ?? '',
+		cat: (r.routine_category?.id ?? r.cat ?? 'none') as RoutineCategoryId,
+		timeH: r.time?.h ?? r.recurrence?.time?.hours ?? taskTime?.h ?? 9,
+		timeM: r.time?.m ?? r.recurrence?.time?.minutes ?? taskTime?.m ?? 0,
+		durationMin: r.recurrence?.duration_min ?? r.durationMin ?? 30,
+		frequency: initialFreq,
+		interval: r.recurrence?.interval ?? 1,
+		daysOfWeek: dowsToIndices(r.recurrence?.days_of_week ?? []),
+		dayOfMonth: r.recurrence?.day_of_frequency ?? new Date().getDate(),
+		month: r.recurrence?.month ?? 0,
+		reminderMin: r.recurrence?.reminder_min ?? null,
+		unscheduled: isExistingNone ? !hasTime && !hasDate : false,
+		scheduledDate: r.scheduled_date ?? r._draftDate ?? r.date ?? todayIso(),
 	};
 
 	const draft = reactive<RoutineDraft>(initial);

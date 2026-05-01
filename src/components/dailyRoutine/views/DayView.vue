@@ -1,8 +1,12 @@
 <template>
 	<div class="flex flex-1 flex-col gap-3 min-h-0">
 		<div
-			v-if="unscheduled.length"
-			class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto"
+			v-if="unscheduled.length || dragActive"
+			class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto rounded-card transition-colors"
+			:class="hoverKey === unschedHoverKey ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			data-dr-drop
+			data-dr-kind="unscheduled"
+			:data-dr-date="dateIso"
 		>
 			<div class="flex items-center justify-between gap-2 px-1">
 				<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
@@ -34,7 +38,14 @@
 			ref="scrollRef"
 			class="flex-1 overflow-auto rounded-card border border-line bg-surface"
 		>
-			<div class="relative cursor-pointer pl-14" :style="{ height: `${24 * HOUR_PX}px` }" @click="onCellClick($event)">
+			<div
+				class="relative cursor-pointer pl-14"
+				:style="{ height: `${24 * HOUR_PX}px` }"
+				data-dr-drop
+				data-dr-kind="hour-grid"
+				:data-dr-date="dateIso"
+				@click="onCellClick($event)"
+			>
 				<div
 					v-for="h in 24"
 					:key="h"
@@ -103,6 +114,10 @@
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+
+	const { active, hoverKey } = useRoutineDrag();
+	const dragActive = computed(() => !!active.value);
 
 	const props = defineProps<{
 		entries: RoutineEntry[];
@@ -142,6 +157,9 @@
 
 	const HOUR_PX = 56;
 	const scrollRef = ref<HTMLElement | null>(null);
+
+	const dateIso = computed(() => fmtIso(props.date));
+	const unschedHoverKey = computed(() => `unsched:${dateIso.value}`);
 
 	const isToday = computed(() => isSameDay(props.date, new Date()));
 	const nowOffset = computed(() => {
