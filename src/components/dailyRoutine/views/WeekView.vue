@@ -62,6 +62,7 @@
 						}"
 						:title="e.title"
 						@click="$emit('toggle', e)"
+						@contextmenu.prevent="$emit('context', { entry: e, x: $event.clientX, y: $event.clientY })"
 					>
 						{{ e.title }}
 						<button
@@ -133,6 +134,7 @@
 								mode="compact"
 								@toggle="$emit('toggle', item.event.source.entry)"
 								@edit="$emit('edit', item.event.source.entry)"
+								@context="$emit('context', $event)"
 							/>
 						</template>
 						<div
@@ -177,6 +179,7 @@
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
 		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	function onCellClick(e: MouseEvent, d: Date) {

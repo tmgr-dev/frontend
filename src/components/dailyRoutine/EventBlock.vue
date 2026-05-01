@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="dr-week-chip absolute cursor-pointer overflow-hidden rounded-md transition-opacity touch-none"
+		class="dr-week-chip absolute cursor-pointer overflow-hidden rounded-md transition-opacity"
 		:class="[
 			entry.completed ? 'opacity-50' : 'opacity-100',
 			isBeingDragged ? 'opacity-30' : '',
@@ -9,6 +9,7 @@
 		:title="`${entry.title} · ${entry.time} – ${endTimeStr}`"
 		@click="onClick"
 		@pointerdown="onPointerDown($event, entry)"
+		@contextmenu.prevent="$emit('context', { entry, x: $event.clientX, y: $event.clientY })"
 	>
 		<div
 			v-if="!isShort"
@@ -64,6 +65,7 @@
 	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	const { active, onPointerDown } = useRoutineDrag();

@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="group relative flex items-center gap-3 overflow-hidden rounded-card border bg-surface px-3.5 py-3 shadow-tmgr-xs transition-all touch-none"
+		class="relative flex items-center gap-3 overflow-hidden rounded-card border bg-surface px-3.5 py-3 shadow-tmgr-xs transition-all"
 		:class="[
 			selected
 				? 'border-brand bg-brand-bg shadow-tmgr-md'
@@ -9,6 +9,7 @@
 		]"
 		@click="onClick"
 		@pointerdown="onPointerDown($event, entry)"
+		@contextmenu.prevent="$emit('context', { entry, x: $event.clientX, y: $event.clientY })"
 	>
 		<span
 			class="absolute left-0 top-0 bottom-0 w-[3px]"
@@ -58,29 +59,11 @@
 
 		<button
 			type="button"
-			class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-brand group-hover:opacity-100"
-			title="Edit"
-			@click.stop="$emit('edit', entry)"
+			class="hidden h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-brand md:flex"
+			title="More (right-click for menu)"
+			@click.stop="$emit('context', { entry, x: $event.clientX, y: $event.clientY })"
 		>
 			<DRIcon name="pencil" :size="13" stroke="currentColor" />
-		</button>
-
-		<button
-			type="button"
-			class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-brand group-hover:opacity-100"
-			title="Archive"
-			@click.stop="$emit('archive', entry)"
-		>
-			<DRIcon name="archive" :size="13" stroke="currentColor" />
-		</button>
-
-		<button
-			type="button"
-			class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle opacity-0 transition-opacity hover:bg-status-fix-bg hover:text-status-fix-fg group-hover:opacity-100"
-			title="Delete"
-			@click.stop="$emit('delete', entry)"
-		>
-			<DRIcon name="trash" :size="13" stroke="currentColor" />
 		</button>
 	</div>
 </template>
@@ -103,6 +86,7 @@
 		(e: 'delete', entry: RoutineEntry): void;
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	const frequencyLabel = computed(() => entryRecurrenceLabel(props.entry));

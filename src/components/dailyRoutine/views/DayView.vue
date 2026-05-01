@@ -31,6 +31,7 @@
 				@delete="$emit('delete', e)"
 				@archive="$emit('archive', e)"
 				@select="$emit('select', e)"
+				@context="$emit('context', $event)"
 			/>
 		</div>
 
@@ -99,6 +100,7 @@
 						mode="full"
 						@toggle="$emit('toggle', item.event.source.entry)"
 						@edit="$emit('edit', item.event.source.entry)"
+						@context="$emit('context', $event)"
 					/>
 				</template>
 			</div>
@@ -133,6 +135,7 @@
 		(e: 'archive', entry: RoutineEntry): void;
 		(e: 'archive-done-unscheduled'): void;
 		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	function fmtIso(d: Date): string {
