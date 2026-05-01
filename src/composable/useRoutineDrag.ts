@@ -2,6 +2,7 @@ import { onBeforeUnmount, ref } from 'vue';
 import type { RoutineEntry } from '@/types/dailyRoutine';
 
 const LONG_PRESS_MS = 250;
+const TOUCH_HOLD_MS = 350;
 const MOVE_THRESHOLD = 5;
 
 export type DropPayload = {
@@ -14,6 +15,7 @@ export type DropPayload = {
 type DragState = {
 	entry: RoutineEntry;
 	pointerId: number;
+	pointerType: string;
 	x: number;
 	y: number;
 	ghostEl: HTMLElement | null;
@@ -25,6 +27,7 @@ const hoverKey = ref<string | null>(null);
 let state: DragState | null = null;
 let pressTimer: number | null = null;
 let dropHandler: ((entry: RoutineEntry, payload: DropPayload) => void) | null = null;
+let editHandler: ((entry: RoutineEntry) => void) | null = null;
 let canceled = false;
 
 function fmtIso(d: Date): string {
@@ -160,6 +163,10 @@ export function useRoutineDrag() {
 		dropHandler = fn;
 	}
 
+	function setEditHandler(fn: (entry: RoutineEntry) => void) {
+		editHandler = fn;
+	}
+
 	function onPointerDown(e: PointerEvent, entry: RoutineEntry, srcEl?: HTMLElement) {
 		if (e.button != null && e.button !== 0) return;
 		if (active.value) return;
@@ -169,9 +176,11 @@ export function useRoutineDrag() {
 		}
 		const el = (srcEl ?? (e.currentTarget as HTMLElement)) || null;
 		if (!el) return;
+		const pointerType = e.pointerType || 'mouse';
 		state = {
 			entry,
 			pointerId: e.pointerId,
+			pointerType,
 			x: e.clientX,
 			y: e.clientY,
 			ghostEl: null,
@@ -180,9 +189,20 @@ export function useRoutineDrag() {
 		document.addEventListener('pointermove', onPointerMove, { passive: false });
 		document.addEventListener('pointerup', onPointerUp);
 		document.addEventListener('pointercancel', onPointerCancel);
+		const isTouch = pointerType === 'touch';
+		const delay = isTouch ? TOUCH_HOLD_MS : LONG_PRESS_MS;
 		pressTimer = window.setTimeout(() => {
 			if (!state) return;
 			if (canceled) return;
+			if (isTouch) {
+				// touch hold → open edit modal, no drag
+				const ent = state.entry;
+				cleanup();
+				active.value = null;
+				hoverKey.value = null;
+				if (editHandler) editHandler(ent);
+				return;
+			}
 			active.value = entry;
 			document.body.style.userSelect = 'none';
 			state.ghostEl = buildGhost(el);
@@ -190,7 +210,7 @@ export function useRoutineDrag() {
 				try { navigator.vibrate(15); } catch {}
 			}
 			moveGhost(state.x, state.y);
-		}, LONG_PRESS_MS);
+		}, delay);
 	}
 
 	onBeforeUnmount(() => {
@@ -202,6 +222,7 @@ export function useRoutineDrag() {
 		hoverKey,
 		onPointerDown,
 		setDropHandler,
+		setEditHandler,
 		fmtIso,
 	};
 }

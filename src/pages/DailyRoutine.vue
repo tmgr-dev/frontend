@@ -116,6 +116,7 @@
 									@delete="onDelete"
 									@archive="onArchive"
 									@select="onEdit"
+									@context="onContext"
 								/>
 							</div>
 
@@ -128,6 +129,7 @@
 								@archive="onArchive"
 								@archive-done-unscheduled="onArchiveDoneUnscheduled"
 								@select="onEdit"
+								@context="onContext"
 							/>
 							<DayView
 								v-else-if="view === 'day'"
@@ -141,6 +143,7 @@
 								@archive-done-unscheduled="onArchiveDoneUnscheduled"
 								@create="onCreateAt"
 								@select="onEdit"
+								@context="onContext"
 							/>
 							<WeekView
 								v-else-if="view === 'week'"
@@ -151,6 +154,7 @@
 								@toggle="onToggle"
 								@edit="onEdit"
 								@create="onCreateAt"
+								@context="onContext"
 							/>
 							<MonthView
 								v-else-if="view === 'month'"
@@ -160,6 +164,7 @@
 								@toggle="onToggle"
 								@select-day="onSelectDay"
 								@create="onCreateAt"
+								@context="onContext"
 							/>
 							<YearView
 								v-else-if="view === 'year'"
@@ -177,6 +182,17 @@
 						@close="editingRoutine = null"
 						@save="onSaveRoutine"
 						@delete="onDeleteRoutine"
+					/>
+
+					<RoutineContextMenu
+						v-if="contextMenu"
+						:entry="contextMenu.entry"
+						:x="contextMenu.x"
+						:y="contextMenu.y"
+						@close="contextMenu = null"
+						@edit="onEdit"
+						@archive="onArchive"
+						@delete="onDelete"
 					/>
 
 					<button
@@ -221,6 +237,7 @@
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
+	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
 	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
 	import ListView from '@/components/dailyRoutine/views/ListView.vue';
 	import DayView from '@/components/dailyRoutine/views/DayView.vue';
@@ -250,7 +267,7 @@
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
 
-	const { setDropHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
+	const { setDropHandler, setEditHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!dragActiveRef.value);
 	setDropHandler(async (entry, payload) => {
 		await onMoveRoutine({
@@ -261,6 +278,14 @@
 			allDay: payload.allDay,
 		});
 	});
+	setEditHandler(entry => {
+		onEdit(entry as RoutineEntry);
+	});
+
+	const contextMenu = ref<{ entry: RoutineEntry; x: number; y: number } | null>(null);
+	function onContext(payload: { entry: RoutineEntry; x: number; y: number }) {
+		contextMenu.value = payload;
+	}
 
 	const entries = computed<RoutineEntry[]>(() => store.state.dailyRoutines.entries);
 	const yearStats = computed(() => store.state.dailyRoutines.yearStats);

@@ -53,6 +53,7 @@
 					}"
 					:title="e.title"
 					@click.stop="$emit('toggle', e)"
+					@contextmenu.prevent.stop="$emit('context', { entry: e, x: $event.clientX, y: $event.clientY })"
 				>
 					<span v-if="e.time" class="text-[10px] tabular-nums text-ink-subtle dark:text-white/60">{{ e.time }}</span>
 					<span class="truncate">{{ e.title }}</span>
@@ -86,6 +87,7 @@
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'select-day', date: Date): void;
 		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	function fmtIso(d: Date): string {

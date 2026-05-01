@@ -31,6 +31,7 @@
 					@delete="$emit('delete', e)"
 					@archive="$emit('archive', e)"
 					@select="$emit('select', e)"
+					@context="$emit('context', $event)"
 				/>
 			</div>
 		</section>
@@ -54,6 +55,7 @@
 					@delete="$emit('delete', e)"
 					@archive="$emit('archive', e)"
 					@select="$emit('select', e)"
+					@context="$emit('context', $event)"
 				/>
 			</div>
 		</section>
@@ -86,6 +88,7 @@
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
 		(e: 'archive-done-unscheduled'): void;
+		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
 	}>();
 
 	const unscheduled = computed(() =>
