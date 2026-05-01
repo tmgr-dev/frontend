@@ -20,12 +20,16 @@
 			<div
 				v-for="(d, i) in days"
 				:key="i"
-				class="flex min-h-0 cursor-pointer flex-col gap-0.5 overflow-hidden p-1.5"
+				class="flex min-h-0 cursor-pointer flex-col gap-0.5 overflow-hidden p-1.5 transition-colors"
 				:class="[
 					i % 7 === 0 ? '' : 'border-l border-line',
 					i < 7 ? '' : 'border-t border-line',
+					hoverKey === `day:${fmtIso(d)}` ? 'bg-brand/15 ring-1 ring-brand/40 ring-inset' : '',
 				]"
 				:style="cellStyle(d)"
+				data-dr-drop
+				data-dr-kind="day-cell"
+				:data-dr-date="fmtIso(d)"
 				@click="onCellClick($event, d)"
 			>
 				<div class="flex items-center justify-end text-xs tabular-nums" :style="dayLabelStyle(d)">
@@ -66,6 +70,9 @@
 	import { addDays, isSameDay, startOfMonth, startOfWeek } from '@/utils/dailyRoutines/dateHelpers';
 	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+
+	const { hoverKey } = useRoutineDrag();
 
 	const today = new Date();
 

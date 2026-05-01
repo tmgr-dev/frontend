@@ -1,10 +1,14 @@
 <template>
 	<div
-		class="dr-week-chip absolute cursor-pointer overflow-hidden rounded-md transition-opacity"
-		:class="entry.completed ? 'opacity-50' : 'opacity-100'"
+		class="dr-week-chip absolute cursor-pointer overflow-hidden rounded-md transition-opacity touch-none"
+		:class="[
+			entry.completed ? 'opacity-50' : 'opacity-100',
+			isBeingDragged ? 'opacity-30' : '',
+		]"
 		:style="blockStyle"
 		:title="`${entry.title} · ${entry.time} – ${endTimeStr}`"
-		@click="$emit('toggle', entry)"
+		@click="onClick"
+		@pointerdown="onPointerDown($event, entry)"
 	>
 		<div
 			v-if="!isShort"
@@ -48,6 +52,8 @@
 
 	const HOUR_PX = 56;
 
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+
 	const props = defineProps<{
 		entry: RoutineEntry;
 		startMin: number;
@@ -55,10 +61,23 @@
 		mode: 'full' | 'compact';
 	}>();
 
-	defineEmits<{
+	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
 	}>();
+
+	const { active, onPointerDown } = useRoutineDrag();
+	const isBeingDragged = computed(
+		() =>
+			active.value &&
+			active.value.task_id === props.entry.task_id &&
+			active.value.date === props.entry.date,
+	);
+
+	function onClick() {
+		if (active.value) return;
+		emit('toggle', props.entry);
+	}
 
 	const top = computed(() => (props.startMin / 60) * HOUR_PX);
 	const height = computed(() => Math.max(24, ((props.endMin - props.startMin) / 60) * HOUR_PX - 2));

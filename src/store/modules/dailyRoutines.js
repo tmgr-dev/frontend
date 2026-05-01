@@ -10,6 +10,7 @@ import {
 	deleteDailyTaskInstance,
 	completeDailyTaskInstance,
 	archiveDailyTask,
+	updateDailyTask,
 } from '@/actions/tmgr/daily-tasks';
 
 function fmtDate(d) {
@@ -100,6 +101,48 @@ const dailyRoutinesModule = {
 			const scheduledFor = `${newDate} ${time.length === 5 ? time + ':00' : time}`;
 			const instanceId = entry.instance_id ?? 'virtual';
 			await rescheduleRoutineInstance(entry.task_id, instanceId, scheduledFor);
+			if (state.lastRange.from && state.lastRange.to) {
+				await dispatch('loadRange', state.lastRange);
+			}
+		},
+		async moveRoutine({ dispatch, state, rootState }, { entry, date, timeH, timeM, allDay }) {
+			const isRecurring = entry.frequency && entry.frequency !== 'NONE';
+			if (allDay && isRecurring) {
+				return;
+			}
+			if (isRecurring) {
+				const time = timeH != null
+					? `${String(timeH).padStart(2, '0')}:${String(timeM ?? 0).padStart(2, '0')}`
+					: entry.time || '09:00';
+				const scheduledFor = `${date} ${time.length === 5 ? time + ':00' : time}`;
+				const instanceId = entry.instance_id ?? 'virtual';
+				await rescheduleRoutineInstance(entry.task_id, instanceId, scheduledFor);
+			} else {
+				const payload = {
+					title: entry.title,
+					description: entry.description || '',
+					user_id: rootState?.user?.id,
+					is_daily_routine: true,
+					is_recurring: false,
+					routine_category: entry.routine_category?.id ?? entry.routine_category ?? 'none',
+				};
+				if (allDay) {
+					payload.scheduled_date = date;
+					payload.scheduled_time = null;
+				} else if (timeH != null) {
+					payload.scheduled_date = date;
+					payload.scheduled_time = { hours: timeH, minutes: timeM ?? 0 };
+				} else {
+					payload.scheduled_date = date;
+					if (entry.time) {
+						const [h, m] = entry.time.split(':').map(Number);
+						payload.scheduled_time = { hours: h, minutes: m };
+					} else {
+						payload.scheduled_time = null;
+					}
+				}
+				await updateDailyTask(entry.task_id, payload);
+			}
 			if (state.lastRange.from && state.lastRange.to) {
 				await dispatch('loadRange', state.lastRange);
 			}

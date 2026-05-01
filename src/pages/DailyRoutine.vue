@@ -86,8 +86,12 @@
 						<template v-else>
 							<!-- Unscheduled section (visible above all calendar views) -->
 							<div
-								v-if="view !== 'list' && view !== 'day' && unscheduledEntries.length"
-								class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto"
+								v-if="view !== 'list' && view !== 'day' && (unscheduledEntries.length || dragActive)"
+								class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto rounded-card transition-colors"
+								:class="dragHoverKey === `unsched:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+								data-dr-drop
+								data-dr-kind="unscheduled"
+								:data-dr-date="todayIso"
 							>
 								<div class="flex items-center justify-between gap-2 px-1">
 									<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
@@ -200,6 +204,7 @@
 	import { CalendarCheck, Plus, Upload, Download } from 'lucide-vue-next';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import {
 		addDays,
 		fmtDate,
@@ -232,6 +237,18 @@
 	const view = ref<ViewId>('list');
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
+
+	const { setDropHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
+	const dragActive = computed(() => !!dragActiveRef.value);
+	setDropHandler(async (entry, payload) => {
+		await onMoveRoutine({
+			entry,
+			date: payload.date,
+			timeH: payload.timeH,
+			timeM: payload.timeM,
+			allDay: payload.allDay,
+		});
+	});
 
 	const entries = computed<RoutineEntry[]>(() => store.state.dailyRoutines.entries);
 	const yearStats = computed(() => store.state.dailyRoutines.yearStats);
@@ -421,15 +438,16 @@
 	async function onSaveRoutine(draft: any) {
 		const dowKeys = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 		const time = `${String(draft.timeH).padStart(2, '0')}:${String(draft.timeM).padStart(2, '0')}`;
+		const isRecurring = draft.frequency !== 'NONE';
+		const isUnscheduled = !isRecurring && !!draft.unscheduled;
 		const payload: any = {
 			title: draft.title,
 			description: draft.description,
 			routine_category: draft.cat,
 			is_daily_routine: true,
-			is_recurring: draft.frequency !== 'NONE',
-			scheduled_time: { hours: draft.timeH, minutes: draft.timeM },
+			is_recurring: isRecurring,
 		};
-		if (draft.frequency !== 'NONE') {
+		if (isRecurring) {
 			payload.recurrence = {
 				frequency: draft.frequency,
 				interval: draft.interval || 1,
@@ -440,23 +458,34 @@
 				duration_min: draft.durationMin,
 				reminder_min: draft.reminderMin,
 			};
+		} else if (isUnscheduled) {
+			payload.scheduled_date = null;
+			payload.scheduled_time = null;
+		} else {
+			payload.scheduled_date = draft.scheduledDate || todayIso.value;
+			payload.scheduled_time = { hours: draft.timeH, minutes: draft.timeM };
 		}
 		if (draft.id) {
 			await updateDailyTask(draft.id, payload);
 		} else {
-			const draftDate = editingRoutine.value?._draftDate;
+			const draftDate = isUnscheduled ? undefined : (draft.scheduledDate || editingRoutine.value?._draftDate);
 			const created = await quickCreateRoutine({
 				title: draft.title,
 				date: draftDate,
-				time,
+				time: isUnscheduled ? undefined : time,
 				category: draft.cat,
 			});
 			const newId = created?.id ?? created?.task_id;
-			if (newId && (draft.frequency !== 'NONE' || draft.description)) {
+			if (newId && (isRecurring || draft.description || isUnscheduled)) {
 				await updateDailyTask(newId, payload);
 			}
 		}
 		editingRoutine.value = null;
+		await reload();
+	}
+
+	async function onMoveRoutine(payload: { entry: RoutineEntry; date: string; timeH?: number; timeM?: number; allDay?: boolean }) {
+		await store.dispatch('dailyRoutines/moveRoutine', payload);
 		await reload();
 	}
 
@@ -475,8 +504,11 @@
 		if (!file) return;
 		const result = await store.dispatch('dailyRoutines/importIcs', { file, mode: 'skip' });
 		input.value = '';
+		const errs = Array.isArray(result.errors) && result.errors.length
+			? `\nErrors:\n- ${result.errors.slice(0, 5).join('\n- ')}`
+			: '';
 		// eslint-disable-next-line no-alert
-		alert(`Imported ${result.created}, skipped ${result.skipped}, replaced ${result.replaced}.`);
+		alert(`Imported ${result.created}, skipped ${result.skipped}, replaced ${result.replaced}.${errs}`);
 		await reload();
 	}
 	async function onExport() {

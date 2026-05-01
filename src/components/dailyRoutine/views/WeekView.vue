@@ -30,9 +30,9 @@
 
 			<!-- All-day row -->
 			<div
-				v-if="hasAllDay"
+				v-if="hasAllDay || dragActive"
 				class="grid border-b border-line"
-				:style="{ gridTemplateColumns: gridCols, minHeight: `${32 + maxAllDay * 22}px`, minWidth: innerMinWidth }"
+				:style="{ gridTemplateColumns: gridCols, minHeight: `${32 + Math.max(maxAllDay,1) * 22}px`, minWidth: innerMinWidth }"
 			>
 				<div class="pr-2 pt-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle">
 					ALL-DAY
@@ -40,9 +40,15 @@
 				<div
 					v-for="(d, i) in days"
 					:key="i"
-					class="flex flex-col gap-0.5 p-1"
-					:class="i === 0 ? '' : 'border-l border-line'"
+					class="flex flex-col gap-0.5 p-1 transition-colors"
+					:class="[
+						i === 0 ? '' : 'border-l border-line',
+						hoverKey === `unsched:${fmtIso(d)}` ? 'bg-brand/15 ring-1 ring-brand/40' : '',
+					]"
 					:style="isSameDay(d, today) ? { background: 'rgba(232,133,125,.08)' } : undefined"
+					data-dr-drop
+					data-dr-kind="all-day"
+					:data-dr-date="fmtIso(d)"
 				>
 					<div
 						v-for="e in allDayByDay[i]"
@@ -94,6 +100,9 @@
 						:key="i"
 						class="relative cursor-pointer border-l border-line"
 						:style="isSameDay(d, today) ? { background: 'rgba(232,133,125,.08)' } : undefined"
+						data-dr-drop
+						data-dr-kind="hour-grid"
+						:data-dr-date="fmtIso(d)"
 						@click="onCellClick($event, d)"
 					>
 						<div
@@ -149,6 +158,10 @@
 	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+
+	const { active, hoverKey } = useRoutineDrag();
+	const dragActive = computed(() => !!active.value);
 
 	const HOUR_PX = 56;
 	const today = new Date();

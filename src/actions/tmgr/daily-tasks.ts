@@ -85,9 +85,10 @@ export const updateDailyTask = async (
 			settings: data.settings || null,
 			is_daily_routine: true,
 			is_recurring: data.is_recurring || false,
-			scheduled_date: data.scheduled_date || null,
-			scheduled_time: data.scheduled_time || null
 		};
+		if ('routine_category' in data) payload.routine_category = data.routine_category;
+		if ('scheduled_date' in data) payload.scheduled_date = data.scheduled_date;
+		if ('scheduled_time' in data) payload.scheduled_time = data.scheduled_time;
 
 		// Only include recurrence if is_recurring is true
 		if (data.is_recurring && data.recurrence) {
@@ -214,9 +215,7 @@ export const importRoutinesIcs = async (
 	const fd = new FormData();
 	fd.append('file', file);
 	fd.append('mode', mode);
-	const { data } = await $axios.post('daily-routines/ics/import', fd, {
-		headers: { 'Content-Type': 'multipart/form-data' },
-	});
+	const { data } = await $axios.post('daily-routines/ics/import', fd);
 	return data as IcsImportResult;
 };
 
