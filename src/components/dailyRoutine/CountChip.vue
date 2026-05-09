@@ -1,12 +1,12 @@
 <template>
-	<div class="rounded-card border border-line bg-surface px-3 py-1.5 text-center" style="min-width: 64px">
-		<div
-			class="text-base font-bold leading-tight tabular-nums"
+	<div class="flex h-8 items-center gap-1.5 rounded-pill border border-line bg-surface px-3">
+		<span
+			class="text-sm font-bold tabular-nums leading-none"
 			:style="color ? { color } : undefined"
 		>
 			{{ n }}
-		</div>
-		<div class="mt-0.5 text-[10px] font-bold tracking-wider text-ink-subtle">{{ label }}</div>
+		</span>
+		<span class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{{ label }}</span>
 	</div>
 </template>
 

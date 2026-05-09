@@ -14,47 +14,47 @@
 				<div ref="rootRef" class="relative flex h-full flex-col overflow-hidden pb-10">
 					<!-- Top toolbar -->
 					<div class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4">
+						<!-- Row 1: Quick-add (full width on mobile; chips + import/export inline on desktop) -->
 						<div class="flex flex-wrap items-center gap-2.5">
-							<div
-								class="flex flex-1 items-center gap-2 rounded-card border border-line bg-surface px-3 py-1.5 shadow-tmgr-xs"
-							>
-								<input
-									v-model="quickTitle"
-									:placeholder="isMobile ? 'Add routine…' : 'Enter your routine (enter to add new task)'"
-									class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
-									@keyup.enter="onQuickAdd"
-								/>
-								<button
-									type="button"
-									class="h-8 shrink-0 rounded-pill bg-brand px-3.5 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover"
-									@click="onQuickAdd"
+							<div class="flex min-w-0 flex-1 flex-col gap-1">
+								<div
+									class="flex items-center gap-2 rounded-card border bg-surface px-3 py-1.5 shadow-tmgr-xs transition-colors"
+									:class="quickFocused ? 'border-brand ring-2 ring-brand/30' : 'border-line'"
 								>
-									{{ isMobile ? 'Add' : 'Add Task' }}
-								</button>
+									<Inbox :size="16" stroke-width="2" class="shrink-0 text-ink-subtle" />
+									<input
+										ref="quickInputRef"
+										v-model="quickTitle"
+										:placeholder="isMobile ? 'Quick add…' : 'Quick add → Unscheduled'"
+										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
+										@focus="quickFocused = true"
+										@blur="quickFocused = false"
+										@keyup.enter="onQuickAdd"
+										@keydown.esc="onQuickEsc"
+									/>
+									<kbd
+										v-if="!isMobile && !quickTitle"
+										class="hidden shrink-0 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-subtle md:inline-flex"
+									>/</kbd>
+									<button
+										type="button"
+										class="flex h-8 shrink-0 items-center gap-1 rounded-pill bg-brand px-3 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+										:disabled="!quickTitle.trim()"
+										@click="onQuickAdd"
+									>
+										<span>Add</span>
+										<kbd class="rounded border border-white/30 px-1 font-mono text-[10px] leading-none">↵</kbd>
+									</button>
+								</div>
+								<div
+									v-if="!isMobile"
+									class="pl-1 text-[10px] text-ink-subtle transition-opacity"
+									:class="quickFocused ? 'opacity-100' : 'opacity-0'"
+									aria-hidden="true"
+								>
+									Adds to <span class="font-semibold text-ink">Unscheduled</span> — schedule later from list
+								</div>
 							</div>
-							<div class="flex shrink-0 gap-1.5">
-								<CountChip :n="counts.routines" label="ROUTINES" />
-								<CountChip :n="counts.completed" label="DONE" :color="'#22c55e'" />
-								<CountChip v-if="!isMobile" :n="counts.archived" label="ARCHIVED" />
-							</div>
-							<button
-								type="button"
-								class="flex h-8 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-								title="Import .ics calendar"
-								@click="triggerImport"
-							>
-								<Upload :size="14" stroke-width="2" />
-								<span v-if="!isMobile">Import</span>
-							</button>
-							<button
-								type="button"
-								class="flex h-8 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-								title="Export .ics calendar"
-								@click="onExport"
-							>
-								<Download :size="14" stroke-width="2" />
-								<span v-if="!isMobile">Export</span>
-							</button>
 							<input
 								ref="fileRef"
 								type="file"
@@ -64,8 +64,72 @@
 							/>
 						</div>
 
+						<!-- Mobile only: stats chip strip (horizontal scroll) -->
+						<div
+							v-if="isMobile"
+							class="flex shrink-0 gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none]"
+						>
+							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
+								<span class="text-sm font-bold tabular-nums text-ink">{{ counts.routines }}</span>
+								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Routines</span>
+							</div>
+							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
+								<span class="text-sm font-bold tabular-nums" style="color: #22c55e">{{ counts.completed }}</span>
+								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Done</span>
+							</div>
+							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
+								<span class="text-sm font-bold tabular-nums text-ink">{{ counts.archived }}</span>
+								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Archived</span>
+							</div>
+						</div>
+
+						<!-- Row: View switcher + chips/Import/Export (desktop) or Import/Export icons (mobile) + Today/nav/date when not list -->
 						<div class="flex items-center gap-3 overflow-x-auto pb-1">
 							<ViewSwitcher v-model="view" :compact="isTablet" />
+							<template v-if="!isMobile">
+								<div class="flex-1" />
+								<div class="flex shrink-0 gap-1.5">
+									<CountChip :n="counts.routines" label="ROUTINES" />
+									<CountChip :n="counts.completed" label="DONE" :color="'#22c55e'" />
+									<CountChip :n="counts.archived" label="ARCHIVED" />
+								</div>
+								<button
+									type="button"
+									class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+									title="Import .ics calendar"
+									@click="triggerImport"
+								>
+									<Upload :size="14" stroke-width="2" />
+									<span>Import</span>
+								</button>
+								<button
+									type="button"
+									class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+									title="Export .ics calendar"
+									@click="onExport"
+								>
+									<Download :size="14" stroke-width="2" />
+									<span>Export</span>
+								</button>
+							</template>
+							<template v-if="isMobile">
+								<button
+									type="button"
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
+									title="Import .ics"
+									@click="triggerImport"
+								>
+									<Upload :size="14" stroke-width="2" />
+								</button>
+								<button
+									type="button"
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
+									title="Export .ics"
+									@click="onExport"
+								>
+									<Download :size="14" stroke-width="2" />
+								</button>
+							</template>
 							<template v-if="view !== 'list'">
 								<button
 									type="button"
@@ -234,7 +298,7 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
 	import { SkeletonListItem } from '@/components/ui/skeleton';
-	import { CalendarCheck, Plus, Upload, Download } from 'lucide-vue-next';
+	import { CalendarCheck, Plus, Upload, Download, Inbox } from 'lucide-vue-next';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
@@ -284,6 +348,8 @@
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
 	const quickTitle = ref('');
+	const quickFocused = ref(false);
+	const quickInputRef = ref<HTMLInputElement | null>(null);
 
 	const { setDropHandler, setEditHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!dragActiveRef.value);
@@ -420,6 +486,11 @@
 		await reload();
 	}
 
+	function onQuickEsc() {
+		quickTitle.value = '';
+		quickInputRef.value?.blur();
+	}
+
 	function onNewRoutine() {
 		const now = new Date();
 		const h = now.getHours();
@@ -447,6 +518,10 @@
 		if (e.key === 'n' || e.key === 'N') {
 			e.preventDefault();
 			onNewRoutine();
+		}
+		if (e.key === '/') {
+			e.preventDefault();
+			quickInputRef.value?.focus();
 		}
 	}
 
