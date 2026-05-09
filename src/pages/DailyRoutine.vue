@@ -15,7 +15,24 @@
 					<!-- Top toolbar -->
 					<div class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4">
 						<div class="flex flex-wrap items-center gap-2.5">
-							<div class="flex flex-1 shrink-0 gap-1.5">
+							<div
+								class="flex flex-1 items-center gap-2 rounded-card border border-line bg-surface px-3 py-1.5 shadow-tmgr-xs"
+							>
+								<input
+									v-model="quickTitle"
+									:placeholder="isMobile ? 'Add routine…' : 'Enter your routine (enter to add new task)'"
+									class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+									@keyup.enter="onQuickAdd"
+								/>
+								<button
+									type="button"
+									class="h-8 shrink-0 rounded-pill bg-brand px-3.5 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover"
+									@click="onQuickAdd"
+								>
+									{{ isMobile ? 'Add' : 'Add Task' }}
+								</button>
+							</div>
+							<div class="flex shrink-0 gap-1.5">
 								<CountChip :n="counts.routines" label="ROUTINES" />
 								<CountChip :n="counts.completed" label="DONE" :color="'#22c55e'" />
 								<CountChip v-if="!isMobile" :n="counts.archived" label="ARCHIVED" />
@@ -266,6 +283,7 @@
 	});
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
+	const quickTitle = ref('');
 
 	const { setDropHandler, setEditHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!dragActiveRef.value);
@@ -393,6 +411,14 @@
 	onBeforeUnmount(() => {
 		window.removeEventListener('keydown', onShortcutKey);
 	});
+
+	async function onQuickAdd() {
+		const title = quickTitle.value.trim();
+		if (!title) return;
+		await quickCreateRoutine({ title });
+		quickTitle.value = '';
+		await reload();
+	}
 
 	function onNewRoutine() {
 		const now = new Date();
