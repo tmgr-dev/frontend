@@ -64,10 +64,11 @@
 		methods: {
 			async saveUser() {
 				try {
-					this.user = updateUser(this.user);
+					const updated = await updateUser(this.user);
+					if (updated && typeof updated === 'object') this.user = { ...this.user, ...updated };
 					this.showAlert('Saved', 'User data saved');
 				} catch (error) {
-					this.errors = error.response.data.errors;
+					this.errors = error.response?.data?.errors ?? {};
 				}
 			},
 		},
