@@ -93,8 +93,7 @@ const iconComponent = computed(() => props.icon || Lock);
 const isEnabled = computed(() => isFeatureEnabled(props.featureKey));
 
 const currentWorkspaceId = computed(() => {
-	const setting = store.state.user?.settings?.find((s: any) => s.key === 'current_workspace');
-	return setting?.value;
+	return store.getters.currentWorkspaceId;
 });
 
 const enableFeature = async () => {
@@ -112,4 +111,3 @@ const enableFeature = async () => {
 	}
 };
 </script>
-

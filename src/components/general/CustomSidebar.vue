@@ -221,13 +221,10 @@
 			);
 
 			// Update settings in backend
-			await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+			const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
 			
-			// Update store without a page reload
-			store.commit('setUser', {
-				...store.state.user,
-				settings: settingsWithUpdatedWorkspace
-			});
+			// Update store without a page reload, preserving full setting metadata.
+			store.commit('setUser', updatedUser);
 			
 			// Update the workspace setting directly
 			store.commit('updateUserWorkspaceSetting', {

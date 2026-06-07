@@ -53,9 +53,7 @@ const router = useRouter();
 const getCurrentWorkspaceId = (): number => {
   try {
     if (store.state.workspaces?.length) {
-      const currentWorkspaceId = store.state.user?.settings?.find(
-        (setting: { key: string, value: any }) => setting.key === 'current_workspace'
-      )?.value;
+      const currentWorkspaceId = store.getters.currentWorkspaceId;
       
       if (currentWorkspaceId) {
         const currentWorkspace = store.state.workspaces.find(
@@ -65,6 +63,18 @@ const getCurrentWorkspaceId = (): number => {
         
         if (currentWorkspace?.id) {
           return Number(currentWorkspace.id);
+        }
+      }
+
+      const routeWorkspaceCode = route.params.workspace_code;
+      if (routeWorkspaceCode) {
+        const routeWorkspace = store.state.workspaces.find(
+          (workspace: { id: number, name: string, code: string }) =>
+            workspace.code === routeWorkspaceCode
+        );
+
+        if (routeWorkspace?.id) {
+          return Number(routeWorkspace.id);
         }
       }
       

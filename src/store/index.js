@@ -98,10 +98,34 @@ const mutations = {
 		state.token = token;
 	},
 	setUser(state, user) {
-		state.user = user;
+		const nextUser = { ...user };
+		if (Array.isArray(nextUser.settings)) {
+			const previousSettingsById = Array.isArray(state.user?.settings)
+				? state.user.settings.reduce((acc, setting) => {
+					if (setting?.id) {
+						acc[setting.id] = setting;
+					}
+					return acc;
+				}, {})
+				: {};
+
+			nextUser.settings = nextUser.settings.map((setting) => {
+				if (setting?.key || !setting?.id || !previousSettingsById[setting.id]) {
+					return setting;
+				}
+				return {
+					...previousSettingsById[setting.id],
+					...setting,
+				};
+			});
+		}
+
+		state.user = nextUser;
 		if (user && user.settings && Array.isArray(user.settings)) {
-			state.userSettingsMap = user.settings.reduce((acc, setting) => {
-				acc[setting.key] = setting;
+			state.userSettingsMap = state.user.settings.reduce((acc, setting) => {
+				if (setting?.key) {
+					acc[setting.key] = setting;
+				}
 				return acc;
 			}, {});
 		}

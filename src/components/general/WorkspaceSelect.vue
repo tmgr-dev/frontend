@@ -40,7 +40,9 @@
 				},
 			);
 
-			await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+			const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+			store.commit('setUser', updatedUser);
+			store.commit('updateUserWorkspaceSetting', { workspaceId });
 			store.commit('rerenderApp');
 		} catch (error) {
 			console.error('Failed to update workspace:', error);
