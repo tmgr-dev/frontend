@@ -16,7 +16,9 @@ export async function getGitHubBranches(taskId: number, search?: string): Promis
 
 export async function getCursorAgents(taskId: number): Promise<CursorAgent[]> {
   const response = await $axios.get(`/tasks/${taskId}/cursor-agent`);
-  return response.data.agents;
+  const body = response.data;
+  if (Array.isArray(body)) return body as CursorAgent[];
+  return (body?.agents ?? body?.data ?? []) as CursorAgent[];
 }
 
 export async function stopCursorAgent(taskId: number, agentId: number): Promise<void> {

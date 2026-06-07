@@ -47,7 +47,7 @@
 <script setup lang="ts">
 	import { computed } from 'vue';
 	import DRIcon from './DRIcon.vue';
-	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
+	import { hexAlpha, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
 	import { fmtTime } from '@/utils/dailyRoutines/dateHelpers';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 
@@ -86,7 +86,10 @@
 	const isShort = computed(() => height.value < 38);
 
 	const blockStyle = computed(() => {
-		const cat = props.entry.routine_category;
+		const raw = props.entry.routine_category as unknown;
+		const cat = typeof raw === 'string' || raw == null
+			? resolveCategory(raw as string | null | undefined)
+			: (raw as { color: string });
 		const padY = isShort.value ? '2px' : props.mode === 'full' ? '6px' : '4px';
 		const padX = props.mode === 'full' ? '10px' : '6px';
 		return {
