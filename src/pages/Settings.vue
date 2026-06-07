@@ -244,6 +244,42 @@
 									</p>
 								</div>
 							</div>
+
+							<!-- MCP Setup Instructions -->
+							<div class="mt-6 rounded-md border border-blue-100 bg-blue-50 p-4">
+								<h4 class="mb-2 text-sm font-semibold text-gray-800">
+									MCP setup
+								</h4>
+								<div class="space-y-3 text-sm text-gray-700">
+									<p>
+										TMGR MCP uses the smart device token as a custom header.
+										Generate the token above, then configure an MCP client that
+										supports remote SSE servers with headers.
+									</p>
+									<div>
+										<p class="mb-1 font-medium text-gray-700">Server URL</p>
+										<code
+											class="block overflow-x-auto rounded bg-white p-2 font-mono text-sm text-gray-800"
+										>
+											{{ mcpSseUrl }}
+										</code>
+									</div>
+									<div>
+										<p class="mb-1 font-medium text-gray-700">
+											Client configuration
+										</p>
+										<pre
+											class="overflow-x-auto whitespace-pre rounded bg-white p-3 font-mono text-xs text-gray-800"
+										>{{ mcpClientConfig }}</pre>
+									</div>
+									<p class="text-sm text-gray-600">
+										OAuth note: this TMGR MCP server is not an OAuth connector
+										yet. Unlike Spendly, it authenticates `/mcp/**` with
+										`X-Smart-Device-Token`, so Claude.ai custom connectors that
+										require OAuth discovery are not supported by this setup.
+									</p>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -350,6 +386,40 @@
 			},
 			pusherBeamsUserId() {
 				return this.$store.getters.getPusherBeamsUserId;
+			},
+			mcpSseUrl() {
+				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';
+
+				try {
+					const url = new URL(apiBaseUrl, window.location.origin);
+					const basePath = url.pathname
+						.replace(/\/api\/?$/, '')
+						.replace(/\/$/, '');
+
+					url.pathname = `${basePath}/mcp/sse`;
+					url.search = '';
+					url.hash = '';
+
+					return url.toString();
+				} catch (error) {
+					return 'https://tmgr-api-stage.k8s.in-the.dev/mcp/sse';
+				}
+			},
+			mcpClientConfig() {
+				return JSON.stringify(
+					{
+						mcpServers: {
+							tmgr: {
+								url: this.mcpSseUrl,
+								headers: {
+									'X-Smart-Device-Token': '<paste token from the field above>',
+								},
+							},
+						},
+					},
+					null,
+					2,
+				);
 			},
 		},
 		async mounted() {
