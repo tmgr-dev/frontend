@@ -101,9 +101,7 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
     
     // Try workspaces array with current workspace setting
     if (store?.state?.workspaces?.length) {
-      const currentWorkspaceId = store.state.user?.settings?.find(
-        (setting: { key: string, value: any }) => setting.key === 'current_workspace'
-      )?.value;
+      const currentWorkspaceId = store.getters.currentWorkspaceId;
       
       // If we have a current workspace setting, validate it exists in user's workspaces
       if (currentWorkspaceId) {

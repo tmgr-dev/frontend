@@ -78,7 +78,9 @@
 			};
 		});
 
-		await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+		const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+		store.commit('setUser', updatedUser);
+		store.commit('updateUserWorkspaceSetting', { workspaceId });
 
 		store.commit('rerenderApp');
 	}
