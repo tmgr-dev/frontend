@@ -10,7 +10,7 @@
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
 						<keep-alive :include="keepAliveComponents">
-							<component :is="Component" v-if="showComponent" :key="route?.meta?.keepAlive ? route?.name : route?.fullPath" />
+							<component :is="Component" v-if="showComponent" :key="route?.fullPath || route?.name" />
 						</keep-alive>
 					</router-view>
 				</CustomSidebar>
@@ -335,7 +335,7 @@
 					);
 					
 					if (workspaceSetting) {
-						// Update the URL to match the new workspace code
+						let nextWorkspacePath = null;
 						const currentPath = window.location.pathname;
 						const pathParts = currentPath.split('/');
 						
@@ -348,10 +348,7 @@
 						if (!isWorkspaceIndependent && pathParts.length > 1 && pathParts[1]) {
 							// Replace the workspace code in the URL for workspace-aware pages only
 							pathParts[1] = workspace.code;
-							const newPath = pathParts.join('/');
-							
-							// Use history.replaceState to update the URL without navigating
-							history.replaceState({}, '', newPath);
+							nextWorkspacePath = pathParts.join('/');
 						}
 						// For workspace-independent pages, don't change the URL at all
 						
@@ -388,6 +385,10 @@
 						
 						// Force reload active tasks with new workspace context
 						await this.loadActiveTasks();
+
+						if (nextWorkspacePath) {
+							await this.$router.replace(nextWorkspacePath);
+						}
 						
 						// Update the meta title if needed
 						if (this.$route.meta.title) {

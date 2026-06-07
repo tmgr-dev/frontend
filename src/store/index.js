@@ -11,6 +11,13 @@ const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
 	: null;
 
+const invalidateWorkspaceScopedCache = () => {
+	requestCache.invalidate('categories');
+	requestCache.invalidate('workspace-statuses');
+	requestCache.invalidate(/^tasks-status-/);
+	requestDeduplicator.clear();
+};
+
 const state = {
 	metaTitle: '',
 	token: token,
@@ -98,6 +105,7 @@ const mutations = {
 		state.token = token;
 	},
 	setUser(state, user) {
+		const previousWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
 		const nextUser = { ...user };
 		if (Array.isArray(nextUser.settings)) {
 			const previousSettingsById = Array.isArray(state.user?.settings)
@@ -128,6 +136,15 @@ const mutations = {
 				}
 				return acc;
 			}, {});
+		}
+
+		const nextWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
+		if (
+			previousWorkspaceId &&
+			nextWorkspaceId &&
+			Number(previousWorkspaceId) !== Number(nextWorkspaceId)
+		) {
+			invalidateWorkspaceScopedCache();
 		}
 	},
 	incrementReloadTasksKey(state) {
@@ -196,6 +213,7 @@ const mutations = {
 		state.appRerenderKey++;
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
+		const previousWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
 		if (state.user && state.user.settings) {
 			const settingIndex = state.user.settings.findIndex(
 				s => s.key === 'current_workspace'
@@ -212,6 +230,13 @@ const mutations = {
 					value: workspaceId
 				};
 			}
+		}
+		if (
+			previousWorkspaceId &&
+			workspaceId &&
+			Number(previousWorkspaceId) !== Number(workspaceId)
+		) {
+			invalidateWorkspaceScopedCache();
 		}
 	},
 };

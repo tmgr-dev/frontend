@@ -192,18 +192,21 @@
 		activeWorkspace.value = workspace;
 		
 		try {
-			// Update the URL to match the new workspace code
+			let nextWorkspaceRoute: { path: string; query: typeof route.query; hash: string } | null = null;
 			const currentPath = window.location.pathname;
 			const pathParts = currentPath.split('/');
 			
-			// If the URL starts with a workspace code, replace it
-			if (pathParts.length > 1 && pathParts[1]) {
-				// Replace the workspace code in the URL
+			if (pathParts.length > 1 && route.params.workspace_code) {
 				pathParts[1] = workspace.code;
 				const newPath = pathParts.join('/');
-				
-				// Use history.replaceState to update the URL without navigating
-				history.replaceState({}, '', newPath);
+
+				if (newPath !== route.fullPath) {
+					nextWorkspaceRoute = {
+						path: newPath,
+						query: route.query,
+						hash: route.hash,
+					};
+				}
 			}
 			
 			// Prepare settings update for backend
@@ -233,6 +236,10 @@
 			
 			// Load feature toggles for new workspace
 			await store.dispatch('featureToggles/loadWorkspaceToggles', workspace.id);
+
+			if (nextWorkspaceRoute) {
+				await router.replace(nextWorkspaceRoute);
+			}
 			
 			// Trigger UI updates
 			store.commit('rerenderApp');
