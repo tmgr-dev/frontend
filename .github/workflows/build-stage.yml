@@ -1,0 +1,97 @@
+name: Build and Deploy UI Stage
+
+on:
+  push:
+    tags:
+      - 'stage-ui-[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  IMAGE_NAME: acrossoffwest/tmgr-ui
+  STAGE_APP_URL: https://tmgr-stage.k8s.in-the.dev
+  STAGE_VITE_API_BASE_URL: https://tmgr-api-stage.k8s.in-the.dev/api/
+
+jobs:
+  build:
+    name: Build and push UI stage image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get tag name
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Assert amd64 runner
+        run: test "$(uname -m)" = "x86_64"
+
+      - name: Build Docker image
+        run: |
+          docker build . \
+            --build-arg APP_URL="${{ env.STAGE_APP_URL }}" \
+            --build-arg VITE_API_BASE_URL="${{ env.STAGE_VITE_API_BASE_URL }}" \
+            --build-arg VITE_PUSHER_BEAMS_INSTANCE_ID="${{ secrets.VITE_PUSHER_BEAMS_INSTANCE_ID }}" \
+            --build-arg VITE_PUSHER_APP_ID="${{ secrets.VITE_PUSHER_APP_ID }}" \
+            --build-arg VITE_PUSHER_KEY="${{ secrets.VITE_PUSHER_KEY }}" \
+            --build-arg VITE_PUSHER_CLUSTER="${{ secrets.VITE_PUSHER_CLUSTER }}" \
+            --build-arg VITE_PUSHER_HOST="${{ secrets.VITE_PUSHER_HOST }}" \
+            --build-arg VITE_PUSHER_PORT="${{ secrets.VITE_PUSHER_PORT }}" \
+            --build-arg VITE_PUSHER_SCHEME="${{ secrets.VITE_PUSHER_SCHEME }}" \
+            --build-arg VITE_TELEGRAM_BOT_NAME="${{ secrets.VITE_TELEGRAM_BOT_NAME }}" \
+            --build-arg VITE_NTFY_SERVER_URL="${{ secrets.VITE_NTFY_SERVER_URL }}" \
+            --build-arg VITE_NTFY_DEFAULT_TOPIC="${{ secrets.VITE_NTFY_DEFAULT_TOPIC }}" \
+            -t "${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}"
+
+      - name: Push Docker image
+        run: docker push "${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}"
+
+  deploy:
+    needs: [build]
+    if: success()
+    name: Deploy UI stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Get tag name
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Render deployment manifest
+        run: sed -i 's|<IMAGE>|${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}|' "$GITHUB_WORKSPACE/config/deployment-stage.yml"
+
+      - name: Create kube config
+        run: |
+          rm -rf ~/.kube
+          mkdir ~/.kube
+          echo "${{ secrets.HETZNER_CLUSTER_CONFIG }}" > ~/.kube/config
+
+      - name: Create Docker Hub pull secret
+        continue-on-error: true
+        run: |
+          kubectl create secret docker-registry dockerhub-secret \
+            -n applications \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \
+            --docker-password=${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Apply UI stage deployment
+        run: kubectl apply -f "$GITHUB_WORKSPACE/config/deployment-stage.yml"
+
+      - name: Verify UI stage deployment
+        run: kubectl rollout status -n applications deployment/tmgr-ui-stage --timeout=300s
+
+      - name: Remove kube config
+        if: always()
+        run: rm -rf ~/.kube
