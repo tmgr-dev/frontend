@@ -86,6 +86,10 @@
 					</div>
 					<!-- Login Form -->
 					<form @submit.prevent="login">
+						<!-- Status / Error Message -->
+						<p v-if="message" class="mb-4 text-center text-sm text-red-500">
+							{{ message }}
+						</p>
 						<!-- E-mail Field -->
 						<div class="mb-4">
 							<label for="email" class="block text-sm font-medium"
@@ -113,6 +117,10 @@
 									class="w-full rounded-lg border px-4 py-2"
 								/>
 							</div>
+							<label class="mt-3 flex select-none items-center gap-2 text-sm">
+								<input type="checkbox" v-model="form.remember_me" />
+								<span>Запомнить меня</span>
+							</label>
 						</div>
 						<!-- Sign In Button -->
 						<button
@@ -162,6 +170,7 @@
 	const form = ref({
 		email: '',
 		password: '',
+		remember_me: true,
 	} as LoginRequest);
 
 	const isLoading = ref(false);
@@ -228,6 +237,10 @@
 
 	onMounted(() => {
 		setDocumentTitle('Login');
+		if (sessionStorage.getItem('session.expired')) {
+			sessionStorage.removeItem('session.expired');
+			message.value = 'Сессия истекла. Войдите снова.';
+		}
 		if (document.getElementById('telegram-login-widget-container')) {
 			const script = document.createElement('script');
 			script.async = true;

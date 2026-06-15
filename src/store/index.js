@@ -40,6 +40,7 @@ const state = {
 
 const getters = {
 	isLoggedIn: (state) => state.token !== null,
+	refreshToken: (state) => state.token?.refresh_token ?? null,
 	workspaceById: (state) => (id) => state.workspacesById[id],
 	workspaceStatusById: (state) => (id) => state.workspaceStatusesById[id],
 	userSettingByKey: (state) => (key) => state.userSettingsMap[key],
@@ -193,7 +194,8 @@ const mutations = {
 };
 
 const actions = {
-	logout() {
+	logout({ state }) {
+		const hadSession = !!state.token;
 		const workspaceInvitationToken = localStorage.getItem(
 			'workspace.invitation',
 		);
@@ -201,7 +203,10 @@ const actions = {
 		if (workspaceInvitationToken) {
 			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
 		}
-		
+		if (hadSession) {
+			sessionStorage.setItem('session.expired', '1');
+		}
+
 		requestCache.clear();
 		requestDeduplicator.clear();
 	},
