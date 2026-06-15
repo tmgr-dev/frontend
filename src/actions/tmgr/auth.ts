@@ -4,6 +4,7 @@ import store from '@/store';
 export interface LoginRequest {
 	email: string;
 	password: string;
+	remember_me?: boolean;
 }
 
 export interface LoginToken {
@@ -44,6 +45,12 @@ export const setTokenAndHeaders = (token: string): void => {
 
 export const login = (payload: LoginRequest): Promise<void> => {
 	return $axios.post('auth/login', payload).then(setAxiosHeaderBearerToken);
+};
+
+export const refresh = (refreshToken: string): Promise<void> => {
+	return $axios
+		.post('auth/refresh', { refresh_token: refreshToken })
+		.then(setAxiosHeaderBearerToken);
 };
 
 export const loginGithub = (payload: LoginWithCodeRequest): Promise<void> => {
