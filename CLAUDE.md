@@ -28,9 +28,8 @@ The codebase splits languages by role — keep this convention when adding files
 ### Data flow: API → Cache → Vuex → Components
 The performance layer in `src/utils/` is load-bearing — actions in `src/actions/tmgr/*` are expected to use it:
 
-1. **`requestCache`** (`src/utils/requestCache.ts`) — TTL-keyed in-memory cache. Reference data (workspaces, statuses, categories, members) is cached for 5 min; per-task data for ~1 min. **Mutating actions must call `requestCache.invalidate(key | regex)`** or stale data will render. `store.dispatch('logout')` clears the cache.
-2. **`requestDeduplicator`** (`src/utils/requestDeduplicator.ts`) — collapses concurrent identical GETs into a single in-flight Promise. Wrap network calls in `requestDeduplicator.deduplicate(key, fn)` after the cache miss.
-3. **`$axios`** (`src/plugins/axios.ts`) — single instance with 30s timeout, bearer token from `store.state.token`, auto-retry (×2, exponential) on 5xx, and auto-`logout` dispatch on 401.
+1. **`requestCache`** (`src/utils/requestCache.ts`) — TTL-keyed, single-flight in-memory cache. Reference data (workspaces, statuses, categories, members) is cached for 5 min; per-task data for ~1 min. **Mutating actions must call `requestCache.invalidate(key | regex)`** or stale data will render. `store.dispatch('logout')` clears the cache. Wrap GETs in `requestCache.getOrFetch(key, fn, { ttl, cache })`: it serves a fresh cached value, otherwise coalesces concurrent identical requests onto a single in-flight Promise (registered synchronously, so there is no miss window for duplicates), then stores the result under `ttl`. Pass `cache: false` to coalesce without persisting.
+2. **`$axios`** (`src/plugins/axios.ts`) — single instance with 30s timeout, bearer token from `store.state.token`, auto-retry (×2, exponential) on 5xx, and auto-`logout` dispatch on 401.
 
 ### Vuex (root store + modules)
 `src/store/index.js` holds auth/session/UI flags; modules live in `src/store/modules/` (`pusher`, `boardFilters`, `featureToggles`). Reference collections are kept **normalized**: `workspaces` + `workspacesById`, `workspaceStatuses` + `workspaceStatusesById`. Prefer the `*ById` lookups and the `currentWorkspace` / `userSettingByKey` getters over scanning arrays.

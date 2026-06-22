@@ -5,17 +5,18 @@ import objectToQueryString from '@/utils/objectToQueryString';
 import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
 import { requestCache } from '@/utils/requestCache';
-import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 export interface Task {
 	id: number | undefined;
 	approximately_time: number;
 	assignees: Record<string, any>[] | number[];
-	category: number | {
-		id: number;
-		title: string;
-		code: string;
-	};
+	category:
+		| number
+		| {
+				id: number;
+				title: string;
+				code: string;
+		  };
 	title: string;
 	status: string;
 	description: string | null;
@@ -80,13 +81,16 @@ interface GetTasksParams extends AxiosRequestConfig {
 	};
 }
 
-export const getTasks = async (params: GetTasksParams, current = true): Promise<PaginatedResponse<Task>> => {
+export const getTasks = async (
+	params: GetTasksParams,
+	current = true,
+): Promise<PaginatedResponse<Task>> => {
 	const { data } = await $axios.get(`tasks/${current ? 'current' : ''}`, {
 		params: {
 			page: params.page,
 			per_page: params.per_page,
-			...params.params
-		}
+			...params.params,
+		},
 	});
 
 	return data;
@@ -104,9 +108,12 @@ export const getTasksIndexes = async (categoryId: null | number = null) => {
 	return index;
 };
 
-export const getTask = async (taskId: number, useCache: boolean = false): Promise<Task> => {
+export const getTask = async (
+	taskId: number,
+	useCache: boolean = false,
+): Promise<Task> => {
 	const cacheKey = `task-${taskId}`;
-	
+
 	if (useCache) {
 		const cached = requestCache.get<Task>(cacheKey);
 		if (cached) {
@@ -146,8 +153,14 @@ export const optimizeWithAI = async (text: string) => {
 	return data;
 };
 
-export const updateTask = async (taskId: number, task: Task, sourceInstanceId?: string) => {
-	const config = sourceInstanceId ? { headers: { 'X-Source-Instance-Id': sourceInstanceId } } : {};
+export const updateTask = async (
+	taskId: number,
+	task: Task,
+	sourceInstanceId?: string,
+) => {
+	const config = sourceInstanceId
+		? { headers: { 'X-Source-Instance-Id': sourceInstanceId } }
+		: {};
 	const {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}`, task, config);
@@ -201,14 +214,14 @@ export const restoreDeletedTask = async (taskId: number) => {
 
 export const getTasksByStatus = async (
 	statusId: number,
-	params: GetTasksParams
+	params: GetTasksParams,
 ): Promise<PaginatedResponse<Task>> => {
 	const { data } = await $axios.get(`tasks/status/${statusId}`, {
 		params: {
 			page: params.page,
 			per_page: params.per_page,
-			...params.params
-		}
+			...params.params,
+		},
 	});
 
 	return data;
@@ -220,35 +233,26 @@ export const getSortedTasksByStatus = async (
 	useCache: boolean = false,
 ) => {
 	const cacheKey = requestCache.generateKey(`tasks/status/${statusId}`, params);
-	
-	if (useCache) {
-		const cached = requestCache.get<Task[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
 
-	return requestDeduplicator.deduplicate(cacheKey, async () => {
-		const {
-			data: { data },
-		} = await $axios.get(`tasks/status/${statusId}?all`, params);
+	return requestCache.getOrFetch(
+		cacheKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`tasks/status/${statusId}?all`, params);
 
-		const sorted = data.sort((a: { order: number }, b: { order: number }) => {
-			if (a.order < b.order) {
-				return -1;
-			}
-			if (a.order > b.order) {
-				return 1;
-			}
-			return 0;
-		});
-
-		if (useCache) {
-			requestCache.set(cacheKey, sorted, 30000);
-		}
-
-		return sorted;
-	});
+			return data.sort((a: { order: number }, b: { order: number }) => {
+				if (a.order < b.order) {
+					return -1;
+				}
+				if (a.order > b.order) {
+					return 1;
+				}
+				return 0;
+			});
+		},
+		{ ttl: 30000, cache: useCache },
+	);
 };
 
 export const getBatchTasksByStatuses = async (
@@ -256,11 +260,11 @@ export const getBatchTasksByStatuses = async (
 	params: AxiosRequestConfig = {},
 ): Promise<Record<number, Task[]>> => {
 	const results = await Promise.all(
-		statusIds.map(statusId => 
+		statusIds.map((statusId) =>
 			getSortedTasksByStatus(statusId, params, true)
-				.then(tasks => ({ statusId, tasks }))
-				.catch(() => ({ statusId, tasks: [] }))
-		)
+				.then((tasks) => ({ statusId, tasks }))
+				.catch(() => ({ statusId, tasks: [] })),
+		),
 	);
 
 	return results.reduce((acc, { statusId, tasks }) => {
@@ -351,7 +355,7 @@ type taskOrder = {
 
 export const updateTaskOrders = async (payload: { tasks: taskOrder[] }) => {
 	await $axios.put('/tasks/update-orders', payload);
-	
+
 	requestCache.invalidate(/^tasks-status-/);
 };
 
