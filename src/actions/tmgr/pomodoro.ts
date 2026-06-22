@@ -1,7 +1,6 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
-import { requestDeduplicator } from '@/utils/requestDeduplicator';
 import { patchUserSettings } from '@/actions/tmgr/user';
 
 export type PomodoroPhase = 'focus' | 'short' | 'long';
@@ -49,16 +48,17 @@ export const getPomodoroState = async (
 	taskId: number,
 ): Promise<PomodoroState | null> => {
 	const key = stateKey(taskId);
-	const cached = requestCache.get<PomodoroState | null>(key);
-	if (cached !== undefined) return cached;
 
-	return requestDeduplicator.deduplicate(key, async () => {
-		const {
-			data: { data },
-		} = await $axios.get(`tasks/${taskId}/pomodoro`);
-		requestCache.set(key, data ?? null, 30_000);
-		return data ?? null;
-	});
+	return requestCache.getOrFetch(
+		key,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`tasks/${taskId}/pomodoro`);
+			return (data ?? null) as PomodoroState | null;
+		},
+		{ ttl: 30_000 },
+	);
 };
 
 export const enablePomodoro = async (
