@@ -1,5 +1,7 @@
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
+import type { ReactionSummary } from '@/utils/commentReactions';
+import { normalizeReactions } from '@/utils/commentReactions';
 
 export interface Comment {
 	message: string;
@@ -59,4 +61,16 @@ export const deleteComment = async (commentId: number) => {
 	const {
 		data: { data },
 	} = await $axios.delete(`/comments/${commentId}`);
+};
+
+export const toggleCommentReaction = async (
+	commentId: number,
+	emoji: string,
+	currentUserId?: number,
+): Promise<ReactionSummary[]> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/comments/${commentId}/reactions/toggle`, { emoji });
+
+	return normalizeReactions(data, currentUserId);
 };
