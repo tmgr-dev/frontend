@@ -1,56 +1,84 @@
 import $axios from '@/plugins/axios';
 import type { CursorAgent, CursorStatus, GitHubBranch } from '@/types/cursor';
 
-export async function launchCursorAgent(taskId: number, sourceBranch?: string): Promise<CursorAgent> {
-  const response = await $axios.post(`/tasks/${taskId}/cursor-agent`, {
-    source_branch: sourceBranch,
-  });
-  return response.data.agent;
+export async function launchCursorAgent(
+	taskId: number,
+	sourceBranch?: string,
+): Promise<CursorAgent> {
+	const response = await $axios.post(`/tasks/${taskId}/cursor-agent`, {
+		source_branch: sourceBranch,
+	});
+	return response.data.agent;
 }
 
-export async function getGitHubBranches(taskId: number, search?: string): Promise<GitHubBranch[]> {
-  const params = search ? { search } : {};
-  const response = await $axios.get(`/tasks/${taskId}/cursor-agent/branches`, { params });
-  return response.data.branches;
+export async function getGitHubBranches(
+	taskId: number,
+	search?: string,
+): Promise<GitHubBranch[]> {
+	const params = search ? { search } : {};
+	const response = await $axios.get(`/tasks/${taskId}/cursor-agent/branches`, {
+		params,
+	});
+	return response.data.branches;
 }
 
 export async function getCursorAgents(taskId: number): Promise<CursorAgent[]> {
-  const response = await $axios.get(`/tasks/${taskId}/cursor-agent`);
-  const body = response.data;
-  if (Array.isArray(body)) return body as CursorAgent[];
-  return (body?.agents ?? body?.data ?? []) as CursorAgent[];
+	const response = await $axios.get(`/tasks/${taskId}/cursor-agent`);
+	const body = response.data;
+	if (Array.isArray(body)) return body as CursorAgent[];
+	return (body?.agents ?? body?.data ?? []) as CursorAgent[];
 }
 
-export async function stopCursorAgent(taskId: number, agentId: number): Promise<void> {
-  await $axios.post(`/tasks/${taskId}/cursor-agent/${agentId}/stop`);
+export async function getActiveCursorAgents(): Promise<CursorAgent[]> {
+	const response = await $axios.get('/cursor-agents/active');
+	const body = response.data;
+	if (Array.isArray(body)) return body as CursorAgent[];
+	return (body?.agents ?? body?.data ?? []) as CursorAgent[];
+}
+
+export async function stopCursorAgent(
+	taskId: number,
+	agentId: number,
+): Promise<void> {
+	await $axios.post(`/tasks/${taskId}/cursor-agent/${agentId}/stop`);
 }
 
 export async function sendFollowUp(
-  taskId: number,
-  agentId: number,
-  prompt: string
+	taskId: number,
+	agentId: number,
+	prompt: string,
 ): Promise<void> {
-  await $axios.post(`/tasks/${taskId}/cursor-agent/${agentId}/followup`, {
-    prompt,
-  });
+	await $axios.post(`/tasks/${taskId}/cursor-agent/${agentId}/followup`, {
+		prompt,
+	});
 }
 
-export async function getCursorConversation(taskId: number, agentId: number): Promise<any> {
-  const response = await $axios.get(`/tasks/${taskId}/cursor-agent/${agentId}/conversation`);
-  return response.data;
+export async function getCursorConversation(
+	taskId: number,
+	agentId: number,
+): Promise<any> {
+	const response = await $axios.get(
+		`/tasks/${taskId}/cursor-agent/${agentId}/conversation`,
+	);
+	return response.data;
 }
 
-export async function updateCursorApiKey(categoryId: number, apiKey: string): Promise<void> {
-  await $axios.put(`/categories/${categoryId}/cursor-api-key`, {
-    cursor_api_key: apiKey,
-  });
+export async function updateCursorApiKey(
+	categoryId: number,
+	apiKey: string,
+): Promise<void> {
+	await $axios.put(`/categories/${categoryId}/cursor-api-key`, {
+		cursor_api_key: apiKey,
+	});
 }
 
 export async function deleteCursorApiKey(categoryId: number): Promise<void> {
-  await $axios.delete(`/categories/${categoryId}/cursor-api-key`);
+	await $axios.delete(`/categories/${categoryId}/cursor-api-key`);
 }
 
-export async function getCursorStatus(categoryId: number): Promise<CursorStatus> {
-  const response = await $axios.get(`/categories/${categoryId}/cursor-status`);
-  return response.data;
+export async function getCursorStatus(
+	categoryId: number,
+): Promise<CursorStatus> {
+	const response = await $axios.get(`/categories/${categoryId}/cursor-status`);
+	return response.data;
 }
