@@ -1,6 +1,7 @@
 import {
 	nextFocusIndex,
 	shouldIgnoreNavigationTarget,
+	isInteractiveTarget,
 } from '../listKeyboardNavigation';
 
 describe('nextFocusIndex', () => {
@@ -67,5 +68,46 @@ describe('shouldIgnoreNavigationTarget', () => {
 
 	it('returns false for a null target', () => {
 		expect(shouldIgnoreNavigationTarget(null)).toBe(false);
+	});
+});
+
+describe('isInteractiveTarget', () => {
+	const el = (tag: string, extra: Record<string, unknown> = {}) =>
+		({
+			tagName: tag,
+			closest: () => null,
+			getAttribute: () => null,
+			...extra,
+		}) as unknown as EventTarget;
+
+	it('treats buttons, links and form fields as interactive', () => {
+		expect(isInteractiveTarget(el('BUTTON'))).toBe(true);
+		expect(isInteractiveTarget(el('A'))).toBe(true);
+		expect(isInteractiveTarget(el('INPUT'))).toBe(true);
+		expect(isInteractiveTarget(el('SELECT'))).toBe(true);
+	});
+
+	it('treats ARIA interactive roles as interactive', () => {
+		expect(
+			isInteractiveTarget(el('DIV', { getAttribute: () => 'button' })),
+		).toBe(true);
+	});
+
+	it('treats an element nested inside a button as interactive', () => {
+		const inButton = {
+			tagName: 'SPAN',
+			getAttribute: () => null,
+			closest: (sel: string) => (sel.includes('button') ? {} : null),
+		} as unknown as EventTarget;
+		expect(isInteractiveTarget(inButton)).toBe(true);
+	});
+
+	it('does not treat a plain non-interactive element as interactive', () => {
+		expect(isInteractiveTarget(el('DIV'))).toBe(false);
+		expect(isInteractiveTarget(el('BODY'))).toBe(false);
+	});
+
+	it('returns false for a null target', () => {
+		expect(isInteractiveTarget(null)).toBe(false);
 	});
 });

@@ -37,3 +37,40 @@ export const shouldIgnoreNavigationTarget = (
 
 	return false;
 };
+
+const INTERACTIVE_TAGS = ['button', 'a', 'input', 'textarea', 'select', 'option'];
+const INTERACTIVE_ROLES = [
+	'button',
+	'link',
+	'menuitem',
+	'tab',
+	'checkbox',
+	'option',
+];
+
+export const isInteractiveTarget = (target: EventTarget | null): boolean => {
+	const el = target as
+		| (HTMLElement & {
+				isContentEditable?: boolean;
+				getAttribute?: (name: string) => string | null;
+		  })
+		| null;
+	if (!el || typeof el.tagName !== 'string') return false;
+
+	if (INTERACTIVE_TAGS.includes(el.tagName.toLowerCase())) return true;
+	if (el.isContentEditable) return true;
+
+	const role =
+		typeof el.getAttribute === 'function' ? el.getAttribute('role') : null;
+	if (role && INTERACTIVE_ROLES.includes(role)) return true;
+
+	if (typeof el.closest === 'function') {
+		return Boolean(
+			el.closest(
+				'button, a, [role="button"], [contenteditable="true"], .codex-editor',
+			),
+		);
+	}
+
+	return false;
+};

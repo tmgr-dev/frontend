@@ -378,6 +378,7 @@
 	import {
 		nextFocusIndex,
 		shouldIgnoreNavigationTarget,
+		isInteractiveTarget,
 	} from '@/utils/listKeyboardNavigation';
 
 	export default {
@@ -985,6 +986,7 @@
 				if (!this.tasks.length) return;
 
 				if (event.key === 'Enter') {
+					if (isInteractiveTarget(event.target)) return;
 					if (
 						this.focusedIndex >= 0 &&
 						this.focusedIndex < this.tasks.length
