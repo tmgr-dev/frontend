@@ -9,7 +9,7 @@
 		"dev": "vite",
 		"build": "vite build",
 		"preview": "vite preview",
-		"test": "jest --verbose ./tests",
+		"test": "jest --verbose",
 		"format": "prettier .  --write"
 	},
 	"dependencies": {
