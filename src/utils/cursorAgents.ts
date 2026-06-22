@@ -36,14 +36,22 @@ export interface CursorAgentTaskRoute {
 	params: { workspace_code: string; task_id: number };
 }
 
+export function canJumpToCursorAgentTask(
+	agent: Pick<CursorAgent, 'workspace_code'>,
+): boolean {
+	return Boolean(agent.workspace_code);
+}
+
 export function cursorAgentTaskRoute(
 	agent: Pick<CursorAgent, 'task_id' | 'workspace_code'>,
-	fallbackWorkspaceCode: string,
-): CursorAgentTaskRoute {
+): CursorAgentTaskRoute | null {
+	if (!agent.workspace_code) {
+		return null;
+	}
 	return {
 		name: 'WorkspaceTask',
 		params: {
-			workspace_code: agent.workspace_code || fallbackWorkspaceCode,
+			workspace_code: agent.workspace_code,
 			task_id: agent.task_id,
 		},
 	};

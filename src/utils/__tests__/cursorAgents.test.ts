@@ -5,6 +5,7 @@ import {
 	filterActiveCursorAgents,
 	cursorAgentLabel,
 	cursorAgentTaskRoute,
+	canJumpToCursorAgentTask,
 } from '../cursorAgents';
 
 const makeAgent = (overrides: Partial<CursorAgent> = {}): CursorAgent => ({
@@ -106,20 +107,10 @@ describe('cursorAgents helpers', () => {
 	});
 
 	describe('cursorAgentTaskRoute', () => {
-		it('uses the fallback workspace code when the agent carries no workspace', () => {
-			expect(
-				cursorAgentTaskRoute(makeAgent({ task_id: 42 }), 'tmgrdev'),
-			).toEqual({
-				name: 'WorkspaceTask',
-				params: { workspace_code: 'tmgrdev', task_id: 42 },
-			});
-		});
-
-		it("prefers the agent's own workspace_code over the fallback (cross-workspace jump)", () => {
+		it("builds a WorkspaceTask route from the agent's own workspace_code", () => {
 			expect(
 				cursorAgentTaskRoute(
 					makeAgent({ task_id: 7, workspace_code: 'otherws' }),
-					'tmgrdev',
 				),
 			).toEqual({
 				name: 'WorkspaceTask',
@@ -127,13 +118,26 @@ describe('cursorAgents helpers', () => {
 			});
 		});
 
-		it('falls back when workspace_code is null or empty', () => {
+		it('returns null when the agent has no workspace (never guesses the current one)', () => {
 			expect(
-				cursorAgentTaskRoute(
-					makeAgent({ task_id: 9, workspace_code: null }),
-					'tmgrdev',
-				).params.workspace_code,
-			).toBe('tmgrdev');
+				cursorAgentTaskRoute(makeAgent({ workspace_code: null })),
+			).toBeNull();
+			expect(
+				cursorAgentTaskRoute(makeAgent({ workspace_code: '' })),
+			).toBeNull();
+			expect(cursorAgentTaskRoute(makeAgent())).toBeNull();
+		});
+	});
+
+	describe('canJumpToCursorAgentTask', () => {
+		it('is jumpable only when the agent carries a workspace_code', () => {
+			expect(
+				canJumpToCursorAgentTask(makeAgent({ workspace_code: 'tmgrdev' })),
+			).toBe(true);
+			expect(
+				canJumpToCursorAgentTask(makeAgent({ workspace_code: null })),
+			).toBe(false);
+			expect(canJumpToCursorAgentTask(makeAgent())).toBe(false);
 		});
 	});
 });

@@ -50,6 +50,7 @@
 						v-for="agent in activeAgents"
 						:key="agent.id"
 						class="active-agent-item"
+						:disabled="!canJump(agent)"
 						@select="handleAgentClick(agent)"
 					>
 						<span
@@ -63,7 +64,11 @@
 								Task #{{ agent.task_id }} · {{ statusLabel(agent.status) }}
 							</span>
 						</span>
-						<ArrowUpRight :size="14" class="agent-jump opacity-60" />
+						<ArrowUpRight
+							v-if="canJump(agent)"
+							:size="14"
+							class="agent-jump opacity-60"
+						/>
 					</DropdownMenuItem>
 				</div>
 			</DropdownMenuContent>
@@ -73,8 +78,7 @@
 
 <script>
 	import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
-	import { useRouter, useRoute } from 'vue-router';
-	import { useStore } from 'vuex';
+	import { useRouter } from 'vue-router';
 	import { Bot, LoaderCircle, ArrowUpRight } from 'lucide-vue-next';
 	import {
 		DropdownMenu,
@@ -88,6 +92,7 @@
 		filterActiveCursorAgents,
 		cursorAgentLabel,
 		cursorAgentTaskRoute,
+		canJumpToCursorAgentTask,
 	} from '@/utils/cursorAgents';
 
 	const POLL_INTERVAL_MS = 20000;
@@ -106,8 +111,6 @@
 		},
 		setup() {
 			const router = useRouter();
-			const route = useRoute();
-			const store = useStore();
 
 			const agents = ref([]);
 			const loading = ref(false);
@@ -128,22 +131,11 @@
 				}
 			};
 
-			const getCurrentWorkspaceCode = () => {
-				if (route.params.workspace_code) {
-					return route.params.workspace_code;
-				}
-				const workspaces = store.state.workspaces || [];
-				const currentWorkspaceId = store.state.user?.settings?.find(
-					(setting) => setting.key === 'current_workspace',
-				)?.value;
-				const currentWorkspace = workspaces.find(
-					(ws) => Number(ws.id) === Number(currentWorkspaceId),
-				);
-				return currentWorkspace?.code || 'default';
-			};
-
 			const handleAgentClick = (agent) => {
-				router.push(cursorAgentTaskRoute(agent, getCurrentWorkspaceCode()));
+				const target = cursorAgentTaskRoute(agent);
+				if (target) {
+					router.push(target);
+				}
 			};
 
 			const handleDropdownOpen = (isOpen) => {
@@ -175,6 +167,7 @@
 				handleAgentClick,
 				handleDropdownOpen,
 				labelFor: cursorAgentLabel,
+				canJump: canJumpToCursorAgentTask,
 				statusLabel,
 			};
 		},
