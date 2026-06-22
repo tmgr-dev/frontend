@@ -1,36 +1,37 @@
 export interface CursorAgent {
-  id: number;
-  cursor_agent_id: string;
-  task_id: number;
-  user_id: number;
-  project_category_id: number;
-  status: 'CREATING' | 'RUNNING' | 'FINISHED' | 'STOPPED' | 'FAILED';
-  branch_name: string | null;
-  pr_url: string | null;
-  summary: string | null;
-  error_message: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  created_at: string;
-  updated_at: string;
+	id: number;
+	cursor_agent_id: string;
+	task_id: number;
+	user_id: number;
+	project_category_id: number;
+	status: 'CREATING' | 'RUNNING' | 'FINISHED' | 'STOPPED' | 'FAILED';
+	branch_name: string | null;
+	pr_url: string | null;
+	summary: string | null;
+	error_message: string | null;
+	started_at: string | null;
+	finished_at: string | null;
+	created_at: string;
+	updated_at: string;
+	workspace_code?: string | null;
 }
 
 export interface CursorAgentMessage {
-  id: string;
-  type: 'user_message' | 'assistant_message';
-  text: string;
+	id: string;
+	type: 'user_message' | 'assistant_message';
+	text: string;
 }
 
 export interface CursorConversation {
-  id: string;
-  messages: CursorAgentMessage[];
+	id: string;
+	messages: CursorAgentMessage[];
 }
 
 export interface CursorStatus {
-  configured: boolean;
+	configured: boolean;
 }
 
 export interface GitHubBranch {
-  name: string;
-  protected: boolean;
+	name: string;
+	protected: boolean;
 }
