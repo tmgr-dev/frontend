@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { MessageCircle, Edit2, Trash2, Bot, Sparkles } from 'lucide-vue-next';
+import { MessageCircle, Edit2, Trash2, Bot, Sparkles, SmilePlus } from 'lucide-vue-next';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
 	getComments,
 	deleteComment,
+	toggleCommentReaction,
 } from '@/actions/tmgr/comments';
+import {
+	toggleReaction,
+	normalizeReactions,
+	DEFAULT_REACTION_EMOJIS,
+	type ReactionSummary,
+} from '@/utils/commentReactions';
 import { formatRelativeTime } from '@/utils/timeUtils';
 import store from '@/store';
 
@@ -25,6 +32,7 @@ interface ChatComment {
 	cursor_agent_id?: number | null;
 	cursor_message_id?: string | null;
 	cursor_message_type?: 'user_message' | 'assistant_message' | null;
+	reactions?: ReactionSummary[];
 }
 
 interface Props {
@@ -39,6 +47,7 @@ const emit = defineEmits<{
 
 const comments = ref<ChatComment[]>([]);
 const isLoading = ref(false);
+const reactionPickerFor = ref<number | null>(null);
 
 const currentUser = computed(() => store.state.user);
 const commentsCount = computed(() => comments.value.length);
@@ -54,8 +63,11 @@ const loadComments = async () => {
 	
 	isLoading.value = true;
 	try {
-		const data = await getComments(props.taskId);
-		comments.value = data as any;
+		const data = (await getComments(props.taskId)) as unknown as ChatComment[];
+		comments.value = data.map((comment) => ({
+			...comment,
+			reactions: normalizeReactions(comment.reactions, currentUser.value?.id),
+		}));
 		emit('update:count', comments.value.length);
 	} catch (error) {
 		console.error('Failed to load comments:', error);
@@ -74,6 +86,35 @@ const handleDelete = async (commentId: number) => {
 	} catch (error) {
 		console.error('Failed to delete comment:', error);
 	}
+};
+
+const handleToggleReaction = async (comment: ChatComment, emoji: string) => {
+	const user = currentUser.value;
+	if (!user?.id) return;
+
+	reactionPickerFor.value = null;
+
+	const previous = comment.reactions ?? [];
+	comment.reactions = toggleReaction(previous, emoji, {
+		id: user.id,
+		name: user.name,
+	});
+
+	try {
+		comment.reactions = await toggleCommentReaction(
+			comment.id,
+			emoji,
+			user.id,
+		);
+	} catch (error) {
+		console.error('Failed to toggle reaction:', error);
+		comment.reactions = previous;
+	}
+};
+
+const toggleReactionPicker = (commentId: number) => {
+	reactionPickerFor.value =
+		reactionPickerFor.value === commentId ? null : commentId;
 };
 
 const getUserInitials = (name: string) => {
@@ -188,6 +229,52 @@ defineExpose({
 
 					<div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
 						{{ comment.message }}
+					</div>
+
+					<div class="mt-1.5 flex flex-wrap items-center gap-1">
+						<button
+							v-for="reaction in comment.reactions"
+							:key="reaction.emoji"
+							type="button"
+							:title="(reaction.users || []).map((u) => u.name).join(', ')"
+							:class="[
+								'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors',
+								reaction.reacted
+									? 'border-tmgr-blue bg-tmgr-blue/10 text-tmgr-blue dark:border-tmgr-light-blue dark:text-tmgr-light-blue'
+									: 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
+							]"
+							@click="handleToggleReaction(comment, reaction.emoji)"
+						>
+							<span>{{ reaction.emoji }}</span>
+							<span class="tabular-nums">{{ reaction.count }}</span>
+						</button>
+
+						<div class="relative">
+							<button
+								type="button"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-gray-600 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
+								aria-label="Add reaction"
+								@click="toggleReactionPicker(comment.id)"
+							>
+								<SmilePlus class="h-3.5 w-3.5" />
+							</button>
+
+							<div
+								v-if="reactionPickerFor === comment.id"
+								class="absolute left-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-gray-200 bg-white p-1 shadow-md dark:border-gray-700 dark:bg-gray-800"
+							>
+								<button
+									v-for="emoji in DEFAULT_REACTION_EMOJIS"
+									:key="emoji"
+									type="button"
+									class="rounded-md px-1.5 py-1 text-base leading-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+									@click="handleToggleReaction(comment, emoji)"
+								>
+									{{ emoji }}
+								</button>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
