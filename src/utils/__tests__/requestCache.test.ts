@@ -116,6 +116,26 @@ describe('requestCache.getOrFetch (single-flight coalescing)', () => {
 		expect(fetchFn).toHaveBeenCalledTimes(2);
 	});
 
+	it('clears the in-flight entry even when fetchFn throws synchronously, so retries refetch (no poison entry)', async () => {
+		const fetchFn = jest
+			.fn()
+			.mockImplementationOnce(() => {
+				throw new Error('sync boom');
+			})
+			.mockResolvedValueOnce('ok');
+
+		await expect(
+			requestCache.getOrFetch('k', fetchFn, { ttl: 1_000 }),
+		).rejects.toThrow('sync boom');
+
+		expect(requestCache.has('k')).toBe(false);
+
+		await expect(
+			requestCache.getOrFetch('k', fetchFn, { ttl: 1_000 }),
+		).resolves.toBe('ok');
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
 	it('clearInFlight() drops pending requests so a new call starts a fresh fetch', async () => {
 		let resolveFirst!: (value: number) => void;
 		const first = jest.fn(

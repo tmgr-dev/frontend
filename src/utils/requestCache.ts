@@ -40,17 +40,23 @@ class RequestCache {
 			return pending as Promise<T>;
 		}
 
-		const request = (async () => {
-			try {
-				const data = await fetchFn();
+		let started: Promise<T>;
+		try {
+			started = Promise.resolve(fetchFn());
+		} catch (error) {
+			started = Promise.reject(error);
+		}
+
+		const request = started
+			.then((data) => {
 				if (cache) {
 					this.set(key, data, ttl);
 				}
 				return data;
-			} finally {
+			})
+			.finally(() => {
 				this.inFlight.delete(key);
-			}
-		})();
+			});
 
 		this.inFlight.set(key, request);
 		return request;
