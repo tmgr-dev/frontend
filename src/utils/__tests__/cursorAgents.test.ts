@@ -106,13 +106,34 @@ describe('cursorAgents helpers', () => {
 	});
 
 	describe('cursorAgentTaskRoute', () => {
-		it('builds a WorkspaceTask route from the agent task_id and workspace code', () => {
+		it('uses the fallback workspace code when the agent carries no workspace', () => {
 			expect(
 				cursorAgentTaskRoute(makeAgent({ task_id: 42 }), 'tmgrdev'),
 			).toEqual({
 				name: 'WorkspaceTask',
 				params: { workspace_code: 'tmgrdev', task_id: 42 },
 			});
+		});
+
+		it("prefers the agent's own workspace_code over the fallback (cross-workspace jump)", () => {
+			expect(
+				cursorAgentTaskRoute(
+					makeAgent({ task_id: 7, workspace_code: 'otherws' }),
+					'tmgrdev',
+				),
+			).toEqual({
+				name: 'WorkspaceTask',
+				params: { workspace_code: 'otherws', task_id: 7 },
+			});
+		});
+
+		it('falls back when workspace_code is null or empty', () => {
+			expect(
+				cursorAgentTaskRoute(
+					makeAgent({ task_id: 9, workspace_code: null }),
+					'tmgrdev',
+				).params.workspace_code,
+			).toBe('tmgrdev');
 		});
 	});
 });
