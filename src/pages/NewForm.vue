@@ -289,7 +289,8 @@
 	const cursorAgents = ref([]);
 	const categoryHasRepository = ref(false);
 	const categoryCursorConfigured = ref(false);
-	const categoryIntegrationLoaded = ref(false);
+	const categoryGitHubLoaded = ref(false);
+	const categoryCursorLoaded = ref(false);
 	const integrationHint = ref<CategoryIntegrationHint | null>(null);
 	const pomodoroBlockRef = ref<any>(null);
 	const pomodoroEnabled = computed(() => !!pomodoroBlockRef.value?.state);
@@ -748,20 +749,21 @@
 
 	const loadCategoryIntegrationState = async () => {
 		const categoryId = form.value.project_category_id;
-		if (!categoryId) {
-			categoryIntegrationLoaded.value = false;
-			return;
-		}
+		categoryGitHubLoaded.value = false;
+		categoryCursorLoaded.value = false;
+		if (!categoryId) return;
 		const [github, cursor] = await Promise.allSettled([
 			getCategoryGitHubStatus(categoryId),
 			getCursorStatus(categoryId),
 		]);
-		categoryHasRepository.value =
-			github.status === 'fulfilled' ? !!github.value.repository : false;
-		categoryCursorConfigured.value =
-			cursor.status === 'fulfilled' ? !!cursor.value.configured : false;
-		categoryIntegrationLoaded.value =
-			github.status === 'fulfilled' || cursor.status === 'fulfilled';
+		if (github.status === 'fulfilled') {
+			categoryHasRepository.value = !!github.value.repository;
+			categoryGitHubLoaded.value = true;
+		}
+		if (cursor.status === 'fulfilled') {
+			categoryCursorConfigured.value = !!cursor.value.configured;
+			categoryCursorLoaded.value = true;
+		}
 	};
 
 	const integrationState = () => ({
@@ -771,7 +773,7 @@
 
 	const openCursorAgent = () => {
 		const hint = getCategoryIntegrationHint('cursor', integrationState());
-		if (categoryIntegrationLoaded.value && hint.show) {
+		if (categoryCursorLoaded.value && hint.show) {
 			integrationHint.value = hint;
 			return;
 		}
@@ -780,7 +782,7 @@
 
 	const openGitActivity = () => {
 		const hint = getCategoryIntegrationHint('github', integrationState());
-		if (categoryIntegrationLoaded.value && hint.show) {
+		if (categoryGitHubLoaded.value && hint.show) {
 			integrationHint.value = hint;
 			return;
 		}
