@@ -58,11 +58,13 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="task.id"
-				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id]]"
+				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id], focusedIndex === i]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
 					'opacity-50 hover:opacity-100': task.deleted_at,
+					'rounded-card ring-2 ring-tmgr-blue ring-offset-2 ring-offset-surface dark:ring-tmgr-light-blue':
+						focusedIndex === i,
 				}"
 				:data-task-id="task.id"
 				:draggable="false"
@@ -373,6 +375,10 @@
 	import { UserPlus, Check, ClockPlus, Play, Square, AlarmClock } from 'lucide-vue-next';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import {
+		nextFocusIndex,
+		shouldIgnoreNavigationTarget,
+	} from '@/utils/listKeyboardNavigation';
 
 	export default {
 		name: 'TasksListComponent',
@@ -465,6 +471,9 @@
 					this.isShowSelectedTasksCommonTime = false;
 				}
 			},
+			tasks() {
+				this.focusedIndex = -1;
+			},
 			'pagination.per_page': {
 				immediate: true,
 				handler(value) {
@@ -503,6 +512,7 @@
 				hoveredTaskId: null as number | null,
 				assigneePopoverOpen: {} as Record<number, boolean>,
 				workspaceMembers: [] as WorkspaceMember[],
+				focusedIndex: -1,
 			};
 		},
 		async created() {
@@ -512,7 +522,21 @@
 				console.error('Failed to load statuses:', e);
 			}
 		},
+		mounted() {
+			window.addEventListener('keydown', this.handleListKeydown);
+		},
+		beforeUnmount() {
+			window.removeEventListener('keydown', this.handleListKeydown);
+		},
 	computed: {
+		isAnyModalOpen() {
+			const state = this.$store.state;
+			return (
+				Boolean(state.currentTaskIdForModal) ||
+				Boolean(state.showCreatingTaskModal) ||
+				(state.openModals || 0) > 0
+			);
+		},
 		allSelected() {
 			return (
 				this.tasks.length > 0 &&
@@ -949,6 +973,53 @@
 				if (this.perPage === this.pagination.per_page) return;
 				this.$emit('per-page-change', this.perPage);
 				this.resetSelectedTasks();
+			},
+			handleListKeydown(event: KeyboardEvent) {
+				if (event.defaultPrevented) return;
+				if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+					return;
+				}
+				if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
+				if (this.isAnyModalOpen) return;
+				if (shouldIgnoreNavigationTarget(event.target)) return;
+				if (!this.tasks.length) return;
+
+				if (event.key === 'Enter') {
+					if (
+						this.focusedIndex >= 0 &&
+						this.focusedIndex < this.tasks.length
+					) {
+						event.preventDefault();
+						this.openFocusedTask();
+					}
+					return;
+				}
+
+				event.preventDefault();
+				this.focusedIndex = nextFocusIndex(
+					this.focusedIndex,
+					this.tasks.length,
+					event.key === 'ArrowDown' ? 1 : -1,
+				);
+				this.scrollFocusedIntoView();
+			},
+			openFocusedTask() {
+				const task = this.tasks[this.focusedIndex];
+				if (task) {
+					this.$store.commit('setCurrentTaskIdForModal', task.id);
+				}
+			},
+			scrollFocusedIntoView() {
+				this.$nextTick(() => {
+					const task = this.tasks[this.focusedIndex];
+					if (!task) return;
+					const el = this.$el?.querySelector(
+						`[data-task-id="${task.id}"]`,
+					) as HTMLElement | null;
+					if (el && typeof el.scrollIntoView === 'function') {
+						el.scrollIntoView({ block: 'nearest' });
+					}
+				});
 			},
 		},
 	};
