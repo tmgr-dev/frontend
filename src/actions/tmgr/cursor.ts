@@ -1,5 +1,10 @@
 import $axios from '@/plugins/axios';
-import type { CursorAgent, CursorStatus, GitHubBranch } from '@/types/cursor';
+import type {
+	ActiveCursorAgent,
+	CursorAgent,
+	CursorStatus,
+	GitHubBranch,
+} from '@/types/cursor';
 
 export async function launchCursorAgent(
 	taskId: number,
@@ -29,11 +34,14 @@ export async function getCursorAgents(taskId: number): Promise<CursorAgent[]> {
 	return (body?.agents ?? body?.data ?? []) as CursorAgent[];
 }
 
-export async function getActiveCursorAgents(): Promise<CursorAgent[]> {
+// Global list of the user's currently-running cursor agents.
+// Contract: each item MUST carry workspace_code (see ActiveCursorAgent) so the
+// indicator can jump to the agent's task in its own workspace.
+export async function getActiveCursorAgents(): Promise<ActiveCursorAgent[]> {
 	const response = await $axios.get('/cursor-agents/active');
 	const body = response.data;
-	if (Array.isArray(body)) return body as CursorAgent[];
-	return (body?.agents ?? body?.data ?? []) as CursorAgent[];
+	if (Array.isArray(body)) return body as ActiveCursorAgent[];
+	return (body?.agents ?? body?.data ?? []) as ActiveCursorAgent[];
 }
 
 export async function stopCursorAgent(
