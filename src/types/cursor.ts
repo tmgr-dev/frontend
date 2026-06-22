@@ -16,6 +16,13 @@ export interface CursorAgent {
 	workspace_code?: string | null;
 }
 
+// Contract for the global GET /cursor-agents/active endpoint: workspace_code is
+// REQUIRED so the indicator can jump to each agent's task in its own workspace
+// (a cross-workspace list cannot assume the currently selected workspace).
+export interface ActiveCursorAgent extends CursorAgent {
+	workspace_code: string;
+}
+
 export interface CursorAgentMessage {
 	id: string;
 	type: 'user_message' | 'assistant_message';
