@@ -48,6 +48,7 @@ const emit = defineEmits<{
 const comments = ref<ChatComment[]>([]);
 const isLoading = ref(false);
 const reactionPickerFor = ref<number | null>(null);
+const reactionSeq = new Map<number, number>();
 
 const currentUser = computed(() => store.state.user);
 const commentsCount = computed(() => comments.value.length);
@@ -94,6 +95,9 @@ const handleToggleReaction = async (comment: ChatComment, emoji: string) => {
 
 	reactionPickerFor.value = null;
 
+	const seq = (reactionSeq.get(comment.id) ?? 0) + 1;
+	reactionSeq.set(comment.id, seq);
+
 	const previous = comment.reactions ?? [];
 	comment.reactions = toggleReaction(previous, emoji, {
 		id: user.id,
@@ -101,14 +105,15 @@ const handleToggleReaction = async (comment: ChatComment, emoji: string) => {
 	});
 
 	try {
-		comment.reactions = await toggleCommentReaction(
-			comment.id,
-			emoji,
-			user.id,
-		);
+		const server = await toggleCommentReaction(comment.id, emoji, user.id);
+		if (reactionSeq.get(comment.id) === seq) {
+			comment.reactions = server;
+		}
 	} catch (error) {
 		console.error('Failed to toggle reaction:', error);
-		comment.reactions = previous;
+		if (reactionSeq.get(comment.id) === seq) {
+			comment.reactions = previous;
+		}
 	}
 };
 
