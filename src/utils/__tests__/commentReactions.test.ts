@@ -2,6 +2,7 @@ import {
 	toggleReaction,
 	normalizeReactions,
 	mergeServerReactionForEmoji,
+	extractReactionsPayload,
 	ReactionSummary,
 } from '../commentReactions';
 
@@ -96,6 +97,38 @@ describe('normalizeReactions', () => {
 		]);
 		expect(result).toEqual([
 			{ emoji: '❤️', count: 1, reacted: true, users: [] },
+		]);
+	});
+});
+
+describe('extractReactionsPayload (API response shapes)', () => {
+	const arr = [{ emoji: '👍', count: 1, reacted: true }];
+
+	it('returns a raw array as-is (Java-style response)', () => {
+		expect(extractReactionsPayload(arr)).toBe(arr);
+	});
+
+	it('unwraps a { data } wrapper', () => {
+		expect(extractReactionsPayload({ data: arr })).toBe(arr);
+	});
+
+	it('unwraps a { reactions } wrapper', () => {
+		expect(extractReactionsPayload({ reactions: arr })).toBe(arr);
+	});
+
+	it('falls back to [] for null/undefined/objects without a known key', () => {
+		expect(extractReactionsPayload(null)).toEqual([]);
+		expect(extractReactionsPayload(undefined)).toEqual([]);
+		expect(extractReactionsPayload({})).toEqual([]);
+	});
+
+	it('round-trips through normalizeReactions for both shapes', () => {
+		const raw = [{ emoji: '🚀', count: 2, reacted: false }];
+		expect(normalizeReactions(extractReactionsPayload(raw))).toEqual([
+			{ emoji: '🚀', count: 2, reacted: false, users: [] },
+		]);
+		expect(normalizeReactions(extractReactionsPayload({ data: raw }))).toEqual([
+			{ emoji: '🚀', count: 2, reacted: false, users: [] },
 		]);
 	});
 });
