@@ -1,15 +1,21 @@
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
 import type { ReactionSummary } from '@/utils/commentReactions';
-import { normalizeReactions } from '@/utils/commentReactions';
+import {
+	normalizeReactions,
+	extractReactionsPayload,
+} from '@/utils/commentReactions';
 
 export interface Comment {
 	message: string;
 }
 
-export const getComments = async (taskId: number, useCache: boolean = false): Promise<Comment[]> => {
+export const getComments = async (
+	taskId: number,
+	useCache: boolean = false,
+): Promise<Comment[]> => {
 	const cacheKey = `comments-task-${taskId}`;
-	
+
 	if (useCache) {
 		const cached = requestCache.get<Comment[]>(cacheKey);
 		if (cached) {
@@ -68,9 +74,13 @@ export const toggleCommentReaction = async (
 	emoji: string,
 	currentUserId?: number,
 ): Promise<ReactionSummary[]> => {
-	const {
-		data: { data },
-	} = await $axios.post(`/comments/${commentId}/reactions/toggle`, { emoji });
+	const response = await $axios.post(
+		`/comments/${commentId}/reactions/toggle`,
+		{ emoji },
+	);
 
-	return normalizeReactions(data, currentUserId);
+	return normalizeReactions(
+		extractReactionsPayload(response.data),
+		currentUserId,
+	);
 };

@@ -15,6 +15,17 @@ export const DEFAULT_REACTION_EMOJIS = ['👍', '❤️', '😄', '🎉', '👀'
 const cloneUsers = (users?: ReactionUser[]): ReactionUser[] =>
 	(users ?? []).map((u) => ({ ...u }));
 
+// Accept either a raw array (Java-style response) or a { data } / { reactions }
+// wrapper from the reactions API before normalizing.
+export const extractReactionsPayload = (body: unknown): unknown => {
+	if (Array.isArray(body)) return body;
+	if (body && typeof body === 'object') {
+		const obj = body as Record<string, unknown>;
+		return obj.data ?? obj.reactions ?? [];
+	}
+	return [];
+};
+
 export const normalizeReactions = (
 	raw: unknown,
 	currentUserId?: number,
