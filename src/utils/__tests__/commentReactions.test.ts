@@ -1,6 +1,7 @@
 import {
 	toggleReaction,
 	normalizeReactions,
+	mergeServerReactionForEmoji,
 	ReactionSummary,
 } from '../commentReactions';
 
@@ -61,7 +62,15 @@ describe('normalizeReactions', () => {
 
 	it('derives count and reacted from users when not provided', () => {
 		const result = normalizeReactions(
-			[{ emoji: '👍', users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] }],
+			[
+				{
+					emoji: '👍',
+					users: [
+						{ id: 1, name: 'Alice' },
+						{ id: 2, name: 'Bob' },
+					],
+				},
+			],
 			1,
 		);
 		expect(result).toEqual([
@@ -88,5 +97,65 @@ describe('normalizeReactions', () => {
 		expect(result).toEqual([
 			{ emoji: '❤️', count: 1, reacted: true, users: [] },
 		]);
+	});
+});
+
+describe('mergeServerReactionForEmoji (concurrent out-of-order toggle race)', () => {
+	it('applies a slow emoji response WITHOUT clobbering a concurrently-toggled different emoji', () => {
+		// User toggled 👍 then ❤️ quickly; both are optimistically present.
+		const current: ReactionSummary[] = [
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+			{ emoji: '❤️', count: 1, reacted: true, users: [ALICE] },
+		];
+		// The slower 👍 response lands; server's snapshot at that time only knew 👍.
+		const serverThumbsResponse: ReactionSummary[] = [
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+		];
+
+		const merged = mergeServerReactionForEmoji(
+			current,
+			serverThumbsResponse,
+			'👍',
+		);
+
+		// ❤️ must survive — the old wholesale-replace dropped it (the P2).
+		expect(merged).toEqual([
+			{ emoji: '❤️', count: 1, reacted: true, users: [ALICE] },
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+		]);
+	});
+
+	it('removes only the target emoji when the server reports it gone, keeping others', () => {
+		const current: ReactionSummary[] = [
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+			{ emoji: '❤️', count: 1, reacted: true, users: [ALICE] },
+		];
+		// Server response for 👍 toggle-off: 👍 absent (or zero-count).
+		const merged = mergeServerReactionForEmoji(current, [], '👍');
+		expect(merged).toEqual([
+			{ emoji: '❤️', count: 1, reacted: true, users: [ALICE] },
+		]);
+	});
+
+	it('updates the target emoji to the authoritative server count/users', () => {
+		const current: ReactionSummary[] = [
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+		];
+		const server: ReactionSummary[] = [
+			{ emoji: '👍', count: 2, reacted: true, users: [ALICE, BOB] },
+		];
+		expect(mergeServerReactionForEmoji(current, server, '👍')).toEqual([
+			{ emoji: '👍', count: 2, reacted: true, users: [ALICE, BOB] },
+		]);
+	});
+
+	it('does not mutate the input arrays or their entries', () => {
+		const current: ReactionSummary[] = [
+			{ emoji: '👍', count: 1, reacted: true, users: [ALICE] },
+			{ emoji: '❤️', count: 1, reacted: true, users: [ALICE] },
+		];
+		const snapshot = JSON.parse(JSON.stringify(current));
+		mergeServerReactionForEmoji(current, [], '👍');
+		expect(current).toEqual(snapshot);
 	});
 });

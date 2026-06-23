@@ -29,9 +29,7 @@ export const normalizeReactions = (
 						.map((u: any) => ({ id: u.id, name: String(u.name ?? '') }))
 				: [];
 			const count =
-				typeof entry.count === 'number'
-					? entry.count
-					: users.length;
+				typeof entry.count === 'number' ? entry.count : users.length;
 			const reacted =
 				typeof entry.reacted === 'boolean'
 					? entry.reacted
@@ -41,6 +39,23 @@ export const normalizeReactions = (
 			return { emoji: entry.emoji, count, reacted, users };
 		})
 		.filter((r): r is ReactionSummary => r !== null && r.count > 0);
+};
+
+export const mergeServerReactionForEmoji = (
+	current: ReactionSummary[],
+	source: ReactionSummary[],
+	emoji: string,
+): ReactionSummary[] => {
+	const base = (Array.isArray(current) ? current : [])
+		.filter((r) => r.emoji !== emoji)
+		.map((r) => ({ ...r, users: cloneUsers(r.users) }));
+	const incoming = (Array.isArray(source) ? source : []).find(
+		(r) => r.emoji === emoji,
+	);
+	if (!incoming || incoming.count <= 0) {
+		return base;
+	}
+	return [...base, { ...incoming, users: cloneUsers(incoming.users) }];
 };
 
 export const toggleReaction = (
