@@ -198,6 +198,11 @@
 						<span
 							class="text-sm text-ink"
 							:class="taskTimeExceeded[task.id] && 'text-status-fix-fg'"
+							:title="
+								taskOvertimes[task.id]
+									? 'Overtime: +' + taskOvertimes[task.id]
+									: undefined
+							"
 						>
 							{{ taskFormattedTimes[task.id] }}
 						</span>
@@ -328,6 +333,7 @@
 <script lang="ts">
 	import downloadFile from '@/utils/downloadFile';
 	import { formatRelativeTime } from '@/utils/timeUtils';
+	import { formatOvertimeDuration } from '@/utils/overtimeFormat';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
@@ -533,10 +539,10 @@
 					overtimeSeconds += actual - expected;
 				}
 			}
-			const overtimeHours = (overtimeSeconds / 3600).toFixed(1);
+			const overtimeText = formatOvertimeDuration(overtimeSeconds);
 			let text = `${tasks.length} of ${this.tasks.length} · ${totalHours}h`;
-			if (overtimeSeconds > 0) {
-				text += ` · +${overtimeHours}h overtime`;
+			if (overtimeText) {
+				text += ` · +${overtimeText} overtime`;
 			}
 			return text;
 		},
@@ -783,19 +789,7 @@
 				}
 				const currentTime = task.common_time || 0;
 				const overtime = currentTime - approximatelyTime;
-				if (overtime <= 0) {
-					return null;
-				}
-				const hours = Math.floor(overtime / 3600);
-				const minutes = Math.floor((overtime % 3600) / 60);
-				const parts = [];
-				if (hours > 0) {
-					parts.push(`${hours}h`);
-				}
-				if (minutes > 0) {
-					parts.push(`${minutes}m`);
-				}
-				return parts.length > 0 ? parts.join(' ') : null;
+				return formatOvertimeDuration(overtime) || null;
 			},
 			async updateStatus(task, status, dotId = null, loadTasks = true) {
 				try {
