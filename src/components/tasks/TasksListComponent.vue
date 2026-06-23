@@ -472,8 +472,16 @@
 					this.isShowSelectedTasksCommonTime = false;
 				}
 			},
-			tasks() {
-				this.focusedIndex = -1;
+			focusOrderKey() {
+				if (this.focusedTaskId == null) {
+					this.focusedIndex = -1;
+					return;
+				}
+				const idx = this.tasks.findIndex(
+					(t) => t.id === this.focusedTaskId,
+				);
+				this.focusedIndex = idx;
+				if (idx === -1) this.focusedTaskId = null;
 			},
 			'pagination.per_page': {
 				immediate: true,
@@ -514,6 +522,7 @@
 				assigneePopoverOpen: {} as Record<number, boolean>,
 				workspaceMembers: [] as WorkspaceMember[],
 				focusedIndex: -1,
+				focusedTaskId: null as number | null,
 			};
 		},
 		async created() {
@@ -530,6 +539,9 @@
 			window.removeEventListener('keydown', this.handleListKeydown);
 		},
 	computed: {
+		focusOrderKey() {
+			return this.tasks.map((t) => t.id).join(',');
+		},
 		isAnyModalOpen() {
 			const state = this.$store.state;
 			return (
@@ -1004,6 +1016,8 @@
 					this.tasks.length,
 					event.key === 'ArrowDown' ? 1 : -1,
 				);
+				this.focusedTaskId =
+					this.tasks[this.focusedIndex]?.id ?? null;
 				this.scrollFocusedIntoView();
 			},
 			openFocusedTask() {
