@@ -535,7 +535,8 @@
 			return (
 				Boolean(state.currentTaskIdForModal) ||
 				Boolean(state.showCreatingTaskModal) ||
-				(state.openModals || 0) > 0
+				(state.openModals || 0) > 0 ||
+				(state.modalStack?.length || 0) > 0
 			);
 		},
 		allSelected() {
