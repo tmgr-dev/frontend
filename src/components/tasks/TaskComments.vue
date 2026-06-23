@@ -22,6 +22,7 @@
 		DEFAULT_REACTION_EMOJIS,
 		type ReactionSummary,
 	} from '@/utils/commentReactions';
+	import { createKeyedSerializer } from '@/utils/keyedSerializer';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import store from '@/store';
 
@@ -56,7 +57,7 @@
 	const comments = ref<ChatComment[]>([]);
 	const isLoading = ref(false);
 	const reactionPickerFor = ref<number | null>(null);
-	const reactionSeq = new Map<string, number>();
+	const serializeReaction = createKeyedSerializer();
 
 	const currentUser = computed(() => store.state.user);
 	const commentsCount = computed(() => comments.value.length);
@@ -101,41 +102,49 @@
 		}
 	};
 
-	const handleToggleReaction = async (comment: ChatComment, emoji: string) => {
+	const flushReactionToggle = async (
+		comment: ChatComment,
+		emoji: string,
+		userId: number,
+		previous: ReactionSummary[],
+	) => {
+		try {
+			const server = await toggleCommentReaction(comment.id, emoji, userId);
+			comment.reactions = mergeServerReactionForEmoji(
+				comment.reactions ?? [],
+				server,
+				emoji,
+			);
+		} catch (error) {
+			console.error('Failed to toggle reaction:', error);
+			comment.reactions = mergeServerReactionForEmoji(
+				comment.reactions ?? [],
+				previous,
+				emoji,
+			);
+		}
+	};
+
+	const handleToggleReaction = (comment: ChatComment, emoji: string) => {
 		const user = currentUser.value;
 		if (!user?.id) return;
 
 		reactionPickerFor.value = null;
 
-		const seqKey = `${comment.id}:${emoji}`;
-		const seq = (reactionSeq.get(seqKey) ?? 0) + 1;
-		reactionSeq.set(seqKey, seq);
-
+		const key = `${comment.id}:${emoji}`;
 		const previous = comment.reactions ?? [];
 		comment.reactions = toggleReaction(previous, emoji, {
 			id: user.id,
 			name: user.name,
 		});
 
-		try {
-			const server = await toggleCommentReaction(comment.id, emoji, user.id);
-			if (reactionSeq.get(seqKey) === seq) {
-				comment.reactions = mergeServerReactionForEmoji(
-					comment.reactions ?? [],
-					server,
-					emoji,
-				);
-			}
-		} catch (error) {
-			console.error('Failed to toggle reaction:', error);
-			if (reactionSeq.get(seqKey) === seq) {
-				comment.reactions = mergeServerReactionForEmoji(
-					comment.reactions ?? [],
-					previous,
-					emoji,
-				);
-			}
-		}
+		// The backend reaction endpoint is a stateful toggle, so the final state
+		// depends on the order requests are PROCESSED. Serialize per (comment,
+		// emoji) so same-emoji toggles hit the server in click order and the last
+		// settled response is authoritative; different emojis stay independent.
+		serializeReaction(key, () =>
+			flushReactionToggle(comment, emoji, user.id, previous),
+		);
 	};
 
 	const toggleReactionPicker = (commentId: number) => {
