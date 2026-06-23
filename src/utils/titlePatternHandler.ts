@@ -4,6 +4,8 @@ const formatMappings: Record<string, string> = {
 	'yyyy': 'yyyy',
 	'yy': 'yy',
 	'mm': 'MM',
+	'dddd': 'EEEE',
+	'ddd': 'EEE',
 	'dd': 'dd',
 	'hh': 'HH',
 	'h': 'H',
