@@ -22,7 +22,6 @@
 		DEFAULT_REACTION_EMOJIS,
 		type ReactionSummary,
 	} from '@/utils/commentReactions';
-	import { createKeyedSerializer } from '@/utils/keyedSerializer';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import store from '@/store';
 
@@ -57,7 +56,7 @@
 	const comments = ref<ChatComment[]>([]);
 	const isLoading = ref(false);
 	const reactionPickerFor = ref<number | null>(null);
-	const serializeReaction = createKeyedSerializer();
+	const reactionInFlight = new Set<string>();
 
 	const currentUser = computed(() => store.state.user);
 	const commentsCount = computed(() => comments.value.length);
@@ -102,14 +101,30 @@
 		}
 	};
 
-	const flushReactionToggle = async (
-		comment: ChatComment,
-		emoji: string,
-		userId: number,
-		previous: ReactionSummary[],
-	) => {
+	const handleToggleReaction = async (comment: ChatComment, emoji: string) => {
+		const user = currentUser.value;
+		if (!user?.id) return;
+
+		// The backend endpoint is a STATEFUL toggle: each request flips whatever
+		// the server's current state is. Driving it with a client-side queue is
+		// unsafe (a failed earlier toggle leaves queued ones flipping a state that
+		// never changed). So allow only ONE in-flight toggle per (comment,emoji):
+		// each request acts on settled, known state. Different emojis are
+		// independent and merge per-emoji, so they never block or clobber.
+		const key = `${comment.id}:${emoji}`;
+		if (reactionInFlight.has(key)) return;
+		reactionInFlight.add(key);
+
+		reactionPickerFor.value = null;
+
+		const previous = comment.reactions ?? [];
+		comment.reactions = toggleReaction(previous, emoji, {
+			id: user.id,
+			name: user.name,
+		});
+
 		try {
-			const server = await toggleCommentReaction(comment.id, emoji, userId);
+			const server = await toggleCommentReaction(comment.id, emoji, user.id);
 			comment.reactions = mergeServerReactionForEmoji(
 				comment.reactions ?? [],
 				server,
@@ -122,29 +137,9 @@
 				previous,
 				emoji,
 			);
+		} finally {
+			reactionInFlight.delete(key);
 		}
-	};
-
-	const handleToggleReaction = (comment: ChatComment, emoji: string) => {
-		const user = currentUser.value;
-		if (!user?.id) return;
-
-		reactionPickerFor.value = null;
-
-		const key = `${comment.id}:${emoji}`;
-		const previous = comment.reactions ?? [];
-		comment.reactions = toggleReaction(previous, emoji, {
-			id: user.id,
-			name: user.name,
-		});
-
-		// The backend reaction endpoint is a stateful toggle, so the final state
-		// depends on the order requests are PROCESSED. Serialize per (comment,
-		// emoji) so same-emoji toggles hit the server in click order and the last
-		// settled response is authoritative; different emojis stay independent.
-		serializeReaction(key, () =>
-			flushReactionToggle(comment, emoji, user.id, previous),
-		);
 	};
 
 	const toggleReactionPicker = (commentId: number) => {
