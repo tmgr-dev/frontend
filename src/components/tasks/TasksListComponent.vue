@@ -1014,7 +1014,19 @@
 				}
 				if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
 				const root = this.$refs.listRoot as HTMLElement | null;
-				if (!root || !root.contains(event.target as Node)) return;
+				if (!root) return;
+				const target = event.target as Node | null;
+				const focusInList = !!target && root.contains(target);
+				// Page-level entry: when nothing meaningful holds focus (initial load,
+				// just after a modal closes, or focus on <body>), let the list claim
+				// Arrow/Enter so navigation works without first clicking/tabbing in.
+				// Focus parked inside another element is left alone; inputs/editors are
+				// still excluded below via shouldIgnoreNavigationTarget.
+				const isPageLevel =
+					!target ||
+					target === document.body ||
+					target === document.documentElement;
+				if (!focusInList && !isPageLevel) return;
 				if (this.isAnyModalOpen) return;
 				if (shouldIgnoreNavigationTarget(event.target)) return;
 				if (!this.tasks.length) return;
