@@ -232,7 +232,14 @@ export const getSortedTasksByStatus = async (
 	params: AxiosRequestConfig,
 	useCache: boolean = false,
 ) => {
-	const cacheKey = requestCache.generateKey(`tasks/status/${statusId}`, params);
+	const cacheKey = requestCache.generateKey(`tasks-status-${statusId}`, params);
+
+	if (useCache) {
+		const cached = requestCache.get<Task[]>(cacheKey);
+		if (cached) {
+			return cached;
+		}
+	}
 
 	return requestCache.getOrFetch(
 		cacheKey,
