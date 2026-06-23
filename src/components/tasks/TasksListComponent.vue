@@ -1,5 +1,9 @@
 <template>
-	<div class="relative w-full items-center justify-center">
+	<div
+		ref="listRoot"
+		class="relative w-full items-center justify-center outline-none"
+		tabindex="0"
+	>
 		<TasksMultipleActionsModal
 			v-if="isShowSelectedTasksCommonTime"
 			:is-loading-actions="loadingActionsForMultipleTasks"
@@ -46,7 +50,7 @@
 			class="relative border pb-2"
 			:class="[
 				hasSelectable
-					? 'rounded-card border-dashed border-brand/40 px-2'
+					? 'border-brand/40 rounded-card border-dashed px-2'
 					: 'border-transparent',
 			]"
 		>
@@ -58,15 +62,29 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="task.id"
-				v-memo="[task.id, task.common_time, task.start_time, task.status_id, task.deleted_at, selected[i], selecting[i], hoveredTaskId === task.id, assigneePopoverOpen[task.id]]"
+				v-memo="[
+					task.id,
+					task.common_time,
+					task.start_time,
+					task.status_id,
+					task.deleted_at,
+					selected[i],
+					selecting[i],
+					hoveredTaskId === task.id,
+					assigneePopoverOpen[task.id],
+					focusedIndex === i,
+				]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
 					'opacity-50 hover:opacity-100': task.deleted_at,
+					'rounded-card ring-2 ring-tmgr-blue ring-offset-2 ring-offset-surface dark:ring-tmgr-light-blue':
+						focusedIndex === i,
 				}"
 				:data-task-id="task.id"
 				:draggable="false"
-				class="selectable relative mt-3 w-full"
+				tabindex="-1"
+				class="selectable relative mt-3 w-full outline-none"
 			>
 				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
@@ -76,10 +94,9 @@
 				<button
 					type="button"
 					:class="{
-					'border-l-[3px] border-l-status-done':
-						task.start_time,
-				}"
-					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:shadow-tmgr-md hover:border-line-strong md:flex"
+						'border-l-[3px] border-l-status-done': task.start_time,
+					}"
+					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
 					@mouseleave="hoveredTaskId = null"
@@ -93,15 +110,11 @@
 								class="group/assignee absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 								@click.stop
 								:title="
-									task.assignees?.length
-										? 'Change assignee'
-										: 'Assign someone'
+									task.assignees?.length ? 'Change assignee' : 'Assign someone'
 								"
 							>
 								<UserPlus
-									v-if="
-										assigneePopoverOpen[task.id] || !task.assignees?.length
-									"
+									v-if="assigneePopoverOpen[task.id] || !task.assignees?.length"
 									class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
 								/>
 								<template v-else>
@@ -166,19 +179,19 @@
 									>drag_indicator</span
 								>
 							</div>
-							<div class="flex-1 min-w-0">
+							<div class="min-w-0 flex-1">
 								<CategoryBadge
 									v-if="showCategoryBadges && task.category"
 									class="mb-2 shrink-0 self-start"
 									:category="task.category"
 								/>
 
-							<div
-								class="text-left text-base font-medium leading-snug text-ink"
-								:title="task.title?.length > 60 ? task.title : ''"
-							>
-								{{ taskTitles[task.id] }}
-							</div>
+								<div
+									class="text-left text-base font-medium leading-snug text-ink"
+									:title="task.title?.length > 60 ? task.title : ''"
+								>
+									{{ taskTitles[task.id] }}
+								</div>
 							</div>
 						</div>
 
@@ -186,21 +199,21 @@
 							v-if="isFeatureEnabled('task.countdown')"
 							class="mt-3 flex items-center gap-2"
 						>
-						<AlarmClock
-							class="h-4 w-4"
-							:class="
-								taskTimeExceeded[task.id]
-									? 'text-status-fix'
-									: 'text-status-done'
-							"
-						/>
+							<AlarmClock
+								class="h-4 w-4"
+								:class="
+									taskTimeExceeded[task.id]
+										? 'text-status-fix'
+										: 'text-status-done'
+								"
+							/>
 
-						<span
-							class="text-sm text-ink"
-							:class="taskTimeExceeded[task.id] && 'text-status-fix-fg'"
-						>
-							{{ taskFormattedTimes[task.id] }}
-						</span>
+							<span
+								class="text-sm text-ink"
+								:class="taskTimeExceeded[task.id] && 'text-status-fix-fg'"
+							>
+								{{ taskFormattedTimes[task.id] }}
+							</span>
 
 							<button
 								v-if="!task.start_time"
@@ -230,22 +243,20 @@
 							</button>
 						</div>
 
-						<div
-							class="mt-3 flex items-center gap-x-3 text-2xs text-ink-faint"
-						>
-						<TaskTimeInfo
-							:created-at="task.created_at"
-							:updated-at="task.updated_at"
-							:overtime="taskOvertimes[task.id]"
-						/>
-
-						<span class="ml-auto flex items-center gap-1.5 text-ink-subtle">
-							<span>{{ taskStatusNames[task.id] }}</span>
-							<span
-								class="inline-block h-2 w-2 rounded-full"
-								:style="{ backgroundColor: taskStatusColors[task.id] }"
+						<div class="mt-3 flex items-center gap-x-3 text-2xs text-ink-faint">
+							<TaskTimeInfo
+								:created-at="task.created_at"
+								:updated-at="task.updated_at"
+								:overtime="taskOvertimes[task.id]"
 							/>
-						</span>
+
+							<span class="ml-auto flex items-center gap-1.5 text-ink-subtle">
+								<span>{{ taskStatusNames[task.id] }}</span>
+								<span
+									class="inline-block h-2 w-2 rounded-full"
+									:style="{ backgroundColor: taskStatusColors[task.id] }"
+								/>
+							</span>
 						</div>
 					</div>
 
@@ -370,9 +381,21 @@
 		CommandItem,
 		CommandList,
 	} from '@/components/ui/command';
-	import { UserPlus, Check, ClockPlus, Play, Square, AlarmClock } from 'lucide-vue-next';
+	import {
+		UserPlus,
+		Check,
+		ClockPlus,
+		Play,
+		Square,
+		AlarmClock,
+	} from 'lucide-vue-next';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import {
+		nextFocusIndex,
+		shouldIgnoreNavigationTarget,
+		isInteractiveTarget,
+	} from '@/utils/listKeyboardNavigation';
 
 	export default {
 		name: 'TasksListComponent',
@@ -465,6 +488,15 @@
 					this.isShowSelectedTasksCommonTime = false;
 				}
 			},
+			focusOrderKey() {
+				if (this.focusedTaskId == null) {
+					this.focusedIndex = -1;
+					return;
+				}
+				const idx = this.tasks.findIndex((t) => t.id === this.focusedTaskId);
+				this.focusedIndex = idx;
+				if (idx === -1) this.focusedTaskId = null;
+			},
 			'pagination.per_page': {
 				immediate: true,
 				handler(value) {
@@ -503,6 +535,8 @@
 				hoveredTaskId: null as number | null,
 				assigneePopoverOpen: {} as Record<number, boolean>,
 				workspaceMembers: [] as WorkspaceMember[],
+				focusedIndex: -1,
+				focusedTaskId: null as number | null,
 			};
 		},
 		async created() {
@@ -512,90 +546,111 @@
 				console.error('Failed to load statuses:', e);
 			}
 		},
-	computed: {
-		allSelected() {
-			return (
-				this.tasks.length > 0 &&
-				this.selected.length === this.tasks.length &&
-				this.selected.every(Boolean)
-			);
+		mounted() {
+			window.addEventListener('keydown', this.handleListKeydown);
 		},
-		selectedSummary() {
-			const tasks = this.getSelectedTasks();
-			if (!tasks.length) return '';
-			const totalSeconds = tasks.reduce((s, t) => s + (t.common_time || 0), 0);
-			const totalHours = (totalSeconds / 3600).toFixed(1);
-			let overtimeSeconds = 0;
-			for (const task of tasks) {
-				const expected = this.getApproximatelyTime(task);
-				const actual = task.common_time || 0;
-				if (expected > 0 && actual > expected) {
-					overtimeSeconds += actual - expected;
+		beforeUnmount() {
+			window.removeEventListener('keydown', this.handleListKeydown);
+		},
+		computed: {
+			focusOrderKey() {
+				return this.tasks.map((t) => t.id).join(',');
+			},
+			isAnyModalOpen() {
+				const state = this.$store.state;
+				return (
+					Boolean(state.currentTaskIdForModal) ||
+					Boolean(state.showCreatingTaskModal) ||
+					(state.openModals || 0) > 0 ||
+					(state.modalStack?.length || 0) > 0
+				);
+			},
+			allSelected() {
+				return (
+					this.tasks.length > 0 &&
+					this.selected.length === this.tasks.length &&
+					this.selected.every(Boolean)
+				);
+			},
+			selectedSummary() {
+				const tasks = this.getSelectedTasks();
+				if (!tasks.length) return '';
+				const totalSeconds = tasks.reduce(
+					(s, t) => s + (t.common_time || 0),
+					0,
+				);
+				const totalHours = (totalSeconds / 3600).toFixed(1);
+				let overtimeSeconds = 0;
+				for (const task of tasks) {
+					const expected = this.getApproximatelyTime(task);
+					const actual = task.common_time || 0;
+					if (expected > 0 && actual > expected) {
+						overtimeSeconds += actual - expected;
+					}
 				}
-			}
-			const overtimeHours = (overtimeSeconds / 3600).toFixed(1);
-			let text = `${tasks.length} of ${this.tasks.length} · ${totalHours}h`;
-			if (overtimeSeconds > 0) {
-				text += ` · +${overtimeHours}h overtime`;
-			}
-			return text;
+				const overtimeHours = (overtimeSeconds / 3600).toFixed(1);
+				let text = `${tasks.length} of ${this.tasks.length} · ${totalHours}h`;
+				if (overtimeSeconds > 0) {
+					text += ` · +${overtimeHours}h overtime`;
+				}
+				return text;
+			},
+			taskComputedData() {
+				return this.tasks.reduce((acc, task) => {
+					acc[task.id] = {
+						title: this.truncateTitle(task.title),
+						timeExceeded: this.isTimeExceeded(task),
+						formattedTime: this.getTaskFormattedTime(task),
+						overtime: this.getTaskOvertime(task),
+						statusName: this.getStatusName(task),
+						statusColor: this.getStatusColor(task),
+					};
+					return acc;
+				}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+			},
+			taskTitles() {
+				const data: Record<number, string> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].title;
+				}
+				return data;
+			},
+			taskTimeExceeded() {
+				const data: Record<number, boolean> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].timeExceeded;
+				}
+				return data;
+			},
+			taskFormattedTimes() {
+				const data: Record<number, string> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].formattedTime;
+				}
+				return data;
+			},
+			taskOvertimes() {
+				const data: Record<number, string | null> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].overtime;
+				}
+				return data;
+			},
+			taskStatusNames() {
+				const data: Record<number, string> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].statusName;
+				}
+				return data;
+			},
+			taskStatusColors() {
+				const data: Record<number, string> = {};
+				for (const id in this.taskComputedData) {
+					data[id] = this.taskComputedData[id].statusColor;
+				}
+				return data;
+			},
 		},
-		taskComputedData() {
-			return this.tasks.reduce((acc, task) => {
-				acc[task.id] = {
-					title: this.truncateTitle(task.title),
-					timeExceeded: this.isTimeExceeded(task),
-					formattedTime: this.getTaskFormattedTime(task),
-					overtime: this.getTaskOvertime(task),
-					statusName: this.getStatusName(task),
-					statusColor: this.getStatusColor(task),
-				};
-				return acc;
-			}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
-		},
-		taskTitles() {
-			const data: Record<number, string> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].title;
-			}
-			return data;
-		},
-		taskTimeExceeded() {
-			const data: Record<number, boolean> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].timeExceeded;
-			}
-			return data;
-		},
-		taskFormattedTimes() {
-			const data: Record<number, string> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].formattedTime;
-			}
-			return data;
-		},
-		taskOvertimes() {
-			const data: Record<number, string | null> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].overtime;
-			}
-			return data;
-		},
-		taskStatusNames() {
-			const data: Record<number, string> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].statusName;
-			}
-			return data;
-		},
-		taskStatusColors() {
-			const data: Record<number, string> = {};
-			for (const id in this.taskComputedData) {
-				data[id] = this.taskComputedData[id].statusColor;
-			}
-			return data;
-		},
-	},
 		methods: {
 			truncateTitle(title: string) {
 				if (!title) return '';
@@ -905,8 +960,10 @@
 				this.resetSelectedTasks();
 			},
 			async exportSelectedTasks(payload = {}) {
-				const exportType = typeof payload === 'string' ? payload : (payload.type || 'csv');
-				const settings = typeof payload === 'string' ? {} : (payload.settings || {});
+				const exportType =
+					typeof payload === 'string' ? payload : payload.type || 'csv';
+				const settings =
+					typeof payload === 'string' ? {} : payload.settings || {};
 
 				this.loadingActionsForMultipleTasks.push(exportType);
 				const tasksIds = this.getSelectedTasks().map(({ id }) => id);
@@ -949,6 +1006,74 @@
 				if (this.perPage === this.pagination.per_page) return;
 				this.$emit('per-page-change', this.perPage);
 				this.resetSelectedTasks();
+			},
+			handleListKeydown(event: KeyboardEvent) {
+				if (event.defaultPrevented) return;
+				if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+					return;
+				}
+				if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
+				const root = this.$refs.listRoot as HTMLElement | null;
+				if (!root) return;
+				const target = event.target as Node | null;
+				const focusInList = !!target && root.contains(target);
+				// Page-level entry: when nothing meaningful holds focus (initial load,
+				// just after a modal closes, or focus on <body>), let the list claim
+				// Arrow/Enter so navigation works without first clicking/tabbing in.
+				// Focus parked inside another element is left alone; inputs/editors are
+				// still excluded below via shouldIgnoreNavigationTarget.
+				const isPageLevel =
+					!target ||
+					target === document.body ||
+					target === document.documentElement;
+				if (!focusInList && !isPageLevel) return;
+				if (this.isAnyModalOpen) return;
+				if (shouldIgnoreNavigationTarget(event.target)) return;
+				if (!this.tasks.length) return;
+
+				if (event.key === 'Enter') {
+					if (isInteractiveTarget(event.target)) return;
+					if (this.focusedIndex >= 0 && this.focusedIndex < this.tasks.length) {
+						event.preventDefault();
+						this.openFocusedTask();
+					}
+					return;
+				}
+
+				event.preventDefault();
+				this.focusedIndex = nextFocusIndex(
+					this.focusedIndex,
+					this.tasks.length,
+					event.key === 'ArrowDown' ? 1 : -1,
+				);
+				this.focusedTaskId = this.tasks[this.focusedIndex]?.id ?? null;
+				this.scrollFocusedIntoView();
+			},
+			openFocusedTask() {
+				const task = this.tasks[this.focusedIndex];
+				if (task) {
+					this.$store.commit('setCurrentTaskIdForModal', task.id);
+				}
+			},
+			scrollFocusedIntoView() {
+				this.$nextTick(() => {
+					const task = this.tasks[this.focusedIndex];
+					if (!task) return;
+					const root = this.$refs.listRoot as HTMLElement | null;
+					const el = root?.querySelector(
+						`[data-task-id="${task.id}"]`,
+					) as HTMLElement | null;
+					if (!el) return;
+					// Roving tabindex: move real DOM focus onto the highlighted row so
+					// DOM focus == visual focus. Enter then targets this row, and a
+					// stale focus on some other card/control can't desync from the ring.
+					if (typeof el.focus === 'function') {
+						el.focus({ preventScroll: true });
+					}
+					if (typeof el.scrollIntoView === 'function') {
+						el.scrollIntoView({ block: 'nearest' });
+					}
+				});
 			},
 		},
 	};
