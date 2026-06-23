@@ -1,5 +1,8 @@
 <template>
-	<div class="relative w-full items-center justify-center">
+	<div
+		class="relative w-full items-center justify-center outline-none"
+		tabindex="0"
+	>
 		<TasksMultipleActionsModal
 			v-if="isShowSelectedTasksCommonTime"
 			:is-loading-actions="loadingActionsForMultipleTasks"
@@ -994,6 +997,8 @@
 					return;
 				}
 				if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
+				const root = this.$el as HTMLElement | null;
+				if (!root || !root.contains(event.target as Node)) return;
 				if (this.isAnyModalOpen) return;
 				if (shouldIgnoreNavigationTarget(event.target)) return;
 				if (!this.tasks.length) return;
