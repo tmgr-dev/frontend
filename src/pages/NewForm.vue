@@ -756,6 +756,8 @@
 			getCategoryGitHubStatus(categoryId),
 			getCursorStatus(categoryId),
 		]);
+		// Ignore stale responses if the category changed while this load was in flight.
+		if (form.value.project_category_id !== categoryId) return;
 		if (github.status === 'fulfilled') {
 			categoryHasRepository.value = !!github.value.repository;
 			categoryGitHubLoaded.value = true;
