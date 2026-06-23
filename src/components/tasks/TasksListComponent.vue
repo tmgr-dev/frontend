@@ -1,5 +1,6 @@
 <template>
 	<div
+		ref="listRoot"
 		class="relative w-full items-center justify-center outline-none"
 		tabindex="0"
 	>
@@ -1012,7 +1013,7 @@
 					return;
 				}
 				if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
-				const root = this.$el as HTMLElement | null;
+				const root = this.$refs.listRoot as HTMLElement | null;
 				if (!root || !root.contains(event.target as Node)) return;
 				if (this.isAnyModalOpen) return;
 				if (shouldIgnoreNavigationTarget(event.target)) return;
@@ -1046,7 +1047,8 @@
 				this.$nextTick(() => {
 					const task = this.tasks[this.focusedIndex];
 					if (!task) return;
-					const el = this.$el?.querySelector(
+					const root = this.$refs.listRoot as HTMLElement | null;
+					const el = root?.querySelector(
 						`[data-task-id="${task.id}"]`,
 					) as HTMLElement | null;
 					if (!el) return;
