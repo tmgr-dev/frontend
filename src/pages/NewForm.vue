@@ -766,6 +766,15 @@
 		}
 	};
 
+	// Reload integration status when the category changes so the hint reflects the
+	// currently selected category, not the one loaded at open time.
+	watch(
+		() => form.value.project_category_id,
+		() => {
+			loadCategoryIntegrationState();
+		},
+	);
+
 	const integrationState = () => ({
 		hasRepository: categoryHasRepository.value,
 		cursorConfigured: categoryCursorConfigured.value,
