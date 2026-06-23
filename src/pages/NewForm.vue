@@ -92,8 +92,12 @@
 		createComment,
 		createAskingHelpComment,
 	} from '@/actions/tmgr/comments';
-	import { getTaskGitActivity } from '@/actions/tmgr/github';
-	import { getCursorAgents, sendFollowUp } from '@/actions/tmgr/cursor';
+	import { getTaskGitActivity, getCategoryGitHubStatus } from '@/actions/tmgr/github';
+	import { getCursorAgents, sendFollowUp, getCursorStatus } from '@/actions/tmgr/cursor';
+	import {
+		getCategoryIntegrationHint,
+		type CategoryIntegrationHint,
+	} from '@/utils/categoryIntegrationHint';
 	import { Send, Sparkles, Bot } from 'lucide-vue-next';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
@@ -283,6 +287,11 @@
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
 	const cursorAgents = ref([]);
+	const categoryHasRepository = ref(false);
+	const categoryCursorConfigured = ref(false);
+	const categoryGitHubLoaded = ref(false);
+	const categoryCursorLoaded = ref(false);
+	const integrationHint = ref<CategoryIntegrationHint | null>(null);
 	const pomodoroBlockRef = ref<any>(null);
 	const pomodoroEnabled = computed(() => !!pomodoroBlockRef.value?.state);
 	const pomodoroBusy = computed(
@@ -591,6 +600,7 @@
 
 				await loadGitActivity();
 				await loadCursorAgents();
+				await loadCategoryIntegrationState();
 
 				nextTick(() => {
 					autoResizeTitle();
@@ -735,6 +745,73 @@
 			console.error('[Cursor] Failed to load agents:', e);
 			cursorAgents.value = [];
 		}
+	};
+
+	const loadCategoryIntegrationState = async () => {
+		const categoryId = form.value.project_category_id;
+		categoryGitHubLoaded.value = false;
+		categoryCursorLoaded.value = false;
+		if (!categoryId) return;
+		const [github, cursor] = await Promise.allSettled([
+			getCategoryGitHubStatus(categoryId),
+			getCursorStatus(categoryId),
+		]);
+		// Ignore stale responses if the category changed while this load was in flight.
+		if (form.value.project_category_id !== categoryId) return;
+		if (github.status === 'fulfilled') {
+			categoryHasRepository.value = !!github.value.repository;
+			categoryGitHubLoaded.value = true;
+		}
+		if (cursor.status === 'fulfilled') {
+			categoryCursorConfigured.value = !!cursor.value.configured;
+			categoryCursorLoaded.value = true;
+		}
+	};
+
+	// Reload integration status when the category changes so the hint reflects the
+	// currently selected category, not the one loaded at open time.
+	watch(
+		() => form.value.project_category_id,
+		() => {
+			loadCategoryIntegrationState();
+		},
+	);
+
+	const integrationState = () => ({
+		hasRepository: categoryHasRepository.value,
+		cursorConfigured: categoryCursorConfigured.value,
+	});
+
+	const openCursorAgent = () => {
+		const hint = getCategoryIntegrationHint('cursor', integrationState());
+		if (categoryCursorLoaded.value && hint.show) {
+			integrationHint.value = hint;
+			return;
+		}
+		showCursorAgentModal.value = true;
+	};
+
+	const openGitActivity = () => {
+		const hint = getCategoryIntegrationHint('github', integrationState());
+		if (categoryGitHubLoaded.value && hint.show) {
+			integrationHint.value = hint;
+			return;
+		}
+		showGitActivityModal.value = true;
+	};
+
+	const goToCategorySettings = () => {
+		const categoryId = form.value.project_category_id;
+		const workspaceCode = store.getters.currentWorkspace?.code;
+		integrationHint.value = null;
+		if (!categoryId || !workspaceCode) return;
+		if (props.isModal) {
+			store.commit('closeTaskModal');
+		}
+		router.push({
+			name: 'WorkspaceCategoryEdit',
+			params: { workspace_code: workspaceCode, id: categoryId },
+		});
 	};
 
 	const sendToCursor = async () => {
@@ -1197,6 +1274,7 @@
 
 				await loadGitActivity();
 				await loadCursorAgents();
+				await loadCategoryIntegrationState();
 			} catch (e: any) {
 				console.error('Error loading linked task:', e);
 			}
@@ -1399,7 +1477,7 @@
 						<button
 							v-if="canRunWithCursor"
 							type="button"
-							@click="showCursorAgentModal = true"
+							@click="openCursorAgent"
 							class="relative flex h-7 items-center justify-center rounded-pill bg-purple-500/80 px-2 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
 							title="Run with Cursor Agent"
 						>
@@ -1555,7 +1633,7 @@
 							<div class="min-w-0">
 								<button
 									type="button"
-									@click="showGitActivityModal = true"
+									@click="openGitActivity"
 									class="inline-flex h-7 items-center gap-1 rounded-pill bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover border border-line"
 								>
 									<CodeBracketIcon class="h-3.5 w-3.5" />
@@ -1642,7 +1720,7 @@
 						<button
 							v-if="form.id"
 							type="button"
-							@click="showGitActivityModal = true"
+							@click="openGitActivity"
 							class="relative flex items-center justify-center rounded bg-violet-500/80 px-2 py-1.5 text-xs text-white hover:bg-violet-500 dark:bg-violet-600/70 dark:hover:bg-violet-600/90"
 							title="Git Activity"
 						>
@@ -2110,6 +2188,36 @@
 					@stopped="loadCursorAgents"
 					@followup-sent="taskCommentsRef?.loadComments()"
 				/>
+			</DialogContent>
+		</Dialog>
+
+		<Dialog
+			:open="!!integrationHint"
+			@update:open="(value) => { if (!value) integrationHint = null; }"
+		>
+			<DialogContent class="max-w-md rounded-card border border-line bg-surface text-ink">
+				<DialogHeader>
+					<DialogTitle class="text-ink">{{ integrationHint?.title }}</DialogTitle>
+					<DialogDescription class="text-ink-subtle">
+						{{ integrationHint?.message }}
+					</DialogDescription>
+				</DialogHeader>
+				<div class="mt-4 flex flex-wrap justify-end gap-2">
+					<button
+						type="button"
+						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-hover"
+						@click="integrationHint = null"
+					>
+						Not now
+					</button>
+					<button
+						type="button"
+						class="h-9 rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-opacity hover:opacity-90"
+						@click="goToCategorySettings"
+					>
+						{{ integrationHint?.ctaLabel }}
+					</button>
+				</div>
 			</DialogContent>
 		</Dialog>
 	</div>
