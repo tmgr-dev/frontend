@@ -1,6 +1,5 @@
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
-import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 export interface Notification {
 	id: number;
@@ -60,7 +59,7 @@ export interface UpdateNotificationSettingsPayload {
 
 export const getNotifications = async (
 	page: number = 1,
-	perPage: number = 20
+	perPage: number = 20,
 ): Promise<NotificationPaginatedResponse> => {
 	const response = await $axios.get('/notifications', {
 		params: { page, per_page: perPage },
@@ -70,20 +69,15 @@ export const getNotifications = async (
 
 export const getUnreadCount = async (): Promise<number> => {
 	const cacheKey = 'notifications-unread-count';
-	
-	return requestDeduplicator.deduplicate(cacheKey, async () => {
-		const cached = requestCache.get<number>(cacheKey);
-		if (cached !== null) {
-			return cached;
-		}
 
-		const response = await $axios.get('/notifications/unread-count');
-		const count = response.data.count;
-		
-		requestCache.set(cacheKey, count, 10000);
-		
-		return count;
-	});
+	return requestCache.getOrFetch(
+		cacheKey,
+		async () => {
+			const response = await $axios.get('/notifications/unread-count');
+			return response.data.count as number;
+		},
+		{ ttl: 10000 },
+	);
 };
 
 export const markAsRead = async (id: number): Promise<Notification> => {
@@ -102,13 +96,14 @@ export const deleteNotification = async (id: number): Promise<void> => {
 	await $axios.delete(`/notifications/${id}`);
 };
 
-export const getNotificationSettings = async (): Promise<NotificationSettingsResponse> => {
-	const response = await $axios.get('/notification-settings');
-	return response.data;
-};
+export const getNotificationSettings =
+	async (): Promise<NotificationSettingsResponse> => {
+		const response = await $axios.get('/notification-settings');
+		return response.data;
+	};
 
 export const updateNotificationSettings = async (
-	payload: UpdateNotificationSettingsPayload
+	payload: UpdateNotificationSettingsPayload,
 ): Promise<NotificationSettings> => {
 	const response = await $axios.put('/notification-settings', payload);
 	return response.data.settings;
