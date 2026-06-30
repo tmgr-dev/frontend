@@ -1413,7 +1413,7 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'mx-auto h-full w-full max-w-[760px] flex-col overflow-hidden md:my-6 md:h-[calc(100dvh-3rem)] md:rounded-card md:border md:border-line md:bg-surface md:shadow-xl',
+					: 'mx-auto h-[calc(100dvh-4rem)] w-full max-w-[760px] flex-col overflow-hidden md:my-6 md:h-[calc(100dvh-7rem)] md:rounded-card md:border md:border-line md:bg-surface md:shadow-xl',
 			]"
 		>
 			<!-- Form Panel -->
