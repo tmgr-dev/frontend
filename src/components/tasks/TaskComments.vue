@@ -157,6 +157,25 @@
 			.slice(0, 2);
 	};
 
+	const AVATAR_COLORS = [
+		'#6366f1',
+		'#0ea5e9',
+		'#22c55e',
+		'#ec4899',
+		'#f59e0b',
+		'#8b5cf6',
+		'#14b8a6',
+		'#ef4444',
+	];
+	const getAvatarColor = (user: { id?: number; name?: string }) => {
+		const key = String(user?.id ?? user?.name ?? '');
+		let hash = 0;
+		for (let i = 0; i < key.length; i++) {
+			hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+		}
+		return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+	};
+
 	onMounted(() => {
 		loadComments();
 	});
@@ -203,11 +222,11 @@
 				v-for="comment in sortedComments"
 				:key="comment.id"
 				:class="[
-					'group -ml-3 flex gap-2 rounded-lg p-3',
+					'group flex gap-3',
 					comment.cursor_agent_id
-						? 'border-l-4 border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-violet-500 bg-violet-50 p-3 dark:bg-violet-900/20'
 						: comment.user?.email === 'ai@tmgr.dev'
-						? 'border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 p-3 dark:bg-blue-900/20'
 						: '',
 				]"
 			>
@@ -236,7 +255,10 @@
 						:src="comment.user.avatar"
 						:alt="comment.user.name"
 					/>
-					<AvatarFallback class="text-xs">
+					<AvatarFallback
+						class="text-2xs font-bold text-white"
+						:style="{ backgroundColor: getAvatarColor(comment.user) }"
+					>
 						{{ getUserInitials(comment.user.name) }}
 					</AvatarFallback>
 				</Avatar>
