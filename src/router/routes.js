@@ -59,7 +59,31 @@ const safeRedirect = (to, target) => {
 	return target;
 };
 
+const DemoTaskLayout = () => import('@/pages/demo/DemoTaskLayout.vue');
+
 const routes = [
+	{
+		path: '/demo/task-a',
+		component: DemoTaskLayout,
+		name: 'DemoTaskLayoutA',
+		meta: {
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+			navbarHidden: true,
+			demoVariant: 'a',
+		},
+	},
+	{
+		path: '/demo/task-b',
+		component: DemoTaskLayout,
+		name: 'DemoTaskLayoutB',
+		meta: {
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+			navbarHidden: true,
+			demoVariant: 'b',
+		},
+	},
 	{
 		path: '/login',
 		component: () => import('@/pages/auth/Login.vue'),
