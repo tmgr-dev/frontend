@@ -1403,33 +1403,29 @@
 		<ForbiddenAccess :show-back-button="false" />
 	</div>
 
-	<div v-else class="new-form-container h-full" :class="{ 'font-display text-ink': isModal }">
+	<div
+		v-else
+		class="new-form-container h-full font-display text-ink"
+		:class="{ 'bg-surface-sunken': !isModal }"
+	>
 		<div
 			class="flex transition-all duration-300"
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'container mx-auto h-full flex-col pt-14 md:w-[700px] md:flex-row',
+					: 'mx-auto h-full w-full max-w-[760px] flex-col overflow-hidden md:my-6 md:h-[calc(100dvh-3rem)] md:rounded-card md:border md:border-line md:bg-surface md:shadow-xl',
 			]"
 		>
 			<!-- Form Panel -->
-			<div
-				class="flex min-h-0 flex-1 flex-col"
-				:class="isModal ? 'w-full' : 'md:w-[700px]'"
-			>
+			<div class="flex min-h-0 w-full flex-1 flex-col">
 				<!-- HEADER - Fixed at top -->
 				<header
-					class="flex shrink-0 items-center justify-between gap-2 border-b border-line"
-					:class="isModal ? 'px-[14px] py-2.5' : 'p-6 pb-4'"
+					class="flex shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
 				>
 					<div class="flex items-center gap-2 min-w-0">
 						<Select v-model="statusIdStr">
 							<SelectTrigger
-								:class="
-									isModal
-										? 'h-7 gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover w-auto'
-										: 'w-40 border-0 bg-transparent'
-								"
+								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover"
 							>
 								<SelectValue placeholder="status" />
 							</SelectTrigger>
@@ -1450,7 +1446,7 @@
 							</SelectContent>
 						</Select>
 						<span
-							v-if="isModal && (taskId || form.id)"
+							v-if="taskId || form.id"
 							class="font-mono text-2xs text-ink-subtle truncate"
 						>
 							TMGR-T{{ taskId || form.id }}
@@ -1499,8 +1495,7 @@
 
 				<!-- MAIN - Scrollable content area -->
 				<main
-					class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden"
-					:class="isModal ? 'px-6 pt-5 pb-4' : 'px-6 pb-4'"
+					class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-4"
 				>
 					<!-- External Update Notification -->
 					<Transition name="fade">
@@ -1537,9 +1532,7 @@
 							ref="titleTextarea"
 							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-none placeholder:text-ink-faint"
 							:class="[
-								isModal
-									? 'text-2xl font-semibold leading-snug tracking-tight text-ink'
-									: 'text-lg font-bold',
+								'text-2xl font-semibold leading-snug tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
 							]"
 							placeholder="Task name"
@@ -1559,27 +1552,26 @@
 						</div>
 					</div>
 
-					<!-- Hero TIMER block (modal/side-panel mode) -->
+					<!-- Hero TIMER block -->
 					<TimeCounter
-						v-if="isModal && form.id && isFeatureEnabled('task.countdown')"
+						v-if="form.id && isFeatureEnabled('task.countdown')"
 						:form="form"
 						:disabled="!form.id"
 						@toggle="toggleTimer"
 						@update:seconds="updateSeconds"
 					/>
 
-					<!-- Pomodoro block (per-task, opt-in) — modal placement -->
+					<!-- Pomodoro block (per-task, opt-in) -->
 					<PomodoroBlock
-						v-if="isModal && form.id"
+						v-if="form.id"
 						ref="pomodoroBlockRef"
 						:task-id="form.id"
 						:main-timer-running="mainTimerRunning"
 						@request-main-start="handlePomodoroRequestMainStart"
 					/>
 
-					<!-- Properties grid (modal/side-panel mode) -->
+					<!-- Properties grid -->
 					<div
-						v-if="isModal"
 						class="grid gap-y-3 gap-x-4 text-sm"
 						style="grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);"
 					>
@@ -1684,78 +1676,8 @@
 						</template>
 					</div>
 
-					<!-- Legacy non-modal toolbar -->
-					<div v-else class="grid grid-cols-2 gap-4 md:flex md:items-center">
-						<CategoriesCombobox
-							:categories="categories"
-							v-model="form.project_category_id"
-							@update:model-value="
-								() => {
-									if (!form.title) {
-										updateTaskTitle();
-									}
-								}
-							"
-						/>
-
-						<div
-							v-if="isFeatureEnabled('task.assignees')"
-							class="flex items-center gap-2"
-						>
-							<AssigneesCombobox
-								:assignees="workspaceMembers"
-								v-model="assignees as any"
-							/>
-							<button
-								v-if="!isAssignedToMe"
-								type="button"
-								@click="assignToMe"
-								class="flex items-center justify-center rounded bg-blue-500/80 px-2 py-1.5 text-xs text-white hover:bg-blue-500 dark:bg-blue-600/70 dark:hover:bg-blue-600/90"
-								title="Assign to me"
-							>
-								<span class="material-icons text-sm">person_add</span>
-							</button>
-						</div>
-
-						<button
-							v-if="form.id"
-							type="button"
-							@click="openGitActivity"
-							class="relative flex items-center justify-center rounded bg-violet-500/80 px-2 py-1.5 text-xs text-white hover:bg-violet-500 dark:bg-violet-600/70 dark:hover:bg-violet-600/90"
-							title="Git Activity"
-						>
-							<CodeBracketIcon class="h-4 w-4" />
-							<span
-								v-if="gitActivityCount > 0"
-								class="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-semibold"
-							>
-								{{ gitActivityCount }}
-							</span>
-						</button>
-
-						<div class="ml-auto">
-							<TimeCounter
-								v-if="form.id && isFeatureEnabled('task.countdown')"
-								:form="form"
-								:disabled="!form.id"
-								@toggle="toggleTimer"
-								@update:seconds="updateSeconds"
-							/>
-						</div>
-					</div>
-
-					<!-- Pomodoro block (per-task, opt-in) — standalone placement -->
-					<PomodoroBlock
-						v-if="!isModal && form.id"
-						ref="pomodoroBlockRef"
-						:task-id="form.id"
-						:main-timer-running="mainTimerRunning"
-						@request-main-start="handlePomodoroRequestMainStart"
-					/>
-
-					<!-- DESCRIPTION label (modal mode) -->
+					<!-- DESCRIPTION label -->
 					<div
-						v-if="isModal"
 						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 					>
 						Description
@@ -1763,15 +1685,13 @@
 
 					<!-- Editor section with toggle button -->
 					<div
-						class="relative"
-						:class="isModal ? 'min-h-[260px] max-h-[420px] overflow-y-auto rounded-md border border-line bg-surface-sunken description-editor-wrapper' : ''"
+						class="description-editor-wrapper relative min-h-[260px] max-h-[420px] overflow-y-auto rounded-md border border-line bg-surface-sunken"
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
 							v-if="editorType === 'markdown'"
 							v-model="form.description"
 							class="mb-0"
-							:class="[!isModal ? 'md:h-72 lg:min-h-96' : '']"
 							:show-preview="!!(taskId && form.description)"
 						/>
 
@@ -1779,12 +1699,7 @@
 						v-else-if="editorType === 'block'"
 						v-model="form.description_json"
 						placeholder="Type your description here or enter / to see commands or "
-						class="block-editor-container mb-0 px-2"
-						:class="[
-							!isModal
-								? 'border lg:min-h-96'
-								: 'min-h-[240px]',
-						]"
+						class="block-editor-container mb-0 px-2 min-h-[240px]"
 					/>
 					</div>
 
@@ -1794,10 +1709,9 @@
 						:task-id="taskId || form.id"
 					/>-->
 
-					<!-- CHECKPOINTS empty state (modal): "+ Add checkpoint" inline button -->
+					<!-- CHECKPOINTS empty state: "+ Add checkpoint" inline button -->
 					<button
 						v-if="
-							isModal &&
 							isFeatureEnabled('task.checkpoints') &&
 							(taskId || form.id) &&
 							(!form.checkpoints || form.checkpoints.length === 0)
@@ -1814,7 +1728,6 @@
 					<!-- CHECKPOINTS label + progress (new design) -->
 					<div
 						v-if="
-							isModal &&
 							(taskId || form.id) &&
 							!isCheckpointsExpanded &&
 							form.checkpoints &&
@@ -1831,7 +1744,6 @@
 					</div>
 					<div
 						v-if="
-							isModal &&
 							(taskId || form.id) &&
 							!isCheckpointsExpanded &&
 							form.checkpoints &&
@@ -1858,8 +1770,7 @@
 							form.checkpoints &&
 							form.checkpoints.length > 0
 						"
-						class="checkpoints-wrapper flex flex-col rounded-card border border-line bg-surface-sunken"
-						:class="[isModal ? 'max-h-[320px]' : '']"
+						class="checkpoints-wrapper flex max-h-[320px] flex-col rounded-card border border-line bg-surface-sunken"
 						:key="checkpointUpdateKey"
 					>
 						<!-- Header - Fixed (actions only; section label is rendered above) -->
@@ -2018,12 +1929,11 @@
 				<!-- FOOTER - Fixed at bottom -->
 				<footer
 					ref="footer"
-					class="shrink-0 border-t border-line px-6 py-3"
-					:class="isModal ? 'bg-surface' : ''"
+					class="shrink-0 border-t border-line bg-surface px-6 py-3"
 				>
-					<!-- Comment composer (modal only, above action buttons) -->
+					<!-- Comment composer (above action buttons) -->
 					<div
-						v-if="isModal && form.id"
+						v-if="form.id"
 						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
 						@mousedown.stop
 					>
