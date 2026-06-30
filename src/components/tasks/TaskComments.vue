@@ -63,11 +63,14 @@
 	const commentsCount = computed(() => comments.value.length);
 
 	const sortedComments = computed(() => {
-		return [...comments.value].sort((a, b) => {
-			return (
-				new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-			);
-		});
+		// Page rail (hideHeader) reads chronologically (oldest first, newest by
+		// the composer); the modal keeps its existing newest-first order.
+		const dir = props.hideHeader ? 1 : -1;
+		return [...comments.value].sort(
+			(a, b) =>
+				dir *
+				(new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+		);
 	});
 
 	const loadComments = async () => {
@@ -158,14 +161,14 @@
 	};
 
 	const AVATAR_COLORS = [
+		'#14b8a6',
 		'#6366f1',
-		'#0ea5e9',
 		'#22c55e',
+		'#8b5cf6',
 		'#ec4899',
 		'#f59e0b',
-		'#8b5cf6',
-		'#14b8a6',
 		'#ef4444',
+		'#0ea5e9',
 	];
 	const getAvatarColor = (user: { id?: number; name?: string }) => {
 		const key = String(user?.id ?? user?.name ?? '');
