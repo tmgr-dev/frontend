@@ -1343,10 +1343,10 @@
 						);
 					}
 				}
-				if (this.chosenCategory?.id) {
-					const chosenCategoryId = Number(this.chosenCategory.id);
+				const selectedCategoryId = Number(this.$store.state.filter.selectedCategory);
+				if (selectedCategoryId) {
 					tasks = tasks.filter(
-						(task) => Number(task.project_category_id) === chosenCategoryId,
+						(task) => Number(task.project_category_id) === selectedCategoryId,
 					);
 				}
 				return tasks;
