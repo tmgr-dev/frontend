@@ -24,7 +24,7 @@
 	import { formatTime } from '@/utils/timeUtils.js';
 	import EmptyState from '@/components/EmptyState.vue';
 	import { Skeleton } from '@/components/ui/skeleton';
-	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import { getWorkspaceMembers, getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import { getUser } from '@/actions/tmgr/user';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -55,6 +55,8 @@
 	const workspaceId = ref<number>(0);
 	const newCommentTaskIds = ref<Set<number>>(new Set());
 	const pusherSubscriptionId = ref<string>('');
+	const archivedStatusIds = ref<Set<number>>(new Set());
+	const archivedStatusNames = ref<Set<string>>(new Set());
 	
 	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
 	const pagination = ref<PaginationMeta>({
@@ -67,6 +69,23 @@
 	});
 
 	const status = computed(() => route.meta.status);
+	const isActiveList = computed(() => !status.value);
+
+	function isArchivedTask(task: Task) {
+		if (!task) return false;
+		if (task.status_id != null && archivedStatusIds.value.has(task.status_id)) {
+			return true;
+		}
+		return task.status != null && archivedStatusNames.value.has(task.status);
+	}
+
+	function removeTaskFromList(taskId: number | undefined) {
+		const index = tasks.value.findIndex(t => t.id === taskId);
+		if (index !== -1) {
+			tasks.value.splice(index, 1);
+			pagination.value.total = Math.max(0, pagination.value.total - 1);
+		}
+	}
 	const totalSeconds = computed(() => 
 		pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0)
 	);
@@ -141,6 +160,22 @@
 			
 			categories.value = await getCategories();
 
+			try {
+				const workspaceStatuses = await getWorkspaceStatuses();
+				for (const workspaceStatus of workspaceStatuses) {
+					if (workspaceStatus?.type === 'archived') {
+						if (workspaceStatus.id != null) {
+							archivedStatusIds.value.add(workspaceStatus.id);
+						}
+						if (workspaceStatus.name) {
+							archivedStatusNames.value.add(workspaceStatus.name);
+						}
+					}
+				}
+			} catch (statusError) {
+				console.error(statusError);
+			}
+
 			const user = await getUser();
 			const workspaceSetting = user.settings?.find(
 				(setting) => setting.key === 'current_workspace',
@@ -152,6 +187,9 @@
 				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
 					onTaskUpdated: (task, action) => {
 						if (action === 'created') {
+							if (isActiveList.value && isArchivedTask(task)) {
+								return;
+							}
 							const matchesStatus = !status.value || task.status === status.value;
 							const exists = tasks.value.some(t => t.id === task.id);
 							if (matchesStatus && !exists) {
@@ -159,6 +197,10 @@
 								pagination.value.total++;
 							}
 						} else if (action === 'updated') {
+							if (isActiveList.value && isArchivedTask(task)) {
+								removeTaskFromList(task.id);
+								return;
+							}
 							const index = tasks.value.findIndex(t => t.id === task.id);
 							if (index !== -1) {
 								tasks.value.splice(index, 1, task);
@@ -328,10 +370,13 @@
 
 	function updateSingleTaskInList(updatedTask: Task) {
 		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
-		
+		const isArchivedOnActiveList = isActiveList.value && isArchivedTask(updatedTask);
+
 		if (taskIndex !== -1) {
-			const shouldStayInList = !status.value || updatedTask.status === status.value;
-			
+			const shouldStayInList =
+				!isArchivedOnActiveList &&
+				(!status.value || updatedTask.status === status.value);
+
 			if (shouldStayInList) {
 				tasks.value.splice(taskIndex, 1, updatedTask);
 			} else {
@@ -339,7 +384,9 @@
 				pagination.value.total = Math.max(0, pagination.value.total - 1);
 			}
 		} else {
-			const shouldBeInList = !status.value || updatedTask.status === status.value;
+			const shouldBeInList =
+				!isArchivedOnActiveList &&
+				(!status.value || updatedTask.status === status.value);
 			if (shouldBeInList) {
 				tasks.value.unshift(updatedTask);
 				pagination.value.total++;
