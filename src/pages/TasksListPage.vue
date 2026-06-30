@@ -29,6 +29,10 @@
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
+	import {
+		buildArchivedStatusSets,
+		isArchivedTask as isArchivedTaskBySets,
+	} from '@/utils/archivedTasks';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -72,14 +76,10 @@
 	const isActiveList = computed(() => !status.value);
 
 	function isArchivedTask(task: Task) {
-		if (!task) return false;
-		if (task.status_id != null) {
-			const statusId = Number(task.status_id);
-			if (!Number.isNaN(statusId) && archivedStatusIds.value.has(statusId)) {
-				return true;
-			}
-		}
-		return task.status != null && archivedStatusNames.value.has(task.status);
+		return isArchivedTaskBySets(task, {
+			ids: archivedStatusIds.value,
+			names: archivedStatusNames.value,
+		});
 	}
 
 	function removeTaskFromList(taskId: number | undefined) {
@@ -165,16 +165,9 @@
 
 			try {
 				const workspaceStatuses = await getWorkspaceStatuses();
-				for (const workspaceStatus of workspaceStatuses) {
-					if (workspaceStatus?.type === 'archived') {
-						if (workspaceStatus.id != null) {
-							archivedStatusIds.value.add(workspaceStatus.id);
-						}
-						if (workspaceStatus.name) {
-							archivedStatusNames.value.add(workspaceStatus.name);
-						}
-					}
-				}
+				const archivedSets = buildArchivedStatusSets(workspaceStatuses);
+				archivedStatusIds.value = archivedSets.ids;
+				archivedStatusNames.value = archivedSets.names;
 			} catch (statusError) {
 				console.error(statusError);
 			}
