@@ -1344,8 +1344,9 @@
 					}
 				}
 				if (this.chosenCategory?.id) {
+					const chosenCategoryId = Number(this.chosenCategory.id);
 					tasks = tasks.filter(
-						(task) => task.project_category_id === this.chosenCategory.id,
+						(task) => Number(task.project_category_id) === chosenCategoryId,
 					);
 				}
 				return tasks;
