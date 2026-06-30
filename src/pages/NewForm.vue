@@ -1947,6 +1947,7 @@
 					<TaskComments
 						ref="taskCommentsRef"
 						:task-id="form.id"
+						hide-header
 						@update:count="commentsCount = $event"
 					/>
 				</div>

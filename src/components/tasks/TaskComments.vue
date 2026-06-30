@@ -45,6 +45,7 @@
 
 	interface Props {
 		taskId: number;
+		hideHeader?: boolean;
 	}
 
 	const props = defineProps<Props>();
@@ -173,17 +174,12 @@
 </script>
 
 <template>
-	<div class="border-t border-gray-200 pt-4 dark:border-gray-700">
+	<div :class="hideHeader ? '' : 'border-t border-line pt-4'">
 		<!-- Header -->
-		<div class="mb-3 flex items-center gap-2">
-			<MessageCircle class="h-4 w-4 text-gray-600 dark:text-gray-400" />
-			<span class="text-sm font-medium text-gray-900 dark:text-white"
-				>Activity</span
-			>
-			<span
-				v-if="commentsCount > 0"
-				class="text-xs text-gray-500 dark:text-gray-400"
-			>
+		<div v-if="!hideHeader" class="mb-3 flex items-center gap-2">
+			<MessageCircle class="h-4 w-4 text-ink-subtle" />
+			<span class="text-sm font-medium text-ink">Activity</span>
+			<span v-if="commentsCount > 0" class="text-xs text-ink-subtle">
 				{{ commentsCount }}
 			</span>
 		</div>
@@ -191,13 +187,13 @@
 		<!-- Comments List -->
 		<div v-if="isLoading" class="flex items-center justify-center py-4">
 			<div
-				class="h-5 w-5 animate-spin rounded-full border-2 border-tmgr-blue border-t-transparent"
+				class="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent"
 			></div>
 		</div>
 
 		<div
 			v-else-if="comments.length === 0"
-			class="py-2 text-xs text-gray-500 dark:text-gray-400"
+			class="py-2 text-xs text-ink-subtle"
 		>
 			No comments yet
 		</div>
@@ -264,11 +260,11 @@
 						</span>
 						<span
 							v-else
-							class="text-sm font-medium text-gray-900 dark:text-white"
+							class="text-sm font-semibold text-ink"
 						>
 							{{ comment.user.name }}
 						</span>
-						<span class="text-xs text-gray-500 dark:text-gray-400">
+						<span class="text-2xs text-ink-faint">
 							{{ formatRelativeTime(new Date(comment.created_at)) }}
 						</span>
 						<div
@@ -289,7 +285,7 @@
 					</div>
 
 					<div
-						class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300"
+						class="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink"
 					>
 						{{ comment.message }}
 					</div>
