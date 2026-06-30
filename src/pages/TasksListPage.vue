@@ -73,8 +73,11 @@
 
 	function isArchivedTask(task: Task) {
 		if (!task) return false;
-		if (task.status_id != null && archivedStatusIds.value.has(task.status_id)) {
-			return true;
+		if (task.status_id != null) {
+			const statusId = Number(task.status_id);
+			if (!Number.isNaN(statusId) && archivedStatusIds.value.has(statusId)) {
+				return true;
+			}
 		}
 		return task.status != null && archivedStatusNames.value.has(task.status);
 	}
