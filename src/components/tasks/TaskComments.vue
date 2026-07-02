@@ -45,6 +45,7 @@
 
 	interface Props {
 		taskId: number;
+		hideHeader?: boolean;
 	}
 
 	const props = defineProps<Props>();
@@ -62,11 +63,14 @@
 	const commentsCount = computed(() => comments.value.length);
 
 	const sortedComments = computed(() => {
-		return [...comments.value].sort((a, b) => {
-			return (
-				new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-			);
-		});
+		// Page rail (hideHeader) reads chronologically (oldest first, newest by
+		// the composer); the modal keeps its existing newest-first order.
+		const dir = props.hideHeader ? 1 : -1;
+		return [...comments.value].sort(
+			(a, b) =>
+				dir *
+				(new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+		);
 	});
 
 	const loadComments = async () => {
@@ -156,6 +160,25 @@
 			.slice(0, 2);
 	};
 
+	const AVATAR_COLORS = [
+		'#14b8a6',
+		'#6366f1',
+		'#22c55e',
+		'#8b5cf6',
+		'#ec4899',
+		'#f59e0b',
+		'#ef4444',
+		'#0ea5e9',
+	];
+	const getAvatarColor = (user: { id?: number; name?: string }) => {
+		const key = String(user?.id ?? user?.name ?? '');
+		let hash = 0;
+		for (let i = 0; i < key.length; i++) {
+			hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+		}
+		return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+	};
+
 	onMounted(() => {
 		loadComments();
 	});
@@ -173,17 +196,12 @@
 </script>
 
 <template>
-	<div class="border-t border-gray-200 pt-4 dark:border-gray-700">
+	<div :class="hideHeader ? '' : 'border-t border-line pt-4'">
 		<!-- Header -->
-		<div class="mb-3 flex items-center gap-2">
-			<MessageCircle class="h-4 w-4 text-gray-600 dark:text-gray-400" />
-			<span class="text-sm font-medium text-gray-900 dark:text-white"
-				>Activity</span
-			>
-			<span
-				v-if="commentsCount > 0"
-				class="text-xs text-gray-500 dark:text-gray-400"
-			>
+		<div v-if="!hideHeader" class="mb-3 flex items-center gap-2">
+			<MessageCircle class="h-4 w-4 text-ink-subtle" />
+			<span class="text-sm font-medium text-ink">Activity</span>
+			<span v-if="commentsCount > 0" class="text-xs text-ink-subtle">
 				{{ commentsCount }}
 			</span>
 		</div>
@@ -191,13 +209,13 @@
 		<!-- Comments List -->
 		<div v-if="isLoading" class="flex items-center justify-center py-4">
 			<div
-				class="h-5 w-5 animate-spin rounded-full border-2 border-tmgr-blue border-t-transparent"
+				class="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent"
 			></div>
 		</div>
 
 		<div
 			v-else-if="comments.length === 0"
-			class="py-2 text-xs text-gray-500 dark:text-gray-400"
+			class="py-2 text-xs text-ink-subtle"
 		>
 			No comments yet
 		</div>
@@ -207,11 +225,11 @@
 				v-for="comment in sortedComments"
 				:key="comment.id"
 				:class="[
-					'group -ml-3 flex gap-2 rounded-lg p-3',
+					'group flex gap-3',
 					comment.cursor_agent_id
-						? 'border-l-4 border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-violet-500 bg-violet-50 p-3 dark:bg-violet-900/20'
 						: comment.user?.email === 'ai@tmgr.dev'
-						? 'border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 p-3 dark:bg-blue-900/20'
 						: '',
 				]"
 			>
@@ -240,7 +258,10 @@
 						:src="comment.user.avatar"
 						:alt="comment.user.name"
 					/>
-					<AvatarFallback class="text-xs">
+					<AvatarFallback
+						class="text-2xs font-bold text-white"
+						:style="{ backgroundColor: getAvatarColor(comment.user) }"
+					>
 						{{ getUserInitials(comment.user.name) }}
 					</AvatarFallback>
 				</Avatar>
@@ -264,11 +285,11 @@
 						</span>
 						<span
 							v-else
-							class="text-sm font-medium text-gray-900 dark:text-white"
+							class="text-sm font-semibold text-ink"
 						>
 							{{ comment.user.name }}
 						</span>
-						<span class="text-xs text-gray-500 dark:text-gray-400">
+						<span class="text-2xs text-ink-faint">
 							{{ formatRelativeTime(new Date(comment.created_at)) }}
 						</span>
 						<div
@@ -289,7 +310,7 @@
 					</div>
 
 					<div
-						class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300"
+						class="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink"
 					>
 						{{ comment.message }}
 					</div>
