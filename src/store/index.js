@@ -5,7 +5,6 @@ import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import { createStore } from 'vuex';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { requestCache } from '@/utils/requestCache';
-import { requestDeduplicator } from '@/utils/requestDeduplicator';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -15,7 +14,7 @@ const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('categories');
 	requestCache.invalidate('workspace-statuses');
 	requestCache.invalidate(/^tasks-status-/);
-	requestDeduplicator.clear();
+	requestCache.clearInFlight();
 };
 
 const state = {
@@ -105,16 +104,17 @@ const mutations = {
 		state.token = token;
 	},
 	setUser(state, user) {
-		const previousWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
+		const previousWorkspaceId =
+			state.userSettingsMap['current_workspace']?.value || null;
 		const nextUser = { ...user };
 		if (Array.isArray(nextUser.settings)) {
 			const previousSettingsById = Array.isArray(state.user?.settings)
 				? state.user.settings.reduce((acc, setting) => {
-					if (setting?.id) {
-						acc[setting.id] = setting;
-					}
-					return acc;
-				}, {})
+						if (setting?.id) {
+							acc[setting.id] = setting;
+						}
+						return acc;
+				  }, {})
 				: {};
 
 			nextUser.settings = nextUser.settings.map((setting) => {
@@ -138,7 +138,8 @@ const mutations = {
 			}, {});
 		}
 
-		const nextWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
+		const nextWorkspaceId =
+			state.userSettingsMap['current_workspace']?.value || null;
 		if (
 			previousWorkspaceId &&
 			nextWorkspaceId &&
@@ -213,21 +214,22 @@ const mutations = {
 		state.appRerenderKey++;
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
-		const previousWorkspaceId = state.userSettingsMap['current_workspace']?.value || null;
+		const previousWorkspaceId =
+			state.userSettingsMap['current_workspace']?.value || null;
 		if (state.user && state.user.settings) {
 			const settingIndex = state.user.settings.findIndex(
-				s => s.key === 'current_workspace'
+				(s) => s.key === 'current_workspace',
 			);
 			if (settingIndex !== -1) {
 				state.user.settings[settingIndex] = {
 					...state.user.settings[settingIndex],
-					value: workspaceId
+					value: workspaceId,
 				};
 			}
 			if (state.userSettingsMap['current_workspace']) {
 				state.userSettingsMap['current_workspace'] = {
 					...state.userSettingsMap['current_workspace'],
-					value: workspaceId
+					value: workspaceId,
 				};
 			}
 		}
@@ -242,19 +244,18 @@ const mutations = {
 };
 
 const actions = {
-	logout() {
-		const workspaceInvitationToken = localStorage.getItem(
-			'workspace.invitation',
-		);
-		localStorage.clear();
-		if (workspaceInvitationToken) {
-			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
-		}
-		
+	logout({ commit }) {
+		// Only the session dies: UI prefs (colorScheme, sidebarExpanded,
+		// preferred_editor, …) survive, but per-user data must not leak to
+		// the next account on a shared browser.
+		commit('setToken', null);
+		localStorage.removeItem('newTaskWithCheckpoints');
+		Object.keys(localStorage)
+			.filter((key) => key.startsWith('pomo-enabled-'))
+			.forEach((key) => localStorage.removeItem(key));
 		requestCache.clear();
-		requestDeduplicator.clear();
 	},
-	
+
 	async loadWorkspaces({ commit }) {
 		try {
 			const workspaces = await getWorkspaces();
@@ -264,7 +265,7 @@ const actions = {
 			console.error('Error loading workspaces:', error);
 			return [];
 		}
-	}
+	},
 };
 
 const modules = {
