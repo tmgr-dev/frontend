@@ -8,6 +8,11 @@ export interface LoginRequest {
 
 export interface LoginToken {
 	token: string;
+	token_type?: string;
+	expires_in?: number;
+	expires_at?: string;
+	refresh_token?: string;
+	refresh_expires_in?: number;
 }
 
 export interface LoginResponse {
@@ -43,7 +48,11 @@ export const setTokenAndHeaders = (token: string): void => {
 };
 
 export const login = (payload: LoginRequest): Promise<void> => {
-	return $axios.post('auth/login', payload).then(setAxiosHeaderBearerToken);
+	// No "remember me" checkbox by design: every session gets the long
+	// (30d) refresh TTL instead of the 1-day no-remember fallback.
+	return $axios
+		.post('auth/login', { ...payload, rememberMe: true })
+		.then(setAxiosHeaderBearerToken);
 };
 
 export const loginGithub = (payload: LoginWithCodeRequest): Promise<void> => {

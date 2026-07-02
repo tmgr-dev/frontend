@@ -1,9 +1,13 @@
 import axios from 'axios';
 import store from '@/store';
+import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_TIMEOUT = 30000;
 
 const $axios = axios.create({
-	baseURL: import.meta.env.VITE_API_BASE_URL,
-	timeout: 30000,
+	baseURL: API_BASE_URL,
+	timeout: API_TIMEOUT,
 	headers: {
 		common: {
 			Authorization: store.state.token?.token
@@ -16,6 +20,27 @@ const $axios = axios.create({
 		},
 	},
 });
+
+// Bare axios (not $axios): the refresh call must bypass the 401 interceptor
+// below, or a rejected refresh would recurse into itself.
+const refreshAuthToken = createTokenRefresher({
+	getRefreshToken: () => store.state.token?.refresh_token,
+	post: (refreshToken) =>
+		axios
+			.post(
+				'auth/refresh',
+				{ refreshToken },
+				{ baseURL: API_BASE_URL, timeout: API_TIMEOUT },
+			)
+			.then(({ data: { data } }) => data),
+	onSuccess: (envelope) => store.commit('setToken', envelope),
+});
+
+const hardLogout = async () => {
+	await store.dispatch('logout');
+	const { default: router } = await import('@/router');
+	router.push({ name: 'Login' }).catch(() => {});
+};
 
 $axios.interceptors.request.use(
 	(config) => {
@@ -33,12 +58,32 @@ $axios.interceptors.response.use(
 	async (error) => {
 		const config = error.config;
 
-		if (!config || !config.retry) {
+		// No config → nothing can be retried or replayed (request was
+		// cancelled or failed before it was built).
+		if (!config) {
+			throw error;
+		}
+		if (!config.retry) {
 			config.retry = 0;
 		}
 
 		if (error.response?.status === 401) {
-			await store.dispatch('logout');
+			// A second 401 after a successful refresh+replay means the
+			// new token is rejected too — give up.
+			if (config.__authRetried) {
+				await hardLogout();
+				throw error;
+			}
+			// Failed login/register/refresh must not nuke the session.
+			if (isAuthUrl(config.url)) {
+				throw error;
+			}
+			const newAccessToken = await refreshAuthToken();
+			if (newAccessToken) {
+				config.__authRetried = true;
+				return $axios(config);
+			}
+			await hardLogout();
 			throw error;
 		}
 
