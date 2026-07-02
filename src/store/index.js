@@ -244,15 +244,15 @@ const mutations = {
 };
 
 const actions = {
-	logout() {
-		const workspaceInvitationToken = localStorage.getItem(
-			'workspace.invitation',
-		);
-		localStorage.clear();
-		if (workspaceInvitationToken) {
-			localStorage.setItem('workspace.invitation', workspaceInvitationToken);
-		}
-
+	logout({ commit }) {
+		// Only the session dies: UI prefs (colorScheme, sidebarExpanded,
+		// preferred_editor, …) survive, but per-user data must not leak to
+		// the next account on a shared browser.
+		commit('setToken', null);
+		localStorage.removeItem('newTaskWithCheckpoints');
+		Object.keys(localStorage)
+			.filter((key) => key.startsWith('pomo-enabled-'))
+			.forEach((key) => localStorage.removeItem(key));
 		requestCache.clear();
 	},
 
