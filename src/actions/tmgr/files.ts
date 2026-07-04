@@ -131,8 +131,13 @@ export const deleteTaskFile = async (
 	requestCache.invalidate(`files-task-${taskId}`);
 };
 
-const fetchPresignedFile = async (filePath: string): Promise<Blob> => {
-	const url = await presignDownload(filePath);
+// Exported (not just an internal helper) so callers that need to derive more
+// than one independent object URL from the same file (e.g. a grid thumbnail
+// and, later, a preview modal for that same file) can do so from one fetch
+// instead of sharing a single URL string across two owners with different
+// lifetimes.
+export const getFileBlob = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<Blob> => {
+	const url = await presignDownload(file.filePath);
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Presigned download failed: ${response.status}`);
@@ -142,18 +147,18 @@ const fetchPresignedFile = async (filePath: string): Promise<Blob> => {
 };
 
 export const downloadTaskFile = async (file: Pick<TaskFile, 'id' | 'filePath'>, fileName: string): Promise<void> => {
-	const blob = await fetchPresignedFile(file.filePath);
+	const blob = await getFileBlob(file);
 	downloadFile(blob, fileName);
 };
 
 export const getFilePreviewUrl = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<string> => {
-	const blob = await fetchPresignedFile(file.filePath);
+	const blob = await getFileBlob(file);
 
 	return window.URL.createObjectURL(blob);
 };
 
 export const getFileTextContent = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<string> => {
-	const blob = await fetchPresignedFile(file.filePath);
+	const blob = await getFileBlob(file);
 
 	return blob.text();
 };
