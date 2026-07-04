@@ -31,8 +31,8 @@
 </template>
 
 <script setup lang="ts">
-	import { ClockPlus, FilePenLine, Siren } from 'lucide-vue-next';
 	import { formatRelativeTime } from '@/utils/timeUtils';
+	import { ClockPlus, FilePenLine, Siren } from 'lucide-vue-next';
 	import { computed } from 'vue';
 
 	interface Props {

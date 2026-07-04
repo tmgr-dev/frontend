@@ -50,11 +50,11 @@
 </template>
 
 <script lang="ts" setup>
-	import DayNightSwitch from './DayNightSwitch.vue';
-	import AccountDropdown from './AccountDropdown.vue';
 	import NavbarMenu from '@/components/general/NavbarMenu.vue';
-	import { computed, ref } from 'vue';
 	import store from '@/store';
+	import { computed, ref } from 'vue';
+	import AccountDropdown from './AccountDropdown.vue';
+	import DayNightSwitch from './DayNightSwitch.vue';
 
 	const showMenu = ref(false);
 

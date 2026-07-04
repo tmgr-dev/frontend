@@ -197,18 +197,8 @@
 		WorkspaceInvitation,
 	} from '@/actions/tmgr/workspaces';
 	import TextField from '@/components/general/TextField.vue';
-	import { computed, onBeforeMount, reactive, Ref, ref, watch } from 'vue';
-	import { AxiosError } from 'axios';
 	import Modal from '@/components/Modal.vue';
-	import { useCopyToClipboard } from '@/composable/useCopyToClipboard.ts';
-	import { useRoute } from 'vue-router';
-	import { cn } from '@/utils';
-	import { Check, ChevronsUpDown } from 'lucide-vue-next';
-	import {
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-	} from '@/components/ui/popover';
+	import { Button } from '@/components/ui/button';
 	import {
 		Command,
 		CommandEmpty,
@@ -217,7 +207,17 @@
 		CommandItem,
 		CommandList,
 	} from '@/components/ui/command';
-	import { Button } from '@/components/ui/button';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
+	import { useCopyToClipboard } from '@/composable/useCopyToClipboard.ts';
+	import { cn } from '@/utils';
+	import { AxiosError } from 'axios';
+	import { Check, ChevronsUpDown } from 'lucide-vue-next';
+	import { computed, onBeforeMount, reactive, Ref, ref, watch } from 'vue';
+	import { useRoute } from 'vue-router';
 
 	interface Props {
 		modelValue: string | number;

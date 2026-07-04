@@ -4,8 +4,8 @@
 
 <script>
 	import mask from './directive';
-	import tokens from './tokens';
 	import masker from './masker';
+	import tokens from './tokens';
 
 	export default {
 		name: 'VueTheMask',
