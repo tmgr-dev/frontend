@@ -342,43 +342,31 @@
 </template>
 
 <script lang="ts">
-	import downloadFile from '@/utils/downloadFile';
-	import { formatRelativeTime } from '@/utils/timeUtils';
-	import { formatOvertime } from '@/utils/formatOvertime';
-	import Loader from '@/components/loaders/Loader.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import TasksListMixin from '@/mixins/TasksListMixin';
-	import SetTooltipData from '@/mixins/SetTooltipData';
-	import BounceLoader from '@/components/loaders/BounceLoader.vue';
-	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
-	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
-	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
-	import Modal from '@/components/Modal.vue';
-	import TaskForm from '@/pages/TaskForm.vue';
+	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
-		exportTasks,
 		deleteTask,
+		exportTasks,
+		PaginationMeta,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
-		updateTaskStatus,
-		updateTaskPartially,
 		Task,
-		PaginationMeta,
+		updateTaskPartially,
+		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
-	import CategoryBadge from '@/components/general/CategoryBadge.vue';
-	import Button from '@/components/general/Button.vue';
-	import { PropType } from 'vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
-	import {
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-	} from '@/components/ui/popover';
+	import Button from '@/components/general/Button.vue';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import BounceLoader from '@/components/loaders/BounceLoader.vue';
+	import Loader from '@/components/loaders/Loader.vue';
+	import Modal from '@/components/Modal.vue';
+	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
+	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
 		Command,
 		CommandEmpty,
@@ -388,20 +376,32 @@
 		CommandList,
 	} from '@/components/ui/command';
 	import {
-		UserPlus,
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import SetTooltipData from '@/mixins/SetTooltipData';
+	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import TaskForm from '@/pages/TaskForm.vue';
+	import downloadFile from '@/utils/downloadFile';
+	import { formatOvertime } from '@/utils/formatOvertime';
+	import {
+		isInteractiveTarget,
+		nextFocusIndex,
+		shouldIgnoreNavigationTarget,
+	} from '@/utils/listKeyboardNavigation';
+	import { formatRelativeTime } from '@/utils/timeUtils';
+	import {
+		AlarmClock,
 		Check,
 		ClockPlus,
 		Play,
 		Square,
-		AlarmClock,
+		UserPlus,
 	} from 'lucide-vue-next';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
-	import {
-		nextFocusIndex,
-		shouldIgnoreNavigationTarget,
-		isInteractiveTarget,
-	} from '@/utils/listKeyboardNavigation';
+	import { PropType } from 'vue';
 
 	export default {
 		name: 'TasksListComponent',

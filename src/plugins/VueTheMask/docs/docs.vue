@@ -298,9 +298,9 @@ hexTokens: {
 </template>
 
 <script>
-	import Field from './field.vue';
 	import TheMask from '../component.vue';
 	import mask from '../directive';
+	import Field from './field.vue';
 
 	export default {
 		components: { Field, TheMask },
