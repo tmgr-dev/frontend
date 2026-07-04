@@ -82,6 +82,36 @@
 		});
 	}
 
+	// Whether a realtime task update matches everything this view's server
+	// query would filter on, EXCEPT pagination (a task can match every active
+	// filter and still live on some other page - callers that are about to
+	// INSERT a not-yet-visible row must additionally check
+	// pagination.value.current_page === 1; callers EVICTING an already-visible
+	// row don't need to, since presence in tasks.value already proves it was
+	// on the current page).
+	//
+	// searchText isn't checked here: the server's search semantics (title
+	// only? description too? fuzzy?) aren't reliably reproducible client-side,
+	// so a task is only ever treated as "belongs" via this function when no
+	// search is active - callers skip realtime insert/evict entirely while
+	// the user is searching, rather than risk a wrong client-side guess.
+	function matchesActiveFilters(task: Task): boolean {
+		if (status.value && task.status !== status.value) return false;
+		if (searchText.value) return false;
+		if (
+			selectedCategory.value != null &&
+			selectedCategory.value !== -1 &&
+			task.project_category_id !== selectedCategory.value
+		) {
+			return false;
+		}
+		return true;
+	}
+
+	function shouldBeInList(task: Task): boolean {
+		return matchesActiveFilters(task) && !(isActiveList.value && isArchivedTask(task));
+	}
+
 	const totalSeconds = computed(() =>
 		pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0)
 	);
@@ -176,34 +206,34 @@
 				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
 					onTaskUpdated: (task, action) => {
 						if (action === 'created') {
-							if (isActiveList.value && isArchivedTask(task)) {
-								return;
-							}
-							const matchesStatus = !status.value || task.status === status.value;
 							const exists = tasks.value.some(t => t.id === task.id);
-							if (matchesStatus && !exists) {
+							if (!exists && shouldBeInList(task) && pagination.value.current_page === 1) {
 								tasks.value.unshift(task);
 								pagination.value.total++;
 							}
 						} else if (action === 'updated') {
 							const index = tasks.value.findIndex(t => t.id === task.id);
-							const matchesStatus = !status.value || task.status === status.value;
-							const shouldBeInList = matchesStatus && !(isActiveList.value && isArchivedTask(task));
+							const belongs = shouldBeInList(task);
 
 							if (index !== -1) {
-								if (shouldBeInList) {
+								if (belongs) {
 									tasks.value.splice(index, 1, task);
 								} else {
 									tasks.value.splice(index, 1);
 									pagination.value.total = Math.max(0, pagination.value.total - 1);
 								}
-							} else if (shouldBeInList) {
+							} else if (belongs && pagination.value.current_page === 1) {
 								tasks.value.unshift(task);
 								pagination.value.total++;
 							}
 						} else if (action === 'deleted') {
-							tasks.value = tasks.value.filter(t => t.id !== task.id);
-							pagination.value.total = Math.max(0, pagination.value.total - 1);
+							const index = tasks.value.findIndex(t => t.id === task.id);
+							if (index !== -1) {
+								tasks.value.splice(index, 1);
+							}
+							if (index !== -1 || shouldBeInList(task)) {
+								pagination.value.total = Math.max(0, pagination.value.total - 1);
+							}
 						}
 					},
 					onCommentAdded: (comment) => {
@@ -366,27 +396,18 @@
 
 	function updateSingleTaskInList(updatedTask: Task) {
 		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
-		const isArchivedOnActiveList = isActiveList.value && isArchivedTask(updatedTask);
+		const belongs = shouldBeInList(updatedTask);
 
 		if (taskIndex !== -1) {
-			const shouldStayInList =
-				!isArchivedOnActiveList &&
-				(!status.value || updatedTask.status === status.value);
-
-			if (shouldStayInList) {
+			if (belongs) {
 				tasks.value.splice(taskIndex, 1, updatedTask);
 			} else {
 				tasks.value.splice(taskIndex, 1);
 				pagination.value.total = Math.max(0, pagination.value.total - 1);
 			}
-		} else {
-			const shouldBeInList =
-				!isArchivedOnActiveList &&
-				(!status.value || updatedTask.status === status.value);
-			if (shouldBeInList) {
-				tasks.value.unshift(updatedTask);
-				pagination.value.total++;
-			}
+		} else if (belongs && pagination.value.current_page === 1) {
+			tasks.value.unshift(updatedTask);
+			pagination.value.total++;
 		}
 	}
 </script>
