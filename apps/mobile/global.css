@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Tokens ported 1:1 from web (task-manager-ui/src/assets/styles/_design-tokens.scss, html.dark).
+ * Kept as CSS variables with the SAME raw oklch values so the browser resolves them
+ * exactly like the web — Tailwind must NOT convert oklch to hex/lab (that shifts the hue).
+ * Mobile is dark-only, so the .dark values are placed on :root.
+ */
+:root {
+	--bg: #1a1612;
+	--bg-raised: #22201c;
+	--bg-sunken: #15120f;
+	--bg-hover: rgba(255, 240, 220, 0.04);
+	--bg-active: rgba(255, 240, 220, 0.07);
+
+	--line-color: rgba(255, 240, 220, 0.05);
+	--line-strong-color: rgba(255, 240, 220, 0.12);
+
+	--fg: #f4ece0;
+	--fg-muted: #bcb0a0;
+	--fg-subtle: #8a7e6e;
+	--fg-faint: #5c5246;
+
+	--accent-h: 22;
+	--brand-color: oklch(0.72 0.13 var(--accent-h));
+	--brand-bg-color: oklch(0.32 0.06 var(--accent-h));
+	--brand-fg-color: oklch(0.82 0.12 var(--accent-h));
+	--brand-hover-color: oklch(0.78 0.13 var(--accent-h));
+
+	/* Hue vars: referencing a var keeps oklch un-folded by the exporter, so it
+	   resolves in the browser exactly like web (not converted to hex/lab). */
+	--h-todo: 250;
+	--h-progress: 62;
+	--h-testing: 290;
+	--h-fix: 20;
+	--h-done: 155;
+
+	--s-todo: oklch(0.72 0.1 var(--h-todo));
+	--s-todo-bg: oklch(0.28 0.05 var(--h-todo));
+	--s-todo-fg: oklch(0.82 0.08 var(--h-todo));
+	--s-progress: oklch(0.75 0.12 var(--h-progress));
+	--s-progress-bg: oklch(0.3 0.06 var(--h-progress));
+	--s-progress-fg: oklch(0.85 0.1 var(--h-progress));
+	--s-testing: oklch(0.72 0.11 var(--h-testing));
+	--s-testing-bg: oklch(0.28 0.06 var(--h-testing));
+	--s-testing-fg: oklch(0.82 0.1 var(--h-testing));
+	--s-fix: oklch(0.72 0.13 var(--h-fix));
+	--s-fix-bg: oklch(0.3 0.07 var(--h-fix));
+	--s-fix-fg: oklch(0.84 0.12 var(--h-fix));
+	--s-done: oklch(0.72 0.11 var(--h-done));
+	--s-done-bg: oklch(0.28 0.06 var(--h-done));
+	--s-done-fg: oklch(0.82 0.1 var(--h-done));
+}
