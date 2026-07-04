@@ -189,7 +189,7 @@
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
-		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'expired_at', 'approximately_time', 'checkpoints'];
+		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints'];
 		for (const field of fieldsToCompare) {
 			const currentVal = current[field as keyof Task];
 			const incomingVal = incoming[field];
@@ -335,7 +335,7 @@
 	const taskKeyError = ref<string | null>(null);
 
 	const taskDisplayKey = computed(() => {
-		if (currentCategoryCode.value && form.value.category_tasks_sequence_id) {
+		if (currentCategoryCode.value && form.value.category_tasks_sequence_id != null) {
 			return `${currentCategoryCode.value}-${form.value.category_tasks_sequence_id}`;
 		}
 		return `TMGR-T${taskId.value || form.value.id}`;
@@ -344,8 +344,17 @@
 	const taskKeyNumber = computed({
 		get: () => form.value.category_tasks_sequence_id ?? '',
 		set: (value: number | string) => {
-			form.value.category_tasks_sequence_id =
-				value === '' || value === null ? null : Number(value);
+			if (value === '') {
+				form.value.category_tasks_sequence_id = null;
+				taskKeyError.value = null;
+				return;
+			}
+			const parsed = Number(value);
+			if (!Number.isInteger(parsed) || parsed < 1) {
+				taskKeyError.value = 'Enter a whole number of 1 or greater, or leave it blank to auto-assign.';
+				return;
+			}
+			form.value.category_tasks_sequence_id = parsed;
 			taskKeyError.value = null;
 		},
 	});
@@ -354,7 +363,7 @@
 		console.error(e);
 		if (e?.response?.status === 409) {
 			taskKeyError.value =
-				'This key is already used in this category — try another number, or clear it to auto-assign.';
+				"There's a conflict saving this task — if you set a custom key, try another number or clear it to auto-assign.";
 		}
 	};
 
@@ -1666,8 +1675,7 @@
 										if (!form.title) {
 											updateTaskTitle();
 										}
-										form.category_tasks_sequence_id = null;
-										taskKeyError = null;
+										taskKeyNumber = '';
 									}
 								"
 							/>
@@ -1688,6 +1696,7 @@
 									placeholder="auto"
 									class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
 								/>
+								<span v-if="isAutoSaving && !taskKeyError" class="text-2xs text-ink-faint">Saving…</span>
 							</div>
 							<div v-if="taskKeyError" class="col-span-2 -mt-2 text-xs text-status-fix-fg">
 								{{ taskKeyError }}
