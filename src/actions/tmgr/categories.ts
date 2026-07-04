@@ -4,6 +4,7 @@ import { requestCache } from '@/utils/requestCache';
 
 export interface Category {
 	children_count: number;
+	code?: string | null;
 	created_at: string;
 	deleted_at: null | string;
 	id: number;
