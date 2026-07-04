@@ -1,79 +1,109 @@
 <template>
-	<div class="task-attachments mt-4">
-		<div class="mb-3 flex items-center justify-between">
-			<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
-				Attachments
-			</h3>
-			<button
-				@click="handleAddFiles"
-				class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-gray-800"
-			>
-				<Paperclip :size="16" />
-				<span>Add files</span>
-			</button>
+	<div class="task-attachments">
+		<div v-if="isLoading" class="py-2 text-center text-2xs text-ink-subtle">
+			Loading…
 		</div>
 
-		<div v-if="files.length > 0" class="mb-3 space-y-2">
+		<!-- Grid of thumbnails -->
+		<div v-else-if="allFiles.length > 0" class="flex flex-wrap gap-2">
 			<div
-				v-for="(file, index) in files"
-				:key="index"
-				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+				v-for="file in allFiles"
+				:key="file.id || file.tempId"
+				class="group relative"
 			>
-				<div class="flex-shrink-0">
-					<img
-						v-if="file.preview"
-						:src="file.preview"
-						:alt="file.name"
-						class="h-12 w-12 rounded object-cover"
-					/>
-					<FileIcon
-						v-else
-						:size="20"
-						class="text-gray-500 dark:text-gray-400"
-					/>
-				</div>
-				<div class="min-w-0 flex-1">
-					<p
-						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
-					>
-						{{ file.name }}
-					</p>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
-						{{ formatFileSize(file.size) }}
-					</p>
-				</div>
-				<button
-					@click="handleRemoveFile(index)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+				<!-- Thumbnail -->
+				<div
+					@click="openPreview(file)"
+					class="flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-card border transition-colors"
+					:class="file.uploading ? 'border-line-strong bg-surface-sunken' : 'border-line bg-surface hover:border-line-strong'"
+					:title="file.name"
 				>
-					<X :size="16" />
-				</button>
+					<!-- Image thumbnail -->
+					<img
+						v-if="file.thumbnailUrl || file.preview"
+						:src="file.thumbnailUrl || file.preview"
+						:alt="file.name"
+						class="h-full w-full object-cover"
+					/>
+					<!-- File type icon -->
+					<span
+						v-else
+						class="material-icons"
+						:class="getFileIconClass(file)"
+						style="font-size: 26px"
+						>{{ getFileIcon(file) }}</span
+					>
+					<!-- Uploading overlay -->
+					<div
+						v-if="file.uploading"
+						class="absolute inset-0 flex items-center justify-center bg-surface/60"
+					>
+						<div class="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent"></div>
+					</div>
+				</div>
+
+				<!-- Actions (on hover) -->
+				<div
+					v-if="!file.uploading"
+					class="absolute -right-1 -top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+				>
+					<button
+						v-if="file.id"
+						type="button"
+						@click.stop="handleDownloadFile(file)"
+						class="flex size-5 items-center justify-center rounded-pill bg-surface shadow-sm hover:bg-surface-hover"
+						title="Download"
+					>
+						<span class="material-icons text-ink-subtle" style="font-size: 12px">download</span>
+					</button>
+					<button
+						type="button"
+						@click.stop="handleRemoveFile(file)"
+						class="flex size-5 items-center justify-center rounded-pill bg-surface shadow-sm hover:bg-surface-hover"
+						title="Remove"
+					>
+						<span class="material-icons text-status-fix-fg" style="font-size: 12px">close</span>
+					</button>
+				</div>
+
+				<!-- File name tooltip on hover -->
+				<div
+					class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-2xs text-surface-base group-hover:block"
+				>
+					{{ truncateFileName(file.name, 20) }}
+				</div>
+			</div>
+
+			<!-- Add more button -->
+			<div
+				v-if="taskId && !isUploading"
+				@click="handleAddFiles"
+				class="flex h-16 w-16 cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line-strong text-ink-subtle transition hover:bg-surface-sunken hover:text-ink"
+				title="Add files"
+			>
+				<span class="material-icons" style="font-size: 22px">add</span>
 			</div>
 		</div>
 
-		<div
-			@click="handleAddFiles"
-			@dragover.prevent="handleDragOver"
-			@dragleave.prevent="handleDragLeave"
-			@drop.prevent="handleDrop"
-			:class="[
-				'cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors',
-				isDragOver
-					? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
-					: 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50',
-			]"
-		>
-			<FileIcon
-				:size="32"
-				class="mx-auto mb-2 text-gray-400 dark:text-gray-500"
-			/>
-			<p class="text-sm text-gray-500 dark:text-gray-400">
-				{{ files.length === 0 ? 'No attachments yet' : 'Add more files' }}
-			</p>
-			<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-				Click or drag files here to attach documents, images, or other files
-			</p>
-		</div>
+		<!-- Empty state with drop zone (hidden when hideEmptyState is true) -->
+		<template v-else-if="!hideEmptyState">
+			<div class="text-2xs text-ink-subtle">No attachments yet</div>
+
+			<!-- Drop zone -->
+			<div
+				v-if="taskId"
+				@click="handleAddFiles"
+				@dragover.prevent="handleDragOver"
+				@dragleave.prevent="handleDragLeave"
+				@drop.prevent="handleDrop"
+				class="mt-2 cursor-pointer rounded-card border-2 border-dashed p-4 text-center transition-colors"
+				:class="isDragOver ? 'border-brand bg-brand-bg' : 'border-line-strong hover:bg-surface-sunken'"
+			>
+				<p class="text-2xs text-ink-subtle">
+					{{ isUploading ? 'Uploading…' : 'Click or drag files here' }}
+				</p>
+			</div>
+		</template>
 
 		<input
 			ref="fileInput"
@@ -82,39 +112,256 @@
 			class="hidden"
 			@change="handleFileSelect"
 		/>
+
+		<!-- Preview Modal -->
+		<div
+			v-if="previewFile"
+			class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+			@click="closePreview"
+		>
+			<div
+				class="relative max-h-[90vh] max-w-[90vw] overflow-auto rounded-card border border-line bg-surface shadow-2xl"
+				@click.stop
+			>
+				<!-- Modal Header -->
+				<div class="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3">
+					<h3 class="truncate text-sm font-semibold text-ink">
+						{{ previewFile.name }}
+					</h3>
+					<div class="flex items-center gap-2">
+						<button
+							type="button"
+							@click="handleDownloadFile(previewFile)"
+							class="rounded-md p-1.5 text-ink-subtle hover:bg-surface-hover"
+							title="Download"
+						>
+							<span class="material-icons" style="font-size: 18px">download</span>
+						</button>
+						<button
+							type="button"
+							@click="closePreview"
+							class="rounded-md p-1.5 text-ink-subtle hover:bg-surface-hover"
+							title="Close"
+						>
+							<span class="material-icons" style="font-size: 18px">close</span>
+						</button>
+					</div>
+				</div>
+
+				<!-- Modal Content -->
+				<div class="p-4">
+					<!-- Loading -->
+					<div v-if="isLoadingPreview" class="flex h-64 w-96 items-center justify-center">
+						<div class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
+					</div>
+
+					<!-- Image Preview -->
+					<img
+						v-else-if="previewType === 'image' && previewUrl"
+						:src="previewUrl"
+						:alt="previewFile.name"
+						class="max-h-[70vh] max-w-full object-contain"
+					/>
+
+					<!-- Video Preview -->
+					<video
+						v-else-if="previewType === 'video' && previewUrl"
+						:src="previewUrl"
+						controls
+						class="max-h-[70vh] max-w-full"
+					/>
+
+					<!-- PDF Preview -->
+					<iframe
+						v-else-if="previewType === 'pdf' && previewUrl"
+						:src="previewUrl"
+						class="h-[70vh] w-[800px] max-w-full"
+					/>
+
+					<!-- Text Preview -->
+					<pre
+						v-else-if="previewType === 'text' && previewContent"
+						class="max-h-[70vh] max-w-[800px] overflow-auto rounded-md bg-surface-sunken p-4 text-sm text-ink"
+					>{{ previewContent }}</pre>
+
+					<!-- Unsupported type -->
+					<div v-else class="flex h-64 w-96 flex-col items-center justify-center text-ink-subtle">
+						<span class="material-icons mb-4" style="font-size: 48px">insert_drive_file</span>
+						<p class="text-sm">Preview not available for this file type</p>
+						<button
+							type="button"
+							@click="handleDownloadFile(previewFile)"
+							class="mt-4 rounded-pill bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
+						>
+							Download file
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
 <script>
 	import { defineComponent } from 'vue';
-	import { Paperclip, FileIcon, X } from 'lucide-vue-next';
+	import {
+		getTaskFiles,
+		uploadTaskFile,
+		deleteTaskFile,
+		downloadTaskFile,
+		getFilePreviewUrl,
+		getFileTextContent,
+		getFileType,
+		isPreviewable,
+	} from '@/actions/tmgr/files';
 
 	export default defineComponent({
 		name: 'TaskAttachments',
-		components: {
-			Paperclip,
-			FileIcon,
-			X,
-		},
 		props: {
 			taskId: {
 				type: Number,
 				required: false,
 				default: null,
 			},
+			hideEmptyState: {
+				type: Boolean,
+				default: false,
+			},
 		},
+		emits: ['update:count'],
+		expose: ['handleAddFiles'],
 		data() {
 			return {
-				files: [],
+				savedFiles: [],
+				pendingFiles: [],
 				isDragOver: false,
+				isLoading: false,
+				isUploading: false,
+				tempIdCounter: 0,
+				previewFile: null,
+				previewUrl: null,
+				previewContent: null,
+				previewType: null,
+				isLoadingPreview: false,
 			};
 		},
+		computed: {
+			allFiles() {
+				return [...this.savedFiles, ...this.pendingFiles];
+			},
+		},
+		watch: {
+			taskId: {
+				immediate: true,
+				handler(newTaskId) {
+					if (newTaskId) {
+						this.loadFiles();
+					} else {
+						this.savedFiles = [];
+						this.$emit('update:count', 0);
+					}
+				},
+			},
+			'savedFiles.length': {
+				handler(newCount) {
+					this.$emit('update:count', newCount);
+				},
+			},
+		},
 		methods: {
+			async loadFiles() {
+				if (!this.taskId) return;
+
+				this.isLoading = true;
+				try {
+					const files = await getTaskFiles(this.taskId);
+					for (const file of files) {
+						const type = getFileType(file.mimeType, file.name);
+						if (type === 'image') {
+							try {
+								file.thumbnailUrl = await getFilePreviewUrl(file);
+							} catch (e) {
+								console.error('Failed to load thumbnail:', e);
+							}
+						}
+					}
+					this.savedFiles = files;
+					this.$emit('update:count', this.savedFiles.length);
+				} catch (error) {
+					console.error('Failed to load attachments:', error);
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			getFileIcon(file) {
+				const type = getFileType(file.mimeType || null, file.name);
+				switch (type) {
+					case 'image': return 'image';
+					case 'video': return 'movie';
+					case 'pdf': return 'picture_as_pdf';
+					case 'text': return 'description';
+					default: return 'insert_drive_file';
+				}
+			},
+			getFileIconClass(file) {
+				const type = getFileType(file.mimeType || null, file.name);
+				switch (type) {
+					case 'image': return 'text-status-done';
+					case 'video': return 'text-status-testing';
+					case 'pdf': return 'text-status-fix-fg';
+					case 'text': return 'text-brand-fg';
+					default: return 'text-ink-subtle';
+				}
+			},
+			truncateFileName(name, maxLength) {
+				if (!name || name.length <= maxLength) return name;
+				const ext = name.split('.').pop();
+				const nameWithoutExt = name.slice(0, -(ext.length + 1));
+				const truncated = nameWithoutExt.slice(0, maxLength - ext.length - 4);
+				return `${truncated}...${ext}`;
+			},
+			async openPreview(file) {
+				if (file.uploading || !file.id) return;
+
+				const type = getFileType(file.mimeType || null, file.name);
+				if (!isPreviewable(file.mimeType, file.name)) {
+					await this.handleDownloadFile(file);
+					return;
+				}
+
+				this.previewFile = file;
+				this.previewType = type;
+				this.isLoadingPreview = true;
+				this.previewUrl = null;
+				this.previewContent = null;
+
+				try {
+					if (type === 'text') {
+						this.previewContent = await getFileTextContent(file);
+					} else {
+						this.previewUrl = await getFilePreviewUrl(file);
+					}
+				} catch (error) {
+					console.error('Failed to load preview:', error);
+				} finally {
+					this.isLoadingPreview = false;
+				}
+			},
+			closePreview() {
+				if (this.previewUrl) {
+					URL.revokeObjectURL(this.previewUrl);
+				}
+				this.previewFile = null;
+				this.previewUrl = null;
+				this.previewContent = null;
+				this.previewType = null;
+			},
 			handleAddFiles() {
+				if (!this.taskId || this.isUploading) return;
 				this.$refs.fileInput.click();
 			},
 			isImageFile(file) {
-				return file.type.startsWith('image/');
+				return file.type?.startsWith('image/');
 			},
 			createFilePreview(file) {
 				if (this.isImageFile(file)) {
@@ -122,20 +369,82 @@
 				}
 				return null;
 			},
-			handleFileSelect(event) {
+			async handleFileSelect(event) {
 				const selectedFiles = Array.from(event.target.files);
-				selectedFiles.forEach((file) => {
-					file.preview = this.createFilePreview(file);
-					this.files.push(file);
-				});
+				await this.uploadFiles(selectedFiles);
 				event.target.value = '';
 			},
-			handleRemoveFile(index) {
-				const file = this.files[index];
-				if (file.preview) {
-					URL.revokeObjectURL(file.preview);
+			async uploadFiles(files) {
+				if (!this.taskId || files.length === 0) return;
+
+				this.isUploading = true;
+
+				for (const file of files) {
+					const tempId = `temp-${++this.tempIdCounter}`;
+					const pendingFile = {
+						tempId,
+						name: file.name,
+						size: file.size,
+						mimeType: file.type,
+						preview: this.createFilePreview(file),
+						uploading: true,
+					};
+
+					this.pendingFiles.push(pendingFile);
+
+					try {
+						await uploadTaskFile(this.taskId, file);
+						if (pendingFile.preview) {
+							URL.revokeObjectURL(pendingFile.preview);
+						}
+						const index = this.pendingFiles.findIndex(
+							(f) => f.tempId === tempId,
+						);
+						if (index !== -1) {
+							this.pendingFiles.splice(index, 1);
+						}
+					} catch (error) {
+						console.error('Failed to upload file:', error);
+						const index = this.pendingFiles.findIndex(
+							(f) => f.tempId === tempId,
+						);
+						if (index !== -1) {
+							this.pendingFiles.splice(index, 1);
+						}
+					}
 				}
-				this.files.splice(index, 1);
+
+				this.isUploading = false;
+				await this.loadFiles();
+			},
+			async handleRemoveFile(file) {
+				if (file.tempId) {
+					if (file.preview) {
+						URL.revokeObjectURL(file.preview);
+					}
+					const index = this.pendingFiles.findIndex(
+						(f) => f.tempId === file.tempId,
+					);
+					if (index !== -1) {
+						this.pendingFiles.splice(index, 1);
+					}
+					return;
+				}
+
+				if (file.id) {
+					try {
+						if (file.thumbnailUrl) {
+							URL.revokeObjectURL(file.thumbnailUrl);
+						}
+						await deleteTaskFile(file.id, this.taskId);
+						const index = this.savedFiles.findIndex((f) => f.id === file.id);
+						if (index !== -1) {
+							this.savedFiles.splice(index, 1);
+						}
+					} catch (error) {
+						console.error('Failed to delete file:', error);
+					}
+				}
 			},
 			handleDragOver(event) {
 				event.preventDefault();
@@ -147,39 +456,36 @@
 					this.isDragOver = false;
 				}
 			},
-			handleDrop(event) {
+			async handleDrop(event) {
 				event.preventDefault();
 				this.isDragOver = false;
 				const droppedFiles = Array.from(event.dataTransfer.files);
 				if (droppedFiles.length > 0) {
-					droppedFiles.forEach((file) => {
-						file.preview = this.createFilePreview(file);
-						this.files.push(file);
-					});
+					await this.uploadFiles(droppedFiles);
 				}
 			},
-			formatFileSize(bytes) {
-				if (bytes === 0) return '0 Bytes';
-				const k = 1024;
-				const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-				const i = Math.floor(Math.log(bytes) / Math.log(k));
-				return (
-					Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-				);
+			async handleDownloadFile(file) {
+				try {
+					await downloadTaskFile(file, file.name);
+				} catch (error) {
+					console.error('Failed to download file:', error);
+				}
 			},
 		},
 		unmounted() {
-			this.files.forEach((file) => {
+			this.pendingFiles.forEach((file) => {
 				if (file.preview) {
 					URL.revokeObjectURL(file.preview);
 				}
 			});
+			this.savedFiles.forEach((file) => {
+				if (file.thumbnailUrl) {
+					URL.revokeObjectURL(file.thumbnailUrl);
+				}
+			});
+			if (this.previewUrl) {
+				URL.revokeObjectURL(this.previewUrl);
+			}
 		},
 	});
 </script>
-
-<style lang="scss" scoped>
-	.task-attachments {
-		width: 100%;
-	}
-</style>
