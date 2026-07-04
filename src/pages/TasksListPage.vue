@@ -82,22 +82,17 @@
 		});
 	}
 
-	// Whether a realtime task update matches everything this view's server
-	// query would filter on, EXCEPT pagination (a task can match every active
-	// filter and still live on some other page - callers that are about to
-	// INSERT a not-yet-visible row must additionally check
-	// pagination.value.current_page === 1; callers EVICTING an already-visible
-	// row don't need to, since presence in tasks.value already proves it was
-	// on the current page).
-	//
-	// searchText isn't checked here: the server's search semantics (title
-	// only? description too? fuzzy?) aren't reliably reproducible client-side,
-	// so a task is only ever treated as "belongs" via this function when no
-	// search is active - callers skip realtime insert/evict entirely while
-	// the user is searching, rather than risk a wrong client-side guess.
-	function matchesActiveFilters(task: Task): boolean {
+	// Status, archived-state and selectedCategory are all fields we can
+	// reliably compare client-side, so a mismatch on any of them is trusted
+	// in BOTH directions: it blocks inserting a not-yet-visible task, and it
+	// evicts an already-visible one whose data just changed to no longer
+	// match. searchText is excluded on purpose - the server's search
+	// semantics (title only? description too? fuzzy?) aren't reproducible
+	// client-side, so it can't feed a reliable-in-both-directions check;
+	// see canInsertTask for how it's actually used.
+	function matchesKnownFilters(task: Task): boolean {
 		if (status.value && task.status !== status.value) return false;
-		if (searchText.value) return false;
+		if (isActiveList.value && isArchivedTask(task)) return false;
 		if (
 			selectedCategory.value != null &&
 			selectedCategory.value !== -1 &&
@@ -108,8 +103,18 @@
 		return true;
 	}
 
-	function shouldBeInList(task: Task): boolean {
-		return matchesActiveFilters(task) && !(isActiveList.value && isArchivedTask(task));
+	// Whether a realtime event can safely INSERT a not-yet-visible task (or,
+	// for a delete of an off-page task, whether it was safely countable in
+	// pagination.value.total to begin with). Unlike matchesKnownFilters, an
+	// active search says no here - we can't verify a not-yet-visible task
+	// matches the search, so the safe default is to skip rather than guess.
+	// This must NOT be used to decide whether to EVICT an already-visible
+	// task: an active search we can't verify means "leave it alone", not
+	// "remove it" - callers with a task already in tasks.value should evict
+	// only on a matchesKnownFilters mismatch, never merely because a search
+	// is active.
+	function canInsertTask(task: Task): boolean {
+		return !searchText.value && matchesKnownFilters(task);
 	}
 
 	const totalSeconds = computed(() =>
@@ -207,22 +212,21 @@
 					onTaskUpdated: (task, action) => {
 						if (action === 'created') {
 							const exists = tasks.value.some(t => t.id === task.id);
-							if (!exists && shouldBeInList(task) && pagination.value.current_page === 1) {
+							if (!exists && canInsertTask(task) && pagination.value.current_page === 1) {
 								tasks.value.unshift(task);
 								pagination.value.total++;
 							}
 						} else if (action === 'updated') {
 							const index = tasks.value.findIndex(t => t.id === task.id);
-							const belongs = shouldBeInList(task);
 
 							if (index !== -1) {
-								if (belongs) {
+								if (matchesKnownFilters(task)) {
 									tasks.value.splice(index, 1, task);
 								} else {
 									tasks.value.splice(index, 1);
 									pagination.value.total = Math.max(0, pagination.value.total - 1);
 								}
-							} else if (belongs && pagination.value.current_page === 1) {
+							} else if (canInsertTask(task) && pagination.value.current_page === 1) {
 								tasks.value.unshift(task);
 								pagination.value.total++;
 							}
@@ -231,7 +235,7 @@
 							if (index !== -1) {
 								tasks.value.splice(index, 1);
 							}
-							if (index !== -1 || shouldBeInList(task)) {
+							if (index !== -1 || canInsertTask(task)) {
 								pagination.value.total = Math.max(0, pagination.value.total - 1);
 							}
 						}
@@ -396,16 +400,15 @@
 
 	function updateSingleTaskInList(updatedTask: Task) {
 		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
-		const belongs = shouldBeInList(updatedTask);
 
 		if (taskIndex !== -1) {
-			if (belongs) {
+			if (matchesKnownFilters(updatedTask)) {
 				tasks.value.splice(taskIndex, 1, updatedTask);
 			} else {
 				tasks.value.splice(taskIndex, 1);
 				pagination.value.total = Math.max(0, pagination.value.total - 1);
 			}
-		} else if (belongs && pagination.value.current_page === 1) {
+		} else if (canInsertTask(updatedTask) && pagination.value.current_page === 1) {
 			tasks.value.unshift(updatedTask);
 			pagination.value.total++;
 		}
