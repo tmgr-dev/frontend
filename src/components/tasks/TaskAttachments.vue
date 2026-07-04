@@ -4,28 +4,24 @@
 			Loading…
 		</div>
 
-		<!-- Grid of thumbnails -->
 		<div v-else-if="allFiles.length > 0" class="flex flex-wrap gap-2">
 			<div
 				v-for="file in allFiles"
 				:key="file.id || file.tempId"
 				class="group relative"
 			>
-				<!-- Thumbnail -->
 				<div
 					@click="openPreview(file)"
 					class="flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-card border transition-colors"
 					:class="file.uploading ? 'border-line-strong bg-surface-sunken' : 'border-line bg-surface hover:border-line-strong'"
 					:title="file.name"
 				>
-					<!-- Image thumbnail -->
 					<img
 						v-if="file.thumbnailUrl || file.preview"
 						:src="file.thumbnailUrl || file.preview"
 						:alt="file.name"
 						class="h-full w-full object-cover"
 					/>
-					<!-- File type icon -->
 					<span
 						v-else
 						class="material-icons"
@@ -33,7 +29,6 @@
 						style="font-size: 26px"
 						>{{ getFileIcon(file) }}</span
 					>
-					<!-- Uploading overlay -->
 					<div
 						v-if="file.uploading"
 						class="absolute inset-0 flex items-center justify-center bg-surface/60"
@@ -42,7 +37,6 @@
 					</div>
 				</div>
 
-				<!-- Actions (on hover) -->
 				<div
 					v-if="!file.uploading"
 					class="absolute -right-1 -top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
@@ -66,7 +60,6 @@
 					</button>
 				</div>
 
-				<!-- File name tooltip on hover -->
 				<div
 					class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-2xs text-surface-base group-hover:block"
 				>
@@ -74,7 +67,6 @@
 				</div>
 			</div>
 
-			<!-- Add more button -->
 			<div
 				v-if="taskId && !isUploading"
 				@click="handleAddFiles"
@@ -85,11 +77,9 @@
 			</div>
 		</div>
 
-		<!-- Empty state with drop zone (hidden when hideEmptyState is true) -->
 		<template v-else-if="!hideEmptyState">
 			<div class="text-2xs text-ink-subtle">No attachments yet</div>
 
-			<!-- Drop zone -->
 			<div
 				v-if="taskId"
 				@click="handleAddFiles"
@@ -113,7 +103,6 @@
 			@change="handleFileSelect"
 		/>
 
-		<!-- Preview Modal -->
 		<div
 			v-if="previewFile"
 			class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
@@ -123,7 +112,6 @@
 				class="relative max-h-[90vh] max-w-[90vw] overflow-auto rounded-card border border-line bg-surface shadow-2xl"
 				@click.stop
 			>
-				<!-- Modal Header -->
 				<div class="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3">
 					<h3 class="truncate text-sm font-semibold text-ink">
 						{{ previewFile.name }}
@@ -148,14 +136,11 @@
 					</div>
 				</div>
 
-				<!-- Modal Content -->
 				<div class="p-4">
-					<!-- Loading -->
 					<div v-if="isLoadingPreview" class="flex h-64 w-96 items-center justify-center">
 						<div class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
 					</div>
 
-					<!-- Image Preview -->
 					<img
 						v-else-if="previewType === 'image' && previewUrl"
 						:src="previewUrl"
@@ -163,7 +148,6 @@
 						class="max-h-[70vh] max-w-full object-contain"
 					/>
 
-					<!-- Video Preview -->
 					<video
 						v-else-if="previewType === 'video' && previewUrl"
 						:src="previewUrl"
@@ -171,20 +155,17 @@
 						class="max-h-[70vh] max-w-full"
 					/>
 
-					<!-- PDF Preview -->
 					<iframe
 						v-else-if="previewType === 'pdf' && previewUrl"
 						:src="previewUrl"
 						class="h-[70vh] w-[800px] max-w-full"
 					/>
 
-					<!-- Text Preview -->
 					<pre
-						v-else-if="previewType === 'text' && previewContent"
+						v-else-if="previewType === 'text' && previewContent !== null"
 						class="max-h-[70vh] max-w-[800px] overflow-auto rounded-md bg-surface-sunken p-4 text-sm text-ink"
 					>{{ previewContent }}</pre>
 
-					<!-- Unsupported type -->
 					<div v-else class="flex h-64 w-96 flex-col items-center justify-center text-ink-subtle">
 						<span class="material-icons mb-4" style="font-size: 48px">insert_drive_file</span>
 						<p class="text-sm">Preview not available for this file type</p>
@@ -204,6 +185,7 @@
 
 <script>
 	import { defineComponent } from 'vue';
+	import { toast } from '@/components/ui/toast/use-toast';
 	import {
 		getTaskFiles,
 		uploadTaskFile,
@@ -272,25 +254,48 @@
 			async loadFiles() {
 				if (!this.taskId) return;
 
+				// taskId can change on the same component instance (e.g. creating
+				// a task assigns form.id after mount); guard against an in-flight
+				// load for the previous id resolving after a newer one started.
+				const requestedTaskId = this.taskId;
 				this.isLoading = true;
 				try {
-					const files = await getTaskFiles(this.taskId);
-					for (const file of files) {
-						const type = getFileType(file.mimeType, file.name);
-						if (type === 'image') {
-							try {
-								file.thumbnailUrl = await getFilePreviewUrl(file);
-							} catch (e) {
-								console.error('Failed to load thumbnail:', e);
+					const files = await getTaskFiles(requestedTaskId);
+					await Promise.all(
+						files.map(async (file) => {
+							const type = getFileType(file.mimeType, file.name);
+							if (type === 'image') {
+								try {
+									file.thumbnailUrl = await getFilePreviewUrl(file);
+								} catch (e) {
+									console.error('Failed to load thumbnail:', e);
+								}
 							}
-						}
+						}),
+					);
+
+					if (this.taskId !== requestedTaskId) {
+						files.forEach((file) => {
+							if (file.thumbnailUrl) {
+								URL.revokeObjectURL(file.thumbnailUrl);
+							}
+						});
+						return;
 					}
+
+					this.savedFiles.forEach((file) => {
+						if (file.thumbnailUrl) {
+							URL.revokeObjectURL(file.thumbnailUrl);
+						}
+					});
 					this.savedFiles = files;
 					this.$emit('update:count', this.savedFiles.length);
 				} catch (error) {
 					console.error('Failed to load attachments:', error);
 				} finally {
-					this.isLoading = false;
+					if (this.taskId === requestedTaskId) {
+						this.isLoading = false;
+					}
 				}
 			},
 			getFileIcon(file) {
@@ -331,10 +336,17 @@
 
 				this.previewFile = file;
 				this.previewType = type;
-				this.isLoadingPreview = true;
 				this.previewUrl = null;
 				this.previewContent = null;
 
+				// The grid thumbnail already holds a blob URL for this exact file;
+				// reuse it instead of re-fetching the full image a second time.
+				if (type === 'image' && file.thumbnailUrl) {
+					this.previewUrl = file.thumbnailUrl;
+					return;
+				}
+
+				this.isLoadingPreview = true;
 				try {
 					if (type === 'text') {
 						this.previewContent = await getFileTextContent(file);
@@ -348,7 +360,10 @@
 				}
 			},
 			closePreview() {
-				if (this.previewUrl) {
+				// Don't revoke if previewUrl is just a reference to the grid
+				// thumbnail's own blob URL (see openPreview) — that one is owned
+				// by loadFiles/unmounted, not by the preview modal.
+				if (this.previewUrl && this.previewUrl !== this.previewFile?.thumbnailUrl) {
 					URL.revokeObjectURL(this.previewUrl);
 				}
 				this.previewFile = null;
@@ -374,75 +389,70 @@
 				await this.uploadFiles(selectedFiles);
 				event.target.value = '';
 			},
+			removePendingFile(tempId) {
+				const index = this.pendingFiles.findIndex((f) => f.tempId === tempId);
+				if (index !== -1) {
+					const [removed] = this.pendingFiles.splice(index, 1);
+					if (removed.preview) {
+						URL.revokeObjectURL(removed.preview);
+					}
+				}
+			},
+			async uploadOneFile(file) {
+				const tempId = `temp-${++this.tempIdCounter}`;
+				this.pendingFiles.push({
+					tempId,
+					name: file.name,
+					size: file.size,
+					mimeType: file.type,
+					preview: this.createFilePreview(file),
+					uploading: true,
+				});
+
+				try {
+					await uploadTaskFile(this.taskId, file);
+					this.removePendingFile(tempId);
+				} catch (error) {
+					console.error('Failed to upload file:', error);
+					this.removePendingFile(tempId);
+					toast({
+						title: 'Upload failed',
+						description: `"${file.name}" couldn't be attached. Please try again.`,
+						variant: 'destructive',
+					});
+				}
+			},
 			async uploadFiles(files) {
 				if (!this.taskId || files.length === 0) return;
 
 				this.isUploading = true;
-
-				for (const file of files) {
-					const tempId = `temp-${++this.tempIdCounter}`;
-					const pendingFile = {
-						tempId,
-						name: file.name,
-						size: file.size,
-						mimeType: file.type,
-						preview: this.createFilePreview(file),
-						uploading: true,
-					};
-
-					this.pendingFiles.push(pendingFile);
-
-					try {
-						await uploadTaskFile(this.taskId, file);
-						if (pendingFile.preview) {
-							URL.revokeObjectURL(pendingFile.preview);
-						}
-						const index = this.pendingFiles.findIndex(
-							(f) => f.tempId === tempId,
-						);
-						if (index !== -1) {
-							this.pendingFiles.splice(index, 1);
-						}
-					} catch (error) {
-						console.error('Failed to upload file:', error);
-						const index = this.pendingFiles.findIndex(
-							(f) => f.tempId === tempId,
-						);
-						if (index !== -1) {
-							this.pendingFiles.splice(index, 1);
-						}
-					}
-				}
-
+				await Promise.allSettled(files.map((file) => this.uploadOneFile(file)));
 				this.isUploading = false;
 				await this.loadFiles();
 			},
 			async handleRemoveFile(file) {
 				if (file.tempId) {
-					if (file.preview) {
-						URL.revokeObjectURL(file.preview);
-					}
-					const index = this.pendingFiles.findIndex(
-						(f) => f.tempId === file.tempId,
-					);
-					if (index !== -1) {
-						this.pendingFiles.splice(index, 1);
-					}
+					this.removePendingFile(file.tempId);
 					return;
 				}
 
 				if (file.id) {
 					try {
+						await deleteTaskFile(file.id, this.taskId);
 						if (file.thumbnailUrl) {
 							URL.revokeObjectURL(file.thumbnailUrl);
 						}
-						await deleteTaskFile(file.id, this.taskId);
 						const index = this.savedFiles.findIndex((f) => f.id === file.id);
 						if (index !== -1) {
 							this.savedFiles.splice(index, 1);
 						}
 					} catch (error) {
 						console.error('Failed to delete file:', error);
+						toast({
+							title: 'Remove failed',
+							description: `"${file.name}" couldn't be removed. Please try again.`,
+							variant: 'destructive',
+						});
 					}
 				}
 			},
@@ -469,6 +479,11 @@
 					await downloadTaskFile(file, file.name);
 				} catch (error) {
 					console.error('Failed to download file:', error);
+					toast({
+						title: 'Download failed',
+						description: `"${file.name}" couldn't be downloaded. Please try again.`,
+						variant: 'destructive',
+					});
 				}
 			},
 		},
@@ -483,7 +498,7 @@
 					URL.revokeObjectURL(file.thumbnailUrl);
 				}
 			});
-			if (this.previewUrl) {
+			if (this.previewUrl && this.previewUrl !== this.previewFile?.thumbnailUrl) {
 				URL.revokeObjectURL(this.previewUrl);
 			}
 		},
