@@ -200,6 +200,12 @@
 							const index = tasks.value.findIndex(t => t.id === task.id);
 							if (index !== -1) {
 								tasks.value.splice(index, 1, task);
+							} else {
+								const matchesStatus = !status.value || task.status === status.value;
+								if (matchesStatus) {
+									tasks.value.unshift(task);
+									pagination.value.total++;
+								}
 							}
 						} else if (action === 'deleted') {
 							tasks.value = tasks.value.filter(t => t.id !== task.id);
