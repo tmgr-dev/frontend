@@ -121,44 +121,56 @@ export default defineConfig({
 		},
 		rollupOptions: {
 			output: {
-				manualChunks: {
-					'vendor-vue': ['vue', 'vue-router', 'vuex'],
-					'vendor-editor': [
-						'@editorjs/editorjs',
-						'@editorjs/header',
-						'@editorjs/list',
-						'@editorjs/checklist',
-						'@editorjs/delimiter',
-						'@editorjs/embed',
-						'@editorjs/inline-code',
-						'@editorjs/link',
-						'@editorjs/marker',
-						'@editorjs/quote',
-						'@editorjs/raw',
-						'@editorjs/table',
-						'@editorjs/warning',
-						'@bomdi/codebox',
-						'editorjs-drag-drop',
-					],
-					'vendor-ui': [
-						'@headlessui/vue',
-						'radix-vue',
-						'@vueuse/core',
-						'lucide-vue-next',
-						'@radial-color-picker/vue-color-picker',
-					],
-					'vendor-utils': [
-						'axios',
-						'date-fns',
-						'canvas-confetti',
-						'vuedraggable',
-					],
-					'vendor-markdown': ['md-editor-v3'],
-					'vendor-pusher': [
-						'@pusher/push-notifications-web',
-						'pusher-js',
-						'laravel-echo',
-					],
+				// Vite 8's rolldown-powered build only accepts a function form
+				// for manualChunks (the object-map form silently isn't
+				// supported and throws "manualChunks is not a function") -
+				// this reproduces the same package -> chunk assignment as a
+				// lookup.
+				manualChunks: (id) => {
+					const chunkPackages: Record<string, string[]> = {
+						'vendor-vue': ['vue', 'vue-router', 'vuex'],
+						'vendor-editor': [
+							'@editorjs/editorjs',
+							'@editorjs/header',
+							'@editorjs/list',
+							'@editorjs/checklist',
+							'@editorjs/delimiter',
+							'@editorjs/embed',
+							'@editorjs/inline-code',
+							'@editorjs/link',
+							'@editorjs/marker',
+							'@editorjs/quote',
+							'@editorjs/raw',
+							'@editorjs/table',
+							'@editorjs/warning',
+							'@bomdi/codebox',
+							'editorjs-drag-drop',
+						],
+						'vendor-ui': [
+							'@headlessui/vue',
+							'radix-vue',
+							'@vueuse/core',
+							'lucide-vue-next',
+							'@radial-color-picker/vue-color-picker',
+						],
+						'vendor-utils': [
+							'axios',
+							'date-fns',
+							'canvas-confetti',
+							'vuedraggable',
+						],
+						'vendor-markdown': ['md-editor-v3'],
+						'vendor-pusher': [
+							'@pusher/push-notifications-web',
+							'pusher-js',
+							'laravel-echo',
+						],
+					};
+					for (const [chunkName, packages] of Object.entries(chunkPackages)) {
+						if (packages.some((pkg) => id.includes(`/node_modules/${pkg}/`))) {
+							return chunkName;
+						}
+					}
 				},
 				chunkFileNames: 'assets/js/[name]-[hash].js',
 				entryFileNames: 'assets/js/[name]-[hash].js',
