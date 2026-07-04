@@ -150,6 +150,7 @@
 
 		await updateTaskPartially(taskId, {
 			project_category_id: categoryId,
+			category_tasks_sequence_id: null,
 		});
 
 		await loadCategories();
