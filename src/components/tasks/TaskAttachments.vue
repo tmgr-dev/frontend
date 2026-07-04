@@ -191,6 +191,7 @@
 		uploadTaskFile,
 		deleteTaskFile,
 		downloadTaskFile,
+		getFileBlob,
 		getFilePreviewUrl,
 		getFileTextContent,
 		getFileType,
@@ -266,7 +267,13 @@
 							const type = getFileType(file.mimeType, file.name);
 							if (type === 'image') {
 								try {
-									file.thumbnailUrl = await getFilePreviewUrl(file);
+									// Keep the blob around, not just an object URL for it —
+									// openPreview derives its own independent URL from the
+									// same blob instead of sharing this one, so this array
+									// can always be swapped/revoked without racing an open
+									// preview modal.
+									file.thumbnailBlob = await getFileBlob(file);
+									file.thumbnailUrl = URL.createObjectURL(file.thumbnailBlob);
 								} catch (e) {
 									console.error('Failed to load thumbnail:', e);
 								}
@@ -339,10 +346,13 @@
 				this.previewUrl = null;
 				this.previewContent = null;
 
-				// The grid thumbnail already holds a blob URL for this exact file;
-				// reuse it instead of re-fetching the full image a second time.
-				if (type === 'image' && file.thumbnailUrl) {
-					this.previewUrl = file.thumbnailUrl;
+				// The grid thumbnail already has this image's blob in memory;
+				// derive our own object URL from it instead of re-fetching over
+				// the network. A fresh URL (not the grid's) means closePreview
+				// can always revoke it without racing loadFiles() replacing the
+				// grid's own thumbnailUrl out from under an open preview.
+				if (type === 'image' && file.thumbnailBlob) {
+					this.previewUrl = URL.createObjectURL(file.thumbnailBlob);
 					return;
 				}
 
@@ -360,10 +370,7 @@
 				}
 			},
 			closePreview() {
-				// Don't revoke if previewUrl is just a reference to the grid
-				// thumbnail's own blob URL (see openPreview) — that one is owned
-				// by loadFiles/unmounted, not by the preview modal.
-				if (this.previewUrl && this.previewUrl !== this.previewFile?.thumbnailUrl) {
+				if (this.previewUrl) {
 					URL.revokeObjectURL(this.previewUrl);
 				}
 				this.previewFile = null;
@@ -498,7 +505,7 @@
 					URL.revokeObjectURL(file.thumbnailUrl);
 				}
 			});
-			if (this.previewUrl && this.previewUrl !== this.previewFile?.thumbnailUrl) {
+			if (this.previewUrl) {
 				URL.revokeObjectURL(this.previewUrl);
 			}
 		},
