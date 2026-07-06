@@ -244,7 +244,8 @@
 			modalTaskId.value ||
 			route.params.id ||
 			route.params.task_id ||
-			route.params.taskId;
+			route.params.taskId ||
+			route.params.task_number;
 		return id ? Number(id) : undefined;
 	});
 	const statuses = ref<Status[]>();
