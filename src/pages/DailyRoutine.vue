@@ -380,8 +380,11 @@
 	const todayEntries = computed(() => entries.value.filter(e => e.date === todayIso.value));
 	const dayEntries = computed(() => entries.value.filter(e => e.date === fmtDate(cursor.value)));
 	const weekStart = computed(() => startOfWeek(cursor.value));
+	// Newest routines first: task_id is auto-increment, a stand-in for created_at.
 	const unscheduledEntries = computed(() =>
-		entries.value.filter(e => !e.time && e.date === todayIso.value),
+		entries.value
+			.filter(e => !e.time && e.date === todayIso.value)
+			.sort((a, b) => (b.task_id ?? 0) - (a.task_id ?? 0)),
 	);
 	const unscheduledDoneCount = computed(
 		() => unscheduledEntries.value.filter(e => e.completed).length,
