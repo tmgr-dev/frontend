@@ -37,7 +37,7 @@
 				{{ entry.title }}
 			</div>
 			<div
-				v-if="entry.time || entry.frequency !== 'NONE'"
+				v-if="entry.time || entry.frequency !== 'NONE' || createdLabel"
 				class="mt-1 flex items-center gap-2.5 text-2xs text-ink-subtle"
 			>
 				<span v-if="entry.time" class="inline-flex items-center gap-1">
@@ -53,6 +53,9 @@
 					:style="{ color: entry.routine_category.color }"
 				>
 					{{ entry.routine_category.name }}
+				</span>
+				<span v-if="createdLabel" class="ml-auto shrink-0 text-[10px] text-ink-subtle">
+					{{ createdLabel }}
 				</span>
 			</div>
 		</div>
@@ -79,6 +82,17 @@
 		entry: RoutineEntry;
 		selected?: boolean;
 	}>();
+
+	const createdLabel = computed(() => {
+		if (!props.entry.created_at) return '';
+		const d = new Date(props.entry.created_at);
+		if (isNaN(d.getTime())) return '';
+		const opts: Intl.DateTimeFormatOptions =
+			d.getFullYear() === new Date().getFullYear()
+				? { month: 'short', day: 'numeric' }
+				: { month: 'short', day: 'numeric', year: 'numeric' };
+		return d.toLocaleDateString(undefined, opts);
+	});
 
 	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;

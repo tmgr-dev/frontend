@@ -8,6 +8,9 @@ module.exports = {
 	// here (see TM-8825): the only such test was a no-op vue-cli scaffold stub
 	// and was removed rather than wiring up vue-jest/babel for zero assertions.
 	testMatch: ['**/__tests__/**/*.test.ts', '**/?(*.)+(spec|test).ts'],
+	moduleNameMapper: {
+		'^@/(.*)$': '<rootDir>/src/$1',
+	},
 	transform: {
 		'^.+\\.tsx?$': [
 			'ts-jest',
@@ -17,6 +20,8 @@ module.exports = {
 					module: 'CommonJS',
 					lib: ['ES2021', 'DOM'],
 					esModuleInterop: true,
+					baseUrl: '.',
+					paths: { '@/*': ['./src/*'] },
 				},
 			},
 		],

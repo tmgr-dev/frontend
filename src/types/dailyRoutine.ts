@@ -43,6 +43,8 @@ export interface RoutineEntry {
 	virtual: boolean;
 	frequency: RoutineFrequency;
 	scheduled_for: string | null;
+	created_at?: string | null;
+	updated_at?: string | null;
 }
 
 export interface YearStats {
