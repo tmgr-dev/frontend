@@ -280,6 +280,39 @@
 									</p>
 								</div>
 							</div>
+
+							<!-- API Documentation Links -->
+							<div
+								class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700"
+							>
+								<h4
+									class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200"
+								>
+									Documentation
+								</h4>
+								<ul class="space-y-1 text-sm">
+									<li>
+										<a
+											:href="`${docsBaseUrl}/docs/smart-devices.html`"
+											target="_blank"
+											rel="noopener"
+											class="text-blue-600 hover:underline dark:text-blue-400"
+										>
+											Smart Device API reference
+										</a>
+									</li>
+									<li>
+										<a
+											:href="`${docsBaseUrl}/docs/mcp.html`"
+											target="_blank"
+											rel="noopener"
+											class="text-blue-600 hover:underline dark:text-blue-400"
+										>
+											MCP server setup
+										</a>
+									</li>
+								</ul>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -403,6 +436,20 @@
 					return url.toString();
 				} catch (error) {
 					return 'https://tmgr-api-stage.k8s.in-the.dev/mcp/sse';
+				}
+			},
+			docsBaseUrl() {
+				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';
+
+				try {
+					const url = new URL(apiBaseUrl, window.location.origin);
+					const basePath = url.pathname
+						.replace(/\/api\/?$/, '')
+						.replace(/\/$/, '');
+
+					return `${url.origin}${basePath}`;
+				} catch (error) {
+					return '';
 				}
 			},
 			mcpClientConfig() {
