@@ -134,3 +134,13 @@ export const restoreCategory = async (categoryId: number) => {
 
 	return data.deleted_at;
 };
+
+export const getWorkspaceCategories = async (
+	workspaceId: number,
+): Promise<Category[]> => {
+	const {
+		data: { data },
+	} = await $axios.get(`project_categories?all&workspace_id=${workspaceId}`);
+
+	return data;
+};
