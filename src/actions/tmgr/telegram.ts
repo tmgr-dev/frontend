@@ -4,8 +4,11 @@ import { Task } from '@/actions/tmgr/tasks';
 
 export const generateLink = async (): Promise<Task[]> => {
 	try {
+		// Java API wraps every /api response in a {data: ...} envelope
 		const {
-			data: { link },
+			data: {
+				data: { link },
+			},
 		} = await $axios.post(`telegram/link/generate`);
 		return link;
 	} catch (error) {
