@@ -37,7 +37,7 @@
 				{{ entry.title }}
 			</div>
 			<div
-				v-if="entry.time || entry.frequency !== 'NONE' || createdLabel"
+				v-if="entry.time || entry.frequency !== 'NONE' || timeMeta"
 				class="mt-1 flex items-center gap-2.5 text-2xs text-ink-subtle"
 			>
 				<span v-if="entry.time" class="inline-flex items-center gap-1">
@@ -54,8 +54,8 @@
 				>
 					{{ entry.routine_category.name }}
 				</span>
-				<span v-if="createdLabel" class="ml-auto shrink-0 text-[10px] text-ink-subtle">
-					{{ createdLabel }}
+				<span v-if="timeMeta" class="ml-auto shrink-0 text-[10px] text-ink-subtle">
+					{{ timeMeta }}
 				</span>
 			</div>
 		</div>
@@ -73,6 +73,11 @@
 
 <script setup lang="ts">
 	import { computed } from 'vue';
+	import { useNowMs } from '@/composable/useNowMs';
+	import {
+		formatRelativeTime,
+		isSameTimestamp,
+	} from '@/utils/dailyRoutines/relativeTime';
 	import DRIcon from './DRIcon.vue';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { entryRecurrenceLabel } from '@/utils/dailyRoutines/recurrenceLabel';
@@ -83,15 +88,15 @@
 		selected?: boolean;
 	}>();
 
-	const createdLabel = computed(() => {
-		if (!props.entry.created_at) return '';
-		const d = new Date(props.entry.created_at);
-		if (isNaN(d.getTime())) return '';
-		const opts: Intl.DateTimeFormatOptions =
-			d.getFullYear() === new Date().getFullYear()
-				? { month: 'short', day: 'numeric' }
-				: { month: 'short', day: 'numeric', year: 'numeric' };
-		return d.toLocaleDateString(undefined, opts);
+	const nowMs = useNowMs();
+	const timeMeta = computed(() => {
+		const created = formatRelativeTime(props.entry.created_at, nowMs.value);
+		if (!created) return '';
+		if (isSameTimestamp(props.entry.created_at, props.entry.updated_at)) {
+			return `created ${created}`;
+		}
+		const updated = formatRelativeTime(props.entry.updated_at, nowMs.value);
+		return updated ? `created ${created} · updated ${updated}` : `created ${created}`;
 	});
 
 	const emit = defineEmits<{
