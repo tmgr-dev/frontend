@@ -255,6 +255,54 @@
 								</button>
 							</div>
 						</ERSection>
+
+						<!-- Convert to task -->
+						<ERSection v-if="!isNew" label="Convert to task">
+							<button
+								v-if="!convertOpen"
+								type="button"
+								class="rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-subtle transition-colors hover:text-ink"
+								@click="openConvert"
+							>
+								Move to a workspace as a regular task…
+							</button>
+							<div v-else class="flex flex-col gap-2">
+								<select
+									v-model.number="convertWorkspaceId"
+									class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
+									@change="loadConvertCategories"
+								>
+									<option
+										v-for="w in $store.state.workspaces"
+										:key="w.id"
+										:value="w.id"
+									>
+										{{ w.name }}
+									</option>
+								</select>
+								<select
+									v-model="convertCategoryId"
+									class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
+								>
+									<option :value="null">No category</option>
+									<option
+										v-for="c in convertCategories"
+										:key="c.id"
+										:value="c.id"
+									>
+										{{ c.title }}
+									</option>
+								</select>
+								<button
+									type="button"
+									class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle"
+									:disabled="!convertWorkspaceId"
+									@click="onConvert"
+								>
+									Convert
+								</button>
+							</div>
+						</ERSection>
 					</div>
 				</div>
 
@@ -291,6 +339,11 @@
 
 <script setup lang="ts">
 	import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue';
+	import { useStore } from 'vuex';
+	import {
+		getWorkspaceCategories,
+		type Category,
+	} from '@/actions/tmgr/categories';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
 	import { ROUTINE_CATEGORY_LIST, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
@@ -322,8 +375,17 @@
 		(e: 'close'): void;
 		(e: 'save', draft: RoutineDraft): void;
 		(e: 'delete', routine: any): void;
+		(
+			e: 'convert',
+			payload: {
+				taskId: number;
+				workspaceId: number;
+				projectCategoryId: number | null;
+			},
+		): void;
 	}>();
 
+	const store = useStore();
 	const titleRef = ref<HTMLInputElement | null>(null);
 
 	function todayIso(): string {
@@ -437,6 +499,44 @@
 
 	function onDelete() {
 		emit('delete', props.routine);
+		emit('close');
+	}
+
+	// ── convert to task ────────────────────────────────────────────────────
+	const convertOpen = ref(false);
+	const convertWorkspaceId = ref<number | null>(null);
+	const convertCategoryId = ref<number | null>(null);
+	const convertCategories = ref<Category[]>([]);
+
+	function openConvert() {
+		convertOpen.value = true;
+		convertWorkspaceId.value =
+			store.getters.currentWorkspaceId ??
+			store.state.workspaces?.[0]?.id ??
+			null;
+		loadConvertCategories();
+	}
+
+	async function loadConvertCategories() {
+		convertCategoryId.value = null;
+		convertCategories.value = [];
+		if (!convertWorkspaceId.value) return;
+		try {
+			convertCategories.value = await getWorkspaceCategories(
+				convertWorkspaceId.value,
+			);
+		} catch {
+			// category list is optional — conversion works without one
+		}
+	}
+
+	function onConvert() {
+		if (!convertWorkspaceId.value) return;
+		emit('convert', {
+			taskId: props.routine.task_id ?? props.routine.id,
+			workspaceId: convertWorkspaceId.value,
+			projectCategoryId: convertCategoryId.value,
+		});
 		emit('close');
 	}
 

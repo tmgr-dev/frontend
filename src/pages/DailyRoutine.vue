@@ -263,6 +263,7 @@
 						@close="editingRoutine = null"
 						@save="onSaveRoutine"
 						@delete="onDeleteRoutine"
+						@convert="onConvertRoutine"
 					/>
 
 					<RoutineContextMenu
@@ -629,6 +630,16 @@
 
 	async function onDeleteRoutine(routine: any) {
 		await store.dispatch('dailyRoutines/deleteRoutine', routine.id);
+		editingRoutine.value = null;
+		await reload();
+	}
+
+	async function onConvertRoutine(payload: {
+		taskId: number;
+		workspaceId: number;
+		projectCategoryId: number | null;
+	}) {
+		await store.dispatch('dailyRoutines/convertRoutine', payload);
 		editingRoutine.value = null;
 		await reload();
 	}
