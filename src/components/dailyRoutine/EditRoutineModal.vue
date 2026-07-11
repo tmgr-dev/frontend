@@ -306,6 +306,15 @@
 					</div>
 				</div>
 
+				<!-- Timestamps -->
+				<div
+					v-if="!isNew && (createdAtLabel || updatedAtLabel)"
+					class="flex items-center gap-3 px-3.5 pb-2 text-2xs text-ink-subtle"
+				>
+					<span v-if="createdAtLabel">Created {{ createdAtLabel }}</span>
+					<span v-if="updatedAtLabel">Updated {{ updatedAtLabel }}</span>
+				</div>
+
 				<!-- Footer -->
 				<div class="flex items-center gap-2.5 border-t border-line p-3.5">
 					<button
@@ -501,6 +510,21 @@
 		emit('delete', props.routine);
 		emit('close');
 	}
+
+	function tsLabel(value: string | null | undefined): string {
+		if (!value) return '';
+		const d = new Date(value);
+		if (isNaN(d.getTime())) return '';
+		return d.toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		});
+	}
+	const createdAtLabel = computed(() => tsLabel(props.routine?.created_at));
+	const updatedAtLabel = computed(() => tsLabel(props.routine?.updated_at));
 
 	// ── convert to task ────────────────────────────────────────────────────
 	const convertOpen = ref(false);
