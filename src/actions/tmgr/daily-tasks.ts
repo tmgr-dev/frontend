@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import { requestCache } from '@/utils/requestCache';
 import { Task } from '@/actions/tmgr/tasks';
 import type { RoutineEntry, YearStats, IcsImportResult } from '@/types/dailyRoutine';
 
@@ -231,4 +232,18 @@ export const downloadRoutinesIcs = async (ids?: number[]): Promise<Blob> => {
 		responseType: 'blob',
 	});
 	return data as Blob;
+};
+
+export const convertRoutineToTask = async (
+	taskId: number,
+	payload: { workspace_id: number; project_category_id?: number | null },
+): Promise<Task> => {
+	const {
+		data: { data },
+	} = await $axios.post(`daily-routines/tasks/${taskId}/convert`, payload);
+
+	// The task now lives in a regular workspace list — drop stale caches.
+	requestCache.invalidate(/^task/);
+
+	return data;
 };

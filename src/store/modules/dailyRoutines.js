@@ -11,6 +11,7 @@ import {
 	completeDailyTaskInstance,
 	archiveDailyTask,
 	updateDailyTask,
+	convertRoutineToTask,
 } from '@/actions/tmgr/daily-tasks';
 
 function fmtDate(d) {
@@ -174,6 +175,14 @@ const dailyRoutinesModule = {
 		async deleteRoutine({ commit }, taskId) {
 			await deleteDailyTask(taskId);
 			commit('removeEntries', e => e.task_id === taskId);
+		},
+		async convertRoutine({ commit }, { taskId, workspaceId, projectCategoryId }) {
+			const task = await convertRoutineToTask(taskId, {
+				workspace_id: workspaceId,
+				project_category_id: projectCategoryId ?? null,
+			});
+			commit('removeEntries', e => e.task_id === taskId);
+			return task;
 		},
 		async archiveRoutine({ commit }, taskId) {
 			await archiveDailyTask(taskId);
