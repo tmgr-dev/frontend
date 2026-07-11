@@ -116,6 +116,7 @@
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 
 	const { active, hoverKey } = useRoutineDrag();
@@ -171,9 +172,8 @@
 		return now.getHours() * HOUR_PX + (now.getMinutes() / 60) * HOUR_PX;
 	});
 
-	// Newest routines first: task_id is auto-increment, a stand-in for created_at.
 	const unscheduled = computed(() =>
-		props.entries.filter(e => !e.time).sort((a, b) => (b.task_id ?? 0) - (a.task_id ?? 0)),
+		sortUnscheduledNewestFirst(props.entries.filter(e => !e.time)),
 	);
 	const unscheduledDoneCount = computed(
 		() => unscheduled.value.filter(e => e.completed).length,
