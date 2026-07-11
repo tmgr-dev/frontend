@@ -75,6 +75,10 @@ const routes = [
 		name: 'SocialiteProxy',
 		meta: {
 			allowedGuests: true,
+			// A stale token in localStorage must not swallow the OAuth callback:
+			// without this flag the guard bounces /login/github?code=... to the
+			// app before the code is exchanged (classic "logged in but expired").
+			notOnlyForLoggedUsers: true,
 			transitionName: 'fade-fast',
 		},
 	},
