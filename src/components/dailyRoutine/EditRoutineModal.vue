@@ -312,7 +312,7 @@
 					class="flex items-center gap-3 px-3.5 pb-2 text-2xs text-ink-subtle"
 				>
 					<span v-if="createdAtLabel">Created {{ createdAtLabel }}</span>
-					<span v-if="updatedAtLabel">Updated {{ updatedAtLabel }}</span>
+					<span v-if="updatedAtLabel && !updatedSameAsCreated">Updated {{ updatedAtLabel }}</span>
 				</div>
 
 				<!-- Footer -->
@@ -353,6 +353,7 @@
 		getWorkspaceCategories,
 		type Category,
 	} from '@/actions/tmgr/categories';
+	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
 	import { ROUTINE_CATEGORY_LIST, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
@@ -524,6 +525,9 @@
 		});
 	}
 	const createdAtLabel = computed(() => tsLabel(props.routine?.created_at));
+	const updatedSameAsCreated = computed(() =>
+		isSameTimestamp(props.routine?.created_at, props.routine?.updated_at),
+	);
 	const updatedAtLabel = computed(() => tsLabel(props.routine?.updated_at));
 
 	// ── convert to task ────────────────────────────────────────────────────
