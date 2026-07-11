@@ -1,11 +1,11 @@
 <template>
 	<Teleport to="body">
 		<div
-			class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-5"
+			class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5"
 			@click.self="$emit('close')"
 		>
 			<div
-				class="flex max-h-[calc(100vh-40px)] w-full max-w-[520px] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-tmgr-lg"
+				class="flex max-h-[calc(100vh-40px)] w-full max-w-[520px] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-tmgr-lg supports-[height:100dvh]:max-h-[calc(100dvh-24px)]"
 				@keydown.esc="$emit('close')"
 			>
 				<!-- Header -->
