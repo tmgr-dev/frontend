@@ -198,8 +198,8 @@
 			},
 			async loadActiveTasks() {
 				try {
-					if (!this.$store.state.user) return;
-					
+					if (!this.$store.state.user?.id) return;
+
 					const tasks = await getLaunchedTasks();
 					this.activeTasks = tasks || [];
 				} catch (error) {
@@ -450,7 +450,11 @@
 			},
 		},
 		async created() {
-			if (store.state.user) {
+			// user starts as {} (truthy!) — gate on a real loaded user, otherwise
+			// guests fire authenticated calls, catch 401s, and the interceptor's
+			// hardLogout() yanks the router away from OAuth callback pages
+			// mid-exchange (mobile lost that race on every social login).
+			if (store.state.user?.id) {
 				await Promise.all([
 					getUserSettings(), 
 					getWorkspaceStatuses(),
@@ -484,7 +488,7 @@
 				next();
 			});
 
-			if (!this.$store.state.user) {
+			if (!this.$store.state.user?.id) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
