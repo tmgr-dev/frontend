@@ -171,7 +171,10 @@
 		return now.getHours() * HOUR_PX + (now.getMinutes() / 60) * HOUR_PX;
 	});
 
-	const unscheduled = computed(() => props.entries.filter(e => !e.time));
+	// Newest routines first: task_id is auto-increment, a stand-in for created_at.
+	const unscheduled = computed(() =>
+		props.entries.filter(e => !e.time).sort((a, b) => b.task_id - a.task_id),
+	);
 	const unscheduledDoneCount = computed(
 		() => unscheduled.value.filter(e => e.completed).length,
 	);
