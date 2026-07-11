@@ -327,6 +327,7 @@
 	import MonthView from '@/components/dailyRoutine/views/MonthView.vue';
 	import YearView from '@/components/dailyRoutine/views/YearView.vue';
 	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
+	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 
 	const store = useStore();
 	const rootRef = ref<HTMLElement | null>(null);
@@ -380,11 +381,10 @@
 	const todayEntries = computed(() => entries.value.filter(e => e.date === todayIso.value));
 	const dayEntries = computed(() => entries.value.filter(e => e.date === fmtDate(cursor.value)));
 	const weekStart = computed(() => startOfWeek(cursor.value));
-	// Newest routines first: task_id is auto-increment, a stand-in for created_at.
 	const unscheduledEntries = computed(() =>
-		entries.value
-			.filter(e => !e.time && e.date === todayIso.value)
-			.sort((a, b) => (b.task_id ?? 0) - (a.task_id ?? 0)),
+		sortUnscheduledNewestFirst(
+			entries.value.filter(e => !e.time && e.date === todayIso.value),
+		),
 	);
 	const unscheduledDoneCount = computed(
 		() => unscheduledEntries.value.filter(e => e.completed).length,
