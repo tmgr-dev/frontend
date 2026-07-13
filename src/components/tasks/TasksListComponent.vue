@@ -220,32 +220,32 @@
 								{{ taskFormattedTimes[task.id] }}
 							</span>
 
-							<button
-								v-if="!task.start_time"
-								v-tooltip.top="setTooltipData('Start timer')"
-								:disabled="isLoadingActions[`start-${task.id}`]"
-								class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
-								@click.stop="startCountdown(task, `start-${task.id}`)"
-							>
-								<Play
-									v-if="!isLoadingActions[`start-${task.id}`]"
-									class="h-3 w-3 fill-current"
-								/>
-								<Loader v-else is-mini />
-							</button>
-							<button
-								v-else
-								v-tooltip.top="setTooltipData('Stop timer')"
-								:disabled="isLoadingActions[`stop-${task.id}`]"
-								class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
-								@click.stop="stopCountdown(task, `stop-${task.id}`)"
-							>
-								<Square
-									v-if="!isLoadingActions[`stop-${task.id}`]"
-									class="h-2.5 w-2.5 fill-current"
-								/>
-								<Loader v-else is-mini />
-							</button>
+							<AppTooltip v-if="!task.start_time" content="Start timer" side="top">
+								<button
+									:disabled="isLoadingActions[`start-${task.id}`]"
+									class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+									@click.stop="startCountdown(task, `start-${task.id}`)"
+								>
+									<Play
+										v-if="!isLoadingActions[`start-${task.id}`]"
+										class="h-3 w-3 fill-current"
+									/>
+									<Loader v-else is-mini />
+								</button>
+							</AppTooltip>
+							<AppTooltip v-else content="Stop timer" side="top">
+								<button
+									:disabled="isLoadingActions[`stop-${task.id}`]"
+									class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+									@click.stop="stopCountdown(task, `stop-${task.id}`)"
+								>
+									<Square
+										v-if="!isLoadingActions[`stop-${task.id}`]"
+										class="h-2.5 w-2.5 fill-current"
+									/>
+									<Loader v-else is-mini />
+								</button>
+							</AppTooltip>
 						</div>
 
 						<div class="mt-3 flex items-center gap-x-3 text-2xs text-ink-faint">
@@ -348,7 +348,6 @@
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
-	import SetTooltipData from '@/mixins/SetTooltipData';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
@@ -374,6 +373,7 @@
 	import Button from '@/components/general/Button.vue';
 	import { PropType } from 'vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import {
 		Popover,
 		PopoverContent,
@@ -417,6 +417,7 @@
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
 			AssigneeUsers,
+			AppTooltip,
 			Popover,
 			PopoverContent,
 			PopoverTrigger,
@@ -518,7 +519,7 @@
 				},
 			},
 		},
-		mixins: [TasksListMixin, TaskActionsInTheListMixin, SetTooltipData],
+		mixins: [TasksListMixin, TaskActionsInTheListMixin],
 		data() {
 			const { isFeatureEnabled } = useFeatureToggles();
 			return {

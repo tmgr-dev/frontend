@@ -40,7 +40,6 @@
 		"editorjs-drag-drop": "^1.1.16",
 		"lucide-vue-next": "^0.563.0",
 		"md-editor-v3": "^4.17.4",
-		"popper.js": "^1.16.1",
 		"radix-vue": "^1.9.9",
 		"tailwind-merge": "^2.5.4",
 		"tailwindcss-animate": "^1.0.7",
