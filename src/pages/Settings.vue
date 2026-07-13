@@ -44,6 +44,11 @@
 						</div>
 					</div>
 
+					<div v-if="isTheme" class="flex flex-col gap-3.5 p-4">
+						<h3 class="mb-4 text-lg font-bold">Theme</h3>
+						<ThemePicker />
+					</div>
+
 					<div
 						v-if="isWorkspaceSettings"
 						class="flex flex-col gap-3 p-4 md:w-1/2"
@@ -406,6 +411,7 @@
 	import TextField from '@/components/general/TextField.vue';
 	import Profile from '@/pages/Profile.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
+	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import { generateLink, unlink } from '@/actions/tmgr/telegram';
 	import {
 		generateSmartDeviceToken,
@@ -434,6 +440,7 @@
 			Confirm,
 			CurrentWorkspace,
 			NotificationSettingsForm,
+			ThemePicker,
 		},
 		created() {
 			this.handleTabFromQuery();
@@ -447,6 +454,7 @@
 			isWorkspaceSettings: true,
 			isProfile: false,
 			isDevice: false,
+			isTheme: false,
 			telegramLink: null,
 			showToken: false,
 			tokenCopied: false,
@@ -552,6 +560,9 @@
 						case 'device':
 							this.showDeviceSettings();
 							break;
+						case 'theme':
+							this.showThemeSettings();
+							break;
 					}
 				}
 			},
@@ -561,6 +572,7 @@
 				this.isProfile = false;
 				this.isNotification = true;
 				this.isDevice = false;
+				this.isTheme = false;
 				this.updateQueryParam('notification');
 			},
 
@@ -569,6 +581,7 @@
 				this.isWorkspaceSettings = true;
 				this.isProfile = false;
 				this.isDevice = false;
+				this.isTheme = false;
 				this.updateQueryParam('workspace');
 			},
 
@@ -577,6 +590,7 @@
 				this.isWorkspaceSettings = false;
 				this.isProfile = true;
 				this.isDevice = false;
+				this.isTheme = false;
 				this.updateQueryParam('profile');
 			},
 
@@ -585,7 +599,17 @@
 				this.isWorkspaceSettings = false;
 				this.isProfile = false;
 				this.isDevice = true;
+				this.isTheme = false;
 				this.updateQueryParam('device');
+			},
+
+			showThemeSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = true;
+				this.updateQueryParam('theme');
 			},
 
 			updateQueryParam(tab) {
