@@ -14,21 +14,20 @@
 		>
 			{{ actions[defaultActionIndex].label }}
 		</button>
-		<button
-			v-tooltip.right="
-				userSettings.showTooltips ? 'Save & ...' : { visible: false }
-			"
-			:class="`h-full opacity-50 hover:opacity-100`"
-			type="button"
-			@click.prevent="showDropdownButtons = !showDropdownButtons"
-		>
-			<span v-if="!showDropdownButtons" class="material-icons"
-				>keyboard_arrow_{{ direction }}</span
+		<AppTooltip content="Save & ..." side="right">
+			<button
+				:class="`h-full opacity-50 hover:opacity-100`"
+				type="button"
+				@click.prevent="showDropdownButtons = !showDropdownButtons"
 			>
-			<span v-else class="material-icons"
-				>keyboard_arrow_{{ direction === 'up' ? 'down' : 'up' }}</span
-			>
-		</button>
+				<span v-if="!showDropdownButtons" class="material-icons"
+					>keyboard_arrow_{{ direction }}</span
+				>
+				<span v-else class="material-icons"
+					>keyboard_arrow_{{ direction === 'up' ? 'down' : 'up' }}</span
+				>
+			</button>
+		</AppTooltip>
 		<div
 			:class="classesForDirection[direction]"
 			class=""
@@ -56,8 +55,11 @@
 </template>
 
 <script>
+	import AppTooltip from '@/components/general/AppTooltip.vue';
+
 	export default {
 		name: 'ButtonWithActions',
+		components: { AppTooltip },
 		props: {
 			defaultActionIndex: {
 				required: false,
@@ -90,11 +92,6 @@
 					down: `absolute z-50 w-full bg-blue-700`,
 					up: `absolute z-50 w-full bg-blue-700`,
 				}),
-			},
-		},
-		computed: {
-			userSettings() {
-				return this.$store.state.userSettings ?? {};
 			},
 		},
 		watch: {
