@@ -4,7 +4,7 @@
 			<TooltipTrigger as-child>
 				<slot />
 			</TooltipTrigger>
-			<TooltipContent :side="side">
+			<TooltipContent :side="side" :side-offset="sideOffset">
 				<slot name="content">{{ content }}</slot>
 			</TooltipContent>
 		</Tooltip>
@@ -31,6 +31,10 @@
 			side: {
 				type: String,
 				default: 'top',
+			},
+			sideOffset: {
+				type: Number,
+				default: 16,
 			},
 			disabled: {
 				type: Boolean,
