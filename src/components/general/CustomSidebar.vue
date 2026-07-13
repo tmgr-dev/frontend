@@ -42,6 +42,7 @@
 		LogOut,
 		SquareKanban,
 		Plus,
+		Palette,
 		Settings2,
 		Inbox,
 		Package,
@@ -662,6 +663,13 @@
 										>
 											<Sliders />
 											Feature Settings
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/settings?tab=theme')"
+											class="cursor-pointer"
+										>
+											<Palette />
+											Theme
 										</DropdownMenuItem>
 										<DropdownMenuItem>
 											<DarkMode />
