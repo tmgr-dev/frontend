@@ -1,6 +1,9 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { FormSetting, Setting } from '@/actions/tmgr/settings';
+import { pickThemeFromSettings } from '@/theme/reconcile';
+
+export { pickThemeFromSettings };
 
 export interface User {
 	id: number;
@@ -16,6 +19,11 @@ export const getUser = async () => {
 	} = await $axios.get('user');
 
 	store.commit('setUser', data);
+
+	const picked = pickThemeFromSettings(data?.settings);
+	if (picked.theme !== undefined) store.commit('setTheme', picked.theme);
+	if (picked.colorScheme !== undefined)
+		store.commit('setColorScheme', picked.colorScheme);
 
 	return data;
 };
@@ -70,4 +78,20 @@ export const updateUserSettingsV2 = async (payload: UserSettings) => {
 	} = await $axios.put('v2/user/settings', payload);
 
 	return data;
+};
+
+export const persistThemeSettings = async (
+	theme: string,
+	colorScheme: string,
+) => {
+	const current = Array.isArray(store.state.user?.settings)
+		? store.state.user.settings
+		: [];
+	const payload = current.map((s: any) => {
+		if (s.key === 'theme') return { id: s.id, value: theme };
+		if (s.key === 'colorScheme') return { id: s.id, value: colorScheme };
+		return { id: s.id, value: s.value };
+	});
+	const updatedUser = await updateUserSettingsV2(payload);
+	store.commit('setUser', updatedUser);
 };
