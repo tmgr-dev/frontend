@@ -5,6 +5,7 @@ import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import { createStore } from 'vuex';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { requestCache } from '@/utils/requestCache';
+import { applyThemeToDocument } from '@/theme/applyTheme';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -22,6 +23,7 @@ const state = {
 	token: token,
 	user: {},
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
+	theme: localStorage.getItem('theme') || 'default',
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
 	taskStatusId: null,
@@ -168,13 +170,27 @@ const mutations = {
 		state.showCreatingTaskModal = true;
 	},
 	setColorScheme(state, colorScheme) {
-		if (colorScheme) {
-			state.userSettings.colorScheme = colorScheme;
-		}
-		state.colorScheme = colorScheme;
-		localStorage.setItem('colorScheme', colorScheme);
-		document.querySelector('html').className =
-			colorScheme === 'dark' ? 'dark' : '';
+		const normalized = colorScheme === 'dark' ? 'dark' : 'default';
+		state.userSettings.colorScheme = normalized;
+		state.colorScheme = normalized;
+		localStorage.setItem('colorScheme', normalized);
+		applyThemeToDocument(state.theme, normalized);
+	},
+	setTheme(state, theme) {
+		const normalized = theme || 'default';
+		state.theme = normalized;
+		localStorage.setItem('theme', normalized);
+		applyThemeToDocument(normalized, state.colorScheme);
+	},
+	setThemeToSystem(state) {
+		state.theme = 'default';
+		state.colorScheme =
+			typeof window !== 'undefined' &&
+			window.matchMedia &&
+			window.matchMedia('(prefers-color-scheme: dark)').matches
+				? 'dark'
+				: 'default';
+		applyThemeToDocument('default', state.colorScheme);
 	},
 	closeTaskModal(state) {
 		// Instead of using history.back() which can cause navigation issues,
@@ -253,6 +269,9 @@ const actions = {
 		Object.keys(localStorage)
 			.filter((key) => key.startsWith('pomo-enabled-'))
 			.forEach((key) => localStorage.removeItem(key));
+		localStorage.removeItem('theme');
+		localStorage.removeItem('colorScheme');
+		commit('setThemeToSystem');
 		requestCache.clear();
 	},
 
