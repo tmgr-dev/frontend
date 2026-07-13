@@ -9,6 +9,7 @@ import router from '@/router';
 import alertPlugin from '@/alert';
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));
+store.commit('setTheme', localStorage.getItem('theme') || 'default');
 
 const app = createApp(App);
 
