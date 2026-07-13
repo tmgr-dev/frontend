@@ -210,17 +210,14 @@
 															</span>
 														</span>
 
-														<button
-															v-tooltip.left="
-																userSettings.showTooltips
-																	? `Create task`
-																	: { visible: false }
-															"
-															class="opacity-0 transition-opacity group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-hover hover:text-ink"
-															@click="openTaskModal(column)"
-														>
-															<span class="material-icons text-base">add</span>
-														</button>
+														<AppTooltip content="Create task" side="left">
+															<button
+																class="opacity-0 transition-opacity group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-hover hover:text-ink"
+																@click="openTaskModal(column)"
+															>
+																<span class="material-icons text-base">add</span>
+															</button>
+														</AppTooltip>
 
 														<Dropdown>
 															<MenuItem v-slot="{ active }">
@@ -661,6 +658,7 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
 	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { SquareKanban } from 'lucide-vue-next';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
@@ -671,6 +669,7 @@
 			BreadcrumbItem,
 			BreadcrumbLink,
 			FilterIcon,
+			AppTooltip,
 			TaskBoardCard,
 			EllipsisVerticalIcon,
 			MenuItem,
@@ -802,9 +801,6 @@
 		},
 	},
 		computed: {
-			userSettings() {
-				return this.$store.state.userSettings ?? {};
-			},
 			workspaceUsersWithoutAll() {
 				return this.workspaceUsers.filter(user => user.id !== 0);
 			},
