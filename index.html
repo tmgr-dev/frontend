@@ -1,7 +1,27 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 	<head>
 		<meta charset="utf-8" />
+		<script>
+			(function () {
+				try {
+					var DARK = { dracula:1, nord:1, 'one-dark':1, monokai:1, 'solarized-dark':1, 'gruvbox-dark':1, 'tokyo-night':1, 'github-dark':1, 'night-owl':1, cobalt2:1, palenight:1, 'ayu-dark':1, 'catppuccin-mocha':1, 'synthwave-84':1, oled:1, colorblind:1 };
+					var html = document.documentElement;
+					var theme = localStorage.getItem('theme');
+					var cs = localStorage.getItem('colorScheme');
+					var dark;
+					if (theme && theme !== 'default' && (theme in DARK || theme === 'github-light')) {
+						html.classList.add('theme-' + theme);
+						dark = !!DARK[theme];
+					} else if (cs === 'dark' || cs === 'default') {
+						dark = cs === 'dark';
+					} else {
+						dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+					}
+					if (dark) html.classList.add('dark'); else html.classList.remove('dark');
+				} catch (e) {}
+			})();
+		</script>
 		<meta content="IE=edge" http-equiv="X-UA-Compatible" />
 		<meta content="width=device-width,initial-scale=1.0,viewport-fit=cover" name="viewport" />
 		<!-- CHANGES: Optimized font loading for better LCP -->
