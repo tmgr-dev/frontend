@@ -208,10 +208,19 @@
 			</span>
 		</div>
 	</div>
+
+	<Confirm
+		v-if="timerStatusConfirm"
+		title="Switch status?"
+		:body="timerStatusConfirm.message"
+		@onCancel="timerStatusConfirm = null"
+		@onOk="confirmTimerStatusSwitch"
+	/>
 </template>
 
 <script>
 	import Badge from '../general/Badge.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
 	import SetTooltipData from '@/mixins/SetTooltipData';
@@ -278,6 +287,7 @@
 		},
 		components: {
 			TaskTimeInfo,
+			Confirm,
 			ClockPlus,
 			FilePenLine,
 			Siren,
@@ -339,6 +349,7 @@
 				isHovered: false,
 				showAssigneePopover: false,
 				workspaceMembers: [],
+				timerStatusConfirm: null,
 			};
 		},
 		computed: {
@@ -591,22 +602,23 @@
 			if (taskStatus && taskStatus.type === 'default') {
 				const activeStatus = this.statuses.find((s) => s.type === 'active');
 				if (activeStatus) {
-					await this.$nextTick();
-					setTimeout(async () => {
-						const shouldSwitch = confirm(
-							`Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
-						);
-						if (shouldSwitch) {
-							try {
-								await updateTaskStatus(this.task.id, activeStatus.id);
-								this.task.status_id = activeStatus.id;
-								this.$store.commit('updateSingleTask', this.task);
-							} catch (e) {
-								console.error('Failed to update status:', e);
-							}
-						}
-					}, 0);
+					this.timerStatusConfirm = {
+						activeStatus,
+						message: `Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
+					};
 				}
+			}
+		},
+		async confirmTimerStatusSwitch() {
+			if (!this.timerStatusConfirm) return;
+			const { activeStatus } = this.timerStatusConfirm;
+			this.timerStatusConfirm = null;
+			try {
+				await updateTaskStatus(this.task.id, activeStatus.id);
+				this.task.status_id = activeStatus.id;
+				this.$store.commit('updateSingleTask', this.task);
+			} catch (e) {
+				console.error('Failed to update status:', e);
 			}
 		},
 		async handleStopTimer() {
