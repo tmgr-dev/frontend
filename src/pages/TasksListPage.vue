@@ -82,14 +82,7 @@
 		});
 	}
 
-	function removeTaskFromList(taskId: number | undefined) {
-		const index = tasks.value.findIndex(t => t.id === taskId);
-		if (index !== -1) {
-			tasks.value.splice(index, 1);
-			pagination.value.total = Math.max(0, pagination.value.total - 1);
-		}
-	}
-	const totalSeconds = computed(() => 
+	const totalSeconds = computed(() =>
 		pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0)
 	);
 	
@@ -193,13 +186,20 @@
 								pagination.value.total++;
 							}
 						} else if (action === 'updated') {
-							if (isActiveList.value && isArchivedTask(task)) {
-								removeTaskFromList(task.id);
-								return;
-							}
 							const index = tasks.value.findIndex(t => t.id === task.id);
+							const matchesStatus = !status.value || task.status === status.value;
+							const shouldBeInList = matchesStatus && !(isActiveList.value && isArchivedTask(task));
+
 							if (index !== -1) {
-								tasks.value.splice(index, 1, task);
+								if (shouldBeInList) {
+									tasks.value.splice(index, 1, task);
+								} else {
+									tasks.value.splice(index, 1);
+									pagination.value.total = Math.max(0, pagination.value.total - 1);
+								}
+							} else if (shouldBeInList) {
+								tasks.value.unshift(task);
+								pagination.value.total++;
 							}
 						} else if (action === 'deleted') {
 							tasks.value = tasks.value.filter(t => t.id !== task.id);
