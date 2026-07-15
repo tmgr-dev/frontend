@@ -14,7 +14,7 @@ export interface TaskFile {
 	size: number | null;
 	task_id: number;
 	user_id: number;
-	workspace_id: number;
+	workspace_id: number | null;
 	created_at: string | null;
 }
 
