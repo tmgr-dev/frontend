@@ -3,19 +3,19 @@ import { requestCache } from '@/utils/requestCache';
 import downloadFile from '@/utils/downloadFile';
 
 // Task attachments are served by the Java backend's files module (S3-backed),
-// which returns camelCase fields — unlike the rest of this app's PHP-backed
-// Task interface, which is snake_case.
+// which is snake_case like the rest of the app's API, confirmed live against
+// stage — an earlier draft of this module assumed camelCase (it isn't).
 export interface TaskFile {
 	id: number;
 	name: string;
-	originalName: string | null;
-	filePath: string;
-	mimeType: string | null;
+	original_name: string | null;
+	file_path: string;
+	mime_type: string | null;
 	size: number | null;
-	taskId: number;
-	userId: number;
-	workspaceId: number;
-	createdAt: string | null;
+	task_id: number;
+	user_id: number;
+	workspace_id: number;
+	created_at: string | null;
 }
 
 export const getFileType = (mimeType: string | null, fileName: string): 'image' | 'video' | 'pdf' | 'text' | 'other' => {
@@ -74,7 +74,10 @@ interface PresignedUpload {
 const presignUpload = async (fileName: string, contentType: string): Promise<PresignedUpload> => {
 	const {
 		data: { data },
-	} = await $axios.post('/files/presign-upload', { fileName, contentType });
+	} = await $axios.post('/files/presign-upload', {
+		file_name: fileName,
+		content_type: contentType,
+	});
 
 	return data;
 };
@@ -111,10 +114,10 @@ export const uploadTaskFile = async (
 	const {
 		data: { data },
 	} = await $axios.post(`/tasks/${taskId}/files`, {
-		fileName: file.name,
-		filePath: key,
-		mimeType: contentType,
-		sizeBytes: file.size,
+		file_name: file.name,
+		file_path: key,
+		mime_type: contentType,
+		size_bytes: file.size,
 	});
 
 	requestCache.invalidate(`files-task-${taskId}`);
@@ -136,8 +139,8 @@ export const deleteTaskFile = async (
 // and, later, a preview modal for that same file) can do so from one fetch
 // instead of sharing a single URL string across two owners with different
 // lifetimes.
-export const getFileBlob = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<Blob> => {
-	const url = await presignDownload(file.filePath);
+export const getFileBlob = async (file: Pick<TaskFile, 'id' | 'file_path'>): Promise<Blob> => {
+	const url = await presignDownload(file.file_path);
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Presigned download failed: ${response.status}`);
@@ -146,18 +149,18 @@ export const getFileBlob = async (file: Pick<TaskFile, 'id' | 'filePath'>): Prom
 	return response.blob();
 };
 
-export const downloadTaskFile = async (file: Pick<TaskFile, 'id' | 'filePath'>, fileName: string): Promise<void> => {
+export const downloadTaskFile = async (file: Pick<TaskFile, 'id' | 'file_path'>, fileName: string): Promise<void> => {
 	const blob = await getFileBlob(file);
 	downloadFile(blob, fileName);
 };
 
-export const getFilePreviewUrl = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<string> => {
+export const getFilePreviewUrl = async (file: Pick<TaskFile, 'id' | 'file_path'>): Promise<string> => {
 	const blob = await getFileBlob(file);
 
 	return window.URL.createObjectURL(blob);
 };
 
-export const getFileTextContent = async (file: Pick<TaskFile, 'id' | 'filePath'>): Promise<string> => {
+export const getFileTextContent = async (file: Pick<TaskFile, 'id' | 'file_path'>): Promise<string> => {
 	const blob = await getFileBlob(file);
 
 	return blob.text();

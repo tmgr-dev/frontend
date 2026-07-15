@@ -264,7 +264,7 @@
 					const files = await getTaskFiles(requestedTaskId);
 					await Promise.all(
 						files.map(async (file) => {
-							const type = getFileType(file.mimeType, file.name);
+							const type = getFileType(file.mime_type, file.name);
 							if (type === 'image') {
 								try {
 									// Keep the blob around, not just an object URL for it —
@@ -306,7 +306,7 @@
 				}
 			},
 			getFileIcon(file) {
-				const type = getFileType(file.mimeType || null, file.name);
+				const type = getFileType(file.mime_type || null, file.name);
 				switch (type) {
 					case 'image': return 'image';
 					case 'video': return 'movie';
@@ -316,7 +316,7 @@
 				}
 			},
 			getFileIconClass(file) {
-				const type = getFileType(file.mimeType || null, file.name);
+				const type = getFileType(file.mime_type || null, file.name);
 				switch (type) {
 					case 'image': return 'text-status-done';
 					case 'video': return 'text-status-testing';
@@ -335,8 +335,8 @@
 			async openPreview(file) {
 				if (file.uploading || !file.id) return;
 
-				const type = getFileType(file.mimeType || null, file.name);
-				if (!isPreviewable(file.mimeType, file.name)) {
+				const type = getFileType(file.mime_type || null, file.name);
+				if (!isPreviewable(file.mime_type, file.name)) {
 					await this.handleDownloadFile(file);
 					return;
 				}
@@ -411,7 +411,7 @@
 					tempId,
 					name: file.name,
 					size: file.size,
-					mimeType: file.type,
+					mime_type: file.type,
 					preview: this.createFilePreview(file),
 					uploading: true,
 				});
