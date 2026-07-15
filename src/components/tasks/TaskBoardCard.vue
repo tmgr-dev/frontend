@@ -22,39 +22,39 @@
 				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
 			</div>
 
-			<button
-				v-if="task.start_time"
-				v-tooltip.top="setTooltipData('Stop timer')"
-				:disabled="isLoadingTimer"
-				class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold tabular-nums text-status-done-fg transition-colors hover:opacity-90 disabled:opacity-50"
-				@click.stop="handleStopTimer"
-			>
-				<Loader v-if="isLoadingTimer" is-mini />
-				<template v-else>
-					<span
-						class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
-					></span>
-					<Pause class="h-2.5 w-2.5 fill-current" />
-					<span>{{ formattedDisplayTime }}</span>
-				</template>
-			</button>
-			<button
-				v-else
-				v-tooltip.top="setTooltipData('Start timer')"
-				:disabled="isLoadingTimer"
-				class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold tabular-nums text-ink-muted transition-colors hover:bg-line disabled:opacity-50"
-				:class="{ 'text-status-fix-fg': isTimeExceeded }"
-				@click.stop="handleStartTimer"
-			>
-				<Loader v-if="isLoadingTimer" is-mini />
-				<template v-else>
-					<Play class="h-2.5 w-2.5 fill-current" />
-					<span v-if="displayTask.common_time > 0">
-						{{ formattedDisplayTime }}
-					</span>
-					<span v-else>0m</span>
-				</template>
-			</button>
+			<AppTooltip v-if="task.start_time" content="Stop timer" side="top">
+				<button
+					:disabled="isLoadingTimer"
+					class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold tabular-nums text-status-done-fg transition-colors hover:opacity-90 disabled:opacity-50"
+					@click.stop="handleStopTimer"
+				>
+					<Loader v-if="isLoadingTimer" is-mini />
+					<template v-else>
+						<span
+							class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
+						></span>
+						<Pause class="h-2.5 w-2.5 fill-current" />
+						<span>{{ formattedDisplayTime }}</span>
+					</template>
+				</button>
+			</AppTooltip>
+			<AppTooltip v-else content="Start timer" side="top">
+				<button
+					:disabled="isLoadingTimer"
+					class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold tabular-nums text-ink-muted transition-colors hover:bg-line disabled:opacity-50"
+					:class="{ 'text-status-fix-fg': isTimeExceeded }"
+					@click.stop="handleStartTimer"
+				>
+					<Loader v-if="isLoadingTimer" is-mini />
+					<template v-else>
+						<Play class="h-2.5 w-2.5 fill-current" />
+						<span v-if="displayTask.common_time > 0">
+							{{ formattedDisplayTime }}
+						</span>
+						<span v-else>0m</span>
+					</template>
+				</button>
+			</AppTooltip>
 
 			<span class="flex-1"></span>
 
@@ -214,10 +214,10 @@
 	import Badge from '../general/Badge.vue';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
-	import SetTooltipData from '@/mixins/SetTooltipData';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import {
 		DropdownMenu,
@@ -271,7 +271,7 @@
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 
 	export default {
-		mixins: [TimePreparationMixin, TasksListMixin, SetTooltipData],
+		mixins: [TimePreparationMixin, TasksListMixin],
 		setup() {
 			const { isFeatureEnabled } = useFeatureToggles();
 			return { isFeatureEnabled };
@@ -285,6 +285,7 @@
 			AssigneeAvatar,
 			CategoryBadge,
 			Badge,
+			AppTooltip,
 			Loader,
 			DropdownMenu,
 			DropdownMenuContent,
