@@ -107,7 +107,7 @@
 						<!-- Time + Duration -->
 						<div
 							v-if="!(draft.frequency === 'NONE' && draft.unscheduled)"
-							class="grid grid-cols-2 gap-2.5"
+							class="grid grid-cols-1 gap-2.5 sm:grid-cols-2"
 						>
 							<ERSection label="Time">
 								<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
