@@ -14,6 +14,7 @@
 		PlayCircleIcon,
 		PauseCircleIcon,
 		LinkIcon,
+		HashtagIcon,
 	} from '@heroicons/vue/24/outline';
 	import store from '@/store';
 	import {
@@ -188,7 +189,7 @@
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
-		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'expired_at', 'approximately_time', 'checkpoints'];
+		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints'];
 		for (const field of fieldsToCompare) {
 			const currentVal = current[field as keyof Task];
 			const incomingVal = incoming[field];
@@ -330,6 +331,41 @@
 			(c: Category) => c.id === form.value.project_category_id,
 		);
 	});
+
+	const taskKeyError = ref<string | null>(null);
+
+	const taskDisplayKey = computed(() => {
+		if (currentCategoryCode.value && form.value.category_tasks_sequence_id != null) {
+			return `${currentCategoryCode.value}-${form.value.category_tasks_sequence_id}`;
+		}
+		return `TMGR-T${taskId.value || form.value.id}`;
+	});
+
+	const taskKeyNumber = computed({
+		get: () => form.value.category_tasks_sequence_id ?? '',
+		set: (value: number | string) => {
+			if (value === '') {
+				form.value.category_tasks_sequence_id = null;
+				taskKeyError.value = null;
+				return;
+			}
+			const parsed = Number(value);
+			if (!Number.isInteger(parsed) || parsed < 1) {
+				taskKeyError.value = 'Enter a whole number of 1 or greater, or leave it blank to auto-assign.';
+				return;
+			}
+			form.value.category_tasks_sequence_id = parsed;
+			taskKeyError.value = null;
+		},
+	});
+
+	const handleTaskSaveError = (e: any) => {
+		console.error(e);
+		if (e?.response?.status === 409) {
+			taskKeyError.value =
+				"There's a conflict saving this task — if you set a custom key, try another number or clear it to auto-assign.";
+		}
+	};
 
 	const hasActiveAgent = computed(() => {
 		return cursorAgents.value.some((a: any) => a.status === 'RUNNING');
@@ -924,7 +960,7 @@
 
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
-			console.error(e);
+			handleTaskSaveError(e);
 		}
 	};
 
@@ -1014,7 +1050,7 @@
 			// We need to set this after the save operation completes
 			suppressAutoSavingForOnce.value = true;
 		} catch (e) {
-			console.error(e);
+			handleTaskSaveError(e);
 		} finally {
 			isLoading.value = false;
 		}
@@ -1146,6 +1182,7 @@
 			'description',
 			// 'description_json', // TODO: need to fix update in this editor
 			'project_category_id',
+			'category_tasks_sequence_id',
 			'assignees',
 			'status',
 		],
@@ -1470,7 +1507,7 @@
 							v-if="taskId || form.id"
 							class="font-mono text-2xs text-ink-subtle truncate"
 						>
-							TMGR-T{{ taskId || form.id }}
+							{{ taskDisplayKey }}
 						</span>
 					</div>
 
@@ -1638,10 +1675,33 @@
 										if (!form.title) {
 											updateTaskTitle();
 										}
+										taskKeyNumber = '';
 									}
 								"
 							/>
 						</div>
+
+						<template v-if="form.project_category_id">
+							<div class="flex items-center gap-2 text-ink-subtle">
+								<HashtagIcon class="h-3.5 w-3.5" />
+								<span>Key</span>
+							</div>
+							<div class="flex min-w-0 items-center gap-1.5">
+								<span class="shrink-0 font-mono text-sm text-ink-subtle">{{ currentCategoryCode || 'TASK' }}-</span>
+								<input
+									type="number"
+									min="1"
+									step="1"
+									v-model="taskKeyNumber"
+									placeholder="auto"
+									class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+								/>
+								<span v-if="isAutoSaving && !taskKeyError" class="text-2xs text-ink-faint">Saving…</span>
+							</div>
+							<div v-if="taskKeyError" class="col-span-2 -mt-2 text-xs text-status-fix-fg">
+								{{ taskKeyError }}
+							</div>
+						</template>
 
 						<template v-if="form.id">
 							<div class="flex items-center gap-2 text-ink-subtle">
