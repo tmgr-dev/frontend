@@ -274,6 +274,8 @@
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
 	const taskRelationsRef = ref<InstanceType<typeof TaskRelations> | null>(null);
+	const attachmentsRef = ref<InstanceType<typeof TaskAttachments> | null>(null);
+	const attachmentsCount = ref(0);
 
 	function openLinkDialog() {
 		taskRelationsRef.value?.startAdding?.();
@@ -1730,10 +1732,34 @@
 					</div>
 
 					<!-- Task Attachments -->
-					<!--					<TaskAttachments
-						v-if="taskId || form.id"
-						:task-id="taskId || form.id"
-					/>-->
+					<section v-if="taskId || form.id" class="flex flex-col gap-2">
+						<div class="flex items-center justify-between gap-2">
+							<div class="flex items-baseline gap-2">
+								<span
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									>Attachments</span
+								>
+								<span
+									v-if="attachmentsCount"
+									class="text-2xs text-ink-faint"
+									>· {{ attachmentsCount }}</span
+								>
+							</div>
+							<button
+								type="button"
+								@click="attachmentsRef?.handleAddFiles()"
+								class="flex h-7 items-center gap-1 rounded-pill border border-dashed border-line-strong px-2.5 text-2xs font-semibold text-ink-subtle transition hover:bg-surface-sunken hover:text-ink"
+							>
+								<span class="material-icons" style="font-size: 14px">add</span>
+								Add file
+							</button>
+						</div>
+						<TaskAttachments
+							ref="attachmentsRef"
+							:task-id="taskId || form.id"
+							@update:count="attachmentsCount = $event"
+						/>
+					</section>
 
 					<!-- CHECKPOINTS = time log (start -> end, description, duration) -->
 					<section
