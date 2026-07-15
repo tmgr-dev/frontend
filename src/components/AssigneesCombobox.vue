@@ -1,5 +1,6 @@
 <script setup lang="ts">
-	import { cn } from '@/utils';
+	import { WorkspaceMember } from '@/actions/tmgr/workspaces';
+	import { Button } from '@/components/ui/button';
 	import {
 		Command,
 		CommandEmpty,
@@ -13,11 +14,10 @@
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
-	import { Check, ChevronsUpDown } from 'lucide-vue-next';
-	import { Button } from '@/components/ui/button';
+	import { cn } from '@/utils';
 	import { UserIcon } from '@heroicons/vue/24/outline';
-	import { ref, computed } from 'vue';
-	import { WorkspaceMember } from '@/actions/tmgr/workspaces';
+	import { Check, ChevronsUpDown } from 'lucide-vue-next';
+	import { computed, ref } from 'vue';
 
 	interface Props {
 		assignees: WorkspaceMember[];

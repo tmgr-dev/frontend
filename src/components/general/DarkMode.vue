@@ -1,6 +1,6 @@
 <script setup lang="ts">
-	import { Moon, Sun } from 'lucide-vue-next';
 	import store from '@/store';
+	import { Moon, Sun } from 'lucide-vue-next';
 	import { computed } from 'vue';
 
 	const isDefaultTheme = computed(

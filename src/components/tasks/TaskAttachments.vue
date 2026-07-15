@@ -86,8 +86,8 @@
 </template>
 
 <script>
+	import { FileIcon, Paperclip, X } from 'lucide-vue-next';
 	import { defineComponent } from 'vue';
-	import { Paperclip, FileIcon, X } from 'lucide-vue-next';
 
 	export default defineComponent({
 		name: 'TaskAttachments',
