@@ -44,6 +44,7 @@
 		() => import('@/components/BlockEditor.vue'),
 	);
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
+	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
 		Select,
@@ -512,13 +513,15 @@
 			categories.value = loadedCategories;
 			workspaceMembers.value = loadedWorkspaceMembers;
 
-			// Set first status as default for new tasks if no specific status was provided
+			// Default new tasks to the Backlog (type 'default') status, falling back
+			// to an active one — never Archived, which the API can return first.
 			if (
 				!taskId.value &&
 				!form.value.status_id &&
 				statuses.value?.length > 0
 			) {
-				form.value.status_id = statuses.value[0].id;
+				form.value.status_id =
+					pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
 			}
 
 			// Only after all data is loaded, update the task title
@@ -1224,13 +1227,14 @@
 		if (newCategoryId && !taskId.value) {
 			form.value.project_category_id = newCategoryId;
 
-			// Ensure a status is selected (use first status if none is already selected)
+			// Ensure a status is selected (prefer Backlog/active, never Archived)
 			if (
 				!form.value.status_id &&
 				statuses.value &&
 				statuses.value.length > 0
 			) {
-				form.value.status_id = statuses.value[0].id;
+				form.value.status_id =
+					pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
 			}
 
 			await updateTaskTitle();
