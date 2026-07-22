@@ -145,7 +145,7 @@
 									<div class="flex-1" />
 									<div class="flex gap-0.5">
 										<button
-											v-for="p in [15, 30, 45, 60, 90]"
+											v-for="p in [15, 30, 45, 60, 90, 120, 180]"
 											:key="p"
 											type="button"
 											class="rounded-md px-1.5 py-1 text-[10px] font-semibold transition-colors"

@@ -101,6 +101,7 @@
 						@toggle="$emit('toggle', item.event.source.entry)"
 						@edit="$emit('edit', item.event.source.entry)"
 						@context="$emit('context', $event)"
+						@resize="$emit('resize', $event)"
 					/>
 				</template>
 			</div>
@@ -137,6 +138,7 @@
 		(e: 'archive-done-unscheduled'): void;
 		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
 		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
+		(e: 'resize', payload: { entry: RoutineEntry; startMin: number; endMin: number }): void;
 	}>();
 
 	function fmtIso(d: Date): string {

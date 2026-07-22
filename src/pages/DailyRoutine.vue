@@ -225,6 +225,7 @@
 								@create="onCreateAt"
 								@select="onEdit"
 								@context="onContext"
+								@resize="onResizeRoutine"
 							/>
 							<WeekView
 								v-else-if="view === 'week'"
@@ -315,6 +316,7 @@
 		updateDailyTask,
 		getDailyTask,
 	} from '@/actions/tmgr/daily-tasks';
+	import { updateTask } from '@/actions/tmgr/tasks';
 	import ViewSwitcher from '@/components/dailyRoutine/ViewSwitcher.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
@@ -608,6 +610,9 @@
 				duration_min: draft.durationMin,
 				reminder_min: draft.reminderMin,
 			};
+			// Mirror duration onto the task so it stays the single source of truth
+			// (day-view resize writes here too); the pattern's duration_min is legacy.
+			payload.approximately_time = draft.durationMin;
 		} else if (isUnscheduled) {
 			payload.scheduled_date = null;
 			payload.scheduled_time = null;
@@ -642,6 +647,30 @@
 
 	async function onMoveRoutine(payload: { entry: RoutineEntry; date: string; timeH?: number; timeM?: number; allDay?: boolean }) {
 		await store.dispatch('dailyRoutines/moveRoutine', payload);
+		await reload();
+	}
+
+	// Drag the block's top/bottom edge in the day view: bottom changes duration,
+	// top shifts the start time (and thus duration too).
+	async function onResizeRoutine(payload: { entry: RoutineEntry; startMin: number; endMin: number }) {
+		const { entry, startMin, endMin } = payload;
+		const durationMin = Math.max(15, endMin - startMin);
+		// Duration → task.approximately_time via a partial task update so
+		// checkpoints/status/category are untouched. It's the single source of
+		// truth the expander reads for the block height.
+		await updateTask(entry.task_id, { approximately_time: durationMin } as any);
+		// Top-edge drag also moved the start — reschedule that occurrence
+		// (handles both one-off and recurring instances).
+		const [origH, origM] = (entry.time ?? '00:00').split(':').map(Number);
+		const origStartMin = (origH || 0) * 60 + (origM || 0);
+		if (startMin !== origStartMin) {
+			await store.dispatch('dailyRoutines/moveRoutine', {
+				entry,
+				date: entry.date,
+				timeH: Math.floor(startMin / 60),
+				timeM: startMin % 60,
+			});
+		}
 		await reload();
 	}
 
