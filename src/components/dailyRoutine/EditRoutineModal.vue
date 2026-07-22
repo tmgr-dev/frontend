@@ -337,7 +337,7 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue';
+	import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 	import {
 		getWorkspaceCategories,
@@ -444,39 +444,39 @@
 	const MIN_DURATION = 15;
 	const pad2 = (n: number) => String(n).padStart(2, '0');
 	const startMin = () => draft.timeH * 60 + draft.timeM;
-	const setStartMin = (m: number) => {
-		const c = Math.max(0, Math.min(23 * 60 + 59, m));
-		draft.timeH = Math.floor(c / 60);
-		draft.timeM = c % 60;
-	};
+	// End is stored independently so editing one field never rewrites the other —
+	// a native time input fires on every intermediate keystroke (typing "16:00"
+	// passes through "01:00"), and cross-field adjustment there corrupted the start.
+	const endMinRef = ref(startMin() + Math.max(MIN_DURATION, draft.durationMin));
 
 	const startStr = computed<string>({
 		get: () => `${pad2(draft.timeH)}:${pad2(draft.timeM)}`,
 		set: (v) => {
 			const [h, m] = String(v).split(':').map(Number);
 			if (Number.isNaN(h) || Number.isNaN(m)) return;
-			const oldEnd = startMin() + draft.durationMin;
-			setStartMin(h * 60 + m);
-			draft.durationMin = Math.max(MIN_DURATION, oldEnd - startMin());
+			draft.timeH = h;
+			draft.timeM = m;
 		},
 	});
 
 	const endStr = computed<string>({
-		get: () => {
-			const e = startMin() + draft.durationMin;
-			return `${pad2(Math.floor(e / 60) % 24)}:${pad2(e % 60)}`;
-		},
+		get: () => `${pad2(Math.floor(endMinRef.value / 60) % 24)}:${pad2(endMinRef.value % 60)}`,
 		set: (v) => {
 			const [h, m] = String(v).split(':').map(Number);
 			if (Number.isNaN(h) || Number.isNaN(m)) return;
-			const end = h * 60 + m;
-			if (end <= startMin()) setStartMin(end - MIN_DURATION);
-			draft.durationMin = Math.max(MIN_DURATION, end - startMin());
+			endMinRef.value = h * 60 + m;
 		},
 	});
 
+	// Keep the persisted duration in sync with the visible range (min 15 min).
+	watch(
+		[() => startMin(), endMinRef],
+		() => { draft.durationMin = Math.max(MIN_DURATION, endMinRef.value - startMin()); },
+		{ immediate: true },
+	);
+
 	const durationLabel = computed(() => {
-		const total = Math.max(MIN_DURATION, draft.durationMin);
+		const total = Math.max(MIN_DURATION, endMinRef.value - startMin());
 		const h = Math.floor(total / 60);
 		const m = total % 60;
 		if (h && m) return `${h}h ${m}m`;
