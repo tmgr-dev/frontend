@@ -8,6 +8,8 @@
 	import {
 		SquareDashedMousePointerIcon,
 		SlidersHorizontalIcon,
+		ArrowDownWideNarrowIcon,
+		ArrowUpWideNarrowIcon,
 	} from 'lucide-vue-next';
 	import {
 		Dialog,
@@ -61,6 +63,24 @@
 	const pusherSubscriptionId = ref<string>('');
 	const archivedStatusIds = ref<Set<number>>(new Set());
 	const archivedStatusNames = ref<Set<string>>(new Set());
+
+	// Date-field sorting for status lists (archive/hidden/done). Mirrors the API's
+	// order[column]/order[direction] contract; default matches the backend (updated_at desc).
+	const SORT_FIELDS = [
+		{ value: 'updated_at', label: 'Updated' },
+		{ value: 'created_at', label: 'Created' },
+		{ value: 'expired_at', label: 'Deadline' },
+		{ value: 'scheduled_date', label: 'Scheduled' },
+	] as const;
+	const sortColumn = ref<string>(
+		typeof route.query.sort === 'string' &&
+			SORT_FIELDS.some((f) => f.value === route.query.sort)
+			? (route.query.sort as string)
+			: 'updated_at',
+	);
+	const sortDirection = ref<'asc' | 'desc'>(
+		route.query.direction === 'asc' ? 'asc' : 'desc',
+	);
 	
 	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
 	const pagination = ref<PaginationMeta>({
@@ -311,6 +331,12 @@
 				params: {
 					search: searchText.value,
 					project_category_id: selectedCategory.value === -1 ? null : selectedCategory.value,
+					...(status.value
+						? {
+								'order[column]': sortColumn.value,
+								'order[direction]': sortDirection.value,
+						  }
+						: {}),
 				},
 				page: pagination.value.current_page,
 				per_page: pagination.value.per_page
@@ -355,9 +381,23 @@
 			query: {
 				...route.query,
 				page: pagination.value.current_page,
-				per_page: pagination.value.per_page
+				per_page: pagination.value.per_page,
+				...(status.value
+					? { sort: sortColumn.value, direction: sortDirection.value }
+					: {}),
 			}
 		});
+	}
+
+	function changeSort() {
+		pagination.value.current_page = 1;
+		updateRouteQuery();
+		loadTasks();
+	}
+
+	function toggleSortDirection() {
+		sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+		changeSort();
 	}
 
 	function resetFilters() {
@@ -454,6 +494,35 @@
 							type="search"
 							class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-line-strong"
 						/>
+					</div>
+
+					<div v-if="status" class="flex shrink-0 items-center gap-2">
+						<select
+							v-model="sortColumn"
+							@change="changeSort"
+							title="Sort by date"
+							class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none focus:border-line-strong"
+						>
+							<option
+								v-for="field in SORT_FIELDS"
+								:key="field.value"
+								:value="field.value"
+							>
+								{{ field.label }}
+							</option>
+						</select>
+						<button
+							@click="toggleSortDirection"
+							type="button"
+							:title="sortDirection === 'desc' ? 'Newest first' : 'Oldest first'"
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle transition-colors hover:text-ink"
+						>
+							<ArrowDownWideNarrowIcon
+								v-if="sortDirection === 'desc'"
+								class="h-4 w-4"
+							/>
+							<ArrowUpWideNarrowIcon v-else class="h-4 w-4" />
+						</button>
 					</div>
 
 					<Dialog>
