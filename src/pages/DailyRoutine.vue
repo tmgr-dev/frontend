@@ -536,7 +536,15 @@
 	async function onEdit(entry: RoutineEntry) {
 		try {
 			const full = await getDailyTask(entry.task_id);
-			editingRoutine.value = full;
+			// A one-off routine's schedule lives on its instance (carried by the
+			// entry), not on the task row the GET returns — overlay it so the modal
+			// shows the real time/date/duration instead of defaulting to unscheduled.
+			editingRoutine.value = {
+				...full,
+				scheduled_time: entry.time ?? full.scheduled_time ?? null,
+				scheduled_date: entry.date ?? full.scheduled_date ?? null,
+				durationMin: entry.duration_min ?? full.approximately_time ?? undefined,
+			};
 		} catch {
 			editingRoutine.value = entry;
 		}
@@ -606,6 +614,10 @@
 		} else {
 			payload.scheduled_date = draft.scheduledDate || todayIso.value;
 			payload.scheduled_time = { hours: draft.timeH, minutes: draft.timeM };
+			// Duration of a one-off routine lives on the task (approximately_time),
+			// not on a recurrence pattern — send it so the block sizes correctly
+			// and the edit modal can read it back.
+			payload.approximately_time = draft.durationMin;
 		}
 		if (draft.id) {
 			await updateDailyTask(draft.id, payload);
@@ -618,7 +630,9 @@
 				category: draft.cat,
 			});
 			const newId = created?.id ?? created?.task_id;
-			if (newId && (isRecurring || draft.description || isUnscheduled)) {
+			// Quick-create only stores title/date/time; always follow up so
+			// duration, description and recurrence are persisted too.
+			if (newId) {
 				await updateDailyTask(newId, payload);
 			}
 		}
