@@ -104,64 +104,54 @@
 							/>
 						</ERSection>
 
-						<!-- Time + Duration -->
-						<div
+						<!-- Time range: start → end, with the span shown -->
+						<ERSection
 							v-if="!(draft.frequency === 'NONE' && draft.unscheduled)"
-							class="grid grid-cols-2 gap-2.5"
+							label="Time"
 						>
-							<ERSection label="Time">
-								<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
-									<DRIcon name="clock" :size="13" :stroke="catColor" />
-									<input
-										v-model.number="draft.timeH"
-										type="number"
-										min="0"
-										max="23"
-										class="w-9 bg-transparent text-center font-mono text-sm font-semibold text-ink outline-none"
-									/>
-									<span class="text-sm font-semibold text-ink-subtle">:</span>
-									<input
-										v-model.number="draft.timeM"
-										type="number"
-										min="0"
-										max="59"
-										step="5"
-										class="w-9 bg-transparent text-center font-mono text-sm font-semibold text-ink outline-none"
-									/>
+							<div class="flex flex-col gap-2.5">
+								<div class="flex items-end gap-2">
+									<label class="flex flex-1 flex-col gap-1">
+										<span class="text-[10px] font-bold uppercase tracking-wider text-ink-faint">Start</span>
+										<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
+											<input
+												v-model="startStr"
+												type="time"
+												step="900"
+												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-none"
+											/>
+											<DRIcon name="clock" :size="13" :stroke="catColor" />
+										</div>
+									</label>
+									<span class="pb-2.5 text-ink-faint">→</span>
+									<label class="flex flex-1 flex-col gap-1">
+										<span class="text-[10px] font-bold uppercase tracking-wider text-ink-faint">End</span>
+										<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
+											<input
+												v-model="endStr"
+												type="time"
+												step="900"
+												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-none"
+											/>
+											<DRIcon name="clock" :size="13" :stroke="catColor" />
+										</div>
+									</label>
 								</div>
-							</ERSection>
-							<ERSection label="Duration">
-								<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-2.5 py-2">
-									<DRIcon name="hourglass" :size="13" stroke="currentColor" />
-									<input
-										v-model.number="draft.durationMin"
-										type="number"
-										min="5"
-										max="600"
-										step="5"
-										class="w-12 bg-transparent text-left font-mono text-sm font-semibold text-ink outline-none"
-									/>
-									<span class="text-xs text-ink-subtle">min</span>
-									<div class="flex-1" />
-									<div class="flex gap-0.5">
-										<button
-											v-for="p in [15, 30, 45, 60, 90, 120, 180]"
-											:key="p"
-											type="button"
-											class="rounded-md px-1.5 py-1 text-[10px] font-semibold transition-colors"
-											:class="
-												draft.durationMin === p
-													? 'bg-surface-hover text-ink'
-													: 'text-ink-subtle hover:text-ink'
-											"
-											@click="draft.durationMin = p"
-										>
-											{{ p }}
-										</button>
-									</div>
+								<div>
+									<span
+										class="inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-semibold"
+										:style="{
+											color: catColor,
+											borderColor: catColor + '73',
+											background: catColor + '24',
+										}"
+									>
+										<DRIcon name="hourglass" :size="12" :stroke="catColor" />
+										{{ durationLabel }}
+									</span>
 								</div>
-							</ERSection>
-						</div>
+							</div>
+						</ERSection>
 
 						<!-- Recurrence -->
 						<ERSection label="Repeats">
@@ -447,6 +437,53 @@
 	const draft = reactive<RoutineDraft>(initial);
 	const isNew = computed(() => !props.routine?.id);
 
+	// ── start / end time range ─────────────────────────────────────────────────
+	// The form stores a start (timeH/timeM) + durationMin; the UI edits start and
+	// end, deriving the span. Editing start keeps the end fixed (duration shrinks/
+	// grows); editing end keeps the start. Minimum span is 15 minutes.
+	const MIN_DURATION = 15;
+	const pad2 = (n: number) => String(n).padStart(2, '0');
+	const startMin = () => draft.timeH * 60 + draft.timeM;
+	const setStartMin = (m: number) => {
+		const c = Math.max(0, Math.min(23 * 60 + 59, m));
+		draft.timeH = Math.floor(c / 60);
+		draft.timeM = c % 60;
+	};
+
+	const startStr = computed<string>({
+		get: () => `${pad2(draft.timeH)}:${pad2(draft.timeM)}`,
+		set: (v) => {
+			const [h, m] = String(v).split(':').map(Number);
+			if (Number.isNaN(h) || Number.isNaN(m)) return;
+			const oldEnd = startMin() + draft.durationMin;
+			setStartMin(h * 60 + m);
+			draft.durationMin = Math.max(MIN_DURATION, oldEnd - startMin());
+		},
+	});
+
+	const endStr = computed<string>({
+		get: () => {
+			const e = startMin() + draft.durationMin;
+			return `${pad2(Math.floor(e / 60) % 24)}:${pad2(e % 60)}`;
+		},
+		set: (v) => {
+			const [h, m] = String(v).split(':').map(Number);
+			if (Number.isNaN(h) || Number.isNaN(m)) return;
+			const end = h * 60 + m;
+			if (end <= startMin()) setStartMin(end - MIN_DURATION);
+			draft.durationMin = Math.max(MIN_DURATION, end - startMin());
+		},
+	});
+
+	const durationLabel = computed(() => {
+		const total = Math.max(MIN_DURATION, draft.durationMin);
+		const h = Math.floor(total / 60);
+		const m = total % 60;
+		if (h && m) return `${h}h ${m}m`;
+		if (h) return `${h}h`;
+		return `${m}m`;
+	});
+
 	const categories = ROUTINE_CATEGORY_LIST;
 	const catColor = computed(() => resolveCategory(draft.cat).color);
 	const catName = computed(() => resolveCategory(draft.cat).name);
@@ -578,3 +615,15 @@
 	});
 	onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 </script>
+
+<style scoped>
+	/* The DRIcon clock stands in for the native picker button, so hide the
+	   browser's own indicator and spinners to avoid a doubled icon. */
+	.dr-time::-webkit-calendar-picker-indicator {
+		display: none;
+	}
+	.dr-time::-webkit-inner-spin-button,
+	.dr-time::-webkit-clear-button {
+		display: none;
+	}
+</style>
