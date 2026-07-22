@@ -24,11 +24,14 @@
 						v-model="selectedAction"
 						class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
-						<optgroup label="Status">
-							<option value="status:done">Done</option>
-							<option value="status:15">Archive</option>
-							<option value="status:active">Reactivate</option>
-							<option value="status:hidden">Hide</option>
+						<optgroup label="Move to status">
+							<option
+								v-for="workspaceStatus in statuses"
+								:key="workspaceStatus.id"
+								:value="`status:${workspaceStatus.id}`"
+							>
+								{{ workspaceStatus.name }}
+							</option>
 							<option
 								v-if="
 									status === 'hidden' || status === 'done'
@@ -87,6 +90,11 @@
 				required: false,
 				type: String,
 				default: null,
+			},
+			statuses: {
+				type: Array,
+				required: false,
+				default: () => [],
 			},
 			isLoadingActions: {
 				type: Object,

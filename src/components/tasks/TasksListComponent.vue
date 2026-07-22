@@ -8,6 +8,7 @@
 			v-if="isShowSelectedTasksCommonTime"
 			:is-loading-actions="loadingActionsForMultipleTasks"
 			:status="status"
+			:statuses="statuses"
 			@close="closeTimeInModal"
 			@export="exportSelectedTasks"
 			@remove="deleteSelectedTasks"
