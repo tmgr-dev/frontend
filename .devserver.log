@@ -1,0 +1,27 @@
+
+> task-manager-ui@3.0.0 dev
+> vite
+
+
+  VITE v5.4.21  ready in 304 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+warn - The class `duration-[1000ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;1000ms&rsqb;` to silence this warning.
+
+PWA v1.2.0
+mode      generateSW
+precache  2 entries (0.12 KiB)
+files generated
+  dev-dist/sw.js
+  dev-dist/workbox-f87553f6.js
+10:27:28 PM [vite] page reload src/theme/paletteCss.ts
+10:44:29 PM [vite] hmr update /src/components/general/ThemePicker.vue, /src/assets/styles/index.scss?vue&type=style&index=0&src=true&lang.scss
+10:52:23 PM [vite] hmr update /src/components/general/CustomSidebar.vue, /src/assets/styles/index.scss?vue&type=style&index=0&src=true&lang.scss
+10:52:30 PM [vite] hmr update /src/components/general/CustomSidebar.vue, /src/assets/styles/index.scss?vue&type=style&index=0&src=true&lang.scss
+10:54:52 PM [vite] hmr update /src/components/general/ThemePicker.vue, /src/assets/styles/index.scss?vue&type=style&index=0&src=true&lang.scss
