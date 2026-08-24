@@ -276,6 +276,15 @@
 											</div>
 
 											<div class="board-card flex-1 min-h-0 flex flex-col">
+												<button
+													v-if="tasksLoaded && column.tasks.length === 0 && creatingTaskColumnId !== column.status.id"
+													type="button"
+													class="mx-1 mt-2 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-line px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:border-brand hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+													@click="startCreatingTask(column)"
+												>
+													<span class="material-icons text-base">add</span>
+													Add task
+												</button>
 												<Draggable
 													v-model="column.tasks"
 													:animation="200"
@@ -307,7 +316,7 @@
 												</Draggable>
 
 												<Teleport v-if="tasksLoaded && creatingTaskColumnId === column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
-													<div class="flex-shrink-0 px-1 mt-2">
+													<div class="flex-shrink-0 px-1 pt-1 pb-1">
 														<div class="flex flex-col gap-2">
 															<input
 																v-model="newTaskTitle"

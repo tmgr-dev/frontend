@@ -628,7 +628,10 @@
 				/>
 
 				<div v-else-if="!isTasksFirstLoading" class="mt-5 text-center text-xl italic">
-					<EmptyState />
+					<EmptyState
+						description="Create your first task in this category"
+						:action="{ label: '+ Create task', onClick: () => store.commit('setShowCreatingTaskModal') }"
+					/>
 				</div>
 			</div>
 		</template>

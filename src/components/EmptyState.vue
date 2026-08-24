@@ -21,7 +21,7 @@
 		</p>
 		<button
 			v-if="action"
-			class="mt-4 rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+			class="mt-6 inline-flex h-11 items-center rounded-md bg-tmgr-blue px-8 text-base font-semibold text-white shadow-sm transition-colors hover:bg-tmgr-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tmgr-blue focus-visible:ring-offset-2 dark:bg-blue-600 dark:hover:bg-blue-500 dark:focus-visible:ring-blue-500 dark:ring-offset-gray-900"
 			@click="action.onClick"
 		>
 			{{ action.label }}

@@ -17,7 +17,7 @@ Env: copy `.env.example` to `.env`. The required var is `VITE_API_BASE_URL`. Pus
 
 ## Architecture
 
-Vue 3 SPA for a Laravel-backed task manager (TMGR). Path alias `@/*` → `src/*`.
+Vue 3 SPA for the TMGR task manager. Backend is the Java/Spring app in `task-manager/backend-java` (prod runs only Java; Laravel is legacy). Local API: `http://localhost:8080/api/`. Path alias `@/*` → `src/*`.
 
 ### Mixed JS/TS by purpose
 The codebase splits languages by role — keep this convention when adding files:

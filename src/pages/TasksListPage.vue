@@ -404,6 +404,21 @@
 		selectedCategory.value = null;
 	}
 
+	const hasActiveSearch = computed(
+		() =>
+			!!searchText.value ||
+			(selectedCategory.value !== null && selectedCategory.value !== -1),
+	);
+
+	function clearSearch() {
+		searchText.value = null;
+		resetFilters();
+	}
+
+	function openCreateTaskModal() {
+		store.commit('setShowCreatingTaskModal');
+	}
+
 	function updateSingleTaskInList(updatedTask: Task) {
 		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
 		const isArchivedOnActiveList = isActiveList.value && isArchivedTask(updatedTask);
@@ -596,7 +611,16 @@
 				</div>
 
 				<div v-else-if="!isLoading" class="">
-					<EmptyState />
+					<EmptyState
+						v-if="hasActiveSearch"
+						title="No tasks match your search"
+						:action="{ label: 'Clear search', onClick: clearSearch }"
+					/>
+					<EmptyState
+						v-else
+						description="Create your first task to get started"
+						:action="{ label: '+ Create task', onClick: openCreateTaskModal }"
+					/>
 
 					<confetti v-if="hasAbilityToShowConfetti" />
 				</div>

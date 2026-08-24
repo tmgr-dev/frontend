@@ -1,31 +1,32 @@
 <template>
-	<div>
+	<div ref="root">
 		<div
 			v-for="(checkpoint, v) in checkpoints"
 			:key="v"
-			class="group flex items-center gap-2 px-2.5 py-1.5"
+			class="group flex items-start gap-2 px-2.5 py-1.5"
 			:class="v ? 'border-t border-line' : ''"
 		>
 			<!-- duration -->
 			<span
-				class="w-11 shrink-0 text-center text-2xs font-bold tabular-nums text-ink-muted"
+				class="w-11 shrink-0 text-center text-2xs font-bold leading-6 tabular-nums text-ink-muted"
 				:title="`${secondsToStringTime(checkpoint.start)} – ${secondsToStringTime(checkpoint.end)}`"
 				>{{ formatDuration(checkpoint.end - checkpoint.start) }}</span
 			>
 
-			<!-- description (always editable, compact single line) -->
-			<input
-				type="text"
+			<!-- description (always editable, grows with content) -->
+			<textarea
 				v-model="checkpoint.description"
+				rows="1"
 				placeholder="What did you work on?"
-				class="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:bg-surface-sunken"
+				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-none placeholder:text-ink-faint focus:bg-surface-sunken"
+				@input="autoResize($event.target as HTMLTextAreaElement)"
 			/>
 
 			<!-- time: display (click to edit) -->
 			<template v-if="!checkpoint.isEditingTime">
 				<button
 					type="button"
-					class="shrink-0 font-mono text-2xs tabular-nums text-ink-subtle transition-colors hover:text-brand"
+					class="shrink-0 font-mono text-2xs leading-6 tabular-nums text-ink-subtle transition-colors hover:text-brand"
 					@click="startEditingTime(v as number)"
 					title="Click to edit time"
 				>
@@ -84,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-	import { onMounted, reactive } from 'vue';
+	import { nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 	interface Checkpoints {
 		inputType: string;
@@ -102,6 +103,8 @@
 		},
 	});
 
+	const root = ref<HTMLElement | null>(null);
+
 	const timeEditBuffer = reactive<Record<number, { start: string; end: string }>>(
 		{},
 	);
@@ -112,7 +115,26 @@
 				checkpoint.isEditingTime = false;
 			}
 		});
+		nextTick(resizeAll);
 	});
+
+	const autoResize = (el: HTMLTextAreaElement | null) => {
+		if (!el || !el.scrollHeight) return;
+		el.style.height = 'auto';
+		el.style.height = `${el.scrollHeight}px`;
+	};
+
+	const resizeAll = () => {
+		root.value
+			?.querySelectorAll<HTMLTextAreaElement>('textarea.checkpoint-description')
+			.forEach(autoResize);
+	};
+
+	watch(
+		() => props.checkpoints.map((c) => c.description),
+		() => nextTick(resizeAll),
+		{ flush: 'post' },
+	);
 
 	const formatDuration = (seconds: number) => {
 		const total = Math.max(0, Math.round(seconds || 0));
