@@ -302,14 +302,15 @@
 									<p>
 										TMGR MCP uses the smart device token as a custom header.
 										Generate the token above, then configure an MCP client that
-										supports remote SSE servers with headers.
+										supports remote Streamable HTTP servers with headers (Claude
+										Code: <code class="font-mono">claude mcp add --transport http tmgr {{ mcpUrl }} --header "X-Smart-Device-Token: &lt;token&gt;"</code>).
 									</p>
 									<div>
 										<p class="mb-1 font-medium text-gray-700">Server URL</p>
 										<code
 											class="block overflow-x-auto rounded bg-white p-2 font-mono text-sm text-gray-800"
 										>
-											{{ mcpSseUrl }}
+											{{ mcpUrl }}
 										</code>
 									</div>
 									<div>
@@ -472,7 +473,7 @@
 			pusherBeamsUserId() {
 				return this.$store.getters.getPusherBeamsUserId;
 			},
-			mcpSseUrl() {
+			mcpUrl() {
 				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';
 
 				try {
@@ -481,13 +482,13 @@
 						.replace(/\/api\/?$/, '')
 						.replace(/\/$/, '');
 
-					url.pathname = `${basePath}/mcp/sse`;
+					url.pathname = `${basePath}/mcp`;
 					url.search = '';
 					url.hash = '';
 
 					return url.toString();
 				} catch (error) {
-					return 'https://tmgr-api-stage.k8s.in-the.dev/mcp/sse';
+					return 'https://api.tmgr.dev/mcp';
 				}
 			},
 			docsBaseUrl() {
@@ -509,7 +510,8 @@
 					{
 						mcpServers: {
 							tmgr: {
-								url: this.mcpSseUrl,
+								type: 'http',
+								url: this.mcpUrl,
 								headers: {
 									'X-Smart-Device-Token': '<paste token from the field above>',
 								},
