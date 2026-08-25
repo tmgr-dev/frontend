@@ -341,9 +341,17 @@
 				state.value = updated;
 			};
 
+			const playCueSound = () => {
+				if (settings.value.notify === 'silent') return;
+				playPomodoroSound(settings.value.sound, settings.value.volume);
+			};
+
 			const start = async () => {
 				if (!state.value) return;
-				if (!props.mainTimerRunning) {
+				if (props.mainTimerRunning) {
+					playCueSound();
+				} else {
+					// Sound fires from the mainTimerRunning watcher once the main timer actually starts.
 					emit('request-main-start');
 				}
 				const remaining =
@@ -360,6 +368,7 @@
 
 			const pause = async () => {
 				if (!state.value) return;
+				playCueSound();
 				const remaining = computedRemainingMs.value;
 				stopTicker();
 				await persist({
@@ -458,6 +467,9 @@
 			watch(
 				() => props.mainTimerRunning,
 				(running) => {
+					if (running && state.value?.running) {
+						playCueSound();
+					}
 					if (!running && state.value?.running) {
 						pause();
 					}
