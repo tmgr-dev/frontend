@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
+	import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 	import { useStore } from 'vuex';
 	import { Play, Pause } from 'lucide-vue-next';
 	import { Task } from '@/actions/tmgr/tasks';
@@ -113,6 +113,27 @@
 		initCountdown();
 		renderTime();
 	});
+
+	// The timer can be started/stopped outside this component (pomodoro, hotkeys,
+	// another tab). Follow the form's start_time instead of only our own click.
+	watch(
+		() => props.form.start_time,
+		(startTime) => {
+			const running = !!startTime && startTime > 0;
+			if (running === !!countdownInterval) return;
+			task.start_time = startTime || 0;
+			task.common_time = props.form.common_time ?? task.common_time;
+			if (running) {
+				initCountdown();
+			} else {
+				if (countdownInterval) clearInterval(countdownInterval);
+				countdownInterval = null;
+				isTimerActive.value = false;
+				lastStartTime.value = { hours: 0, minutes: 0 };
+			}
+			renderTime();
+		},
+	);
 
 	onUnmounted(() => {
 		if (countdownInterval) {
