@@ -115,10 +115,10 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted } from 'vue';
-	import { AxiosError } from 'axios';
 	import { resetPassword } from '@/actions/tmgr/auth';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { AxiosError } from 'axios';
+	import { onMounted, ref } from 'vue';
 
 	const email = ref('');
 

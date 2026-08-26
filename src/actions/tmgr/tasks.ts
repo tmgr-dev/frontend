@@ -1,10 +1,10 @@
-import $axios from '@/plugins/axios';
-import { AxiosRequestConfig } from 'axios';
-import store from '@/store';
-import objectToQueryString from '@/utils/objectToQueryString';
 import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
+import $axios from '@/plugins/axios';
+import store from '@/store';
+import objectToQueryString from '@/utils/objectToQueryString';
 import { requestCache } from '@/utils/requestCache';
+import { AxiosRequestConfig } from 'axios';
 
 export interface Task {
 	id: number | undefined;

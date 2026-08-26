@@ -85,8 +85,8 @@
 </template>
 
 <script>
-	import SetTooltipData from '@/mixins/SetTooltipData';
 	import Confirm from '@/components/general/Confirm.vue';
+	import SetTooltipData from '@/mixins/SetTooltipData';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 
 	export default {

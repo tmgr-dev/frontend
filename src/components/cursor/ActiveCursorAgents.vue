@@ -77,23 +77,23 @@
 </template>
 
 <script>
-	import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
-	import { useRouter } from 'vue-router';
-	import { Bot, LoaderCircle, ArrowUpRight } from 'lucide-vue-next';
+	import { getActiveCursorAgents } from '@/actions/tmgr/cursor';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
-		DropdownMenuTrigger,
-		DropdownMenuSeparator,
 		DropdownMenuItem,
+		DropdownMenuSeparator,
+		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
-	import { getActiveCursorAgents } from '@/actions/tmgr/cursor';
 	import {
-		filterActiveCursorAgents,
+		canJumpToCursorAgentTask,
 		cursorAgentLabel,
 		cursorAgentTaskRoute,
-		canJumpToCursorAgentTask,
+		filterActiveCursorAgents,
 	} from '@/utils/cursorAgents';
+	import { ArrowUpRight, Bot, LoaderCircle } from 'lucide-vue-next';
+	import { computed, defineComponent, onMounted, onUnmounted, ref } from 'vue';
+	import { useRouter } from 'vue-router';
 
 	const POLL_INTERVAL_MS = 20000;
 

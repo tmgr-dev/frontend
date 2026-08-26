@@ -5,5 +5,6 @@
   "bracketSameLine": false,
   "bracketSpacing": true,
   "vueIndentScriptAndStyle": true,
-  "tailwindConfig": "./tailwind.config.js"
+  "tailwindConfig": "./tailwind.config.js",
+  "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-tailwindcss"]
 }

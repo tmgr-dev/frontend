@@ -136,13 +136,13 @@ G
 </template>
 
 <script type="text/babel">
+	import appendToBody from '../directives/appendToBody';
+	import ajax from '../mixins/ajax';
 	import pointerScroll from '../mixins/pointerScroll';
 	import typeAheadPointer from '../mixins/typeAheadPointer';
-	import ajax from '../mixins/ajax';
-	import childComponents from './childComponents';
-	import appendToBody from '../directives/appendToBody';
 	import sortAndStringify from '../utility/sortAndStringify';
 	import uniqueId from '../utility/uniqueId';
+	import childComponents from './childComponents';
 
 	/**
 	 * @name VueSelect

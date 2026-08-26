@@ -1,11 +1,11 @@
 import type { CursorAgent } from '../../types/cursor';
 import {
 	ACTIVE_CURSOR_AGENT_STATUSES,
-	isActiveCursorAgent,
-	filterActiveCursorAgents,
+	canJumpToCursorAgentTask,
 	cursorAgentLabel,
 	cursorAgentTaskRoute,
-	canJumpToCursorAgentTask,
+	filterActiveCursorAgents,
+	isActiveCursorAgent,
 } from '../cursorAgents';
 
 const makeAgent = (overrides: Partial<CursorAgent> = {}): CursorAgent => ({

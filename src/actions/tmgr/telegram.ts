@@ -1,6 +1,5 @@
-import $axios from '@/plugins/axios';
-import { AxiosRequestConfig } from 'axios';
 import { Task } from '@/actions/tmgr/tasks';
+import $axios from '@/plugins/axios';
 
 export const generateLink = async (): Promise<Task[]> => {
 	try {
