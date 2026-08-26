@@ -63,17 +63,6 @@ body {
 	vertical-align: text-top;
 }
 
-@import '../../plugins/directives/tooltip/css/index.scss';
-
-.custom-tooltip {
-	background: #000;
-	border-radius: 50px;
-
-	.tooltip-arrow {
-		border-top-color: #000 !important;
-	}
-}
-
 .sortable-ghost {
 	opacity: .5;
 	* {

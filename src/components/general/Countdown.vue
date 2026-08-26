@@ -21,22 +21,19 @@
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
 
-			<div
-				v-tooltip.top="
-					userSettings.showTooltips
-						? 'Double click to edit the time'
-						: { visible: false }
-				"
-				:class="`countdown-wrapper select-none`"
-				@dblclick="isShowModalTimer = true"
-			>
-				<span class="countdown-item">{{ countdown.hours }}</span>
-				<span class="countdown-item">{{ countdown.minutes }}</span>
-				<span
-					:class="`countdown-item ` + (countdownIntervalId ? `seconds` : ``)"
-					>{{ countdown.seconds }}</span
+			<AppTooltip content="Double click to edit the time" side="top">
+				<div
+					:class="`countdown-wrapper select-none`"
+					@dblclick="isShowModalTimer = true"
 				>
-			</div>
+					<span class="countdown-item">{{ countdown.hours }}</span>
+					<span class="countdown-item">{{ countdown.minutes }}</span>
+					<span
+						:class="`countdown-item ` + (countdownIntervalId ? `seconds` : ``)"
+						>{{ countdown.seconds }}</span
+					>
+				</div>
+			</AppTooltip>
 
 			<div
 				v-if="approximatelyEndTime && !timeIsOver"
@@ -133,6 +130,7 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import Modal from '@/components/Modal.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
@@ -140,6 +138,7 @@
 		components: {
 			Modal,
 			Reminder,
+			AppTooltip,
 		},
 		mixins: [TimePreparationMixin],
 		emits: ['toggle', 'update:seconds'],
@@ -178,9 +177,6 @@
 			isShowModalTimer: false,
 		}),
 		computed: {
-			userSettings() {
-				return this.$store.state.userSettings ?? {};
-			},
 			disabledStyles() {
 				const disabledStyles = {
 					opacity: 0.2,
