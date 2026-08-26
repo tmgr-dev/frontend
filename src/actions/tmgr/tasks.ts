@@ -25,6 +25,7 @@ export interface Task {
 	is_daily_routine: boolean;
 	order: number;
 	project_category_id?: number | null;
+	category_tasks_sequence_id?: number | null;
 	settings?: FormSetting[];
 	start_time: number;
 	status_id: number;
