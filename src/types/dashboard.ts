@@ -655,6 +655,7 @@ export interface UseDashboardReturn {
   heatmapData: Ref<HeatmapData | null>;
   recentTasks: Ref<RecentTask[]>;
   teamActivity: Ref<TeamMemberActivity | null>;
+  teamActivityWindow: Ref<TeamActivityWindow>;
   
   // Loading states
   loadingStates: Ref<DashboardLoadingStates>;
@@ -669,6 +670,7 @@ export interface UseDashboardReturn {
   refreshSection: (section: keyof Omit<DashboardLoadingStates, 'loadingMore' | 'initialLoad' | 'refreshing'>) => Promise<void>;
   refreshDashboard: () => Promise<void>;
   clearError: () => void;
+  setTeamActivityWindow: (w: TeamActivityWindow) => Promise<void>;
   
   // Real-time update methods
   addActivity: (activity: Activity) => void;
