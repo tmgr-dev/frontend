@@ -211,7 +211,7 @@
 
 	<Confirm
 		v-if="timerStatusConfirm"
-		title="Switch status?"
+		:title="timerStatusConfirm.title"
 		:body="timerStatusConfirm.message"
 		@onCancel="timerStatusConfirm = null"
 		@onOk="confirmTimerStatusSwitch"
@@ -221,6 +221,7 @@
 <script>
 	import Badge from '../general/Badge.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
 	import SetTooltipData from '@/mixins/SetTooltipData';
@@ -596,26 +597,15 @@
 
 			this.isLoadingTimer = false;
 
-			const taskStatus = this.statuses.find(
-				(s) => s.id === this.task.status_id,
-			);
-			if (taskStatus && taskStatus.type === 'default') {
-				const activeStatus = this.statuses.find((s) => s.type === 'active');
-				if (activeStatus) {
-					this.timerStatusConfirm = {
-						activeStatus,
-						message: `Task "${this.task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
-					};
-				}
-			}
+			this.timerStatusConfirm = backlogTimerPrompt(this.task, this.statuses);
 		},
 		async confirmTimerStatusSwitch() {
 			if (!this.timerStatusConfirm) return;
-			const { activeStatus } = this.timerStatusConfirm;
+			const { targetStatus } = this.timerStatusConfirm;
 			this.timerStatusConfirm = null;
 			try {
-				await updateTaskStatus(this.task.id, activeStatus.id);
-				this.task.status_id = activeStatus.id;
+				await updateTaskStatus(this.task.id, targetStatus.id);
+				this.task.status_id = targetStatus.id;
 				this.$store.commit('updateSingleTask', this.task);
 			} catch (e) {
 				console.error('Failed to update status:', e);

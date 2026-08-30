@@ -355,7 +355,10 @@
 	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import Modal from '@/components/Modal.vue';
-	import TaskForm from '@/pages/TaskForm.vue';
+	import {
+		backlogTimerPrompt,
+		type BacklogTimerPrompt,
+	} from '@/utils/backlogTimerPrompt';
 	import {
 		exportTasks,
 		deleteTask,
@@ -410,7 +413,6 @@
 			TaskTimeInfo,
 			Button,
 			CategoryBadge,
-			TaskForm,
 			Modal,
 			Confirm,
 			BounceLoader,
@@ -538,6 +540,7 @@
 				backlogStatusChangeConfirm: null as {
 					task: Task;
 					dotId: string | null;
+					prompt: BacklogTimerPrompt;
 				} | null,
 				hoveredTaskId: null as number | null,
 				assigneePopoverOpen: {} as Record<number, boolean>,
@@ -755,9 +758,9 @@
 					}
 					this.$emit('reload-tasks');
 
-					const taskStatus = this.statuses.find((s) => s.id === task.status_id);
-					if (taskStatus && taskStatus.type === 'default') {
-						this.backlogStatusChangeConfirm = { task, dotId };
+					const prompt = backlogTimerPrompt(task, this.statuses);
+					if (prompt) {
+						this.backlogStatusChangeConfirm = { task, dotId, prompt };
 						this.showBacklogStatusChangeConfirm();
 					}
 				} catch (e) {
@@ -769,18 +772,12 @@
 			showBacklogStatusChangeConfirm() {
 				if (!this.backlogStatusChangeConfirm) return;
 
-				const { task, dotId } = this.backlogStatusChangeConfirm;
-				const activeStatus = this.statuses.find((s) => s.type === 'active');
-
-				if (!activeStatus || !task.id) {
-					console.error('No active status found or task has no id');
-					this.backlogStatusChangeConfirm = null;
-					return;
-				}
+				const { task, prompt } = this.backlogStatusChangeConfirm;
+				const activeStatus = prompt.targetStatus;
 
 				this.showConfirm(
-					'Task in Backlog',
-					`Task "${task.title}" is in backlog. Switch to "${activeStatus.name}" status?`,
+					prompt.title,
+					prompt.message,
 					async () => {
 						if (!this.backlogStatusChangeConfirm || !task.id) return;
 

@@ -38,7 +38,6 @@
 
 <script>
 	import { defineComponent, defineAsyncComponent, onBeforeMount, ref, watch } from 'vue';
-	import TaskForm from '@/pages/TaskForm.vue';
 	import store from '@/store';
 	import { getUserSettings } from '@/actions/tmgr/user';
 	import { getLaunchedTasks, getTask } from '@/actions/tmgr/tasks';
@@ -67,7 +66,6 @@
 			Modal,
 			TaskSidePanel,
 			Alert,
-			TaskForm,
 		},
 		setup() {
 			const dailyRoutinesCount = ref(0);

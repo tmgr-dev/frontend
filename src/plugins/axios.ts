@@ -10,9 +10,8 @@ const $axios = axios.create({
 	timeout: API_TIMEOUT,
 	headers: {
 		common: {
-			Authorization: store.state.token?.token
-				? `Bearer ${store.state.token.token}`
-				: '',
+			// Authorization is attached per request by the interceptor below; reading
+			// store here at module scope would join the store → actions → axios import cycle.
 			'X-Requested-With': 'XMLHttpRequest',
 			'Cache-Control': 'no-cache',
 			Pragma: 'no-cache',

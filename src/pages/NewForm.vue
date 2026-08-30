@@ -48,6 +48,10 @@
 	);
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
+	import {
+		backlogTimerPrompt,
+		type BacklogTimerPrompt,
+	} from '@/utils/backlogTimerPrompt';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import {
 		Select,
@@ -1053,6 +1057,7 @@
 
 	const backlogStatusChangeConfirm = ref<{
 		taskId: number;
+		prompt: BacklogTimerPrompt;
 	} | null>(null);
 
 	const toggleTimer = async () => {
@@ -1087,44 +1092,29 @@
 			isLoading.value = false;
 		}
 
-		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const taskStatus = currentStatuses.find(
-			(s) => s.id === form.value.status_id,
+		const prompt = backlogTimerPrompt(
+			form.value,
+			statuses.value || workspaceStatuses.value || [],
 		);
-
-		if (taskStatus && taskStatus.type === 'default') {
-			const activeStatus = currentStatuses.find((s) => s.type === 'active');
-
-			if (activeStatus) {
-				backlogStatusChangeConfirm.value = {
-					taskId: taskId.value || (form.value.id as number),
-				};
-				showBacklogStatusChangeConfirm.value = true;
-			}
+		if (prompt) {
+			backlogStatusChangeConfirm.value = {
+				taskId: taskId.value || (form.value.id as number),
+				prompt,
+			};
+			showBacklogStatusChangeConfirm.value = true;
 		}
 	};
 
 	const showBacklogStatusChangeConfirm = ref(false);
 
-	const backlogConfirmBody = computed(() => {
-		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const activeStatus = currentStatuses.find((s) => s.type === 'active');
-		const activeStatusName = activeStatus?.name || 'active';
-		return `Task "${form.value.title}" is in backlog. Switch to "${activeStatusName}" status?`;
-	});
+	const backlogConfirmBody = computed(
+		() => backlogStatusChangeConfirm.value?.prompt.message ?? '',
+	);
 
 	const handleBacklogStatusChangeConfirm = async () => {
 		if (!backlogStatusChangeConfirm.value) return;
 
-		const currentStatuses = statuses.value || workspaceStatuses.value || [];
-		const activeStatus = currentStatuses.find((s) => s.type === 'active');
-
-		if (!activeStatus) {
-			console.error('No active status found');
-			showBacklogStatusChangeConfirm.value = false;
-			backlogStatusChangeConfirm.value = null;
-			return;
-		}
+		const activeStatus = backlogStatusChangeConfirm.value.prompt.targetStatus;
 
 		isLoading.value = true;
 		try {
