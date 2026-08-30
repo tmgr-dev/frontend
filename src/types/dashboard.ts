@@ -101,20 +101,37 @@ export interface HeatmapData {
   weeks: number;
 }
 
+export type TeamActivityWindow = 'today' | '7d' | '30d';
+
+export interface DailyActivityPoint {
+  date: string;
+  count: number;
+}
+
 // Team Member Status
 export interface TeamMemberStatus {
   id: number;
   name: string;
   email: string;
+  role: string;
   avatar?: string;
   is_online: boolean;
-  last_activity_at?: string;
+  last_activity_at?: string | null;
+  last_task?: { id: number; title: string } | null;
   current_task?: {
     id: number;
     title: string;
     timer_running: boolean;
     timer_started_at?: string;
-  };
+  } | null;
+  tracked_seconds: number;
+  done_count: number;
+  active_tasks: number;
+  completed_tasks: number;
+  comments_count: number;
+  activity_count: number;
+  daily_activity: DailyActivityPoint[];
+  streak: number;
 }
 
 // Team Member Activity Interface
@@ -122,7 +139,11 @@ export interface TeamMemberActivity {
   members: TeamMemberStatus[];
   total_members: number;
   online_members: number;
+  active_today: number;
   active_timers: number;
+  tracked_seconds: number;
+  done_count: number;
+  window: TeamActivityWindow;
 }
 
 // Recent Task Interface
