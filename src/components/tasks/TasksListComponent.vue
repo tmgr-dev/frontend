@@ -67,6 +67,7 @@
 					task.id,
 					task.common_time,
 					task.start_time,
+					task.start_time ? nowSeconds : 0,
 					task.status_id,
 					task.deleted_at,
 					selected[i],
@@ -208,6 +209,11 @@
 										: 'text-status-done'
 								"
 							/>
+							<span
+								v-if="task.start_time"
+								class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
+								title="Timer running"
+							></span>
 
 							<span
 								class="text-sm text-ink"
@@ -346,6 +352,7 @@
 	import downloadFile from '@/utils/downloadFile';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import { formatOvertime } from '@/utils/formatOvertime';
+	import { liveTaskTime } from '@/utils/liveTaskTime';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import TasksListMixin from '@/mixins/TasksListMixin';
@@ -526,6 +533,9 @@
 			const { isFeatureEnabled } = useFeatureToggles();
 			return {
 				isFeatureEnabled,
+				// One shared clock for every running timer in the list (TM-148).
+				nowSeconds: Math.floor(Date.now() / 1000),
+				clockInterval: null as ReturnType<typeof setInterval> | null,
 				showTaskForm: false,
 				modalTaskId: null,
 				confirm: null,
@@ -558,9 +568,13 @@
 		},
 		mounted() {
 			window.addEventListener('keydown', this.handleListKeydown);
+			this.clockInterval = setInterval(() => {
+				this.nowSeconds = Math.floor(Date.now() / 1000);
+			}, 1000);
 		},
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.handleListKeydown);
+			if (this.clockInterval) clearInterval(this.clockInterval);
 		},
 		computed: {
 			focusOrderKey() {
@@ -607,11 +621,15 @@
 			},
 			taskComputedData() {
 				return this.tasks.reduce((acc, task) => {
+					// Running timers tick: evaluate time-based fields against the live total.
+					const live = task.start_time
+						? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
+						: task;
 					acc[task.id] = {
 						title: this.truncateTitle(task.title),
-						timeExceeded: this.isTimeExceeded(task),
-						formattedTime: this.getTaskFormattedTime(task),
-						overtime: this.getTaskOvertime(task),
+						timeExceeded: this.isTimeExceeded(live),
+						formattedTime: this.getTaskFormattedTime(live),
+						overtime: this.getTaskOvertime(live),
 						statusName: this.getStatusName(task),
 						statusColor: this.getStatusColor(task),
 					};
