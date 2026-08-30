@@ -143,6 +143,9 @@
 								item-key="id"
 								class="board-container"
 								handle=".column-drag-handle"
+								:force-fallback="true"
+								:fallback-on-body="true"
+								:fallback-tolerance="3"
 								@end="onMove"
 								data-id="column"
 							>
@@ -1066,11 +1069,11 @@
 				setTimeout(() => this.saveOrders(status), 500);
 			},
 			async onMove() {
+				// The Java API's pivot carries only { is_active, order } (Laravel also
+				// echoed status_id), so take the id from the status itself.
 				const sortedStats = this.columns.map((col, index) => {
 					col.status.pivot.order = index + 1;
-					const { status_id, order } = col.status.pivot;
-
-					return { status_id, order };
+					return { status_id: col.status.id, order: index + 1 };
 				});
 
 				await updateWorkspaceOrder(this.workspaceId, {
