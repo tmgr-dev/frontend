@@ -6,6 +6,7 @@ import type {
   HeatmapData,
   RecentTask,
   TeamMemberActivity,
+  TeamActivityWindow,
   DashboardData,
   ActivityFeedParams,
   HeatmapParams,
@@ -394,16 +395,17 @@ export const getTeamActivity = async (
   options?: {
     cache?: boolean;
     timeout?: number;
-  }
+  },
+  window: TeamActivityWindow = '7d'
 ): Promise<ActionResult<TeamMemberActivity>> => {
   const startTime = Date.now();
-  
+
   try {
     const config = createRequestConfig(options);
 
     const { data, status } = await $axios.get(
       `/workspaces/${workspaceId}/dashboard/team-activity`,
-      config
+      { ...config, params: { window } }
     );
 
     const duration = Date.now() - startTime;

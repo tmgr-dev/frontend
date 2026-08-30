@@ -17,6 +17,7 @@ import type {
   HeatmapData,
   RecentTask,
   TeamMemberActivity,
+  TeamActivityWindow,
   DashboardLoadingStates,
   DetailedLoadingState,
   ActionError,
@@ -131,6 +132,7 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
   const heatmapData = ref<HeatmapData | null>(null);
   const recentTasks = ref<RecentTask[]>([]);
   const teamActivity = ref<TeamMemberActivity | null>(null);
+  const teamActivityWindow = ref<TeamActivityWindow>('7d');
 
   // Loading states for each section
   const loadingStates = ref<DashboardLoadingStates>({
@@ -425,7 +427,7 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
       }
 
       const result = await withRetry(
-        () => getTeamActivity(wsId, { cache: true }),
+        () => getTeamActivity(wsId, { cache: true }, teamActivityWindow.value),
         retryConfig.maxRetries,
         retryConfig.retryDelay,
         retryConfig.exponentialBackoff
@@ -449,6 +451,15 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
         recoverable: true
       }, 'team activity');
     }
+  };
+
+  /**
+   * Set the team activity time window and reload
+   */
+  const setTeamActivityWindow = async (w: TeamActivityWindow): Promise<void> => {
+    if (teamActivityWindow.value === w) return;
+    teamActivityWindow.value = w;
+    await loadTeamActivity();
   };
 
   /**
@@ -608,7 +619,8 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
     heatmapData: heatmapData as Ref<HeatmapData | null>,
     recentTasks: recentTasks as Ref<RecentTask[]>,
     teamActivity: teamActivity as Ref<TeamMemberActivity | null>,
-    
+    teamActivityWindow: teamActivityWindow as Ref<TeamActivityWindow>,
+
     // Loading states
     loadingStates: loadingStates as Ref<DashboardLoadingStates>,
     
@@ -622,6 +634,7 @@ export function useDashboard(workspaceId?: number | Ref<number>): UseDashboardRe
     refreshSection,
     refreshDashboard,
     clearError,
+    setTeamActivityWindow,
     
     // Real-time update methods
     addActivity,
