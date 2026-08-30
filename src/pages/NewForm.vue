@@ -1706,7 +1706,7 @@
 
 					<!-- Editor section with toggle button -->
 					<div
-						class="description-editor-wrapper relative min-h-[260px] max-h-[420px] overflow-y-auto rounded-md border border-line bg-surface-sunken"
+						class="description-editor-wrapper relative min-h-[260px] rounded-md border border-line bg-surface-sunken"
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
@@ -2153,10 +2153,12 @@
 		z-index: 10 !important;
 	}
 
-	/* Description editor wrapper (modal/side-panel) — scroll inside wrapper, let editor size naturally */
+	/* Description editor wrapper (modal/side-panel) — no overflow clipping so editor popups (slash menu, toolbox) can overflow; the panel scrolls */
 	.description-editor-wrapper .md-editor,
 	.description-editor-wrapper .md-editor-dark {
 		border: 0 !important;
 		background: transparent !important;
+		/* md-editor-v3 defaults to 500px and scrolls internally; the wrapper no longer clips it */
+		height: 420px !important;
 	}
 </style>
