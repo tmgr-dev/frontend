@@ -92,9 +92,11 @@
 </script>
 
 <style>
+	/* Only the editor canvas is transparent; --crepe-color-surface must stay
+	   intact because Crepe paints the slash menu, toolbar and tooltips with it. */
 	.blockmd-editor .milkdown {
 		--crepe-color-background: transparent;
-		--crepe-color-surface: transparent;
+		background: transparent;
 	}
 
 	/* Keep the slash menu short enough to fit below the caret inside the task panel */
