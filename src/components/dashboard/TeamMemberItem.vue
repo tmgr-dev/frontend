@@ -47,10 +47,10 @@
       </div>
 
       <!-- Sparkline -->
-      <div class="hidden md:flex items-end gap-0.5 h-6 shrink-0" :title="`Activity, last ${member.daily_activity.length} day(s)`" aria-hidden="true">
+      <div class="hidden md:flex items-end gap-0.5 h-6 shrink-0" :title="`Activity, last ${dailyActivityPoints.length} day(s)`" aria-hidden="true">
         <span
           v-for="(h, i) in bars"
-          :key="member.daily_activity[i]?.date ?? i"
+          :key="dailyActivityPoints[i]?.date ?? i"
           class="w-1.5 rounded-sm"
           :class="h > 0 ? 'bg-brand' : 'bg-surface-sunken'"
           :style="{ height: `${Math.max(h, 2)}px` }"
@@ -140,7 +140,8 @@ const itemClasses = computed(() => {
 });
 
 const tracked = computed(() => formatTrackedSeconds(props.member.tracked_seconds));
-const bars = computed(() => sparklineBars(props.member.daily_activity ?? [], 24, 2));
+const dailyActivityPoints = computed(() => props.member.daily_activity ?? []);
+const bars = computed(() => sparklineBars(dailyActivityPoints.value, 24, 2));
 
 const accessibilityLabel = computed(() => {
   const parts = [
