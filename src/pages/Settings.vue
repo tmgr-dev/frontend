@@ -778,7 +778,7 @@
 							: '';
 						
 						// Validate the editor value
-						if (editorValue && (editorValue === 'block' || editorValue === 'markdown')) {
+						if (editorValue && ['block', 'markdown', 'blockmd'].includes(editorValue)) {
 							console.log('Saving editor preference to localStorage:', editorValue);
 							localStorage.setItem('preferred_editor', editorValue);
 							

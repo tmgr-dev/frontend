@@ -43,6 +43,9 @@
 	const BlockEditor = defineAsyncComponent(
 		() => import('@/components/BlockEditor.vue'),
 	);
+	const BlockMdEditor = defineAsyncComponent(
+		() => import('@/components/BlockMdEditor.vue'),
+	);
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
@@ -65,6 +68,7 @@
 	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
+	import { normalizeEditorType } from '@/utils/editorType';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
@@ -106,13 +110,11 @@
 	const getPreferredEditorWithFallback = (): EditorType => {
 		// First try to get from localStorage since it's faster
 		const savedEditor = localStorage.getItem('preferred_editor');
-		// Normalize the saved value to handle potential case issues or malformed values
 		if (savedEditor) {
-			const normalizedEditor = savedEditor.toLowerCase().trim();
-			// Only return valid editor types
-			if (normalizedEditor === 'block' || normalizedEditor === 'markdown') {
+			const normalizedEditor = normalizeEditorType(savedEditor);
+			if (normalizedEditor) {
 				console.log('Using from localStorage:', normalizedEditor);
-				return normalizedEditor as EditorType;
+				return normalizedEditor;
 			}
 			// If invalid, remove from localStorage to avoid future issues
 			console.log(
@@ -124,21 +126,18 @@
 		}
 
 		// If not in localStorage or invalid value, try to get from store
-		const preferredEditor = store.state.user?.settings?.find(
-			(setting: Record<string, string | number>) =>
-				setting.key === 'preferred_editor',
-		)?.value as EditorType | undefined;
+		const preferredEditor = normalizeEditorType(
+			store.state.user?.settings?.find(
+				(setting: Record<string, string | number>) =>
+					setting.key === 'preferred_editor',
+			)?.value,
+		);
 
 		if (preferredEditor) {
-			const normalizedEditor = String(preferredEditor).toLowerCase().trim();
-
-			// Only use valid editor types
-			if (normalizedEditor === 'block' || normalizedEditor === 'markdown') {
-				// If found in store, save to localStorage for future fallback
-				console.log('Using from store settings:', normalizedEditor);
-				localStorage.setItem('preferred_editor', normalizedEditor);
-				return normalizedEditor as EditorType;
-			}
+			// If found in store, save to localStorage for future fallback
+			console.log('Using from store settings:', preferredEditor);
+			localStorage.setItem('preferred_editor', preferredEditor);
+			return preferredEditor;
 		}
 
 		// Default to markdown if no preference is found anywhere
@@ -148,9 +147,8 @@
 
 	// Helper to set editor type and persist to localStorage
 	const setEditorType = (type: EditorType) => {
-		// Normalize the type to ensure consistency
-		const normalizedType = type.toLowerCase().trim() as EditorType;
-		if (normalizedType !== 'block' && normalizedType !== 'markdown') {
+		const normalizedType = normalizeEditorType(type);
+		if (!normalizedType) {
 			console.error('Invalid editor type:', type);
 			return;
 		}
@@ -448,30 +446,23 @@
 
 			// Get preferred editor from settings for future use
 			// If settings value is different from localStorage, we'll update localStorage
-			const preferredEditor = store.state.user?.settings?.find(
-				(setting: Record<string, string | number>) =>
-					setting.key === 'preferred_editor',
-			)?.value as EditorType | undefined;
+			const normalizedServerEditor = normalizeEditorType(
+				store.state.user?.settings?.find(
+					(setting: Record<string, string | number>) =>
+						setting.key === 'preferred_editor',
+				)?.value,
+			);
 
-			if (preferredEditor) {
-				// Normalize the server value
-				const normalizedServerEditor =
-					typeof preferredEditor === 'string'
-						? preferredEditor.toLowerCase().trim()
-						: String(preferredEditor).toLowerCase().trim();
-
-				// Only update if it's a valid type and different from current
-				if (
-					(normalizedServerEditor === 'block' ||
-						normalizedServerEditor === 'markdown') &&
-					normalizedServerEditor !== editorType.value
-				) {
-					console.log(
-						'Editor preference in store differs from localStorage, updating to:',
-						normalizedServerEditor,
-					);
-					setEditorType(normalizedServerEditor as EditorType);
-				}
+			// Only update if it's a valid type and different from current
+			if (
+				normalizedServerEditor &&
+				normalizedServerEditor !== editorType.value
+			) {
+				console.log(
+					'Editor preference in store differs from localStorage, updating to:',
+					normalizedServerEditor,
+				);
+				setEditorType(normalizedServerEditor);
 			}
 
 			// Check if we have a new task with checkpoints in localStorage when creating a new task
@@ -564,8 +555,12 @@
 				if (taskData.description_json && !taskData.description) {
 					// If task has JSON content but no markdown, use block editor
 					setEditorType('block');
-				} else if (taskData.description && !taskData.description_json) {
-					// If task has markdown but no JSON, use markdown editor
+				} else if (
+					taskData.description &&
+					!taskData.description_json &&
+					editorType.value === 'block'
+				) {
+					// If task has markdown but no JSON, leave the block (JSON) editor
 					setEditorType('markdown');
 				}
 
@@ -598,7 +593,7 @@
 						form.value.description,
 					);
 				} else if (
-					editorType.value === 'markdown' &&
+					editorType.value !== 'block' &&
 					form.value.description_json &&
 					!form.value.description
 				) {
@@ -1010,7 +1005,13 @@
 			}
 
 			const id = taskId.value || (form.value.id as number);
-			form.value = await updateTask(id, form.value as Task, instanceId);
+			const sent = { title: form.value.title, description: form.value.description };
+			const saved = await updateTask(id, form.value as Task, instanceId);
+			// Keep edits made while the request was in flight; the response is stale for them
+			// and the autosave composable will send them in a follow-up save.
+			if (form.value.title !== sent.title) saved.title = form.value.title;
+			if (form.value.description !== sent.description) saved.description = form.value.description;
+			form.value = saved;
 			store.commit('updateSingleTask', form.value);
 
 			// Ensure no auto-save will happen after this manual save
@@ -1731,6 +1732,13 @@
 						placeholder="Type your description here or enter / to see commands or "
 						class="block-editor-container mb-0 px-2 min-h-[240px]"
 					/>
+
+						<BlockMdEditor
+							v-else-if="editorType === 'blockmd'"
+							v-model="form.description"
+							placeholder="Type your description here or enter / to see commands"
+							class="mb-0 min-h-[240px]"
+						/>
 					</div>
 
 					<!-- Task Attachments -->

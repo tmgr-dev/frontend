@@ -29,6 +29,8 @@
 		"@editorjs/warning": "^1.4.0",
 		"@headlessui/vue": "^1.7.13",
 		"@heroicons/vue": "^2.0.17",
+		"@milkdown/crepe": "^7.22.1",
+		"@milkdown/kit": "^7.22.1",
 		"@pusher/push-notifications-web": "^1.1.0",
 		"@radial-color-picker/vue-color-picker": "^5.0.1",
 		"@vueuse/core": "^11.3.0",

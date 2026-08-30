@@ -8,7 +8,7 @@ export interface ExtendedTime extends Time {
 	timeLeft: string;
 }
 
-export type EditorType = 'markdown' | 'block';
+export type EditorType = 'markdown' | 'block' | 'blockmd';
 
 // Export all dashboard types
 export * from './dashboard';
