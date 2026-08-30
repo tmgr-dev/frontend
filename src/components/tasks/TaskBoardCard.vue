@@ -202,8 +202,9 @@
 				v-if="formattedDate"
 				class="flex items-center gap-1 text-2xs tabular-nums"
 				:class="overtime ? 'text-status-fix-fg' : 'text-ink-subtle'"
+				:title="'Created: ' + formattedDate"
 			>
-				<Clock class="h-3 w-3" />
+				<ClockPlus class="h-3 w-3" />
 				{{ formattedDate }}
 			</span>
 		</div>
@@ -225,6 +226,7 @@
 	import Badge from '../general/Badge.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
+	import { formatBoardDate } from '@/utils/boardDate';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
 	import SetTooltipData from '@/mixins/SetTooltipData';
@@ -267,9 +269,7 @@
 		GripVertical,
 		Play,
 		Pause,
-		Clock,
 	} from 'lucide-vue-next';
-	import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns';
 	import { mapState } from 'vuex';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import { generateTaskUrl } from '@/utils/url';
@@ -325,7 +325,6 @@
 			GripVertical,
 			Play,
 			Pause,
-			Clock,
 		},
 		emits: [
 			'timer-started',
@@ -451,17 +450,10 @@
 				if (hours > 0) return `${hours}h`;
 				return `${minutes}m`;
 			},
+			// Creation date, like the list and the task form (TM-149). updated_at used to
+			// win here, so any edited card silently showed its edit date instead.
 			formattedDate() {
-				const dateStr = this.task.updated_at || this.task.created_at;
-				if (!dateStr) return null;
-				try {
-					const d = new Date(dateStr);
-					if (isToday(d)) return 'Today';
-					if (isYesterday(d)) return 'Yesterday';
-					return format(d, 'MMM d');
-				} catch (e) {
-					return null;
-				}
+				return formatBoardDate(this.task.created_at);
 			},
 		},
 		watch: {
