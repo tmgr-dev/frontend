@@ -97,6 +97,12 @@
 		--crepe-color-surface: transparent;
 	}
 
+	/* Keep the slash menu short enough to fit below the caret inside the task panel */
+	.blockmd-editor .milkdown-slash-menu .menu-groups {
+		max-height: 240px;
+		overflow-y: auto;
+	}
+
 	.blockmd-editor .milkdown .ProseMirror {
 		padding: 8px 16px 16px 40px;
 		min-height: 240px;
