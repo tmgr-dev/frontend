@@ -97,6 +97,8 @@
 					type="button"
 					:class="{
 						'border-l-[3px] border-l-status-done': task.start_time,
+						'border-status-fix hover:border-status-fix':
+							taskTimeExceeded[task.id],
 					}"
 					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"

@@ -1,6 +1,7 @@
 <template>
 	<div
 		class="group relative flex flex-col rounded-card border border-line bg-surface px-[14px] py-[14px] font-display shadow-tmgr-xs transition-all duration-150 hover:shadow-tmgr-md"
+		:class="overtime && 'border-status-fix'"
 		@mouseenter="isHovered = true"
 		@mouseleave="isHovered = false"
 	>
