@@ -207,15 +207,18 @@
 				{{ formattedDate }}
 			</span>
 		</div>
-	</div>
 
-	<Confirm
-		v-if="timerStatusConfirm"
-		:title="timerStatusConfirm.title"
-		:body="timerStatusConfirm.message"
-		@onCancel="timerStatusConfirm = null"
-		@onOk="confirmTimerStatusSwitch"
-	/>
+		<!-- Kept inside the root: the card must stay single-root so the board's
+		     fallthrough attrs (class="my-5", :data-task) and vuedraggable's item
+		     element keep working. Modal is position: fixed, so nesting is harmless. -->
+		<Confirm
+			v-if="timerStatusConfirm"
+			:title="timerStatusConfirm.title"
+			:body="timerStatusConfirm.message"
+			@onCancel="timerStatusConfirm = null"
+			@onOk="confirmTimerStatusSwitch"
+		/>
+	</div>
 </template>
 
 <script>
