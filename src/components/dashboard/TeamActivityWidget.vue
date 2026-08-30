@@ -5,25 +5,21 @@
       <h3 class="text-lg font-semibold text-ink">
         Team Activity
       </h3>
-      <div class="flex items-center space-x-2">
-        <div class="flex items-center space-x-1 text-xs text-ink-subtle">
-          <div class="w-2 h-2 bg-status-done rounded-full animate-pulse"></div>
-          <span>{{ onlineCount }} online</span>
+      <div class="flex items-center gap-3">
+        <div class="inline-flex rounded-md border border-line overflow-hidden text-xs" role="tablist" aria-label="Activity window">
+          <button
+            v-for="w in windows" :key="w.key" type="button" role="tab"
+            :aria-selected="w.key === window"
+            :class="['px-2.5 py-1', w.key === window ? 'bg-surface-sunken text-ink' : 'text-ink-faint hover:text-ink']"
+            @click="emit('window-change', w.key)"
+          >{{ w.label }}</button>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="refreshTeamActivity"
-          :disabled="loading"
-          class="p-2"
-          aria-label="Refresh team activity"
-        >
-          <ArrowPathIcon 
-            :class="[
-              'h-4 w-4',
-              loading && 'animate-spin'
-            ]" 
-          />
+        <div class="flex items-center gap-1 text-xs text-ink-subtle">
+          <div class="w-2 h-2 bg-status-done rounded-full" :class="onlineCount > 0 && 'animate-pulse'"></div>
+          <span>{{ onlineCount }} active now</span>
+        </div>
+        <Button variant="ghost" size="sm" @click="refreshTeamActivity" :disabled="loading" class="p-2" aria-label="Refresh team activity">
+          <ArrowPathIcon :class="['h-4 w-4', loading && 'animate-spin']" />
         </Button>
       </div>
     </div>
@@ -53,31 +49,12 @@
         
         <!-- Team summary -->
         <div class="mt-4 pt-4 border-t border-line">
-          <div class="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div class="text-lg font-semibold tabular-nums text-ink">
-                {{ teamActivity.total_members }}
-              </div>
-              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
-                Total Members
-              </div>
-            </div>
-            <div>
-              <div class="text-lg font-semibold tabular-nums text-status-done-fg">
-                {{ teamActivity.online_members }}
-              </div>
-              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
-                Online Now
-              </div>
-            </div>
-            <div>
-              <div class="text-lg font-semibold tabular-nums text-status-progress-fg">
-                {{ teamActivity.active_timers }}
-              </div>
-              <div class="text-2xs uppercase tracking-wide text-ink-subtle">
-                Active Timers
-              </div>
-            </div>
+          <div class="grid grid-cols-5 gap-4 text-center">
+            <div><div class="text-lg font-semibold tabular-nums text-ink">{{ teamActivity.total_members }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Total members</div></div>
+            <div><div class="text-lg font-semibold tabular-nums text-status-done-fg">{{ teamActivity.active_today }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Active today</div></div>
+            <div><div class="text-lg font-semibold tabular-nums text-status-progress-fg">{{ teamActivity.active_timers }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Active timers</div></div>
+            <div><div class="text-lg font-semibold tabular-nums text-brand-fg">{{ formatTrackedSeconds(teamActivity.tracked_seconds) }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Tracked · {{ windowLabel }}</div></div>
+            <div><div class="text-lg font-semibold tabular-nums text-ink">{{ teamActivity.done_count }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Done · {{ windowLabel }}</div></div>
           </div>
         </div>
       </template>
@@ -101,7 +78,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
-import type { TeamMemberActivity, TeamMemberStatus } from '@/types/dashboard';
+import type { TeamMemberActivity, TeamMemberStatus, TeamActivityWindow } from '@/types/dashboard';
+import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
 import Button from '@/components/ui/button/Button.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import TeamMemberItem from './TeamMemberItem.vue';
@@ -111,6 +89,7 @@ import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 interface Props {
   teamActivity: TeamMemberActivity | null;
   loading: boolean;
+  window: TeamActivityWindow;
 }
 
 const props = defineProps<Props>();
@@ -120,9 +99,20 @@ const emit = defineEmits<{
   'member-click': [member: TeamMemberStatus];
   'task-click': [taskId: number];
   'invite-members': [];
+  'window-change': [w: TeamActivityWindow];
 }>();
 
 const router = useRouter();
+
+const windows: { key: TeamActivityWindow; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: '7d', label: '7d' },
+  { key: '30d', label: '30d' },
+];
+const windowLabel = computed(() => {
+  const key = props.teamActivity?.window ?? props.window;
+  return windows.find(w => w.key === key)?.label ?? key;
+});
 
 const onlineCount = computed(() => {
   return props.teamActivity?.online_members || 0;
@@ -160,7 +150,7 @@ const inviteMembers = () => {
 }
 
 .team-activity-content {
-  @apply max-h-80 min-h-48 overflow-y-auto;
+  @apply max-h-[28rem] min-h-48 overflow-y-auto;
 }
 
 /* Custom scrollbar */
