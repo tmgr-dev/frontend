@@ -77,12 +77,21 @@
 											v-model="settings[index].value"
 											:options="
 												setting.default_values.map((val) => ({
-													label: val.value,
+													label:
+														setting.key === 'preferred_editor'
+															? editorOptionLabel(val.value)
+															: val.value,
 													value: val.value,
 												}))
 											"
 											:placeholder="setting.description"
 										/>
+										<p
+											v-if="setting.key === 'preferred_editor'"
+											class="mt-1.5 text-xs text-ink-subtle"
+										>
+											{{ EDITOR_SETTING_HELP }}
+										</p>
 									</template>
 									<template v-else-if="setting.custom_value_available">
 										<TimeField
@@ -407,6 +416,7 @@
 	} from '@/actions/tmgr/user';
 	import { sendNotification } from '@/actions/tmgr/notifications';
 	import Select from '@/components/general/Select.vue';
+	import { EDITOR_SETTING_HELP, editorOptionLabel } from '@/utils/editorType';
 	import Switcher from '@/components/general/Switcher.vue';
 	import TimeField from '@/components/general/TimeField.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -467,6 +477,7 @@
 			},
 		},
 		computed: {
+			EDITOR_SETTING_HELP: () => EDITOR_SETTING_HELP,
 			userSettings() {
 				return this.$store.state.userSettings || {};
 			},
@@ -529,6 +540,7 @@
 			await this.loadSettings();
 		},
 		methods: {
+			editorOptionLabel,
 			async copyToken() {
 				if (!this.user.smart_device_token || !navigator?.clipboard) return;
 				try {

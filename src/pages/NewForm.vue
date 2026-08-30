@@ -72,7 +72,7 @@
 	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
 	import { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
-	import { normalizeEditorType } from '@/utils/editorType';
+	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
@@ -175,6 +175,13 @@
 
 	// Initialize with stored preference immediately rather than default
 	const editorType = ref<EditorType>(getPreferredEditorWithFallback());
+	// Legacy Editor.js tasks always open in Editor.js; tell the user when that
+	// differs from what they picked in Settings.
+	const showsLegacyEditorNote = computed(
+		() =>
+			editorType.value === 'block' &&
+			getPreferredEditorWithFallback() !== 'block',
+	);
 	const isEditorLoading = ref(true);
 	const assignees = ref<number[]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
@@ -556,16 +563,18 @@
 						: taskData.approximately_time || 0;
 
 				// Before setting form value, check if we need to adjust editor type based on content
+				// Content decides the editor for this task only; the user's preference
+				// (Settings / localStorage) stays untouched so new tasks keep using it.
 				if (taskData.description_json && !taskData.description) {
 					// If task has JSON content but no markdown, use block editor
-					setEditorType('block');
+					editorType.value = 'block';
 				} else if (
 					taskData.description &&
 					!taskData.description_json &&
 					editorType.value === 'block'
 				) {
 					// If task has markdown but no JSON, leave the block (JSON) editor
-					setEditorType('markdown');
+					editorType.value = 'markdown';
 				}
 
 				form.value = taskData;
@@ -1729,6 +1738,19 @@
 							placeholder="Type your description here or enter / to see commands"
 							class="mb-0 min-h-[240px]"
 						/>
+					</div>
+
+					<div class="flex flex-col gap-0.5 text-2xs text-ink-subtle">
+						<div class="flex items-center gap-1">
+							<span>Editor: {{ EDITOR_LABELS[editorType] }}</span>
+							<span aria-hidden="true">·</span>
+							<router-link to="/settings" class="underline hover:text-ink">
+								Change in Settings
+							</router-link>
+						</div>
+						<span v-if="showsLegacyEditorNote">
+							This task was written in Editor.js and always opens in it.
+						</span>
 					</div>
 
 					<!-- Task Attachments -->
