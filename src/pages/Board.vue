@@ -315,6 +315,20 @@
 												</template>
 												</Draggable>
 
+												<!-- TM-151: quick-add right under the last card. Teleported into the
+												     scroll container like the inline input; the drag handle selector
+												     keeps Sortable from ever picking it up. -->
+												<Teleport v-if="tasksLoaded && column.tasks.length > 0 && creatingTaskColumnId !== column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
+													<button
+														type="button"
+														class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+														@click="startCreatingTask(column)"
+													>
+														<span class="material-icons text-sm">add</span>
+														Add task
+													</button>
+												</Teleport>
+
 												<Teleport v-if="tasksLoaded && creatingTaskColumnId === column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
 													<div class="flex-shrink-0 px-1 pt-1 pb-1">
 														<div class="flex flex-col gap-2">
