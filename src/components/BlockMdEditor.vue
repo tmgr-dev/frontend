@@ -47,6 +47,15 @@
 				[Crepe.Feature.ImageBlock]: false,
 			},
 			featureConfigs: {
+				// Handle (add / drag) on the right, like Editor.js: on the left it is
+				// cut off by the task panel edge.
+				[Crepe.Feature.BlockEdit]: {
+					blockHandle: {
+						getPlacement: () => 'right-start',
+						// keep it inside the canvas' right padding
+						getOffset: () => ({ mainAxis: 8 }),
+					},
+				},
 				[Crepe.Feature.Placeholder]: {
 					text: props.placeholder ?? 'Add description...',
 					mode: 'block',
@@ -106,7 +115,7 @@
 	}
 
 	.blockmd-editor .milkdown .ProseMirror {
-		padding: 8px 16px 16px 40px;
+		padding: 8px 80px 16px 16px;
 		min-height: 240px;
 	}
 </style>
