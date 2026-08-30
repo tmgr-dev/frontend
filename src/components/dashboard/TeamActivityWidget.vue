@@ -109,7 +109,10 @@ const windows: { key: TeamActivityWindow; label: string }[] = [
   { key: '7d', label: '7d' },
   { key: '30d', label: '30d' },
 ];
-const windowLabel = computed(() => windows.find(w => w.key === props.window)?.label ?? props.window);
+const windowLabel = computed(() => {
+  const key = props.teamActivity?.window ?? props.window;
+  return windows.find(w => w.key === key)?.label ?? key;
+});
 
 const onlineCount = computed(() => {
   return props.teamActivity?.online_members || 0;
