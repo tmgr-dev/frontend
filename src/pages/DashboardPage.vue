@@ -118,6 +118,8 @@ const {
   activities,
   heatmapData,
   teamActivity,
+  teamActivityWindow,
+  setTeamActivityWindow,
   loadingStates,
   error: dashboardError,
   loadDashboard,
@@ -1008,10 +1010,12 @@ onUnmounted(() => {
                 <TeamActivityWidget
                   :team-activity="teamActivity"
                   :loading="loadingStates.teamActivity.isLoading"
+                  :window="teamActivityWindow"
                   @refresh="() => refreshSection('teamActivity')"
                   @member-click="handleMemberClick"
                   @task-click="handleTaskClick"
                   @invite-members="() => router.push('/workspace/invite')"
+                  @window-change="setTeamActivityWindow"
                   :aria-describedby="loadingStates.teamActivity.isLoading ? 'team-loading' : 'team-description'"
                 />
               
