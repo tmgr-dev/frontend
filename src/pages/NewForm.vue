@@ -1715,7 +1715,7 @@
 
 					<!-- Editor section with toggle button -->
 					<div
-						class="description-editor-wrapper relative min-h-[260px] rounded-md border border-line bg-surface-sunken"
+						class="description-editor-wrapper relative min-h-[260px] shrink-0 rounded-md border border-line bg-surface-sunken"
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
