@@ -11,7 +11,7 @@ interface Props<T> {
 // Define the return type clearly
 type DebouncedAutoSaveReturn = [
 	isSaving: Ref<boolean>,
-	cancelPendingAutoSave: () => void
+	cancelPendingAutoSave: () => void,
 ];
 
 export function useDebouncedAutoSave<T>({
@@ -23,7 +23,10 @@ export function useDebouncedAutoSave<T>({
 }: Props<T>): DebouncedAutoSaveReturn {
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 	const isSaving = ref(false);
-	
+	// Set when a watched field changes while a save is in flight, so the newer
+	// state gets its own save instead of being silently dropped.
+	let dirtyWhileSaving = false;
+
 	// Function to cancel any pending auto-saves
 	const cancelPendingAutoSave = () => {
 		if (saveTimeout) {
@@ -48,34 +51,45 @@ export function useDebouncedAutoSave<T>({
 				return;
 			}
 
-			// Don't schedule new saves if already saving
-			if (isSaving.value) return;
+			// Don't schedule new saves if already saving; remember to save afterwards
+			if (isSaving.value) {
+				dirtyWhileSaving = true;
+				return;
+			}
 
-			// Cancel any previous pending saves
-			cancelPendingAutoSave();
-
-			// Schedule a new save
-			saveTimeout = setTimeout(async () => {
-				// Check again before saving in case suppress flag was set after timeout was scheduled
-				if (suppressDebounceForOnce?.value) {
-					suppressDebounceForOnce.value = false;
-					saveTimeout = null;
-					return;
-				}
-				
-				isSaving.value = true;
-				try {
-					await onSave();
-				} catch (e) {
-					console.error('debounce error', e);
-				} finally {
-					isSaving.value = false;
-					saveTimeout = null;
-				}
-			}, delay);
+			scheduleSave();
 		},
 		{ deep: true },
 	);
+
+	function scheduleSave() {
+		// Cancel any previous pending saves
+		cancelPendingAutoSave();
+
+		// Schedule a new save
+		saveTimeout = setTimeout(async () => {
+			// Check again before saving in case suppress flag was set after timeout was scheduled
+			if (suppressDebounceForOnce?.value) {
+				suppressDebounceForOnce.value = false;
+				saveTimeout = null;
+				return;
+			}
+
+			isSaving.value = true;
+			try {
+				await onSave();
+			} catch (e) {
+				console.error('debounce error', e);
+			} finally {
+				isSaving.value = false;
+				saveTimeout = null;
+				if (dirtyWhileSaving) {
+					dirtyWhileSaving = false;
+					scheduleSave();
+				}
+			}
+		}, delay);
+	}
 
 	// Return both the saving state and a function to cancel pending saves
 	return [isSaving, cancelPendingAutoSave];
