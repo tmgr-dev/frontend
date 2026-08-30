@@ -142,6 +142,7 @@
 								group="columns"
 								item-key="id"
 								class="board-container"
+								handle=".column-drag-handle"
 								@end="onMove"
 								data-id="column"
 							>
@@ -160,7 +161,8 @@
 												>
 													<div
 														v-if="activeDraggable"
-														class="flex items-center hover:cursor-move text-ink-faint"
+														class="column-drag-handle flex items-center cursor-grab active:cursor-grabbing text-ink-faint"
+														title="Drag to reorder columns"
 													>
 														<EllipsisVerticalIcon
 															class="h-3"
