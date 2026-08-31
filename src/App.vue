@@ -508,6 +508,7 @@
 		},
 		mounted() {
 			this.initBodyHeight();
+			this.ensureWorkspacesLoaded();
 			window.addEventListener('keydown', this.handleWorkspaceHotkeys);
 		},
 		beforeUnmount() {
