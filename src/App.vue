@@ -508,7 +508,12 @@
 		},
 		mounted() {
 			this.initBodyHeight();
-			this.ensureWorkspacesLoaded();
+			// Guests must not fire authenticated calls: the 401 would trigger the
+			// interceptor's hardLogout() and yank the router off a social OAuth
+			// callback page before the code exchange completes.
+			if (this.$store.getters.isLoggedIn) {
+				this.ensureWorkspacesLoaded();
+			}
 			window.addEventListener('keydown', this.handleWorkspaceHotkeys);
 		},
 		beforeUnmount() {

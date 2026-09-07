@@ -1,6 +1,7 @@
 import axios from 'axios';
 import store from '@/store';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
+import { isSocialCallbackPath, wasSentWithCurrentToken } from '@/utils/sessionGuards';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const API_TIMEOUT = 30000;
@@ -36,6 +37,13 @@ const refreshAuthToken = createTokenRefresher({
 });
 
 const hardLogout = async () => {
+	// The social OAuth callback page owns its session: it exchanges the code,
+	// sets the fresh token and navigates itself. A 401 from a boot-time call
+	// (guest or stale token) must neither wipe that token nor navigate away
+	// mid-exchange — SocialiteProxy handles its own failure path.
+	if (isSocialCallbackPath(window.location.pathname)) {
+		return;
+	}
 	await store.dispatch('logout');
 	const { default: router } = await import('@/router');
 	router.push({ name: 'Login' }).catch(() => {});
@@ -67,6 +75,12 @@ $axios.interceptors.response.use(
 		}
 
 		if (error.response?.status === 401) {
+			// The session rotated while this request was in flight (a social
+			// login just set a fresh token, or another flow logged out): the
+			// 401 belongs to the old session and must not touch the new one.
+			if (!wasSentWithCurrentToken(config.headers?.Authorization, store.state.token?.token)) {
+				throw error;
+			}
 			// A second 401 after a successful refresh+replay means the
 			// new token is rejected too — give up.
 			if (config.__authRetried) {
