@@ -344,6 +344,7 @@
 		type Category,
 	} from '@/actions/tmgr/categories';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
+	import { isUnscheduledDraft, parseTimeStr } from '@/utils/dailyRoutines/routineDraft';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
 	import { ROUTINE_CATEGORY_LIST, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
@@ -396,25 +397,9 @@
 		return `${y}-${m}-${day}`;
 	}
 
-	function parseTimeStr(s: any): { h: number; m: number } | null {
-		if (typeof s !== 'string') return null;
-		const parts = s.split(':');
-		if (parts.length < 2) return null;
-		const h = parseInt(parts[0], 10);
-		const m = parseInt(parts[1], 10);
-		if (isNaN(h) || isNaN(m)) return null;
-		return { h, m };
-	}
-
 	const r = props.routine ?? {};
 	const initialFreq = (r.recurrence?.frequency ?? r.frequency ?? 'NONE') as RoutineFrequency;
 	const taskTime = parseTimeStr(r.scheduled_time);
-	const hasTime =
-		r.time?.h != null ||
-		r.recurrence?.time?.hours != null ||
-		taskTime !== null;
-	const hasDate = !!(r.scheduled_date || r._draftDate);
-	const isExistingNone = r.id != null && initialFreq === 'NONE';
 
 	const initial: RoutineDraft = {
 		id: r.id ?? null,
@@ -430,7 +415,7 @@
 		dayOfMonth: r.recurrence?.day_of_frequency ?? new Date().getDate(),
 		month: r.recurrence?.month ?? 0,
 		reminderMin: r.recurrence?.reminder_min ?? null,
-		unscheduled: isExistingNone ? !hasTime && !hasDate : false,
+		unscheduled: isUnscheduledDraft(r),
 		scheduledDate: r.scheduled_date ?? r._draftDate ?? r.date ?? todayIso(),
 	};
 
