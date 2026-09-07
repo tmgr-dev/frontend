@@ -614,7 +614,8 @@
 			// (day-view resize writes here too); the pattern's duration_min is legacy.
 			payload.approximately_time = draft.durationMin;
 		} else if (isUnscheduled) {
-			payload.scheduled_date = null;
+			// Date is needed to locate the instance; null time clears it server-side.
+			payload.scheduled_date = draft.scheduledDate || todayIso.value;
 			payload.scheduled_time = null;
 		} else {
 			payload.scheduled_date = draft.scheduledDate || todayIso.value;
