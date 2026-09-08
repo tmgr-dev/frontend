@@ -1,31 +1,36 @@
 <template>
 	<div class="flex items-center">
 		<div class="flex -space-x-2">
-			<button
+			<AppTooltip
 				v-for="user in users"
 				:key="user.id"
-				type="button"
-				:class="[
-					'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer',
-					avatarColor(user.id),
-				]"
-				v-tooltip.bottom="`${user.name} - Click to view all members`"
-				@click="showMembersModal = true"
+				:content="`${user.name} - Click to view all members`"
+				side="bottom"
 			>
-				<span class="text-sm font-semibold text-white">
-					{{ user.name.charAt(0).toUpperCase() }}
-				</span>
-			</button>
+				<button
+					type="button"
+					:class="[
+						'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer',
+						avatarColor(user.id),
+					]"
+					@click="showMembersModal = true"
+				>
+					<span class="text-sm font-semibold text-white">
+						{{ user.name.charAt(0).toUpperCase() }}
+					</span>
+				</button>
+			</AppTooltip>
 
 			<Dialog v-model:open="isInviteDialogOpen">
-				<DialogTrigger as-child>
-					<button
-						class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer hover:text-ink"
-						v-tooltip.bottom="'Invite user'"
-					>
-						<span class="material-icons text-sm">add</span>
-					</button>
-				</DialogTrigger>
+				<AppTooltip content="Invite user" side="bottom">
+					<DialogTrigger as-child>
+						<button
+							class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer hover:text-ink"
+						>
+							<span class="material-icons text-sm">add</span>
+						</button>
+					</DialogTrigger>
+				</AppTooltip>
 
 			<DialogContent
 				class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
@@ -73,6 +78,7 @@
 	import { validateEmailString, ValidationResult } from '@/utils/emails';
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceMembersModal from '@/components/workspace/WorkspaceMembersModal.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 
 	export interface WorkspaceUser {
 		id: number;

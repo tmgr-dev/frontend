@@ -1,19 +1,19 @@
 <template>
 	<div class="relative" :class="[isModal ? 'ml-5' : 'md:ml-auto']">
 		<div class="flex flex-row-reverse">
-			<div
-				v-if="showAssigneeControls"
-				class="group flex h-8 w-8 cursor-default cursor-pointer rounded-full border-2 border-dashed border-gray-500 dark:border-gray-400 hover:dark:border-gray-200"
-				:class="{ '-ml-2': assignees?.length }"
-				v-tooltip.right="'Assign'"
-				@click="$emit('showModal')"
-			>
-				<span
-					class="material-icons m-auto cursor-pointer text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white"
+			<AppTooltip v-if="showAssigneeControls" content="Assign" side="right">
+				<div
+					class="group flex h-8 w-8 cursor-default cursor-pointer rounded-full border-2 border-dashed border-gray-500 dark:border-gray-400 hover:dark:border-gray-200"
+					:class="{ '-ml-2': assignees?.length }"
+					@click="$emit('showModal')"
 				>
-					add
-				</span>
-			</div>
+					<span
+						class="material-icons m-auto cursor-pointer text-base text-gray-600 dark:text-gray-200 dark:group-hover:text-white"
+					>
+						add
+					</span>
+				</div>
+			</AppTooltip>
 
 			<template v-if="assignees?.length > 0">
 				<div
@@ -39,6 +39,7 @@
 
 <script setup lang="ts">
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 
 	export interface Assignee {
 		id: number;
