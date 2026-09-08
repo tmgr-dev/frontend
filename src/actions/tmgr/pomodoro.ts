@@ -1,7 +1,7 @@
+import { patchUserSettings } from '@/actions/tmgr/user';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
-import { patchUserSettings } from '@/actions/tmgr/user';
 
 export type PomodoroPhase = 'focus' | 'short' | 'long';
 

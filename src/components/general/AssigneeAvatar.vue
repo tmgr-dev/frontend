@@ -18,8 +18,8 @@
 </template>
 
 <script setup lang="ts">
-	import { Assignee } from '@/components/general/AssigneeUsers.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import { Assignee } from '@/components/general/AssigneeUsers.vue';
 
 	interface Props {
 		assignee: Assignee;

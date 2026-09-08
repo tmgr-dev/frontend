@@ -1,6 +1,23 @@
 <script setup lang="ts">
 	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
+	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
+	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
+	import {
+		getUser,
+		getUserSettings,
+		updateUserSettingsV2,
+		User,
+	} from '@/actions/tmgr/user.ts';
+	import {
+		exitWorkspace,
+		getWorkspaces,
+		Workspace,
+	} from '@/actions/tmgr/workspaces.ts';
+	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import DarkMode from '@/components/general/DarkMode.vue';
+	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
@@ -33,51 +50,34 @@
 		SidebarRail,
 		SidebarTrigger,
 	} from '@/components/ui/sidebar';
+	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
 	import SidebarMobileCloser from '@/components/ui/sidebar/SidebarMobileCloser.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import store from '@/store';
+	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
 	import {
+		ArchiveIcon,
 		BadgeCheck,
 		Bell,
-		ChevronsUpDown,
 		Cable,
-		LogOut,
-		SquareKanban,
-		Plus,
-		Palette,
-		Settings2,
+		ChevronsUpDown,
+		ClipboardListIcon,
+		FolderClosedIcon,
 		Inbox,
+		LayoutDashboard,
+		LogOut,
 		Package,
 		PackageOpen,
-		ArchiveIcon,
-		FolderClosedIcon,
-		ClipboardListIcon,
-		LayoutDashboard,
-		UserPlus,
+		Palette,
+		Plus,
+		Settings2,
 		Sliders,
+		SquareKanban,
+		UserPlus,
 	} from 'lucide-vue-next';
-	import { onBeforeMount, ref, computed, watch } from 'vue';
-	import {
-		getWorkspaces,
-		Workspace,
-		exitWorkspace,
-	} from '@/actions/tmgr/workspaces.ts';
-	import {
-		getUser,
-		updateUserSettingsV2,
-		User,
-		getUserSettings,
-	} from '@/actions/tmgr/user.ts';
-	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
-	import DarkMode from '@/components/general/DarkMode.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import store from '@/store';
-	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
-	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
-	import NotificationBell from '@/components/notifications/NotificationBell.vue';
-	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
+	import { computed, onBeforeMount, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
-	import { generateWorkspaceUrl, generateCategoryUrl } from '@/utils/url';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	const route = useRoute();
 	const router = useRouter();

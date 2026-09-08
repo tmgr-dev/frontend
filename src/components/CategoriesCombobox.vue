@@ -1,5 +1,6 @@
 <script setup lang="ts">
-	import { cn } from '@/utils';
+	import { Category } from '@/actions/tmgr/categories';
+	import { Button } from '@/components/ui/button';
 	import {
 		Command,
 		CommandEmpty,
@@ -8,16 +9,15 @@
 		CommandItem,
 		CommandList,
 	} from '@/components/ui/command';
-	import { FolderIcon } from '@heroicons/vue/24/outline';
 	import {
 		Popover,
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
+	import { cn } from '@/utils';
+	import { FolderIcon } from '@heroicons/vue/24/outline';
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
-	import { Button } from '@/components/ui/button';
-	import { ref, computed } from 'vue';
-	import { Category } from '@/actions/tmgr/categories';
+	import { computed, ref } from 'vue';
 
 	interface Props {
 		categories: Category[];

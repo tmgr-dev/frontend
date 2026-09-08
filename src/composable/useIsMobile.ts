@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, getCurrentInstance } from 'vue';
+import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue';
 
 export function useIsMobile(breakpoint: number = 768) {
 	const isMobile = ref(false);

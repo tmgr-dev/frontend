@@ -1,10 +1,10 @@
 import $axios from '@/plugins/axios';
-import { requestCache } from '@/utils/requestCache';
 import type { ReactionSummary } from '@/utils/commentReactions';
 import {
-	normalizeReactions,
 	extractReactionsPayload,
+	normalizeReactions,
 } from '@/utils/commentReactions';
+import { requestCache } from '@/utils/requestCache';
 
 export interface Comment {
 	message: string;

@@ -1,9 +1,9 @@
 import {
-	toggleReaction,
-	normalizeReactions,
-	mergeServerReactionForEmoji,
 	extractReactionsPayload,
+	mergeServerReactionForEmoji,
+	normalizeReactions,
 	ReactionSummary,
+	toggleReaction,
 } from '../commentReactions';
 
 const ALICE = { id: 1, name: 'Alice' };

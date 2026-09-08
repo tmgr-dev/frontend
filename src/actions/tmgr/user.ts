@@ -1,6 +1,6 @@
+import { FormSetting, Setting } from '@/actions/tmgr/settings';
 import $axios from '@/plugins/axios';
 import store from '@/store';
-import { FormSetting, Setting } from '@/actions/tmgr/settings';
 import { pickThemeFromSettings } from '@/theme/reconcile';
 
 export { pickThemeFromSettings };

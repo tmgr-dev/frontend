@@ -1,4 +1,4 @@
-import { ref, onMounted, onBeforeUnmount, type Ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
 
 // One shared ticker for every subscriber (routine rows can number in the
 // dozens — a per-row setInterval would pile up timers for no benefit).
