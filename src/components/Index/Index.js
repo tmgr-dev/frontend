@@ -1,9 +1,9 @@
-import MainNav from './modules/MainNav';
 import MainFeatures from './modules/MainFeatures';
-import MainHeader from './modules/MainHeader';
-import MainTwitter from './modules/MainTwitter';
-import MainPricing from './modules/MainPricing';
 import MainFooter from './modules/MainFooter';
+import MainHeader from './modules/MainHeader';
+import MainNav from './modules/MainNav';
+import MainPricing from './modules/MainPricing';
+import MainTwitter from './modules/MainTwitter';
 
 export default {
 	name: 'Index',

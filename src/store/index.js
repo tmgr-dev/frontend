@@ -1,11 +1,11 @@
-import filterModule from '@/store/modules/boardFilters';
-import pusherModule from '@/store/modules/pusher';
-import featureTogglesModule from '@/store/modules/featureToggles';
-import dailyRoutinesModule from '@/store/modules/dailyRoutines';
-import { createStore } from 'vuex';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
-import { requestCache } from '@/utils/requestCache';
+import filterModule from '@/store/modules/boardFilters';
+import dailyRoutinesModule from '@/store/modules/dailyRoutines';
+import featureTogglesModule from '@/store/modules/featureToggles';
+import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument } from '@/theme/applyTheme';
+import { requestCache } from '@/utils/requestCache';
+import { createStore } from 'vuex';
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')

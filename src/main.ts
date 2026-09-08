@@ -1,11 +1,11 @@
-import { createApp } from 'vue';
+import alertPlugin from '@/alert';
+import components from '@/globalComponents.ts';
 import { mask, VueTheMask } from '@/plugins/VueTheMask';
 import Selectable from '@/plugins/directives/selectable';
-import App from './App.vue';
-import components from '@/globalComponents.ts';
-import store from '@/store';
 import router from '@/router';
-import alertPlugin from '@/alert';
+import store from '@/store';
+import { createApp } from 'vue';
+import App from './App.vue';
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));
 store.commit('setTheme', localStorage.getItem('theme') || 'default');

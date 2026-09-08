@@ -3,12 +3,12 @@
 </template>
 
 <script setup lang="ts">
-	import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 	import { Crepe } from '@milkdown/crepe';
-	import { replaceAll } from '@milkdown/kit/utils';
 	import '@milkdown/crepe/theme/common/style.css';
-	import lightTheme from '@milkdown/crepe/theme/frame.css?inline';
 	import darkTheme from '@milkdown/crepe/theme/frame-dark.css?inline';
+	import lightTheme from '@milkdown/crepe/theme/frame.css?inline';
+	import { replaceAll } from '@milkdown/kit/utils';
+	import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 	import store from '../store';
 
 	interface Props {
