@@ -689,53 +689,69 @@
 				});
 			}, 350);
 		}
-		
-		const workspaceSetting = store.state.user?.settings?.find(
-			(setting: any) => setting.key === 'current_workspace'
-		);
-		if (workspaceSetting) {
-			subscribedWorkspaceId.value = +workspaceSetting.value;
-			pusherSubscriptionId.value = subscribeToWorkspace(subscribedWorkspaceId.value, {
-				onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
-					console.log('[NewForm] onTaskUpdated received:', { taskId: task.id, myTaskId: taskId.value, action, sourceInstanceId, myInstanceId: instanceId });
-					if (task.id !== taskId.value) return;
-					if (sourceInstanceId === instanceId) return;
-					
-					if (action === 'updated') {
-						const hasMeaningfulChanges = hasTaskMeaningfulChanges(form.value, task);
-						console.log('[NewForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
-							currentDescription: form.value.description?.substring?.(0, 50),
-							incomingDescription: task.description?.substring?.(0, 50),
-							currentTitle: form.value.title,
-							incomingTitle: task.title
-						});
-						if (hasMeaningfulChanges) {
-							hasExternalUpdate.value = true;
-							externalUpdateData.value = task;
-						}
-					} else if (action === 'deleted') {
-						emit('close');
-					}
-				},
-				onCommentAdded: (comment) => {
-					if (comment.task_id === taskId.value) {
-						taskCommentsRef.value?.loadComments?.();
-					}
-				},
-				onCommentUpdated: (comment) => {
-					if (comment.task_id === taskId.value) {
-						taskCommentsRef.value?.loadComments?.();
-					}
-				},
-				onCommentDeleted: (comment) => {
-					if (comment.task_id === taskId.value) {
-						taskCommentsRef.value?.loadComments?.();
-					}
-				}
-			});
-		}
 	});
-	
+
+	const currentWorkspaceIdFromSettings = computed<number | null>(() => {
+		const setting = store.state.user?.settings?.find(
+			(item: any) => item.key === 'current_workspace',
+		);
+		return setting ? +setting.value : null;
+	});
+
+	const subscribeToWorkspaceEvents = (workspaceId: number) => {
+		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
+			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
+		}
+		subscribedWorkspaceId.value = workspaceId;
+		pusherSubscriptionId.value = subscribeToWorkspace(workspaceId, {
+			onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
+				console.log('[NewForm] onTaskUpdated received:', { taskId: task.id, myTaskId: taskId.value, action, sourceInstanceId, myInstanceId: instanceId });
+				if (task.id !== taskId.value) return;
+				if (sourceInstanceId === instanceId) return;
+				
+				if (action === 'updated') {
+					const hasMeaningfulChanges = hasTaskMeaningfulChanges(form.value, task);
+					console.log('[NewForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
+						currentDescription: form.value.description?.substring?.(0, 50),
+						incomingDescription: task.description?.substring?.(0, 50),
+						currentTitle: form.value.title,
+						incomingTitle: task.title
+					});
+					if (hasMeaningfulChanges) {
+						hasExternalUpdate.value = true;
+						externalUpdateData.value = task;
+					}
+				} else if (action === 'deleted') {
+					emit('close');
+				}
+			},
+			onCommentAdded: (comment) => {
+				if (comment.task_id === taskId.value) {
+					taskCommentsRef.value?.loadComments?.();
+				}
+			},
+			onCommentUpdated: (comment) => {
+				if (comment.task_id === taskId.value) {
+					taskCommentsRef.value?.loadComments?.();
+				}
+			},
+			onCommentDeleted: (comment) => {
+				if (comment.task_id === taskId.value) {
+					taskCommentsRef.value?.loadComments?.();
+				}
+			}
+		});
+	};
+
+	// On a hard reload of /:ws/tasks/:id the router guard does not await getUser(),
+	// so current_workspace usually lands after this component mounted. Subscribe
+	// whenever it becomes known instead of only in onMounted.
+	watch(currentWorkspaceIdFromSettings, (workspaceId) => {
+		if (workspaceId) {
+			subscribeToWorkspaceEvents(workspaceId);
+		}
+	}, { immediate: true });
+
 	onUnmounted(() => {
 		unregisterModal(checkpointsModalId);
 		store.commit('removeModalFromStack', checkpointsModalId);
