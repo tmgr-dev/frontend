@@ -77,6 +77,7 @@
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
+	import { isSaveHotkey } from '@/utils/saveHotkey';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
@@ -921,7 +922,13 @@
 		}
 	};
 
+	const isCreatingTask = ref(false);
+
 	const createTask = async () => {
+		if (isCreatingTask.value) {
+			return;
+		}
+		isCreatingTask.value = true;
 		updateFormBeforeQuery();
 
 		try {
@@ -973,6 +980,8 @@
 			store.commit('incrementReloadTasksKey');
 		} catch (e) {
 			handleTaskSaveError(e);
+		} finally {
+			isCreatingTask.value = false;
 		}
 	};
 
@@ -1200,13 +1209,14 @@
 	useMagicKeys({
 		passive: false,
 		onEventFired(e) {
-			if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
-				e.preventDefault();
-				if (!taskId.value && !form.value.id) {
-					createTask();
-				} else {
-					saveTask();
-				}
+			if (!isSaveHotkey(e)) {
+				return;
+			}
+			e.preventDefault();
+			if (!taskId.value && !form.value.id) {
+				createTask();
+			} else {
+				saveTask();
 			}
 		},
 	});
