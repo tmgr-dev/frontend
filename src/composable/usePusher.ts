@@ -1,6 +1,9 @@
 import { ref, nextTick } from 'vue';
 import type { Ref } from 'vue';
 import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';
+import type { ChannelAuthorizationHandler } from '@/utils/pusherChannelAuthorizer';
 import type {
   EventHandlers,
   Activity,
@@ -44,6 +47,11 @@ interface PusherConfig {
       Authorization: string;
     };
   };
+  channelAuthorization: {
+    endpoint: string;
+    transport: 'ajax';
+    customHandler: ChannelAuthorizationHandler;
+  };
 }
 
 // Singleton state - shared across all usePusher instances
@@ -85,6 +93,7 @@ export function usePusher(): UsePusherReturn {
     const token = getAuthToken();
     const scheme = (import.meta as any).env.VITE_PUSHER_SCHEME || 'http';
     const port = parseInt((import.meta as any).env.VITE_PUSHER_PORT || '6001', 10);
+    const authEndpoint = (import.meta as any).env.VITE_API_BASE_URL + 'broadcasting/auth';
     
     return {
       key: (import.meta as any).env.VITE_PUSHER_KEY,
@@ -92,7 +101,7 @@ export function usePusher(): UsePusherReturn {
       wsHost: (import.meta as any).env.VITE_PUSHER_HOST || 'localhost',
       wsPort: port,
       wssPort: port,
-      authEndpoint: (import.meta as any).env.VITE_API_BASE_URL + 'broadcasting/auth',
+      authEndpoint,
       forceTLS: scheme === 'https',
       disableStats: true,
       enabledTransports: ['ws', 'wss'],
@@ -101,12 +110,23 @@ export function usePusher(): UsePusherReturn {
           Accept: 'application/json',
           Authorization: `Bearer ${token || ''}`
         }
+      },
+      // pusher-js re-authorizes every channel after a reconnect; the static
+      // `auth.headers` above would still carry the token from page load, which
+      // is expired after the access token rotated. Read the current one instead.
+      channelAuthorization: {
+        endpoint: authEndpoint,
+        transport: 'ajax',
+        customHandler: createChannelAuthorizer({ authEndpoint, getToken: getAuthToken })
       }
     };
   };
 
   // Initialize Echo connection
-  const initializeEcho = async (): Promise<void> => {
+  // Synchronous on purpose: components subscribe in onMounted, right after the
+  // first usePusher() call; an async init (dynamic import) left echoInstance
+  // null at that moment and subscribe() silently dropped the subscription.
+  const initializeEcho = (): void => {
     if (echoInstance) {
       return; // Already initialized
     }
@@ -119,7 +139,6 @@ export function usePusher(): UsePusherReturn {
       
       // Set up Pusher globally (required by Laravel Echo)
       if (typeof window !== 'undefined') {
-        const { default: Pusher } = await import('pusher-js');
         (window as any).Pusher = Pusher;
       }
 
