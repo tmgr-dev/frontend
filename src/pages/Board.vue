@@ -745,6 +745,7 @@
 				alpha: 1,
 			},
 			isShowColorPicker: false,
+			colorTouched: false,
 			statusTypes: [
 				{ id: 1, name: 'active' },
 				{ id: 2, name: 'hidden' },
@@ -911,21 +912,26 @@
 				return map[type] || 'bg-surface-sunken text-ink-muted';
 			},
 		onColorSelect() {
-			const hexColor = hslToHex(
-				this.color.hue,
-				this.color.saturation,
-				this.color.luminosity,
-			);
-			this.statusColor = hexColor;
+			this.commitPickedColor();
 		},
 		applyColor() {
-			const hexColor = hslToHex(
+			this.commitPickedColor();
+			this.closePickerModal();
+		},
+		/**
+		 * Only rewrite the hex when the wheel was actually moved: the HSL round-trip
+		 * rounds to whole degrees / percents and would shift an untouched colour by a
+		 * channel or two (#1d4ed8 -> #1d4fd7).
+		 */
+		commitPickedColor() {
+			if (!this.colorTouched) {
+				return;
+			}
+			this.statusColor = hslToHex(
 				this.color.hue,
 				this.color.saturation,
 				this.color.luminosity,
 			);
-			this.statusColor = hexColor;
-			this.closePickerModal();
 		},
 			handleFilter() {
 				this.isFiltersModalShown = !this.isFiltersModalShown;
@@ -935,6 +941,7 @@
 			},
 
 			onInput(hue) {
+				this.colorTouched = true;
 				this.color.hue = hue;
 			},
 			/**
@@ -943,6 +950,7 @@
 			 * the exact colour instead of snapping to the fully saturated hue (TM-135).
 			 */
 			setColorFromHex(hex) {
+				this.colorTouched = false;
 				const { h, s, l } = hexToHsl(hex || '#0044ff');
 				this.color.hue = h;
 				this.color.saturation = s;
