@@ -650,7 +650,7 @@
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
 	import Select from '@/components/general/Select.vue';
 	import Confirm from '@/components/general/Confirm.vue';
-	import { hslToHex, hueFromHex } from '@/utils/convertColors';
+	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import { getCategories } from '@/actions/tmgr/categories';
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
@@ -937,6 +937,17 @@
 			onInput(hue) {
 				this.color.hue = hue;
 			},
+			/**
+			 * The radial picker only edits the hue; saturation and lightness come from the
+			 * status colour itself, so opening the picker and applying without moving keeps
+			 * the exact colour instead of snapping to the fully saturated hue (TM-135).
+			 */
+			setColorFromHex(hex) {
+				const { h, s, l } = hexToHsl(hex || '#0044ff');
+				this.color.hue = h;
+				this.color.saturation = s;
+				this.color.luminosity = l;
+			},
 			handleChosenUserUpdate(newChosenUser) {
 				this.chosenUser = newChosenUser;
 			},
@@ -962,12 +973,12 @@
 				this.clearStatus();
 				this.isShowStatusModal = false;
 				this.isShowColorPicker = false;
-				this.color.hue = hueFromHex(this.statusColor);
+				this.setColorFromHex(this.statusColor);
 				this.$store.commit('resetOpenModals');
 			},
 			closePickerModal() {
 				this.isShowColorPicker = false;
-				this.color.hue = hueFromHex(this.statusColor);
+				this.setColorFromHex(this.statusColor);
 				this.$store.commit('closeModal');
 			},
 			clearStatus() {
@@ -1035,7 +1046,7 @@
 				this.statusName = column.status.name;
 				this.statusColor = column.status.color;
 				this.statusId = column.status.id;
-				this.color.hue = hueFromHex(this.statusColor);
+				this.setColorFromHex(this.statusColor);
 			},
 			openTaskModal(column) {
 				this.$store.commit('setShowCreatingTaskModal', column.status.id);
@@ -1504,7 +1515,7 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-		this.color.hue = hueFromHex(this.statusColor);
+		this.setColorFromHex(this.statusColor);
 
 		const boardContainer = document.querySelector('.board-container');
 		if (boardContainer) {
