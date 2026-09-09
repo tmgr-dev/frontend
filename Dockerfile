@@ -1,4 +1,4 @@
-FROM node:22.11.0-alpine3.20 AS builder
+FROM node:22.23.2-alpine3.23 AS builder
 
 ARG APP_URL
 ARG VITE_API_BASE_URL
