@@ -1,6 +1,7 @@
 import { AxiosRequestConfig } from 'axios';
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
+import type { CategoryTransferResult } from '@/utils/categoryTransfer';
 
 export interface Category {
 	children_count: number;
@@ -134,6 +135,19 @@ export const restoreCategory = async (categoryId: number) => {
 	requestCache.invalidate('categories');
 
 	return data.deleted_at;
+};
+
+export const changeCategoryWorkspace = async (
+	categoryId: number,
+	workspaceId: number,
+): Promise<CategoryTransferResult> => {
+	const {
+		data: { data },
+	} = await $axios.put(`project_categories/${categoryId}/changeWorkspace/${workspaceId}`);
+
+	requestCache.invalidate('categories');
+
+	return data;
 };
 
 export const getWorkspaceCategories = async (
