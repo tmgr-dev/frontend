@@ -7,9 +7,21 @@
 	import {
 		restoreCategory as restoreCategoryAction,
 		deleteCategory as deleteCategoryAction,
+		changeCategoryWorkspace,
 		getParentCategory,
 		getSubCategories,
 	} from '@/actions/tmgr/categories';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
+	import {
+		Dialog,
+		DialogContent,
+		DialogDescription,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
+	import { useToast } from '@/components/ui/toast';
 	import Select from '@/components/general/Select.vue';
 	import { ref, computed, watch, onMounted } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -26,6 +38,7 @@
 		EllipsisIcon,
 		Trash2Icon,
 		ArchiveRestoreIcon,
+		ArrowRightLeftIcon,
 	} from 'lucide-vue-next';
 	import {
 		DropdownMenu,
@@ -53,6 +66,9 @@
 	const workspaceStatus = ref('all');
 	const workspaceCode = ref(null);
 	const permissionDenied = ref(false);
+	const toaster = useToast();
+	const transferDialog = ref({ open: false, category: null, targetWorkspaceId: null, busy: false });
+	const transferTargets = ref([]);
 	
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -265,6 +281,42 @@
 			await loadTasks();
 		} catch (e) {
 			console.error(e);
+		}
+	};
+
+	const openTransferDialog = async (category) => {
+		const currentWorkspaceId = Number(
+			store.state.user?.settings?.find((setting) => setting.key === 'current_workspace')?.value,
+		);
+		const workspaces = await getWorkspaces();
+		transferTargets.value = workspaces.filter((workspace) => Number(workspace.id) !== currentWorkspaceId);
+		transferDialog.value = { open: true, category, targetWorkspaceId: null, busy: false };
+	};
+
+	const transferCategory = async () => {
+		const { category, targetWorkspaceId } = transferDialog.value;
+		if (!category || !targetWorkspaceId) {
+			return;
+		}
+		transferDialog.value.busy = true;
+		try {
+			const result = await changeCategoryWorkspace(category.id, Number(targetWorkspaceId));
+			const target = transferTargets.value.find((w) => Number(w.id) === Number(targetWorkspaceId));
+			toaster.toast({
+				title: `"${category.title}" moved to ${target?.name ?? 'another workspace'}`,
+				description: describeCategoryTransfer(result),
+			});
+			transferDialog.value = { open: false, category: null, targetWorkspaceId: null, busy: false };
+			await loadCategories();
+			await loadTasks();
+		} catch (e) {
+			console.error(e);
+			toaster.toast({
+				title: 'Transfer failed',
+				description: e?.response?.data?.message || 'Could not move the category. Please try again.',
+				variant: 'destructive',
+			});
+			transferDialog.value.busy = false;
 		}
 	};
 
@@ -514,6 +566,14 @@
 
 										<DropdownMenuItem
 											v-if="category.deleted_at === null"
+											@click="openTransferDialog(category)"
+										>
+											<ArrowRightLeftIcon />
+											<span>Move to workspace</span>
+										</DropdownMenuItem>
+
+										<DropdownMenuItem
+											v-if="category.deleted_at === null"
 											@click="deleteCategory(category)"
 										>
 											<Trash2Icon />
@@ -530,6 +590,41 @@
 						</div>
 					</div>
 				</div>
+
+				<Dialog v-model:open="transferDialog.open">
+					<DialogContent class="sm:max-w-[425px]">
+						<DialogHeader>
+							<DialogTitle>Move category to another workspace</DialogTitle>
+							<DialogDescription>
+								"{{ transferDialog.category?.title }}" will be moved with all its subcategories and
+								tasks. Task statuses are matched to the target workspace by name, then by type;
+								assignees who are not members of the target workspace are removed.
+							</DialogDescription>
+						</DialogHeader>
+
+						<Select
+							v-model="transferDialog.targetWorkspaceId"
+							:options="transferTargets"
+							label-key="name"
+							value-key="id"
+							placeholder="Select workspace"
+							class="w-full"
+						/>
+						<p v-if="transferTargets.length === 0" class="text-sm text-ink-subtle">
+							You are not a member of any other workspace.
+						</p>
+
+						<DialogFooter>
+							<Button
+								variant="default"
+								:disabled="!transferDialog.targetWorkspaceId || transferDialog.busy"
+								@click="transferCategory"
+							>
+								{{ transferDialog.busy ? 'Moving...' : 'Move' }}
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
 
 				<!-- Add categories pagination controls -->
 				<div v-if="categories && categories.length > 0" class="mt-6 flex items-center justify-between px-2">
