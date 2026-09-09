@@ -5,6 +5,15 @@ import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** One codeSplitting group: every module under node_modules/<pkg>/ for the listed packages. */
+const vendorGroup = (name: string, packages: string[], priority: number) => ({
+	name,
+	priority,
+	test: new RegExp(`[\\\\/]node_modules[\\\\/](${packages.map(escapeRegExp).join('|')})[\\\\/]`),
+});
+
 export default defineConfig({
 	plugins: [
 		vue(),
@@ -119,45 +128,57 @@ export default defineConfig({
 				pure_funcs: ['console.log', 'console.info', 'console.debug'],
 			},
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			output: {
-				manualChunks: {
-					'vendor-vue': ['vue', 'vue-router', 'vuex'],
-					'vendor-editor': [
-						'@editorjs/editorjs',
-						'@editorjs/header',
-						'@editorjs/list',
-						'@editorjs/checklist',
-						'@editorjs/delimiter',
-						'@editorjs/embed',
-						'@editorjs/inline-code',
-						'@editorjs/link',
-						'@editorjs/marker',
-						'@editorjs/quote',
-						'@editorjs/raw',
-						'@editorjs/table',
-						'@editorjs/warning',
-						'@bomdi/codebox',
-						'editorjs-drag-drop',
-					],
-					'vendor-ui': [
-						'@headlessui/vue',
-						'radix-vue',
-						'@vueuse/core',
-						'lucide-vue-next',
-						'@radial-color-picker/vue-color-picker',
-					],
-					'vendor-utils': [
-						'axios',
-						'date-fns',
-						'canvas-confetti',
-						'vuedraggable',
-					],
-					'vendor-markdown': ['md-editor-v3'],
-					'vendor-pusher': [
-						'@pusher/push-notifications-web',
-						'pusher-js',
-						'laravel-echo',
+				// Vite 8 builds with rolldown: the object form of manualChunks is gone and the
+				// function form is deprecated, so the same package -> chunk map is expressed as
+				// codeSplitting groups. Higher priority wins when a module matches several.
+				codeSplitting: {
+					groups: [
+						vendorGroup('vendor-vue', ['vue', 'vue-router', 'vuex'], 60),
+						vendorGroup(
+							'vendor-editor',
+							[
+								'@editorjs/editorjs',
+								'@editorjs/header',
+								'@editorjs/list',
+								'@editorjs/checklist',
+								'@editorjs/delimiter',
+								'@editorjs/embed',
+								'@editorjs/inline-code',
+								'@editorjs/link',
+								'@editorjs/marker',
+								'@editorjs/quote',
+								'@editorjs/raw',
+								'@editorjs/table',
+								'@editorjs/warning',
+								'@bomdi/codebox',
+								'editorjs-drag-drop',
+							],
+							50,
+						),
+						vendorGroup(
+							'vendor-ui',
+							[
+								'@headlessui/vue',
+								'radix-vue',
+								'@vueuse/core',
+								'lucide-vue-next',
+								'@radial-color-picker/vue-color-picker',
+							],
+							40,
+						),
+						vendorGroup(
+							'vendor-utils',
+							['axios', 'date-fns', 'canvas-confetti', 'vuedraggable'],
+							30,
+						),
+						vendorGroup('vendor-markdown', ['md-editor-v3'], 20),
+						vendorGroup(
+							'vendor-pusher',
+							['@pusher/push-notifications-web', 'pusher-js', 'laravel-echo'],
+							10,
+						),
 					],
 				},
 				chunkFileNames: 'assets/js/[name]-[hash].js',
