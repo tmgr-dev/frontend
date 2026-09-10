@@ -14,6 +14,7 @@
 		getWorkspaces,
 		Workspace,
 	} from '@/actions/tmgr/workspaces.ts';
+	import AiAssistantPanel from '@/components/agent/AiAssistantPanel.vue';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
@@ -73,6 +74,7 @@
 		Plus,
 		Settings2,
 		Sliders,
+		Sparkles,
 		SquareKanban,
 		UserPlus,
 	} from 'lucide-vue-next';
@@ -730,6 +732,15 @@
 							class="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2"
 						></div>
 						<div class="flex items-center gap-2">
+							<button
+								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
+								:class="{ 'bg-surface-hover text-ink': store.state.aiPanelOpen }"
+								aria-label="Ask AI"
+								title="Ask AI"
+								@click="store.commit('toggleAiPanel')"
+							>
+								<Sparkles class="h-4 w-4" />
+							</button>
 							<ActiveCursorAgents />
 							<NotificationBell />
 						</div>
@@ -742,6 +753,7 @@
 					<slot />
 				</div>
 			</SidebarInset>
+			<AiAssistantPanel v-if="store.getters.isLoggedIn" />
 		</SidebarMobileCloser>
 	</SidebarProvider>
 
