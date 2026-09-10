@@ -1962,7 +1962,7 @@
 					class="shrink-0 border-t border-line bg-surface px-6 py-3"
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
-					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
+					<div v-if="isModal && aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
 						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>

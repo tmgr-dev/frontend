@@ -54,6 +54,7 @@
 		</div>
 		<div v-else class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink">
 			<MdPreview
+				class="agent-md"
 				:editor-id="`agent-msg-${props.message.id}`"
 				:model-value="props.message.content"
 				:theme="mdTheme"
@@ -70,3 +71,18 @@
 		</div>
 	</div>
 </template>
+
+<style>
+	/* md-editor-v3 defaults to a fixed 500px box with its own background; render replies inline */
+	.agent-md.md-editor {
+		height: auto;
+		--md-bk-color: transparent;
+		--md-bk-color-outstand: transparent;
+	}
+	.agent-md .md-editor-preview-wrapper {
+		padding: 0;
+	}
+	.agent-md .md-editor-preview {
+		font-size: 0.875rem;
+	}
+</style>
