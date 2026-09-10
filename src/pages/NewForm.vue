@@ -109,8 +109,9 @@
 		getCategoryIntegrationHint,
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
-	import { Send, Sparkles, Bot } from 'lucide-vue-next';
+	import { Send, Sparkles, Bot, Loader2 } from 'lucide-vue-next';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import type { AgentStep } from '@/types/agent';
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -192,11 +193,17 @@
 	);
 	const { isFeatureEnabled } = useFeatureToggles();
 	
-	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
+	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace, subscribeToUser, unsubscribeHandler } = usePusher();
 	const hasExternalUpdate = ref(false);
 	const externalUpdateData = ref<Task | null>(null);
 	const subscribedWorkspaceId = ref<number | null>(null);
 	const pusherSubscriptionId = ref<string>('');
+	const aiPending = ref(false);
+	const aiPendingSteps = ref<AgentStep[]>([]);
+	const isForThisTask = (e: { task_id?: number | null }) =>
+		!!form.value.id && e.task_id === form.value.id;
+	const subscribedUserId = ref<number | null>(null);
+	const userPusherSubscriptionId = ref<string>('');
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
@@ -752,11 +759,41 @@
 		}
 	}, { immediate: true });
 
+	watch(() => form.value.id, () => {
+		aiPending.value = false;
+		aiPendingSteps.value = [];
+	});
+
+	watch(() => store.state.user?.id, (userId) => {
+		if (subscribedUserId.value && userPusherSubscriptionId.value) {
+			unsubscribeHandler(`App.User.${subscribedUserId.value}`, userPusherSubscriptionId.value);
+		}
+		if (!userId) return;
+		subscribedUserId.value = userId;
+		userPusherSubscriptionId.value = subscribeToUser(userId, {
+			onAgentStep: (e) => {
+				if (isForThisTask(e) && !aiPendingSteps.value.some((s) => s.seq === e.seq)) {
+					aiPendingSteps.value = [...aiPendingSteps.value, { seq: e.seq, tool: e.tool, summary: e.summary }];
+				}
+			},
+			onAgentReply: (e) => {
+				if (isForThisTask(e)) {
+					aiPending.value = false;
+					aiPendingSteps.value = [];
+					taskCommentsRef.value?.loadComments?.();
+				}
+			},
+		});
+	}, { immediate: true });
+
 	onUnmounted(() => {
 		unregisterModal(checkpointsModalId);
 		store.commit('removeModalFromStack', checkpointsModalId);
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
 			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
+		}
+		if (subscribedUserId.value && userPusherSubscriptionId.value) {
+			unsubscribeHandler(`App.User.${subscribedUserId.value}`, userPusherSubscriptionId.value);
 		}
 	});
 	
@@ -1458,6 +1495,8 @@
 		isSendingComment.value = true;
 		try {
 			await createAskingHelpComment(form.value.id, newComment.value.trim());
+			aiPending.value = true;
+			aiPendingSteps.value = [];
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
 			if (taskCommentsRef.value) {
@@ -1465,6 +1504,7 @@
 			}
 		} catch (error) {
 			console.error('Failed to ask AI:', error);
+			aiPending.value = false;
 		} finally {
 			isSendingComment.value = false;
 		}
@@ -1922,6 +1962,11 @@
 					class="shrink-0 border-t border-line bg-surface px-6 py-3"
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
+					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+					</div>
 					<div
 						v-if="isModal && form.id"
 						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
@@ -2063,6 +2108,11 @@
 					/>
 				</div>
 				<div class="shrink-0 border-t border-line p-3" @mousedown.stop>
+					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+					</div>
 					<div
 						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
 					>
