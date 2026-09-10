@@ -44,6 +44,7 @@ const state = {
 	urlManuallyChanged: false,
 	updatedTaskData: null,
 	updatedTaskKey: 0,
+	aiPanelOpen: false,
 };
 
 const getters = {
@@ -256,6 +257,12 @@ const mutations = {
 		) {
 			invalidateWorkspaceScopedCache();
 		}
+	},
+	setAiPanelOpen(state, value) {
+		state.aiPanelOpen = !!value;
+	},
+	toggleAiPanel(state) {
+		state.aiPanelOpen = !state.aiPanelOpen;
 	},
 };
 
