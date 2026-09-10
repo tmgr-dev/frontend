@@ -48,6 +48,10 @@ export function useAgentChat(): UseAgentChatReturn {
   const isMessageKnown = (messageId: number): boolean => hasMessage(state.value, messageId);
 
   const onAgentStep = (e: AgentStepEvent): void => {
+    if (e.conversation_id !== state.value.conversationId) {
+      return;
+    }
+
     if (!isMessageKnown(e.message_id)) {
       const buffered = earlySteps.get(e.message_id) ?? [];
       buffered.push(e);
@@ -59,6 +63,10 @@ export function useAgentChat(): UseAgentChatReturn {
   };
 
   const onAgentReply = (e: AgentReplyEvent): void => {
+    if (e.conversation_id !== state.value.conversationId) {
+      return;
+    }
+
     if (!isMessageKnown(e.message_id)) {
       earlyReplies.set(e.message_id, e);
       return;
@@ -75,6 +83,8 @@ export function useAgentChat(): UseAgentChatReturn {
     try {
       const conversation = await getOrCreateConversation(workspaceId);
       const messages = await getAgentMessages(conversation.id);
+      earlySteps.clear();
+      earlyReplies.clear();
       state.value = applyConversation(state.value, conversation, messages);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load conversation';
@@ -84,7 +94,8 @@ export function useAgentChat(): UseAgentChatReturn {
   };
 
   const send = async (content: string): Promise<void> => {
-    if (!state.value.conversationId) {
+    const conversationId = state.value.conversationId;
+    if (!conversationId) {
       error.value = 'No active conversation';
       return;
     }
@@ -93,10 +104,12 @@ export function useAgentChat(): UseAgentChatReturn {
     error.value = null;
 
     try {
-      const { message_id, pending_message_id } = await sendAgentMessage(
-        state.value.conversationId,
-        content,
-      );
+      const { message_id, pending_message_id } = await sendAgentMessage(conversationId, content);
+
+      if (state.value.conversationId !== conversationId) {
+        return;
+      }
+
       state.value = appendPending(
         state.value,
         { id: message_id, content, created_at: new Date().toISOString() },
@@ -133,6 +146,8 @@ export function useAgentChat(): UseAgentChatReturn {
 
     try {
       const conversation = await startNewConversation(state.value.conversationId);
+      earlySteps.clear();
+      earlyReplies.clear();
       state.value = applyConversation(state.value, conversation, []);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start new conversation';
@@ -142,6 +157,12 @@ export function useAgentChat(): UseAgentChatReturn {
   };
 
   const subscribe = (userId: number): void => {
+    if (subscribedUserId === userId && subscriptionId !== null) {
+      return;
+    }
+    if (subscribedUserId !== null) {
+      unsubscribe();
+    }
     const { subscribeToUser } = usePusher();
     subscribedUserId = userId;
     subscriptionId = subscribeToUser(userId, { onAgentStep, onAgentReply });
@@ -154,6 +175,8 @@ export function useAgentChat(): UseAgentChatReturn {
     }
     subscriptionId = null;
     subscribedUserId = null;
+    earlySteps.clear();
+    earlyReplies.clear();
   };
 
   return {

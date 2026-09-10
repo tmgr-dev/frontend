@@ -28,16 +28,20 @@
 		send(content);
 	}
 
-	watch(open, (isOpen) => {
-		if (isOpen) {
-			if (currentWorkspaceId.value) load(currentWorkspaceId.value);
-			store.commit('pushModalToStack', 'ai-panel');
-			registerModal('ai-panel', close);
-		} else {
-			unregisterModal('ai-panel');
-			store.commit('removeModalFromStack', 'ai-panel');
-		}
-	});
+	watch(
+		open,
+		(isOpen) => {
+			if (isOpen) {
+				if (currentWorkspaceId.value) load(currentWorkspaceId.value);
+				store.commit('pushModalToStack', 'ai-panel');
+				registerModal('ai-panel', close);
+			} else {
+				unregisterModal('ai-panel');
+				store.commit('removeModalFromStack', 'ai-panel');
+			}
+		},
+		{ immediate: true },
+	);
 
 	watch(currentWorkspaceId, (id) => {
 		if (open.value && id) load(id);
@@ -86,7 +90,6 @@
 			<div class="flex items-center gap-1">
 				<button
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
-					:disabled="busy"
 					@click="newChat"
 				>
 					New chat

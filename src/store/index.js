@@ -274,6 +274,7 @@ const actions = {
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
 		commit('setToken', null);
+		commit('setAiPanelOpen', false);
 		localStorage.removeItem('newTaskWithCheckpoints');
 		Object.keys(localStorage)
 			.filter((key) => key.startsWith('pomo-enabled-'))
