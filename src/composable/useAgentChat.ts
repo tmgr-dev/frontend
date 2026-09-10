@@ -13,6 +13,7 @@ import {
   applyReply,
   applyStep,
   createAgentChatState,
+  hasMessage,
   isBusy,
   resetForWorkspace,
 } from '@/utils/agentChat';
@@ -40,19 +41,25 @@ export function useAgentChat(): UseAgentChatReturn {
   const busy = computed(() => isBusy(state.value));
 
   const earlyReplies = new Map<number, AgentReplyEvent>();
+  const earlySteps = new Map<number, AgentStepEvent[]>();
   let subscriptionId: string | null = null;
   let subscribedUserId: number | null = null;
 
+  const isMessageKnown = (messageId: number): boolean => hasMessage(state.value, messageId);
+
   const onAgentStep = (e: AgentStepEvent): void => {
+    if (!isMessageKnown(e.message_id)) {
+      const buffered = earlySteps.get(e.message_id) ?? [];
+      buffered.push(e);
+      earlySteps.set(e.message_id, buffered);
+      return;
+    }
+
     state.value = applyStep(state.value, e);
   };
 
   const onAgentReply = (e: AgentReplyEvent): void => {
-    const known =
-      state.value.pendingId === e.message_id ||
-      state.value.messages.some((m) => m.id === e.message_id);
-
-    if (!known) {
+    if (!isMessageKnown(e.message_id)) {
       earlyReplies.set(e.message_id, e);
       return;
     }
@@ -95,6 +102,14 @@ export function useAgentChat(): UseAgentChatReturn {
         { id: message_id, content, created_at: new Date().toISOString() },
         pending_message_id,
       );
+
+      const bufferedSteps = earlySteps.get(pending_message_id);
+      if (bufferedSteps) {
+        for (const step of bufferedSteps) {
+          state.value = applyStep(state.value, step);
+        }
+        earlySteps.delete(pending_message_id);
+      }
 
       const early = earlyReplies.get(pending_message_id);
       if (early) {

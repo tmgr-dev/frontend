@@ -4,6 +4,7 @@ import {
 	applyReply,
 	applyStep,
 	createAgentChatState,
+	hasMessage,
 	isBusy,
 	resetForWorkspace,
 } from '../agentChat';
@@ -77,6 +78,16 @@ describe('applyReply', () => {
 		s = applyStep(s, { conversation_id: 5, message_id: 11, task_id: null, seq: 2, tool: 'deadline_report', summary: '' });
 		s = applyReply(s, { conversation_id: 5, message_id: 11, task_id: null, status: 'done', content: 'done', steps: [] });
 		expect(s.messages[1].steps).toHaveLength(2);
+	});
+});
+
+describe('hasMessage', () => {
+	const base = appendPending(applyConversation(createAgentChatState(), CONV, []), USER_MSG, 11);
+	it('returns true for a message id already in state', () => {
+		expect(hasMessage(base, 11)).toBe(true);
+	});
+	it('returns false for an unknown message id', () => {
+		expect(hasMessage(base, 999)).toBe(false);
 	});
 });
 

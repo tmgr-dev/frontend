@@ -108,6 +108,9 @@ export const applyReply = (s: AgentChatState, e: AgentReplyEvent): AgentChatStat
 	return { ...s, messages, pendingId };
 };
 
+export const hasMessage = (s: AgentChatState, messageId: number): boolean =>
+	s.messages.some((m) => m.id === messageId);
+
 export const resetForWorkspace = (s: AgentChatState, workspaceId: number): AgentChatState => {
 	if (s.workspaceId === workspaceId) {
 		return s;
