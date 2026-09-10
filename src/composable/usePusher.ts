@@ -4,6 +4,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';
 import type { ChannelAuthorizationHandler } from '@/utils/pusherChannelAuthorizer';
+import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
 import type {
   EventHandlers,
   Activity,
@@ -330,6 +331,20 @@ export function usePusher(): UsePusherReturn {
         const sub = subscriptions.get(channelName);
         if (sub) {
           sub.handlers.forEach(h => h.onNotificationCreated?.(data));
+        }
+      });
+
+      channel.listen('.agent.step', (data: AgentStepEvent) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onAgentStep?.(data));
+        }
+      });
+
+      channel.listen('.agent.reply', (data: AgentReplyEvent) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onAgentReply?.(data));
         }
       });
 

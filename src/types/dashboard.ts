@@ -1,5 +1,7 @@
 // Dashboard TypeScript interfaces and types
 
+import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
+
 // Activity Types Enum
 export enum ActivityType {
   // Task activities
@@ -643,6 +645,8 @@ export interface EventHandlers {
   onCommentAdded?: (comment: any) => void;
   onCommentUpdated?: (comment: any) => void;
   onCommentDeleted?: (comment: any) => void;
+  onAgentStep?: (e: AgentStepEvent) => void;
+  onAgentReply?: (e: AgentReplyEvent) => void;
   onError?: (error: ActionError) => void;
   onReconnect?: () => void;
 }
