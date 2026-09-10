@@ -1,3 +1,4 @@
+import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
 
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
@@ -645,6 +646,7 @@ export interface EventHandlers {
   onCommentAdded?: (comment: any) => void;
   onCommentUpdated?: (comment: any) => void;
   onCommentDeleted?: (comment: any) => void;
+  onCommentReactionsUpdated?: (e: CommentReactionsUpdatedEvent) => void;
   onAgentStep?: (e: AgentStepEvent) => void;
   onAgentReply?: (e: AgentReplyEvent) => void;
   onError?: (error: ActionError) => void;

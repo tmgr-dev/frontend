@@ -746,7 +746,12 @@
 				if (comment.task_id === taskId.value) {
 					taskCommentsRef.value?.loadComments?.();
 				}
-			}
+			},
+			onCommentReactionsUpdated: (e) => {
+				if (form.value.id && e.task_id === form.value.id) {
+					taskCommentsRef.value?.applyReactions?.(e);
+				}
+			},
 		});
 	};
 

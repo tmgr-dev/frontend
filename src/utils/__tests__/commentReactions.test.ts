@@ -4,6 +4,7 @@ import {
 	normalizeReactions,
 	ReactionSummary,
 	toggleReaction,
+	applyReactionsUpdate,
 } from '../commentReactions';
 
 const ALICE = { id: 1, name: 'Alice' };
@@ -190,5 +191,52 @@ describe('mergeServerReactionForEmoji (concurrent out-of-order toggle race)', ()
 		const snapshot = JSON.parse(JSON.stringify(current));
 		mergeServerReactionForEmoji(current, [], '👍');
 		expect(current).toEqual(snapshot);
+	});
+});
+
+describe('applyReactionsUpdate', () => {
+	const comments = [
+		{ id: 1, reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 9, name: 'Me' }] }] },
+		{ id: 2, reactions: [] },
+	];
+
+	it('replaces the reactions of the matching comment and derives reacted for the viewer', () => {
+		const next = applyReactionsUpdate(
+			comments,
+			{
+				comment_id: 2,
+				task_id: 42,
+				reactions: [{ emoji: '🎉', count: 2, users: [{ id: 9, name: 'Me' }, { id: 4, name: 'Bob' }] }],
+			},
+			9,
+		);
+
+		expect(next).not.toBe(comments);
+		expect(next[0]).toBe(comments[0]);
+		expect(next[1].reactions).toEqual([
+			{ emoji: '🎉', count: 2, reacted: true, users: [{ id: 9, name: 'Me' }, { id: 4, name: 'Bob' }] },
+		]);
+	});
+
+	it('ignores a reacted flag sent by the server and uses the viewer id', () => {
+		const next = applyReactionsUpdate(
+			comments,
+			{ comment_id: 1, task_id: 42, reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 4, name: 'Bob' }] }] },
+			9,
+		);
+
+		expect(next[0].reactions[0].reacted).toBe(false);
+	});
+
+	it('clears reactions when the server sends an empty list', () => {
+		const next = applyReactionsUpdate(comments, { comment_id: 1, task_id: 42, reactions: [] }, 9);
+
+		expect(next[0].reactions).toEqual([]);
+	});
+
+	it('returns the same array for an unknown comment', () => {
+		const next = applyReactionsUpdate(comments, { comment_id: 99, task_id: 42, reactions: [] }, 9);
+
+		expect(next).toBe(comments);
 	});
 });
