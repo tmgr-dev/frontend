@@ -120,3 +120,16 @@ export const resetForWorkspace = (s: AgentChatState, workspaceId: number): Agent
 };
 
 export const isBusy = (s: AgentChatState): boolean => s.pendingId !== null;
+
+export const sendErrorMessage = (status: number | undefined): string => {
+	switch (status) {
+		case 413:
+			return 'Your question is too long.';
+		case 422:
+			return 'Type a question first.';
+		case 429:
+			return 'The assistant is still answering your previous question.';
+		default:
+			return 'Could not send your question. Please try again.';
+	}
+};

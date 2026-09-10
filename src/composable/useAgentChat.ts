@@ -16,6 +16,7 @@ import {
   hasMessage,
   isBusy,
   resetForWorkspace,
+  sendErrorMessage,
 } from '@/utils/agentChat';
 import type { AgentChatState } from '@/utils/agentChat';
 import { usePusher } from './usePusher';
@@ -130,7 +131,8 @@ export function useAgentChat(): UseAgentChatReturn {
         earlyReplies.delete(pending_message_id);
       }
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to send message';
+      const status = (e as { response?: { status?: number } } | undefined)?.response?.status;
+      error.value = sendErrorMessage(status);
     } finally {
       sending.value = false;
     }

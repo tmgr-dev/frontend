@@ -7,6 +7,7 @@ import {
 	hasMessage,
 	isBusy,
 	resetForWorkspace,
+	sendErrorMessage,
 } from '../agentChat';
 
 const CONV = { id: 5, workspace_id: 114, task_id: null, created_at: '2026-09-09T10:00:00Z' };
@@ -73,6 +74,10 @@ describe('applyReply', () => {
 		const s = applyReply(applyConversation(createAgentChatState(), CONV, []), { conversation_id: 5, message_id: 12, task_id: null, status: 'done', content: 'late', steps: [] });
 		expect(s.messages.map((m) => m.id)).toEqual([12]);
 	});
+	it('ignores a reply for another conversation', () => {
+		const s = applyReply(base, { conversation_id: 6, message_id: 99, task_id: null, status: 'done', content: 'x', steps: [] });
+		expect(s).toBe(base);
+	});
 	it('keeps accumulated steps when the reply carries none', () => {
 		let s = applyStep(base, { conversation_id: 5, message_id: 11, task_id: null, seq: 1, tool: 'get_task', summary: '' });
 		s = applyStep(s, { conversation_id: 5, message_id: 11, task_id: null, seq: 2, tool: 'deadline_report', summary: '' });
@@ -95,4 +100,20 @@ describe('resetForWorkspace', () => {
 	const s = applyConversation(createAgentChatState(), CONV, []);
 	it('returns the same state for the same workspace', () => expect(resetForWorkspace(s, 114)).toBe(s));
 	it('returns an empty state for another workspace', () => expect(resetForWorkspace(s, 56)).toEqual(createAgentChatState()));
+});
+
+describe('sendErrorMessage', () => {
+	it('maps 413 to a too-long message', () => {
+		expect(sendErrorMessage(413)).toBe('Your question is too long.');
+	});
+	it('maps 422 to a blank-question message', () => {
+		expect(sendErrorMessage(422)).toBe('Type a question first.');
+	});
+	it('maps 429 to a still-answering message', () => {
+		expect(sendErrorMessage(429)).toBe('The assistant is still answering your previous question.');
+	});
+	it('maps anything else (including no status) to a generic retry message', () => {
+		expect(sendErrorMessage(500)).toBe('Could not send your question. Please try again.');
+		expect(sendErrorMessage(undefined)).toBe('Could not send your question. Please try again.');
+	});
 });

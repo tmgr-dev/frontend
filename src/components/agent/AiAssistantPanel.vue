@@ -21,11 +21,11 @@
 		store.commit('setAiPanelOpen', false);
 	}
 
-	function submit(): void {
+	async function submit(): Promise<void> {
 		const content = draft.value.trim();
 		if (!content || busy.value) return;
-		draft.value = '';
-		send(content);
+		await send(content);
+		if (!error.value) draft.value = '';
 	}
 
 	watch(
