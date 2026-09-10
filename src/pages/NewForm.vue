@@ -200,6 +200,8 @@
 	const pusherSubscriptionId = ref<string>('');
 	const aiPending = ref(false);
 	const aiPendingSteps = ref<AgentStep[]>([]);
+	const isForThisTask = (e: { task_id?: number | null }) =>
+		!!form.value.id && e.task_id === form.value.id;
 	const subscribedUserId = ref<number | null>(null);
 	const userPusherSubscriptionId = ref<string>('');
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -757,6 +759,11 @@
 		}
 	}, { immediate: true });
 
+	watch(() => form.value.id, () => {
+		aiPending.value = false;
+		aiPendingSteps.value = [];
+	});
+
 	watch(() => store.state.user?.id, (userId) => {
 		if (subscribedUserId.value && userPusherSubscriptionId.value) {
 			unsubscribeHandler(`App.User.${subscribedUserId.value}`, userPusherSubscriptionId.value);
@@ -765,12 +772,12 @@
 		subscribedUserId.value = userId;
 		userPusherSubscriptionId.value = subscribeToUser(userId, {
 			onAgentStep: (e) => {
-				if (e.task_id === form.value.id) {
+				if (isForThisTask(e) && !aiPendingSteps.value.some((s) => s.seq === e.seq)) {
 					aiPendingSteps.value = [...aiPendingSteps.value, { seq: e.seq, tool: e.tool, summary: e.summary }];
 				}
 			},
 			onAgentReply: (e) => {
-				if (e.task_id === form.value.id) {
+				if (isForThisTask(e)) {
 					aiPending.value = false;
 					aiPendingSteps.value = [];
 					taskCommentsRef.value?.loadComments?.();
