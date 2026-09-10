@@ -5,6 +5,7 @@
 	import { computed } from 'vue';
 	import { computeThemeClasses } from '@/theme/applyTheme';
 	import store from '@/store';
+	import sanitizeHtml from '@/utils/sanitizeHtml';
 	import type { AgentStep, AgentMessage } from '@/types/agent';
 
 	const props = defineProps<{ message: AgentMessage }>();
@@ -58,6 +59,7 @@
 				:theme="mdTheme"
 				preview-theme="default"
 				code-theme="atom"
+				:sanitize="sanitizeHtml"
 			/>
 			<details v-if="props.message.steps.length" class="mt-1 text-xs text-ink-subtle">
 				<summary class="cursor-pointer select-none">{{ props.message.steps.length }} steps</summary>

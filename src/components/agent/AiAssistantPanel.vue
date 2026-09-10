@@ -121,6 +121,7 @@
 				<button
 					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white disabled:opacity-40"
 					:disabled="!draft.trim() || busy"
+					aria-label="Send"
 					title="Send (Enter)"
 					@click="submit"
 				>
