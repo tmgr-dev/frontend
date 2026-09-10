@@ -96,3 +96,31 @@ export const toggleReaction = (
 
 	return next.filter((r) => r.count > 0);
 };
+
+/** Realtime payload of `comment-reactions-updated`: the comment's full reaction state. */
+export interface CommentReactionsUpdatedEvent {
+	comment_id: number;
+	task_id: number;
+	reactions: unknown;
+}
+
+/**
+ * Replace one comment's reactions with the server state from a realtime event.
+ * `reacted` is per viewer and absent from the broadcast, so it is derived from
+ * `users` for the current user. Unknown comment ids leave the list untouched
+ * (same array instance), so callers can skip a re-render.
+ */
+export const applyReactionsUpdate = <T extends { id: number; reactions?: ReactionSummary[] }>(
+	comments: T[],
+	event: CommentReactionsUpdatedEvent,
+	currentUserId?: number,
+): T[] => {
+	const index = comments.findIndex((c) => c.id === event.comment_id);
+	if (index < 0) return comments;
+	const raw = Array.isArray(event.reactions)
+		? event.reactions.map((r: any) => (r && typeof r === 'object' ? { ...r, reacted: undefined } : r))
+		: [];
+	const next = comments.slice();
+	next[index] = { ...comments[index], reactions: normalizeReactions(raw, currentUserId) };
+	return next;
+};

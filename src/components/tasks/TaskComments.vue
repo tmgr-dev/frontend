@@ -18,6 +18,8 @@
 	import {
 		toggleReaction,
 		normalizeReactions,
+		applyReactionsUpdate,
+		type CommentReactionsUpdatedEvent,
 		mergeServerReactionForEmoji,
 		DEFAULT_REACTION_EMOJIS,
 		type ReactionSummary,
@@ -190,8 +192,14 @@
 		},
 	);
 
+	/** Realtime: replace one comment's reactions in place (no reload, keeps scroll and drafts). */
+	const applyReactions = (event: CommentReactionsUpdatedEvent) => {
+		comments.value = applyReactionsUpdate(comments.value, event, currentUser.value?.id);
+	};
+
 	defineExpose({
 		loadComments,
+		applyReactions,
 	});
 </script>
 

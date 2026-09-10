@@ -1,4 +1,5 @@
 import { ref, nextTick } from 'vue';
+import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 import type { Ref } from 'vue';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
@@ -317,6 +318,13 @@ export function usePusher(): UsePusherReturn {
         const sub = subscriptions.get(channelName);
         if (sub) {
           sub.handlers.forEach(h => h.onCommentDeleted?.(data.comment));
+        }
+      });
+
+      channel.listen('.comment-reactions-updated', (data: CommentReactionsUpdatedEvent) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onCommentReactionsUpdated?.(data));
         }
       });
 
