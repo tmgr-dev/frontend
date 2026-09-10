@@ -1,5 +1,6 @@
 <script setup lang="ts">
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
+	import { totalOvertimeSeconds, type EstimatedTask, type OvertimePagination } from '@/utils/overtime';
 	import Confetti from '@/components/Confetti.vue';
 	import { getTasks, getTasksByStatus, Task, PaginationMeta } from '@/actions/tmgr/tasks';
 	import { getCategories } from '@/actions/tmgr/categories';
@@ -160,30 +161,11 @@
 		};
 	});
 
-	function getApproximatelyTime(task: Task) {
-		if ((task as any).approximately_time) {
-			return parseInt(String((task as any).approximately_time), 10);
-		}
-		const setting = (task as any).settings?.find((s: any) => s.key === 'approximately_time');
-		if (setting) {
-			return parseInt(String(setting.value || setting.pivot?.value), 10);
-		}
-		return 0;
-	}
-
-	const totalOvertime = computed(() => {
-		let overtime = 0;
-		for (const task of tasks.value) {
-			const approximatelyTime = getApproximatelyTime(task);
-			if (approximatelyTime > 0) {
-				const currentTime = task.common_time || 0;
-				if (currentTime > approximatelyTime) {
-					overtime += currentTime - approximatelyTime;
-				}
-			}
-		}
-		return overtime;
-	});
+	// Overtime over every matching task: the server sums it across all pages
+	// (`meta.total_overtime_seconds`, TM-130); the page sum is only a fallback.
+	const totalOvertime = computed(() =>
+		totalOvertimeSeconds(pagination.value as OvertimePagination | null, tasks.value as EstimatedTask[]),
+	);
 
 	const formattedTotalOvertime = computed(() => {
 		if (totalOvertime.value <= 0) return null;
