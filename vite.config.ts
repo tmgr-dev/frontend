@@ -56,6 +56,7 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+				globIgnores: ['**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2'],
 				importScripts: ['https://js.pusher.com/beams/service-worker.js'],
 				runtimeCaching: [
 					{
