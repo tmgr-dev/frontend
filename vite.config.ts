@@ -56,30 +56,9 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+				globIgnores: ['**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2'],
 				importScripts: ['https://js.pusher.com/beams/service-worker.js'],
 				runtimeCaching: [
-					{
-						urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-						handler: 'CacheFirst',
-						options: {
-							cacheName: 'google-fonts-stylesheets',
-							expiration: {
-								maxEntries: 10,
-								maxAgeSeconds: 60 * 60 * 24 * 365,
-							},
-						},
-					},
-					{
-						urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-						handler: 'CacheFirst',
-						options: {
-							cacheName: 'google-fonts-webfonts',
-							expiration: {
-								maxEntries: 30,
-								maxAgeSeconds: 60 * 60 * 24 * 365,
-							},
-						},
-					},
 					{
 						urlPattern: /\/api\/.*/i,
 						handler: 'NetworkFirst',
