@@ -26,7 +26,7 @@
 					</div>
 
 					<div
-						class="hidden rounded-r-lg bg-[url(../../assets/img/bg-login.jpeg)] bg-cover bg-center bg-no-repeat md:block md:w-1/2"
+						class="hidden rounded-r-lg bg-[url(../../assets/img/bg-login.webp)] bg-cover bg-center bg-no-repeat md:block md:w-1/2"
 					/>
 				</div>
 			</div>
