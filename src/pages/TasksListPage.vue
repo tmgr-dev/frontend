@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import { totalOvertimeSeconds, type EstimatedTask, type OvertimePagination } from '@/utils/overtime';
+	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
 	import Confetti from '@/components/Confetti.vue';
 	import { getTasks, getTasksByStatus, Task, PaginationMeta } from '@/actions/tmgr/tasks';
 	import { getCategories } from '@/actions/tmgr/categories';
@@ -212,34 +213,10 @@
 				
 				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
 					onTaskUpdated: (task, action) => {
-						if (action === 'created') {
-							const exists = tasks.value.some(t => t.id === task.id);
-							if (!exists && canInsertTask(task) && pagination.value.current_page === 1) {
-								tasks.value.unshift(task);
-								pagination.value.total++;
-							}
-						} else if (action === 'updated') {
-							const index = tasks.value.findIndex(t => t.id === task.id);
-
-							if (index !== -1) {
-								if (matchesKnownFilters(task)) {
-									tasks.value.splice(index, 1, task);
-								} else {
-									tasks.value.splice(index, 1);
-									pagination.value.total = Math.max(0, pagination.value.total - 1);
-								}
-							} else if (canInsertTask(task) && pagination.value.current_page === 1) {
-								tasks.value.unshift(task);
-								pagination.value.total++;
-							}
-						} else if (action === 'deleted') {
-							const index = tasks.value.findIndex(t => t.id === task.id);
-							if (index !== -1) {
-								tasks.value.splice(index, 1);
-							}
-							if (index !== -1 || canInsertTask(task)) {
-								pagination.value.total = Math.max(0, pagination.value.total - 1);
-							}
+						if (action === 'deleted') {
+							removeTaskFromList_(task);
+						} else {
+							updateSingleTaskInList(task);
 						}
 					},
 					onCommentAdded: (comment) => {
@@ -308,6 +285,18 @@
 		const updatedTask = store.state.updatedTaskData;
 		if (updatedTask) {
 			updateSingleTaskInList(updatedTask);
+		}
+	});
+	watch(() => store.state.createdTaskKey, () => {
+		const createdTask = store.state.createdTaskData;
+		if (createdTask) {
+			updateSingleTaskInList(createdTask);
+		}
+	});
+	watch(() => store.state.deletedTaskKey, () => {
+		const deletedId = store.state.deletedTaskId;
+		if (deletedId) {
+			removeTaskFromList_(deletedId);
 		}
 	});
 	watch(() => route.name, (newName) => {
@@ -436,18 +425,24 @@
 	}
 
 	function updateSingleTaskInList(updatedTask: Task) {
-		const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
+		const known = tasks.value.some((x) => x.id === updatedTask.id);
+		const result = upsertTaskInList(tasks.value as any[], updatedTask as any, {
+			accepts: (t) => (known ? matchesKnownFilters(t as Task) : canInsertTask(t as Task)),
+			firstPage: pagination.value.current_page === 1,
+		});
+		if (result === 'inserted') pagination.value.total++;
+		if (result === 'removed') pagination.value.total = Math.max(0, pagination.value.total - 1);
+	}
 
-		if (taskIndex !== -1) {
-			if (matchesKnownFilters(updatedTask)) {
-				tasks.value.splice(taskIndex, 1, updatedTask);
-			} else {
-				tasks.value.splice(taskIndex, 1);
-				pagination.value.total = Math.max(0, pagination.value.total - 1);
-			}
-		} else if (canInsertTask(updatedTask) && pagination.value.current_page === 1) {
-			tasks.value.unshift(updatedTask);
-			pagination.value.total++;
+	// A deleted task counts against the total when it was on this page OR would have
+	// been listed on another page (same rule as inserting one), so the total does not
+	// drift on realtime deletes of tasks outside the current page.
+	function removeTaskFromList_(deleted: Task | number) {
+		const taskId = typeof deleted === 'number' ? deleted : deleted.id;
+		const removed = removeTaskFromList(tasks.value as any[], taskId as number);
+		const offPageMatch = typeof deleted !== 'number' && !removed && canInsertTask(deleted);
+		if (removed || offPageMatch) {
+			pagination.value.total = Math.max(0, pagination.value.total - 1);
 		}
 	}
 </script>

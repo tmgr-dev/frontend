@@ -30,6 +30,10 @@ const state = {
 	showCreatingTaskModal: false,
 	reloadActiveTasksKey: 0,
 	reloadTasksKey: 0,
+	createdTaskKey: 0,
+	createdTaskData: null,
+	deletedTaskKey: 0,
+	deletedTaskId: null,
 	appRerenderKey: 0,
 	workspaceStatuses: [],
 	workspaceStatusesById: {},
@@ -96,6 +100,16 @@ const mutations = {
 	updateSingleTask(state, task) {
 		state.updatedTaskData = task;
 		state.updatedTaskKey = (state.updatedTaskKey || 0) + 1;
+	},
+	// A task was created / deleted locally: the board and the list patch that one card
+	// instead of reloading everything (TM-202).
+	taskCreated(state, task) {
+		state.createdTaskData = task;
+		state.createdTaskKey = (state.createdTaskKey || 0) + 1;
+	},
+	taskDeleted(state, taskId) {
+		state.deletedTaskId = taskId;
+		state.deletedTaskKey = (state.deletedTaskKey || 0) + 1;
 	},
 	setToken(state, token) {
 		if (token == null) {
