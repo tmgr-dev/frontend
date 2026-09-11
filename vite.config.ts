@@ -114,6 +114,18 @@ export default defineConfig({
 				// codeSplitting groups. Higher priority wins when a module matches several.
 				codeSplitting: {
 					groups: [
+						// Virtual runtime helpers (id starts with \0, e.g. \0vite/preload-helper.js,
+						// \0@oxc-project+runtime@.../helpers/esm/defineProperty.js) are shared by
+						// every group below via includeDependenciesRecursively. Without this group,
+						// whichever vendor group first pulls one in (e.g. vendor-markdown) absorbs it,
+						// forcing the entry chunk to statically import that whole vendor chunk just to
+						// reach the helper. Highest priority so these always land in their own tiny
+						// chunk instead.
+						{
+							name: 'runtime-helpers',
+							priority: 100,
+							test: /^\0/,
+						},
 						vendorGroup('vendor-vue', ['vue', 'vue-router', 'vuex'], 60),
 						vendorGroup(
 							'vendor-editor',

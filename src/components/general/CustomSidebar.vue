@@ -14,7 +14,6 @@
 		getWorkspaces,
 		Workspace,
 	} from '@/actions/tmgr/workspaces.ts';
-	import AiAssistantPanel from '@/components/agent/AiAssistantPanel.vue';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
@@ -78,8 +77,18 @@
 		SquareKanban,
 		UserPlus,
 	} from 'lucide-vue-next';
-	import { computed, onBeforeMount, ref, watch } from 'vue';
+	import {
+		computed,
+		defineAsyncComponent,
+		onBeforeMount,
+		ref,
+		watch,
+	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
+
+	const AiAssistantPanel = defineAsyncComponent(
+		() => import('@/components/agent/AiAssistantPanel.vue'),
+	);
 
 	const route = useRoute();
 	const router = useRouter();
