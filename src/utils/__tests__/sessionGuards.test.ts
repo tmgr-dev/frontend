@@ -1,4 +1,4 @@
-import { isSocialCallbackPath, wasSentWithCurrentToken } from '../sessionGuards';
+import { isSocialCallbackPath, shouldReplayWithCurrentToken, wasSentWithCurrentToken } from '../sessionGuards';
 
 describe('isSocialCallbackPath', () => {
 	it.each(['/login/google', '/login/github', '/login/apple', '/login/telegram?token=x'])(
@@ -28,5 +28,23 @@ describe('wasSentWithCurrentToken', () => {
 
 	it('is false when the request was sent as guest but a session exists now', () => {
 		expect(wasSentWithCurrentToken(undefined, 'fresh')).toBe(false);
+	});
+});
+
+describe('shouldReplayWithCurrentToken', () => {
+	it('replays a request that carried a token another tab has since rotated', () => {
+		expect(shouldReplayWithCurrentToken('Bearer old', 'new', false)).toBe(true);
+	});
+
+	it('does not replay when the session is gone (logout in another tab)', () => {
+		expect(shouldReplayWithCurrentToken('Bearer old', null, false)).toBe(false);
+	});
+
+	it('does not replay twice', () => {
+		expect(shouldReplayWithCurrentToken('Bearer old', 'new', true)).toBe(false);
+	});
+
+	it('does not replay when the request already carried the current token', () => {
+		expect(shouldReplayWithCurrentToken('Bearer new', 'new', false)).toBe(false);
 	});
 });

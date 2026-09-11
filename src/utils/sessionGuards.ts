@@ -19,3 +19,18 @@ export const wasSentWithCurrentToken = (
 	authorizationHeader: string | undefined,
 	currentToken: string | null | undefined,
 ): boolean => bearerToken(authorizationHeader) === (currentToken || '');
+
+/**
+ * True when a 401 came back for a request that carried a token another tab
+ * has since rotated (the store already holds the newer one): replay the
+ * request once with the current token instead of dropping it. False when
+ * the session is gone (logout elsewhere) or the replay already happened.
+ */
+export const shouldReplayWithCurrentToken = (
+	authorizationHeader: string | undefined,
+	currentToken: string | null | undefined,
+	alreadyReplayed: boolean,
+): boolean =>
+	!alreadyReplayed &&
+	!!currentToken &&
+	bearerToken(authorizationHeader) !== currentToken;

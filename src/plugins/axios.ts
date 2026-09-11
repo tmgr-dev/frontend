@@ -2,7 +2,7 @@ import axios from 'axios';
 import store from '@/store';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
-import { isSocialCallbackPath, wasSentWithCurrentToken } from '@/utils/sessionGuards';
+import { isSocialCallbackPath, shouldReplayWithCurrentToken, wasSentWithCurrentToken } from '@/utils/sessionGuards';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const API_TIMEOUT = 30000;
@@ -100,6 +100,14 @@ $axios.interceptors.response.use(
 			// login just set a fresh token, or another flow logged out): the
 			// 401 belongs to the old session and must not touch the new one.
 			if (!wasSentWithCurrentToken(config.headers?.Authorization, store.state.token?.token)) {
+				// Another tab rotated the token while this request was in
+				// flight (the storage listener already adopted it): replay
+				// once with the current token, the request interceptor
+				// re-attaches it.
+				if (shouldReplayWithCurrentToken(config.headers?.Authorization, store.state.token?.token, !!config.__authRetried)) {
+					config.__authRetried = true;
+					return $axios(config);
+				}
 				throw error;
 			}
 			// A second 401 after a successful refresh+replay means the
