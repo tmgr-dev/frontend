@@ -1,7 +1,8 @@
 import axios from 'axios';
 import store from '@/store';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
-import { isSocialCallbackPath, wasSentWithCurrentToken } from '@/utils/sessionGuards';
+import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
+import { isSocialCallbackPath, shouldReplayWithCurrentToken, wasSentWithCurrentToken } from '@/utils/sessionGuards';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const API_TIMEOUT = 30000;
@@ -21,10 +22,30 @@ const $axios = axios.create({
 	},
 });
 
+// Every tab persists the envelope under the same key, so storage (not this
+// tab's Vuex copy) is the source of truth for the refresh token: another tab
+// may have rotated it while this one was throttled in the background.
+const readStoredToken = () => {
+	try {
+		return parseStoredToken(localStorage.getItem(TOKEN_STORAGE_KEY)) ?? store.state.token ?? null;
+	} catch {
+		return store.state.token ?? null;
+	}
+};
+
+// One refresh at a time across tabs; without Web Locks fall back to the
+// per-tab single-flight inside the refresher.
+const withCrossTabLock = <T>(fn: () => Promise<T>): Promise<T> =>
+	typeof navigator !== 'undefined' && navigator.locks
+		? navigator.locks.request('tmgr-token-refresh', fn)
+		: fn();
+
 // Bare axios (not $axios): the refresh call must bypass the 401 interceptor
 // below, or a rejected refresh would recurse into itself.
 const refreshAuthToken = createTokenRefresher({
-	getRefreshToken: () => store.state.token?.refresh_token,
+	readStored: readStoredToken,
+	currentAccessToken: () => store.state.token?.token,
+	withLock: withCrossTabLock,
 	post: (refreshToken) =>
 		axios
 			.post(
@@ -79,6 +100,14 @@ $axios.interceptors.response.use(
 			// login just set a fresh token, or another flow logged out): the
 			// 401 belongs to the old session and must not touch the new one.
 			if (!wasSentWithCurrentToken(config.headers?.Authorization, store.state.token?.token)) {
+				// Another tab rotated the token while this request was in
+				// flight (the storage listener already adopted it): replay
+				// once with the current token, the request interceptor
+				// re-attaches it.
+				if (shouldReplayWithCurrentToken(config.headers?.Authorization, store.state.token?.token, !!config.__authRetried)) {
+					config.__authRetried = true;
+					return $axios(config);
+				}
 				throw error;
 			}
 			// A second 401 after a successful refresh+replay means the
