@@ -8,6 +8,7 @@ server {
     gzip_static on;
     gzip on;
     gzip_vary on;
+    gzip_proxied any;
     gzip_min_length 1024;
     gzip_comp_level 6;
     gzip_types text/plain text/css application/javascript application/json application/manifest+json image/svg+xml font/ttf application/xml;
@@ -21,7 +22,10 @@ server {
     # Entry points the PWA / browser must always revalidate.
     location = /index.html { add_header Cache-Control "no-cache"; }
     location = /sw.js { add_header Cache-Control "no-cache"; }
-    location = /manifest.webmanifest { add_header Cache-Control "no-cache"; }
+    location = /manifest.webmanifest {
+        default_type application/manifest+json;
+        add_header Cache-Control "no-cache";
+    }
 
     location / {
         try_files $uri $uri/ /index.html;
