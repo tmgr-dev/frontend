@@ -1035,7 +1035,7 @@
 				}
 			}
 
-			store.commit('incrementReloadTasksKey');
+			store.commit('taskCreated', form.value);
 		} catch (e) {
 			handleTaskSaveError(e);
 		} finally {
@@ -1055,7 +1055,7 @@
 
 				if (props.isModal) {
 					emit('close');
-					store.commit('incrementReloadTasksKey');
+					store.commit('taskDeleted', taskId.value);
 				} else {
 					// Get current workspace
 					const currentWorkspaceId = store.state.user?.settings?.find(
@@ -1157,7 +1157,7 @@
 
 			if (props.isModal) {
 				emit('close');
-				store.commit('incrementReloadTasksKey');
+				store.commit('taskDeleted', id);
 			} else {
 				router.push('/');
 			}

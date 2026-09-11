@@ -679,9 +679,12 @@
 						return;
 					}
 
-					await updateTaskStatus(this.task.id, archiveStatus.id);
-					this.$emit('task-archived', this.task);
-					this.$store.commit('incrementReloadTasksKey');
+					const archived = await updateTaskStatus(this.task.id, archiveStatus.id);
+					this.$emit('task-archived', {
+						...this.task,
+						...(archived && typeof archived === 'object' ? archived : {}),
+						status_id: archiveStatus.id,
+					});
 				} catch (e) {
 					console.error('Failed to archive task:', e);
 					alert('Failed to archive task. Please try again.');
@@ -695,7 +698,7 @@
 				try {
 					await deleteTask(this.task.id);
 					this.$emit('task-deleted', this.task);
-					this.$store.commit('incrementReloadTasksKey');
+					this.$store.commit('taskDeleted', this.task.id);
 				} catch (e) {
 					console.error('Failed to delete task:', e);
 					alert('Failed to delete task. Please try again.');

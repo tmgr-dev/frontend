@@ -756,7 +756,6 @@
 					} else {
 						task.start_time = 0;
 					}
-					this.$emit('reload-tasks');
 				} catch (e) {
 					console.error('Failed to stop timer:', e);
 				} finally {
@@ -777,7 +776,6 @@
 					} else {
 						task.start_time = Math.floor(Date.now() / 1000);
 					}
-					this.$emit('reload-tasks');
 
 					const prompt = backlogTimerPrompt(task, this.statuses);
 					if (prompt) {

@@ -311,8 +311,8 @@
 														:data-task="jsonEncode(task)"
 														@move-to-top="handleMoveToTop(task, column)"
 														@move-to-bottom="handleMoveToBottom(task, column)"
-														@task-deleted="loadTasks"
-														@task-archived="loadTasks"
+														@task-deleted="removeTaskFromBoard(task.id)"
+														@task-archived="updateSingleTaskInBoard"
 													/>
 												</template>
 												</Draggable>
@@ -641,6 +641,7 @@
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import TaskBoardCard from '@/components/tasks/TaskBoardCard.vue';
+	import { removeTaskFromColumns, upsertTaskInColumns } from '@/utils/taskPatch';
 	import TextField from '@/components/general/TextField.vue';
 	import {
 		createStatus,
@@ -780,6 +781,18 @@
 				this.updateSingleTaskInBoard(updatedTask);
 			}
 		},
+		'$store.state.createdTaskKey'() {
+			const createdTask = this.$store.state.createdTaskData;
+			if (createdTask) {
+				this.updateSingleTaskInBoard(createdTask);
+			}
+		},
+		'$store.state.deletedTaskKey'() {
+			const deletedId = this.$store.state.deletedTaskId;
+			if (deletedId) {
+				this.removeTaskFromBoard(deletedId);
+			}
+		},
 		'$store.state.currentTaskIdForModal'(newVal, oldVal) {
 			if (oldVal && !newVal) {
 				this.$nextTick(() => {
@@ -831,39 +844,15 @@
 		},
 		methods: {
 			updateSingleTaskInBoard(updatedTask) {
-				let taskFound = false;
-				const taskStatusId = Number(updatedTask.status_id);
-				
-				for (const column of this.columns) {
-					const taskIndex = column.tasks.findIndex(t => t.id === updatedTask.id);
-					
-					if (taskIndex !== -1) {
-						taskFound = true;
-						const currentColumnStatusId = Number(column.status?.id);
-						
-						if (currentColumnStatusId === taskStatusId) {
-							const merged = { ...column.tasks[taskIndex], ...updatedTask };
-							column.tasks.splice(taskIndex, 1, merged);
-						} else {
-							const existing = column.tasks[taskIndex];
-							const merged = { ...existing, ...updatedTask };
-							column.tasks.splice(taskIndex, 1);
-							const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
-							if (newColumn) {
-								newColumn.tasks.unshift(merged);
-							}
-						}
-						break;
-					}
+				upsertTaskInColumns(this.columns, updatedTask);
+				this.refreshColumnSummaries();
+			},
+			removeTaskFromBoard(taskId) {
+				if (removeTaskFromColumns(this.columns, taskId)) {
+					this.refreshColumnSummaries();
 				}
-				
-				if (!taskFound) {
-					const targetColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
-					if (targetColumn) {
-						targetColumn.tasks.unshift(updatedTask);
-					}
-				}
-				
+			},
+			refreshColumnSummaries() {
 				this.columns = this.columns.map((column) => {
 					const tasksInColumn = column.tasks;
 					const taskCount = tasksInColumn.length;
@@ -1482,8 +1471,7 @@
 					};
 
 					const createdTask = await createTask(newTask);
-					this.$store.commit('incrementReloadTasksKey');
-					await this.loadTasks();
+					this.updateSingleTaskInBoard(createdTask);
 				} catch (error) {
 					console.error('Failed to create task:', error);
 					this.newTaskTitle = taskTitle;
@@ -1538,48 +1526,10 @@
 			if (this.workspaceId) {
 				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(this.workspaceId, {
 					onTaskUpdated: (task, action) => {
-						const taskStatusId = Number(task.status_id);
-						
-						if (action === 'created') {
-							const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
-							if (column) {
-								const exists = column.tasks.some(t => t.id === task.id);
-								if (!exists) {
-									column.tasks.unshift(task);
-								}
-							}
-						} else if (action === 'updated') {
-							let found = false;
-							for (const column of this.columns) {
-								const index = column.tasks.findIndex(t => t.id === task.id);
-								if (index !== -1) {
-									found = true;
-									if (Number(column.status?.id) === taskStatusId) {
-										column.tasks.splice(index, 1, task);
-									} else {
-										column.tasks.splice(index, 1);
-										const newColumn = this.columns.find(c => Number(c.status?.id) === taskStatusId);
-										if (newColumn) {
-											newColumn.tasks.unshift(task);
-										}
-									}
-									break;
-								}
-							}
-							if (!found) {
-								const column = this.columns.find(c => Number(c.status?.id) === taskStatusId);
-								if (column) {
-									column.tasks.unshift(task);
-								}
-							}
-						} else if (action === 'deleted') {
-							for (const column of this.columns) {
-								const index = column.tasks.findIndex(t => t.id === task.id);
-								if (index !== -1) {
-									column.tasks.splice(index, 1);
-									break;
-								}
-							}
+						if (action === 'deleted') {
+							this.removeTaskFromBoard(task.id);
+						} else {
+							this.updateSingleTaskInBoard(task);
 						}
 					},
 					onCommentAdded: (comment) => {
