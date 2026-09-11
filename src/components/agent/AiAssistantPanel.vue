@@ -1,11 +1,22 @@
 <script setup lang="ts">
 	import { Send, Sparkles, X } from 'lucide-vue-next';
-	import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-	import AgentMessage from '@/components/agent/AgentMessage.vue';
+	import {
+		computed,
+		defineAsyncComponent,
+		nextTick,
+		onMounted,
+		onUnmounted,
+		ref,
+		watch,
+	} from 'vue';
 	import { useAgentChat } from '@/composable/useAgentChat';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import store from '@/store';
+
+	const AgentMessage = defineAsyncComponent(
+		() => import('@/components/agent/AgentMessage.vue'),
+	);
 
 	const { state, loading, error, busy, load, send, newChat, subscribe, unsubscribe } =
 		useAgentChat();
