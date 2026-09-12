@@ -75,3 +75,28 @@ describe('markdownToHtml with task keys', () => {
 		expect(markdownToHtml('see TM-129', { taskKeyPrefixes: [] })).not.toContain('data-task-key');
 	});
 });
+
+describe('markdownToHtml link safety', () => {
+	it('escapes a quote in the address instead of ending the attribute', () => {
+		const html = markdownToHtml('[x](https://e.com/" onclick="alert(1))');
+		expect(html).not.toContain('onclick="alert(1)"');
+		expect(html).toContain('&quot;');
+	});
+
+	it('escapes a quote in the title', () => {
+		const html = markdownToHtml('[x](https://e.com "a\\" onmouseover=\\"alert(1)")');
+		expect(html).not.toContain('onmouseover="alert(1)"');
+	});
+
+	it('drops a script URL rather than rendering it', () => {
+		const html = markdownToHtml('[x](javascript:alert(1))');
+		expect(html).toContain('href=""');
+		expect(html).not.toContain('javascript:');
+	});
+
+	it('keeps ordinary addresses intact', () => {
+		expect(markdownToHtml('[x](https://tmgr.dev/a?b=1&c=2)')).toContain(
+			'href="https://tmgr.dev/a?b=1&amp;c=2"',
+		);
+	});
+});
