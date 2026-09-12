@@ -139,7 +139,7 @@ const isWorkspaceOwner = computed(() => {
 });
 
 const workspaceGroups = computed(() => {
-	const hiddenFeatures = ['task.comments', 'task.files', 'notifications.push', 'notifications.email', 'exports'];
+	const hiddenFeatures = ['task.comments', 'notifications.push', 'notifications.email', 'exports'];
 	const groups = {};
 	
 	Object.values(workspaceToggles.value).forEach((feature) => {

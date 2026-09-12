@@ -1886,10 +1886,10 @@
 					</div>
 
 					<!-- Task Attachments -->
-					<!--					<TaskAttachments
-						v-if="taskId || form.id"
+					<TaskAttachments
+						v-if="isFeatureEnabled('task.files') && (taskId || form.id)"
 						:task-id="taskId || form.id"
-					/>-->
+					/>
 
 					<!-- CHECKPOINTS = time log (start -> end, description, duration) -->
 					<section

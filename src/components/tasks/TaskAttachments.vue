@@ -3,8 +3,12 @@
 		<div class="mb-3 flex items-center justify-between">
 			<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
 				Attachments
+				<span v-if="files.length" class="font-normal text-gray-400">
+					({{ files.length }})
+				</span>
 			</h3>
 			<button
+				type="button"
 				@click="handleAddFiles"
 				class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-gray-800"
 			>
@@ -13,16 +17,16 @@
 			</button>
 		</div>
 
-		<div v-if="files.length > 0" class="mb-3 space-y-2">
+		<div v-if="files.length > 0 || uploads.length > 0" class="mb-3 space-y-2">
 			<div
-				v-for="(file, index) in files"
-				:key="index"
+				v-for="file in files"
+				:key="file.id"
 				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 			>
 				<div class="flex-shrink-0">
 					<img
-						v-if="file.preview"
-						:src="file.preview"
+						v-if="previews[file.id]"
+						:src="previews[file.id]"
 						:alt="file.name"
 						class="h-12 w-12 rounded object-cover"
 					/>
@@ -43,8 +47,65 @@
 					</p>
 				</div>
 				<button
-					@click="handleRemoveFile(index)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+					type="button"
+					:disabled="busyFileId === file.id"
+					@click="download(file)"
+					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+					title="Download"
+				>
+					<Download :size="16" />
+				</button>
+				<button
+					type="button"
+					:disabled="busyFileId === file.id"
+					@click="remove(file)"
+					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+					title="Remove"
+				>
+					<X :size="16" />
+				</button>
+			</div>
+
+			<div
+				v-for="upload in uploads"
+				:key="upload.id"
+				class="flex items-center gap-3 rounded-lg border p-3"
+				:class="
+					upload.error
+						? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'
+						: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800'
+				"
+			>
+				<div class="flex-shrink-0">
+					<Loader2
+						v-if="!upload.error"
+						:size="20"
+						class="animate-spin text-blue-500"
+					/>
+					<AlertCircle v-else :size="20" class="text-red-500" />
+				</div>
+				<div class="min-w-0 flex-1">
+					<p
+						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
+					>
+						{{ upload.name }}
+					</p>
+					<p
+						class="text-xs"
+						:class="
+							upload.error
+								? 'text-red-600 dark:text-red-400'
+								: 'text-gray-500 dark:text-gray-400'
+						"
+					>
+						{{ upload.error || `Uploading ${formatFileSize(upload.size)}…` }}
+					</p>
+				</div>
+				<button
+					v-if="upload.error"
+					type="button"
+					@click="dismissUpload(upload.id)"
+					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/20"
 				>
 					<X :size="16" />
 				</button>
@@ -85,17 +146,48 @@
 	</div>
 </template>
 
-<script>
-	import { FileIcon, Paperclip, X } from 'lucide-vue-next';
+<script lang="ts">
+	import {
+		AlertCircle,
+		Download,
+		FileIcon,
+		Loader2,
+		Paperclip,
+		X,
+	} from 'lucide-vue-next';
 	import { defineComponent } from 'vue';
+	import {
+		detachFile,
+		fetchFileObjectUrl,
+		getTaskFiles,
+		uploadTaskFile,
+		type TaskFile,
+	} from '@/actions/tmgr/files';
+	import {
+		attachmentErrorMessage,
+		formatFileSize,
+		isImageMime,
+		preflightError,
+	} from '@/utils/attachments';
+
+	interface PendingUpload {
+		id: number;
+		name: string;
+		size: number;
+		error: string | null;
+	}
 
 	export default defineComponent({
 		name: 'TaskAttachments',
 		components: {
-			Paperclip,
+			AlertCircle,
+			Download,
 			FileIcon,
+			Loader2,
+			Paperclip,
 			X,
 		},
+		emits: ['changed'],
 		props: {
 			taskId: {
 				type: Number,
@@ -105,75 +197,141 @@
 		},
 		data() {
 			return {
-				files: [],
+				files: [] as TaskFile[],
+				uploads: [] as PendingUpload[],
+				previews: {} as Record<number, string>,
 				isDragOver: false,
+				busyFileId: null as number | null,
+				nextUploadId: 1,
+				maxBytes: null as number | null,
 			};
 		},
+		created() {
+			this.load();
+		},
 		methods: {
+			formatFileSize,
+			async load() {
+				if (!this.taskId) {
+					return;
+				}
+				try {
+					this.files = await getTaskFiles(this.taskId);
+					this.files.forEach((file) => this.loadPreview(file));
+				} catch {
+					// A task whose files cannot be listed still has to render the rest of the form.
+					this.files = [];
+				}
+			},
+			async loadPreview(file: TaskFile) {
+				if (!isImageMime(file.mime_type) || this.previews[file.id]) {
+					return;
+				}
+				try {
+					this.previews[file.id] = await fetchFileObjectUrl(file.id);
+				} catch {
+					// No preview is a cosmetic loss; the file is still listed and downloadable.
+				}
+			},
 			handleAddFiles() {
-				this.$refs.fileInput.click();
+				(this.$refs.fileInput as HTMLInputElement).click();
 			},
-			isImageFile(file) {
-				return file.type.startsWith('image/');
+			handleFileSelect(event: Event) {
+				const input = event.target as HTMLInputElement;
+				this.uploadAll(Array.from(input.files ?? []));
+				input.value = '';
 			},
-			createFilePreview(file) {
-				if (this.isImageFile(file)) {
-					return URL.createObjectURL(file);
-				}
-				return null;
-			},
-			handleFileSelect(event) {
-				const selectedFiles = Array.from(event.target.files);
-				selectedFiles.forEach((file) => {
-					file.preview = this.createFilePreview(file);
-					this.files.push(file);
-				});
-				event.target.value = '';
-			},
-			handleRemoveFile(index) {
-				const file = this.files[index];
-				if (file.preview) {
-					URL.revokeObjectURL(file.preview);
-				}
-				this.files.splice(index, 1);
-			},
-			handleDragOver(event) {
-				event.preventDefault();
+			handleDragOver() {
 				this.isDragOver = true;
 			},
-			handleDragLeave(event) {
-				event.preventDefault();
-				if (!event.currentTarget.contains(event.relatedTarget)) {
+			handleDragLeave(event: DragEvent) {
+				const target = event.currentTarget as Node;
+				if (!target.contains(event.relatedTarget as Node)) {
 					this.isDragOver = false;
 				}
 			},
-			handleDrop(event) {
-				event.preventDefault();
+			handleDrop(event: DragEvent) {
 				this.isDragOver = false;
-				const droppedFiles = Array.from(event.dataTransfer.files);
-				if (droppedFiles.length > 0) {
-					droppedFiles.forEach((file) => {
-						file.preview = this.createFilePreview(file);
-						this.files.push(file);
-					});
+				this.uploadAll(Array.from(event.dataTransfer?.files ?? []));
+			},
+			uploadAll(selected: File[]) {
+				selected.forEach((file) => this.upload(file));
+			},
+			async upload(file: File) {
+				if (!this.taskId) {
+					return;
+				}
+				const pending: PendingUpload = {
+					id: this.nextUploadId++,
+					name: file.name,
+					size: file.size,
+					error: preflightError(file),
+				};
+				this.uploads.push(pending);
+				if (pending.error) {
+					return;
+				}
+
+				try {
+					const attached = await uploadTaskFile(this.taskId, file);
+					this.files.unshift(attached);
+					this.loadPreview(attached);
+					this.dismissUpload(pending.id);
+					this.$emit('changed', this.files.length);
+				} catch (error) {
+					pending.error = attachmentErrorMessage(error, this.maxBytes);
+					this.maxBytes =
+						(error as { response?: { data?: { max_bytes?: number } } })?.response
+							?.data?.max_bytes ?? this.maxBytes;
 				}
 			},
-			formatFileSize(bytes) {
-				if (bytes === 0) return '0 Bytes';
-				const k = 1024;
-				const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-				const i = Math.floor(Math.log(bytes) / Math.log(k));
-				return (
-					Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-				);
+			dismissUpload(id: number) {
+				this.uploads = this.uploads.filter((upload) => upload.id !== id);
+			},
+			async download(file: TaskFile) {
+				this.busyFileId = file.id;
+				try {
+					const url = await fetchFileObjectUrl(file.id);
+					const link = document.createElement('a');
+					link.href = url;
+					link.download = file.name;
+					link.click();
+					// Revoking straight away cancels the download in some browsers.
+					setTimeout(() => URL.revokeObjectURL(url), 10000);
+				} catch {
+					// Nothing to do beyond leaving the row as it was.
+				} finally {
+					this.busyFileId = null;
+				}
+			},
+			async remove(file: TaskFile) {
+				this.busyFileId = file.id;
+				try {
+					await detachFile(file.id);
+					this.files = this.files.filter((f) => f.id !== file.id);
+					this.revokePreview(file.id);
+					this.$emit('changed', this.files.length);
+				} catch {
+					// Leave the row in place: the file is still attached.
+				} finally {
+					this.busyFileId = null;
+				}
+			},
+			revokePreview(fileId: number) {
+				const url = this.previews[fileId];
+				if (url) {
+					URL.revokeObjectURL(url);
+					delete this.previews[fileId];
+				}
+			},
+		},
+		watch: {
+			taskId() {
+				this.load();
 			},
 		},
 		unmounted() {
-			this.files.forEach((file) => {
-				if (file.preview) {
-					URL.revokeObjectURL(file.preview);
-				}
-			});
+			Object.keys(this.previews).forEach((id) => this.revokePreview(Number(id)));
 		},
 	});
 </script>
