@@ -24,12 +24,19 @@
 				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 			>
 				<div class="flex-shrink-0">
-					<img
+					<button
 						v-if="previews[file.id]"
-						:src="previews[file.id]"
-						:alt="file.name"
-						class="h-12 w-12 rounded object-cover"
-					/>
+						type="button"
+						class="block cursor-zoom-in rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+						:title="`Open ${file.name}`"
+						@click="openGallery(file)"
+					>
+						<img
+							:src="previews[file.id]"
+							:alt="file.name"
+							class="h-12 w-12 rounded object-cover"
+						/>
+					</button>
 					<FileIcon
 						v-else
 						:size="20"
@@ -143,6 +150,13 @@
 			class="hidden"
 			@change="handleFileSelect"
 		/>
+
+		<AttachmentGallery
+			:images="images"
+			:start-id="galleryStartId"
+			:urls="previews"
+			@close="galleryStartId = null"
+		/>
 	</div>
 </template>
 
@@ -169,6 +183,8 @@
 		isImageMime,
 		preflightError,
 	} from '@/utils/attachments';
+	import { galleryImages } from '@/utils/galleryNavigation';
+	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
 
 	interface PendingUpload {
 		id: number;
@@ -180,6 +196,7 @@
 	export default defineComponent({
 		name: 'TaskAttachments',
 		components: {
+			AttachmentGallery,
 			AlertCircle,
 			Download,
 			FileIcon,
@@ -202,12 +219,18 @@
 				previews: {} as Record<number, string>,
 				isDragOver: false,
 				busyFileId: null as number | null,
+				galleryStartId: null as number | null,
 				nextUploadId: 1,
 				maxBytes: null as number | null,
 			};
 		},
 		created() {
 			this.load();
+		},
+		computed: {
+			images(): TaskFile[] {
+				return galleryImages(this.files);
+			},
 		},
 		methods: {
 			formatFileSize,
@@ -232,6 +255,9 @@
 				} catch {
 					// No preview is a cosmetic loss; the file is still listed and downloadable.
 				}
+			},
+			openGallery(file: TaskFile) {
+				this.galleryStartId = file.id;
 			},
 			handleAddFiles() {
 				(this.$refs.fileInput as HTMLInputElement).click();
@@ -308,6 +334,9 @@
 				this.busyFileId = file.id;
 				try {
 					await detachFile(file.id);
+					if (this.galleryStartId === file.id) {
+						this.galleryStartId = null;
+					}
 					this.files = this.files.filter((f) => f.id !== file.id);
 					this.revokePreview(file.id);
 					this.$emit('changed', this.files.length);
