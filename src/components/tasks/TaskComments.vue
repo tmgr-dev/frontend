@@ -10,6 +10,7 @@
 	} from 'lucide-vue-next';
 	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
+	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import {
 		getComments,
 		deleteComment,
@@ -317,11 +318,7 @@
 						</div>
 					</div>
 
-					<div
-						class="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink"
-					>
-						{{ comment.message }}
-					</div>
+					<MarkdownText :content="comment.message" />
 
 					<div class="mt-1.5 flex flex-wrap items-center gap-1">
 						<button

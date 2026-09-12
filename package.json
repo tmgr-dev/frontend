@@ -47,6 +47,7 @@
 		"dompurify": "^3.4.15",
 		"editorjs-drag-drop": "^1.1.16",
 		"lucide-vue-next": "^0.563.0",
+		"marked": "^18.0.12",
 		"md-editor-v3": "^4.17.4",
 		"radix-vue": "^1.9.9",
 		"tailwind-merge": "^2.5.4",
