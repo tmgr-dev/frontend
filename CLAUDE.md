@@ -9,6 +9,7 @@ npm run dev        # Vite dev server (PWA enabled in dev via vite-plugin-pwa)
 npm run build      # Production build (terser, manual vendor chunks, drops console.*)
 npm run preview    # Preview built bundle
 npm test           # Jest (ts-jest, node env) — runs ./tests
+npm run typecheck  # vue-tsc --noEmit (same check the PR "Tests" workflow runs)
 npx jest path/to/file.test.ts   # Run a single test file
 npm run format     # Prettier (singleQuote, trailingComma: all, printWidth 80)
 ```

@@ -10,6 +10,7 @@
 		"build": "vite build && node scripts/precompress.mjs",
 		"preview": "vite preview",
 		"test": "jest --verbose",
+		"typecheck": "vue-tsc --noEmit",
 		"format": "prettier .  --write"
 	},
 	"dependencies": {

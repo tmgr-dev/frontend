@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+# The repo is public: fork pull requests must never reach a secret. This
+# workflow reads nothing but the code, so it is safe to run on their head.
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Jest, types, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test -- --ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      # No .env: every VITE_* var is optional at build time, and a fork PR gets
+      # no secrets anyway. This proves the bundle compiles, not that it is
+      # configured — deployment builds pass the real values as build args.
+      - name: Production build
+        run: npm run build
