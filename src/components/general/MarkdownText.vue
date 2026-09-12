@@ -1,11 +1,16 @@
 <template>
-	<div class="markdown-text break-words text-sm leading-relaxed text-ink" v-html="html"></div>
+	<div
+		class="markdown-text break-words text-sm leading-relaxed text-ink"
+		v-html="html"
+		@click="onClick"
+	></div>
 </template>
 
 <script>
 	import { defineComponent } from 'vue';
 	import { markdownToHtml } from '@/utils/markdown';
 	import sanitizeHtml from '@/utils/sanitizeHtml';
+	import { openTaskByKey, useTaskKeyPrefixes } from '@/composable/useTaskKeyLinks';
 
 	export default defineComponent({
 		name: 'MarkdownText',
@@ -14,12 +19,35 @@
 				type: String,
 				default: '',
 			},
+			linkTaskKeys: {
+				type: Boolean,
+				default: true,
+			},
+		},
+		setup() {
+			return { taskKeyPrefixes: useTaskKeyPrefixes() };
 		},
 		computed: {
 			html() {
 				// Sanitized after rendering, never before: marked passes embedded
 				// HTML through, and comments are written by people.
-				return sanitizeHtml(markdownToHtml(this.content || ''));
+				return sanitizeHtml(
+					markdownToHtml(this.content || '', {
+						taskKeyPrefixes: this.linkTaskKeys ? this.taskKeyPrefixes : [],
+					}),
+				);
+			},
+		},
+		methods: {
+			// The markdown is injected as HTML, so the keys inside it are reached
+			// by delegation rather than by a listener per link.
+			onClick(event) {
+				const target = event.target?.closest?.('[data-task-key]');
+				if (!target) {
+					return;
+				}
+				event.preventDefault();
+				openTaskByKey(target.getAttribute('data-task-key'));
 			},
 		},
 	});
@@ -44,6 +72,18 @@
 	}
 	.markdown-text :deep(li + li) {
 		margin-top: 0.125rem;
+	}
+	.markdown-text :deep(.task-key) {
+		border-radius: 0.25rem;
+		background: rgb(37 99 235 / 10%);
+		padding: 0.05rem 0.3rem;
+		color: var(--color-brand, #2563eb);
+		font-weight: 500;
+		font-size: 0.8125rem;
+	}
+	.markdown-text :deep(.task-key:hover) {
+		background: rgb(37 99 235 / 18%);
+		text-decoration: underline;
 	}
 	.markdown-text :deep(a) {
 		color: var(--color-brand, #2563eb);
