@@ -21,6 +21,8 @@
 								:workspace-id="workspaceId"
 							/>
 
+							<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
+
 							<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
 								<button
 									type="button"
@@ -48,6 +50,7 @@
 									:users="workspaceUsersWithoutAll"
 									:workspace-id="workspaceId"
 								/>
+								<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
 								<div class="h-5 w-px bg-line shrink-0"></div>
 								<FiltersBoard
 									v-if="workspaceUsers.length"
@@ -656,6 +659,8 @@
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
+	import { boardTaskCounts } from '@/utils/boardSummary';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
 	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
@@ -684,6 +689,7 @@
 			Select,
 			Confirm,
 			WorkspaceUsers,
+			BoardTaskCount,
 			FeatureGate,
 			BoardPreview,
 		},
@@ -827,19 +833,7 @@
 				);
 			},
 			sprintSummary() {
-				const counts = { total: 0, inProgress: 0, done: 0, hidden: 0 };
-				for (const col of this.columns) {
-					const n = col.taskCount ?? col.tasks?.length ?? 0;
-					if (col.status?.type === 'archived') continue;
-					counts.total += n;
-					if (col.status?.type === 'active') counts.inProgress += n;
-					else if (col.status?.type === 'completed') counts.done += n;
-					else if (col.status?.type === 'hidden') counts.hidden += n;
-				}
-				const percent = counts.total
-					? Math.round((counts.done / counts.total) * 100)
-					: 0;
-				return { ...counts, percent };
+				return boardTaskCounts(this.columns);
 			},
 		},
 		methods: {
