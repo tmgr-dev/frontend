@@ -11,6 +11,7 @@
 	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
+	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
 	import {
 		getComments,
 		deleteComment,
@@ -65,16 +66,9 @@
 	const currentUser = computed(() => store.state.user);
 	const commentsCount = computed(() => comments.value.length);
 
-	const sortedComments = computed(() => {
-		// Page rail (hideHeader) reads chronologically (oldest first, newest by
-		// the composer); the modal keeps its existing newest-first order.
-		const dir = props.hideHeader ? 1 : -1;
-		return [...comments.value].sort(
-			(a, b) =>
-				dir *
-				(new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-		);
-	});
+	// Both the page rail and the modal read chronologically, so the newest
+	// comment is the one next to the composer (TM-144).
+	const sortedComments = computed(() => sortCommentsOldestFirst(comments.value));
 
 	const loadComments = async () => {
 		if (!props.taskId) return;
