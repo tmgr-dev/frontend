@@ -40,3 +40,38 @@ describe('markdownToHtml', () => {
 		expect(markdownToHtml('<img src=x onerror=alert(1)>')).toContain('onerror');
 	});
 });
+
+describe('markdownToHtml with task keys', () => {
+	const opts = { taskKeyPrefixes: ['TM', 'TMBE'] };
+
+	it('turns a key of this workspace into something clickable', () => {
+		const html = markdownToHtml('see TM-129 for details', opts);
+		expect(html).toContain('data-task-key="TM-129"');
+		expect(html).toContain('>TM-129<');
+	});
+
+	it('links a lower-case key by its real name', () => {
+		expect(markdownToHtml('see tm-129', opts)).toContain('data-task-key="TM-129"');
+	});
+
+	it('leaves prefixes this workspace does not use alone', () => {
+		const html = markdownToHtml('encoded as UTF-8, tracked in GPT-4', opts);
+		expect(html).not.toContain('data-task-key');
+	});
+
+	it('does not touch keys inside code', () => {
+		expect(markdownToHtml('`TM-129`', opts)).not.toContain('data-task-key');
+		expect(markdownToHtml('```\nTM-129\n```', opts)).not.toContain('data-task-key');
+	});
+
+	it('does not relink a key that is already a link', () => {
+		const html = markdownToHtml('[TM-129](https://tmgr.dev/x/tasks/1)', opts);
+		expect(html).toContain('href="https://tmgr.dev/x/tasks/1"');
+		expect(html).not.toContain('data-task-key');
+	});
+
+	it('links nothing when the workspace has no key prefixes', () => {
+		expect(markdownToHtml('see TM-129')).not.toContain('data-task-key');
+		expect(markdownToHtml('see TM-129', { taskKeyPrefixes: [] })).not.toContain('data-task-key');
+	});
+});
