@@ -11,7 +11,21 @@ module.exports = {
 	moduleNameMapper: {
 		'^@/(.*)$': '<rootDir>/src/$1',
 	},
+	// marked ships ESM only and jest runs CommonJS here, so it is compiled like
+	// the rest of the sources instead of being skipped as a node_modules file.
+	transformIgnorePatterns: ['/node_modules/(?!marked/)'],
 	transform: {
+		'^.+\\.m?js$': [
+			'ts-jest',
+			{
+				tsconfig: {
+					allowJs: true,
+					target: 'ES2020',
+					module: 'CommonJS',
+					esModuleInterop: true,
+				},
+			},
+		],
 		'^.+\\.tsx?$': [
 			'ts-jest',
 			{

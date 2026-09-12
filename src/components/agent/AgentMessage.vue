@@ -6,6 +6,7 @@
 	import { computeThemeClasses } from '@/theme/applyTheme';
 	import store from '@/store';
 	import sanitizeHtml from '@/utils/sanitizeHtml';
+	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import type { AgentStep, AgentMessage } from '@/types/agent';
 
 	const props = defineProps<{ message: AgentMessage }>();
@@ -27,8 +28,8 @@
 
 <template>
 	<div v-if="props.message.role === 'user'" class="flex justify-end">
-		<div class="max-w-[90%] rounded-lg bg-brand/10 px-3 py-2 text-sm text-ink whitespace-pre-wrap">
-			{{ props.message.content }}
+		<div class="max-w-[90%] rounded-lg bg-brand/10 px-3 py-2 text-sm text-ink">
+			<MarkdownText :content="props.message.content" />
 		</div>
 	</div>
 	<div v-else class="flex justify-start">
