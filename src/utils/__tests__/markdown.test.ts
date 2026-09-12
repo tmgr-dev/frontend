@@ -100,3 +100,23 @@ describe('markdownToHtml link safety', () => {
 		);
 	});
 });
+
+describe('markdownToHtml block rendering', () => {
+	it('lets a wide table scroll on its own instead of the whole thread', () => {
+		const html = markdownToHtml('| a | b |\n| --- | --- |\n| 1 | 2 |');
+		expect(html).toContain('<div class="table-scroll"><table>');
+		expect(html).toContain('</table></div>');
+	});
+
+	it('leaves output without a table untouched', () => {
+		expect(markdownToHtml('plain')).not.toContain('table-scroll');
+	});
+
+	it('still renders the blocks a comment uses', () => {
+		const html = markdownToHtml('## title\n\n> quote\n\n---\n\n```js\nconst a = 1;\n```');
+		expect(html).toContain('<h2');
+		expect(html).toContain('<blockquote>');
+		expect(html).toContain('<hr>');
+		expect(html).toContain('<pre>');
+	});
+});

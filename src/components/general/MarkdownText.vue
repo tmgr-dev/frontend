@@ -54,93 +54,132 @@
 </script>
 
 <style scoped>
+	/* Comment-sized typography: readable blocks in a 380px rail, on both themes.
+	   Borders use the strong line token — the plain one is 5% alpha and vanishes —
+	   and fills are mixed from the current text colour so they follow the theme. */
+	.markdown-text {
+		overflow-wrap: anywhere;
+	}
+	.markdown-text :deep(> *:first-child) {
+		margin-top: 0;
+	}
+	.markdown-text :deep(> *:last-child) {
+		margin-bottom: 0;
+	}
 	.markdown-text :deep(p) {
-		margin: 0;
-	}
-	.markdown-text :deep(p + p),
-	.markdown-text :deep(ul),
-	.markdown-text :deep(ol),
-	.markdown-text :deep(pre),
-	.markdown-text :deep(blockquote),
-	.markdown-text :deep(table) {
-		margin-top: 0.5rem;
-	}
-	.markdown-text :deep(ul),
-	.markdown-text :deep(ol) {
-		padding-left: 1.25rem;
-		list-style: revert;
-	}
-	.markdown-text :deep(li + li) {
-		margin-top: 0.125rem;
-	}
-	.markdown-text :deep(.task-key) {
-		border-radius: 0.25rem;
-		background: rgb(37 99 235 / 10%);
-		padding: 0.05rem 0.3rem;
-		color: var(--color-brand, #2563eb);
-		font-weight: 500;
-		font-size: 0.8125rem;
-	}
-	.markdown-text :deep(.task-key:hover) {
-		background: rgb(37 99 235 / 18%);
-		text-decoration: underline;
-	}
-	.markdown-text :deep(a) {
-		color: var(--color-brand, #2563eb);
-		text-decoration: underline;
-	}
-	.markdown-text :deep(code) {
-		border-radius: 0.25rem;
-		background: rgb(0 0 0 / 6%);
-		padding: 0.05rem 0.3rem;
-		font-size: 0.8125rem;
-	}
-	.markdown-text :deep(pre) {
-		overflow-x: auto;
-		border-radius: 0.375rem;
-		background: rgb(0 0 0 / 6%);
-		padding: 0.5rem 0.75rem;
-	}
-	.markdown-text :deep(pre code) {
-		background: transparent;
-		padding: 0;
-	}
-	.markdown-text :deep(blockquote) {
-		border-left: 3px solid rgb(0 0 0 / 15%);
-		padding-left: 0.6rem;
-		color: inherit;
-		opacity: 0.85;
+		margin: 0 0 0.55rem;
 	}
 	.markdown-text :deep(h1),
 	.markdown-text :deep(h2),
 	.markdown-text :deep(h3),
-	.markdown-text :deep(h4) {
-		margin-top: 0.5rem;
+	.markdown-text :deep(h4),
+	.markdown-text :deep(h5),
+	.markdown-text :deep(h6) {
+		margin: 0.9rem 0 0.35rem;
 		font-weight: 600;
+		line-height: 1.3;
+	}
+	.markdown-text :deep(h1) {
+		font-size: 1.125rem;
+	}
+	.markdown-text :deep(h2) {
+		font-size: 1rem;
+	}
+	.markdown-text :deep(h3),
+	.markdown-text :deep(h4),
+	.markdown-text :deep(h5),
+	.markdown-text :deep(h6) {
 		font-size: 0.9375rem;
 	}
-	.markdown-text :deep(table) {
-		display: block;
+	.markdown-text :deep(ul),
+	.markdown-text :deep(ol) {
+		margin: 0 0 0.55rem;
+		padding-left: 1.35rem;
+	}
+	.markdown-text :deep(ul) {
+		list-style: disc;
+	}
+	.markdown-text :deep(ol) {
+		list-style: decimal;
+	}
+	.markdown-text :deep(ul ul) {
+		list-style: circle;
+	}
+	.markdown-text :deep(li) {
+		margin: 0.15rem 0;
+	}
+	.markdown-text :deep(li > ul),
+	.markdown-text :deep(li > ol) {
+		margin: 0.15rem 0 0;
+	}
+	.markdown-text :deep(blockquote) {
+		margin: 0 0 0.55rem;
+		border-left: 3px solid var(--brand-color);
+		padding: 0.1rem 0 0.1rem 0.7rem;
+		color: var(--fg-muted);
+	}
+	.markdown-text :deep(code) {
+		border-radius: 0.25rem;
+		background: color-mix(in oklab, currentColor 10%, transparent);
+		padding: 0.1em 0.35em;
+		font-size: 0.85em;
+	}
+	.markdown-text :deep(pre) {
+		margin: 0 0 0.55rem;
 		overflow-x: auto;
+		border: 1px solid var(--line-strong-color);
+		border-radius: 0.5rem;
+		background: color-mix(in oklab, currentColor 5%, transparent);
+		padding: 0.6rem 0.75rem;
+		line-height: 1.5;
+	}
+	.markdown-text :deep(pre code) {
+		background: none;
+		padding: 0;
+		font-size: 0.8125rem;
+	}
+	.markdown-text :deep(hr) {
+		margin: 0.9rem 0;
+		border: 0;
+		border-top: 1px solid var(--line-strong-color);
+	}
+	.markdown-text :deep(.table-scroll) {
+		margin: 0 0 0.55rem;
+		overflow-x: auto;
+	}
+	.markdown-text :deep(table) {
 		border-collapse: collapse;
+		width: 100%;
 	}
 	.markdown-text :deep(th),
 	.markdown-text :deep(td) {
-		border: 1px solid rgb(0 0 0 / 12%);
-		padding: 0.2rem 0.45rem;
+		border: 1px solid var(--line-strong-color);
+		padding: 0.3rem 0.55rem;
+		text-align: left;
+	}
+	.markdown-text :deep(th) {
+		background: color-mix(in oklab, currentColor 6%, transparent);
+		font-weight: 600;
+	}
+	.markdown-text :deep(a) {
+		color: var(--brand-color);
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 	.markdown-text :deep(img) {
+		margin-top: 0.35rem;
+		border-radius: 0.375rem;
 		max-width: 100%;
 	}
-	:global(.dark) .markdown-text :deep(code),
-	:global(.dark) .markdown-text :deep(pre) {
-		background: rgb(255 255 255 / 10%);
+	.markdown-text :deep(.task-key) {
+		border-radius: 0.25rem;
+		background: var(--brand-bg-color);
+		padding: 0.05rem 0.35rem;
+		color: var(--brand-fg-color);
+		font-weight: 500;
+		font-size: 0.875em;
 	}
-	:global(.dark) .markdown-text :deep(th),
-	:global(.dark) .markdown-text :deep(td) {
-		border-color: rgb(255 255 255 / 18%);
-	}
-	:global(.dark) .markdown-text :deep(blockquote) {
-		border-left-color: rgb(255 255 255 / 25%);
+	.markdown-text :deep(.task-key:hover) {
+		text-decoration: underline;
 	}
 </style>

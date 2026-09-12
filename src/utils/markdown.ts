@@ -127,5 +127,15 @@ const rendererFor = (prefixes?: string[]): Marked => {
  * The result is raw HTML — marked passes embedded HTML through untouched — so
  * every caller must sanitize it before it reaches the DOM (see sanitizeHtml).
  */
+/**
+ * A table wider than the comment column has to scroll on its own; the alternative
+ * is a horizontal scrollbar on the whole thread. Tables cannot nest, so wrapping
+ * the rendered output is enough and keeps the renderer untouched.
+ */
+const wrapTables = (html: string): string =>
+	html.includes('<table>')
+		? html.replace(/<table>/g, '<div class="table-scroll"><table>').replace(/<\/table>/g, '</table></div>')
+		: html;
+
 export const markdownToHtml = (text: string, options: MarkdownOptions = {}): string =>
-	text ? (rendererFor(options.taskKeyPrefixes).parse(text) as string) : '';
+	text ? wrapTables(rendererFor(options.taskKeyPrefixes).parse(text) as string) : '';
