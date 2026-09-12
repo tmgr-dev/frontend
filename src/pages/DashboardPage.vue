@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import store from '@/store';
+import { dashboardStatisticTarget, taskTarget } from '@/utils/dashboardLinks';
 import BaseLayout from '@/components/layouts/BaseLayout.vue';
 
 // Dashboard components
@@ -418,41 +419,26 @@ const showMemberStatusNotification = (member: TeamMemberStatus) => {
 };
 
 // Navigation handlers
+const openTask = (taskId: number | null | undefined) => {
+  const target = taskTarget(taskId);
+  if (target) store.commit('setCurrentTaskIdForModal', target.taskId);
+};
+
 const handleStatisticCardClick = (filter: Record<string, any>) => {
-  // Navigate to filtered view based on the statistic clicked
-  if (filter.view === 'team') {
-    router.push('/team');
-  } else if (filter.view === 'time_tracking') {
-    router.push('/stats');
-  } else if (filter.view === 'daily_routine') {
-    router.push('/daily-routine');
-  } else {
-    // Navigate to tasks list with filters
-    const query: Record<string, string> = {};
-    if (filter.status && filter.status !== 'all') {
-      query.status = filter.status;
-    }
-    if (filter.period) {
-      query.period = filter.period;
-    }
-    router.push({ path: '/tasks', query });
-  }
+  const target = dashboardStatisticTarget(filter);
+  if (target) router.push(target);
 };
 
 const handleActivityClick = (activity: Activity) => {
-  // Navigate to related item based on activity type
-  if (activity.subject_type === 'Task' && activity.subject_id) {
-    router.push(`/tasks/${activity.subject_id}`);
-  }
+  if (activity.subject_type === 'Task') openTask(activity.subject_id);
 };
 
 const handleTaskClick = (task: RecentTask) => {
-  router.push(`/tasks/${task.id}`);
+  openTask(task.id);
 };
 
-const handleMemberClick = (member: TeamMemberStatus) => {
-  router.push(`/profile/${member.id}`);
-};
+// A member has no page of its own yet (#8988); pushing /profile/{id} landed on a category route.
+const handleMemberClick = (_member: TeamMemberStatus) => {};
 
 // Optimistic update handlers
 const optimisticallyUpdateStatistics = (updates: Partial<DashboardStatistics>) => {
@@ -1014,7 +1000,7 @@ onUnmounted(() => {
                   @refresh="() => refreshSection('teamActivity')"
                   @member-click="handleMemberClick"
                   @task-click="handleTaskClick"
-                  @invite-members="() => router.push('/workspace/invite')"
+                  @invite-members="() => router.push('/settings/workspaces')"
                   @window-change="setTeamActivityWindow"
                   :aria-describedby="loadingStates.teamActivity.isLoading ? 'team-loading' : 'team-description'"
                 />
