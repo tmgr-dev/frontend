@@ -79,6 +79,7 @@
 	import { useMagicKeys } from '@vueuse/core';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
 	import { footerHeightVars } from '@/utils/bottomBar';
+	import { applyTimerState } from '@/utils/timerSync';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
@@ -208,7 +209,7 @@
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
-		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints'];
+		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints', 'start_time', 'common_time'];
 		for (const field of fieldsToCompare) {
 			const currentVal = current[field as keyof Task];
 			const incomingVal = incoming[field];
@@ -790,6 +791,8 @@
 		if (!userId) return;
 		subscribedUserId.value = userId;
 		userPusherSubscriptionId.value = subscribeToUser(userId, {
+			onTaskCountdownStarted: (task) => applyTimerState(form.value, task),
+			onTaskCountdownStopped: (task) => applyTimerState(form.value, task),
 			onAgentStep: (e) => {
 				if (isForThisTask(e) && !aiPendingSteps.value.some((s) => s.seq === e.seq)) {
 					aiPendingSteps.value = [...aiPendingSteps.value, { seq: e.seq, tool: e.tool, summary: e.summary }];

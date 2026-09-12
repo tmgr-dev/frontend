@@ -20,12 +20,12 @@
           <div class="flex-1">
             <!-- Activity Title (Action) -->
             <h3 class="font-semibold text-gray-900 dark:text-white text-sm leading-tight">
-              {{ activity.title }}
+              {{ title }}
             </h3>
             
             <!-- Activity Subject (Resource name) -->
-            <p v-if="activity.subject_name" class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-              {{ activity.subject_name }}
+            <p v-if="subject" class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+              {{ subject }}
             </p>
           </div>
           
@@ -70,6 +70,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { activitySubject, activityTitle } from '@/utils/activityLines';
 import type { Activity } from '@/types/dashboard';
 import { cn } from '@/utils';
 import {
@@ -102,6 +103,11 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   click: [activity: Activity];
 }>();
+
+// TM-228: the feed used to render whatever the API sent, so a row with no title or subject name
+// showed as a blank line next to a timestamp.
+const title = computed(() => activityTitle(props.activity));
+const subject = computed(() => activitySubject(props.activity));
 
 const userInitials = computed(() => {
   return props.activity.user.name
