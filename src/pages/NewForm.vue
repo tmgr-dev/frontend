@@ -78,6 +78,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { focusField } from '@/utils/focusTarget';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
@@ -944,6 +945,7 @@
 		try {
 			await sendFollowUp(form.value.id, activeAgent.id, newComment.value);
 			newComment.value = '';
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				taskCommentsRef.value.loadComments();
 			}
@@ -1347,14 +1349,13 @@
 		}
 	});
 
+	// TM-222: the composer keeps the cursor - on expand, and again after a message is sent, so a
+	// follow-up can be typed without clicking back into the field.
+	const focusCommentInput = () => nextTick(() => focusField(commentTextarea.value));
+
 	watch(isCommentInputExpanded, (expanded) => {
 		if (expanded) {
-			nextTick(() => {
-				const textarea = commentTextarea.value?.$el?.querySelector('textarea');
-				if (textarea) {
-					textarea.focus();
-				}
-			});
+			focusCommentInput();
 		}
 	});
 
@@ -1482,6 +1483,7 @@
 			});
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				await taskCommentsRef.value.loadComments();
 			}
@@ -1504,6 +1506,7 @@
 			aiPendingSteps.value = [];
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				taskCommentsRef.value.loadComments();
 			}
