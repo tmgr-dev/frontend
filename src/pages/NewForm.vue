@@ -78,6 +78,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { agentToolLabel } from '@/utils/agentToolLabels';
 	import { applyTimerState } from '@/utils/timerSync';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
@@ -1973,7 +1974,7 @@
 					<div v-if="isModal && aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
 					</div>
 					<div
 						v-if="isModal && form.id"
@@ -2119,7 +2120,7 @@
 					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
 					</div>
 					<div
 						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
