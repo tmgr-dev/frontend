@@ -11,21 +11,12 @@
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
 			<!-- Avatar + presence dot -->
 			<div class="relative shrink-0">
-				<img
-					v-if="member.avatar"
-					:src="member.avatar"
-					:alt="member.name"
-					class="h-10 w-10 rounded-full object-cover"
-					loading="lazy"
+				<UserAvatar
+					:user-id="member.id"
+					:name="member.name"
+					:has-avatar="member.has_avatar ?? false"
+					:size="40"
 				/>
-				<div
-					v-else
-					class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 dark:bg-gray-600"
-				>
-					<span class="text-sm font-medium text-gray-600 dark:text-gray-300">{{
-						memberInitials
-					}}</span>
-				</div>
 				<div
 					:class="statusIndicatorClasses"
 					:title="
@@ -155,6 +146,7 @@
 </template>
 
 <script setup lang="ts">
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { TeamMemberStatus } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import {
@@ -177,15 +169,6 @@
 
 	const timerInterval = ref<NodeJS.Timeout | null>(null);
 	const timerDuration = ref<string>('');
-
-	const memberInitials = computed(() => {
-		return props.member.name
-			.split(' ')
-			.map((name) => name.charAt(0))
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
-	});
 
 	const formattedLastActivity = computed(() => {
 		if (!props.member.last_activity_at) return '';
