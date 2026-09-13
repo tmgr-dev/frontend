@@ -1,16 +1,16 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
-	import { useStore } from 'vuex';
-	import { Play, Pause } from 'lucide-vue-next';
 	import { Task } from '@/actions/tmgr/tasks';
+	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { ExtendedTime, Time } from '@/types';
 	import {
 		convertToHHMM,
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from '@/utils/timeUtils';
-	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
-	import { ExtendedTime, Time } from '@/types';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { Pause, Play } from 'lucide-vue-next';
+	import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+	import { useStore } from 'vuex';
 
 	interface Props {
 		form: Task;
@@ -177,7 +177,7 @@
 					class="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wide text-status-done-fg"
 				>
 					<span
-						class="h-1.5 w-1.5 rounded-full bg-status-done animate-tmgr-pulse"
+						class="h-1.5 w-1.5 animate-tmgr-pulse rounded-full bg-status-done"
 					></span>
 					Running
 				</span>
@@ -192,9 +192,7 @@
 			<div
 				class="flex select-none items-baseline gap-0.5 whitespace-nowrap font-mono text-xl font-semibold tabular-nums"
 				:class="[
-					isTimerActive &&
-						!isTimeOver &&
-						'text-status-done-fg',
+					isTimerActive && !isTimeOver && 'text-status-done-fg',
 					isTimeOver && 'text-status-fix-fg',
 					!isTimerActive && !isTimeOver && 'text-ink',
 				]"

@@ -38,7 +38,14 @@ export const shouldIgnoreNavigationTarget = (
 	return false;
 };
 
-const INTERACTIVE_TAGS = ['button', 'a', 'input', 'textarea', 'select', 'option'];
+const INTERACTIVE_TAGS = [
+	'button',
+	'a',
+	'input',
+	'textarea',
+	'select',
+	'option',
+];
 const INTERACTIVE_ROLES = [
 	'button',
 	'link',

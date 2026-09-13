@@ -3,10 +3,14 @@
 		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
 				Files
-				<span v-if="total" class="font-normal text-gray-400">({{ total }})</span>
+				<span v-if="total" class="font-normal text-gray-400"
+					>({{ total }})</span
+				>
 			</h1>
 
-			<div class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
+			<div
+				class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
+			>
 				<button
 					v-for="option in filters"
 					:key="option.value"
@@ -62,14 +66,22 @@
 							class="h-12 w-12 rounded object-cover"
 						/>
 					</button>
-					<FileIcon v-else :size="20" class="text-gray-500 dark:text-gray-400" />
+					<FileIcon
+						v-else
+						:size="20"
+						class="text-gray-500 dark:text-gray-400"
+					/>
 				</div>
 
 				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+					<p
+						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
+					>
 						{{ file.name }}
 					</p>
-					<p class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+					<p
+						class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+					>
 						<span>{{ formatFileSize(file.size) }}</span>
 						<span aria-hidden="true">·</span>
 						<button
@@ -94,7 +106,10 @@
 			</li>
 		</ul>
 
-		<div v-if="lastPage > 1" class="mt-4 flex items-center justify-center gap-3">
+		<div
+			v-if="lastPage > 1"
+			class="mt-4 flex items-center justify-center gap-3"
+		>
 			<button
 				type="button"
 				class="rounded-md px-3 py-1.5 text-sm text-gray-600 disabled:opacity-40 dark:text-gray-300"
@@ -126,19 +141,19 @@
 </template>
 
 <script lang="ts">
-	import { Download, FileIcon, Loader2 } from 'lucide-vue-next';
-	import { defineComponent } from 'vue';
-	import store from '@/store';
 	import {
 		fetchFileObjectUrl,
 		fileDisplayUrl,
-		releaseFileDisplayUrl,
 		getWorkspaceFiles,
+		releaseFileDisplayUrl,
 		type WorkspaceFile,
 	} from '@/actions/tmgr/files';
+	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import store from '@/store';
 	import { formatFileSize, isImageMime } from '@/utils/attachments';
 	import { galleryImages } from '@/utils/galleryNavigation';
-	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import { Download, FileIcon, Loader2 } from 'lucide-vue-next';
+	import { defineComponent } from 'vue';
 
 	export default defineComponent({
 		name: 'WorkspaceFilesPage',
@@ -176,7 +191,9 @@
 				// The key is usually already the title's prefix; showing both would read "TM-7 TM-7: …".
 				const title = file.task.title ?? '';
 				const key = file.task.key ?? '';
-				return key && title.startsWith(key) ? title.slice(key.length).replace(/^[:\s]+/, '') : title;
+				return key && title.startsWith(key)
+					? title.slice(key.length).replace(/^[:\s]+/, '')
+					: title;
 			},
 			async load() {
 				if (!this.workspaceId) {
@@ -206,7 +223,9 @@
 					return;
 				}
 				try {
-					this.previews[file.id] = await fileDisplayUrl(file.id, { thumb: true });
+					this.previews[file.id] = await fileDisplayUrl(file.id, {
+						thumb: true,
+					});
 				} catch {
 					// A missing preview costs nothing: the row still names the file and downloads it.
 				}

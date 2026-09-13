@@ -1,6 +1,8 @@
 import { isSaveHotkey } from '@/utils/saveHotkey';
 
-const event = (overrides: Partial<Parameters<typeof isSaveHotkey>[0]> = {}) => ({
+const event = (
+	overrides: Partial<Parameters<typeof isSaveHotkey>[0]> = {},
+) => ({
 	type: 'keydown',
 	code: 'KeyS',
 	ctrlKey: true,

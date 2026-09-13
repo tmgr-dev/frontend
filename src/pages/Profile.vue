@@ -1,45 +1,45 @@
 <template>
 	<div>
 		<div class="flex max-w-lg flex-col gap-3">
-		<TextField
-			v-model="user.name"
-			:errors="errors.name"
-			placeholder="Your name"
-		/>
-
-		<div class="flex">
 			<TextField
-				v-model="user.password"
-				:errors="errors?.password"
-				class="w-1/2 pr-2"
-				placeholder="New password"
+				v-model="user.name"
+				:errors="errors.name"
+				placeholder="Your name"
 			/>
 
-			<TextField
-				v-model="user.password_confirmation"
-				:errors="errors.password_confirmation"
-				class="w-1/2 pl-2"
-				placeholder="New password confirmation"
-			/>
-		</div>
+			<div class="flex">
+				<TextField
+					v-model="user.password"
+					:errors="errors?.password"
+					class="w-1/2 pr-2"
+					placeholder="New password"
+				/>
 
-		<div class="text-left">
-			<button
-				class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
-				type="button"
-				@click="saveUser"
-			>
-				Save
-			</button>
-		</div>
+				<TextField
+					v-model="user.password_confirmation"
+					:errors="errors.password_confirmation"
+					class="w-1/2 pl-2"
+					placeholder="New password confirmation"
+				/>
+			</div>
+
+			<div class="text-left">
+				<button
+					class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none sm:mb-0"
+					type="button"
+					@click="saveUser"
+				>
+					Save
+				</button>
+			</div>
 		</div>
 	</div>
 </template>
 
 <script>
+	import { getUser, updateUser } from '@/actions/tmgr/user';
 	import Button from '@/components/general/Button.vue';
 	import TextField from '@/components/general/TextField.vue';
-	import { getUser, updateUser } from '@/actions/tmgr/user';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
@@ -65,7 +65,8 @@
 			async saveUser() {
 				try {
 					const updated = await updateUser(this.user);
-					if (updated && typeof updated === 'object') this.user = { ...this.user, ...updated };
+					if (updated && typeof updated === 'object')
+						this.user = { ...this.user, ...updated };
 					this.showAlert('Saved', 'User data saved');
 				} catch (error) {
 					this.errors = error.response?.data?.errors ?? {};

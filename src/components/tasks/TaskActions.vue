@@ -3,7 +3,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="mr-auto rounded bg-red-500 py-2 px-4 font-bold text-white outline-none hover:bg-red-700"
+			class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
 		>
 			Delete
 		</button>
@@ -14,12 +14,12 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="relative rounded bg-blue-500 py-2 px-8 font-bold text-white hover:bg-blue-700 focus:outline-none"
+				class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
 				type="button"
 			>
 				<svg
 					v-if="isSaving"
-					class="absolute top-2.5 left-1.5 inline h-5 w-5 animate-spin text-white"
+					class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
 					viewBox="0 0 24 24"
@@ -43,7 +43,7 @@
 
 			<span
 				v-if="isDataEdited"
-				class="absolute top-0 right-0 -mt-1 mr-4 flex h-5 w-5"
+				class="absolute right-0 top-0 -mt-1 mr-4 flex h-5 w-5"
 			>
 				<span
 					class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
@@ -55,7 +55,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="mb-5 rounded bg-orange-500 py-2 px-4 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+			class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
 			type="button"
 		>
 			Create
@@ -73,7 +73,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="rounded bg-gray-500 py-2 px-4 font-bold text-white hover:bg-gray-700 focus:outline-none"
+			class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
 			type="button"
 		>
 			Settings

@@ -10,25 +10,34 @@ export interface PositionedEvent<T = any> {
 
 export type ClusterItem<T = any> =
 	| { kind: 'single'; event: PositionedEvent<T> }
-	| { kind: 'cluster'; events: PositionedEvent<T>[]; startMin: number; endMin: number };
+	| {
+			kind: 'cluster';
+			events: PositionedEvent<T>[];
+			startMin: number;
+			endMin: number;
+	  };
 
 export interface MinutesEvent {
 	time: { h: number; m: number } | null;
 	durationMin?: number | null;
 }
 
-export function enrich<T extends MinutesEvent>(events: T[]): PositionedEvent<T>[] {
+export function enrich<T extends MinutesEvent>(
+	events: T[],
+): PositionedEvent<T>[] {
 	return events
-		.filter(e => e.time)
-		.map(e => {
-			const startMin = (e.time!.h * 60) + e.time!.m;
+		.filter((e) => e.time)
+		.map((e) => {
+			const startMin = e.time!.h * 60 + e.time!.m;
 			const endMin = startMin + Math.max(15, e.durationMin || 30);
 			return { startMin, endMin, source: e };
 		})
 		.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
 }
 
-export function clusterEvents<T extends MinutesEvent>(events: T[]): ClusterItem<T>[] {
+export function clusterEvents<T extends MinutesEvent>(
+	events: T[],
+): ClusterItem<T>[] {
 	const enriched = enrich(events);
 	const out: ClusterItem<T>[] = [];
 	let bucket: PositionedEvent<T>[] = [];
@@ -39,8 +48,8 @@ export function clusterEvents<T extends MinutesEvent>(events: T[]): ClusterItem<
 		if (bucket.length === 1) {
 			out.push({ kind: 'single', event: bucket[0] });
 		} else {
-			const startMin = Math.min(...bucket.map(e => e.startMin));
-			const endMin = Math.max(...bucket.map(e => e.endMin));
+			const startMin = Math.min(...bucket.map((e) => e.startMin));
+			const endMin = Math.max(...bucket.map((e) => e.endMin));
 			out.push({ kind: 'cluster', events: bucket.slice(), startMin, endMin });
 		}
 		bucket = [];
@@ -61,7 +70,9 @@ export function clusterEvents<T extends MinutesEvent>(events: T[]): ClusterItem<
 	return out;
 }
 
-export function packLanes<T extends MinutesEvent>(events: T[]): PositionedEvent<T>[] {
+export function packLanes<T extends MinutesEvent>(
+	events: T[],
+): PositionedEvent<T>[] {
 	const enriched = enrich(events);
 	const out: PositionedEvent<T>[] = [];
 	let cluster: PositionedEvent<T>[] = [];
@@ -71,7 +82,7 @@ export function packLanes<T extends MinutesEvent>(events: T[]): PositionedEvent<
 		if (cluster.length === 0) return;
 		const laneEnds: number[] = [];
 		for (const ev of cluster) {
-			let lane = laneEnds.findIndex(end => end <= ev.startMin);
+			let lane = laneEnds.findIndex((end) => end <= ev.startMin);
 			if (lane === -1) {
 				lane = laneEnds.length;
 				laneEnds.push(0);

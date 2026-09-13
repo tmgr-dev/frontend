@@ -1,6 +1,6 @@
 import { computed } from 'vue';
-import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
+import { useStore } from 'vuex';
 
 export interface Workspace {
 	id: number;
@@ -22,26 +22,35 @@ export function useCurrentWorkspace() {
 
 	const currentWorkspaceFromRoute = computed<Workspace | null>(() => {
 		if (!currentWorkspaceCode.value) return null;
-		return workspaces.value.find(
-			(w: Workspace) => w.code === currentWorkspaceCode.value
-		) || null;
+		return (
+			workspaces.value.find(
+				(w: Workspace) => w.code === currentWorkspaceCode.value,
+			) || null
+		);
 	});
 
 	const currentWorkspaceFromSettings = computed<Workspace | null>(() => {
 		const settings = store.state.user?.settings || [];
 		const workspaceSetting = settings.find(
-			(s: { key: string; value: any }) => s.key === 'current_workspace'
+			(s: { key: string; value: any }) => s.key === 'current_workspace',
 		);
-		
+
 		if (!workspaceSetting?.value) return null;
-		
-		return workspaces.value.find(
-			(w: Workspace) => w.id === workspaceSetting.value
-		) || null;
+
+		return (
+			workspaces.value.find(
+				(w: Workspace) => w.id === workspaceSetting.value,
+			) || null
+		);
 	});
 
 	const currentWorkspace = computed<Workspace | null>(() => {
-		return currentWorkspaceFromRoute.value || currentWorkspaceFromSettings.value || workspaces.value[0] || null;
+		return (
+			currentWorkspaceFromRoute.value ||
+			currentWorkspaceFromSettings.value ||
+			workspaces.value[0] ||
+			null
+		);
 	});
 
 	const currentWorkspaceId = computed<number | null>(() => {

@@ -12,7 +12,12 @@ export interface RoutineCategory {
 	color: string;
 }
 
-export type RoutineFrequency = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+export type RoutineFrequency =
+	| 'NONE'
+	| 'DAILY'
+	| 'WEEKLY'
+	| 'MONTHLY'
+	| 'YEARLY';
 
 export interface RoutinePattern {
 	frequency: RoutineFrequency;
@@ -23,7 +28,10 @@ export interface RoutinePattern {
 	occurrences?: number | null;
 	start_at?: string | null;
 	end_at?: string | null;
-	scheduled_time?: { hours: number; minutes: number; seconds: number } | string | null;
+	scheduled_time?:
+		| { hours: number; minutes: number; seconds: number }
+		| string
+		| null;
 	duration_min?: number | null;
 	reminder_min?: number | null;
 }

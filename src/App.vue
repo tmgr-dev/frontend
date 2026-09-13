@@ -5,16 +5,20 @@
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 		:key="$store.state.appRerenderKey"
 	>
-			<div class="flex min-h-screen">
-				<!-- CHANGES: Added keep-alive for cached views -->
-				<CustomSidebar>
-					<router-view v-slot="{ Component, route }">
-						<keep-alive :include="keepAliveComponents">
-							<component :is="Component" v-if="showComponent" :key="route?.fullPath || route?.name" />
-						</keep-alive>
-					</router-view>
-				</CustomSidebar>
-			</div>
+		<div class="flex min-h-screen">
+			<!-- CHANGES: Added keep-alive for cached views -->
+			<CustomSidebar>
+				<router-view v-slot="{ Component, route }">
+					<keep-alive :include="keepAliveComponents">
+						<component
+							:is="Component"
+							v-if="showComponent"
+							:key="route?.fullPath || route?.name"
+						/>
+					</keep-alive>
+				</router-view>
+			</CustomSidebar>
+		</div>
 
 		<ActiveTasks :tasks="activeTasks" />
 
@@ -26,7 +30,9 @@
 			>
 				<NewForm
 					:is-modal="true"
-					:key="`${$store.state.currentTaskIdForModal || 'new'}-${$store.state.createTaskInProjectCategoryId || 'none'}`"
+					:key="`${$store.state.currentTaskIdForModal || 'new'}-${
+						$store.state.createTaskInProjectCategoryId || 'none'
+					}`"
 					@close="handleModalClose"
 				/>
 			</TaskSidePanel>
@@ -37,22 +43,30 @@
 </template>
 
 <script>
-	import { defineComponent, defineAsyncComponent, onBeforeMount, ref, watch } from 'vue';
-	import store from '@/store';
-	import { getUserSettings } from '@/actions/tmgr/user';
+	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { getLaunchedTasks, getTask } from '@/actions/tmgr/tasks';
-	import { getWorkspaceStatuses, getWorkspaces } from '@/actions/tmgr/workspaces';
+	import { getUserSettings, updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import {
+		getWorkspaceStatuses,
+		getWorkspaces,
+	} from '@/actions/tmgr/workspaces';
+	import ActiveTasks from '@/components/ActiveTasks.vue';
 	import Alert from '@/components/general/Alert.vue';
+	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
-	import ActiveTasks from '@/components/ActiveTasks.vue';
-	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
-	import CustomSidebar from '@/components/general/CustomSidebar.vue';
-	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { Toaster } from '@/components/ui/toast';
-	import { generateTaskUrl } from '@/utils/url';
-	import { updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import store from '@/store';
+	import { generateTaskUrl } from '@/utils/url';
+	import {
+		defineAsyncComponent,
+		defineComponent,
+		onBeforeMount,
+		ref,
+		watch,
+	} from 'vue';
+	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
 
 	const DEFAULT_TRANSITION = 'fade';
 
@@ -113,13 +127,13 @@
 			},
 			showTaskFormModalWindow() {
 				const taskId = this.$store.state.currentTaskIdForModal;
-				
+
 				// Update browser URL when viewing a task in modal
 				if (taskId && this.$route.name !== 'TasksEdit') {
 					// Update URL asynchronously
 					this.updateTaskModalUrl(taskId);
 				}
-				
+
 				return (
 					this.$route.name !== 'TasksEdit' &&
 					(this.$store.state.currentTaskIdForModal ||
@@ -154,29 +168,35 @@
 						if (!workspaces || !workspaces.length) {
 							await this.loadWorkspaces();
 						}
-						
+
 						const currentWorkspaceId = this.$store.state.user?.settings?.find(
-							setting => setting.key === 'current_workspace'
+							(setting) => setting.key === 'current_workspace',
 						)?.value;
-						
+
 						const currentWorkspace = this.$store.state.workspaces.find(
-							workspace => Number(workspace.id) === Number(currentWorkspaceId)
+							(workspace) =>
+								Number(workspace.id) === Number(currentWorkspaceId),
 						);
-						
+
 						// Find workspace by code from URL
 						const workspaceFromUrl = this.$store.state.workspaces.find(
-							workspace => workspace.code === workspaceCode
+							(workspace) => workspace.code === workspaceCode,
 						);
-						
+
 						// If workspace from URL exists and is different from current workspace, switch to it
-						if (workspaceFromUrl && (!currentWorkspace || currentWorkspace.code !== workspaceCode)) {
-							console.log(`Switching workspace from ${currentWorkspace?.code} to ${workspaceCode}`);
+						if (
+							workspaceFromUrl &&
+							(!currentWorkspace || currentWorkspace.code !== workspaceCode)
+						) {
+							console.log(
+								`Switching workspace from ${currentWorkspace?.code} to ${workspaceCode}`,
+							);
 							await this.changeWorkspace(workspaceFromUrl);
 						}
 					}
 				},
-				immediate: true
-			}
+				immediate: true,
+			},
 		},
 		methods: {
 			beforeLeave(element) {
@@ -248,7 +268,10 @@
 				return el.offsetHeight;
 			},
 			ensureWorkspacesLoaded() {
-				if (!this.$store.state.workspaces || this.$store.state.workspaces.length === 0) {
+				if (
+					!this.$store.state.workspaces ||
+					this.$store.state.workspaces.length === 0
+				) {
 					this.$store.dispatch('loadWorkspaces');
 				}
 			},
@@ -260,30 +283,40 @@
 						workspaces = await getWorkspaces();
 						this.$store.commit('setWorkspaces', workspaces);
 					}
-					
+
 					// Get current workspace ID and ensure it's a number
-					const currentWorkspaceId = Number(this.$store.state.user?.settings?.find(
-						setting => setting.key === 'current_workspace'
-					)?.value);
-					
+					const currentWorkspaceId = Number(
+						this.$store.state.user?.settings?.find(
+							(setting) => setting.key === 'current_workspace',
+						)?.value,
+					);
+
 					// Find workspace by ID, converting workspace.id to number for comparison
 					const currentWorkspace = workspaces.find(
-						workspace => Number(workspace.id) === currentWorkspaceId
+						(workspace) => Number(workspace.id) === currentWorkspaceId,
 					);
-					
+
 					if (!currentWorkspace) {
-						console.error('Current workspace not found. Available workspaces:', workspaces, 'Current workspace ID:', currentWorkspaceId);
+						console.error(
+							'Current workspace not found. Available workspaces:',
+							workspaces,
+							'Current workspace ID:',
+							currentWorkspaceId,
+						);
 						return;
 					}
-					
+
 					// Fetch task data directly from API
 					const task = await getTask(taskId);
-					const category = task?.category && typeof task.category === 'object' ? task.category : null;
-					
+					const category =
+						task?.category && typeof task.category === 'object'
+							? task.category
+							: null;
+
 					// Generate the proper URL with workspace code
 					const newPath = generateTaskUrl(taskId, currentWorkspace, category);
 					const currentPath = window.location.pathname;
-					
+
 					// Only update if the URL isn't already set to this task and the URL is valid
 					if (newPath && newPath !== '/' && currentPath !== newPath) {
 						// Use replaceState instead of pushState to avoid adding new history entries
@@ -300,7 +333,7 @@
 					// Get the URL without the task ID
 					const currentPath = window.location.pathname;
 					const pathParts = currentPath.split('/');
-					
+
 					// If we have a numeric task ID at the end, remove it
 					if (/^\d+$/.test(pathParts[pathParts.length - 1])) {
 						pathParts.pop();
@@ -308,7 +341,7 @@
 						history.replaceState({}, '', newPath);
 					}
 				}
-				
+
 				// Close the modal
 				this.$store.commit('closeTaskModal');
 			},
@@ -326,77 +359,85 @@
 				try {
 					// Get current user settings
 					const settings = this.$store.state.user?.settings || [];
-					
+
 					// Find the current workspace setting
 					const workspaceSetting = settings.find(
-						setting => setting.key === 'current_workspace'
+						(setting) => setting.key === 'current_workspace',
 					);
-					
+
 					if (workspaceSetting) {
 						let nextWorkspacePath = null;
 						const currentPath = window.location.pathname;
 						const pathParts = currentPath.split('/');
-						
+
 						// Check if current page is workspace-independent (like /routines, /settings, /profile)
-						const workspaceIndependentPages = ['routines', 'settings', 'profile'];
+						const workspaceIndependentPages = [
+							'routines',
+							'settings',
+							'profile',
+						];
 						const isWorkspaceIndependent = workspaceIndependentPages.some(
-							page => currentPath.includes(`/${page}`)
+							(page) => currentPath.includes(`/${page}`),
 						);
-						
-						if (!isWorkspaceIndependent && pathParts.length > 1 && pathParts[1]) {
+
+						if (
+							!isWorkspaceIndependent &&
+							pathParts.length > 1 &&
+							pathParts[1]
+						) {
 							// Replace the workspace code in the URL for workspace-aware pages only
 							pathParts[1] = workspace.code;
 							nextWorkspacePath = pathParts.join('/');
 						}
 						// For workspace-independent pages, don't change the URL at all
-						
+
 						// Prepare updated settings
-						const updatedSettings = settings.map(setting => {
+						const updatedSettings = settings.map((setting) => {
 							if (setting.key === 'current_workspace') {
 								return {
 									id: setting.id,
-									value: workspace.id
+									value: workspace.id,
 								};
 							}
 							return {
 								id: setting.id,
-								value: setting.value
+								value: setting.value,
 							};
 						});
-						
+
 						// Update user settings in the backend
 						await updateUserSettingsV2(updatedSettings);
-						
+
 						// Create a new user object with updated settings to ensure reactivity
 						const updatedUser = {
 							...this.$store.state.user,
-							settings: updatedSettings
+							settings: updatedSettings,
 						};
-						
+
 						// Update store without reloading the page
 						this.$store.commit('setUser', updatedUser);
-						
+
 						// Also update the workspace setting directly for components watching that specifically
 						this.$store.commit('updateUserWorkspaceSetting', {
-							workspaceId: workspace.id
+							workspaceId: workspace.id,
 						});
-						
+
 						// Force reload active tasks with new workspace context
 						await this.loadActiveTasks();
 
 						if (nextWorkspacePath) {
 							await this.$router.replace(nextWorkspacePath);
 						}
-						
+
 						// Update the meta title if needed
 						if (this.$route.meta.title) {
 							this.$store.commit('setMetaTitle', this.$route.meta.title);
 							setDocumentTitle(this.$route.meta.title);
 						}
-						
+
 						// Force UI components to update by triggering an app rerender
 						this.$store.commit('rerenderApp');
-						
+
 						console.log('Workspace successfully changed to:', workspace.name);
 					}
 				} catch (error) {
@@ -406,40 +447,45 @@
 			getCurrentWorkspaceIndex() {
 				const workspaces = this.$store.state.workspaces;
 				if (!workspaces || !workspaces.length) return -1;
-				
+
 				const currentWorkspaceId = this.$store.state.user?.settings?.find(
-					setting => setting.key === 'current_workspace'
+					(setting) => setting.key === 'current_workspace',
 				)?.value;
-				
+
 				return workspaces.findIndex(
-					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+					(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 				);
 			},
 			handleWorkspaceHotkeys(event) {
 				if (!this.$store.getters.isLoggedIn) return;
-				
+
 				const workspaces = this.$store.state.workspaces;
 				if (!workspaces || !workspaces.length) return;
-				
+
 				const isCtrlOrCmd = event.ctrlKey || event.metaKey;
-				
-				if (isCtrlOrCmd && event.altKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+
+				if (
+					isCtrlOrCmd &&
+					event.altKey &&
+					(event.key === 'ArrowRight' || event.key === 'ArrowLeft')
+				) {
 					event.preventDefault();
-					
+
 					const currentIndex = this.getCurrentWorkspaceIndex();
 					if (currentIndex === -1) return;
-					
+
 					let targetIndex;
 					if (event.key === 'ArrowRight') {
 						targetIndex = (currentIndex + 1) % workspaces.length;
 					} else {
-						targetIndex = currentIndex === 0 ? workspaces.length - 1 : currentIndex - 1;
+						targetIndex =
+							currentIndex === 0 ? workspaces.length - 1 : currentIndex - 1;
 					}
-					
+
 					this.changeWorkspace(workspaces[targetIndex]);
 				} else if (isCtrlOrCmd && /^[1-9]$/.test(event.key)) {
 					event.preventDefault();
-					
+
 					const workspaceIndex = parseInt(event.key) - 1;
 					if (workspaceIndex < workspaces.length) {
 						this.changeWorkspace(workspaces[workspaceIndex]);
@@ -454,30 +500,39 @@
 			// mid-exchange (mobile lost that race on every social login).
 			if (store.state.user?.id) {
 				await Promise.all([
-					getUserSettings(), 
+					getUserSettings(),
 					getWorkspaceStatuses(),
-					this.$store.dispatch('loadWorkspaces')
+					this.$store.dispatch('loadWorkspaces'),
 				]);
 				await this.loadActiveTasks();
 			}
 
 			this.$router.beforeEach((to, from, next) => {
 				this.loadActiveTasks();
-				let routeTransitionName = to.meta.transitionName || from.meta.transitionName;
+				let routeTransitionName =
+					to.meta.transitionName || from.meta.transitionName;
 
 				if (routeTransitionName === 'slide') {
 					const toDepth = to.path.split('/').length;
 					const fromDepth = from.path.split('/').length;
-					routeTransitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
+					routeTransitionName =
+						toDepth < fromDepth ? 'slide-right' : 'slide-left';
 				}
 
 				this.transitionName = routeTransitionName || DEFAULT_TRANSITION;
 
 				if (to.name !== from.name) {
-					if (to.meta.title && !to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
+					if (
+						to.meta.title &&
+						!to.name?.includes('TasksList') &&
+						!to.name?.includes('WorkspaceTasksList')
+					) {
 						this.$store.commit('setMetaTitle', to.meta.title);
 						setDocumentTitle(to.meta.title);
-					} else if (!to.name?.includes('TasksList') && !to.name?.includes('WorkspaceTasksList')) {
+					} else if (
+						!to.name?.includes('TasksList') &&
+						!to.name?.includes('WorkspaceTasksList')
+					) {
 						this.$store.commit('setMetaTitle', '');
 						setDocumentTitle();
 					}

@@ -10,15 +10,15 @@ const getCurrentWorkspaceCode = () => {
 	// This function will be called at runtime
 	const store = window.app?.$store;
 	if (!store) return null;
-	
+
 	const currentWorkspaceId = store.state.user?.settings?.find(
-		setting => setting.key === 'current_workspace'
+		(setting) => setting.key === 'current_workspace',
 	)?.value;
-	
+
 	const currentWorkspace = store.state.workspaces?.find(
-		workspace => Number(workspace.id) === Number(currentWorkspaceId)
+		(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 	);
-	
+
 	return currentWorkspace?.code;
 };
 
@@ -125,21 +125,21 @@ const routes = [
 			const store = window.app?.$store;
 			if (store && store.getters.isLoggedIn) {
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					setting => setting.key === 'current_workspace'
+					(setting) => setting.key === 'current_workspace',
 				)?.value;
-				
+
 				const currentWorkspace = store.state.workspaces?.find(
-					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+					(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 				);
-				
+
 				if (currentWorkspace?.code) {
 					return {
 						path: `/${currentWorkspace.code}/dashboard`,
-						query: to.query
+						query: to.query,
 					};
 				}
 			}
-		}
+		},
 	},
 	// Define a direct route for the list page (legacy approach)
 	{
@@ -177,88 +177,90 @@ const routes = [
 	// Legacy path - redirect to new workspace path for categories
 	{
 		path: '/projects-categories',
-		redirect: to => {
+		redirect: (to) => {
 			// Get current workspace from store
 			const store = window.app?.$store;
 			if (!store || !store.getters.isLoggedIn) {
 				return safeRedirect(to, '/fallback-categories'); // Redirect to fallback route
 			}
-			
+
 			// Get current workspace
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) {
 				return safeRedirect(to, '/fallback-categories'); // Redirect to fallback route
 			}
-			
+
 			// Redirect to workspace-specific categories
 			return safeRedirect(to, {
 				path: `/${workspaceCode}/categories`,
-				query: to.query
+				query: to.query,
 			});
-		}
+		},
 	},
 	// Legacy path - redirect to new path for create category
 	{
 		path: '/projects-categories/create',
-		redirect: to => {
+		redirect: (to) => {
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) return '/';
-			
+
 			return {
 				path: `/${workspaceCode}/categories/create`,
-				query: to.query
+				query: to.query,
 			};
 		},
 	},
 	// Legacy path - redirect to new path for category edit
 	{
 		path: '/projects-categories/:id',
-		redirect: to => {
+		redirect: (to) => {
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) return '/';
-			
+
 			return {
 				path: `/${workspaceCode}/categories/${to.params.id}`,
-				query: to.query
+				query: to.query,
 			};
 		},
 	},
 	// Legacy path - redirect to new path for categories with status
 	{
 		path: '/projects-categories/status/:status?',
-		redirect: to => {
+		redirect: (to) => {
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) return '/';
-			
+
 			return {
 				path: `/${workspaceCode}/categories/status/${to.params.status || ''}`,
-				query: to.query
+				query: to.query,
 			};
 		},
 	},
 	// Legacy path - redirect to new path for category children
 	{
 		path: '/projects-categories/:id/children/:status?',
-		redirect: to => {
+		redirect: (to) => {
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) return '/';
-			
+
 			return {
-				path: `/${workspaceCode}/categories/${to.params.id}/children/${to.params.status || ''}`,
-				query: to.query
+				path: `/${workspaceCode}/categories/${to.params.id}/children/${
+					to.params.status || ''
+				}`,
+				query: to.query,
 			};
 		},
 	},
 	// Legacy path - redirect to new path for create in category
 	{
 		path: '/projects-categories/:project_category_id/create',
-		redirect: to => {
+		redirect: (to) => {
 			const workspaceCode = getCurrentWorkspaceCode();
 			if (!workspaceCode) return '/';
-			
+
 			return {
 				path: `/${workspaceCode}/categories/${to.params.project_category_id}/create`,
-				query: to.query
+				query: to.query,
 			};
 		},
 	},
@@ -286,29 +288,29 @@ const routes = [
 	},
 	{
 		path: '/board',
-		redirect: to => {
+		redirect: (to) => {
 			// Get current workspace from store
 			const store = window.app?.$store;
 			if (!store || !store.getters.isLoggedIn) {
 				// If user is not logged in, show login page
 				return safeRedirect(to, '/login');
 			}
-			
+
 			// Get current workspace ID
 			const currentWorkspaceId = store.state.user?.settings?.find(
-				setting => setting.key === 'current_workspace'
+				(setting) => setting.key === 'current_workspace',
 			)?.value;
-			
+
 			// Find the workspace by ID
 			const currentWorkspace = store.state.workspaces?.find(
-				workspace => Number(workspace.id) === Number(currentWorkspaceId)
+				(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 			);
-			
+
 			// If we have a workspace code, redirect to workspace board
 			if (currentWorkspace?.code) {
 				return safeRedirect(to, `/${currentWorkspace.code}/board`);
 			}
-			
+
 			// If no workspace code is available, go to fallback board route
 			return safeRedirect(to, '/fallback-board');
 		},
@@ -444,7 +446,7 @@ const routes = [
 		},
 		name: 'PushNotificationsEnableGuide',
 	},
-	
+
 	// New URL structure routes
 	// CHANGES: Added keepAlive meta for cached views
 	{
@@ -587,7 +589,7 @@ const routes = [
 		component: ProjectCategoryForm,
 		name: 'WorkspaceCategoryCreateInCategory',
 	},
-	
+
 	// Fallback route for categories when no workspace is available
 	{
 		path: '/fallback-categories',
@@ -596,14 +598,14 @@ const routes = [
 			title: 'Categories',
 			transitionName: 'slide',
 			navbarHidden: true,
-			fallback: true
+			fallback: true,
 		},
 		name: 'FallbackCategoriesList',
 	},
-	
+
 	// Note: All /projects-categories routes are defined as redirects earlier in the file
 	// Removing duplicates to prevent conflicts and adding fallback routes instead
-	
+
 	// Fallback route for create category when redirect doesn't work
 	{
 		path: '/fallback-categories-create',
@@ -615,10 +617,10 @@ const routes = [
 		component: ProjectCategoryForm,
 		name: 'FallbackCategoryCreate',
 	},
-	
+
 	// IMPORTANT: We're removing all component routes for /projects-categories/*
 	// since they're already defined as redirects earlier in the file
-	
+
 	// Add missing ProjectCategoryChildrenList route
 	{
 		path: '/projects-categories/:id/children',
@@ -634,23 +636,23 @@ const routes = [
 			const store = window.app?.$store;
 			if (store && store.getters.isLoggedIn) {
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					setting => setting.key === 'current_workspace'
+					(setting) => setting.key === 'current_workspace',
 				)?.value;
-				
+
 				const currentWorkspace = store.state.workspaces?.find(
-					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+					(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 				);
-				
+
 				if (currentWorkspace?.code) {
 					return {
 						path: `/${currentWorkspace.code}/categories/${to.params.id}/children`,
-						query: to.query
+						query: to.query,
 					};
 				}
 			}
-		}
+		},
 	},
-	
+
 	// Always leave this as last one,
 	{
 		path: '/:catchAll(.*)*',

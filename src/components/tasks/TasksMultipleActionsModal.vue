@@ -1,5 +1,9 @@
 <template>
-	<Modal modal-class="w-[420px] p-6" @close="$emit('close')" @closingModal="$emit('close')">
+	<Modal
+		modal-class="w-[420px] p-6"
+		@close="$emit('close')"
+		@closingModal="$emit('close')"
+	>
 		<template #modal-body>
 			<div class="text-tmgr-blue dark:text-gray-300">
 				<div class="flex items-center justify-between">
@@ -15,9 +19,7 @@
 
 				<slot></slot>
 
-				<export-settings-panel
-					@update:settings="exportSettings = $event"
-				/>
+				<export-settings-panel @update:settings="exportSettings = $event" />
 
 				<div class="mt-4 flex items-center gap-2">
 					<select
@@ -33,9 +35,7 @@
 								{{ workspaceStatus.name }}
 							</option>
 							<option
-								v-if="
-									status === 'hidden' || status === 'done'
-								"
+								v-if="status === 'hidden' || status === 'done'"
 								value="delete"
 							>
 								Delete
@@ -44,9 +44,7 @@
 						<optgroup label="Export">
 							<option value="export:csv">Export to CSV</option>
 							<option value="export:jpg">Export to JPEG</option>
-							<option value="export:xlsx">
-								Export to XLSX
-							</option>
+							<option value="export:xlsx">Export to XLSX</option>
 						</optgroup>
 					</select>
 					<button
@@ -126,10 +124,7 @@
 			executeAction() {
 				const action = this.selectedAction;
 				if (action.startsWith('status:')) {
-					this.$emit(
-						'updateStatus',
-						action.replace('status:', ''),
-					);
+					this.$emit('updateStatus', action.replace('status:', ''));
 				} else if (action.startsWith('export:')) {
 					const type = action.replace('export:', '');
 					this.$emit('export', {

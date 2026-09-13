@@ -1,7 +1,11 @@
-import $axios from '@/plugins/axios';
-import { requestCache } from '@/utils/requestCache';
 import { Task } from '@/actions/tmgr/tasks';
-import type { RoutineEntry, YearStats, IcsImportResult } from '@/types/dailyRoutine';
+import $axios from '@/plugins/axios';
+import type {
+	IcsImportResult,
+	RoutineEntry,
+	YearStats,
+} from '@/types/dailyRoutine';
+import { requestCache } from '@/utils/requestCache';
 
 export const getDailyTasks = async (): Promise<Task[]> => {
 	try {
@@ -87,7 +91,8 @@ export const updateDailyTask = async (
 			is_daily_routine: true,
 			is_recurring: data.is_recurring || false,
 		};
-		if ('routine_category' in data) payload.routine_category = data.routine_category;
+		if ('routine_category' in data)
+			payload.routine_category = data.routine_category;
 		if ('scheduled_date' in data) payload.scheduled_date = data.scheduled_date;
 		if ('scheduled_time' in data) payload.scheduled_time = data.scheduled_time;
 
@@ -151,40 +156,67 @@ export const deleteDailyTask = async (taskId: number) => {
 	}
 };
 
-export const deleteDailyTaskInstance = async (taskId: number, taskInstanceId: number) => {
+export const deleteDailyTaskInstance = async (
+	taskId: number,
+	taskInstanceId: number,
+) => {
 	try {
-		const { data } = await $axios.delete(`daily-routines/tasks/${taskId}/instances/${taskInstanceId}`);
+		const { data } = await $axios.delete(
+			`daily-routines/tasks/${taskId}/instances/${taskInstanceId}`,
+		);
 		return data;
 	} catch (error) {
-		console.error('Failed to delete daily task\'s instance:', error);
+		console.error("Failed to delete daily task's instance:", error);
 		throw error;
 	}
 };
 
-export const completeDailyTaskInstance = async (taskId: number, taskInstanceId: number) => {
+export const completeDailyTaskInstance = async (
+	taskId: number,
+	taskInstanceId: number,
+) => {
 	try {
-		await $axios.post(`daily-routines/tasks/${taskId}/instances/${taskInstanceId}/complete`);
+		await $axios.post(
+			`daily-routines/tasks/${taskId}/instances/${taskInstanceId}/complete`,
+		);
 	} catch (error) {
-		console.error('Failed to complete daily task\'s instance:', error);
+		console.error("Failed to complete daily task's instance:", error);
 		throw error;
 	}
 };
 
 // ───── New: calendar virtual expansion ─────
 
-export const expandRoutineRange = async (from: string, to: string): Promise<RoutineEntry[]> => {
-	const { data: { data } } = await $axios.get('daily-routines/expand', { params: { from, to } });
+export const expandRoutineRange = async (
+	from: string,
+	to: string,
+): Promise<RoutineEntry[]> => {
+	const {
+		data: { data },
+	} = await $axios.get('daily-routines/expand', { params: { from, to } });
 	return data;
 };
 
-export const expandRoutineYearStats = async (year: number): Promise<YearStats> => {
-	const { data: { data } } = await $axios.get('daily-routines/expand/stats', { params: { year } });
+export const expandRoutineYearStats = async (
+	year: number,
+): Promise<YearStats> => {
+	const {
+		data: { data },
+	} = await $axios.get('daily-routines/expand/stats', { params: { year } });
 	return data;
 };
 
 export const completeRoutineOn = async (taskId: number, date: string) => {
-	const { data: { data } } = await $axios.post(`daily-routines/tasks/${taskId}/complete-on`, { date });
-	return data as { instance_id: number; task_id: number; date: string; status: string; completed: boolean };
+	const {
+		data: { data },
+	} = await $axios.post(`daily-routines/tasks/${taskId}/complete-on`, { date });
+	return data as {
+		instance_id: number;
+		task_id: number;
+		date: string;
+		status: string;
+		completed: boolean;
+	};
 };
 
 export const rescheduleRoutineInstance = async (
@@ -192,9 +224,11 @@ export const rescheduleRoutineInstance = async (
 	instanceId: number | 'virtual',
 	scheduledFor: string,
 ) => {
-	const { data: { data } } = await $axios.patch(
+	const {
+		data: { data },
+	} = await $axios.patch(
 		`daily-routines/tasks/${taskId}/instances/${instanceId}`,
-		{ scheduled_for: scheduledFor }
+		{ scheduled_for: scheduledFor },
 	);
 	return data;
 };
@@ -205,7 +239,9 @@ export const quickCreateRoutine = async (payload: {
 	time?: string;
 	category?: string;
 }) => {
-	const { data: { data } } = await $axios.post('daily-routines/tasks/quick', payload);
+	const {
+		data: { data },
+	} = await $axios.post('daily-routines/tasks/quick', payload);
 	return data;
 };
 

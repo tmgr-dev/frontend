@@ -1,19 +1,21 @@
 <script setup lang="ts">
-	import { Loader2 } from 'lucide-vue-next';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
-	import type { AgentStep, AgentMessage } from '@/types/agent';
+	import type { AgentMessage, AgentStep } from '@/types/agent';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
+	import { Loader2 } from 'lucide-vue-next';
 
 	const props = defineProps<{ message: AgentMessage }>();
 
 	function stepLabel(step: AgentStep): string {
-		return agentToolLabel(step.tool) + (step.summary ? ` · ${step.summary}` : '');
+		return (
+			agentToolLabel(step.tool) + (step.summary ? ` · ${step.summary}` : '')
+		);
 	}
 </script>
 
 <template>
 	<div v-if="props.message.role === 'user'" class="flex justify-end">
-		<div class="max-w-[90%] rounded-lg bg-brand/10 px-3 py-2 text-sm text-ink">
+		<div class="bg-brand/10 max-w-[90%] rounded-lg px-3 py-2 text-sm text-ink">
 			<MarkdownText :content="props.message.content" />
 		</div>
 	</div>
@@ -27,23 +29,37 @@
 				<span>Thinking…</span>
 			</div>
 			<ul v-if="props.message.steps.length" class="mt-1 space-y-0.5">
-				<li v-for="step in props.message.steps" :key="step.seq" class="text-xs text-ink-subtle">
+				<li
+					v-for="step in props.message.steps"
+					:key="step.seq"
+					class="text-xs text-ink-subtle"
+				>
 					{{ stepLabel(step) }}
 				</li>
 			</ul>
 		</div>
 		<div
 			v-else-if="props.message.status === 'failed'"
-			class="max-w-[90%] border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm text-ink whitespace-pre-wrap dark:bg-red-900/20"
+			class="max-w-[90%] whitespace-pre-wrap border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm text-ink dark:bg-red-900/20"
 		>
 			{{ props.message.content }}
 		</div>
-		<div v-else class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink">
+		<div
+			v-else
+			class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink"
+		>
 			<MarkdownText :content="props.message.content" />
-			<details v-if="props.message.steps.length" class="mt-1 text-xs text-ink-subtle">
-				<summary class="cursor-pointer select-none">{{ props.message.steps.length }} steps</summary>
+			<details
+				v-if="props.message.steps.length"
+				class="mt-1 text-xs text-ink-subtle"
+			>
+				<summary class="cursor-pointer select-none">
+					{{ props.message.steps.length }} steps
+				</summary>
 				<ul class="mt-1 space-y-0.5">
-					<li v-for="step in props.message.steps" :key="step.seq">{{ stepLabel(step) }}</li>
+					<li v-for="step in props.message.steps" :key="step.seq">
+						{{ stepLabel(step) }}
+					</li>
 				</ul>
 			</details>
 		</div>

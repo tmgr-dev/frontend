@@ -1,22 +1,37 @@
-import { isUnscheduledDraft, parseTimeStr } from '../dailyRoutines/routineDraft';
+import {
+	isUnscheduledDraft,
+	parseTimeStr,
+} from '../dailyRoutines/routineDraft';
 
 describe('isUnscheduledDraft', () => {
 	it('keeps an existing one-off routine unscheduled when it only carries the expander date', () => {
 		// The expander stamps `date` on every entry (today when unset) and onEdit
 		// overlays it as scheduled_date — a date alone is not a user choice.
 		expect(
-			isUnscheduledDraft({ id: 5, frequency: 'NONE', scheduled_date: '2026-09-07', scheduled_time: null }),
+			isUnscheduledDraft({
+				id: 5,
+				frequency: 'NONE',
+				scheduled_date: '2026-09-07',
+				scheduled_time: null,
+			}),
 		).toBe(true);
 	});
 
 	it('is scheduled when the task carries a time string', () => {
 		expect(
-			isUnscheduledDraft({ id: 5, frequency: 'NONE', scheduled_date: '2026-09-07', scheduled_time: '09:00' }),
+			isUnscheduledDraft({
+				id: 5,
+				frequency: 'NONE',
+				scheduled_date: '2026-09-07',
+				scheduled_time: '09:00',
+			}),
 		).toBe(false);
 	});
 
 	it('is scheduled when the entry carries a time object', () => {
-		expect(isUnscheduledDraft({ id: 5, frequency: 'NONE', time: { h: 9, m: 0 } })).toBe(false);
+		expect(
+			isUnscheduledDraft({ id: 5, frequency: 'NONE', time: { h: 9, m: 0 } }),
+		).toBe(false);
 	});
 
 	it('is never unscheduled for a new draft', () => {
@@ -25,7 +40,10 @@ describe('isUnscheduledDraft', () => {
 
 	it('is never unscheduled for a recurring routine', () => {
 		expect(
-			isUnscheduledDraft({ id: 5, recurrence: { frequency: 'WEEKLY', time: { hours: 10, minutes: 30 } } }),
+			isUnscheduledDraft({
+				id: 5,
+				recurrence: { frequency: 'WEEKLY', time: { hours: 10, minutes: 30 } },
+			}),
 		).toBe(false);
 	});
 });

@@ -15,11 +15,7 @@
 
 			<div class="relative z-10 flex items-center gap-4">
 				<div class="relative" :style="{ width: '88px', height: '88px' }">
-					<svg
-						width="88"
-						height="88"
-						class="-rotate-90"
-					>
+					<svg width="88" height="88" class="-rotate-90">
 						<circle
 							cx="44"
 							cy="44"
@@ -38,7 +34,7 @@
 							stroke-linecap="round"
 							:stroke-dasharray="ringCircumference"
 							:stroke-dashoffset="ringOffset"
-							class="transition-[stroke-dashoffset,stroke] duration-[1000ms] ease-linear"
+							class="duration-[1000ms] transition-[stroke-dashoffset,stroke] ease-linear"
 						/>
 					</svg>
 					<div class="absolute inset-0 flex items-center justify-center">
@@ -46,9 +42,7 @@
 							type="button"
 							class="flex h-[60px] w-[60px] items-center justify-center rounded-full border-0 transition"
 							:style="{
-								background: state.running
-									? 'var(--bg-hover)'
-									: phaseMeta.soft,
+								background: state.running ? 'var(--bg-hover)' : phaseMeta.soft,
 							}"
 							@click="toggle"
 						>
@@ -58,7 +52,9 @@
 								:stroke-width="2.4"
 								:color="phaseMeta.color"
 							/>
-							<span v-else class="text-2xl leading-none" aria-hidden="true">🍅</span>
+							<span v-else class="text-2xl leading-none" aria-hidden="true"
+								>🍅</span
+							>
 						</button>
 					</div>
 				</div>
@@ -103,7 +99,9 @@
 						>
 							<Zap :size="11" />
 							DISTRACTED{{
-								state.distractions_count > 0 ? ` · ${state.distractions_count}` : ''
+								state.distractions_count > 0
+									? ` · ${state.distractions_count}`
+									: ''
 							}}
 						</button>
 						<button
@@ -141,12 +139,11 @@
 								:style="dotStyle(s)"
 							/>
 						</div>
-						<span
-							class="text-[10px] font-bold tracking-[.08em] text-ink-muted"
-						>
-							{{ state.completed_pomodoros }} POMODOROS · {{ settings.focusMin }}/{{
-								settings.shortMin
-							}}/{{ settings.longMin }}
+						<span class="text-[10px] font-bold tracking-[.08em] text-ink-muted">
+							{{ state.completed_pomodoros }} POMODOROS ·
+							{{ settings.focusMin }}/{{ settings.shortMin }}/{{
+								settings.longMin
+							}}
 						</span>
 					</div>
 				</div>
@@ -163,33 +160,51 @@
 </template>
 
 <script lang="ts">
-	import { defineComponent, ref, computed, onBeforeUnmount, watch } from 'vue';
-	import { Pause, SkipForward, RotateCcw, Zap, Settings, X } from 'lucide-vue-next';
 	import {
-		PomodoroPhase,
-		PomodoroState,
-		PomodoroSettings,
 		DEFAULT_POMODORO_SETTINGS,
+		disablePomodoro,
+		distractPomodoro,
+		enablePomodoro,
 		getPomodoroSettings,
 		getPomodoroState,
-		enablePomodoro,
-		disablePomodoro,
+		PomodoroPhase,
+		PomodoroSettings,
+		PomodoroState,
 		updatePomodoroState,
-		distractPomodoro,
 	} from '@/actions/tmgr/pomodoro';
 	import PomodoroSettingsModal from '@/components/tasks/PomodoroSettingsModal.vue';
 	import { playPomodoroSound } from '@/utils/pomodoroSound';
+	import {
+		Pause,
+		RotateCcw,
+		Settings,
+		SkipForward,
+		X,
+		Zap,
+	} from 'lucide-vue-next';
+	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 
 	const PHASE_META: Record<
 		PomodoroPhase,
 		{ label: string; color: string; soft: string }
 	> = {
 		focus: { label: 'FOCUS', color: '#e85a4f', soft: 'rgba(232,90,79,.16)' },
-		short: { label: 'SHORT BREAK', color: '#5b8cff', soft: 'rgba(91,140,255,.16)' },
-		long: { label: 'LONG BREAK', color: '#a78bfa', soft: 'rgba(167,139,250,.18)' },
+		short: {
+			label: 'SHORT BREAK',
+			color: '#5b8cff',
+			soft: 'rgba(91,140,255,.16)',
+		},
+		long: {
+			label: 'LONG BREAK',
+			color: '#a78bfa',
+			soft: 'rgba(167,139,250,.18)',
+		},
 	};
 
-	const phaseDurationMs = (phase: PomodoroPhase, s: PomodoroSettings): number => {
+	const phaseDurationMs = (
+		phase: PomodoroPhase,
+		s: PomodoroSettings,
+	): number => {
 		if (phase === 'focus') return s.focusMin * 60_000;
 		if (phase === 'short') return s.shortMin * 60_000;
 		return s.longMin * 60_000;
@@ -309,11 +324,17 @@
 						console.error('[Pomodoro] failed to load state', e);
 						state.value = null;
 					}
-					if (!state.value && localStorage.getItem(lsKey(props.taskId)) === '1') {
+					if (
+						!state.value &&
+						localStorage.getItem(lsKey(props.taskId)) === '1'
+					) {
 						try {
 							state.value = await enablePomodoro(props.taskId);
 						} catch (e) {
-							console.error('[Pomodoro] failed to re-enable from localStorage', e);
+							console.error(
+								'[Pomodoro] failed to re-enable from localStorage',
+								e,
+							);
 							localStorage.removeItem(lsKey(props.taskId));
 						}
 					}

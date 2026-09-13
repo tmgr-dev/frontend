@@ -1,37 +1,40 @@
 <template>
 	<div class="workspace-invitations-list">
-		<div class="flex items-center justify-between mb-4">
+		<div class="mb-4 flex items-center justify-between">
 			<h4 class="text-md font-semibold">Workspace Invitations</h4>
 		</div>
 
 		<!-- Filter Tabs -->
-		<div class="flex gap-2 mb-4 border-b dark:border-gray-700">
+		<div class="mb-4 flex gap-2 border-b dark:border-gray-700">
 			<button
 				v-for="filter in filters"
 				:key="filter.value"
 				@click="currentFilter = filter.value"
 				:class="[
-					'px-4 py-2 text-sm font-medium transition-colors border-b-2',
+					'border-b-2 px-4 py-2 text-sm font-medium transition-colors',
 					currentFilter === filter.value
 						? 'border-blue-500 text-blue-600 dark:text-blue-400'
-						: 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+						: 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
 				]"
 			>
 				{{ filter.label }} ({{ getFilteredCount(filter.value) }})
 			</button>
 		</div>
 
-		<div v-if="loading" class="text-center py-4">
+		<div v-if="loading" class="py-4 text-center">
 			<div class="spinner"></div>
 			<p class="mt-2 text-gray-600">Loading invitations...</p>
 		</div>
 
-		<div v-else-if="error" class="text-center py-4 text-red-500">
+		<div v-else-if="error" class="py-4 text-center text-red-500">
 			<p>Error: {{ error }}</p>
 			<Button @click="loadInvitations" class="mt-2">Try again</Button>
 		</div>
 
-		<div v-else-if="filteredInvitations.length === 0" class="text-center py-8 text-gray-500">
+		<div
+			v-else-if="filteredInvitations.length === 0"
+			class="py-8 text-center text-gray-500"
+		>
 			<p>No {{ currentFilter !== 'all' ? currentFilter : '' }} invitations</p>
 		</div>
 
@@ -40,37 +43,42 @@
 				v-for="invitation in filteredInvitations"
 				:key="invitation.id"
 				:class="[
-					'flex items-center justify-between p-3 border rounded-lg dark:border-gray-700',
-					invitation.is_accepted ? 'bg-gray-50 dark:bg-gray-800 opacity-75' : '',
-					isExpired(invitation) ? 'bg-red-50 dark:bg-red-900/20 opacity-75' : ''
+					'flex items-center justify-between rounded-lg border p-3 dark:border-gray-700',
+					invitation.is_accepted
+						? 'bg-gray-50 opacity-75 dark:bg-gray-800'
+						: '',
+					isExpired(invitation)
+						? 'bg-red-50 opacity-75 dark:bg-red-900/20'
+						: '',
 				]"
 			>
 				<div class="flex-1">
-					<div class="flex items-center gap-2 mb-1">
+					<div class="mb-1 flex items-center gap-2">
 						<p class="font-medium">
 							{{ invitation.email || 'General invitation' }}
 						</p>
-						<span 
-							v-if="invitation.is_accepted" 
-							class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+						<span
+							v-if="invitation.is_accepted"
+							class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-300"
 						>
 							✓ Accepted
 						</span>
-						<span 
-							v-else-if="isExpired(invitation)" 
-							class="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+						<span
+							v-else-if="isExpired(invitation)"
+							class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300"
 						>
 							✗ Expired
 						</span>
-						<span 
-							v-else 
-							class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+						<span
+							v-else
+							class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
 						>
 							⏳ Pending
 						</span>
 					</div>
-					<p class="text-sm text-gray-600 dark:text-gray-400 mb-1">
-						<span class="font-medium">Invited by:</span> {{ invitation.user?.name || 'Unknown' }}
+					<p class="mb-1 text-sm text-gray-600 dark:text-gray-400">
+						<span class="font-medium">Invited by:</span>
+						{{ invitation.user?.name || 'Unknown' }}
 					</p>
 					<p class="text-xs text-gray-500">
 						Token: {{ invitation.token.substring(0, 8) }}...
@@ -85,7 +93,11 @@
 
 				<div class="flex gap-2">
 					<Button
-						v-if="invitation.email && !invitation.is_accepted && !isExpired(invitation)"
+						v-if="
+							invitation.email &&
+							!invitation.is_accepted &&
+							!isExpired(invitation)
+						"
 						variant="outline"
 						size="sm"
 						@click="handleResend(invitation.id)"
@@ -98,8 +110,18 @@
 						variant="destructive"
 						size="sm"
 						@click="handleRevoke(invitation.id)"
-						:disabled="revoking === invitation.id || invitation.is_accepted || isExpired(invitation)"
-						:title="isExpired(invitation) ? 'Cannot revoke expired invitation' : invitation.is_accepted ? 'Cannot revoke accepted invitation' : 'Revoke invitation'"
+						:disabled="
+							revoking === invitation.id ||
+							invitation.is_accepted ||
+							isExpired(invitation)
+						"
+						:title="
+							isExpired(invitation)
+								? 'Cannot revoke expired invitation'
+								: invitation.is_accepted
+								? 'Cannot revoke accepted invitation'
+								: 'Revoke invitation'
+						"
 					>
 						{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}
 					</Button>
@@ -119,13 +141,18 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted, computed, watch } from 'vue';
-	import { Button } from '@/components/ui/button';
+	import {
+		getWorkspaceInvitations,
+		resendInvitation,
+		revokeInvitation,
+		type WorkspaceInvitation,
+	} from '@/actions/tmgr/invitations';
 	import Confirm from '@/components/general/Confirm.vue';
-	import { getWorkspaceInvitations, revokeInvitation, resendInvitation, type WorkspaceInvitation } from '@/actions/tmgr/invitations';
+	import { Button } from '@/components/ui/button';
 	import { useToast } from '@/components/ui/toast';
-	import { CircleCheckBigIcon } from 'lucide-vue-next';
 	import store from '@/store';
+	import { CircleCheckBigIcon } from 'lucide-vue-next';
+	import { computed, onMounted, ref, watch } from 'vue';
 
 	const toaster = useToast();
 	const invitations = ref<WorkspaceInvitation[]>([]);
@@ -141,12 +168,12 @@
 		{ label: 'All', value: 'all' as const },
 		{ label: 'Active', value: 'active' as const },
 		{ label: 'Expired', value: 'expired' as const },
-		{ label: 'Accepted', value: 'accepted' as const }
+		{ label: 'Accepted', value: 'accepted' as const },
 	];
 
 	const currentWorkspaceId = computed(() => {
 		const currentWorkspaceSetting = store.state.user?.settings?.find(
-			(setting: any) => setting.key === 'current_workspace'
+			(setting: any) => setting.key === 'current_workspace',
 		);
 		return currentWorkspaceSetting?.value;
 	});
@@ -159,11 +186,15 @@
 	const filteredInvitations = computed(() => {
 		switch (currentFilter.value) {
 			case 'active':
-				return invitations.value.filter(inv => !inv.is_accepted && !isExpired(inv));
+				return invitations.value.filter(
+					(inv) => !inv.is_accepted && !isExpired(inv),
+				);
 			case 'expired':
-				return invitations.value.filter(inv => isExpired(inv) && !inv.is_accepted);
+				return invitations.value.filter(
+					(inv) => isExpired(inv) && !inv.is_accepted,
+				);
 			case 'accepted':
-				return invitations.value.filter(inv => inv.is_accepted);
+				return invitations.value.filter((inv) => inv.is_accepted);
 			default:
 				return invitations.value;
 		}
@@ -172,11 +203,15 @@
 	const getFilteredCount = (filterValue: string) => {
 		switch (filterValue) {
 			case 'active':
-				return invitations.value.filter(inv => !inv.is_accepted && !isExpired(inv)).length;
+				return invitations.value.filter(
+					(inv) => !inv.is_accepted && !isExpired(inv),
+				).length;
 			case 'expired':
-				return invitations.value.filter(inv => isExpired(inv) && !inv.is_accepted).length;
+				return invitations.value.filter(
+					(inv) => isExpired(inv) && !inv.is_accepted,
+				).length;
 			case 'accepted':
-				return invitations.value.filter(inv => inv.is_accepted).length;
+				return invitations.value.filter((inv) => inv.is_accepted).length;
 			default:
 				return invitations.value.length;
 		}
@@ -189,7 +224,9 @@
 		error.value = null;
 
 		try {
-			invitations.value = await getWorkspaceInvitations(Number(currentWorkspaceId.value));
+			invitations.value = await getWorkspaceInvitations(
+				Number(currentWorkspaceId.value),
+			);
 		} catch (err: any) {
 			error.value = err.response?.data?.message || 'Failed to load invitations';
 			console.error('Error loading invitations:', err);
@@ -210,16 +247,22 @@
 		revoking.value = invitationToRevoke.value;
 
 		try {
-			await revokeInvitation(Number(currentWorkspaceId.value), invitationToRevoke.value);
-			invitations.value = invitations.value.filter(inv => inv.id !== invitationToRevoke.value);
-			
+			await revokeInvitation(
+				Number(currentWorkspaceId.value),
+				invitationToRevoke.value,
+			);
+			invitations.value = invitations.value.filter(
+				(inv) => inv.id !== invitationToRevoke.value,
+			);
+
 			toaster.toast({
 				title: 'Invitation revoked',
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (err: any) {
-			const errorMessage = err.response?.data?.message || 'Failed to revoke invitation';
+			const errorMessage =
+				err.response?.data?.message || 'Failed to revoke invitation';
 			error.value = errorMessage;
 			toaster.toast({
 				title: 'Error',
@@ -246,7 +289,7 @@
 
 		try {
 			await resendInvitation(Number(currentWorkspaceId.value), invitationId);
-			
+
 			toaster.toast({
 				title: 'Invitation resent',
 				description: 'Email has been sent successfully',
@@ -254,7 +297,8 @@
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (err: any) {
-			const errorMessage = err.response?.data?.message || 'Failed to resend invitation';
+			const errorMessage =
+				err.response?.data?.message || 'Failed to resend invitation';
 			error.value = errorMessage;
 			toaster.toast({
 				title: 'Error',
@@ -293,20 +337,19 @@
 </script>
 
 <style scoped>
-.spinner {
-	width: 24px;
-	height: 24px;
-	border: 3px solid rgba(0, 0, 0, 0.1);
-	border-top-color: currentColor;
-	border-radius: 50%;
-	animation: spin 0.8s linear infinite;
-	margin: 0 auto;
-}
-
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
+	.spinner {
+		width: 24px;
+		height: 24px;
+		border: 3px solid rgba(0, 0, 0, 0.1);
+		border-top-color: currentColor;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+		margin: 0 auto;
 	}
-}
-</style>
 
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+</style>

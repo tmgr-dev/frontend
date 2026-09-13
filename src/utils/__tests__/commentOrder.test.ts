@@ -20,7 +20,11 @@ describe('sortCommentsOldestFirst', () => {
 
 	it('keeps comments written in the same second in the order they arrived', () => {
 		const same = '2026-09-12T10:00:00Z';
-		const sorted = sortCommentsOldestFirst([c(7, same), c(8, same), c(9, same)]);
+		const sorted = sortCommentsOldestFirst([
+			c(7, same),
+			c(8, same),
+			c(9, same),
+		]);
 		expect(sorted.map((x) => x.id)).toEqual([7, 8, 9]);
 	});
 

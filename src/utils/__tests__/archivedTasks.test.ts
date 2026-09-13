@@ -1,7 +1,7 @@
 import {
+	ArchivedStatusSets,
 	buildArchivedStatusSets,
 	isArchivedTask,
-	ArchivedStatusSets,
 } from '../archivedTasks';
 
 describe('buildArchivedStatusSets', () => {
@@ -87,15 +87,15 @@ describe('isArchivedTask', () => {
 	});
 
 	it('falls back to status name when status_id is non-numeric', () => {
-		expect(
-			isArchivedTask({ status_id: 'abc', status: 'Archived' }, sets),
-		).toBe(true);
+		expect(isArchivedTask({ status_id: 'abc', status: 'Archived' }, sets)).toBe(
+			true,
+		);
 	});
 
 	it('returns false for an active task', () => {
-		expect(
-			isArchivedTask({ status_id: 1, status: 'In progress' }, sets),
-		).toBe(false);
+		expect(isArchivedTask({ status_id: 1, status: 'In progress' }, sets)).toBe(
+			false,
+		);
 	});
 
 	it('returns false when nothing matches and status_id is unknown', () => {

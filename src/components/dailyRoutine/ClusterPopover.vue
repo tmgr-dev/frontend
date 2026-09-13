@@ -10,8 +10,12 @@
 				:style="popoverStyle"
 				@click.stop
 			>
-				<div class="mb-2 flex items-center justify-between border-b border-line px-2 pb-2">
-					<div class="text-2xs font-semibold uppercase tracking-wide text-ink-subtle">
+				<div
+					class="mb-2 flex items-center justify-between border-b border-line px-2 pb-2"
+				>
+					<div
+						class="text-2xs font-semibold uppercase tracking-wide text-ink-subtle"
+					>
 						{{ events.length }} overlapping
 					</div>
 					<button
@@ -38,7 +42,13 @@
 							"
 							@click="$emit('toggle', ev)"
 						>
-							<DRIcon v-if="ev.completed" name="check" :size="10" stroke="#fff" :sw="2.4" />
+							<DRIcon
+								v-if="ev.completed"
+								name="check"
+								:size="10"
+								stroke="#fff"
+								:sw="2.4"
+							/>
 						</button>
 						<span
 							class="h-2 w-2 shrink-0 rounded-pill"
@@ -46,14 +56,18 @@
 						/>
 						<span
 							class="min-w-0 flex-1 truncate text-xs"
-							:class="ev.completed ? 'text-ink-subtle line-through' : 'text-ink'"
+							:class="
+								ev.completed ? 'text-ink-subtle line-through' : 'text-ink'
+							"
 						>
 							{{ ev.title }}
 						</span>
-						<span class="text-2xs text-ink-subtle tabular-nums">{{ ev.time }}</span>
+						<span class="text-2xs tabular-nums text-ink-subtle">{{
+							ev.time
+						}}</span>
 						<button
 							type="button"
-							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle opacity-0 group-hover:opacity-100 hover:bg-surface-hover hover:text-brand"
+							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle opacity-0 hover:bg-surface-hover hover:text-brand group-hover:opacity-100"
 							@click="$emit('edit', ev)"
 						>
 							<DRIcon name="pencil" :size="11" stroke="currentColor" />
@@ -66,9 +80,9 @@
 </template>
 
 <script setup lang="ts">
+	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { computed } from 'vue';
 	import DRIcon from './DRIcon.vue';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
 
 	const props = defineProps<{
 		open: boolean;
@@ -84,7 +98,8 @@
 
 	const popoverStyle = computed(() => {
 		const a = props.anchor;
-		if (!a) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+		if (!a)
+			return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
 		return {
 			top: `${Math.min(a.y, window.innerHeight - 320)}px`,
 			left: `${Math.min(a.x, window.innerWidth - 360)}px`,

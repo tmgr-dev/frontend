@@ -4,5 +4,7 @@
  * through a CSS variable rather than a padding that only lines up in one layout.
  */
 export function footerHeightVars(height: number): Record<string, string> {
-	return Number.isFinite(height) && height > 0 ? { '--task-footer-height': `${height}px` } : {};
+	return Number.isFinite(height) && height > 0
+		? { '--task-footer-height': `${height}px` }
+		: {};
 }

@@ -1,33 +1,32 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted, watch } from 'vue';
 	import {
-		MessageCircle,
-		Edit2,
-		Trash2,
-		Bot,
-		Sparkles,
-		SmilePlus,
-	} from 'lucide-vue-next';
-	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-	import { Button } from '@/components/ui/button';
-	import MarkdownText from '@/components/general/MarkdownText.vue';
-	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
-	import {
-		getComments,
 		deleteComment,
+		getComments,
 		toggleCommentReaction,
 	} from '@/actions/tmgr/comments';
+	import MarkdownText from '@/components/general/MarkdownText.vue';
+	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+	import { Button } from '@/components/ui/button';
+	import store from '@/store';
+	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
 	import {
-		toggleReaction,
-		normalizeReactions,
 		applyReactionsUpdate,
 		type CommentReactionsUpdatedEvent,
-		mergeServerReactionForEmoji,
 		DEFAULT_REACTION_EMOJIS,
+		mergeServerReactionForEmoji,
+		normalizeReactions,
 		type ReactionSummary,
+		toggleReaction,
 	} from '@/utils/commentReactions';
 	import { formatRelativeTime } from '@/utils/timeUtils';
-	import store from '@/store';
+	import {
+		Bot,
+		MessageCircle,
+		SmilePlus,
+		Sparkles,
+		Trash2,
+	} from 'lucide-vue-next';
+	import { computed, onMounted, ref, watch } from 'vue';
 
 	interface ChatComment {
 		id: number;
@@ -68,7 +67,9 @@
 
 	// Both the page rail and the modal read chronologically, so the newest
 	// comment is the one next to the composer (TM-144).
-	const sortedComments = computed(() => sortCommentsOldestFirst(comments.value));
+	const sortedComments = computed(() =>
+		sortCommentsOldestFirst(comments.value),
+	);
 
 	const loadComments = async () => {
 		if (!props.taskId) return;
@@ -189,7 +190,11 @@
 
 	/** Realtime: replace one comment's reactions in place (no reload, keeps scroll and drafts). */
 	const applyReactions = (event: CommentReactionsUpdatedEvent) => {
-		comments.value = applyReactionsUpdate(comments.value, event, currentUser.value?.id);
+		comments.value = applyReactionsUpdate(
+			comments.value,
+			event,
+			currentUser.value?.id,
+		);
 	};
 
 	defineExpose({
@@ -216,10 +221,7 @@
 			></div>
 		</div>
 
-		<div
-			v-else-if="comments.length === 0"
-			class="py-2 text-xs text-ink-subtle"
-		>
+		<div v-else-if="comments.length === 0" class="py-2 text-xs text-ink-subtle">
 			No comments yet
 		</div>
 
@@ -286,10 +288,7 @@
 						>
 							AI Assistant
 						</span>
-						<span
-							v-else
-							class="text-sm font-semibold text-ink"
-						>
+						<span v-else class="text-sm font-semibold text-ink">
 							{{ comment.user.name }}
 						</span>
 						<span class="text-2xs text-ink-faint">

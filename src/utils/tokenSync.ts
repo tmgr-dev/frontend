@@ -9,7 +9,9 @@ export const parseStoredToken = (raw: string | null): TokenEnvelope | null => {
 	}
 	try {
 		const parsed = JSON.parse(raw);
-		return parsed && typeof parsed === 'object' && typeof parsed.token === 'string'
+		return parsed &&
+			typeof parsed === 'object' &&
+			typeof parsed.token === 'string'
 			? (parsed as TokenEnvelope)
 			: null;
 	} catch {

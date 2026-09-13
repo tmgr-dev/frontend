@@ -1,4 +1,8 @@
-import { keyPrefixFromPattern, taskKeyPrefixes, pickTaskByKey } from '../taskKeys';
+import {
+	keyPrefixFromPattern,
+	pickTaskByKey,
+	taskKeyPrefixes,
+} from '../taskKeys';
 
 describe('keyPrefixFromPattern', () => {
 	it('takes the letters a category puts in front of every task', () => {
@@ -19,9 +23,7 @@ describe('keyPrefixFromPattern', () => {
 
 describe('taskKeyPrefixes', () => {
 	const category = (value?: string) => ({
-		settings: value
-			? [{ key: 'task_name_pattern_date&time', value }]
-			: [],
+		settings: value ? [{ key: 'task_name_pattern_date&time', value }] : [],
 	});
 
 	it('collects the prefixes of every category, without repeats', () => {

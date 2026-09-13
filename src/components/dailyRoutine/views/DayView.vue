@@ -1,15 +1,19 @@
 <template>
-	<div class="flex flex-1 flex-col gap-3 min-h-0">
+	<div class="flex min-h-0 flex-1 flex-col gap-3">
 		<div
 			v-if="unscheduled.length || dragActive"
-			class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto rounded-card transition-colors"
-			:class="hoverKey === unschedHoverKey ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			class="flex max-h-[220px] shrink-0 flex-col gap-1.5 overflow-y-auto rounded-card transition-colors"
+			:class="
+				hoverKey === unschedHoverKey ? 'bg-brand/10 ring-brand/40 ring-1' : ''
+			"
 			data-dr-drop
 			data-dr-kind="unscheduled"
 			:data-dr-date="dateIso"
 		>
 			<div class="flex items-center justify-between gap-2 px-1">
-				<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+				<div
+					class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+				>
 					Unscheduled <span>{{ unscheduled.length }}</span>
 				</div>
 				<button
@@ -59,7 +63,7 @@
 				>
 					<div
 						v-if="h > 1"
-						class="absolute left-0 w-12 pr-2 text-right text-[10px] text-ink-subtle tabular-nums"
+						class="absolute left-0 w-12 pr-2 text-right text-[10px] tabular-nums text-ink-subtle"
 						:style="{ top: '-7px' }"
 					>
 						{{ String(h - 1).padStart(2, '0') }}:00
@@ -110,15 +114,15 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, ref } from 'vue';
-	import RoutineRow from '../RoutineRow.vue';
-	import EventBlock from '../EventBlock.vue';
-	import ClusterBlock from '../ClusterBlock.vue';
-	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
-	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
-	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
+	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
+	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
+	import { computed, onMounted, ref } from 'vue';
+	import ClusterBlock from '../ClusterBlock.vue';
+	import EventBlock from '../EventBlock.vue';
+	import RoutineRow from '../RoutineRow.vue';
 
 	const { active, hoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!active.value);
@@ -136,9 +140,18 @@
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
 		(e: 'archive-done-unscheduled'): void;
-		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
-		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
-		(e: 'resize', payload: { entry: RoutineEntry; startMin: number; endMin: number }): void;
+		(
+			e: 'create',
+			payload: { date: string; timeH: number; timeM: number },
+		): void;
+		(
+			e: 'context',
+			payload: { entry: RoutineEntry; x: number; y: number },
+		): void;
+		(
+			e: 'resize',
+			payload: { entry: RoutineEntry; startMin: number; endMin: number },
+		): void;
 	}>();
 
 	function fmtIso(d: Date): string {
@@ -151,7 +164,8 @@
 	function onCellClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 		if (!target) return;
-		if (target.closest('.dr-week-chip') || target.closest('.dr-edit-btn')) return;
+		if (target.closest('.dr-week-chip') || target.closest('.dr-edit-btn'))
+			return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const y = e.clientY - rect.top;
 		const totalMin = Math.max(0, Math.floor((y / HOUR_PX) * 60));
@@ -175,17 +189,15 @@
 	});
 
 	const unscheduled = computed(() =>
-		sortUnscheduledNewestFirst(props.entries.filter(e => !e.time)),
+		sortUnscheduledNewestFirst(props.entries.filter((e) => !e.time)),
 	);
 	const unscheduledDoneCount = computed(
-		() => unscheduled.value.filter(e => e.completed).length,
+		() => unscheduled.value.filter((e) => e.completed).length,
 	);
-	const scheduled = computed(() =>
-		props.entries.filter(e => !!e.time)
-	);
+	const scheduled = computed(() => props.entries.filter((e) => !!e.time));
 
 	const items = computed(() => {
-		const evs = scheduled.value.map(e => ({
+		const evs = scheduled.value.map((e) => ({
 			...e,
 			time: parseTime(e.time),
 			durationMin: e.duration_min || 30,

@@ -1,7 +1,7 @@
 import {
+	isInteractiveTarget,
 	nextFocusIndex,
 	shouldIgnoreNavigationTarget,
-	isInteractiveTarget,
 } from '../listKeyboardNavigation';
 
 describe('nextFocusIndex', () => {
@@ -39,7 +39,7 @@ describe('nextFocusIndex', () => {
 
 describe('shouldIgnoreNavigationTarget', () => {
 	const el = (tag: string, extra: Record<string, unknown> = {}) =>
-		({ tagName: tag, closest: () => null, ...extra }) as unknown as EventTarget;
+		({ tagName: tag, closest: () => null, ...extra } as unknown as EventTarget);
 
 	it('ignores typing in text fields', () => {
 		expect(shouldIgnoreNavigationTarget(el('INPUT'))).toBe(true);
@@ -78,7 +78,7 @@ describe('isInteractiveTarget', () => {
 			closest: () => null,
 			getAttribute: () => null,
 			...extra,
-		}) as unknown as EventTarget;
+		} as unknown as EventTarget);
 
 	it('treats buttons, links and form fields as interactive', () => {
 		expect(isInteractiveTarget(el('BUTTON'))).toBe(true);

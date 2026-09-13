@@ -1,9 +1,17 @@
-import { isSocialCallbackPath, shouldReplayWithCurrentToken, wasSentWithCurrentToken } from '../sessionGuards';
+import {
+	isSocialCallbackPath,
+	shouldReplayWithCurrentToken,
+	wasSentWithCurrentToken,
+} from '../sessionGuards';
 
 describe('isSocialCallbackPath', () => {
-	it.each(['/login/google', '/login/github', '/login/apple', '/login/telegram?token=x'])(
-		'returns true for the OAuth callback page %s',
-		(path) => expect(isSocialCallbackPath(path)).toBe(true),
+	it.each([
+		'/login/google',
+		'/login/github',
+		'/login/apple',
+		'/login/telegram?token=x',
+	])('returns true for the OAuth callback page %s', (path) =>
+		expect(isSocialCallbackPath(path)).toBe(true),
 	);
 
 	it.each(['/login', '/login/', '/', '/personal/list', '/register'])(
@@ -45,6 +53,8 @@ describe('shouldReplayWithCurrentToken', () => {
 	});
 
 	it('does not replay when the request already carried the current token', () => {
-		expect(shouldReplayWithCurrentToken('Bearer new', 'new', false)).toBe(false);
+		expect(shouldReplayWithCurrentToken('Bearer new', 'new', false)).toBe(
+			false,
+		);
 	});
 });

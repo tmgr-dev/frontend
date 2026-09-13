@@ -10,7 +10,11 @@
 			/>
 
 			<div
-				v-if="isFeatureEnabled('categories') && isUserFeatureEnabled('board.category_filter') && categories.length >= 2"
+				v-if="
+					isFeatureEnabled('categories') &&
+					isUserFeatureEnabled('board.category_filter') &&
+					categories.length >= 2
+				"
 				class="w-full"
 			>
 				<Select
@@ -22,7 +26,13 @@
 				/>
 			</div>
 
-			<div v-if="isUserFeatureEnabled('board.user_filter') && workspaceUsers.length >= 2" class="w-full">
+			<div
+				v-if="
+					isUserFeatureEnabled('board.user_filter') &&
+					workspaceUsers.length >= 2
+				"
+				class="w-full"
+			>
 				<Select
 					placeholder="Select user"
 					:options="workspaceUsers"
@@ -36,17 +46,17 @@
 				v-if="hasActiveFilters"
 				type="button"
 				@click="clearFilters"
-				class="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm rounded-md border border-line bg-surface text-ink hover:bg-surface-hover transition-colors"
+				class="flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-hover"
 			>
 				<span class="material-icons text-base">clear</span>
 				<span>Clear filters</span>
 			</button>
 
-			<div class="flex flex-col gap-3 border-t border-line pt-3 mt-3">
+			<div class="mt-3 flex flex-col gap-3 border-t border-line pt-3">
 				<button
 					type="button"
 					@click="handleMobileReorderClick"
-					class="w-full px-4 py-2 text-sm text-left rounded-md border border-line bg-surface text-ink hover:bg-surface-hover transition-colors"
+					class="w-full rounded-md border border-line bg-surface px-4 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
 				>
 					Reorder statuses
 				</button>
@@ -56,65 +66,69 @@
 	</div>
 
 	<!-- Desktop pill-style filters (header layout) -->
-	<div v-else class="flex items-center gap-2 min-w-0">
+	<div v-else class="flex min-w-0 items-center gap-2">
 		<!-- Search -->
 		<div
 			v-if="isUserFeatureEnabled('board.search_input')"
 			class="relative min-w-0"
 		>
-			<MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
+			<MagnifyingGlassIcon
+				class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+			/>
 			<input
 				type="text"
 				v-model="searchText"
 				placeholder="Search tasks…"
-				class="h-9 w-44 lg:w-56 rounded-pill border border-line bg-surface text-ink pl-9 pr-3 text-sm placeholder:text-ink-subtle outline-none focus:border-line-strong"
+				class="h-9 w-44 rounded-pill border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
 			/>
 		</div>
 
 		<!-- Category select -->
 		<div
-			v-if="isFeatureEnabled('categories') && isUserFeatureEnabled('board.category_filter') && categories.length >= 2"
+			v-if="
+				isFeatureEnabled('categories') &&
+				isUserFeatureEnabled('board.category_filter') &&
+				categories.length >= 2
+			"
 			class="relative shrink-0"
 		>
 			<select
 				v-model.number="selectedCategory"
-				class="h-9 w-40 lg:w-48 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
+				class="h-9 w-40 appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong lg:w-48"
 			>
 				<option :value="0">All categories</option>
-				<option
-					v-for="cat in categoryOptions"
-					:key="cat.id"
-					:value="cat.id"
-				>
+				<option v-for="cat in categoryOptions" :key="cat.id" :value="cat.id">
 					{{ cat.title }}
 				</option>
 			</select>
-			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
+			<ChevronDownIcon
+				class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+			/>
 		</div>
 
 		<!-- User select -->
 		<div
-			v-if="isUserFeatureEnabled('board.user_filter') && workspaceUsers.length >= 2"
+			v-if="
+				isUserFeatureEnabled('board.user_filter') && workspaceUsers.length >= 2
+			"
 			class="relative shrink-0"
 		>
 			<select
 				v-model.number="selectedUser"
-				class="h-9 w-32 lg:w-40 appearance-none rounded-pill border border-line bg-surface text-ink pl-3 pr-9 text-sm outline-none focus:border-line-strong"
+				class="h-9 w-32 appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong lg:w-40"
 			>
 				<option :value="0">All users</option>
-				<option
-					v-for="u in userOptions"
-					:key="u.id"
-					:value="u.id"
-				>
+				<option v-for="u in userOptions" :key="u.id" :value="u.id">
 					{{ u.name }}
 				</option>
 			</select>
-			<ChevronDownIcon class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
+			<ChevronDownIcon
+				class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+			/>
 		</div>
 
 		<!-- Separator -->
-		<div class="h-5 w-px bg-line shrink-0"></div>
+		<div class="h-5 w-px shrink-0 bg-line"></div>
 
 		<!-- Refresh -->
 		<button
@@ -145,10 +159,17 @@
 						class="h-4 w-4 cursor-pointer rounded focus:outline-none"
 						type="checkbox"
 						id="checkbox"
-						@change="$emit('handleUpdateDraggable', ($event.target as HTMLInputElement).checked)"
+						@change="
+							$emit(
+								'handleUpdateDraggable',
+								($event.target as HTMLInputElement).checked,
+							)
+						"
 						:checked="activeDraggable"
 					/>
-					<label class="ml-2 text-sm cursor-pointer" for="checkbox">Reorder statuses</label>
+					<label class="ml-2 cursor-pointer text-sm" for="checkbox"
+						>Reorder statuses</label
+					>
 				</div>
 			</MenuItem>
 			<MenuItem>
@@ -159,18 +180,18 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, watch } from 'vue';
+	import Dropdown from '@/components/general/Dropdown.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
-	import Dropdown from '@/components/general/Dropdown.vue';
 	import { MenuItem } from '@headlessui/vue';
-	import { useDebounceFn } from '@vueuse/core';
 	import {
-		MagnifyingGlassIcon,
-		ChevronDownIcon,
 		ArrowPathIcon,
+		ChevronDownIcon,
+		MagnifyingGlassIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/24/outline';
+	import { useDebounceFn } from '@vueuse/core';
+	import { computed, onMounted, watch } from 'vue';
 
 	export interface UserOption {
 		id: number;
@@ -192,9 +213,9 @@
 		isMobileModal?: boolean;
 	}
 
-	import { useStore } from 'vuex';
-	import { useRouter } from 'vue-router';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useRouter } from 'vue-router';
+	import { useStore } from 'vuex';
 
 	interface State {
 		selectedCategory: number;
@@ -260,7 +281,7 @@
 		searchText.value = null;
 		selectedCategory.value = 0;
 		selectedUser.value = 0;
-		
+
 		router.push({
 			...currentRoute,
 			query: {},

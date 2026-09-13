@@ -21,7 +21,12 @@
 			</DialogHeader>
 
 			<div>
-				<div v-for="setting in settings" :key="setting.id" id="settings" class="mt-4">
+				<div
+					v-for="setting in settings"
+					:key="setting.id"
+					id="settings"
+					class="mt-4"
+				>
 					<label
 						:for="`setting-${setting.id}`"
 						class="mb-2 block text-left text-2xs font-bold uppercase tracking-wide text-ink-subtle"
@@ -90,17 +95,16 @@
 </template>
 
 <script setup lang="ts">
-	import TimeField from '@/components/general/TimeField.vue';
-	import TextField from '@/components/general/TextField.vue';
 	import {
 		getTaskSettings,
 		Setting,
 		SettingPayload,
 		updateTaskSettings,
 	} from '@/actions/tmgr/settings';
-	import { onBeforeMount, ref, watch } from 'vue';
 	import { Task } from '@/actions/tmgr/tasks';
-	import { CogIcon } from '@heroicons/vue/20/solid';
+	import Select from '@/components/general/Select.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import TimeField from '@/components/general/TimeField.vue';
 	import {
 		Dialog,
 		DialogClose,
@@ -111,7 +115,8 @@
 		DialogTitle,
 		DialogTrigger,
 	} from '@/components/ui/dialog';
-	import Select from '@/components/general/Select.vue';
+	import { CogIcon } from '@heroicons/vue/20/solid';
+	import { onBeforeMount, ref, watch } from 'vue';
 
 	const emit = defineEmits(['close']);
 
@@ -137,17 +142,17 @@
 		() => {
 			mergeSettingsWithFormValues();
 		},
-		{ deep: true }
+		{ deep: true },
 	);
 
 	function mergeSettingsWithFormValues() {
 		if (!settingsSchema.value.length) return;
-		
+
 		settings.value = settingsSchema.value.map((setting: Setting) => {
 			const taskSetting = props.form.settings?.find(
-				(s: any) => s.id === setting.id || s.key === setting.key
+				(s: any) => s.id === setting.id || s.key === setting.key,
 			) as any;
-			
+
 			return {
 				...setting,
 				value: taskSetting?.value ?? taskSetting?.pivot?.value ?? '',
@@ -157,7 +162,7 @@
 
 	async function handleSave() {
 		if (!props.form.id || !settings.value.length) return;
-		
+
 		try {
 			const payload: SettingPayload[] = settings.value.map((setting) => ({
 				id: setting.id,

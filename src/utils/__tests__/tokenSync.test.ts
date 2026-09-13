@@ -42,14 +42,18 @@ describe('tokenFromStorageEvent', () => {
 	});
 
 	it('clears the session when another tab logged out', () => {
-		expect(tokenFromStorageEvent({ key: 'token', newValue: null }, current)).toEqual({
+		expect(
+			tokenFromStorageEvent({ key: 'token', newValue: null }, current),
+		).toEqual({
 			changed: true,
 			token: null,
 		});
 	});
 
 	it('reports no change when both sides are logged out', () => {
-		expect(tokenFromStorageEvent({ key: 'token', newValue: null }, null)).toEqual({
+		expect(
+			tokenFromStorageEvent({ key: 'token', newValue: null }, null),
+		).toEqual({
 			changed: false,
 		});
 	});

@@ -19,7 +19,7 @@ function handleGlobalEscape(e: KeyboardEvent) {
 	if (now - lastCloseTimestamp < DEBOUNCE_MS) return;
 
 	const openRadixDialog = document.querySelector(
-		'[data-state="open"][role="dialog"]'
+		'[data-state="open"][role="dialog"]',
 	);
 	if (openRadixDialog) {
 		return;

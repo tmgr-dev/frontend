@@ -25,7 +25,9 @@ function hexToHslTriplet(hex: string): string {
 		}
 		hue /= 6;
 	}
-	return `${Math.round(hue * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+	return `${Math.round(hue * 360)} ${Math.round(s * 100)}% ${Math.round(
+		l * 100,
+	)}%`;
 }
 
 export function buildPaletteCss(registry: ThemeDef[]): string {

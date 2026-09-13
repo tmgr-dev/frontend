@@ -25,21 +25,21 @@
 
 					<router-link
 						v-if="!$store.getters.isLoggedIn"
-						class="my-6 mx-auto rounded-full border border-gray-400 bg-white py-4 px-8 font-semibold text-gray-800 shadow hover:bg-gray-100"
+						class="mx-auto my-6 rounded-full border border-gray-400 bg-white px-8 py-4 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/register"
 					>
 						Get started
 					</router-link>
 					<router-link
 						v-else
-						class="my-6 mx-auto rounded-full border border-gray-400 bg-white py-4 px-8 font-semibold text-gray-800 shadow hover:bg-gray-100"
+						class="mx-auto my-6 rounded-full border border-gray-400 bg-white px-8 py-4 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/"
 					>
 						Go to system
 					</router-link>
 				</div>
 				<!--Right Col-->
-				<div class="w-full py-6 px-4 text-center md:w-1/2">
+				<div class="w-full px-4 py-6 text-center md:w-1/2">
 					<img
 						alt="TMGR.DEV"
 						class="z-50 w-full"

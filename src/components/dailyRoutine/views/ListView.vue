@@ -3,14 +3,21 @@
 		<section
 			v-if="unscheduled.length || dragActive"
 			class="rounded-card transition-colors"
-			:class="hoverKey === `unsched:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			:class="
+				hoverKey === `unsched:${todayIso}`
+					? 'bg-brand/10 ring-brand/40 ring-1'
+					: ''
+			"
 			data-dr-drop
 			data-dr-kind="unscheduled"
 			:data-dr-date="todayIso"
 		>
 			<header class="flex items-center justify-between gap-2 px-1 pb-2">
-				<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
-					Unscheduled <span class="text-ink-subtle">{{ unscheduled.length }}</span>
+				<div
+					class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+				>
+					Unscheduled
+					<span class="text-ink-subtle">{{ unscheduled.length }}</span>
 				</div>
 				<button
 					v-if="unscheduledDoneCount > 0"
@@ -37,12 +44,16 @@
 		</section>
 		<section
 			class="rounded-card transition-colors"
-			:class="hoverKey === `day:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+			:class="
+				hoverKey === `day:${todayIso}` ? 'bg-brand/10 ring-brand/40 ring-1' : ''
+			"
 			data-dr-drop
 			data-dr-kind="day-cell"
 			:data-dr-date="todayIso"
 		>
-			<header class="px-1 pb-2 text-[10px] font-bold uppercase tracking-wider text-brand">
+			<header
+				class="px-1 pb-2 text-[10px] font-bold uppercase tracking-wider text-brand"
+			>
 				Today <span class="text-ink-subtle">{{ scheduled.length }}</span>
 			</header>
 			<div class="flex flex-col gap-1.5">
@@ -63,18 +74,21 @@
 </template>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
-	import RoutineRow from '../RoutineRow.vue';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
-	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import { computed } from 'vue';
+	import RoutineRow from '../RoutineRow.vue';
 
 	const { active, hoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!active.value);
 
 	function isoToday(): string {
 		const d = new Date();
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+			2,
+			'0',
+		)}-${String(d.getDate()).padStart(2, '0')}`;
 	}
 	const todayIso = isoToday();
 
@@ -89,24 +103,27 @@
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
 		(e: 'archive-done-unscheduled'): void;
-		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
+		(
+			e: 'context',
+			payload: { entry: RoutineEntry; x: number; y: number },
+		): void;
 	}>();
 
 	const unscheduled = computed(() =>
-		sortUnscheduledNewestFirst(props.entries.filter(e => !e.time))
+		sortUnscheduledNewestFirst(props.entries.filter((e) => !e.time)),
 	);
 
 	const unscheduledDoneCount = computed(
-		() => unscheduled.value.filter(e => e.completed).length,
+		() => unscheduled.value.filter((e) => e.completed).length,
 	);
 
 	const scheduled = computed(() =>
 		props.entries
-			.filter(e => !!e.time)
+			.filter((e) => !!e.time)
 			.sort((a, b) => {
 				const at = a.time ? a.time.split(':').map(Number) : [99, 99];
 				const bt = b.time ? b.time.split(':').map(Number) : [99, 99];
 				return at[0] * 60 + at[1] - (bt[0] * 60 + bt[1]);
-			})
+			}),
 	);
 </script>

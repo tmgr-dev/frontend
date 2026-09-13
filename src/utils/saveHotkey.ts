@@ -12,4 +12,7 @@ export interface SaveHotkeyEvent {
  * key comes up, so without the type check the shortcut fires twice (TM-205).
  */
 export const isSaveHotkey = (e: SaveHotkeyEvent): boolean =>
-	e.type === 'keydown' && !e.repeat && (e.ctrlKey || e.metaKey) && e.code === 'KeyS';
+	e.type === 'keydown' &&
+	!e.repeat &&
+	(e.ctrlKey || e.metaKey) &&
+	e.code === 'KeyS';

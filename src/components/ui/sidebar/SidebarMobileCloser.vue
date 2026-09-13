@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { useSidebar } from './utils';
-import { useRouter } from 'vue-router';
+	import { useRouter } from 'vue-router';
+	import { useSidebar } from './utils';
 
-const { isMobile, setOpenMobile } = useSidebar();
-const router = useRouter();
+	const { isMobile, setOpenMobile } = useSidebar();
+	const router = useRouter();
 
-router.afterEach(() => {
-	if (isMobile.value) {
-		setOpenMobile(false);
-	}
-});
+	router.afterEach(() => {
+		if (isMobile.value) {
+			setOpenMobile(false);
+		}
+	});
 </script>
 
 <template>
 	<slot />
 </template>
-

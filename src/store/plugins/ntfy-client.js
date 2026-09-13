@@ -2,8 +2,10 @@ class NtfyClient {
 	constructor() {
 		this.eventSource = null;
 		this.userId = null;
-		this.serverUrl = import.meta.env.VITE_NTFY_SERVER_URL || 'http://localhost:2586';
-		this.defaultTopic = import.meta.env.VITE_NTFY_DEFAULT_TOPIC || 'tmgr-notifications';
+		this.serverUrl =
+			import.meta.env.VITE_NTFY_SERVER_URL || 'http://localhost:2586';
+		this.defaultTopic =
+			import.meta.env.VITE_NTFY_DEFAULT_TOPIC || 'tmgr-notifications';
 		this.onMessageCallback = null;
 	}
 
@@ -60,11 +62,17 @@ class NtfyClient {
 						});
 					}
 
-					if ('Notification' in window && Notification.permission === 'granted') {
-						const notification = new Notification(data.title || 'TMGR Notification', {
-							body: data.message || '',
-							icon: '/favicon.ico',
-						});
+					if (
+						'Notification' in window &&
+						Notification.permission === 'granted'
+					) {
+						const notification = new Notification(
+							data.title || 'TMGR Notification',
+							{
+								body: data.message || '',
+								icon: '/favicon.ico',
+							},
+						);
 
 						if (data.click) {
 							notification.onclick = () => {

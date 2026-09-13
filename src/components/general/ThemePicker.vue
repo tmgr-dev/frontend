@@ -1,5 +1,7 @@
 <template>
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+	<div
+		class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+	>
 		<button
 			v-for="t in cards"
 			:key="t.id"
@@ -192,7 +194,9 @@
 				class="mt-2 flex items-center gap-2"
 				@click.stop
 			>
-				<span class="text-[11px]" :style="{ color: t.tokens.muted }">Mode:</span>
+				<span class="text-[11px]" :style="{ color: t.tokens.muted }"
+					>Mode:</span
+				>
 				<span
 					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
 					:style="modeStyle('default', t.tokens)"
@@ -211,10 +215,10 @@
 </template>
 
 <script lang="ts">
-	import { defineComponent, computed } from 'vue';
+	import { persistThemeSettings } from '@/actions/tmgr/user';
 	import store from '@/store';
 	import { THEME_REGISTRY, ThemeDef } from '@/theme/registry';
-	import { persistThemeSettings } from '@/actions/tmgr/user';
+	import { computed, defineComponent } from 'vue';
 
 	const TAGS: Record<string, string> = {
 		default: 'canonical',
@@ -275,7 +279,12 @@
 
 			function modeStyle(
 				mode: string,
-				tokens: { brand: string; onAccent: string; muted: string; border: string },
+				tokens: {
+					brand: string;
+					onAccent: string;
+					muted: string;
+					border: string;
+				},
 			) {
 				const on = colorScheme.value === mode;
 				return {
@@ -288,7 +297,10 @@
 			async function persist() {
 				try {
 					if (store.getters.isLoggedIn) {
-						await persistThemeSettings(store.state.theme, store.state.colorScheme);
+						await persistThemeSettings(
+							store.state.theme,
+							store.state.colorScheme,
+						);
 					}
 				} catch (e) {
 					console.error('Failed to persist theme', e);

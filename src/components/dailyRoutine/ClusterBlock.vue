@@ -6,10 +6,20 @@
 		@click.stop="onOpen"
 	>
 		<div class="flex h-1.5" :style="{ flexShrink: 0 }">
-			<span v-for="(c, i) in stripes" :key="i" class="flex-1" :style="{ background: c }" />
+			<span
+				v-for="(c, i) in stripes"
+				:key="i"
+				class="flex-1"
+				:style="{ background: c }"
+			/>
 		</div>
-		<div v-if="mode === 'stack'" class="flex flex-col gap-0.5 p-1.5 text-2xs text-ink dark:text-white">
-			<div class="flex items-center justify-between text-[10px] uppercase tracking-wider text-ink-subtle dark:text-white/70">
+		<div
+			v-if="mode === 'stack'"
+			class="flex flex-col gap-0.5 p-1.5 text-2xs text-ink dark:text-white"
+		>
+			<div
+				class="flex items-center justify-between text-[10px] uppercase tracking-wider text-ink-subtle dark:text-white/70"
+			>
 				<span>{{ events.length }} events</span>
 				<span>{{ rangeLabel }}</span>
 			</div>
@@ -20,14 +30,32 @@
 					class="flex items-center gap-1 truncate"
 					:title="(ev.source.entry || ev.source).title"
 				>
-					<span class="h-1 w-1 shrink-0 rounded-pill" :style="{ background: (ev.source.entry || ev.source).routine_category.color }" />
-					<span class="text-[10px] tabular-nums text-ink-subtle dark:text-white/70">{{ (ev.source.entry || ev.source).time }}</span>
-					<span class="truncate">{{ (ev.source.entry || ev.source).title }}</span>
+					<span
+						class="h-1 w-1 shrink-0 rounded-pill"
+						:style="{
+							background: (ev.source.entry || ev.source).routine_category.color,
+						}"
+					/>
+					<span
+						class="text-[10px] tabular-nums text-ink-subtle dark:text-white/70"
+						>{{ (ev.source.entry || ev.source).time }}</span
+					>
+					<span class="truncate">{{
+						(ev.source.entry || ev.source).title
+					}}</span>
 				</div>
-				<div v-if="hidden > 0" class="text-[10px] text-ink-subtle dark:text-white/55">+ {{ hidden }} more</div>
+				<div
+					v-if="hidden > 0"
+					class="text-[10px] text-ink-subtle dark:text-white/55"
+				>
+					+ {{ hidden }} more
+				</div>
 			</div>
 		</div>
-		<div v-else class="flex h-full items-center justify-center px-1 text-2xs font-semibold text-ink dark:text-white/80">
+		<div
+			v-else
+			class="flex h-full items-center justify-center px-1 text-2xs font-semibold text-ink dark:text-white/80"
+		>
 			+{{ events.length }}
 		</div>
 	</div>
@@ -42,11 +70,11 @@
 </template>
 
 <script setup lang="ts">
+	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { fmtTime } from '@/utils/dailyRoutines/dateHelpers';
+	import type { PositionedEvent } from '@/utils/dailyRoutines/lanePacking';
 	import { computed, ref } from 'vue';
 	import ClusterPopover from './ClusterPopover.vue';
-	import { fmtTime } from '@/utils/dailyRoutines/dateHelpers';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
-	import type { PositionedEvent } from '@/utils/dailyRoutines/lanePacking';
 
 	const HOUR_PX = 56;
 	const ROW_H = 14;
@@ -68,7 +96,9 @@
 	const anchor = ref<{ x: number; y: number } | null>(null);
 
 	const top = computed(() => (props.startMin / 60) * HOUR_PX);
-	const height = computed(() => Math.max(24, ((props.endMin - props.startMin) / 60) * HOUR_PX - 2));
+	const height = computed(() =>
+		Math.max(24, ((props.endMin - props.startMin) / 60) * HOUR_PX - 2),
+	);
 	const stripes = computed(() => {
 		const seen = new Set<string>();
 		const out: string[] = [];
@@ -82,16 +112,28 @@
 		}
 		return out;
 	});
-	const fits = computed(() => Math.max(1, Math.floor((height.value - 6 - HEADER_H) / ROW_H)));
-	const hidden = computed(() => Math.max(0, props.events.length - fits.value));
-	const rangeLabel = computed(() =>
-		`${fmtTime(Math.floor(props.startMin / 60), props.startMin % 60)}–${fmtTime(Math.floor(props.endMin / 60) % 24, props.endMin % 60)}`,
+	const fits = computed(() =>
+		Math.max(1, Math.floor((height.value - 6 - HEADER_H) / ROW_H)),
 	);
-	const allDone = computed(() => props.events.every(e => {
-		const entry = (e.source as any).entry || e.source;
-		return entry?.completed;
-	}));
-	const rawEvents = computed(() => props.events.map(e => ((e.source as any).entry || e.source) as RoutineEntry));
+	const hidden = computed(() => Math.max(0, props.events.length - fits.value));
+	const rangeLabel = computed(
+		() =>
+			`${fmtTime(
+				Math.floor(props.startMin / 60),
+				props.startMin % 60,
+			)}–${fmtTime(Math.floor(props.endMin / 60) % 24, props.endMin % 60)}`,
+	);
+	const allDone = computed(() =>
+		props.events.every((e) => {
+			const entry = (e.source as any).entry || e.source;
+			return entry?.completed;
+		}),
+	);
+	const rawEvents = computed(() =>
+		props.events.map(
+			(e) => ((e.source as any).entry || e.source) as RoutineEntry,
+		),
+	);
 
 	const containerStyle = computed(() => ({
 		top: `${top.value}px`,

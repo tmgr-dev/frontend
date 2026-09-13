@@ -6,9 +6,7 @@
 		></div>
 
 		<aside
-			class="absolute inset-0 flex flex-col overflow-hidden border border-line bg-surface shadow-tmgr-lg animate-tmgr-slide-in-right
-				sm:right-3 sm:top-3 sm:bottom-3 sm:left-auto sm:rounded-panel sm:w-[640px] sm:max-w-[calc(100vw-24px)]
-				lg:w-[720px] xl:w-[760px]"
+			class="absolute inset-0 flex animate-tmgr-slide-in-right flex-col overflow-hidden border border-line bg-surface shadow-tmgr-lg sm:bottom-3 sm:left-auto sm:right-3 sm:top-3 sm:w-[640px] sm:max-w-[calc(100vw-24px)] sm:rounded-panel lg:w-[720px] xl:w-[760px]"
 			role="dialog"
 			aria-modal="true"
 		>
@@ -18,9 +16,9 @@
 </template>
 
 <script lang="ts" setup>
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { onMounted, onUnmounted, ref } from 'vue';
 	import { useStore } from 'vuex';
-	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 
 	interface Props {
 		closeOnBgClick?: boolean;

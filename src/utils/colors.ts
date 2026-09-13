@@ -7,7 +7,13 @@ export interface Hsl {
 /** `#rgb` or `#rrggbb` → HSL with integer degrees / percentages. */
 export const hexToHsl = (hex: string): Hsl => {
 	const raw = hex.replace('#', '');
-	const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+	const full =
+		raw.length === 3
+			? raw
+					.split('')
+					.map((c) => c + c)
+					.join('')
+			: raw;
 	const r = parseInt(full.slice(0, 2), 16) / 255;
 	const g = parseInt(full.slice(2, 4), 16) / 255;
 	const b = parseInt(full.slice(4, 6), 16) / 255;

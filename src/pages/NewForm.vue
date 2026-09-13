@@ -1,35 +1,19 @@
 <script setup lang="ts">
+	import { Category, getCategories } from '@/actions/tmgr/categories';
 	import {
-		XMarkIcon,
-		TrashIcon,
-		DocumentPlusIcon,
-	} from '@heroicons/vue/20/solid';
-	import { Save } from 'lucide-vue-next';
+		createAskingHelpComment,
+		createComment,
+	} from '@/actions/tmgr/comments';
 	import {
-		ArrowTopRightOnSquareIcon,
-		CodeBracketIcon,
-		UserIcon,
-		UserCircleIcon,
-		FolderIcon,
-		PlayCircleIcon,
-		PauseCircleIcon,
-		LinkIcon,
-		HashtagIcon,
-	} from '@heroicons/vue/24/outline';
-	import store from '@/store';
+		getCursorAgents,
+		getCursorStatus,
+		sendFollowUp,
+	} from '@/actions/tmgr/cursor';
 	import {
-		computed,
-		defineAsyncComponent,
-		nextTick,
-		onBeforeMount,
-		onMounted,
-		onUnmounted,
-		ref,
-		toRef,
-		watch,
-	} from 'vue';
-	import { usePusher } from '@/composable/usePusher';
-	import { useRoute, useRouter } from 'vue-router';
+		getCategoryGitHubStatus,
+		getTaskGitActivity,
+	} from '@/actions/tmgr/github';
+	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
 		createTask as createTaskAction,
 		deleteTask,
@@ -41,61 +25,24 @@
 		updateTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	const BlockEditor = defineAsyncComponent(
-		() => import('@/components/BlockEditor.vue'),
-	);
-	const BlockMdEditor = defineAsyncComponent(
-		() => import('@/components/BlockMdEditor.vue'),
-	);
-	import { getStatuses, Status } from '@/actions/tmgr/statuses';
-	import { pickDefaultStatusId } from '@/utils/defaultStatus';
-	import {
-		backlogTimerPrompt,
-		type BacklogTimerPrompt,
-	} from '@/utils/backlogTimerPrompt';
-	import SettingsComponent from '@/components/SettingsComponent.vue';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-		SelectValue,
-	} from '@/components/ui/select';
-	import TimeCounter from '@/components/TimeCounter.vue';
-	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
-	import { Category, getCategories } from '@/actions/tmgr/categories';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
-	import { EditorType } from '@/types';
-	import { getBlockEditorDescription } from '@/utils/editor';
-	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
-	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
-	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
-	import { useMagicKeys } from '@vueuse/core';
-	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import { footerHeightVars } from '@/utils/bottomBar';
-	import { focusField } from '@/utils/focusTarget';
-	import { agentToolLabel } from '@/utils/agentToolLabels';
-	import { applyTimerState } from '@/utils/timerSync';
-	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
-	import { formatRelativeTime } from '@/utils/timeUtils';
-	import Checkpoints from '@/components/general/Checkpoints.vue';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { useModalEscHandler } from '@/composable/useModalEscHandler';
-	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
+	import TimeCounter from '@/components/TimeCounter.vue';
+	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
-	import TaskComments from '@/components/tasks/TaskComments.vue';
-	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
-	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
+	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
 	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
-	import { Textarea } from '@/components/ui/textarea';
+	import TaskComments from '@/components/tasks/TaskComments.vue';
+	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
+	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
+	import TaskRelations from '@/components/tasks/TaskRelations.vue';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
 		Dialog,
 		DialogContent,
@@ -104,18 +51,73 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import {
-		createComment,
-		createAskingHelpComment,
-	} from '@/actions/tmgr/comments';
-	import { getTaskGitActivity, getCategoryGitHubStatus } from '@/actions/tmgr/github';
-	import { getCursorAgents, sendFollowUp, getCursorStatus } from '@/actions/tmgr/cursor';
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
+	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
+	import { usePusher } from '@/composable/usePusher';
+	import store from '@/store';
+	import { EditorType } from '@/types';
+	import type { AgentStep } from '@/types/agent';
+	import { agentToolLabel } from '@/utils/agentToolLabels';
+	import {
+		backlogTimerPrompt,
+		type BacklogTimerPrompt,
+	} from '@/utils/backlogTimerPrompt';
+	import { footerHeightVars } from '@/utils/bottomBar';
 	import {
 		getCategoryIntegrationHint,
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
-	import { Send, Sparkles, Bot, Loader2 } from 'lucide-vue-next';
-	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
-	import type { AgentStep } from '@/types/agent';
+	import { pickDefaultStatusId } from '@/utils/defaultStatus';
+	import { getBlockEditorDescription } from '@/utils/editor';
+	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
+	import { focusField } from '@/utils/focusTarget';
+	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { applyTimerState } from '@/utils/timerSync';
+	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
+	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
+	import {
+		DocumentPlusIcon,
+		TrashIcon,
+		XMarkIcon,
+	} from '@heroicons/vue/20/solid';
+	import {
+		ArrowTopRightOnSquareIcon,
+		CodeBracketIcon,
+		FolderIcon,
+		HashtagIcon,
+		LinkIcon,
+		UserCircleIcon,
+		UserIcon,
+	} from '@heroicons/vue/24/outline';
+	import { useMagicKeys } from '@vueuse/core';
+	import { Bot, Loader2, Save, Send, Sparkles } from 'lucide-vue-next';
+	import {
+		computed,
+		defineAsyncComponent,
+		nextTick,
+		onBeforeMount,
+		onMounted,
+		onUnmounted,
+		ref,
+		toRef,
+		watch,
+	} from 'vue';
+	import { useRoute, useRouter } from 'vue-router';
+	const BlockEditor = defineAsyncComponent(
+		() => import('@/components/BlockEditor.vue'),
+	);
+	const BlockMdEditor = defineAsyncComponent(
+		() => import('@/components/BlockMdEditor.vue'),
+	);
+	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -196,8 +198,13 @@
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const { isFeatureEnabled } = useFeatureToggles();
-	
-	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace, subscribeToUser, unsubscribeHandler } = usePusher();
+
+	const {
+		subscribeToWorkspace,
+		unsubscribeHandlerFromWorkspace,
+		subscribeToUser,
+		unsubscribeHandler,
+	} = usePusher();
 	const hasExternalUpdate = ref(false);
 	const externalUpdateData = ref<Task | null>(null);
 	const subscribedWorkspaceId = ref<number | null>(null);
@@ -208,23 +215,41 @@
 		!!form.value.id && e.task_id === form.value.id;
 	const subscribedUserId = ref<number | null>(null);
 	const userPusherSubscriptionId = ref<string>('');
-	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+	const instanceId = `new-form-${Date.now()}-${Math.random()
+		.toString(36)
+		.substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
-		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints', 'start_time', 'common_time'];
+		const fieldsToCompare = [
+			'title',
+			'description',
+			'description_json',
+			'status_id',
+			'project_category_id',
+			'category_tasks_sequence_id',
+			'expired_at',
+			'approximately_time',
+			'checkpoints',
+			'start_time',
+			'common_time',
+		];
 		for (const field of fieldsToCompare) {
 			const currentVal = current[field as keyof Task];
 			const incomingVal = incoming[field];
-			
+
 			let isDifferent = false;
 			if (typeof currentVal === 'object' || typeof incomingVal === 'object') {
-				isDifferent = JSON.stringify(currentVal) !== JSON.stringify(incomingVal);
+				isDifferent =
+					JSON.stringify(currentVal) !== JSON.stringify(incomingVal);
 			} else {
 				isDifferent = String(currentVal ?? '') !== String(incomingVal ?? '');
 			}
-			
+
 			if (isDifferent) {
-				console.log(`[NewForm] Field "${field}" differs:`, { current: currentVal, incoming: incomingVal });
+				console.log(`[NewForm] Field "${field}" differs:`, {
+					current: currentVal,
+					incoming: incomingVal,
+				});
 				return true;
 			}
 		}
@@ -324,7 +349,8 @@
 	const pomodoroBlockRef = ref<any>(null);
 	const pomodoroEnabled = computed(() => !!pomodoroBlockRef.value?.state);
 	const pomodoroBusy = computed(
-		() => !!pomodoroBlockRef.value?.enabling || !!pomodoroBlockRef.value?.loading,
+		() =>
+			!!pomodoroBlockRef.value?.enabling || !!pomodoroBlockRef.value?.loading,
 	);
 	const mainTimerRunning = computed(
 		() => !!form.value.start_time && form.value.start_time > 0,
@@ -363,7 +389,10 @@
 	const taskKeyError = ref<string | null>(null);
 
 	const taskDisplayKey = computed(() => {
-		if (currentCategoryCode.value && form.value.category_tasks_sequence_id != null) {
+		if (
+			currentCategoryCode.value &&
+			form.value.category_tasks_sequence_id != null
+		) {
 			return `${currentCategoryCode.value}-${form.value.category_tasks_sequence_id}`;
 		}
 		return `TMGR-T${taskId.value || form.value.id}`;
@@ -387,7 +416,8 @@
 			}
 			const parsed = Number(value);
 			if (!Number.isInteger(parsed) || parsed < 1) {
-				taskKeyError.value = 'Enter a whole number of 1 or greater, or leave it blank to auto-assign.';
+				taskKeyError.value =
+					'Enter a whole number of 1 or greater, or leave it blank to auto-assign.';
 				return;
 			}
 			form.value.category_tasks_sequence_id = parsed;
@@ -437,7 +467,8 @@
 	const checkpointsTotalLabel = computed(() => {
 		const items = form.value.checkpoints || [];
 		const total = items.reduce(
-			(sum: number, c: any) => sum + Math.max(0, (c?.end || 0) - (c?.start || 0)),
+			(sum: number, c: any) =>
+				sum + Math.max(0, (c?.end || 0) - (c?.start || 0)),
 			0,
 		);
 		if (total <= 0) return '';
@@ -732,22 +763,34 @@
 
 	const subscribeToWorkspaceEvents = (workspaceId: number) => {
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
-			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
+			unsubscribeHandlerFromWorkspace(
+				subscribedWorkspaceId.value,
+				pusherSubscriptionId.value,
+			);
 		}
 		subscribedWorkspaceId.value = workspaceId;
 		pusherSubscriptionId.value = subscribeToWorkspace(workspaceId, {
 			onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
-				console.log('[NewForm] onTaskUpdated received:', { taskId: task.id, myTaskId: taskId.value, action, sourceInstanceId, myInstanceId: instanceId });
+				console.log('[NewForm] onTaskUpdated received:', {
+					taskId: task.id,
+					myTaskId: taskId.value,
+					action,
+					sourceInstanceId,
+					myInstanceId: instanceId,
+				});
 				if (task.id !== taskId.value) return;
 				if (sourceInstanceId === instanceId) return;
-				
+
 				if (action === 'updated') {
-					const hasMeaningfulChanges = hasTaskMeaningfulChanges(form.value, task);
+					const hasMeaningfulChanges = hasTaskMeaningfulChanges(
+						form.value,
+						task,
+					);
 					console.log('[NewForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
 						currentDescription: form.value.description?.substring?.(0, 50),
 						incomingDescription: task.description?.substring?.(0, 50),
 						currentTitle: form.value.title,
-						incomingTitle: task.title
+						incomingTitle: task.title,
 					});
 					if (hasMeaningfulChanges) {
 						hasExternalUpdate.value = true;
@@ -783,40 +826,60 @@
 	// On a hard reload of /:ws/tasks/:id the router guard does not await getUser(),
 	// so current_workspace usually lands after this component mounted. Subscribe
 	// whenever it becomes known instead of only in onMounted.
-	watch(currentWorkspaceIdFromSettings, (workspaceId) => {
-		if (workspaceId) {
-			subscribeToWorkspaceEvents(workspaceId);
-		}
-	}, { immediate: true });
+	watch(
+		currentWorkspaceIdFromSettings,
+		(workspaceId) => {
+			if (workspaceId) {
+				subscribeToWorkspaceEvents(workspaceId);
+			}
+		},
+		{ immediate: true },
+	);
 
-	watch(() => form.value.id, () => {
-		aiPending.value = false;
-		aiPendingSteps.value = [];
-	});
+	watch(
+		() => form.value.id,
+		() => {
+			aiPending.value = false;
+			aiPendingSteps.value = [];
+		},
+	);
 
-	watch(() => store.state.user?.id, (userId) => {
-		if (subscribedUserId.value && userPusherSubscriptionId.value) {
-			unsubscribeHandler(`App.User.${subscribedUserId.value}`, userPusherSubscriptionId.value);
-		}
-		if (!userId) return;
-		subscribedUserId.value = userId;
-		userPusherSubscriptionId.value = subscribeToUser(userId, {
-			onTaskCountdownStarted: (task) => applyTimerState(form.value, task),
-			onTaskCountdownStopped: (task) => applyTimerState(form.value, task),
-			onAgentStep: (e) => {
-				if (isForThisTask(e) && !aiPendingSteps.value.some((s) => s.seq === e.seq)) {
-					aiPendingSteps.value = [...aiPendingSteps.value, { seq: e.seq, tool: e.tool, summary: e.summary }];
-				}
-			},
-			onAgentReply: (e) => {
-				if (isForThisTask(e)) {
-					aiPending.value = false;
-					aiPendingSteps.value = [];
-					taskCommentsRef.value?.loadComments?.();
-				}
-			},
-		});
-	}, { immediate: true });
+	watch(
+		() => store.state.user?.id,
+		(userId) => {
+			if (subscribedUserId.value && userPusherSubscriptionId.value) {
+				unsubscribeHandler(
+					`App.User.${subscribedUserId.value}`,
+					userPusherSubscriptionId.value,
+				);
+			}
+			if (!userId) return;
+			subscribedUserId.value = userId;
+			userPusherSubscriptionId.value = subscribeToUser(userId, {
+				onTaskCountdownStarted: (task) => applyTimerState(form.value, task),
+				onTaskCountdownStopped: (task) => applyTimerState(form.value, task),
+				onAgentStep: (e) => {
+					if (
+						isForThisTask(e) &&
+						!aiPendingSteps.value.some((s) => s.seq === e.seq)
+					) {
+						aiPendingSteps.value = [
+							...aiPendingSteps.value,
+							{ seq: e.seq, tool: e.tool, summary: e.summary },
+						];
+					}
+				},
+				onAgentReply: (e) => {
+					if (isForThisTask(e)) {
+						aiPending.value = false;
+						aiPendingSteps.value = [];
+						taskCommentsRef.value?.loadComments?.();
+					}
+				},
+			});
+		},
+		{ immediate: true },
+	);
 
 	onUnmounted(() => {
 		footerResizeObserver?.disconnect();
@@ -824,13 +887,19 @@
 		unregisterModal(checkpointsModalId);
 		store.commit('removeModalFromStack', checkpointsModalId);
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
-			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId.value, pusherSubscriptionId.value);
+			unsubscribeHandlerFromWorkspace(
+				subscribedWorkspaceId.value,
+				pusherSubscriptionId.value,
+			);
 		}
 		if (subscribedUserId.value && userPusherSubscriptionId.value) {
-			unsubscribeHandler(`App.User.${subscribedUserId.value}`, userPusherSubscriptionId.value);
+			unsubscribeHandler(
+				`App.User.${subscribedUserId.value}`,
+				userPusherSubscriptionId.value,
+			);
 		}
 	});
-	
+
 	const applyExternalUpdate = () => {
 		if (externalUpdateData.value) {
 			Object.assign(form.value, externalUpdateData.value);
@@ -838,7 +907,7 @@
 			externalUpdateData.value = null;
 		}
 	};
-	
+
 	const dismissExternalUpdate = () => {
 		hasExternalUpdate.value = false;
 		externalUpdateData.value = null;
@@ -1152,12 +1221,16 @@
 			}
 
 			const id = taskId.value || (form.value.id as number);
-			const sent = { title: form.value.title, description: form.value.description };
+			const sent = {
+				title: form.value.title,
+				description: form.value.description,
+			};
 			const saved = await updateTask(id, form.value as Task, instanceId);
 			// Keep edits made while the request was in flight; the response is stale for them
 			// and the autosave composable will send them in a follow-up save.
 			if (form.value.title !== sent.title) saved.title = form.value.title;
-			if (form.value.description !== sent.description) saved.description = form.value.description;
+			if (form.value.description !== sent.description)
+				saved.description = form.value.description;
 			form.value = saved;
 			store.commit('updateSingleTask', form.value);
 
@@ -1379,7 +1452,8 @@
 
 	// TM-222: the composer keeps the cursor - on expand, and again after a message is sent, so a
 	// follow-up can be typed without clicking back into the field.
-	const focusCommentInput = () => nextTick(() => focusField(commentTextarea.value));
+	const focusCommentInput = () =>
+		nextTick(() => focusField(commentTextarea.value));
 
 	watch(isCommentInputExpanded, (expanded) => {
 		if (expanded) {
@@ -1577,17 +1651,13 @@
 			<!-- Form Panel (main / left column) -->
 			<div
 				class="flex w-full flex-col"
-				:class="
-					isModal
-						? 'min-h-0 flex-1'
-						: 'lg:min-h-0 lg:min-w-0 lg:flex-1'
-				"
+				:class="isModal ? 'min-h-0 flex-1' : 'lg:min-h-0 lg:min-w-0 lg:flex-1'"
 			>
 				<!-- HEADER - Fixed at top -->
 				<header
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
 				>
-					<div class="flex items-center gap-2 min-w-0">
+					<div class="flex min-w-0 items-center gap-2">
 						<Select v-model="statusIdStr">
 							<SelectTrigger
 								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover"
@@ -1612,7 +1682,7 @@
 						</Select>
 						<span
 							v-if="taskId || form.id"
-							class="font-mono text-2xs text-ink-subtle truncate"
+							class="truncate font-mono text-2xs text-ink-subtle"
 						>
 							{{ taskDisplayKey }}
 						</span>
@@ -1660,7 +1730,7 @@
 
 				<!-- MAIN - Scrollable content area -->
 				<main
-					class="flex flex-col gap-5 px-6 pt-5 pb-4"
+					class="flex flex-col gap-5 px-6 pb-4 pt-5"
 					:class="
 						isModal
 							? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden'
@@ -1695,7 +1765,7 @@
 							</div>
 						</div>
 					</Transition>
-					
+
 					<div class="relative">
 						<textarea
 							v-model="form.title"
@@ -1742,8 +1812,10 @@
 
 					<!-- Properties grid -->
 					<div
-						class="grid gap-y-3 gap-x-4 text-sm"
-						style="grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);"
+						class="grid gap-x-4 gap-y-3 text-sm"
+						style="
+							grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);
+						"
 					>
 						<div class="flex items-center gap-2 text-ink-subtle">
 							<UserIcon class="h-3.5 w-3.5" />
@@ -1764,7 +1836,9 @@
 								class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-brand-fg hover:opacity-90"
 								title="Assign to me"
 							>
-								<span class="material-icons" style="font-size: 14px">person_add</span>
+								<span class="material-icons" style="font-size: 14px"
+									>person_add</span
+								>
 							</button>
 						</div>
 						<div v-else class="text-ink-faint">—</div>
@@ -1804,7 +1878,9 @@
 								<span>Key</span>
 							</div>
 							<div class="flex min-w-0 items-center gap-1.5">
-								<span class="shrink-0 font-mono text-sm text-ink-subtle">{{ currentCategoryCode || 'TASK' }}-</span>
+								<span class="shrink-0 font-mono text-sm text-ink-subtle"
+									>{{ currentCategoryCode || 'TASK' }}-</span
+								>
 								<input
 									type="number"
 									min="1"
@@ -1813,9 +1889,16 @@
 									placeholder="auto"
 									class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
 								/>
-								<span v-if="isAutoSaving && !taskKeyError" class="text-2xs text-ink-faint">Saving…</span>
+								<span
+									v-if="isAutoSaving && !taskKeyError"
+									class="text-2xs text-ink-faint"
+									>Saving…</span
+								>
 							</div>
-							<div v-if="taskKeyError" class="col-span-2 -mt-2 text-xs text-status-fix-fg">
+							<div
+								v-if="taskKeyError"
+								class="col-span-2 -mt-2 text-xs text-status-fix-fg"
+							>
 								{{ taskKeyError }}
 							</div>
 						</template>
@@ -1829,10 +1912,14 @@
 								<button
 									type="button"
 									@click="openGitActivity"
-									class="inline-flex h-7 items-center gap-1 rounded-pill bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover border border-line"
+									class="inline-flex h-7 items-center gap-1 rounded-pill border border-line bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover"
 								>
 									<CodeBracketIcon class="h-3.5 w-3.5" />
-									<span>{{ gitActivityCount > 0 ? `${gitActivityCount} events` : 'View activity' }}</span>
+									<span>{{
+										gitActivityCount > 0
+											? `${gitActivityCount} events`
+											: 'View activity'
+									}}</span>
 								</button>
 							</div>
 						</template>
@@ -1849,20 +1936,27 @@
 								<LinkIcon class="h-3.5 w-3.5" />
 								<span>Linked tasks</span>
 							</div>
-							<div class="min-w-0 flex items-center gap-2">
+							<div class="flex min-w-0 items-center gap-2">
 								<span
-									v-if="form.relationTypeWithTask && form.relationTypeWithTask.length"
+									v-if="
+										form.relationTypeWithTask &&
+										form.relationTypeWithTask.length
+									"
 									class="text-xs tabular-nums text-ink"
 								>
 									{{ form.relationTypeWithTask.length }}
-									{{ form.relationTypeWithTask.length === 1 ? 'link' : 'links' }}
+									{{
+										form.relationTypeWithTask.length === 1 ? 'link' : 'links'
+									}}
 								</span>
 								<button
 									type="button"
 									@click="openLinkDialog"
-									class="inline-flex h-7 items-center gap-1 rounded-pill bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover border border-line"
+									class="inline-flex h-7 items-center gap-1 rounded-pill border border-line bg-surface px-2.5 text-xs font-medium text-ink hover:bg-surface-hover"
 								>
-									<span class="material-icons" style="font-size: 14px">add</span>
+									<span class="material-icons" style="font-size: 14px"
+										>add</span
+									>
 									<span>Link</span>
 								</button>
 							</div>
@@ -1873,7 +1967,7 @@
 								<UserCircleIcon class="h-3.5 w-3.5" />
 								<span>Author</span>
 							</div>
-							<div class="min-w-0 flex h-7 items-center text-sm text-ink">
+							<div class="flex h-7 min-w-0 items-center text-sm text-ink">
 								{{ form.user.name }}
 							</div>
 						</template>
@@ -1898,12 +1992,12 @@
 							:show-preview="!!(taskId && form.description)"
 						/>
 
-					<BlockEditor
-						v-else-if="editorType === 'block'"
-						v-model="form.description_json"
-						placeholder="Type your description here or enter / to see commands or "
-						class="block-editor-container mb-0 px-2 min-h-[240px]"
-					/>
+						<BlockEditor
+							v-else-if="editorType === 'block'"
+							v-model="form.description_json"
+							placeholder="Type your description here or enter / to see commands or "
+							class="block-editor-container mb-0 min-h-[240px] px-2"
+						/>
 
 						<BlockMdEditor
 							v-else-if="editorType === 'blockmd'"
@@ -1999,7 +2093,6 @@
 						class="mt-4"
 						@update:count="commentsCount = $event"
 					/>
-
 				</main>
 
 				<!-- FOOTER - Fixed at bottom -->
@@ -2008,21 +2101,31 @@
 					class="shrink-0 border-t border-line bg-surface px-6 py-3"
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
-					<div v-if="isModal && aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
+					<div
+						v-if="isModal && aiPending"
+						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
+					>
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
-						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
+						<span
+							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
+						>
+						<span
+							v-for="s in aiPendingSteps"
+							:key="s.seq"
+							class="rounded-pill bg-surface-sunken px-2 py-0.5"
+							>{{ agentToolLabel(s.tool) }}</span
+						>
 					</div>
 					<div
 						v-if="isModal && form.id"
-						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
+						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
 						@mousedown.stop
 					>
 						<input
 							ref="commentTextarea"
 							v-model="newComment"
 							placeholder="Write a comment…"
-							class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-none"
+							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter.prevent="sendComment"
 							@keydown.esc="newComment = ''"
 						/>
@@ -2158,10 +2261,20 @@
 					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 lg:min-h-[var(--task-footer-height)]"
 					@mousedown.stop
 				>
-					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
+					<div
+						v-if="aiPending"
+						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
+					>
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
-						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
+						<span
+							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
+						>
+						<span
+							v-for="s in aiPendingSteps"
+							:key="s.seq"
+							class="rounded-pill bg-surface-sunken px-2 py-0.5"
+							>{{ agentToolLabel(s.tool) }}</span
+						>
 					</div>
 					<div
 						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
@@ -2169,7 +2282,7 @@
 						<input
 							v-model="newComment"
 							placeholder="Write a comment…"
-							class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-none"
+							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter.prevent="sendComment"
 							@keydown.esc="newComment = ''"
 						/>
@@ -2254,11 +2367,19 @@
 
 		<Dialog
 			:open="!!integrationHint"
-			@update:open="(value) => { if (!value) integrationHint = null; }"
+			@update:open="
+				(value) => {
+					if (!value) integrationHint = null;
+				}
+			"
 		>
-			<DialogContent class="max-w-md rounded-card border border-line bg-surface text-ink">
+			<DialogContent
+				class="max-w-md rounded-card border border-line bg-surface text-ink"
+			>
 				<DialogHeader>
-					<DialogTitle class="text-ink">{{ integrationHint?.title }}</DialogTitle>
+					<DialogTitle class="text-ink">{{
+						integrationHint?.title
+					}}</DialogTitle>
 					<DialogDescription class="text-ink-subtle">
 						{{ integrationHint?.message }}
 					</DialogDescription>

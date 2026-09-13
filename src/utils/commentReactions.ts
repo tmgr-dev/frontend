@@ -110,7 +110,9 @@ export interface CommentReactionsUpdatedEvent {
  * `users` for the current user. Unknown comment ids leave the list untouched
  * (same array instance), so callers can skip a re-render.
  */
-export const applyReactionsUpdate = <T extends { id: number; reactions?: ReactionSummary[] }>(
+export const applyReactionsUpdate = <
+	T extends { id: number; reactions?: ReactionSummary[] },
+>(
 	comments: T[],
 	event: CommentReactionsUpdatedEvent,
 	currentUserId?: number,
@@ -118,9 +120,14 @@ export const applyReactionsUpdate = <T extends { id: number; reactions?: Reactio
 	const index = comments.findIndex((c) => c.id === event.comment_id);
 	if (index < 0) return comments;
 	const raw = Array.isArray(event.reactions)
-		? event.reactions.map((r: any) => (r && typeof r === 'object' ? { ...r, reacted: undefined } : r))
+		? event.reactions.map((r: any) =>
+				r && typeof r === 'object' ? { ...r, reacted: undefined } : r,
+		  )
 		: [];
 	const next = comments.slice();
-	next[index] = { ...comments[index], reactions: normalizeReactions(raw, currentUserId) };
+	next[index] = {
+		...comments[index],
+		reactions: normalizeReactions(raw, currentUserId),
+	};
 	return next;
 };

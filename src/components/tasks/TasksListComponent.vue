@@ -213,7 +213,7 @@
 							/>
 							<span
 								v-if="task.start_time"
-								class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
+								class="h-[5px] w-[5px] animate-tmgr-pulse rounded-full bg-status-done"
 								title="Timer running"
 							></span>
 
@@ -229,7 +229,11 @@
 								{{ taskFormattedTimes[task.id] }}
 							</span>
 
-							<AppTooltip v-if="!task.start_time" content="Start timer" side="top">
+							<AppTooltip
+								v-if="!task.start_time"
+								content="Start timer"
+								side="top"
+							>
 								<button
 									:disabled="isLoadingActions[`start-${task.id}`]"
 									class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -351,47 +355,32 @@
 </template>
 
 <script lang="ts">
-	import downloadFile from '@/utils/downloadFile';
-	import { formatRelativeTime } from '@/utils/timeUtils';
-	import { formatOvertime } from '@/utils/formatOvertime';
-	import { liveTaskTime } from '@/utils/liveTaskTime';
-	import Loader from '@/components/loaders/Loader.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import TasksListMixin from '@/mixins/TasksListMixin';
-	import BounceLoader from '@/components/loaders/BounceLoader.vue';
-	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
-	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
-	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
-	import Modal from '@/components/Modal.vue';
+	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
-		backlogTimerPrompt,
-		type BacklogTimerPrompt,
-	} from '@/utils/backlogTimerPrompt';
-	import {
-		exportTasks,
 		deleteTask,
+		exportTasks,
+		PaginationMeta,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
-		updateTaskStatus,
-		updateTaskPartially,
 		Task,
-		PaginationMeta,
+		updateTaskPartially,
+		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
-	import CategoryBadge from '@/components/general/CategoryBadge.vue';
-	import Button from '@/components/general/Button.vue';
-	import { PropType } from 'vue';
-	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
-	import {
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-	} from '@/components/ui/popover';
+	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import Button from '@/components/general/Button.vue';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import BounceLoader from '@/components/loaders/BounceLoader.vue';
+	import Loader from '@/components/loaders/Loader.vue';
+	import Modal from '@/components/Modal.vue';
+	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
+	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
 		Command,
 		CommandEmpty,
@@ -401,20 +390,35 @@
 		CommandList,
 	} from '@/components/ui/command';
 	import {
-		UserPlus,
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import {
+		backlogTimerPrompt,
+		type BacklogTimerPrompt,
+	} from '@/utils/backlogTimerPrompt';
+	import downloadFile from '@/utils/downloadFile';
+	import { formatOvertime } from '@/utils/formatOvertime';
+	import {
+		isInteractiveTarget,
+		nextFocusIndex,
+		shouldIgnoreNavigationTarget,
+	} from '@/utils/listKeyboardNavigation';
+	import { liveTaskTime } from '@/utils/liveTaskTime';
+	import { formatRelativeTime } from '@/utils/timeUtils';
+	import {
+		AlarmClock,
 		Check,
 		ClockPlus,
 		Play,
 		Square,
-		AlarmClock,
+		UserPlus,
 	} from 'lucide-vue-next';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
-	import {
-		nextFocusIndex,
-		shouldIgnoreNavigationTarget,
-		isInteractiveTarget,
-	} from '@/utils/listKeyboardNavigation';
+	import { PropType } from 'vue';
 
 	export default {
 		name: 'TasksListComponent',
@@ -794,32 +798,28 @@
 				const { task, prompt } = this.backlogStatusChangeConfirm;
 				const activeStatus = prompt.targetStatus;
 
-				this.showConfirm(
-					prompt.title,
-					prompt.message,
-					async () => {
-						if (!this.backlogStatusChangeConfirm || !task.id) return;
+				this.showConfirm(prompt.title, prompt.message, async () => {
+					if (!this.backlogStatusChangeConfirm || !task.id) return;
 
-						const { task: confirmTask, dotId: confirmDotId } =
-							this.backlogStatusChangeConfirm;
+					const { task: confirmTask, dotId: confirmDotId } =
+						this.backlogStatusChangeConfirm;
+					if (confirmDotId) {
+						this.isLoadingActions[confirmDotId] = true;
+					}
+
+					try {
+						await updateTaskStatus(confirmTask.id!, activeStatus.id);
+						this.$store.commit('incrementReloadTasksKey');
+						await this.loadTasks();
+					} catch (e) {
+						console.error('Failed to change status:', e);
+					} finally {
 						if (confirmDotId) {
-							this.isLoadingActions[confirmDotId] = true;
+							this.isLoadingActions[confirmDotId] = false;
 						}
-
-						try {
-							await updateTaskStatus(confirmTask.id!, activeStatus.id);
-							this.$store.commit('incrementReloadTasksKey');
-							await this.loadTasks();
-						} catch (e) {
-							console.error('Failed to change status:', e);
-						} finally {
-							if (confirmDotId) {
-								this.isLoadingActions[confirmDotId] = false;
-							}
-							this.backlogStatusChangeConfirm = null;
-						}
-					},
-				);
+						this.backlogStatusChangeConfirm = null;
+					}
+				});
 			},
 			onDragStart(event, task) {
 				event.dataTransfer.setData('task-id', task.id);

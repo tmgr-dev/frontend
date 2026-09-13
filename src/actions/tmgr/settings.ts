@@ -19,7 +19,7 @@ export interface Setting extends Omit<FormSetting, 'value'> {
 
 export const getTaskSettings = async (useCache: boolean = true) => {
 	const cacheKey = 'task-settings';
-	
+
 	if (useCache) {
 		const cached = requestCache.get(cacheKey);
 		if (cached) {
@@ -54,7 +54,7 @@ export const updateTaskSettings = async (
 
 export const getCategorySettings = async (useCache: boolean = true) => {
 	const cacheKey = 'category-settings';
-	
+
 	if (useCache) {
 		const cached = requestCache.get(cacheKey);
 		if (cached) {

@@ -1,10 +1,10 @@
 import {
+	applyReactionsUpdate,
 	extractReactionsPayload,
 	mergeServerReactionForEmoji,
 	normalizeReactions,
 	ReactionSummary,
 	toggleReaction,
-	applyReactionsUpdate,
 } from '../commentReactions';
 
 const ALICE = { id: 1, name: 'Alice' };
@@ -196,7 +196,17 @@ describe('mergeServerReactionForEmoji (concurrent out-of-order toggle race)', ()
 
 describe('applyReactionsUpdate', () => {
 	const comments = [
-		{ id: 1, reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 9, name: 'Me' }] }] },
+		{
+			id: 1,
+			reactions: [
+				{
+					emoji: '👍',
+					count: 1,
+					reacted: true,
+					users: [{ id: 9, name: 'Me' }],
+				},
+			],
+		},
 		{ id: 2, reactions: [] },
 	];
 
@@ -206,7 +216,16 @@ describe('applyReactionsUpdate', () => {
 			{
 				comment_id: 2,
 				task_id: 42,
-				reactions: [{ emoji: '🎉', count: 2, users: [{ id: 9, name: 'Me' }, { id: 4, name: 'Bob' }] }],
+				reactions: [
+					{
+						emoji: '🎉',
+						count: 2,
+						users: [
+							{ id: 9, name: 'Me' },
+							{ id: 4, name: 'Bob' },
+						],
+					},
+				],
 			},
 			9,
 		);
@@ -214,14 +233,33 @@ describe('applyReactionsUpdate', () => {
 		expect(next).not.toBe(comments);
 		expect(next[0]).toBe(comments[0]);
 		expect(next[1].reactions).toEqual([
-			{ emoji: '🎉', count: 2, reacted: true, users: [{ id: 9, name: 'Me' }, { id: 4, name: 'Bob' }] },
+			{
+				emoji: '🎉',
+				count: 2,
+				reacted: true,
+				users: [
+					{ id: 9, name: 'Me' },
+					{ id: 4, name: 'Bob' },
+				],
+			},
 		]);
 	});
 
 	it('ignores a reacted flag sent by the server and uses the viewer id', () => {
 		const next = applyReactionsUpdate(
 			comments,
-			{ comment_id: 1, task_id: 42, reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 4, name: 'Bob' }] }] },
+			{
+				comment_id: 1,
+				task_id: 42,
+				reactions: [
+					{
+						emoji: '👍',
+						count: 1,
+						reacted: true,
+						users: [{ id: 4, name: 'Bob' }],
+					},
+				],
+			},
 			9,
 		);
 
@@ -229,13 +267,21 @@ describe('applyReactionsUpdate', () => {
 	});
 
 	it('clears reactions when the server sends an empty list', () => {
-		const next = applyReactionsUpdate(comments, { comment_id: 1, task_id: 42, reactions: [] }, 9);
+		const next = applyReactionsUpdate(
+			comments,
+			{ comment_id: 1, task_id: 42, reactions: [] },
+			9,
+		);
 
 		expect(next[0].reactions).toEqual([]);
 	});
 
 	it('returns the same array for an unknown comment', () => {
-		const next = applyReactionsUpdate(comments, { comment_id: 99, task_id: 42, reactions: [] }, 9);
+		const next = applyReactionsUpdate(
+			comments,
+			{ comment_id: 99, task_id: 42, reactions: [] },
+			9,
+		);
 
 		expect(next).toBe(comments);
 	});

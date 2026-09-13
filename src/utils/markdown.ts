@@ -31,7 +31,9 @@ const escapeAttribute = (value: string): string =>
 const safeHref = (href: string | null | undefined): string => {
 	const url = (href || '').trim();
 	// eslint-disable-next-line no-script-url
-	return /^\s*(javascript|data|vbscript):/i.test(url) ? '' : escapeAttribute(url);
+	return /^\s*(javascript|data|vbscript):/i.test(url)
+		? ''
+		: escapeAttribute(url);
 };
 
 /** A key used as a link label stays the label: no button inside an anchor. */
@@ -45,7 +47,9 @@ const linkRenderer = {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const text = unwrapTaskKeys((this as any).parser.parseInline(tokens));
 		const titleAttr = title ? ` title="${escapeAttribute(title)}"` : '';
-		return `<a href="${safeHref(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+		return `<a href="${safeHref(
+			href,
+		)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
 	},
 };
 
@@ -134,8 +138,15 @@ const rendererFor = (prefixes?: string[]): Marked => {
  */
 const wrapTables = (html: string): string =>
 	html.includes('<table>')
-		? html.replace(/<table>/g, '<div class="table-scroll"><table>').replace(/<\/table>/g, '</table></div>')
+		? html
+				.replace(/<table>/g, '<div class="table-scroll"><table>')
+				.replace(/<\/table>/g, '</table></div>')
 		: html;
 
-export const markdownToHtml = (text: string, options: MarkdownOptions = {}): string =>
-	text ? wrapTables(rendererFor(options.taskKeyPrefixes).parse(text) as string) : '';
+export const markdownToHtml = (
+	text: string,
+	options: MarkdownOptions = {},
+): string =>
+	text
+		? wrapTables(rendererFor(options.taskKeyPrefixes).parse(text) as string)
+		: '';

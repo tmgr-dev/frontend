@@ -1,0 +1,7 @@
+# Reformatting docs and deployment manifests buys nothing and makes the diff unreadable.
+*.md
+config/*.yml
+.github/**
+dist
+coverage
+public

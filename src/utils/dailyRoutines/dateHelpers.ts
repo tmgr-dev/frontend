@@ -42,14 +42,31 @@ export function fmtDate(d: Date): string {
 }
 
 export function dowShort(d: Date): string {
-	return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][(d.getDay() + 6) % 7];
+	return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][
+		(d.getDay() + 6) % 7
+	];
 }
 
 export function monthShort(d: Date): string {
-	return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+	return [
+		'Jan',
+		'Feb',
+		'Mar',
+		'Apr',
+		'May',
+		'Jun',
+		'Jul',
+		'Aug',
+		'Sep',
+		'Oct',
+		'Nov',
+		'Dec',
+	][d.getMonth()];
 }
 
-export function parseTime(t: string | null | undefined): { h: number; m: number } | null {
+export function parseTime(
+	t: string | null | undefined,
+): { h: number; m: number } | null {
 	if (!t) return null;
 	const parts = t.split(':');
 	return { h: parseInt(parts[0], 10) || 0, m: parseInt(parts[1], 10) || 0 };

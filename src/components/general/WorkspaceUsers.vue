@@ -10,7 +10,7 @@
 				<button
 					type="button"
 					:class="[
-						'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer',
+						'relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:z-20 hover:scale-110',
 						avatarColor(user.id),
 					]"
 					@click="showMembersModal = true"
@@ -25,39 +25,49 @@
 				<AppTooltip content="Invite user" side="bottom">
 					<DialogTrigger as-child>
 						<button
-							class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:scale-110 hover:z-20 cursor-pointer hover:text-ink"
+							class="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:z-20 hover:scale-110 hover:text-ink"
 						>
 							<span class="material-icons text-sm">add</span>
 						</button>
 					</DialogTrigger>
 				</AppTooltip>
 
-			<DialogContent
-				class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
-			>
-				<DialogHeader>
-					<DialogTitle>Send invitation(s)</DialogTitle>
-				</DialogHeader>
+				<DialogContent
+					class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
+				>
+					<DialogHeader>
+						<DialogTitle>Send invitation(s)</DialogTitle>
+					</DialogHeader>
 
-				<Textarea
-					v-model="invitationEmails"
-					rows="5"
-					:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
-				/>
-				<span class="text-red-500 whitespace-pre" v-if="!invitationEmailsValidationError.isValid && invitationEmails !== ''">
-					{{ invitationEmailsValidationError.errors?.join(`\n`) }}
-				</span>
-				<DialogFooter>
-					<Button
-						variant="default"
-						type="submit"
-						:disabled="!invitationEmailsValidationError.isValid || invitationEmails.trim() === '' || isSending"
-						@click="sendInvitations"
+					<Textarea
+						v-model="invitationEmails"
+						rows="5"
+						:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
+					/>
+					<span
+						class="whitespace-pre text-red-500"
+						v-if="
+							!invitationEmailsValidationError.isValid &&
+							invitationEmails !== ''
+						"
 					>
-						{{ isSending ? 'Sending...' : 'Send' }}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
+						{{ invitationEmailsValidationError.errors?.join(`\n`) }}
+					</span>
+					<DialogFooter>
+						<Button
+							variant="default"
+							type="submit"
+							:disabled="
+								!invitationEmailsValidationError.isValid ||
+								invitationEmails.trim() === '' ||
+								isSending
+							"
+							@click="sendInvitations"
+						>
+							{{ isSending ? 'Sending...' : 'Send' }}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
 			</Dialog>
 		</div>
 
@@ -70,15 +80,22 @@
 </template>
 
 <script setup lang="ts">
-	import { ref } from 'vue';
-	import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-	import { Button } from '@/components/ui/button';
-	import { Textarea } from '@/components/ui/textarea';
 	import { createWorkspaceInvitation } from '@/actions/tmgr/workspaces';
-	import { validateEmailString, ValidationResult } from '@/utils/emails';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import { Button } from '@/components/ui/button';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+		DialogTrigger,
+	} from '@/components/ui/dialog';
+	import { Textarea } from '@/components/ui/textarea';
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceMembersModal from '@/components/workspace/WorkspaceMembersModal.vue';
-	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import { validateEmailString, ValidationResult } from '@/utils/emails';
+	import { ref } from 'vue';
 
 	export interface WorkspaceUser {
 		id: number;
@@ -92,20 +109,20 @@
 
 	const props = defineProps<Props>();
 	const toaster = useToast();
-	
+
 	const isInviteDialogOpen = ref(false);
 	const showMembersModal = ref(false);
 	const invitationEmails = ref('');
 	const isSending = ref(false);
 	const invitationEmailsValidationError = ref<ValidationResult>({
 		isValid: true,
-		errors: []
+		errors: [],
 	});
 
 	async function sendInvitations() {
 		invitationEmailsValidationError.value = {
 			isValid: true,
-			errors: []
+			errors: [],
 		};
 		const emails = invitationEmails.value.trim().replaceAll('\n', '');
 		if (emails === '') return;
@@ -156,4 +173,3 @@
 		return avatarPalette[idx];
 	}
 </script>
-

@@ -16,7 +16,8 @@
 						<h2 class="text-xl font-bold tracking-tight">Pomodoro</h2>
 					</div>
 					<p class="text-[13px] leading-snug text-white/55">
-						Configure focus and break intervals. Settings apply to all your tasks.
+						Configure focus and break intervals. Settings apply to all your
+						tasks.
 					</p>
 				</div>
 				<button
@@ -32,11 +33,23 @@
 			<div class="mb-3.5 grid grid-cols-2 gap-2.5">
 				<SettingLabel>Focus duration</SettingLabel>
 				<SettingLabel>Short break</SettingLabel>
-				<TimeField :model-value="draft.focusMin" accent="#e85a4f" @update:model-value="set('focusMin', $event)" />
-				<TimeField :model-value="draft.shortMin" accent="#5b8cff" @update:model-value="set('shortMin', $event)" />
+				<TimeField
+					:model-value="draft.focusMin"
+					accent="#e85a4f"
+					@update:model-value="set('focusMin', $event)"
+				/>
+				<TimeField
+					:model-value="draft.shortMin"
+					accent="#5b8cff"
+					@update:model-value="set('shortMin', $event)"
+				/>
 				<SettingLabel>Long break</SettingLabel>
 				<SettingLabel>Long break every</SettingLabel>
-				<TimeField :model-value="draft.longMin" accent="#a78bfa" @update:model-value="set('longMin', $event)" />
+				<TimeField
+					:model-value="draft.longMin"
+					accent="#a78bfa"
+					@update:model-value="set('longMin', $event)"
+				/>
 				<Stepper
 					:model-value="draft.longEvery"
 					:min="2"
@@ -46,7 +59,9 @@
 				/>
 			</div>
 
-			<div class="mb-3.5 overflow-hidden rounded-[10px] border border-white/5 bg-[#1a1a1c]">
+			<div
+				class="mb-3.5 overflow-hidden rounded-[10px] border border-white/5 bg-[#1a1a1c]"
+			>
 				<RowToggle
 					title="Auto-start next interval"
 					subtitle="Skip the play button between focus and break"
@@ -64,7 +79,9 @@
 
 			<div class="mb-3.5">
 				<SettingLabel>Notifications</SettingLabel>
-				<div class="grid grid-cols-3 gap-1 rounded-[10px] border border-white/5 bg-[#1a1a1c] p-1">
+				<div
+					class="grid grid-cols-3 gap-1 rounded-[10px] border border-white/5 bg-[#1a1a1c] p-1"
+				>
 					<button
 						v-for="opt in notifyOptions"
 						:key="opt.value"
@@ -102,7 +119,9 @@
 							{{ s.label }}
 						</button>
 					</div>
-					<div class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pb-1 pt-2">
+					<div
+						class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pb-1 pt-2"
+					>
 						<component
 							:is="draft.volume === 0 ? VolumeX : Volume2"
 							:size="14"
@@ -114,9 +133,16 @@
 							max="100"
 							:value="draft.volume"
 							class="h-1 flex-1 accent-[#e85a4f]"
-							@input="set('volume', parseInt(($event.target as HTMLInputElement).value, 10))"
+							@input="
+								set(
+									'volume',
+									parseInt(($event.target as HTMLInputElement).value, 10),
+								)
+							"
 						/>
-						<span class="min-w-[32px] text-right text-[11px] tabular-nums text-white/50">
+						<span
+							class="min-w-[32px] text-right text-[11px] tabular-nums text-white/50"
+						>
 							{{ draft.volume }}%
 						</span>
 					</div>
@@ -136,13 +162,13 @@
 </template>
 
 <script lang="ts">
-	import { defineComponent, h, ref, watch, PropType } from 'vue';
-	import { X, Eye, Bell, Volume2, VolumeX, Minus, Plus } from 'lucide-vue-next';
 	import {
 		PomodoroSettings,
 		savePomodoroSettings,
 	} from '@/actions/tmgr/pomodoro';
 	import { playPomodoroSound } from '@/utils/pomodoroSound';
+	import { Bell, Eye, Minus, Plus, Volume2, VolumeX, X } from 'lucide-vue-next';
+	import { defineComponent, h, PropType, ref, watch } from 'vue';
 
 	const SettingLabel = defineComponent({
 		name: 'PomoSettingLabel',
@@ -177,7 +203,8 @@
 			);
 			const commit = () => {
 				const n = parseInt(buf.value.replace(/\D/g, ''), 10);
-				if (Number.isFinite(n)) emit('update:modelValue', Math.max(1, Math.min(180, n)));
+				if (Number.isFinite(n))
+					emit('update:modelValue', Math.max(1, Math.min(180, n)));
 				editing.value = false;
 			};
 			return { editing, buf, commit, props };
@@ -188,11 +215,12 @@
 				? h('input', {
 						value: this.buf,
 						autofocus: true,
-						onInput: (e: Event) => (this.buf = (e.target as HTMLInputElement).value),
+						onInput: (e: Event) =>
+							(this.buf = (e.target as HTMLInputElement).value),
 						onBlur: this.commit,
 						onKeydown: (e: KeyboardEvent) => {
 							if (e.key === 'Enter') this.commit();
-							if (e.key === 'Escape') (this.editing = false);
+							if (e.key === 'Escape') this.editing = false;
 						},
 						class:
 							'flex-1 bg-transparent border-0 outline-none p-0 text-white tracking-wide',
@@ -219,7 +247,11 @@
 				},
 				[
 					inner,
-					h('span', { class: 'mr-2.5 text-[11px] font-medium text-white/40' }, 'min'),
+					h(
+						'span',
+						{ class: 'mr-2.5 text-[11px] font-medium text-white/40' },
+						'min',
+					),
 					h('span', {
 						class: 'inline-block h-1.5 w-1.5 rounded-full',
 						style: {
@@ -271,7 +303,10 @@
 							class:
 								'flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/5',
 							onClick: () =>
-								this.$emit('update:modelValue', Math.max(this.min, this.modelValue - 1)),
+								this.$emit(
+									'update:modelValue',
+									Math.max(this.min, this.modelValue - 1),
+								),
 						},
 						[h(Minus, { size: 13, class: 'text-white/60' })],
 					),
@@ -282,7 +317,10 @@
 							class:
 								'flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/5',
 							onClick: () =>
-								this.$emit('update:modelValue', Math.min(this.max, this.modelValue + 1)),
+								this.$emit(
+									'update:modelValue',
+									Math.min(this.max, this.modelValue + 1),
+								),
 						},
 						[h(Plus, { size: 13, class: 'text-white/60' })],
 					),
@@ -302,9 +340,17 @@
 		render() {
 			return h('div', { class: 'flex items-center gap-3 px-3.5 py-3' }, [
 				h('div', { class: 'min-w-0 flex-1' }, [
-					h('div', { class: 'text-[13px] font-medium text-[#e8e8ea]' }, this.title),
+					h(
+						'div',
+						{ class: 'text-[13px] font-medium text-[#e8e8ea]' },
+						this.title,
+					),
 					this.subtitle
-						? h('div', { class: 'mt-0.5 text-[11px] text-white/45' }, this.subtitle)
+						? h(
+								'div',
+								{ class: 'mt-0.5 text-[11px] text-white/45' },
+								this.subtitle,
+						  )
 						: null,
 				]),
 				h(
@@ -319,7 +365,8 @@
 					},
 					[
 						h('span', {
-							class: 'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all',
+							class:
+								'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all',
 							style: { left: this.modelValue ? '18px' : '2px' },
 						}),
 					],

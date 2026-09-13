@@ -31,7 +31,7 @@
 				<div class="my-1 h-px bg-line" />
 				<button
 					type="button"
-					class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-status-fix-fg transition-colors hover:bg-status-fix-bg/40"
+					class="hover:bg-status-fix-bg/40 flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-status-fix-fg transition-colors"
 					@click="onDelete"
 				>
 					<DRIcon name="trash" :size="13" stroke="currentColor" />
@@ -43,9 +43,9 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, onBeforeUnmount, ref, nextTick } from 'vue';
-	import DRIcon from './DRIcon.vue';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+	import DRIcon from './DRIcon.vue';
 
 	const props = defineProps<{
 		entry: RoutineEntry;

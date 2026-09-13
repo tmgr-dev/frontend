@@ -64,7 +64,7 @@
 					<li class="mr-3">
 						<router-link
 							v-if="!$store.getters.isLoggedIn"
-							class="hover:text-underline inline-block py-2 px-4 text-white no-underline hover:text-gray-200"
+							class="hover:text-underline inline-block px-4 py-2 text-white no-underline hover:text-gray-200"
 							href="#"
 							to="/login"
 						>
@@ -72,7 +72,7 @@
 						</router-link>
 						<router-link
 							v-else
-							class="hover:text-underline inline-block py-2 px-4 text-white no-underline hover:text-gray-200"
+							class="hover:text-underline inline-block px-4 py-2 text-white no-underline hover:text-gray-200"
 							href="#"
 							to="/"
 						>
@@ -83,7 +83,7 @@
 				<router-link
 					v-if="!$store.getters.isLoggedIn"
 					id="navAction"
-					class="mx-auto mt-4 rounded-full bg-white py-4 px-8 font-bold text-gray-800 opacity-75 shadow hover:underline lg:mx-0 lg:mt-0"
+					class="mx-auto mt-4 rounded-full bg-white px-8 py-4 font-bold text-gray-800 opacity-75 shadow hover:underline lg:mx-0 lg:mt-0"
 					to="/register"
 				>
 					Register

@@ -1,8 +1,8 @@
-import { ref } from 'vue';
-import store from '@/store';
 import { getCategories } from '@/actions/tmgr/categories';
 import { getTasks } from '@/actions/tmgr/tasks';
+import store from '@/store';
 import { pickTaskByKey, taskKeyPrefixes } from '@/utils/taskKeys';
+import { ref } from 'vue';
 
 const prefixes = ref<string[]>([]);
 let loadedFor: number | null = null;
@@ -41,7 +41,11 @@ export const useTaskKeyPrefixes = () => {
  */
 export const openTaskByKey = async (key: string): Promise<boolean> => {
 	try {
-		const response = await getTasks({ page: 1, per_page: 20, params: { search: key } });
+		const response = await getTasks({
+			page: 1,
+			per_page: 20,
+			params: { search: key },
+		});
 		const task = pickTaskByKey(response?.data || [], key);
 		if (!task) {
 			return false;

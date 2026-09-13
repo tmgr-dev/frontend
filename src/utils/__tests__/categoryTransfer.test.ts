@@ -7,7 +7,13 @@ describe('describeCategoryTransfer', () => {
 			tasks_moved: 5,
 			assignees_removed: 1,
 			status_mappings: [
-				{ from_id: 10, from_name: 'In progress', to_id: 20, to_name: 'Doing', tasks: 3 },
+				{
+					from_id: 10,
+					from_name: 'In progress',
+					to_id: 20,
+					to_name: 'Doing',
+					tasks: 3,
+				},
 				{ from_id: 11, from_name: 'QA', to_id: 20, to_name: 'Doing', tasks: 1 },
 			],
 		});
@@ -34,8 +40,18 @@ describe('describeCategoryTransfer', () => {
 				category: { id: 1, title: 'Backend', workspace_id: 2 },
 				tasks_moved: 2,
 				assignees_removed: 2,
-				status_mappings: [{ from_id: 10, from_name: 'Odd', to_id: null, to_name: null, tasks: 2 }],
+				status_mappings: [
+					{
+						from_id: 10,
+						from_name: 'Odd',
+						to_id: null,
+						to_name: null,
+						tasks: 2,
+					},
+				],
 			}),
-		).toBe('2 tasks moved. Statuses: Odd → no status (2). 2 assignees removed (not members of the target workspace).');
+		).toBe(
+			'2 tasks moved. Statuses: Odd → no status (2). 2 assignees removed (not members of the target workspace).',
+		);
 	});
 });

@@ -12,9 +12,9 @@
 </template>
 
 <script lang="ts" setup>
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { onMounted, onUnmounted, ref } from 'vue';
 	import { useStore } from 'vuex';
-import { useModalEscHandler } from '@/composable/useModalEscHandler';
 
 	interface Props {
 		modalClass?: string;

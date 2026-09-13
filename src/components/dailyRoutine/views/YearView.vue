@@ -1,24 +1,44 @@
 <template>
-	<div class="flex flex-1 flex-col overflow-auto rounded-card border border-line bg-surface p-1">
-		<div class="grid gap-4 p-4" :style="{ gridTemplateColumns: `repeat(${cols}, 1fr)` }">
+	<div
+		class="flex flex-1 flex-col overflow-auto rounded-card border border-line bg-surface p-1"
+	>
+		<div
+			class="grid gap-4 p-4"
+			:style="{ gridTemplateColumns: `repeat(${cols}, 1fr)` }"
+		>
 			<div v-for="m in months" :key="m.getMonth()">
-				<div class="mb-2 text-xs font-semibold text-ink">{{ monthShort(m) }} {{ m.getFullYear() }}</div>
-				<div class="grid gap-0.5" :style="{ gridTemplateColumns: 'repeat(7, 1fr)' }">
-					<div v-for="(d, i) in dowLabels" :key="i" class="text-center text-[9px] text-ink-subtle">{{ d }}</div>
+				<div class="mb-2 text-xs font-semibold text-ink">
+					{{ monthShort(m) }} {{ m.getFullYear() }}
+				</div>
+				<div
+					class="grid gap-0.5"
+					:style="{ gridTemplateColumns: 'repeat(7, 1fr)' }"
+				>
+					<div
+						v-for="(d, i) in dowLabels"
+						:key="i"
+						class="text-center text-[9px] text-ink-subtle"
+					>
+						{{ d }}
+					</div>
 					<template v-for="(day, j) in monthDays(m)" :key="j">
 						<div v-if="day === null" />
 						<div
 							v-else
 							class="aspect-square cursor-pointer rounded-sm"
 							:style="cellStyle(day)"
-							:title="`${day.toDateString()} — ${stat(day).completed}/${stat(day).fires}`"
+							:title="`${day.toDateString()} — ${stat(day).completed}/${
+								stat(day).fires
+							}`"
 							@click="$emit('select-day', day)"
 						/>
 					</template>
 				</div>
 			</div>
 		</div>
-		<div class="flex items-center justify-end gap-2 px-5 pb-4 text-xs text-ink-subtle">
+		<div
+			class="flex items-center justify-end gap-2 px-5 pb-4 text-xs text-ink-subtle"
+		>
 			<span>Less</span>
 			<span
 				v-for="v in [0, 0.25, 0.5, 0.75, 1]"
@@ -32,9 +52,15 @@
 </template>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
-	import { addDays, isSameDay, monthShort, startOfMonth, startOfWeek } from '@/utils/dailyRoutines/dateHelpers';
 	import type { YearStats } from '@/types/dailyRoutine';
+	import {
+		addDays,
+		isSameDay,
+		monthShort,
+		startOfMonth,
+		startOfWeek,
+	} from '@/utils/dailyRoutines/dateHelpers';
+	import { computed } from 'vue';
 
 	const today = new Date();
 
@@ -56,7 +82,9 @@
 		return 4;
 	});
 
-	const months = computed(() => Array.from({ length: 12 }, (_, i) => new Date(props.year, i, 1)));
+	const months = computed(() =>
+		Array.from({ length: 12 }, (_, i) => new Date(props.year, i, 1)),
+	);
 
 	const dowLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -77,7 +105,10 @@
 	}
 
 	function stat(d: Date): { fires: number; completed: number } {
-		const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+			2,
+			'0',
+		)}-${String(d.getDate()).padStart(2, '0')}`;
 		return props.stats[iso] ?? { fires: 0, completed: 0 };
 	}
 
@@ -87,7 +118,9 @@
 		const intensity = s.fires === 0 ? 0 : Math.max(0.15, ratio);
 		return {
 			background: heatColor(intensity),
-			border: isSameDay(d, today) ? '1px solid #e8857d' : '1px solid transparent',
+			border: isSameDay(d, today)
+				? '1px solid #e8857d'
+				: '1px solid transparent',
 		};
 	}
 

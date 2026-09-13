@@ -1,8 +1,6 @@
 <template>
 	<div class="mt-4 w-full">
-		<div
-			class="mb-2 text-sm font-medium text-tmgr-blue dark:text-gray-400"
-		>
+		<div class="mb-2 text-sm font-medium text-tmgr-blue dark:text-gray-400">
 			Export Settings
 		</div>
 
@@ -31,9 +29,7 @@
 
 			<!-- Week start -->
 			<div>
-				<span class="text-gray-500 dark:text-gray-400"
-					>Week start:</span
-				>
+				<span class="text-gray-500 dark:text-gray-400">Week start:</span>
 				<label class="ml-2 cursor-pointer">
 					<input
 						v-model.number="settings.week_start"
@@ -58,9 +54,7 @@
 
 			<!-- Weekend days -->
 			<div>
-				<span class="text-gray-500 dark:text-gray-400"
-					>Weekend days:</span
-				>
+				<span class="text-gray-500 dark:text-gray-400">Weekend days:</span>
 				<div class="mt-1 flex flex-wrap gap-1">
 					<label
 						v-for="day in orderedDays"
@@ -69,9 +63,7 @@
 					>
 						<input
 							type="checkbox"
-							:checked="
-								settings.weekend_days.includes(day.value)
-							"
+							:checked="settings.weekend_days.includes(day.value)"
 							class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
 							@change="toggleWeekendDay(day.value)"
 						/>
@@ -82,9 +74,7 @@
 
 			<!-- Custom holidays -->
 			<div>
-				<span class="text-gray-500 dark:text-gray-400"
-					>Custom holidays:</span
-				>
+				<span class="text-gray-500 dark:text-gray-400">Custom holidays:</span>
 				<div class="mt-1 flex items-center gap-2">
 					<input
 						v-model="holidayInput"

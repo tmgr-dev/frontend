@@ -27,6 +27,8 @@ export function backlogTimerPrompt<S extends PromptStatus>(
 	return {
 		targetStatus,
 		title: 'Task in Backlog',
-		message: `Task "${task.title ?? ''}" is in backlog. Switch to "${targetStatus.name}" status?`,
+		message: `Task "${task.title ?? ''}" is in backlog. Switch to "${
+			targetStatus.name
+		}" status?`,
 	};
 }

@@ -1,11 +1,26 @@
-import { THEME_REGISTRY, THEME_MAP, THEME_IS_DARK, DEFAULT_THEME } from '@/theme/registry';
+import {
+	DEFAULT_THEME,
+	THEME_IS_DARK,
+	THEME_MAP,
+	THEME_REGISTRY,
+} from '@/theme/registry';
 
 test('registry has 17 palettes with complete tokens', () => {
 	expect(THEME_REGISTRY).toHaveLength(17);
 	for (const t of THEME_REGISTRY) {
 		expect(t.id).toMatch(/^[a-z0-9-]+$/);
 		expect(typeof t.isDark).toBe('boolean');
-		for (const k of ['bg', 'surface', 'raised', 'border', 'text', 'muted', 'brand', 'timer', 'onAccent'] as const) {
+		for (const k of [
+			'bg',
+			'surface',
+			'raised',
+			'border',
+			'text',
+			'muted',
+			'brand',
+			'timer',
+			'onAccent',
+		] as const) {
 			expect(t.tokens[k]).toMatch(/^#|^rgb|^oklch/i);
 		}
 	}

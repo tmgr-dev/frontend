@@ -1,4 +1,9 @@
-import type { AgentConversation, AgentMessage, AgentReplyEvent, AgentStepEvent } from '@/types/agent';
+import type {
+	AgentConversation,
+	AgentMessage,
+	AgentReplyEvent,
+	AgentStepEvent,
+} from '@/types/agent';
 
 export interface AgentChatState {
 	conversationId: number | null;
@@ -58,7 +63,10 @@ export const appendPending = (
 	};
 };
 
-export const applyStep = (s: AgentChatState, e: AgentStepEvent): AgentChatState => {
+export const applyStep = (
+	s: AgentChatState,
+	e: AgentStepEvent,
+): AgentChatState => {
 	if (e.conversation_id !== s.conversationId) {
 		return s;
 	}
@@ -71,7 +79,9 @@ export const applyStep = (s: AgentChatState, e: AgentStepEvent): AgentChatState 
 	const message = s.messages[index];
 	const steps = message.steps.some((step) => step.seq === e.seq)
 		? message.steps
-		: [...message.steps, { seq: e.seq, tool: e.tool, summary: e.summary }].sort((a, b) => a.seq - b.seq);
+		: [...message.steps, { seq: e.seq, tool: e.tool, summary: e.summary }].sort(
+				(a, b) => a.seq - b.seq,
+		  );
 
 	const messages = [...s.messages];
 	messages[index] = { ...message, steps };
@@ -79,7 +89,10 @@ export const applyStep = (s: AgentChatState, e: AgentStepEvent): AgentChatState 
 	return { ...s, messages };
 };
 
-export const applyReply = (s: AgentChatState, e: AgentReplyEvent): AgentChatState => {
+export const applyReply = (
+	s: AgentChatState,
+	e: AgentReplyEvent,
+): AgentChatState => {
 	if (e.conversation_id !== s.conversationId) {
 		return s;
 	}
@@ -103,7 +116,12 @@ export const applyReply = (s: AgentChatState, e: AgentReplyEvent): AgentChatStat
 	const existing = s.messages[index];
 	const steps = e.steps.length > 0 ? e.steps : existing.steps;
 	const messages = [...s.messages];
-	messages[index] = { ...existing, status: e.status, content: e.content, steps };
+	messages[index] = {
+		...existing,
+		status: e.status,
+		content: e.content,
+		steps,
+	};
 
 	return { ...s, messages, pendingId };
 };
@@ -111,7 +129,10 @@ export const applyReply = (s: AgentChatState, e: AgentReplyEvent): AgentChatStat
 export const hasMessage = (s: AgentChatState, messageId: number): boolean =>
 	s.messages.some((m) => m.id === messageId);
 
-export const resetForWorkspace = (s: AgentChatState, workspaceId: number): AgentChatState => {
+export const resetForWorkspace = (
+	s: AgentChatState,
+	workspaceId: number,
+): AgentChatState => {
 	if (s.workspaceId === workspaceId) {
 		return s;
 	}

@@ -37,7 +37,8 @@ const TITLES: Record<string, string> = {
 	routine_completed: 'Completed a routine',
 };
 
-const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const text = (value: unknown): string =>
+	typeof value === 'string' ? value.trim() : '';
 
 /** Humanises an unknown event key: `invoice_paid` → `Invoice paid`. */
 function fromType(type: string): string {

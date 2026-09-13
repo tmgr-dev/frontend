@@ -3,7 +3,11 @@
 export interface EstimatedTask {
 	common_time?: number | null;
 	approximately_time?: number | string | null;
-	settings?: Array<{ key?: string; value?: unknown; pivot?: { value?: unknown } }> | null;
+	settings?: Array<{
+		key?: string;
+		value?: unknown;
+		pivot?: { value?: unknown };
+	}> | null;
 }
 
 export interface OvertimePagination {
@@ -47,6 +51,7 @@ export const totalOvertimeSeconds = (
 	tasks: EstimatedTask[],
 ): number => {
 	const server = pagination?.total_overtime_seconds;
-	if (server !== undefined && server !== null && server !== '') return toSeconds(server);
+	if (server !== undefined && server !== null && server !== '')
+		return toSeconds(server);
 	return pageOvertimeSeconds(tasks);
 };

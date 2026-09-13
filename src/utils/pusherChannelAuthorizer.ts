@@ -14,23 +14,35 @@ export interface ChannelAuthorizationData {
 
 export type ChannelAuthorizationHandler = (
 	params: { socketId: string; channelName: string },
-	callback: (error: Error | null, data: ChannelAuthorizationData | null) => void,
+	callback: (
+		error: Error | null,
+		data: ChannelAuthorizationData | null,
+	) => void,
 ) => void;
 
 const unwrap = (body: unknown): ChannelAuthorizationData => {
 	const envelope = body as { data?: unknown };
 	const payload =
-		envelope && typeof envelope === 'object' && envelope.data && typeof envelope.data === 'object'
+		envelope &&
+		typeof envelope === 'object' &&
+		envelope.data &&
+		typeof envelope.data === 'object'
 			? envelope.data
 			: body;
 	return payload as ChannelAuthorizationData;
 };
 
-export const createChannelAuthorizer = (deps: ChannelAuthorizerDeps): ChannelAuthorizationHandler => {
-	const doFetch: typeof fetch = deps.fetchImpl ?? ((input, init) => fetch(input, init));
+export const createChannelAuthorizer = (
+	deps: ChannelAuthorizerDeps,
+): ChannelAuthorizationHandler => {
+	const doFetch: typeof fetch =
+		deps.fetchImpl ?? ((input, init) => fetch(input, init));
 
 	return ({ socketId, channelName }, callback) => {
-		const body = new URLSearchParams({ socket_id: socketId, channel_name: channelName });
+		const body = new URLSearchParams({
+			socket_id: socketId,
+			channel_name: channelName,
+		});
 		doFetch(deps.authEndpoint, {
 			method: 'POST',
 			headers: {
@@ -42,12 +54,17 @@ export const createChannelAuthorizer = (deps: ChannelAuthorizerDeps): ChannelAut
 		})
 			.then(async (response) => {
 				if (!response.ok) {
-					throw new Error(`Channel authorization failed: HTTP ${response.status}`);
+					throw new Error(
+						`Channel authorization failed: HTTP ${response.status}`,
+					);
 				}
 				callback(null, unwrap(await response.json()));
 			})
 			.catch((error: unknown) => {
-				callback(error instanceof Error ? error : new Error(String(error)), null);
+				callback(
+					error instanceof Error ? error : new Error(String(error)),
+					null,
+				);
 			});
 	};
 };

@@ -16,16 +16,25 @@ export interface PatchableColumn {
 	tasks: PatchableTask[];
 }
 
-export type ColumnPatch = 'inserted' | 'updated' | 'moved' | 'removed' | 'ignored';
+export type ColumnPatch =
+	| 'inserted'
+	| 'updated'
+	| 'moved'
+	| 'removed'
+	| 'ignored';
 
-const sameId = (a: unknown, b: unknown): boolean => a != null && b != null && Number(a) === Number(b);
+const sameId = (a: unknown, b: unknown): boolean =>
+	a != null && b != null && Number(a) === Number(b);
 
 /**
  * Put `task` where its status says: replace it in its column, move it to the top of another
  * column when the status changed, or insert it at the top when it is new. A task whose status
  * has no column on this board is dropped from the board ('removed') or ignored when unknown.
  */
-export function upsertTaskInColumns(columns: PatchableColumn[], task: PatchableTask): ColumnPatch {
+export function upsertTaskInColumns(
+	columns: PatchableColumn[],
+	task: PatchableTask,
+): ColumnPatch {
 	const target = columns.find((c) => sameId(c.status?.id, task.status_id));
 	for (const column of columns) {
 		const index = column.tasks.findIndex((t) => t.id === task.id);
@@ -45,7 +54,10 @@ export function upsertTaskInColumns(columns: PatchableColumn[], task: PatchableT
 	return 'inserted';
 }
 
-export function removeTaskFromColumns(columns: PatchableColumn[], taskId: number): boolean {
+export function removeTaskFromColumns(
+	columns: PatchableColumn[],
+	taskId: number,
+): boolean {
 	for (const column of columns) {
 		const index = column.tasks.findIndex((t) => t.id === taskId);
 		if (index !== -1) {
@@ -85,7 +97,10 @@ export function upsertTaskInList(
 	return 'ignored';
 }
 
-export function removeTaskFromList(tasks: PatchableTask[], taskId: number): boolean {
+export function removeTaskFromList(
+	tasks: PatchableTask[],
+	taskId: number,
+): boolean {
 	const index = tasks.findIndex((t) => t.id === taskId);
 	if (index === -1) return false;
 	tasks.splice(index, 1);
