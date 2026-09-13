@@ -69,9 +69,7 @@ export async function syncCategoryRepository(
 	return response.data;
 }
 
-export async function relinkCategoryRepository(
-	categoryId: number,
-): Promise<{
+export async function relinkCategoryRepository(categoryId: number): Promise<{
 	message: string;
 	stats: { commits: number; branches: number; pull_requests: number };
 }> {
