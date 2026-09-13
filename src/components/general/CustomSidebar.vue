@@ -70,6 +70,7 @@
 		Package,
 		PackageOpen,
 		Palette,
+		PaperclipIcon,
 		Plus,
 		Settings2,
 		Sliders,
@@ -563,6 +564,14 @@
 						<SidebarGroupLabel>More</SidebarGroupLabel>
 
 						<SidebarMenu>
+							<SidebarMenuItem v-if="activeWorkspace?.code">
+								<SidebarMenuButton as-child>
+									<router-link :to="`/${activeWorkspace.code}/files`">
+										<PaperclipIcon />
+										<span>Files</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
 							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
 									<router-link

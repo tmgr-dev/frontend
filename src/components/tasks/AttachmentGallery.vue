@@ -72,13 +72,13 @@
 		DialogDescription,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import { fetchFileObjectUrl, type TaskFile } from '@/actions/tmgr/files';
+	import { fetchFileObjectUrl } from '@/actions/tmgr/files';
 	import { formatFileSize } from '@/utils/attachments';
-	import { stepIndex } from '@/utils/galleryNavigation';
+	import { type GalleryImage, stepIndex } from '@/utils/galleryNavigation';
 
 	const props = defineProps<{
-		/** Images in the order the attachment list shows them. */
-		images: TaskFile[];
+		/** Images in the order the list shows them: a task's attachments, or a whole workspace's. */
+		images: GalleryImage[];
 		/** The image to open on; null keeps the gallery closed. */
 		startId: number | null;
 		/** Blob URLs the list already fetched, reused so opening costs no extra request. */
@@ -92,13 +92,13 @@
 	const ownUrls = ref<Record<number, string>>({});
 
 	const open = computed(() => props.startId !== null);
-	const current = computed<TaskFile | undefined>(() => props.images[index.value]);
+	const current = computed<GalleryImage | undefined>(() => props.images[index.value]);
 	const currentUrl = computed(() => {
 		const id = current.value?.id;
 		return id ? (props.urls[id] ?? ownUrls.value[id] ?? null) : null;
 	});
 
-	const ensureUrl = async (file?: TaskFile) => {
+	const ensureUrl = async (file?: GalleryImage) => {
 		if (!file || props.urls[file.id] || ownUrls.value[file.id]) {
 			return;
 		}

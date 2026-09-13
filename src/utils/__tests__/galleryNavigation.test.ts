@@ -1,4 +1,4 @@
-import { galleryImages, stepIndex } from '../galleryNavigation';
+import { galleryImages, stepIndex, type GalleryImage } from '../galleryNavigation';
 
 describe('stepIndex', () => {
 	it('walks forward and backward', () => {
@@ -19,8 +19,19 @@ describe('stepIndex', () => {
 });
 
 describe('galleryImages', () => {
-	const file = (id: number, mime: string | null) =>
-		({ id, name: `f${id}`, mime_type: mime }) as never;
+	const file = (id: number, mime: string | null): GalleryImage => ({
+		id,
+		name: `f${id}`,
+		size: 10,
+		mime_type: mime,
+	});
+
+	it('keeps whatever the caller passed in, not a narrowed copy', () => {
+		// The workspace file list carries a task on every row; the gallery must not strip it.
+		const row = { id: 1, name: 'a.png', size: 10, mime_type: 'image/png', task: { id: 7 } };
+
+		expect(galleryImages([row])[0].task.id).toBe(7);
+	});
 
 	it('keeps only what the gallery can show, in list order', () => {
 		expect(

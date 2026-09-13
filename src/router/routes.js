@@ -264,6 +264,16 @@ const routes = [
 	},
 	// New URL structure for archive page
 	{
+		path: '/:workspace_code/files',
+		component: () => import('@/pages/WorkspaceFilesPage.vue'),
+		meta: {
+			title: 'Files',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceFiles',
+	},
+	{
 		path: '/:workspace_code/archive',
 		component: TasksListPage,
 		meta: {

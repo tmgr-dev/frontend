@@ -106,3 +106,39 @@ export const fetchFileObjectUrl = async (fileId: number): Promise<string> => {
 
 	return URL.createObjectURL(data);
 };
+
+export interface WorkspaceFile {
+	id: number;
+	name: string;
+	mime_type: string | null;
+	size: number | null;
+	user_id: number | null;
+	created_at: string;
+	task: { id: number; key: string | null; title: string | null };
+}
+
+export interface WorkspaceFilePage {
+	data: WorkspaceFile[];
+	meta: {
+		current_page: number;
+		per_page: number;
+		total: number;
+		last_page: number;
+	};
+}
+
+/** One page of everything attached anywhere in the workspace, each row naming its task. */
+export const getWorkspaceFiles = async (
+	workspaceId: number,
+	options: { page?: number; perPage?: number; images?: boolean } = {},
+): Promise<WorkspaceFilePage> => {
+	const { data } = await $axios.get(`/workspaces/${workspaceId}/files`, {
+		params: {
+			page: options.page ?? 1,
+			per_page: options.perPage ?? 40,
+			images: options.images ?? false,
+		},
+	});
+
+	return data;
+};
