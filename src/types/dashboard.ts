@@ -149,6 +149,44 @@ export interface TeamMemberActivity {
   window: TeamActivityWindow;
 }
 
+// Member page (#8988): one member's numbers inside a workspace
+export type MemberTasksTab = 'touched' | 'assigned' | 'created' | 'done';
+
+export interface MemberStats extends TeamMemberStatus {
+  member_since: string | null;
+  assigned_count: number;
+  created_count: number;
+  commented_tasks_count: number;
+  active_days: number;
+  longest_streak: number;
+  team: {
+    tracked_seconds: number;
+    done_count: number;
+    total_members: number;
+  };
+  window: TeamActivityWindow;
+}
+
+export interface MemberTaskRow {
+  id: number;
+  title: string;
+  status: { id: number; name: string; color: string; type: string } | null;
+  category: { id: number; code: string } | null;
+  tracked_seconds: number;
+  timer_running: boolean;
+  last_touched_at: string | null;
+  my_comments: number;
+}
+
+export interface MemberTasksPage {
+  data: MemberTaskRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  tab: MemberTasksTab;
+  window: TeamActivityWindow;
+}
+
 // Recent Task Interface
 export interface RecentTask {
   id: number;
@@ -580,6 +618,33 @@ export interface DashboardActions {
       timeout?: number;
     }
   ) => Promise<ActionResult<TeamMemberActivity>>;
+
+  // Get one member's stats inside the workspace
+  getMemberStats: (
+    workspaceId: number,
+    userId: number,
+    window?: TeamActivityWindow,
+    options?: {
+      cache?: boolean;
+      timeout?: number;
+    }
+  ) => Promise<ActionResult<MemberStats>>;
+
+  // Get one page of a member's tasks
+  getMemberTasks: (
+    workspaceId: number,
+    userId: number,
+    params?: {
+      tab?: MemberTasksTab;
+      window?: TeamActivityWindow;
+      page?: number;
+      perPage?: number;
+    },
+    options?: {
+      cache?: boolean;
+      timeout?: number;
+    }
+  ) => Promise<ActionResult<MemberTasksPage>>;
 
   // Get complete dashboard data
   getDashboardData: (

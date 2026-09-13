@@ -77,7 +77,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRouter } from 'vue-router';
 import type { TeamMemberActivity, TeamMemberStatus, TeamActivityWindow } from '@/types/dashboard';
 import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
 import Button from '@/components/ui/button/Button.vue';
@@ -102,7 +101,6 @@ const emit = defineEmits<{
   'window-change': [w: TeamActivityWindow];
 }>();
 
-const router = useRouter();
 
 const windows: { key: TeamActivityWindow; label: string }[] = [
   { key: 'today', label: 'Today' },
@@ -122,21 +120,18 @@ const refreshTeamActivity = () => {
   emit('refresh');
 };
 
+// Navigation belongs to the page: /profile/{id}, /tasks/{id} and /workspace/invite
+// are not routes, and a task opens in the modal rather than a page of its own.
 const handleMemberClick = (member: TeamMemberStatus) => {
   emit('member-click', member);
-  // Navigate to member profile or tasks
-  router.push(`/profile/${member.id}`);
 };
 
 const handleTaskClick = (taskId: number) => {
   emit('task-click', taskId);
-  // Navigate to task details
-  router.push(`/tasks/${taskId}`);
 };
 
 const inviteMembers = () => {
   emit('invite-members');
-  router.push('/workspace/invite');
 };
 </script>
 

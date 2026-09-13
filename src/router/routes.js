@@ -459,6 +459,16 @@ const routes = [
 		name: 'WorkspaceDashboard',
 	},
 	{
+		path: '/:workspace_code/team/:user_id',
+		component: () => import('@/pages/MemberPage.vue'),
+		meta: {
+			title: 'Workspace Member',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceMember',
+	},
+	{
 		path: '/:workspace_code/notifications',
 		component: () => import('@/pages/NotificationsPage.vue'),
 		meta: {

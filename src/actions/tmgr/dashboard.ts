@@ -7,6 +7,9 @@ import type {
   RecentTask,
   TeamMemberActivity,
   TeamActivityWindow,
+  MemberStats,
+  MemberTasksPage,
+  MemberTasksTab,
   DashboardData,
   ActivityFeedParams,
   HeatmapParams,
@@ -424,6 +427,83 @@ export const getTeamActivity = async (
 };
 
 /**
+ * One member's stats inside a workspace (#8988).
+ */
+export const getMemberStats = async (
+  workspaceId: number,
+  userId: number,
+  window: TeamActivityWindow = '7d',
+  options?: { cache?: boolean; timeout?: number }
+): Promise<ActionResult<MemberStats>> => {
+  const startTime = Date.now();
+
+  try {
+    const config = createRequestConfig(options);
+
+    const { data, status } = await $axios.get(
+      `/workspaces/${workspaceId}/dashboard/members/${userId}`,
+      { ...config, params: { window } }
+    );
+
+    return createActionResult(
+      data.data,
+      undefined,
+      status,
+      options?.cache || false,
+      Date.now() - startTime
+    );
+  } catch (error) {
+    const actionError = handleApiError(error, 'getMemberStats');
+    return createActionResult<MemberStats>(undefined, actionError);
+  }
+};
+
+/**
+ * One page of a member's tasks for a tab (#8988).
+ */
+export const getMemberTasks = async (
+  workspaceId: number,
+  userId: number,
+  params: {
+    tab?: MemberTasksTab;
+    window?: TeamActivityWindow;
+    page?: number;
+    perPage?: number;
+  } = {},
+  options?: { cache?: boolean; timeout?: number }
+): Promise<ActionResult<MemberTasksPage>> => {
+  const startTime = Date.now();
+
+  try {
+    const config = createRequestConfig(options);
+
+    const { data, status } = await $axios.get(
+      `/workspaces/${workspaceId}/dashboard/members/${userId}/tasks`,
+      {
+        ...config,
+        params: {
+          tab: params.tab ?? 'touched',
+          window: params.window ?? '7d',
+          page: params.page ?? 1,
+          per_page: params.perPage ?? 20
+        }
+      }
+    );
+
+    return createActionResult(
+      data.data,
+      undefined,
+      status,
+      options?.cache || false,
+      Date.now() - startTime
+    );
+  } catch (error) {
+    const actionError = handleApiError(error, 'getMemberTasks');
+    return createActionResult<MemberTasksPage>(undefined, actionError);
+  }
+};
+
+/**
  * Get complete dashboard data
  */
 export const getDashboardData = async (
@@ -643,6 +723,8 @@ export const dashboardActions: DashboardActions = {
   getUserHeatmap,
   getRecentTasks,
   getTeamActivity,
+  getMemberStats,
+  getMemberTasks,
   getDashboardData,
   refreshDashboardSection
 };
