@@ -1474,7 +1474,11 @@
 			},
 		},
 		async beforeMount() {
-			const user = await getUser();
+			// The router guard already loaded the user on this navigation; refetching it here sent
+			// /api/user a second time on every board load (TM-218).
+			const user = this.$store.state.user?.id
+				? this.$store.state.user
+				: await getUser();
 			this.workspacesData = await getWorkspaces();
 			this.userData = user;
 
