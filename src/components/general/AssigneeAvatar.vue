@@ -1,7 +1,14 @@
 <template>
 	<AppTooltip :content="assignee.name" side="bottom">
 		<div class="relative m-auto font-sans text-xs text-white">
-			{{ assignee.name.charAt(0).toUpperCase() }}
+			<UserAvatar
+				v-if="assignee.has_avatar"
+				:user-id="assignee.id"
+				:name="assignee.name"
+				has-avatar
+				:size="24"
+			/>
+			<template v-else>{{ assignee.name.charAt(0).toUpperCase() }}</template>
 		</div>
 	</AppTooltip>
 	<div
@@ -20,6 +27,7 @@
 <script setup lang="ts">
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { Assignee } from '@/components/general/AssigneeUsers.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 
 	interface Props {
 		assignee: Assignee;

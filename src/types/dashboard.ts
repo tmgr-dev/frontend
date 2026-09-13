@@ -118,6 +118,8 @@ export interface TeamMemberStatus {
 	email: string;
 	role: string;
 	avatar?: string;
+	/** TM-142: the picture is fetched through a signed link, this only says there is one. */
+	has_avatar?: boolean;
 	is_online: boolean;
 	last_activity_at?: string | null;
 	last_task?: { id: number; title: string } | null;

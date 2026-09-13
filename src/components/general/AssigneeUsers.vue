@@ -44,6 +44,7 @@
 	export interface Assignee {
 		id: number;
 		name: string;
+		has_avatar?: boolean;
 	}
 
 	interface Props {

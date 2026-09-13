@@ -15,9 +15,13 @@
 					]"
 					@click="showMembersModal = true"
 				>
-					<span class="text-sm font-semibold text-white">
-						{{ user.name.charAt(0).toUpperCase() }}
-					</span>
+					<UserAvatar
+						:user-id="user.id"
+						:name="user.name"
+						:has-avatar="user.has_avatar ?? false"
+						:size="32"
+						class="!bg-transparent !text-white"
+					/>
 				</button>
 			</AppTooltip>
 
@@ -82,6 +86,7 @@
 <script setup lang="ts">
 	import { createWorkspaceInvitation } from '@/actions/tmgr/workspaces';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
