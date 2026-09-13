@@ -91,6 +91,7 @@
 		cursorAgentTaskRoute,
 		filterActiveCursorAgents,
 	} from '@/utils/cursorAgents';
+	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { ArrowUpRight, Bot, LoaderCircle } from 'lucide-vue-next';
 	import { computed, defineComponent, onMounted, onUnmounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
@@ -114,7 +115,7 @@
 
 			const agents = ref([]);
 			const loading = ref(false);
-			let pollTimer = null;
+			let disposed = false;
 
 			const activeAgents = computed(() =>
 				filterActiveCursorAgents(agents.value),
@@ -123,13 +124,16 @@
 			const loadAgents = async () => {
 				loading.value = true;
 				try {
-					agents.value = await getActiveCursorAgents();
+					const result = await getActiveCursorAgents();
+					if (!disposed) agents.value = result;
 				} catch (error) {
-					agents.value = [];
+					// Keep the last successful result on a transient failure.
 				} finally {
 					loading.value = false;
 				}
 			};
+
+			const poller = createPollingLoop(loadAgents, POLL_INTERVAL_MS);
 
 			const handleAgentClick = (agent) => {
 				const target = cursorAgentTaskRoute(agent);
@@ -140,20 +144,14 @@
 
 			const handleDropdownOpen = (isOpen) => {
 				if (isOpen) {
-					loadAgents();
+					void poller.run();
 				}
 			};
 
-			onMounted(() => {
-				loadAgents();
-				pollTimer = setInterval(loadAgents, POLL_INTERVAL_MS);
-			});
-
+			onMounted(() => poller.start());
 			onUnmounted(() => {
-				if (pollTimer) {
-					clearInterval(pollTimer);
-					pollTimer = null;
-				}
+				disposed = true;
+				poller.stop();
 			});
 
 			const statusLabel = (status) =>
@@ -163,7 +161,7 @@
 				agents,
 				loading,
 				activeAgents,
-				loadAgents,
+				loadAgents: poller.run,
 				handleAgentClick,
 				handleDropdownOpen,
 				labelFor: cursorAgentLabel,

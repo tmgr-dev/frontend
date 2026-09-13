@@ -13,10 +13,6 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
-import '@fontsource/quicksand/400.css';
-import '@fontsource/quicksand/500.css';
-import '@fontsource/quicksand/600.css';
-import '@fontsource/quicksand/700.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 
@@ -45,3 +41,10 @@ app.use(store);
 alertPlugin({ app });
 
 app.mount('#app');
+
+// Pause decorative skeleton animations when this document is not visible.
+const updatePageVisibility = () => {
+	document.documentElement.dataset.pageHidden = String(document.hidden);
+};
+updatePageVisibility();
+document.addEventListener('visibilitychange', updatePageVisibility);

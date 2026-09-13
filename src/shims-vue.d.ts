@@ -3,9 +3,3 @@ declare module '*.vue' {
 	const component: DefineComponent<{}, {}, any>;
 	export default component;
 }
-
-declare module '@vue/runtime-core' {
-	export interface ComponentCustomProperties {
-		showAlert(title?: string, description?: string): void;
-	}
-}

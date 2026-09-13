@@ -5,6 +5,10 @@
 </template>
 
 <script setup>
+	import {
+		createEditorOperationQueue,
+		createSerialEditor,
+	} from '@/utils/serialEditor';
 	import CodeTool from '@bomdi/codebox';
 	import Checklist from '@editorjs/checklist';
 	import Delimiter from '@editorjs/delimiter';
@@ -19,7 +23,7 @@
 	import Table from '@editorjs/table';
 	import Warning from '@editorjs/warning';
 	import DragDrop from 'editorjs-drag-drop';
-	import { onMounted, onUnmounted, ref, watch } from 'vue';
+	import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 	const editorRef = ref(null);
 	const props = defineProps(['modelValue', 'placeholder']);
@@ -28,6 +32,41 @@
 	let updatingModel = false;
 	let isEditorReady = false;
 	let dragDropInitialized = false;
+	let disposed = false;
+	let rendering = false;
+	let lastPublished;
+	let lastRequested;
+	const runOperation = createEditorOperationQueue();
+	const serial = createSerialEditor(
+		() =>
+			runOperation(async () => {
+				await editor.isReady;
+				return editor.save();
+			}),
+		(output) => {
+			lastPublished = output;
+			if (!disposed) emit('update:modelValue', output);
+		},
+	);
+	defineExpose({
+		flush: () => serial.changed(),
+		replace: (value) => renderModel(value),
+		hasPending: serial.hasPending,
+	});
+	function renderModel(value) {
+		lastRequested = value;
+		return runOperation(async () => {
+			await editor.isReady;
+			rendering = true;
+			try {
+				if (typeof value === 'string')
+					await editor.blocks.renderFromHTML(value);
+				else await editor.render(value || { blocks: [] });
+			} finally {
+				rendering = false;
+			}
+		});
+	}
 
 	function initDragDrop() {
 		if (dragDropInitialized || !editor || !editor.configuration?.holder) {
@@ -41,33 +80,37 @@
 		}
 	}
 
-	function modelToView() {
-		if (!isEditorReady || !editor) {
+	async function modelToView() {
+		if (
+			disposed ||
+			!isEditorReady ||
+			!editor ||
+			props.modelValue === lastPublished ||
+			props.modelValue === lastRequested
+		) {
 			return;
 		}
 		initDragDrop();
 		if (!props.modelValue) {
 			return;
 		}
-		if (typeof props.modelValue === 'string') {
-			editor.blocks.renderFromHTML(props.modelValue);
+		if (
+			serial.hasPending() ||
+			editorRef.value?.contains(document.activeElement)
+		)
 			return;
-		}
-		editor.render(props.modelValue);
+		await renderModel(props.modelValue);
 	}
 
 	// view -> model
-	function viewToModel(api, event) {
+	function viewToModel() {
+		if (disposed || rendering) return;
 		updatingModel = true;
-		editor
-			.save()
-			.then((outputData) => {
-				emit('update:modelValue', outputData);
-			})
-			.catch((error) => {
-				console.log(event, 'Saving failed: ', error);
-			})
-			.finally(() => {
+		void serial
+			.changed()
+			.catch((error) => console.error('Editor serialization failed', error))
+			.finally(async () => {
+				await nextTick();
 				updatingModel = false;
 			});
 	}
@@ -82,6 +125,8 @@
 	);
 
 	onMounted(() => {
+		const initialData = props.modelValue;
+		lastRequested = initialData;
 		editor = new EditorJS({
 			holder: editorRef.value,
 			placeholder: props.placeholder,
@@ -129,7 +174,8 @@
 					shortcut: 'CMD+SHIFT+M',
 				},
 				codebox: {
-					class: CodeTool,
+					// The package publishes a CommonJS namespace wrapping its default class.
+					class: CodeTool.default ?? CodeTool,
 					shortcut: 'CMD+SHIFT+C',
 					config: {
 						themeURL:
@@ -174,20 +220,29 @@
 				},
 			},
 			minHeight: 'auto',
-			data: props.modelValue,
+			data: typeof initialData === 'string' ? undefined : initialData,
 			onReady: () => {
 				isEditorReady = true;
-				modelToView();
+				initDragDrop();
+				if (typeof initialData === 'string') void renderModel(props.modelValue);
+				else void modelToView();
 			},
 			onChange: viewToModel,
 		});
 	});
 
-	onUnmounted(() => {
+	onBeforeUnmount(() => {
+		disposed = true;
 		isEditorReady = false;
 		dragDropInitialized = false;
 		if (editor) {
-			editor.destroy();
+			void serial
+				.flush()
+				.catch((error) => console.error('Editor final save failed', error))
+				.then(() =>
+					runOperation(() => editor.isReady.then(() => editor.destroy())),
+				)
+				.catch((error) => console.error('Editor cleanup failed', error));
 		}
 	});
 </script>

@@ -1,28 +1,49 @@
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
 
-// One shared ticker for every subscriber (routine rows can number in the
-// dozens — a per-row setInterval would pile up timers for no benefit).
-const nowMs = ref(Date.now());
-let timer: ReturnType<typeof setInterval> | null = null;
-let subscribers = 0;
+const clocks = new Map<
+	number,
+	{
+		now: Ref<number>;
+		count: number;
+		timer?: ReturnType<typeof setInterval>;
+		visibility: () => void;
+	}
+>();
 
-/** Reactive "current time" updated every 10s while at least one component uses it. */
-export function useNowMs(): Ref<number> {
+/** Shared per-frequency wall clock. Hidden tabs catch up immediately on return. */
+export function useNowMs(interval = 10_000): Ref<number> {
+	let clock = clocks.get(interval);
+	if (!clock) {
+		clock = { now: ref(Date.now()), count: 0, visibility: () => {} };
+		const entry = clock;
+		entry.visibility = () => {
+			clearInterval(entry.timer);
+			entry.timer = undefined;
+			if (entry.count && !document.hidden) {
+				entry.now.value = Date.now();
+				entry.timer = setInterval(() => {
+					entry.now.value = Date.now();
+				}, interval);
+			}
+		};
+		clocks.set(interval, entry);
+	}
+	const entry = clock;
+	let mounted = false;
 	onMounted(() => {
-		subscribers += 1;
-		if (!timer) {
-			nowMs.value = Date.now();
-			timer = setInterval(() => {
-				nowMs.value = Date.now();
-			}, 10_000);
+		mounted = true;
+		if (++entry.count === 1) {
+			document.addEventListener('visibilitychange', entry.visibility);
+			entry.visibility();
 		}
 	});
 	onBeforeUnmount(() => {
-		subscribers -= 1;
-		if (subscribers <= 0 && timer) {
-			clearInterval(timer);
-			timer = null;
+		if (!mounted) return;
+		if (--entry.count === 0) {
+			clearInterval(entry.timer);
+			entry.timer = undefined;
+			document.removeEventListener('visibilitychange', entry.visibility);
 		}
 	});
-	return nowMs;
+	return entry.now;
 }

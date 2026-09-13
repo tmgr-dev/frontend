@@ -1,4 +1,6 @@
 <script setup lang="ts">
+	import AsyncContent from '@/components/async/AsyncContent.vue';
+
 	import { FormSetting } from '@/actions/tmgr/settings.ts';
 	import {
 		getUserSettings,
@@ -58,7 +60,14 @@
 		Trash2Icon,
 		UserPlus,
 	} from 'lucide-vue-next';
-	import { computed, onBeforeMount, Ref, ref, watch } from 'vue';
+	import {
+		computed,
+		onBeforeMount,
+		onBeforeUnmount,
+		Ref,
+		ref,
+		watch,
+	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	const toaster = useToast();
@@ -94,6 +103,17 @@
 		return foundWorkspace?.user_id === store.state.user.id;
 	});
 	const isLoading = ref(true);
+	const savingSettings = ref(false);
+	const initialLoaded = ref(false),
+		initialError = ref<string | null>(null);
+	const membersLoaded = ref(false),
+		membersError = ref<string | null>(null);
+	let disposed = false,
+		memberRequest = 0;
+	onBeforeUnmount(() => {
+		disposed = true;
+		++memberRequest;
+	});
 	const members = ref<WorkspaceMember[]>([]);
 	const loadingMembers = ref(false);
 	const removingMemberId = ref<number | null>(null);
@@ -145,44 +165,55 @@
 		invitationEmailsValidationError.value = validateEmailString(newValue);
 	});
 
-	onBeforeMount(async () => {
-		setDocumentTitle('Workspace Settings');
-		const [loadedWorkspaces, loadedSettings] = await Promise.all([
-			getWorkspaces(),
-			getUserSettingsV2(),
-		]);
-		isOpen.value = route.query.hasOwnProperty('create');
-		isOpenInvitation.value = route.query.hasOwnProperty('invite');
-		isLoading.value = false;
-		workspaces.value = loadedWorkspaces;
-		console.log(store.state.user.settings);
-		activeWorkspace.value = store.state.user.settings.find(
-			(settingInStore: any) => settingInStore.key === 'current_workspace',
-		);
-
-		const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
-			let settingFromStoreWithValue = store.state.user.settings.find(
-				(settingInStore: any) => settingInStore.id === setting.id,
+	async function loadWorkspaceSettings() {
+		isLoading.value = true;
+		initialError.value = null;
+		try {
+			setDocumentTitle('Workspace Settings');
+			const [loadedWorkspaces, loadedSettings] = await Promise.all([
+				getWorkspaces(),
+				getUserSettingsV2(),
+			]);
+			if (disposed) return;
+			isOpen.value = route.query.hasOwnProperty('create');
+			isOpenInvitation.value = route.query.hasOwnProperty('invite');
+			isLoading.value = false;
+			workspaces.value = loadedWorkspaces;
+			console.log(store.state.user.settings);
+			activeWorkspace.value = store.state.user.settings.find(
+				(settingInStore) => settingInStore.key === 'current_workspace',
 			);
-			settingFromStoreWithValue = settingFromStoreWithValue
-				? {
-						...setting,
-						...settingFromStoreWithValue,
-				  }
-				: {
-						...setting,
-						value: null,
-				  };
 
-			return settingFromStoreWithValue;
-		});
+			const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
+				const settingFromStoreWithValue = store.state.user.settings.find(
+					(settingInStore) => settingInStore.id === setting.id,
+				);
+				return settingFromStoreWithValue
+					? {
+							...setting,
+							...settingFromStoreWithValue,
+					  }
+					: {
+							...setting,
+							value: null,
+					  };
+			});
 
-		settings.value = mappedSettingWithUserSettings.filter(
-			(setting) => setting.key !== 'current_workspace',
-		);
-	});
+			settings.value = mappedSettingWithUserSettings.filter(
+				(setting) => setting.key !== 'current_workspace',
+			);
+			initialLoaded.value = true;
+		} catch {
+			if (!disposed) initialError.value = 'Could not load workspace settings.';
+		} finally {
+			if (!disposed) isLoading.value = false;
+		}
+	}
+	onBeforeMount(loadWorkspaceSettings);
 
 	async function updateSettings() {
+		if (savingSettings.value) return;
+		savingSettings.value = true;
 		try {
 			const updatedSettings = [...settings.value, activeWorkspace.value];
 
@@ -271,6 +302,12 @@
 			});
 		} catch (e) {
 			console.error(e);
+			toaster.toast({
+				title: 'Could not save workspace settings',
+				variant: 'destructive',
+			});
+		} finally {
+			savingSettings.value = false;
 		}
 	}
 
@@ -360,22 +397,27 @@
 
 	async function loadMembers() {
 		const workspaceId = activeWorkspace.value?.value;
-		if (!workspaceId) return;
-
-		loadingMembers.value = true;
-		try {
-			const parsedWorkspaceId =
-				typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId;
-			members.value = await getWorkspaceMembers(parsedWorkspaceId);
-		} catch (e) {
-			console.error('Error loading members:', e);
-			toaster.toast({
-				title: 'Error',
-				description: 'Failed to load workspace members',
-				variant: 'destructive',
-			});
-		} finally {
+		const request = ++memberRequest;
+		if (!workspaceId) {
 			loadingMembers.value = false;
+			return;
+		}
+		loadingMembers.value = true;
+		membersError.value = null;
+		const current = () =>
+			!disposed &&
+			request === memberRequest &&
+			workspaceId === activeWorkspace.value?.value;
+		try {
+			const result = await getWorkspaceMembers(Number(workspaceId));
+			if (current()) {
+				members.value = result;
+				membersLoaded.value = true;
+			}
+		} catch {
+			if (current()) membersError.value = 'Could not load workspace members.';
+		} finally {
+			if (current()) loadingMembers.value = false;
 		}
 	}
 
@@ -439,8 +481,10 @@
 	}
 
 	watch(
-		activeWorkspace,
+		() => activeWorkspace.value?.value,
 		() => {
+			members.value = [];
+			membersLoaded.value = false;
 			if (activeWorkspace.value) {
 				loadMembers();
 			}
@@ -601,158 +645,171 @@
 					</AlertDialog>
 				</div>
 			</header>
+			<AsyncContent
+				:pending="isLoading"
+				:loaded="initialLoaded"
+				:error="initialError"
+				:retry="loadWorkspaceSettings"
+				label="Loading workspace settings"
+			>
+				<div class="mt-6 max-w-lg">
+					<div v-for="(setting, index) in settings" :key="setting.id">
+						<label
+							:for="`setting-${setting.id}`"
+							class="mb-2 block text-sm font-bold text-gray-700"
+						>
+							{{ setting.name }}
+						</label>
 
-			<div class="mt-6 max-w-lg">
-				<div v-for="(setting, index) in settings" :key="setting.id">
-					<label
-						:for="`setting-${setting.id}`"
-						class="mb-2 block text-sm font-bold text-gray-700"
-					>
-						{{ setting.name }}
-					</label>
-
-					<div class="mb-4">
-						<template v-if="setting.component_type === 'select'">
-							<Combobox
-								:entities="setting.default_values"
-								v-model="settings[index].value"
-								:selected-placeholder="setting.description"
-								value-key="value"
-								label-key="value"
-							/>
-						</template>
-						<template v-else-if="setting.custom_value_available">
-							<Input
-								type="time"
-								v-if="setting.component_type === 'time_in_seconds'"
-								:model-value="convertToHHMM(settings[index].value)"
-								@input="
+						<div class="mb-4">
+							<template v-if="setting.component_type === 'select'">
+								<Combobox
+									:entities="setting.default_values"
+									v-model="settings[index].value"
+									:selected-placeholder="setting.description"
+									value-key="value"
+									label-key="value"
+								/>
+							</template>
+							<template v-else-if="setting.custom_value_available">
+								<Input
+									type="time"
+									v-if="setting.component_type === 'time_in_seconds'"
+									:model-value="convertToHHMM(settings[index].value)"
+									@input="
 								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
 							"
-								:placeholder="setting.description"
-							/>
+									:placeholder="setting.description"
+								/>
 
-							<Input
-								v-else
-								v-model="settings[index].value"
-								:placeholder="setting.description"
-							/>
-						</template>
+								<Input
+									v-else
+									v-model="settings[index].value"
+									:placeholder="setting.description"
+								/>
+							</template>
 
-						<Switcher
-							v-if="
-								setting.custom_value_available &&
-								setting.default_values &&
-								setting.default_values.length > 0
-							"
-							name="set_custom_value"
-							v-model="setting.show_custom_value_input"
-							placeholder="Set custom value"
-						/>
+							<Switcher
+								v-if="
+									setting.custom_value_available &&
+									setting.default_values &&
+									setting.default_values.length > 0
+								"
+								name="set_custom_value"
+								v-model="setting.show_custom_value_input"
+								placeholder="Set custom value"
+							/>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			<footer class="text-left">
-				<Button variant="default" @click="updateSettings">
-					<SaveIcon /> Save
-				</Button>
-			</footer>
-
-			<div class="mt-8 border-t pt-6">
-				<div class="mb-4 flex items-center justify-between">
-					<h4 class="text-md font-semibold">Workspace Members</h4>
-				</div>
-
-				<div
-					v-if="loadingMembers"
-					class="flex items-center justify-center py-8"
-				>
-					<Loader />
-				</div>
-
-				<div
-					v-else-if="members.length === 0"
-					class="py-8 text-center text-gray-500"
-				>
-					<p>No members found</p>
-				</div>
-
-				<div v-else class="space-y-3">
-					<div
-						v-for="member in members"
-						:key="member.id"
-						class="flex items-center justify-between rounded-lg border p-3 dark:border-gray-700"
+				<footer class="text-left">
+					<Button
+						variant="default"
+						@click="updateSettings"
+						:disabled="savingSettings"
+						:aria-busy="savingSettings"
 					>
-						<div class="flex flex-1 items-center gap-3">
-							<Avatar class="h-10 w-10">
-								<AvatarFallback>
-									{{ getInitials(member.name) }}
-								</AvatarFallback>
-							</Avatar>
+						<SaveIcon /> Save
+					</Button>
+				</footer>
 
-							<div class="flex-1">
-								<div class="flex items-center gap-2">
-									<p class="font-medium">{{ member.name }}</p>
-									<span
-										v-if="
-											member.id ===
-											workspaces.find((w) => w.id == activeWorkspace?.value)
-												?.user_id
-										"
-										class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-									>
-										Owner
-									</span>
-								</div>
-							</div>
+				<div class="mt-8 border-t pt-6">
+					<div class="mb-4 flex items-center justify-between">
+						<h4 class="text-md font-semibold">Workspace Members</h4>
+					</div>
+
+					<AsyncContent
+						:pending="loadingMembers"
+						:loaded="membersLoaded"
+						:error="membersError"
+						:retry="loadMembers"
+						label="Loading members"
+					>
+						<div
+							v-if="members.length === 0"
+							class="py-8 text-center text-gray-500"
+						>
+							<p>No members found</p>
 						</div>
 
-						<Button
-							v-if="canRemoveMember(member)"
-							@click="handleRemoveMember(member)"
-							variant="destructive"
-							size="sm"
-							:disabled="removingMemberId !== null"
-						>
-							<Loader
-								v-if="removingMemberId === member.id"
-								is-mini
-								class="mr-2"
-							/>
-							Remove
-						</Button>
-					</div>
+						<div v-else class="space-y-3">
+							<div
+								v-for="member in members"
+								:key="member.id"
+								class="flex items-center justify-between rounded-lg border p-3 dark:border-gray-700"
+							>
+								<div class="flex flex-1 items-center gap-3">
+									<Avatar class="h-10 w-10">
+										<AvatarFallback>
+											{{ getInitials(member.name) }}
+										</AvatarFallback>
+									</Avatar>
+
+									<div class="flex-1">
+										<div class="flex items-center gap-2">
+											<p class="font-medium">{{ member.name }}</p>
+											<span
+												v-if="
+													member.id ===
+													workspaces.find((w) => w.id == activeWorkspace?.value)
+														?.user_id
+												"
+												class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+											>
+												Owner
+											</span>
+										</div>
+									</div>
+								</div>
+
+								<Button
+									v-if="canRemoveMember(member)"
+									@click="handleRemoveMember(member)"
+									variant="destructive"
+									size="sm"
+									:disabled="removingMemberId !== null"
+								>
+									<Loader
+										v-if="removingMemberId === member.id"
+										is-mini
+										class="mr-2"
+									/>
+									Remove
+								</Button>
+							</div>
+						</div>
+					</AsyncContent>
 				</div>
-			</div>
 
-			<div class="mt-8 border-t pt-6">
-				<WorkspaceInvitationsList />
-			</div>
+				<div class="mt-8 border-t pt-6">
+					<WorkspaceInvitationsList />
+				</div>
 
-			<AlertDialog v-model:open="showRemoveMemberDialog">
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Remove Member</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to remove
-							<strong>{{ memberToRemove?.name }}</strong> from this workspace?
-							This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel @click="showRemoveMemberDialog = false"
-							>Cancel</AlertDialogCancel
-						>
-						<AlertDialogAction
-							@click="confirmRemoveMember"
-							class="bg-red-600 text-white hover:bg-red-700"
-						>
-							Remove
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				<AlertDialog v-model:open="showRemoveMemberDialog">
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Remove Member</AlertDialogTitle>
+							<AlertDialogDescription>
+								Are you sure you want to remove
+								<strong>{{ memberToRemove?.name }}</strong> from this workspace?
+								This action cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel @click="showRemoveMemberDialog = false"
+								>Cancel</AlertDialogCancel
+							>
+							<AlertDialogAction
+								@click="confirmRemoveMember"
+								class="bg-red-600 text-white hover:bg-red-700"
+							>
+								Remove
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</AsyncContent>
 		</div>
 	</div>
 </template>

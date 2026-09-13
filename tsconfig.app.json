@@ -8,7 +8,8 @@
 		"skipLibCheck": true,
 
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			"vuex": ["./node_modules/vuex/types/index.d.ts"]
 		},
 
 		/* Bundler mode */

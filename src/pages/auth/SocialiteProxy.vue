@@ -3,8 +3,14 @@
 		<AuthBase>
 			<template #title>Welcome back!</template>
 			<template #body>
-				<div class="text-center">
+				<div class="text-center" role="status" :aria-busy="isLoading">
 					{{ message }}
+					<router-link
+						v-if="!isLoading"
+						to="/login"
+						class="mt-3 block underline"
+						>Return to sign in</router-link
+					>
 				</div>
 			</template>
 		</AuthBase>
@@ -85,7 +91,7 @@
 				message.value = 'Failed to process Telegram login. Redirecting...';
 				console.error('Telegram token processing error:', error);
 				setTimeout(() => router.push('/login'), 3000);
-				throw error;
+				// The status above reports the error; OAuth codes must not be retried.
 			} finally {
 				isLoading.value = false;
 			}
@@ -165,7 +171,7 @@
 				setTimeout(() => router.push('/login'), 3000);
 			}
 
-			throw error;
+			// The status above reports the error; OAuth codes must not be retried.
 		} finally {
 			isLoading.value = false;
 		}

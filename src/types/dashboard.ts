@@ -510,7 +510,14 @@ export interface ActionError {
 		| 'authorization'
 		| 'server'
 		| 'client'
-		| 'timeout';
+		| 'timeout'
+		| 'authentication'
+		| 'not_found'
+		| 'component'
+		| 'unknown';
+	status?: number;
+	stack?: string;
+	context?: string;
 	recoverable?: boolean;
 	retry_after?: number;
 }

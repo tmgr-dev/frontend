@@ -25,44 +25,40 @@
 						</div>
 					</div>
 
-					<div
-						v-if="loading && notifications.length === 0"
-						class="loading-state"
+					<AsyncContent
+						:pending="loading"
+						:loaded="loaded"
+						:has-data="notifications.length > 0"
+						:error="error"
+						:retry="handleRetry"
+						label="Loading notifications"
 					>
-						<div class="spinner"></div>
-						<p>Loading notifications...</p>
-					</div>
-
-					<div v-else-if="error" class="error-state">
-						<p>{{ error.message }}</p>
-						<button @click="handleRetry" class="retry-btn">Try again</button>
-					</div>
-
-					<div v-else-if="notifications.length === 0" class="empty-state">
-						<Bell :size="64" class="empty-icon" />
-						<h2>No notifications</h2>
-						<p>You're all caught up!</p>
-					</div>
-
-					<div v-else class="notifications-list">
-						<NotificationItem
-							v-for="notification in notifications"
-							:key="notification.id"
-							:notification="notification"
-							@click="handleNotificationClick(notification)"
-							@delete="handleDelete(notification.id)"
-						/>
-
-						<div v-if="hasMore" class="load-more-section">
-							<button
-								@click="handleLoadMore"
-								class="load-more-btn"
-								:disabled="loading"
-							>
-								{{ loading ? 'Loading...' : 'Load more' }}
-							</button>
+						<div v-if="notifications.length === 0" class="empty-state">
+							<Bell :size="64" class="empty-icon" />
+							<h2>No notifications</h2>
+							<p>You're all caught up!</p>
 						</div>
-					</div>
+
+						<div v-else class="notifications-list">
+							<NotificationItem
+								v-for="notification in notifications"
+								:key="notification.id"
+								:notification="notification"
+								@click="handleNotificationClick(notification)"
+								@delete="handleDelete(notification.id)"
+							/>
+
+							<div v-if="hasMore" class="load-more-section">
+								<button
+									@click="handleLoadMore"
+									class="load-more-btn"
+									:disabled="loading"
+								>
+									{{ loading ? 'Loading...' : 'Load more' }}
+								</button>
+							</div>
+						</div>
+					</AsyncContent>
 				</div>
 			</template>
 		</BaseLayout>
@@ -70,17 +66,19 @@
 </template>
 
 <script>
+	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import NotificationItem from '@/components/notifications/NotificationItem.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useNotifications } from '@/composable/useNotifications';
 	import { Bell, Settings } from 'lucide-vue-next';
-	import { defineComponent, onMounted } from 'vue';
+	import { defineComponent, onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
 
 	export default defineComponent({
 		name: 'NotificationsPage',
 		components: {
+			AsyncContent,
 			BaseLayout,
 			Bell,
 			Settings,
@@ -94,6 +92,7 @@
 				loading,
 				error,
 				hasMore,
+				currentPage,
 				loadNotifications,
 				loadMore,
 				markNotificationAsRead,
@@ -101,6 +100,14 @@
 				removeNotification,
 			} = useNotifications();
 
+			const loaded = ref(false);
+			const attemptedPage = ref(1);
+			async function readPage(page = 1) {
+				if (loading.value) return;
+				attemptedPage.value = page;
+				await loadNotifications(page);
+				if (!error.value) loaded.value = true;
+			}
 			const handleNotificationClick = async (notification) => {
 				try {
 					if (!notification.read_at) {
@@ -145,14 +152,14 @@
 
 			const handleLoadMore = async () => {
 				try {
-					await loadMore();
+					await readPage(currentPage.value + 1);
 				} catch (err) {
 					console.error('Error loading more notifications:', err);
 				}
 			};
 
 			const handleRetry = () => {
-				loadNotifications();
+				void readPage(attemptedPage.value);
 			};
 
 			const handleGoToSettings = () => {
@@ -161,10 +168,11 @@
 
 			onMounted(() => {
 				setDocumentTitle('Notifications');
-				loadNotifications();
+				void readPage(1);
 			});
 
 			return {
+				loaded,
 				notifications,
 				unreadCount,
 				loading,

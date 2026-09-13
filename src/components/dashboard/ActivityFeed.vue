@@ -78,13 +78,12 @@
 <script setup lang="ts">
 	import EmptyState from '@/components/EmptyState.vue';
 	import Button from '@/components/ui/button/Button.vue';
-	import { usePusher } from '@/composable/usePusher';
 	import type {
 		Activity,
 		ActivityFilters as ActivityFiltersType,
 	} from '@/types/dashboard';
 	import { ArrowPathIcon } from '@heroicons/vue/24/outline';
-	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+	import { computed, ref } from 'vue';
 	import ActivityFilters from './ActivityFilters.vue';
 	import ActivityItem from './ActivityItem.vue';
 	import ActivityItemSkeleton from './ActivityItemSkeleton.vue';
@@ -95,6 +94,7 @@
 		hasMore?: boolean;
 		loadingMore?: boolean;
 		workspaceId: number;
+		connected?: boolean;
 		workspaceUsers?: Array<{ id: number; name: string }>;
 	}
 
@@ -117,9 +117,7 @@
 		limit: 20,
 	});
 
-	const { subscribe, unsubscribe, isConnected } = usePusher();
-
-	const isRealTimeConnected = computed(() => isConnected.value);
+	const isRealTimeConnected = computed(() => props.connected ?? false);
 
 	const handleFiltersChange = (newFilters: ActivityFiltersType) => {
 		emit('filter-change', newFilters);
@@ -136,49 +134,6 @@
 	const handleActivityClick = (activity: Activity) => {
 		emit('activity-click', activity);
 	};
-
-	const handleNewActivity = (activity: Activity) => {
-		// The parent component will handle adding the new activity
-		// We could show a toast notification here
-		console.log('New activity received:', activity);
-	};
-
-	const handleDashboardUpdate = (data: any) => {
-		// Handle dashboard updates if needed
-		console.log('Dashboard updated:', data);
-	};
-
-	// Watch for workspace changes to resubscribe
-	watch(
-		() => props.workspaceId,
-		(newWorkspaceId, oldWorkspaceId) => {
-			if (oldWorkspaceId) {
-				unsubscribe(`App.Workspace.${oldWorkspaceId}`);
-			}
-			if (newWorkspaceId) {
-				subscribe(`App.Workspace.${newWorkspaceId}`, {
-					onActivityCreated: handleNewActivity,
-					onDashboardUpdated: handleDashboardUpdate,
-				});
-			}
-		},
-		{ immediate: true },
-	);
-
-	onMounted(() => {
-		if (props.workspaceId) {
-			subscribe(`App.Workspace.${props.workspaceId}`, {
-				onActivityCreated: handleNewActivity,
-				onDashboardUpdated: handleDashboardUpdate,
-			});
-		}
-	});
-
-	onUnmounted(() => {
-		if (props.workspaceId) {
-			unsubscribe(`App.Workspace.${props.workspaceId}`);
-		}
-	});
 </script>
 
 <style scoped>

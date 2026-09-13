@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import requestCache from '@/utils/requestCache';
 import {
 	absoluteLinkUrl,
 	createSignedLinkCache,
@@ -118,6 +119,7 @@ export const fetchFileObjectUrl = async (
 };
 
 const signedLinks = createSignedLinkCache({
+	context: () => requestCache.getContext(),
 	sign: async (fileId: number) => {
 		try {
 			const {
@@ -201,3 +203,6 @@ export const getWorkspaceFiles = async (
 
 	return data;
 };
+
+export const invalidateFileDisplayUrl = (id: number) =>
+	signedLinks.invalidate(id);

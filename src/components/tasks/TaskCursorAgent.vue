@@ -309,6 +309,7 @@
 		sendFollowUp,
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
+	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
@@ -335,6 +336,8 @@
 				error: null,
 				branchesError: null,
 				pollingInterval: null,
+				disposed: false,
+				agentsRequest: null,
 				showLaunchForm: false,
 			};
 		},
@@ -374,13 +377,24 @@
 		},
 		beforeUnmount() {
 			this.stopPolling();
+			clearTimeout(this.searchTimeout);
+			this.disposed = true;
 		},
 		methods: {
-			async loadAgents() {
+			loadAgents() {
+				if (this.agentsRequest) return this.agentsRequest;
+				this.agentsRequest = this.fetchAgents().finally(() => {
+					this.agentsRequest = null;
+				});
+				return this.agentsRequest;
+			},
+			async fetchAgents() {
 				try {
 					this.loading = true;
 					this.error = null;
-					this.agents = await getCursorAgents(this.taskId);
+					const taskId = this.taskId;
+					const agents = await getCursorAgents(taskId);
+					if (!this.disposed && taskId === this.taskId) this.agents = agents;
 				} catch (e) {
 					console.error('Failed to load Cursor agents:', e);
 					if (e.response?.status !== 404) {
@@ -488,29 +502,13 @@
 				return date.toLocaleDateString();
 			},
 			startPolling() {
-				if (this.pollingInterval) {
-					console.log('Polling already active');
-					return;
-				}
-
-				console.log('Starting polling every 5 seconds');
-
-				this.pollingInterval = setInterval(async () => {
-					console.log('Polling for agent status updates...');
-					try {
-						const agents = await getCursorAgents(this.taskId);
-						console.log('Got agents:', agents);
-						this.agents = agents;
-					} catch (e) {
-						console.error('Failed to poll agents:', e);
-					}
-				}, 5000);
+				if (this.pollingInterval) return;
+				this.pollingInterval = createPollingLoop(() => this.loadAgents(), 5000);
+				this.pollingInterval.start();
 			},
 			stopPolling() {
-				if (this.pollingInterval) {
-					clearInterval(this.pollingInterval);
-					this.pollingInterval = null;
-				}
+				this.pollingInterval?.stop();
+				this.pollingInterval = null;
 			},
 		},
 	});

@@ -148,19 +148,8 @@ $axios.interceptors.response.use(
 			throw error;
 		}
 
-		if (
-			error.response?.status >= 500 &&
-			config.retry < 2 &&
-			!config.__isRetry
-		) {
-			config.__isRetry = true;
-			config.retry += 1;
-
-			const delay = config.retry * 1000;
-			await new Promise((resolve) => setTimeout(resolve, delay));
-
-			return $axios(config);
-		}
+		// Server errors are handled by the owning read operation or explicit UI retry.
+		// Replaying mutations here can duplicate a write already accepted by the server.
 
 		throw error;
 	},

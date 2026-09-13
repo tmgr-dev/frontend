@@ -67,7 +67,7 @@ export const enablePomodoro = async (
 	const {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/pomodoro`);
-	requestCache.set(stateKey(taskId), data, 30_000);
+	requestCache.invalidate(stateKey(taskId));
 	return data;
 };
 
@@ -93,7 +93,7 @@ export const updatePomodoroState = async (
 	const {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}/pomodoro`, patch);
-	requestCache.set(stateKey(taskId), data, 30_000);
+	requestCache.invalidate(stateKey(taskId));
 	return data;
 };
 
@@ -103,7 +103,7 @@ export const distractPomodoro = async (
 	const {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/pomodoro/distract`);
-	requestCache.set(stateKey(taskId), data, 30_000);
+	requestCache.invalidate(stateKey(taskId));
 	return data;
 };
 

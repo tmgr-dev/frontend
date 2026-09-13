@@ -42,6 +42,23 @@ export interface UseErrorHandlerReturn {
 	isRecoverable: (error: ActionError) => boolean;
 }
 
+const isActionErrorType = (
+	value: unknown,
+): value is NonNullable<ActionError['type']> =>
+	typeof value === 'string' &&
+	[
+		'network',
+		'validation',
+		'authorization',
+		'server',
+		'client',
+		'timeout',
+		'authentication',
+		'not_found',
+		'component',
+		'unknown',
+	].includes(value);
+
 const defaultRetryConfig: Required<RetryConfig> = {
 	maxRetries: 3,
 	retryDelay: 1000,
@@ -120,7 +137,10 @@ export function useErrorHandler(
 	};
 
 	const isServerError = (error: ActionError): boolean => {
-		return error.type === 'server' || (error.status && error.status >= 500);
+		return (
+			error.type === 'server' ||
+			(error.status !== undefined && error.status >= 500)
+		);
 	};
 
 	const isClientError = (error: ActionError): boolean => {
@@ -128,7 +148,7 @@ export function useErrorHandler(
 			error.type === 'validation' ||
 			error.type === 'authentication' ||
 			error.type === 'authorization' ||
-			(error.status && error.status >= 400 && error.status < 500)
+			(error.status !== undefined && error.status >= 400 && error.status < 500)
 		);
 	};
 
@@ -172,7 +192,7 @@ export function useErrorHandler(
 			const errObj = error as Record<string, unknown>;
 			return {
 				message: (errObj.message as string) || 'Unknown error',
-				type: (errObj.type as string) || 'unknown',
+				type: isActionErrorType(errObj.type) ? errObj.type : 'unknown',
 				timestamp: (errObj.timestamp as string) || new Date().toISOString(),
 				recoverable: errObj.recoverable !== false,
 				status: errObj.status as number | undefined,

@@ -1,96 +1,114 @@
-import { ref, Ref, watch } from 'vue';
+import { getCurrentScope, onScopeDispose, ref, type Ref, watch } from 'vue';
 
 interface Props<T> {
 	formRef: Ref<T>;
-	onSave: () => Promise<void> | void;
+	onSave: (snapshot: T) => Promise<void> | void;
 	fieldsToWatch: (keyof T)[];
 	delay?: number;
 	suppressDebounceForOnce?: Ref<boolean>;
+	onError?: (error: unknown, snapshot: T) => void;
+	makeSnapshot?: (value: T) => T;
+	onDirty?: (snapshot: T) => void;
+	enabled?: () => boolean;
 }
 
-// Define the return type clearly
-type DebouncedAutoSaveReturn = [
-	isSaving: Ref<boolean>,
-	cancelPendingAutoSave: () => void,
-];
-
+/** One serial writer; queued payloads never read a later form's identity. */
 export function useDebouncedAutoSave<T>({
 	formRef,
 	onSave,
 	fieldsToWatch,
 	delay = 2000,
 	suppressDebounceForOnce,
-}: Props<T>): DebouncedAutoSaveReturn {
-	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+	onError,
+	makeSnapshot,
+	onDirty,
+	enabled,
+}: Props<T>): [
+	Ref<boolean>,
+	() => void,
+	(force?: boolean) => Promise<void>,
+	(snapshot: T) => Promise<void>,
+] {
 	const isSaving = ref(false);
-	// Set when a watched field changes while a save is in flight, so the newer
-	// state gets its own save instead of being silently dropped.
-	let dirtyWhileSaving = false;
-
-	// Function to cancel any pending auto-saves
-	const cancelPendingAutoSave = () => {
-		if (saveTimeout) {
-			clearTimeout(saveTimeout);
-			saveTimeout = null;
-		}
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let pending: T | undefined;
+	let running: Promise<void> | undefined;
+	let disposed = false;
+	const snapshot = () =>
+		JSON.parse(
+			JSON.stringify(
+				makeSnapshot ? makeSnapshot(formRef.value) : formRef.value,
+			),
+		) as T;
+	const cancel = () => {
+		clearTimeout(timer);
+		timer = undefined;
+		pending = undefined;
 	};
-
-	watch(
-		fieldsToWatch
-			? () =>
-					fieldsToWatch.reduce((result, key) => {
-						result[key] = formRef.value[key];
-						return result;
-					}, {} as Partial<T>)
-			: formRef,
-		async () => {
-			// Check if we should suppress this auto-save
-			if (suppressDebounceForOnce?.value) {
-				suppressDebounceForOnce.value = false;
-				cancelPendingAutoSave(); // Cancel any pending auto-saves
-				return;
-			}
-
-			// Don't schedule new saves if already saving; remember to save afterwards
-			if (isSaving.value) {
-				dirtyWhileSaving = true;
-				return;
-			}
-
-			scheduleSave();
-		},
-		{ deep: true },
-	);
-
-	function scheduleSave() {
-		// Cancel any previous pending saves
-		cancelPendingAutoSave();
-
-		// Schedule a new save
-		saveTimeout = setTimeout(async () => {
-			// Check again before saving in case suppress flag was set after timeout was scheduled
-			if (suppressDebounceForOnce?.value) {
-				suppressDebounceForOnce.value = false;
-				saveTimeout = null;
-				return;
-			}
-
-			isSaving.value = true;
-			try {
-				await onSave();
-			} catch (e) {
-				console.error('debounce error', e);
-			} finally {
+	const drain = (): Promise<void> => {
+		clearTimeout(timer);
+		timer = undefined;
+		if (running)
+			return running.then(() => (pending === undefined ? undefined : drain()));
+		if (pending === undefined) return Promise.resolve();
+		const sent = pending;
+		pending = undefined;
+		isSaving.value = true;
+		running = Promise.resolve()
+			.then(() => onSave(sent))
+			.catch((error) => {
+				if (onError) onError(error, sent);
+				else console.error('Autosave failed', error);
+			})
+			.finally(() => {
+				running = undefined;
 				isSaving.value = false;
-				saveTimeout = null;
-				if (dirtyWhileSaving) {
-					dirtyWhileSaving = false;
-					scheduleSave();
-				}
+			});
+		return running.then(() => {
+			if (pending !== undefined) {
+				if (disposed) return drain();
+				timer = setTimeout(() => {
+					void drain();
+				}, delay);
 			}
-		}, delay);
-	}
-
-	// Return both the saving state and a function to cancel pending saves
-	return [isSaving, cancelPendingAutoSave];
+		});
+	};
+	const flush = (force = false) => {
+		if (force && !disposed) pending = snapshot();
+		return drain();
+	};
+	watch(
+		() => fieldsToWatch.map((key) => formRef.value[key]),
+		() => {
+			if (disposed) return;
+			if (suppressDebounceForOnce?.value) {
+				suppressDebounceForOnce.value = false;
+				return;
+			}
+			if (enabled && !enabled()) return;
+			pending = snapshot();
+			onDirty?.(pending);
+			clearTimeout(timer);
+			if (!running)
+				timer = setTimeout(() => {
+					void drain();
+				}, delay);
+		},
+		{ deep: true, flush: 'sync' },
+	);
+	if (getCurrentScope())
+		onScopeDispose(() => {
+			disposed = true;
+			void drain();
+		});
+	return [
+		isSaving,
+		cancel,
+		flush,
+		(value: T) => {
+			pending = JSON.parse(JSON.stringify(value));
+			onDirty?.(pending as T);
+			return drain();
+		},
+	];
 }

@@ -10,5 +10,13 @@
 </script>
 
 <template>
-	<div :class="cn('animate-pulse rounded-md bg-muted', props.class)" />
+	<div
+		aria-hidden="true"
+		:class="
+			cn(
+				'animate-pulse rounded-md bg-muted motion-reduce:animate-none',
+				props.class,
+			)
+		"
+	/>
 </template>

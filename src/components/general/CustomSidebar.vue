@@ -1,4 +1,10 @@
 <script setup lang="ts">
+	import {
+		getUserFeatureToggles,
+		getWorkspaceFeatureToggles,
+	} from '@/actions/tmgr/featureToggles';
+	import AsyncContent from '@/components/async/AsyncContent.vue';
+
 	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
@@ -82,6 +88,7 @@
 		computed,
 		defineAsyncComponent,
 		onBeforeMount,
+		onBeforeUnmount,
 		ref,
 		watch,
 	} from 'vue';
@@ -115,9 +122,9 @@
 		},
 		{ immediate: true },
 	);
-	const user = ref<User>({} as User);
+	const user = ref<User>((store.state.user || {}) as User);
 	const categories = ref<Category[]>([]);
-	const workspaces = ref<Workspace[]>([]);
+	const workspaces = ref<Workspace[]>(store.state.workspaces || []);
 	const showExitConfirm = ref(false);
 	const workspaceToExit = ref<Workspace | null>(null);
 
@@ -144,38 +151,88 @@
 
 	const activeWorkspace = ref(workspaces.value[0]);
 
-	onBeforeMount(async () => {
-		if (store.getters.isLoggedIn) {
-			try {
-				const [loadedCategories, userData, workspacesData] = await Promise.all([
-					getTopCategories(),
-					getUser(),
-					getWorkspaces(),
-					store.dispatch('featureToggles/loadUserToggles'),
-				]);
-
-				categories.value = loadedCategories.slice(0, 4);
-				user.value = userData;
-				workspaces.value = workspacesData;
-				const activeWorkspaceId = user.value?.settings.find(
-					(s) => s.key === 'current_workspace',
-				)?.value;
-				activeWorkspace.value = workspaces.value?.find(
-					(workspace: Workspace) => workspace.id == activeWorkspaceId,
-				) as Workspace;
-
-				// Load workspace feature toggles for the active workspace
-				if (activeWorkspace.value?.id) {
-					await store.dispatch(
-						'featureToggles/loadWorkspaceToggles',
-						activeWorkspace.value.id,
-					);
-				}
-			} catch (e) {
-				console.error(e);
-			}
-		}
+	const sidebarPending = ref(false),
+		categoriesLoaded = ref(false),
+		sidebarError = ref<string | null>(null);
+	let sidebarDisposed = false,
+		sidebarRequest = 0;
+	onBeforeUnmount(() => {
+		sidebarDisposed = true;
+		++sidebarRequest;
 	});
+	async function loadSidebar() {
+		if (!store.getters.isLoggedIn) return;
+		const request = ++sidebarRequest;
+		const context =
+			String(store.state.user?.id) +
+			':' +
+			String(
+				store.state.user?.settings?.find(
+					(s: any) => s.key === 'current_workspace',
+				)?.value,
+			);
+		const current = () =>
+			!sidebarDisposed &&
+			request === sidebarRequest &&
+			context ===
+				String(store.state.user?.id) +
+					':' +
+					String(
+						store.state.user?.settings?.find(
+							(s: any) => s.key === 'current_workspace',
+						)?.value,
+					);
+		sidebarPending.value = true;
+		sidebarError.value = null;
+		const results = await Promise.allSettled([
+			getTopCategories().then((rows) => {
+				if (current()) {
+					categories.value = rows.slice(0, 4);
+					categoriesLoaded.value = true;
+				}
+			}),
+			getUser().then((data) => {
+				if (current()) user.value = data;
+			}),
+			getWorkspaces().then((data) => {
+				if (current()) workspaces.value = data;
+			}),
+			getUserFeatureToggles().then((data) => {
+				if (current()) store.commit('featureToggles/setUserToggles', data);
+			}),
+		]);
+		if (!current()) return;
+		const id = user.value?.settings?.find(
+			(s) => s.key === 'current_workspace',
+		)?.value;
+		activeWorkspace.value = workspaces.value.find(
+			(w) => w.id == id,
+		) as Workspace;
+		if (results.some((result) => result.status === 'rejected'))
+			sidebarError.value = 'Some navigation data could not be loaded.';
+		try {
+			if (activeWorkspace.value?.id) {
+				const data = await getWorkspaceFeatureToggles(activeWorkspace.value.id);
+				if (current()) store.commit('featureToggles/setWorkspaceToggles', data);
+			}
+		} catch {
+			if (current()) sidebarError.value = 'Could not load workspace features.';
+		} finally {
+			if (current()) sidebarPending.value = false;
+		}
+	}
+	onBeforeMount(loadSidebar);
+	watch(
+		() =>
+			store.state.user?.settings?.find(
+				(s: any) => s.key === 'current_workspace',
+			)?.value,
+		() => {
+			categories.value = [];
+			categoriesLoaded.value = false;
+			void loadSidebar();
+		},
+	);
 
 	// Watch for changes to the current workspace in the store
 	watch(
@@ -361,6 +418,12 @@
 		<SidebarMobileCloser>
 			<Sidebar collapsible="icon" v-if="store.getters.isLoggedIn">
 				<SidebarHeader>
+					<AsyncContent
+						:pending="sidebarPending"
+						:loaded="true"
+						:error="sidebarError"
+						:retry="loadSidebar"
+					/>
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<DropdownMenu>
@@ -542,22 +605,28 @@
 						class="group-data-[collapsible=icon]:hidden"
 					>
 						<SidebarGroupLabel>Recent categories</SidebarGroupLabel>
-
-						<SidebarMenu>
-							<SidebarMenuItem v-for="item in categories" :key="item.title">
-								<SidebarMenuButton as-child>
-									<router-link
-										:to="
-											activeWorkspace?.code
-												? generateCategoryUrl(item.id, activeWorkspace)
-												: `/projects-categories/${item.id}/children`
-										"
-									>
-										<span>{{ item.title }}</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
+						<AsyncContent
+							:pending="sidebarPending"
+							:loaded="categoriesLoaded"
+							:error="sidebarError"
+							label="Loading categories"
+						>
+							<SidebarMenu>
+								<SidebarMenuItem v-for="item in categories" :key="item.title">
+									<SidebarMenuButton as-child>
+										<router-link
+											:to="
+												activeWorkspace?.code
+													? generateCategoryUrl(item.id, activeWorkspace)
+													: `/projects-categories/${item.id}/children`
+											"
+										>
+											<span>{{ item.title }}</span>
+										</router-link>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							</SidebarMenu>
+						</AsyncContent>
 					</SidebarGroup>
 
 					<SidebarGroup>

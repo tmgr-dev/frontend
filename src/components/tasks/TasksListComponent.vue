@@ -63,19 +63,6 @@
 			<div
 				v-for="(task, i) in tasks"
 				:key="task.id"
-				v-memo="[
-					task.id,
-					task.common_time,
-					task.start_time,
-					task.start_time ? nowSeconds : 0,
-					task.status_id,
-					task.deleted_at,
-					selected[i],
-					selecting[i],
-					hoveredTaskId === task.id,
-					assigneePopoverOpen[task.id],
-					focusedIndex === i,
-				]"
 				:class="{
 					selected: !!selected[i],
 					selecting: !!selecting[i],
@@ -512,6 +499,8 @@
 				}
 			},
 			focusOrderKey() {
+				// Selection is indexed; replacement/reordering must not select other tasks.
+				this.resetSelectedTasks();
 				if (this.focusedTaskId == null) {
 					this.focusedIndex = -1;
 					return;

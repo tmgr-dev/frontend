@@ -120,9 +120,11 @@
 						<!-- Sign In Button -->
 						<button
 							type="submit"
+							:disabled="isLoading"
+							:aria-busy="isLoading"
 							class="w-full rounded-lg bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"
 						>
-							Sign in
+							{{ isLoading ? 'Signing in…' : 'Sign in' }}
 						</button>
 						<!-- Forgot Password Link -->
 						<div class="mt-4 text-center">
@@ -174,6 +176,7 @@
 	const errors = ref({});
 
 	async function login() {
+		if (isLoading.value) return;
 		try {
 			message.value = '';
 			errors.value = {};
@@ -223,7 +226,7 @@
 				errors.value = error.response?.data?.errors;
 				message.value = error.response?.data?.message;
 			}
-			throw error;
+			// Error is already presented by the form.
 		} finally {
 			isLoading.value = false;
 		}

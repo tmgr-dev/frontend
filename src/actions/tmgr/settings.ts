@@ -17,24 +17,17 @@ export interface Setting extends Omit<FormSetting, 'value'> {
 	variable_type: 'string' | 'integer';
 }
 
-export const getTaskSettings = async (useCache: boolean = true) => {
-	const cacheKey = 'task-settings';
-
-	if (useCache) {
-		const cached = requestCache.get(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get('tasks/settings');
-
-	requestCache.set(cacheKey, data, 300000);
-
-	return data;
-};
+export const getTaskSettings = async (useCache: boolean = true) =>
+	requestCache.getOrFetch(
+		'task-settings',
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('tasks/settings');
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 
 export interface SettingPayload {
 	id: number;
@@ -52,24 +45,17 @@ export const updateTaskSettings = async (
 	return data;
 };
 
-export const getCategorySettings = async (useCache: boolean = true) => {
-	const cacheKey = 'category-settings';
-
-	if (useCache) {
-		const cached = requestCache.get(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get('project_categories/settings');
-
-	requestCache.set(cacheKey, data, 300000);
-
-	return data;
-};
+export const getCategorySettings = async (useCache: boolean = true) =>
+	requestCache.getOrFetch(
+		'category-settings',
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('project_categories/settings');
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 
 export const updateCategorySettings = async (
 	categoryId: number,

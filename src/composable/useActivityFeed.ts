@@ -9,6 +9,7 @@ import type {
 	EventHandlers,
 	SortOption,
 } from '@/types/dashboard';
+import { createRequestSequence } from '@/utils/requestSequence';
 import type { ComputedRef, Ref } from 'vue';
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
 import { usePusher } from './usePusher';
@@ -92,8 +93,8 @@ export function useActivityFeed(
 		if (wsId && wsId > 0) return wsId;
 
 		// Try to get from store or route params
-		if (store?.state?.workspace?.current?.id) {
-			return store.state.workspace.current.id;
+		if (store.getters.currentWorkspaceId) {
+			return Number(store.getters.currentWorkspaceId);
 		}
 
 		throw new Error('Workspace ID is required for activity feed operations');
@@ -118,6 +119,24 @@ export function useActivityFeed(
 
 	// Real-time state
 	const realTimeEnabled = ref(false);
+	let disposed = false;
+	const requests = createRequestSequence();
+	const beginRequest = () => {
+		const token = requests.begin();
+		const workspace =
+			typeof workspaceId === 'object'
+				? workspaceId.value
+				: workspaceId ?? store.getters.currentWorkspaceId;
+		return () =>
+			!disposed &&
+			requests.isCurrent(token) &&
+			workspace ===
+				(typeof workspaceId === 'object'
+					? workspaceId.value
+					: workspaceId ?? store.getters.currentWorkspaceId);
+	};
+	let subscribedWorkspaceId: number | null = null;
+	let subscriptionId = '';
 	const pusherInstance = ref<ReturnType<typeof usePusher> | null>(null);
 
 	// Retry configuration
@@ -196,10 +215,12 @@ export function useActivityFeed(
 	const loadActivities = async (reset = false): Promise<void> => {
 		if (reset) {
 			currentPage.value = 1;
-			activities.value = [];
 		}
 
+		loadingMore.value = false;
+		refreshing.value = false;
 		loading.value = true;
+		const isCurrent = beginRequest();
 		clearError();
 
 		try {
@@ -207,16 +228,17 @@ export function useActivityFeed(
 			const params = buildApiParams(currentPage.value);
 
 			const result = await withRetry(
-				() => getActivityFeed(wsId, params, { cache: currentPage.value === 1 }),
+				() => getActivityFeed(wsId, params, { cache: params.page === 1 }),
 				retryConfig.maxRetries,
 				retryConfig.retryDelay,
 				retryConfig.exponentialBackoff,
 			);
 
+			if (!isCurrent()) return;
 			if (result.success && result.data) {
 				const { data: activitiesData, meta } = result.data;
 
-				if (reset || currentPage.value === 1) {
+				if (reset || params.page === 1) {
 					activities.value = activitiesData;
 				} else {
 					activities.value.push(...activitiesData);
@@ -226,10 +248,11 @@ export function useActivityFeed(
 				currentPage.value = meta.current_page;
 				totalPages.value = meta.last_page;
 				totalItems.value = meta.total;
-			} else if (result.error) {
-				handleError(result.error);
+			} else {
+				throw new Error(result.error?.message ?? 'Empty activity response');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load activities';
 			handleError({
@@ -239,6 +262,7 @@ export function useActivityFeed(
 				recoverable: true,
 			});
 		} finally {
+			if (!isCurrent()) return;
 			loading.value = false;
 		}
 	};
@@ -250,6 +274,7 @@ export function useActivityFeed(
 		if (!canLoadMore.value) return;
 
 		loadingMore.value = true;
+		const isCurrent = beginRequest();
 		clearError();
 
 		try {
@@ -264,6 +289,7 @@ export function useActivityFeed(
 				retryConfig.exponentialBackoff,
 			);
 
+			if (!isCurrent()) return;
 			if (result.success && result.data) {
 				const { data: activitiesData, meta } = result.data;
 
@@ -271,10 +297,11 @@ export function useActivityFeed(
 				currentPage.value = meta.current_page;
 				totalPages.value = meta.last_page;
 				totalItems.value = meta.total;
-			} else if (result.error) {
-				handleError(result.error);
+			} else {
+				throw new Error(result.error?.message ?? 'Empty activity response');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load more activities';
 			handleError({
@@ -284,6 +311,7 @@ export function useActivityFeed(
 				recoverable: true,
 			});
 		} finally {
+			if (!isCurrent()) return;
 			loadingMore.value = false;
 		}
 	};
@@ -292,16 +320,8 @@ export function useActivityFeed(
 	 * Refresh activities
 	 */
 	const refresh = async (): Promise<void> => {
-		refreshing.value = true;
-		currentPage.value = 1;
-
-		try {
-			await loadActivities(true);
-		} finally {
-			refreshing.value = false;
-		}
+		await loadActivities(true);
 	};
-
 	/**
 	 * Apply new filters
 	 */
@@ -343,7 +363,9 @@ export function useActivityFeed(
 	 * Enable real-time updates
 	 */
 	const enableRealTime = (wsId: number): void => {
-		if (realTimeEnabled.value) return;
+		if (disposed) return;
+		if (realTimeEnabled.value && subscribedWorkspaceId === wsId) return;
+		if (realTimeEnabled.value) disableRealTime();
 
 		try {
 			pusherInstance.value = usePusher();
@@ -374,7 +396,11 @@ export function useActivityFeed(
 			};
 
 			if (pusherInstance.value) {
-				pusherInstance.value.subscribeToWorkspace(wsId, eventHandlers);
+				subscriptionId = pusherInstance.value.subscribeToWorkspace(
+					wsId,
+					eventHandlers,
+				);
+				subscribedWorkspaceId = wsId;
 			}
 			realTimeEnabled.value = true;
 
@@ -391,11 +417,15 @@ export function useActivityFeed(
 		if (!realTimeEnabled.value || !pusherInstance.value) return;
 
 		try {
-			const wsId = getCurrentWorkspaceId();
-			if (pusherInstance.value) {
-				pusherInstance.value.unsubscribeFromWorkspace(wsId);
+			if (subscribedWorkspaceId !== null && subscriptionId) {
+				pusherInstance.value.unsubscribeHandlerFromWorkspace(
+					subscribedWorkspaceId,
+					subscriptionId,
+				);
 			}
 			pusherInstance.value = null;
+			subscribedWorkspaceId = null;
+			subscriptionId = '';
 			realTimeEnabled.value = false;
 
 			console.log('Activity feed real-time updates disabled');
@@ -441,24 +471,30 @@ export function useActivityFeed(
 	// Internal utility functions (not exposed in return interface)
 	// These are used internally by the real-time event handlers
 
-	// Watch for filter changes to auto-reload
+	// Filter actions own reloads; a second watcher caused duplicate requests.
 	watch(
-		() => [filters.value.type, filters.value.user_id],
+		() =>
+			typeof workspaceId === 'object'
+				? workspaceId.value
+				: workspaceId ?? store.getters.currentWorkspaceId,
 		() => {
-			// Debounce the reload to avoid too many API calls
-			clearTimeout((window as any).activityFilterTimeout);
-			(window as any).activityFilterTimeout = setTimeout(() => {
-				loadActivities(true);
-			}, 300);
+			requests.begin();
+			activities.value = [];
+			currentPage.value = 1;
+			totalPages.value = 1;
+			totalItems.value = 0;
+			loading.value = loadingMore.value = refreshing.value = false;
+			error.value = null;
 		},
-		{ deep: true },
+		{ flush: 'sync' },
 	);
 
 	// Cleanup on unmount (only if called within component setup)
 	if (getCurrentInstance()) {
 		onUnmounted(() => {
+			disposed = true;
 			disableRealTime();
-			clearTimeout((window as any).activityFilterTimeout);
+			requests.dispose();
 		});
 	}
 

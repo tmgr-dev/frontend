@@ -8,8 +8,8 @@ import {
 	type NotificationPaginatedResponse,
 } from '@/actions/tmgr/notifications';
 import { usePusher } from '@/composable/usePusher';
-import type { ActionError } from '@/types/api';
-import { computed, ref } from 'vue';
+import type { ActionError } from '@/types/dashboard';
+import { computed, getCurrentScope, onScopeDispose, ref } from 'vue';
 
 interface UseNotificationsReturn {
 	notifications: import('vue').Ref<Notification[]>;
@@ -42,7 +42,8 @@ export function useNotifications(): UseNotificationsReturn {
 	const perPage = 20;
 
 	const pusher = usePusher();
-	let isSubscribed = false;
+	let subscribedUserId: number | null = null;
+	let subscriptionId: string | null = null;
 	let pulseTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	const hasMore = computed(() => currentPage.value < totalPages.value);
@@ -68,7 +69,7 @@ export function useNotifications(): UseNotificationsReturn {
 		} catch (err: any) {
 			error.value = {
 				message: err.response?.data?.message || 'Failed to load notifications',
-				type: 'api',
+				type: 'server',
 				timestamp: new Date().toISOString(),
 				recoverable: true,
 			};
@@ -171,10 +172,11 @@ export function useNotifications(): UseNotificationsReturn {
 	};
 
 	const subscribeToRealtime = (userId: number): void => {
-		if (isSubscribed) return;
+		if (subscribedUserId === userId && subscriptionId) return;
+		unsubscribeFromRealtime();
 
 		try {
-			pusher.subscribeToUser(userId, {
+			const id = pusher.subscribeToUser(userId, {
 				onNotificationCreated: (data: any) => {
 					if (data.notification) {
 						handleNewNotification(data.notification);
@@ -185,24 +187,24 @@ export function useNotifications(): UseNotificationsReturn {
 				},
 			});
 
-			isSubscribed = true;
+			subscriptionId = id || null;
+			subscribedUserId = id ? userId : null;
 			console.log('Subscribed to notification updates');
 		} catch (err) {
 			console.error('Failed to subscribe to notifications:', err);
 		}
 	};
 
-	const unsubscribeFromRealtime = (userId: number): void => {
-		if (!isSubscribed) return;
-
-		try {
-			pusher.unsubscribeFromUser(userId);
-			isSubscribed = false;
-			console.log('Unsubscribed from notification updates');
-		} catch (err) {
-			console.error('Failed to unsubscribe from notifications:', err);
+	const unsubscribeFromRealtime = (_userId?: number): void => {
+		if (subscribedUserId !== null && subscriptionId) {
+			pusher.unsubscribeHandler(`App.User.${subscribedUserId}`, subscriptionId);
 		}
+		subscriptionId = null;
+		subscribedUserId = null;
+		clearNewNotificationIndicator();
 	};
+
+	if (getCurrentScope()) onScopeDispose(unsubscribeFromRealtime);
 
 	return {
 		notifications,

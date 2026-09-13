@@ -12,27 +12,18 @@ export interface Comment {
 
 export const getComments = async (
 	taskId: number,
-	useCache: boolean = false,
-): Promise<Comment[]> => {
-	const cacheKey = `comments-task-${taskId}`;
-
-	if (useCache) {
-		const cached = requestCache.get<Comment[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get(`/tasks/${taskId}/comments/`);
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 30000);
-	}
-
-	return data;
-};
+	useCache = false,
+): Promise<Comment[]> =>
+	requestCache.getOrFetch(
+		`comments-task-${taskId}`,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/tasks/${taskId}/comments/`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
 
 export const createComment = async (taskId: number, payload: Comment) => {
 	const {

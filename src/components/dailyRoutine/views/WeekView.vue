@@ -201,6 +201,7 @@
 		isSameDay,
 		parseTime,
 	} from '@/utils/dailyRoutines/dateHelpers';
+	import { indexEntriesByDate } from '@/utils/dailyRoutines/entryIndex';
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { computed, onMounted, ref, watch } from 'vue';
 	import ClusterBlock from '../ClusterBlock.vue';
@@ -252,8 +253,9 @@
 		Array.from({ length: 7 }, (_, i) => addDays(props.weekStart, i)),
 	);
 
+	const entryIndex = computed(() => indexEntriesByDate(props.entries));
 	const byDay = computed(() =>
-		days.value.map((d) => props.entries.filter((e) => e.date === fmtIso(d))),
+		days.value.map((d) => entryIndex.value.get(fmtIso(d)) || []),
 	);
 
 	const allDayByDay = computed(() =>

@@ -13,6 +13,28 @@ import {
 	updateDailyTask,
 } from '@/actions/tmgr/daily-tasks';
 
+// Request ownership belongs to each store instance and each operation.
+const requests = new WeakMap();
+const contextKey = ({ rootState, rootGetters }) =>
+	JSON.stringify([
+		rootState?.user?.id,
+		rootState?.sessionGeneration,
+		rootGetters?.currentWorkspaceId,
+	]);
+function beginRequest(context, operation) {
+	let operations = requests.get(context.state);
+	if (!operations) requests.set(context.state, (operations = {}));
+	const token = Symbol(operation);
+	operations[operation] = token;
+	const key = contextKey(context);
+	return {
+		owns: () => requests.get(context.state)?.[operation] === token,
+		current: () =>
+			requests.get(context.state)?.[operation] === token &&
+			contextKey(context) === key,
+	};
+}
+
 function fmtDate(d) {
 	const y = d.getFullYear();
 	const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -28,10 +50,29 @@ const dailyRoutinesModule = {
 		entries: [],
 		yearStats: {},
 		isLoading: false,
+		rangeLoading: false,
+		yearLoading: false,
+		rangeError: null,
+		yearError: null,
 		lastRange: { from: null, to: null },
 	}),
 
 	mutations: {
+		reset(state) {
+			requests.delete(state);
+			state.entries = [];
+			state.yearStats = {};
+			state.lastRange = { from: null, to: null };
+			state.rangeLoading = state.yearLoading = state.isLoading = false;
+			state.rangeError = state.yearError = null;
+		},
+		setOperationLoading(state, { operation, loading }) {
+			state[`${operation}Loading`] = loading;
+			state.isLoading = state.rangeLoading || state.yearLoading;
+		},
+		setOperationError(state, { operation, error }) {
+			state[`${operation}Error`] = error;
+		},
 		setView(state, view) {
 			state.view = view;
 		},
@@ -64,23 +105,46 @@ const dailyRoutinesModule = {
 	},
 
 	actions: {
-		async loadRange({ commit }, { from, to }) {
-			commit('setLoading', true);
+		async loadRange(context, { from, to }) {
+			const { commit } = context;
+			const request = beginRequest(context, 'range');
+			commit('setOperationLoading', { operation: 'range', loading: true });
+			commit('setOperationError', { operation: 'range', error: null });
 			try {
 				const data = await expandRoutineRange(from, to);
+				if (!request.current()) return;
 				commit('setEntries', data);
 				commit('setLastRange', { from, to });
+			} catch (error) {
+				if (!request.current()) return;
+				commit('setOperationError', {
+					operation: 'range',
+					error: error.message ?? 'Could not load routines',
+				});
+				throw error;
 			} finally {
-				commit('setLoading', false);
+				if (request.owns())
+					commit('setOperationLoading', { operation: 'range', loading: false });
 			}
 		},
-		async loadYearStats({ commit }, year) {
-			commit('setLoading', true);
+		async loadYearStats(context, year) {
+			const { commit } = context;
+			const request = beginRequest(context, 'year');
+			commit('setOperationLoading', { operation: 'year', loading: true });
+			commit('setOperationError', { operation: 'year', error: null });
 			try {
 				const data = await expandRoutineYearStats(year);
-				commit('setYearStats', data);
+				if (request.current()) commit('setYearStats', data);
+			} catch (error) {
+				if (!request.current()) return;
+				commit('setOperationError', {
+					operation: 'year',
+					error: error.message ?? 'Could not load routine statistics',
+				});
+				throw error;
 			} finally {
-				commit('setLoading', false);
+				if (request.owns())
+					commit('setOperationLoading', { operation: 'year', loading: false });
 			}
 		},
 		async toggleComplete({ commit, state, dispatch }, entry) {
@@ -242,5 +306,29 @@ const dailyRoutinesModule = {
 			state.entries.filter((e) => e.task_id === taskId),
 	},
 };
+
+// Mutations started in another user/workspace/range must not patch the visible list.
+for (const [name, action] of Object.entries(dailyRoutinesModule.actions)) {
+	if (['loadRange', 'loadYearStats', 'exportIcs'].includes(name)) continue;
+	dailyRoutinesModule.actions[name] = async (context, payload) => {
+		const key = contextKey(context);
+		const rangeRequest = requests.get(context.state)?.range;
+		const current = () =>
+			contextKey(context) === key &&
+			requests.get(context.state)?.range === rangeRequest;
+		return action(
+			{
+				...context,
+				commit: (...args) => {
+					if (current()) return context.commit(...args);
+				},
+				dispatch: (...args) => {
+					if (current()) return context.dispatch(...args);
+				},
+			},
+			payload,
+		);
+	};
+}
 
 export default dailyRoutinesModule;

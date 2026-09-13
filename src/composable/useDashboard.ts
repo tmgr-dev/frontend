@@ -22,8 +22,9 @@ import type {
 	TeamMemberActivity,
 	UseDashboardReturn,
 } from '@/types/dashboard';
+import { createRequestSequence } from '@/utils/requestSequence';
 import type { ComputedRef, Ref } from 'vue';
-import { computed, getCurrentInstance, onUnmounted, ref } from 'vue';
+import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
 
 // Loading state factory functions
 const createInitialState = (): DetailedLoadingState => ({
@@ -70,22 +71,13 @@ const createErrorState = (
 	endTime: Date.now(),
 });
 
-const createRetryingState = (retryCount: number): DetailedLoadingState => ({
-	isLoading: true,
-	error: null,
-	status: 'retrying',
-	progress: 0,
-	retryCount,
-	canRetry: true,
-	startTime: Date.now(),
-});
-
 /**
  * Dashboard composable for managing dashboard state and operations
  * Provides reactive state management for all dashboard data sections
  */
 export function useDashboard(
 	workspaceId?: number | Ref<number>,
+	options: { includeActivities?: boolean } = {},
 ): UseDashboardReturn {
 	// Get workspace ID from current context if not provided
 	const getCurrentWorkspaceId = (): number | null => {
@@ -99,9 +91,9 @@ export function useDashboard(
 
 		// Try to get from store or route params
 
-		// Try different store structures
-		if (store?.state?.workspace?.current?.id) {
-			return store.state.workspace.current.id;
+		// Use the store's current workspace setting.
+		if (store.getters.currentWorkspaceId) {
+			return Number(store.getters.currentWorkspaceId);
 		}
 
 		// Try workspaces array with current workspace setting
@@ -128,6 +120,25 @@ export function useDashboard(
 
 		// No valid workspace found
 		return null;
+	};
+
+	const requests = Object.fromEntries(
+		[
+			'statistics',
+			'activities',
+			'heatmap',
+			'recentTasks',
+			'teamActivity',
+			'initial',
+			'refresh',
+		].map((key) => [key, createRequestSequence()]),
+	);
+	const beginRequest = (section: string) => {
+		const sequence = requests[section];
+		const token = sequence.begin();
+		const workspace = getCurrentWorkspaceId();
+		return () =>
+			sequence.isCurrent(token) && workspace === getCurrentWorkspaceId();
 	};
 
 	// Reactive state for dashboard data
@@ -217,6 +228,7 @@ export function useDashboard(
 	 * Load dashboard statistics
 	 */
 	const loadStatistics = async (): Promise<void> => {
+		const isCurrent = beginRequest('statistics');
 		const startTime = Date.now();
 		updateLoadingState('statistics', createLoadingState(0));
 
@@ -236,6 +248,11 @@ export function useDashboard(
 				retryConfig.exponentialBackoff,
 			);
 
+			if (!isCurrent()) return;
+			if (!result.success || !result.data) {
+				if (!result.error) throw new Error('Empty dashboard response');
+			}
+
 			if (result.success && result.data) {
 				statistics.value = result.data;
 				const duration = Date.now() - startTime;
@@ -248,6 +265,7 @@ export function useDashboard(
 				handleError(result.error, 'statistics');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load statistics';
 			updateLoadingState('statistics', createErrorState(errorMessage));
@@ -267,8 +285,10 @@ export function useDashboard(
 	 * Load activity feed
 	 */
 	const loadActivities = async (page = 1, append = false): Promise<void> => {
+		const isCurrent = beginRequest('activities');
 		const startTime = Date.now();
 
+		loadingStates.value.loadingMore = false;
 		if (append) {
 			loadingStates.value.loadingMore = true;
 		} else {
@@ -295,6 +315,11 @@ export function useDashboard(
 				retryConfig.retryDelay,
 				retryConfig.exponentialBackoff,
 			);
+
+			if (!isCurrent()) return;
+			if (!result.success || !result.data) {
+				if (!result.error) throw new Error('Empty dashboard response');
+			}
 
 			if (result.success && result.data) {
 				const { data: activitiesData, meta } = result.data;
@@ -327,6 +352,7 @@ export function useDashboard(
 				handleError(result.error, 'activities');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load activities';
 
@@ -352,6 +378,7 @@ export function useDashboard(
 	 * Load heatmap data
 	 */
 	const loadHeatmap = async (params?: HeatmapParams): Promise<void> => {
+		const isCurrent = beginRequest('heatmap');
 		const startTime = Date.now();
 		updateLoadingState('heatmap', createLoadingState(0));
 
@@ -378,6 +405,11 @@ export function useDashboard(
 				retryConfig.exponentialBackoff,
 			);
 
+			if (!isCurrent()) return;
+			if (!result.success || !result.data) {
+				if (!result.error) throw new Error('Empty dashboard response');
+			}
+
 			if (result.success && result.data) {
 				heatmapData.value = result.data;
 				const duration = Date.now() - startTime;
@@ -387,6 +419,7 @@ export function useDashboard(
 				handleError(result.error, 'heatmap');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load heatmap';
 			updateLoadingState('heatmap', createErrorState(errorMessage));
@@ -406,6 +439,7 @@ export function useDashboard(
 	 * Load recent tasks
 	 */
 	const loadRecentTasks = async (params?: RecentTasksParams): Promise<void> => {
+		const isCurrent = beginRequest('recentTasks');
 		const startTime = Date.now();
 		updateLoadingState('recentTasks', createLoadingState(0));
 
@@ -430,6 +464,11 @@ export function useDashboard(
 				retryConfig.exponentialBackoff,
 			);
 
+			if (!isCurrent()) return;
+			if (!result.success || !result.data) {
+				if (!result.error) throw new Error('Empty dashboard response');
+			}
+
 			if (result.success && result.data) {
 				recentTasks.value = result.data;
 				const duration = Date.now() - startTime;
@@ -442,6 +481,7 @@ export function useDashboard(
 				handleError(result.error, 'recent tasks');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load recent tasks';
 			updateLoadingState('recentTasks', createErrorState(errorMessage));
@@ -461,6 +501,8 @@ export function useDashboard(
 	 * Load team activity
 	 */
 	const loadTeamActivity = async (): Promise<void> => {
+		const isCurrent = beginRequest('teamActivity');
+		const activityWindow = teamActivityWindow.value;
 		const startTime = Date.now();
 		updateLoadingState('teamActivity', createLoadingState(0));
 
@@ -473,11 +515,16 @@ export function useDashboard(
 			}
 
 			const result = await withRetry(
-				() => getTeamActivity(wsId, { cache: true }, teamActivityWindow.value),
+				() => getTeamActivity(wsId, { cache: true }, activityWindow),
 				retryConfig.maxRetries,
 				retryConfig.retryDelay,
 				retryConfig.exponentialBackoff,
 			);
+
+			if (!isCurrent()) return;
+			if (!result.success || !result.data) {
+				if (!result.error) throw new Error('Empty dashboard response');
+			}
 
 			if (result.success && result.data) {
 				teamActivity.value = result.data;
@@ -491,6 +538,7 @@ export function useDashboard(
 				handleError(result.error, 'team activity');
 			}
 		} catch (err) {
+			if (!isCurrent()) return;
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load team activity';
 			updateLoadingState('teamActivity', createErrorState(errorMessage));
@@ -521,6 +569,7 @@ export function useDashboard(
 	 * Load all dashboard data
 	 */
 	const loadDashboard = async (): Promise<void> => {
+		const isCurrent = beginRequest('initial');
 		clearError();
 		loadingStates.value.initialLoad = true;
 
@@ -528,12 +577,15 @@ export function useDashboard(
 			// Load all sections in parallel for better performance
 			await Promise.allSettled([
 				loadStatistics(),
-				loadActivities(1, false),
+				...(options.includeActivities === false
+					? []
+					: [loadActivities(1, false)]),
 				loadHeatmap(),
 				loadRecentTasks(),
 				loadTeamActivity(),
 			]);
 		} finally {
+			if (!isCurrent()) return;
 			loadingStates.value.initialLoad = false;
 		}
 	};
@@ -557,6 +609,7 @@ export function useDashboard(
 			'loadingMore' | 'initialLoad' | 'refreshing'
 		>,
 	): Promise<void> => {
+		const isCurrent = beginRequest('refresh');
 		loadingStates.value.refreshing = true;
 
 		try {
@@ -580,6 +633,7 @@ export function useDashboard(
 					break;
 			}
 		} finally {
+			if (!isCurrent()) return;
 			loadingStates.value.refreshing = false;
 		}
 	};
@@ -588,6 +642,7 @@ export function useDashboard(
 	 * Refresh all dashboard data
 	 */
 	const refreshDashboard = async (): Promise<void> => {
+		const isCurrent = beginRequest('refresh');
 		loadingStates.value.refreshing = true;
 		clearError();
 
@@ -599,12 +654,15 @@ export function useDashboard(
 			// Refresh all sections
 			await Promise.allSettled([
 				loadStatistics(),
-				loadActivities(1, false),
+				...(options.includeActivities === false
+					? []
+					: [loadActivities(1, false)]),
 				loadHeatmap(),
 				loadRecentTasks(),
 				loadTeamActivity(),
 			]);
 		} finally {
+			if (!isCurrent()) return;
 			loadingStates.value.refreshing = false;
 		}
 	};
@@ -638,13 +696,22 @@ export function useDashboard(
 		updates: Partial<TeamMemberActivity>,
 	): void => {
 		if (teamActivity.value) {
-			// Update team activity data
-			teamActivity.value = { ...teamActivity.value, ...updates };
+			const member = updates.members?.find((member) => member.id === memberId);
+			teamActivity.value = {
+				...teamActivity.value,
+				...updates,
+				members: teamActivity.value.members.map((existing) =>
+					existing.id === memberId && member
+						? { ...existing, ...member }
+						: existing,
+				),
+			};
 		}
 	};
 
 	// Cleanup function
 	const cleanup = (): void => {
+		Object.values(requests).forEach((sequence) => sequence.begin());
 		// Clear all reactive state
 		statistics.value = null;
 		activities.value = [];
@@ -666,10 +733,13 @@ export function useDashboard(
 		};
 	};
 
+	watch(getCurrentWorkspaceId, cleanup, { flush: 'sync' });
+
 	// Auto-cleanup on unmount (only if called within component setup)
 	if (getCurrentInstance()) {
 		onUnmounted(() => {
 			cleanup();
+			Object.values(requests).forEach((sequence) => sequence.dispose());
 		});
 	}
 

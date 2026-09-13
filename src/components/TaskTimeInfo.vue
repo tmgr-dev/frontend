@@ -11,7 +11,7 @@
 	import VueTheMask from '@/plugins/VueTheMask/component.vue';
 	import { ExtendedTime, Time } from '@/types';
 	import { InformationCircleIcon, PencilIcon } from '@heroicons/vue/24/outline';
-	import { ref } from 'vue';
+	import { ref, watch } from 'vue';
 
 	interface Props {
 		// @todo why we can't just pass Date objects? We can actually and it will allow us to show dates too. Refactor it
@@ -35,16 +35,20 @@
 		},
 	};
 	const [isOpen, closeDialog] = dialogState();
+	const timeDraft = ref({ ...props.timer });
+	watch(isOpen, (open) => {
+		if (open) timeDraft.value = { ...props.timer };
+	});
 
 	const updateTimer = async () => {
-		if (!props.timer.hours) props.timer.hours = 0;
-		if (!props.timer.minutes) props.timer.minutes = 0;
-		if (!props.timer.seconds) props.timer.seconds = 0;
+		if (!timeDraft.value.hours) timeDraft.value.hours = 0;
+		if (!timeDraft.value.minutes) timeDraft.value.minutes = 0;
+		if (!timeDraft.value.seconds) timeDraft.value.seconds = 0;
 
 		const seconds =
-			props.timer.hours * 3600 +
-			+props.timer.minutes * 60 +
-			+props.timer.seconds;
+			timeDraft.value.hours * 3600 +
+			+timeDraft.value.minutes * 60 +
+			+timeDraft.value.seconds;
 
 		// @todo show error or success toasts
 		try {
@@ -135,21 +139,21 @@
 
 					<div class="mt-2 flex justify-center gap-1 font-mono tabular-nums">
 						<VueTheMask
-							v-model="timer.hours"
+							v-model="timeDraft.hours"
 							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="###"
 						/>
 						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
-							v-model="timer.minutes"
+							v-model="timeDraft.minutes"
 							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="F#"
 						/>
 						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
-							v-model="timer.seconds"
+							v-model="timeDraft.seconds"
 							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
 							:tokens="timeTokens"
 							mask="F#"

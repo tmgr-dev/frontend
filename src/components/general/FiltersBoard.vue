@@ -190,8 +190,7 @@
 		MagnifyingGlassIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/24/outline';
-	import { useDebounceFn } from '@vueuse/core';
-	import { computed, onMounted, watch } from 'vue';
+	import { computed } from 'vue';
 
 	export interface UserOption {
 		id: number;
@@ -214,7 +213,6 @@
 	}
 
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	interface State {
@@ -241,8 +239,6 @@
 	};
 
 	const store = useStore();
-	const router = useRouter();
-	const currentRoute = router.currentRoute.value;
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 
 	const selectedCategory = computed({
@@ -278,79 +274,9 @@
 	);
 
 	const clearFilters = () => {
-		searchText.value = null;
+		searchText.value = '';
 		selectedCategory.value = 0;
 		selectedUser.value = 0;
-
-		router.push({
-			...currentRoute,
-			query: {},
-		});
 	};
-
-	const buildQuery = () => {
-		const query: Record<string, string> = {};
-
-		if (searchText.value) {
-			query.search = searchText.value;
-		}
-
-		if (selectedCategory.value) {
-			query.category = selectedCategory.value.toString();
-		}
-
-		if (selectedUser.value) {
-			query.user = selectedUser.value.toString();
-		}
-
-		return query;
-	};
-
-	const debouncedRouterPush = useDebounceFn(() => {
-		router.push({
-			...currentRoute,
-			query: buildQuery(),
-		});
-	}, 300);
-
-	onMounted(() => {
-		const query = currentRoute.query;
-
-		if (query.search) {
-			searchText.value = query.search as string;
-		}
-
-		if (query.category) {
-			selectedCategory.value = Number(query.category);
-		}
-
-		if (query.user) {
-			selectedUser.value = Number(query.user);
-		}
-	});
-
-	watch(selectedUser, () => {
-		emit(
-			'update:chosenUser',
-			props.workspaceUsers.find((option) => option.id === selectedUser.value),
-		);
-		debouncedRouterPush();
-	});
-
-	watch(selectedCategory, () => {
-		emit(
-			'handleChosenCategory',
-			props.categories.find((option) => option.id === selectedCategory.value),
-		);
-		debouncedRouterPush();
-	});
-
-	watch(searchText, (newValue) => {
-		emit('handleSearchTextChanged', newValue);
-		debouncedRouterPush();
-	});
-	const loadTasks = () => {
-		emit('loadColumns');
-		emit('loadTasks');
-	};
+	const loadTasks = () => emit('loadTasks');
 </script>

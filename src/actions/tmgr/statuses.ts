@@ -24,22 +24,16 @@ export const getStatuses = async (
 ): Promise<Status[]> => {
 	const cacheKey = 'statuses';
 
-	if (useCache) {
-		const cached = requestCache.get<Status[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get('/workspaces/statuses');
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 300000);
-	}
-
-	return data;
+	return requestCache.getOrFetch<Status[]>(
+		cacheKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('/workspaces/statuses');
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 };
 
 export const createStatus = async (workspaceId: number, payload: Status) => {
@@ -65,9 +59,7 @@ export const updateStatus = async (statusId: number, payload: Status) => {
 };
 
 export const deleteStatus = async (statusId: number) => {
-	const {
-		data: { data },
-	} = await $axios.delete(`/statuses/${statusId}`);
+	await $axios.delete(`/statuses/${statusId}`);
 
 	requestCache.invalidate('statuses');
 	requestCache.invalidate('workspace-statuses');

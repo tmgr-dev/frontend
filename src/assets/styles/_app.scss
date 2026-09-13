@@ -85,3 +85,12 @@ burger
 #telegram-login-widget-container {
 	padding: 5px;
 }
+
+:root[data-page-hidden='true'] .animate-pulse {
+	animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+	.animate-pulse {
+		animation: none !important;
+	}
+}

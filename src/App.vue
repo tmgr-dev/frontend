@@ -6,16 +6,9 @@
 		:key="$store.state.appRerenderKey"
 	>
 		<div class="flex min-h-screen">
-			<!-- CHANGES: Added keep-alive for cached views -->
 			<CustomSidebar>
 				<router-view v-slot="{ Component, route }">
-					<keep-alive :include="keepAliveComponents">
-						<component
-							:is="Component"
-							v-if="showComponent"
-							:key="route?.fullPath || route?.name"
-						/>
-					</keep-alive>
+					<component :is="Component" :key="routeViewKey(route)" />
 				</router-view>
 			</CustomSidebar>
 		</div>
@@ -58,6 +51,7 @@
 	import { Toaster } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
+	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		defineAsyncComponent,
@@ -101,21 +95,21 @@
 					localStorage.setItem('sidebarExpanded', newValue.toString());
 				});
 			}
+			return { routeViewKey };
 		},
 		data() {
 			return {
 				prevHeight: 0,
 				transitionName: DEFAULT_TRANSITION,
-				showComponent: true,
 				activeTasks: [],
+				activeTasksRequest: 0,
 				bodyOverflow: '',
 				bodyHeight: 800,
 			};
 		},
 		computed: {
-			// CHANGES: Added keepAliveComponents for route caching
-			keepAliveComponents() {
-				return ['DashboardPage', 'TasksListPage'];
+			activeTasksContext() {
+				return `${this.$store.state.sessionGeneration}:${this.$store.state.user?.id}:${this.$store.getters.currentWorkspaceId}`;
 			},
 			switchOn: {
 				get() {
@@ -142,10 +136,6 @@
 			},
 		},
 		watch: {
-			'$route.path'() {
-				this.showComponent = false;
-				setTimeout(() => (this.showComponent = true), 100);
-			},
 			'$route.name'(to, from) {
 				if (to !== from) {
 					if (this.$route.meta.title) {
@@ -156,6 +146,10 @@
 						setDocumentTitle();
 					}
 				}
+			},
+			activeTasksContext() {
+				this.activeTasks = [];
+				this.loadActiveTasks();
 			},
 			'$store.state.reloadActiveTasksKey'() {
 				this.loadActiveTasks();
@@ -215,14 +209,24 @@
 				element.style.height = 'auto';
 			},
 			async loadActiveTasks() {
+				const request = ++this.activeTasksRequest;
+				const userId = this.$store.state.user?.id;
+				const workspaceId = this.$store.getters.currentWorkspaceId;
+				const generation = this.$store.state.sessionGeneration;
+				if (!userId) {
+					this.activeTasks = [];
+					return;
+				}
+				const current = () =>
+					request === this.activeTasksRequest &&
+					userId === this.$store.state.user?.id &&
+					workspaceId === this.$store.getters.currentWorkspaceId &&
+					generation === this.$store.state.sessionGeneration;
 				try {
-					if (!this.$store.state.user?.id) return;
-
 					const tasks = await getLaunchedTasks();
-					this.activeTasks = tasks || [];
+					if (current()) this.activeTasks = tasks || [];
 				} catch (error) {
 					console.error('Error loading active tasks:', error);
-					this.activeTasks = [];
 				}
 			},
 			minimize() {
@@ -422,9 +426,6 @@
 							workspaceId: workspace.id,
 						});
 
-						// Force reload active tasks with new workspace context
-						await this.loadActiveTasks();
-
 						if (nextWorkspacePath) {
 							await this.$router.replace(nextWorkspacePath);
 						}
@@ -504,11 +505,9 @@
 					getWorkspaceStatuses(),
 					this.$store.dispatch('loadWorkspaces'),
 				]);
-				await this.loadActiveTasks();
 			}
 
 			this.$router.beforeEach((to, from, next) => {
-				this.loadActiveTasks();
 				let routeTransitionName =
 					to.meta.transitionName || from.meta.transitionName;
 

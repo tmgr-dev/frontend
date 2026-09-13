@@ -1,5 +1,9 @@
 <template>
 	<div class="task-attachments mt-4">
+		<div v-if="loadError" role="alert" class="py-2 text-sm">
+			Could not load attachments.
+			<button class="underline" @click="load">Retry</button>
+		</div>
 		<div class="mb-3 flex items-center justify-between">
 			<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
 				Attachments
@@ -17,13 +21,15 @@
 			</button>
 		</div>
 
+		<AttachmentsSkeleton v-if="loadingFiles && !files.length && !loadError" />
 		<div v-if="files.length > 0 || uploads.length > 0" class="mb-3 space-y-2">
 			<div
 				v-for="file in files"
 				:key="file.id"
+				:ref="(element) => observePreview(file, element)"
 				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
 			>
-				<div class="flex-shrink-0">
+				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
 					<button
 						v-if="previews[file.id]"
 						type="button"
@@ -34,6 +40,10 @@
 						<img
 							:src="previews[file.id]"
 							:alt="file.name"
+							width="48"
+							height="48"
+							loading="lazy"
+							decoding="async"
 							class="h-12 w-12 rounded object-cover"
 						/>
 					</button>
@@ -171,6 +181,7 @@
 		type TaskFile,
 	} from '@/actions/tmgr/files';
 	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
 	import {
 		attachmentErrorMessage,
 		formatFileSize,
@@ -182,6 +193,7 @@
 		imagesFromClipboard,
 	} from '@/utils/clipboardImages';
 	import { galleryImages } from '@/utils/galleryNavigation';
+	import { createVisiblePreviewQueue } from '@/utils/visiblePreviewQueue';
 	import {
 		AlertCircle,
 		Download,
@@ -190,7 +202,7 @@
 		Paperclip,
 		X,
 	} from 'lucide-vue-next';
-	import { defineComponent } from 'vue';
+	import { defineComponent, markRaw, type ComponentPublicInstance } from 'vue';
 
 	interface PendingUpload {
 		id: number;
@@ -202,6 +214,7 @@
 	export default defineComponent({
 		name: 'TaskAttachments',
 		components: {
+			AttachmentsSkeleton,
 			AttachmentGallery,
 			AlertCircle,
 			Download,
@@ -220,6 +233,12 @@
 		},
 		data() {
 			return {
+				disposed: false,
+				loadVersion: 0,
+				previewVersion: 0,
+				previewQueue: markRaw(createVisiblePreviewQueue()),
+				loadError: false,
+				loadingFiles: true,
 				files: [] as TaskFile[],
 				uploads: [] as PendingUpload[],
 				previews: {} as Record<number, string>,
@@ -241,25 +260,59 @@
 		methods: {
 			formatFileSize,
 			async load() {
+				const version = ++this.loadVersion;
+				this.previewQueue.reset();
+				this.loadError = false;
+				this.loadingFiles = true;
 				if (!this.taskId) {
 					return;
 				}
 				try {
-					this.files = await getTaskFiles(this.taskId);
-					this.files.forEach((file) => this.loadPreview(file));
+					const files = await getTaskFiles(this.taskId);
+					if (this.disposed || version !== this.loadVersion) return;
+					Object.keys(this.previews).forEach((id) =>
+						this.revokePreview(Number(id)),
+					);
+					this.files = files;
+					this.previewVersion = version;
 				} catch {
-					// A task whose files cannot be listed still has to render the rest of the form.
-					this.files = [];
+					if (version === this.loadVersion) this.loadError = true;
+				} finally {
+					if (version === this.loadVersion) this.loadingFiles = false;
 				}
 			},
-			async loadPreview(file: TaskFile) {
+			observePreview(
+				file: TaskFile,
+				element: Element | ComponentPublicInstance | null,
+			) {
+				if (!element) {
+					this.previewQueue.bind(file.id, null, async () => {});
+					return;
+				}
+				if (
+					!(element instanceof Element) ||
+					!isImageMime(file.mime_type) ||
+					this.previewVersion !== this.loadVersion
+				)
+					return;
+				const version = this.previewVersion;
+				this.previewQueue.bind(file.id, element, () =>
+					this.loadPreview(file, version),
+				);
+			},
+			async loadPreview(file: TaskFile, requestedVersion?: number) {
+				const version = requestedVersion ?? this.loadVersion;
+				if (this.disposed || version !== this.loadVersion) return;
 				if (!isImageMime(file.mime_type) || this.previews[file.id]) {
 					return;
 				}
 				try {
-					this.previews[file.id] = await fileDisplayUrl(file.id, {
-						thumb: true,
-					});
+					const url = await fileDisplayUrl(file.id, { thumb: true });
+					if (this.disposed || version !== this.loadVersion) {
+						releaseFileDisplayUrl(url);
+						return;
+					}
+					this.previews[file.id] = url;
 				} catch {
 					// No preview is a cosmetic loss; the file is still listed and downloadable.
 				}
@@ -333,7 +386,7 @@
 				try {
 					const attached = await uploadTaskFile(this.taskId, file);
 					this.files.unshift(attached);
-					this.loadPreview(attached);
+
 					this.dismissUpload(pending.id);
 					this.$emit('changed', this.files.length);
 				} catch (error) {
@@ -395,6 +448,9 @@
 			document.addEventListener('paste', this.handlePaste);
 		},
 		unmounted() {
+			this.disposed = true;
+			this.previewQueue.dispose();
+			this.loadVersion++;
 			document.removeEventListener('paste', this.handlePaste);
 			Object.keys(this.previews).forEach((id) =>
 				this.revokePreview(Number(id)),

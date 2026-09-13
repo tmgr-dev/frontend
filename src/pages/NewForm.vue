@@ -40,6 +40,7 @@
 	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
+	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
@@ -80,6 +81,7 @@
 	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
 	import { focusField } from '@/utils/focusTarget';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { applyTimerState } from '@/utils/timerSync';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
@@ -104,6 +106,7 @@
 		defineAsyncComponent,
 		nextTick,
 		onBeforeMount,
+		onBeforeUnmount,
 		onMounted,
 		onUnmounted,
 		ref,
@@ -141,8 +144,7 @@
 		// If not in localStorage or invalid value, try to get from store
 		const preferredEditor = normalizeEditorType(
 			store.state.user?.settings?.find(
-				(setting: Record<string, string | number>) =>
-					setting.key === 'preferred_editor',
+				(setting) => setting.key === 'preferred_editor',
 			)?.value,
 		);
 
@@ -320,6 +322,8 @@
 		}
 	});
 	const permissionDenied = ref(false);
+	const taskReady = ref(!taskId.value);
+	const taskLoadError = ref(false);
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
 	const taskRelationsRef = ref<InstanceType<typeof TaskRelations> | null>(null);
@@ -544,16 +548,14 @@
 		try {
 			// First, get the workspaceId and preferred editor from settings
 			const workspaceId = store.state.user?.settings?.find(
-				(setting: Record<string, string | number>) =>
-					setting.key === 'current_workspace',
+				(setting) => setting.key === 'current_workspace',
 			)?.value;
 
 			// Get preferred editor from settings for future use
 			// If settings value is different from localStorage, we'll update localStorage
 			const normalizedServerEditor = normalizeEditorType(
 				store.state.user?.settings?.find(
-					(setting: Record<string, string | number>) =>
-						setting.key === 'preferred_editor',
+					(setting) => setting.key === 'preferred_editor',
 				)?.value,
 			);
 
@@ -597,30 +599,37 @@
 			}
 
 			// Load all required data in parallel
-			const [loadedStatuses, loadedCategories, loadedWorkspaceMembers] =
-				await Promise.all([
-					getStatuses(),
-					getCategories(),
-					workspaceId ? getWorkspaceMembers(workspaceId) : [],
-				]);
+			void Promise.all([
+				getStatuses(),
+				getCategories(),
+				workspaceId ? getWorkspaceMembers(Number(workspaceId)) : [],
+			])
+				.then(([loadedStatuses, loadedCategories, loadedWorkspaceMembers]) => {
+					if (formDisposed) return;
 
-			statuses.value = loadedStatuses;
-			categories.value = loadedCategories;
-			workspaceMembers.value = loadedWorkspaceMembers;
+					statuses.value = loadedStatuses;
+					categories.value = loadedCategories;
+					workspaceMembers.value = loadedWorkspaceMembers;
 
-			// Default new tasks to the Backlog (type 'default') status, falling back
-			// to an active one — never Archived, which the API can return first.
-			if (
-				!taskId.value &&
-				!form.value.status_id &&
-				statuses.value?.length > 0
-			) {
-				form.value.status_id =
-					pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
-			}
+					// Default new tasks to the Backlog (type 'default') status, falling back
+					// to an active one — never Archived, which the API can return first.
+					if (
+						!taskId.value &&
+						!form.value.status_id &&
+						statuses.value?.length > 0
+					) {
+						form.value.status_id =
+							pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
+					}
 
-			// Only after all data is loaded, update the task title
-			await updateTaskTitle();
+					// Title defaults only apply to a new task. Metadata must not hold an existing task behind it.
+					if (!taskId.value) void updateTaskTitle();
+				})
+				.catch(() => {
+					if (!formDisposed)
+						saveError.value =
+							'Some task options could not load. Reload to retry.';
+				});
 
 			// Load task data if we have a task ID
 			if (taskId.value) {
@@ -647,7 +656,9 @@
 				}
 
 				suppressAutoSavingForOnce.value = true;
-				const taskData = await getTask(taskId.value);
+				const openingTaskId = taskId.value;
+				const taskData = await getTask(openingTaskId);
+				if (formDisposed || taskId.value !== openingTaskId) return;
 
 				// Ensure approximately_time is a number
 				taskData.approximately_time =
@@ -716,9 +727,12 @@
 					assignees.value = [];
 				}
 
-				await loadGitActivity();
-				await loadCursorAgents();
-				await loadCategoryIntegrationState();
+				taskReady.value = true;
+				void Promise.allSettled([
+					loadGitActivity(),
+					loadCursorAgents(),
+					loadCategoryIntegrationState(),
+				]);
 
 				nextTick(() => {
 					autoResizeTitle();
@@ -727,6 +741,7 @@
 			}
 		} catch (e: any) {
 			console.error('Error loading task data:', e);
+			taskLoadError.value = true;
 			if (e.response?.status === 403) {
 				permissionDenied.value = true;
 			}
@@ -882,6 +897,7 @@
 	);
 
 	onUnmounted(() => {
+		formDisposed = true;
 		footerResizeObserver?.disconnect();
 		footerResizeObserver = null;
 		unregisterModal(checkpointsModalId);
@@ -917,8 +933,12 @@
 		if (!taskId.value) return;
 		try {
 			suppressAutoSavingForOnce.value = true;
-			const taskData = await getTask(taskId.value);
+			const id = taskId.value;
+			const taskData = await getTask(id);
+			if (formDisposed || taskId.value !== id) return;
 			form.value = taskData;
+			taskReady.value = true;
+			taskLoadError.value = false;
 		} catch (e: any) {
 			console.error('Error reloading task:', e);
 		}
@@ -943,7 +963,9 @@
 		}
 		try {
 			console.log('[Git Activity] Loading for task:', form.value.id);
-			const activity = await getTaskGitActivity(form.value.id);
+			const id = form.value.id;
+			const activity = await getTaskGitActivity(id);
+			if (formDisposed || form.value.id !== id) return;
 			const count =
 				(activity.commits?.length || 0) +
 				(activity.branches?.length || 0) +
@@ -959,7 +981,10 @@
 	const loadCursorAgents = async () => {
 		if (!form.value.id) return;
 		try {
-			cursorAgents.value = await getCursorAgents(form.value.id);
+			const id = form.value.id;
+			const result = await getCursorAgents(id);
+			if (formDisposed || form.value.id !== id) return;
+			cursorAgents.value = result;
 		} catch (e) {
 			console.error('[Cursor] Failed to load agents:', e);
 			cursorAgents.value = [];
@@ -1205,43 +1230,77 @@
 		}
 	};
 
-	const saveTask = async () => {
-		if (!taskId.value && !form.value.id) return;
-
-		isLoading.value = true;
-		updateFormBeforeQuery();
-
+	let formDisposed = false;
+	const blockEditorRef = ref<any>(null);
+	const draftOwner = store.state.user?.id;
+	const draftKey = (task: Task) =>
+		`tmgr:task-draft:${draftOwner}:${task.workspace_id}:${task.id}`;
+	const saveError = ref('');
+	const recoverableDraft = ref<Task | null>(null);
+	const loadDraft = () => {
+		if (!form.value.id) return;
 		try {
-			// Set suppressAutoSavingForOnce to true before saving to prevent auto-save during manual save
-			suppressAutoSavingForOnce.value = true;
-
-			// Cancel any pending auto-saves
-			if (typeof cancelPendingAutoSave === 'function') {
-				cancelPendingAutoSave();
-			}
-
-			const id = taskId.value || (form.value.id as number);
-			const sent = {
-				title: form.value.title,
-				description: form.value.description,
-			};
-			const saved = await updateTask(id, form.value as Task, instanceId);
-			// Keep edits made while the request was in flight; the response is stale for them
-			// and the autosave composable will send them in a follow-up save.
-			if (form.value.title !== sent.title) saved.title = form.value.title;
-			if (form.value.description !== sent.description)
-				saved.description = form.value.description;
-			form.value = saved;
-			store.commit('updateSingleTask', form.value);
-
-			// Ensure no auto-save will happen after this manual save
-			// We need to set this after the save operation completes
-			suppressAutoSavingForOnce.value = true;
-		} catch (e) {
-			handleTaskSaveError(e);
-		} finally {
-			isLoading.value = false;
+			recoverableDraft.value = JSON.parse(
+				sessionStorage.getItem(draftKey(form.value as Task)) || 'null',
+			);
+		} catch {
+			recoverableDraft.value = null;
 		}
+	};
+	const restoreDraft = async () => {
+		if (!recoverableDraft.value || recoverableDraft.value.id !== form.value.id)
+			return;
+		assignees.value = (recoverableDraft.value.assignees || []).map(
+			(item: any) => (typeof item === 'object' ? item.id : item),
+		);
+		form.value = { ...form.value, ...recoverableDraft.value };
+		recoverableDraft.value = null;
+		try {
+			// Queue replacement before any forced read of the editor DOM.
+			await blockEditorRef.value?.replace(form.value.description_json);
+			await saveTask();
+		} catch (error) {
+			saveError.value =
+				'Could not restore the editor. Your draft is still available.';
+			loadDraft();
+		}
+	};
+	const discardDraft = () => {
+		sessionStorage.removeItem(draftKey(form.value as Task));
+		recoverableDraft.value = null;
+	};
+	watch([() => form.value.id, () => form.value.workspace_id], loadDraft, {
+		immediate: true,
+	});
+	const persistTaskSnapshot = async (snapshot: Task) => {
+		if (!snapshot.id) return;
+		const key = draftKey(snapshot);
+		const serialized = JSON.stringify(snapshot);
+		try {
+			if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, serialized);
+		} catch {
+			/* Saving still works if browser storage is unavailable. */
+		}
+		const saved = await updateTask(snapshot.id, snapshot, instanceId);
+		try {
+			if (sessionStorage.getItem(key) === serialized)
+				sessionStorage.removeItem(key);
+		} catch {
+			/* Storage unavailable. */
+		}
+		store.commit('updateSingleTask', saved);
+		if (!formDisposed && form.value.id === snapshot.id) {
+			saveError.value = '';
+			suppressAutoSavingForOnce.value = true;
+			form.value = mergeSavedTask(form.value as Task, snapshot, saved);
+		}
+	};
+	const saveTask = async () => {
+		if (!form.value.id) return;
+		const id = form.value.id;
+		await blockEditorRef.value?.flush();
+		if (formDisposed || form.value.id !== id) return;
+		await flushAutoSave(true);
 	};
 
 	const deleteCurrentTask = async () => {
@@ -1256,6 +1315,7 @@
 				form.value = await stopTaskTimeCounter(id);
 			}
 
+			cancelPendingAutoSave();
 			await deleteTask(id);
 
 			if (props.isModal) {
@@ -1354,18 +1414,88 @@
 		fieldsToWatch: [
 			'title',
 			'description',
-			// 'description_json', // TODO: need to fix update in this editor
+			'description_json',
 			'project_category_id',
 			'category_tasks_sequence_id',
 			'assignees',
 			'status',
+			'status_id',
 		],
-		onSave: saveTask,
+		onSave: persistTaskSnapshot,
+		enabled: () => taskReady.value && !!form.value.id,
+		makeSnapshot: (value) => ({
+			...value,
+			assignees: [...assignees.value],
+			description: editorType.value === 'block' ? null : value.description,
+			description_json:
+				editorType.value === 'block' ? value.description_json : null,
+		}),
+		onDirty: (snapshot) => {
+			try {
+				sessionStorage.setItem(
+					draftKey(snapshot as Task),
+					JSON.stringify(snapshot),
+				);
+			} catch {
+				/* Network save remains available. */
+			}
+		},
+		onError: (error, snapshot) => {
+			if (!formDisposed && form.value.id === snapshot.id) {
+				saveError.value =
+					'Could not save changes. Retry before closing this tab.';
+				loadDraft();
+				handleTaskSaveError(error);
+			}
+		},
 		delay: 2000,
 		suppressDebounceForOnce: suppressAutoSavingForOnce,
 	});
+	watch(
+		assignees,
+		(value) => {
+			if (
+				JSON.stringify(
+					form.value.assignees?.map((item: any) =>
+						typeof item === 'object' ? item.id : item,
+					),
+				) !== JSON.stringify(value)
+			)
+				form.value.assignees = [...value];
+		},
+		{ deep: true },
+	);
 	const isAutoSaving = autosaveResult[0];
-	const cancelPendingAutoSave = autosaveResult[1] as () => void;
+	const cancelPendingAutoSave = autosaveResult[1];
+	const flushAutoSave = autosaveResult[2];
+	const enqueueTaskSnapshot = autosaveResult[3];
+	onBeforeUnmount(() => {
+		const editor = blockEditorRef.value;
+		if (form.value.id && editor) {
+			const snapshot = JSON.parse(JSON.stringify(form.value)) as Task;
+			snapshot.assignees = [...assignees.value] as any;
+			void editor
+				.flush()
+				.then((content: any) => {
+					if (
+						content &&
+						JSON.stringify(content.blocks) !==
+							JSON.stringify(snapshot.description_json?.blocks)
+					) {
+						snapshot.description_json = content;
+						snapshot.description = null;
+						return enqueueTaskSnapshot(snapshot);
+					}
+				})
+				.catch((error: unknown) =>
+					console.error(
+						'Could not serialize closing editor; existing draft retained',
+						error,
+					),
+				);
+		}
+		formDisposed = true;
+	});
 
 	useMagicKeys({
 		passive: false,
@@ -1463,9 +1593,22 @@
 
 	watch(modalTaskId, async (newTaskId, oldTaskId) => {
 		if (props.isModal && newTaskId && newTaskId !== oldTaskId) {
+			await blockEditorRef.value?.flush();
+			await flushAutoSave();
+			taskReady.value = false;
+			if (formDisposed || modalTaskId.value !== newTaskId) return;
 			suppressAutoSavingForOnce.value = true;
 			try {
 				const taskData = await getTask(newTaskId);
+				if (formDisposed || modalTaskId.value !== newTaskId) return;
+				if (taskData.description_json && !taskData.description)
+					editorType.value = 'block';
+				else if (
+					taskData.description &&
+					!taskData.description_json &&
+					editorType.value === 'block'
+				)
+					editorType.value = 'markdown';
 
 				taskData.approximately_time =
 					typeof taskData.approximately_time === 'string'
@@ -1499,9 +1642,12 @@
 					titleTextarea.value?.focus();
 				});
 
-				await loadGitActivity();
-				await loadCursorAgents();
-				await loadCategoryIntegrationState();
+				taskReady.value = true;
+				void Promise.allSettled([
+					loadGitActivity(),
+					loadCursorAgents(),
+					loadCategoryIntegrationState(),
+				]);
 			} catch (e: any) {
 				console.error('Error loading linked task:', e);
 			}
@@ -1636,6 +1782,17 @@
 	</div>
 
 	<div
+		v-else-if="!taskReady"
+		class="min-h-[500px] space-y-4 p-6"
+		:aria-busy="!taskLoadError"
+	>
+		<div v-if="taskLoadError" role="alert">
+			Could not load task.
+			<button class="underline" @click="reloadTask">Retry</button>
+		</div>
+		<TaskFormSkeleton v-else />
+	</div>
+	<div
 		v-else
 		class="new-form-container h-full font-display text-ink"
 		:class="{ 'bg-surface-sunken': !isModal }"
@@ -1653,6 +1810,40 @@
 				class="flex w-full flex-col"
 				:class="isModal ? 'min-h-0 flex-1' : 'lg:min-h-0 lg:min-w-0 lg:flex-1'"
 			>
+				<div
+					v-if="saveError || recoverableDraft"
+					role="alert"
+					class="shrink-0 border-b border-line bg-surface-sunken p-3 text-sm"
+				>
+					<span>{{
+						saveError ||
+						'Unsaved changes from an earlier attempt are available.'
+					}}</span>
+					<button
+						v-if="recoverableDraft"
+						type="button"
+						class="ml-3 underline"
+						@click="restoreDraft"
+					>
+						Restore draft
+					</button>
+					<button
+						v-if="recoverableDraft"
+						type="button"
+						class="ml-3 underline"
+						@click="discardDraft"
+					>
+						Discard draft
+					</button>
+					<button
+						v-if="saveError"
+						type="button"
+						class="ml-3 underline"
+						@click="saveTask"
+					>
+						Retry save
+					</button>
+				</div>
 				<!-- HEADER - Fixed at top -->
 				<header
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
@@ -1799,6 +1990,7 @@
 						:disabled="!form.id"
 						@toggle="toggleTimer"
 						@update:seconds="updateSeconds"
+						@update:common-time="form.common_time = $event"
 					/>
 
 					<!-- Pomodoro block (per-task, opt-in) -->
@@ -1986,6 +2178,7 @@
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
+							:key="form.id"
 							v-if="editorType === 'markdown'"
 							v-model="form.description"
 							class="mb-0"
@@ -1993,6 +2186,8 @@
 						/>
 
 						<BlockEditor
+							ref="blockEditorRef"
+							:key="form.id"
 							v-else-if="editorType === 'block'"
 							v-model="form.description_json"
 							placeholder="Type your description here or enter / to see commands or "
@@ -2000,6 +2195,7 @@
 						/>
 
 						<BlockMdEditor
+							:key="form.id"
 							v-else-if="editorType === 'blockmd'"
 							v-model="form.description"
 							placeholder="Type your description here or enter / to see commands"

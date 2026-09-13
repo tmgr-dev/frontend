@@ -38,6 +38,8 @@
 		type EstimatedTask,
 		type OvertimePagination,
 	} from '@/utils/overtime';
+	import { createRequestSequence } from '@/utils/requestSequence';
+	import { readTaskListQuery } from '@/utils/taskListQuery';
 	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
 	import { formatTime } from '@/utils/timeUtils.js';
 	import {
@@ -46,16 +48,21 @@
 		SlidersHorizontalIcon,
 		SquareDashedMousePointerIcon,
 	} from 'lucide-vue-next';
-	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	const route = useRoute();
 	const router = useRouter();
 	const selectableTasks = ref(false);
 	const errorLoading = ref(false);
-	const searchText = ref(null);
-	const searchTimeout = ref(null);
+	const searchText = ref<string | null>(null);
+	const searchTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
 	const isLoading = ref(true);
+	const hasLoadedTasks = ref(false);
+	const requests = createRequestSequence();
+	let disposed = false;
+	let initialized = false;
+	let initializing = false;
 	const h1 = {
 		CurrentTasksList: 'Current tasks',
 		HiddenTasksList: 'Hidden tasks',
@@ -85,20 +92,14 @@
 		{ value: 'expired_at', label: 'Deadline' },
 		{ value: 'scheduled_date', label: 'Scheduled' },
 	] as const;
-	const sortColumn = ref<string>(
-		typeof route.query.sort === 'string' &&
-			SORT_FIELDS.some((f) => f.value === route.query.sort)
-			? (route.query.sort as string)
-			: 'updated_at',
-	);
-	const sortDirection = ref<'asc' | 'desc'>(
-		route.query.direction === 'asc' ? 'asc' : 'desc',
-	);
+	const initialQuery = readTaskListQuery(route.query);
+	const sortColumn = ref(initialQuery.sort);
+	const sortDirection = ref<'asc' | 'desc'>(initialQuery.direction);
 
 	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
 	const pagination = ref<PaginationMeta>({
-		current_page: Number(route.query.page) || 1,
-		per_page: Number(route.query.per_page) || 10,
+		current_page: initialQuery.page,
+		per_page: initialQuery.perPage,
 		total: 0,
 		last_page: 1,
 		from: 0,
@@ -204,14 +205,22 @@
 		}
 	}
 
-	onMounted(async () => {
+	onMounted(initializeList);
+
+	async function initializeList() {
+		if (disposed || initializing) return;
+		initializing = true;
+		isLoading.value = true;
+		errorLoading.value = false;
 		try {
 			setDocumentTitle(h1[route.name] || 'Task List');
 
 			categories.value = await getCategories();
+			if (disposed) return;
 
 			try {
 				const workspaceStatuses = await getWorkspaceStatuses();
+				if (disposed) return;
 				const archivedSets = buildArchivedStatusSets(workspaceStatuses);
 				archivedStatusIds.value = archivedSets.ids;
 				archivedStatusNames.value = archivedSets.names;
@@ -221,12 +230,14 @@
 
 			// Same as the board: the guard has the user by now, so do not ask again (TM-218).
 			const user = store.state.user?.id ? store.state.user : await getUser();
+			if (disposed) return;
 			const workspaceSetting = user.settings?.find(
 				(setting) => setting.key === 'current_workspace',
 			);
 			if (workspaceSetting) {
 				workspaceId.value = +workspaceSetting.value;
 				workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
+				if (disposed) return;
 
 				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
 					onTaskUpdated: (task, action) => {
@@ -247,7 +258,9 @@
 				});
 			}
 
+			initialized = true;
 			await loadTasks();
+			if (disposed) return;
 			setLoadingActions(tasks.value);
 
 			// Check if we're on the root path and have a current workspace
@@ -284,11 +297,23 @@
 
 			window.addEventListener('keydown', handleKeyDown);
 		} catch (e) {
+			if (disposed) return;
 			console.error(e);
+			errorLoading.value = true;
+			isLoading.value = false;
+		} finally {
+			initializing = false;
 		}
-	});
+	}
 
-	onUnmounted(() => {
+	function retryList() {
+		return initialized ? loadTasks() : initializeList();
+	}
+
+	onBeforeUnmount(() => {
+		disposed = true;
+		requests.dispose();
+		if (searchTimeout.value) clearTimeout(searchTimeout.value);
 		window.removeEventListener('keydown', handleKeyDown);
 		if (workspaceId.value && pusherSubscriptionId.value) {
 			unsubscribeHandlerFromWorkspace(
@@ -299,9 +324,26 @@
 	});
 
 	watch(searchText, () => {
-		clearTimeout(searchTimeout.value);
+		requests.begin();
+		if (searchTimeout.value) clearTimeout(searchTimeout.value);
 		searchTimeout.value = setTimeout(loadTasks, 500);
 	});
+	watch(
+		() => [
+			route.query.page,
+			route.query.per_page,
+			route.query.sort,
+			route.query.direction,
+		],
+		() => {
+			const query = readTaskListQuery(route.query);
+			pagination.value.current_page = query.page;
+			pagination.value.per_page = query.perPage;
+			sortColumn.value = query.sort;
+			sortDirection.value = query.direction;
+			if (initialized) loadTasks();
+		},
+	);
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
@@ -370,9 +412,12 @@
 	}
 
 	async function loadTasks() {
+		if (disposed || !initialized) return;
+		const request = requests.begin();
 		try {
 			isLoading.value = true;
-			clearTimeout(searchTimeout.value);
+			errorLoading.value = false;
+			if (searchTimeout.value) clearTimeout(searchTimeout.value);
 
 			const params = {
 				params: {
@@ -397,31 +442,32 @@
 				response = await getTasks(params);
 			}
 
+			if (!requests.isCurrent(request)) return;
 			tasks.value = response.data;
 			pagination.value = response.meta;
+			hasLoadedTasks.value = true;
 			setLoadingActions(tasks.value);
 
 			const baseTitle = h1[route.name] || 'Task List';
 			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
 		} catch (e) {
+			if (!requests.isCurrent(request)) return;
 			console.error(e);
 			errorLoading.value = true;
 		} finally {
-			isLoading.value = false;
+			if (requests.isCurrent(request)) isLoading.value = false;
 		}
 	}
 
 	function handlePageChange(page: number) {
 		pagination.value.current_page = page;
 		updateRouteQuery();
-		loadTasks();
 	}
 
 	function handlePerPageChange(perPage: number) {
 		pagination.value.per_page = perPage;
 		pagination.value.current_page = 1; // Reset to first page when changing items per page
 		updateRouteQuery();
-		loadTasks();
 	}
 
 	function updateRouteQuery() {
@@ -440,7 +486,6 @@
 	function changeSort() {
 		pagination.value.current_page = 1;
 		updateRouteQuery();
-		loadTasks();
 	}
 
 	function toggleSortDirection() {
@@ -681,9 +726,25 @@
 		</template>
 
 		<template #body>
-			<div class="mt-4 min-h-96">
+			<div class="mt-4 min-h-96" :aria-busy="isLoading">
+				<div
+					class="flex min-h-6 items-center justify-between text-sm text-ink-muted"
+					role="status"
+				>
+					<span v-if="isLoading && hasLoadedTasks">Updating tasks…</span>
+					<template v-if="errorLoading">
+						<span>Could not load tasks. Please try again.</span>
+						<Button
+							variant="outline"
+							size="sm"
+							@click="retryList"
+							:disabled="isLoading"
+							>Retry</Button
+						>
+					</template>
+				</div>
 				<tasks-list-component
-					v-if="tasks && tasks.length > 0 && !isLoading"
+					v-if="tasks && tasks.length > 0"
 					:tasks="tasks"
 					:status="status"
 					:is-loading-actions="isLoadingActions"
@@ -695,11 +756,7 @@
 					ref="tasksListComponent"
 				/>
 
-				<div v-else-if="errorLoading" class="text-center text-xl">
-					Something went wrong...
-				</div>
-
-				<div v-else-if="!isLoading" class="">
+				<div v-else-if="!isLoading && !errorLoading" class="">
 					<EmptyState
 						v-if="hasActiveSearch"
 						title="No tasks match your search"
@@ -714,7 +771,11 @@
 					<confetti v-if="hasAbilityToShowConfetti" />
 				</div>
 
-				<div v-if="isLoading" class="mt-6 space-y-2 px-2">
+				<div
+					v-if="isLoading && !hasLoadedTasks"
+					class="mt-6 space-y-2 px-2"
+					aria-hidden="true"
+				>
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />
 					<Skeleton class="h-28 w-full" />

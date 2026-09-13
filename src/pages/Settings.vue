@@ -2,394 +2,407 @@
 	<div>
 		<BaseLayout>
 			<template #body>
-				<div class="w-full md:flex">
-					<div class="md:w-full">
-						<div v-if="isNotification" class="flex flex-col gap-3.5 p-4">
-							<h3 class="mb-4 text-lg font-bold">Notifications</h3>
+				<AsyncContent
+					:pending="initialPending"
+					:loaded="initialLoaded"
+					:error="initialError"
+					:retry="loadInitialSettings"
+					label="Loading settings"
+				>
+					<div class="w-full md:flex">
+						<div class="md:w-full">
+							<div v-if="isNotification" class="flex flex-col gap-3.5 p-4">
+								<h3 class="mb-4 text-lg font-bold">Notifications</h3>
 
-							<NotificationSettingsForm />
+								<NotificationSettingsForm />
 
-							<div class="mt-8 border-t pt-6">
-								<h4 class="text-md mb-4 font-semibold">
-									Push notifications (legacy)
-								</h4>
-								<div class="flex flex-col gap-3 md:w-1/2">
-									<button
-										v-if="!pusherBeamsUserId"
-										class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
-										@click="togglePushes"
-									>
-										Web Pushes
-									</button>
-
-									<button
-										class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
-										@click="testWebPushNotifications"
-									>
-										Test web push notifications
-									</button>
-									<Switcher
-										name="show_tooltips"
-										v-model="userSettings.showTooltips"
-										placeholder="Show tooltips"
-									/>
-									<div class="text-left">
+								<div class="mt-8 border-t pt-6">
+									<h4 class="text-md mb-4 font-semibold">
+										Push notifications (legacy)
+									</h4>
+									<div class="flex flex-col gap-3 md:w-1/2">
 										<button
-											class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
-											type="button"
-											@click="updateSettings"
+											v-if="!pusherBeamsUserId"
+											class="border-2 border-green-400 px-5 py-2 text-green-400 text-green-600 transition hover:bg-green-400 hover:text-white"
+											@click="togglePushes"
 										>
-											Save
+											Web Pushes
 										</button>
-									</div>
-								</div>
-							</div>
-						</div>
 
-						<div v-if="isTheme" class="flex flex-col gap-3.5 p-4">
-							<h3 class="mb-4 text-lg font-bold">Theme</h3>
-							<ThemePicker />
-						</div>
-
-						<div
-							v-if="isWorkspaceSettings"
-							class="flex flex-col gap-3 p-4 md:w-1/2"
-						>
-							<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
-							<div>
-								<div
-									v-for="(setting, index) in availableSettings"
-									:key="setting.id"
-								>
-									<label
-										:for="`setting-${setting.id}`"
-										class="mb-2 block text-sm font-bold text-gray-700"
-									>
-										{{ setting.name }}
-									</label>
-
-									<div class="relative mb-4">
-										<template
-											v-if="setting.component_type === 'current_workspace'"
+										<button
+											class="border-2 border-blue-400 px-5 py-2 text-blue-400 transition hover:bg-blue-400 hover:text-white"
+											@click="testWebPushNotifications"
 										>
-											<current-workspace
-												v-model="settings[index].value"
-												@updateSettings="updateSettings"
-											/>
-										</template>
-										<template v-else-if="setting.component_type === 'select'">
-											<Select
-												v-model="settings[index].value"
-												:options="
-													setting.default_values.map((val) => ({
-														label:
-															setting.key === 'preferred_editor'
-																? editorOptionLabel(val.value)
-																: val.value,
-														value: val.value,
-													}))
-												"
-												:placeholder="setting.description"
-											/>
-											<p
-												v-if="setting.key === 'preferred_editor'"
-												class="mt-1.5 text-xs text-ink-subtle"
-											>
-												{{ EDITOR_SETTING_HELP }}
-											</p>
-										</template>
-										<template v-else-if="setting.custom_value_available">
-											<TimeField
-												v-if="setting.component_type === 'time_in_seconds'"
-												v-model="settings[index].value"
-												:placeholder="setting.description"
-											/>
-
-											<TextField
-												v-else
-												v-model="settings[index].value"
-												:placeholder="setting.description"
-											/>
-										</template>
-
-										<small v-if="!setting.show_custom_value_input">
-											{{ setting.description }}
-										</small>
-
+											Test web push notifications
+										</button>
 										<Switcher
-											v-if="
-												setting.custom_value_available &&
-												setting.default_values &&
-												setting.default_values.length > 0
-											"
-											name="set_custom_value"
-											v-model="setting.show_custom_value_input"
-											placeholder="Set custom value"
+											name="show_tooltips"
+											v-model="userSettings.showTooltips"
+											placeholder="Show tooltips"
 										/>
+										<div class="text-left">
+											<button
+												class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+												type="button"
+												@click="updateSettings"
+												:disabled="savingSettings"
+												:aria-busy="savingSettings"
+											>
+												Save
+											</button>
+										</div>
 									</div>
 								</div>
 							</div>
 
-							<div class="text-left">
-								<button
-									class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
-									type="button"
-									@click="updateSettings"
-								>
-									Save
-								</button>
+							<div v-if="isTheme" class="flex flex-col gap-3.5 p-4">
+								<h3 class="mb-4 text-lg font-bold">Theme</h3>
+								<ThemePicker />
 							</div>
-						</div>
 
-						<div v-if="isProfile" class="flex flex-col gap-3.5 p-2">
-							<h3 class="mb-4 text-lg font-bold">Profile</h3>
-							<profile />
-							<div class="mt-6 border-t pt-6">
-								<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
-								<div class="flex items-center gap-4">
+							<div
+								v-if="isWorkspaceSettings"
+								class="flex flex-col gap-3 p-4 md:w-1/2"
+							>
+								<h3 class="mb-4 text-lg font-bold">Worksapce Settings</h3>
+								<div>
 									<div
-										v-if="user.telegram_username"
-										class="flex items-center gap-2"
+										v-for="(setting, index) in availableSettings"
+										:key="setting.id"
 									>
-										<span class="text-green-600">✓</span>
-										<span>Connected as @{{ user.telegram_username }}</span>
-										<button
-											class="ml-2 text-red-500 hover:text-red-700"
-											@click="unlinkTelegram"
+										<label
+											:for="`setting-${setting.id}`"
+											class="mb-2 block text-sm font-bold text-gray-700"
 										>
-											Unlink
+											{{ setting.name }}
+										</label>
+
+										<div class="relative mb-4">
+											<template
+												v-if="setting.component_type === 'current_workspace'"
+											>
+												<current-workspace
+													v-model="settings[index].value"
+													@updateSettings="updateSettings"
+												/>
+											</template>
+											<template v-else-if="setting.component_type === 'select'">
+												<Select
+													v-model="settings[index].value"
+													:options="
+														setting.default_values.map((val) => ({
+															label:
+																setting.key === 'preferred_editor'
+																	? editorOptionLabel(val.value)
+																	: val.value,
+															value: val.value,
+														}))
+													"
+													:placeholder="setting.description"
+												/>
+												<p
+													v-if="setting.key === 'preferred_editor'"
+													class="mt-1.5 text-xs text-ink-subtle"
+												>
+													{{ EDITOR_SETTING_HELP }}
+												</p>
+											</template>
+											<template v-else-if="setting.custom_value_available">
+												<TimeField
+													v-if="setting.component_type === 'time_in_seconds'"
+													v-model="settings[index].value"
+													:placeholder="setting.description"
+												/>
+
+												<TextField
+													v-else
+													v-model="settings[index].value"
+													:placeholder="setting.description"
+												/>
+											</template>
+
+											<small v-if="!setting.show_custom_value_input">
+												{{ setting.description }}
+											</small>
+
+											<Switcher
+												v-if="
+													setting.custom_value_available &&
+													setting.default_values &&
+													setting.default_values.length > 0
+												"
+												name="set_custom_value"
+												v-model="setting.show_custom_value_input"
+												placeholder="Set custom value"
+											/>
+										</div>
+									</div>
+								</div>
+
+								<div class="text-left">
+									<button
+										class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
+										type="button"
+										@click="updateSettings"
+										:disabled="savingSettings"
+										:aria-busy="savingSettings"
+									>
+										Save
+									</button>
+								</div>
+							</div>
+
+							<div v-if="isProfile" class="flex flex-col gap-3.5 p-2">
+								<h3 class="mb-4 text-lg font-bold">Profile</h3>
+								<profile />
+								<div class="mt-6 border-t pt-6">
+									<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
+									<div class="flex items-center gap-4">
+										<div
+											v-if="user.telegram_username"
+											class="flex items-center gap-2"
+										>
+											<span class="text-green-600">✓</span>
+											<span>Connected as @{{ user.telegram_username }}</span>
+											<button
+												class="ml-2 text-red-500 hover:text-red-700"
+												@click="unlinkTelegram"
+											>
+												Unlink
+											</button>
+										</div>
+										<button
+											v-else
+											class="rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
+											@click="generateTelegramLink"
+										>
+											Connect Telegram
 										</button>
 									</div>
-									<button
-										v-else
-										class="rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none"
-										@click="generateTelegramLink"
-									>
-										Connect Telegram
-									</button>
 								</div>
 							</div>
-						</div>
 
-						<div v-if="isDevice" class="flex flex-col gap-3.5 p-4">
-							<div class="">
-								<h3 class="mb-4 text-lg font-bold">Smart Device Integration</h3>
+							<div v-if="isDevice" class="flex flex-col gap-3.5 p-4">
+								<div class="">
+									<h3 class="mb-4 text-lg font-bold">
+										Smart Device Integration
+									</h3>
 
-								<!-- Token Display Section -->
-								<div class="mb-6">
-									<div class="flex flex-col space-y-2">
-										<label class="text-sm font-medium text-gray-700"
-											>API Token</label
-										>
-										<div class="flex items-center gap-2">
-											<TextField
-												:type="showToken ? 'text' : 'password'"
-												:model-value="user.smart_device_token"
-												class="flex-1"
-												placeholder="Token needs to be generated"
-												readonly="true"
-											/>
-											<button
-												v-if="user.smart_device_token"
-												class="ml-2 flex items-center gap-1 px-2 py-1 text-sm"
-												:class="
-													tokenCopied
-														? 'text-green-600 dark:text-green-400'
-														: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-												"
-												:title="tokenCopied ? 'Copied!' : 'Copy to clipboard'"
-												@click="copyToken"
+									<!-- Token Display Section -->
+									<div class="mb-6">
+										<div class="flex flex-col space-y-2">
+											<label class="text-sm font-medium text-gray-700"
+												>API Token</label
 											>
-												<svg
-													v-if="!tokenCopied"
-													xmlns="http://www.w3.org/2000/svg"
-													class="h-4 w-4"
-													fill="none"
-													viewBox="0 0 24 24"
-													stroke="currentColor"
-													stroke-width="2"
+											<div class="flex items-center gap-2">
+												<TextField
+													:type="showToken ? 'text' : 'password'"
+													:model-value="user.smart_device_token"
+													class="flex-1"
+													placeholder="Token needs to be generated"
+													readonly="true"
+												/>
+												<button
+													v-if="user.smart_device_token"
+													class="ml-2 flex items-center gap-1 px-2 py-1 text-sm"
+													:class="
+														tokenCopied
+															? 'text-green-600 dark:text-green-400'
+															: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+													"
+													:title="tokenCopied ? 'Copied!' : 'Copy to clipboard'"
+													@click="copyToken"
 												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-													/>
-												</svg>
-												<svg
-													v-else
-													xmlns="http://www.w3.org/2000/svg"
-													class="h-4 w-4"
-													fill="none"
-													viewBox="0 0 24 24"
-													stroke="currentColor"
-													stroke-width="2"
+													<svg
+														v-if="!tokenCopied"
+														xmlns="http://www.w3.org/2000/svg"
+														class="h-4 w-4"
+														fill="none"
+														viewBox="0 0 24 24"
+														stroke="currentColor"
+														stroke-width="2"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+														/>
+													</svg>
+													<svg
+														v-else
+														xmlns="http://www.w3.org/2000/svg"
+														class="h-4 w-4"
+														fill="none"
+														viewBox="0 0 24 24"
+														stroke="currentColor"
+														stroke-width="2"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															d="M5 13l4 4L19 7"
+														/>
+													</svg>
+													{{ tokenCopied ? 'Copied' : 'Copy' }}
+												</button>
+												<button
+													class="ml-2 px-3 py-1 text-sm"
+													@click="showToken = !showToken"
+													:class="[
+														showToken
+															? 'text-gray-600 hover:text-gray-800'
+															: 'text-blue-600 hover:text-blue-800',
+													]"
 												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M5 13l4 4L19 7"
-													/>
-												</svg>
-												{{ tokenCopied ? 'Copied' : 'Copy' }}
-											</button>
-											<button
-												class="ml-2 px-3 py-1 text-sm"
-												@click="showToken = !showToken"
-												:class="[
-													showToken
-														? 'text-gray-600 hover:text-gray-800'
-														: 'text-blue-600 hover:text-blue-800',
-												]"
-											>
-												{{ showToken ? 'Hide' : 'Show' }}
-											</button>
+													{{ showToken ? 'Hide' : 'Show' }}
+												</button>
+											</div>
 										</div>
 									</div>
-								</div>
 
-								<!-- Token Management Buttons -->
-								<div class="flex flex-wrap gap-3">
-									<button
-										class="rounded bg-blue-500 px-4 py-2 font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-										@click="generateSmartDeviceToken"
-									>
-										{{
-											user.smart_device_token
-												? 'Generate New Token'
-												: 'Generate Token'
-										}}
-									</button>
-									<button
-										v-if="user.smart_device_token"
-										class="rounded bg-red-500 px-4 py-2 font-semibold text-white transition hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-										@click="revokeSmartDeviceToken"
-									>
-										Revoke Token
-									</button>
-								</div>
-
-								<!-- Token Information -->
-								<div class="mt-6">
-									<h4 class="mb-2 text-sm font-semibold text-gray-700">
-										Token Information
-									</h4>
-									<div
-										v-if="user.smart_device_token"
-										class="text-sm text-gray-600"
-									>
-										<p>
-											Created:
-											{{ formatDate(user.smart_device_token_created_at) }}
-										</p>
-									</div>
-								</div>
-
-								<!-- Usage Instructions -->
-								<div class="mt-6 rounded-md bg-gray-50 p-4">
-									<h4 class="mb-2 text-sm font-semibold text-gray-700">
-										How to Use
-									</h4>
-									<div class="space-y-2 text-sm text-gray-600">
-										<p>1. Generate a token using the button above</p>
-										<p>
-											2. Include the token in your device's API requests using
-											the header:
-										</p>
-										<code
-											class="mt-1 block rounded bg-gray-100 p-2 font-mono text-sm"
+									<!-- Token Management Buttons -->
+									<div class="flex flex-wrap gap-3">
+										<button
+											class="rounded bg-blue-500 px-4 py-2 font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+											@click="generateSmartDeviceToken"
 										>
-											X-Smart-Device-Token: your_token_here
-										</code>
-										<p class="mt-2 text-sm text-gray-500">
-											Keep your token secure. If compromised, generate a new one
-											immediately.
-										</p>
+											{{
+												user.smart_device_token
+													? 'Generate New Token'
+													: 'Generate Token'
+											}}
+										</button>
+										<button
+											v-if="user.smart_device_token"
+											class="rounded bg-red-500 px-4 py-2 font-semibold text-white transition hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+											@click="revokeSmartDeviceToken"
+										>
+											Revoke Token
+										</button>
 									</div>
-								</div>
 
-								<!-- MCP Setup Instructions -->
-								<div
-									class="mt-6 rounded-md border border-blue-100 bg-blue-50 p-4"
-								>
-									<h4 class="mb-2 text-sm font-semibold text-gray-800">
-										MCP setup
-									</h4>
-									<div class="space-y-3 text-sm text-gray-700">
-										<p>
-											TMGR MCP uses the smart device token as a custom header.
-											Generate the token above, then configure an MCP client
-											that supports remote Streamable HTTP servers with headers
-											(Claude Code:
-											<code class="font-mono"
-												>claude mcp add --transport http tmgr
-												{{ mcpUrl }} --header "X-Smart-Device-Token:
-												&lt;token&gt;"</code
-											>).
-										</p>
-										<div>
-											<p class="mb-1 font-medium text-gray-700">Server URL</p>
-											<code
-												class="block overflow-x-auto rounded bg-white p-2 font-mono text-sm text-gray-800"
-											>
-												{{ mcpUrl }}
-											</code>
-										</div>
-										<div>
-											<p class="mb-1 font-medium text-gray-700">
-												Client configuration
+									<!-- Token Information -->
+									<div class="mt-6">
+										<h4 class="mb-2 text-sm font-semibold text-gray-700">
+											Token Information
+										</h4>
+										<div
+											v-if="user.smart_device_token"
+											class="text-sm text-gray-600"
+										>
+											<p>
+												Created:
+												{{ formatDate(user.smart_device_token_created_at) }}
 											</p>
-											<pre
-												class="overflow-x-auto whitespace-pre rounded bg-white p-3 font-mono text-xs text-gray-800"
-												>{{ mcpClientConfig }}</pre
-											>
 										</div>
-										<p class="text-sm text-gray-600">
-											OAuth note: this TMGR MCP server is not an OAuth connector
-											yet. Unlike Spendly, it authenticates `/mcp/**` with
-											`X-Smart-Device-Token`, so Claude.ai custom connectors
-											that require OAuth discovery are not supported by this
-											setup.
-										</p>
 									</div>
-								</div>
 
-								<!-- API Documentation Links -->
-								<div
-									class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700"
-								>
-									<h4
-										class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200"
+									<!-- Usage Instructions -->
+									<div class="mt-6 rounded-md bg-gray-50 p-4">
+										<h4 class="mb-2 text-sm font-semibold text-gray-700">
+											How to Use
+										</h4>
+										<div class="space-y-2 text-sm text-gray-600">
+											<p>1. Generate a token using the button above</p>
+											<p>
+												2. Include the token in your device's API requests using
+												the header:
+											</p>
+											<code
+												class="mt-1 block rounded bg-gray-100 p-2 font-mono text-sm"
+											>
+												X-Smart-Device-Token: your_token_here
+											</code>
+											<p class="mt-2 text-sm text-gray-500">
+												Keep your token secure. If compromised, generate a new
+												one immediately.
+											</p>
+										</div>
+									</div>
+
+									<!-- MCP Setup Instructions -->
+									<div
+										class="mt-6 rounded-md border border-blue-100 bg-blue-50 p-4"
 									>
-										Documentation
-									</h4>
-									<ul class="space-y-1 text-sm">
-										<li>
-											<a
-												:href="`${docsBaseUrl}/docs/smart-devices.html`"
-												target="_blank"
-												rel="noopener"
-												class="text-blue-600 hover:underline dark:text-blue-400"
-											>
-												Smart Device API reference
-											</a>
-										</li>
-										<li>
-											<a
-												:href="`${docsBaseUrl}/docs/mcp.html`"
-												target="_blank"
-												rel="noopener"
-												class="text-blue-600 hover:underline dark:text-blue-400"
-											>
-												MCP server setup
-											</a>
-										</li>
-									</ul>
+										<h4 class="mb-2 text-sm font-semibold text-gray-800">
+											MCP setup
+										</h4>
+										<div class="space-y-3 text-sm text-gray-700">
+											<p>
+												TMGR MCP uses the smart device token as a custom header.
+												Generate the token above, then configure an MCP client
+												that supports remote Streamable HTTP servers with
+												headers (Claude Code:
+												<code class="font-mono"
+													>claude mcp add --transport http tmgr
+													{{ mcpUrl }} --header "X-Smart-Device-Token:
+													&lt;token&gt;"</code
+												>).
+											</p>
+											<div>
+												<p class="mb-1 font-medium text-gray-700">Server URL</p>
+												<code
+													class="block overflow-x-auto rounded bg-white p-2 font-mono text-sm text-gray-800"
+												>
+													{{ mcpUrl }}
+												</code>
+											</div>
+											<div>
+												<p class="mb-1 font-medium text-gray-700">
+													Client configuration
+												</p>
+												<pre
+													class="overflow-x-auto whitespace-pre rounded bg-white p-3 font-mono text-xs text-gray-800"
+													>{{ mcpClientConfig }}</pre
+												>
+											</div>
+											<p class="text-sm text-gray-600">
+												OAuth note: this TMGR MCP server is not an OAuth
+												connector yet. Unlike Spendly, it authenticates
+												`/mcp/**` with `X-Smart-Device-Token`, so Claude.ai
+												custom connectors that require OAuth discovery are not
+												supported by this setup.
+											</p>
+										</div>
+									</div>
+
+									<!-- API Documentation Links -->
+									<div
+										class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700"
+									>
+										<h4
+											class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200"
+										>
+											Documentation
+										</h4>
+										<ul class="space-y-1 text-sm">
+											<li>
+												<a
+													:href="`${docsBaseUrl}/docs/smart-devices.html`"
+													target="_blank"
+													rel="noopener"
+													class="text-blue-600 hover:underline dark:text-blue-400"
+												>
+													Smart Device API reference
+												</a>
+											</li>
+											<li>
+												<a
+													:href="`${docsBaseUrl}/docs/mcp.html`"
+													target="_blank"
+													rel="noopener"
+													class="text-blue-600 hover:underline dark:text-blue-400"
+												>
+													MCP server setup
+												</a>
+											</li>
+										</ul>
+									</div>
 								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-
+				</AsyncContent>
 				<!-- Confirmation Modal -->
 				<Transition name="fade">
 					<confirm
@@ -419,6 +432,8 @@
 </template>
 
 <script>
+	import AsyncContent from '@/components/async/AsyncContent.vue';
+
 	import { sendNotification } from '@/actions/tmgr/notifications';
 	import {
 		generateSmartDeviceToken,
@@ -452,6 +467,7 @@
 	export default {
 		name: 'Settings',
 		components: {
+			AsyncContent,
 			BreadcrumbSeparator,
 			BreadcrumbItem,
 			BreadcrumbLink,
@@ -470,6 +486,10 @@
 			this.handleTabFromQuery();
 		},
 		data: () => ({
+			savingSettings: false,
+			initialPending: true,
+			initialLoaded: false,
+			initialError: null,
 			availableSettings: [],
 			settings: [],
 			user: {},
@@ -549,10 +569,27 @@
 		},
 		async mounted() {
 			setDocumentTitle('Settings');
-			this.user = await getUser();
-			await this.loadSettings();
+			await this.loadInitialSettings();
 		},
 		methods: {
+			async loadInitialSettings() {
+				this.initialPending = true;
+				this.initialError = null;
+				try {
+					const [user, settings] = await Promise.all([
+						getUser(),
+						getUserSettingsV2(),
+					]);
+					this.user = user;
+					this.initSettings(settings, user.settings);
+					this.availableSettings = settings;
+					this.initialLoaded = true;
+				} catch {
+					this.initialError = 'Could not load settings.';
+				} finally {
+					this.initialPending = false;
+				}
+			},
 			editorOptionLabel,
 			async copyToken() {
 				if (!this.user.smart_device_token || !navigator?.clipboard) return;
@@ -784,6 +821,8 @@
 			},
 
 			async updateSettings() {
+				if (this.savingSettings) return;
+				this.savingSettings = true;
 				try {
 					// Store original editor value to check if it changes
 					const originalEditorSetting = this.settings.find(
@@ -855,6 +894,8 @@
 				} catch (e) {
 					console.error(e);
 					this.showAlert('Failed to update settings', 'error');
+				} finally {
+					this.savingSettings = false;
 				}
 			},
 		},

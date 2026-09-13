@@ -38,3 +38,9 @@ yarn-error.log*
 /src-bex/js/core
 
 docs/
+
+/test-results/
+/playwright-report/
+
+# Local Chrome profiles (kept outside Playwright cleanup)
+performance-results/

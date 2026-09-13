@@ -55,9 +55,18 @@
 					class="max-h-full max-w-full object-contain"
 					:class="{ 'opacity-0': layers.showThumb }"
 					@load="markLoaded(current?.id)"
+					@error="imageError = true"
 				/>
+				<button
+					v-if="imageError"
+					role="alert"
+					class="text-white underline"
+					@click="retryImage"
+				>
+					Could not load image. Retry
+				</button>
 				<Loader2
-					v-if="!layers.thumb && !layers.full"
+					v-if="!imageError && !layers.thumb && !layers.full"
 					:size="28"
 					class="animate-spin text-gray-400"
 				/>
@@ -80,6 +89,7 @@
 	import {
 		fetchFileObjectUrl,
 		fileDisplayUrl,
+		invalidateFileDisplayUrl,
 		releaseFileDisplayUrl,
 	} from '@/actions/tmgr/files';
 	import {
@@ -141,17 +151,35 @@
 		}
 	};
 
+	let disposed = false;
+	let imageRequest = 0;
+	const imageError = ref(false);
 	const ensureUrl = async (file?: GalleryImage) => {
+		const request = ++imageRequest;
+		imageError.value = false;
 		if (!file || ownUrls.value[file.id]) {
 			return;
 		}
 		try {
-			ownUrls.value[file.id] = await fileDisplayUrl(file.id);
+			const url = await fileDisplayUrl(file.id);
+			if (disposed || request !== imageRequest || !open.value) {
+				releaseFileDisplayUrl(url);
+				return;
+			}
+			ownUrls.value[file.id] = url;
 		} catch {
-			// Leaves the spinner in place; the file is still downloadable from the list.
+			if (request === imageRequest) imageError.value = true;
 		}
 	};
 
+	const retryImage = () => {
+		const id = current.value?.id;
+		if (!id) return;
+		if (ownUrls.value[id]) releaseFileDisplayUrl(ownUrls.value[id]);
+		delete ownUrls.value[id];
+		invalidateFileDisplayUrl(id);
+		void ensureUrl(current.value);
+	};
 	const step = (delta: number) => {
 		index.value = stepIndex(index.value, props.images.length, delta);
 		ensureUrl(current.value);
@@ -187,6 +215,7 @@
 	};
 
 	const releaseOwnUrls = () => {
+		imageRequest++;
 		Object.values(ownUrls.value).forEach(releaseFileDisplayUrl);
 		fullLoaded.value = {};
 		ownUrls.value = {};
@@ -210,6 +239,8 @@
 	);
 
 	onBeforeUnmount(() => {
+		disposed = true;
+		imageRequest++;
 		document.removeEventListener('keydown', onKeydown);
 		releaseOwnUrls();
 	});

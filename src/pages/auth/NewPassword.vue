@@ -41,6 +41,8 @@
 						<button
 							class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
 							type="submit"
+							:disabled="isLoading"
+							:aria-busy="isLoading"
 						>
 							<span class="relative">
 								Reset
@@ -101,6 +103,7 @@
 	});
 
 	async function resetPassword() {
+		if (isLoading.value) return;
 		try {
 			message.value = '';
 			errors.value = {};
@@ -114,7 +117,7 @@
 				message.value = error.response?.data?.message;
 			}
 
-			throw error;
+			// Error is already presented by the form.
 		} finally {
 			isLoading.value = false;
 		}

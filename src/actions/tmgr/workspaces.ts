@@ -40,22 +40,16 @@ export const getWorkspaceMembers = async (
 ): Promise<WorkspaceMember[]> => {
 	const cacheKey = `workspace-${workspaceId}-members`;
 
-	if (useCache) {
-		const cached = requestCache.get<WorkspaceMember[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get(`/workspaces/${workspaceId}/members`);
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 300000);
-	}
-
-	return data;
+	return requestCache.getOrFetch<WorkspaceMember[]>(
+		cacheKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/workspaces/${workspaceId}/members`);
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 };
 
 export const removeMemberFromWorkspace = async (
@@ -68,26 +62,26 @@ export const removeMemberFromWorkspace = async (
 };
 
 export const getWorkspaceStatuses = async (useCache: boolean = true) => {
-	const cacheKey = 'workspace-statuses';
-
-	if (useCache) {
-		const cached = requestCache.get(cacheKey);
-		if (cached) {
-			store.commit('setWorkspaceStatuses', cached);
-			return cached;
-		}
+	const userId = store.state.user?.id;
+	const sessionGeneration = store.state.sessionGeneration;
+	const workspaceId = store.getters.currentWorkspaceId;
+	const data = await requestCache.getOrFetch(
+		'workspace-statuses',
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('workspaces/statuses');
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
+	if (
+		store.state.user?.id === userId &&
+		store.state.sessionGeneration === sessionGeneration &&
+		store.getters.currentWorkspaceId === workspaceId
+	) {
+		store.commit('setWorkspaceStatuses', data);
 	}
-
-	const {
-		data: { data },
-	} = await $axios.get('workspaces/statuses');
-
-	store.commit('setWorkspaceStatuses', data);
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 300000);
-	}
-
 	return data;
 };
 

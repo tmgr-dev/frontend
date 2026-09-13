@@ -9,7 +9,6 @@ const token = localStorage.getItem('token')
 
 const pusherModule = {
 	state: () => ({
-		pusher: pusher(token),
 		pusherBeamsUserId: null,
 		pusherBeamsClient: pusherBeamsClient,
 		pusherTokenProvider: pusherTokenProvider(token),
@@ -18,7 +17,7 @@ const pusherModule = {
 		getPusherBeamsUserId: (state) => state.pusherBeamsUserId,
 		getPusherBeamsClient: (state) => state.pusherBeamsClient,
 		getPusherTokenProvider: (state) => state.pusherTokenProvider,
-		getPusher: (state) => state.pusher,
+		getPusher: () => pusher(),
 	},
 	mutations: {
 		setPusherBeamsUserId(state, pusherBeamsUserId) {

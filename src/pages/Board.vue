@@ -32,12 +32,7 @@
 											type="button"
 											class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 											title="Refresh"
-											@click="
-												async () => {
-													await loadColumns();
-													await loadTasks();
-												}
-											"
+											@click="retryBoard"
 										>
 											<span class="material-icons text-xl">refresh</span>
 										</button>
@@ -77,7 +72,7 @@
 											:activeDraggable="activeDraggable"
 											@handleUpdateDraggable="handleUpdateDraggable"
 											@handleSearchTextChanged="handleSearchTextChanged"
-											@loadTasks="loadTasks"
+											@loadTasks="retryBoard"
 											@loadColumns="loadColumns"
 										>
 											<template #actions-start>
@@ -126,7 +121,7 @@
 														:activeDraggable="activeDraggable"
 														@handleUpdateDraggable="handleUpdateDraggable"
 														@handleSearchTextChanged="handleSearchTextChanged"
-														@loadTasks="loadTasks"
+														@loadTasks="retryBoard"
 														@loadColumns="loadColumns"
 														:isMobileModal="true"
 														@close-modal="isFiltersModalShown = false"
@@ -148,10 +143,25 @@
 								</Transition>
 							</div>
 
+							<div
+								v-if="boardLoading && tasksLoaded"
+								role="status"
+								class="px-4 py-2 text-sm text-ink-subtle"
+							>
+								Refreshing tasks…
+							</div>
+							<div
+								v-if="boardError"
+								role="alert"
+								class="px-4 py-2 text-sm text-ink-subtle"
+							>
+								{{ boardError }}
+								<button class="underline" @click="retryBoard">Retry</button>
+							</div>
 							<div class="board-wrapper">
 								<!-- Loading skeleton -->
 								<BoardSkeleton
-									v-if="!tasksLoaded"
+									v-if="!tasksLoaded && boardLoading"
 									:columns-count="columns.length || 4"
 								/>
 
@@ -369,11 +379,12 @@
 																:touch-start-threshold="3"
 															>
 																<template #item="{ element: task }">
-																	<TaskBoardCard
+																	<ViewportTaskCard
+																		:enabled="column.tasks.length > 100"
 																		:task="task"
 																		:statuses="statuses"
 																		class="my-5"
-																		:data-task="jsonEncode(task)"
+																		:data-task-id="task.id"
 																		@move-to-top="handleMoveToTop(task, column)"
 																		@move-to-bottom="
 																			handleMoveToBottom(task, column)
@@ -761,12 +772,14 @@
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
-	import TaskBoardCard from '@/components/tasks/TaskBoardCard.vue';
+	import ViewportTaskCard from '@/components/tasks/ViewportTaskCard.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
+	import { createBoardLoader, filterBoardTasks } from '@/utils/boardLoading';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
+	import { createRequestSequence } from '@/utils/requestSequence';
 	import {
 		removeTaskFromColumns,
 		upsertTaskInColumns,
@@ -783,7 +796,7 @@
 			BreadcrumbLink,
 			FilterIcon,
 			AppTooltip,
-			TaskBoardCard,
+			ViewportTaskCard,
 			EllipsisVerticalIcon,
 			MenuItem,
 			Dropdown,
@@ -876,6 +889,14 @@
 			creatingTaskColumnId: null,
 			newTaskTitle: '',
 			tasksLoaded: false,
+			boardLoading: true,
+			boardError: '',
+			boardReady: false,
+			dragSaveQueue: Promise.resolve(),
+			boardInitializing: false,
+			boardDisposed: false,
+			boardLoader: null,
+			columnSequence: createRequestSequence(),
 			isShowMoveTasksModal: false,
 			sourceColumnForMove: null,
 			isShowMobileReorderModal: false,
@@ -917,14 +938,18 @@
 				this.isMobile = window.innerWidth <= 768;
 			},
 
-			chosenUser: function () {
-				this.loadTasks();
+			'$route.query': {
+				handler() {
+					this.syncBoardFilters();
+				},
+				deep: true,
 			},
-			searchText: function () {
-				this.loadTasks();
-			},
-			chosenCategory: function () {
-				this.loadTasks();
+			'$store.state.filter': {
+				handler() {
+					if (!this.boardReady) return;
+					this.boardLoader.schedule();
+				},
+				deep: true,
 			},
 		},
 		computed: {
@@ -945,16 +970,26 @@
 		},
 		methods: {
 			updateSingleTaskInBoard(updatedTask) {
-				upsertTaskInColumns(this.columns, updatedTask);
-				this.refreshColumnSummaries();
+				const affected = new Set(
+					this.columns
+						.filter(
+							(column) =>
+								column.status.id === updatedTask.status_id ||
+								column.tasks.some((task) => task.id === updatedTask.id),
+						)
+						.map((column) => column.status.id),
+				);
+				if (upsertTaskInColumns(this.columns, updatedTask) !== 'ignored')
+					this.refreshColumnSummaries(affected);
 			},
 			removeTaskFromBoard(taskId) {
 				if (removeTaskFromColumns(this.columns, taskId)) {
 					this.refreshColumnSummaries();
 				}
 			},
-			refreshColumnSummaries() {
+			refreshColumnSummaries(affected = null) {
 				this.columns = this.columns.map((column) => {
+					if (affected && !affected.has(column.status.id)) return column;
 					const tasksInColumn = column.tasks;
 					const taskCount = tasksInColumn.length;
 					const summary = tasksInColumn.reduce(
@@ -1149,29 +1184,26 @@
 			openTaskModal(column) {
 				this.$store.commit('setShowCreatingTaskModal', column.status.id);
 			},
-			jsonEncode(data) {
-				return JSON.stringify(data);
-			},
-			jsonDecode(stringData) {
-				return JSON.parse(stringData);
-			},
-			async onEnd({
-				to: {
-					dataset: { status },
-				},
-				item: {
-					dataset: { task },
-				},
-			}) {
-				task = this.jsonDecode(task);
-				status = parseInt(status);
-
-				if (task.status_id !== status) {
-					await updateTaskStatus(task.id, status);
-					const foundTask = this.findTask(status, task.id);
-					foundTask.status_id = status;
-				}
-				setTimeout(() => this.saveOrders(status), 500);
+			async onEnd({ to, from, item }) {
+				const status = Number(to.dataset.status);
+				const sourceStatus = Number(from.dataset.status);
+				const id = Number(item.dataset.taskId);
+				const task = this.columns
+					.flatMap((column) => column.tasks)
+					.find((task) => task.id === id);
+				if (!task) return;
+				this.dragSaveQueue = this.dragSaveQueue
+					.then(async () => {
+						if (sourceStatus !== status) await updateTaskStatus(id, status);
+						task.status_id = status;
+						await this.saveOrders(status);
+						if (sourceStatus !== status) await this.saveOrders(sourceStatus);
+					})
+					.catch(() => {
+						this.boardError =
+							'Could not save task order. Refresh to restore the server order.';
+					});
+				await this.dragSaveQueue;
 			},
 			async onMove() {
 				// The Java API's pivot carries only { is_active, order } (Laravel also
@@ -1335,8 +1367,11 @@
 				return null;
 			},
 			async loadColumns() {
+				const request = this.columnSequence.begin();
 				const columns = [];
-				this.statuses = await getWorkspaceStatuses();
+				const statuses = await getWorkspaceStatuses();
+				if (!this.columnSequence.isCurrent(request)) return;
+				this.statuses = statuses;
 				this.statuses.sort((a, b) => a.pivot.order - b.pivot.order);
 
 				for (let i = 0; i < this.statuses.length; ++i) {
@@ -1349,12 +1384,14 @@
 					columns.push({
 						title: status.name,
 						status: status,
-						tasks: [],
+						tasks:
+							this.columns.find((column) => column.status.id === status.id)
+								?.tasks || [],
 					});
 				}
 
 				await this.$nextTick(() => {
-					this.columns = columns;
+					if (this.columnSequence.isCurrent(request)) this.columns = columns;
 				});
 			},
 			handleSearchTextChanged(newValue) {
@@ -1407,86 +1444,135 @@
 				}
 				return overtime;
 			},
-			async loadTasks() {
-				this.tasksLoaded = false;
-				const tasksPromises = this.columns.map((column) =>
-					this.loadTasksByStatus(column.status),
-				);
-				const tasksArray = await Promise.all(tasksPromises);
-				if (this.searchText === '') {
-					this.filteredTasksArray = tasksArray;
-				} else {
-					this.filteredTasksArray = tasksArray.map((el) =>
-						el.filter(
-							(item) =>
-								item.title
-									.toLowerCase()
-									.includes(this.searchText.toLowerCase()) ||
-								item.description
-									.toLowerCase()
-									.includes(this.searchText.toLowerCase()),
-						),
-					);
-				}
-				this.columns = this.columns.map((column, i) => {
-					const tasksInColumn = this.filteredTasksArray[i];
-					const taskCount = tasksInColumn.length;
-					const summary = tasksInColumn.reduce(
-						(acc, task) => task.common_time + acc,
-						0,
-					);
-					const summaryInHours = this.formatTime(summary);
-					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
-					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
-
-					const newColumn = {
-						...column,
-						summary: summaryInHours,
-						taskCount: taskCount,
-						overtime: overtimeFormatted,
-					};
-
-					newColumn.tasks = tasksInColumn;
-
-					return newColumn;
-				});
-
-				this.$nextTick(() => {
-					this.updateScrollContainers();
-					this.tasksLoaded = true;
-				});
+			loadTasks() {
+				if (!this.boardReady || this.boardDisposed) return;
+				return this.boardLoader?.run();
 			},
-			async loadTasksByStatus(status) {
-				let tasks = await getSortedTasksByStatus(status?.id || status, {
-					params: {
-						'order[column]': 'order',
-						'order[direction]': 'asc',
-					},
-				});
-				const selectedUserId = this.$store.state.filter.selectedUser;
-				if (selectedUserId) {
-					const chosenUser = this.workspaceUsers.find(
-						(user) => user.id === selectedUserId,
-					);
-					if (chosenUser) {
-						tasks = tasks.filter((item) =>
-							item.assignees?.find(
-								(assignee) =>
-									assignee.id === chosenUser.id &&
-									assignee.name === chosenUser.name,
-							),
-						);
+			async fetchBoardTasks() {
+				const columns = this.columns;
+				const filter = { ...this.$store.state.filter };
+				const tasks = await Promise.all(
+					columns.map((column) =>
+						getSortedTasksByStatus(column.status.id, {
+							params: { 'order[column]': 'order', 'order[direction]': 'asc' },
+						}),
+					),
+				);
+				return columns.map((column, index) => ({
+					...column,
+					tasks: filterBoardTasks(tasks[index], filter),
+				}));
+			},
+			syncBoardFilters() {
+				const query = this.$route.query;
+				this.$store.commit(
+					'updateSearchText',
+					typeof query.search === 'string' ? query.search : '',
+				);
+				this.$store.commit('updateSelectedUser', Number(query.user) || 0);
+				this.$store.commit(
+					'updateSelectedCategory',
+					Number(query.category) || 0,
+				);
+			},
+			syncBoardQuery() {
+				const filter = this.$store.state.filter;
+				const query = { ...this.$route.query };
+				delete query.search;
+				delete query.user;
+				delete query.category;
+				if (filter.searchText) query.search = filter.searchText;
+				if (filter.selectedUser) query.user = String(filter.selectedUser);
+				if (filter.selectedCategory)
+					query.category = String(filter.selectedCategory);
+				if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
+					void this.$router.push({ path: this.$route.path, query });
+				}
+			},
+			async retryBoard() {
+				if (this.boardDisposed) return;
+				if (!this.boardReady) {
+					await this.initializeBoard();
+					return;
+				}
+				this.boardLoading = true;
+				this.boardError = '';
+				try {
+					await this.loadColumns();
+					await this.loadTasks();
+				} catch (error) {
+					if (!this.boardDisposed) {
+						this.boardError = 'Could not refresh the board.';
+						this.boardLoading = false;
 					}
 				}
-				const selectedCategoryId = Number(
-					this.$store.state.filter.selectedCategory,
-				);
-				if (selectedCategoryId) {
-					tasks = tasks.filter(
-						(task) => Number(task.project_category_id) === selectedCategoryId,
+			},
+			async initializeBoard() {
+				if (this.boardInitializing || this.boardDisposed) return;
+				this.boardInitializing = true;
+				this.boardLoading = true;
+				this.boardError = '';
+				try {
+					const user = this.$store.state.user?.id
+						? this.$store.state.user
+						: await getUser();
+					if (this.boardDisposed) return;
+					const [workspaces, categories] = await Promise.all([
+						getWorkspaces(),
+						getCategories(),
+					]);
+					if (this.boardDisposed) return;
+					this.userData = user;
+					this.workspacesData = workspaces;
+					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
+					const setting = user.settings?.find(
+						(setting) => setting.key === 'current_workspace',
 					);
+					this.workspaceId = Number(setting?.value) || 0;
+					if (this.workspaceId) {
+						const users = await getWorkspaceMembers(this.workspaceId);
+						if (this.boardDisposed) return;
+						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
+					}
+					await this.loadColumns();
+					if (this.boardDisposed) return;
+					this.boardReady = true;
+					await this.loadTasks();
+					if (this.boardDisposed) return;
+					this.setColorFromHex(this.statusColor);
+					if (this.workspaceId) {
+						this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(
+							this.workspaceId,
+							{
+								onTaskUpdated: (task, action) => {
+									if (action === 'deleted') {
+										this.removeTaskFromBoard(task.id);
+									} else {
+										this.updateSingleTaskInBoard(task);
+									}
+								},
+								onCommentAdded: (comment) => {
+									for (const column of this.columns) {
+										const taskExists = column.tasks.some(
+											(t) => t.id === comment.task_id,
+										);
+										if (taskExists) {
+											this.newCommentTaskIds.add(comment.task_id);
+											break;
+										}
+									}
+								},
+							},
+						);
+					}
+				} catch (error) {
+					if (!this.boardDisposed) {
+						this.boardError = 'Could not load the board.';
+						this.boardLoading = false;
+					}
+				} finally {
+					this.boardInitializing = false;
 				}
-				return tasks;
 			},
 			async saveUser() {
 				try {
@@ -1507,6 +1593,7 @@
 			},
 			updateScrollContainers() {
 				this.$nextTick(() => {
+					if (this.boardDisposed) return;
 					const boardCards = document.querySelectorAll('.board-card');
 					boardCards.forEach((card) => {
 						if (card.scrollHeight > card.clientHeight) {
@@ -1584,79 +1671,43 @@
 				}
 			},
 		},
-		async beforeMount() {
-			// The router guard already loaded the user on this navigation; refetching it here sent
-			// /api/user a second time on every board load (TM-218).
-			const user = this.$store.state.user?.id
-				? this.$store.state.user
-				: await getUser();
-			this.workspacesData = await getWorkspaces();
-			this.userData = user;
-
-			const workspaceSetting = this.userData.settings.find(
-				(setting) => setting.key === 'current_workspace',
-			);
-			if (workspaceSetting) {
-				this.workspaceId = +workspaceSetting.value;
-				const users = await getWorkspaceMembers(this.workspaceId);
-				this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
-			}
-		},
-		async mounted() {
-			setDocumentTitle(this.title);
-
-			this.$nextTick(() => {
-				this.headerSlotReady = !!document.getElementById('page-header-actions');
-			});
-
-			const categoriesData = await getCategories();
-			this.categories = [
-				{ id: 0, title: 'All categories' },
-				...categoriesData.map((cat) => ({
-					id: cat.id,
-					title: cat.title,
-				})),
-			];
-			document.body.classList.add('overflow-hidden');
-			await this.loadColumns();
-			await this.loadTasks();
-			this.setColorFromHex(this.statusColor);
-
-			const boardContainer = document.querySelector('.board-container');
-			if (boardContainer) {
-				this.hasHorizontalScroll =
-					boardContainer.scrollWidth > boardContainer.clientWidth;
-
-				this.$nextTick(() => {
+		created() {
+			this.syncBoardFilters();
+			this.boardLoader = createBoardLoader(
+				() => {
+					this.syncBoardQuery();
+					return this.fetchBoardTasks();
+				},
+				(columns) => {
+					this.columns = columns;
+					this.refreshColumnSummaries();
+					this.tasksLoaded = true;
 					this.updateScrollContainers();
-				});
-			}
-
-			if (this.workspaceId) {
-				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(
-					this.workspaceId,
-					{
-						onTaskUpdated: (task, action) => {
-							if (action === 'deleted') {
-								this.removeTaskFromBoard(task.id);
-							} else {
-								this.updateSingleTaskInBoard(task);
-							}
-						},
-						onCommentAdded: (comment) => {
-							for (const column of this.columns) {
-								const taskExists = column.tasks.some(
-									(t) => t.id === comment.task_id,
-								);
-								if (taskExists) {
-									this.newCommentTaskIds.add(comment.task_id);
-									break;
-								}
-							}
-						},
-					},
-				);
-			}
+				},
+				() => {
+					this.boardError = 'Could not refresh tasks.';
+				},
+				(loading) => {
+					this.boardLoading = loading;
+					if (loading) this.boardError = '';
+				},
+			);
+		},
+		mounted() {
+			setDocumentTitle(this.title);
+			document.body.classList.add('overflow-hidden');
+			this.$nextTick(() => {
+				if (!this.boardDisposed)
+					this.headerSlotReady = !!document.getElementById(
+						'page-header-actions',
+					);
+			});
+			void this.initializeBoard();
+		},
+		beforeUnmount() {
+			this.boardDisposed = true;
+			this.boardLoader.dispose();
+			this.columnSequence.dispose();
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');

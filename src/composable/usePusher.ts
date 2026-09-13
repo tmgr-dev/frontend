@@ -13,7 +13,7 @@ import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import type { Ref } from 'vue';
-import { nextTick, ref } from 'vue';
+import { ref } from 'vue';
 
 // Connection state type
 type ConnectionState =
@@ -66,6 +66,22 @@ const connectionState = ref<ConnectionState>('disconnected');
 const connectionError = ref<ActionError | null>(null);
 let echoInstance: Echo | null = null;
 const subscriptions = new Map<string, ChannelSubscription>();
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const cancelReconnect = (): void => {
+	if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+	reconnectTimer = null;
+};
+
+// Legacy Vuex consumers resolve this lazily, so store creation opens no socket.
+export function getSharedEcho(): Echo | null {
+	usePusher();
+	return echoInstance;
+}
+
+export function disconnectRealtime(): void {
+	if (echoInstance) usePusher().disconnect();
+	else cancelReconnect();
+}
 const reconnectConfig = {
 	maxAttempts: 5,
 	delay: 1000,
@@ -181,24 +197,27 @@ export function usePusher(): UsePusherReturn {
 		if (!echoInstance) return;
 
 		// Access the underlying Pusher connection
+		const owner = echoInstance;
 		const pusher = (echoInstance as any).connector.pusher;
 
 		if (pusher) {
 			pusher.connection.bind('connected', () => {
+				if (echoInstance !== owner) return;
+				cancelReconnect();
 				isConnected.value = true;
 				connectionState.value = 'connected';
 				connectionError.value = null;
 				reconnectConfig.currentAttempt = 0;
-				console.log('Pusher connected successfully');
 			});
 
 			pusher.connection.bind('disconnected', () => {
+				if (echoInstance !== owner) return;
 				isConnected.value = false;
 				connectionState.value = 'disconnected';
-				console.log('Pusher disconnected');
 			});
 
 			pusher.connection.bind('error', (error: any) => {
+				if (echoInstance !== owner) return;
 				isConnected.value = false;
 				connectionState.value = 'error';
 				connectionError.value = {
@@ -215,6 +234,7 @@ export function usePusher(): UsePusherReturn {
 			});
 
 			pusher.connection.bind('unavailable', () => {
+				if (echoInstance !== owner) return;
 				isConnected.value = false;
 				connectionState.value = 'error';
 				console.warn('Pusher connection unavailable');
@@ -225,6 +245,7 @@ export function usePusher(): UsePusherReturn {
 
 	// Schedule reconnection attempt
 	const scheduleReconnect = (): void => {
+		if (reconnectTimer !== null || !echoInstance) return;
 		if (reconnectConfig.currentAttempt >= reconnectConfig.maxAttempts) {
 			console.error('Max reconnection attempts reached');
 			return;
@@ -237,20 +258,15 @@ export function usePusher(): UsePusherReturn {
 			? reconnectConfig.delay * Math.pow(2, reconnectConfig.currentAttempt - 1)
 			: reconnectConfig.delay;
 
-		setTimeout(() => {
-			console.log(
-				`Attempting to reconnect (${reconnectConfig.currentAttempt}/${reconnectConfig.maxAttempts})`,
-			);
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+
 			reconnect();
 		}, delay);
 	};
 
 	// Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
 	const subscribe = (channelName: string, events: EventHandlers): string => {
-		console.log(
-			`[usePusher] subscribe called for channel: ${channelName}, echoInstance exists: ${!!echoInstance}`,
-		);
-
 		if (!echoInstance) {
 			initializeEcho();
 		}
@@ -261,23 +277,15 @@ export function usePusher(): UsePusherReturn {
 		}
 
 		const subscriptionId = generateSubscriptionId();
-		console.log(`[usePusher] Generated subscriptionId: ${subscriptionId}`);
 
 		try {
 			// Check if we already have a subscription to this channel
 			const existingSubscription = subscriptions.get(channelName);
-			console.log(
-				`[usePusher] Existing subscription: ${!!existingSubscription}, total subscriptions: ${
-					subscriptions.size
-				}`,
-			);
 
 			if (existingSubscription) {
 				// Add new handler to existing channel subscription
 				existingSubscription.handlers.set(subscriptionId, events);
-				console.log(
-					`[usePusher] Added handler ${subscriptionId} to existing channel: ${channelName}, total handlers: ${existingSubscription.handlers.size}`,
-				);
+
 				return subscriptionId;
 			}
 
@@ -324,17 +332,10 @@ export function usePusher(): UsePusherReturn {
 					updated_by_user_id: number;
 					source_instance_id?: string;
 				}) => {
-					console.log('[usePusher] Received .task.updated event:', data);
 					const sub = subscriptions.get(channelName);
-					console.log(
-						'[usePusher] Found subscription:',
-						!!sub,
-						'handlers count:',
-						sub?.handlers?.size,
-					);
+
 					if (sub) {
-						sub.handlers.forEach((h, id) => {
-							console.log('[usePusher] Calling handler:', id);
+						sub.handlers.forEach((h) => {
 							h.onTaskUpdated?.(
 								data.task,
 								data.action,
@@ -454,9 +455,6 @@ export function usePusher(): UsePusherReturn {
 				isPrivate,
 			});
 
-			console.log(
-				`Subscribed to channel: ${channelName} with handler ${subscriptionId}`,
-			);
 			return subscriptionId;
 		} catch (error) {
 			console.error(`Failed to subscribe to channel ${channelName}:`, error);
@@ -484,16 +482,12 @@ export function usePusher(): UsePusherReturn {
 
 		if (subscription) {
 			subscription.handlers.delete(subscriptionId);
-			console.log(
-				`Removed handler ${subscriptionId} from channel: ${channelName}`,
-			);
 
 			// If no more handlers, leave the channel entirely
 			if (subscription.handlers.size === 0 && echoInstance) {
 				try {
 					echoInstance.leave(channelName);
 					subscriptions.delete(channelName);
-					console.log(`Left channel: ${channelName} (no more handlers)`);
 				} catch (error) {
 					console.error(`Failed to leave channel ${channelName}:`, error);
 				}
@@ -512,8 +506,6 @@ export function usePusher(): UsePusherReturn {
 
 				// Remove from subscriptions map
 				subscriptions.delete(channelName);
-
-				console.log(`Unsubscribed from channel: ${channelName}`);
 			} catch (error) {
 				console.error(
 					`Failed to unsubscribe from channel ${channelName}:`,
@@ -530,49 +522,33 @@ export function usePusher(): UsePusherReturn {
 		}
 	};
 
-	// Reconnect to Pusher
+	// Keep Echo channels and ownership IDs intact. Pusher reauthorizes existing
+	// channels on connect, using the current token through customHandler.
 	const reconnect = (): void => {
-		try {
-			// Disconnect existing connection
-			disconnect();
-
-			// Wait a moment before reconnecting
-			nextTick(() => {
-				// Reinitialize Echo
-				initializeEcho();
-
-				// Resubscribe to all channels with all their handlers
-				const channelsToResubscribe = Array.from(subscriptions.entries());
-				subscriptions.clear();
-
-				for (const [channelName, subscription] of channelsToResubscribe) {
-					// Resubscribe each handler individually
-					for (const [, handler] of subscription.handlers) {
-						subscribe(channelName, handler);
-					}
-				}
-			});
-		} catch (error) {
-			console.error('Failed to reconnect:', error);
-			connectionState.value = 'error';
-		}
+		cancelReconnect();
+		if (!echoInstance) return;
+		isConnected.value = false;
+		connectionState.value = 'reconnecting';
+		echoInstance.disconnect();
+		(echoInstance as any).connector.pusher.connect();
 	};
 
 	// Disconnect from Pusher
 	const disconnect = (): void => {
+		cancelReconnect();
+		reconnectConfig.currentAttempt = 0;
 		if (echoInstance) {
 			try {
 				// Unsubscribe from all channels
 				unsubscribeAll();
 
 				// Disconnect Echo
-				echoInstance.disconnect();
+				const previousEcho = echoInstance;
 				echoInstance = null;
+				previousEcho.disconnect();
 
 				isConnected.value = false;
 				connectionState.value = 'disconnected';
-
-				console.log('Pusher disconnected');
 			} catch (error) {
 				console.error('Error during disconnect:', error);
 			}

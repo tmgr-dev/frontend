@@ -1,4 +1,5 @@
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { disconnectRealtime } from '@/composable/usePusher';
 import filterModule from '@/store/modules/boardFilters';
 import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import featureTogglesModule from '@/store/modules/featureToggles';
@@ -13,6 +14,7 @@ const token = localStorage.getItem('token')
 
 const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('categories');
+	requestCache.invalidate('statuses');
 	requestCache.invalidate('workspace-statuses');
 	requestCache.invalidate(/^tasks-status-/);
 	requestCache.clearInFlight();
@@ -21,6 +23,9 @@ const invalidateWorkspaceScopedCache = () => {
 const state = {
 	metaTitle: '',
 	token: token,
+	// A refresh rotates credentials without replacing the authenticated session.
+	sessionGeneration: 0,
+	/** @type {import('@/types/store').User | Record<string, never>} */
 	user: {},
 	colorScheme: localStorage.getItem('colorScheme') || 'default',
 	theme: localStorage.getItem('theme') || 'default',
@@ -112,7 +117,11 @@ const mutations = {
 		state.deletedTaskKey = (state.deletedTaskKey || 0) + 1;
 	},
 	setToken(state, token) {
+		if ((state.token == null) !== (token == null)) state.sessionGeneration++;
 		if (token == null) {
+			disconnectRealtime();
+			requestCache.setContext('guest');
+			requestCache.clear();
 			localStorage.removeItem('token');
 		} else {
 			localStorage.setItem('token', JSON.stringify(token));
@@ -121,6 +130,12 @@ const mutations = {
 		state.token = token;
 	},
 	setUser(state, user) {
+		if (state.user?.id !== user?.id) {
+			state.sessionGeneration++;
+			requestCache.clear();
+			if (state.dailyRoutines)
+				dailyRoutinesModule.mutations.reset(state.dailyRoutines);
+		}
 		const previousWorkspaceId =
 			state.userSettingsMap['current_workspace']?.value || null;
 		const nextUser = { ...user };
@@ -157,6 +172,9 @@ const mutations = {
 
 		const nextWorkspaceId =
 			state.userSettingsMap['current_workspace']?.value || null;
+		requestCache.setContext(
+			`${state.user?.id || 'guest'}:${nextWorkspaceId || ''}`,
+		);
 		if (
 			previousWorkspaceId &&
 			nextWorkspaceId &&
@@ -245,6 +263,9 @@ const mutations = {
 		state.appRerenderKey++;
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
+		requestCache.setContext(
+			`${state.user?.id || 'guest'}:${workspaceId || ''}`,
+		);
 		const previousWorkspaceId =
 			state.userSettingsMap['current_workspace']?.value || null;
 		if (state.user && state.user.settings) {
@@ -287,7 +308,9 @@ const actions = {
 		// Only the session dies: UI prefs (colorScheme, sidebarExpanded,
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
+		disconnectRealtime();
 		commit('setToken', null);
+		commit('dailyRoutines/reset');
 		commit('setAiPanelOpen', false);
 		localStorage.removeItem('newTaskWithCheckpoints');
 		Object.keys(localStorage)
@@ -299,10 +322,16 @@ const actions = {
 		requestCache.clear();
 	},
 
-	async loadWorkspaces({ commit }) {
+	async loadWorkspaces({ commit, state }) {
+		const sessionGeneration = state.sessionGeneration;
+		const userId = state.user?.id;
 		try {
 			const workspaces = await getWorkspaces();
-			commit('setWorkspaces', workspaces);
+			if (
+				state.sessionGeneration === sessionGeneration &&
+				state.user?.id === userId
+			)
+				commit('setWorkspaces', workspaces);
 			return workspaces;
 		} catch (error) {
 			console.error('Error loading workspaces:', error);

@@ -2,15 +2,16 @@
 	import { Task } from '@/actions/tmgr/tasks';
 	import TaskTimeInfo from '@/components/TaskTimeInfo.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useNowMs } from '@/composable/useNowMs';
 	import { ExtendedTime, Time } from '@/types';
+	import { liveTaskTime } from '@/utils/liveTaskTime';
 	import {
 		convertToHHMM,
 		prepareClockNumber,
 		secondsToCountdownObject,
 	} from '@/utils/timeUtils';
 	import { Pause, Play } from 'lucide-vue-next';
-	import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-	import { useStore } from 'vuex';
+	import { computed, reactive, ref, watch } from 'vue';
 
 	interface Props {
 		form: Task;
@@ -18,9 +19,8 @@
 	}
 
 	const props = defineProps<Props>();
-	const emit = defineEmits(['toggle', 'update:seconds']);
-	const store = useStore();
-	let countdownInterval: ReturnType<typeof setInterval> | null = null;
+	const emit = defineEmits(['toggle', 'update:seconds', 'update:common-time']);
+	const now = useNowMs(1000);
 
 	const isTimerActive = ref(false);
 	const lastStartTime = ref<Time>({ hours: 0, minutes: 0 });
@@ -29,7 +29,9 @@
 	const timer = reactive({ hours: 0, minutes: 0, seconds: 0 });
 
 	const disabledStyles = computed(() => {
-		return props.disabled ? { opacity: 0.4, 'pointer-events': 'none' } : {};
+		return props.disabled
+			? { opacity: 0.4, 'pointer-events': 'none' as const }
+			: {};
 	});
 
 	const approximatelyEndTime = computed<ExtendedTime>(() => {
@@ -50,42 +52,7 @@
 		() => (task.approximately_time || 3600) - task.common_time < 0,
 	);
 
-	const toggleTimer = () => {
-		if (countdownInterval) {
-			clearInterval(countdownInterval);
-			countdownInterval = null;
-			isTimerActive.value = false;
-			lastStartTime.value = { hours: 0, minutes: 0 };
-		} else {
-			isTimerActive.value = true;
-			countdownInterval = setInterval(plusSecond, 1000);
-		}
-		emit('toggle');
-	};
-
-	const plusSecond = () => {
-		if (!task.common_time) {
-			task.common_time = 0;
-		}
-		++task.common_time;
-		emit('update:seconds', task.common_time);
-		renderTime();
-	};
-
-	const initCountdown = () => {
-		if (!task.start_time) {
-			if (countdownInterval) clearInterval(countdownInterval);
-			return;
-		}
-		if (task.start_time) {
-			task.common_time += Math.floor(
-				(new Date().getTime() - new Date().setTime(task.start_time * 1000)) /
-					1000,
-			);
-		}
-		isTimerActive.value = true;
-		countdownInterval = setInterval(plusSecond, 1000);
-	};
+	const toggleTimer = () => emit('toggle');
 
 	const renderTime = () => {
 		const newTimer = secondsToCountdownObject(task.common_time);
@@ -107,39 +74,24 @@
 		};
 	};
 
-	onMounted(() => {
-		Object.assign(task, props.form);
-		task.start_time = task.start_time || 0;
-		initCountdown();
-		renderTime();
-	});
-
-	// The timer can be started/stopped outside this component (pomodoro, hotkeys,
-	// another tab). Follow the form's start_time instead of only our own click.
 	watch(
-		() => props.form.start_time,
-		(startTime) => {
-			const running = !!startTime && startTime > 0;
-			if (running === !!countdownInterval) return;
-			task.start_time = startTime || 0;
-			task.common_time = props.form.common_time ?? task.common_time;
-			if (running) {
-				initCountdown();
-			} else {
-				if (countdownInterval) clearInterval(countdownInterval);
-				countdownInterval = null;
-				isTimerActive.value = false;
-				lastStartTime.value = { hours: 0, minutes: 0 };
-			}
+		() => [
+			props.form.id,
+			props.form.start_time,
+			props.form.common_time,
+			props.form.approximately_time,
+			props.form.start_time ? now.value : 0,
+		],
+		() => {
+			Object.assign(task, props.form);
+			task.common_time = liveTaskTime(props.form, Math.floor(now.value / 1000));
+			isTimerActive.value = !!props.form.start_time;
+			if (!isTimerActive.value) lastStartTime.value = { hours: 0, minutes: 0 };
+			emit('update:seconds', task.common_time);
 			renderTime();
 		},
+		{ immediate: true },
 	);
-
-	onUnmounted(() => {
-		if (countdownInterval) {
-			clearInterval(countdownInterval);
-		}
-	});
 </script>
 
 <template>
@@ -217,6 +169,7 @@
 			@update:timer="
 				(seconds: number) => {
 					task.common_time = seconds;
+					emit('update:common-time', seconds);
 					renderTime();
 				}
 			"

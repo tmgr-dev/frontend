@@ -115,24 +115,17 @@ export const getTask = async (
 ): Promise<Task> => {
 	const cacheKey = `task-${taskId}`;
 
-	if (useCache) {
-		const cached = requestCache.get<Task>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get(`tasks/${taskId}`);
-
-	data.common_time = data.common_time || 0;
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 60000);
-	}
-
-	return data;
+	return requestCache.getOrFetch<Task>(
+		cacheKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`tasks/${taskId}`);
+			data.common_time = data.common_time || 0;
+			return data;
+		},
+		{ ttl: 60000, cache: useCache },
+	);
 };
 
 export const createTask = async (task: Task) => {

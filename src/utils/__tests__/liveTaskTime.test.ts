@@ -29,3 +29,9 @@ describe('liveTaskTime', () => {
 		).toBe(600);
 	});
 });
+
+it('catches up after a suspended tab without counting missed callbacks', () => {
+	const task = { common_time: 30, start_time: 100 };
+	expect(liveTaskTime(task, 101)).toBe(31);
+	expect(liveTaskTime(task, 161)).toBe(91);
+});

@@ -95,6 +95,7 @@
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
+	import { indexEntriesByDate } from '@/utils/dailyRoutines/entryIndex';
 	import { computed } from 'vue';
 
 	const { hoverKey } = useRoutineDrag();
@@ -145,13 +146,14 @@
 		return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
 	});
 
+	const entryIndex = computed(() => indexEntriesByDate(props.entries));
 	const byDay = computed(() =>
 		days.value.map((d) => {
 			const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 				2,
 				'0',
 			)}-${String(d.getDate()).padStart(2, '0')}`;
-			return props.entries.filter((e) => e.date === iso);
+			return entryIndex.value.get(iso) || [];
 		}),
 	);
 

@@ -48,22 +48,16 @@ export const getCategories = async (
 ): Promise<Category[]> => {
 	const cacheKey = 'categories';
 
-	if (useCache) {
-		const cached = requestCache.get<Category[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
-
-	const {
-		data: { data },
-	} = await $axios.get('project_categories?all');
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 300000);
-	}
-
-	return data;
+	return requestCache.getOrFetch<Category[]>(
+		cacheKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('project_categories?all');
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 };
 
 export const getTopCategories = async (): Promise<Category[]> => {

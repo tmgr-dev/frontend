@@ -212,18 +212,17 @@
 
 					<!-- Body -->
 					<div class="flex flex-1 flex-col gap-3 overflow-hidden p-2 md:p-5">
-						<div
-							v-if="isLoading && !entries.length"
-							class="flex flex-1 flex-col gap-2"
+						<AsyncContent
+							class="flex min-h-0 flex-1 flex-col gap-3"
+							:pending="viewPending"
+							:loaded="viewLoaded"
+							:error="viewError"
+							:retry="reload"
+							label="Loading routines"
 						>
-							<SkeletonListItem
-								v-for="n in 5"
-								:key="n"
-								class="rounded-card border border-line bg-surface"
-								:show-avatar="false"
-							/>
-						</div>
-						<template v-else>
+							<template #skeleton
+								><RoutineViewSkeleton :view="view"
+							/></template>
 							<!-- Unscheduled section (visible above all calendar views) -->
 							<div
 								v-if="
@@ -324,7 +323,7 @@
 								:width="width"
 								@select-day="onSelectDay"
 							/>
-						</template>
+						</AsyncContent>
 					</div>
 
 					<EditRoutineModal
@@ -369,11 +368,13 @@
 		updateDailyTask,
 	} from '@/actions/tmgr/daily-tasks';
 	import { updateTask } from '@/actions/tmgr/tasks';
+	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
 	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
 	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
+	import RoutineViewSkeleton from '@/components/dailyRoutine/RoutineViewSkeleton.vue';
 	import DayView from '@/components/dailyRoutine/views/DayView.vue';
 	import ListView from '@/components/dailyRoutine/views/ListView.vue';
 	import MonthView from '@/components/dailyRoutine/views/MonthView.vue';
@@ -383,7 +384,6 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
-	import { SkeletonListItem } from '@/components/ui/skeleton';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
@@ -463,7 +463,6 @@
 		() => store.state.dailyRoutines.entries,
 	);
 	const yearStats = computed(() => store.state.dailyRoutines.yearStats);
-	const isLoading = computed(() => store.state.dailyRoutines.isLoading);
 
 	const todayIso = computed(() => fmtDate(new Date()));
 	const todayEntries = computed(() =>
@@ -556,24 +555,54 @@
 		return { from: fmtDate(c), to: fmtDate(c) };
 	}
 
+	const viewPending = ref(true),
+		viewLoaded = ref(false),
+		viewError = ref<string | null>(null);
+	let viewRequest = 0;
+	const workspaceIdentity = computed(
+		() =>
+			store.state.user?.settings?.find(
+				(s: { key: string; value: unknown }) => s.key === 'current_workspace',
+			)?.value,
+	);
 	async function reload() {
-		if (view.value === 'year') {
-			await Promise.all([
-				store.dispatch(
-					'dailyRoutines/loadYearStats',
-					cursor.value.getFullYear(),
-				),
-				store.dispatch('dailyRoutines/loadRange', {
-					from: todayIso.value,
-					to: todayIso.value,
-				}),
-			]);
-		} else {
-			await store.dispatch('dailyRoutines/loadRange', rangeForView());
+		const request = ++viewRequest;
+		viewPending.value = true;
+		viewError.value = null;
+		try {
+			if (view.value === 'year') {
+				await Promise.all([
+					store.dispatch(
+						'dailyRoutines/loadYearStats',
+						cursor.value.getFullYear(),
+					),
+					store.dispatch('dailyRoutines/loadRange', {
+						from: todayIso.value,
+						to: todayIso.value,
+					}),
+				]);
+			} else {
+				await store.dispatch('dailyRoutines/loadRange', rangeForView());
+			}
+
+			if (request === viewRequest) viewLoaded.value = true;
+		} catch (error) {
+			if (request === viewRequest)
+				viewError.value =
+					error instanceof Error ? error.message : 'Could not load routines.';
+		} finally {
+			if (request === viewRequest) viewPending.value = false;
 		}
 	}
+	watch(workspaceIdentity, () => {
+		viewLoaded.value = false;
+		void reload();
+	});
 
-	watch([view, cursor], reload);
+	watch([view, cursor], () => {
+		viewLoaded.value = false;
+		void reload();
+	});
 
 	onMounted(() => {
 		setDocumentTitle('Daily Routines');
@@ -583,6 +612,7 @@
 	});
 
 	onBeforeUnmount(() => {
+		++viewRequest;
 		window.removeEventListener('keydown', onShortcutKey);
 	});
 

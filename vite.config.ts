@@ -68,21 +68,11 @@ export default defineConfig({
 				globIgnores: [
 					'**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
 				],
-				importScripts: ['https://js.pusher.com/beams/service-worker.js'],
-				runtimeCaching: [
-					{
-						urlPattern: /\/api\/.*/i,
-						handler: 'NetworkFirst',
-						options: {
-							cacheName: 'api-cache',
-							expiration: {
-								maxEntries: 100,
-								maxAgeSeconds: 60 * 5,
-							},
-							networkTimeoutSeconds: 10,
-						},
-					},
+				importScripts: [
+					'clear-private-api-cache.js',
+					'https://js.pusher.com/beams/service-worker.js',
 				],
+				runtimeCaching: [{ urlPattern: /\/api\/.*/i, handler: 'NetworkOnly' }],
 			},
 		}),
 	],

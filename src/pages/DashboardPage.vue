@@ -122,24 +122,23 @@
 	// Dashboard composable
 	const {
 		statistics,
-		activities,
 		heatmapData,
 		teamActivity,
 		teamActivityWindow,
 		setTeamActivityWindow,
 		loadingStates,
 		error: dashboardError,
-		loadDashboard,
+		loadDashboard: loadDashboardSections,
 		loadHeatmap,
 		refreshSection,
-		refreshDashboard,
+		refreshDashboard: refreshDashboardSections,
 		clearError,
 		hasError,
 		isAnyLoading,
 		isInitialLoad,
-		addActivity,
 		updateStatistics,
-	} = useDashboard(workspaceId);
+		updateTeamMemberStatus,
+	} = useDashboard(workspaceId, { includeActivities: false });
 
 	// Activity feed composable
 	const {
@@ -150,7 +149,6 @@
 		enableRealTime: enableActivityRealTime,
 		disableRealTime: disableActivityRealTime,
 		canLoadMore,
-		hasFilters: hasActivityFilters,
 		loading: feedLoading,
 		loadingMore: feedLoadingMore,
 	} = useActivityFeed(workspaceId);
@@ -161,7 +159,7 @@
 		connectionState,
 		connectionError,
 		subscribeToWorkspace,
-		unsubscribeFromWorkspace,
+		unsubscribeHandlerFromWorkspace,
 		reconnect: reconnectPusher,
 	} = usePusher();
 
@@ -254,21 +252,13 @@
 		return isPusherConnected.value && !isOffline.value;
 	});
 
-	const displayedActivities = computed(() => {
-		return hasActivityFilters.value ? feedActivities.value : activities.value;
-	});
-
-	const activityLoading = computed(() => {
-		return hasActivityFilters.value
-			? feedLoading.value
-			: loadingStates.value.activities.isLoading;
-	});
-
-	const activityLoadingMore = computed(() => {
-		return hasActivityFilters.value
-			? feedLoadingMore.value
-			: loadingStates.value.loadingMore;
-	});
+	const displayedActivities = feedActivities;
+	const activityLoading = feedLoading;
+	const activityLoadingMore = feedLoadingMore;
+	const loadDashboard = () =>
+		Promise.all([loadDashboardSections(), refreshActivities()]);
+	const refreshDashboard = () =>
+		Promise.all([refreshDashboardSections(), refreshActivities()]);
 
 	// Enhanced error handling
 	const handleError = (error: any, context: string) => {
@@ -371,7 +361,6 @@
 	// Real-time event handlers with animations
 	const handleNewActivity = (activity: Activity) => {
 		// Add activity with smooth animation
-		addActivity(activity);
 
 		// Show subtle notification with animation
 		showActivityNotification(activity);
@@ -523,12 +512,22 @@
 		updateConnectionStatus();
 	});
 
+	let disposed = false;
+	let subscribedWorkspaceId: number | null = null;
+	let subscriptionId = '';
+
 	// Setup real-time subscriptions
 	const setupRealTimeUpdates = () => {
-		if (!workspaceId.value) return;
+		if (
+			disposed ||
+			!workspaceId.value ||
+			subscribedWorkspaceId === workspaceId.value
+		)
+			return;
+		cleanupRealTimeUpdates();
 
 		try {
-			subscribeToWorkspace(workspaceId.value, {
+			subscriptionId = subscribeToWorkspace(workspaceId.value, {
 				onActivityCreated: handleNewActivity,
 				onDashboardUpdated: handleDashboardUpdate,
 				onMemberStatusChanged: handleMemberStatusChange,
@@ -539,6 +538,8 @@
 				},
 			});
 
+			subscribedWorkspaceId = workspaceId.value;
+
 			// Enable activity feed real-time updates
 			enableActivityRealTime(workspaceId.value);
 		} catch (error) {
@@ -548,10 +549,12 @@
 
 	// Cleanup real-time subscriptions
 	const cleanupRealTimeUpdates = () => {
-		if (workspaceId.value) {
-			unsubscribeFromWorkspace(workspaceId.value);
-			disableActivityRealTime();
+		if (subscribedWorkspaceId !== null && subscriptionId) {
+			unsubscribeHandlerFromWorkspace(subscribedWorkspaceId, subscriptionId);
 		}
+		subscribedWorkspaceId = null;
+		subscriptionId = '';
+		disableActivityRealTime();
 	};
 
 	// Watch for workspace changes
@@ -669,8 +672,10 @@
 				await store.dispatch('loadWorkspaces');
 			}
 
+			if (disposed) return;
 			// Load dashboard data
 			await loadDashboard();
+			if (disposed) return;
 
 			// Setup real-time updates with accessibility
 			setupRealTimeUpdates();
@@ -678,12 +683,14 @@
 			// Announce initial load completion
 			announceUpdate('Dashboard loaded successfully');
 		} catch (error) {
+			if (disposed) return;
 			handleError(error, 'initialization');
 			announceUpdate('Dashboard failed to load');
 		}
 	});
 
 	onUnmounted(() => {
+		disposed = true;
 		// Cleanup keyboard navigation
 		document.removeEventListener('keydown', handleKeyboardNavigation);
 
@@ -820,9 +827,9 @@
 								class="mb-6 rounded-lg border p-4"
 								:class="{
 									'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20':
-										!isOffline.value,
+										!isOffline,
 									'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20':
-										isOffline.value,
+										isOffline,
 								}"
 								role="alert"
 								aria-live="polite"
@@ -831,7 +838,7 @@
 									<ExclamationTriangleIcon
 										:class="[
 											'mr-3 mt-0.5 h-5 w-5 flex-shrink-0',
-											isOffline.value
+											isOffline
 												? 'text-yellow-600 dark:text-yellow-400'
 												: 'text-red-600 dark:text-red-400',
 										]"
@@ -840,19 +847,17 @@
 										<h3
 											:class="[
 												'font-medium',
-												isOffline.value
+												isOffline
 													? 'text-yellow-800 dark:text-yellow-200'
 													: 'text-red-800 dark:text-red-200',
 											]"
 										>
-											{{
-												isOffline.value ? 'Connection Lost' : 'Dashboard Error'
-											}}
+											{{ isOffline ? 'Connection Lost' : 'Dashboard Error' }}
 										</h3>
 										<p
 											:class="[
 												'mt-1 text-sm',
-												isOffline.value
+												isOffline
 													? 'text-yellow-700 dark:text-yellow-300'
 													: 'text-red-700 dark:text-red-300',
 											]"
@@ -866,7 +871,7 @@
 												@click="handleRetry"
 												:disabled="isRetryingGlobal"
 												:class="[
-													isOffline.value
+													isOffline
 														? 'border-yellow-300 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-300 dark:hover:bg-yellow-900/30'
 														: 'border-red-300 text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/30',
 												]"
@@ -881,7 +886,7 @@
 											</Button>
 
 											<Button
-												v-if="isOffline.value"
+												v-if="isOffline"
 												variant="outline"
 												size="sm"
 												@click="checkConnection"
@@ -1097,8 +1102,9 @@
 										:loading-more="activityLoadingMore"
 										:workspace-id="workspaceId"
 										:workspace-users="workspaceUsersList"
+										:connected="isRealTimeActive"
 										@load-more="loadMoreActivities"
-										@refresh="() => refreshSection('activities')"
+										@refresh="refreshActivities"
 										@filter-change="handleActivityFiltersChange"
 										@activity-click="handleActivityClick"
 										:aria-describedby="
@@ -1158,20 +1164,20 @@
 								leave-to-class="transform opacity-0 translate-y-2"
 							>
 								<div
-									v-if="showConnectionStatus || isOffline.value"
+									v-if="showConnectionStatus || isOffline"
 									class="fixed bottom-4 right-4 z-50 rounded-lg p-4 shadow-lg"
 									:class="{
 										'border border-yellow-300 bg-yellow-100 dark:border-yellow-700 dark:bg-yellow-900/30':
-											isOffline.value,
+											isOffline,
 										'border border-green-300 bg-green-100 dark:border-green-700 dark:bg-green-900/30':
-											!isOffline.value && isRealTimeActive,
+											!isOffline && isRealTimeActive,
 									}"
 									role="status"
 									aria-live="polite"
 								>
 									<div class="flex items-center">
 										<SignalSlashIcon
-											v-if="isOffline.value"
+											v-if="isOffline"
 											class="mr-2 h-5 w-5 text-yellow-600 dark:text-yellow-400"
 										/>
 										<WifiIcon
@@ -1181,13 +1187,13 @@
 										<span
 											class="text-sm font-medium"
 											:class="{
-												'text-yellow-800 dark:text-yellow-200': isOffline.value,
+												'text-yellow-800 dark:text-yellow-200': isOffline,
 												'text-green-800 dark:text-green-200':
-													!isOffline.value && isRealTimeActive,
+													!isOffline && isRealTimeActive,
 											}"
 										>
 											{{
-												isOffline.value
+												isOffline
 													? "You're offline"
 													: 'Real-time updates active'
 											}}

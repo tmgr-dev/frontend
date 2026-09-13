@@ -10,8 +10,9 @@
 		"build": "vite build && node scripts/precompress.mjs",
 		"preview": "vite preview",
 		"test": "jest --verbose",
-		"typecheck": "vue-tsc --noEmit",
-		"format": "prettier .  --write"
+		"typecheck": "vue-tsc -p tsconfig.app.json --noEmit",
+		"format": "prettier .  --write",
+		"test:performance": "playwright test"
 	},
 	"dependencies": {
 		"@bomdi/codebox": "^2.0.0",
@@ -31,7 +32,6 @@
 		"@fontsource/instrument-serif": "^5.3.0",
 		"@fontsource/inter": "^5.3.0",
 		"@fontsource/jetbrains-mono": "^5.3.0",
-		"@fontsource/quicksand": "^5.3.0",
 		"@headlessui/vue": "^1.7.13",
 		"@heroicons/vue": "^2.0.17",
 		"@milkdown/crepe": "^7.22.1",
@@ -59,6 +59,7 @@
 		"vuex": "^4.1.0"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.63.0",
 		"@types/jest": "^30.0.0",
 		"@vitejs/plugin-vue": "^6.0.8",
 		"autoprefixer": "^10.4.20",

@@ -28,12 +28,16 @@
 			</div>
 		</div>
 
+		<div v-if="loadError" role="alert" class="py-3">
+			Could not load files.
+			<button class="underline" @click="load">Retry</button>
+		</div>
 		<div v-if="loading && !files.length" class="py-16 text-center">
-			<Loader2 :size="28" class="mx-auto animate-spin text-gray-400" />
+			<AttachmentsSkeleton />
 		</div>
 
 		<div
-			v-else-if="!files.length"
+			v-else-if="!files.length && !loadError"
 			class="rounded-lg border-2 border-dashed border-gray-300 py-16 text-center dark:border-gray-700"
 		>
 			<FileIcon :size="32" class="mx-auto mb-2 text-gray-400" />
@@ -50,9 +54,10 @@
 			<li
 				v-for="file in files"
 				:key="file.id"
+				:ref="(element) => observePreview(file, element)"
 				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
 			>
-				<div class="flex-shrink-0">
+				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
 					<button
 						v-if="previews[file.id]"
 						type="button"
@@ -63,6 +68,10 @@
 						<img
 							:src="previews[file.id]"
 							:alt="file.name"
+							loading="lazy"
+							decoding="async"
+							width="48"
+							height="48"
 							class="h-12 w-12 rounded object-cover"
 						/>
 					</button>
@@ -149,17 +158,30 @@
 		type WorkspaceFile,
 	} from '@/actions/tmgr/files';
 	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
 	import store from '@/store';
 	import { formatFileSize, isImageMime } from '@/utils/attachments';
 	import { galleryImages } from '@/utils/galleryNavigation';
+	import { createVisiblePreviewQueue } from '@/utils/visiblePreviewQueue';
 	import { Download, FileIcon, Loader2 } from 'lucide-vue-next';
-	import { defineComponent } from 'vue';
+	import { defineComponent, markRaw, type ComponentPublicInstance } from 'vue';
 
 	export default defineComponent({
 		name: 'WorkspaceFilesPage',
-		components: { AttachmentGallery, Download, FileIcon, Loader2 },
+		components: {
+			AttachmentGallery,
+			AttachmentsSkeleton,
+			Download,
+			FileIcon,
+			Loader2,
+		},
 		data() {
 			return {
+				disposed: false,
+				loadVersion: 0,
+				previewVersion: 0,
+				previewQueue: markRaw(createVisiblePreviewQueue()),
+				loadError: false,
 				files: [] as WorkspaceFile[],
 				previews: {} as Record<number, string>,
 				imagesOnly: false,
@@ -196,6 +218,9 @@
 					: title;
 			},
 			async load() {
+				const version = ++this.loadVersion;
+				this.previewQueue.reset();
+				this.loadError = false;
 				if (!this.workspaceId) {
 					return;
 				}
@@ -205,27 +230,50 @@
 						page: this.page,
 						images: this.imagesOnly,
 					});
+					if (this.disposed || version !== this.loadVersion) return;
 					this.releasePreviews();
 					this.files = response.data;
 					this.total = response.meta.total;
 					this.lastPage = response.meta.last_page;
-					this.files.forEach((file) => this.loadPreview(file));
+					this.previewVersion = version;
 				} catch {
-					this.files = [];
-					this.total = 0;
-					this.lastPage = 1;
+					if (version === this.loadVersion) this.loadError = true;
 				} finally {
-					this.loading = false;
+					if (version === this.loadVersion) this.loading = false;
 				}
 			},
-			async loadPreview(file: WorkspaceFile) {
+			observePreview(
+				file: WorkspaceFile,
+				element: Element | ComponentPublicInstance | null,
+			) {
+				if (!element) {
+					this.previewQueue.bind(file.id, null, async () => {});
+					return;
+				}
+				if (
+					!(element instanceof Element) ||
+					!isImageMime(file.mime_type) ||
+					this.previewVersion !== this.loadVersion
+				)
+					return;
+				const version = this.previewVersion;
+				this.previewQueue.bind(file.id, element, () =>
+					this.loadPreview(file, version),
+				);
+			},
+			async loadPreview(file: WorkspaceFile, requestedVersion?: number) {
+				const version = requestedVersion ?? this.loadVersion;
+				if (this.disposed || version !== this.loadVersion) return;
 				if (!isImageMime(file.mime_type) || this.previews[file.id]) {
 					return;
 				}
 				try {
-					this.previews[file.id] = await fileDisplayUrl(file.id, {
-						thumb: true,
-					});
+					const url = await fileDisplayUrl(file.id, { thumb: true });
+					if (this.disposed || version !== this.loadVersion) {
+						releaseFileDisplayUrl(url);
+						return;
+					}
+					this.previews[file.id] = url;
 				} catch {
 					// A missing preview costs nothing: the row still names the file and downloads it.
 				}
@@ -272,6 +320,9 @@
 			},
 		},
 		unmounted() {
+			this.disposed = true;
+			this.previewQueue.dispose();
+			this.loadVersion++;
 			this.releasePreviews();
 		},
 	});

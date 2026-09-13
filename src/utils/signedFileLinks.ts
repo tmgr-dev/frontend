@@ -9,6 +9,7 @@ export interface SignedLinkCacheOptions {
 	/** Resolves to null when this deployment does not sign links at all. */
 	sign: (fileId: number) => Promise<SignedLink | null>;
 	now?: () => number;
+	context?: () => string;
 }
 
 export interface SignedLinkCache {
@@ -35,22 +36,20 @@ export const createSignedLinkCache = (
 	const inFlight = new Map<number, Promise<string | null>>();
 	let signingAvailable = true;
 
-	const request = async (fileId: number): Promise<string | null> => {
-		const link = await options.sign(fileId);
-
-		if (!link) {
-			signingAvailable = false;
-
-			return null;
-		}
-
-		links.set(fileId, link);
-
-		return link.url;
-	};
+	let context = options.context?.();
+	let generation = 0;
 
 	return {
 		async get(fileId: number): Promise<string | null> {
+			if (context !== options.context?.()) {
+				context = options.context?.();
+				generation++;
+				links.clear();
+				inFlight.clear();
+				signingAvailable = true;
+			}
+			for (const [id, link] of links)
+				if (link.expiresAt <= now()) links.delete(id);
 			if (!signingAvailable) {
 				return null;
 			}
@@ -67,7 +66,26 @@ export const createSignedLinkCache = (
 				return pending;
 			}
 
-			const promise = request(fileId).finally(() => inFlight.delete(fileId));
+			const epoch = generation;
+			const promise = options
+				.sign(fileId)
+				.then((link) => {
+					if (epoch !== generation || context !== options.context?.())
+						throw new DOMException('File context changed', 'AbortError');
+					if (inFlight.get(fileId) === promise) {
+						if (!link) signingAvailable = false;
+						else {
+							links.delete(fileId);
+							links.set(fileId, link);
+							while (links.size > 200)
+								links.delete(links.keys().next().value as number);
+						}
+					}
+					return link?.url ?? null;
+				})
+				.finally(() => {
+					if (inFlight.get(fileId) === promise) inFlight.delete(fileId);
+				});
 
 			inFlight.set(fileId, promise);
 
@@ -75,6 +93,7 @@ export const createSignedLinkCache = (
 		},
 		invalidate(fileId: number) {
 			links.delete(fileId);
+			inFlight.delete(fileId);
 		},
 	};
 };
