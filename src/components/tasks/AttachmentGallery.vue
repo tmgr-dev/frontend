@@ -42,12 +42,25 @@
 				</button>
 
 				<img
-					v-if="currentUrl"
-					:src="currentUrl"
+					v-if="layers.showThumb && layers.thumb"
+					:src="layers.thumb"
+					:alt="current?.name"
+					aria-hidden="true"
+					class="absolute max-h-full max-w-full object-contain blur-sm"
+				/>
+				<img
+					v-if="layers.full"
+					:src="layers.full"
 					:alt="current?.name"
 					class="max-h-full max-w-full object-contain"
+					:class="{ 'opacity-0': layers.showThumb }"
+					@load="markLoaded(current?.id)"
 				/>
-				<Loader2 v-else :size="28" class="animate-spin text-gray-400" />
+				<Loader2
+					v-if="!layers.thumb && !layers.full"
+					:size="28"
+					class="animate-spin text-gray-400"
+				/>
 
 				<button
 					v-if="images.length > 1"
@@ -79,28 +92,42 @@
 	} from '@/actions/tmgr/files';
 	import { formatFileSize } from '@/utils/attachments';
 	import { type GalleryImage, stepIndex } from '@/utils/galleryNavigation';
+	import { galleryLayers } from '@/utils/galleryLayers';
 
-	const props = defineProps<{
-		/** Images in the order the list shows them: a task's attachments, or a whole workspace's. */
-		images: GalleryImage[];
-		/** The image to open on; null keeps the gallery closed. */
-		startId: number | null;
-	}>();
+	const props = withDefaults(
+		defineProps<{
+			/** Images in the order the list shows them: a task's attachments, or a whole workspace's. */
+			images: GalleryImage[];
+			/** The image to open on; null keeps the gallery closed. */
+			startId: number | null;
+			/** The list's thumbnails, drawn while the full image loads. */
+			urls?: Record<number, string>;
+		}>(),
+		{ urls: () => ({}) },
+	);
 
 	const emit = defineEmits<{ (event: 'close'): void }>();
 
 	const index = ref(0);
 	/** URLs this component resolved itself, and therefore has to release. */
 	const ownUrls = ref<Record<number, string>>({});
+	/** Full images that have painted; until then the thumbnail stays on top of nothing. */
+	const fullLoaded = ref<Record<number, boolean>>({});
 
 	const open = computed(() => props.startId !== null);
 	const current = computed<GalleryImage | undefined>(() => props.images[index.value]);
-	// Deliberately not reusing the list's URLs: those point at thumbnails now, and a 320px
-	// rendering stretched across the screen is worse than a moment's wait for the real image.
-	const currentUrl = computed(() => {
-		const id = current.value?.id;
-		return id ? (ownUrls.value[id] ?? null) : null;
-	});
+	// The list's URLs are thumbnails, too small to stretch across the screen on their own - but
+	// good enough to draw at once underneath while the full image loads (TM-237).
+	const layers = computed(() =>
+		galleryLayers(current.value?.id, props.urls, ownUrls.value, fullLoaded.value),
+	);
+	const currentUrl = computed(() => layers.value.full ?? layers.value.thumb);
+
+	const markLoaded = (id?: number) => {
+		if (id) {
+			fullLoaded.value = { ...fullLoaded.value, [id]: true };
+		}
+	};
 
 	const ensureUrl = async (file?: GalleryImage) => {
 		if (!file || ownUrls.value[file.id]) {
@@ -149,6 +176,7 @@
 
 	const releaseOwnUrls = () => {
 		Object.values(ownUrls.value).forEach(releaseFileDisplayUrl);
+		fullLoaded.value = {};
 		ownUrls.value = {};
 	};
 
