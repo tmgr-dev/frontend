@@ -5,11 +5,12 @@
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div class="flex items-start gap-3">
 				<div class="relative">
-					<div
-						class="bg-brand/10 flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold text-brand"
-					>
-						{{ initials }}
-					</div>
+					<UserAvatar
+						:user-id="member?.id ?? 0"
+						:name="member?.name ?? ''"
+						:has-avatar="member?.has_avatar ?? false"
+						:size="48"
+					/>
 					<span
 						v-if="member?.is_online"
 						class="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-surface bg-green-500"
@@ -94,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { MemberStats, TeamActivityWindow } from '@/types/dashboard';
 	import {
 		percentOfTeam,
@@ -120,15 +122,6 @@
 		{ key: '7d', label: '7 days' },
 		{ key: '30d', label: '30 days' },
 	];
-
-	const initials = computed(() =>
-		(props.member?.name ?? '?')
-			.split(' ')
-			.filter(Boolean)
-			.slice(0, 2)
-			.map((part) => part[0]?.toUpperCase())
-			.join(''),
-	);
 
 	const presence = computed(() => {
 		if (props.member?.is_online) return 'Active now';
