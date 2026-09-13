@@ -1,4 +1,5 @@
 import {
+  memberTasksPage,
   memberWindowFromQuery,
   percentOfTeam,
   relativeAge,
@@ -61,5 +62,32 @@ describe('relativeAge', () => {
   it('has nothing to say about a member who never touched anything', () => {
     expect(relativeAge(null, now)).toBeNull();
     expect(relativeAge('not-a-date', now)).toBeNull();
+  });
+});
+
+describe('memberTasksPage', () => {
+  const rows = [{ id: 1 }] as never[];
+
+  it('takes the page the API answers with as it is', () => {
+    // The endpoint already answers { data, total, ... }, so the API does not wrap it again.
+    expect(memberTasksPage({ data: rows, total: 7, page: 1, per_page: 20 })).toMatchObject({
+      data: rows,
+      total: 7,
+      page: 1,
+      per_page: 20,
+    });
+  });
+
+  it('also survives the wrapped shape', () => {
+    expect(memberTasksPage({ data: { data: rows, total: 7 } })).toMatchObject({
+      data: rows,
+      total: 7,
+    });
+  });
+
+  it('never hands the caller an undefined list', () => {
+    expect(memberTasksPage(undefined).data).toEqual([]);
+    expect(memberTasksPage({}).data).toEqual([]);
+    expect(memberTasksPage({ data: null }).total).toBe(0);
   });
 });

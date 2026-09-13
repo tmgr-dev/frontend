@@ -83,8 +83,10 @@ export function useMemberPage(workspaceId: () => number | null, userId: () => nu
 		});
 
 		if (result.success && result.data) {
-			tasks.value = page === 1 ? result.data.data : [...tasks.value, ...result.data.data];
-			tasksTotal.value = result.data.total;
+			const rows = result.data.data ?? [];
+
+			tasks.value = page === 1 ? rows : [...tasks.value, ...rows];
+			tasksTotal.value = result.data.total ?? tasks.value.length;
 			tasksPage.value = page;
 		}
 

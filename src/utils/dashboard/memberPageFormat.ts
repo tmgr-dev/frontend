@@ -1,4 +1,9 @@
-import type { MemberTasksTab, TeamActivityWindow } from '@/types/dashboard';
+import type {
+	MemberTaskRow,
+	MemberTasksPage,
+	MemberTasksTab,
+	TeamActivityWindow,
+} from '@/types/dashboard';
 
 const WINDOWS: TeamActivityWindow[] = ['today', '7d', '30d'];
 const TABS: MemberTasksTab[] = ['touched', 'assigned', 'created', 'done'];
@@ -60,4 +65,26 @@ export function relativeAge(iso: string | null | undefined, now = Date.now()): s
   }
 
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+/**
+ * The tasks endpoint answers `{ data, total, page, per_page, tab, window }` and the API does not
+ * put that behind another `data` key the way it does for a plain object; accept both anyway, and
+ * never hand the caller an undefined list.
+ */
+export function memberTasksPage(body: unknown): MemberTasksPage {
+	const raw = (body ?? {}) as Record<string, unknown>;
+	const nested = raw.data as Record<string, unknown> | undefined;
+	const page = (Array.isArray(raw.data) || raw.total !== undefined
+		? raw
+		: (nested ?? {})) as Record<string, unknown>;
+
+	return {
+		data: (Array.isArray(page.data) ? page.data : []) as MemberTaskRow[],
+		total: typeof page.total === 'number' ? page.total : 0,
+		page: typeof page.page === 'number' ? page.page : 1,
+		per_page: typeof page.per_page === 'number' ? page.per_page : 20,
+		tab: (page.tab as MemberTasksTab) ?? 'touched',
+		window: (page.window as TeamActivityWindow) ?? '7d',
+	};
 }
