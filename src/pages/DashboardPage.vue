@@ -437,8 +437,12 @@ const handleTaskClick = (task: RecentTask) => {
   openTask(task.id);
 };
 
-// A member has no page of its own yet (#8988); pushing /profile/{id} landed on a category route.
-const handleMemberClick = (_member: TeamMemberStatus) => {};
+const handleMemberClick = (member: TeamMemberStatus) => {
+  router.push({
+    name: 'WorkspaceMember',
+    params: { workspace_code: route.params.workspace_code, user_id: member.id }
+  });
+};
 
 // Optimistic update handlers
 const optimisticallyUpdateStatistics = (updates: Partial<DashboardStatistics>) => {
