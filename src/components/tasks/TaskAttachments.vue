@@ -154,6 +154,7 @@
 		<AttachmentGallery
 			:images="images"
 			:start-id="galleryStartId"
+			:urls="previews"
 			@close="galleryStartId = null"
 		/>
 	</div>
