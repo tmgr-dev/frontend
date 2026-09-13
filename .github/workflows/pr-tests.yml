@@ -39,6 +39,10 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      # The tree was reformatted once (8878); this keeps the drift from coming back.
+      - name: Format check
+        run: npx prettier . --check
+
       # No .env: every VITE_* var is optional at build time, and a fork PR gets
       # no secrets anyway. This proves the bundle compiles, not that it is
       # configured — deployment builds pass the real values as build args.

@@ -1,0 +1,5 @@
+# Revisions to skip when reading `git blame`. Configure once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: reformat the repository with prettier (8878)
+b84a647b189783b103933378421d946787edec40
