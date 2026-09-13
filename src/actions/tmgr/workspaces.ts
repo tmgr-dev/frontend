@@ -33,6 +33,8 @@ export const getWorkspaces = async (
 export interface WorkspaceMember {
 	id: number;
 	name: string;
+	/** TM-142: whether this member has a picture; the picture comes from its own signed link. */
+	has_avatar?: boolean;
 }
 export const getWorkspaceMembers = async (
 	workspaceId: number,

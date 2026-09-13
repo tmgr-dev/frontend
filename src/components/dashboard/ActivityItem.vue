@@ -47,21 +47,12 @@
 				<!-- User Info -->
 				<div class="mt-2 flex items-center space-x-2">
 					<!-- User Avatar -->
-					<img
-						v-if="activity.user.avatar"
-						:src="activity.user.avatar"
-						:alt="activity.user.name"
-						class="h-5 w-5 rounded-full object-cover"
-						loading="lazy"
+					<UserAvatar
+						:user-id="activity.user.id"
+						:name="activity.user.name"
+						:has-avatar="activity.user.has_avatar ?? false"
+						:size="20"
 					/>
-					<div
-						v-else
-						class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gray-300 dark:bg-gray-600"
-					>
-						<span class="text-xs font-medium text-gray-600 dark:text-gray-300">
-							{{ userInitials }}
-						</span>
-					</div>
 
 					<!-- User Name -->
 					<span class="text-xs text-gray-600 dark:text-gray-400">
@@ -74,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { Activity } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import { activitySubject, activityTitle } from '@/utils/activityLines';
@@ -113,15 +105,6 @@
 	// showed as a blank line next to a timestamp.
 	const title = computed(() => activityTitle(props.activity));
 	const subject = computed(() => activitySubject(props.activity));
-
-	const userInitials = computed(() => {
-		return props.activity.user.name
-			.split(' ')
-			.map((name) => name.charAt(0))
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
-	});
 
 	const formattedDate = computed(() => {
 		return new Date(props.activity.created_at).toLocaleString();

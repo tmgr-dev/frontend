@@ -6,7 +6,8 @@
 		getComments,
 		updateComment,
 	} from '@/actions/tmgr/comments';
-	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import store from '@/store';
@@ -171,15 +172,6 @@
 		return comment.user.id === currentUser.value?.id;
 	};
 
-	const getUserInitials = (name: string) => {
-		return name
-			.split(' ')
-			.map((n) => n[0])
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
-	};
-
 	onMounted(() => {
 		loadComments();
 	});
@@ -267,14 +259,12 @@
 						:class="{ 'flex-row-reverse': isOwnComment(comment) }"
 					>
 						<Avatar class="h-8 w-8 flex-shrink-0">
-							<AvatarImage
-								v-if="comment.user.avatar"
-								:src="comment.user.avatar"
-								:alt="comment.user.name"
+							<UserAvatar
+								:user-id="comment.user.id"
+								:name="comment.user.name"
+								:has-avatar="comment.user.has_avatar ?? false"
+								:size="32"
 							/>
-							<AvatarFallback class="text-xs">
-								{{ getUserInitials(comment.user.name) }}
-							</AvatarFallback>
 						</Avatar>
 
 						<div

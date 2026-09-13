@@ -70,14 +70,14 @@
 						>Assignees:</span
 					>
 					<div class="flex -space-x-1">
-						<img
+						<UserAvatar
 							v-for="assignee in task.assignees.slice(0, 3)"
 							:key="assignee.id"
-							:src="assignee.avatar || generateAvatarUrl(assignee.name)"
-							:alt="assignee.name"
-							:title="assignee.name"
-							class="h-5 w-5 rounded-full border border-white object-cover dark:border-gray-800"
-							loading="lazy"
+							:user-id="assignee.id"
+							:name="assignee.name"
+							:has-avatar="assignee.has_avatar ?? false"
+							:size="20"
+							class="border border-white dark:border-gray-800"
 						/>
 						<div
 							v-if="task.assignees.length > 3"
@@ -150,6 +150,7 @@
 </template>
 
 <script setup lang="ts">
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import {
 		Select,
@@ -300,18 +301,6 @@
 
 		return parts.join(', ');
 	});
-
-	const generateAvatarUrl = (name: string): string => {
-		// Generate a simple avatar URL based on name
-		const initials = name
-			.split(' ')
-			.map((n) => n.charAt(0))
-			.join('')
-			.toUpperCase();
-		return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-			initials,
-		)}&size=20&background=6B7280&color=fff`;
-	};
 
 	const updateTimerDuration = () => {
 		if (!props.task.timer_running || !props.task.timer_started_at) {

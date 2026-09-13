@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
@@ -599,15 +599,12 @@
 										size="lg"
 										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 									>
-										<Avatar class="h-8 w-8 rounded-lg">
-											<AvatarImage
-												:src="data.user.avatar"
-												:alt="data.user.name"
-											/>
-											<AvatarFallback class="rounded-lg">
-												{{ user?.name?.charAt(0).toUpperCase() }}
-											</AvatarFallback>
-										</Avatar>
+										<UserAvatar
+											:user-id="user?.id ?? 0"
+											:name="user?.name ?? ''"
+											:has-avatar="user?.has_avatar ?? false"
+											:size="32"
+										/>
 										<div class="grid flex-1 text-left text-sm leading-tight">
 											<span class="truncate font-semibold">{{
 												user.name
@@ -628,15 +625,12 @@
 										<div
 											class="flex items-center gap-2 px-1 py-1.5 text-left text-sm"
 										>
-											<Avatar class="h-8 w-8 rounded-lg">
-												<AvatarImage
-													:src="data.user.avatar"
-													:alt="data.user.name"
-												/>
-												<AvatarFallback class="rounded-lg">
-													{{ user?.name?.charAt(0).toUpperCase() }}
-												</AvatarFallback>
-											</Avatar>
+											<UserAvatar
+												:user-id="user?.id ?? 0"
+												:name="user?.name ?? ''"
+												:has-avatar="user?.has_avatar ?? false"
+												:size="32"
+											/>
 											<div class="grid flex-1 text-left text-sm leading-tight">
 												<span class="truncate font-semibold">
 													{{ user.name }}

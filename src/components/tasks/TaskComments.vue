@@ -5,7 +5,8 @@
 		toggleCommentReaction,
 	} from '@/actions/tmgr/comments';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
-	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import store from '@/store';
 	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
@@ -149,15 +150,6 @@
 			reactionPickerFor.value === commentId ? null : commentId;
 	};
 
-	const getUserInitials = (name: string) => {
-		return name
-			.split(' ')
-			.map((n) => n[0])
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
-	};
-
 	const AVATAR_COLORS = [
 		'#14b8a6',
 		'#6366f1',
@@ -258,17 +250,14 @@
 					</div>
 				</template>
 				<Avatar v-else class="mt-0.5 h-7 w-7 flex-shrink-0">
-					<AvatarImage
-						v-if="comment.user.avatar"
-						:src="comment.user.avatar"
-						:alt="comment.user.name"
-					/>
-					<AvatarFallback
+					<UserAvatar
+						:user-id="comment.user.id"
+						:name="comment.user.name"
+						:has-avatar="comment.user.has_avatar ?? false"
+						:size="28"
 						class="text-2xs font-bold text-white"
 						:style="{ backgroundColor: getAvatarColor(comment.user) }"
-					>
-						{{ getUserInitials(comment.user.name) }}
-					</AvatarFallback>
+					/>
 				</Avatar>
 
 				<div class="min-w-0 flex-1">
