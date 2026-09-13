@@ -177,6 +177,10 @@
 		isImageMime,
 		preflightError,
 	} from '@/utils/attachments';
+	import {
+		clipboardImageName,
+		imagesFromClipboard,
+	} from '@/utils/clipboardImages';
 	import { galleryImages } from '@/utils/galleryNavigation';
 	import {
 		AlertCircle,
@@ -284,6 +288,30 @@
 				this.isDragOver = false;
 				this.uploadAll(Array.from(event.dataTransfer?.files ?? []));
 			},
+			// TM-233: a screenshot in the clipboard becomes an attachment wherever the task has
+			// focus. A text paste carries no image, so typing into a field is unaffected; an editor
+			// that handles images itself calls preventDefault before this listener sees the event.
+			handlePaste(event: ClipboardEvent) {
+				if (!this.taskId || event.defaultPrevented) {
+					return;
+				}
+
+				const images = imagesFromClipboard(event.clipboardData?.items);
+
+				if (!images.length) {
+					return;
+				}
+
+				event.preventDefault();
+				this.uploadAll(
+					images.map(
+						(image) =>
+							new File([image], clipboardImageName(image.type), {
+								type: image.type,
+							}),
+					),
+				);
+			},
 			uploadAll(selected: File[]) {
 				selected.forEach((file) => this.upload(file));
 			},
@@ -363,7 +391,11 @@
 				this.load();
 			},
 		},
+		mounted() {
+			document.addEventListener('paste', this.handlePaste);
+		},
 		unmounted() {
+			document.removeEventListener('paste', this.handlePaste);
 			Object.keys(this.previews).forEach((id) =>
 				this.revokePreview(Number(id)),
 			);
