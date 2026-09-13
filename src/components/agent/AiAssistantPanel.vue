@@ -9,6 +9,7 @@
 		ref,
 		watch,
 	} from 'vue';
+	import { focusField } from '@/utils/focusTarget';
 	import { useAgentChat } from '@/composable/useAgentChat';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
@@ -25,6 +26,11 @@
 
 	const draft = ref('');
 	const scroller = ref<HTMLDivElement | null>(null);
+	const input = ref<HTMLInputElement | null>(null);
+
+	// TM-222: the field is disabled while a run is in flight, which makes the browser blur it.
+	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
+	const focusInput = () => nextTick(() => focusField(input.value));
 
 	const open = computed(() => store.state.aiPanelOpen);
 
@@ -37,7 +43,12 @@
 		if (!content || busy.value) return;
 		await send(content);
 		if (!error.value) draft.value = '';
+		focusInput();
 	}
+
+	watch(busy, (running) => {
+		if (!running && open.value) focusInput();
+	});
 
 	watch(
 		open,
@@ -126,6 +137,7 @@
 				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
 			>
 				<input
+					ref="input"
 					v-model="draft"
 					class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-none"
 					placeholder="Ask about this workspace…"

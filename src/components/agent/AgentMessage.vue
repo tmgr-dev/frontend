@@ -2,11 +2,12 @@
 	import { Loader2 } from 'lucide-vue-next';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import type { AgentStep, AgentMessage } from '@/types/agent';
+	import { agentToolLabel } from '@/utils/agentToolLabels';
 
 	const props = defineProps<{ message: AgentMessage }>();
 
 	function stepLabel(step: AgentStep): string {
-		return `"${step.tool}"` + (step.summary ? ` · ${step.summary}` : '');
+		return agentToolLabel(step.tool) + (step.summary ? ` · ${step.summary}` : '');
 	}
 </script>
 

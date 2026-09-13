@@ -300,6 +300,22 @@ export function usePusher(): UsePusherReturn {
         }
       });
 
+      // TM-224: the API broadcasts these on the user's own channel when a timer starts or stops,
+      // so the same user's other tabs can follow a timer they did not start themselves.
+      channel.listen('.task-countdown-started', (data: { task: any }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onTaskCountdownStarted?.(data.task));
+        }
+      });
+
+      channel.listen('.task-countdown-stopped', (data: { task: any }) => {
+        const sub = subscriptions.get(channelName);
+        if (sub) {
+          sub.handlers.forEach(h => h.onTaskCountdownStopped?.(data.task));
+        }
+      });
+
       channel.listen('.comment-added', (data: { comment: any }) => {
         const sub = subscriptions.get(channelName);
         if (sub) {

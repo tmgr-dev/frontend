@@ -78,6 +78,10 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { useMagicKeys } from '@vueuse/core';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { footerHeightVars } from '@/utils/bottomBar';
+	import { focusField } from '@/utils/focusTarget';
+	import { agentToolLabel } from '@/utils/agentToolLabels';
+	import { applyTimerState } from '@/utils/timerSync';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
@@ -207,7 +211,7 @@
 	const instanceId = `new-form-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 	const hasTaskMeaningfulChanges = (current: Task, incoming: any): boolean => {
-		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints'];
+		const fieldsToCompare = ['title', 'description', 'description_json', 'status_id', 'project_category_id', 'category_tasks_sequence_id', 'expired_at', 'approximately_time', 'checkpoints', 'start_time', 'common_time'];
 		for (const field of fieldsToCompare) {
 			const currentVal = current[field as keyof Task];
 			const incomingVal = incoming[field];
@@ -301,6 +305,11 @@
 	const newComment = ref('');
 	const isSendingComment = ref(false);
 	const isCommentInputExpanded = ref(false);
+	// TM-229: the right-rail composer lines up with the form footer, whose height depends on its
+	// content, so it is measured rather than guessed at in padding.
+	const footer = ref<HTMLElement | null>(null);
+	const footerHeight = ref(0);
+	let footerResizeObserver: ResizeObserver | null = null;
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
@@ -686,6 +695,14 @@
 	});
 
 	onMounted(() => {
+		if (footer.value && typeof ResizeObserver !== 'undefined') {
+			footerResizeObserver = new ResizeObserver(() => {
+				footerHeight.value = footer.value?.offsetHeight ?? 0;
+			});
+			footerResizeObserver.observe(footer.value);
+			footerHeight.value = footer.value.offsetHeight;
+		}
+
 		// Only focus on title for new tasks
 		// Pattern is already applied in onBeforeMount, so we just need to focus
 		if (!taskId.value && props.isModal) {
@@ -776,6 +793,8 @@
 		if (!userId) return;
 		subscribedUserId.value = userId;
 		userPusherSubscriptionId.value = subscribeToUser(userId, {
+			onTaskCountdownStarted: (task) => applyTimerState(form.value, task),
+			onTaskCountdownStopped: (task) => applyTimerState(form.value, task),
 			onAgentStep: (e) => {
 				if (isForThisTask(e) && !aiPendingSteps.value.some((s) => s.seq === e.seq)) {
 					aiPendingSteps.value = [...aiPendingSteps.value, { seq: e.seq, tool: e.tool, summary: e.summary }];
@@ -792,6 +811,8 @@
 	}, { immediate: true });
 
 	onUnmounted(() => {
+		footerResizeObserver?.disconnect();
+		footerResizeObserver = null;
 		unregisterModal(checkpointsModalId);
 		store.commit('removeModalFromStack', checkpointsModalId);
 		if (subscribedWorkspaceId.value && pusherSubscriptionId.value) {
@@ -944,6 +965,7 @@
 		try {
 			await sendFollowUp(form.value.id, activeAgent.id, newComment.value);
 			newComment.value = '';
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				taskCommentsRef.value.loadComments();
 			}
@@ -1347,14 +1369,13 @@
 		}
 	});
 
+	// TM-222: the composer keeps the cursor - on expand, and again after a message is sent, so a
+	// follow-up can be typed without clicking back into the field.
+	const focusCommentInput = () => nextTick(() => focusField(commentTextarea.value));
+
 	watch(isCommentInputExpanded, (expanded) => {
 		if (expanded) {
-			nextTick(() => {
-				const textarea = commentTextarea.value?.$el?.querySelector('textarea');
-				if (textarea) {
-					textarea.focus();
-				}
-			});
+			focusCommentInput();
 		}
 	});
 
@@ -1482,6 +1503,7 @@
 			});
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				await taskCommentsRef.value.loadComments();
 			}
@@ -1504,6 +1526,7 @@
 			aiPendingSteps.value = [];
 			newComment.value = '';
 			isCommentInputExpanded.value = false;
+			focusCommentInput();
 			if (taskCommentsRef.value) {
 				taskCommentsRef.value.loadComments();
 			}
@@ -1970,7 +1993,7 @@
 					<div v-if="isModal && aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
 					</div>
 					<div
 						v-if="isModal && form.id"
@@ -2094,6 +2117,7 @@
 			<!-- RIGHT RAIL — comments (page / non-modal only) -->
 			<aside
 				v-if="!isModal && form.id"
+				:style="footerHeightVars(footerHeight)"
 				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0 xl:w-[420px]"
 			>
 				<div
@@ -2112,11 +2136,14 @@
 						@update:count="commentsCount = $event"
 					/>
 				</div>
-				<div class="shrink-0 border-t border-line p-3" @mousedown.stop>
+				<div
+					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 lg:min-h-[var(--task-footer-height)]"
+					@mousedown.stop
+				>
 					<div v-if="aiPending" class="mb-3 flex items-center gap-2 text-xs text-ink-subtle">
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span>
-						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ s.tool }}</span>
+						<span v-for="s in aiPendingSteps" :key="s.seq" class="rounded-pill bg-surface-sunken px-2 py-0.5">{{ agentToolLabel(s.tool) }}</span>
 					</div>
 					<div
 						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"

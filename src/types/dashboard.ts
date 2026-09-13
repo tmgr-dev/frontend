@@ -647,6 +647,8 @@ export interface EventHandlers {
   onCommentUpdated?: (comment: any) => void;
   onCommentDeleted?: (comment: any) => void;
   onCommentReactionsUpdated?: (e: CommentReactionsUpdatedEvent) => void;
+  onTaskCountdownStarted?: (task: any) => void;
+  onTaskCountdownStopped?: (task: any) => void;
   onAgentStep?: (e: AgentStepEvent) => void;
   onAgentReply?: (e: AgentReplyEvent) => void;
   onError?: (error: ActionError) => void;
