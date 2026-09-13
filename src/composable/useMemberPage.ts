@@ -1,16 +1,16 @@
+import { getMemberStats, getMemberTasks } from '@/actions/tmgr/dashboard';
+import type {
+	MemberStats,
+	MemberTaskRow,
+	MemberTasksTab,
+	TeamActivityWindow,
+} from '@/types/dashboard';
+import {
+	memberWindowFromQuery,
+	tasksTabFromQuery,
+} from '@/utils/dashboard/memberPageFormat';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getMemberStats, getMemberTasks } from '@/actions/tmgr/dashboard';
-import {
-  memberWindowFromQuery,
-  tasksTabFromQuery,
-} from '@/utils/dashboard/memberPageFormat';
-import type {
-  MemberStats,
-  MemberTaskRow,
-  MemberTasksTab,
-  TeamActivityWindow,
-} from '@/types/dashboard';
 
 const PER_PAGE = 20;
 
@@ -18,7 +18,10 @@ const PER_PAGE = 20;
  * State for the member page (#8988). The window and the tab live in the URL so a member's page can
  * be shared as it is being read; both are re-read from the route rather than mirrored in two places.
  */
-export function useMemberPage(workspaceId: () => number | null, userId: () => number) {
+export function useMemberPage(
+	workspaceId: () => number | null,
+	userId: () => number,
+) {
 	const route = useRoute();
 	const router = useRouter();
 
@@ -32,8 +35,12 @@ export function useMemberPage(workspaceId: () => number | null, userId: () => nu
 	const tasksLoading = ref(false);
 	const tasksPage = ref(1);
 
-	const window = computed(() => memberWindowFromQuery(route.query.window as string | undefined));
-	const tab = computed(() => tasksTabFromQuery(route.query.tab as string | undefined));
+	const window = computed(() =>
+		memberWindowFromQuery(route.query.window as string | undefined),
+	);
+	const tab = computed(() =>
+		tasksTabFromQuery(route.query.tab as string | undefined),
+	);
 	const hasMoreTasks = computed(() => tasks.value.length < tasksTotal.value);
 
 	const setQuery = (patch: Record<string, string>) =>
@@ -57,7 +64,9 @@ export function useMemberPage(workspaceId: () => number | null, userId: () => nu
 
 		if (result.success && result.data) {
 			stats.value = result.data;
-		} else if ((result.error?.details as { status?: number } | undefined)?.status === 404) {
+		} else if (
+			(result.error?.details as { status?: number } | undefined)?.status === 404
+		) {
 			notFound.value = true;
 		} else {
 			error.value = result.error?.message ?? 'Could not load this member';

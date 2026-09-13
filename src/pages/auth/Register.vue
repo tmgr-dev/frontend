@@ -66,14 +66,19 @@
 						</button>
 					</div>
 					<!-- Telegram Login Widget Container -->
-					<div id="telegram-register-widget-container" class="mb-8 flex justify-center">
-						<TelegramLoginWidget 
-							:bot-name="telegramBotName" 
-							:auth-url="telegramAuthUrl" 
+					<div
+						id="telegram-register-widget-container"
+						class="mb-8 flex justify-center"
+					>
+						<TelegramLoginWidget
+							:bot-name="telegramBotName"
+							:auth-url="telegramAuthUrl"
 							widget-size="medium"
 							v-if="telegramBotName"
 						/>
-						<div v-else class="text-red-500 text-xs">Telegram Bot Name not configured.</div>					
+						<div v-else class="text-xs text-red-500">
+							Telegram Bot Name not configured.
+						</div>
 					</div>
 
 					<div class="relative mb-8">
@@ -182,23 +187,25 @@
 </template>
 
 <script setup lang="ts">
-	import { useRouter } from 'vue-router';
-	import { useStore } from 'vuex';
-	import { ref, onMounted } from 'vue';
 	import { Register, register as registerAction } from '@/actions/tmgr/auth';
-	import { AxiosError } from 'axios';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
-	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { AxiosError } from 'axios';
+	import { onMounted, ref } from 'vue';
+	import { useRouter } from 'vue-router';
+	import { useStore } from 'vuex';
 
 	const router = useRouter();
 	const store = useStore();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
-	const telegramAuthUrl = `${import.meta.env.VITE_API_BASE_URL}auth/login/telegram/redirect`;
+	const telegramAuthUrl = `${
+		import.meta.env.VITE_API_BASE_URL
+	}auth/login/telegram/redirect`;
 
 	const isLoading = ref(false);
 	const errors = ref({});
@@ -227,17 +234,22 @@
 			} else {
 				if (store.state.user) {
 					await Promise.all([
-						getUserSettings(), 
+						getUserSettings(),
 						getWorkspaceStatuses(),
-						store.dispatch('featureToggles/loadUserToggles')
+						store.dispatch('featureToggles/loadUserToggles'),
 					]);
 				}
 
-				const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+				const landingPage =
+					store.getters['featureToggles/getUserFeatureValue'](
+						'default_landing_page',
+					) || 'list';
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					s => s.key === 'current_workspace'
+					(s) => s.key === 'current_workspace',
 				)?.value;
-				const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+				const workspace = store.state.workspaces?.find(
+					(w) => w.id == currentWorkspaceId,
+				);
 				const workspaceCode = workspace?.code;
 
 				if (workspaceCode) {

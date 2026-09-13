@@ -20,7 +20,7 @@ export interface WorkspaceInvitation {
 }
 
 export const getWorkspaceInvitations = async (
-	workspaceId: number
+	workspaceId: number,
 ): Promise<WorkspaceInvitation[]> => {
 	const {
 		data: { data },
@@ -30,15 +30,16 @@ export const getWorkspaceInvitations = async (
 
 export const revokeInvitation = async (
 	workspaceId: number,
-	invitationId: number
+	invitationId: number,
 ): Promise<void> => {
 	await $axios.delete(`workspaces/${workspaceId}/invitations/${invitationId}`);
 };
 
 export const resendInvitation = async (
 	workspaceId: number,
-	invitationId: number
+	invitationId: number,
 ): Promise<void> => {
-	await $axios.post(`workspaces/${workspaceId}/invitations/${invitationId}/resend`);
+	await $axios.post(
+		`workspaces/${workspaceId}/invitations/${invitationId}/resend`,
+	);
 };
-

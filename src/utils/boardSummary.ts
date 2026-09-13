@@ -17,7 +17,9 @@ interface BoardColumnLike {
  * `taskCount`; while it is still loading, the tasks already rendered are counted
  * instead. The archive is skipped: it is not part of the board people look at.
  */
-export const boardTaskCounts = (columns: (BoardColumnLike | null | undefined)[]): BoardCounts => {
+export const boardTaskCounts = (
+	columns: (BoardColumnLike | null | undefined)[],
+): BoardCounts => {
 	const counts = { total: 0, inProgress: 0, done: 0, hidden: 0 };
 	for (const column of columns || []) {
 		const type = column?.status?.type;
@@ -30,6 +32,8 @@ export const boardTaskCounts = (columns: (BoardColumnLike | null | undefined)[])
 		else if (type === 'completed') counts.done += n;
 		else if (type === 'hidden') counts.hidden += n;
 	}
-	const percent = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
+	const percent = counts.total
+		? Math.round((counts.done / counts.total) * 100)
+		: 0;
 	return { ...counts, percent };
 };

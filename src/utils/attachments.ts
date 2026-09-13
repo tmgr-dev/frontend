@@ -3,7 +3,13 @@
 const UNITS = ['B', 'KB', 'MB', 'GB'];
 
 /** Types the API is willing to serve inline, so the only ones worth previewing. */
-const PREVIEWABLE = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
+const PREVIEWABLE = [
+	'image/png',
+	'image/jpeg',
+	'image/gif',
+	'image/webp',
+	'image/avif',
+];
 
 export const formatFileSize = (bytes?: number | null): string => {
 	if (bytes === null || bytes === undefined) {
@@ -30,15 +36,21 @@ const statusOf = (error: unknown): number | null => {
 };
 
 const messageOf = (error: unknown): string | null => {
-	const data = (error as { response?: { data?: { message?: string } } })?.response?.data;
-	return typeof data?.message === 'string' && data.message ? data.message : null;
+	const data = (error as { response?: { data?: { message?: string } } })
+		?.response?.data;
+	return typeof data?.message === 'string' && data.message
+		? data.message
+		: null;
 };
 
 /**
  * Turns whatever the upload threw into one sentence. The API answers 413 for size and 415 for type;
  * a failed PUT to storage is an opaque signature rejection with nothing worth quoting.
  */
-export const attachmentErrorMessage = (error: unknown, maxBytes?: number | null): string => {
+export const attachmentErrorMessage = (
+	error: unknown,
+	maxBytes?: number | null,
+): string => {
 	switch (statusOf(error)) {
 		case 413:
 			return maxBytes

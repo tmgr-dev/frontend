@@ -126,12 +126,12 @@
 </template>
 
 <script>
-	import Reminder from '@/components/tasks/Reminder.vue';
-	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import Modal from '@/components/Modal.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import Reminder from '@/components/tasks/Reminder.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 
 	export default {
 		name: 'Countdown',
@@ -297,7 +297,7 @@
 
 			this.initCountdown();
 			this.renderTime();
-			
+
 			const timerTitle = `${this.countdown.hours}:${this.countdown.minutes}:${this.countdown.seconds}`;
 			setDocumentTitle(timerTitle);
 		},

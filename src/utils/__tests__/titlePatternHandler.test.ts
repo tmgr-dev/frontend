@@ -40,10 +40,7 @@ describe('titlePatternHandler date masks', () => {
 
 	it('substitutes index placeholders', () => {
 		expect(
-			titlePatternHandler(
-				'task {index#category}',
-				new Map([['category', 3]]),
-			),
+			titlePatternHandler('task {index#category}', new Map([['category', 3]])),
 		).toBe('task 3');
 	});
 });

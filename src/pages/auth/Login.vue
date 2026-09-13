@@ -21,9 +21,7 @@
 				<!-- Registration Link -->
 				<p class="text-center text-sm md:text-lg">
 					Have no account?
-					<a href="/register" class="font-bold text-gray-600"
-						>Registration</a
-					>
+					<a href="/register" class="font-bold text-gray-600">Registration</a>
 				</p>
 				<!-- Illustration -->
 				<div class="mt-8">
@@ -66,15 +64,20 @@
 						</button>
 					</div>
 
-					<div id="telegram-register-widget-container" class="mb-8 flex justify-center">
-						<TelegramLoginWidget 
-							:bot-name="telegramBotName" 
-							:auth-url="telegramAuthUrl" 
+					<div
+						id="telegram-register-widget-container"
+						class="mb-8 flex justify-center"
+					>
+						<TelegramLoginWidget
+							:bot-name="telegramBotName"
+							:auth-url="telegramAuthUrl"
 							widget-size="medium"
 							v-if="telegramBotName"
 						/>
-						<div v-else class="text-red-500 text-xs">Telegram Bot Name not configured.</div>					
-					</div>	
+						<div v-else class="text-xs text-red-500">
+							Telegram Bot Name not configured.
+						</div>
+					</div>
 
 					<div class="relative mb-8">
 						<div class="absolute inset-0 flex items-center">
@@ -142,22 +145,24 @@
 </template>
 
 <script setup lang="ts">
-	import { useRouter } from 'vue-router';
-	import { ref, onMounted } from 'vue';
 	import { LoginRequest, login as loginAction } from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
-	import { AxiosError } from 'axios';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
-	import store from '@/store';
+	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
-	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import store from '@/store';
+	import { AxiosError } from 'axios';
+	import { onMounted, ref } from 'vue';
+	import { useRouter } from 'vue-router';
 
 	const router = useRouter();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
-	const telegramAuthUrl = `${import.meta.env.VITE_API_BASE_URL}auth/login/telegram/redirect`;
+	const telegramAuthUrl = `${
+		import.meta.env.VITE_API_BASE_URL
+	}auth/login/telegram/redirect`;
 
 	const form = ref({
 		email: '',
@@ -187,17 +192,22 @@
 			} else {
 				if (store.state.user) {
 					await Promise.all([
-						getUserSettings(), 
+						getUserSettings(),
 						getWorkspaceStatuses(),
-						store.dispatch('featureToggles/loadUserToggles')
+						store.dispatch('featureToggles/loadUserToggles'),
 					]);
 				}
 
-				const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+				const landingPage =
+					store.getters['featureToggles/getUserFeatureValue'](
+						'default_landing_page',
+					) || 'list';
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					s => s.key === 'current_workspace'
+					(s) => s.key === 'current_workspace',
 				)?.value;
-				const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+				const workspace = store.state.workspaces?.find(
+					(w) => w.id == currentWorkspaceId,
+				);
 				const workspaceCode = workspace?.code;
 
 				if (workspaceCode) {
@@ -236,7 +246,9 @@
 			script.setAttribute('data-size', 'medium');
 			script.setAttribute('data-auth-url', telegramAuthUrl);
 			script.setAttribute('data-request-access', 'write');
-			document.getElementById('telegram-login-widget-container')?.appendChild(script);
+			document
+				.getElementById('telegram-login-widget-container')
+				?.appendChild(script);
 		}
 	});
 </script>

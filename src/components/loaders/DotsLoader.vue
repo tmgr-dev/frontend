@@ -12,9 +12,9 @@
 		created() {
 			this.dotsLoad();
 		},
-	beforeUnmount() {
-		clearInterval(this.interval);
-	},
+		beforeUnmount() {
+			clearInterval(this.interval);
+		},
 		methods: {
 			dotsLoad() {
 				this.interval = setInterval(() => {

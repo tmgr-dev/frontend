@@ -7,10 +7,13 @@
 </template>
 
 <script>
-	import { defineComponent } from 'vue';
+	import {
+		openTaskByKey,
+		useTaskKeyPrefixes,
+	} from '@/composable/useTaskKeyLinks';
 	import { markdownToHtml } from '@/utils/markdown';
 	import sanitizeHtml from '@/utils/sanitizeHtml';
-	import { openTaskByKey, useTaskKeyPrefixes } from '@/composable/useTaskKeyLinks';
+	import { defineComponent } from 'vue';
 
 	export default defineComponent({
 		name: 'MarkdownText',

@@ -5,27 +5,60 @@
 		<script>
 			(function () {
 				try {
-					var DARK = { dracula:1, nord:1, 'one-dark':1, monokai:1, 'solarized-dark':1, 'gruvbox-dark':1, 'tokyo-night':1, 'github-dark':1, 'night-owl':1, cobalt2:1, palenight:1, 'ayu-dark':1, 'catppuccin-mocha':1, 'synthwave-84':1, oled:1, colorblind:1 };
+					var DARK = {
+						dracula: 1,
+						nord: 1,
+						'one-dark': 1,
+						monokai: 1,
+						'solarized-dark': 1,
+						'gruvbox-dark': 1,
+						'tokyo-night': 1,
+						'github-dark': 1,
+						'night-owl': 1,
+						cobalt2: 1,
+						palenight: 1,
+						'ayu-dark': 1,
+						'catppuccin-mocha': 1,
+						'synthwave-84': 1,
+						oled: 1,
+						colorblind: 1,
+					};
 					var html = document.documentElement;
 					var theme = localStorage.getItem('theme');
 					var cs = localStorage.getItem('colorScheme');
 					var dark;
-					if (theme && theme !== 'default' && (theme in DARK || theme === 'github-light')) {
+					if (
+						theme &&
+						theme !== 'default' &&
+						(theme in DARK || theme === 'github-light')
+					) {
 						html.classList.add('theme-' + theme);
 						dark = !!DARK[theme];
 					} else if (cs === 'dark' || cs === 'default') {
 						dark = cs === 'dark';
 					} else {
-						dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+						dark =
+							window.matchMedia &&
+							window.matchMedia('(prefers-color-scheme: dark)').matches;
 					}
-					if (dark) html.classList.add('dark'); else html.classList.remove('dark');
+					if (dark) html.classList.add('dark');
+					else html.classList.remove('dark');
 				} catch (e) {}
 			})();
 		</script>
 		<meta content="IE=edge" http-equiv="X-UA-Compatible" />
-		<meta content="width=device-width,initial-scale=1.0,viewport-fit=cover" name="viewport" />
+		<meta
+			content="width=device-width,initial-scale=1.0,viewport-fit=cover"
+			name="viewport"
+		/>
 		<!-- Preload critical fonts -->
-		<link rel="preload" href="/src/assets/fonts/material-icons.woff2" as="font" type="font/woff2" crossorigin />
+		<link
+			rel="preload"
+			href="/src/assets/fonts/material-icons.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
 		<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 		<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
 		<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -60,8 +93,8 @@
 	<body class="transition-colors duration-300">
 		<noscript>
 			<strong>
-				We're sorry but task-manager-ui doesn't work properly without
-				JavaScript enabled. Please enable it to continue.
+				We're sorry but task-manager-ui doesn't work properly without JavaScript
+				enabled. Please enable it to continue.
 			</strong>
 		</noscript>
 

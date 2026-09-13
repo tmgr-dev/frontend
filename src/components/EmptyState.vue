@@ -21,7 +21,7 @@
 		</p>
 		<button
 			v-if="action"
-			class="mt-6 inline-flex h-11 items-center rounded-md bg-tmgr-blue px-8 text-base font-semibold text-white shadow-sm transition-colors hover:bg-tmgr-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tmgr-blue focus-visible:ring-offset-2 dark:bg-blue-600 dark:hover:bg-blue-500 dark:focus-visible:ring-blue-500 dark:ring-offset-gray-900"
+			class="mt-6 inline-flex h-11 items-center rounded-md bg-tmgr-blue px-8 text-base font-semibold text-white shadow-sm transition-colors hover:bg-tmgr-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tmgr-blue focus-visible:ring-offset-2 dark:bg-blue-600 dark:ring-offset-gray-900 dark:hover:bg-blue-500 dark:focus-visible:ring-blue-500"
 			@click="action.onClick"
 		>
 			{{ action.label }}
@@ -30,31 +30,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Activity, Users, ClipboardList } from 'lucide-vue-next';
+	import { Activity, ClipboardList, Users } from 'lucide-vue-next';
+	import { computed } from 'vue';
 
-interface ActionType {
-	label: string;
-	onClick: () => void;
-}
+	interface ActionType {
+		label: string;
+		onClick: () => void;
+	}
 
-interface Props {
-	icon?: string;
-	title?: string;
-	description?: string;
-	action?: ActionType;
-}
+	interface Props {
+		icon?: string;
+		title?: string;
+		description?: string;
+		action?: ActionType;
+	}
 
-const props = defineProps<Props>();
+	const props = defineProps<Props>();
 
-const iconMap: Record<string, typeof Activity> = {
-	activity: Activity,
-	users: Users,
-	task: ClipboardList,
-};
+	const iconMap: Record<string, typeof Activity> = {
+		activity: Activity,
+		users: Users,
+		task: ClipboardList,
+	};
 
-const iconComponent = computed(() => {
-	if (!props.icon) return null;
-	return iconMap[props.icon] || null;
-});
+	const iconComponent = computed(() => {
+		if (!props.icon) return null;
+		return iconMap[props.icon] || null;
+	});
 </script>

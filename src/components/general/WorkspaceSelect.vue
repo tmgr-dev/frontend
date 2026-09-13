@@ -12,11 +12,11 @@
 </template>
 
 <script lang="ts" setup>
-	import { ref, onBeforeMount } from 'vue';
-	import { useStore } from 'vuex';
-	import Select from '@/components/general/Select.vue';
-	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
+	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
+	import Select from '@/components/general/Select.vue';
+	import { onBeforeMount, ref } from 'vue';
+	import { useStore } from 'vuex';
 
 	// State
 	const store = useStore();
@@ -40,7 +40,9 @@
 				},
 			);
 
-			const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+			const updatedUser = await updateUserSettingsV2(
+				settingsWithUpdatedWorkspace,
+			);
 			store.commit('setUser', updatedUser);
 			store.commit('updateUserWorkspaceSetting', { workspaceId });
 			store.commit('rerenderApp');

@@ -1,6 +1,11 @@
 <template>
-	<div class="flex flex-1 flex-col overflow-hidden rounded-card border border-line bg-surface">
-		<div class="grid border-b border-line" :style="{ gridTemplateColumns: 'repeat(7, 1fr)' }">
+	<div
+		class="flex flex-1 flex-col overflow-hidden rounded-card border border-line bg-surface"
+	>
+		<div
+			class="grid border-b border-line"
+			:style="{ gridTemplateColumns: 'repeat(7, 1fr)' }"
+		>
 			<div
 				v-for="(d, i) in dowLabels"
 				:key="i"
@@ -24,7 +29,9 @@
 				:class="[
 					i % 7 === 0 ? '' : 'border-l border-line',
 					i < 7 ? '' : 'border-t border-line',
-					hoverKey === `day:${fmtIso(d)}` ? 'bg-brand/15 ring-1 ring-brand/40 ring-inset' : '',
+					hoverKey === `day:${fmtIso(d)}`
+						? 'bg-brand/15 ring-brand/40 ring-1 ring-inset'
+						: '',
 				]"
 				:style="cellStyle(d)"
 				data-dr-drop
@@ -32,7 +39,10 @@
 				:data-dr-date="fmtIso(d)"
 				@click="onCellClick($event, d)"
 			>
-				<div class="flex items-center justify-end text-xs tabular-nums" :style="dayLabelStyle(d)">
+				<div
+					class="flex items-center justify-end text-xs tabular-nums"
+					:style="dayLabelStyle(d)"
+				>
 					<span
 						v-if="isSameDay(d, today)"
 						class="inline-flex h-5 w-5 items-center justify-center rounded-pill bg-brand text-[10px] font-bold text-white"
@@ -44,7 +54,7 @@
 				<div
 					v-for="e in byDay[i].slice(0, maxChips)"
 					:key="e.task_id + '-' + e.date"
-					class="flex items-center gap-1 truncate rounded-sm px-1.5 py-0.5 text-[10px] cursor-pointer text-ink dark:text-white"
+					class="flex cursor-pointer items-center gap-1 truncate rounded-sm px-1.5 py-0.5 text-[10px] text-ink dark:text-white"
 					:style="{
 						background: hexAlpha(e.routine_category.color, 0.2),
 						borderLeft: `2px solid ${e.routine_category.color}`,
@@ -53,12 +63,21 @@
 					}"
 					:title="e.title"
 					@click.stop="$emit('toggle', e)"
-					@contextmenu.prevent.stop="$emit('context', { entry: e, x: $event.clientX, y: $event.clientY })"
+					@contextmenu.prevent.stop="
+						$emit('context', { entry: e, x: $event.clientX, y: $event.clientY })
+					"
 				>
-					<span v-if="e.time" class="text-[10px] tabular-nums text-ink-subtle dark:text-white/60">{{ e.time }}</span>
+					<span
+						v-if="e.time"
+						class="text-[10px] tabular-nums text-ink-subtle dark:text-white/60"
+						>{{ e.time }}</span
+					>
 					<span class="truncate">{{ e.title }}</span>
 				</div>
-				<div v-if="byDay[i].length > maxChips" class="px-1.5 text-[10px] text-ink-subtle">
+				<div
+					v-if="byDay[i].length > maxChips"
+					class="px-1.5 text-[10px] text-ink-subtle"
+				>
 					+ {{ byDay[i].length - maxChips }} more
 				</div>
 			</div>
@@ -67,11 +86,16 @@
 </template>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
-	import { addDays, isSameDay, startOfMonth, startOfWeek } from '@/utils/dailyRoutines/dateHelpers';
-	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
+	import {
+		addDays,
+		isSameDay,
+		startOfMonth,
+		startOfWeek,
+	} from '@/utils/dailyRoutines/dateHelpers';
+	import { computed } from 'vue';
 
 	const { hoverKey } = useRoutineDrag();
 
@@ -86,8 +110,14 @@
 	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'select-day', date: Date): void;
-		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
-		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
+		(
+			e: 'create',
+			payload: { date: string; timeH: number; timeM: number },
+		): void;
+		(
+			e: 'context',
+			payload: { entry: RoutineEntry; x: number; y: number },
+		): void;
 	}>();
 
 	function fmtIso(d: Date): string {
@@ -99,7 +129,10 @@
 
 	function onCellClick(e: MouseEvent, d: Date) {
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		const ratio = Math.max(0, Math.min(0.999, (e.clientY - rect.top) / rect.height));
+		const ratio = Math.max(
+			0,
+			Math.min(0.999, (e.clientY - rect.top) / rect.height),
+		);
 		const snapped = Math.round((ratio * 24 * 60) / 30) * 30;
 		const h = Math.min(23, Math.floor(snapped / 60));
 		const m = snapped % 60;
@@ -113,14 +146,19 @@
 	});
 
 	const byDay = computed(() =>
-		days.value.map(d => {
-			const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-			return props.entries.filter(e => e.date === iso);
+		days.value.map((d) => {
+			const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+				2,
+				'0',
+			)}-${String(d.getDate()).padStart(2, '0')}`;
+			return props.entries.filter((e) => e.date === iso);
 		}),
 	);
 
 	const dowLabels = computed(() =>
-		props.isMobile ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
+		props.isMobile
+			? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+			: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
 	);
 
 	const maxChips = computed(() => (props.isMobile ? 1 : 3));
@@ -137,7 +175,11 @@
 		const inMonth = d.getMonth() === props.monthDate.getMonth();
 		const isToday = isSameDay(d, today);
 		return {
-			color: isToday ? '#e8857d' : inMonth ? undefined : 'rgba(255,255,255,.35)',
+			color: isToday
+				? '#e8857d'
+				: inMonth
+				? undefined
+				: 'rgba(255,255,255,.35)',
 			fontWeight: isToday ? 700 : 500,
 		};
 	}

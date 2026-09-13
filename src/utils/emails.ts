@@ -7,11 +7,11 @@ export const validateEmailString = (input: string): ValidationResult => {
 	if (!input.trim()) {
 		return {
 			isValid: false,
-			errors: ['Input string cannot be empty']
+			errors: ['Input string cannot be empty'],
 		};
 	}
 
-	const emails = input.split(',').map(email => email.trim());
+	const emails = input.split(',').map((email) => email.trim());
 
 	const emailPattern = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -27,6 +27,6 @@ export const validateEmailString = (input: string): ValidationResult => {
 
 	return {
 		isValid: errors.length === 0,
-		errors: errors.length > 0 ? errors : undefined
+		errors: errors.length > 0 ? errors : undefined,
 	};
 };

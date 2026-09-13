@@ -17,16 +17,21 @@ function dowKeyToIndex(key: string): number {
 }
 
 export function recurrenceLabel(r: RecurrenceLike): string {
-	if (r.frequency === 'DAILY') return (r.interval ?? 1) === 1 ? 'Daily' : `Every ${r.interval} days`;
+	if (r.frequency === 'DAILY')
+		return (r.interval ?? 1) === 1 ? 'Daily' : `Every ${r.interval} days`;
 	if (r.frequency === 'WEEKLY') {
-		const days = (r.days_of_week ?? []).map(d => dowKeyToIndex(d)).filter(i => i >= 0).sort();
+		const days = (r.days_of_week ?? [])
+			.map((d) => dowKeyToIndex(d))
+			.filter((i) => i >= 0)
+			.sort();
 		if (days.length === 0) return 'Weekly';
 		if (days.length === 7) return 'Daily';
 		if (days.join(',') === '0,1,2,3,4') return 'Weekdays';
 		if (days.join(',') === '5,6') return 'Weekends';
-		return days.map(d => DOW_SHORT[d]).join(' · ');
+		return days.map((d) => DOW_SHORT[d]).join(' · ');
 	}
-	if (r.frequency === 'MONTHLY') return `Monthly · day ${r.day_of_frequency ?? 1}`;
+	if (r.frequency === 'MONTHLY')
+		return `Monthly · day ${r.day_of_frequency ?? 1}`;
 	if (r.frequency === 'YEARLY') {
 		const monthIdx = r.month ?? 0;
 		const dom = r.day_of_frequency ?? 1;

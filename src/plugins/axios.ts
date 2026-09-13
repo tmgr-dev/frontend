@@ -1,8 +1,12 @@
-import axios from 'axios';
 import store from '@/store';
+import {
+	isSocialCallbackPath,
+	shouldReplayWithCurrentToken,
+	wasSentWithCurrentToken,
+} from '@/utils/sessionGuards';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
-import { isSocialCallbackPath, shouldReplayWithCurrentToken, wasSentWithCurrentToken } from '@/utils/sessionGuards';
+import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const API_TIMEOUT = 30000;
@@ -27,7 +31,11 @@ const $axios = axios.create({
 // may have rotated it while this one was throttled in the background.
 const readStoredToken = () => {
 	try {
-		return parseStoredToken(localStorage.getItem(TOKEN_STORAGE_KEY)) ?? store.state.token ?? null;
+		return (
+			parseStoredToken(localStorage.getItem(TOKEN_STORAGE_KEY)) ??
+			store.state.token ??
+			null
+		);
 	} catch {
 		return store.state.token ?? null;
 	}
@@ -78,7 +86,7 @@ $axios.interceptors.request.use(
 		}
 		return config;
 	},
-	(error) => Promise.reject(error)
+	(error) => Promise.reject(error),
 );
 
 $axios.interceptors.response.use(
@@ -99,12 +107,23 @@ $axios.interceptors.response.use(
 			// The session rotated while this request was in flight (a social
 			// login just set a fresh token, or another flow logged out): the
 			// 401 belongs to the old session and must not touch the new one.
-			if (!wasSentWithCurrentToken(config.headers?.Authorization, store.state.token?.token)) {
+			if (
+				!wasSentWithCurrentToken(
+					config.headers?.Authorization,
+					store.state.token?.token,
+				)
+			) {
 				// Another tab rotated the token while this request was in
 				// flight (the storage listener already adopted it): replay
 				// once with the current token, the request interceptor
 				// re-attaches it.
-				if (shouldReplayWithCurrentToken(config.headers?.Authorization, store.state.token?.token, !!config.__authRetried)) {
+				if (
+					shouldReplayWithCurrentToken(
+						config.headers?.Authorization,
+						store.state.token?.token,
+						!!config.__authRetried,
+					)
+				) {
 					config.__authRetried = true;
 					return $axios(config);
 				}
@@ -136,10 +155,10 @@ $axios.interceptors.response.use(
 		) {
 			config.__isRetry = true;
 			config.retry += 1;
-			
+
 			const delay = config.retry * 1000;
-			await new Promise(resolve => setTimeout(resolve, delay));
-			
+			await new Promise((resolve) => setTimeout(resolve, delay));
+
 			return $axios(config);
 		}
 

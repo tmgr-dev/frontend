@@ -12,10 +12,15 @@
 				<div class="flex items-center gap-3 border-b border-line px-5 py-3.5">
 					<span
 						class="h-2 w-2 shrink-0 rounded-pill"
-						:style="{ background: catColor, boxShadow: `0 0 12px ${catColor}55` }"
+						:style="{
+							background: catColor,
+							boxShadow: `0 0 12px ${catColor}55`,
+						}"
 					/>
 					<div class="min-w-0 flex-1">
-						<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+						<div
+							class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+						>
 							{{ isNew ? 'New routine' : 'Edit routine' }}
 						</div>
 						<div class="truncate text-sm font-semibold text-ink">
@@ -46,12 +51,19 @@
 						</ERSection>
 
 						<!-- Description -->
-						<ERSection label="Description" :hint="draft.description ? `${draft.description.length} chars` : 'Optional'">
+						<ERSection
+							label="Description"
+							:hint="
+								draft.description
+									? `${draft.description.length} chars`
+									: 'Optional'
+							"
+						>
 							<textarea
 								v-model="draft.description"
 								rows="3"
 								placeholder="Notes, context, links, checklist…"
-								class="min-h-[64px] max-h-[220px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-line-strong"
+								class="max-h-[220px] min-h-[64px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-line-strong"
 							/>
 						</ERSection>
 
@@ -74,7 +86,10 @@
 									"
 									@click="draft.cat = c.id"
 								>
-									<span class="h-1.5 w-1.5 rounded-pill" :style="{ background: c.color }" />
+									<span
+										class="h-1.5 w-1.5 rounded-pill"
+										:style="{ background: c.color }"
+									/>
 									{{ c.name }}
 								</button>
 							</div>
@@ -82,7 +97,9 @@
 
 						<!-- Schedule mode (only for non-recurring) -->
 						<ERSection v-if="draft.frequency === 'NONE'" label="Schedule">
-							<label class="flex items-center gap-2 rounded-card border border-line bg-surface-sunken px-3 py-2.5 text-sm text-ink cursor-pointer">
+							<label
+								class="flex cursor-pointer items-center gap-2 rounded-card border border-line bg-surface-sunken px-3 py-2.5 text-sm text-ink"
+							>
 								<input
 									v-model="draft.unscheduled"
 									type="checkbox"
@@ -112,8 +129,13 @@
 							<div class="flex flex-col gap-2.5">
 								<div class="flex items-end gap-2">
 									<label class="flex flex-1 flex-col gap-1">
-										<span class="text-[10px] font-bold uppercase tracking-wider text-ink-faint">Start</span>
-										<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
+										<span
+											class="text-[10px] font-bold uppercase tracking-wider text-ink-faint"
+											>Start</span
+										>
+										<div
+											class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
+										>
 											<input
 												v-model="startStr"
 												type="time"
@@ -125,8 +147,13 @@
 									</label>
 									<span class="pb-2.5 text-ink-faint">→</span>
 									<label class="flex flex-1 flex-col gap-1">
-										<span class="text-[10px] font-bold uppercase tracking-wider text-ink-faint">End</span>
-										<div class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5">
+										<span
+											class="text-[10px] font-bold uppercase tracking-wider text-ink-faint"
+											>End</span
+										>
+										<div
+											class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
+										>
 											<input
 												v-model="endStr"
 												type="time"
@@ -155,7 +182,9 @@
 
 						<!-- Recurrence -->
 						<ERSection label="Repeats">
-							<div class="flex gap-1 rounded-card border border-line bg-surface-sunken p-1">
+							<div
+								class="flex gap-1 rounded-card border border-line bg-surface-sunken p-1"
+							>
 								<button
 									v-for="f in freqOptions"
 									:key="f.id"
@@ -172,7 +201,10 @@
 								</button>
 							</div>
 
-							<div v-if="draft.frequency === 'WEEKLY'" class="mt-2.5 flex gap-1">
+							<div
+								v-if="draft.frequency === 'WEEKLY'"
+								class="mt-2.5 flex gap-1"
+							>
 								<button
 									v-for="(lbl, i) in dowLabels"
 									:key="i"
@@ -194,23 +226,34 @@
 								</button>
 							</div>
 
-							<div v-if="draft.frequency === 'MONTHLY'" class="mt-2.5 flex items-center gap-2.5 text-xs text-ink-subtle">
+							<div
+								v-if="draft.frequency === 'MONTHLY'"
+								class="mt-2.5 flex items-center gap-2.5 text-xs text-ink-subtle"
+							>
 								<span>On day</span>
-								<div class="inline-flex items-center rounded-md border border-line bg-surface-sunken p-0.5">
+								<div
+									class="inline-flex items-center rounded-md border border-line bg-surface-sunken p-0.5"
+								>
 									<button
 										type="button"
 										class="h-6 w-6 rounded-md text-base text-ink-subtle hover:text-ink"
-										@click="draft.dayOfMonth = Math.max(1, draft.dayOfMonth - 1)"
+										@click="
+											draft.dayOfMonth = Math.max(1, draft.dayOfMonth - 1)
+										"
 									>
 										−
 									</button>
-									<span class="min-w-[32px] text-center font-mono text-sm font-semibold text-ink">
+									<span
+										class="min-w-[32px] text-center font-mono text-sm font-semibold text-ink"
+									>
 										{{ draft.dayOfMonth }}
 									</span>
 									<button
 										type="button"
 										class="h-6 w-6 rounded-md text-base text-ink-subtle hover:text-ink"
-										@click="draft.dayOfMonth = Math.min(31, draft.dayOfMonth + 1)"
+										@click="
+											draft.dayOfMonth = Math.min(31, draft.dayOfMonth + 1)
+										"
 									>
 										+
 									</button>
@@ -302,7 +345,9 @@
 					class="flex items-center gap-3 px-3.5 pb-2 text-2xs text-ink-subtle"
 				>
 					<span v-if="createdAtLabel">Created {{ createdAtLabel }}</span>
-					<span v-if="updatedAtLabel && !updatedSameAsCreated">Updated {{ updatedAtLabel }}</span>
+					<span v-if="updatedAtLabel && !updatedSameAsCreated"
+						>Updated {{ updatedAtLabel }}</span
+					>
 				</div>
 
 				<!-- Footer -->
@@ -310,7 +355,7 @@
 					<button
 						v-if="!isNew"
 						type="button"
-						class="flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg bg-status-fix-bg/40 text-status-fix-fg hover:bg-status-fix-bg/70"
+						class="bg-status-fix-bg/40 hover:bg-status-fix-bg/70 flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg text-status-fix-fg"
 						@click="onDelete"
 					>
 						<DRIcon name="trash" :size="14" stroke="currentColor" />
@@ -337,18 +382,34 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
-	import { useStore } from 'vuex';
 	import {
 		getWorkspaceCategories,
 		type Category,
 	} from '@/actions/tmgr/categories';
+	import type {
+		RoutineCategoryId,
+		RoutineFrequency,
+	} from '@/types/dailyRoutine';
+	import {
+		ROUTINE_CATEGORY_LIST,
+		resolveCategory,
+	} from '@/utils/dailyRoutines/categoryMap';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
-	import { isUnscheduledDraft, parseTimeStr } from '@/utils/dailyRoutines/routineDraft';
+	import {
+		isUnscheduledDraft,
+		parseTimeStr,
+	} from '@/utils/dailyRoutines/routineDraft';
+	import {
+		computed,
+		onBeforeUnmount,
+		onMounted,
+		reactive,
+		ref,
+		watch,
+	} from 'vue';
+	import { useStore } from 'vuex';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
-	import { ROUTINE_CATEGORY_LIST, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
-	import type { RoutineCategoryId, RoutineFrequency } from '@/types/dailyRoutine';
 
 	interface RoutineDraft {
 		id: number | null;
@@ -398,7 +459,9 @@
 	}
 
 	const r = props.routine ?? {};
-	const initialFreq = (r.recurrence?.frequency ?? r.frequency ?? 'NONE') as RoutineFrequency;
+	const initialFreq = (r.recurrence?.frequency ??
+		r.frequency ??
+		'NONE') as RoutineFrequency;
 	const taskTime = parseTimeStr(r.scheduled_time);
 
 	const initial: RoutineDraft = {
@@ -445,7 +508,10 @@
 	});
 
 	const endStr = computed<string>({
-		get: () => `${pad2(Math.floor(endMinRef.value / 60) % 24)}:${pad2(endMinRef.value % 60)}`,
+		get: () =>
+			`${pad2(Math.floor(endMinRef.value / 60) % 24)}:${pad2(
+				endMinRef.value % 60,
+			)}`,
 		set: (v) => {
 			const [h, m] = String(v).split(':').map(Number);
 			if (Number.isNaN(h) || Number.isNaN(m)) return;
@@ -456,7 +522,9 @@
 	// Keep the persisted duration in sync with the visible range (min 15 min).
 	watch(
 		[() => startMin(), endMinRef],
-		() => { draft.durationMin = Math.max(MIN_DURATION, endMinRef.value - startMin()); },
+		() => {
+			draft.durationMin = Math.max(MIN_DURATION, endMinRef.value - startMin());
+		},
 		{ immediate: true },
 	);
 
@@ -495,14 +563,16 @@
 		const KEYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 		if (!arr) return [];
 		return arr
-			.map((d: any) => (typeof d === 'number' ? d : KEYS.indexOf(String(d).toUpperCase())))
+			.map((d: any) =>
+				typeof d === 'number' ? d : KEYS.indexOf(String(d).toUpperCase()),
+			)
 			.filter((i: number) => i >= 0)
 			.sort();
 	}
 
 	function toggleDow(i: number) {
 		if (draft.daysOfWeek.includes(i)) {
-			draft.daysOfWeek = draft.daysOfWeek.filter(d => d !== i);
+			draft.daysOfWeek = draft.daysOfWeek.filter((d) => d !== i);
 		} else {
 			draft.daysOfWeek = [...draft.daysOfWeek, i].sort();
 		}
@@ -514,11 +584,13 @@
 		if (d.frequency === 'WEEKLY') {
 			if (d.daysOfWeek.length === 0) return 'Pick at least one day';
 			if (d.daysOfWeek.length === 7) return 'Every day of the week';
-			if (d.daysOfWeek.join(',') === '0,1,2,3,4') return 'Every weekday (Mon–Fri)';
+			if (d.daysOfWeek.join(',') === '0,1,2,3,4')
+				return 'Every weekday (Mon–Fri)';
 			if (d.daysOfWeek.join(',') === '5,6') return 'Every weekend';
-			return 'On ' + d.daysOfWeek.map(i => dowLabels[i]).join(', ');
+			return 'On ' + d.daysOfWeek.map((i) => dowLabels[i]).join(', ');
 		}
-		if (d.frequency === 'MONTHLY') return `On day ${d.dayOfMonth} of every month`;
+		if (d.frequency === 'MONTHLY')
+			return `On day ${d.dayOfMonth} of every month`;
 		if (d.frequency === 'YEARLY') return 'Annually';
 		return '';
 	});

@@ -1,17 +1,16 @@
 import {
-	expandRoutineRange,
-	expandRoutineYearStats,
+	archiveDailyTask,
 	completeRoutineOn,
-	rescheduleRoutineInstance,
-	quickCreateRoutine,
-	importRoutinesIcs,
-	downloadRoutinesIcs,
+	convertRoutineToTask,
 	deleteDailyTask,
 	deleteDailyTaskInstance,
-	completeDailyTaskInstance,
-	archiveDailyTask,
+	downloadRoutinesIcs,
+	expandRoutineRange,
+	expandRoutineYearStats,
+	importRoutinesIcs,
+	quickCreateRoutine,
+	rescheduleRoutineInstance,
 	updateDailyTask,
-	convertRoutineToTask,
 } from '@/actions/tmgr/daily-tasks';
 
 function fmtDate(d) {
@@ -52,7 +51,7 @@ const dailyRoutinesModule = {
 			state.isLoading = v;
 		},
 		patchEntry(state, { taskId, date, patch }) {
-			state.entries = state.entries.map(e => {
+			state.entries = state.entries.map((e) => {
 				if (e.task_id === taskId && e.date === date) {
 					return { ...e, ...patch };
 				}
@@ -60,7 +59,7 @@ const dailyRoutinesModule = {
 			});
 		},
 		removeEntries(state, predicate) {
-			state.entries = state.entries.filter(e => !predicate(e));
+			state.entries = state.entries.filter((e) => !predicate(e));
 		},
 	},
 
@@ -99,25 +98,40 @@ const dailyRoutinesModule = {
 		},
 		async reschedule({ dispatch, state }, { entry, newDate, newTime }) {
 			const time = newTime || entry.time || '09:00';
-			const scheduledFor = `${newDate} ${time.length === 5 ? time + ':00' : time}`;
+			const scheduledFor = `${newDate} ${
+				time.length === 5 ? time + ':00' : time
+			}`;
 			const instanceId = entry.instance_id ?? 'virtual';
 			await rescheduleRoutineInstance(entry.task_id, instanceId, scheduledFor);
 			if (state.lastRange.from && state.lastRange.to) {
 				await dispatch('loadRange', state.lastRange);
 			}
 		},
-		async moveRoutine({ dispatch, state, rootState }, { entry, date, timeH, timeM, allDay }) {
+		async moveRoutine(
+			{ dispatch, state, rootState },
+			{ entry, date, timeH, timeM, allDay },
+		) {
 			const isRecurring = entry.frequency && entry.frequency !== 'NONE';
 			if (allDay && isRecurring) {
 				return;
 			}
 			if (isRecurring) {
-				const time = timeH != null
-					? `${String(timeH).padStart(2, '0')}:${String(timeM ?? 0).padStart(2, '0')}`
-					: entry.time || '09:00';
-				const scheduledFor = `${date} ${time.length === 5 ? time + ':00' : time}`;
+				const time =
+					timeH != null
+						? `${String(timeH).padStart(2, '0')}:${String(timeM ?? 0).padStart(
+								2,
+								'0',
+						  )}`
+						: entry.time || '09:00';
+				const scheduledFor = `${date} ${
+					time.length === 5 ? time + ':00' : time
+				}`;
 				const instanceId = entry.instance_id ?? 'virtual';
-				await rescheduleRoutineInstance(entry.task_id, instanceId, scheduledFor);
+				await rescheduleRoutineInstance(
+					entry.task_id,
+					instanceId,
+					scheduledFor,
+				);
 			} else {
 				const payload = {
 					title: entry.title,
@@ -125,7 +139,8 @@ const dailyRoutinesModule = {
 					user_id: rootState?.user?.id,
 					is_daily_routine: true,
 					is_recurring: false,
-					routine_category: entry.routine_category?.id ?? entry.routine_category ?? 'none',
+					routine_category:
+						entry.routine_category?.id ?? entry.routine_category ?? 'none',
 				};
 				if (allDay) {
 					payload.scheduled_date = date;
@@ -174,32 +189,35 @@ const dailyRoutinesModule = {
 		},
 		async deleteRoutine({ commit }, taskId) {
 			await deleteDailyTask(taskId);
-			commit('removeEntries', e => e.task_id === taskId);
+			commit('removeEntries', (e) => e.task_id === taskId);
 		},
-		async convertRoutine({ commit }, { taskId, workspaceId, projectCategoryId }) {
+		async convertRoutine(
+			{ commit },
+			{ taskId, workspaceId, projectCategoryId },
+		) {
 			const task = await convertRoutineToTask(taskId, {
 				workspace_id: workspaceId,
 				project_category_id: projectCategoryId ?? null,
 			});
-			commit('removeEntries', e => e.task_id === taskId);
+			commit('removeEntries', (e) => e.task_id === taskId);
 			return task;
 		},
 		async archiveRoutine({ commit }, taskId) {
 			await archiveDailyTask(taskId);
-			commit('removeEntries', e => e.task_id === taskId);
+			commit('removeEntries', (e) => e.task_id === taskId);
 		},
 		async archiveDoneUnscheduled({ commit, state }) {
 			const ids = [
 				...new Set(
 					state.entries
-						.filter(e => e.frequency === 'NONE' && e.completed)
-						.map(e => e.task_id),
+						.filter((e) => e.frequency === 'NONE' && e.completed)
+						.map((e) => e.task_id),
 				),
 			];
 			for (const id of ids) {
 				await archiveDailyTask(id);
 			}
-			commit('removeEntries', e => ids.includes(e.task_id));
+			commit('removeEntries', (e) => ids.includes(e.task_id));
 			return ids.length;
 		},
 		async deleteInstance({ commit }, { taskId, instanceId, date }) {
@@ -207,14 +225,21 @@ const dailyRoutinesModule = {
 			commit('patchEntry', {
 				taskId,
 				date,
-				patch: { instance_id: null, virtual: true, completed: false, status: null },
+				patch: {
+					instance_id: null,
+					virtual: true,
+					completed: false,
+					status: null,
+				},
 			});
 		},
 	},
 
 	getters: {
-		entriesByDate: state => date => state.entries.filter(e => e.date === date),
-		entriesByTaskId: state => taskId => state.entries.filter(e => e.task_id === taskId),
+		entriesByDate: (state) => (date) =>
+			state.entries.filter((e) => e.date === date),
+		entriesByTaskId: (state) => (taskId) =>
+			state.entries.filter((e) => e.task_id === taskId),
 	},
 };
 

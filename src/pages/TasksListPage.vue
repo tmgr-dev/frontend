@@ -1,42 +1,53 @@
 <script setup lang="ts">
-	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
-	import { totalOvertimeSeconds, type EstimatedTask, type OvertimePagination } from '@/utils/overtime';
-	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
-	import Confetti from '@/components/Confetti.vue';
-	import { getTasks, getTasksByStatus, Task, PaginationMeta } from '@/actions/tmgr/tasks';
 	import { getCategories } from '@/actions/tmgr/categories';
-	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-	import { useRoute, useRouter } from 'vue-router';
 	import {
-		SquareDashedMousePointerIcon,
-		SlidersHorizontalIcon,
-		ArrowDownWideNarrowIcon,
-		ArrowUpWideNarrowIcon,
-	} from 'lucide-vue-next';
+		getTasks,
+		getTasksByStatus,
+		PaginationMeta,
+		Task,
+	} from '@/actions/tmgr/tasks';
+	import { getUser } from '@/actions/tmgr/user';
+	import {
+		getWorkspaceMembers,
+		getWorkspaceStatuses,
+	} from '@/actions/tmgr/workspaces';
+	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
+	import Confetti from '@/components/Confetti.vue';
+	import EmptyState from '@/components/EmptyState.vue';
+	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
+	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
 		DialogContent,
+		DialogFooter,
 		DialogHeader,
 		DialogTitle,
 		DialogTrigger,
-		DialogFooter,
 	} from '@/components/ui/dialog';
-	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	import { Button } from '@/components/ui/button';
-	import store from '@/store';
-	import { Input } from '@/components/ui/input';
-	import { formatTime } from '@/utils/timeUtils.js';
-	import EmptyState from '@/components/EmptyState.vue';
 	import { Skeleton } from '@/components/ui/skeleton';
-	import { getWorkspaceMembers, getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
-	import { getUser } from '@/actions/tmgr/user';
-	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
+	import store from '@/store';
 	import {
 		buildArchivedStatusSets,
 		isArchivedTask as isArchivedTaskBySets,
 	} from '@/utils/archivedTasks';
+	import {
+		totalOvertimeSeconds,
+		type EstimatedTask,
+		type OvertimePagination,
+	} from '@/utils/overtime';
+	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
+	import { formatTime } from '@/utils/timeUtils.js';
+	import {
+		ArrowDownWideNarrowIcon,
+		ArrowUpWideNarrowIcon,
+		SlidersHorizontalIcon,
+		SquareDashedMousePointerIcon,
+	} from 'lucide-vue-next';
+	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+	import { useRoute, useRouter } from 'vue-router';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -83,7 +94,7 @@
 	const sortDirection = ref<'asc' | 'desc'>(
 		route.query.direction === 'asc' ? 'asc' : 'desc',
 	);
-	
+
 	const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } = usePusher();
 	const pagination = ref<PaginationMeta>({
 		current_page: Number(route.query.page) || 1,
@@ -91,7 +102,7 @@
 		total: 0,
 		last_page: 1,
 		from: 0,
-		to: 0
+		to: 0,
 	});
 
 	const status = computed(() => route.meta.status);
@@ -139,12 +150,14 @@
 		return !searchText.value && matchesKnownFilters(task);
 	}
 
-	const totalSeconds = computed(() =>
-		pagination.value?.total_seconds || tasks.value.reduce((summary, task) => task.common_time + summary, 0)
+	const totalSeconds = computed(
+		() =>
+			pagination.value?.total_seconds ||
+			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
 	);
-	
+
 	const summaryTime = computed(() => formatTime(totalSeconds.value));
-	
+
 	const timeStats = computed(() => {
 		const seconds = totalSeconds.value;
 		const hours = seconds / 3600;
@@ -152,7 +165,7 @@
 		const workingDays = hours / 8;
 		const workingMonths = hours / 160;
 		const workingYears = hours / 2000;
-		
+
 		return {
 			hours: hours.toFixed(1),
 			totalDays: days.toFixed(1),
@@ -165,7 +178,10 @@
 	// Overtime over every matching task: the server sums it across all pages
 	// (`meta.total_overtime_seconds`, TM-130); the page sum is only a fallback.
 	const totalOvertime = computed(() =>
-		totalOvertimeSeconds(pagination.value as OvertimePagination | null, tasks.value as EstimatedTask[]),
+		totalOvertimeSeconds(
+			pagination.value as OvertimePagination | null,
+			tasks.value as EstimatedTask[],
+		),
 	);
 
 	const formattedTotalOvertime = computed(() => {
@@ -191,7 +207,7 @@
 	onMounted(async () => {
 		try {
 			setDocumentTitle(h1[route.name] || 'Task List');
-			
+
 			categories.value = await getCategories();
 
 			try {
@@ -211,7 +227,7 @@
 			if (workspaceSetting) {
 				workspaceId.value = +workspaceSetting.value;
 				workspaceUsers.value = await getWorkspaceMembers(workspaceId.value);
-				
+
 				pusherSubscriptionId.value = subscribeToWorkspace(workspaceId.value, {
 					onTaskUpdated: (task, action) => {
 						if (action === 'deleted') {
@@ -221,11 +237,13 @@
 						}
 					},
 					onCommentAdded: (comment) => {
-						const taskExists = tasks.value.some(t => t.id === comment.task_id);
+						const taskExists = tasks.value.some(
+							(t) => t.id === comment.task_id,
+						);
 						if (taskExists) {
 							newCommentTaskIds.value.add(comment.task_id);
 						}
-					}
+					},
 				});
 			}
 
@@ -236,28 +254,30 @@
 			if (route.path === '/' && store.state.workspaces?.length) {
 				// Get current workspace ID
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					setting => setting.key === 'current_workspace'
+					(setting) => setting.key === 'current_workspace',
 				)?.value;
-				
+
 				// Find the workspace by ID
 				const currentWorkspace = store.state.workspaces.find(
-					workspace => Number(workspace.id) === Number(currentWorkspaceId)
+					(workspace) => Number(workspace.id) === Number(currentWorkspaceId),
 				);
-				
+
 				if (currentWorkspace?.code) {
 					// Set a page title that includes workspace name and task count
 					const baseTitle = `${currentWorkspace.name} Tasks`;
-					const titleWithCount = pagination.value.total !== undefined 
-						? `${baseTitle} (${pagination.value.total})` 
-						: baseTitle;
+					const titleWithCount =
+						pagination.value.total !== undefined
+							? `${baseTitle} (${pagination.value.total})`
+							: baseTitle;
 					setDocumentTitle(baseTitle);
 					store.commit('setMetaTitle', titleWithCount);
 				} else {
 					// Update metaTitle with task count for regular routes
 					const baseTitle = h1[route.name] || 'Task List';
-					const titleWithCount = pagination.value.total !== undefined 
-						? `${baseTitle} (${pagination.value.total})` 
-						: baseTitle;
+					const titleWithCount =
+						pagination.value.total !== undefined
+							? `${baseTitle} (${pagination.value.total})`
+							: baseTitle;
 					store.commit('setMetaTitle', titleWithCount);
 				}
 			}
@@ -271,7 +291,10 @@
 	onUnmounted(() => {
 		window.removeEventListener('keydown', handleKeyDown);
 		if (workspaceId.value && pusherSubscriptionId.value) {
-			unsubscribeHandlerFromWorkspace(workspaceId.value, pusherSubscriptionId.value);
+			unsubscribeHandlerFromWorkspace(
+				workspaceId.value,
+				pusherSubscriptionId.value,
+			);
 		}
 	});
 
@@ -282,35 +305,53 @@
 
 	watch(selectedCategory, loadTasks);
 	watch(() => store.state.reloadTasksKey, loadTasks);
-	watch(() => store.state.updatedTaskKey, () => {
-		const updatedTask = store.state.updatedTaskData;
-		if (updatedTask) {
-			updateSingleTaskInList(updatedTask);
-		}
-	});
-	watch(() => store.state.createdTaskKey, () => {
-		const createdTask = store.state.createdTaskData;
-		if (createdTask) {
-			updateSingleTaskInList(createdTask);
-		}
-	});
-	watch(() => store.state.deletedTaskKey, () => {
-		const deletedId = store.state.deletedTaskId;
-		if (deletedId) {
-			removeTaskFromList_(deletedId);
-		}
-	});
-	watch(() => route.name, (newName) => {
-		if (newName) {
-			setDocumentTitle(h1[newName] || 'Task List');
-		}
-	});
-	watch(() => pagination.value.total, () => {
-		if (pagination.value.total !== undefined) {
-			const baseTitle = h1[route.name] || 'Task List';
-			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
-		}
-	});
+	watch(
+		() => store.state.updatedTaskKey,
+		() => {
+			const updatedTask = store.state.updatedTaskData;
+			if (updatedTask) {
+				updateSingleTaskInList(updatedTask);
+			}
+		},
+	);
+	watch(
+		() => store.state.createdTaskKey,
+		() => {
+			const createdTask = store.state.createdTaskData;
+			if (createdTask) {
+				updateSingleTaskInList(createdTask);
+			}
+		},
+	);
+	watch(
+		() => store.state.deletedTaskKey,
+		() => {
+			const deletedId = store.state.deletedTaskId;
+			if (deletedId) {
+				removeTaskFromList_(deletedId);
+			}
+		},
+	);
+	watch(
+		() => route.name,
+		(newName) => {
+			if (newName) {
+				setDocumentTitle(h1[newName] || 'Task List');
+			}
+		},
+	);
+	watch(
+		() => pagination.value.total,
+		() => {
+			if (pagination.value.total !== undefined) {
+				const baseTitle = h1[route.name] || 'Task List';
+				store.commit(
+					'setMetaTitle',
+					`${baseTitle} (${pagination.value.total})`,
+				);
+			}
+		},
+	);
 
 	function setLoadingActions(tasks) {
 		tasks.forEach((task) => {
@@ -336,7 +377,8 @@
 			const params = {
 				params: {
 					search: searchText.value,
-					project_category_id: selectedCategory.value === -1 ? null : selectedCategory.value,
+					project_category_id:
+						selectedCategory.value === -1 ? null : selectedCategory.value,
 					...(status.value
 						? {
 								'order[column]': sortColumn.value,
@@ -345,7 +387,7 @@
 						: {}),
 				},
 				page: pagination.value.current_page,
-				per_page: pagination.value.per_page
+				per_page: pagination.value.per_page,
 			};
 
 			let response;
@@ -358,7 +400,7 @@
 			tasks.value = response.data;
 			pagination.value = response.meta;
 			setLoadingActions(tasks.value);
-			
+
 			const baseTitle = h1[route.name] || 'Task List';
 			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
 		} catch (e) {
@@ -391,7 +433,7 @@
 				...(status.value
 					? { sort: sortColumn.value, direction: sortDirection.value }
 					: {}),
-			}
+			},
 		});
 	}
 
@@ -428,11 +470,13 @@
 	function updateSingleTaskInList(updatedTask: Task) {
 		const known = tasks.value.some((x) => x.id === updatedTask.id);
 		const result = upsertTaskInList(tasks.value as any[], updatedTask as any, {
-			accepts: (t) => (known ? matchesKnownFilters(t as Task) : canInsertTask(t as Task)),
+			accepts: (t) =>
+				known ? matchesKnownFilters(t as Task) : canInsertTask(t as Task),
 			firstPage: pagination.value.current_page === 1,
 		});
 		if (result === 'inserted') pagination.value.total++;
-		if (result === 'removed') pagination.value.total = Math.max(0, pagination.value.total - 1);
+		if (result === 'removed')
+			pagination.value.total = Math.max(0, pagination.value.total - 1);
 	}
 
 	// A deleted task counts against the total when it was on this page OR would have
@@ -441,7 +485,8 @@
 	function removeTaskFromList_(deleted: Task | number) {
 		const taskId = typeof deleted === 'number' ? deleted : deleted.id;
 		const removed = removeTaskFromList(tasks.value as any[], taskId as number);
-		const offPageMatch = typeof deleted !== 'number' && !removed && canInsertTask(deleted);
+		const offPageMatch =
+			typeof deleted !== 'number' && !removed && canInsertTask(deleted);
 		if (removed || offPageMatch) {
 			pagination.value.total = Math.max(0, pagination.value.total - 1);
 		}
@@ -453,10 +498,7 @@
 		<template #action>
 			<div class="flex flex-col gap-2 px-2">
 				<div class="w-full py-2">
-					<WorkspaceUsers
-						:users="workspaceUsers"
-						:workspace-id="workspaceId"
-					/>
+					<WorkspaceUsers :users="workspaceUsers" :workspace-id="workspaceId" />
 				</div>
 				<div class="flex flex-col gap-3">
 					<transition name="fade">
@@ -464,28 +506,69 @@
 							v-if="summaryTime && status === 'done'"
 							class="grid w-full grid-cols-2 gap-3 rounded-card border border-line bg-surface px-4 py-3 sm:grid-cols-4"
 						>
-							<div class="flex flex-col items-center justify-center text-center">
-								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Total Time</div>
-								<div class="text-xl font-semibold tabular-nums text-ink">{{ summaryTime }}</div>
+							<div
+								class="flex flex-col items-center justify-center text-center"
+							>
+								<div
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+								>
+									Total Time
+								</div>
+								<div class="text-xl font-semibold tabular-nums text-ink">
+									{{ summaryTime }}
+								</div>
 							</div>
-							<div class="flex flex-col items-center justify-center text-center">
-								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Days</div>
-								<div class="text-xl font-semibold text-status-done-fg">{{ timeStats.workingDays }}</div>
+							<div
+								class="flex flex-col items-center justify-center text-center"
+							>
+								<div
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+								>
+									Working Days
+								</div>
+								<div class="text-xl font-semibold text-status-done-fg">
+									{{ timeStats.workingDays }}
+								</div>
 								<div class="text-2xs text-ink-faint">(8h/day)</div>
 							</div>
-							<div class="flex flex-col items-center justify-center text-center">
-								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Months</div>
-								<div class="text-xl font-semibold text-status-testing-fg">{{ timeStats.workingMonths }}</div>
+							<div
+								class="flex flex-col items-center justify-center text-center"
+							>
+								<div
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+								>
+									Working Months
+								</div>
+								<div class="text-xl font-semibold text-status-testing-fg">
+									{{ timeStats.workingMonths }}
+								</div>
 								<div class="text-2xs text-ink-faint">(160h/month)</div>
 							</div>
-							<div class="flex flex-col items-center justify-center text-center">
-								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Working Years</div>
-								<div class="text-xl font-semibold text-status-progress-fg">{{ timeStats.workingYears }}</div>
+							<div
+								class="flex flex-col items-center justify-center text-center"
+							>
+								<div
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+								>
+									Working Years
+								</div>
+								<div class="text-xl font-semibold text-status-progress-fg">
+									{{ timeStats.workingYears }}
+								</div>
 								<div class="text-2xs text-ink-faint">(2000h/year)</div>
 							</div>
-							<div v-if="formattedTotalOvertime" class="col-span-2 flex flex-col items-center justify-center text-center sm:col-span-4">
-								<div class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">Overtime</div>
-								<div class="text-xl font-semibold text-status-fix-fg">+{{ formattedTotalOvertime }}</div>
+							<div
+								v-if="formattedTotalOvertime"
+								class="col-span-2 flex flex-col items-center justify-center text-center sm:col-span-4"
+							>
+								<div
+									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+								>
+									Overtime
+								</div>
+								<div class="text-xl font-semibold text-status-fix-fg">
+									+{{ formattedTotalOvertime }}
+								</div>
 							</div>
 						</div>
 						<div
@@ -504,90 +587,94 @@
 					</transition>
 
 					<div class="flex w-full items-center justify-end gap-2">
-					<div class="relative flex-1">
-						<input
-							v-model="searchText"
-							placeholder="search task"
-							type="search"
-							class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-line-strong"
-						/>
-					</div>
-
-					<div v-if="status" class="flex shrink-0 items-center gap-2">
-						<select
-							v-model="sortColumn"
-							@change="changeSort"
-							title="Sort by date"
-							class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none focus:border-line-strong"
-						>
-							<option
-								v-for="field in SORT_FIELDS"
-								:key="field.value"
-								:value="field.value"
-							>
-								{{ field.label }}
-							</option>
-						</select>
-						<button
-							@click="toggleSortDirection"
-							type="button"
-							:title="sortDirection === 'desc' ? 'Newest first' : 'Oldest first'"
-							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle transition-colors hover:text-ink"
-						>
-							<ArrowDownWideNarrowIcon
-								v-if="sortDirection === 'desc'"
-								class="h-4 w-4"
+						<div class="relative flex-1">
+							<input
+								v-model="searchText"
+								placeholder="search task"
+								type="search"
+								class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-strong"
 							/>
-							<ArrowUpWideNarrowIcon v-else class="h-4 w-4" />
-						</button>
-					</div>
+						</div>
 
-					<Dialog>
-						<DialogTrigger as-child>
+						<div v-if="status" class="flex shrink-0 items-center gap-2">
+							<select
+								v-model="sortColumn"
+								@change="changeSort"
+								title="Sort by date"
+								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none focus:border-line-strong"
+							>
+								<option
+									v-for="field in SORT_FIELDS"
+									:key="field.value"
+									:value="field.value"
+								>
+									{{ field.label }}
+								</option>
+							</select>
 							<button
-								@click="showCategorySelect = !showCategorySelect"
+								@click="toggleSortDirection"
 								type="button"
-								title="filters"
-								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
-								:class="[
-									selectedCategory && selectedCategory !== -1
-										? 'border-brand text-brand'
-										: 'border-line',
-								]"
+								:title="
+									sortDirection === 'desc' ? 'Newest first' : 'Oldest first'
+								"
+								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle transition-colors hover:text-ink"
 							>
-								<SlidersHorizontalIcon class="h-4 w-4" />
+								<ArrowDownWideNarrowIcon
+									v-if="sortDirection === 'desc'"
+									class="h-4 w-4"
+								/>
+								<ArrowUpWideNarrowIcon v-else class="h-4 w-4" />
 							</button>
-						</DialogTrigger>
+						</div>
 
-						<DialogContent
-							class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
+						<Dialog>
+							<DialogTrigger as-child>
+								<button
+									@click="showCategorySelect = !showCategorySelect"
+									type="button"
+									title="filters"
+									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
+									:class="[
+										selectedCategory && selectedCategory !== -1
+											? 'border-brand text-brand'
+											: 'border-line',
+									]"
+								>
+									<SlidersHorizontalIcon class="h-4 w-4" />
+								</button>
+							</DialogTrigger>
+
+							<DialogContent
+								class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
+							>
+								<DialogHeader>
+									<DialogTitle>Filters</DialogTitle>
+								</DialogHeader>
+
+								<CategoriesCombobox
+									:categories="categories"
+									v-model="selectedCategory"
+									class="!w-full"
+								/>
+								<DialogFooter>
+									<Button variant="outline" @click="resetFilters">
+										reset
+									</Button>
+								</DialogFooter>
+							</DialogContent>
+						</Dialog>
+
+						<button
+							@click="selectableTasks = !selectableTasks"
+							type="button"
+							title="Tasks selection mode"
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
+							:class="[
+								selectableTasks ? 'border-brand text-brand' : 'border-line',
+							]"
 						>
-							<DialogHeader>
-								<DialogTitle>Filters</DialogTitle>
-							</DialogHeader>
-
-							<CategoriesCombobox
-								:categories="categories"
-								v-model="selectedCategory"
-								class="!w-full"
-							/>
-							<DialogFooter>
-								<Button variant="outline" @click="resetFilters"> reset </Button>
-							</DialogFooter>
-						</DialogContent>
-					</Dialog>
-
-					<button
-						@click="selectableTasks = !selectableTasks"
-						type="button"
-						title="Tasks selection mode"
-						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
-						:class="[
-							selectableTasks ? 'border-brand text-brand' : 'border-line',
-						]"
-					>
-						<SquareDashedMousePointerIcon class="h-4 w-4" />
-					</button>
+							<SquareDashedMousePointerIcon class="h-4 w-4" />
+						</button>
 					</div>
 				</div>
 			</div>

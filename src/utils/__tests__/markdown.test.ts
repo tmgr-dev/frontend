@@ -51,7 +51,9 @@ describe('markdownToHtml with task keys', () => {
 	});
 
 	it('links a lower-case key by its real name', () => {
-		expect(markdownToHtml('see tm-129', opts)).toContain('data-task-key="TM-129"');
+		expect(markdownToHtml('see tm-129', opts)).toContain(
+			'data-task-key="TM-129"',
+		);
 	});
 
 	it('leaves prefixes this workspace does not use alone', () => {
@@ -61,7 +63,9 @@ describe('markdownToHtml with task keys', () => {
 
 	it('does not touch keys inside code', () => {
 		expect(markdownToHtml('`TM-129`', opts)).not.toContain('data-task-key');
-		expect(markdownToHtml('```\nTM-129\n```', opts)).not.toContain('data-task-key');
+		expect(markdownToHtml('```\nTM-129\n```', opts)).not.toContain(
+			'data-task-key',
+		);
 	});
 
 	it('does not relink a key that is already a link', () => {
@@ -72,7 +76,9 @@ describe('markdownToHtml with task keys', () => {
 
 	it('links nothing when the workspace has no key prefixes', () => {
 		expect(markdownToHtml('see TM-129')).not.toContain('data-task-key');
-		expect(markdownToHtml('see TM-129', { taskKeyPrefixes: [] })).not.toContain('data-task-key');
+		expect(markdownToHtml('see TM-129', { taskKeyPrefixes: [] })).not.toContain(
+			'data-task-key',
+		);
 	});
 });
 
@@ -84,7 +90,9 @@ describe('markdownToHtml link safety', () => {
 	});
 
 	it('escapes a quote in the title', () => {
-		const html = markdownToHtml('[x](https://e.com "a\\" onmouseover=\\"alert(1)")');
+		const html = markdownToHtml(
+			'[x](https://e.com "a\\" onmouseover=\\"alert(1)")',
+		);
 		expect(html).not.toContain('onmouseover="alert(1)"');
 	});
 
@@ -113,7 +121,9 @@ describe('markdownToHtml block rendering', () => {
 	});
 
 	it('still renders the blocks a comment uses', () => {
-		const html = markdownToHtml('## title\n\n> quote\n\n---\n\n```js\nconst a = 1;\n```');
+		const html = markdownToHtml(
+			'## title\n\n> quote\n\n---\n\n```js\nconst a = 1;\n```',
+		);
 		expect(html).toContain('<h2');
 		expect(html).toContain('<blockquote>');
 		expect(html).toContain('<hr>');

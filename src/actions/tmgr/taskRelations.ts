@@ -26,9 +26,12 @@ export const getTaskRelationTypes = async (): Promise<TaskRelationType[]> => {
 	return data.data;
 };
 
-export const searchTasks = async (query: string, limit: number = 10): Promise<RelatedTask[]> => {
+export const searchTasks = async (
+	query: string,
+	limit: number = 10,
+): Promise<RelatedTask[]> => {
 	const { data } = await $axios.get('tasks/search', {
-		params: { q: query, limit }
+		params: { q: query, limit },
 	});
 	return data;
 };
@@ -36,10 +39,10 @@ export const searchTasks = async (query: string, limit: number = 10): Promise<Re
 export const addTaskRelation = async (
 	taskId: number,
 	relatedTaskId: number,
-	relationTypeId: number
+	relationTypeId: number,
 ): Promise<any> => {
 	const { data } = await $axios.post(
-		`tasks/${taskId}/related-to/${relatedTaskId}/with/${relationTypeId}`
+		`tasks/${taskId}/related-to/${relatedTaskId}/with/${relationTypeId}`,
 	);
 	return data;
 };
@@ -47,11 +50,10 @@ export const addTaskRelation = async (
 export const removeTaskRelation = async (
 	taskId: number,
 	relatedTaskId: number,
-	relationTypeId: number
+	relationTypeId: number,
 ): Promise<any> => {
 	const { data } = await $axios.delete(
-		`tasks/${taskId}/related-to/${relatedTaskId}/with/${relationTypeId}`
+		`tasks/${taskId}/related-to/${relatedTaskId}/with/${relationTypeId}`,
 	);
 	return data;
 };
-

@@ -10,12 +10,12 @@ describe('sortUnscheduledNewestFirst', () => {
 			e(2, '2026-07-11T10:00:00Z'),
 			e(3, '2026-03-05T10:00:00Z'),
 		]);
-		expect(sorted.map(x => x.task_id)).toEqual([2, 3, 1]);
+		expect(sorted.map((x) => x.task_id)).toEqual([2, 3, 1]);
 	});
 
 	it('falls back to task_id descending when created_at is missing', () => {
 		const sorted = sortUnscheduledNewestFirst([e(5), e(90), e(12)]);
-		expect(sorted.map(x => x.task_id)).toEqual([90, 12, 5]);
+		expect(sorted.map((x) => x.task_id)).toEqual([90, 12, 5]);
 	});
 
 	it('does not scramble the list when a single entry lacks created_at', () => {
@@ -24,7 +24,7 @@ describe('sortUnscheduledNewestFirst', () => {
 			e(99, null), // freshly created, no created_at yet -> highest id wins via fallback
 			e(2, '2026-07-01T10:00:00Z'),
 		]);
-		expect(sorted.map(x => x.task_id)).toEqual([99, 2, 1]);
+		expect(sorted.map((x) => x.task_id)).toEqual([99, 2, 1]);
 	});
 
 	it('survives undefined task_id without NaN comparisons', () => {
@@ -34,7 +34,7 @@ describe('sortUnscheduledNewestFirst', () => {
 			e(undefined),
 			e(7),
 		]);
-		expect(sorted.map(x => x.task_id)).toEqual([7, 3, undefined, undefined]);
+		expect(sorted.map((x) => x.task_id)).toEqual([7, 3, undefined, undefined]);
 	});
 
 	it('does not mutate the input array', () => {

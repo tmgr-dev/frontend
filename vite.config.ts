@@ -1,17 +1,22 @@
-import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import { VitePWA } from 'vite-plugin-pwa';
+import autoprefixer from 'autoprefixer';
 import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
-import autoprefixer from 'autoprefixer';
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (value: string) =>
+	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** One codeSplitting group: every module under node_modules/<pkg>/ for the listed packages. */
 const vendorGroup = (name: string, packages: string[], priority: number) => ({
 	name,
 	priority,
-	test: new RegExp(`[\\\\/]node_modules[\\\\/](${packages.map(escapeRegExp).join('|')})[\\\\/]`),
+	test: new RegExp(
+		`[\\\\/]node_modules[\\\\/](${packages
+			.map(escapeRegExp)
+			.join('|')})[\\\\/]`,
+	),
 });
 
 export default defineConfig({
@@ -22,7 +27,11 @@ export default defineConfig({
 			devOptions: {
 				enabled: true,
 			},
-			includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'safari-pinned-tab.svg'],
+			includeAssets: [
+				'favicon.ico',
+				'apple-touch-icon.png',
+				'safari-pinned-tab.svg',
+			],
 			manifest: {
 				name: 'TMGR - Task Manager',
 				short_name: 'TMGR',
@@ -56,7 +65,9 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-				globIgnores: ['**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2'],
+				globIgnores: [
+					'**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
+				],
 				importScripts: ['https://js.pusher.com/beams/service-worker.js'],
 				runtimeCaching: [
 					{
@@ -183,12 +194,6 @@ export default defineConfig({
 		assetsInlineLimit: 4096,
 	},
 	optimizeDeps: {
-		include: [
-			'vue',
-			'vue-router',
-			'vuex',
-			'axios',
-			'@vueuse/core',
-		],
+		include: ['vue', 'vue-router', 'vuex', 'axios', '@vueuse/core'],
 	},
 });

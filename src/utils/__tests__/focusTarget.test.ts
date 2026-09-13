@@ -2,7 +2,10 @@ import { focusField, resolveFocusTarget } from '../focusTarget';
 
 const field = (tagName: string) => ({ tagName, focus: jest.fn() });
 const wrapper = (root: unknown) => ({ $el: root });
-const container = (found: unknown) => ({ tagName: 'DIV', querySelector: jest.fn(() => found) });
+const container = (found: unknown) => ({
+	tagName: 'DIV',
+	querySelector: jest.fn(() => found),
+});
 
 describe('resolveFocusTarget', () => {
 	it('takes a plain input element as it is', () => {

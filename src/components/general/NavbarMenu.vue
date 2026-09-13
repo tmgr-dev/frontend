@@ -35,12 +35,12 @@
 </template>
 
 <script lang="ts" setup>
-	import { useStore } from 'vuex';
-	import { onBeforeMount, ref, Ref, computed } from 'vue';
-	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
+	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
 	import { generateWorkspaceUrl } from '@/utils/url';
+	import { computed, onBeforeMount, ref, Ref } from 'vue';
+	import { useStore } from 'vuex';
 
 	const emit = defineEmits(['navigated']);
 	const workspaces = ref([] as Workspace[]);
@@ -78,7 +78,9 @@
 			};
 		});
 
-		const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+		const updatedUser = await updateUserSettingsV2(
+			settingsWithUpdatedWorkspace,
+		);
 		store.commit('setUser', updatedUser);
 		store.commit('updateUserWorkspaceSetting', { workspaceId });
 
@@ -88,18 +90,34 @@
 	const showCreatingTaskModal = () => {
 		store.commit('setShowCreatingTaskModal');
 	};
-	
+
 	const currentWorkspace = computed(() => {
 		return workspaces.value.find(
-			(workspace) => workspace.id == workspaceId.value
+			(workspace) => workspace.id == workspaceId.value,
 		);
 	});
-	
+
 	const links = computed(() => [
-		{ id: 1, name: 'Dashboard', path: generateWorkspaceUrl('dashboard', currentWorkspace.value) },
-		{ id: 2, name: 'List', path: generateWorkspaceUrl('list', currentWorkspace.value) },
-		{ id: 3, name: 'Board', path: generateWorkspaceUrl('board', currentWorkspace.value) },
-		{ id: 4, name: 'Categories', path: generateWorkspaceUrl('categories', currentWorkspace.value) },
+		{
+			id: 1,
+			name: 'Dashboard',
+			path: generateWorkspaceUrl('dashboard', currentWorkspace.value),
+		},
+		{
+			id: 2,
+			name: 'List',
+			path: generateWorkspaceUrl('list', currentWorkspace.value),
+		},
+		{
+			id: 3,
+			name: 'Board',
+			path: generateWorkspaceUrl('board', currentWorkspace.value),
+		},
+		{
+			id: 4,
+			name: 'Categories',
+			path: generateWorkspaceUrl('categories', currentWorkspace.value),
+		},
 		{ id: 5, name: 'Daily Routines', path: '/routines' },
 	]);
 

@@ -8,8 +8,10 @@
 		>
 			<!-- duration -->
 			<span
-				class="w-11 shrink-0 text-center text-2xs font-bold leading-6 tabular-nums text-ink-muted"
-				:title="`${secondsToStringTime(checkpoint.start)} – ${secondsToStringTime(checkpoint.end)}`"
+				class="w-11 shrink-0 text-center text-2xs font-bold tabular-nums leading-6 text-ink-muted"
+				:title="`${secondsToStringTime(
+					checkpoint.start,
+				)} – ${secondsToStringTime(checkpoint.end)}`"
 				>{{ formatDuration(checkpoint.end - checkpoint.start) }}</span
 			>
 
@@ -26,7 +28,7 @@
 			<template v-if="!checkpoint.isEditingTime">
 				<button
 					type="button"
-					class="shrink-0 font-mono text-2xs leading-6 tabular-nums text-ink-subtle transition-colors hover:text-brand"
+					class="shrink-0 font-mono text-2xs tabular-nums leading-6 text-ink-subtle transition-colors hover:text-brand"
 					@click="startEditingTime(v as number)"
 					title="Click to edit time"
 				>
@@ -105,9 +107,9 @@
 
 	const root = ref<HTMLElement | null>(null);
 
-	const timeEditBuffer = reactive<Record<number, { start: string; end: string }>>(
-		{},
-	);
+	const timeEditBuffer = reactive<
+		Record<number, { start: string; end: string }>
+	>({});
 
 	onMounted(() => {
 		props.checkpoints?.forEach((checkpoint) => {
@@ -231,7 +233,13 @@
 		props.checkpoints[index].start = startSeconds;
 		props.checkpoints[index].end = endSeconds;
 
-		recalculateCheckpointTimes(index, oldStart, oldEnd, startSeconds, endSeconds);
+		recalculateCheckpointTimes(
+			index,
+			oldStart,
+			oldEnd,
+			startSeconds,
+			endSeconds,
+		);
 
 		props.checkpoints[index].isEditingTime = false;
 		delete timeEditBuffer[index];

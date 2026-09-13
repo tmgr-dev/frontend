@@ -38,7 +38,9 @@
 				@click="$emit('updateStatus', task, 'hidden', `hide-${task.id}`)"
 			>
 				<span class="relative">
-					<span v-if="!isLoadingActions[`hide-${task.id}`]" class="material-icons"
+					<span
+						v-if="!isLoadingActions[`hide-${task.id}`]"
+						class="material-icons"
 						>visibility_off</span
 					>
 					<loader v-if="isLoadingActions[`hide-${task.id}`]" is-mini />
@@ -46,7 +48,11 @@
 			</button>
 		</AppTooltip>
 
-		<AppTooltip v-if="showedButtons.deleteTask" content="Delete task" side="top">
+		<AppTooltip
+			v-if="showedButtons.deleteTask"
+			content="Delete task"
+			side="top"
+		>
 			<button
 				class="mr-2 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600"
 				@click="removeTask(task, `delete-${task.id}`)"
@@ -86,8 +92,8 @@
 </template>
 
 <script>
-	import Confirm from '@/components/general/Confirm.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 
 	export default {

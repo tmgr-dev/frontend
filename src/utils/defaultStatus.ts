@@ -30,9 +30,7 @@ export function pickDefaultStatusId(
 		}
 	}
 
-	const usable = statuses.find(
-		(s) => !NEVER_DEFAULT.includes(String(s.type)),
-	);
+	const usable = statuses.find((s) => !NEVER_DEFAULT.includes(String(s.type)));
 	if (usable) {
 		return usable.id;
 	}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import {
 		Dialog,
 		DialogContent,
@@ -6,13 +7,11 @@
 		DialogTitle,
 		DialogTrigger,
 	} from '@/components/ui/dialog';
-	import { InformationCircleIcon, PencilIcon } from '@heroicons/vue/24/outline';
-	import { Button } from '@/components/ui/button';
-	import { ExtendedTime, Time } from '@/types';
-	import { ref } from 'vue';
-	import { updateTaskTimeCounter } from '@/actions/tmgr/tasks';
-	import VueTheMask from '@/plugins/VueTheMask/component.vue';
 	import { dialogState } from '@/composable/dialog';
+	import VueTheMask from '@/plugins/VueTheMask/component.vue';
+	import { ExtendedTime, Time } from '@/types';
+	import { InformationCircleIcon, PencilIcon } from '@heroicons/vue/24/outline';
+	import { ref } from 'vue';
 
 	interface Props {
 		// @todo why we can't just pass Date objects? We can actually and it will allow us to show dates too. Refactor it
@@ -111,7 +110,9 @@
 					class="flex items-center justify-between"
 				>
 					<span class="text-ink-subtle">Time left:</span>
-					<span class="font-mono text-lg tabular-nums">{{ approximatelyEndTime.timeLeft }}</span>
+					<span class="font-mono text-lg tabular-nums">{{
+						approximatelyEndTime.timeLeft
+					}}</span>
 				</div>
 
 				<!--		Edit time		-->
@@ -128,7 +129,9 @@
 					<p v-if="isTimerActive" class="text-sm text-ink-muted">
 						You can edit time, but first you need to stop the timer
 					</p>
-					<p v-else class="text-sm text-ink-muted">Edit the time and press the save button</p>
+					<p v-else class="text-sm text-ink-muted">
+						Edit the time and press the save button
+					</p>
 
 					<div class="mt-2 flex justify-center gap-1 font-mono tabular-nums">
 						<VueTheMask

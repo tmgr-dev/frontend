@@ -752,7 +752,9 @@
 						<div class="flex items-center gap-2">
 							<button
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
-								:class="{ 'bg-surface-hover text-ink': store.state.aiPanelOpen }"
+								:class="{
+									'bg-surface-hover text-ink': store.state.aiPanelOpen,
+								}"
 								aria-label="Ask AI"
 								title="Ask AI"
 								@click="store.commit('toggleAiPanel')"

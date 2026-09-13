@@ -49,8 +49,12 @@
 						/>
 
 						<small class="mt-1 block text-xs text-ink-subtle">
-							Only uppercase letters (A-Z), numbers (0-9), and hyphens (-) are allowed.
-							Used in task references like <code class="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-ink">{{ form.code || 'CODE' }}-123</code>
+							Only uppercase letters (A-Z), numbers (0-9), and hyphens (-) are
+							allowed. Used in task references like
+							<code
+								class="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-ink"
+								>{{ form.code || 'CODE' }}-123</code
+							>
 						</small>
 					</div>
 
@@ -67,10 +71,13 @@
 						/>
 					</div>
 
-				<div v-if="!isCreate">
-					<SettingsLoader v-if="isLoading" class="mt-5" />
+					<div v-if="!isCreate">
+						<SettingsLoader v-if="isLoading" class="mt-5" />
 
-					<div v-for="(setting, index) in availableSettings" :key="setting.id">
+						<div
+							v-for="(setting, index) in availableSettings"
+							:key="setting.id"
+						>
 							<label
 								:for="`setting-${setting.id}`"
 								class="mb-2 block text-sm font-semibold text-ink"
@@ -102,7 +109,10 @@
 									/>
 								</div>
 
-								<small v-if="!setting.show_custom_value_input" class="text-ink-subtle">
+								<small
+									v-if="!setting.show_custom_value_input"
+									class="text-ink-subtle"
+								>
 									{{ setting.description }}
 								</small>
 
@@ -149,7 +159,7 @@
 
 						<button
 							v-if="isCreate"
-							class="h-10 rounded-pill border border-brand bg-brand-bg px-5 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand/10 focus:outline-none"
+							class="hover:bg-brand/10 h-10 rounded-pill border border-brand bg-brand-bg px-5 text-sm font-semibold text-brand-fg transition-colors focus:outline-none"
 							type="button"
 							@click.prevent="create(false)"
 						>
@@ -172,10 +182,6 @@
 </template>
 
 <script>
-	import extractParents from '@/utils/extractParents';
-	import Breadcrumbs from '@/components/general/Breadcrumbs.vue';
-	import getBreadcrumbs from '@/utils/getBreadcrumbs';
-	import SettingsLoader from '@/components/loaders/SettingsLoader.vue';
 	import {
 		createCategory,
 		getCategories,
@@ -186,14 +192,18 @@
 		getCategorySettings,
 		updateCategorySettings,
 	} from '@/actions/tmgr/settings';
-	import generateSlugFromRu from '@/utils/generateSlugFromRu';
+	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
+	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
+	import Breadcrumbs from '@/components/general/Breadcrumbs.vue';
 	import Select from '@/components/general/Select.vue';
 	import Switcher from '@/components/general/Switcher.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import TimeField from '@/components/general/TimeField.vue';
-	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
-	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
+	import SettingsLoader from '@/components/loaders/SettingsLoader.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import extractParents from '@/utils/extractParents';
+	import generateSlugFromRu from '@/utils/generateSlugFromRu';
+	import getBreadcrumbs from '@/utils/getBreadcrumbs';
 
 	export default {
 		name: 'ProjectCategoryForm',
@@ -305,7 +315,7 @@
 			},
 			sanitizeCode() {
 				if (!this.form.code) return;
-				
+
 				this.form.code = this.form.code
 					.toUpperCase()
 					.replace(/[^A-Z0-9\-]/g, '-')
@@ -370,7 +380,10 @@
 			},
 			onGitHubRelinked(stats) {
 				const total = stats.commits + stats.branches + stats.pull_requests;
-				this.showAlert('Success', `Relinked ${total} items: ${stats.commits} commits, ${stats.branches} branches, ${stats.pull_requests} PRs`);
+				this.showAlert(
+					'Success',
+					`Relinked ${total} items: ${stats.commits} commits, ${stats.branches} branches, ${stats.pull_requests} PRs`,
+				);
 			},
 			onCursorConfigured() {
 				this.showAlert('Success', 'Cursor API key configured successfully');

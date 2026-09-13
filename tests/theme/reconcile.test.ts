@@ -11,6 +11,8 @@ test('extracts theme + colorScheme from settings array', () => {
 });
 
 test('returns empty when absent', () => {
-	expect(pickThemeFromSettings([{ key: 'current_workspace', value: 3 }])).toEqual({});
+	expect(
+		pickThemeFromSettings([{ key: 'current_workspace', value: 3 }]),
+	).toEqual({});
 	expect(pickThemeFromSettings(undefined)).toEqual({});
 });

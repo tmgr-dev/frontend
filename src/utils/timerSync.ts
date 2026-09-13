@@ -15,7 +15,10 @@ const asNumber = (value: unknown): number | null =>
 	value === null || value === undefined || value === '' ? null : Number(value);
 
 /** True when the incoming task shows a different running-timer state than the form holds. */
-export function timerStateDiffers(current: TimerState, incoming: TimerState): boolean {
+export function timerStateDiffers(
+	current: TimerState,
+	incoming: TimerState,
+): boolean {
 	return (
 		asNumber(current.start_time) !== asNumber(incoming.start_time) ||
 		asNumber(current.common_time) !== asNumber(incoming.common_time)
@@ -30,7 +33,8 @@ export function applyTimerState(
 	form: TimerState & { id?: number | null },
 	incoming: (TimerState & { id?: number | null }) | null | undefined,
 ): boolean {
-	if (!incoming || !form.id || Number(incoming.id) !== Number(form.id)) return false;
+	if (!incoming || !form.id || Number(incoming.id) !== Number(form.id))
+		return false;
 	if (!timerStateDiffers(form, incoming)) return false;
 
 	form.start_time = asNumber(incoming.start_time);

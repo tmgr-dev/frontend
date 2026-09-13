@@ -1,83 +1,83 @@
 <template>
 	<div>
 		<AuthBase>
-		<template #title>New Password</template>
+			<template #title>New Password</template>
 
-		<template #body>
-			<div
-				class="text-center"
-				:class="[
-					errors && Object.keys(errors).length > 0
-						? 'text-red-600'
-						: 'font-bold text-neutral-600',
-				]"
-			>
-				{{ message }}
-			</div>
-
-			<form
-				class="form-horizontal mx-auto flex w-3/4 flex-col gap-2"
-				@submit.prevent="resetPassword"
-			>
-				<TextField
-					v-model="form.password"
-					:errors="errors.password"
-					name="password"
-					placeholder="Password"
-					input-class="dark:bg-white dark:border-neutral-300"
-					type="password"
-				/>
-
-				<TextField
-					v-model="form.password_confirmation"
-					:errors="errors?.password_confirmation"
-					name="password_confirmation"
-					placeholder="Password confirmation"
-					input-class="dark:bg-white dark:border-neutral-300"
-					type="password"
-				/>
-
-				<div class="mt-2 flex flex-col">
-					<button
-						class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-						type="submit"
-					>
-						<span class="relative">
-							Reset
-							<loader v-if="isLoading" class="auth-loader" is-mini />
-						</span>
-					</button>
+			<template #body>
+				<div
+					class="text-center"
+					:class="[
+						errors && Object.keys(errors).length > 0
+							? 'text-red-600'
+							: 'font-bold text-neutral-600',
+					]"
+				>
+					{{ message }}
 				</div>
-			</form>
-		</template>
 
-		<template #footer>
-			<router-link
-				class="text-blue-dark text-xs no-underline hover:underline"
-				to="/register"
-			>
-				You don't have account?
-			</router-link>
-			<br />
-			<router-link
-				class="text-blue-dark text-xs no-underline hover:underline"
-				to="/login"
-			>
-				Login
-			</router-link>
-		</template>
+				<form
+					class="form-horizontal mx-auto flex w-3/4 flex-col gap-2"
+					@submit.prevent="resetPassword"
+				>
+					<TextField
+						v-model="form.password"
+						:errors="errors.password"
+						name="password"
+						placeholder="Password"
+						input-class="dark:bg-white dark:border-neutral-300"
+						type="password"
+					/>
+
+					<TextField
+						v-model="form.password_confirmation"
+						:errors="errors?.password_confirmation"
+						name="password_confirmation"
+						placeholder="Password confirmation"
+						input-class="dark:bg-white dark:border-neutral-300"
+						type="password"
+					/>
+
+					<div class="mt-2 flex flex-col">
+						<button
+							class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+							type="submit"
+						>
+							<span class="relative">
+								Reset
+								<loader v-if="isLoading" class="auth-loader" is-mini />
+							</span>
+						</button>
+					</div>
+				</form>
+			</template>
+
+			<template #footer>
+				<router-link
+					class="text-blue-dark text-xs no-underline hover:underline"
+					to="/register"
+				>
+					You don't have account?
+				</router-link>
+				<br />
+				<router-link
+					class="text-blue-dark text-xs no-underline hover:underline"
+					to="/login"
+				>
+					Login
+				</router-link>
+			</template>
 		</AuthBase>
 	</div>
 </template>
 
 <script setup lang="ts">
-	import { useRouter } from 'vue-router';
-	import { ref, onBeforeMount } from 'vue';
 	import { setNewPassword } from '@/actions/tmgr/auth';
-	import { AxiosError } from 'axios';
-	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import TextField from '@/components/general/TextField.vue';
+	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { AxiosError } from 'axios';
+	import { onBeforeMount, ref } from 'vue';
+	import { useRouter } from 'vue-router';
 
 	const router = useRouter();
 

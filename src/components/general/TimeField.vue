@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			type="time"
-			class="w-full appearance-none rounded-md border border-line bg-surface-sunken text-ink px-3 py-2 outline-none transition-colors duration-300 focus:border-line-strong"
+			class="w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none transition-colors duration-300 focus:border-line-strong"
 			:class="[extraClass, errors ? 'with-errors' : '']"
 			:name="name"
 			:placeholder="placeholder"
@@ -81,14 +81,14 @@
 				this.screenWidth = window.innerWidth;
 			},
 		},
-	created() {
-		this.updateWidth();
-		window.addEventListener('resize', this.updateWidth);
-	},
-	beforeUnmount() {
-		window.removeEventListener('resize', this.updateWidth);
-	},
-};
+		created() {
+			this.updateWidth();
+			window.addEventListener('resize', this.updateWidth);
+		},
+		beforeUnmount() {
+			window.removeEventListener('resize', this.updateWidth);
+		},
+	};
 </script>
 
 <style scoped lang="scss">

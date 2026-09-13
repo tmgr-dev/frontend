@@ -1,5 +1,7 @@
 <template>
-	<div class="inline-flex items-center gap-0.5 rounded-card border border-line bg-surface-sunken p-0.5">
+	<div
+		class="inline-flex items-center gap-0.5 rounded-card border border-line bg-surface-sunken p-0.5"
+	>
 		<button
 			v-for="v in views"
 			:key="v.id"
@@ -20,8 +22,8 @@
 </template>
 
 <script setup lang="ts">
-	import DRIcon from './DRIcon.vue';
 	import type { ViewId } from '@/types/dailyRoutine';
+	import DRIcon from './DRIcon.vue';
 
 	interface View {
 		id: ViewId;

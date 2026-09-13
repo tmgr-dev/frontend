@@ -1,4 +1,4 @@
-import { ref, onMounted, onBeforeUnmount, type Ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
 
 export interface RoutineViewport {
 	width: Ref<number>;
@@ -8,7 +8,9 @@ export interface RoutineViewport {
 }
 
 export function useDailyRoutineViewport(): RoutineViewport {
-	const width = ref<number>(typeof window !== 'undefined' ? window.innerWidth : 1280);
+	const width = ref<number>(
+		typeof window !== 'undefined' ? window.innerWidth : 1280,
+	);
 	const isMobile = ref<boolean>(false);
 	const isTablet = ref<boolean>(false);
 	let observer: ResizeObserver | null = null;
@@ -24,7 +26,7 @@ export function useDailyRoutineViewport(): RoutineViewport {
 		target = el;
 		if (!el) return;
 		if (typeof ResizeObserver !== 'undefined') {
-			observer = new ResizeObserver(entries => {
+			observer = new ResizeObserver((entries) => {
 				for (const entry of entries) {
 					const cw = entry.contentRect.width;
 					if (cw > 0) compute(cw);

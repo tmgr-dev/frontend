@@ -6,25 +6,25 @@
  * @returns The URL for the task
  */
 export function generateTaskUrl(
-    taskId: number | string,
-    workspace?: { code: string } | null | undefined,
-    category?: { code: string } | null | undefined
+	taskId: number | string,
+	workspace?: { code: string } | null | undefined,
+	category?: { code: string } | null | undefined,
 ): string {
-    // Validate taskId to prevent navigation to undefined URLs
-    if (taskId === undefined || taskId === null) {
-        console.error('Invalid taskId in generateTaskUrl:', taskId);
-        return '/';
-    }
+	// Validate taskId to prevent navigation to undefined URLs
+	if (taskId === undefined || taskId === null) {
+		console.error('Invalid taskId in generateTaskUrl:', taskId);
+		return '/';
+	}
 
-    if (!workspace?.code) {
-        return `/${taskId}`;
-    }
+	if (!workspace?.code) {
+		return `/${taskId}`;
+	}
 
-    if (category?.code) {
-        return `/${workspace.code}/${category.code}/${taskId}`;
-    }
+	if (category?.code) {
+		return `/${workspace.code}/${category.code}/${taskId}`;
+	}
 
-    return `/${workspace.code}/tasks/${taskId}`;
+	return `/${workspace.code}/tasks/${taskId}`;
 }
 
 /**
@@ -34,20 +34,20 @@ export function generateTaskUrl(
  * @returns The URL for the workspace-specific page
  */
 export function generateWorkspaceUrl(
-    path: string,
-    workspace?: { code: string } | null | undefined
+	path: string,
+	workspace?: { code: string } | null | undefined,
 ): string {
-    // Validate path to prevent navigation to undefined URLs
-    if (!path) {
-        console.error('Invalid path in generateWorkspaceUrl:', path);
-        return '/';
-    }
+	// Validate path to prevent navigation to undefined URLs
+	if (!path) {
+		console.error('Invalid path in generateWorkspaceUrl:', path);
+		return '/';
+	}
 
-    if (!workspace?.code) {
-        return `/${path}`;
-    }
+	if (!workspace?.code) {
+		return `/${path}`;
+	}
 
-    return `/${workspace.code}/${path}`;
+	return `/${workspace.code}/${path}`;
 }
 
 /**
@@ -57,19 +57,19 @@ export function generateWorkspaceUrl(
  * @returns The URL for the category
  */
 export function generateCategoryUrl(
-    categoryId: number | string,
-    workspace?: { code: string } | null | undefined,
-    action: string = 'children'
+	categoryId: number | string,
+	workspace?: { code: string } | null | undefined,
+	action: string = 'children',
 ): string {
-    // Validate categoryId to prevent navigation to undefined URLs
-    if (categoryId === undefined || categoryId === null) {
-        console.error('Invalid categoryId in generateCategoryUrl:', categoryId);
-        return '/projects-categories';
-    }
+	// Validate categoryId to prevent navigation to undefined URLs
+	if (categoryId === undefined || categoryId === null) {
+		console.error('Invalid categoryId in generateCategoryUrl:', categoryId);
+		return '/projects-categories';
+	}
 
-    if (!workspace?.code) {
-        return `/projects-categories/${categoryId}/${action}`;
-    }
+	if (!workspace?.code) {
+		return `/projects-categories/${categoryId}/${action}`;
+	}
 
-    return `/${workspace.code}/categories/${categoryId}/${action}`;
-} 
+	return `/${workspace.code}/categories/${categoryId}/${action}`;
+}

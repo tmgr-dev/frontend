@@ -1,5 +1,5 @@
-import { onBeforeUnmount, ref } from 'vue';
 import type { RoutineEntry } from '@/types/dailyRoutine';
+import { onBeforeUnmount, ref } from 'vue';
 
 const LONG_PRESS_MS = 250;
 const TOUCH_HOLD_MS = 350;
@@ -26,7 +26,8 @@ const hoverKey = ref<string | null>(null);
 
 let state: DragState | null = null;
 let pressTimer: number | null = null;
-let dropHandler: ((entry: RoutineEntry, payload: DropPayload) => void) | null = null;
+let dropHandler: ((entry: RoutineEntry, payload: DropPayload) => void) | null =
+	null;
 let editHandler: ((entry: RoutineEntry) => void) | null = null;
 let canceled = false;
 
@@ -69,10 +70,15 @@ function moveGhost(x: number, y: number) {
 	state.ghostEl.style.top = `${y - 16}px`;
 }
 
-function pickDropTarget(x: number, y: number): { el: HTMLElement; payload: DropPayload } | null {
+function pickDropTarget(
+	x: number,
+	y: number,
+): { el: HTMLElement; payload: DropPayload } | null {
 	const els = document.elementsFromPoint(x, y);
 	for (const el of els) {
-		const target = (el as HTMLElement).closest('[data-dr-drop]') as HTMLElement | null;
+		const target = (el as HTMLElement).closest(
+			'[data-dr-drop]',
+		) as HTMLElement | null;
 		if (!target) continue;
 		const date = target.dataset.drDate;
 		if (!date) continue;
@@ -159,7 +165,9 @@ function cleanup() {
 }
 
 export function useRoutineDrag() {
-	function setDropHandler(fn: (entry: RoutineEntry, payload: DropPayload) => void) {
+	function setDropHandler(
+		fn: (entry: RoutineEntry, payload: DropPayload) => void,
+	) {
 		dropHandler = fn;
 	}
 
@@ -167,11 +175,18 @@ export function useRoutineDrag() {
 		editHandler = fn;
 	}
 
-	function onPointerDown(e: PointerEvent, entry: RoutineEntry, srcEl?: HTMLElement) {
+	function onPointerDown(
+		e: PointerEvent,
+		entry: RoutineEntry,
+		srcEl?: HTMLElement,
+	) {
 		if (e.button != null && e.button !== 0) return;
 		if (active.value) return;
 		const target = e.target as HTMLElement | null;
-		if (target && target.closest('button, a, input, textarea, select, [data-no-drag]')) {
+		if (
+			target &&
+			target.closest('button, a, input, textarea, select, [data-no-drag]')
+		) {
 			return;
 		}
 		const el = (srcEl ?? (e.currentTarget as HTMLElement)) || null;
@@ -207,7 +222,9 @@ export function useRoutineDrag() {
 			document.body.style.userSelect = 'none';
 			state.ghostEl = buildGhost(el);
 			if (navigator.vibrate) {
-				try { navigator.vibrate(15); } catch {}
+				try {
+					navigator.vibrate(15);
+				} catch {}
 			}
 			moveGhost(state.x, state.y);
 		}, delay);

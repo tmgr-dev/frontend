@@ -38,7 +38,13 @@ module.exports = {
 				sans: ['Inter', 'Quicksand', 'sans-serif'],
 				display: ['Inter', 'Quicksand', 'sans-serif'],
 				serif: ['Instrument Serif', 'Georgia', 'serif'],
-				mono: ['JetBrains Mono', 'ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
+				mono: [
+					'JetBrains Mono',
+					'ui-monospace',
+					'SF Mono',
+					'Menlo',
+					'monospace',
+				],
 			},
 			colors: {
 				'tmgr-blue': '#2c3e50',

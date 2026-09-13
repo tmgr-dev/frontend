@@ -77,22 +77,27 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onBeforeUnmount, ref, watch } from 'vue';
-	import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-vue-next';
+	import {
+		fetchFileObjectUrl,
+		fileDisplayUrl,
+		releaseFileDisplayUrl,
+	} from '@/actions/tmgr/files';
 	import {
 		Dialog,
 		DialogContent,
 		DialogDescription,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import {
-		fetchFileObjectUrl,
-		fileDisplayUrl,
-		releaseFileDisplayUrl,
-	} from '@/actions/tmgr/files';
 	import { formatFileSize } from '@/utils/attachments';
-	import { type GalleryImage, stepIndex } from '@/utils/galleryNavigation';
 	import { galleryLayers } from '@/utils/galleryLayers';
+	import { type GalleryImage, stepIndex } from '@/utils/galleryNavigation';
+	import {
+		ChevronLeft,
+		ChevronRight,
+		Download,
+		Loader2,
+	} from 'lucide-vue-next';
+	import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 	const props = withDefaults(
 		defineProps<{
@@ -115,11 +120,18 @@
 	const fullLoaded = ref<Record<number, boolean>>({});
 
 	const open = computed(() => props.startId !== null);
-	const current = computed<GalleryImage | undefined>(() => props.images[index.value]);
+	const current = computed<GalleryImage | undefined>(
+		() => props.images[index.value],
+	);
 	// The list's URLs are thumbnails, too small to stretch across the screen on their own - but
 	// good enough to draw at once underneath while the full image loads (TM-237).
 	const layers = computed(() =>
-		galleryLayers(current.value?.id, props.urls, ownUrls.value, fullLoaded.value),
+		galleryLayers(
+			current.value?.id,
+			props.urls,
+			ownUrls.value,
+			fullLoaded.value,
+		),
 	);
 	const currentUrl = computed(() => layers.value.full ?? layers.value.thumb);
 

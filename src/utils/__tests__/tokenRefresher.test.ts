@@ -34,7 +34,9 @@ describe('createTokenRefresher', () => {
 	});
 
 	it('posts the refresh token from storage, not the one this tab remembers', async () => {
-		const post = jest.fn().mockResolvedValue({ token: 'new-access', refresh_token: 'new-refresh' });
+		const post = jest
+			.fn()
+			.mockResolvedValue({ token: 'new-access', refresh_token: 'new-refresh' });
 		const refresh = createTokenRefresher({
 			readStored: stored('a', 'stored-refresh'),
 			currentAccessToken: () => 'a',

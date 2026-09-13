@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted, watch, Ref } from 'vue';
+import { computed, onUnmounted, ref, Ref, watch } from 'vue';
 
 export interface TimerState {
 	hours: string;
@@ -53,7 +53,7 @@ export function useTimer(options: UseTimerOptions = {}) {
 
 	const start = () => {
 		if (isRunning.value || intervalId) return;
-		
+
 		isRunning.value = true;
 		intervalId = setInterval(tick, 1000);
 	};
@@ -75,7 +75,10 @@ export function useTimer(options: UseTimerOptions = {}) {
 		totalSeconds.value = seconds;
 	};
 
-	const syncWithStartTime = (startTime: number | null, commonTime: number = 0) => {
+	const syncWithStartTime = (
+		startTime: number | null,
+		commonTime: number = 0,
+	) => {
 		if (startTime) {
 			const elapsed = Math.floor((Date.now() - startTime * 1000) / 1000);
 			totalSeconds.value = commonTime + elapsed;
@@ -110,7 +113,7 @@ export function useTimer(options: UseTimerOptions = {}) {
 
 export function useTaskTimer(
 	startTimeRef: Ref<number | null>,
-	commonTimeRef: Ref<number>
+	commonTimeRef: Ref<number>,
 ) {
 	const timer = useTimer();
 
@@ -119,7 +122,7 @@ export function useTaskTimer(
 		([startTime, commonTime]) => {
 			timer.syncWithStartTime(startTime, commonTime);
 		},
-		{ immediate: true }
+		{ immediate: true },
 	);
 
 	return timer;

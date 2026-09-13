@@ -9,10 +9,10 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
-import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { onMounted } from 'vue';
 
-onMounted(() => {
-	setDocumentTitle('Page Not Found');
-});
+	onMounted(() => {
+		setDocumentTitle('Page Not Found');
+	});
 </script>

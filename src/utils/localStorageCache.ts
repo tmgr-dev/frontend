@@ -9,12 +9,12 @@ export function getWithExpiry<T>(key: string): T | null {
 		if (!item) return null;
 
 		const cacheItem: CacheItem<T> = JSON.parse(item);
-		
+
 		if (Date.now() > cacheItem.expiry) {
 			localStorage.removeItem(key);
 			return null;
 		}
-		
+
 		return cacheItem.data;
 	} catch (error) {
 		console.error(`Failed to get cached item "${key}":`, error);
@@ -54,8 +54,7 @@ export function clearExpiredCache(): void {
 					if (parsed.expiry && Date.now() > parsed.expiry) {
 						localStorage.removeItem(key);
 					}
-				} catch {
-				}
+				} catch {}
 			}
 		}
 	} catch (error) {

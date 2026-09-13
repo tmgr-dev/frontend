@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-ink placeholder:text-ink-subtle outline-none transition-colors duration-300 focus:border-line-strong"
+			class="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-ink outline-none transition-colors duration-300 placeholder:text-ink-subtle focus:border-line-strong"
 			:class="[
 				inputClass,
 				hasError && '!border-red-500 placeholder:text-red-400',

@@ -23,7 +23,8 @@ export function resolveFocusTarget(ref: unknown): Focusable | null {
 		return candidate as Focusable;
 	}
 
-	const query = (candidate as { querySelector?: (selector: string) => unknown }).querySelector;
+	const query = (candidate as { querySelector?: (selector: string) => unknown })
+		.querySelector;
 	if (typeof query !== 'function') return null;
 
 	const found = query.call(candidate, 'textarea, input');

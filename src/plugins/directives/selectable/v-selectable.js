@@ -45,8 +45,10 @@ export default {
 			updated(el, binding, vnode, oldVnode) {
 				if (!el) return;
 
-				const hasHandlers = binding.value && Object.keys(binding.value).length > 0;
-				const hadHandlers = binding.oldValue && Object.keys(binding.oldValue).length > 0;
+				const hasHandlers =
+					binding.value && Object.keys(binding.value).length > 0;
+				const hadHandlers =
+					binding.oldValue && Object.keys(binding.oldValue).length > 0;
 
 				if (hasHandlers && !el.selectable) {
 					initSelectable(el, el.dataset, binding.value);

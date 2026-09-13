@@ -1,9 +1,9 @@
+import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
+import { getUser } from '@/actions/tmgr/user';
+import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
-import { getUser } from '@/actions/tmgr/user';
-import { getWorkspaces } from '@/actions/tmgr/workspaces';
-import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 
 /*
  * If not building with SSR mode, you can
@@ -67,7 +67,7 @@ router.beforeEach(async (to, from, next) => {
 
 			// Ensure workspace toggles are loaded
 			const currentWorkspaceId = store.state.user?.settings?.find(
-				s => s.key === 'current_workspace'
+				(s) => s.key === 'current_workspace',
 			)?.value;
 
 			if (currentWorkspaceId && !store.state.featureToggles?.workspaceLoaded) {
@@ -79,8 +79,13 @@ router.beforeEach(async (to, from, next) => {
 				}
 			}
 
-			const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
-			const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+			const landingPage =
+				store.getters['featureToggles/getUserFeatureValue'](
+					'default_landing_page',
+				) || 'list';
+			const workspace = store.state.workspaces?.find(
+				(w) => w.id == currentWorkspaceId,
+			);
 			const workspaceCode = workspace?.code;
 
 			// Validate landing page against allowed features
@@ -92,7 +97,9 @@ router.beforeEach(async (to, from, next) => {
 			if (store.state.featureToggles?.workspaceToggles?.dashboard?.enabled) {
 				allowedLanding.push('dashboard');
 			}
-			if (store.state.featureToggles?.workspaceToggles?.daily_routines?.enabled) {
+			if (
+				store.state.featureToggles?.workspaceToggles?.daily_routines?.enabled
+			) {
 				allowedLanding.push('daily_routines');
 			}
 			if (!allowedLanding.includes(finalLanding)) {

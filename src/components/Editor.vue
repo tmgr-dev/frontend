@@ -1,9 +1,9 @@
 <script setup lang="ts">
-	import { onMounted, ref } from 'vue';
-	import { MdEditor, ExposeParam } from 'md-editor-v3';
 	import '@/assets/styles/md-editor.css';
-	import store from '../store';
 	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
+	import { ExposeParam, MdEditor } from 'md-editor-v3';
+	import { onMounted, ref } from 'vue';
+	import store from '../store';
 
 	interface Props {
 		modelValue: string;
@@ -83,7 +83,8 @@
 
 	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-content,
 	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-input,
-	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-preview-wrapper,
+	.md-editor:not(.md-editor-dark, .md-editor-fullscreen)
+		.md-editor-preview-wrapper,
 	.md-editor:not(.md-editor-dark, .md-editor-fullscreen) .md-editor-preview {
 		background-color: var(--bg-sunken) !important;
 	}

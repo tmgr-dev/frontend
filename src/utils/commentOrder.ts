@@ -14,5 +14,6 @@ const at = (comment: CommentLike): number => {
  * arrival order (Array.sort is stable), which matters when several comments land
  * in the same second over the socket.
  */
-export const sortCommentsOldestFirst = <T extends CommentLike>(comments: T[]): T[] =>
-	[...(comments || [])].sort((a, b) => at(a) - at(b));
+export const sortCommentsOldestFirst = <T extends CommentLike>(
+	comments: T[],
+): T[] => [...(comments || [])].sort((a, b) => at(a) - at(b));

@@ -11,21 +11,36 @@
 
 		<BaseLayout>
 			<template #body>
-				<div ref="rootRef" class="relative flex h-full flex-col overflow-hidden pb-10">
+				<div
+					ref="rootRef"
+					class="relative flex h-full flex-col overflow-hidden pb-10"
+				>
 					<!-- Top toolbar -->
-					<div class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4">
+					<div
+						class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4"
+					>
 						<!-- Row 1: Quick-add (full width on mobile; chips + import/export inline on desktop) -->
 						<div class="flex flex-wrap items-center gap-2.5">
 							<div class="flex min-w-0 flex-1 flex-col gap-1">
 								<div
 									class="flex items-center gap-2 rounded-card border bg-surface px-3 py-1.5 shadow-tmgr-xs transition-colors"
-									:class="quickFocused ? 'border-brand ring-2 ring-brand/30' : 'border-line'"
+									:class="
+										quickFocused
+											? 'ring-brand/30 border-brand ring-2'
+											: 'border-line'
+									"
 								>
-									<Inbox :size="16" stroke-width="2" class="shrink-0 text-ink-subtle" />
+									<Inbox
+										:size="16"
+										stroke-width="2"
+										class="shrink-0 text-ink-subtle"
+									/>
 									<input
 										ref="quickInputRef"
 										v-model="quickTitle"
-										:placeholder="isMobile ? 'Quick add…' : 'Quick add → Unscheduled'"
+										:placeholder="
+											isMobile ? 'Quick add…' : 'Quick add → Unscheduled'
+										"
 										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 										@focus="quickFocused = true"
 										@blur="quickFocused = false"
@@ -35,7 +50,8 @@
 									<kbd
 										v-if="!isMobile && !quickTitle"
 										class="hidden shrink-0 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-subtle md:inline-flex"
-									>/</kbd>
+										>/</kbd
+									>
 									<button
 										type="button"
 										class="flex h-8 shrink-0 items-center gap-1 rounded-pill bg-brand px-3 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
@@ -43,7 +59,10 @@
 										@click="onQuickAdd"
 									>
 										<span>Add</span>
-										<kbd class="rounded border border-white/30 px-1 font-mono text-[10px] leading-none">↵</kbd>
+										<kbd
+											class="rounded border border-white/30 px-1 font-mono text-[10px] leading-none"
+											>↵</kbd
+										>
 									</button>
 								</div>
 								<div
@@ -52,7 +71,9 @@
 									:class="quickFocused ? 'opacity-100' : 'opacity-0'"
 									aria-hidden="true"
 								>
-									Adds to <span class="font-semibold text-ink">Unscheduled</span> — schedule later from list
+									Adds to
+									<span class="font-semibold text-ink">Unscheduled</span> —
+									schedule later from list
 								</div>
 							</div>
 							<input
@@ -69,17 +90,40 @@
 							v-if="isMobile"
 							class="flex shrink-0 gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none]"
 						>
-							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
-								<span class="text-sm font-bold tabular-nums text-ink">{{ counts.routines }}</span>
-								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Routines</span>
+							<div
+								class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1"
+							>
+								<span class="text-sm font-bold tabular-nums text-ink">{{
+									counts.routines
+								}}</span>
+								<span
+									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									>Routines</span
+								>
 							</div>
-							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
-								<span class="text-sm font-bold tabular-nums" style="color: #22c55e">{{ counts.completed }}</span>
-								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Done</span>
+							<div
+								class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1"
+							>
+								<span
+									class="text-sm font-bold tabular-nums"
+									style="color: #22c55e"
+									>{{ counts.completed }}</span
+								>
+								<span
+									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									>Done</span
+								>
 							</div>
-							<div class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1">
-								<span class="text-sm font-bold tabular-nums text-ink">{{ counts.archived }}</span>
-								<span class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">Archived</span>
+							<div
+								class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1"
+							>
+								<span class="text-sm font-bold tabular-nums text-ink">{{
+									counts.archived
+								}}</span>
+								<span
+									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									>Archived</span
+								>
 							</div>
 						</div>
 
@@ -90,7 +134,11 @@
 								<div class="flex-1" />
 								<div class="flex shrink-0 gap-1.5">
 									<CountChip :n="counts.routines" label="ROUTINES" />
-									<CountChip :n="counts.completed" label="DONE" :color="'#22c55e'" />
+									<CountChip
+										:n="counts.completed"
+										label="DONE"
+										:color="'#22c55e'"
+									/>
 									<CountChip :n="counts.archived" label="ARCHIVED" />
 								</div>
 								<button
@@ -154,28 +202,49 @@
 										<DRIcon name="chev-r" :size="13" stroke="currentColor" />
 									</button>
 								</div>
-								<span class="ml-1 whitespace-nowrap text-sm font-semibold text-ink">{{ dateLabel }}</span>
+								<span
+									class="ml-1 whitespace-nowrap text-sm font-semibold text-ink"
+									>{{ dateLabel }}</span
+								>
 							</template>
 						</div>
 					</div>
 
 					<!-- Body -->
 					<div class="flex flex-1 flex-col gap-3 overflow-hidden p-2 md:p-5">
-						<div v-if="isLoading && !entries.length" class="flex flex-1 flex-col gap-2">
-							<SkeletonListItem v-for="n in 5" :key="n" class="rounded-card border border-line bg-surface" :show-avatar="false" />
+						<div
+							v-if="isLoading && !entries.length"
+							class="flex flex-1 flex-col gap-2"
+						>
+							<SkeletonListItem
+								v-for="n in 5"
+								:key="n"
+								class="rounded-card border border-line bg-surface"
+								:show-avatar="false"
+							/>
 						</div>
 						<template v-else>
 							<!-- Unscheduled section (visible above all calendar views) -->
 							<div
-								v-if="view !== 'list' && view !== 'day' && (unscheduledEntries.length || dragActive)"
-								class="flex shrink-0 flex-col gap-1.5 max-h-[220px] overflow-y-auto rounded-card transition-colors"
-								:class="dragHoverKey === `unsched:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''"
+								v-if="
+									view !== 'list' &&
+									view !== 'day' &&
+									(unscheduledEntries.length || dragActive)
+								"
+								class="flex max-h-[220px] shrink-0 flex-col gap-1.5 overflow-y-auto rounded-card transition-colors"
+								:class="
+									dragHoverKey === `unsched:${todayIso}`
+										? 'bg-brand/10 ring-brand/40 ring-1'
+										: ''
+								"
 								data-dr-drop
 								data-dr-kind="unscheduled"
 								:data-dr-date="todayIso"
 							>
 								<div class="flex items-center justify-between gap-2 px-1">
-									<div class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+									<div
+										class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+									>
 										Unscheduled <span>{{ unscheduledEntries.length }}</span>
 									</div>
 									<button
@@ -280,7 +349,7 @@
 
 					<button
 						type="button"
-						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand/40 md:bottom-6 md:right-6 md:h-14 md:w-14"
+						class="focus:ring-brand/40 fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover focus:outline-none focus:ring-2 md:bottom-6 md:right-6 md:h-14 md:w-14"
 						title="New routine (N)"
 						aria-label="New routine"
 						@click="onNewRoutine"
@@ -294,16 +363,31 @@
 </template>
 
 <script setup lang="ts">
-	import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-	import { useStore } from 'vuex';
-	import BaseLayout from '@/components/layouts/BaseLayout.vue';
+	import {
+		getDailyTask,
+		quickCreateRoutine,
+		updateDailyTask,
+	} from '@/actions/tmgr/daily-tasks';
+	import { updateTask } from '@/actions/tmgr/tasks';
+	import CountChip from '@/components/dailyRoutine/CountChip.vue';
+	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
+	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
+	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
+	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
+	import DayView from '@/components/dailyRoutine/views/DayView.vue';
+	import ListView from '@/components/dailyRoutine/views/ListView.vue';
+	import MonthView from '@/components/dailyRoutine/views/MonthView.vue';
+	import WeekView from '@/components/dailyRoutine/views/WeekView.vue';
+	import YearView from '@/components/dailyRoutine/views/YearView.vue';
+	import ViewSwitcher from '@/components/dailyRoutine/ViewSwitcher.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
 	import { SkeletonListItem } from '@/components/ui/skeleton';
-	import { CalendarCheck, Plus, Upload, Download, Inbox } from 'lucide-vue-next';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
 	import {
 		addDays,
 		fmtDate,
@@ -311,25 +395,16 @@
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
-	import {
-		quickCreateRoutine,
-		updateDailyTask,
-		getDailyTask,
-	} from '@/actions/tmgr/daily-tasks';
-	import { updateTask } from '@/actions/tmgr/tasks';
-	import ViewSwitcher from '@/components/dailyRoutine/ViewSwitcher.vue';
-	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
-	import CountChip from '@/components/dailyRoutine/CountChip.vue';
-	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
-	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
-	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
-	import ListView from '@/components/dailyRoutine/views/ListView.vue';
-	import DayView from '@/components/dailyRoutine/views/DayView.vue';
-	import WeekView from '@/components/dailyRoutine/views/WeekView.vue';
-	import MonthView from '@/components/dailyRoutine/views/MonthView.vue';
-	import YearView from '@/components/dailyRoutine/views/YearView.vue';
-	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
+	import {
+		CalendarCheck,
+		Download,
+		Inbox,
+		Plus,
+		Upload,
+	} from 'lucide-vue-next';
+	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+	import { useStore } from 'vuex';
 
 	const store = useStore();
 	const rootRef = ref<HTMLElement | null>(null);
@@ -346,8 +421,10 @@
 		return 'list';
 	}
 	const view = ref<ViewId>(loadStoredView());
-	watch(view, v => {
-		try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch {}
+	watch(view, (v) => {
+		try {
+			localStorage.setItem(VIEW_STORAGE_KEY, v);
+		} catch {}
 	});
 	const cursor = ref<Date>(new Date());
 	const editingRoutine = ref<any | null>(null);
@@ -355,7 +432,12 @@
 	const quickFocused = ref(false);
 	const quickInputRef = ref<HTMLInputElement | null>(null);
 
-	const { setDropHandler, setEditHandler, active: dragActiveRef, hoverKey: dragHoverKey } = useRoutineDrag();
+	const {
+		setDropHandler,
+		setEditHandler,
+		active: dragActiveRef,
+		hoverKey: dragHoverKey,
+	} = useRoutineDrag();
 	const dragActive = computed(() => !!dragActiveRef.value);
 	setDropHandler(async (entry, payload) => {
 		await onMoveRoutine({
@@ -366,40 +448,48 @@
 			allDay: payload.allDay,
 		});
 	});
-	setEditHandler(entry => {
+	setEditHandler((entry) => {
 		onEdit(entry as RoutineEntry);
 	});
 
-	const contextMenu = ref<{ entry: RoutineEntry; x: number; y: number } | null>(null);
+	const contextMenu = ref<{ entry: RoutineEntry; x: number; y: number } | null>(
+		null,
+	);
 	function onContext(payload: { entry: RoutineEntry; x: number; y: number }) {
 		contextMenu.value = payload;
 	}
 
-	const entries = computed<RoutineEntry[]>(() => store.state.dailyRoutines.entries);
+	const entries = computed<RoutineEntry[]>(
+		() => store.state.dailyRoutines.entries,
+	);
 	const yearStats = computed(() => store.state.dailyRoutines.yearStats);
 	const isLoading = computed(() => store.state.dailyRoutines.isLoading);
 
 	const todayIso = computed(() => fmtDate(new Date()));
-	const todayEntries = computed(() => entries.value.filter(e => e.date === todayIso.value));
-	const dayEntries = computed(() => entries.value.filter(e => e.date === fmtDate(cursor.value)));
+	const todayEntries = computed(() =>
+		entries.value.filter((e) => e.date === todayIso.value),
+	);
+	const dayEntries = computed(() =>
+		entries.value.filter((e) => e.date === fmtDate(cursor.value)),
+	);
 	const weekStart = computed(() => startOfWeek(cursor.value));
 	const unscheduledEntries = computed(() =>
 		sortUnscheduledNewestFirst(
-			entries.value.filter(e => !e.time && e.date === todayIso.value),
+			entries.value.filter((e) => !e.time && e.date === todayIso.value),
 		),
 	);
 	const unscheduledDoneCount = computed(
-		() => unscheduledEntries.value.filter(e => e.completed).length,
+		() => unscheduledEntries.value.filter((e) => e.completed).length,
 	);
 	const scheduledEntries = computed(() =>
-		entries.value.filter(e => !!e.time),
+		entries.value.filter((e) => !!e.time),
 	);
 
 	const counts = computed(() => {
 		const todays = todayEntries.value;
 		return {
 			routines: todays.length,
-			completed: todays.filter(e => e.completed).length,
+			completed: todays.filter((e) => e.completed).length,
 			archived: 0,
 		};
 	});
@@ -419,11 +509,17 @@
 			const we = addDays(ws, 6);
 			const sameMonth = ws.getMonth() === we.getMonth();
 			return sameMonth
-				? `${monthShort(ws)} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
-				: `${monthShort(ws)} ${ws.getDate()} – ${monthShort(we)} ${we.getDate()}, ${ws.getFullYear()}`;
+				? `${monthShort(
+						ws,
+				  )} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
+				: `${monthShort(ws)} ${ws.getDate()} – ${monthShort(
+						we,
+				  )} ${we.getDate()}, ${ws.getFullYear()}`;
 		}
 		if (view.value === 'month') {
-			return `${c.toLocaleDateString('en-US', { month: 'long' })} ${c.getFullYear()}`;
+			return `${c.toLocaleDateString('en-US', {
+				month: 'long',
+			})} ${c.getFullYear()}`;
 		}
 		if (view.value === 'year') return String(c.getFullYear());
 		return '';
@@ -463,8 +559,14 @@
 	async function reload() {
 		if (view.value === 'year') {
 			await Promise.all([
-				store.dispatch('dailyRoutines/loadYearStats', cursor.value.getFullYear()),
-				store.dispatch('dailyRoutines/loadRange', { from: todayIso.value, to: todayIso.value }),
+				store.dispatch(
+					'dailyRoutines/loadYearStats',
+					cursor.value.getFullYear(),
+				),
+				store.dispatch('dailyRoutines/loadRange', {
+					from: todayIso.value,
+					to: todayIso.value,
+				}),
 			]);
 		} else {
 			await store.dispatch('dailyRoutines/loadRange', rangeForView());
@@ -519,7 +621,11 @@
 	function onShortcutKey(e: KeyboardEvent) {
 		if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement | null;
-		if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+		if (
+			t &&
+			(t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+		)
+			return;
 		if (editingRoutine.value) return;
 		if (e.key === 'n' || e.key === 'N') {
 			e.preventDefault();
@@ -589,7 +695,9 @@
 
 	async function onSaveRoutine(draft: any) {
 		const dowKeys = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-		const time = `${String(draft.timeH).padStart(2, '0')}:${String(draft.timeM).padStart(2, '0')}`;
+		const time = `${String(draft.timeH).padStart(2, '0')}:${String(
+			draft.timeM,
+		).padStart(2, '0')}`;
 		const isRecurring = draft.frequency !== 'NONE';
 		const isUnscheduled = !isRecurring && !!draft.unscheduled;
 		const payload: any = {
@@ -603,8 +711,13 @@
 			payload.recurrence = {
 				frequency: draft.frequency,
 				interval: draft.interval || 1,
-				days_of_week: draft.frequency === 'WEEKLY' ? draft.daysOfWeek.map((i: number) => dowKeys[i]) : null,
-				day_of_frequency: ['MONTHLY', 'YEARLY'].includes(draft.frequency) ? draft.dayOfMonth : null,
+				days_of_week:
+					draft.frequency === 'WEEKLY'
+						? draft.daysOfWeek.map((i: number) => dowKeys[i])
+						: null,
+				day_of_frequency: ['MONTHLY', 'YEARLY'].includes(draft.frequency)
+					? draft.dayOfMonth
+					: null,
 				month: draft.frequency === 'YEARLY' ? draft.month : null,
 				time: { hours: draft.timeH, minutes: draft.timeM },
 				duration_min: draft.durationMin,
@@ -628,7 +741,9 @@
 		if (draft.id) {
 			await updateDailyTask(draft.id, payload);
 		} else {
-			const draftDate = isUnscheduled ? undefined : (draft.scheduledDate || editingRoutine.value?._draftDate);
+			const draftDate = isUnscheduled
+				? undefined
+				: draft.scheduledDate || editingRoutine.value?._draftDate;
 			const created = await quickCreateRoutine({
 				title: draft.title,
 				date: draftDate,
@@ -646,14 +761,24 @@
 		await reload();
 	}
 
-	async function onMoveRoutine(payload: { entry: RoutineEntry; date: string; timeH?: number; timeM?: number; allDay?: boolean }) {
+	async function onMoveRoutine(payload: {
+		entry: RoutineEntry;
+		date: string;
+		timeH?: number;
+		timeM?: number;
+		allDay?: boolean;
+	}) {
 		await store.dispatch('dailyRoutines/moveRoutine', payload);
 		await reload();
 	}
 
 	// Drag the block's top/bottom edge in the day view: bottom changes duration,
 	// top shifts the start time (and thus duration too).
-	async function onResizeRoutine(payload: { entry: RoutineEntry; startMin: number; endMin: number }) {
+	async function onResizeRoutine(payload: {
+		entry: RoutineEntry;
+		startMin: number;
+		endMin: number;
+	}) {
 		const { entry, startMin, endMin } = payload;
 		const durationMin = Math.max(15, endMin - startMin);
 		// Duration → task.approximately_time via a partial task update so
@@ -698,13 +823,19 @@
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
-		const result = await store.dispatch('dailyRoutines/importIcs', { file, mode: 'skip' });
+		const result = await store.dispatch('dailyRoutines/importIcs', {
+			file,
+			mode: 'skip',
+		});
 		input.value = '';
-		const errs = Array.isArray(result.errors) && result.errors.length
-			? `\nErrors:\n- ${result.errors.slice(0, 5).join('\n- ')}`
-			: '';
+		const errs =
+			Array.isArray(result.errors) && result.errors.length
+				? `\nErrors:\n- ${result.errors.slice(0, 5).join('\n- ')}`
+				: '';
 		// eslint-disable-next-line no-alert
-		alert(`Imported ${result.created}, skipped ${result.skipped}, replaced ${result.replaced}.${errs}`);
+		alert(
+			`Imported ${result.created}, skipped ${result.skipped}, replaced ${result.replaced}.${errs}`,
+		);
 		await reload();
 	}
 	async function onExport() {

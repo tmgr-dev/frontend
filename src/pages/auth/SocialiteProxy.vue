@@ -12,24 +12,24 @@
 </template>
 
 <script setup lang="ts">
-	import { useRouter, useRoute } from 'vue-router';
-	import { ref, onMounted } from 'vue';
-	import store from '@/store';
 	import {
-		LoginRequest,
-		loginGoogle,
 		loginApple,
 		loginGithub,
-		LoginWithCodeRequest,
+		loginGoogle,
 		LoginGoogleRequest,
+		LoginRequest,
 		loginTelegram,
+		LoginWithCodeRequest,
 		setTokenAndHeaders,
 	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
-	import { AxiosError } from 'axios';
-	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import AuthBase from '@/components/layouts/AuthBase.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import store from '@/store';
+	import { AxiosError } from 'axios';
+	import { ref } from 'vue';
+	import { useRoute, useRouter } from 'vue-router';
 
 	const router = useRouter();
 	const route = useRoute();
@@ -55,17 +55,22 @@
 				await getUser();
 				if (store.state.user) {
 					await Promise.all([
-						getUserSettings(), 
+						getUserSettings(),
 						getWorkspaceStatuses(),
-						store.dispatch('featureToggles/loadUserToggles')
+						store.dispatch('featureToggles/loadUserToggles'),
 					]);
 				}
 
-				const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+				const landingPage =
+					store.getters['featureToggles/getUserFeatureValue'](
+						'default_landing_page',
+					) || 'list';
 				const currentWorkspaceId = store.state.user?.settings?.find(
-					s => s.key === 'current_workspace'
+					(s) => s.key === 'current_workspace',
 				)?.value;
-				const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+				const workspace = store.state.workspaces?.find(
+					(w) => w.id == currentWorkspaceId,
+				);
 				const workspaceCode = workspace?.code;
 
 				if (workspaceCode) {
@@ -73,7 +78,7 @@
 				} else {
 					await router.push({ name: 'CurrentTasksList' });
 				}
-				
+
 				store.commit('rerenderApp');
 				return; // Exit early
 			} catch (error: unknown) {
@@ -127,17 +132,22 @@
 
 			if (store.state.user) {
 				await Promise.all([
-					getUserSettings(), 
+					getUserSettings(),
 					getWorkspaceStatuses(),
-					store.dispatch('featureToggles/loadUserToggles')
+					store.dispatch('featureToggles/loadUserToggles'),
 				]);
 			}
 
-			const landingPage = store.getters['featureToggles/getUserFeatureValue']('default_landing_page') || 'list';
+			const landingPage =
+				store.getters['featureToggles/getUserFeatureValue'](
+					'default_landing_page',
+				) || 'list';
 			const currentWorkspaceId = store.state.user?.settings?.find(
-				s => s.key === 'current_workspace'
+				(s) => s.key === 'current_workspace',
 			)?.value;
-			const workspace = store.state.workspaces?.find(w => w.id == currentWorkspaceId);
+			const workspace = store.state.workspaces?.find(
+				(w) => w.id == currentWorkspaceId,
+			);
 			const workspaceCode = workspace?.code;
 
 			if (workspaceCode) {

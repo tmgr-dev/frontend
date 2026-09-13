@@ -14,7 +14,9 @@ export interface TaskTarget {
 	taskId: number;
 }
 
-export function dashboardStatisticTarget(filter: Record<string, any>): RouteTarget | null {
+export function dashboardStatisticTarget(
+	filter: Record<string, any>,
+): RouteTarget | null {
 	if (filter.view === 'time_tracking') return { path: '/stats' };
 	if (filter.view === 'daily_routine') return { path: '/daily-routines' };
 	if (filter.view) return null;
@@ -25,6 +27,8 @@ export function dashboardStatisticTarget(filter: Record<string, any>): RouteTarg
 	return { path: '/list', query };
 }
 
-export function taskTarget(taskId: number | null | undefined): TaskTarget | null {
+export function taskTarget(
+	taskId: number | null | undefined,
+): TaskTarget | null {
 	return taskId ? { taskId } : null;
 }

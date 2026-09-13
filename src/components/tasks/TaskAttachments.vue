@@ -162,6 +162,23 @@
 
 <script lang="ts">
 	import {
+		detachFile,
+		fetchFileObjectUrl,
+		fileDisplayUrl,
+		getTaskFiles,
+		releaseFileDisplayUrl,
+		uploadTaskFile,
+		type TaskFile,
+	} from '@/actions/tmgr/files';
+	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import {
+		attachmentErrorMessage,
+		formatFileSize,
+		isImageMime,
+		preflightError,
+	} from '@/utils/attachments';
+	import { galleryImages } from '@/utils/galleryNavigation';
+	import {
 		AlertCircle,
 		Download,
 		FileIcon,
@@ -170,23 +187,6 @@
 		X,
 	} from 'lucide-vue-next';
 	import { defineComponent } from 'vue';
-	import {
-		detachFile,
-		fetchFileObjectUrl,
-		fileDisplayUrl,
-		releaseFileDisplayUrl,
-		getTaskFiles,
-		uploadTaskFile,
-		type TaskFile,
-	} from '@/actions/tmgr/files';
-	import {
-		attachmentErrorMessage,
-		formatFileSize,
-		isImageMime,
-		preflightError,
-	} from '@/utils/attachments';
-	import { galleryImages } from '@/utils/galleryNavigation';
-	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
 
 	interface PendingUpload {
 		id: number;
@@ -253,7 +253,9 @@
 					return;
 				}
 				try {
-					this.previews[file.id] = await fileDisplayUrl(file.id, { thumb: true });
+					this.previews[file.id] = await fileDisplayUrl(file.id, {
+						thumb: true,
+					});
 				} catch {
 					// No preview is a cosmetic loss; the file is still listed and downloadable.
 				}
@@ -309,8 +311,8 @@
 				} catch (error) {
 					pending.error = attachmentErrorMessage(error, this.maxBytes);
 					this.maxBytes =
-						(error as { response?: { data?: { max_bytes?: number } } })?.response
-							?.data?.max_bytes ?? this.maxBytes;
+						(error as { response?: { data?: { max_bytes?: number } } })
+							?.response?.data?.max_bytes ?? this.maxBytes;
 				}
 			},
 			dismissUpload(id: number) {
@@ -362,7 +364,9 @@
 			},
 		},
 		unmounted() {
-			Object.keys(this.previews).forEach((id) => this.revokePreview(Number(id)));
+			Object.keys(this.previews).forEach((id) =>
+				this.revokePreview(Number(id)),
+			);
 		},
 	});
 </script>

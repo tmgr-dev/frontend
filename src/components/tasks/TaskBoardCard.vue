@@ -6,7 +6,7 @@
 		@mouseleave="isHovered = false"
 	>
 		<span
-			class="pointer-events-none absolute left-0 top-[10px] bottom-[10px] w-[3px] rounded-full"
+			class="pointer-events-none absolute bottom-[10px] left-0 top-[10px] w-[3px] rounded-full"
 			:class="
 				task.start_time
 					? 'bg-status-done opacity-90'
@@ -15,7 +15,7 @@
 			aria-hidden="true"
 		></span>
 
-		<div class="mb-2 flex items-center gap-1.5 -ml-0.5">
+		<div class="-ml-0.5 mb-2 flex items-center gap-1.5">
 			<div
 				class="task-drag-handle flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint transition-colors duration-150 hover:text-ink-subtle active:cursor-grabbing"
 				:title="'Drag to reorder'"
@@ -32,7 +32,7 @@
 					<Loader v-if="isLoadingTimer" is-mini />
 					<template v-else>
 						<span
-							class="h-[5px] w-[5px] rounded-full bg-status-done animate-tmgr-pulse"
+							class="h-[5px] w-[5px] animate-tmgr-pulse rounded-full bg-status-done"
 						></span>
 						<Pause class="h-2.5 w-2.5 fill-current" />
 						<span>{{ formattedDisplayTime }}</span>
@@ -150,10 +150,7 @@
 						<ArchiveIcon class="mr-2 h-4 w-4" />
 						<span>Archive</span>
 					</DropdownMenuItem>
-					<DropdownMenuItem
-						@click="handleDelete"
-						class="text-status-fix-fg"
-					>
+					<DropdownMenuItem @click="handleDelete" class="text-status-fix-fg">
 						<Trash2 class="mr-2 h-4 w-4" />
 						<span>Delete</span>
 					</DropdownMenuItem>
@@ -170,17 +167,12 @@
 			{{ task.title }}
 		</a>
 
-		<div
-			v-if="checklistProgress"
-			class="mb-2.5 flex items-center gap-2"
-		>
+		<div v-if="checklistProgress" class="mb-2.5 flex items-center gap-2">
 			<div class="h-1 flex-1 overflow-hidden rounded-full bg-surface-sunken">
 				<div
 					class="h-full rounded-full transition-all duration-300"
 					:class="
-						checklistProgress.percent === 100
-							? 'bg-status-done'
-							: 'bg-brand'
+						checklistProgress.percent === 100 ? 'bg-status-done' : 'bg-brand'
 					"
 					:style="{ width: `${checklistProgress.percent}%` }"
 				></div>
@@ -224,17 +216,29 @@
 </template>
 
 <script>
-	import Badge from '../general/Badge.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
-	import { formatBoardDate } from '@/utils/boardDate';
-	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
-	import TasksListMixin from '@/mixins/TasksListMixin';
-	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import {
+		deleteTask,
+		startTaskTimeCounter,
+		stopTaskTimeCounter,
+		updateTaskPartially,
+		updateTaskStatus,
+	} from '@/actions/tmgr/tasks';
+	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
-	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import Loader from '@/components/loaders/Loader.vue';
+	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import {
+		Command,
+		CommandEmpty,
+		CommandGroup,
+		CommandInput,
+		CommandItem,
+		CommandList,
+	} from '@/components/ui/command';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -247,42 +251,30 @@
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
-	import {
-		Command,
-		CommandEmpty,
-		CommandGroup,
-		CommandInput,
-		CommandItem,
-		CommandList,
-	} from '@/components/ui/command';
-	import {
-		MoreVertical,
-		ArrowUpToLine,
-		ArrowDownToLine,
-		Trash2,
-		ArchiveIcon,
-		Eye,
-		UserPlus,
-		Check,
-		ClockPlus,
-		FilePenLine,
-		Siren,
-		GripVertical,
-		Play,
-		Pause,
-	} from 'lucide-vue-next';
-	import { mapState } from 'vuex';
-	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import TasksListMixin from '@/mixins/TasksListMixin';
+	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
+	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
+	import { formatBoardDate } from '@/utils/boardDate';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
-		startTaskTimeCounter,
-		stopTaskTimeCounter,
-		updateTaskStatus,
-		updateTaskPartially,
-		deleteTask,
-	} from '@/actions/tmgr/tasks';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+		ArchiveIcon,
+		ArrowDownToLine,
+		ArrowUpToLine,
+		Check,
+		ClockPlus,
+		Eye,
+		FilePenLine,
+		GripVertical,
+		MoreVertical,
+		Pause,
+		Play,
+		Siren,
+		Trash2,
+		UserPlus,
+	} from 'lucide-vue-next';
+	import { mapState } from 'vuex';
+	import Badge from '../general/Badge.vue';
 
 	export default {
 		mixins: [TimePreparationMixin, TasksListMixin],
@@ -567,67 +559,67 @@
 					hour12: false,
 				});
 			},
-		async handleStartTimer() {
-			if (!this.task.id || this.isLoadingTimer) return;
+			async handleStartTimer() {
+				if (!this.task.id || this.isLoadingTimer) return;
 
-			this.isLoadingTimer = true;
-			let updatedTask = null;
-			try {
-				updatedTask = await startTaskTimeCounter(this.task.id);
-			} catch (e) {
-				console.error('Failed to start timer:', e);
-				this.isLoadingTimer = false;
-				return;
-			}
-
-			if (updatedTask && typeof updatedTask === 'object') {
-				this.task.start_time = updatedTask.start_time;
-				this.task.common_time = updatedTask.common_time;
-				if (updatedTask.status_id !== undefined) {
-					this.task.status_id = updatedTask.status_id;
+				this.isLoadingTimer = true;
+				let updatedTask = null;
+				try {
+					updatedTask = await startTaskTimeCounter(this.task.id);
+				} catch (e) {
+					console.error('Failed to start timer:', e);
+					this.isLoadingTimer = false;
+					return;
 				}
-				this.$store.commit('updateSingleTask', updatedTask);
-				this.$emit('timer-started', updatedTask);
-			} else {
-				this.task.start_time = Math.floor(Date.now() / 1000);
-			}
 
-			this.isLoadingTimer = false;
-
-			this.timerStatusConfirm = backlogTimerPrompt(this.task, this.statuses);
-		},
-		async confirmTimerStatusSwitch() {
-			if (!this.timerStatusConfirm) return;
-			const { targetStatus } = this.timerStatusConfirm;
-			this.timerStatusConfirm = null;
-			try {
-				await updateTaskStatus(this.task.id, targetStatus.id);
-				this.task.status_id = targetStatus.id;
-				this.$store.commit('updateSingleTask', this.task);
-			} catch (e) {
-				console.error('Failed to update status:', e);
-			}
-		},
-		async handleStopTimer() {
-			if (!this.task.id || this.isLoadingTimer) return;
-
-			this.isLoadingTimer = true;
-			try {
-				const updatedTask = await stopTaskTimeCounter(this.task.id);
 				if (updatedTask && typeof updatedTask === 'object') {
 					this.task.start_time = updatedTask.start_time;
 					this.task.common_time = updatedTask.common_time;
+					if (updatedTask.status_id !== undefined) {
+						this.task.status_id = updatedTask.status_id;
+					}
 					this.$store.commit('updateSingleTask', updatedTask);
-					this.$emit('timer-stopped', updatedTask);
+					this.$emit('timer-started', updatedTask);
 				} else {
-					this.task.start_time = null;
+					this.task.start_time = Math.floor(Date.now() / 1000);
 				}
-			} catch (e) {
-				console.error('Failed to stop timer:', e);
-			} finally {
+
 				this.isLoadingTimer = false;
-			}
-		},
+
+				this.timerStatusConfirm = backlogTimerPrompt(this.task, this.statuses);
+			},
+			async confirmTimerStatusSwitch() {
+				if (!this.timerStatusConfirm) return;
+				const { targetStatus } = this.timerStatusConfirm;
+				this.timerStatusConfirm = null;
+				try {
+					await updateTaskStatus(this.task.id, targetStatus.id);
+					this.task.status_id = targetStatus.id;
+					this.$store.commit('updateSingleTask', this.task);
+				} catch (e) {
+					console.error('Failed to update status:', e);
+				}
+			},
+			async handleStopTimer() {
+				if (!this.task.id || this.isLoadingTimer) return;
+
+				this.isLoadingTimer = true;
+				try {
+					const updatedTask = await stopTaskTimeCounter(this.task.id);
+					if (updatedTask && typeof updatedTask === 'object') {
+						this.task.start_time = updatedTask.start_time;
+						this.task.common_time = updatedTask.common_time;
+						this.$store.commit('updateSingleTask', updatedTask);
+						this.$emit('timer-stopped', updatedTask);
+					} else {
+						this.task.start_time = null;
+					}
+				} catch (e) {
+					console.error('Failed to stop timer:', e);
+				} finally {
+					this.isLoadingTimer = false;
+				}
+			},
 			updateTimer() {
 				if (!this.task.start_time) {
 					return;
@@ -679,7 +671,10 @@
 						return;
 					}
 
-					const archived = await updateTaskStatus(this.task.id, archiveStatus.id);
+					const archived = await updateTaskStatus(
+						this.task.id,
+						archiveStatus.id,
+					);
 					this.$emit('task-archived', {
 						...this.task,
 						...(archived && typeof archived === 'object' ? archived : {}),

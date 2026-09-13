@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="flex items-center gap-1.5 rounded-pill bg-surface-hover px-2.5 py-1 text-xs text-ink-subtle whitespace-nowrap"
+		class="flex items-center gap-1.5 whitespace-nowrap rounded-pill bg-surface-hover px-2.5 py-1 text-xs text-ink-subtle"
 		:title="breakdown"
 	>
 		<span class="material-icons text-sm leading-none">checklist</span>
@@ -26,7 +26,10 @@
 			},
 			breakdown() {
 				const s = this.summary || {};
-				const parts = [`${s.inProgress ?? 0} in progress`, `${s.done ?? 0} done`];
+				const parts = [
+					`${s.inProgress ?? 0} in progress`,
+					`${s.done ?? 0} done`,
+				];
 				if (s.hidden) {
 					parts.push(`${s.hidden} hidden`);
 				}

@@ -20,10 +20,19 @@ describe('hexToHsl', () => {
 
 describe('hslToHex', () => {
 	it('round-trips a status colour within rounding error', () => {
-		for (const hex of ['#1d4ed8', '#11224b', '#00a1ff', '#ff9100', '#75ff00', '#374151']) {
+		for (const hex of [
+			'#1d4ed8',
+			'#11224b',
+			'#00a1ff',
+			'#ff9100',
+			'#75ff00',
+			'#374151',
+		]) {
 			const { h, s, l } = hexToHsl(hex);
 			const back = channels(hslToHex(h, s, l));
-			channels(hex).forEach((c, i) => expect(Math.abs(back[i] - c)).toBeLessThanOrEqual(2));
+			channels(hex).forEach((c, i) =>
+				expect(Math.abs(back[i] - c)).toBeLessThanOrEqual(2),
+			);
 		}
 	});
 

@@ -1,15 +1,15 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
+	deleteNotification,
 	getNotifications,
 	getUnreadCount,
-	markAsRead,
 	markAllAsRead,
-	deleteNotification,
+	markAsRead,
 	type Notification,
 	type NotificationPaginatedResponse,
 } from '@/actions/tmgr/notifications';
 import { usePusher } from '@/composable/usePusher';
 import type { ActionError } from '@/types/api';
+import { computed, ref } from 'vue';
 
 interface UseNotificationsReturn {
 	notifications: import('vue').Ref<Notification[]>;
@@ -52,7 +52,10 @@ export function useNotifications(): UseNotificationsReturn {
 			loading.value = true;
 			error.value = null;
 
-			const response: NotificationPaginatedResponse = await getNotifications(page, perPage);
+			const response: NotificationPaginatedResponse = await getNotifications(
+				page,
+				perPage,
+			);
 
 			if (page === 1) {
 				notifications.value = response.data;
@@ -149,7 +152,7 @@ export function useNotifications(): UseNotificationsReturn {
 		if (notifications.value.length > 100) {
 			notifications.value = notifications.value.slice(0, 100);
 		}
-		
+
 		hasNewNotification.value = true;
 		if (pulseTimeout) {
 			clearTimeout(pulseTimeout);
@@ -158,7 +161,7 @@ export function useNotifications(): UseNotificationsReturn {
 			hasNewNotification.value = false;
 		}, 5000);
 	};
-	
+
 	const clearNewNotificationIndicator = () => {
 		hasNewNotification.value = false;
 		if (pulseTimeout) {
@@ -221,4 +224,3 @@ export function useNotifications(): UseNotificationsReturn {
 		clearNewNotificationIndicator,
 	};
 }
-

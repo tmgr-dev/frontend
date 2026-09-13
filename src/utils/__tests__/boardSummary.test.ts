@@ -19,7 +19,10 @@ describe('boardTaskCounts', () => {
 	});
 
 	it('leaves the archive out of the board total', () => {
-		const counts = boardTaskCounts([column('default', 4), column('archived', 900)]);
+		const counts = boardTaskCounts([
+			column('default', 4),
+			column('archived', 900),
+		]);
 		expect(counts.total).toBe(4);
 	});
 
@@ -34,7 +37,9 @@ describe('boardTaskCounts', () => {
 	});
 
 	it('reports the share of finished tasks', () => {
-		expect(boardTaskCounts([column('default', 1), column('completed', 3)]).percent).toBe(75);
+		expect(
+			boardTaskCounts([column('default', 1), column('completed', 3)]).percent,
+		).toBe(75);
 	});
 
 	it('reports no progress for an empty board instead of dividing by zero', () => {

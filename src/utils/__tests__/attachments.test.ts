@@ -57,9 +57,9 @@ describe('attachmentErrorMessage', () => {
 	});
 
 	it('passes a validation message through', () => {
-		expect(attachmentErrorMessage(httpError(400, 'File size is required'))).toBe(
-			'File size is required',
-		);
+		expect(
+			attachmentErrorMessage(httpError(400, 'File size is required')),
+		).toBe('File size is required');
 	});
 
 	it('names a storage rejection for what it is', () => {
@@ -70,7 +70,7 @@ describe('attachmentErrorMessage', () => {
 });
 
 describe('preflightError', () => {
-	const file = (size: number, type = 'image/png') => ({ size, type }) as File;
+	const file = (size: number, type = 'image/png') => ({ size, type } as File);
 
 	it('stops an empty file before the API answers with a validation blob', () => {
 		// The API rejects size 0 with "The given data was invalid.", which tells nobody anything.

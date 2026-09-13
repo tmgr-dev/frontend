@@ -27,7 +27,9 @@ export const keyPrefixFromPattern = (pattern: string): string | null => {
 export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
 	const seen = new Set<string>();
 	for (const category of categories || []) {
-		const setting = (category?.settings || []).find((s) => s?.key === TITLE_PATTERN_SETTING);
+		const setting = (category?.settings || []).find(
+			(s) => s?.key === TITLE_PATTERN_SETTING,
+		);
 		const prefix = setting?.value ? keyPrefixFromPattern(setting.value) : null;
 		if (prefix) {
 			seen.add(prefix);
@@ -41,7 +43,10 @@ export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
  * search hit that merely mentions the key, or one whose number merely starts
  * with it, is not the task the reader asked for.
  */
-export const pickTaskByKey = <T extends TaskLike>(tasks: T[], key: string): T | null => {
+export const pickTaskByKey = <T extends TaskLike>(
+	tasks: T[],
+	key: string,
+): T | null => {
 	const wanted = (key || '').trim().toUpperCase();
 	if (!wanted) {
 		return null;

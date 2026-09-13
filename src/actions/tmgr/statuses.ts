@@ -1,5 +1,4 @@
 import $axios from '@/plugins/axios';
-import { Workspace } from '@/actions/tmgr/workspaces';
 import { requestCache } from '@/utils/requestCache';
 
 interface StatusPivot {
@@ -20,9 +19,11 @@ export interface Status {
 	pivot: StatusPivot;
 }
 
-export const getStatuses = async (useCache: boolean = true): Promise<Status[]> => {
+export const getStatuses = async (
+	useCache: boolean = true,
+): Promise<Status[]> => {
 	const cacheKey = 'statuses';
-	
+
 	if (useCache) {
 		const cached = requestCache.get<Status[]>(cacheKey);
 		if (cached) {

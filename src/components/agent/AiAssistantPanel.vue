@@ -1,4 +1,9 @@
 <script setup lang="ts">
+	import { useAgentChat } from '@/composable/useAgentChat';
+	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
+	import { useModalEscHandler } from '@/composable/useModalEscHandler';
+	import store from '@/store';
+	import { focusField } from '@/utils/focusTarget';
 	import { Send, Sparkles, X } from 'lucide-vue-next';
 	import {
 		computed,
@@ -9,18 +14,22 @@
 		ref,
 		watch,
 	} from 'vue';
-	import { focusField } from '@/utils/focusTarget';
-	import { useAgentChat } from '@/composable/useAgentChat';
-	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
-	import { useModalEscHandler } from '@/composable/useModalEscHandler';
-	import store from '@/store';
 
 	const AgentMessage = defineAsyncComponent(
 		() => import('@/components/agent/AgentMessage.vue'),
 	);
 
-	const { state, loading, error, busy, load, send, newChat, subscribe, unsubscribe } =
-		useAgentChat();
+	const {
+		state,
+		loading,
+		error,
+		busy,
+		load,
+		send,
+		newChat,
+		subscribe,
+		unsubscribe,
+	} = useAgentChat();
 	const { currentWorkspaceId } = useCurrentWorkspace();
 	const { registerModal, unregisterModal } = useModalEscHandler();
 
@@ -73,7 +82,8 @@
 		() => state.value.messages,
 		() =>
 			nextTick(() => {
-				if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight;
+				if (scroller.value)
+					scroller.value.scrollTop = scroller.value.scrollHeight;
 			}),
 		{ deep: true },
 	);
@@ -105,7 +115,9 @@
 		role="complementary"
 		aria-label="AI assistant"
 	>
-		<header class="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
+		<header
+			class="flex h-12 shrink-0 items-center justify-between border-b border-line px-4"
+		>
 			<div class="flex items-center gap-2 text-sm font-semibold text-ink">
 				<Sparkles class="h-4 w-4" /> Ask AI
 			</div>
@@ -126,20 +138,23 @@
 			</div>
 		</header>
 		<div ref="scroller" class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-			<p v-if="!state.messages.length && !loading" class="text-sm text-ink-subtle">
-				Ask about this workspace: what is overdue, how much time went into a category this week, what
-				a task is about.
+			<p
+				v-if="!state.messages.length && !loading"
+				class="text-sm text-ink-subtle"
+			>
+				Ask about this workspace: what is overdue, how much time went into a
+				category this week, what a task is about.
 			</p>
 			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
 		</div>
 		<footer class="shrink-0 border-t border-line p-3">
 			<div
-				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken pl-4 pr-1.5 py-1 focus-within:border-line-strong"
+				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
 			>
 				<input
 					ref="input"
 					v-model="draft"
-					class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-none"
+					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
 					:disabled="busy"
 					@keydown.enter.prevent="submit"

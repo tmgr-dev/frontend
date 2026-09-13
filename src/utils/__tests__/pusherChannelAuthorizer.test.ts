@@ -5,12 +5,17 @@ type FetchMock = jest.Mock & typeof fetch;
 const asFetch = (mock: jest.Mock): FetchMock => mock as unknown as FetchMock;
 
 const respond = (status: number, body: unknown): FetchMock =>
-	asFetch(jest.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body }));
+	asFetch(
+		jest
+			.fn()
+			.mockResolvedValue({ ok: status < 400, status, json: async () => body }),
+	);
 
 const authorize = (handler: ReturnType<typeof createChannelAuthorizer>) =>
 	new Promise<[Error | null, unknown]>((resolve) =>
-		handler({ socketId: '1.2', channelName: 'private-App.Workspace.7' }, (err, data) =>
-			resolve([err, data]),
+		handler(
+			{ socketId: '1.2', channelName: 'private-App.Workspace.7' },
+			(err, data) => resolve([err, data]),
 		),
 	);
 
@@ -34,7 +39,9 @@ describe('createChannelAuthorizer', () => {
 		expect(init.method).toBe('POST');
 		expect(init.headers.Authorization).toBe('Bearer T2');
 		expect(init.headers.Accept).toBe('application/json');
-		expect(String(init.body)).toBe('socket_id=1.2&channel_name=private-App.Workspace.7');
+		expect(String(init.body)).toBe(
+			'socket_id=1.2&channel_name=private-App.Workspace.7',
+		);
 	});
 
 	it('unwraps a {data: {auth}} envelope', async () => {

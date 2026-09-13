@@ -1,18 +1,18 @@
 import { format as dateFnsFormat } from 'date-fns';
 
 const formatMappings: Record<string, string> = {
-	'yyyy': 'yyyy',
-	'yy': 'yy',
-	'mm': 'MM',
-	'dddd': 'EEEE',
-	'ddd': 'EEE',
-	'dd': 'dd',
-	'hh': 'HH',
-	'h': 'H',
-	'ii': 'mm',
-	'i': 'm',
-	'ss': 'ss',
-	's': 's',
+	yyyy: 'yyyy',
+	yy: 'yy',
+	mm: 'MM',
+	dddd: 'EEEE',
+	ddd: 'EEE',
+	dd: 'dd',
+	hh: 'HH',
+	h: 'H',
+	ii: 'mm',
+	i: 'm',
+	ss: 'ss',
+	s: 's',
 };
 
 const convertFormat = (legacyFormat: string): string => {

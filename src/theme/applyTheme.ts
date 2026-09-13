@@ -1,5 +1,5 @@
-import { THEME_IS_DARK, DEFAULT_THEME, THEME_REGISTRY } from '@/theme/registry';
 import { buildPaletteCss } from '@/theme/paletteCss';
+import { DEFAULT_THEME, THEME_IS_DARK, THEME_REGISTRY } from '@/theme/registry';
 
 export function computeThemeClasses(
 	theme: string | null | undefined,
@@ -9,7 +9,10 @@ export function computeThemeClasses(
 	const isKnownPalette =
 		!!theme && theme !== DEFAULT_THEME && theme in THEME_IS_DARK;
 	if (isKnownPalette) {
-		return { paletteClass: `theme-${theme}`, dark: THEME_IS_DARK[theme as string] };
+		return {
+			paletteClass: `theme-${theme}`,
+			dark: THEME_IS_DARK[theme as string],
+		};
 	}
 	const hasScheme = colorScheme === 'dark' || colorScheme === 'default';
 	const dark = hasScheme ? colorScheme === 'dark' : prefersDark;
@@ -33,7 +36,11 @@ export function applyThemeToDocument(
 	const prefersDark =
 		typeof doc.defaultView?.matchMedia === 'function' &&
 		doc.defaultView.matchMedia('(prefers-color-scheme: dark)').matches;
-	const { paletteClass, dark } = computeThemeClasses(theme, colorScheme, !!prefersDark);
+	const { paletteClass, dark } = computeThemeClasses(
+		theme,
+		colorScheme,
+		!!prefersDark,
+	);
 	const html = doc.documentElement;
 	Array.from(html.classList)
 		.filter((c) => c.startsWith('theme-'))

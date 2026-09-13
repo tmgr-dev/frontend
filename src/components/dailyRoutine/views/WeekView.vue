@@ -4,14 +4,21 @@
 	>
 		<div class="flex flex-1 flex-col overflow-x-auto overflow-y-hidden">
 			<!-- Day headers -->
-			<div class="grid border-b border-line" :style="{ gridTemplateColumns: gridCols, minWidth: innerMinWidth }">
+			<div
+				class="grid border-b border-line"
+				:style="{ gridTemplateColumns: gridCols, minWidth: innerMinWidth }"
+			>
 				<div />
 				<div
 					v-for="(d, i) in days"
 					:key="i"
 					class="px-2 py-2 text-center"
 					:class="i === 0 ? '' : 'border-l border-line'"
-					:style="isSameDay(d, today) ? { background: 'rgba(232,133,125,.08)' } : undefined"
+					:style="
+						isSameDay(d, today)
+							? { background: 'rgba(232,133,125,.08)' }
+							: undefined
+					"
 				>
 					<div
 						class="text-[10px] font-bold uppercase tracking-wider"
@@ -32,9 +39,15 @@
 			<div
 				v-if="hasAllDay || dragActive"
 				class="grid border-b border-line"
-				:style="{ gridTemplateColumns: gridCols, minHeight: `${32 + Math.max(maxAllDay,1) * 22}px`, minWidth: innerMinWidth }"
+				:style="{
+					gridTemplateColumns: gridCols,
+					minHeight: `${32 + Math.max(maxAllDay, 1) * 22}px`,
+					minWidth: innerMinWidth,
+				}"
 			>
-				<div class="pr-2 pt-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle">
+				<div
+					class="pr-2 pt-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle"
+				>
 					ALL-DAY
 				</div>
 				<div
@@ -43,9 +56,15 @@
 					class="flex flex-col gap-0.5 p-1 transition-colors"
 					:class="[
 						i === 0 ? '' : 'border-l border-line',
-						hoverKey === `unsched:${fmtIso(d)}` ? 'bg-brand/15 ring-1 ring-brand/40' : '',
+						hoverKey === `unsched:${fmtIso(d)}`
+							? 'bg-brand/15 ring-brand/40 ring-1'
+							: '',
 					]"
-					:style="isSameDay(d, today) ? { background: 'rgba(232,133,125,.08)' } : undefined"
+					:style="
+						isSameDay(d, today)
+							? { background: 'rgba(232,133,125,.08)' }
+							: undefined
+					"
 					data-dr-drop
 					data-dr-kind="all-day"
 					:data-dr-date="fmtIso(d)"
@@ -62,7 +81,13 @@
 						}"
 						:title="e.title"
 						@click="$emit('toggle', e)"
-						@contextmenu.prevent="$emit('context', { entry: e, x: $event.clientX, y: $event.clientY })"
+						@contextmenu.prevent="
+							$emit('context', {
+								entry: e,
+								x: $event.clientX,
+								y: $event.clientY,
+							})
+						"
 					>
 						{{ e.title }}
 						<button
@@ -77,7 +102,11 @@
 			</div>
 
 			<!-- Timeline -->
-			<div ref="scrollRef" class="flex-1 overflow-y-auto overflow-x-hidden" :style="{ minWidth: innerMinWidth }">
+			<div
+				ref="scrollRef"
+				class="flex-1 overflow-y-auto overflow-x-hidden"
+				:style="{ minWidth: innerMinWidth }"
+			>
 				<div
 					class="relative grid"
 					:style="{
@@ -89,7 +118,7 @@
 						<div
 							v-for="h in 24"
 							:key="h"
-							class="absolute right-2 text-[10px] text-ink-subtle tabular-nums"
+							class="absolute right-2 text-[10px] tabular-nums text-ink-subtle"
 							:style="{ top: `${(h - 1) * HOUR_PX - 6}px` }"
 						>
 							{{ h === 1 ? '' : String(h - 1).padStart(2, '0') + ':00' }}
@@ -100,7 +129,11 @@
 						v-for="(d, i) in days"
 						:key="i"
 						class="relative cursor-pointer border-l border-line"
-						:style="isSameDay(d, today) ? { background: 'rgba(232,133,125,.08)' } : undefined"
+						:style="
+							isSameDay(d, today)
+								? { background: 'rgba(232,133,125,.08)' }
+								: undefined
+						"
 						data-dr-drop
 						data-dr-kind="hour-grid"
 						:data-dr-date="fmtIso(d)"
@@ -113,7 +146,8 @@
 							:style="{
 								top: `${(h - 1) * HOUR_PX}px`,
 								height: 0,
-								borderTop: h === 1 ? 'none' : '0.5px solid rgba(255,255,255,.06)',
+								borderTop:
+									h === 1 ? 'none' : '0.5px solid rgba(255,255,255,.06)',
 							}"
 						/>
 						<template v-for="(item, j) in itemsByDay[i]" :key="`d-${i}-${j}`">
@@ -140,9 +174,15 @@
 						<div
 							v-if="isSameDay(d, today) && nowOffset !== null"
 							class="absolute left-0 right-0 z-[5]"
-							:style="{ top: `${nowOffset}px`, borderTop: '1.5px solid var(--routine-accent, #e8857d)' }"
+							:style="{
+								top: `${nowOffset}px`,
+								borderTop: '1.5px solid var(--routine-accent, #e8857d)',
+							}"
 						>
-							<div class="absolute h-2.5 w-2.5 rounded-pill bg-brand" :style="{ left: '-5px', top: '-5px' }" />
+							<div
+								class="absolute h-2.5 w-2.5 rounded-pill bg-brand"
+								:style="{ left: '-5px', top: '-5px' }"
+							/>
 						</div>
 					</div>
 				</div>
@@ -152,15 +192,20 @@
 </template>
 
 <script setup lang="ts">
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
+	import {
+		addDays,
+		dowShort,
+		isSameDay,
+		parseTime,
+	} from '@/utils/dailyRoutines/dateHelpers';
+	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { computed, onMounted, ref, watch } from 'vue';
-	import EventBlock from '../EventBlock.vue';
 	import ClusterBlock from '../ClusterBlock.vue';
 	import DRIcon from '../DRIcon.vue';
-	import { addDays, dowShort, isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
-	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
-	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
-	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import EventBlock from '../EventBlock.vue';
 
 	const { active, hoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!active.value);
@@ -178,14 +223,21 @@
 	const emit = defineEmits<{
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
-		(e: 'create', payload: { date: string; timeH: number; timeM: number }): void;
-		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
+		(
+			e: 'create',
+			payload: { date: string; timeH: number; timeM: number },
+		): void;
+		(
+			e: 'context',
+			payload: { entry: RoutineEntry; x: number; y: number },
+		): void;
 	}>();
 
 	function onCellClick(e: MouseEvent, d: Date) {
 		const target = e.target as HTMLElement;
 		if (!target) return;
-		if (target.closest('.dr-week-chip') || target.closest('.dr-edit-btn')) return;
+		if (target.closest('.dr-week-chip') || target.closest('.dr-edit-btn'))
+			return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const y = e.clientY - rect.top;
 		const totalMin = Math.max(0, Math.floor((y / HOUR_PX) * 60));
@@ -196,28 +248,30 @@
 	}
 
 	const scrollRef = ref<HTMLElement | null>(null);
-	const days = computed(() => Array.from({ length: 7 }, (_, i) => addDays(props.weekStart, i)));
+	const days = computed(() =>
+		Array.from({ length: 7 }, (_, i) => addDays(props.weekStart, i)),
+	);
 
 	const byDay = computed(() =>
-		days.value.map(d => props.entries.filter(e => e.date === fmtIso(d))),
+		days.value.map((d) => props.entries.filter((e) => e.date === fmtIso(d))),
 	);
 
 	const allDayByDay = computed(() =>
-		byDay.value.map(arr => arr.filter(e => !e.time)),
+		byDay.value.map((arr) => arr.filter((e) => !e.time)),
 	);
 	const scheduledByDay = computed(() =>
-		byDay.value.map(arr => arr.filter(e => !!e.time)),
+		byDay.value.map((arr) => arr.filter((e) => !!e.time)),
 	);
 
 	const maxAllDay = computed(() =>
-		Math.max(1, ...allDayByDay.value.map(a => a.length)),
+		Math.max(1, ...allDayByDay.value.map((a) => a.length)),
 	);
-	const hasAllDay = computed(() => allDayByDay.value.some(a => a.length > 0));
+	const hasAllDay = computed(() => allDayByDay.value.some((a) => a.length > 0));
 
 	const itemsByDay = computed(() =>
-		scheduledByDay.value.map(dayEntries =>
+		scheduledByDay.value.map((dayEntries) =>
 			clusterEvents(
-				dayEntries.map(e => ({
+				dayEntries.map((e) => ({
 					...e,
 					time: parseTime(e.time),
 					durationMin: e.duration_min || 30,
@@ -228,9 +282,15 @@
 	);
 
 	const timeColW = computed(() => (props.isMobile ? 40 : 56));
-	const dayColMin = computed(() => (props.isMobile ? 90 : props.isTablet ? 110 : 0));
-	const gridCols = computed(() => `${timeColW.value}px repeat(7, minmax(${dayColMin.value}px, 1fr))`);
-	const innerMinWidth = computed(() => (props.isMobile ? `${timeColW.value + 7 * 90}px` : 'auto'));
+	const dayColMin = computed(() =>
+		props.isMobile ? 90 : props.isTablet ? 110 : 0,
+	);
+	const gridCols = computed(
+		() => `${timeColW.value}px repeat(7, minmax(${dayColMin.value}px, 1fr))`,
+	);
+	const innerMinWidth = computed(() =>
+		props.isMobile ? `${timeColW.value + 7 * 90}px` : 'auto',
+	);
 
 	const nowOffset = computed(() => {
 		const now = new Date();

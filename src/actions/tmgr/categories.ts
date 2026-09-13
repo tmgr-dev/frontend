@@ -1,7 +1,7 @@
-import { AxiosRequestConfig } from 'axios';
 import $axios from '@/plugins/axios';
-import { requestCache } from '@/utils/requestCache';
 import type { CategoryTransferResult } from '@/utils/categoryTransfer';
+import { requestCache } from '@/utils/requestCache';
+import { AxiosRequestConfig } from 'axios';
 
 export interface Category {
 	children_count: number;
@@ -43,9 +43,11 @@ export interface PaginatedResponse<T> {
 	};
 }
 
-export const getCategories = async (useCache: boolean = true): Promise<Category[]> => {
+export const getCategories = async (
+	useCache: boolean = true,
+): Promise<Category[]> => {
 	const cacheKey = 'categories';
-	
+
 	if (useCache) {
 		const cached = requestCache.get<Category[]>(cacheKey);
 		if (cached) {
@@ -76,7 +78,10 @@ export const getSubCategories = async (
 	categoryId: number | null,
 	params: AxiosRequestConfig,
 ): Promise<PaginatedResponse<Category>> => {
-	const { data } = await $axios.get(`project_categories/children/${categoryId}`, params);
+	const { data } = await $axios.get(
+		`project_categories/children/${categoryId}`,
+		params,
+	);
 
 	return data;
 };
@@ -143,7 +148,9 @@ export const changeCategoryWorkspace = async (
 ): Promise<CategoryTransferResult> => {
 	const {
 		data: { data },
-	} = await $axios.put(`project_categories/${categoryId}/changeWorkspace/${workspaceId}`);
+	} = await $axios.put(
+		`project_categories/${categoryId}/changeWorkspace/${workspaceId}`,
+	);
 
 	requestCache.invalidate('categories');
 

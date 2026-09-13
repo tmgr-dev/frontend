@@ -56,13 +56,13 @@
 
 					<div class="mt-2 text-neutral-400">workspace users:</div>
 
-				<ul class="h-24 overflow-y-auto">
-					<li
-						class="py-1 text-tmgr-blue dark:text-tmgr-gray sm:px-0"
-						v-for="(user, index) in workspaceUsers"
-						:key="user.id || index"
-					>
-						{{ user.name }}
+					<ul class="h-24 overflow-y-auto">
+						<li
+							class="py-1 text-tmgr-blue dark:text-tmgr-gray sm:px-0"
+							v-for="(user, index) in workspaceUsers"
+							:key="user.id || index"
+						>
+							{{ user.name }}
 						</li>
 					</ul>
 				</div>
@@ -73,17 +73,16 @@
 
 <script setup lang="ts">
 	import { logout as logoutAction } from '@/actions/tmgr/auth';
+	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
 		Workspace,
 	} from '@/actions/tmgr/workspaces';
-	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import Select from '@/components/general/Select.vue';
-	import { onBeforeMount, onMounted, onUnmounted, Ref, ref, computed } from 'vue';
 	import store from '@/store';
 	import { UserIcon } from 'lucide-vue-next';
-	import { generateWorkspaceUrl } from '@/utils/url';
+	import { onBeforeMount, onMounted, onUnmounted, Ref, ref } from 'vue';
 
 	const emit = defineEmits(['updateSettings']);
 	const isOpenProfileDropdown = ref(false);
@@ -97,9 +96,11 @@
 			id: 2,
 			name: 'Archive',
 			get to() {
-				const workspace = workspaces.value.find(w => w.id === workspaceId.value);
+				const workspace = workspaces.value.find(
+					(w) => w.id === workspaceId.value,
+				);
 				return workspace?.code ? `/${workspace.code}/archive` : '/archive';
-			}
+			},
 		},
 	];
 	const $wrapper: Ref<HTMLDivElement | null> = ref(null);
@@ -153,7 +154,9 @@
 			};
 		});
 
-		const updatedUser = await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+		const updatedUser = await updateUserSettingsV2(
+			settingsWithUpdatedWorkspace,
+		);
 		store.commit('setUser', updatedUser);
 		store.commit('updateUserWorkspaceSetting', { workspaceId });
 

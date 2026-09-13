@@ -1,622 +1,727 @@
 <template>
 	<div>
 		<FeatureGate
-		feature-key="board"
-		title="Kanban Board"
-		description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
-		:icon="SquareKanban"
-	>
-		<template #preview>
-			<BoardPreview />
-		</template>
+			feature-key="board"
+			title="Kanban Board"
+			description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
+			:icon="SquareKanban"
+		>
+			<template #preview>
+				<BoardPreview />
+			</template>
 
-	<BaseLayout no-copyright :body-container-class="''">
-		<template #body>
-			<div class="flex flex-col justify-center flex-1 min-h-0 pl-4">
-				<div class="w-full overflow-x-auto flex flex-col h-full min-h-0">
-					<div class="min-h-[56px] flex-shrink-0 max-sm:min-h-0 px-4 py-2 xl-custom:hidden">
-						<div class="flex items-center gap-3 flex-wrap xl-custom:flex-nowrap">
-							<WorkspaceUsers
-								:users="workspaceUsersWithoutAll"
-								:workspace-id="workspaceId"
-							/>
-
-							<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
-
-							<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
-								<button
-									type="button"
-									class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-									title="Refresh"
-									@click="async () => { await loadColumns(); await loadTasks(); }"
+			<BaseLayout no-copyright :body-container-class="''">
+				<template #body>
+					<div class="flex min-h-0 flex-1 flex-col justify-center pl-4">
+						<div class="flex h-full min-h-0 w-full flex-col overflow-x-auto">
+							<div
+								class="min-h-[56px] flex-shrink-0 px-4 py-2 max-sm:min-h-0 xl-custom:hidden"
+							>
+								<div
+									class="flex flex-wrap items-center gap-3 xl-custom:flex-nowrap"
 								>
-									<span class="material-icons text-xl">refresh</span>
-								</button>
-								<button
-									type="button"
-									class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-									title="Filters"
-									@click="isFiltersModalShown = true"
+									<WorkspaceUsers
+										:users="workspaceUsersWithoutAll"
+										:workspace-id="workspaceId"
+									/>
+
+									<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
+
+									<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
+										<button
+											type="button"
+											class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+											title="Refresh"
+											@click="
+												async () => {
+													await loadColumns();
+													await loadTasks();
+												}
+											"
+										>
+											<span class="material-icons text-xl">refresh</span>
+										</button>
+										<button
+											type="button"
+											class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+											title="Filters"
+											@click="isFiltersModalShown = true"
+										>
+											<span class="material-icons text-xl">filter_list</span>
+										</button>
+									</div>
+								</div>
+
+								<!-- Desktop: WorkspaceUsers + filters teleported into top header (right of breadcrumbs) -->
+								<Teleport
+									to="#page-header-actions"
+									:disabled="!headerSlotReady"
 								>
-									<span class="material-icons text-xl">filter_list</span>
-								</button>
+									<div class="hidden items-center gap-3 xl-custom:flex">
+										<WorkspaceUsers
+											:users="workspaceUsersWithoutAll"
+											:workspace-id="workspaceId"
+										/>
+										<BoardTaskCount
+											v-if="tasksLoaded"
+											:summary="sprintSummary"
+										/>
+										<div class="h-5 w-px shrink-0 bg-line"></div>
+										<FiltersBoard
+											v-if="workspaceUsers.length"
+											:workspaceUsers="workspaceUsers"
+											:categories="categories"
+											:chosen-user.sync="chosenUser"
+											@update:chosenUser="handleChosenUserUpdate"
+											@handleChosenCategory="handleChosenCategory"
+											:activeDraggable="activeDraggable"
+											@handleUpdateDraggable="handleUpdateDraggable"
+											@handleSearchTextChanged="handleSearchTextChanged"
+											@loadTasks="loadTasks"
+											@loadColumns="loadColumns"
+										>
+											<template #actions-start>
+												<a
+													href="#"
+													class="block px-4 py-2 text-sm text-ink hover:bg-surface-hover"
+													@click.prevent="openCreateStatusModal"
+												>
+													Add status
+												</a>
+											</template>
+										</FiltersBoard>
+									</div>
+								</Teleport>
+							</div>
+
+							<div class="relative xl-custom:hidden">
+								<Transition name="bounce-right-fade">
+									<Modal
+										v-if="isFiltersModalShown"
+										modal-class="p-6 w-96"
+										close-on-bg-click
+										@close="isFiltersModalShown = false"
+									>
+										<template #modal-body>
+											<div class="relative">
+												<button
+													type="button"
+													class="absolute -right-2 -top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
+													@click="isFiltersModalShown = false"
+												>
+													<span
+														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
+													>
+														close
+													</span>
+												</button>
+												<div class="pt-10">
+													<FiltersBoard
+														v-if="workspaceUsers.length"
+														:workspaceUsers="workspaceUsers"
+														:categories="categories"
+														:chosen-user.sync="chosenUser"
+														@update:chosenUser="handleChosenUserUpdate"
+														@handleChosenCategory="handleChosenCategory"
+														:activeDraggable="activeDraggable"
+														@handleUpdateDraggable="handleUpdateDraggable"
+														@handleSearchTextChanged="handleSearchTextChanged"
+														@loadTasks="loadTasks"
+														@loadColumns="loadColumns"
+														:isMobileModal="true"
+														@close-modal="isFiltersModalShown = false"
+														@open-reorder-modal="openMobileReorderModal"
+													>
+														<template #actions-start>
+															<button
+																@click="openCreateStatusModal"
+																class="w-full rounded-lg bg-tmgr-blue px-4 py-2 text-left text-sm text-white transition-colors hover:bg-blue-600"
+															>
+																Add status
+															</button>
+														</template>
+													</FiltersBoard>
+												</div>
+											</div>
+										</template>
+									</Modal>
+								</Transition>
+							</div>
+
+							<div class="board-wrapper">
+								<!-- Loading skeleton -->
+								<BoardSkeleton
+									v-if="!tasksLoaded"
+									:columns-count="columns.length || 4"
+								/>
+
+								<div v-show="tasksLoaded" class="board-container">
+									<div class="w-fit" ref="cont1">
+										<Draggable
+											ref="cont2"
+											:disabled="!activeDraggable"
+											v-model="columns"
+											group="columns"
+											item-key="id"
+											class="board-container"
+											handle=".column-drag-handle"
+											:force-fallback="true"
+											:fallback-on-body="true"
+											:fallback-tolerance="3"
+											@end="onMove"
+											data-id="column"
+										>
+											<template #item="{ element: column }">
+												<div class="board-container__item pr-2">
+													<div
+														class="column-width flex h-full flex-col px-1 pb-3"
+													>
+														<div class="flex-shrink-0">
+															<div
+																class="mx-1 mb-2.5 h-[3px] rounded-full"
+																:style="{
+																	backgroundColor: column.status.color || null,
+																}"
+																:class="
+																	!column.status.color
+																		? getStatusToneBg(column.status)
+																		: ''
+																"
+															></div>
+
+															<div
+																class="group relative mb-2 flex items-center gap-2 px-1"
+															>
+																<div
+																	v-if="activeDraggable"
+																	class="column-drag-handle flex cursor-grab items-center text-ink-faint active:cursor-grabbing"
+																	title="Drag to reorder columns"
+																>
+																	<EllipsisVerticalIcon
+																		class="h-3"
+																		aria-hidden="true"
+																	/>
+																	<EllipsisVerticalIcon
+																		class="-ml-2 h-3"
+																		aria-hidden="true"
+																	/>
+																</div>
+
+																<span
+																	class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-bold uppercase tracking-wide"
+																	:class="getStatusBadgeClass(column.status)"
+																>
+																	<span
+																		class="h-1.5 w-1.5 rounded-full"
+																		:style="{
+																			backgroundColor:
+																				column.status.color || 'currentColor',
+																		}"
+																	></span>
+																	{{ column.title }}
+																</span>
+
+																<span
+																	v-if="column.taskCount !== undefined"
+																	class="text-xs tabular-nums text-ink-subtle"
+																>
+																	{{ column.taskCount }}
+																</span>
+
+																<div class="ml-auto flex items-center gap-2">
+																	<span
+																		v-if="column.summary"
+																		class="font-mono text-2xs tabular-nums text-ink-subtle"
+																	>
+																		{{ column.summary }}
+																		<span
+																			v-if="column.overtime"
+																			class="ml-1 text-status-fix-fg"
+																			title="Overtime"
+																		>
+																			+{{ column.overtime }}
+																		</span>
+																	</span>
+
+																	<AppTooltip content="Create task" side="left">
+																		<button
+																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
+																			@click="openTaskModal(column)"
+																		>
+																			<span class="material-icons text-base"
+																				>add</span
+																			>
+																		</button>
+																	</AppTooltip>
+
+																	<Dropdown>
+																		<MenuItem v-slot="{ active }">
+																			<a
+																				href="#"
+																				:class="[
+																					'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																					active ? 'bg-surface-hover' : '',
+																				]"
+																				@click.prevent="openTaskModal(column)"
+																			>
+																				<span
+																					class="material-icons text-base text-ink-subtle"
+																					>add</span
+																				>
+																				Create a task
+																			</a>
+																		</MenuItem>
+																		<MenuItem v-slot="{ active }">
+																			<a
+																				href="#"
+																				:class="[
+																					'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																					active ? 'bg-surface-hover' : '',
+																				]"
+																				@click.prevent="openStatusModal(column)"
+																			>
+																				<span
+																					class="material-icons text-base text-ink-subtle"
+																					>edit</span
+																				>
+																				Edit status
+																			</a>
+																		</MenuItem>
+																		<MenuItem
+																			v-if="column.tasks.length > 0"
+																			v-slot="{ active }"
+																		>
+																			<a
+																				href="#"
+																				:class="[
+																					'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																					active ? 'bg-surface-hover' : '',
+																				]"
+																				@click.prevent="
+																					openMoveTasksModal(column)
+																				"
+																			>
+																				<span
+																					class="material-icons text-base text-ink-subtle"
+																					>swap_horiz</span
+																				>
+																				Move all tasks to…
+																			</a>
+																		</MenuItem>
+																		<MenuItem
+																			v-if="column.status.type === 'completed'"
+																			v-slot="{ active }"
+																		>
+																			<a
+																				href="#"
+																				:class="[
+																					'flex items-center gap-2 px-3 py-2 text-sm text-ink',
+																					active ? 'bg-surface-hover' : '',
+																				]"
+																				@click.prevent="
+																					archiveColumnTasks(column)
+																				"
+																			>
+																				<span
+																					class="material-icons text-base text-ink-subtle"
+																					>archive</span
+																				>
+																				Archive all
+																			</a>
+																		</MenuItem>
+																	</Dropdown>
+																</div>
+															</div>
+														</div>
+
+														<div
+															class="board-card flex min-h-0 flex-1 flex-col"
+														>
+															<button
+																v-if="
+																	tasksLoaded &&
+																	column.tasks.length === 0 &&
+																	creatingTaskColumnId !== column.status.id
+																"
+																type="button"
+																class="mx-1 mt-2 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-line px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:border-brand hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+																@click="startCreatingTask(column)"
+															>
+																<span class="material-icons text-base"
+																	>add</span
+																>
+																Add task
+															</button>
+															<Draggable
+																v-model="column.tasks"
+																:animation="200"
+																group="tasks"
+																item-key="id"
+																@end="onEnd"
+																:disabled="false"
+																:data-status="column.status.id"
+																:data-column-id="column.status.id"
+																class="board-card-draggable min-h-0 flex-1"
+																handle=".task-drag-handle"
+																:force-fallback="true"
+																:fallback-on-body="true"
+																:fallback-tolerance="3"
+																:touch-start-threshold="3"
+															>
+																<template #item="{ element: task }">
+																	<TaskBoardCard
+																		:task="task"
+																		:statuses="statuses"
+																		class="my-5"
+																		:data-task="jsonEncode(task)"
+																		@move-to-top="handleMoveToTop(task, column)"
+																		@move-to-bottom="
+																			handleMoveToBottom(task, column)
+																		"
+																		@task-deleted="removeTaskFromBoard(task.id)"
+																		@task-archived="updateSingleTaskInBoard"
+																	/>
+																</template>
+															</Draggable>
+
+															<!-- TM-151: quick-add right under the last card. Teleported into the
+												     scroll container like the inline input; the drag handle selector
+												     keeps Sortable from ever picking it up. -->
+															<Teleport
+																v-if="
+																	tasksLoaded &&
+																	column.tasks.length > 0 &&
+																	creatingTaskColumnId !== column.status.id
+																"
+																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
+															>
+																<button
+																	type="button"
+																	class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+																	@click="startCreatingTask(column)"
+																>
+																	<span class="material-icons text-sm"
+																		>add</span
+																	>
+																	Add task
+																</button>
+															</Teleport>
+
+															<Teleport
+																v-if="
+																	tasksLoaded &&
+																	creatingTaskColumnId === column.status.id
+																"
+																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
+															>
+																<div class="flex-shrink-0 px-1 pb-1 pt-1">
+																	<div class="flex flex-col gap-2">
+																		<input
+																			v-model="newTaskTitle"
+																			@keyup.enter="createQuickTask(column)"
+																			@keyup.esc="cancelCreatingTask"
+																			@blur="handleInputBlur"
+																			placeholder="Enter task title..."
+																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:shadow-tmgr-focus focus:outline-none"
+																		/>
+																		<div class="flex gap-2">
+																			<button
+																				@click="createQuickTask(column)"
+																				class="flex-1 rounded-md bg-brand px-3 py-1.5 text-sm text-white transition-colors hover:bg-brand-hover"
+																			>
+																				Add
+																			</button>
+																			<button
+																				@click="cancelCreatingTask"
+																				class="rounded-md bg-surface-sunken px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-line"
+																			>
+																				Cancel
+																			</button>
+																		</div>
+																	</div>
+																</div>
+															</Teleport>
+														</div>
+													</div>
+												</div>
+											</template>
+										</Draggable>
+									</div>
+								</div>
 							</div>
 						</div>
 
-						<!-- Desktop: WorkspaceUsers + filters teleported into top header (right of breadcrumbs) -->
-						<Teleport to="#page-header-actions" :disabled="!headerSlotReady">
-							<div class="hidden items-center gap-3 xl-custom:flex">
-								<WorkspaceUsers
-									:users="workspaceUsersWithoutAll"
-									:workspace-id="workspaceId"
-								/>
-								<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
-								<div class="h-5 w-px bg-line shrink-0"></div>
-								<FiltersBoard
-									v-if="workspaceUsers.length"
-									:workspaceUsers="workspaceUsers"
-									:categories="categories"
-									:chosen-user.sync="chosenUser"
-									@update:chosenUser="handleChosenUserUpdate"
-									@handleChosenCategory="handleChosenCategory"
-									:activeDraggable="activeDraggable"
-									@handleUpdateDraggable="handleUpdateDraggable"
-									@handleSearchTextChanged="handleSearchTextChanged"
-									@loadTasks="loadTasks"
-									@loadColumns="loadColumns"
-								>
-									<template #actions-start>
-										<a
-											href="#"
-											class="block px-4 py-2 text-sm text-ink hover:bg-surface-hover"
-											@click.prevent="openCreateStatusModal"
-										>
-											Add status
-										</a>
-									</template>
-								</FiltersBoard>
-							</div>
-						</Teleport>
-					</div>
-
-						<div class="relative xl-custom:hidden">
-
-							<Transition name="bounce-right-fade">
+						<Transition name="bounce-right-fade">
+							<div>
 								<Modal
-									v-if="isFiltersModalShown"
+									v-if="isShowStatusModal"
 									modal-class="p-6 w-96"
 									close-on-bg-click
-									@close="isFiltersModalShown = false"
+									@close="closeModal"
+									@closing-modal="closingModal"
 								>
 									<template #modal-body>
-										<div class="relative">
-											<button
-												type="button"
-												class="absolute -right-2 -top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
-												@click="isFiltersModalShown = false"
-											>
-												<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
-													close
-												</span>
-											</button>
-											<div class="pt-10">
-												<FiltersBoard
-												v-if="workspaceUsers.length"
-												:workspaceUsers="workspaceUsers"
-												:categories="categories"
-												:chosen-user.sync="chosenUser"
-												@update:chosenUser="handleChosenUserUpdate"
-												@handleChosenCategory="handleChosenCategory"
-												:activeDraggable="activeDraggable"
-												@handleUpdateDraggable="handleUpdateDraggable"
-												@handleSearchTextChanged="handleSearchTextChanged"
-												@loadTasks="loadTasks"
-												@loadColumns="loadColumns"
-												:isMobileModal="true"
-												@close-modal="isFiltersModalShown = false"
-												@open-reorder-modal="openMobileReorderModal"
-											>
-												<template #actions-start>
-													<button
-														@click="openCreateStatusModal"
-														class="w-full px-4 py-2 text-sm text-left bg-tmgr-blue hover:bg-blue-600 text-white rounded-lg transition-colors"
+										<div>
+											<div v-if="!isShowColorPicker" class="relative">
+												<button
+													type="button"
+													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+													@click="closeModal"
+												>
+													<span
+														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
 													>
-														Add status
+														close
+													</span>
+												</button>
+												<h1
+													v-if="isCreatingStatus"
+													class="mb-3 text-center text-xl"
+												>
+													Create status
+												</h1>
+												<h1 v-else class="mb-3 text-center text-xl">
+													Edit status
+												</h1>
+												<label class="mb-3 flex flex-col gap-2 font-medium">
+													Status name :
+													<TextField
+														placeholder="Name"
+														v-model="statusName"
+														:errors="errors.name"
+													/>
+												</label>
+												<label class="mb-4 flex flex-col gap-2 font-medium">
+													Status type :
+													<Select
+														placeholder="Select Type"
+														:options="statusTypes"
+														v-model="statusType"
+														:errors="errors.type"
+														label-key="name"
+														value-key="name"
+													/>
+												</label>
+												<div
+													class="mb-3 mb-3 flex items-center justify-between font-medium"
+												>
+													<span>Status color :</span>
+													<button
+														type="button"
+														:style="{ backgroundColor: statusColor }"
+														class="w-2/4 rounded px-4 py-2 font-bold text-white outline-none transition sm:mb-0"
+														:class="'bg-' + '[' + statusColor + ']'"
+														@click="openPickerModal"
+													>
+														{{ statusColor }}
 													</button>
-												</template>
-											</FiltersBoard>
+												</div>
+
+												<button
+													@click="saveNewStatus()"
+													class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+													type="button"
+												>
+													{{ isCreatingStatus ? 'Create' : 'Save' }}
+												</button>
+
+												<button
+													v-if="!isCreatingStatus"
+													@click="deleteStatus"
+													class="mt-3 w-full rounded bg-red-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+													type="button"
+												>
+													Delete
+												</button>
 											</div>
 										</div>
 									</template>
 								</Modal>
-							</Transition>
-						</div>
-
-					<div class="board-wrapper">
-					<!-- Loading skeleton -->
-					<BoardSkeleton v-if="!tasksLoaded" :columns-count="columns.length || 4" />
-
-					<div v-show="tasksLoaded" class="board-container">
-						<div class="w-fit" ref="cont1">
-							<Draggable
-								ref="cont2"
-								:disabled="!activeDraggable"
-								v-model="columns"
-								group="columns"
-								item-key="id"
-								class="board-container"
-								handle=".column-drag-handle"
-								:force-fallback="true"
-								:fallback-on-body="true"
-								:fallback-tolerance="3"
-								@end="onMove"
-								data-id="column"
-							>
-								<template #item="{ element: column }">
-									<div class="board-container__item pr-2">
-										<div class="column-width h-full px-1 pb-3 flex flex-col">
-											<div class="flex-shrink-0">
-												<div
-													class="h-[3px] rounded-full mb-2.5 mx-1"
-													:style="{ backgroundColor: column.status.color || null }"
-													:class="!column.status.color ? getStatusToneBg(column.status) : ''"
-												></div>
-
-												<div
-													class="group relative flex items-center gap-2 px-1 mb-2"
-												>
-													<div
-														v-if="activeDraggable"
-														class="column-drag-handle flex items-center cursor-grab active:cursor-grabbing text-ink-faint"
-														title="Drag to reorder columns"
-													>
-														<EllipsisVerticalIcon
-															class="h-3"
-															aria-hidden="true"
-														/>
-														<EllipsisVerticalIcon
-															class="-ml-2 h-3"
-															aria-hidden="true"
-														/>
-													</div>
-
-													<span
-														class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-bold uppercase tracking-wide"
-														:class="getStatusBadgeClass(column.status)"
-													>
-														<span
-															class="h-1.5 w-1.5 rounded-full"
-															:style="{ backgroundColor: column.status.color || 'currentColor' }"
-														></span>
-														{{ column.title }}
-													</span>
-
-													<span
-														v-if="column.taskCount !== undefined"
-														class="text-xs tabular-nums text-ink-subtle"
-													>
-														{{ column.taskCount }}
-													</span>
-
-													<div class="ml-auto flex items-center gap-2">
-														<span
-															v-if="column.summary"
-															class="font-mono text-2xs tabular-nums text-ink-subtle"
-														>
-															{{ column.summary }}
-															<span
-																v-if="column.overtime"
-																class="ml-1 text-status-fix-fg"
-																title="Overtime"
-															>
-																+{{ column.overtime }}
-															</span>
-														</span>
-
-														<AppTooltip content="Create task" side="left">
-															<button
-																class="opacity-0 transition-opacity group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-hover hover:text-ink"
-																@click="openTaskModal(column)"
-															>
-																<span class="material-icons text-base">add</span>
-															</button>
-														</AppTooltip>
-
-														<Dropdown>
-															<MenuItem v-slot="{ active }">
-																<a
-																	href="#"
-																	:class="[
-																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
-																		active ? 'bg-surface-hover' : '',
-																	]"
-																	@click.prevent="openTaskModal(column)"
-																>
-																	<span class="material-icons text-base text-ink-subtle">add</span>
-																	Create a task
-																</a>
-															</MenuItem>
-															<MenuItem v-slot="{ active }">
-																<a
-																	href="#"
-																	:class="[
-																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
-																		active ? 'bg-surface-hover' : '',
-																	]"
-																	@click.prevent="openStatusModal(column)"
-																>
-																	<span class="material-icons text-base text-ink-subtle">edit</span>
-																	Edit status
-																</a>
-															</MenuItem>
-															<MenuItem v-if="column.tasks.length > 0" v-slot="{ active }">
-																<a
-																	href="#"
-																	:class="[
-																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
-																		active ? 'bg-surface-hover' : '',
-																	]"
-																	@click.prevent="openMoveTasksModal(column)"
-																>
-																	<span class="material-icons text-base text-ink-subtle">swap_horiz</span>
-																	Move all tasks to…
-																</a>
-															</MenuItem>
-															<MenuItem v-if="column.status.type === 'completed'" v-slot="{ active }">
-																<a
-																	href="#"
-																	:class="[
-																		'flex items-center gap-2 px-3 py-2 text-sm text-ink',
-																		active ? 'bg-surface-hover' : '',
-																	]"
-																	@click.prevent="archiveColumnTasks(column)"
-																>
-																	<span class="material-icons text-base text-ink-subtle">archive</span>
-																	Archive all
-																</a>
-															</MenuItem>
-														</Dropdown>
-													</div>
-												</div>
-											</div>
-
-											<div class="board-card flex-1 min-h-0 flex flex-col">
-												<button
-													v-if="tasksLoaded && column.tasks.length === 0 && creatingTaskColumnId !== column.status.id"
-													type="button"
-													class="mx-1 mt-2 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-line px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:border-brand hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													@click="startCreatingTask(column)"
-												>
-													<span class="material-icons text-base">add</span>
-													Add task
-												</button>
-												<Draggable
-													v-model="column.tasks"
-													:animation="200"
-													group="tasks"
-													item-key="id"
-													@end="onEnd"
-													:disabled="false"
-													:data-status="column.status.id"
-													:data-column-id="column.status.id"
-													class="board-card-draggable flex-1 min-h-0"
-													handle=".task-drag-handle"
-													:force-fallback="true"
-													:fallback-on-body="true"
-													:fallback-tolerance="3"
-													:touch-start-threshold="3"
-												>
-												<template #item="{ element: task }">
-													<TaskBoardCard
-														:task="task"
-														:statuses="statuses"
-														class="my-5"
-														:data-task="jsonEncode(task)"
-														@move-to-top="handleMoveToTop(task, column)"
-														@move-to-bottom="handleMoveToBottom(task, column)"
-														@task-deleted="removeTaskFromBoard(task.id)"
-														@task-archived="updateSingleTaskInBoard"
-													/>
-												</template>
-												</Draggable>
-
-												<!-- TM-151: quick-add right under the last card. Teleported into the
-												     scroll container like the inline input; the drag handle selector
-												     keeps Sortable from ever picking it up. -->
-												<Teleport v-if="tasksLoaded && column.tasks.length > 0 && creatingTaskColumnId !== column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
-													<button
-														type="button"
-														class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-														@click="startCreatingTask(column)"
-													>
-														<span class="material-icons text-sm">add</span>
-														Add task
-													</button>
-												</Teleport>
-
-												<Teleport v-if="tasksLoaded && creatingTaskColumnId === column.status.id" :to="`.board-card-draggable[data-column-id='${column.status.id}']`">
-													<div class="flex-shrink-0 px-1 pt-1 pb-1">
-														<div class="flex flex-col gap-2">
-															<input
-																v-model="newTaskTitle"
-																@keyup.enter="createQuickTask(column)"
-																@keyup.esc="cancelCreatingTask"
-																@blur="handleInputBlur"
-																placeholder="Enter task title..."
-																class="task-title-input w-full px-3 py-2 text-sm border border-line rounded-md bg-surface text-ink focus:outline-none focus:shadow-tmgr-focus"
-															/>
-															<div class="flex gap-2">
-																<button
-																	@click="createQuickTask(column)"
-																	class="flex-1 px-3 py-1.5 text-sm bg-brand text-white rounded-md transition-colors hover:bg-brand-hover"
-																>
-																	Add
-																</button>
-																<button
-																	@click="cancelCreatingTask"
-																	class="px-3 py-1.5 text-sm bg-surface-sunken hover:bg-line text-ink-muted rounded-md transition-colors"
-																>
-																	Cancel
-																</button>
-															</div>
-														</div>
-													</div>
-												</Teleport>
-											</div>
-										</div>
-									</div>
-								</template>
-							</Draggable>
-						</div>
-					</div>
-					</div>
-				</div>
-
-				<Transition name="bounce-right-fade">
-					<div>
-						<Modal
-							v-if="isShowStatusModal"
-							modal-class="p-6 w-96"
-							close-on-bg-click
-							@close="closeModal"
-							@closing-modal="closingModal"
-						>
-						<template #modal-body>
-							<div>
-								<div v-if="!isShowColorPicker" class="relative">
-									<button
-										type="button"
-										class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
-										@click="closeModal"
-									>
-										<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
-											close
-										</span>
-									</button>
-									<h1
-										v-if="isCreatingStatus"
-										class="mb-3 text-center text-xl"
-									>
-										Create status
-									</h1>
-									<h1 v-else class="mb-3 text-center text-xl">Edit status</h1>
-										<label class="mb-3 flex flex-col gap-2 font-medium">
-											Status name :
-											<TextField
-												placeholder="Name"
-												v-model="statusName"
-												:errors="errors.name"
-											/>
-										</label>
-										<label class="mb-4 flex flex-col gap-2 font-medium">
-											Status type :
-											<Select
-												placeholder="Select Type"
-												:options="statusTypes"
-												v-model="statusType"
-												:errors="errors.type"
-												label-key="name"
-												value-key="name"
-											/>
-										</label>
-										<div
-											class="mb-3 mb-3 flex items-center justify-between font-medium"
-										>
-											<span>Status color :</span>
+								<Modal
+									id="modal2"
+									v-if="isShowColorPicker"
+									modal-class=""
+									close-on-bg-click
+									@close="closePickerModal"
+									@closing-modal="closingModal"
+								>
+									<template #modal-body>
+										<div class="relative p-8">
 											<button
 												type="button"
-												:style="{ backgroundColor: statusColor }"
-												class="w-2/4 rounded px-4 py-2 font-bold text-white outline-none transition sm:mb-0"
-												:class="'bg-' + '[' + statusColor + ']'"
-												@click="openPickerModal"
+												class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
 											>
-												{{ statusColor }}
+												<span
+													class="material-icons text-2xl text-black dark:text-white"
+													@click="closePickerModal"
+												>
+													close
+												</span>
+											</button>
+											<color-picker
+												:hue="color.hue"
+												:saturation="color.saturation"
+												:luminosity="color.luminosity"
+												:alpha="color.alpha"
+												variant="persistent"
+												@input="onInput"
+												@select="onColorSelect"
+											/>
+											<button
+												@click="applyColor"
+												class="mt-6 w-full rounded bg-tmgr-blue px-4 py-3 font-bold text-white outline-none transition hover:bg-blue-600"
+												type="button"
+											>
+												Apply
 											</button>
 										</div>
-
-										<button
-											@click="saveNewStatus()"
-											class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
-											type="button"
-										>
-											{{ isCreatingStatus ? 'Create' : 'Save' }}
-										</button>
-
-										<button
-											v-if="!isCreatingStatus"
-											@click="deleteStatus"
-											class="mt-3 w-full rounded bg-red-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
-											type="button"
-										>
-											Delete
-										</button>
-									</div>
-								</div>
-							</template>
-						</Modal>
-						<Modal
-							id="modal2"
-							v-if="isShowColorPicker"
-							modal-class=""
-							close-on-bg-click
-							@close="closePickerModal"
-							@closing-modal="closingModal"
-						>
-						<template #modal-body>
-							<div class="relative p-8">
-								<button
-									type="button"
-									class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
+									</template>
+								</Modal>
+								<Modal
+									v-if="isShowMoveTasksModal"
+									modal-class="p-6 w-96"
+									close-on-bg-click
+									@close="closeMoveTasksModal"
 								>
-									<span
-										class="material-icons text-2xl text-black dark:text-white"
-										@click="closePickerModal"
-									>
-										close
-									</span>
-								</button>
-							<color-picker
-								:hue="color.hue"
-								:saturation="color.saturation"
-								:luminosity="color.luminosity"
-								:alpha="color.alpha"
-								variant="persistent"
-								@input="onInput"
-								@select="onColorSelect"
-							/>
-							<button
-								@click="applyColor"
-								class="mt-6 w-full rounded bg-tmgr-blue px-4 py-3 font-bold text-white outline-none transition hover:bg-blue-600"
-								type="button"
-							>
-								Apply
-							</button>
-							</div>
-						</template>
-						</Modal>
-						<Modal
-							v-if="isShowMoveTasksModal"
-							modal-class="p-6 w-96"
-							close-on-bg-click
-							@close="closeMoveTasksModal"
-						>
-							<template #modal-body>
-								<div>
-									<h1 class="mb-4 text-center text-xl font-semibold">
-										Move all tasks to
-									</h1>
-									<p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
-										Move {{ sourceColumnForMove?.tasks.length }} task(s) from "{{ sourceColumnForMove?.title }}" to:
-									</p>
-									<div class="space-y-2">
-										<button
-											v-for="column in availableColumnsForMove"
-											:key="column.status.id"
-											@click="moveAllTasksToColumn(column)"
-											class="w-full rounded-lg border-2 px-4 py-3 text-left font-medium transition-all hover:bg-gray-50 dark:hover:bg-gray-800"
-											:style="{ borderLeftColor: column.status.color, borderLeftWidth: '4px' }"
-										>
-											<div class="flex items-center justify-between">
-												<span class="text-gray-900 dark:text-gray-100">{{ column.title }}</span>
-												<span class="text-xs text-gray-500 dark:text-gray-400">({{ column.taskCount }})</span>
-											</div>
-										</button>
-									</div>
-									<button
-										@click="closeMoveTasksModal"
-										class="mt-4 w-full rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-									>
-										Cancel
-									</button>
-								</div>
-							</template>
-						</Modal>
-						<Modal
-							v-if="isShowMobileReorderModal"
-							modal-class="p-6 w-96"
-							close-on-bg-click
-							@close="closeMobileReorderModal"
-						>
-							<template #modal-body>
-								<div>
-									<div class="relative mb-4">
-										<h1 class="text-center text-xl font-semibold">
-											Reorder Statuses
-										</h1>
-										<button
-											type="button"
-											class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
-											@click="closeMobileReorderModal"
-										>
-											<span class="material-icons text-2xl text-gray-600 dark:text-gray-400">
-												close
-											</span>
-										</button>
-									</div>
-									<p class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400">
-										Hold and drag the six dots icon to reorder
-									</p>
-									<Draggable
-										v-model="mobileReorderColumns"
-										:animation="200"
-										item-key="status.id"
-										handle=".drag-handle"
-										class="space-y-2"
-									>
-										<template #item="{ element: column }">
-											<div
-												class="flex items-center gap-3 rounded-lg border-2 px-4 py-3 bg-white dark:bg-gray-800"
-												:style="{ borderLeftColor: column.status.color, borderLeftWidth: '4px' }"
+									<template #modal-body>
+										<div>
+											<h1 class="mb-4 text-center text-xl font-semibold">
+												Move all tasks to
+											</h1>
+											<p
+												class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400"
 											>
-												<div class="drag-handle cursor-move flex items-center">
-													<EllipsisVerticalIcon
-														class="h-4 w-4 text-gray-400"
-														aria-hidden="true"
-													/>
-													<EllipsisVerticalIcon
-														class="-ml-2 h-4 w-4 text-gray-400"
-														aria-hidden="true"
-													/>
-												</div>
-												<div class="flex-1">
-													<span class="text-gray-900 dark:text-gray-100 font-medium">{{ column.title }}</span>
-												</div>
+												Move {{ sourceColumnForMove?.tasks.length }} task(s)
+												from "{{ sourceColumnForMove?.title }}" to:
+											</p>
+											<div class="space-y-2">
+												<button
+													v-for="column in availableColumnsForMove"
+													:key="column.status.id"
+													@click="moveAllTasksToColumn(column)"
+													class="w-full rounded-lg border-2 px-4 py-3 text-left font-medium transition-all hover:bg-gray-50 dark:hover:bg-gray-800"
+													:style="{
+														borderLeftColor: column.status.color,
+														borderLeftWidth: '4px',
+													}"
+												>
+													<div class="flex items-center justify-between">
+														<span class="text-gray-900 dark:text-gray-100">{{
+															column.title
+														}}</span>
+														<span
+															class="text-xs text-gray-500 dark:text-gray-400"
+															>({{ column.taskCount }})</span
+														>
+													</div>
+												</button>
 											</div>
-										</template>
-									</Draggable>
-									<div class="mt-4 flex gap-2">
-										<button
-											@click="saveMobileReorder"
-											class="flex-1 rounded-lg bg-tmgr-blue px-4 py-2 font-medium text-white transition hover:bg-blue-600"
-										>
-											Save Order
-										</button>
-										<button
-											@click="closeMobileReorderModal"
-											class="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-										>
-											Cancel
-										</button>
-									</div>
-								</div>
-							</template>
-						</Modal>
+											<button
+												@click="closeMoveTasksModal"
+												class="mt-4 w-full rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+											>
+												Cancel
+											</button>
+										</div>
+									</template>
+								</Modal>
+								<Modal
+									v-if="isShowMobileReorderModal"
+									modal-class="p-6 w-96"
+									close-on-bg-click
+									@close="closeMobileReorderModal"
+								>
+									<template #modal-body>
+										<div>
+											<div class="relative mb-4">
+												<h1 class="text-center text-xl font-semibold">
+													Reorder Statuses
+												</h1>
+												<button
+													type="button"
+													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+													@click="closeMobileReorderModal"
+												>
+													<span
+														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
+													>
+														close
+													</span>
+												</button>
+											</div>
+											<p
+												class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400"
+											>
+												Hold and drag the six dots icon to reorder
+											</p>
+											<Draggable
+												v-model="mobileReorderColumns"
+												:animation="200"
+												item-key="status.id"
+												handle=".drag-handle"
+												class="space-y-2"
+											>
+												<template #item="{ element: column }">
+													<div
+														class="flex items-center gap-3 rounded-lg border-2 bg-white px-4 py-3 dark:bg-gray-800"
+														:style="{
+															borderLeftColor: column.status.color,
+															borderLeftWidth: '4px',
+														}"
+													>
+														<div
+															class="drag-handle flex cursor-move items-center"
+														>
+															<EllipsisVerticalIcon
+																class="h-4 w-4 text-gray-400"
+																aria-hidden="true"
+															/>
+															<EllipsisVerticalIcon
+																class="-ml-2 h-4 w-4 text-gray-400"
+																aria-hidden="true"
+															/>
+														</div>
+														<div class="flex-1">
+															<span
+																class="font-medium text-gray-900 dark:text-gray-100"
+																>{{ column.title }}</span
+															>
+														</div>
+													</div>
+												</template>
+											</Draggable>
+											<div class="mt-4 flex gap-2">
+												<button
+													@click="saveMobileReorder"
+													class="flex-1 rounded-lg bg-tmgr-blue px-4 py-2 font-medium text-white transition hover:bg-blue-600"
+												>
+													Save Order
+												</button>
+												<button
+													@click="closeMobileReorderModal"
+													class="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+												>
+													Cancel
+												</button>
+											</div>
+										</div>
+									</template>
+								</Modal>
+							</div>
+						</Transition>
 					</div>
-				</Transition>
-			</div>
 
-			<Transition name="fade">
-				<confirm
-					v-if="confirm"
-					:title="confirm.title"
-					:body="confirm.body"
-					@onOk="confirm.action()"
-					@onCancel="confirm = undefined"
-				/>
-			</Transition>
-		</template>
-	</BaseLayout>
-
+					<Transition name="fade">
+						<confirm
+							v-if="confirm"
+							:title="confirm.title"
+							:body="confirm.body"
+							@onOk="confirm.action()"
+							@onCancel="confirm = undefined"
+						/>
+					</Transition>
+				</template>
+			</BaseLayout>
 		</FeatureGate>
 	</div>
 </template>
@@ -625,49 +730,51 @@
 	import Button from '@/components/general/Button.vue';
 	import Draggable from 'vuedraggable';
 
+	import { getCategories } from '@/actions/tmgr/categories';
+	import {
+		createStatus,
+		deleteStatus,
+		updateStatus,
+	} from '@/actions/tmgr/statuses';
+	import {
+		createTask,
+		getSortedTasksByStatus,
+		updateStatusOfTasks,
+		updateTaskOrders,
+		updateTaskStatus,
+	} from '@/actions/tmgr/tasks';
+	import { getUser, updateUser } from '@/actions/tmgr/user';
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
 		getWorkspaceStatuses,
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
-	import {
-		getSortedTasksByStatus,
-		updateStatusOfTasks,
-		updateTaskOrders,
-		updateTaskStatus,
-		createTask,
-	} from '@/actions/tmgr/tasks';
-	import { getUser, updateUser } from '@/actions/tmgr/user';
-	import FiltersBoard from '@/components/general/FiltersBoard.vue';
-	import Dropdown from '@/components/general/Dropdown.vue';
-	import { MenuItem } from '@headlessui/vue';
-	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
-	import TaskBoardCard from '@/components/tasks/TaskBoardCard.vue';
-	import { removeTaskFromColumns, upsertTaskInColumns } from '@/utils/taskPatch';
-	import TextField from '@/components/general/TextField.vue';
-	import {
-		createStatus,
-		deleteStatus,
-		updateStatus,
-	} from '@/actions/tmgr/statuses';
-	import ColorPicker from '@radial-color-picker/vue-color-picker';
-	import Select from '@/components/general/Select.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import { hexToHsl, hslToHex } from '@/utils/colors';
-	import { getCategories } from '@/actions/tmgr/categories';
-	import FilterIcon from '@/components/icons/FilterIcon.vue';
-	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
-	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
-	import { boardTaskCounts } from '@/utils/boardSummary';
-	import FeatureGate from '@/components/general/FeatureGate.vue';
-	import BoardPreview from '@/components/previews/BoardPreview.vue';
-	import BoardSkeleton from '@/components/board/BoardSkeleton.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
-	import { SquareKanban } from 'lucide-vue-next';
+	import Confirm from '@/components/general/Confirm.vue';
+	import Dropdown from '@/components/general/Dropdown.vue';
+	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import FiltersBoard from '@/components/general/FiltersBoard.vue';
+	import Select from '@/components/general/Select.vue';
+	import TextField from '@/components/general/TextField.vue';
+	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
+	import FilterIcon from '@/components/icons/FilterIcon.vue';
+	import BoardPreview from '@/components/previews/BoardPreview.vue';
+	import TaskBoardCard from '@/components/tasks/TaskBoardCard.vue';
+	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
+	import { boardTaskCounts } from '@/utils/boardSummary';
+	import { hexToHsl, hslToHex } from '@/utils/colors';
+	import {
+		removeTaskFromColumns,
+		upsertTaskInColumns,
+	} from '@/utils/taskPatch';
+	import { MenuItem } from '@headlessui/vue';
+	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
+	import ColorPicker from '@radial-color-picker/vue-color-picker';
+	import { SquareKanban } from 'lucide-vue-next';
 
 	export default {
 		name: 'Board',
@@ -777,59 +884,59 @@
 			pusherSubscriptionId: '',
 		}),
 
-	watch: {
-		'$store.state.reloadTasksKey'() {
-			this.loadTasks();
-		},
-		'$store.state.updatedTaskKey'() {
-			const updatedTask = this.$store.state.updatedTaskData;
-			if (updatedTask) {
-				this.updateSingleTaskInBoard(updatedTask);
-			}
-		},
-		'$store.state.createdTaskKey'() {
-			const createdTask = this.$store.state.createdTaskData;
-			if (createdTask) {
-				this.updateSingleTaskInBoard(createdTask);
-			}
-		},
-		'$store.state.deletedTaskKey'() {
-			const deletedId = this.$store.state.deletedTaskId;
-			if (deletedId) {
-				this.removeTaskFromBoard(deletedId);
-			}
-		},
-		'$store.state.currentTaskIdForModal'(newVal, oldVal) {
-			if (oldVal && !newVal) {
-				this.$nextTick(() => {
-					this.updateScrollContainers();
-				});
-			}
-		},
-		$route() {
-			this.isMobile = window.innerWidth <= 768;
-		},
+		watch: {
+			'$store.state.reloadTasksKey'() {
+				this.loadTasks();
+			},
+			'$store.state.updatedTaskKey'() {
+				const updatedTask = this.$store.state.updatedTaskData;
+				if (updatedTask) {
+					this.updateSingleTaskInBoard(updatedTask);
+				}
+			},
+			'$store.state.createdTaskKey'() {
+				const createdTask = this.$store.state.createdTaskData;
+				if (createdTask) {
+					this.updateSingleTaskInBoard(createdTask);
+				}
+			},
+			'$store.state.deletedTaskKey'() {
+				const deletedId = this.$store.state.deletedTaskId;
+				if (deletedId) {
+					this.removeTaskFromBoard(deletedId);
+				}
+			},
+			'$store.state.currentTaskIdForModal'(newVal, oldVal) {
+				if (oldVal && !newVal) {
+					this.$nextTick(() => {
+						this.updateScrollContainers();
+					});
+				}
+			},
+			$route() {
+				this.isMobile = window.innerWidth <= 768;
+			},
 
-		chosenUser: function () {
-			this.loadTasks();
+			chosenUser: function () {
+				this.loadTasks();
+			},
+			searchText: function () {
+				this.loadTasks();
+			},
+			chosenCategory: function () {
+				this.loadTasks();
+			},
 		},
-		searchText: function () {
-			this.loadTasks();
-		},
-		chosenCategory: function () {
-			this.loadTasks();
-		},
-	},
 		computed: {
 			workspaceUsersWithoutAll() {
-				return this.workspaceUsers.filter(user => user.id !== 0);
+				return this.workspaceUsers.filter((user) => user.id !== 0);
 			},
 			availableColumnsForMove() {
 				if (!this.sourceColumnForMove) {
 					return [];
 				}
 				return this.columns.filter(
-					col => col.status.id !== this.sourceColumnForMove.status.id
+					(col) => col.status.id !== this.sourceColumnForMove.status.id,
 				);
 			},
 			sprintSummary() {
@@ -858,11 +965,11 @@
 					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
 					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
-					return { 
-						...column, 
+					return {
+						...column,
 						summary: summaryInHours,
 						taskCount: taskCount,
-						overtime: overtimeFormatted
+						overtime: overtimeFormatted,
 					};
 				});
 			},
@@ -894,28 +1001,28 @@
 				};
 				return map[type] || 'bg-surface-sunken text-ink-muted';
 			},
-		onColorSelect() {
-			this.commitPickedColor();
-		},
-		applyColor() {
-			this.commitPickedColor();
-			this.closePickerModal();
-		},
-		/**
-		 * Only rewrite the hex when the wheel was actually moved: the HSL round-trip
-		 * rounds to whole degrees / percents and would shift an untouched colour by a
-		 * channel or two (#1d4ed8 -> #1d4fd7).
-		 */
-		commitPickedColor() {
-			if (!this.colorTouched) {
-				return;
-			}
-			this.statusColor = hslToHex(
-				this.color.hue,
-				this.color.saturation,
-				this.color.luminosity,
-			);
-		},
+			onColorSelect() {
+				this.commitPickedColor();
+			},
+			applyColor() {
+				this.commitPickedColor();
+				this.closePickerModal();
+			},
+			/**
+			 * Only rewrite the hex when the wheel was actually moved: the HSL round-trip
+			 * rounds to whole degrees / percents and would shift an untouched colour by a
+			 * channel or two (#1d4ed8 -> #1d4fd7).
+			 */
+			commitPickedColor() {
+				if (!this.colorTouched) {
+					return;
+				}
+				this.statusColor = hslToHex(
+					this.color.hue,
+					this.color.saturation,
+					this.color.luminosity,
+				);
+			},
 			handleFilter() {
 				this.isFiltersModalShown = !this.isFiltersModalShown;
 			},
@@ -945,10 +1052,10 @@
 			handleChosenCategory(newChosenCategory) {
 				this.chosenCategory = newChosenCategory;
 			},
-		openPickerModal() {
-			this.isShowColorPicker = true;
-			this.$store.commit('openModal');
-		},
+			openPickerModal() {
+				this.isShowColorPicker = true;
+				this.$store.commit('openModal');
+			},
 			closingModal() {
 				if (this.isShowStatusModal && this.isShowColorPicker) {
 					this.isShowColorPicker = false;
@@ -1097,26 +1204,26 @@
 				});
 			},
 			async handleMoveToTop(task, column) {
-				const taskIndex = column.tasks.findIndex(t => t.id === task.id);
+				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === 0) {
 					return;
 				}
-				
+
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
-				
+
 				await this.$nextTick();
 				await this.saveOrders(column.status.id);
 			},
 			async handleMoveToBottom(task, column) {
-				const taskIndex = column.tasks.findIndex(t => t.id === task.id);
+				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
 					return;
 				}
-				
+
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.push(task);
-				
+
 				await this.$nextTick();
 				await this.saveOrders(column.status.id);
 			},
@@ -1177,7 +1284,7 @@
 				await updateWorkspaceOrder(this.workspaceId, {
 					statuses_with_order: sortedStats,
 				});
-				
+
 				await this.loadColumns();
 				await this.loadTasks();
 				this.closeMobileReorderModal();
@@ -1186,19 +1293,19 @@
 				if (!this.sourceColumnForMove || !targetColumn) {
 					return;
 				}
-				
+
 				const { tasks } = this.sourceColumnForMove;
 				if (tasks.length === 0) {
 					this.closeMoveTasksModal();
 					return;
 				}
-				
+
 				const taskIds = tasks.map((t) => t.id);
 				const targetStatusId = targetColumn.status.id;
 				const sourceColumnTitle = this.sourceColumnForMove.title;
 				const targetColumnTitle = targetColumn.title;
 				const taskCount = tasks.length;
-				
+
 				const confirmMove = async () => {
 					try {
 						await updateStatusOfTasks(taskIds, targetStatusId);
@@ -1209,7 +1316,7 @@
 						this.confirm = undefined;
 					}
 				};
-				
+
 				this.closeMoveTasksModal();
 				this.showConfirm(
 					'Move all tasks',
@@ -1266,7 +1373,9 @@
 				if (task.approximately_time) {
 					return parseInt(task.approximately_time, 10);
 				}
-				const setting = task.settings?.find(s => s.key === 'approximately_time');
+				const setting = task.settings?.find(
+					(s) => s.key === 'approximately_time',
+				);
 				if (setting) {
 					return parseInt(setting.value || setting.pivot?.value, 10);
 				}
@@ -1330,18 +1439,18 @@
 					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
 					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
-					const newColumn = { 
-						...column, 
+					const newColumn = {
+						...column,
 						summary: summaryInHours,
 						taskCount: taskCount,
-						overtime: overtimeFormatted
+						overtime: overtimeFormatted,
 					};
 
 					newColumn.tasks = tasksInColumn;
 
 					return newColumn;
 				});
-				
+
 				this.$nextTick(() => {
 					this.updateScrollContainers();
 					this.tasksLoaded = true;
@@ -1369,7 +1478,9 @@
 						);
 					}
 				}
-				const selectedCategoryId = Number(this.$store.state.filter.selectedCategory);
+				const selectedCategoryId = Number(
+					this.$store.state.filter.selectedCategory,
+				);
 				if (selectedCategoryId) {
 					tasks = tasks.filter(
 						(task) => Number(task.project_category_id) === selectedCategoryId,
@@ -1509,43 +1620,51 @@
 			document.body.classList.add('overflow-hidden');
 			await this.loadColumns();
 			await this.loadTasks();
-		this.setColorFromHex(this.statusColor);
+			this.setColorFromHex(this.statusColor);
 
-		const boardContainer = document.querySelector('.board-container');
-		if (boardContainer) {
-			this.hasHorizontalScroll =
-				boardContainer.scrollWidth > boardContainer.clientWidth;
-			
-			this.$nextTick(() => {
-				this.updateScrollContainers();
-			});
-		}
-		
-			if (this.workspaceId) {
-				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(this.workspaceId, {
-					onTaskUpdated: (task, action) => {
-						if (action === 'deleted') {
-							this.removeTaskFromBoard(task.id);
-						} else {
-							this.updateSingleTaskInBoard(task);
-						}
-					},
-					onCommentAdded: (comment) => {
-						for (const column of this.columns) {
-							const taskExists = column.tasks.some(t => t.id === comment.task_id);
-							if (taskExists) {
-								this.newCommentTaskIds.add(comment.task_id);
-								break;
-							}
-						}
-					}
+			const boardContainer = document.querySelector('.board-container');
+			if (boardContainer) {
+				this.hasHorizontalScroll =
+					boardContainer.scrollWidth > boardContainer.clientWidth;
+
+				this.$nextTick(() => {
+					this.updateScrollContainers();
 				});
+			}
+
+			if (this.workspaceId) {
+				this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(
+					this.workspaceId,
+					{
+						onTaskUpdated: (task, action) => {
+							if (action === 'deleted') {
+								this.removeTaskFromBoard(task.id);
+							} else {
+								this.updateSingleTaskInBoard(task);
+							}
+						},
+						onCommentAdded: (comment) => {
+							for (const column of this.columns) {
+								const taskExists = column.tasks.some(
+									(t) => t.id === comment.task_id,
+								);
+								if (taskExists) {
+									this.newCommentTaskIds.add(comment.task_id);
+									break;
+								}
+							}
+						},
+					},
+				);
 			}
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');
 			if (this.workspaceId && this.pusherSubscriptionId) {
-				this.pusher.unsubscribeHandlerFromWorkspace(this.workspaceId, this.pusherSubscriptionId);
+				this.pusher.unsubscribeHandlerFromWorkspace(
+					this.workspaceId,
+					this.pusherSubscriptionId,
+				);
 			}
 		},
 	};
@@ -1639,7 +1758,11 @@
 	}
 
 	:global(.dark) .board-wrapper::after {
-		background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.15));
+		background: linear-gradient(
+			to right,
+			transparent,
+			rgba(255, 255, 255, 0.15)
+		);
 	}
 
 	.board-container {

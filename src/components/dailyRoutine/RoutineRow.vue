@@ -4,15 +4,17 @@
 		:class="[
 			selected
 				? 'border-brand bg-brand-bg shadow-tmgr-md'
-				: 'border-line hover:border-line-strong hover:shadow-tmgr-md cursor-pointer',
+				: 'cursor-pointer border-line hover:border-line-strong hover:shadow-tmgr-md',
 			isBeingDragged ? 'opacity-30' : '',
 		]"
 		@click="onClick"
 		@pointerdown="onPointerDown($event, entry)"
-		@contextmenu.prevent="$emit('context', { entry, x: $event.clientX, y: $event.clientY })"
+		@contextmenu.prevent="
+			$emit('context', { entry, x: $event.clientX, y: $event.clientY })
+		"
 	>
 		<span
-			class="absolute left-0 top-0 bottom-0 w-[3px]"
+			class="absolute bottom-0 left-0 top-0 w-[3px]"
 			:style="{ background: entry.routine_category.color }"
 		/>
 
@@ -26,7 +28,13 @@
 			"
 			@click.stop="$emit('toggle', entry)"
 		>
-			<DRIcon v-if="entry.completed" name="check" :size="13" stroke="#fff" :sw="2.4" />
+			<DRIcon
+				v-if="entry.completed"
+				name="check"
+				:size="13"
+				stroke="#fff"
+				:sw="2.4"
+			/>
 		</button>
 
 		<div class="min-w-0 flex-1">
@@ -44,7 +52,10 @@
 					<DRIcon name="clock" :size="10" stroke="currentColor" />
 					{{ entry.time }}
 				</span>
-				<span v-if="entry.frequency !== 'NONE'" class="inline-flex items-center gap-1">
+				<span
+					v-if="entry.frequency !== 'NONE'"
+					class="inline-flex items-center gap-1"
+				>
 					<DRIcon name="repeat" :size="10" stroke="currentColor" />
 					{{ frequencyLabel }}
 				</span>
@@ -54,7 +65,10 @@
 				>
 					{{ entry.routine_category.name }}
 				</span>
-				<span v-if="timeMeta" class="ml-auto shrink-0 text-[10px] text-ink-subtle">
+				<span
+					v-if="timeMeta"
+					class="ml-auto shrink-0 text-[10px] text-ink-subtle"
+				>
 					{{ timeMeta }}
 				</span>
 			</div>
@@ -64,7 +78,9 @@
 			type="button"
 			class="hidden h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-brand md:flex"
 			title="More (right-click for menu)"
-			@click.stop="$emit('context', { entry, x: $event.clientX, y: $event.clientY })"
+			@click.stop="
+				$emit('context', { entry, x: $event.clientX, y: $event.clientY })
+			"
 		>
 			<DRIcon name="pencil" :size="13" stroke="currentColor" />
 		</button>
@@ -72,16 +88,16 @@
 </template>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
 	import { useNowMs } from '@/composable/useNowMs';
+	import { useRoutineDrag } from '@/composable/useRoutineDrag';
+	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { entryRecurrenceLabel } from '@/utils/dailyRoutines/recurrenceLabel';
 	import {
 		formatRelativeTime,
 		isSameTimestamp,
 	} from '@/utils/dailyRoutines/relativeTime';
+	import { computed } from 'vue';
 	import DRIcon from './DRIcon.vue';
-	import type { RoutineEntry } from '@/types/dailyRoutine';
-	import { entryRecurrenceLabel } from '@/utils/dailyRoutines/recurrenceLabel';
-	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 
 	const props = defineProps<{
 		entry: RoutineEntry;
@@ -96,7 +112,9 @@
 			return `created ${created}`;
 		}
 		const updated = formatRelativeTime(props.entry.updated_at, nowMs.value);
-		return updated ? `created ${created} · updated ${updated}` : `created ${created}`;
+		return updated
+			? `created ${created} · updated ${updated}`
+			: `created ${created}`;
 	});
 
 	const emit = defineEmits<{
@@ -105,7 +123,10 @@
 		(e: 'delete', entry: RoutineEntry): void;
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
-		(e: 'context', payload: { entry: RoutineEntry; x: number; y: number }): void;
+		(
+			e: 'context',
+			payload: { entry: RoutineEntry; x: number; y: number },
+		): void;
 	}>();
 
 	const frequencyLabel = computed(() => entryRecurrenceLabel(props.entry));
