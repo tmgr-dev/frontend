@@ -8,7 +8,7 @@
     role="button"
     :aria-label="accessibilityLabel"
   >
-    <div class="flex items-center gap-4">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
       <!-- Avatar + presence dot -->
       <div class="relative shrink-0">
         <img v-if="member.avatar" :src="member.avatar" :alt="member.name" class="w-10 h-10 rounded-full object-cover" loading="lazy" />
@@ -19,7 +19,7 @@
       </div>
 
       <!-- Name / role / current or last task -->
-      <div class="flex-1 min-w-0">
+      <div class="min-w-0 flex-1 basis-40">
         <div class="flex items-center gap-2">
           <h4 class="text-sm font-medium text-ink truncate">{{ member.name }}</h4>
           <span class="text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-sunken text-ink-subtle">{{ member.role }}</span>
@@ -58,7 +58,7 @@
       </div>
 
       <!-- Stats -->
-      <dl class="grid grid-cols-5 gap-x-4 text-right shrink-0">
+      <dl class="grid w-full grid-cols-5 gap-x-4 text-right sm:w-auto sm:shrink-0">
         <div><dt class="sr-only">Tracked</dt><dd class="text-sm font-semibold tabular-nums text-status-done-fg">{{ tracked }}</dd><dd class="text-2xs uppercase tracking-wide text-ink-faint">tracked</dd></div>
         <div><dt class="sr-only">Done</dt><dd class="text-sm font-semibold tabular-nums text-brand-fg">{{ member.done_count }}</dd><dd class="text-2xs uppercase tracking-wide text-ink-faint">done</dd></div>
         <div><dt class="sr-only">Active tasks</dt><dd class="text-sm font-semibold tabular-nums text-status-progress-fg">{{ member.active_tasks }}</dd><dd class="text-2xs uppercase tracking-wide text-ink-faint">active</dd></div>

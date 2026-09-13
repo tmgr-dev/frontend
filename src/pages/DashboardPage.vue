@@ -943,47 +943,6 @@ onUnmounted(() => {
 
         <!-- Main Dashboard Grid -->
         <div class="dashboard-grid" role="main">
-          <!-- Activity Feed -->
-          <section 
-            class="dashboard-main-content"
-            aria-labelledby="activity-heading"
-            tabindex="0"
-            role="region"
-          >
-            <h2 id="activity-heading" class="sr-only">Recent Activity Feed</h2>
-            <ActivityFeed
-              :activities="displayedActivities || []"
-              :loading="activityLoading"
-              :has-more="canLoadMore"
-              :loading-more="activityLoadingMore"
-              :workspace-id="workspaceId"
-              :workspace-users="workspaceUsersList"
-              @load-more="loadMoreActivities"
-              @refresh="() => refreshSection('activities')"
-              @filter-change="handleActivityFiltersChange"
-              @activity-click="handleActivityClick"
-              :aria-describedby="activityLoading ? 'activity-loading' : 'activity-description'"
-            />
-            
-            <!-- Activity feed description -->
-            <div 
-              id="activity-description"
-              class="sr-only"
-            >
-              List of recent workspace activities. Use arrow keys to navigate, Enter to open activity details.
-            </div>
-            
-            <!-- Loading announcement -->
-            <div 
-              v-if="activityLoading"
-              id="activity-loading"
-              class="sr-only"
-              aria-live="polite"
-            >
-              Loading recent activities
-            </div>
-          </section>
-
           <!-- Sidebar -->
           <aside 
             class="dashboard-sidebar"
@@ -1028,6 +987,46 @@ onUnmounted(() => {
               </div>
             </section>
           </aside>
+          <!-- Activity feed, last and unbounded: it is the tallest block and reads as the page bottom (TM-235) -->
+          <section 
+            class="dashboard-main-content"
+            aria-labelledby="activity-heading"
+            tabindex="0"
+            role="region"
+          >
+            <h2 id="activity-heading" class="sr-only">Recent Activity Feed</h2>
+            <ActivityFeed
+              :activities="displayedActivities || []"
+              :loading="activityLoading"
+              :has-more="canLoadMore"
+              :loading-more="activityLoadingMore"
+              :workspace-id="workspaceId"
+              :workspace-users="workspaceUsersList"
+              @load-more="loadMoreActivities"
+              @refresh="() => refreshSection('activities')"
+              @filter-change="handleActivityFiltersChange"
+              @activity-click="handleActivityClick"
+              :aria-describedby="activityLoading ? 'activity-loading' : 'activity-description'"
+            />
+            
+            <!-- Activity feed description -->
+            <div 
+              id="activity-description"
+              class="sr-only"
+            >
+              List of recent workspace activities. Use arrow keys to navigate, Enter to open activity details.
+            </div>
+            
+            <!-- Loading announcement -->
+            <div 
+              v-if="activityLoading"
+              id="activity-loading"
+              class="sr-only"
+              aria-live="polite"
+            >
+              Loading recent activities
+            </div>
+          </section>
         </div>
 
         <!-- Empty State for Initial Load -->

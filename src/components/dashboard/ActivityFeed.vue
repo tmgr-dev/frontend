@@ -196,7 +196,9 @@ onUnmounted(() => {
 }
 
 .activity-list {
-  @apply max-h-[600px] min-h-64 overflow-y-auto;
+  /* No inner scroll: the feed is the last block on the dashboard and grows with the page,
+     bounded by its own "Load more" rather than by a scroll box (TM-235). */
+  @apply min-h-64;
 }
 
 .activity-list > * + * {
