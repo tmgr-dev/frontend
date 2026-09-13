@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import { memberTasksPage } from '@/utils/dashboard/memberPageFormat';
 import { AxiosRequestConfig } from 'axios';
 import type {
   DashboardStatistics,
@@ -491,7 +492,7 @@ export const getMemberTasks = async (
     );
 
     return createActionResult(
-      data.data,
+      memberTasksPage(data),
       undefined,
       status,
       options?.cache || false,
