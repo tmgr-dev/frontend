@@ -12,24 +12,20 @@ export interface Workspace {
 }
 
 export const getWorkspaces = async (useCache: boolean = true): Promise<Workspace[]> => {
-	const cacheKey = 'workspaces';
-	
-	if (useCache) {
-		const cached = requestCache.get<Workspace[]>(cacheKey);
-		if (cached) {
-			return cached;
-		}
-	}
+	// getOrFetch, not get/set: the bootstrap asks for the workspaces from the router guard, the
+	// sidebar and the page at once, and a plain cache read still misses while the first request is
+	// in flight - three identical calls went out on every load.
+	return requestCache.getOrFetch<Workspace[]>(
+		'workspaces',
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('workspaces');
 
-	const {
-		data: { data },
-	} = await $axios.get('workspaces');
-
-	if (useCache) {
-		requestCache.set(cacheKey, data, 300000);
-	}
-
-	return data;
+			return data;
+		},
+		{ ttl: 300000, cache: useCache },
+	);
 };
 
 export interface WorkspaceMember {

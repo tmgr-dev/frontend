@@ -2,6 +2,7 @@ import { FormSetting, Setting } from '@/actions/tmgr/settings';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
+import requestCache from '@/utils/requestCache';
 
 export { pickThemeFromSettings };
 
@@ -14,9 +15,19 @@ export interface User {
 }
 
 export const getUser = async () => {
-	const {
-		data: { data },
-	} = await $axios.get('user');
+	// Coalesced but never cached: callers after a save expect fresh data, while the bootstrap fires
+	// this from several places at once and used to send the same request two or three times.
+	const data = await requestCache.getOrFetch<User>(
+		'user',
+		async () => {
+			const {
+				data: { data: user },
+			} = await $axios.get('user');
+
+			return user;
+		},
+		{ cache: false },
+	);
 
 	store.commit('setUser', data);
 
