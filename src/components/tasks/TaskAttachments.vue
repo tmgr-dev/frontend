@@ -173,6 +173,8 @@
 	import {
 		detachFile,
 		fetchFileObjectUrl,
+		fileDisplayUrl,
+		releaseFileDisplayUrl,
 		getTaskFiles,
 		uploadTaskFile,
 		type TaskFile,
@@ -251,7 +253,7 @@
 					return;
 				}
 				try {
-					this.previews[file.id] = await fetchFileObjectUrl(file.id);
+					this.previews[file.id] = await fileDisplayUrl(file.id);
 				} catch {
 					// No preview is a cosmetic loss; the file is still listed and downloadable.
 				}
@@ -349,7 +351,7 @@
 			revokePreview(fileId: number) {
 				const url = this.previews[fileId];
 				if (url) {
-					URL.revokeObjectURL(url);
+					releaseFileDisplayUrl(url);
 					delete this.previews[fileId];
 				}
 			},

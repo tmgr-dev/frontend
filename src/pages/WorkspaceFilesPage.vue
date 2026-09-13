@@ -131,6 +131,8 @@
 	import store from '@/store';
 	import {
 		fetchFileObjectUrl,
+		fileDisplayUrl,
+		releaseFileDisplayUrl,
 		getWorkspaceFiles,
 		type WorkspaceFile,
 	} from '@/actions/tmgr/files';
@@ -204,7 +206,7 @@
 					return;
 				}
 				try {
-					this.previews[file.id] = await fetchFileObjectUrl(file.id);
+					this.previews[file.id] = await fileDisplayUrl(file.id);
 				} catch {
 					// A missing preview costs nothing: the row still names the file and downloads it.
 				}
@@ -227,20 +229,20 @@
 			},
 			async download(file: WorkspaceFile) {
 				try {
-					const url = this.previews[file.id] ?? (await fetchFileObjectUrl(file.id));
+					// Always the blob: a preview may be a signed link on the API origin, and
+					// `download` is ignored on a cross-origin href.
+					const url = await fetchFileObjectUrl(file.id);
 					const link = document.createElement('a');
 					link.href = url;
 					link.download = file.name;
 					link.click();
-					if (!this.previews[file.id]) {
-						setTimeout(() => URL.revokeObjectURL(url), 10000);
-					}
+					setTimeout(() => URL.revokeObjectURL(url), 10000);
 				} catch {
 					// Nothing useful to say beyond leaving the row as it was.
 				}
 			},
 			releasePreviews() {
-				Object.values(this.previews).forEach((url) => URL.revokeObjectURL(url));
+				Object.values(this.previews).forEach(releaseFileDisplayUrl);
 				this.previews = {};
 			},
 		},

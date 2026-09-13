@@ -72,7 +72,11 @@
 		DialogDescription,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import { fetchFileObjectUrl } from '@/actions/tmgr/files';
+	import {
+		fetchFileObjectUrl,
+		fileDisplayUrl,
+		releaseFileDisplayUrl,
+	} from '@/actions/tmgr/files';
 	import { formatFileSize } from '@/utils/attachments';
 	import { type GalleryImage, stepIndex } from '@/utils/galleryNavigation';
 
@@ -81,14 +85,14 @@
 		images: GalleryImage[];
 		/** The image to open on; null keeps the gallery closed. */
 		startId: number | null;
-		/** Blob URLs the list already fetched, reused so opening costs no extra request. */
+		/** URLs the list already resolved, reused so opening costs no extra request. */
 		urls: Record<number, string>;
 	}>();
 
 	const emit = defineEmits<{ (event: 'close'): void }>();
 
 	const index = ref(0);
-	/** URLs this component fetched itself, and therefore has to revoke. */
+	/** URLs this component resolved itself, and therefore has to release. */
 	const ownUrls = ref<Record<number, string>>({});
 
 	const open = computed(() => props.startId !== null);
@@ -103,7 +107,7 @@
 			return;
 		}
 		try {
-			ownUrls.value[file.id] = await fetchFileObjectUrl(file.id);
+			ownUrls.value[file.id] = await fileDisplayUrl(file.id);
 		} catch {
 			// Leaves the spinner in place; the file is still downloadable from the list.
 		}
@@ -128,19 +132,23 @@
 		}
 	};
 
-	const download = () => {
-		const url = currentUrl.value;
-		if (!url || !current.value) {
+	// Not currentUrl: that may be a signed link on the API origin, and a browser ignores
+	// `download` on a cross-origin href, opening the image instead of saving it.
+	const download = async () => {
+		const file = current.value;
+		if (!file) {
 			return;
 		}
+		const url = await fetchFileObjectUrl(file.id);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = current.value.name;
+		link.download = file.name;
 		link.click();
+		setTimeout(() => URL.revokeObjectURL(url), 10000);
 	};
 
 	const releaseOwnUrls = () => {
-		Object.values(ownUrls.value).forEach((url) => URL.revokeObjectURL(url));
+		Object.values(ownUrls.value).forEach(releaseFileDisplayUrl);
 		ownUrls.value = {};
 	};
 
