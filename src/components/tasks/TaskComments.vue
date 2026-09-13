@@ -37,6 +37,7 @@
 			name: string;
 			email?: string;
 			avatar?: string;
+			has_avatar?: boolean;
 		};
 		created_at: string;
 		updated_at: string;

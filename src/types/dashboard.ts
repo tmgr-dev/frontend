@@ -57,6 +57,7 @@ export interface DashboardStatistics {
 
 // User Interface for Activities
 export interface ActivityUser {
+	has_avatar?: boolean;
 	id: number;
 	name: string;
 	email?: string;

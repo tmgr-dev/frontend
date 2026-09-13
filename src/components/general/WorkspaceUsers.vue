@@ -103,6 +103,7 @@
 	import { ref } from 'vue';
 
 	export interface WorkspaceUser {
+		has_avatar?: boolean;
 		id: number;
 		name: string;
 	}

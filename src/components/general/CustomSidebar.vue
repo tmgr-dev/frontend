@@ -128,13 +128,6 @@
 	const showExitConfirm = ref(false);
 	const workspaceToExit = ref<Workspace | null>(null);
 
-	const data = {
-		user: {
-			name: user.value?.name,
-			avatar: '/avatars/shadcn.jpg',
-		},
-	};
-
 	async function logout() {
 		try {
 			if (store.getters.getPusherBeamsUserId) {

@@ -7,6 +7,7 @@ import requestCache from '@/utils/requestCache';
 export { pickThemeFromSettings };
 
 export interface User {
+	has_avatar?: boolean;
 	id: number;
 	email: string;
 	role: number;
