@@ -119,7 +119,6 @@
 		<AttachmentGallery
 			:images="images"
 			:start-id="galleryStartId"
-			:urls="previews"
 			@close="galleryStartId = null"
 		/>
 	</div>
@@ -206,7 +205,7 @@
 					return;
 				}
 				try {
-					this.previews[file.id] = await fileDisplayUrl(file.id);
+					this.previews[file.id] = await fileDisplayUrl(file.id, { thumb: true });
 				} catch {
 					// A missing preview costs nothing: the row still names the file and downloads it.
 				}

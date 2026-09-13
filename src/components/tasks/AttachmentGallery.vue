@@ -85,8 +85,6 @@
 		images: GalleryImage[];
 		/** The image to open on; null keeps the gallery closed. */
 		startId: number | null;
-		/** URLs the list already resolved, reused so opening costs no extra request. */
-		urls: Record<number, string>;
 	}>();
 
 	const emit = defineEmits<{ (event: 'close'): void }>();
@@ -97,13 +95,15 @@
 
 	const open = computed(() => props.startId !== null);
 	const current = computed<GalleryImage | undefined>(() => props.images[index.value]);
+	// Deliberately not reusing the list's URLs: those point at thumbnails now, and a 320px
+	// rendering stretched across the screen is worse than a moment's wait for the real image.
 	const currentUrl = computed(() => {
 		const id = current.value?.id;
-		return id ? (props.urls[id] ?? ownUrls.value[id] ?? null) : null;
+		return id ? (ownUrls.value[id] ?? null) : null;
 	});
 
 	const ensureUrl = async (file?: GalleryImage) => {
-		if (!file || props.urls[file.id] || ownUrls.value[file.id]) {
+		if (!file || ownUrls.value[file.id]) {
 			return;
 		}
 		try {
