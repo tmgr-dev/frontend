@@ -203,7 +203,8 @@
 				console.error(statusError);
 			}
 
-			const user = await getUser();
+			// Same as the board: the guard has the user by now, so do not ask again (TM-218).
+			const user = store.state.user?.id ? store.state.user : await getUser();
 			const workspaceSetting = user.settings?.find(
 				(setting) => setting.key === 'current_workspace',
 			);
