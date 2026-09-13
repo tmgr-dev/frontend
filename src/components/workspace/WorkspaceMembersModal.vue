@@ -25,16 +25,12 @@
 					class="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
 				>
 					<div class="flex flex-1 items-center gap-3">
-						<Avatar class="h-10 w-10">
-							<AvatarImage
-								v-if="member.avatar"
-								:src="member.avatar"
-								:alt="member.name"
-							/>
-							<AvatarFallback>
-								{{ getInitials(member.name) }}
-							</AvatarFallback>
-						</Avatar>
+						<UserAvatar
+							:user-id="member.id"
+							:name="member.name"
+							:has-avatar="member.has_avatar ?? false"
+							:size="40"
+						/>
 
 						<div class="flex-1">
 							<div class="flex items-center gap-2">
@@ -118,6 +114,7 @@
 		removeMemberFromWorkspace,
 		type WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import {
 		AlertDialog,
@@ -129,7 +126,6 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
-	import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -181,15 +177,6 @@
 
 	const canRemoveMember = (member: ExtendedWorkspaceMember) => {
 		return currentUserId.value === ownerId.value && member.id !== ownerId.value;
-	};
-
-	const getInitials = (name: string) => {
-		return name
-			.split(' ')
-			.map((part) => part.charAt(0))
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
 	};
 
 	const loadMembers = async () => {
