@@ -29,6 +29,10 @@
 	--tracking-normal: 0;
 	--tracking-wide: 0.04em;
 
+	/* — Task page: the form header and the comments header share one baseline so their
+	   bottom borders line up across the two columns (TM-231). */
+	--task-header-height: 52px;
+
 	/* — Radii */
 	--radius-xs: 6px;
 	--radius-sm: 8px;

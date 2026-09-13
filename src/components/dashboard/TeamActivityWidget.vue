@@ -1,11 +1,11 @@
 <template>
   <!-- CHANGES: Added min-h-64 to prevent CLS -->
   <div class="team-activity-widget min-h-64">
-    <div class="team-activity-header flex items-center justify-between mb-4">
+    <div class="team-activity-header mb-4 flex flex-wrap items-center justify-between gap-2">
       <h3 class="text-lg font-semibold text-ink">
         Team Activity
       </h3>
-      <div class="flex items-center gap-3">
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
         <div class="inline-flex rounded-md border border-line overflow-hidden text-xs" role="tablist" aria-label="Activity window">
           <button
             v-for="w in windows" :key="w.key" type="button" role="tab"
@@ -49,7 +49,7 @@
         
         <!-- Team summary -->
         <div class="mt-4 pt-4 border-t border-line">
-          <div class="grid grid-cols-5 gap-4 text-center">
+          <div class="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 lg:grid-cols-5">
             <div><div class="text-lg font-semibold tabular-nums text-ink">{{ teamActivity.total_members }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Total members</div></div>
             <div><div class="text-lg font-semibold tabular-nums text-status-done-fg">{{ teamActivity.active_today }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Active today</div></div>
             <div><div class="text-lg font-semibold tabular-nums text-status-progress-fg">{{ teamActivity.active_timers }}</div><div class="text-2xs uppercase tracking-wide text-ink-subtle">Active timers</div></div>

@@ -369,6 +369,14 @@
 		return `TMGR-T${taskId.value || form.value.id}`;
 	});
 
+	/** TM-232: keep creating in the same category - opens the new-task form with it preselected. */
+	const createAnotherInCategory = () => {
+		store.commit('createTaskInProjectCategoryId', {
+			projectCategoryId: form.value.project_category_id ?? null,
+			statusId: null,
+		});
+	};
+
 	const taskKeyNumber = computed({
 		get: () => form.value.category_tasks_sequence_id ?? '',
 		set: (value: number | string) => {
@@ -1577,7 +1585,7 @@
 			>
 				<!-- HEADER - Fixed at top -->
 				<header
-					class="flex shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
+					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
 				>
 					<div class="flex items-center gap-2 min-w-0">
 						<Select v-model="statusIdStr">
@@ -1765,8 +1773,9 @@
 							<FolderIcon class="h-3.5 w-3.5" />
 							<span>Category</span>
 						</div>
-						<div class="min-w-0">
+						<div class="flex min-w-0 items-center gap-1.5">
 							<CategoriesCombobox
+								class="min-w-0 flex-1"
 								:categories="categories"
 								v-model="form.project_category_id"
 								@update:model-value="
@@ -1778,6 +1787,15 @@
 									}
 								"
 							/>
+							<button
+								v-if="form.project_category_id"
+								type="button"
+								class="shrink-0 rounded-md border border-line px-1.5 py-1 text-ink-subtle hover:text-ink"
+								:title="`New task in ${currentCategoryCode || 'this category'}`"
+								@click="createAnotherInCategory"
+							>
+								<PlusIcon class="h-3.5 w-3.5" />
+							</button>
 						</div>
 
 						<template v-if="form.project_category_id">
@@ -2121,7 +2139,7 @@
 				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0 xl:w-[420px]"
 			>
 				<div
-					class="flex shrink-0 items-center justify-between border-b border-line px-4 py-3"
+					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between border-b border-line px-4 py-3"
 				>
 					<span class="text-sm font-semibold">Comments</span>
 					<span v-if="commentsCount" class="text-xs text-ink-subtle">{{
