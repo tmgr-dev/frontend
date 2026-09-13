@@ -3,6 +3,7 @@ import {
 	absoluteLinkUrl,
 	createSignedLinkCache,
 } from '@/utils/signedFileLinks';
+import { withThumbParam } from '@/utils/thumbnailUrl';
 
 export interface TaskFile {
 	id: number;
@@ -104,9 +105,13 @@ export const detachFile = async (fileId: number): Promise<void> => {
  * started - a browser ignores `download` on a cross-origin href - and the fallback for a
  * deployment that does not sign links. The caller owns the returned URL and must revoke it.
  */
-export const fetchFileObjectUrl = async (fileId: number): Promise<string> => {
+export const fetchFileObjectUrl = async (
+	fileId: number,
+	options: { thumb?: boolean } = {},
+): Promise<string> => {
 	const { data } = await $axios.get(`/files/${fileId}/content`, {
 		responseType: 'blob',
+		params: options.thumb ? { thumb: true } : undefined,
 	});
 
 	return URL.createObjectURL(data);
@@ -139,9 +144,21 @@ const signedLinks = createSignedLinkCache({
 /**
  * A URL an `<img>` can load: a signed link where the deployment signs them, an object URL
  * otherwise. Pair every call with `releaseFileDisplayUrl` - only the fallback needs revoking.
+ *
+ * `thumb` asks for the small rendering, which is what a list wants: without it a page of tiles
+ * downloads every image at full size to draw them at 48 pixels.
  */
-export const fileDisplayUrl = async (fileId: number): Promise<string> =>
-	(await signedLinks.get(fileId)) ?? (await fetchFileObjectUrl(fileId));
+export const fileDisplayUrl = async (
+	fileId: number,
+	options: { thumb?: boolean } = {},
+): Promise<string> => {
+	const signed = await signedLinks.get(fileId);
+	if (signed) {
+		return options.thumb ? withThumbParam(signed) : signed;
+	}
+
+	return fetchFileObjectUrl(fileId, options);
+};
 
 export const releaseFileDisplayUrl = (url: string | null | undefined): void => {
 	if (url?.startsWith('blob:')) {
