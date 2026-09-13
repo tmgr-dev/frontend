@@ -1,4 +1,8 @@
 import $axios from '@/plugins/axios';
+import {
+	absoluteLinkUrl,
+	createSignedLinkCache,
+} from '@/utils/signedFileLinks';
 
 export interface TaskFile {
 	id: number;
@@ -96,8 +100,9 @@ export const detachFile = async (fileId: number): Promise<void> => {
 };
 
 /**
- * The content endpoint needs the bearer token, so an attachment cannot be an `<img src>` directly.
- * The caller owns the returned URL and must revoke it.
+ * Pulls the bytes through the API and wraps them in an object URL. Still how a download is
+ * started - a browser ignores `download` on a cross-origin href - and the fallback for a
+ * deployment that does not sign links. The caller owns the returned URL and must revoke it.
  */
 export const fetchFileObjectUrl = async (fileId: number): Promise<string> => {
 	const { data } = await $axios.get(`/files/${fileId}/content`, {
@@ -105,6 +110,43 @@ export const fetchFileObjectUrl = async (fileId: number): Promise<string> => {
 	});
 
 	return URL.createObjectURL(data);
+};
+
+const signedLinks = createSignedLinkCache({
+	sign: async (fileId: number) => {
+		try {
+			const {
+				data: { data },
+			} = await $axios.get(`/files/${fileId}/signed-url`);
+
+			return {
+				url: absoluteLinkUrl(data.url, import.meta.env.VITE_API_BASE_URL),
+				expiresAt: Date.parse(data.expires_at),
+			};
+		} catch (error) {
+			// 503 means this deployment has no signing secret; anything else is the caller's problem.
+			if (
+				(error as { response?: { status?: number } })?.response?.status === 503
+			) {
+				return null;
+			}
+
+			throw error;
+		}
+	},
+});
+
+/**
+ * A URL an `<img>` can load: a signed link where the deployment signs them, an object URL
+ * otherwise. Pair every call with `releaseFileDisplayUrl` - only the fallback needs revoking.
+ */
+export const fileDisplayUrl = async (fileId: number): Promise<string> =>
+	(await signedLinks.get(fileId)) ?? (await fetchFileObjectUrl(fileId));
+
+export const releaseFileDisplayUrl = (url: string | null | undefined): void => {
+	if (url?.startsWith('blob:')) {
+		URL.revokeObjectURL(url);
+	}
 };
 
 export interface WorkspaceFile {
