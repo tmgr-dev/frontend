@@ -35,7 +35,7 @@
 		:preview="false"
 		language="en-US"
 		placeholder="Add description..."
-		:theme="store.state.colorScheme === 'default' ? 'light' : 'dark'"
+		:theme="store.getters.isDarkTheme ? 'dark' : 'light'"
 		:toolbars-exclude="[
 			'sub',
 			'sup',

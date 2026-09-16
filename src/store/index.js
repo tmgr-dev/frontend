@@ -3,7 +3,7 @@ import filterModule from '@/store/modules/boardFilters';
 import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import featureTogglesModule from '@/store/modules/featureToggles';
 import pusherModule from '@/store/modules/pusher';
-import { applyThemeToDocument } from '@/theme/applyTheme';
+import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
 import { requestCache } from '@/utils/requestCache';
 import { createStore } from 'vuex';
 
@@ -63,6 +63,14 @@ const getters = {
 		const workspaceId = getters.currentWorkspaceId;
 		return workspaceId ? state.workspacesById[workspaceId] : null;
 	},
+	isDarkTheme: (state) =>
+		isDarkTheme(
+			state.theme,
+			state.colorScheme,
+			typeof window !== 'undefined' &&
+				!!window.matchMedia &&
+				window.matchMedia('(prefers-color-scheme: dark)').matches,
+		),
 };
 
 const mutations = {
