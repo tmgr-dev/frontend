@@ -29,8 +29,7 @@
 	const themeStyle = document.createElement('style');
 	themeStyle.dataset.blockmdTheme = '';
 	const applyTheme = () => {
-		themeStyle.textContent =
-			store.state.colorScheme === 'default' ? lightTheme : darkTheme;
+		themeStyle.textContent = store.getters.isDarkTheme ? darkTheme : lightTheme;
 	};
 
 	onMounted(async () => {
@@ -91,7 +90,7 @@
 		},
 	);
 
-	watch(() => store.state.colorScheme, applyTheme);
+	watch(() => store.getters.isDarkTheme, applyTheme);
 
 	onBeforeUnmount(() => {
 		crepe?.destroy();

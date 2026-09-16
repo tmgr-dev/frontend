@@ -48,3 +48,12 @@ export function applyThemeToDocument(
 	if (paletteClass) html.classList.add(paletteClass);
 	html.classList.toggle('dark', dark);
 }
+
+/** Effective dark flag: a chosen palette wins over the color scheme, which wins over the OS. */
+export function isDarkTheme(
+	theme: string | null | undefined,
+	colorScheme: string | null | undefined,
+	prefersDark: boolean,
+): boolean {
+	return computeThemeClasses(theme, colorScheme, prefersDark).dark;
+}
