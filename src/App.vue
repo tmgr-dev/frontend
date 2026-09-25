@@ -229,21 +229,6 @@
 					console.error('Error loading active tasks:', error);
 				}
 			},
-			minimize() {
-				if (import.meta.env.MODE === 'electron') {
-					window.myWindowAPI.minimize();
-				}
-			},
-			maximize() {
-				if (import.meta.env.MODE === 'electron') {
-					window.myWindowAPI.toggleMaximize();
-				}
-			},
-			closeApp() {
-				if (import.meta.env.MODE === 'electron') {
-					window.myWindowAPI.close();
-				}
-			},
 			handleNewTask() {
 				this.$store.commit('setShowCreatingTaskModal');
 			},
@@ -556,9 +541,6 @@
 						});
 				});
 			});
-			if (import.meta.env.MODE === 'electron') {
-				document.body.style.overflow = 'hidden';
-			}
 		},
 		mounted() {
 			this.initBodyHeight();

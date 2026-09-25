@@ -168,7 +168,7 @@ export default defineConfig({
 						vendorGroup('vendor-markdown', ['md-editor-v3'], 20),
 						vendorGroup(
 							'vendor-pusher',
-							['@pusher/push-notifications-web', 'pusher-js', 'laravel-echo'],
+							['pusher-js', 'laravel-echo'],
 							10,
 						),
 					],
