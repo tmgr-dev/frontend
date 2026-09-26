@@ -102,8 +102,7 @@ export const migrate = async (
 			`This workspace was written by a newer TMGR (schema ${current}); update the app to open it.`,
 		);
 	}
-	if (current === LATEST_SCHEMA) return current;
-	if (current > 0 && beforeMigration) await beforeMigration(current);
+	if (current > 0 && current < LATEST_SCHEMA && beforeMigration) await beforeMigration(current);
 	for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
 		for (const statement of migration.statements) {
 			await db.execute(statement);

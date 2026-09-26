@@ -12,7 +12,7 @@ use crate::local_workspaces;
 /// One connection per local workspace, opened lazily. SQLite serialises writers anyway; a single
 /// connection also keeps per-connection pragmas (foreign_keys) reliable.
 #[derive(Default)]
-pub struct LocalDbs(Mutex<HashMap<String, Arc<Mutex<Connection>>>>);
+pub struct LocalDbs(Mutex<HashMap<String, (String, Arc<Mutex<Connection>>)>>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,14 +95,35 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Json]) -> Result<ExecuteR
 }
 
 fn connection<R: Runtime>(app: &AppHandle<R>, dbs: &LocalDbs, code: &str) -> Result<Arc<Mutex<Connection>>, String> {
-  let mut map = dbs.0.lock().unwrap();
-  if let Some(conn) = map.get(code) {
-    return Ok(conn.clone());
+  if let Some((path, conn)) = dbs.0.lock().map_err(|e| e.to_string())?.get(code) {
+    // A stat per query instead of a folder scan; a removed folder falls through to a fresh lookup.
+    if std::path::Path::new(path).exists() {
+      return Ok(conn.clone());
+    }
   }
   let workspace = local_workspaces::find(app, code)?;
   let conn = Arc::new(Mutex::new(open(&workspace.database)?));
-  map.insert(code.to_string(), conn.clone());
+  dbs.0
+    .lock()
+    .map_err(|e| e.to_string())?
+    .insert(code.to_string(), (workspace.database, conn.clone()));
   Ok(conn)
+}
+
+/// SQLite calls block (busy_timeout up to 5 s), so they run off the async runtime.
+async fn with_connection<R: Runtime, T: Send + 'static>(
+  app: AppHandle<R>,
+  dbs: &LocalDbs,
+  code: String,
+  work: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+  let conn = connection(&app, dbs, &code)?;
+  tauri::async_runtime::spawn_blocking(move || {
+    let guard = conn.lock().map_err(|e| e.to_string())?;
+    work(&guard)
+  })
+  .await
+  .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -113,9 +134,7 @@ pub async fn local_db_select<R: Runtime>(
   sql: String,
   params: Vec<Json>,
 ) -> Result<Vec<Map<String, Json>>, String> {
-  let conn = connection(&app, &dbs, &code)?;
-  let guard = conn.lock().unwrap();
-  select(&guard, &sql, &params)
+  with_connection(app, &dbs, code, move |conn| select(conn, &sql, &params)).await
 }
 
 #[tauri::command]
@@ -126,9 +145,7 @@ pub async fn local_db_execute<R: Runtime>(
   sql: String,
   params: Vec<Json>,
 ) -> Result<ExecuteResult, String> {
-  let conn = connection(&app, &dbs, &code)?;
-  let guard = conn.lock().unwrap();
-  execute(&guard, &sql, &params)
+  with_connection(app, &dbs, code, move |conn| execute(conn, &sql, &params)).await
 }
 
 /// Consistent snapshot of the workspace database before a schema migration (VACUUM INTO also
@@ -144,11 +161,11 @@ pub async fn local_db_backup<R: Runtime>(
     .join("backups")
     .join(format!("workspace-v{}-{}.db", workspace.manifest.schema_version, crate::tray::now_secs()));
   std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-  let conn = connection(&app, &dbs, &code)?;
-  let guard = conn.lock().unwrap();
-  guard
-    .execute("VACUUM INTO ?", [target.to_string_lossy().as_ref()])
-    .map_err(|e| e.to_string())?;
+  let path = target.to_string_lossy().into_owned();
+  with_connection(app, &dbs, code.clone(), move |conn| {
+    conn.execute("VACUUM INTO ?", [path.as_str()]).map(|_| ()).map_err(|e| e.to_string())
+  })
+  .await?;
   log::info!("[local] backed up {code} before migration");
   Ok(target.to_string_lossy().into_owned())
 }

@@ -161,4 +161,32 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(toggles['task.files'].enabled).toBe(false);
 		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/files')).toBeNull();
 	});
+
+	it('gives a task the next ticket number of the category it moves to', async () => {
+		const a = await data('POST', 'project_categories', { title: 'A', code: 'a' });
+		const b = await data('POST', 'project_categories', { title: 'B', code: 'b' });
+		await data('POST', 'tasks', { title: 'b1', project_category_id: b.id });
+		const task = await data('POST', 'tasks', { title: 'moving', project_category_id: a.id });
+
+		const moved = await data('PUT', `tasks/${task.id}`, { ...task, project_category_id: b.id });
+		const same = await data('PUT', `tasks/${task.id}`, { ...moved, title: 'renamed' });
+		const loose = await data('PUT', `tasks/${task.id}`, { ...same, project_category_id: null });
+
+		expect(moved.category_tasks_sequence_id).toBe(2);
+		expect(same.category_tasks_sequence_id).toBe(2);
+		expect(loose.category_tasks_sequence_id).toBeNull();
+	});
+
+	it('restores missing default statuses when a previous migration stopped half-way', async () => {
+		await ctx.db.execute('DELETE FROM statuses');
+		await migrate(ctx.db, clock.toISOString());
+		expect(await data('GET', 'workspaces/statuses')).toHaveLength(4);
+	});
+
+	it('does not mistake the task settings route for a status change', async () => {
+		const task = await data('POST', 'tasks', { title: 'Set' });
+		const res = await call('PUT', `tasks/${task.id}/settings`, [{ id: 1, value: 3 }]);
+		expect(res.status).toBe(200);
+		expect(res.data.data.status_id).toBe(task.status_id);
+	});
 });

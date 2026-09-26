@@ -60,15 +60,20 @@ fn unique_dir(root: &Path, base: &str) -> PathBuf {
     .unwrap()
 }
 
-/// A stable negative id derived from the folder name, so a copied or moved folder keeps working.
+/// A stable negative id derived from the folder name.
 pub fn local_id(code: &str) -> i64 {
   let hash = code.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3));
   -((hash % 1_000_000_000) as i64 + 1)
 }
 
+/// The folder name is the identity: a copied or renamed folder is a workspace of its own, even
+/// though its manifest still carries the original's code and id.
 fn read_workspace(dir: &Path) -> Option<LocalWorkspace> {
   let raw = fs::read_to_string(dir.join(MANIFEST)).ok()?;
-  let manifest: Manifest = serde_json::from_str(&raw).ok()?;
+  let mut manifest: Manifest = serde_json::from_str(&raw).ok()?;
+  let code = dir.file_name()?.to_string_lossy().into_owned();
+  manifest.id = local_id(&code);
+  manifest.code = code;
   Some(LocalWorkspace {
     path: dir.to_string_lossy().into_owned(),
     database: dir.join(DATABASE).to_string_lossy().into_owned(),
@@ -204,6 +209,20 @@ mod tests {
     let listed = list_in(&root);
     assert_eq!(listed.len(), 2);
     assert!(listed.iter().all(|w| w.manifest.id < 0));
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn a_copied_folder_is_a_separate_workspace() {
+    let root = temp_root("copy");
+    let original = create_in(&root, "Client", "now").unwrap();
+    fs::create_dir_all(root.join("client copy")).unwrap();
+    fs::copy(Path::new(&original.path).join(MANIFEST), root.join("client copy").join(MANIFEST)).unwrap();
+
+    let listed = list_in(&root);
+    assert_eq!(listed.len(), 2);
+    assert_ne!(listed[0].manifest.code, listed[1].manifest.code);
+    assert_ne!(listed[0].manifest.id, listed[1].manifest.id);
     let _ = fs::remove_dir_all(&root);
   }
 

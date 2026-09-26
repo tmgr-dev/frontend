@@ -64,7 +64,7 @@ describeSqlite('installLocalWorkspaces', () => {
 	};
 
 	const client = axios.create({ adapter: server });
-	installLocalWorkspaces(client, { currentUser: () => user });
+	installLocalWorkspaces(client, { currentUser: () => user, hasSession: () => true });
 
 	beforeAll(async () => {
 		await migrate(db!, '2026-09-26T10:00:00Z');
@@ -85,6 +85,8 @@ describeSqlite('installLocalWorkspaces', () => {
 	});
 
 	it('switching to a local workspace keeps the server on its cloud workspace', async () => {
+		await client.get('user');
+		sent.length = 0;
 		const { data } = await client.put('v2/user/settings', [{ id: 5, value: -42 }]);
 
 		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
@@ -135,5 +137,34 @@ describeSqlite('installLocalWorkspaces', () => {
 
 		expect(active).toBeNull();
 		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
+	});
+
+	it('refuses a switch to a local workspace before the cloud one is known, never sending null', async () => {
+		const error = await client.put('v2/user/settings', [{ id: 5, value: -42 }]).catch((e) => e);
+
+		expect(error.response.status).toBe(409);
+		expect(sent).toEqual([]);
+		expect(active).toBeNull();
+	});
+
+	it('a local autosave that fires after switching back to the cloud is refused, not sent', async () => {
+		const error = await client
+			.put('tasks/5', { title: 'Private', workspace_id: -42 })
+			.catch((e) => e);
+
+		expect(error.response.status).toBe(409);
+		expect(sent).toEqual([]);
+	});
+
+	it('a cloud autosave that fires after switching to a local workspace does not write into it', async () => {
+		active = LOCAL;
+		const task = (await client.post('tasks', { title: 'Mine' })).data.data;
+
+		const error = await client
+			.put(`tasks/${task.id}`, { title: 'From the cloud', workspace_id: 56 })
+			.catch((e) => e);
+
+		expect(error.response.status).toBe(409);
+		expect((await client.get(`tasks/${task.id}`)).data.data.title).toBe('Mine');
 	});
 });

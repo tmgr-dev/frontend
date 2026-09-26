@@ -69,9 +69,19 @@ const writableTaskFields = (body: any) => {
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
 	const keys = Object.keys(fields);
 	const sets = [...keys.map((k) => `${k} = ?`), 'updated_at = ?'];
+	const values: any[] = [...keys.map((k) => fields[k]), iso(ctx)];
+	if ('project_category_id' in fields) {
+		// Moving to another category takes the next ticket number there, like the Java API.
+		sets.push(`category_tasks_sequence_id = CASE
+			WHEN project_category_id IS ? THEN category_tasks_sequence_id
+			WHEN ? IS NULL THEN NULL
+			ELSE (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?)
+		END`);
+		values.push(fields.project_category_id, fields.project_category_id, fields.project_category_id);
+	}
 	const result = await ctx.db.execute(
 		`UPDATE tasks SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-		[...keys.map((k) => fields[k]), iso(ctx), id],
+		[...values, id],
 	);
 	if (!result.rowsAffected) throw notFound('Task');
 	return loadTask(ctx, id);
@@ -257,6 +267,7 @@ export const createLocalApi = () =>
 			await stopTimer(ctx, id);
 			return loadTask(ctx, id);
 		})
+		.add('PUT', 'tasks/:id(\\d+)/settings', ({ ctx, params }) => loadTask(ctx, Number(params.id)))
 		.add('PUT', 'tasks/:id(\\d+)/time', ({ ctx, params, body }) =>
 			updateTask(ctx, Number(params.id), { common_time: Math.max(0, Number(body?.common_time) || 0) }),
 		)

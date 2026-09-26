@@ -7,7 +7,7 @@ import axios, {
 } from 'axios';
 
 import { createLocalApi } from './api';
-import { classify } from './classify';
+import { classify, crossesWorkspaces } from './classify';
 import { dispatchLocal } from './dispatch';
 import {
 	CURRENT_WORKSPACE,
@@ -27,25 +27,53 @@ import {
 
 interface Hooks {
 	currentUser: () => any;
+	hasSession: () => boolean;
 }
 
 const CACHE_PREFIX = 'local.serverCache:';
+const OWNER_KEY = `${CACHE_PREFIX}owner`;
+
+const storage = {
+	get(key: string): any {
+		try {
+			const raw = localStorage.getItem(key);
+			return raw ? JSON.parse(raw) : null;
+		} catch {
+			return null;
+		}
+	},
+	set(key: string, value: unknown) {
+		try {
+			localStorage.setItem(key, JSON.stringify(value));
+		} catch {
+			/* storage full or unavailable: offline start just is not possible then */
+		}
+	},
+};
+
+/** Server answers kept per user, so a later login by someone else never sees them. */
+const cacheOwner = (): number | null => storage.get(OWNER_KEY);
+
+const adoptOwner = (userId: number) => {
+	if (cacheOwner() === userId) return;
+	try {
+		Object.keys(localStorage)
+			.filter((key) => key.startsWith(CACHE_PREFIX))
+			.forEach((key) => localStorage.removeItem(key));
+	} catch {
+		/* nothing cached to drop */
+	}
+	storage.set(OWNER_KEY, userId);
+};
 
 const remember = (key: string, data: unknown) => {
-	try {
-		localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(data));
-	} catch {
-		/* storage full or unavailable: offline start just is not possible then */
-	}
+	const owner = cacheOwner();
+	if (owner !== null) storage.set(`${CACHE_PREFIX}${owner}:${key}`, data);
 };
 
 const recall = (key: string): any => {
-	try {
-		const raw = localStorage.getItem(CACHE_PREFIX + key);
-		return raw ? JSON.parse(raw) : null;
-	} catch {
-		return null;
-	}
+	const owner = cacheOwner();
+	return owner === null ? null : storage.get(`${CACHE_PREFIX}${owner}:${key}`);
 };
 
 const respond = (
@@ -104,7 +132,12 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 			return response;
 		} catch (error) {
 			const cached = recall(key);
-			if (cached && hasActiveLocalWorkspace() && !(error as AxiosError).response) {
+			if (
+				cached &&
+				hooks.hasSession() &&
+				hasActiveLocalWorkspace() &&
+				!(error as AxiosError).response
+			) {
 				return respond(config, 200, cached);
 			}
 			throw error;
@@ -122,10 +155,16 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 	};
 
 	const userAdapter: AxiosAdapter = async (config) => {
-		const response = await networkOrCache(config, 'user');
+		const [response] = await Promise.all([networkOrCache(config, 'user'), listLocalWorkspaces()]);
+		const user = response.data?.data;
+		if (user?.id) {
+			adoptOwner(Number(user.id));
+			remember('user', response.data);
+			const serverWorkspace = serverWorkspaceOf(user);
+			if (serverWorkspace !== null && serverWorkspace >= 0) remember('serverWorkspace', serverWorkspace);
+		}
 		const active = activeLocalWorkspace();
-		if (!active || !response.data?.data) return response;
-		remember('serverWorkspace', serverWorkspaceOf(response.data.data));
+		if (!active || !user) return response;
 		return {
 			...response,
 			data: { ...response.data, data: withCurrentWorkspace(response.data.data, active.id) },
@@ -142,8 +181,13 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		}
 		const workspace = await localWorkspaceById(target);
 		if (!workspace) return respond(config, 404, { message: 'Local workspace not found' });
-		const serverWorkspace = recall('serverWorkspace') ?? serverWorkspaceOf(user);
-		const safe = withoutLocalWorkspace(payload, user, serverWorkspace >= 0 ? serverWorkspace : null);
+		const serverWorkspace = recall('serverWorkspace');
+		if (serverWorkspace === null || serverWorkspace < 0) {
+			return respond(config, 409, {
+				message: 'Open one of your cloud workspaces once before switching to a local one',
+			});
+		}
+		const safe = withoutLocalWorkspace(payload, user, serverWorkspace);
 		const response = parsed(await network({ ...config, data: JSON.stringify(safe) }));
 		setActiveLocalWorkspace(workspace);
 		return {
@@ -159,7 +203,8 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 			setActiveLocalWorkspace(null);
 			return respond(config, 409, { message: 'The local workspace is gone; pick another workspace' });
 		}
-		const user = hooks.currentUser() ?? recall('user')?.data ?? {};
+		const current = hooks.currentUser();
+		const user = current?.id ? current : (recall('user')?.data ?? {});
 		const ctx = await localContext(workspace, {
 			id: Number(user.id ?? 0),
 			name: user.name ?? '',
@@ -181,8 +226,19 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		return respond(config, result.status, result.data);
 	};
 
-	instance.interceptors.request.use((config) => {
-		const route = classify(config.method ?? 'get', config.url ?? '', hasActiveLocalWorkspace());
+	const refuse: AxiosAdapter = async (config) =>
+		respond(config, 409, {
+			message: 'This change belongs to another workspace and was not saved; reopen the task',
+		});
+
+	instance.interceptors.request.use(async (config) => {
+		const localMode = hasActiveLocalWorkspace();
+		const route = classify(config.method ?? 'get', config.url ?? '', localMode);
+		if (localMode) await listLocalWorkspaces();
+		if (crossesWorkspaces(route, config.data, config.params, activeLocalWorkspace()?.id ?? null)) {
+			config.adapter = refuse;
+			return config;
+		}
 		if (route === 'server:workspaces') config.adapter = workspacesAdapter;
 		else if (route === 'server:user') config.adapter = userAdapter;
 		else if (route === 'settings') config.adapter = settingsAdapter;
