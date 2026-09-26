@@ -1,5 +1,6 @@
 mod capture;
 mod downloads;
+mod embeds;
 mod idle;
 mod local_db;
 mod local_export;
@@ -175,7 +176,7 @@ pub fn run() {
 
       let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
         .on_navigation(move |url| {
-          if is_app_url(url) {
+          if is_app_url(url) || embeds::is_embed_url(url) {
             return true;
           }
           if is_external_url(url) {
