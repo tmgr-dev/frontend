@@ -1,0 +1,90 @@
+import { reactive } from 'vue';
+import type { PluginWorkspace } from './broker';
+import type { PluginEntry } from './host';
+import type { PluginManifest } from './manifest';
+import type { Release } from './market';
+import { machineConsentStore } from './storage';
+
+/** A plugin the creator of a shared workspace turned on for everyone, pinned to one release. */
+export interface WorkspacePluginRecord {
+	plugin_id: string;
+	repo: string;
+	version: string;
+	sha256: string | null;
+	public_key: string | null;
+	permissions: string[];
+	enabled_by: number;
+}
+
+export const BUILTIN_REPO = 'builtin';
+
+/** By shared workspace id, as last read from the server. */
+export const workspacePlugins = reactive<Record<number, WorkspacePluginRecord[]>>(
+	{},
+);
+
+export const recordFor = (workspaceId: number, pluginId: string) =>
+	workspacePlugins[workspaceId]?.find((r) => r.plugin_id === pluginId) ?? null;
+
+/** Runs only exactly what was pinned: that built-in, or the installed release with the pinned checksum. */
+export const matchesPin = (
+	record: WorkspacePluginRecord,
+	entry: Pick<PluginEntry, 'source' | 'origin'> | undefined,
+) =>
+	!!entry &&
+	(record.repo === BUILTIN_REPO
+		? entry.source === 'builtin'
+		: entry.source === 'installed' &&
+		  entry.origin?.repo === record.repo &&
+		  entry.origin?.sha256 === record.sha256);
+
+/** Why a downloaded release is not the one the workspace pinned. */
+export const pinMismatch = (record: WorkspacePluginRecord, release: Release) =>
+	release.sha256 !== record.sha256
+		? 'the release on GitHub is not the one this workspace pinned'
+		: release.public_key !== record.public_key
+		? 'the release is signed with a different key than the pinned one'
+		: null;
+
+/** Files it writes or reads, or services it connects to, on the member's own computer. */
+export const reachesThisComputer = (manifest: PluginManifest) =>
+	manifest.network.allowedOrigins.length > 0 ||
+	manifest.permissions.some((p) => p === 'files:export' || p === 'files:pick');
+
+/** What the server stores when the creator turns a plugin on; folder plugins cannot be shared. */
+export const pinOf = (entry: PluginEntry) => {
+	if (entry.source === 'builtin')
+		return {
+			repo: BUILTIN_REPO,
+			version: entry.manifest.version,
+			sha256: null,
+			public_key: null,
+			permissions: entry.manifest.permissions,
+		};
+	if (entry.source === 'installed' && entry.origin?.public_key)
+		return {
+			repo: entry.origin.repo,
+			version: entry.origin.tag,
+			sha256: entry.origin.sha256,
+			public_key: entry.origin.public_key,
+			permissions: entry.manifest.permissions,
+		};
+	return null;
+};
+
+/** Consent follows the pinned release: a new pin asks again. */
+export const releaseOf = (record: WorkspacePluginRecord) =>
+	record.repo === BUILTIN_REPO ? 'builtin' : String(record.sha256);
+
+export const hasMachineConsent = (
+	workspace: PluginWorkspace | null,
+	pluginId: string,
+) => {
+	if (!workspace) return false;
+	if (workspace.kind === 'local') return true;
+	const record = recordFor(workspace.id, pluginId);
+	return (
+		!!record &&
+		machineConsentStore.has(workspace.id, pluginId, releaseOf(record))
+	);
+};

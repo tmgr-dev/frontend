@@ -12,6 +12,7 @@ export const pluginState = reactive<PluginHostState>({
 });
 
 export const folderPluginErrors = reactive<Record<string, string>>({});
+export const installedPluginErrors = reactive<Record<string, string>>({});
 
 let host: PluginHost | null = null;
 export const pluginHost = () => host;

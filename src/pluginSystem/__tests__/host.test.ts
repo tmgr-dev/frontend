@@ -70,6 +70,7 @@ const setup = (
 		close?: (pluginId: string) => Promise<void>;
 	} = {},
 	blocked: Record<string, string> = {},
+	extra: Partial<Parameters<typeof createPluginHost>[0]> = {},
 ) => {
 	const state: PluginHostState = {
 		workspace: null,
@@ -104,6 +105,7 @@ const setup = (
 		blocked: (pluginId) => blocked[pluginId] ?? null,
 		cpuMs: 100,
 		wallMs: 2000,
+		...extra,
 	});
 	return { host, state, events, notices, leave: () => (current = 56) };
 };
@@ -555,5 +557,54 @@ it('never runs a blocked plugin and stops one the blocklist catches while it run
 	host.applyBlocklist();
 	await flush();
 	expect(state.plugins['tmgr.good'].status).toBe('running');
+	host.dispose();
+});
+
+it('in a cloud workspace runs only what is turned on there, and reaches this computer only with consent', async () => {
+	const CLOUD = { id: 56, code: 'team', name: 'Team', kind: 'cloud' as const };
+	const fetches: string[] = [];
+	const allowed = new Set<string>();
+	const net: PluginPackage = {
+		manifest: parseManifest({
+			id: 'tmgr.net',
+			name: 'Net',
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			network: { allowedOrigins: ['http://localhost:11434'] },
+			contributes: { commands: [{ id: 'tmgr.net.go', title: 'Go' }] },
+		}),
+		code: `tmgr.commands.register('tmgr.net.go', async () => {
+			try { await tmgr.net.fetch('http://localhost:11434/x'); return 'fetched'; }
+			catch (error) { return error.message; }
+		});`,
+		source: 'builtin',
+	};
+	const { host, state, leave } = setup([net, pkg('tmgr.idle', '')], {}, {}, {}, {
+		enabled: {
+			get: (pluginId, workspaceId) =>
+				workspaceId === CLOUD.id ? pluginId === 'tmgr.net' : undefined,
+			set: () => undefined,
+		},
+		fetch: async (request) => {
+			fetches.push(request.url);
+			return { status: 200, headers: [], body: 'ok' };
+		},
+		machineAllowed: (pluginId, workspace) =>
+			workspace.kind === 'local' || allowed.has(pluginId),
+	});
+	await host.load();
+	leave();
+	await host.activate(CLOUD);
+	expect(state.plugins['tmgr.net'].status).toBe('running');
+	expect(state.plugins['tmgr.idle'].status).toBe('stopped');
+	expect(await host.runCommand('tmgr.net', 'tmgr.net.go')).toMatch(
+		/not available/i,
+	);
+	expect(fetches).toEqual([]);
+
+	allowed.add('tmgr.net');
+	await host.restart('tmgr.net');
+	expect(await host.runCommand('tmgr.net', 'tmgr.net.go')).toBe('fetched');
+	expect(fetches).toEqual(['http://localhost:11434/x']);
 	host.dispose();
 });

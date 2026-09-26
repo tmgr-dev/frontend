@@ -139,11 +139,25 @@ pub struct Assets {
   pub files: Vec<String>,
 }
 
+pub fn valid_tag(tag: &str) -> bool {
+  !tag.is_empty() && tag.len() <= 60 && tag.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'))
+}
+
 /// Named text assets of a repository's latest release, each at most `limit` bytes, from GitHub hosts only.
 pub async fn latest_assets(repo: &str, names: &[&str], limit: usize) -> Result<Assets, String> {
+  release_assets(repo, None, names, limit).await
+}
+
+/// The same for one tagged release, or the latest when `tag` is None.
+pub async fn release_assets(repo: &str, tag: Option<&str>, names: &[&str], limit: usize) -> Result<Assets, String> {
+  let which = match tag {
+    Some(tag) if valid_tag(tag) => format!("tags/{tag}"),
+    Some(_) => return Err("bad release tag".into()),
+    None => "latest".into(),
+  };
   let client = client()?;
   let meta = client
-    .get(format!("https://api.github.com/repos/{repo}/releases/latest"))
+    .get(format!("https://api.github.com/repos/{repo}/releases/{which}"))
     .header("Accept", "application/vnd.github+json")
     .send()
     .await
@@ -156,7 +170,7 @@ pub async fn latest_assets(repo: &str, names: &[&str], limit: usize) -> Result<A
       .assets
       .iter()
       .find(|asset| asset.name == *name)
-      .ok_or_else(|| format!("the latest release of {repo} has no {name}"))?;
+      .ok_or_else(|| format!("the {} release of {repo} has no {name}", tag.unwrap_or("latest")))?;
     let url: Url = asset.browser_download_url.parse().map_err(|e: url::ParseError| e.to_string())?;
     if !github_host(&url) {
       return Err(format!("{name} is not hosted on GitHub"));
@@ -167,11 +181,17 @@ pub async fn latest_assets(repo: &str, names: &[&str], limit: usize) -> Result<A
   Ok(Assets { tag: release.tag_name.chars().take(60).collect(), files })
 }
 
-/// The latest signed release of a GitHub repository. The signature is checked here and again on install.
+/// A signed release of a GitHub repository: the latest, or the tag a shared workspace pinned. The signature is
+/// checked here and again on install.
 #[tauri::command]
-pub async fn plugin_github_release<R: Runtime>(app: AppHandle<R>, repo: String) -> Result<Release, String> {
+pub async fn plugin_github_release<R: Runtime>(
+  app: AppHandle<R>,
+  repo: String,
+  tag: Option<String>,
+) -> Result<Release, String> {
   let repo = parse_repo(&repo)?;
-  let assets = latest_assets(&repo, &[BUNDLE_ASSET, SIGNATURE_ASSET, KEY_ASSET], MAX_BUNDLE_BYTES).await?;
+  let assets =
+    release_assets(&repo, tag.as_deref(), &[BUNDLE_ASSET, SIGNATURE_ASSET, KEY_ASSET], MAX_BUNDLE_BYTES).await?;
   let [bundle, signature, key_file] = <[String; 3]>::try_from(assets.files).map_err(|_| "missing assets")?;
   let catalog = crate::plugin_catalog::current(&app);
   if let Some(reason) = catalog.blocked_reason("", Some(&repo), Some(&sha256_hex(bundle.as_bytes()))) {
@@ -419,6 +439,12 @@ mod tests {
     assert!(!listed[0].verified);
     assert!(list_in(&root, &wrong_key)[0].blocked.as_deref().unwrap().contains("no longer matches"));
     let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn release_tags_are_plain_words() {
+    assert!(valid_tag("v1.2.0") && valid_tag("1.0.0-beta+2"));
+    assert!(!valid_tag("") && !valid_tag("../latest") && !valid_tag("v1?x=1") && !valid_tag(&"v".repeat(61)));
   }
 
   #[test]

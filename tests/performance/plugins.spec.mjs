@@ -592,3 +592,161 @@ test('the signed TMGR blocklist stops an installed plugin and a built-in one', a
   await expect(estimate.getByText('Blocked by TMGR')).toBeVisible();
   await expect(estimate.getByText('broken build')).toBeVisible();
 });
+
+const openPluginSettings = async (page) => {
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+};
+
+const sharedWorkspacePlugins = async (page, records) => {
+  const minted = [];
+  await page.route('**/api/workspaces/1/plugins**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace('/api/', '');
+    if (path.endsWith('/token')) {
+      minted.push(request.headers().authorization);
+      await route.fulfill({
+        json: { data: { token: 'plugin-token', expires_in: 900 } },
+      });
+      return;
+    }
+    const pluginId = path.split('/')[3];
+    if (request.method() === 'PUT')
+      records.push({ plugin_id: pluginId, ...request.postDataJSON(), enabled_by: 1 });
+    if (request.method() === 'DELETE')
+      records.splice(records.findIndex((r) => r.plugin_id === pluginId), 1);
+    await route.fulfill({
+      json: { data: request.method() === 'GET' ? records : { success: true } },
+    });
+  });
+  const pluginCalls = [];
+  page.on('request', (request) => {
+    if (request.headers().authorization === 'Bearer plugin-token')
+      pluginCalls.push(new URL(request.url()));
+  });
+  return { minted, pluginCalls };
+};
+
+test('the creator of a shared workspace turns a plugin on for everyone; it talks to the server with its own token', async ({
+  page,
+}) => {
+  await desktopPage(page);
+  const records = [];
+  const { minted, pluginCalls } = await sharedWorkspacePlugins(page, records);
+  await page.goto('/demo/board');
+  await openPluginSettings(page);
+  await expect(page.getByText(/You created it/)).toBeVisible();
+  const card = page.locator('article', { hasText: 'Estimate vs actual' });
+  await expect(card.getByText('Off')).toBeVisible();
+
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Running')).toBeVisible();
+  expect(records).toEqual([
+    expect.objectContaining({
+      plugin_id: 'tmgr.estimate',
+      repo: 'builtin',
+      sha256: null,
+      public_key: null,
+      permissions: ['tasks:read', 'statuses:read', 'time:read'],
+    }),
+  ]);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/demo\/board/);
+  await expect.poll(() => pluginCalls.length).toBeGreaterThan(0);
+  expect(minted.length).toBeGreaterThan(0);
+  expect(minted.every((header) => header === 'Bearer fixture')).toBe(true);
+  const lists = pluginCalls.filter((url) =>
+    /\/api\/(tasks|workspaces\/statuses)$/.test(url.pathname),
+  );
+  expect(lists.length).toBeGreaterThan(0);
+  expect(lists.every((url) => url.searchParams.get('workspace_id') === '1')).toBe(
+    true,
+  );
+
+  await openPluginSettings(page);
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Off')).toBeVisible();
+  expect(records).toEqual([]);
+});
+
+test('a member gets the plugins the creator turned on, and allows network and files on their computer', async ({
+  page,
+}) => {
+  const net = {
+    tag: 'v1.0.0',
+    content: {
+      manifest: {
+        id: 'acme.net',
+        name: 'Acme net',
+        version: '1.0.0',
+        engines: { tmgr: '^1.0' },
+        permissions: ['notifications'],
+        network: { allowedOrigins: ['http://localhost:11434'] },
+        contributes: { commands: [{ id: 'acme.net.ask', title: 'Ask' }] },
+      },
+      code: `tmgr.commands.register('acme.net.ask', async () => {
+        const answer = await tmgr.net.fetch('http://localhost:11434/x').then((r) => r.text(), (e) => e.message);
+        await tmgr.ui.notify('answer: ' + answer);
+      });`,
+    },
+  };
+  const { createHash } = await import('node:crypto');
+  const shell = await desktopPage(
+    page,
+    {},
+    {
+      releases: { 'acme/net': net },
+      localHttp: () => ({ status: 200, headers: [], body: 'from this computer' }),
+    },
+  );
+  await page.route('**/api/workspaces', (route) =>
+    route.fulfill({
+      json: {
+        data: [{ id: 1, name: 'Demo', code: 'demo', user_id: 2, is_default: true }],
+      },
+    }),
+  );
+  const records = [
+    {
+      plugin_id: 'tmgr.estimate',
+      repo: 'builtin',
+      version: '1.0.0',
+      sha256: null,
+      public_key: null,
+      permissions: ['tasks:read', 'statuses:read', 'time:read'],
+      enabled_by: 2,
+    },
+    {
+      plugin_id: 'acme.net',
+      repo: 'acme/net',
+      version: 'v1.0.0',
+      sha256: createHash('sha256').update(JSON.stringify(net.content)).digest('hex'),
+      public_key: 'RWtestkey',
+      permissions: ['notifications'],
+      enabled_by: 2,
+    },
+  ];
+  await sharedWorkspacePlugins(page, records);
+  await page.goto('/demo/board');
+  await openPluginSettings(page);
+  await expect(page.getByText(/Only its creator turns plugins on/)).toBeVisible();
+  const estimate = page.locator('article', { hasText: 'Estimate vs actual' });
+  await expect(estimate.getByText('Running')).toBeVisible();
+  await expect(estimate.getByRole('switch')).toBeDisabled();
+  await expect(estimate.getByText(/Allow on this computer/)).toHaveCount(0);
+
+  const card = page.locator('article', { hasText: 'Acme net' });
+  await expect(card.getByText('Running')).toBeVisible();
+  expect(shell.installed.has('acme.net')).toBe(true);
+  await card.getByRole('button', { name: 'Ask' }).click();
+  await expect(page.getByText(/answer: network access is not available/).first()).toBeVisible();
+  expect(shell.fetches).toEqual([]);
+
+  await card.getByRole('button', { name: 'Allow on this computer' }).click();
+  await expect(card.getByText(/Allowed to use the network/)).toBeVisible();
+  await expect(card.getByText('Running')).toBeVisible();
+  await card.getByRole('button', { name: 'Ask' }).click();
+  await expect(page.getByText('answer: from this computer').first()).toBeVisible();
+  expect(shell.fetches.map((f) => f.url)).toEqual(['http://localhost:11434/x']);
+});

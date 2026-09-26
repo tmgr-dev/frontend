@@ -65,6 +65,7 @@ export const bundleToPackage = (
 			repo: release.repo,
 			tag: release.tag,
 			sha256: release.sha256,
+			public_key: release.public_key,
 			verified: release.verified,
 		},
 	};

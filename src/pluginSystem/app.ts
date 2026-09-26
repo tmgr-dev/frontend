@@ -1,13 +1,26 @@
 import { toast } from '@/components/ui/toast';
+import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import type { AxiosInstance } from 'axios';
-import { reactive, watch } from 'vue';
+import { watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
+import { cloudPluginClient, type MintedToken } from './cloudClient';
+import {
+	hasMachineConsent,
+	matchesPin,
+	pinMismatch,
+	pinOf,
+	recordFor,
+	releaseOf,
+	workspacePlugins,
+	BUILTIN_REPO,
+	type WorkspacePluginRecord,
+} from './cloud';
 import { createDataApi } from './dataApi';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
@@ -23,6 +36,7 @@ import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
 import {
 	folderPluginErrors,
+	installedPluginErrors,
 	pluginHost,
 	pluginState,
 	setPluginHost,
@@ -31,11 +45,11 @@ import {
 	devModeStored,
 	enabledStore,
 	forgetPlugin,
+	machineConsentStore,
 	safeModeStored,
 	settingsStore,
 } from './storage';
 
-export const installedPluginErrors = reactive<Record<string, string>>({});
 const installedBlocked = new Map<string, string>();
 
 /** Installed from GitHub; Rust drops any whose bundle no longer matches the checksum agreed to. */
@@ -98,6 +112,71 @@ const clientFor = (workspaceId: number, store: Store<any>) => {
 	return client;
 };
 
+const cloudClients = new Map<string, AxiosInstance>();
+
+/** Plugin data in a shared workspace: its own client and short-lived plugin token, never the user's. */
+const cloudClientFor = (workspaceId: number, pluginId: string) => {
+	const key = `${workspaceId}:${pluginId}`;
+	let client = cloudClients.get(key);
+	if (!client) {
+		client = cloudPluginClient({
+			baseURL: String($axios.defaults.baseURL ?? ''),
+			workspaceId,
+			mint: async () =>
+				(
+					await $axios.post<{ data: MintedToken }>(
+						`workspaces/${workspaceId}/plugins/${pluginId}/token`,
+					)
+				).data.data,
+		});
+		installDomainEvents(client, domainEvents, () => workspaceId);
+		cloudClients.set(key, client);
+	}
+	return client;
+};
+
+const loadWorkspacePlugins = async (workspaceId: number) => {
+	const { data } = await $axios.get<{ data: WorkspacePluginRecord[] }>(
+		`workspaces/${workspaceId}/plugins`,
+	);
+	workspacePlugins[workspaceId] = data.data ?? [];
+};
+
+/** Members get what the creator pinned: that exact release, checked against the pinned checksum and key. */
+const syncWorkspacePlugins = async (workspaceId: number) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	let installedAny = false;
+	const errors: Record<string, string> = {};
+	for (const record of workspacePlugins[workspaceId] ?? []) {
+		if (record.repo === BUILTIN_REPO) continue;
+		if (matchesPin(record, pluginState.plugins[record.plugin_id])) continue;
+		try {
+			const release = await invoke<Release>('plugin_github_release', {
+				repo: record.repo,
+				tag: record.version,
+			});
+			const problem =
+				pinMismatch(record, release) ??
+				installConflict(
+					release,
+					bundleToPackage(release).manifest.id,
+					record.plugin_id,
+				);
+			if (problem) throw new Error(problem);
+			await invoke('plugin_install', {
+				plugin: { id: record.plugin_id, ...release },
+			});
+			installedAny = true;
+		} catch (error) {
+			errors[record.plugin_id] = `Shared workspace plugin: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+		}
+	}
+	if (installedAny) await pluginHost()?.load();
+	Object.assign(installedPluginErrors, errors);
+};
+
 const workspaceOf = (workspace: any): PluginWorkspace | null =>
 	workspace && Number.isFinite(Number(workspace.id))
 		? {
@@ -105,6 +184,8 @@ const workspaceOf = (workspace: any): PluginWorkspace | null =>
 				code: String(workspace.code),
 				name: String(workspace.name),
 				kind: Number(workspace.id) < 0 ? 'local' : 'cloud',
+				ownerId:
+					workspace.user_id == null ? undefined : Number(workspace.user_id),
 		  }
 		: null;
 
@@ -193,9 +274,22 @@ export const installPlugins = async (
 				type: 'module',
 			}) as unknown as WorkerEndpoint,
 		api: (pluginId, workspace, storageId) =>
-			createDataApi(clientFor(workspace.id, store), pluginId, storageId),
+			workspace.kind === 'cloud'
+				? createDataApi(cloudClientFor(workspace.id, pluginId), pluginId, pluginId)
+				: createDataApi(clientFor(workspace.id, store), pluginId, storageId),
 		subscribe: (handler) => domainEvents.on(handler),
-		enabled: enabledStore,
+		enabled: {
+			get: (pluginId, workspaceId) => {
+				if (workspaceId < 0) return enabledStore.get(pluginId, workspaceId);
+				const record = recordFor(workspaceId, pluginId);
+				return !!record && matchesPin(record, pluginState.plugins[pluginId]);
+			},
+			set: (pluginId, workspaceId, value) => {
+				if (workspaceId < 0) enabledStore.set(pluginId, workspaceId, value);
+			},
+		},
+		machineAllowed: (pluginId, workspace) =>
+			hasMachineConsent(workspace, pluginId),
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
 		files: (pluginId, workspace, pluginName) => {
@@ -308,6 +402,11 @@ export const installPlugins = async (
 			const active = pluginState.workspace;
 			if (active?.id === workspace?.id && active?.code === workspace?.code)
 				return;
+			if (workspace?.kind === 'cloud') {
+				await loadWorkspacePlugins(workspace.id).catch(() => undefined);
+				await syncWorkspacePlugins(workspace.id);
+				if (current !== sequence) return;
+			}
 			await host.activate(workspace);
 		},
 		{ immediate: true },
@@ -365,4 +464,39 @@ export const uninstallPlugin = async (pluginId: string) => {
 	await invoke('plugin_uninstall', { id: pluginId });
 	forgetPlugin(pluginId);
 	pluginHost()?.forget(pluginId);
+};
+
+/** The creator of a shared workspace turns a plugin on or off there, for every member. */
+export const setWorkspacePlugin = async (pluginId: string, on: boolean) => {
+	const workspace = pluginState.workspace;
+	const entry = pluginState.plugins[pluginId];
+	if (!workspace || workspace.kind !== 'cloud' || !entry) return;
+	if (on) {
+		const pin = pinOf(entry);
+		if (!pin) throw new Error('only built-in and installed plugins can be shared');
+		await $axios.put(`workspaces/${workspace.id}/plugins/${pluginId}`, pin);
+	} else {
+		await $axios.delete(`workspaces/${workspace.id}/plugins/${pluginId}`);
+	}
+	await loadWorkspacePlugins(workspace.id);
+	await pluginHost()?.activate(workspace);
+};
+
+/** A member lets a shared workspace's plugin reach this computer (network, files), or takes it back. */
+export const setMachineConsent = async (pluginId: string, allowed: boolean) => {
+	const workspace = pluginState.workspace;
+	if (!workspace || workspace.kind !== 'cloud') return;
+	const record = recordFor(workspace.id, pluginId);
+	if (!record) return;
+	machineConsentStore.set(workspace.id, pluginId, releaseOf(record), allowed);
+	await pluginHost()?.restart(pluginId);
+};
+
+/** Reads the shared workspace's plugin list again (the creator may have changed it). */
+export const refreshWorkspacePlugins = async () => {
+	const workspace = pluginState.workspace;
+	if (!workspace || workspace.kind !== 'cloud') return;
+	await loadWorkspacePlugins(workspace.id);
+	await syncWorkspacePlugins(workspace.id);
+	await pluginHost()?.activate(workspace);
 };

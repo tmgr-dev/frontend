@@ -3,14 +3,21 @@
 		<header class="mb-4 flex flex-col gap-1">
 			<h3 class="text-lg font-bold">Plugins</h3>
 			<p class="text-sm text-muted-foreground">
-				Plugins run only in local workspaces, each in its own sandbox. They can
-				use only the permissions listed on their card.
+				Plugins run in local workspaces, and in a shared workspace once its
+				creator turns them on for everyone. Each runs in its own sandbox with
+				only the permissions listed on its card.
 			</p>
-			<p
-				v-if="!workspace || workspace.kind !== 'local'"
-				class="text-sm text-amber-600 dark:text-amber-400"
-			>
-				Open a local workspace to turn plugins on or off for it.
+			<p v-if="!workspace" class="text-sm text-amber-600 dark:text-amber-400">
+				Open a workspace to turn plugins on or off for it.
+			</p>
+			<p v-else-if="workspace.kind === 'cloud'" class="text-sm text-muted-foreground">
+				Shared workspace:
+				<span class="text-foreground">{{ workspace.name }}</span>.
+				{{
+					isCreator
+						? 'You created it: a plugin you turn on here runs for every member.'
+						: 'Only its creator turns plugins on here; they run for every member.'
+				}}
 			</p>
 			<p v-else class="text-sm text-muted-foreground">
 				Current workspace:
@@ -93,6 +100,18 @@
 			<p v-if="installError" class="text-xs text-red-600 dark:text-red-400">
 				{{ installError }}
 			</p>
+			<ul
+				v-if="Object.keys(installedErrors).length"
+				class="flex flex-col gap-1 text-xs"
+			>
+				<li
+					v-for="(message, pluginId) in installedErrors"
+					:key="pluginId"
+					class="text-red-600 dark:text-red-400"
+				>
+					{{ pluginId }}: {{ message }}
+				</li>
+			</ul>
 		</section>
 
 		<Dialog :open="!!offer" @update:open="(open) => !open && (offer = null)">
@@ -248,11 +267,42 @@
 						</p>
 					</div>
 					<Switch
-						:disabled="!canToggle || plugin.status === 'blocked'"
+						:disabled="!canToggle(plugin)"
 						:checked="isEnabled(plugin.manifest.id)"
+						:aria-label="`Turn ${plugin.manifest.name} on`"
 						@update:checked="(value) => setEnabled(plugin.manifest.id, value)"
 					/>
 				</header>
+
+				<div
+					v-if="
+						workspace?.kind === 'cloud' &&
+						isEnabled(plugin.manifest.id) &&
+						reachesThisComputer(plugin.manifest)
+					"
+					class="flex flex-wrap items-center gap-2 text-xs"
+				>
+					<span class="font-medium text-amber-600 dark:text-amber-400">
+						{{
+							consented(plugin.manifest.id)
+								? 'Allowed to use the network and files on this computer.'
+								: 'Its network and file access stay off on this computer until you allow them.'
+						}}
+					</span>
+					<Button
+						variant="outline"
+						size="sm"
+						@click="
+							setConsent(plugin.manifest.id, !consented(plugin.manifest.id))
+						"
+					>
+						{{
+							consented(plugin.manifest.id)
+								? 'Stop allowing'
+								: 'Allow on this computer'
+						}}
+					</Button>
+				</div>
 
 				<div
 					v-if="plugin.manifest.network.allowedOrigins.length"
@@ -379,8 +429,10 @@
 	} from '@/pluginSystem/host';
 	import type { Permission } from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
+	import { hasMachineConsent, reachesThisComputer } from '@/pluginSystem/cloud';
 	import {
 		folderPluginErrors,
+		installedPluginErrors,
 		pluginHost,
 		pluginState,
 	} from '@/pluginSystem/state';
@@ -389,7 +441,15 @@
 		storeDevMode,
 		storeSafeMode,
 	} from '@/pluginSystem/storage';
-	import { computed, defineComponent, reactive, ref, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		reactive,
+		ref,
+		watch,
+	} from 'vue';
+	import { useStore } from 'vuex';
 
 	const PERMISSION_TEXT: Record<Permission, string> = {
 		'tasks:read': 'read tasks',
@@ -421,7 +481,19 @@
 		},
 		setup() {
 			setDocumentTitle('Plugins');
+			const store = useStore();
 			const devMode = ref(devModeStored());
+			const consentTick = ref(0);
+			const isCreator = computed(
+				() =>
+					pluginState.workspace?.kind === 'cloud' &&
+					pluginState.workspace.ownerId === Number(store.state.user?.id),
+			);
+			onMounted(async () => {
+				if (!pluginHost() || pluginState.workspace?.kind !== 'cloud') return;
+				const { refreshWorkspacePlugins } = await import('@/pluginSystem/app');
+				await refreshWorkspacePlugins().catch(() => undefined);
+			});
 			const reloading = ref(false);
 			const plugins = computed(() =>
 				Object.values(pluginState.plugins).sort((a, b) =>
@@ -552,16 +624,45 @@
 				devMode,
 				reloading,
 				folderErrors: folderPluginErrors,
+				installedErrors: installedPluginErrors,
 				workspace: computed(() => pluginState.workspace),
 				safeMode: computed(() => pluginState.safeMode),
-				canToggle: computed(
-					() =>
-						pluginState.workspace?.kind === 'local' && !pluginState.safeMode,
-				),
+				isCreator,
+				reachesThisComputer,
+				canToggle: (plugin: PluginEntry) =>
+					!!pluginState.workspace &&
+					!pluginState.safeMode &&
+					plugin.status !== 'blocked' &&
+					(pluginState.workspace.kind === 'local' ||
+						(isCreator.value && plugin.source !== 'folder')),
 				isEnabled: (pluginId: string) =>
-					pluginHost()?.isEnabled(pluginId) ?? false,
-				setEnabled: (pluginId: string, value: boolean) =>
-					pluginHost()?.setEnabled(pluginId, value),
+					pluginState.revision >= 0 &&
+					(pluginHost()?.isEnabled(pluginId) ?? false),
+				async setEnabled(pluginId: string, value: boolean) {
+					if (pluginState.workspace?.kind !== 'cloud') {
+						await pluginHost()?.setEnabled(pluginId, value);
+						return;
+					}
+					try {
+						const { setWorkspacePlugin } = await import('@/pluginSystem/app');
+						await setWorkspacePlugin(pluginId, value);
+					} catch (error) {
+						toast({
+							title: 'Could not change the plugin for this workspace',
+							description:
+								error instanceof Error ? error.message : String(error),
+							variant: 'destructive',
+						});
+					}
+				},
+				consented: (pluginId: string) =>
+					consentTick.value >= 0 &&
+					hasMachineConsent(pluginState.workspace, pluginId),
+				async setConsent(pluginId: string, allowed: boolean) {
+					const { setMachineConsent } = await import('@/pluginSystem/app');
+					await setMachineConsent(pluginId, allowed);
+					consentTick.value++;
+				},
 				async setSafeMode(value: boolean) {
 					storeSafeMode(value);
 					pluginState.safeMode = value;

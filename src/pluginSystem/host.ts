@@ -34,7 +34,13 @@ export interface PluginPackage {
 	/** HTML pages from the plugin's ui/ folder, by path, for views that open in a window. */
 	pages?: Record<string, string>;
 	/** Where an installed plugin came from; `verified` when the catalog vouches for its publisher key. */
-	origin?: { repo: string; tag: string; sha256: string; verified?: boolean };
+	origin?: {
+		repo: string;
+		tag: string;
+		sha256: string;
+		public_key?: string;
+		verified?: boolean;
+	};
 }
 
 export interface PluginLogLine {
@@ -115,6 +121,8 @@ export interface PluginHostDeps {
 		) => Promise<void>;
 		close: (pluginId: string) => Promise<void>;
 	};
+	/** Whether a plugin may reach this computer (network, files) there; a shared workspace needs the member's consent. */
+	machineAllowed?: (pluginId: string, workspace: PluginWorkspace) => boolean;
 	/** Why a plugin must not run (the signed blocklist); it wins over every other setting. */
 	blocked?: (pluginId: string) => string | null;
 	now?: () => number;
@@ -230,9 +238,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 
 	const blockedReason = (pluginId: string) => deps.blocked?.(pluginId) ?? null;
 
-	const isEnabled = (pluginId: string, workspaceId: number) =>
-		deps.enabled.get(pluginId, workspaceId) ??
-		packages.get(pluginId)?.source === 'builtin';
+	/** Built-in plugins are on by default only in local workspaces; a shared one runs what its creator turned on. */
+	const isEnabled = (pluginId: string, workspace: PluginWorkspace) =>
+		deps.enabled.get(pluginId, workspace.id) ??
+		(workspace.kind === 'local' &&
+			packages.get(pluginId)?.source === 'builtin');
 
 	const start = async (pkg: PluginPackage, workspace: PluginWorkspace) => {
 		const { manifest } = pkg;
@@ -249,6 +259,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			page: new Set(),
 			section: new Set(),
 		};
+		const machine = deps.machineAllowed?.(pluginId, workspace) ?? true;
 		const broker = createBroker({
 			manifest,
 			workspace,
@@ -279,8 +290,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (kind !== 'event' && kind !== 'command') bump(pluginId);
 			},
 			log: (level, message) => log(pluginId, level, message),
-			fetch: deps.fetch,
-			files: deps.files?.(pluginId, workspace, manifest.name),
+			fetch: machine ? deps.fetch : undefined,
+			files: machine
+				? deps.files?.(pluginId, workspace, manifest.name)
+				: undefined,
 			now,
 		});
 		const process = startPluginProcess(pkg.code, {
@@ -348,9 +361,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		stop(pluginId);
 		if (
 			pkg &&
-			workspace?.kind === 'local' &&
+			workspace &&
 			!state.safeMode &&
-			isEnabled(pluginId, workspace.id)
+			isEnabled(pluginId, workspace)
 		) {
 			await start(pkg, workspace);
 		}
@@ -406,20 +419,20 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				}
 			}
 		},
-		/** Plugins run only inside a local workspace, and never in safe mode. */
+		/** Plugins never run in safe mode; which ones run in a workspace is up to `enabled`. */
 		async activate(workspace: PluginWorkspace | null) {
 			stopAll();
 			faults.clear();
 			state.workspace = workspace;
-			if (!workspace || workspace.kind !== 'local' || state.safeMode) return;
+			if (!workspace || state.safeMode) return;
 			await Promise.all(
 				[...packages.values()]
-					.filter((pkg) => isEnabled(pkg.manifest.id, workspace.id))
+					.filter((pkg) => isEnabled(pkg.manifest.id, workspace))
 					.map((pkg) => start(pkg, workspace)),
 			);
 		},
 		isEnabled(pluginId: string) {
-			return state.workspace ? isEnabled(pluginId, state.workspace.id) : false;
+			return state.workspace ? isEnabled(pluginId, state.workspace) : false;
 		},
 		async setEnabled(pluginId: string, value: boolean) {
 			const workspace = state.workspace;
@@ -427,7 +440,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (!workspace || !pkg) return;
 			deps.enabled.set(pluginId, workspace.id, value);
 			stop(pluginId);
-			if (value && workspace.kind === 'local' && !state.safeMode)
+			if (value && !state.safeMode && isEnabled(pluginId, workspace))
 				await start(pkg, workspace);
 		},
 		async restart(pluginId: string) {
@@ -436,9 +449,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			faults.delete(pluginId);
 			if (
 				pkg &&
-				state.workspace?.kind === 'local' &&
+				state.workspace &&
 				!state.safeMode &&
-				isEnabled(pluginId, state.workspace.id)
+				isEnabled(pluginId, state.workspace)
 			) {
 				await start(pkg, state.workspace);
 			}
@@ -461,9 +474,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					const pkg = packages.get(pluginId);
 					if (
 						pkg &&
-						workspace?.kind === 'local' &&
+						workspace &&
 						!state.safeMode &&
-						isEnabled(pluginId, workspace.id)
+						isEnabled(pluginId, workspace)
 					)
 						void start(pkg, workspace);
 				}

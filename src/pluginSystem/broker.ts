@@ -49,6 +49,8 @@ export interface PluginWorkspace {
 	code: string;
 	name: string;
 	kind: 'local' | 'cloud';
+	/** The creator of a shared workspace, who alone turns plugins on there. */
+	ownerId?: number;
 }
 
 export type RegistrationKind =
@@ -347,13 +349,16 @@ export const createBroker = (deps: BrokerDeps) => {
 				} catch {
 					return invalid('url is not a valid URL');
 				}
-				if (
-					!manifest.network.allowedOrigins.includes(url.origin) ||
-					!deps.fetch
-				) {
+				if (!manifest.network.allowedOrigins.includes(url.origin)) {
 					throw new PluginError(
 						'PERMISSION_DENIED',
 						`${url.origin} is not in network.allowedOrigins`,
+					);
+				}
+				if (!deps.fetch) {
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						'network access is not available: not allowed on this computer',
 					);
 				}
 				const method =

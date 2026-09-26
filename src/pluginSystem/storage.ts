@@ -19,6 +19,7 @@ const ENABLED = 'plugins.enabled';
 const SETTINGS = 'plugins.settings';
 const SAFE_MODE = 'plugins.safeMode';
 const DEV_MODE = 'plugins.devMode';
+const MACHINE_CONSENT = 'plugins.machineConsent';
 
 /** Per workspace: `{ "<plugin>@<workspace id>": true | false }`. */
 export const enabledStore = {
@@ -29,6 +30,21 @@ export const enabledStore = {
 			...read<Record<string, boolean>>(ENABLED, {}),
 			[`${pluginId}@${workspaceId}`]: value,
 		}),
+};
+
+/** A member's consent that a plugin of a shared workspace may reach this computer, per pinned release. */
+export const machineConsentStore = {
+	has: (workspaceId: number, pluginId: string, release: string) =>
+		read<Record<string, boolean>>(MACHINE_CONSENT, {})[
+			`${pluginId}@${workspaceId}#${release}`
+		] === true,
+	set: (workspaceId: number, pluginId: string, release: string, value: boolean) => {
+		const all = read<Record<string, boolean>>(MACHINE_CONSENT, {});
+		const key = `${pluginId}@${workspaceId}#${release}`;
+		if (value) all[key] = true;
+		else delete all[key];
+		write(MACHINE_CONSENT, all);
+	},
 };
 
 export const settingsStore = {
