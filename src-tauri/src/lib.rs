@@ -1,5 +1,7 @@
 mod capture;
 mod idle;
+mod local_db;
+mod local_workspaces;
 mod quick_add;
 mod tray;
 
@@ -84,6 +86,7 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .manage(tray::TrayStore::default())
     .manage(quick_add::QuickAddStore::default())
+    .manage(local_db::LocalDbs::default())
     .invoke_handler(tauri::generate_handler![
       tray::tray_update,
       quick_add::open_quick_add,
@@ -91,7 +94,13 @@ pub fn run() {
       quick_add::hide_quick_add,
       capture::capture_screenshot,
       capture::take_capture,
-      capture::capture_selection
+      capture::capture_selection,
+      local_workspaces::local_workspaces_list,
+      local_workspaces::local_workspace_create,
+      local_workspaces::local_workspace_set_schema,
+      local_db::local_db_select,
+      local_db::local_db_execute,
+      local_db::local_db_backup
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {

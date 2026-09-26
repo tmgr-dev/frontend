@@ -1,0 +1,139 @@
+import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+
+import { migrate } from '../schema';
+import type { LocalWorkspace } from '../types';
+import { memoryDb, nodeSqliteAvailable } from './nodeDb';
+
+const LOCAL: LocalWorkspace = {
+	id: -42,
+	name: 'Personal',
+	code: 'personal',
+	schema_version: 1,
+	created_at: '',
+	path: '/tmp/personal',
+	database: '/tmp/personal/workspace.db',
+};
+
+const storage = new Map<string, string>();
+(globalThis as any).localStorage = {
+	getItem: (key: string) => storage.get(key) ?? null,
+	setItem: (key: string, value: string) => storage.set(key, value),
+	removeItem: (key: string) => storage.delete(key),
+	clear: () => storage.clear(),
+};
+
+let active: LocalWorkspace | null = null;
+const db = nodeSqliteAvailable ? memoryDb() : null;
+
+jest.mock('../runtime', () => ({
+	listLocalWorkspaces: async () => [LOCAL],
+	activeLocalWorkspace: () => active,
+	hasActiveLocalWorkspace: () => active !== null,
+	setActiveLocalWorkspace: (w: LocalWorkspace | null) => {
+		active = w;
+	},
+	localWorkspaceById: async (id: number) => (id === LOCAL.id ? LOCAL : null),
+	localContext: async (workspace: LocalWorkspace, user: any) => ({
+		db,
+		workspace,
+		user,
+		now: () => new Date('2026-09-26T10:00:00Z'),
+	}),
+}));
+
+// eslint-disable-next-line import/first
+import { installLocalWorkspaces } from '../install';
+
+const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
+
+describeSqlite('installLocalWorkspaces', () => {
+	const sent: { method: string; url: string; data: any }[] = [];
+	let offline = false;
+	let user: any;
+
+	const server = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+		if (offline) throw new AxiosError('Network Error', AxiosError.ERR_NETWORK, config);
+		sent.push({ method: config.method!, url: config.url!, data: config.data });
+		const body =
+			config.url === 'workspaces'
+				? { data: [{ id: 56, name: 'TMGR.DEV', code: 'tmgrdev' }] }
+				: config.url === 'user' || config.url === 'v2/user/settings'
+				? { data: { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] } }
+				: { data: 'from server' };
+		return { data: JSON.stringify(body), status: 200, statusText: 'OK', headers: {}, config };
+	};
+
+	const client = axios.create({ adapter: server });
+	installLocalWorkspaces(client, { currentUser: () => user });
+
+	beforeAll(async () => {
+		await migrate(db!, '2026-09-26T10:00:00Z');
+	});
+
+	beforeEach(() => {
+		sent.length = 0;
+		offline = false;
+		active = null;
+		user = { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] };
+		localStorage.clear();
+	});
+
+	it('lists local workspaces next to the cloud ones and leaves other calls alone', async () => {
+		const { data } = await client.get('workspaces');
+		expect(data.data.map((w: any) => w.code)).toEqual(['tmgrdev', 'local-personal']);
+		expect((await client.get('tasks/current')).data.data).toBe('from server');
+	});
+
+	it('switching to a local workspace keeps the server on its cloud workspace', async () => {
+		const { data } = await client.put('v2/user/settings', [{ id: 5, value: -42 }]);
+
+		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
+		expect(data.data.settings[0].value).toBe(-42);
+		expect(active).toEqual(LOCAL);
+	});
+
+	it('inside a local workspace answers workspace calls from SQLite and never sends them', async () => {
+		active = LOCAL;
+		const created = await client.post('tasks', { title: 'Offline task' });
+		const list = await client.get('tasks/current', { params: { page: 1 } });
+
+		expect(created.status).toBe(201);
+		expect(list.data.data.map((t: any) => t.title)).toContain('Offline task');
+		expect(sent).toEqual([]);
+	});
+
+	it('refuses what the local API does not implement instead of sending it', async () => {
+		active = LOCAL;
+		const error = await client.post('files/presign-upload', { file_name: 'a' }).catch((e) => e);
+
+		expect(error.response.status).toBe(501);
+		expect(sent).toEqual([]);
+	});
+
+	it('keeps account calls on the server and shows the local workspace as current', async () => {
+		active = LOCAL;
+		await client.get('user/feature-toggles');
+		const { data } = await client.get('user');
+
+		expect(sent.map((r) => r.url)).toEqual(['user/feature-toggles', 'user']);
+		expect(data.data.settings[0].value).toBe(-42);
+	});
+
+	it('starts offline inside a local workspace from the last server answers', async () => {
+		active = LOCAL;
+		await client.get('user');
+		offline = true;
+
+		const { data } = await client.get('user');
+		expect(data.data.name).toBe('Yurij');
+	});
+
+	it('switching back to a cloud workspace leaves local mode', async () => {
+		active = LOCAL;
+		user = { ...user, settings: [{ id: 5, key: 'current_workspace', value: -42 }] };
+		await client.put('v2/user/settings', [{ id: 5, value: 56 }]);
+
+		expect(active).toBeNull();
+		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
+	});
+});

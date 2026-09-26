@@ -268,6 +268,10 @@ export function usePusher(): UsePusherReturn {
 
 	// Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
 	const subscribe = (channelName: string, events: EventHandlers): string => {
+		// Local (desktop, SQLite) workspaces have negative ids and no realtime channel.
+		if (/^App\.Workspace\.-\d+$/.test(channelName)) {
+			return '';
+		}
 		if (!echoInstance) {
 			initializeEcho();
 		}

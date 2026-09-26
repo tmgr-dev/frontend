@@ -9,6 +9,8 @@ export interface Workspace {
 	type: string;
 	user_id: number;
 	code: string;
+	is_local?: boolean;
+	path?: string;
 }
 
 export const getWorkspaces = async (
