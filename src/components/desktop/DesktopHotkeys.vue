@@ -43,12 +43,14 @@
 			const toggleTimer = async () => {
 				if (props.tasks.length) {
 					await Promise.all(
-						props.tasks.map((task) => stopTaskTimeCounter(task.id)),
+						props.tasks.map((task) =>
+							stopTaskTimeCounter(task.id, task.workspace_id),
+						),
 					);
 					return;
 				}
 				const last = loadRecent(store.state.user?.id)[0];
-				if (last) await startTaskTimeCounter(last.id);
+				if (last) await startTaskTimeCounter(last.id, last.workspaceId);
 			};
 
 			const captureScreenshot = async () => {

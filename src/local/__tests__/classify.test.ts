@@ -35,10 +35,18 @@ describe('classify', () => {
 			['GET', 'workspaces/-42/members'],
 			['GET', 'dashboard/statistics'],
 			['GET', 'daily-routines/tasks'],
-			['GET', 'https://api.tmgr.dev/api/tasks/runned'],
+			['GET', 'https://api.tmgr.dev/api/tasks/5'],
 		]) {
 			expect(classify(method, url, true)).toBe('local');
 		}
+	});
+
+	it('collects running timers from both sides and lets the tray stop a cloud timer', () => {
+		expect(classify('GET', 'tasks/runned', true)).toBe('runned');
+		expect(classify('DELETE', 'tasks/5/countdown', true, { workspace_id: 56 })).toBe('server');
+		expect(classify('DELETE', 'tasks/5/countdown', true, { workspace_id: -42 })).toBe('local');
+		expect(classify('DELETE', 'tasks/5/countdown', true)).toBe('local');
+		expect(classify('PUT', 'tasks/5', true, { workspace_id: 56 })).toBe('local');
 	});
 
 	it('does not treat look-alike paths as account-level', () => {

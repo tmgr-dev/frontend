@@ -57,6 +57,8 @@ describeSqlite('installLocalWorkspaces', () => {
 		const body =
 			config.url === 'workspaces'
 				? { data: [{ id: 56, name: 'TMGR.DEV', code: 'tmgrdev' }] }
+				: config.url === 'tasks/runned'
+				? { data: [{ id: 900, title: 'Cloud timer', workspace_id: 56 }], meta: {} }
 				: config.url === 'user' || config.url === 'v2/user/settings'
 				? { data: { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] } }
 				: { data: 'from server' };
@@ -166,5 +168,23 @@ describeSqlite('installLocalWorkspaces', () => {
 
 		expect(error.response.status).toBe(409);
 		expect((await client.get(`tasks/${task.id}`)).data.data.title).toBe('Mine');
+	});
+
+	it('lists running timers of the local workspace and of the cloud together', async () => {
+		active = LOCAL;
+		const task = (await client.post('tasks', { title: 'Local timer' })).data.data;
+		await client.post(`tasks/${task.id}/countdown`);
+
+		const { data } = await client.get('tasks/runned');
+
+		expect(data.data.map((t: any) => t.title)).toEqual(['Local timer', 'Cloud timer']);
+		await client.delete(`tasks/${task.id}/countdown`);
+	});
+
+	it('stops a cloud timer from the tray while a local workspace is open', async () => {
+		active = LOCAL;
+		await client.delete('tasks/900/countdown', { params: { workspace_id: 56 } });
+
+		expect(sent.map((r) => `${r.method} ${r.url}`)).toEqual(['delete tasks/900/countdown']);
 	});
 });

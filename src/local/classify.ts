@@ -5,6 +5,7 @@ export type Route =
 	| 'server:workspaces'
 	| 'server:user'
 	| 'settings'
+	| 'runned'
 	| 'local'
 	| 'blocked';
 
@@ -28,7 +29,12 @@ const ACCOUNT = [
  * account-level calls reach the server; every other call is answered locally or refused — it is
  * never sent, so local data cannot leak through an endpoint the local API does not implement.
  */
-export const classify = (method: string, url: string, localActive: boolean): Route => {
+export const classify = (
+	method: string,
+	url: string,
+	localActive: boolean,
+	params?: Record<string, any>,
+): Route => {
 	const path = normalizePath(url);
 	const verb = method.toUpperCase();
 	if (verb === 'GET' && path === 'workspaces') return 'server:workspaces';
@@ -36,6 +42,13 @@ export const classify = (method: string, url: string, localActive: boolean): Rou
 	if (verb === 'GET' && path === 'user') return 'server:user';
 	if (!localActive) return 'server';
 	if (ACCOUNT.some((pattern) => pattern.test(path))) return 'server';
+	// Running timers of every workspace, cloud and local, show together in the tray and status bar.
+	if (verb === 'GET' && path === 'tasks/runned') return 'runned';
+	// A timer call pinned to a cloud workspace (from the tray) targets that cloud task explicitly.
+	const target = params?.workspace_id;
+	if (/^tasks\/\d+\/countdown$/.test(path) && target !== undefined && Number(target) >= 0) {
+		return 'server';
+	}
 	return 'local';
 };
 

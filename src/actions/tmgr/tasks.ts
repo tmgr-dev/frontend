@@ -314,10 +314,19 @@ export const deleteTaskAssignee = async (taskId: number, userId: number) => {
 	return data.assignees;
 };
 
-export const startTaskTimeCounter = async (taskId: number) => {
+/** `workspaceId` pins the call to that workspace (the desktop tray lists cloud and local timers together). */
+const timerTarget = (workspaceId?: number | null) =>
+	workspaceId === undefined || workspaceId === null
+		? undefined
+		: { params: { workspace_id: workspaceId } };
+
+export const startTaskTimeCounter = async (
+	taskId: number,
+	workspaceId?: number | null,
+) => {
 	const {
 		data: { data },
-	} = await $axios.post(`tasks/${taskId}/countdown`);
+	} = await $axios.post(`tasks/${taskId}/countdown`, undefined, timerTarget(workspaceId));
 
 	requestCache.invalidate(`task-${taskId}`);
 	store.commit('incrementReloadActiveTasksKey');
@@ -325,10 +334,13 @@ export const startTaskTimeCounter = async (taskId: number) => {
 	return data;
 };
 
-export const stopTaskTimeCounter = async (taskId: number) => {
+export const stopTaskTimeCounter = async (
+	taskId: number,
+	workspaceId?: number | null,
+) => {
 	const {
 		data: { data },
-	} = await $axios.delete(`tasks/${taskId}/countdown`);
+	} = await $axios.delete(`tasks/${taskId}/countdown`, timerTarget(workspaceId));
 
 	requestCache.invalidate(`task-${taskId}`);
 	store.commit('incrementReloadActiveTasksKey');

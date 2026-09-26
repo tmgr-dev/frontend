@@ -226,6 +226,21 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		return respond(config, result.status, result.data);
 	};
 
+	/** Local running timers first, then the cloud ones; a cloud outage just leaves the local ones. */
+	const runnedAdapter: AxiosAdapter = async (config) => {
+		const [local, cloud] = await Promise.all([
+			localAdapter(config),
+			network(config)
+				.then((response) => parsed(response).data?.data ?? [])
+				.catch(() => []),
+		]);
+		const rows = [...(local.data?.data ?? []), ...(Array.isArray(cloud) ? cloud : [])];
+		return {
+			...local,
+			data: { ...local.data, data: rows, meta: { ...local.data?.meta, total: rows.length } },
+		};
+	};
+
 	const refuse: AxiosAdapter = async (config) =>
 		respond(config, 409, {
 			message: 'This change belongs to another workspace and was not saved; reopen the task',
@@ -233,7 +248,7 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 
 	instance.interceptors.request.use(async (config) => {
 		const localMode = hasActiveLocalWorkspace();
-		const route = classify(config.method ?? 'get', config.url ?? '', localMode);
+		const route = classify(config.method ?? 'get', config.url ?? '', localMode, config.params);
 		if (localMode) await listLocalWorkspaces();
 		if (crossesWorkspaces(route, config.data, config.params, activeLocalWorkspace()?.id ?? null)) {
 			config.adapter = refuse;
@@ -242,6 +257,7 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		if (route === 'server:workspaces') config.adapter = workspacesAdapter;
 		else if (route === 'server:user') config.adapter = userAdapter;
 		else if (route === 'settings') config.adapter = settingsAdapter;
+		else if (route === 'runned') config.adapter = runnedAdapter;
 		else if (route === 'local') config.adapter = localAdapter;
 		return config;
 	});

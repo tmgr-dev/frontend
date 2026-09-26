@@ -19,7 +19,7 @@
 			type="button"
 			class="flex h-full min-w-0 items-center gap-2 rounded-md px-2 text-foreground hover:bg-muted"
 			:title="runningTask.title"
-			@click="openTask(runningTask.id)"
+			@click="openTask(runningTask)"
 		>
 			<span
 				class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500"
@@ -156,7 +156,12 @@
 				title: computed(() => store.state.metaTitle || ''),
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
 				toggleAi: () => store.commit('toggleAiPanel'),
-				openTask: (id) => store.commit('setCurrentTaskIdForModal', id),
+				openTask: (task) => {
+					const workspaceId = task.workspace_id;
+					if (workspaceId == null || workspaceId === store.getters.currentWorkspaceId) {
+						store.commit('setCurrentTaskIdForModal', task.id);
+					}
+				},
 				runningTask,
 				runningElapsed,
 				connectionState,
