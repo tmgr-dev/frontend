@@ -1,3 +1,4 @@
+import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
 import type {
 	ActionError,
@@ -360,6 +361,13 @@ export function usePusher(): UsePusherReturn {
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onTaskCountdownStopped?.(data.task));
+				}
+			});
+
+			channel.listen('.agent-work.changed', (data: { run: AgentWorkRun }) => {
+				const sub = subscriptions.get(channelName);
+				if (sub) {
+					sub.handlers.forEach((h) => h.onAgentWorkChanged?.(data.run));
 				}
 			});
 
