@@ -73,6 +73,21 @@ export interface BrokerDeps {
 	register: (kind: RegistrationKind, id: string) => void;
 	log: (level: 'info' | 'warn' | 'error', message: string) => void;
 	now: () => number;
+	/** Plain http to this computer only; the Rust side checks the address again. */
+	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
+}
+
+export interface FetchRequest {
+	url: string;
+	method: string;
+	headers: [string, string][];
+	body: string | null;
+}
+
+export interface FetchResponse {
+	status: number;
+	headers: [string, string][];
+	body: string;
 }
 
 export const PLUGIN_EVENTS: Record<string, Permission> = {
@@ -267,9 +282,54 @@ export const createBroker = (deps: BrokerDeps) => {
 				return api.storageSet(string(p.key, 'key', 200), json);
 			},
 		},
+		'net.fetch': {
+			run: async (p) => {
+				let url: URL;
+				try {
+					url = new URL(string(p.url, 'url', 2000));
+				} catch {
+					return invalid('url is not a valid URL');
+				}
+				if (
+					!manifest.network.allowedOrigins.includes(url.origin) ||
+					!deps.fetch
+				) {
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						`${url.origin} is not in network.allowedOrigins`,
+					);
+				}
+				const method =
+					p.method == null
+						? 'GET'
+						: string(p.method, 'method', 10).toUpperCase();
+				if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method))
+					invalid('method');
+				const headers = Object.entries(
+					p.headers &&
+						typeof p.headers === 'object' &&
+						!Array.isArray(p.headers)
+						? p.headers
+						: {},
+				)
+					.slice(0, 32)
+					.map(
+						([name, value]) =>
+							[
+								string(name, 'header name', 100),
+								string(String(value), 'header', 4000, true),
+							] as [string, string],
+					);
+				const body =
+					p.body == null ? null : string(p.body, 'body', 1024 * 1024, true);
+				return deps.fetch({ url: url.toString(), method, headers, body });
+			},
+		},
 		'ui.notify': {
 			permission: 'notifications',
-			run: (p) => deps.notify(string(p.message, 'message', 300)),
+			run: (p) => {
+				deps.notify(string(p.message, 'message', 300));
+			},
 		},
 		'ui.setStatusBarItem': {
 			run: (p) => {

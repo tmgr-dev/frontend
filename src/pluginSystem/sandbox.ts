@@ -84,6 +84,21 @@ const PRELUDE = `(() => {
 			delete: (key) => call('storage.delete', { key }),
 			keys: () => call('storage.keys'),
 		}),
+		net: freeze({
+			fetch: (url, init) => {
+				const options = init || {};
+				return call('net.fetch', { url, method: options.method, headers: options.headers, body: options.body }).then(
+					(response) =>
+						freeze({
+							status: response.status,
+							ok: response.status >= 200 && response.status < 300,
+							headers: freeze(Object.fromEntries(response.headers.map(([k, v]) => [k.toLowerCase(), v]))),
+							text: () => Promise.resolve(response.body),
+							json: () => Promise.resolve().then(() => JSON.parse(response.body)),
+						}),
+				);
+			},
+		}),
 		events: freeze({ on: (type, fn) => register('event', type, fn) }),
 		commands: freeze({ register: (id, fn) => register('command', id, fn) }),
 		ui: freeze({

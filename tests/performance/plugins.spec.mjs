@@ -193,3 +193,76 @@ test('badges for a 500-task board add little main-thread work', async ({
   );
   expect(withPlugin - baseline).toBeLessThan(300);
 });
+
+test('a folder plugin talks to a local service it declared, and the settings say so in red', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('plugins.devMode', 'true'),
+  );
+  const llm = {
+    folder: 'dev.llm',
+    manifest: JSON.stringify({
+      id: 'dev.llm',
+      name: 'Local LLM',
+      version: '1.0.0',
+      engines: { tmgr: '^1.0' },
+      permissions: ['notifications'],
+      network: { allowedOrigins: ['http://localhost:11434'] },
+      contributes: {
+        commands: [{ id: 'dev.llm.ask', title: 'Ask the model' }],
+      },
+    }),
+    code: `
+      tmgr.commands.register('dev.llm.ask', async () => {
+        const res = await tmgr.net.fetch('http://localhost:11434/api/generate', { method: 'POST', body: '{"prompt":"hi"}' });
+        const answer = (await res.json()).response;
+        const refused = await tmgr.net.fetch('http://localhost:22/').then(() => 'allowed', (e) => e.name);
+        await tmgr.ui.notify(answer + ' / port 22: ' + refused);
+      });
+    `,
+  };
+  const shell = await desktopPage(
+    page,
+    {},
+    {
+      devPlugins: [llm],
+      localHttp: () => ({
+        status: 200,
+        headers: [['content-type', 'application/json']],
+        body: '{"response":"hello from the model"}',
+      }),
+    },
+  );
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  const card = page.locator('article', { hasText: 'Local LLM' });
+  await expect(
+    card.getByText(
+      'Can connect to: http://localhost:11434 (this computer only)',
+    ),
+  ).toBeVisible();
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Running')).toBeVisible();
+  await card.getByRole('button', { name: 'Ask the model' }).click();
+  await expect(
+    page.getByText('hello from the model / port 22: PERMISSION_DENIED', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(shell.fetches).toEqual([
+    {
+      url: 'http://localhost:11434/api/generate',
+      method: 'POST',
+      headers: [],
+      body: '{"prompt":"hi"}',
+    },
+  ]);
+});

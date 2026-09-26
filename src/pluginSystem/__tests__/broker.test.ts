@@ -6,8 +6,9 @@ import {
 } from '../broker';
 import { parseManifest, type Permission } from '../manifest';
 
-const manifest = (permissions: Permission[]) =>
+const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 	parseManifest({
+		network: { allowedOrigins },
 		id: 'tmgr.test',
 		name: 'Test',
 		version: '1.0.0',
@@ -56,6 +57,7 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 const setup = (
 	permissions: Permission[],
 	overrides: Partial<BrokerDeps> = {},
+	allowedOrigins: string[] = [],
 ) => {
 	const api = fakeApi();
 	const registered: unknown[] = [];
@@ -64,7 +66,7 @@ const setup = (
 	let clock = 0;
 	let current: number | null = -7;
 	const broker = createBroker({
-		manifest: manifest(permissions),
+		manifest: manifest(permissions, allowedOrigins),
 		workspace: { id: -7, code: 'local-notes', name: 'Notes', kind: 'local' },
 		currentWorkspaceId: () => current,
 		api,
@@ -268,4 +270,50 @@ it('keeps plugin storage within its quota and hands out settings and the workspa
 	expect(statusBar).toEqual([
 		['total', { text: '2h over', tooltip: null, command: null }],
 	]);
+});
+
+it('fetches only from the origins the manifest lists', async () => {
+	const fetched: unknown[] = [];
+	const { broker } = setup(
+		[],
+		{
+			fetch: async (request) => {
+				fetched.push(request);
+				return { status: 200, headers: [], body: '{}' };
+			},
+		},
+		['http://localhost:11434'],
+	);
+	expect(
+		await broker.call('net.fetch', {
+			url: 'http://localhost:11434/api/generate',
+			method: 'POST',
+			body: '{}',
+		}),
+	).toEqual({
+		status: 200,
+		headers: [],
+		body: '{}',
+	});
+	expect(
+		await code(broker.call('net.fetch', { url: 'http://localhost:9999/' })),
+	).toBe('PERMISSION_DENIED');
+	expect(
+		await code(broker.call('net.fetch', { url: 'http://127.0.0.1:11434/' })),
+	).toBe('PERMISSION_DENIED');
+	expect(await code(broker.call('net.fetch', { url: 'not a url' }))).toBe(
+		'INVALID_PARAMS',
+	);
+	expect(fetched).toEqual([
+		{
+			url: 'http://localhost:11434/api/generate',
+			method: 'POST',
+			headers: [],
+			body: '{}',
+		},
+	]);
+	const { broker: offline } = setup([]);
+	expect(
+		await code(offline.call('net.fetch', { url: 'http://localhost:11434/' })),
+	).toBe('PERMISSION_DENIED');
 });

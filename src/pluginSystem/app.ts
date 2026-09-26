@@ -114,6 +114,10 @@ export const installPlugins = async (
 		enabled: enabledStore,
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
+		fetch: async (request) => {
+			const { invoke } = await import('@tauri-apps/api/core');
+			return invoke('plugin_fetch', { request });
+		},
 		currentWorkspaceId: () => {
 			const id = Number(store.getters.currentWorkspaceId);
 			return Number.isFinite(id) && id !== 0 ? id : null;

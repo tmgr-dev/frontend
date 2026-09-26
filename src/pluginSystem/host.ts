@@ -3,6 +3,8 @@ import {
 	createBroker,
 	PLUGIN_EVENTS,
 	type DataApi,
+	type FetchRequest,
+	type FetchResponse,
 	type PluginWorkspace,
 	type RegistrationKind,
 } from './broker';
@@ -86,6 +88,7 @@ export interface PluginHostDeps {
 	};
 	notify: (title: string, message: string) => void;
 	currentWorkspaceId: () => number | null;
+	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -231,6 +234,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (kind !== 'event' && kind !== 'command') bump(pluginId);
 			},
 			log: (level, message) => log(pluginId, level, message),
+			fetch: deps.fetch,
 			now,
 		});
 		const process = startPluginProcess(pkg.code, {

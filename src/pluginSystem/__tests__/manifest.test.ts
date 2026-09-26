@@ -65,3 +65,28 @@ it('ignores contribution kinds it does not know', () => {
 		}).contributes,
 	).not.toHaveProperty('menus');
 });
+
+it('accepts network origins only on this computer', () => {
+	expect(
+		parseManifest({
+			...valid,
+			network: {
+				allowedOrigins: ['http://localhost:11434', 'http://127.0.0.1:8080/'],
+			},
+		}).network,
+	).toEqual({
+		allowedOrigins: ['http://localhost:11434', 'http://127.0.0.1:8080'],
+	});
+	expect(parseManifest(valid).network).toEqual({ allowedOrigins: [] });
+	for (const origin of [
+		'https://api.openai.com',
+		'http://localhost',
+		'https://localhost:1',
+		'http://192.0.2.1:80',
+		'http://localhost.evil:80',
+	]) {
+		expect(() =>
+			parseManifest({ ...valid, network: { allowedOrigins: [origin] } }),
+		).toThrow('network');
+	}
+});

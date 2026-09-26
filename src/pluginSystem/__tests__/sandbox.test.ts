@@ -200,3 +200,35 @@ it('cuts off a loop that runs in the background and keeps answering', async () =
 	expect(Date.now() - started).toBeLessThan(1000);
 	sandbox.dispose();
 });
+
+it('gives plugins a fetch-like response for local network calls', async () => {
+	const { sandbox, calls } = await start(
+		`tmgr.commands.register('tmgr.t.ask', async () => {
+			const res = await tmgr.net.fetch('http://localhost:11434/api/generate', { method: 'POST', body: '{"prompt":"hi"}' });
+			return [res.status, res.ok, res.headers['content-type'], (await res.json()).response];
+		});`,
+		async (method) =>
+			method === 'net.fetch'
+				? {
+						status: 200,
+						headers: [['Content-Type', 'application/json']],
+						body: '{"response":"hello"}',
+				  }
+				: null,
+	);
+	expect(await sandbox.dispatch('command', 'tmgr.t.ask', null)).toEqual([
+		200,
+		true,
+		'application/json',
+		'hello',
+	]);
+	expect(calls[1]).toEqual([
+		'net.fetch',
+		{
+			url: 'http://localhost:11434/api/generate',
+			method: 'POST',
+			body: '{"prompt":"hi"}',
+		},
+	]);
+	sandbox.dispose();
+});

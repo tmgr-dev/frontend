@@ -29,6 +29,8 @@ export interface PluginManifest {
 	description: string;
 	main: string;
 	permissions: Permission[];
+	/** Only origins on this computer; a plugin never reaches the internet. */
+	network: { allowedOrigins: string[] };
 	contributes: {
 		boardCardBadges: { id: string }[];
 		statusBarItems: { id: string }[];
@@ -44,6 +46,21 @@ export interface PluginManifest {
 
 const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 const LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
+const LOOPBACK_ORIGIN =
+	/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):(\d{1,5})\/?$/;
+
+const parseOrigin = (value: unknown): string => {
+	const match = typeof value === 'string' ? value.match(LOOPBACK_ORIGIN) : null;
+	if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535) {
+		fail(
+			`network origin ${String(
+				value,
+			)} must be http://localhost:<port> (or 127.0.0.1 / [::1])`,
+		);
+	}
+	return value!.toString().replace(/\/$/, '');
+};
+
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 const fail = (message: string): never => {
@@ -126,6 +143,17 @@ export const parseManifest = (raw: any): PluginManifest => {
 			typeof raw.description === 'string' ? raw.description.slice(0, 500) : '',
 		main: text(raw.main ?? 'main.js', 'main', 80),
 		permissions: [...new Set(permissions)],
+		network: {
+			allowedOrigins: [
+				...new Set(
+					list(
+						raw.network?.allowedOrigins,
+						'network.allowedOrigins',
+						parseOrigin,
+					),
+				),
+			],
+		},
 		contributes: {
 			boardCardBadges: list(c.boardCardBadges, 'boardCardBadges', (item) => ({
 				id: localId(item, 'boardCardBadges'),

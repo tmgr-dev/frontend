@@ -67,19 +67,31 @@ export const startPluginProcess = (
 				return started?.reject(
 					new DispatchError(data.error.code, data.error.message),
 				);
-			case 'call':
-				options.call(data.method, data.params).then(
-					(value) =>
-						!stopped &&
+			case 'call': {
+				const answer = (message: ToWorker) => {
+					if (stopped) return;
+					try {
+						endpoint.postMessage(message);
+					} catch (error) {
+						// A value the Worker cannot receive must still answer the call, or the plugin waits forever.
 						endpoint.postMessage({
 							type: 'result',
 							callId: data.callId,
-							ok: true,
-							value,
-						}),
+							ok: false,
+							error: wireError(
+								Object.assign(
+									new Error(`host answer could not be sent: ${error}`),
+									{ code: 'HOST_ERROR' },
+								),
+							),
+						});
+					}
+				};
+				options.call(data.method, data.params).then(
+					(value) =>
+						answer({ type: 'result', callId: data.callId, ok: true, value }),
 					(error) =>
-						!stopped &&
-						endpoint.postMessage({
+						answer({
 							type: 'result',
 							callId: data.callId,
 							ok: false,
@@ -87,6 +99,7 @@ export const startPluginProcess = (
 						}),
 				);
 				return;
+			}
 			case 'dispatched': {
 				const waiter = pending.get(data.id);
 				pending.delete(data.id);

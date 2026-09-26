@@ -104,6 +104,13 @@ declare const tmgr: {
 		delete(key: string): Promise<void>;
 		keys(): Promise<string[]>;
 	};
+	/** Only origins listed in manifest network.allowedOrigins, all on this computer (http://localhost:<port>). */
+	net: {
+		fetch(
+			url: string,
+			init?: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string },
+		): Promise<{ status: number; ok: boolean; headers: Record<string, string>; text(): Promise<string>; json<T = unknown>(): Promise<T> }>;
+	};
 	/** task.* needs tasks:read, timer.* needs time:read, comment.* needs comments:read. Own writes are not delivered. */
 	events: { on<T extends TmgrEvent['type']>(type: T, handler: (event: Extract<TmgrEvent, { type: T }>) => unknown): Promise<void> };
 	/** The command id must be declared in contributes.commands and start with the plugin id. */

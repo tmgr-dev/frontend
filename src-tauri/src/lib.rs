@@ -6,6 +6,7 @@ mod local_export;
 mod local_files;
 mod local_workspaces;
 mod plugin_dev;
+mod plugin_net;
 mod quick_add;
 mod tray;
 
@@ -114,6 +115,7 @@ pub fn run() {
       plugin_dev::plugins_dev_list,
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
+      plugin_net::plugin_fetch,
       local_export::local_export_write,
       local_export::local_reveal
     ])

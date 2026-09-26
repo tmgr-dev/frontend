@@ -1,12 +1,16 @@
 import { mockApp } from './mockApp.mjs';
 
 /** The desktop shell's local-workspace commands, run on node:sqlite (Node ≥ 22) instead of Rust. */
-const fakeShell = async ({ devPlugins = [] } = {}) => {
+const fakeShell = async ({
+  devPlugins = [],
+  localHttp = () => ({ status: 404, headers: [], body: '' }),
+} = {}) => {
   const { DatabaseSync } = await import('node:sqlite');
   const workspaces = [];
   const dbs = new Map();
   const exports = [];
   const revealed = [];
+  const fetches = [];
   const files = new Map();
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
@@ -46,6 +50,9 @@ const fakeShell = async ({ devPlugins = [] } = {}) => {
       case 'local_file_write':
         files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
         return null;
+      case 'plugin_fetch':
+        fetches.push(args.request);
+        return localHttp(args.request);
       case 'plugins_dev_list':
         return devPlugins;
       case 'reveal_download':
@@ -58,7 +65,7 @@ const fakeShell = async ({ devPlugins = [] } = {}) => {
         return null;
     }
   };
-  return Object.assign(handler, { exports, files, revealed });
+  return Object.assign(handler, { exports, files, revealed, fetches });
 };
 
 /** A page that believes it runs inside the desktop app, backed by `fakeShell` and a fake file scheme. */

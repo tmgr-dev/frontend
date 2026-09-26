@@ -110,6 +110,14 @@
 					/>
 				</header>
 
+				<div
+					v-if="plugin.manifest.network.allowedOrigins.length"
+					class="text-xs font-medium text-red-600 dark:text-red-400"
+				>
+					Can connect to:
+					{{ plugin.manifest.network.allowedOrigins.join(', ') }} (this computer
+					only)
+				</div>
 				<div class="text-xs">
 					<span class="font-medium">Can:</span>
 					<span class="text-muted-foreground">

@@ -154,3 +154,46 @@ it('stopping a plugin that is still starting settles its start', async () => {
 	process.stop();
 	await expect(process.ready).rejects.toMatchObject({ code: 'STOPPED' });
 });
+
+it('answers a call even when the host result cannot cross to the worker', async () => {
+	const endpoint = pair();
+	const process = startPluginProcess(
+		`tmgr.commands.register('tmgr.p.odd', () => tmgr.workspace.current().then(() => 'ok', (e) => e.name));`,
+		{
+			endpoint,
+			call: async (method) =>
+				method === 'workspace.current' ? { run: () => 1 } : null,
+			onCrash: () => undefined,
+		},
+	);
+	await process.ready;
+	expect(await process.dispatch('command', 'tmgr.p.odd', null)).toBe(
+		'HOST_ERROR',
+	);
+	process.stop();
+});
+
+it('notify answers with plain data', async () => {
+	const { createBroker } = await import('../broker');
+	const { parseManifest } = await import('../manifest');
+	const broker = createBroker({
+		manifest: parseManifest({
+			id: 'a.b',
+			name: 'A',
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			permissions: ['notifications'],
+		}),
+		workspace: { id: -1, code: 'x', name: 'x', kind: 'local' },
+		currentWorkspaceId: () => -1,
+		api: {} as any,
+		settings: () => ({}),
+		notify: () => ({ dismiss: () => undefined }),
+		setStatusBarItem: () => undefined,
+		refresh: () => undefined,
+		register: () => undefined,
+		log: () => undefined,
+		now: () => 0,
+	} as any);
+	expect(await broker.call('ui.notify', { message: 'hi' })).toBeNull();
+});

@@ -4706,7 +4706,9 @@ dependencies = [
  "core-graphics",
  "log",
  "objc2-app-kit",
+ "reqwest",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -4721,6 +4723,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "url",
 ]
 
 [[package]]
