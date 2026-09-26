@@ -7,6 +7,7 @@ const fakeShell = async () => {
   const workspaces = [];
   const dbs = new Map();
   const exports = [];
+  const revealed = [];
   const files = new Map();
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
@@ -42,6 +43,9 @@ const fakeShell = async () => {
       case 'local_file_write':
         files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
         return null;
+      case 'reveal_download':
+        revealed.push(args.path);
+        return null;
       case 'local_export_write':
         exports.push(args);
         return `/tmp/${args.code}/exports/${args.folder}`;
@@ -49,7 +53,7 @@ const fakeShell = async () => {
         return null;
     }
   };
-  return Object.assign(handler, { exports, files });
+  return Object.assign(handler, { exports, files, revealed });
 };
 
 test('a local workspace is created from the switcher and keeps its tasks off the server', async ({
@@ -60,14 +64,27 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.addInitScript(() => {
     window.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' } },
-      invoke: (command, args, options) =>
-        window.__shellInvoke(
+      invoke: (command, args, options) => {
+        if (command === 'plugin:event|listen') {
+          (window.__listeners[args.event] ??= []).push(args.handler);
+          return Promise.resolve(args.handler);
+        }
+        if (command.startsWith('plugin:event|')) return Promise.resolve(null);
+        return window.__shellInvoke(
           command,
           args instanceof Uint8Array ? { raw: Array.from(args), headers: options?.headers ?? {} } : (args ?? {}),
-        ),
+        );
+      },
       convertFileSrc: (path, protocol) => `${location.origin}/__${protocol}/${encodeURIComponent(path)}`,
-      transformCallback: () => 0,
+      transformCallback: (callback) => {
+        const id = (window.__callbackId = (window.__callbackId ?? 0) + 1);
+        window[`__callback${id}`] = callback;
+        return id;
+      },
     };
+    window.__listeners = {};
+    window.__emit = (event, payload) =>
+      (window.__listeners[event] ?? []).forEach((id) => window[`__callback${id}`]?.({ event, id, payload }));
   });
   await mockApp(page);
   const stored = shell.files;
@@ -143,6 +160,16 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   });
   await expect(page.getByText('framework_blank.stl').first()).toBeVisible();
   await expect(page.getByText('This file type cannot be attached.')).toHaveCount(0);
+  await page.evaluate(() =>
+    window.__emit('download://finished', {
+      name: 'notes.png',
+      path: '/home/user/Downloads/notes.png',
+      success: true,
+    }),
+  );
+  await expect(page.getByText('Downloaded notes.png')).toBeVisible();
+  await page.getByRole('button', { name: 'Show in Finder' }).click();
+  await expect.poll(() => shell.revealed).toEqual(['/home/user/Downloads/notes.png']);
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/board');
   await expect(page.getByText('Written offline').first()).toBeVisible();
