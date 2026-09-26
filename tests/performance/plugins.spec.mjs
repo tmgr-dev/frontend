@@ -466,6 +466,7 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Install Acme board 1.0.0?')).toBeVisible();
   await expect(dialog.getByText('read tasks')).toBeVisible();
+  await expect(dialog.getByText(/Unverified publisher/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   expect(shell.installed.size).toBe(0);
 
@@ -481,6 +482,7 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   await expect(card.getByText('Off')).toBeVisible();
   await card.getByRole('switch').click();
   await expect(card.getByText('Running')).toBeVisible();
+  await expect(card.getByText(/unverified publisher/)).toBeVisible();
 
   releases['acme/board'] = {
     tag: 'v1.1.0',
@@ -536,4 +538,57 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   await expect(
     page.locator('article', { hasText: 'Acme board' }).getByText('Off'),
   ).toBeVisible();
+});
+
+test('the signed TMGR blocklist stops an installed plugin and a built-in one', async ({
+  page,
+}) => {
+  const releases = {
+    'acme/board': {
+      tag: 'v1.0.0',
+      verified: true,
+      content: {
+        manifest: {
+          id: 'acme.board',
+          name: 'Acme board',
+          version: '1.0.0',
+          engines: { tmgr: '^1.0' },
+          permissions: ['tasks:read'],
+        },
+        code: '',
+      },
+    },
+  };
+  const shell = await desktopPage(page, {}, { releases });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+
+  await page.getByLabel('Plugin repository').fill('acme/board');
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText(/Verified publisher/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Install' }).click();
+  const card = page.locator('article', { hasText: 'Acme board' });
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Running')).toBeVisible();
+  const estimate = page.locator('article', { hasText: 'Estimate' }).first();
+  await expect(estimate.getByText('Running')).toBeVisible();
+
+  shell.catalog.serial = 2;
+  shell.catalog.blocked.push(
+    { repo: 'acme/board', reason: 'compromised release' },
+    { id: 'tmgr.estimate', reason: 'broken build' },
+  );
+  await page.reload();
+  await expect(card.getByText('Blocked by TMGR')).toBeVisible();
+  await expect(card.getByText('compromised release')).toBeVisible();
+  await expect(card.getByRole('switch')).toBeDisabled();
+  await expect(estimate.getByText('Blocked by TMGR')).toBeVisible();
+  await expect(estimate.getByText('broken build')).toBeVisible();
 });

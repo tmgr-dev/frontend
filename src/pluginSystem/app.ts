@@ -12,6 +12,13 @@ import { createDataApi } from './dataApi';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, type PluginPackage } from './host';
+import {
+	blockedById,
+	pluginCatalog,
+	REFRESH_MS,
+	setCatalog,
+	type Catalog,
+} from './catalog';
 import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
 import {
@@ -29,6 +36,7 @@ import {
 } from './storage';
 
 export const installedPluginErrors = reactive<Record<string, string>>({});
+const installedBlocked = new Map<string, string>();
 
 /** Installed from GitHub; Rust drops any whose bundle no longer matches the checksum agreed to. */
 const installedPackages = async (): Promise<PluginPackage[]> => {
@@ -40,6 +48,10 @@ const installedPackages = async (): Promise<PluginPackage[]> => {
 	Object.keys(installedPluginErrors).forEach(
 		(key) => delete installedPluginErrors[key],
 	);
+	installedBlocked.clear();
+	found.forEach((release) => {
+		if (release.blocked) installedBlocked.set(release.id, release.blocked);
+	});
 	return found.flatMap((release) => {
 		try {
 			return [bundleToPackage(release)];
@@ -243,8 +255,14 @@ export const installPlugins = async (
 			const id = Number(store.getters.currentWorkspaceId);
 			return Number.isFinite(id) && id !== 0 ? id : null;
 		},
+		blocked: (pluginId) =>
+			installedBlocked.get(pluginId) ?? blockedById(pluginCatalog, pluginId),
 	});
 	setPluginHost(host);
+	const { invoke } = await import('@tauri-apps/api/core');
+	setCatalog(
+		await invoke<Catalog>('plugin_catalog').catch(() => pluginCatalog),
+	);
 	await answerPluginWindows(host);
 	watch(
 		() =>
@@ -266,6 +284,17 @@ export const installPlugins = async (
 		},
 	);
 	await host.load();
+	const refreshCatalog = async () => {
+		const next = await invoke<Catalog>('plugin_catalog_refresh').catch(
+			() => null,
+		);
+		if (!next) return;
+		setCatalog(next);
+		await host.load();
+		host.applyBlocklist();
+	};
+	void refreshCatalog();
+	setInterval(() => void refreshCatalog(), REFRESH_MS);
 	let sequence = 0;
 	watch(
 		() =>

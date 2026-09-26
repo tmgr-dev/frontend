@@ -69,6 +69,7 @@ const setup = (
 		open?: (...args: any[]) => Promise<void>;
 		close?: (pluginId: string) => Promise<void>;
 	} = {},
+	blocked: Record<string, string> = {},
 ) => {
 	const state: PluginHostState = {
 		workspace: null,
@@ -100,6 +101,7 @@ const setup = (
 			open: windows.open ?? (async () => undefined),
 			close: windows.close ?? (async () => undefined),
 		},
+		blocked: (pluginId) => blocked[pluginId] ?? null,
 		cpuMs: 100,
 		wallMs: 2000,
 	});
@@ -525,4 +527,33 @@ describe('plugin runs', () => {
 		expect(host.generationOf('tmgr.run')).not.toBe(before);
 		host.dispose();
 	});
+});
+
+it('never runs a blocked plugin and stops one the blocklist catches while it runs', async () => {
+	const blocked: Record<string, string> = { 'tmgr.bad': 'steals data' };
+	const { host, state, notices } = setup(
+		[pkg('tmgr.bad', ''), pkg('tmgr.good', '')],
+		{},
+		{},
+		blocked,
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	expect(state.plugins['tmgr.bad'].status).toBe('blocked');
+	expect(state.plugins['tmgr.bad'].error).toBe('steals data');
+	expect(state.plugins['tmgr.good'].status).toBe('running');
+
+	await host.setEnabled('tmgr.bad', true);
+	expect(state.plugins['tmgr.bad'].status).toBe('blocked');
+
+	blocked['tmgr.good'] = 'compromised release';
+	host.applyBlocklist();
+	expect(state.plugins['tmgr.good'].status).toBe('blocked');
+	expect(notices.join()).toContain('compromised release');
+
+	delete blocked['tmgr.good'];
+	host.applyBlocklist();
+	await flush();
+	expect(state.plugins['tmgr.good'].status).toBe('running');
+	host.dispose();
 });

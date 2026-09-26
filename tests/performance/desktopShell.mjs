@@ -8,6 +8,11 @@ const fakeShell = async ({
 } = {}) => {
   const { createHash } = await import('node:crypto');
   const installed = new Map();
+  const catalog = { serial: 0, plugins: [], blocked: [] };
+  const blockedReason = (plugin) =>
+    catalog.blocked.find(
+      (block) => block.id === plugin.id || block.repo === plugin.repo,
+    )?.reason ?? null;
   const { DatabaseSync } = await import('node:sqlite');
   const workspaces = [];
   const dbs = new Map();
@@ -70,13 +75,25 @@ const fakeShell = async ({
           tag: bundle.tag,
           sha256: createHash('sha256').update(text).digest('hex'),
           bundle: text,
+          signature: 'untrusted comment: test\n',
+          public_key: 'RWtestkey',
+          verified: Boolean(bundle.verified),
         };
       }
-      case 'plugin_install':
+      case 'plugin_install': {
+        const reason = blockedReason(args.plugin);
+        if (reason) throw new Error(`this plugin is blocked: ${reason}`);
         installed.set(args.plugin.id, args.plugin);
         return null;
+      }
       case 'plugins_installed_list':
-        return [...installed.values()];
+        return [...installed.values()].map((plugin) => ({
+          ...plugin,
+          blocked: blockedReason(plugin),
+        }));
+      case 'plugin_catalog':
+      case 'plugin_catalog_refresh':
+        return catalog;
       case 'plugin_uninstall':
         installed.delete(args.id);
         return null;
@@ -121,6 +138,7 @@ const fakeShell = async ({
     replies,
     closed,
     installed,
+    catalog,
   });
 };
 

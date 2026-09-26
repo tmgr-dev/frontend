@@ -14,6 +14,9 @@ const release = (bundle: unknown) => ({
 	tag: 'v1.0.0',
 	sha256: 'abc',
 	bundle: JSON.stringify(bundle),
+	signature: 'sig',
+	public_key: 'RWkey',
+	verified: false,
 });
 
 it('turns a release bundle into an installed package', () => {
@@ -60,7 +63,7 @@ it.each([
 ])('refuses a broken bundle %#', (bundle, message) => {
 	const input =
 		typeof bundle === 'string'
-			? { repo: 'a/b', tag: 't', sha256: 's', bundle }
+			? { ...release(null), bundle }
 			: release(bundle);
 	expect(() => bundleToPackage(input)).toThrow(message);
 });

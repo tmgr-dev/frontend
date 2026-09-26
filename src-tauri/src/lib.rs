@@ -6,6 +6,7 @@ mod local_db;
 mod local_export;
 mod local_files;
 mod local_workspaces;
+mod plugin_catalog;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
@@ -124,6 +125,8 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_catalog::plugin_catalog,
+      plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,
       plugin_market::plugin_install,
       plugin_market::plugins_installed_list,

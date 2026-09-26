@@ -1,0 +1,1 @@
+{"serial":2,"plugins":[{"id":"acme.timer","repo":"acme/timer","public_key":"RWSMlhC5Ojlr6AXPIR6JDXzp4dSl73z/TGj19HjPEMep2x8LGaV52C4Y","name":"Timer"}],"blocked":[{"id":"evil.plugin","reason":"steals data"},{"repo":"mallory/tools","reason":"compromised"},{"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","reason":"bad release"}]}

@@ -106,6 +106,19 @@
 						From github.com/{{ offer.release.repo }} ({{ offer.release.tag }}),
 						by {{ offer.pkg.manifest.publisher }}.
 					</DialogDescription>
+					<p
+						v-if="offer.release.verified"
+						class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
+					>
+						Verified publisher: signed with the key listed in the TMGR catalog.
+					</p>
+					<p
+						v-else
+						class="text-xs font-medium text-amber-600 dark:text-amber-400"
+					>
+						Unverified publisher: signed, but not listed in the TMGR catalog. Its
+						key is remembered, and updates must be signed with the same key.
+					</p>
 				</DialogHeader>
 				<div class="flex flex-col gap-2 text-sm">
 					<p
@@ -207,6 +220,10 @@
 							class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
 						>
 							From github.com/{{ plugin.origin.repo }} · {{ plugin.origin.tag }}
+							·
+							{{
+								plugin.origin.verified ? 'verified publisher' : 'unverified publisher'
+							}}
 							<button
 								type="button"
 								class="text-primary hover:underline"
@@ -231,7 +248,7 @@
 						</p>
 					</div>
 					<Switch
-						:disabled="!canToggle"
+						:disabled="!canToggle || plugin.status === 'blocked'"
 						:checked="isEnabled(plugin.manifest.id)"
 						@update:checked="(value) => setEnabled(plugin.manifest.id, value)"
 					/>
@@ -602,11 +619,12 @@
 						stopped: 'Off',
 						failed: 'Failed to start',
 						crashed: 'Turned off after errors',
+						blocked: 'Blocked by TMGR',
 					}[status]),
 				statusClass: (status: PluginStatus) =>
 					status === 'running'
 						? 'text-emerald-600 dark:text-emerald-400'
-						: status === 'failed' || status === 'crashed'
+						: status === 'failed' || status === 'crashed' || status === 'blocked'
 						? 'text-red-600 dark:text-red-400'
 						: 'text-muted-foreground',
 			};

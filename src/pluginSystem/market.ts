@@ -6,6 +6,12 @@ export interface Release {
 	tag: string;
 	sha256: string;
 	bundle: string;
+	signature: string;
+	public_key: string;
+	/** The TMGR catalog vouches for the publisher key; otherwise the key was pinned on first install. */
+	verified: boolean;
+	/** Set by Rust when listing installed plugins that the blocklist names. */
+	blocked?: string | null;
 }
 
 const PAGE = /^ui\/[a-z0-9][a-z0-9_-]*\.html$/i;
@@ -15,7 +21,7 @@ const MAX_PAGE_BYTES = 1024 * 1024;
 /** A release's tmgr-plugin.json: `{ manifest, code, pages }`, checked like any other plugin before use. */
 export const bundleToPackage = (
 	release: Release,
-): PluginPackage & { origin: Omit<Release, 'bundle'> } => {
+): PluginPackage & { origin: NonNullable<PluginPackage['origin']> } => {
 	let raw: any;
 	try {
 		raw = JSON.parse(release.bundle);
@@ -55,7 +61,12 @@ export const bundleToPackage = (
 		code: raw.code,
 		pages,
 		source: 'installed',
-		origin: { repo: release.repo, tag: release.tag, sha256: release.sha256 },
+		origin: {
+			repo: release.repo,
+			tag: release.tag,
+			sha256: release.sha256,
+			verified: release.verified,
+		},
 	};
 };
 

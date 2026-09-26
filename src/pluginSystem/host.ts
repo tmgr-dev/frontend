@@ -24,7 +24,8 @@ export type PluginStatus =
 	| 'starting'
 	| 'running'
 	| 'failed'
-	| 'crashed';
+	| 'crashed'
+	| 'blocked';
 
 export interface PluginPackage {
 	manifest: PluginManifest;
@@ -32,8 +33,8 @@ export interface PluginPackage {
 	source: PluginSource;
 	/** HTML pages from the plugin's ui/ folder, by path, for views that open in a window. */
 	pages?: Record<string, string>;
-	/** Where an installed plugin came from. */
-	origin?: { repo: string; tag: string; sha256: string };
+	/** Where an installed plugin came from; `verified` when the catalog vouches for its publisher key. */
+	origin?: { repo: string; tag: string; sha256: string; verified?: boolean };
 }
 
 export interface PluginLogLine {
@@ -114,6 +115,8 @@ export interface PluginHostDeps {
 		) => Promise<void>;
 		close: (pluginId: string) => Promise<void>;
 	};
+	/** Why a plugin must not run (the signed blocklist); it wins over every other setting. */
+	blocked?: (pluginId: string) => string | null;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -225,6 +228,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	};
 
+	const blockedReason = (pluginId: string) => deps.blocked?.(pluginId) ?? null;
+
 	const isEnabled = (pluginId: string, workspaceId: number) =>
 		deps.enabled.get(pluginId, workspaceId) ??
 		packages.get(pluginId)?.source === 'builtin';
@@ -232,6 +237,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const start = async (pkg: PluginPackage, workspace: PluginWorkspace) => {
 		const { manifest } = pkg;
 		const pluginId = manifest.id;
+		const blocked = blockedReason(pluginId);
+		if (blocked) {
+			stop(pluginId, 'blocked', blocked);
+			return;
+		}
 		const registered: Running['registered'] = {
 			event: new Set(),
 			command: new Set(),
@@ -431,6 +441,32 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				isEnabled(pluginId, state.workspace.id)
 			) {
 				await start(pkg, state.workspace);
+			}
+		},
+		/** Stops what the blocklist now names, and starts again what it no longer names. */
+		applyBlocklist() {
+			const workspace = state.workspace;
+			for (const [pluginId, entry] of Object.entries(state.plugins)) {
+				const reason = blockedReason(pluginId);
+				if (reason && entry.status !== 'blocked') {
+					const wasRunning = running.has(pluginId);
+					stop(pluginId, 'blocked', reason);
+					if (wasRunning)
+						deps.notify(
+							`Plugin ${entry.manifest.name} was turned off`,
+							`TMGR blocked it: ${reason.slice(0, 300)}`,
+						);
+				} else if (!reason && entry.status === 'blocked') {
+					stop(pluginId);
+					const pkg = packages.get(pluginId);
+					if (
+						pkg &&
+						workspace?.kind === 'local' &&
+						!state.safeMode &&
+						isEnabled(pluginId, workspace.id)
+					)
+						void start(pkg, workspace);
+				}
 			}
 		},
 		settings: settingsOf,

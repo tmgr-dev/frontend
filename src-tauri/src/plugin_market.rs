@@ -5,17 +5,25 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, Url};
 
+use crate::plugin_catalog::Catalog;
+
 const MAX_BUNDLE_BYTES: usize = 3 * 1024 * 1024;
 const BUNDLE_ASSET: &str = "tmgr-plugin.json";
+const SIGNATURE_ASSET: &str = "tmgr-plugin.json.minisig";
+const KEY_ASSET: &str = "tmgr-plugin.pub";
 const GITHUB_HOSTS: [&str; 4] =
   ["api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"];
 
+/// A downloaded release. `verified` says the catalog vouches for its publisher key; nothing is installed yet.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Release {
   repo: String,
   tag: String,
   sha256: String,
   bundle: String,
+  signature: String,
+  public_key: String,
+  verified: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,6 +33,31 @@ pub struct InstalledPlugin {
   tag: String,
   sha256: String,
   bundle: String,
+  #[serde(default)]
+  signature: String,
+  #[serde(default)]
+  public_key: String,
+  /// Filled in when listing, never trusted from the caller.
+  #[serde(default)]
+  verified: bool,
+  #[serde(default)]
+  blocked: Option<String>,
+}
+
+/// Checks a minisign signature (prehashed Ed25519) over the exact bundle text.
+pub fn verify_signature(data: &str, signature: &str, public_key: &str) -> Result<(), String> {
+  if signature.len() > 4096 {
+    return Err("the signature is too large".into());
+  }
+  let key = minisign_verify::PublicKey::from_base64(public_key.trim()).map_err(|_| "bad publisher key")?;
+  let signature = minisign_verify::Signature::decode(signature).map_err(|_| "bad signature file")?;
+  key.verify(data.as_bytes(), &signature, false).map_err(|_| "the signature does not match".to_string())
+}
+
+/// The key line of a minisign public key file (or a bare key line).
+fn key_line(file: &str) -> String {
+  file.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with("untrusted comment:")).last()
+    .unwrap_or_default().chars().take(100).collect()
 }
 
 /// `owner/repo` from a GitHub link or the short form; anything else is refused.
@@ -100,10 +133,14 @@ struct GithubAsset {
   browser_download_url: String,
 }
 
-/// The latest release of a GitHub repository and its `tmgr-plugin.json`. Nothing is installed here.
-#[tauri::command]
-pub async fn plugin_github_release(repo: String) -> Result<Release, String> {
-  let repo = parse_repo(&repo)?;
+pub struct Assets {
+  pub tag: String,
+  /// In the order they were asked for.
+  pub files: Vec<String>,
+}
+
+/// Named text assets of a repository's latest release, each at most `limit` bytes, from GitHub hosts only.
+pub async fn latest_assets(repo: &str, names: &[&str], limit: usize) -> Result<Assets, String> {
   let client = client()?;
   let meta = client
     .get(format!("https://api.github.com/repos/{repo}/releases/latest"))
@@ -113,18 +150,45 @@ pub async fn plugin_github_release(repo: String) -> Result<Release, String> {
     .map_err(|e| e.to_string())?;
   let release: GithubRelease =
     serde_json::from_slice(&read_limited(meta, 512 * 1024).await?).map_err(|e| e.to_string())?;
-  let asset = release
-    .assets
-    .iter()
-    .find(|asset| asset.name == BUNDLE_ASSET)
-    .ok_or_else(|| format!("the latest release of {repo} has no {BUNDLE_ASSET}"))?;
-  let url: Url = asset.browser_download_url.parse().map_err(|e: url::ParseError| e.to_string())?;
-  if !github_host(&url) {
-    return Err("the plugin bundle is not hosted on GitHub".into());
+  let mut files = Vec::new();
+  for name in names {
+    let asset = release
+      .assets
+      .iter()
+      .find(|asset| asset.name == *name)
+      .ok_or_else(|| format!("the latest release of {repo} has no {name}"))?;
+    let url: Url = asset.browser_download_url.parse().map_err(|e: url::ParseError| e.to_string())?;
+    if !github_host(&url) {
+      return Err(format!("{name} is not hosted on GitHub"));
+    }
+    let bytes = read_limited(client.get(url).send().await.map_err(|e| e.to_string())?, limit).await?;
+    files.push(String::from_utf8(bytes).map_err(|_| format!("{name} is not UTF-8 text"))?);
   }
-  let bytes = read_limited(client.get(url).send().await.map_err(|e| e.to_string())?, MAX_BUNDLE_BYTES).await?;
-  let bundle = String::from_utf8(bytes).map_err(|_| "the plugin bundle is not UTF-8 text")?;
-  Ok(Release { repo, tag: release.tag_name.chars().take(60).collect(), sha256: sha256_hex(bundle.as_bytes()), bundle })
+  Ok(Assets { tag: release.tag_name.chars().take(60).collect(), files })
+}
+
+/// The latest signed release of a GitHub repository. The signature is checked here and again on install.
+#[tauri::command]
+pub async fn plugin_github_release<R: Runtime>(app: AppHandle<R>, repo: String) -> Result<Release, String> {
+  let repo = parse_repo(&repo)?;
+  let assets = latest_assets(&repo, &[BUNDLE_ASSET, SIGNATURE_ASSET, KEY_ASSET], MAX_BUNDLE_BYTES).await?;
+  let [bundle, signature, key_file] = <[String; 3]>::try_from(assets.files).map_err(|_| "missing assets")?;
+  let catalog = crate::plugin_catalog::current(&app);
+  if let Some(reason) = catalog.blocked_reason("", Some(&repo), Some(&sha256_hex(bundle.as_bytes()))) {
+    return Err(format!("this plugin is blocked: {reason}"));
+  }
+  let entry = catalog.entry_for_repo(&repo);
+  let public_key = entry.map(|entry| entry.public_key.clone()).unwrap_or_else(|| key_line(&key_file));
+  verify_signature(&bundle, &signature, &public_key)?;
+  Ok(Release {
+    repo,
+    tag: assets.tag,
+    sha256: sha256_hex(bundle.as_bytes()),
+    bundle,
+    signature,
+    public_key,
+    verified: entry.is_some(),
+  })
 }
 
 fn installed_root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -140,38 +204,69 @@ fn valid_id(id: &str) -> bool {
   word(parts.next()) && word(parts.next()) && parts.next().is_none()
 }
 
-pub fn install_into(root: &Path, plugin: &InstalledPlugin) -> Result<(), String> {
+/// Installs only a signed bundle. The publisher key is the catalog's for that repository, else the key the
+/// first install pinned, else (first install of an unlisted plugin) the release's own key.
+pub fn install_into(root: &Path, plugin: &InstalledPlugin, catalog: &Catalog) -> Result<(), String> {
   if !valid_id(&plugin.id) {
     return Err("bad plugin id".into());
   }
   if sha256_hex(plugin.bundle.as_bytes()) != plugin.sha256 {
     return Err("the bundle does not match its checksum".into());
   }
+  if let Some(reason) = catalog.blocked_reason(&plugin.id, Some(&plugin.repo), Some(&plugin.sha256)) {
+    return Err(format!("this plugin is blocked: {reason}"));
+  }
   let dir = root.join(&plugin.id);
+  let existing = fs::read_to_string(dir.join("plugin.json"))
+    .ok()
+    .and_then(|raw| serde_json::from_str::<InstalledPlugin>(&raw).ok());
   // An id installed from one repository cannot be taken over by a release from another.
-  if let Ok(raw) = fs::read_to_string(dir.join("plugin.json")) {
-    if let Ok(existing) = serde_json::from_str::<InstalledPlugin>(&raw) {
-      if existing.repo != plugin.repo {
-        return Err(format!("{} is already installed from github.com/{}", plugin.id, existing.repo));
-      }
+  if let Some(existing) = &existing {
+    if existing.repo != plugin.repo {
+      return Err(format!("{} is already installed from github.com/{}", plugin.id, existing.repo));
     }
   }
+  let expected = match (catalog.entry_for_repo(&plugin.repo), catalog.entry_for_id(&plugin.id)) {
+    (Some(entry), _) if entry.id != plugin.id => {
+      return Err(format!("github.com/{} publishes {}, not {}", plugin.repo, entry.id, plugin.id))
+    }
+    (None, Some(entry)) => return Err(format!("{} is published from github.com/{}", plugin.id, entry.repo)),
+    (Some(entry), _) => entry.public_key.clone(),
+    (None, None) => existing.as_ref().map(|e| e.public_key.clone()).unwrap_or_else(|| plugin.public_key.clone()),
+  };
+  if plugin.public_key != expected {
+    return Err("the release is signed with a different key than this plugin's publisher".into());
+  }
+  verify_signature(&plugin.bundle, &plugin.signature, &plugin.public_key)?;
   fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-  let json = serde_json::to_string(plugin).map_err(|e| e.to_string())?;
+  let stored = InstalledPlugin { verified: false, blocked: None, ..plugin.clone() };
+  let json = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
   let tmp = dir.join("plugin.json.tmp");
   fs::write(&tmp, json).map_err(|e| e.to_string())?;
   fs::rename(&tmp, dir.join("plugin.json")).map_err(|e| e.to_string())
 }
 
-pub fn list_in(root: &Path) -> Vec<InstalledPlugin> {
+/// Installed plugins whose signature still verifies, each marked verified (catalog publisher) or blocked.
+pub fn list_in(root: &Path, catalog: &Catalog) -> Vec<InstalledPlugin> {
   let Ok(entries) = fs::read_dir(root) else { return Vec::new() };
   let mut plugins: Vec<InstalledPlugin> = entries
     .flatten()
     .filter_map(|entry| {
       let raw = fs::read_to_string(entry.path().join("plugin.json")).ok()?;
       let plugin: InstalledPlugin = serde_json::from_str(&raw).ok()?;
-      // Catches a damaged or half-written file; it is not tamper-proof, since both live in the same file.
-      (valid_id(&plugin.id) && sha256_hex(plugin.bundle.as_bytes()) == plugin.sha256).then_some(plugin)
+      let sound = valid_id(&plugin.id)
+        && sha256_hex(plugin.bundle.as_bytes()) == plugin.sha256
+        && verify_signature(&plugin.bundle, &plugin.signature, &plugin.public_key).is_ok();
+      if !sound {
+        log::warn!("[plugins] {} failed its signature check and is not loaded", plugin.id);
+        return None;
+      }
+      let listed = catalog.entry_for_repo(&plugin.repo);
+      let key_changed = listed.is_some_and(|entry| entry.public_key != plugin.public_key || entry.id != plugin.id);
+      let blocked = catalog
+        .blocked_reason(&plugin.id, Some(&plugin.repo), Some(&plugin.sha256))
+        .or_else(|| key_changed.then(|| "the publisher key no longer matches the catalog".to_string()));
+      Some(InstalledPlugin { verified: listed.is_some() && !key_changed, blocked, ..plugin })
     })
     .collect();
   plugins.sort_by(|a, b| a.id.cmp(&b.id));
@@ -181,12 +276,12 @@ pub fn list_in(root: &Path) -> Vec<InstalledPlugin> {
 /// Called only after the user confirmed the plugin's permissions in the app.
 #[tauri::command]
 pub fn plugin_install<R: Runtime>(app: AppHandle<R>, plugin: InstalledPlugin) -> Result<(), String> {
-  install_into(&installed_root(&app)?, &plugin)
+  install_into(&installed_root(&app)?, &plugin, &crate::plugin_catalog::current(&app))
 }
 
 #[tauri::command]
 pub fn plugins_installed_list<R: Runtime>(app: AppHandle<R>) -> Result<Vec<InstalledPlugin>, String> {
-  Ok(list_in(&installed_root(&app)?))
+  Ok(list_in(&installed_root(&app)?, &crate::plugin_catalog::current(&app)))
 }
 
 #[tauri::command]
@@ -204,6 +299,20 @@ pub fn plugin_uninstall<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(),
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  const SIGNED: &str = include_str!("../tests/fixtures/signed-bundle.json");
+  const SIGNATURE: &str = include_str!("../tests/fixtures/signed-bundle.json.minisig");
+  const PUBLIC_KEY: &str = include_str!("../tests/fixtures/signed-bundle.pub");
+
+  #[test]
+  fn verifies_what_the_node_signer_signed() {
+    let key = PUBLIC_KEY.trim();
+    verify_signature(SIGNED, SIGNATURE, key).unwrap();
+    assert!(verify_signature(&SIGNED.replace("acme", "evil"), SIGNATURE, key).is_err());
+    assert!(verify_signature(SIGNED, &SIGNATURE.replace("hashed", "hashed2"), key).is_err());
+    assert!(verify_signature(SIGNED, SIGNATURE, "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3").is_err());
+    assert!(verify_signature(SIGNED, "garbage", key).is_err());
+  }
 
   #[test]
   fn accepts_github_links_and_short_names_only() {
@@ -225,27 +334,97 @@ mod tests {
     assert!(!github_host(&url("https://example.com/x")));
   }
 
-  #[test]
-  fn installs_only_what_matches_the_checksum() {
-    let root = std::env::temp_dir().join(format!("tmgr-installed-{}", std::process::id()));
+  const OTHER_KEY: &str = include_str!("../tests/fixtures/other-key.pub");
+  const OTHER_SIGNATURE: &str = include_str!("../tests/fixtures/signed-bundle.other-key.minisig");
+
+  fn temp(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("tmgr-installed-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
-    let bundle = "{\"manifest\":{}}".to_string();
-    let good = InstalledPlugin {
-      id: "acme.plugin".into(),
-      repo: "acme/plugin".into(),
+    root
+  }
+
+  fn signed() -> InstalledPlugin {
+    InstalledPlugin {
+      id: "acme.timer".into(),
+      repo: "acme/timer".into(),
       tag: "v1".into(),
-      sha256: sha256_hex(bundle.as_bytes()),
-      bundle: bundle.clone(),
-    };
-    install_into(&root, &good).unwrap();
-    assert!(install_into(&root, &InstalledPlugin { sha256: "0".repeat(64), ..good.clone() }).is_err());
-    assert!(install_into(&root, &InstalledPlugin { id: "../evil".into(), ..good.clone() }).is_err());
-    let other_repo = InstalledPlugin { repo: "mallory/plugin".into(), ..good.clone() };
-    assert!(install_into(&root, &other_repo).unwrap_err().contains("already installed from github.com/acme/plugin"));
-    assert_eq!(list_in(&root).len(), 1);
-    fs::write(root.join("acme.plugin/plugin.json"), serde_json::to_string(&InstalledPlugin { bundle: "tampered".into(), ..good }).unwrap()).unwrap();
-    assert!(list_in(&root).is_empty());
+      sha256: sha256_hex(SIGNED.as_bytes()),
+      bundle: SIGNED.into(),
+      signature: SIGNATURE.into(),
+      public_key: PUBLIC_KEY.trim().into(),
+      verified: false,
+      blocked: None,
+    }
+  }
+
+  fn resigned() -> InstalledPlugin {
+    InstalledPlugin { signature: OTHER_SIGNATURE.into(), public_key: OTHER_KEY.trim().into(), ..signed() }
+  }
+
+  fn listing(id: &str, repo: &str, key: &str) -> Catalog {
+    serde_json::from_str(&format!(
+      r#"{{"serial":1,"plugins":[{{"id":"{id}","repo":"{repo}","public_key":"{}"}}]}}"#,
+      key.trim()
+    ))
+    .unwrap()
+  }
+
+  #[test]
+  fn installs_only_signed_bundles_that_match_their_checksum() {
+    let root = temp("checksum");
+    let none = Catalog::default();
+    install_into(&root, &signed(), &none).unwrap();
+    assert!(install_into(&root, &InstalledPlugin { sha256: "0".repeat(64), ..signed() }, &none).is_err());
+    assert!(install_into(&root, &InstalledPlugin { id: "../evil".into(), ..signed() }, &none).is_err());
+    assert!(install_into(&root, &InstalledPlugin { signature: "".into(), ..signed() }, &none).is_err());
+    let other_repo = InstalledPlugin { repo: "mallory/plugin".into(), ..signed() };
+    assert!(install_into(&root, &other_repo, &none).unwrap_err().contains("already installed from github.com/acme/timer"));
+    assert_eq!(list_in(&root, &none).len(), 1);
+    let edited = SIGNED.replace("acme", "evil");
+    let tampered = InstalledPlugin { sha256: sha256_hex(edited.as_bytes()), bundle: edited, ..signed() };
+    fs::write(root.join("acme.timer/plugin.json"), serde_json::to_string(&tampered).unwrap()).unwrap();
+    assert!(list_in(&root, &none).is_empty(), "a bundle edited on disk no longer verifies");
     let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn updates_must_keep_the_pinned_publisher_key() {
+    let root = temp("pin");
+    let none = Catalog::default();
+    install_into(&root, &signed(), &none).unwrap();
+    assert!(install_into(&root, &resigned(), &none).unwrap_err().contains("different key"));
+    let rotated = listing("acme.timer", "acme/timer", OTHER_KEY);
+    install_into(&root, &resigned(), &rotated).unwrap();
+    let listed = list_in(&root, &rotated);
+    assert!(listed[0].verified);
+    assert_eq!(listed[0].blocked, None);
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn the_catalog_decides_keys_ids_and_blocks() {
+    let root = temp("catalog");
+    let wrong_key = listing("acme.timer", "acme/timer", OTHER_KEY);
+    assert!(install_into(&root, &signed(), &wrong_key).unwrap_err().contains("different key"));
+    let wrong_id = listing("acme.other", "acme/timer", PUBLIC_KEY);
+    assert!(install_into(&root, &signed(), &wrong_id).unwrap_err().contains("publishes acme.other"));
+    let squatted = listing("acme.timer", "acme/real-timer", PUBLIC_KEY);
+    assert!(install_into(&root, &signed(), &squatted).unwrap_err().contains("published from github.com/acme/real-timer"));
+    let blocked: Catalog =
+      serde_json::from_str(r#"{"serial":1,"blocked":[{"repo":"acme/timer","reason":"compromised"}]}"#).unwrap();
+    assert!(install_into(&root, &signed(), &blocked).unwrap_err().contains("compromised"));
+    install_into(&root, &signed(), &Catalog::default()).unwrap();
+    let listed = list_in(&root, &blocked);
+    assert_eq!(listed[0].blocked.as_deref(), Some("compromised"));
+    assert!(!listed[0].verified);
+    assert!(list_in(&root, &wrong_key)[0].blocked.as_deref().unwrap().contains("no longer matches"));
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn reads_the_key_line_of_a_public_key_file() {
+    assert_eq!(key_line("untrusted comment: minisign public key ABC\nRWQkey\n"), "RWQkey");
+    assert_eq!(key_line("RWQkey"), "RWQkey");
   }
 }
 
@@ -254,7 +433,7 @@ mod network {
   #[test]
   #[ignore = "reaches api.github.com"]
   fn reads_a_real_release() {
-    let result = tauri::async_runtime::block_on(super::plugin_github_release("tauri-apps/tauri".into()));
-    assert!(result.unwrap_err().contains("has no tmgr-plugin.json"));
+    let result = tauri::async_runtime::block_on(super::latest_assets("tauri-apps/tauri", &["tmgr-plugin.json"], 1024));
+    assert!(result.err().unwrap().contains("has no tmgr-plugin.json"));
   }
 }

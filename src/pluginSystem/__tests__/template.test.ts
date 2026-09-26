@@ -27,6 +27,9 @@ it('the plugin template builds into a bundle the app accepts and runs', async ()
 		tag: 'v1.0.0',
 		sha256: 'x',
 		bundle,
+		signature: 'sig',
+		public_key: 'RWkey',
+		verified: false,
 	});
 
 	const quickjs = await newQuickJSWASMModuleFromVariant({
