@@ -22,4 +22,16 @@ if [[ -z "${APPLE_SIGNING_IDENTITY}" ]]; then
 	echo "No Developer ID Application identity found; the app will be unsigned." >&2
 fi
 
-CI="${CI:-true}" npx tauri build "$@"
+UPDATER_KEY="${TAURI_UPDATER_KEY_FILE:-$HOME/.tauri/tmgr-updater.key}"
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -f "$UPDATER_KEY" ]]; then
+	export TAURI_SIGNING_PRIVATE_KEY="$(cat "$UPDATER_KEY")"
+	[[ -f "$UPDATER_KEY.password" ]] && export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat "$UPDATER_KEY.password")"
+fi
+
+extra_args=()
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+	echo "No updater signing key; building without update artifacts." >&2
+	extra_args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+fi
+
+CI="${CI:-true}" npx tauri build ${extra_args[@]+"${extra_args[@]}"} "$@"

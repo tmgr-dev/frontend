@@ -6,6 +6,7 @@ import router from '@/router';
 import store from '@/store';
 import { installAutoHideScrollbars, isDesktopApp } from '@/utils/desktop';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
+import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
@@ -21,6 +22,7 @@ import App from './App.vue';
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	installAutoHideScrollbars();
+	startUpdateChecks();
 }
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));

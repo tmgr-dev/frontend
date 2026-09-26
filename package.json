@@ -43,6 +43,8 @@
 		"@radial-color-picker/vue-color-picker": "^5.0.1",
 		"@tauri-apps/api": "^2.11.1",
 		"@tauri-apps/plugin-log": "^2.9.2",
+		"@tauri-apps/plugin-process": "^2.3.1",
+		"@tauri-apps/plugin-updater": "^2.12.0",
 		"@vueuse/core": "^11.3.0",
 		"axios": "^1.2.2",
 		"canvas-confetti": "^1.6.0",

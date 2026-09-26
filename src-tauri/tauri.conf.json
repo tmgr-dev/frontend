@@ -47,6 +47,15 @@
     ],
     "macOS": {
       "minimumSystemVersion": "11.0"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxODdEQzA0MEM0RUJBOUUKUldTZXVrNE1CTnlIWVE3K3E3KzR4bjdBNmtsclFVRTVDKy81dHFOOEhXc2syamRJVWxOYXJ2bnMK",
+      "endpoints": [
+        "https://github.com/tmgr-dev/frontend/releases/latest/download/latest.json"
+      ]
     }
   }
 }

@@ -43,6 +43,22 @@
 			{{ liveLabel }}
 		</div>
 
+		<button
+			v-if="update.status !== 'idle'"
+			type="button"
+			class="flex h-full items-center gap-1.5 px-3 font-medium text-primary hover:bg-muted"
+			:disabled="update.status === 'installing'"
+			title="Restart to install the update"
+			@click="installUpdate"
+		>
+			<Download class="h-3.5 w-3.5" />
+			{{
+				update.status === 'installing'
+					? 'Updating…'
+					: `Update to v${update.version}`
+			}}
+		</button>
+
 		<div v-if="version" class="flex h-full items-center px-3">
 			v{{ version }}
 		</div>
@@ -68,7 +84,8 @@
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import { usePusher } from '@/composable/usePusher';
 	import store from '@/store';
-	import { ChevronRight, Sparkles } from 'lucide-vue-next';
+	import { installUpdate, updateState } from '@/utils/desktopUpdater';
+	import { ChevronRight, Download, Sparkles } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -86,7 +103,7 @@
 
 	export default defineComponent({
 		name: 'StatusBar',
-		components: { ActiveCursorAgents, ChevronRight, Sparkles },
+		components: { ActiveCursorAgents, ChevronRight, Download, Sparkles },
 		props: {
 			tasks: { type: Array, default: () => [] },
 		},
@@ -146,6 +163,8 @@
 				liveLabel,
 				liveDotClass,
 				version,
+				update: updateState,
+				installUpdate,
 			};
 		},
 	});
