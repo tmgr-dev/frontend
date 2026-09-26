@@ -3,8 +3,15 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/performance',
   workers: 1,
+  projects: [
+    { name: 'chrome', use: { channel: 'chrome' }, testIgnore: /desktop-csp/ },
+    {
+      name: 'webkit',
+      use: { browserName: 'webkit' },
+      testMatch: /desktop-csp/,
+    },
+  ],
   use: {
-    channel: 'chrome',
     baseURL: 'http://127.0.0.1:4179',
     serviceWorkers: 'block',
   },
