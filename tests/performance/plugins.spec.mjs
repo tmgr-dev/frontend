@@ -266,3 +266,76 @@ test('a folder plugin talks to a local service it declared, and the settings say
     },
   ]);
 });
+
+test('a folder plugin exports into its own folder, reads an attachment and a file the user picks', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('plugins.devMode', 'true'),
+  );
+  const plugin = {
+    folder: 'dev.files',
+    manifest: JSON.stringify({
+      id: 'dev.files',
+      name: 'Files',
+      version: '1.0.0',
+      engines: { tmgr: '^1.0' },
+      permissions: [
+        'notifications',
+        'files:export',
+        'files:attachments',
+        'files:pick',
+      ],
+      contributes: { commands: [{ id: 'dev.files.go', title: 'Use files' }] },
+    }),
+    code: `
+      tmgr.commands.register('dev.files.go', async () => {
+        await tmgr.files.export('summary/today.md', '# Today');
+        const [file] = await tmgr.files.list(1);
+        const attachment = await tmgr.files.read(file.id);
+        const picked = await tmgr.files.pick();
+        const escape = await tmgr.files.export('../../outside.md', 'x').then(() => 'written', (e) => e.name);
+        await tmgr.ui.notify([file.name, attachment.text, picked.text, escape].join(' | '));
+      });
+    `,
+  };
+  const shell = await desktopPage(page, {}, { devPlugins: [plugin] });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO tasks (title, created_at, updated_at) VALUES ('With a file', '', '')`,
+    params: [],
+  });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO files (task_id, name, file_path, mime_type, size, created_at) VALUES (1, 'notes.md', 'abc/notes.md', 'text/markdown', 7, '')`,
+    params: [],
+  });
+  shell.files.set('personal/abc/notes.md', Buffer.from('# Notes'));
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  const card = page.locator('article', { hasText: 'read a file you choose' });
+  await expect(
+    card.getByText("save files to this workspace's exports folder"),
+  ).toBeVisible();
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Running')).toBeVisible();
+  await card.getByRole('button', { name: 'Use files' }).click();
+  await expect(
+    page.getByText('notes.md | # Notes | hi | INVALID_PARAMS', { exact: true }),
+  ).toBeVisible();
+  expect(shell.exports).toEqual([
+    {
+      code: 'personal',
+      folder: 'plugins/dev.files',
+      files: [{ path: 'summary/today.md', content: '# Today' }],
+    },
+  ]);
+  expect(shell.picks).toEqual(['Choose a file for the Files plugin']);
+});

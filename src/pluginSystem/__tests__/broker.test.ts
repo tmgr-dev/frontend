@@ -51,6 +51,8 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		storageSet: record('storageSet'),
 		storageDelete: record('storageDelete'),
 		storageKeys: record('storageKeys'),
+		listAttachments: record('listAttachments'),
+		readAttachment: record('readAttachment'),
 	};
 };
 
@@ -316,4 +318,96 @@ it('fetches only from the origins the manifest lists', async () => {
 	expect(
 		await code(offline.call('net.fetch', { url: 'http://localhost:11434/' })),
 	).toBe('PERMISSION_DENIED');
+});
+
+describe('files', () => {
+	const files = () => {
+		const done: unknown[] = [];
+		return {
+			done,
+			files: {
+				export: async (path: string, content: string) => {
+					done.push(['export', path, content.length]);
+					return { path };
+				},
+				reveal: async (path: string) => void done.push(['reveal', path]),
+				pick: async () => ({
+					name: 'notes.txt',
+					size: 2,
+					base64: 'aGk=',
+					text: 'hi',
+				}),
+			},
+		};
+	};
+
+	it('writes exports only inside the plugin folder', async () => {
+		const { done, files: deps } = files();
+		const { broker } = setup(['files:export'], { files: deps });
+		expect(
+			await broker.call('files.export', {
+				path: 'reports/week 39.md',
+				content: '# Week',
+			}),
+		).toEqual({
+			path: 'reports/week 39.md',
+		});
+		for (const path of [
+			'../escape.md',
+			'/etc/passwd',
+			'a/../../b',
+			'a\\\\b',
+			'',
+			'a/b/c/d/e/f.md',
+		]) {
+			expect(
+				await code(broker.call('files.export', { path, content: 'x' })),
+			).toBe('INVALID_PARAMS');
+		}
+		expect(
+			await code(
+				broker.call('files.export', {
+					path: 'big.md',
+					content: 'x'.repeat(5 * 1024 * 1024 + 1),
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		await broker.call('files.reveal', { path: 'reports/week 39.md' });
+		expect(done).toEqual([
+			['export', 'reports/week 39.md', 6],
+			['reveal', 'reports/week 39.md'],
+		]);
+	});
+
+	it('needs a permission for each kind of file access', async () => {
+		const { files: deps } = files();
+		const { broker } = setup([], { files: deps });
+		expect(
+			await code(broker.call('files.export', { path: 'a.md', content: '' })),
+		).toBe('PERMISSION_DENIED');
+		expect(await code(broker.call('files.list', { taskId: 1 }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(await code(broker.call('files.read', { fileId: 1 }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(await code(broker.call('files.pick', {}))).toBe('PERMISSION_DENIED');
+		const { broker: picker } = setup(['files:pick'], { files: deps });
+		expect(await picker.call('files.pick', {})).toEqual({
+			name: 'notes.txt',
+			size: 2,
+			base64: 'aGk=',
+			text: 'hi',
+		});
+	});
+
+	it('reads attachments of the plugin workspace', async () => {
+		const { broker, api } = setup(['files:attachments']);
+		await broker.call('files.list', { taskId: 4 });
+		await broker.call('files.read', { fileId: 9 });
+		expect(api.calls).toEqual([
+			['listAttachments', 4],
+			['readAttachment', 9],
+		]);
+	});
 });

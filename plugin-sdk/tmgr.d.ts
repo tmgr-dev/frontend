@@ -104,6 +104,16 @@ declare const tmgr: {
 		delete(key: string): Promise<void>;
 		keys(): Promise<string[]>;
 	};
+	files: {
+		/** files:export. Text into <workspace>/exports/plugins/<plugin id>/<path>; path is relative, up to 5 segments. */
+		export(path: string, content: string): Promise<{ path: string }>;
+		reveal(path: string): Promise<void>;
+		/** files:attachments. Attachments of tasks in this workspace, up to 5 MB. */
+		list(taskId: number): Promise<{ id: number; name: string; mimeType: string | null; size: number | null; createdAt: string }[]>;
+		read(fileId: number): Promise<{ name: string; mimeType: string | null; size: number; base64: string; text: string | null }>;
+		/** files:pick. The user picks a file in a system dialog; null when they cancel. */
+		pick(): Promise<{ name: string; size: number; base64: string; text: string | null } | null>;
+	};
 	/** Only origins listed in manifest network.allowedOrigins, all on this computer (http://localhost:<port>). */
 	net: {
 		fetch(

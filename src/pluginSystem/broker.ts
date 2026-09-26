@@ -39,6 +39,8 @@ export interface DataApi {
 	storageSet(key: string, json: string): Promise<unknown>;
 	storageDelete(key: string): Promise<unknown>;
 	storageKeys(): Promise<unknown>;
+	listAttachments(taskId: number): Promise<unknown>;
+	readAttachment(fileId: number): Promise<unknown>;
 }
 
 export interface PluginWorkspace {
@@ -75,6 +77,12 @@ export interface BrokerDeps {
 	now: () => number;
 	/** Plain http to this computer only; the Rust side checks the address again. */
 	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
+	/** Bound to this plugin: its own export folder, and a file picker titled with its name. */
+	files?: {
+		export: (path: string, content: string) => Promise<{ path: string }>;
+		reveal: (path: string) => Promise<void>;
+		pick: () => Promise<unknown>;
+	};
 }
 
 export interface FetchRequest {
@@ -154,6 +162,24 @@ const taskFields = (patch: unknown) => {
 };
 
 const MAX_VALUE_BYTES = 256 * 1024;
+const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
+const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
+
+/** A relative path of at most 5 plain segments: no `..`, no absolute paths, no backslashes. */
+const exportPath = (value: unknown): string => {
+	const path = string(value, 'path', 300);
+	const segments = path.split('/');
+	if (
+		segments.length > 5 ||
+		segments.some(
+			(segment) =>
+				!EXPORT_SEGMENT.test(segment) || segment === '.' || segment === '..',
+		)
+	) {
+		invalid('path must be relative, like "reports/week 39.md"');
+	}
+	return path;
+};
 
 type Params = Record<string, any>;
 interface Method {
@@ -199,6 +225,12 @@ export const createBroker = (deps: BrokerDeps) => {
 				'NOT_DECLARED',
 				`${value} is not declared in the manifest`,
 			);
+	};
+
+	const needFiles = () => {
+		if (!deps.files)
+			throw new PluginError('HOST_ERROR', 'file access is not available');
+		return deps.files;
 	};
 
 	const methods: Record<string, Method> = {
@@ -324,6 +356,33 @@ export const createBroker = (deps: BrokerDeps) => {
 					p.body == null ? null : string(p.body, 'body', 1024 * 1024, true);
 				return deps.fetch({ url: url.toString(), method, headers, body });
 			},
+		},
+		'files.export': {
+			permission: 'files:export',
+			write: true,
+			run: (p) => {
+				const path = exportPath(p.path);
+				const content = string(p.content, 'content', MAX_EXPORT_BYTES, true);
+				return needFiles().export(path, content);
+			},
+		},
+		'files.reveal': {
+			permission: 'files:export',
+			run: async (p) => {
+				await needFiles().reveal(exportPath(p.path));
+			},
+		},
+		'files.list': {
+			permission: 'files:attachments',
+			run: (p) => api.listAttachments(id(p.taskId, 'taskId')),
+		},
+		'files.read': {
+			permission: 'files:attachments',
+			run: (p) => api.readAttachment(id(p.fileId, 'fileId')),
+		},
+		'files.pick': {
+			permission: 'files:pick',
+			run: () => needFiles().pick(),
 		},
 		'ui.notify': {
 			permission: 'notifications',

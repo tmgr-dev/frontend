@@ -2,6 +2,7 @@ import type { DomainEvent } from '@/utils/domainEvents';
 import {
 	createBroker,
 	PLUGIN_EVENTS,
+	type BrokerDeps,
 	type DataApi,
 	type FetchRequest,
 	type FetchResponse,
@@ -89,6 +90,11 @@ export interface PluginHostDeps {
 	notify: (title: string, message: string) => void;
 	currentWorkspaceId: () => number | null;
 	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
+	files?: (
+		pluginId: string,
+		workspace: PluginWorkspace,
+		pluginName: string,
+	) => BrokerDeps['files'];
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -235,6 +241,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			},
 			log: (level, message) => log(pluginId, level, message),
 			fetch: deps.fetch,
+			files: deps.files?.(pluginId, workspace, manifest.name),
 			now,
 		});
 		const process = startPluginProcess(pkg.code, {

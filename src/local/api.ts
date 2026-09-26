@@ -347,6 +347,7 @@ export const createLocalApi = () =>
 			);
 			return fileJson(await loadFile(ctx, Number(result.lastInsertId)), ctx);
 		}, 201)
+		.add('GET', 'files/:id(\\d+)', async ({ ctx, params }) => fileJson(await loadFile(ctx, Number(params.id)), ctx))
 		.add('GET', 'files/:id(\\d+)/signed-url', async ({ ctx, params }) => {
 			const file = await loadFile(ctx, Number(params.id));
 			return { url: ctx.files.url(file.file_path), expires_at: '9999-12-31T23:59:59Z' };

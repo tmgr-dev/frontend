@@ -1,5 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import type { DataApi } from './broker';
+import { encodeFile, MAX_FILE_BYTES } from './fileData';
 
 const unwrap = (response: { data: any }) => response.data?.data ?? null;
 
@@ -64,5 +65,33 @@ export const createDataApi = (
 			void (await http.delete(storage(key), { headers })),
 		storageKeys: async () =>
 			unwrap(await http.get(storage(), { headers })) ?? [],
+		listAttachments: async (taskId) =>
+			(
+				(unwrap(await http.get(`tasks/${taskId}/files`, { headers })) ??
+					[]) as any[]
+			).map((file) => ({
+				id: file.id,
+				name: file.name,
+				mimeType: file.mime_type ?? null,
+				size: file.size ?? null,
+				createdAt: file.created_at,
+			})),
+		async readAttachment(fileId) {
+			const file = unwrap(await http.get(`files/${fileId}`, { headers }));
+			if (Number(file?.size) > MAX_FILE_BYTES)
+				throw new Error('the file is larger than 5 MB');
+			const content = (
+				await http.get(`files/${fileId}/content`, {
+					headers,
+					responseType: 'blob',
+				})
+			).data as Blob;
+			const bytes = new Uint8Array(await content.arrayBuffer());
+			return {
+				name: file.name,
+				mimeType: file.mime_type ?? null,
+				...encodeFile(bytes, file.mime_type ?? null, file.name),
+			};
+		},
 	};
 };

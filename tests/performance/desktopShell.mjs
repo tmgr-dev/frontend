@@ -11,6 +11,7 @@ const fakeShell = async ({
   const exports = [];
   const revealed = [];
   const fetches = [];
+  const picks = [];
   const files = new Map();
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
@@ -50,6 +51,9 @@ const fakeShell = async ({
       case 'local_file_write':
         files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
         return null;
+      case 'plugin_pick_file':
+        picks.push(args.title);
+        return { name: 'picked.txt', size: 2, base64: 'aGk=' };
       case 'plugin_fetch':
         fetches.push(args.request);
         return localHttp(args.request);
@@ -65,7 +69,7 @@ const fakeShell = async ({
         return null;
     }
   };
-  return Object.assign(handler, { exports, files, revealed, fetches });
+  return Object.assign(handler, { exports, files, revealed, fetches, picks });
 };
 
 /** A page that believes it runs inside the desktop app, backed by `fakeShell` and a fake file scheme. */

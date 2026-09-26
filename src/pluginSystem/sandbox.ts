@@ -84,6 +84,13 @@ const PRELUDE = `(() => {
 			delete: (key) => call('storage.delete', { key }),
 			keys: () => call('storage.keys'),
 		}),
+		files: freeze({
+			export: (path, content) => call('files.export', { path, content }),
+			reveal: (path) => call('files.reveal', { path }),
+			list: (taskId) => call('files.list', { taskId }),
+			read: (fileId) => call('files.read', { fileId }),
+			pick: () => call('files.pick'),
+		}),
 		net: freeze({
 			fetch: (url, init) => {
 				const options = init || {};

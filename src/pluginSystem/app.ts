@@ -9,6 +9,7 @@ import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
 import { createDataApi } from './dataApi';
+import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, type PluginPackage } from './host';
 import type { WorkerEndpoint } from './process';
@@ -114,6 +115,44 @@ export const installPlugins = async (
 		enabled: enabledStore,
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
+		files: (pluginId, workspace, pluginName) => {
+			const code = workspace.code.replace(LOCAL_CODE_PREFIX, '');
+			const folder = `plugins/${pluginId}`;
+			const invoke = async <T>(
+				command: string,
+				args: Record<string, unknown>,
+			) => (await import('@tauri-apps/api/core')).invoke<T>(command, args);
+			return {
+				export: async (path, content) => {
+					await invoke('local_export_write', {
+						code,
+						folder,
+						files: [{ path, content }],
+					});
+					return { path };
+				},
+				reveal: async (path) => {
+					await invoke('local_reveal', {
+						code,
+						relative: `exports/${folder}/${path}`,
+					});
+				},
+				pick: async () => {
+					const picked = await invoke<{
+						name: string;
+						size: number;
+						base64: string;
+					} | null>('plugin_pick_file', {
+						title: `Choose a file for the ${pluginName} plugin`,
+					});
+					if (!picked) return null;
+					const bytes = Uint8Array.from(atob(picked.base64), (c) =>
+						c.charCodeAt(0),
+					);
+					return { name: picked.name, ...encodeFile(bytes, null, picked.name) };
+				},
+			};
+		},
 		fetch: async (request) => {
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });

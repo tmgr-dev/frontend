@@ -55,3 +55,52 @@ it('maps plugin calls to the app API, marked as the plugin', async () => {
 		'POST tasks/4/comments tmgr.estimate {"message":"hi"}',
 	]);
 });
+
+it('lists and reads attachments with text and base64', async () => {
+	const { http, seen } = recording((_method, url) =>
+		url === 'tasks/4/files'
+			? {
+					data: [
+						{
+							id: 9,
+							name: 'notes.md',
+							mime_type: 'text/markdown',
+							size: 4,
+							created_at: 'x',
+						},
+					],
+			  }
+			: url === 'files/9'
+			? {
+					data: {
+						id: 9,
+						name: 'notes.md',
+						mime_type: 'text/markdown',
+						size: 4,
+					},
+			  }
+			: new Blob(['# Hi']),
+	);
+	const api = createDataApi(http, 'tmgr.files');
+	expect(await api.listAttachments(4)).toEqual([
+		{
+			id: 9,
+			name: 'notes.md',
+			mimeType: 'text/markdown',
+			size: 4,
+			createdAt: 'x',
+		},
+	]);
+	expect(await api.readAttachment(9)).toEqual({
+		name: 'notes.md',
+		mimeType: 'text/markdown',
+		size: 4,
+		base64: 'IyBIaQ==',
+		text: '# Hi',
+	});
+	expect(seen.map((line) => line.split(' ').slice(0, 2).join(' '))).toEqual([
+		'GET tasks/4/files',
+		'GET files/9',
+		'GET files/9/content',
+	]);
+});

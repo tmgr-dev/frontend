@@ -6,6 +6,7 @@ mod local_export;
 mod local_files;
 mod local_workspaces;
 mod plugin_dev;
+mod plugin_files;
 mod plugin_net;
 mod quick_add;
 mod tray;
@@ -116,6 +117,7 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_files::plugin_pick_file,
       local_export::local_export_write,
       local_export::local_reveal
     ])
@@ -134,6 +136,7 @@ pub fn run() {
       }
     })
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {

@@ -243,6 +243,9 @@
 		'comments:read': 'read comments',
 		'comments:write': 'add comments',
 		notifications: 'show notifications',
+		'files:export': "save files to this workspace's exports folder",
+		'files:attachments': 'read task attachments',
+		'files:pick': 'read a file you choose',
 	};
 
 	export default defineComponent({

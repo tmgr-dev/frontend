@@ -10,6 +10,9 @@ export const PERMISSIONS = [
 	'comments:read',
 	'comments:write',
 	'notifications',
+	'files:export',
+	'files:attachments',
+	'files:pick',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
