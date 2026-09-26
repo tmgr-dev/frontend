@@ -353,9 +353,17 @@ html.tauri-desktop .board-wrapper::after {
 }
 
 html.tauri-desktop,
-html.tauri-desktop body,
-html.tauri-desktop * {
+html.tauri-desktop body {
 	overscroll-behavior: none;
+}
+
+/* Only the vertical bounce is cut on nested scrollers: a column must hand a sideways swipe on to the board. */
+html.tauri-desktop * {
+	overscroll-behavior-y: none;
+}
+
+html.tauri-desktop .board-container {
+	overscroll-behavior-x: none;
 }
 
 html.tauri-desktop [data-sidebar='header'] {
