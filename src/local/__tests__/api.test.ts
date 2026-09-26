@@ -53,6 +53,31 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(statuses[0].pivot.order).toBe(1);
 	});
 
+	it('serves a category page: subcategories, parent chain and its tasks across statuses', async () => {
+		const root = await data('POST', 'project_categories', { title: 'Root', code: 'rt' });
+		const child = await data('POST', 'project_categories', { title: 'Child', project_category_id: root.id });
+		await data('POST', 'project_categories', { title: 'Grandchild', project_category_id: child.id });
+		const statuses = await data('GET', 'workspaces/statuses');
+		const archived = statuses.find((s: any) => s.type === 'archived');
+		await data('POST', 'tasks', { title: 'Open', project_category_id: child.id });
+		await data('POST', 'tasks', { title: 'Done', project_category_id: child.id, status_id: archived.id });
+		await data('POST', 'tasks', { title: 'Elsewhere', project_category_id: root.id });
+
+		const page = (await call('GET', `project_categories/children/${child.id}?page=1&per_page=10`)).data;
+		expect(page.data.map((c: any) => c.title)).toEqual(['Grandchild']);
+		expect(page.meta.total).toBe(1);
+
+		const withParents = await data('GET', `project_categories/${child.id}/with/parents`);
+		expect(withParents.title).toBe('Child');
+		expect(withParents.parent_category.title).toBe('Root');
+		expect(withParents.parent_category.parent_category).toBeNull();
+
+		const all = (await call('GET', `tasks/?project_category_id=${child.id}&page=1&per_page=10`)).data;
+		expect(all.data.map((t: any) => t.title).sort()).toEqual(['Done', 'Open']);
+		const onlyArchived = await data('GET', `tasks?project_category_id=${child.id}&status_id=${archived.id}`);
+		expect(onlyArchived.map((t: any) => t.title)).toEqual(['Done']);
+	});
+
 	it('migrating twice is a no-op and does not duplicate statuses', async () => {
 		await migrate(ctx.db, clock.toISOString());
 		expect(await data('GET', 'workspaces/statuses')).toHaveLength(4);

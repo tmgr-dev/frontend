@@ -192,6 +192,7 @@
 		clipboardImageName,
 		imagesFromClipboard,
 	} from '@/utils/clipboardImages';
+	import { hasActiveLocalWorkspace } from '@/local/runtime';
 	import { galleryImages } from '@/utils/galleryNavigation';
 	import { createVisiblePreviewQueue } from '@/utils/visiblePreviewQueue';
 	import {
@@ -376,7 +377,7 @@
 					id: this.nextUploadId++,
 					name: file.name,
 					size: file.size,
-					error: preflightError(file),
+					error: preflightError(file, { anyType: hasActiveLocalWorkspace() }),
 				};
 				this.uploads.push(pending);
 				if (pending.error) {

@@ -25,10 +25,11 @@
 				</button>
 			</AppTooltip>
 
-			<Dialog v-model:open="isInviteDialogOpen">
+			<Dialog v-if="!isLocalWorkspace" v-model:open="isInviteDialogOpen">
 				<AppTooltip content="Invite user" side="bottom">
 					<DialogTrigger as-child>
 						<button
+							aria-label="Invite user"
 							class="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:z-20 hover:scale-110 hover:text-ink"
 						>
 							<span class="material-icons text-sm">add</span>
@@ -100,7 +101,7 @@
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceMembersModal from '@/components/workspace/WorkspaceMembersModal.vue';
 	import { validateEmailString, ValidationResult } from '@/utils/emails';
-	import { ref } from 'vue';
+	import { computed, ref } from 'vue';
 
 	export interface WorkspaceUser {
 		has_avatar?: boolean;
@@ -114,6 +115,7 @@
 	}
 
 	const props = defineProps<Props>();
+	const isLocalWorkspace = computed(() => props.workspaceId < 0);
 	const toaster = useToast();
 
 	const isInviteDialogOpen = ref(false);

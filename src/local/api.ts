@@ -109,6 +109,11 @@ const searchClause = (req: LocalRequest, params: any[]) => {
 		clauses.push(`t.project_category_id = ?`);
 		params.push(Number(category));
 	}
+	const status = req.query.get('status_id');
+	if (status) {
+		clauses.push(`t.status_id = ?`);
+		params.push(Number(status));
+	}
 	return clauses;
 };
 
@@ -236,6 +241,7 @@ export const createLocalApi = () =>
 			);
 			return loadTask(ctx, Number(result.lastInsertId));
 		}, 201)
+		.add('GET', 'tasks', (req) => listTasks(req, [], [], 't.id DESC', 'tasks'))
 		.add('GET', 'tasks/settings', () => [])
 		.add('GET', 'tasks/:id(\\d+)', ({ ctx, params }) => loadTask(ctx, Number(params.id)))
 		.add('PUT', 'tasks/:id(\\d+)', ({ ctx, params, body }) =>
@@ -452,6 +458,33 @@ export const createLocalApi = () =>
 				`${categoryCounts} WHERE c.deleted_at IS NULL AND c.parent_id IS NULL ORDER BY c.updated_at DESC`,
 			);
 			return rows.map((row) => categoryJson(row, ctx));
+		})
+		.add('GET', 'project_categories/children/:id(\\d+)', async ({ ctx, params, query }) => {
+			const rows = await ctx.db.select(
+				`${categoryCounts} WHERE c.deleted_at IS NULL AND c.parent_id = ? ORDER BY c.updated_at DESC`,
+				[Number(params.id)],
+			);
+			const perPage = Math.max(1, Number(query.get('per_page') ?? 20) || 20);
+			const page = Math.max(1, Number(query.get('page') ?? 1) || 1);
+			return paginate(
+				rows.slice((page - 1) * perPage, page * perPage).map((row) => categoryJson(row, ctx)),
+				rows.length,
+				page,
+				perPage,
+				`/api/project_categories/children/${params.id}`,
+			);
+		})
+		.add('GET', 'project_categories/:id(\\d+)/with/parents', async ({ ctx, params }) => {
+			const load = async (id: number, depth: number): Promise<any> => {
+				const [row] = await ctx.db.select<any>(`${categoryCounts} WHERE c.id = ? AND c.deleted_at IS NULL`, [id]);
+				if (!row) return null;
+				const json = categoryJson(row, ctx);
+				json.parent_category = row.parent_id && depth < 32 ? await load(row.parent_id, depth + 1) : null;
+				return json;
+			};
+			const category = await load(Number(params.id), 0);
+			if (!category) throw notFound('Category');
+			return category;
 		})
 		.add('GET', 'project_categories/:id(\\d+)', async ({ ctx, params }) => {
 			const rows = await ctx.db.select(`${categoryCounts} WHERE c.id = ? AND c.deleted_at IS NULL`, [Number(params.id)]);

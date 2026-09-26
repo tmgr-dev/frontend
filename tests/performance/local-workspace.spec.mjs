@@ -99,6 +99,8 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.goto('/local-personal/board');
   await expect(page.getByText('Backlog').first()).toBeVisible();
   await expect(page.getByText('In progress').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Invite user' })).toHaveCount(0);
+  await expect(page.getByTestId('local-workspace-badge').first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Open Add Task Modal' }).first().click();
   await page.getByPlaceholder('Task name').fill('Written offline');
@@ -120,9 +122,28 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   });
   await expect(page.getByText('notes.png').first()).toBeVisible();
   expect([...stored.keys()].some((key) => key.startsWith('personal/') && key.endsWith('/notes.png'))).toBe(true);
+  await attachments.locator('input[type="file"]').setInputFiles({
+    name: 'framework_blank.stl',
+    mimeType: '',
+    buffer: Buffer.from('solid blank\nendsolid blank\n'),
+  });
+  await expect(page.getByText('framework_blank.stl').first()).toBeVisible();
+  await expect(page.getByText('This file type cannot be attached.')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/board');
   await expect(page.getByText('Written offline').first()).toBeVisible();
+
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO categories (title, code, settings, created_at, updated_at) VALUES ('Parent', 'PA', '[]', '', ''), ('Nested', NULL, '[]', '', '')`,
+    params: [],
+  });
+  await shell('local_db_execute', { code: 'personal', sql: `UPDATE categories SET parent_id = 1 WHERE id = 2`, params: [] });
+  await shell('local_db_execute', { code: 'personal', sql: `UPDATE tasks SET project_category_id = 1`, params: [] });
+  await page.goto('/local-personal/categories/1/children');
+  await expect(page.getByText('Nested').first()).toBeVisible();
+  await expect(page.getByText('Written offline').first()).toBeVisible();
+  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
 
   await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /Export to Markdown/ }).click();

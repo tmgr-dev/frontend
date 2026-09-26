@@ -508,10 +508,22 @@
 											</div>
 
 											<div class="grid flex-1 text-left text-sm leading-tight">
-												<span class="truncate font-semibold">
-													{{ activeWorkspace?.name }}
+												<span class="flex min-w-0 items-center gap-1.5">
+													<span class="truncate font-semibold">
+														{{ activeWorkspace?.name }}
+													</span>
+													<span
+														v-if="activeWorkspace?.is_local"
+														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+														data-testid="local-workspace-badge"
+														>Local</span
+													>
 												</span>
-												<span class="truncate text-xs">current workspace</span>
+												<span class="truncate text-xs">{{
+													activeWorkspace?.is_local
+														? 'stored on this computer'
+														: 'current workspace'
+												}}</span>
 											</div>
 										</div>
 										<span
