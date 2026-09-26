@@ -25,19 +25,42 @@ export const formatWorkDuration = (seconds: number): string => {
 	return `${s}s`;
 };
 
-export const liveSeconds = (run: AgentWorkRun, nowMs: number): number =>
-	run.status === 'running'
-		? Math.max(0, Math.floor((nowMs - Date.parse(run.started_at)) / 1000))
-		: run.duration_seconds;
+const elapsedSince = (fromMs: number, nowMs: number): number =>
+	Math.max(0, Math.floor((nowMs - fromMs) / 1000));
+
+/**
+ * Running runs count on from the server-reported duration at the moment the run was received,
+ * so a skewed browser clock does not shift them.
+ */
+export const liveSeconds = (
+	run: AgentWorkRun,
+	nowMs: number,
+	receivedAtMs?: number,
+): number => {
+	if (run.status !== 'running') return run.duration_seconds;
+	return receivedAtMs === undefined
+		? elapsedSince(Date.parse(run.started_at), nowMs)
+		: run.duration_seconds + elapsedSince(receivedAtMs, nowMs);
+};
 
 export const liveTotals = (
 	runs: AgentWorkRun[],
 	totals: AgentWorkTotals,
 	nowMs: number,
+	receivedAt: Record<number, number> = {},
+	totalsReceivedAtMs: number = nowMs,
 ): { agentSeconds: number; humanSeconds: number } => ({
-	agentSeconds: runs.reduce((sum, run) => sum + liveSeconds(run, nowMs), 0),
-	humanSeconds: totals.human_seconds,
+	agentSeconds: runs.reduce(
+		(sum, run) => sum + liveSeconds(run, nowMs, receivedAt[run.id]),
+		0,
+	),
+	humanSeconds:
+		totals.human_seconds +
+		(totals.human_timer_running ? elapsedSince(totalsReceivedAtMs, nowMs) : 0),
 });
+
+export const isHttpUrl = (url: string | null): url is string =>
+	!!url && /^https?:\/\/[^\s]+$/i.test(url);
 
 export const upsertRun = (
 	runs: AgentWorkRun[],

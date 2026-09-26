@@ -1,6 +1,7 @@
 import {
 	agentLabel,
 	formatWorkDuration,
+	isHttpUrl,
 	liveSeconds,
 	liveTotals,
 	upsertRun,
@@ -53,6 +54,12 @@ describe('liveSeconds', () => {
 		const running = run({ status: 'running', ended_at: null, duration_seconds: 60 });
 		expect(liveSeconds(running, Date.parse('2026-09-26T10:05:00Z'))).toBe(300);
 	});
+
+	it('counts on from the server duration when it was received, ignoring the browser clock', () => {
+		const running = run({ status: 'running', ended_at: null, duration_seconds: 60 });
+		const receivedAt = Date.parse('2030-01-01T00:00:00Z');
+		expect(liveSeconds(running, receivedAt + 15_000, receivedAt)).toBe(75);
+	});
 });
 
 it('adds running runs up to now to the agent total and leaves the human time alone', () => {
@@ -63,7 +70,7 @@ it('adds running runs up to now to the agent total and leaves the human time alo
 	expect(
 		liveTotals(
 			runs,
-			{ agent_seconds: 1234, human_seconds: 900 },
+			{ agent_seconds: 1234, human_seconds: 900, human_timer_running: false },
 			Date.parse('2026-09-26T10:10:00Z'),
 		),
 	).toEqual({ agentSeconds: 2400, humanSeconds: 900 });
@@ -78,4 +85,24 @@ describe('upsertRun', () => {
 		]);
 		expect(upsertRun(list, run({ id: 3 })).map((r) => r.id)).toEqual([3, 1, 2]);
 	});
+});
+
+it('keeps counting the human time while the task timer runs', () => {
+	const fetchedAt = Date.parse('2026-09-26T10:00:00Z');
+	expect(
+		liveTotals(
+			[],
+			{ agent_seconds: 0, human_seconds: 900, human_timer_running: true },
+			fetchedAt + 60_000,
+			{},
+			fetchedAt,
+		).humanSeconds,
+	).toBe(960);
+});
+
+it('accepts only http(s) links', () => {
+	expect(isHttpUrl('https://github.com/tmgr-dev/backend/pull/148')).toBe(true);
+	expect(isHttpUrl('javascript:alert(1)')).toBe(false);
+	expect(isHttpUrl('data:text/html,x')).toBe(false);
+	expect(isHttpUrl(null)).toBe(false);
 });

@@ -51,7 +51,7 @@ test('task panel shows agent work apart from the human time', async ({
               tests: { passed: 84, failed: 0, command: 'mvn test' },
             },
           ],
-          totals: { agent_seconds: 5100, human_seconds: 900 },
+          totals: { agent_seconds: 5100, human_seconds: 900, human_timer_running: false },
         },
       },
     }),

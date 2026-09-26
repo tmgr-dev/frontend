@@ -29,7 +29,7 @@
 						/>{{ run.status }}
 					</span>
 					<span class="ml-auto font-mono text-ink-subtle">
-						{{ formatWorkDuration(liveSeconds(run, now)) }}
+						{{ formatWorkDuration(liveSeconds(run, now, receivedAt[run.id])) }}
 					</span>
 				</div>
 
@@ -49,7 +49,7 @@
 						run.branch
 					}}</span>
 					<a
-						v-if="run.pr_url"
+						v-if="isHttpUrl(run.pr_url)"
 						:href="run.pr_url"
 						target="_blank"
 						rel="noopener"
@@ -103,6 +103,7 @@
 	import {
 		agentLabel,
 		formatWorkDuration,
+		isHttpUrl,
 		liveSeconds,
 		liveTotals,
 		upsertRun,
@@ -139,25 +140,45 @@
 			const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } =
 				usePusher();
 			const runs = ref([]);
-			const serverTotals = ref({ agent_seconds: 0, human_seconds: 0 });
+			const serverTotals = ref({
+				agent_seconds: 0,
+				human_seconds: 0,
+				human_timer_running: false,
+			});
+			const totalsReceivedAt = ref(Date.now());
+			const receivedAt = reactive({});
 			const now = ref(Date.now());
 			const expanded = reactive({});
+			let request = 0;
 			let ticker = null;
 			let subscription = null;
 			let subscribedWorkspace = null;
 
+			const markReceived = (list) => {
+				const at = Date.now();
+				list.forEach((run) => {
+					receivedAt[run.id] = at;
+				});
+			};
+
 			const load = async () => {
+				const current = ++request;
 				try {
 					const overview = await getAgentWork(props.taskId);
+					if (current !== request) return;
+					markReceived(overview.runs);
 					runs.value = overview.runs;
 					serverTotals.value = overview.totals;
+					totalsReceivedAt.value = Date.now();
 				} catch (error) {
 					console.error('Failed to load agent work', error);
 				}
 			};
 
-			const hasRunning = computed(() =>
-				runs.value.some((run) => run.status === 'running'),
+			const hasRunning = computed(
+				() =>
+					serverTotals.value.human_timer_running ||
+					runs.value.some((run) => run.status === 'running'),
 			);
 
 			watch(
@@ -183,6 +204,7 @@
 				subscription = subscribeToWorkspace(workspaceId, {
 					onAgentWorkChanged: (run) => {
 						if (run?.task_id === props.taskId) {
+							markReceived([run]);
 							runs.value = upsertRun(runs.value, run);
 						}
 					},
@@ -190,7 +212,14 @@
 			};
 
 			watch(() => props.workspaceId, subscribe, { immediate: true });
-			watch(() => props.taskId, load);
+			watch(
+				() => props.taskId,
+				() => {
+					runs.value = [];
+					Object.keys(expanded).forEach((id) => delete expanded[id]);
+					load();
+				},
+			);
 			onMounted(load);
 			onBeforeUnmount(() => {
 				clearInterval(ticker);
@@ -203,10 +232,18 @@
 				expanded,
 				STATUS_TONE,
 				totals: computed(() =>
-					liveTotals(runs.value, serverTotals.value, now.value),
+					liveTotals(
+						runs.value,
+						serverTotals.value,
+						now.value,
+						receivedAt,
+						totalsReceivedAt.value,
+					),
 				),
+				receivedAt,
 				agentLabel,
 				formatWorkDuration,
+				isHttpUrl,
 				liveSeconds,
 				toggle: (id) => {
 					expanded[id] = !expanded[id];

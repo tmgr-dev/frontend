@@ -29,6 +29,7 @@ export interface AgentWorkRun {
 export interface AgentWorkTotals {
 	agent_seconds: number;
 	human_seconds: number;
+	human_timer_running: boolean;
 }
 
 export interface AgentWorkOverview {
