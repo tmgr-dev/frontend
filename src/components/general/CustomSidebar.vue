@@ -77,6 +77,7 @@
 		LogOut,
 		Package,
 		PackageOpen,
+		Keyboard,
 		Palette,
 		PaperclipIcon,
 		Plus,
@@ -770,6 +771,14 @@
 										>
 											<Palette />
 											Theme
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="isDesktop"
+											@click="$router.push('/settings?tab=desktop')"
+											class="cursor-pointer"
+										>
+											<Keyboard />
+											Shortcuts
 										</DropdownMenuItem>
 										<DropdownMenuItem>
 											<DarkMode />

@@ -1,6 +1,9 @@
 export const isDesktopApp = (): boolean =>
 	typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+export const desktopWindowLabel = (): string | null =>
+	(window as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? null;
+
 export function installAutoHideScrollbars(
 	doc: Document = document,
 	hideAfterMs = 900,

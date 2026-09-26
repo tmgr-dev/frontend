@@ -58,6 +58,13 @@
       "endpoints": [
         "https://github.com/tmgr-dev/frontend/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "tmgr"
+        ]
+      }
     }
   }
 }

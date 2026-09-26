@@ -1,4 +1,6 @@
+mod capture;
 mod idle;
+mod quick_add;
 mod tray;
 
 use std::path::{Path, PathBuf};
@@ -77,9 +79,26 @@ pub fn run() {
       Some(vec!["--hidden"]),
     ))
     .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+    .plugin(tauri_plugin_deep_link::init())
+    .plugin(tauri_plugin_clipboard_manager::init())
     .manage(tray::TrayStore::default())
-    .invoke_handler(tauri::generate_handler![tray::tray_update])
+    .manage(quick_add::QuickAddStore::default())
+    .invoke_handler(tauri::generate_handler![
+      tray::tray_update,
+      quick_add::open_quick_add,
+      quick_add::take_quick_add,
+      quick_add::hide_quick_add,
+      capture::capture_screenshot,
+      capture::take_capture,
+      capture::capture_selection
+    ])
     .on_window_event(|window, event| {
+      if let WindowEvent::Focused(false) = event {
+        if window.label() == quick_add::LABEL {
+          let _ = window.hide();
+        }
+      }
       if let WindowEvent::CloseRequested { api, .. } = event {
         if window.label() == "main" {
           api.prevent_close();

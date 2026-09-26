@@ -4,7 +4,11 @@ import { mask, VueTheMask } from '@/plugins/VueTheMask';
 import Selectable from '@/plugins/directives/selectable';
 import router from '@/router';
 import store from '@/store';
-import { installAutoHideScrollbars, isDesktopApp } from '@/utils/desktop';
+import {
+	desktopWindowLabel,
+	installAutoHideScrollbars,
+	isDesktopApp,
+} from '@/utils/desktop';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
@@ -22,7 +26,7 @@ import App from './App.vue';
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	installAutoHideScrollbars();
-	startUpdateChecks();
+	if (desktopWindowLabel() === 'main') startUpdateChecks();
 }
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));

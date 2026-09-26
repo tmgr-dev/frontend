@@ -57,6 +57,7 @@ export function installDesktopDiagnostics(
 		setTimeout(() => {
 			if (router.currentRoute.value.fullPath !== target) return;
 			const main = document.querySelector('main.app-canvas');
+			if (!main) return;
 			const content = main?.lastElementChild as HTMLElement | null;
 			const text = (content?.innerText || '').trim();
 			if (text.length > 0 || !store.getters.isLoggedIn) return;

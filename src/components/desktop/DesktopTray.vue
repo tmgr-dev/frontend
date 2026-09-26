@@ -34,6 +34,7 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { usePusher } from '@/composable/usePusher';
+	import router from '@/router';
 	import store from '@/store';
 	import {
 		buildTrayState,
@@ -166,6 +167,9 @@
 				unlisteners.push(
 					await listen('tray://open', (event) =>
 						store.commit('setCurrentTaskIdForModal', event.payload),
+					),
+					await listen('tray://shortcuts', () =>
+						router.push('/settings?tab=desktop'),
 					),
 					await listen('tray://stop', safely(stopTaskTimeCounter)),
 					await listen('tray://switch', safely(switchTo)),

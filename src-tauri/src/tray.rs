@@ -112,6 +112,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
   let autostart = app.autolaunch().is_enabled().unwrap_or(false);
   menu
     .item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?)
+    .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
     .item(
       &CheckMenuItemBuilder::with_id("autostart", "Launch at Login")
         .checked(autostart)
@@ -166,6 +167,10 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   match id {
     "open" => show_main(app),
+    "shortcuts" => {
+      show_main(app);
+      let _ = app.emit("tray://shortcuts", ());
+    }
     "autostart" => {
       let launcher = app.autolaunch();
       let result = if launcher.is_enabled().unwrap_or(false) {

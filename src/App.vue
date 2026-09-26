@@ -1,4 +1,6 @@
 <template>
+	<router-view v-if="isQuickAddWindow" />
+	<template v-else>
 	<alert ref="alert" />
 
 	<div
@@ -30,6 +32,10 @@
 			v-if="isDesktop && $store.getters.isLoggedIn"
 			:tasks="activeTasks"
 		/>
+		<DesktopHotkeys
+			v-if="isDesktop && $store.getters.isLoggedIn"
+			:tasks="activeTasks"
+		/>
 
 		<Transition name="fade">
 			<TaskSidePanel
@@ -49,6 +55,7 @@
 	</div>
 
 	<Toaster />
+	</template>
 </template>
 
 <script>
@@ -60,6 +67,7 @@
 		getWorkspaces,
 	} from '@/actions/tmgr/workspaces';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
 	import DesktopTray from '@/components/desktop/DesktopTray.vue';
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
@@ -70,7 +78,7 @@
 	import { Toaster } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
-	import { isDesktopApp } from '@/utils/desktop';
+	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -91,6 +99,7 @@
 			CustomSidebar,
 			NewForm,
 			ActiveTasks,
+			DesktopHotkeys,
 			DesktopTray,
 			Modal,
 			TaskSidePanel,
@@ -118,7 +127,11 @@
 					localStorage.setItem('sidebarExpanded', newValue.toString());
 				});
 			}
-			return { routeViewKey, isDesktop: isDesktopApp() };
+			return {
+				routeViewKey,
+				isDesktop: isDesktopApp(),
+				isQuickAddWindow: desktopWindowLabel() === 'quick-add',
+			};
 		},
 		data() {
 			return {
@@ -548,7 +561,7 @@
 				next();
 			});
 
-			if (!this.$store.state.user?.id) {
+			if (!this.$store.state.user?.id || this.isQuickAddWindow) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {

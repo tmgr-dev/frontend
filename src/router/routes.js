@@ -377,6 +377,12 @@ const routes = [
 		name: 'TasksEdit',
 	},
 	{
+		path: '/quick-add',
+		component: () => import('@/pages/QuickAdd.vue'),
+		meta: { title: 'Quick add' },
+		name: 'QuickAdd',
+	},
+	{
 		path: '/settings',
 		component: () => import('@/pages/Settings.vue'),
 		meta: {

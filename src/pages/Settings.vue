@@ -55,6 +55,14 @@
 								</div>
 							</div>
 
+							<div
+								v-if="isDesktopSection && isDesktop"
+								class="flex flex-col gap-3.5 p-4 md:max-w-3xl"
+							>
+								<h3 class="mb-1 text-lg font-bold">Keyboard shortcuts</h3>
+								<DesktopShortcutsSettings />
+							</div>
+
 							<div v-if="isTheme" class="flex flex-col gap-3.5 p-4">
 								<h3 class="mb-4 text-lg font-bold">Theme</h3>
 								<ThemePicker />
@@ -452,6 +460,7 @@
 	import Select from '@/components/general/Select.vue';
 	import Switcher from '@/components/general/Switcher.vue';
 	import TextField from '@/components/general/TextField.vue';
+	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import TimeField from '@/components/general/TimeField.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
@@ -462,6 +471,7 @@
 	} from '@/components/ui/breadcrumb';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { EDITOR_SETTING_HELP, editorOptionLabel } from '@/utils/editorType';
 
 	export default {
@@ -480,6 +490,7 @@
 			Confirm,
 			CurrentWorkspace,
 			NotificationSettingsForm,
+			DesktopShortcutsSettings,
 			ThemePicker,
 		},
 		created() {
@@ -499,6 +510,8 @@
 			isProfile: false,
 			isDevice: false,
 			isTheme: false,
+			isDesktopSection: false,
+			isDesktop: isDesktopApp(),
 			telegramLink: null,
 			showToken: false,
 			tokenCopied: false,
@@ -627,6 +640,9 @@
 						case 'theme':
 							this.showThemeSettings();
 							break;
+						case 'desktop':
+							this.showDesktopSettings();
+							break;
 					}
 				}
 			},
@@ -637,6 +653,7 @@
 				this.isNotification = true;
 				this.isDevice = false;
 				this.isTheme = false;
+				this.isDesktopSection = false;
 				this.updateQueryParam('notification');
 			},
 
@@ -646,6 +663,7 @@
 				this.isProfile = false;
 				this.isDevice = false;
 				this.isTheme = false;
+				this.isDesktopSection = false;
 				this.updateQueryParam('workspace');
 			},
 
@@ -655,6 +673,7 @@
 				this.isProfile = true;
 				this.isDevice = false;
 				this.isTheme = false;
+				this.isDesktopSection = false;
 				this.updateQueryParam('profile');
 			},
 
@@ -664,6 +683,7 @@
 				this.isProfile = false;
 				this.isDevice = true;
 				this.isTheme = false;
+				this.isDesktopSection = false;
 				this.updateQueryParam('device');
 			},
 
@@ -673,7 +693,18 @@
 				this.isProfile = false;
 				this.isDevice = false;
 				this.isTheme = true;
+				this.isDesktopSection = false;
 				this.updateQueryParam('theme');
+			},
+
+			showDesktopSettings() {
+				this.isNotification = false;
+				this.isWorkspaceSettings = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = true;
+				this.updateQueryParam('desktop');
 			},
 
 			updateQueryParam(tab) {
