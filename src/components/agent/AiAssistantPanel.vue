@@ -111,7 +111,7 @@
 <template>
 	<aside
 		v-show="open"
-		class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl"
+		class="fixed bottom-[var(--statusbar-h,0px)] right-0 top-[var(--titlebar-h,0px)] z-40 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl"
 		role="complementary"
 		aria-label="AI assistant"
 	>

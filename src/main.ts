@@ -4,20 +4,33 @@ import { mask, VueTheMask } from '@/plugins/VueTheMask';
 import Selectable from '@/plugins/directives/selectable';
 import router from '@/router';
 import store from '@/store';
+import { installAutoHideScrollbars, isDesktopApp } from '@/utils/desktop';
+import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
+import '@fontsource/exo-2/400.css';
+import '@fontsource/exo-2/500.css';
+import '@fontsource/exo-2/600.css';
+import '@fontsource/exo-2/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 
+if (isDesktopApp()) {
+	document.documentElement.classList.add('tauri-desktop');
+	installAutoHideScrollbars();
+}
+
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));
 store.commit('setTheme', localStorage.getItem('theme') || 'default');
+
+window
+	.matchMedia?.('(prefers-color-scheme: dark)')
+	.addEventListener?.('change', (event) => {
+		store.commit('setSystemPrefersDark', event.matches);
+	});
 
 // Another tab rotated the token (or logged out): adopt it here so this tab
 // never replays a retired refresh token. setToken re-persists the same value,
@@ -39,6 +52,8 @@ app.use(router);
 app.use(store);
 
 alertPlugin({ app });
+
+if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
 
 app.mount('#app');
 

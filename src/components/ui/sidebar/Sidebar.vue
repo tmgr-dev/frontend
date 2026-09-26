@@ -85,7 +85,7 @@
 		<div
 			:class="
 				cn(
-					'fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex',
+					'fixed bottom-0 top-[var(--titlebar-h,0px)] z-10 hidden w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex',
 					side === 'left'
 						? 'left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]'
 						: 'right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]',

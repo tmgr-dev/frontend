@@ -5,7 +5,9 @@
 	} from '@/actions/tmgr/featureToggles';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
+	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { isDesktopApp } from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
@@ -101,6 +103,18 @@
 	const route = useRoute();
 	const router = useRouter();
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
+
+	const isDesktop = isDesktopApp();
+
+	const openWorkspaceHome = (event: MouseEvent) => {
+		const target = event.currentTarget as HTMLElement | null;
+		if (event.button !== 0 || target?.closest('[data-collapsible="icon"]')) {
+			return;
+		}
+		event.stopPropagation();
+		event.preventDefault();
+		router.push('/');
+	};
 
 	const metaTitle = computed(() => {
 		return store.state.metaTitle || '';
@@ -426,18 +440,28 @@
 										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 									>
 										<div
-											class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+											class="flex min-w-0 flex-1 items-center gap-2"
+											@click="openWorkspaceHome"
 										>
-											<PackageOpen class="size-4" />
-										</div>
+											<div
+												class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+											>
+												<PackageOpen class="size-4" />
+											</div>
 
-										<div class="grid flex-1 text-left text-sm leading-tight">
-											<span class="truncate font-semibold">
-												{{ activeWorkspace?.name }}
-											</span>
-											<span class="truncate text-xs">current workspace</span>
+											<div class="grid flex-1 text-left text-sm leading-tight">
+												<span class="truncate font-semibold">
+													{{ activeWorkspace?.name }}
+												</span>
+												<span class="truncate text-xs">current workspace</span>
+											</div>
 										</div>
-										<ChevronsUpDown class="ml-auto" />
+										<span
+											class="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-sidebar-border"
+											title="Switch workspace"
+										>
+											<ChevronsUpDown class="size-4" />
+										</span>
 									</SidebarMenuButton>
 								</DropdownMenuTrigger>
 
@@ -766,18 +790,42 @@
 				<SidebarRail />
 			</Sidebar>
 
-			<SidebarInset>
+			<SidebarInset
+				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
+			>
 				<header
 					v-if="store.getters.isLoggedIn"
-					class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+					data-tauri-drag-region
+					:class="
+						isDesktop
+							? 'fixed inset-x-0 top-0 z-30 flex h-[var(--titlebar-h)] items-center gap-2 bg-sidebar'
+							: 'flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12'
+					"
 				>
-					<div class="flex flex-1 items-center gap-2 px-4">
+					<div
+						data-tauri-drag-region
+						class="flex flex-1 items-center gap-2 px-4"
+					>
+						<div
+							v-if="isDesktop"
+							data-tauri-drag-region
+							class="-ml-1 flex w-[calc(var(--sidebar-width)-1rem)] shrink-0 items-center group-has-[[data-collapsible=icon]]/sidebar-wrapper:mr-1 group-has-[[data-collapsible=icon]]/sidebar-wrapper:w-auto"
+						>
+							<WindowControls />
+						</div>
 						<SidebarTrigger class="-ml-1" />
 						<AddTaskModalTrigger class="-ml-1" />
 
 						<Separator orientation="vertical" class="mr-2 h-4" />
 
-						<Breadcrumb>
+						<span
+							v-if="isDesktop"
+							data-tauri-drag-region
+							class="truncate text-sm font-semibold"
+						>
+							{{ metaTitle }}
+						</span>
+						<Breadcrumb v-else>
 							<BreadcrumbList>
 								<BreadcrumbItem class="hidden md:block">
 									<BreadcrumbLink>
@@ -807,6 +855,7 @@
 						></div>
 						<div class="flex items-center gap-2">
 							<button
+								v-if="!isDesktop"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,
@@ -817,7 +866,7 @@
 							>
 								<Sparkles class="h-4 w-4" />
 							</button>
-							<ActiveCursorAgents />
+							<ActiveCursorAgents v-if="!isDesktop" />
 							<NotificationBell />
 						</div>
 					</div>

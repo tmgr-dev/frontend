@@ -2,6 +2,14 @@
 	<alert ref="alert" />
 
 	<div
+		v-if="isDesktop && !$store.getters.isLoggedIn"
+		data-tauri-drag-region
+		class="fixed inset-x-0 top-0 z-50 flex h-10 items-center px-3"
+	>
+		<WindowControls />
+	</div>
+
+	<div
 		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 		:key="$store.state.appRerenderKey"
 	>
@@ -13,7 +21,11 @@
 			</CustomSidebar>
 		</div>
 
-		<ActiveTasks :tasks="activeTasks" />
+		<StatusBar
+			v-if="isDesktop && $store.getters.isLoggedIn"
+			:tasks="activeTasks"
+		/>
+		<ActiveTasks v-else :tasks="activeTasks" />
 
 		<Transition name="fade">
 			<TaskSidePanel
@@ -44,6 +56,8 @@
 		getWorkspaces,
 	} from '@/actions/tmgr/workspaces';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import StatusBar from '@/components/desktop/StatusBar.vue';
+	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
@@ -51,6 +65,7 @@
 	import { Toaster } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -74,6 +89,8 @@
 			Modal,
 			TaskSidePanel,
 			Alert,
+			WindowControls,
+			StatusBar,
 		},
 		setup() {
 			const dailyRoutinesCount = ref(0);
@@ -95,7 +112,7 @@
 					localStorage.setItem('sidebarExpanded', newValue.toString());
 				});
 			}
-			return { routeViewKey };
+			return { routeViewKey, isDesktop: isDesktopApp() };
 		},
 		data() {
 			return {
@@ -113,7 +130,7 @@
 			},
 			switchOn: {
 				get() {
-					return this.$store.state.colorScheme === 'dark';
+					return this.$store.getters.isDarkTheme;
 				},
 				set(newValue) {
 					this.$store.commit('setColorScheme', newValue ? 'dark' : 'default');

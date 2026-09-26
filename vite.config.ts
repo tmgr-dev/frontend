@@ -23,6 +23,7 @@ export default defineConfig({
 	plugins: [
 		vue(),
 		VitePWA({
+			disable: Boolean(process.env.TAURI_ENV_PLATFORM),
 			registerType: 'autoUpdate',
 			devOptions: {
 				enabled: true,
@@ -66,7 +67,7 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
 				globIgnores: [
-					'**/assets/**/{inter,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
+					'**/assets/**/{exo-2,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
 				],
 				importScripts: [
 					'clear-private-api-cache.js',
@@ -96,6 +97,11 @@ export default defineConfig({
 		},
 		postcss: {
 			plugins: [tailwind, autoprefixer],
+		},
+	},
+	server: {
+		watch: {
+			ignored: ['**/src-tauri/**'],
 		},
 	},
 	build: {
