@@ -52,10 +52,27 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     window.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' } },
       invoke: (command, args) => window.__shellInvoke(command, args ?? {}),
+      convertFileSrc: (path, protocol) => `${location.origin}/__${protocol}/${encodeURIComponent(path)}`,
       transformCallback: () => 0,
     };
   });
   await mockApp(page);
+  const stored = new Map();
+  await page.route('**/__tmgrfile/**', async (route) => {
+    const key = decodeURIComponent(new URL(route.request().url()).pathname.replace('/__tmgrfile/', ''));
+    const method = route.request().method();
+    if (method === 'PUT') {
+      stored.set(key, route.request().postDataBuffer());
+      await route.fulfill({ status: 200, body: '' });
+    } else if (method === 'DELETE') {
+      stored.delete(key);
+      await route.fulfill({ status: 204, body: '' });
+    } else if (stored.has(key)) {
+      await route.fulfill({ status: 200, contentType: 'image/png', body: stored.get(key) });
+    } else {
+      await route.fulfill({ status: 404, body: '' });
+    }
+  });
   const sent = [];
   const settingsPayloads = [];
   page.on('request', (request) => {
@@ -86,13 +103,25 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     sql: 'SELECT title FROM tasks',
     params: [],
   })).map((row) => row.title)).toContain('Written offline');
+  const attachments = page.locator('.task-attachments').first();
+  await expect(attachments).toBeVisible();
+  await attachments.locator('input[type="file"]').setInputFiles({
+    name: 'notes.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKzsAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  });
+  await expect(page.getByText('notes.png').first()).toBeVisible();
+  expect([...stored.keys()].some((key) => key.startsWith('personal/') && key.endsWith('/notes.png'))).toBe(true);
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/board');
   await expect(page.getByText('Written offline').first()).toBeVisible();
 
   const workspaceCalls = sent.filter(
     (path) =>
-      !/^(user|user\/settings|v2\/user\/settings|user\/feature-toggles|workspaces|notifications(\/.*)?|broadcasting\/auth)$/.test(
+      !/^(user|user\/settings|v2\/user\/settings|user\/feature-toggles|workspaces|tasks\/runned|notifications(\/.*)?|broadcasting\/auth)$/.test(
         path,
       ),
   );

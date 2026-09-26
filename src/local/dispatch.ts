@@ -1,6 +1,6 @@
 import type { LocalRouter } from './router';
 import { normalizePath } from './router';
-import { LocalHttpError, type LocalContext, type LocalResponse } from './types';
+import { LocalHttpError, LocalRaw, type LocalContext, type LocalResponse } from './types';
 
 const parseBody = (body: unknown) => {
 	if (typeof body !== 'string') return body ?? {};
@@ -43,6 +43,7 @@ export const dispatchLocal = async (
 			body: parseBody(body),
 			ctx,
 		});
+		if (data instanceof LocalRaw) return { status: route.status, data: data.body };
 		// Same rule as the Java envelope filter: wrap unless the body already carries `data`.
 		const wrapped =
 			data && typeof data === 'object' && !Array.isArray(data) && 'data' in data

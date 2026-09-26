@@ -25,11 +25,24 @@ export interface LocalUser {
 	email: string;
 }
 
+/** Attachment bytes live in the workspace folder; the shell serves them under its own URL scheme. */
+export interface LocalFiles {
+	url(key: string): string;
+	read(key: string): Promise<Blob>;
+	remove(key: string): Promise<void>;
+}
+
 export interface LocalContext {
 	db: LocalDb;
 	workspace: LocalWorkspace;
 	user: LocalUser;
 	now: () => Date;
+	files: LocalFiles;
+}
+
+/** A handler result sent as the response body as is (no `{data}` envelope), e.g. a Blob. */
+export class LocalRaw {
+	constructor(public body: unknown) {}
 }
 
 export interface LocalRequest {

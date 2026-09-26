@@ -38,6 +38,7 @@ jest.mock('../runtime', () => ({
 		workspace,
 		user,
 		now: () => new Date('2026-09-26T10:00:00Z'),
+		files: { url: (key: string) => key, read: async () => new Blob([]), remove: async () => {} },
 	}),
 }));
 
@@ -108,7 +109,7 @@ describeSqlite('installLocalWorkspaces', () => {
 
 	it('refuses what the local API does not implement instead of sending it', async () => {
 		active = LOCAL;
-		const error = await client.post('files/presign-upload', { file_name: 'a' }).catch((e) => e);
+		const error = await client.post('agent/conversations', { message: 'summarise my tasks' }).catch((e) => e);
 
 		expect(error.response.status).toBe(501);
 		expect(sent).toEqual([]);

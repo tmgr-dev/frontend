@@ -65,6 +65,21 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS comments_task_idx ON comments (task_id)`,
 		],
 	},
+	{
+		version: 2,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS files (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				file_path TEXT NOT NULL UNIQUE,
+				mime_type TEXT,
+				size INTEGER,
+				created_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS files_task_idx ON files (task_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

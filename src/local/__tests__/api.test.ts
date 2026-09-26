@@ -8,6 +8,7 @@ const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
 describeSqlite('local workspace API on SQLite', () => {
 	let ctx: LocalContext;
+	const removed: string[] = [];
 	let clock = new Date('2026-09-26T10:00:00Z');
 	const api = createLocalApi();
 	const call = async (method: string, url: string, body?: unknown) => {
@@ -33,6 +34,13 @@ describeSqlite('local workspace API on SQLite', () => {
 			},
 			user: { id: 7, name: 'Yurij', email: 'me@example.com' },
 			now: () => clock,
+			files: {
+				url: (key: string) => `tmgrfile://localhost/test/${key}`,
+				read: async () => new Blob(['bytes']),
+				remove: async (key: string) => {
+					removed.push(key);
+				},
+			},
 		};
 		await migrate(ctx.db, clock.toISOString());
 	});
@@ -158,8 +166,8 @@ describeSqlite('local workspace API on SQLite', () => {
 		]);
 		const toggles = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(toggles.board.enabled).toBe(true);
-		expect(toggles['task.files'].enabled).toBe(false);
-		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/files')).toBeNull();
+		expect(toggles['task.relations'].enabled).toBe(false);
+		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/relations')).toBeNull();
 	});
 
 	it('gives a task the next ticket number of the category it moves to', async () => {
@@ -188,5 +196,46 @@ describeSqlite('local workspace API on SQLite', () => {
 		const res = await call('PUT', `tasks/${task.id}/settings`, [{ id: 1, value: 3 }]);
 		expect(res.status).toBe(200);
 		expect(res.data.data.status_id).toBe(task.status_id);
+	});
+
+	it('attaches files: presign a safe key, attach, list, sign a link, delete the bytes', async () => {
+		const task = await data('POST', 'tasks', { title: 'With a screenshot' });
+		const target = await data('POST', 'files/presign-upload', {
+			file_name: 'Screen Shot 2026-09-26 at 10.00.png',
+			content_type: 'image/png',
+			size_bytes: 1200,
+		});
+		expect(target.key).toMatch(/^[0-9a-f-]+\/Screen-Shot-2026-09-26-at-10.00.png$/);
+		expect(target.upload_url).toBe(`tmgrfile://localhost/test/${target.key}`);
+
+		const file = await data('POST', `/tasks/${task.id}/files`, {
+			file_name: 'Screen Shot.png',
+			file_path: target.key,
+			mime_type: 'image/png',
+			size_bytes: 1200,
+		});
+		expect(file).toMatchObject({ task_id: task.id, name: 'Screen Shot.png', size: 1200, workspace_id: -42 });
+		expect(await data('GET', `/tasks/${task.id}/files`)).toHaveLength(1);
+		expect((await data('GET', `/files/${file.id}/signed-url`)).url).toBe(target.upload_url);
+		const page = (await call('GET', 'workspaces/-42/files?images=true')).data;
+		expect(page.data[0].task.title).toBe('With a screenshot');
+
+		await call('DELETE', `/files/${file.id}`);
+		expect(removed).toContain(target.key);
+		expect(await data('GET', `/tasks/${task.id}/files`)).toEqual([]);
+	});
+
+	it('refuses oversized uploads and keys it did not hand out', async () => {
+		expect((await call('POST', 'files/presign-upload', { file_name: 'a', size_bytes: 26 * 1024 * 1024 })).status).toBe(413);
+		const task = await data('POST', 'tasks', { title: 'x' });
+		expect((await call('POST', `tasks/${task.id}/files`, { file_path: '../../etc/passwd' })).status).toBe(422);
+	});
+
+	it('returns file bytes raw, without the envelope', async () => {
+		const task = await data('POST', 'tasks', { title: 'x' });
+		const target = await data('POST', 'files/presign-upload', { file_name: 'a.txt' });
+		const file = await data('POST', `tasks/${task.id}/files`, { file_name: 'a.txt', file_path: target.key });
+		const res = await call('GET', `files/${file.id}/content`);
+		expect(res.data).toBeInstanceOf(Blob);
 	});
 });

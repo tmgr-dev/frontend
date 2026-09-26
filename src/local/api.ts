@@ -7,7 +7,7 @@ import {
 	taskJson,
 	toJson,
 } from './serialize';
-import { LocalHttpError, type LocalContext, type LocalRequest } from './types';
+import { LocalHttpError, LocalRaw, type LocalContext, type LocalRequest } from './types';
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
 const epoch = (ctx: LocalContext) => Math.floor(ctx.now().getTime() / 1000);
@@ -176,7 +176,7 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	'task.countdown': true,
 	'task.checkpoints': true,
 	'task.assignees': false,
-	'task.files': false,
+	'task.files': true,
 	'task.relations': false,
 };
 
@@ -301,6 +301,87 @@ export const createLocalApi = () =>
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
 			return { success: true };
+		})
+		// ── attachments ─────────────────────────────────────────────────────────
+		.add('POST', 'files/presign-upload', ({ ctx, body }) => {
+			const size = Number(body?.size_bytes ?? 0);
+			if (size > MAX_FILE_BYTES) throw new LocalHttpError(413, 'Files up to 25 MB');
+			const key = fileKey(String(body?.file_name ?? 'file'), crypto.randomUUID());
+			return {
+				key,
+				upload_url: ctx.files.url(key),
+				method: 'PUT',
+				content_type: body?.content_type || 'application/octet-stream',
+				max_bytes: MAX_FILE_BYTES,
+			};
+		})
+		.add('GET', 'tasks/:id(\\d+)/files', async ({ ctx, params }) => {
+			await loadTask(ctx, Number(params.id));
+			const rows = await ctx.db.select(`SELECT * FROM files WHERE task_id = ? ORDER BY id DESC`, [Number(params.id)]);
+			return rows.map((row) => fileJson(row, ctx));
+		})
+		.add('POST', 'tasks/:id(\\d+)/files', async ({ ctx, params, body }) => {
+			await loadTask(ctx, Number(params.id));
+			const key = String(body?.file_path ?? '');
+			if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(key)) throw new LocalHttpError(422, 'Unknown file');
+			const result = await ctx.db.execute(
+				`INSERT INTO files (task_id, name, file_path, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+				[
+					Number(params.id),
+					String(body?.file_name ?? key.split('/')[1]),
+					key,
+					body?.mime_type ?? null,
+					Number(body?.size_bytes ?? 0),
+					iso(ctx),
+				],
+			);
+			return fileJson(await loadFile(ctx, Number(result.lastInsertId)), ctx);
+		}, 201)
+		.add('GET', 'files/:id(\\d+)/signed-url', async ({ ctx, params }) => {
+			const file = await loadFile(ctx, Number(params.id));
+			return { url: ctx.files.url(file.file_path), expires_at: '9999-12-31T23:59:59Z' };
+		})
+		.add('GET', 'files/:id(\\d+)/content', async ({ ctx, params }) => {
+			const file = await loadFile(ctx, Number(params.id));
+			return new LocalRaw(await ctx.files.read(file.file_path));
+		})
+		.add('DELETE', 'files/:id(\\d+)', async ({ ctx, params }) => {
+			const file = await loadFile(ctx, Number(params.id));
+			await ctx.db.execute(`DELETE FROM files WHERE id = ?`, [file.id]);
+			await ctx.files.remove(file.file_path);
+			return { success: true };
+		})
+		.add('GET', 'workspaces/:wid/files', async ({ ctx, query }) => {
+			const perPage = Math.max(1, Number(query.get('per_page') ?? 40) || 40);
+			const page = Math.max(1, Number(query.get('page') ?? 1) || 1);
+			const images = query.get('images') === 'true';
+			const where = `WHERE t.deleted_at IS NULL${images ? ` AND f.mime_type LIKE 'image/%'` : ''}`;
+			const [{ n }] = await ctx.db.select<{ n: number }>(
+				`SELECT COUNT(*) AS n FROM files f JOIN tasks t ON t.id = f.task_id ${where}`,
+			);
+			const rows = await ctx.db.select<any>(
+				`SELECT f.*, t.title AS task_title, t.category_tasks_sequence_id AS seq, c.code AS c_code
+				 FROM files f JOIN tasks t ON t.id = f.task_id LEFT JOIN categories c ON c.id = t.project_category_id
+				 ${where} ORDER BY f.id DESC LIMIT ? OFFSET ?`,
+				[perPage, (page - 1) * perPage],
+			);
+			const total = Number(n);
+			return {
+				data: rows.map((row) => ({
+					id: row.id,
+					name: row.name,
+					mime_type: row.mime_type,
+					size: row.size,
+					user_id: ctx.user.id,
+					created_at: row.created_at,
+					task: {
+						id: row.task_id,
+						key: row.c_code && row.seq ? `${row.c_code}-${row.seq}` : null,
+						title: row.task_title,
+					},
+				})),
+				meta: { current_page: page, per_page: perPage, total, last_page: Math.max(1, Math.ceil(total / perPage)) },
+			};
 		})
 		// ── statuses ────────────────────────────────────────────────────────────
 		.add('GET', 'workspaces/statuses', async ({ ctx }) => (await loadStatuses(ctx)).map(statusJson))
@@ -429,6 +510,38 @@ export const createLocalApi = () =>
 			),
 		)
 		.add('GET', 'daily-routines/tasks/count', () => ({ count: 0 }));
+
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+/** Keys the file scheme accepts: `<uuid>/<name of [A-Za-z0-9._-]>`. */
+export const fileKey = (name: string, id: string) => {
+	const base =
+		name
+			.normalize('NFKD')
+			.replace(/[^A-Za-z0-9._-]+/g, '-')
+			.replace(/^[-.]+|-+$/g, '')
+			.slice(0, 120) || 'file';
+	return `${id}/${base}`;
+};
+
+const fileJson = (row: any, ctx: LocalContext) => ({
+	id: row.id,
+	task_id: row.task_id,
+	user_id: ctx.user.id,
+	workspace_id: ctx.workspace.id,
+	name: row.name,
+	original_name: row.name,
+	file_path: row.file_path,
+	mime_type: row.mime_type,
+	size: row.size,
+	created_at: row.created_at,
+});
+
+const loadFile = async (ctx: LocalContext, id: number) => {
+	const [row] = await ctx.db.select<any>(`SELECT * FROM files WHERE id = ?`, [id]);
+	if (!row) throw notFound('File');
+	return row;
+};
 
 const commentJson = (row: any, ctx: LocalContext) => ({
 	id: row.id,

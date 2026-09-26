@@ -1,5 +1,5 @@
 import { migrate } from './schema';
-import type { LocalContext, LocalDb, LocalUser, LocalWorkspace } from './types';
+import type { LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
 
 const ACTIVE_KEY = 'local.activeWorkspace';
 
@@ -77,6 +77,22 @@ const openDatabase = async (workspace: LocalWorkspace): Promise<LocalDb> => {
 	return db;
 };
 
+const filesOf = (workspace: LocalWorkspace): LocalFiles => {
+	const url = (key: string) =>
+		(window as any).__TAURI_INTERNALS__.convertFileSrc(`${workspace.code}/${key}`, 'tmgrfile');
+	return {
+		url,
+		read: async (key) => {
+			const response = await fetch(url(key));
+			if (!response.ok) throw new Error(`file ${key}: ${response.status}`);
+			return response.blob();
+		},
+		remove: async (key) => {
+			await fetch(url(key), { method: 'DELETE' });
+		},
+	};
+};
+
 export const localContext = async (
 	workspace: LocalWorkspace,
 	user: LocalUser,
@@ -87,5 +103,5 @@ export const localContext = async (
 		databases.set(workspace.code, db);
 		db.catch(() => databases.delete(workspace.code));
 	}
-	return { db: await db, workspace, user, now: () => new Date() };
+	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace) };
 };

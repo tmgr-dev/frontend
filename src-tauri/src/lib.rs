@@ -1,6 +1,7 @@
 mod capture;
 mod idle;
 mod local_db;
+mod local_files;
 mod local_workspaces;
 mod quick_add;
 mod tray;
@@ -87,6 +88,9 @@ pub fn run() {
     .manage(tray::TrayStore::default())
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
+    .register_uri_scheme_protocol(local_files::SCHEME, |ctx, request| {
+      local_files::handle(ctx.app_handle(), request)
+    })
     .invoke_handler(tauri::generate_handler![
       tray::tray_update,
       quick_add::open_quick_add,
