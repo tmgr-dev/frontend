@@ -16,7 +16,13 @@ pub const GENERATION: &str = "isolation-selftest";
 const KEY: &str = "selftest.probe/page";
 const ARG: &str = "--plugin-isolation-selftest";
 
-const APP_COMMANDS: [&str; 8] = [
+const APP_COMMANDS: [&str; 14] = [
+  "plugin_install",
+  "plugin_uninstall",
+  "plugin_github_release",
+  "local_db_execute",
+  "local_export_write",
+  "plugin_pick_file",
   "plugin_window_reply",
   "plugin_page_put",
   "plugin_window_open",
@@ -47,6 +53,12 @@ fn probe(port: u16) -> String {
   const base = 'http://127.0.0.1:{port}';
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const args = {{
+    plugin_install: {{ plugin: {{ id: 'evil.plugin', repo: 'evil/plugin', tag: 'v1', sha256: '', bundle: '', signature: '', public_key: '' }} }},
+    plugin_uninstall: {{ id: 'tmgr.estimate' }},
+    plugin_github_release: {{ repo: 'evil/plugin' }},
+    local_db_execute: {{ code: 'x', sql: 'DELETE FROM tasks', params: [] }},
+    local_export_write: {{ code: 'x', folder: 'x', files: [] }},
+    plugin_pick_file: {{ title: 'x' }},
     plugin_window_reply: {{ callId: 1, ok: true, value: null }},
     plugin_page_put: {{ key: 'other.plugin/page', html: 'x' }},
     plugin_window_open: {{ key: 'other.plugin/page', title: 'x', generation: 'x' }},

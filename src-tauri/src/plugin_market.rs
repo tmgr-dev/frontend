@@ -226,9 +226,20 @@ fn valid_id(id: &str) -> bool {
 
 /// Installs only a signed bundle. The publisher key is the catalog's for that repository, else the key the
 /// first install pinned, else (first install of an unlisted plugin) the release's own key.
+/// The id inside the bundle's own manifest; the id the caller names must be this one.
+fn manifest_id(bundle: &str) -> Option<String> {
+  serde_json::from_str::<serde_json::Value>(bundle).ok()?["manifest"]["id"].as_str().map(str::to_owned)
+}
+
 pub fn install_into(root: &Path, plugin: &InstalledPlugin, catalog: &Catalog) -> Result<(), String> {
   if !valid_id(&plugin.id) {
     return Err("bad plugin id".into());
+  }
+  if manifest_id(&plugin.bundle).as_deref() != Some(plugin.id.as_str()) {
+    return Err("the bundle's manifest names another plugin id".into());
+  }
+  if parse_repo(&plugin.repo).as_deref() != Ok(plugin.repo.as_str()) || !valid_tag(&plugin.tag) {
+    return Err("bad repository or tag".into());
   }
   if sha256_hex(plugin.bundle.as_bytes()) != plugin.sha256 {
     return Err("the bundle does not match its checksum".into());
@@ -275,6 +286,7 @@ pub fn list_in(root: &Path, catalog: &Catalog) -> Vec<InstalledPlugin> {
       let raw = fs::read_to_string(entry.path().join("plugin.json")).ok()?;
       let plugin: InstalledPlugin = serde_json::from_str(&raw).ok()?;
       let sound = valid_id(&plugin.id)
+        && manifest_id(&plugin.bundle).as_deref() == Some(plugin.id.as_str())
         && sha256_hex(plugin.bundle.as_bytes()) == plugin.sha256
         && verify_signature(&plugin.bundle, &plugin.signature, &plugin.public_key).is_ok();
       if !sound {
@@ -397,6 +409,11 @@ mod tests {
     assert!(install_into(&root, &InstalledPlugin { sha256: "0".repeat(64), ..signed() }, &none).is_err());
     assert!(install_into(&root, &InstalledPlugin { id: "../evil".into(), ..signed() }, &none).is_err());
     assert!(install_into(&root, &InstalledPlugin { signature: "".into(), ..signed() }, &none).is_err());
+    assert!(install_into(&root, &InstalledPlugin { id: "acme.other".into(), ..signed() }, &none)
+      .unwrap_err()
+      .contains("manifest names another plugin id"));
+    assert!(install_into(&root, &InstalledPlugin { repo: "../x".into(), ..signed() }, &none).is_err());
+    assert!(install_into(&root, &InstalledPlugin { tag: "v1?x".into(), ..signed() }, &none).is_err());
     let other_repo = InstalledPlugin { repo: "mallory/plugin".into(), ..signed() };
     assert!(install_into(&root, &other_repo, &none).unwrap_err().contains("already installed from github.com/acme/timer"));
     assert_eq!(list_in(&root, &none).len(), 1);

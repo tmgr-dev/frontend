@@ -55,10 +55,11 @@ const installedBlocked = new Map<string, string>();
 /** Installed from GitHub; Rust drops any whose bundle no longer matches the checksum agreed to. */
 const installedPackages = async (): Promise<PluginPackage[]> => {
 	const { invoke } = await import('@tauri-apps/api/core');
-	const found =
-		(await invoke<(Release & { id: string })[]>('plugins_installed_list').catch(
-			() => null,
-		)) ?? [];
+	const found = await invoke<(Release & { id: string })[]>(
+		'plugins_installed_list',
+	).catch(() => null);
+	// Keep the last known blocks: a failed listing must not unblock what is already loaded.
+	if (!found) return [];
 	Object.keys(installedPluginErrors).forEach(
 		(key) => delete installedPluginErrors[key],
 	);
@@ -112,6 +113,20 @@ const clientFor = (workspaceId: number, store: Store<any>) => {
 	return client;
 };
 
+const pickFile = async (pluginName: string) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	const picked = await invoke<{
+		name: string;
+		size: number;
+		base64: string;
+	} | null>('plugin_pick_file', {
+		title: `Choose a file for the ${pluginName} plugin`,
+	});
+	if (!picked) return null;
+	const bytes = Uint8Array.from(atob(picked.base64), (c) => c.charCodeAt(0));
+	return { name: picked.name, ...encodeFile(bytes, null, picked.name) };
+};
+
 const cloudClients = new Map<string, AxiosInstance>();
 
 /** Plugin data in a shared workspace: its own client and short-lived plugin token, never the user's. */
@@ -149,7 +164,20 @@ const syncWorkspacePlugins = async (workspaceId: number) => {
 	const errors: Record<string, string> = {};
 	for (const record of workspacePlugins[workspaceId] ?? []) {
 		if (record.repo === BUILTIN_REPO) continue;
-		if (matchesPin(record, pluginState.plugins[record.plugin_id])) continue;
+		const existing = pluginState.plugins[record.plugin_id];
+		if (matchesPin(record, existing)) continue;
+		if (existing) {
+			// The member's own install is theirs: never replace it (with other permissions or an older
+			// release) behind their back. The pinned release simply does not run until they match.
+			errors[record.plugin_id] = `Shared workspace plugin: this workspace runs ${
+				record.repo
+			} ${record.version}, but ${
+				existing.source === 'installed'
+					? `you have ${existing.origin?.tag ?? 'another release'} installed`
+					: `a ${existing.source} plugin uses this id`
+			}. Remove yours to use the workspace's release.`;
+			continue;
+		}
 		try {
 			const release = await invoke<Release>('plugin_github_release', {
 				repo: record.repo,
@@ -299,6 +327,16 @@ export const installPlugins = async (
 				command: string,
 				args: Record<string, unknown>,
 			) => (await import('@tauri-apps/api/core')).invoke<T>(command, args);
+			if (workspace.kind === 'cloud') {
+				const localOnly = async () => {
+					throw new Error('exports go to a local workspace folder; this one is shared');
+				};
+				return {
+					export: localOnly,
+					reveal: localOnly,
+					pick: async () => pickFile(pluginName),
+				};
+			}
 			return {
 				export: async (path, content) => {
 					await invoke('local_export_write', {
@@ -314,20 +352,7 @@ export const installPlugins = async (
 						relative: `exports/${folder}/${path}`,
 					});
 				},
-				pick: async () => {
-					const picked = await invoke<{
-						name: string;
-						size: number;
-						base64: string;
-					} | null>('plugin_pick_file', {
-						title: `Choose a file for the ${pluginName} plugin`,
-					});
-					if (!picked) return null;
-					const bytes = Uint8Array.from(atob(picked.base64), (c) =>
-						c.charCodeAt(0),
-					);
-					return { name: picked.name, ...encodeFile(bytes, null, picked.name) };
-				},
+				pick: async () => pickFile(pluginName),
 			};
 		},
 		windows: {
@@ -479,7 +504,8 @@ export const setWorkspacePlugin = async (pluginId: string, on: boolean) => {
 		await $axios.delete(`workspaces/${workspace.id}/plugins/${pluginId}`);
 	}
 	await loadWorkspacePlugins(workspace.id);
-	await pluginHost()?.activate(workspace);
+	if (pluginState.workspace?.id === workspace.id)
+		await pluginHost()?.activate(workspace);
 };
 
 /** A member lets a shared workspace's plugin reach this computer (network, files), or takes it back. */
@@ -498,5 +524,6 @@ export const refreshWorkspacePlugins = async () => {
 	if (!workspace || workspace.kind !== 'cloud') return;
 	await loadWorkspacePlugins(workspace.id);
 	await syncWorkspacePlugins(workspace.id);
-	await pluginHost()?.activate(workspace);
+	if (pluginState.workspace?.id === workspace.id)
+		await pluginHost()?.activate(workspace);
 };

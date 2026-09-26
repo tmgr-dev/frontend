@@ -750,3 +750,49 @@ test('a member gets the plugins the creator turned on, and allows network and fi
   await expect(page.getByText('answer: from this computer').first()).toBeVisible();
   expect(shell.fetches.map((f) => f.url)).toEqual(['http://localhost:11434/x']);
 });
+
+test("a shared workspace never replaces the member's own install of a plugin", async ({
+  page,
+}) => {
+  const own = {
+    manifest: {
+      id: 'acme.net',
+      name: 'Acme net',
+      version: '0.9.0',
+      engines: { tmgr: '^1.0' },
+      permissions: [],
+    },
+    code: '',
+  };
+  const shell = await desktopPage(page, {}, { releases: {} });
+  await shell('plugin_install', {
+    plugin: {
+      id: 'acme.net',
+      repo: 'acme/net',
+      tag: 'v0.9.0',
+      sha256: 'own',
+      bundle: JSON.stringify(own),
+      signature: '',
+      public_key: 'RWtestkey',
+    },
+  });
+  await sharedWorkspacePlugins(page, [
+    {
+      plugin_id: 'acme.net',
+      repo: 'acme/net',
+      version: 'v1.0.0',
+      sha256: 'a'.repeat(64),
+      public_key: 'RWtestkey',
+      permissions: [],
+      enabled_by: 1,
+    },
+  ]);
+  await page.goto('/demo/board');
+  await openPluginSettings(page);
+  await expect(
+    page.getByText(/this workspace runs acme\/net v1.0.0, but you have v0.9.0 installed/),
+  ).toBeVisible();
+  const card = page.locator('article', { hasText: 'Acme net' });
+  await expect(card.getByText('Off')).toBeVisible();
+  expect(shell.installed.get('acme.net').tag).toBe('v0.9.0');
+});

@@ -59,7 +59,7 @@ impl Catalog {
       .find(|block| {
         block.id.as_deref() == Some(id)
           || block.repo.as_deref().zip(repo).is_some_and(|(a, b)| a.eq_ignore_ascii_case(b))
-          || block.sha256.as_deref().zip(sha256).is_some_and(|(a, b)| a == b)
+          || block.sha256.as_deref().zip(sha256).is_some_and(|(a, b)| a.eq_ignore_ascii_case(b))
       })
       .map(|block| block.reason.chars().take(200).collect())
   }
@@ -70,10 +70,17 @@ pub fn verify_catalog(json: &str, signature: &str, key: &str) -> Result<Catalog,
   serde_json::from_str(json).map_err(|e| format!("catalog: {e}"))
 }
 
+/// Catalog and signature live in one file, replaced atomically, so a crash never leaves a pair that does not
+/// verify (which would read as "no blocklist").
+#[derive(Serialize, Deserialize)]
+struct Cached {
+  json: String,
+  signature: String,
+}
+
 fn read_pair(dir: &Path) -> Option<(String, String)> {
-  let json = fs::read_to_string(dir.join(CATALOG_FILE)).ok()?;
-  let signature = fs::read_to_string(dir.join(format!("{CATALOG_FILE}.minisig"))).ok()?;
-  Some((json, signature))
+  let cached: Cached = serde_json::from_str(&fs::read_to_string(dir.join(CATALOG_FILE)).ok()?).ok()?;
+  Some((cached.json, cached.signature))
 }
 
 /// The cached catalog, re-verified on every read; an empty one when there is none or it does not verify.
@@ -89,11 +96,11 @@ pub fn accept(dir: &Path, json: &str, signature: &str, key: &str) -> Result<Cata
     return Err(format!("catalog {} is older than the cached {}", catalog.serial, current.serial));
   }
   fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-  for (name, content) in [(format!("{CATALOG_FILE}.minisig"), signature), (CATALOG_FILE.to_string(), json)] {
-    let tmp = dir.join(format!("{name}.tmp"));
-    fs::write(&tmp, content).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, dir.join(name)).map_err(|e| e.to_string())?;
-  }
+  let content = serde_json::to_string(&Cached { json: json.into(), signature: signature.into() })
+    .map_err(|e| e.to_string())?;
+  let tmp = dir.join(format!("{CATALOG_FILE}.tmp"));
+  fs::write(&tmp, content).map_err(|e| e.to_string())?;
+  fs::rename(&tmp, dir.join(CATALOG_FILE)).map_err(|e| e.to_string())?;
   Ok(catalog)
 }
 
@@ -150,7 +157,7 @@ mod tests {
     let catalog = verify_catalog(JSON, SIGNATURE, KEY.trim()).unwrap();
     assert_eq!(catalog.blocked_reason("evil.plugin", None, None).as_deref(), Some("steals data"));
     assert_eq!(catalog.blocked_reason("x.y", Some("Mallory/Tools"), None).as_deref(), Some("compromised"));
-    assert_eq!(catalog.blocked_reason("x.y", Some("a/b"), Some(&"b".repeat(64))).as_deref(), Some("bad release"));
+    assert_eq!(catalog.blocked_reason("x.y", Some("a/b"), Some(&"B".repeat(64))).as_deref(), Some("bad release"));
     assert_eq!(catalog.blocked_reason("acme.timer", Some("acme/timer"), Some(&"a".repeat(64))), None);
     assert_eq!(catalog.entry_for_repo("ACME/timer").map(|e| e.id.as_str()), Some("acme.timer"));
   }
@@ -164,11 +171,9 @@ mod tests {
     let old_signature = include_str!("../tests/fixtures/catalog-old.json.minisig");
     assert!(accept(&dir, old, old_signature, KEY.trim()).unwrap_err().contains("older"));
     assert_eq!(cached(&dir, KEY.trim()).serial, 2);
-    let newer = r#"{"serial":3,"plugins":[],"blocked":[]}"#;
-    fs::write(dir.join("catalog.json"), newer).unwrap();
+    let edited = fs::read_to_string(dir.join("catalog.json")).unwrap().replace("\\\"serial\\\":2", "\\\"serial\\\":3");
+    fs::write(dir.join("catalog.json"), &edited).unwrap();
     assert_eq!(cached(&dir, KEY.trim()), Catalog::default(), "an edited cache does not verify");
-    fs::write(dir.join("catalog.json"), JSON).unwrap();
-    assert_eq!(cached(&dir, KEY.trim()).serial, 2);
     let _ = fs::remove_dir_all(&dir);
   }
 }
