@@ -5,6 +5,7 @@ import {
 	findConflict,
 	mergeShortcuts,
 	parseDeepLink,
+	pickQuickAddWorkspace,
 	splitQuickText,
 	validateAccelerator,
 } from '../desktopShortcuts';
@@ -108,5 +109,23 @@ describe('splitQuickText', () => {
 		const split = splitQuickText(long);
 		expect(split.title.length).toBeLessThanOrEqual(120);
 		expect(split.note).toBe(long);
+	});
+});
+
+describe('pickQuickAddWorkspace', () => {
+	const workspaces = [{ id: 1 }, { id: 56 }, { id: 58 }];
+
+	it('prefers the remembered workspace', () => {
+		expect(pickQuickAddWorkspace(workspaces, 58, 56)).toBe(58);
+	});
+
+	it('falls back to the current workspace when the remembered one is gone', () => {
+		expect(pickQuickAddWorkspace(workspaces, 999, 56)).toBe(56);
+		expect(pickQuickAddWorkspace(workspaces, null, 56)).toBe(56);
+	});
+
+	it('falls back to the first workspace', () => {
+		expect(pickQuickAddWorkspace(workspaces, null, null)).toBe(1);
+		expect(pickQuickAddWorkspace([], null, null)).toBeNull();
 	});
 });

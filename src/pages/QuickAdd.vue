@@ -7,8 +7,18 @@
 			data-tauri-drag-region
 			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
 		>
-			<span data-tauri-drag-region>
-				{{ screenshotUrl ? 'Add task with screenshot to backlog' : 'Add to Daily Routines' }}
+			<span data-tauri-drag-region class="flex items-center gap-1.5">
+				{{ screenshotUrl ? 'Add task with screenshot to backlog in' : 'Add to Daily Routines in' }}
+				<select
+					v-model="workspaceId"
+					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-none dark:border-border dark:bg-background"
+					:disabled="saving"
+					@change="rememberWorkspace"
+				>
+					<option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
+						{{ ws.name }}
+					</option>
+				</select>
 			</span>
 			<div class="flex items-center gap-2">
 				<span data-tauri-drag-region>esc to close</span>
@@ -75,16 +85,30 @@
 <script>
 	import { createDailyTask } from '@/actions/tmgr/daily-tasks';
 	import { uploadTaskFile } from '@/actions/tmgr/files';
-	import { getStatuses } from '@/actions/tmgr/statuses';
+	import { getStatusesOfWorkspace } from '@/actions/tmgr/statuses';
 	import { createTask } from '@/actions/tmgr/tasks';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
-	import { splitQuickText } from '@/utils/desktopShortcuts';
+	import {
+		pickQuickAddWorkspace,
+		splitQuickText,
+	} from '@/utils/desktopShortcuts';
 	import { format } from 'date-fns';
 	import { defineComponent, nextTick, onMounted, ref, watch } from 'vue';
 
 	const invoke = async (command, args) => {
 		const core = await import('@tauri-apps/api/core');
 		return core.invoke(command, args);
+	};
+
+	const WORKSPACE_KEY = 'desktop.quickAdd.workspaceId';
+
+	const rememberedWorkspace = () => {
+		try {
+			return Number(localStorage.getItem(WORKSPACE_KEY)) || null;
+		} catch {
+			return null;
+		}
 	};
 
 	const ACCESSIBILITY_HINT =
@@ -99,6 +123,15 @@
 			const screenshot = ref(null);
 			const screenshotUrl = ref('');
 			const workspaceId = ref(null);
+			const workspaces = ref([]);
+
+			const rememberWorkspace = () => {
+				try {
+					localStorage.setItem(WORKSPACE_KEY, String(workspaceId.value));
+				} catch {
+					/* storage unavailable: falls back to the current workspace */
+				}
+			};
 			const saving = ref(false);
 			const message = ref('');
 			const error = ref(false);
@@ -125,7 +158,16 @@
 				const payload = await invoke('take_quick_add');
 				if (payload === null || payload === undefined) return;
 				reset();
-				workspaceId.value = payload?.workspaceId ?? null;
+				try {
+					workspaces.value = await getWorkspaces();
+				} catch (e) {
+					console.error('quick add: workspaces not loaded', e);
+				}
+				workspaceId.value = pickQuickAddWorkspace(
+					workspaces.value,
+					rememberedWorkspace(),
+					payload?.workspaceId ?? null,
+				);
 				if (payload?.text) {
 					const split = splitQuickText(payload.text);
 					title.value = split.title;
@@ -164,7 +206,9 @@
 						const task = await createTask({
 							...fields,
 							status: 'created',
-							status_id: pickDefaultStatusId(await getStatuses()),
+							status_id: pickDefaultStatusId(
+								await getStatusesOfWorkspace(workspaceId.value),
+							),
 							is_daily_routine: false,
 						});
 						await uploadTaskFile(task.id, screenshot.value);
@@ -215,6 +259,9 @@
 				message,
 				error,
 				titleInput,
+				workspaceId,
+				workspaces,
+				rememberWorkspace,
 				hide,
 				submit,
 				dropScreenshot,

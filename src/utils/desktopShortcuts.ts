@@ -145,6 +145,18 @@ export const splitQuickText = (
 	return { title, note: trimmed };
 };
 
+export const pickQuickAddWorkspace = (
+	workspaces: { id: number }[],
+	remembered: number | null,
+	current: number | null,
+): number | null => {
+	const has = (id: number | null) =>
+		id !== null && workspaces.some((w) => w.id === id);
+	if (has(remembered)) return remembered;
+	if (has(current)) return current;
+	return workspaces[0]?.id ?? null;
+};
+
 const STORAGE_KEY = 'desktop.shortcuts';
 
 const loadShortcuts = (): ShortcutConfig => {

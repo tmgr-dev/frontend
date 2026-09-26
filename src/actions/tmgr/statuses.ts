@@ -19,6 +19,20 @@ export interface Status {
 	pivot: StatusPivot;
 }
 
+export const getStatusesOfWorkspace = async (
+	workspaceId: number,
+): Promise<Status[]> =>
+	requestCache.getOrFetch<Status[]>(
+		`statuses-workspace-${workspaceId}`,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/workspaces/${workspaceId}/statuses`);
+			return data;
+		},
+		{ ttl: 300000 },
+	);
+
 export const getStatuses = async (
 	useCache: boolean = true,
 ): Promise<Status[]> => {
