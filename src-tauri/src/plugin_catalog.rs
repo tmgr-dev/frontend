@@ -172,3 +172,20 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
   }
 }
+
+#[cfg(test)]
+mod network {
+  #[test]
+  #[ignore = "reaches api.github.com"]
+  fn the_published_catalog_verifies_with_the_root_key() {
+    let assets = tauri::async_runtime::block_on(crate::plugin_market::latest_assets(
+      super::CATALOG_REPO,
+      &["catalog.json", "catalog.json.minisig"],
+      super::MAX_CATALOG_BYTES,
+    ))
+    .unwrap();
+    let catalog = super::verify_catalog(&assets.files[0], &assets.files[1], super::ROOT_KEY).unwrap();
+    assert!(catalog.serial >= 1);
+  }
+}
+
