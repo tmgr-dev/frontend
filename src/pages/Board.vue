@@ -49,6 +49,7 @@
 
 								<!-- Desktop: WorkspaceUsers + filters teleported into top header (right of breadcrumbs) -->
 								<Teleport
+									defer
 									to="#page-header-actions"
 									:disabled="!headerSlotReady"
 								>
