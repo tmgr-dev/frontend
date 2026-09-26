@@ -11,6 +11,8 @@ mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
 mod plugin_net;
+#[cfg(feature = "isolation-selftest")]
+mod plugin_selftest;
 mod plugin_windows;
 mod quick_add;
 mod tray;
@@ -164,6 +166,12 @@ pub fn run() {
           .level(log::LevelFilter::Info)
           .build(),
       )?;
+
+      #[cfg(feature = "isolation-selftest")]
+      if let Some(report) = plugin_selftest::requested() {
+        plugin_selftest::start(app.handle(), report)?;
+        return Ok(());
+      }
 
       let config = app
         .config()

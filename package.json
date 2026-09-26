@@ -13,6 +13,7 @@
 		"typecheck": "vue-tsc -p tsconfig.app.json --noEmit",
 		"format": "prettier .  --write",
 		"test:performance": "playwright test",
+		"test:desktop-isolation": "cargo test --manifest-path src-tauri/Cargo.toml --features isolation-selftest plugin_selftest && node scripts/desktop-isolation.mjs",
 		"tauri": "tauri",
 		"desktop:dev": "tauri dev",
 		"desktop:build": "scripts/build-desktop.sh"

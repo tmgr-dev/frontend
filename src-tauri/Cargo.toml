@@ -12,6 +12,10 @@ rust-version = "1.77.2"
 name = "tmgr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Real-build containment check for plugin windows (npm run test:desktop-isolation). Never in release builds.
+isolation-selftest = []
+
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 

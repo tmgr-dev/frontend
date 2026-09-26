@@ -213,6 +213,10 @@ pub async fn plugin_window_call<R: Runtime>(
     *count += 1;
     InFlight { map: &state.in_flight, label: window.label().to_string() }
   };
+  #[cfg(feature = "isolation-selftest")]
+  if owner.generation == crate::plugin_selftest::GENERATION {
+    return crate::plugin_selftest::answer(&app, &method, params);
+  }
   let call_id = state.next_call.fetch_add(1, Ordering::Relaxed) + 1;
   let (sender, receiver) = oneshot::channel();
   state.pending.lock().map_err(|e| e.to_string())?.insert(call_id, sender);
