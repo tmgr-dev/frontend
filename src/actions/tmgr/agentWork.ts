@@ -24,6 +24,7 @@ export interface AgentWorkRun {
 	pr_url: string | null;
 	commits: { sha: string; message: string | null }[];
 	tests: { passed: number | null; failed: number | null; command: string | null } | null;
+	version: number;
 }
 
 export interface AgentWorkTotals {

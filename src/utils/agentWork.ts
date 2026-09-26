@@ -65,7 +65,24 @@ export const isHttpUrl = (url: string | null): url is string =>
 export const upsertRun = (
 	runs: AgentWorkRun[],
 	run: AgentWorkRun,
-): AgentWorkRun[] =>
-	runs.some((r) => r.id === run.id)
-		? runs.map((r) => (r.id === run.id ? run : r))
-		: [run, ...runs];
+): AgentWorkRun[] => {
+	const known = runs.find((r) => r.id === run.id);
+	if (!known) return [run, ...runs];
+	if (known.version > run.version) return runs;
+	return runs.map((r) => (r.id === run.id ? run : r));
+};
+
+/** A fetched snapshot never replaces a newer version of a run that arrived over realtime meanwhile. */
+export const mergeSnapshot = (
+	current: AgentWorkRun[],
+	snapshot: AgentWorkRun[],
+): AgentWorkRun[] => {
+	const merged = snapshot.map((run) => {
+		const live = current.find((r) => r.id === run.id);
+		return live && live.version > run.version ? live : run;
+	});
+	const newer = current.filter(
+		(run) => !snapshot.some((r) => r.id === run.id) && run.id > (snapshot[0]?.id ?? 0),
+	);
+	return [...newer, ...merged];
+};

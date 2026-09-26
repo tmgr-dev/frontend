@@ -88,7 +88,7 @@
 					data-selectable
 				>
 					<li v-for="commit in run.commits" :key="commit.sha">
-						<span class="text-ink">{{ commit.sha.slice(0, 7) }}</span>
+						<span class="text-ink">{{ (commit.sha || '').slice(0, 7) }}</span>
 						{{ commit.message }}
 					</li>
 				</ul>
@@ -106,8 +106,10 @@
 		isHttpUrl,
 		liveSeconds,
 		liveTotals,
+		mergeSnapshot,
 		upsertRun,
 	} from '@/utils/agentWork';
+	import store from '@/store';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		computed,
@@ -137,8 +139,12 @@
 			workspaceId: { type: Number, default: undefined },
 		},
 		setup(props) {
-			const { subscribeToWorkspace, unsubscribeHandlerFromWorkspace } =
-				usePusher();
+			const {
+				subscribeToWorkspace,
+				subscribeToUser,
+				unsubscribeHandler,
+				unsubscribeHandlerFromWorkspace,
+			} = usePusher();
 			const runs = ref([]);
 			const serverTotals = ref({
 				agent_seconds: 0,
@@ -153,6 +159,8 @@
 			let ticker = null;
 			let subscription = null;
 			let subscribedWorkspace = null;
+			let timerSubscription = null;
+			let timerUserId = null;
 
 			const markReceived = (list) => {
 				const at = Date.now();
@@ -167,7 +175,7 @@
 					const overview = await getAgentWork(props.taskId);
 					if (current !== request) return;
 					markReceived(overview.runs);
-					runs.value = overview.runs;
+					runs.value = mergeSnapshot(runs.value, overview.runs);
 					serverTotals.value = overview.totals;
 					totalsReceivedAt.value = Date.now();
 				} catch (error) {
@@ -212,6 +220,24 @@
 			};
 
 			watch(() => props.workspaceId, subscribe, { immediate: true });
+
+			const followTimer = (userId) => {
+				if (timerSubscription && timerUserId) {
+					unsubscribeHandler(`App.User.${timerUserId}`, timerSubscription);
+				}
+				timerSubscription = null;
+				timerUserId = userId || null;
+				if (!userId) return;
+				const reloadIfThisTask = (task) => {
+					if (task?.id === props.taskId) load();
+				};
+				timerSubscription = subscribeToUser(userId, {
+					onTaskCountdownStarted: reloadIfThisTask,
+					onTaskCountdownStopped: reloadIfThisTask,
+				});
+			};
+
+			watch(() => store.state.user?.id, followTimer, { immediate: true });
 			watch(
 				() => props.taskId,
 				() => {
@@ -224,6 +250,7 @@
 			onBeforeUnmount(() => {
 				clearInterval(ticker);
 				subscribe(null);
+				followTimer(null);
 			});
 
 			return {

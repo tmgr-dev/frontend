@@ -4,6 +4,7 @@ import {
 	isHttpUrl,
 	liveSeconds,
 	liveTotals,
+	mergeSnapshot,
 	upsertRun,
 } from '../agentWork';
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
@@ -25,6 +26,7 @@ const run = (overrides: Partial<AgentWorkRun> = {}): AgentWorkRun => ({
 	pr_url: null,
 	commits: [],
 	tests: null,
+	version: 0,
 	...overrides,
 });
 
@@ -105,4 +107,27 @@ it('accepts only http(s) links', () => {
 	expect(isHttpUrl('javascript:alert(1)')).toBe(false);
 	expect(isHttpUrl('data:text/html,x')).toBe(false);
 	expect(isHttpUrl(null)).toBe(false);
+});
+
+it('ignores a realtime event older than the run it would replace', () => {
+	const list = [run({ id: 1, version: 3, status: 'succeeded' })];
+	expect(upsertRun(list, run({ id: 1, version: 2, status: 'running' }))[0].status).toBe(
+		'succeeded',
+	);
+});
+
+it('keeps newer realtime state when an older snapshot arrives', () => {
+	const current = [
+		run({ id: 3, version: 0, status: 'running' }),
+		run({ id: 2, version: 4, status: 'succeeded' }),
+	];
+	const snapshot = [
+		run({ id: 2, version: 2, status: 'running' }),
+		run({ id: 1, version: 1 }),
+	];
+	expect(mergeSnapshot(current, snapshot).map((r) => [r.id, r.status])).toEqual([
+		[3, 'running'],
+		[2, 'succeeded'],
+		[1, 'succeeded'],
+	]);
 });
