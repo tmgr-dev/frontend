@@ -5,6 +5,7 @@ export interface FolderPlugin {
 	folder: string;
 	manifest: string;
 	code: string;
+	pages?: [string, string][];
 }
 
 /**
@@ -18,13 +19,27 @@ export const folderPackagesFrom = (
 	const taken = new Set(reservedIds);
 	const packages: PluginPackage[] = [];
 	const errors: Record<string, string> = {};
-	for (const { folder, manifest, code } of found) {
+	for (const { folder, manifest, code, pages = [] } of found) {
 		try {
 			const parsed = parseManifest(JSON.parse(manifest));
 			if (taken.has(parsed.id))
 				throw new Error(`id ${parsed.id} is already used by another plugin`);
+			const byPath: Record<string, string> = Object.fromEntries(pages);
+			const missing = parsed.contributes.views.find(
+				(view) => view.ui && !(view.ui in byPath),
+			);
+			if (missing) {
+				throw new Error(
+					`view ${missing.id} needs ${missing.ui}, which is not in the folder`,
+				);
+			}
 			taken.add(parsed.id);
-			packages.push({ manifest: parsed, code, source: 'folder' });
+			packages.push({
+				manifest: parsed,
+				code,
+				source: 'folder',
+				pages: byPath,
+			});
 		} catch (error) {
 			errors[folder] = (
 				error instanceof Error ? error.message : String(error)

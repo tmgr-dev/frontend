@@ -90,6 +90,49 @@ const resolveWorkspace = async (
 		: null;
 };
 
+interface WindowCall {
+	call_id: number;
+	plugin_id: string;
+	method: string;
+	params: unknown;
+}
+
+/** Plugin windows reach the app only through this: Rust names the plugin by its window, never the page. */
+const answerPluginWindows = async (
+	host: ReturnType<typeof createPluginHost>,
+) => {
+	const [{ listen }, { invoke }] = await Promise.all([
+		import('@tauri-apps/api/event'),
+		import('@tauri-apps/api/core'),
+	]);
+	await listen<WindowCall>('plugin-window://call', async ({ payload }) => {
+		let ok = true;
+		let value: unknown;
+		try {
+			value = JSON.parse(
+				JSON.stringify(
+					(await host.windowCall(
+						payload.plugin_id,
+						payload.method,
+						payload.params,
+					)) ?? null,
+				),
+			);
+		} catch (error: any) {
+			ok = false;
+			value = `${error?.code ?? 'ERROR'}: ${error?.message ?? error}`.slice(
+				0,
+				1000,
+			);
+		}
+		await invoke('plugin_window_reply', {
+			callId: payload.call_id,
+			ok,
+			value,
+		}).catch(() => undefined);
+	});
+};
+
 /** Desktop only: starts the plugin host and follows the current workspace. */
 export const installPlugins = async (
 	store: Store<any>,
@@ -153,6 +196,17 @@ export const installPlugins = async (
 				},
 			};
 		},
+		windows: {
+			open: async (key, html, title) => {
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke('plugin_page_put', { key, html });
+				await invoke('plugin_window_open', { key, title });
+			},
+			close: async (pluginId) => {
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke('plugin_windows_close', { pluginId });
+			},
+		},
 		fetch: async (request) => {
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });
@@ -163,6 +217,7 @@ export const installPlugins = async (
 		},
 	});
 	setPluginHost(host);
+	await answerPluginWindows(host);
 	watch(
 		() =>
 			Object.values(pluginState.plugins)

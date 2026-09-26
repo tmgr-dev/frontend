@@ -38,7 +38,8 @@ export interface PluginManifest {
 		boardCardBadges: { id: string }[];
 		statusBarItems: { id: string }[];
 		commands: { id: string; title: string }[];
-		views: { id: string; title: string }[];
+		/** With `ui`, the view is the plugin's own HTML page, opened in a separate window. */
+		views: { id: string; title: string; ui?: string }[];
 		taskPanelSections: { id: string; title: string }[];
 		settings: {
 			type: 'object';
@@ -63,6 +64,8 @@ const parseOrigin = (value: unknown): string => {
 	}
 	return value!.toString().replace(/\/$/, '');
 };
+
+const UI_PAGE = /^ui\/[a-z0-9][a-z0-9_-]*\.html$/i;
 
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
@@ -173,10 +176,19 @@ export const parseManifest = (raw: any): PluginManifest => {
 					title: text(item?.title, 'commands.title', 80),
 				};
 			}),
-			views: list(c.views, 'views', (item) => ({
-				id: localId(item, 'views'),
-				title: text(item?.title, 'views.title', 60),
-			})),
+			views: list(c.views, 'views', (item) => {
+				const view = {
+					id: localId(item, 'views'),
+					title: text(item?.title, 'views.title', 60),
+				};
+				if (item?.ui === undefined) return view;
+				if (typeof item.ui !== 'string' || !UI_PAGE.test(item.ui)) {
+					fail(
+						`views.ui "${String(item.ui)}" must be a file like ui/page.html`,
+					);
+				}
+				return { ...view, ui: item.ui as string };
+			}),
 			taskPanelSections: list(
 				c.taskPanelSections,
 				'taskPanelSections',

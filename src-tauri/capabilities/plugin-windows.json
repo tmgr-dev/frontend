@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "plugin-windows",
+  "description": "Plugin windows may only call the bridge to their own plugin's broker.",
+  "windows": [
+    "plugin-*"
+  ],
+  "permissions": [
+    "allow-plugin-window-call"
+  ]
+}

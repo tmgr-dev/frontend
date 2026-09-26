@@ -2,6 +2,7 @@ import type { DomainEvent } from '@/utils/domainEvents';
 import {
 	createBroker,
 	PLUGIN_EVENTS,
+	PluginError,
 	type BrokerDeps,
 	type DataApi,
 	type FetchRequest,
@@ -29,6 +30,8 @@ export interface PluginPackage {
 	manifest: PluginManifest;
 	code: string;
 	source: PluginSource;
+	/** HTML pages from the plugin's ui/ folder, by path, for views that open in a window. */
+	pages?: Record<string, string>;
 }
 
 export interface PluginLogLine {
@@ -95,6 +98,10 @@ export interface PluginHostDeps {
 		workspace: PluginWorkspace,
 		pluginName: string,
 	) => BrokerDeps['files'];
+	windows?: {
+		open: (key: string, html: string, title: string) => Promise<void>;
+		close: (pluginId: string) => Promise<void>;
+	};
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -109,6 +116,7 @@ const COLORS: Color[] = ['gray', 'green', 'yellow', 'red', 'blue'];
 
 interface Running {
 	process: PluginProcess;
+	broker: ReturnType<typeof createBroker>;
 	registered: Record<RegistrationKind, Set<string>>;
 }
 
@@ -177,6 +185,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		running.get(pluginId)?.process.stop();
 		running.delete(pluginId);
 		clearStatusBar(pluginId);
+		void deps.windows?.close(pluginId).catch(() => undefined);
 		const entry = state.plugins[pluginId];
 		if (entry) {
 			entry.status = status;
@@ -257,7 +266,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			cpuMs: deps.cpuMs,
 			wallMs: deps.wallMs,
 		});
-		running.set(pluginId, { process, registered });
+		running.set(pluginId, { process, broker, registered });
 		state.plugins[pluginId].status = 'starting';
 		state.plugins[pluginId].error = null;
 		try {
@@ -418,6 +427,43 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					)
 					.map((section) => ({ pluginId, ...section })),
 			);
+		},
+		/** A view with its own HTML page opens in a separate window: a busy page cannot freeze the app. */
+		async openView(pluginId: string, viewId: string) {
+			const plugin = running.get(pluginId);
+			const pkg = packages.get(pluginId);
+			const view = pkg?.manifest.contributes.views.find((v) => v.id === viewId);
+			const html = view?.ui ? pkg?.pages?.[view.ui] : undefined;
+			if (!plugin || !view || !html || !deps.windows) return false;
+			await deps.windows.open(`${pluginId}/${viewId}`, html, view.title);
+			return true;
+		},
+		/** Calls from a plugin's window use that plugin's broker: the same permissions as its logic. */
+		async windowCall(pluginId: string, method: string, params: unknown) {
+			const plugin = running.get(pluginId);
+			if (!plugin || state.plugins[pluginId]?.status !== 'running') {
+				throw new PluginError('NOT_RUNNING', `${pluginId} is not running`);
+			}
+			if (method === 'register' || method === 'log') {
+				throw new PluginError(
+					'UNKNOWN_METHOD',
+					`${method} is not available to plugin windows`,
+				);
+			}
+			if (method === 'commands.run') {
+				const p = (params ?? {}) as { id?: unknown; args?: unknown };
+				const declared = packages
+					.get(pluginId)!
+					.manifest.contributes.commands.some((c) => c.id === p.id);
+				if (!declared || !plugin.registered.command.has(String(p.id))) {
+					throw new PluginError(
+						'NOT_DECLARED',
+						`${String(p.id)} is not a command of ${pluginId}`,
+					);
+				}
+				return dispatch(pluginId, 'command', String(p.id), p.args ?? null);
+			}
+			return plugin.broker.call(method, params);
 		},
 		async renderPage(
 			pluginId: string,

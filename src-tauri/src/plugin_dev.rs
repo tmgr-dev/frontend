@@ -13,6 +13,25 @@ pub struct FolderPlugin {
   folder: String,
   manifest: String,
   code: String,
+  /// `ui/<name>.html` pages, at most 10.
+  pages: Vec<(String, String)>,
+}
+
+fn read_pages(dir: &Path) -> Vec<(String, String)> {
+  let Ok(entries) = fs::read_dir(dir.join("ui")) else { return Vec::new() };
+  let mut pages: Vec<(String, String)> = entries
+    .flatten()
+    .filter_map(|entry| {
+      let name = entry.file_name().to_string_lossy().into_owned();
+      if !name.ends_with(".html") || name.starts_with('.') {
+        return None;
+      }
+      Some((format!("ui/{name}"), read_small(&entry.path())?))
+    })
+    .collect();
+  pages.sort();
+  pages.truncate(10);
+  pages
 }
 
 fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -51,6 +70,7 @@ pub fn list_in(root: &Path) -> Vec<FolderPlugin> {
         folder: entry.file_name().to_string_lossy().into_owned(),
         manifest: read_small(&dir.join("manifest.json"))?,
         code: read_small(&dir.join("main.js"))?,
+        pages: read_pages(&dir),
       })
     })
     .collect();
@@ -94,9 +114,17 @@ mod tests {
     fs::write(root.join("c.huge/main.js"), vec![b'x'; (MAX_FILE_BYTES + 1) as usize]).unwrap();
     fs::write(root.join("loose.js"), "1").unwrap();
 
+    fs::create_dir_all(root.join("b.good/ui")).unwrap();
+    fs::write(root.join("b.good/ui/board.html"), "<h1>Board</h1>").unwrap();
+    fs::write(root.join("b.good/ui/notes.txt"), "not a page").unwrap();
     assert_eq!(
       list_in(&root),
-      vec![FolderPlugin { folder: "b.good".into(), manifest: "{}".into(), code: "1".into() }]
+      vec![FolderPlugin {
+        folder: "b.good".into(),
+        manifest: "{}".into(),
+        code: "1".into(),
+        pages: vec![("ui/board.html".into(), "<h1>Board</h1>".into())],
+      }]
     );
     assert!(list_in(&root.join("missing")).is_empty());
     let _ = fs::remove_dir_all(&root);

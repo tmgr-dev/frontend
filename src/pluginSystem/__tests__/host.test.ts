@@ -62,7 +62,14 @@ const pkg = (
 	source,
 });
 
-const setup = (packages: PluginPackage[], api: Partial<DataApi> = {}) => {
+const setup = (
+	packages: PluginPackage[],
+	api: Partial<DataApi> = {},
+	windows: {
+		open?: (...args: any[]) => Promise<void>;
+		close?: (pluginId: string) => Promise<void>;
+	} = {},
+) => {
 	const state: PluginHostState = {
 		workspace: null,
 		safeMode: false,
@@ -89,6 +96,10 @@ const setup = (packages: PluginPackage[], api: Partial<DataApi> = {}) => {
 		settings: { get: () => undefined, set: () => undefined },
 		notify: (title, message) => notices.push(`${title}: ${message}`),
 		currentWorkspaceId: () => current,
+		windows: {
+			open: windows.open ?? (async () => undefined),
+			close: windows.close ?? (async () => undefined),
+		},
 		cpuMs: 100,
 		wallMs: 2000,
 	});
@@ -346,4 +357,92 @@ it('coalesces a flood of refresh requests into one redraw', async () => {
 	await new Promise((resolve) => setTimeout(resolve, 600));
 	expect(state.revisions['tmgr.chatty']).toBe(1);
 	host.dispose();
+});
+
+describe('plugin windows', () => {
+	const windowPlugin = (permissions: any[] = ['tasks:read']) =>
+		({
+			...pkg(
+				'tmgr.win',
+				`tmgr.commands.register('tmgr.win.hello', (args) => 'hello ' + args.name);`,
+				permissions,
+				{
+					commands: [{ id: 'tmgr.win.hello', title: 'Hello' }],
+					views: [{ id: 'board', title: 'Board', ui: 'ui/board.html' }],
+				},
+			),
+			pages: { 'ui/board.html': '<h1>Board</h1>' },
+		} as PluginPackage);
+
+	it('opens a view in its own window with the page from the package', async () => {
+		const opened: unknown[] = [];
+		const { host } = setup(
+			[windowPlugin()],
+			{},
+			{ open: async (...args: unknown[]) => void opened.push(args) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await host.openView('tmgr.win', 'board');
+		expect(opened).toEqual([['tmgr.win/board', '<h1>Board</h1>', 'Board']]);
+		host.dispose();
+	});
+
+	it('answers window calls through the plugin broker, with the same permissions', async () => {
+		const { host } = setup([windowPlugin(['tasks:read'])], {
+			listTasks: async () => ({ items: [{ id: 1 }], total: 1 }),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.windowCall('tmgr.win', 'tasks.list', {})).toEqual({
+			items: [{ id: 1 }],
+			total: 1,
+		});
+		await expect(
+			host.windowCall('tmgr.win', 'tasks.update', {
+				id: 1,
+				patch: { title: 'x' },
+			}),
+		).rejects.toMatchObject({
+			code: 'PERMISSION_DENIED',
+		});
+		expect(
+			await host.windowCall('tmgr.win', 'commands.run', {
+				id: 'tmgr.win.hello',
+				args: { name: 'Ann' },
+			}),
+		).toBe('hello Ann');
+		await expect(
+			host.windowCall('tmgr.win', 'commands.run', { id: 'other.cmd' }),
+		).rejects.toMatchObject({
+			code: 'NOT_DECLARED',
+		});
+		await expect(
+			host.windowCall('tmgr.win', 'register', {
+				kind: 'command',
+				id: 'tmgr.win.hello',
+			}),
+		).rejects.toMatchObject({
+			code: 'UNKNOWN_METHOD',
+		});
+		await host.setEnabled('tmgr.win', false);
+		await expect(
+			host.windowCall('tmgr.win', 'tasks.list', {}),
+		).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+		host.dispose();
+	});
+
+	it('closes the windows of a plugin that stops', async () => {
+		const closed: string[] = [];
+		const { host } = setup(
+			[windowPlugin()],
+			{},
+			{ close: async (pluginId: string) => void closed.push(pluginId) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await host.setEnabled('tmgr.win', false);
+		expect(closed).toContain('tmgr.win');
+		host.dispose();
+	});
 });

@@ -19,6 +19,13 @@
 				Open plugin settings
 			</router-link>
 		</div>
+		<div v-else-if="view?.ui" class="flex flex-col items-start gap-3 text-sm">
+			<p class="text-muted-foreground">
+				“{{ view.title }}” is the plugin's own page. It opens in a separate
+				window, so it cannot slow down or freeze the app.
+			</p>
+			<Button size="sm" @click="openWindow">Open window</Button>
+		</div>
 		<p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
 			{{ error }}
 		</p>
@@ -29,6 +36,7 @@
 
 <script lang="ts">
 	import PluginView from '@/components/plugins/PluginView.vue';
+	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
@@ -37,23 +45,38 @@
 
 	export default defineComponent({
 		name: 'PluginPage',
-		components: { PluginView },
+		components: { Button, PluginView },
 		setup() {
 			const route = useRoute();
 			const pluginId = computed(() => String(route.params.pluginId));
 			const viewId = computed(() => String(route.params.viewId));
 			const entry = computed(() => pluginState.plugins[pluginId.value] ?? null);
 			const tree = ref<UiNode | null>(null);
+			const view = computed(
+				() =>
+					entry.value?.manifest.contributes.views.find(
+						(v) => v.id === viewId.value,
+					) ?? null,
+			);
+			const openWindow = () =>
+				pluginHost()?.openView(pluginId.value, viewId.value);
 			const error = ref<string | null>(null);
 			let request = 0;
+			let openedFor = '';
 
 			const render = async () => {
 				const current = ++request;
 				if (entry.value?.status !== 'running') return;
-				const view = entry.value.manifest.contributes.views.find(
-					(v) => v.id === viewId.value,
-				);
-				setDocumentTitle(view?.title ?? entry.value.manifest.name);
+				if (view.value?.ui) {
+					setDocumentTitle(view.value.title);
+					const key = `${pluginId.value}/${viewId.value}`;
+					if (openedFor !== key) {
+						openedFor = key;
+						void openWindow();
+					}
+					return;
+				}
+				setDocumentTitle(view.value?.title ?? entry.value.manifest.name);
 				try {
 					const next = await pluginHost()?.renderPage(
 						pluginId.value,
@@ -82,7 +105,7 @@
 				{ immediate: true },
 			);
 
-			return { pluginId, entry, tree, error };
+			return { pluginId, entry, tree, error, view, openWindow };
 		},
 	});
 </script>

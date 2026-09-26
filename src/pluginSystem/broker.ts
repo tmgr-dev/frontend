@@ -6,6 +6,7 @@ export type PluginErrorCode =
 	| 'PERMISSION_DENIED'
 	| 'NOT_DECLARED'
 	| 'WORKSPACE_CHANGED'
+	| 'NOT_RUNNING'
 	| 'RATE_LIMITED'
 	| 'HOST_ERROR';
 

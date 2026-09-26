@@ -90,3 +90,22 @@ it('accepts network origins only on this computer', () => {
 		).toThrow('network');
 	}
 });
+
+it('lets a view name an html page from its ui folder', () => {
+	const withUi = (ui: unknown) => ({
+		...valid,
+		contributes: { views: [{ id: 'board', title: 'Board', ui }] },
+	});
+	expect(parseManifest(withUi('ui/board.html')).contributes.views).toEqual([
+		{ id: 'board', title: 'Board', ui: 'ui/board.html' },
+	]);
+	for (const bad of [
+		'board.html',
+		'ui/../main.js',
+		'ui/a/b.html',
+		'ui/board.js',
+		'http://x/ui/a.html',
+	]) {
+		expect(() => parseManifest(withUi(bad))).toThrow('ui');
+	}
+});

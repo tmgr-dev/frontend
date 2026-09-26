@@ -47,6 +47,10 @@
     "allow-hide-quick-add",
     "allow-open-quick-add",
     "allow-take-quick-add",
-    "allow-tray-update"
+    "allow-tray-update",
+    "allow-plugin-page-put",
+    "allow-plugin-window-open",
+    "allow-plugin-window-reply",
+    "allow-plugin-windows-close"
   ]
 }

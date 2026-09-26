@@ -8,6 +8,7 @@ mod local_workspaces;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_net;
+mod plugin_windows;
 mod quick_add;
 mod tray;
 
@@ -94,6 +95,10 @@ pub fn run() {
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(downloads::PendingDownloads::default())
+    .manage(plugin_windows::PluginWindows::default())
+    .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
+      plugin_windows::handle(ctx.app_handle(), request)
+    })
     .register_uri_scheme_protocol(local_files::SCHEME, |ctx, request| {
       local_files::handle(ctx.app_handle(), request)
     })
@@ -118,6 +123,11 @@ pub fn run() {
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
       plugin_files::plugin_pick_file,
+      plugin_windows::plugin_page_put,
+      plugin_windows::plugin_window_open,
+      plugin_windows::plugin_window_call,
+      plugin_windows::plugin_window_reply,
+      plugin_windows::plugin_windows_close,
       local_export::local_export_write,
       local_export::local_reveal
     ])

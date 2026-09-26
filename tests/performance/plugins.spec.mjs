@@ -339,3 +339,79 @@ test('a folder plugin exports into its own folder, reads an attachment and a fil
   ]);
   expect(shell.picks).toEqual(['Choose a file for the Files plugin']);
 });
+
+test('a plugin view with its own page opens in a window whose calls go through the plugin broker', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('plugins.devMode', 'true'),
+  );
+  const plugin = {
+    folder: 'dev.win',
+    manifest: JSON.stringify({
+      id: 'dev.win',
+      name: 'Window plugin',
+      version: '1.0.0',
+      engines: { tmgr: '^1.0' },
+      permissions: ['tasks:read'],
+      contributes: {
+        commands: [{ id: 'dev.win.hello', title: 'Hello' }],
+        views: [{ id: 'board', title: 'Big board', ui: 'ui/board.html' }],
+      },
+    }),
+    code: `tmgr.commands.register('dev.win.hello', (args) => 'hello ' + args.name);`,
+    pages: [['ui/board.html', '<h1>Big board</h1>']],
+  };
+  const shell = await desktopPage(page, {}, { devPlugins: [plugin] });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page
+    .locator('article', { hasText: 'Window plugin' })
+    .getByRole('switch')
+    .click();
+  await page.getByRole('link', { name: 'Big board' }).first().click();
+  await expect(page.getByRole('button', { name: 'Open window' })).toBeVisible();
+  await expect
+    .poll(() => shell.windows)
+    .toEqual([{ key: 'dev.win/board', title: 'Big board' }]);
+  expect(shell.pages.get('dev.win/board')).toBe('<h1>Big board</h1>');
+
+  const call = (call_id, method, params) =>
+    page.evaluate((payload) => window.__emit('plugin-window://call', payload), {
+      call_id,
+      plugin_id: 'dev.win',
+      method,
+      params,
+    });
+  await call(1, 'tasks.list', {});
+  await call(2, 'commands.run', { id: 'dev.win.hello', args: { name: 'Ann' } });
+  await call(3, 'tasks.update', { id: 1, patch: { title: 'x' } });
+  await call(4, 'register', { kind: 'command', id: 'dev.win.hello' });
+  await expect.poll(() => shell.replies.length).toBe(4);
+  const byId = Object.fromEntries(shell.replies.map((r) => [r.callId, r]));
+  expect(byId[1]).toMatchObject({ ok: true, value: { items: [], total: 0 } });
+  expect(byId[2]).toEqual({ callId: 2, ok: true, value: 'hello Ann' });
+  expect(byId[3]).toMatchObject({
+    ok: false,
+    value: expect.stringContaining('PERMISSION_DENIED'),
+  });
+  expect(byId[4]).toMatchObject({
+    ok: false,
+    value: expect.stringContaining('UNKNOWN_METHOD'),
+  });
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page
+    .locator('article', { hasText: 'Window plugin' })
+    .getByRole('switch')
+    .click();
+  await expect.poll(() => shell.closed).toContain('dev.win');
+});

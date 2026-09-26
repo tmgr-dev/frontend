@@ -23,6 +23,11 @@ const APP_COMMANDS: &[&str] = &[
   "open_quick_add",
   "take_quick_add",
   "tray_update",
+  "plugin_page_put",
+  "plugin_window_open",
+  "plugin_window_call",
+  "plugin_window_reply",
+  "plugin_windows_close",
 ];
 
 fn main() {
