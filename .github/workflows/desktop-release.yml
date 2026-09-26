@@ -13,7 +13,7 @@ jobs:
     name: build macOS app
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: check tag matches app version
         run: |
@@ -22,23 +22,28 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match src-tauri/tauri.conf.json version $APP_VERSION"
             exit 1
           fi
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: './src-tauri -> target'
 
       - run: npm ci
 
-      # Tauri treats a set-but-empty APPLE_* variable as configured, so only export the ones that have values.
-      - name: export Apple signing env
+      # The only step that sees signing secrets. Tauri treats a set-but-empty APPLE_* variable
+      # as configured, so empty ones are dropped before the build.
+      - name: build and sign
         env:
+          CI: true
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -46,21 +51,34 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is missing"
+            exit 1
+          fi
           for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            if [ -n "${!name}" ]; then
-              { echo "$name<<__VALUE__"; echo "${!name}"; echo "__VALUE__"; } >> "$GITHUB_ENV"
-            fi
+            if [ -z "${!name}" ]; then unset "$name"; fi
           done
+          npx tauri build
 
-      - uses: tauri-apps/tauri-action@action-v1.0.0
+      - name: publish GitHub release
         env:
-          CI: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'TMGR Desktop v__VERSION__'
-          releaseBody: 'Download the .dmg below. Installed apps update themselves.'
-          releaseDraft: false
-          prerelease: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BUNDLE=src-tauri/target/release/bundle
+          OUT=release
+          mkdir -p "$OUT"
+          cp "$BUNDLE/dmg/TMGR_${APP_VERSION}_aarch64.dmg" "$OUT/"
+          UPDATE="TMGR_${APP_VERSION}_aarch64.app.tar.gz"
+          cp "$BUNDLE/macos/TMGR.app.tar.gz" "$OUT/$UPDATE"
+          cp "$BUNDLE/macos/TMGR.app.tar.gz.sig" "$OUT/$UPDATE.sig"
+          jq -n \
+            --arg version "$APP_VERSION" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg signature "$(cat "$OUT/$UPDATE.sig")" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$UPDATE" \
+            '{version: $version, pub_date: $date, notes: "", platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
+            > "$OUT/latest.json"
+          gh release create "$GITHUB_REF_NAME" "$OUT"/* \
+            --title "TMGR Desktop v$APP_VERSION" \
+            --notes "Download the .dmg below. Installed apps update themselves." \
+            --latest
