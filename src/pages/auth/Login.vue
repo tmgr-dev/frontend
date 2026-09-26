@@ -1,159 +1,117 @@
 <template>
-	<div class="flex min-h-screen flex-col bg-gray-50">
-		<!-- Header Section -->
-		<header class="flex items-center justify-between p-4">
-			<!-- TM Logo -->
-			<div class="flex items-center">
-				<img class="h-auto w-12" src="../../assets/img/simple-logo.svg" />
-			</div>
-		</header>
+	<AuthLayout>
+		<template #title>Welcome back</template>
+		<template #subtitle>Sign in to pick up where you left off.</template>
 
-		<!-- Main Content -->
-		<main class="flex flex-1 flex-col md:flex-row">
-			<!-- Left Section -->
-			<div
-				class="hidden w-full flex-col items-center justify-center p-6 md:flex md:w-1/2"
+		<div class="grid grid-cols-3 gap-2">
+			<Button
+				variant="outline"
+				class="h-10"
+				@click="loginWithSocialite('google')"
 			>
-				<!-- Heading -->
-				<h1 class="mb-4 text-center text-2xl font-bold md:text-4xl">
-					Elevate your efficiency, empower your plans with TMGR
-				</h1>
-				<!-- Registration Link -->
-				<p class="text-center text-sm md:text-lg">
-					Have no account?
-					<a href="/register" class="font-bold text-gray-600">Registration</a>
-				</p>
-				<!-- Illustration -->
-				<div class="mt-8">
-					<img
-						src="../../assets/img/login-page.svg"
-						alt="Login illustration"
-						class="h-auto max-w-full"
-					/>
-				</div>
+				<GoogleIcon />
+				Google
+			</Button>
+			<Button
+				variant="outline"
+				class="h-10 [&_svg]:fill-current"
+				@click="loginWithSocialite('apple')"
+			>
+				<AppleIcon />
+				Apple
+			</Button>
+			<Button
+				variant="outline"
+				class="h-10 [&_svg]:fill-current"
+				@click="loginWithSocialite('github')"
+			>
+				<GitHubIcon />
+				GitHub
+			</Button>
+		</div>
+
+		<div
+			v-if="telegramBotName"
+			id="telegram-register-widget-container"
+			class="mt-3 flex justify-center"
+		>
+			<TelegramLoginWidget
+				:bot-name="telegramBotName"
+				:auth-url="telegramAuthUrl"
+				widget-size="medium"
+			/>
+		</div>
+
+		<div class="my-6 flex items-center gap-3">
+			<Separator class="flex-1" />
+			<span class="text-xs text-muted-foreground">Or continue with email</span>
+			<Separator class="flex-1" />
+		</div>
+
+		<form class="space-y-4" @submit.prevent="login">
+			<div class="space-y-2">
+				<Label for="email" class="text-foreground">E-mail</Label>
+				<Input
+					v-model="form.email"
+					id="email"
+					type="email"
+					placeholder="you@company.com"
+					autocomplete="email"
+					class="h-10"
+				/>
 			</div>
-
-			<!-- Right Section (Login Form) -->
-			<div class="flex w-full items-center justify-center p-4 md:w-1/2 md:p-0">
-				<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-					<!-- Title -->
-					<h2 class="mt-6 text-center text-2xl font-bold md:text-3xl">
-						Welcome back!
-					</h2>
-					<div class="mb-8 text-center text-gray-500">Sign in with</div>
-
-					<!-- Social Login Buttons -->
-					<div class="mb-4 flex justify-center space-x-4">
-						<button
-							class="rounded-full bg-gray-200 p-3 hover:bg-gray-300"
-							@click="loginWithSocialite('google')"
-						>
-							<GoogleIcon class="h-6 w-6" />
-						</button>
-						<button
-							class="rounded-full bg-gray-200 p-3 hover:bg-gray-300"
-							@click="loginWithSocialite('apple')"
-						>
-							<AppleIcon class="h-6 w-6" />
-						</button>
-						<button
-							class="rounded-full bg-gray-200 p-3 hover:bg-gray-300"
-							@click="loginWithSocialite('github')"
-						>
-							<GitHubIcon class="h-6 w-6" />
-						</button>
-					</div>
-
-					<div
-						id="telegram-register-widget-container"
-						class="mb-8 flex justify-center"
+			<div class="space-y-2">
+				<div class="flex items-center justify-between">
+					<Label for="password" class="text-foreground">Password</Label>
+					<router-link
+						to="/password/forget"
+						class="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+						>Forgot your password?</router-link
 					>
-						<TelegramLoginWidget
-							:bot-name="telegramBotName"
-							:auth-url="telegramAuthUrl"
-							widget-size="medium"
-							v-if="telegramBotName"
-						/>
-						<div v-else class="text-xs text-red-500">
-							Telegram Bot Name not configured.
-						</div>
-					</div>
-
-					<div class="relative mb-8">
-						<div class="absolute inset-0 flex items-center">
-							<div class="w-full border-t border-gray-300"></div>
-						</div>
-						<div class="relative flex justify-center text-sm">
-							<span class="bg-white px-2 text-gray-500">Or continue with</span>
-						</div>
-					</div>
-					<!-- Login Form -->
-					<form @submit.prevent="login">
-						<!-- E-mail Field -->
-						<div class="mb-4">
-							<label for="email" class="block text-sm font-medium"
-								>E-mail</label
-							>
-							<input
-								v-model="form.email"
-								id="email"
-								type="email"
-								placeholder="E-mail"
-								class="w-full rounded-lg border px-4 py-2"
-							/>
-						</div>
-						<!-- Password Field -->
-						<div class="mb-6">
-							<label for="password" class="block text-sm font-medium"
-								>Password</label
-							>
-							<div class="relative">
-								<input
-									v-model="form.password"
-									id="password"
-									type="password"
-									placeholder="Password"
-									class="w-full rounded-lg border px-4 py-2"
-								/>
-							</div>
-						</div>
-						<!-- Sign In Button -->
-						<button
-							type="submit"
-							:disabled="isLoading"
-							:aria-busy="isLoading"
-							class="w-full rounded-lg bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"
-						>
-							{{ isLoading ? 'Signing in…' : 'Sign in' }}
-						</button>
-						<!-- Forgot Password Link -->
-						<div class="mt-4 text-center">
-							<router-link to="/password/forget" class="text-gray-600"
-								>Forgot your password?</router-link
-							>
-						</div>
-						<!-- Login Link -->
-						<p class="mt-4 text-center text-sm lg:hidden">
-							Have no account?
-							<router-link to="/register" class="font-bold text-gray-600"
-								>Sign up</router-link
-							>
-						</p>
-					</form>
 				</div>
+				<Input
+					v-model="form.password"
+					id="password"
+					type="password"
+					placeholder="Password"
+					autocomplete="current-password"
+					class="h-10"
+				/>
 			</div>
-		</main>
-	</div>
+			<Button
+				type="submit"
+				:disabled="isLoading"
+				:aria-busy="isLoading"
+				class="mt-2 h-10 w-full"
+			>
+				{{ isLoading ? 'Signing in…' : 'Sign in' }}
+			</Button>
+		</form>
+
+		<template #footer>
+			Have no account?
+			<router-link
+				to="/register"
+				class="font-medium text-primary underline-offset-4 hover:underline"
+				>Sign up</router-link
+			>
+		</template>
+	</AuthLayout>
 </template>
 
 <script setup lang="ts">
 	import { LoginRequest, login as loginAction } from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
 	import GoogleIcon from '@/components/icons/GoogleIcon.vue';
+	import { Button } from '@/components/ui/button';
+	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
+	import { Separator } from '@/components/ui/separator';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { AxiosError } from 'axios';

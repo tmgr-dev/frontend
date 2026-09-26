@@ -18,4 +18,9 @@ describe('isDarkTheme', () => {
 		expect(isDarkTheme(null, null, true)).toBe(true);
 		expect(isDarkTheme(null, null, false)).toBe(false);
 	});
+
+	it('follows the system preference in system color scheme mode', () => {
+		expect(isDarkTheme('default', 'system', true)).toBe(true);
+		expect(isDarkTheme('default', 'system', false)).toBe(false);
+	});
 });

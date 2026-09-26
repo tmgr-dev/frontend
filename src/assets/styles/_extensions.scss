@@ -1,86 +1,86 @@
 @layer base {
 	:root {
-		/* Warm cream palette (matches _design-tokens.scss) */
-		--background: 36 42% 95%;
-		--foreground: 27 32% 12%;
+		/* Neutral palette (matches _design-tokens.scss) */
+		--background: 240 5% 97%;
+		--foreground: 240 6% 10%;
 
-		--muted: 35 32% 91%;
-		--muted-foreground: 25 18% 36%;
+		--muted: 240 5% 94%;
+		--muted-foreground: 240 4% 34%;
 
-		--popover: 39 54% 97%;
-		--popover-foreground: 27 32% 12%;
+		--popover: 0 0% 100%;
+		--popover-foreground: 240 6% 10%;
 
-		--card: 39 54% 97%;
-		--card-foreground: 27 32% 12%;
+		--card: 0 0% 100%;
+		--card-foreground: 240 6% 10%;
 
-		--border: 30 25% 90%;
-		--input: 30 25% 90%;
+		--border: 240 6% 90%;
+		--input: 240 6% 90%;
 
-		--primary: 22 55% 48%;
-		--primary-foreground: 36 42% 97%;
+		--primary: 1 74% 53%;
+		--primary-foreground: 0 0% 100%;
 
-		--secondary: 35 32% 91%;
-		--secondary-foreground: 27 32% 12%;
+		--secondary: 240 5% 94%;
+		--secondary-foreground: 240 6% 10%;
 
-		--accent: 35 32% 91%;
-		--accent-foreground: 27 32% 12%;
+		--accent: 240 5% 94%;
+		--accent-foreground: 240 6% 10%;
 
 		--destructive: 0 70% 50%;
-		--destructive-foreground: 36 42% 97%;
+		--destructive-foreground: 0 0% 100%;
 
-		--ring: 22 55% 48%;
+		--ring: 1 74% 53%;
 
 		--radius: 0.5rem;
 
-		--sidebar-background: 36 42% 95%;
-		--sidebar-foreground: 25 22% 28%;
-		--sidebar-primary: 22 55% 48%;
-		--sidebar-primary-foreground: 36 42% 97%;
-		--sidebar-accent: 35 32% 91%;
-		--sidebar-accent-foreground: 27 32% 12%;
-		--sidebar-border: 30 25% 90%;
-		--sidebar-ring: 22 55% 48%;
+		--sidebar-background: 240 5% 97%;
+		--sidebar-foreground: 240 5% 26%;
+		--sidebar-primary: 1 74% 53%;
+		--sidebar-primary-foreground: 0 0% 100%;
+		--sidebar-accent: 240 5% 94%;
+		--sidebar-accent-foreground: 240 6% 10%;
+		--sidebar-border: 240 6% 90%;
+		--sidebar-ring: 1 74% 53%;
 	}
 
 	.dark {
-		/* Warm charcoal palette */
-		--background: 24 18% 9%;
-		--foreground: 34 43% 92%;
+		/* Neutral charcoal palette */
+		--background: 240 6% 7%;
+		--foreground: 240 5% 96%;
 
-		--muted: 30 10% 14%;
-		--muted-foreground: 33 16% 68%;
+		--muted: 240 5% 12%;
+		--muted-foreground: 240 5% 65%;
 
-		--popover: 30 10% 12%;
-		--popover-foreground: 34 43% 92%;
+		--popover: 240 5% 10%;
+		--popover-foreground: 240 5% 96%;
 
-		--card: 30 10% 12%;
-		--card-foreground: 34 43% 92%;
+		--card: 240 5% 10%;
+		--card-foreground: 240 5% 96%;
 
-		--border: 30 10% 20%;
-		--input: 30 10% 20%;
+		--border: 240 5% 18%;
+		--input: 240 5% 18%;
 
-		--primary: 22 65% 62%;
-		--primary-foreground: 24 18% 9%;
+		--primary: 2 85% 65%;
+		--primary-foreground: 240 6% 7%;
 
-		--secondary: 30 10% 14%;
-		--secondary-foreground: 34 43% 92%;
+		--secondary: 240 5% 12%;
+		--secondary-foreground: 240 5% 96%;
 
-		--accent: 30 10% 14%;
-		--accent-foreground: 34 43% 92%;
+		--accent: 240 5% 12%;
+		--accent-foreground: 240 5% 96%;
 
 		--destructive: 0 62% 45%;
-		--destructive-foreground: 34 43% 92%;
+		--destructive-foreground: 240 5% 96%;
 
-		--ring: 22 65% 62%;
+		--ring: 2 85% 65%;
 
-		--sidebar-background: 24 18% 9%;
-		--sidebar-foreground: 33 16% 78%;
-		--sidebar-primary: 22 65% 62%;
-		--sidebar-primary-foreground: 24 18% 9%;
-		--sidebar-accent: 30 10% 14%;
-		--sidebar-accent-foreground: 34 43% 92%;
-		--sidebar-border: 30 10% 20%;
-		--sidebar-ring: 22 65% 62%;
+		--sidebar-background: 240 6% 7%;
+		--sidebar-foreground: 240 5% 78%;
+		--sidebar-primary: 2 85% 65%;
+		--sidebar-primary-foreground: 240 6% 7%;
+		--sidebar-accent: 240 5% 12%;
+		--sidebar-accent-foreground: 240 5% 96%;
+		--sidebar-border: 240 5% 18%;
+		--sidebar-ring: 2 85% 65%;
 	}
 }
 
@@ -285,4 +285,170 @@
 	body {
 		@apply bg-background text-foreground;
 	}
+}
+
+.app-canvas {
+	isolation: isolate;
+}
+
+.app-canvas::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+	background-size: 20px 20px;
+	mask-image: linear-gradient(
+		to bottom,
+		#000 0%,
+		rgba(0, 0, 0, 0.35) 60%,
+		transparent 100%
+	);
+}
+
+html.tauri-desktop {
+	--titlebar-h: 40px;
+	--statusbar-h: 28px;
+	--app-chrome-h: calc(var(--titlebar-h) + var(--statusbar-h));
+	--canvas-gap: 8px;
+}
+
+html.tauri-desktop:not(.dark):not([class*='theme-']) {
+	--sidebar-background: 240 5% 92.5%;
+}
+
+html.tauri-desktop.dark:not([class*='theme-']) {
+	--sidebar-background: 240 7% 4%;
+}
+
+html.tauri-desktop body {
+	background: hsl(var(--sidebar-background));
+}
+
+html.tauri-desktop .peer > .fixed {
+	border-width: 0;
+}
+
+html.tauri-desktop main.app-canvas {
+	isolation: auto;
+	margin: var(--titlebar-h) var(--canvas-gap) var(--statusbar-h) 0;
+	padding: 0;
+	height: calc(100svh - var(--app-chrome-h));
+	min-height: 0;
+	overflow: auto;
+	border-radius: 12px;
+	background-color: hsl(var(--background));
+	background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+	background-size: 20px 20px;
+	box-shadow: 0 0 0 1px hsl(var(--border) / 0.7);
+}
+
+html.tauri-desktop main.app-canvas:has(.board-container) {
+	overflow: hidden;
+}
+
+html.tauri-desktop .board-wrapper::after {
+	content: none;
+}
+
+html.tauri-desktop,
+html.tauri-desktop body,
+html.tauri-desktop * {
+	overscroll-behavior: none;
+}
+
+html.tauri-desktop [data-sidebar='header'] {
+	padding-top: 0;
+}
+
+html.tauri-desktop main.app-canvas::before {
+	content: none;
+}
+
+[data-sidebar='sidebar'] {
+	position: relative;
+	isolation: isolate;
+}
+
+[data-sidebar='sidebar']::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: radial-gradient(
+		hsl(var(--border) / 0.7) 1px,
+		transparent 1px
+	);
+	background-size: 20px 20px;
+	mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent 85%);
+}
+
+html.tauri-desktop body {
+	-webkit-user-select: none;
+	user-select: none;
+	cursor: default;
+}
+
+html.tauri-desktop
+	:is(
+		input,
+		textarea,
+		[contenteditable]:not([contenteditable='false']),
+		.ProseMirror,
+		.codex-editor,
+		.md-editor,
+		.markdown-text,
+		pre,
+		code,
+		[data-selectable]
+	),
+html.tauri-desktop
+	:is(
+		.ProseMirror,
+		.codex-editor,
+		.md-editor,
+		.markdown-text,
+		[data-selectable]
+	)
+	* {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+html.tauri-desktop img {
+	-webkit-user-drag: none;
+}
+
+html.tauri-desktop ::-webkit-scrollbar-track,
+html.tauri-desktop ::-webkit-scrollbar-corner {
+	background: transparent !important;
+}
+
+html.tauri-desktop ::-webkit-scrollbar-thumb {
+	background-color: transparent !important;
+	border-radius: 999px;
+}
+
+html.tauri-desktop .is-scrolling::-webkit-scrollbar-thumb {
+	background-color: hsl(var(--muted-foreground) / 0.45) !important;
+}
+
+.statusbar-offset {
+	left: 16rem;
+	transition: left 200ms linear;
+}
+
+html:has(.peer[data-state='collapsed']) .statusbar-offset {
+	left: 3rem;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-weight: 700;
 }

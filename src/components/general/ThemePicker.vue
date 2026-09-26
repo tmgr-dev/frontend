@@ -209,6 +209,12 @@
 					@click="chooseScheme('dark')"
 					>Dark</span
 				>
+				<span
+					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
+					:style="modeStyle('system', t.tokens)"
+					@click="chooseScheme('system')"
+					>System</span
+				>
 			</div>
 		</button>
 	</div>

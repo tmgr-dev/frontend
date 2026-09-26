@@ -1,81 +1,104 @@
 <template>
-	<div>
-		<AuthBase>
-			<template #title>New Password</template>
+	<AuthLayout>
+		<template #title>New Password</template>
+		<template #subtitle>Choose a new password for your account.</template>
 
-			<template #body>
-				<div
-					class="text-center"
-					:class="[
-						errors && Object.keys(errors).length > 0
-							? 'text-red-600'
-							: 'font-bold text-neutral-600',
-					]"
+		<div
+			v-if="message"
+			class="mb-4 rounded-lg border p-3 text-sm"
+			:class="[
+				errors && Object.keys(errors).length > 0
+					? 'border-destructive text-destructive'
+					: 'border-border bg-muted font-medium text-foreground',
+			]"
+		>
+			{{ message }}
+		</div>
+
+		<form class="space-y-4" @submit.prevent="resetPassword">
+			<div class="space-y-2">
+				<Label for="password" class="text-foreground">Password</Label>
+				<Input
+					v-model="form.password"
+					id="password"
+					name="password"
+					type="password"
+					:class="{
+						'border-destructive': (errors as any).password?.[0],
+					}"
+					placeholder="Password"
+					autocomplete="new-password"
+					class="h-10"
+				/>
+				<p
+					v-if="(errors as any).password?.[0]"
+					class="text-sm text-destructive"
 				>
-					{{ message }}
-				</div>
-
-				<form
-					class="form-horizontal mx-auto flex w-3/4 flex-col gap-2"
-					@submit.prevent="resetPassword"
+					{{ (errors as any).password[0] }}
+				</p>
+			</div>
+			<div class="space-y-2">
+				<Label for="password_confirmation" class="text-foreground"
+					>Password confirmation</Label
 				>
-					<TextField
-						v-model="form.password"
-						:errors="errors.password"
-						name="password"
-						placeholder="Password"
-						input-class="dark:bg-white dark:border-neutral-300"
-						type="password"
-					/>
+				<Input
+					v-model="form.password_confirmation"
+					id="password_confirmation"
+					name="password_confirmation"
+					type="password"
+					:class="{
+						'border-destructive':
+							(errors as any)?.password_confirmation?.[0],
+					}"
+					placeholder="Password confirmation"
+					autocomplete="new-password"
+					class="h-10"
+				/>
+				<p
+					v-if="(errors as any)?.password_confirmation?.[0]"
+					class="text-sm text-destructive"
+				>
+					{{ (errors as any).password_confirmation[0] }}
+				</p>
+			</div>
+			<Button
+				type="submit"
+				:disabled="isLoading"
+				:aria-busy="isLoading"
+				class="mt-2 h-10 w-full"
+			>
+				<span class="relative">
+					Reset
+					<loader v-if="isLoading" class="auth-loader" is-mini />
+				</span>
+			</Button>
+		</form>
 
-					<TextField
-						v-model="form.password_confirmation"
-						:errors="errors?.password_confirmation"
-						name="password_confirmation"
-						placeholder="Password confirmation"
-						input-class="dark:bg-white dark:border-neutral-300"
-						type="password"
-					/>
-
-					<div class="mt-2 flex flex-col">
-						<button
-							class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-							type="submit"
-							:disabled="isLoading"
-							:aria-busy="isLoading"
-						>
-							<span class="relative">
-								Reset
-								<loader v-if="isLoading" class="auth-loader" is-mini />
-							</span>
-						</button>
-					</div>
-				</form>
-			</template>
-
-			<template #footer>
+		<template #footer>
+			<div class="flex flex-col items-center gap-1.5">
 				<router-link
-					class="text-blue-dark text-xs no-underline hover:underline"
 					to="/register"
+					class="underline-offset-4 hover:text-foreground hover:underline"
 				>
 					You don't have account?
 				</router-link>
-				<br />
 				<router-link
-					class="text-blue-dark text-xs no-underline hover:underline"
 					to="/login"
+					class="font-medium text-primary underline-offset-4 hover:underline"
 				>
 					Login
 				</router-link>
-			</template>
-		</AuthBase>
-	</div>
+			</div>
+		</template>
+	</AuthLayout>
 </template>
 
 <script setup lang="ts">
 	import { setNewPassword } from '@/actions/tmgr/auth';
-	import TextField from '@/components/general/TextField.vue';
-	import AuthBase from '@/components/layouts/AuthBase.vue';
+	import AuthLayout from '@/components/auth/AuthLayout.vue';
+	import { Button } from '@/components/ui/button';
+	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { AxiosError } from 'axios';
 	import { onBeforeMount, ref } from 'vue';

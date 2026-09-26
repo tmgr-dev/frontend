@@ -60,7 +60,7 @@
 
 	const switchOn = computed({
 		get() {
-			return store.state.colorScheme === 'dark';
+			return store.getters.isDarkTheme;
 		},
 		set(value) {
 			store.commit('setColorScheme', value ? 'dark' : 'default');

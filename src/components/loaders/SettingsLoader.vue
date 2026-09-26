@@ -22,7 +22,7 @@
 		},
 		computed: {
 			isNightMode() {
-				return this.$store.state.colorScheme === 'dark';
+				return this.$store.getters.isDarkTheme;
 			},
 		},
 	};

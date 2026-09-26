@@ -1,11 +1,11 @@
 /* ============================================================
-   DESIGN TOKENS — warm, friendly palette (OKLCH-based)
+   DESIGN TOKENS — neutral palette, red accent (OKLCH-based)
    See docs/claude-design/Task Board.html for the source.
    ============================================================ */
 
 :root {
 	/* — Type scale */
-	--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+	--font-sans: 'Exo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI',
 		sans-serif;
 	--font-serif: 'Instrument Serif', Georgia, serif;
 	--font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -65,27 +65,27 @@
 	--d-med: 220ms;
 	--d-slow: 380ms;
 
-	/* — Light theme defaults (warm cream) */
-	--bg: #f7f3ed;
-	--bg-raised: #fdfaf4;
-	--bg-sunken: #f1eadf;
-	--bg-hover: rgba(74, 55, 40, 0.04);
-	--bg-active: rgba(74, 55, 40, 0.07);
+	/* — Light theme defaults (neutral) */
+	--bg: #f7f7f8;
+	--bg-raised: #ffffff;
+	--bg-sunken: #efeff1;
+	--bg-hover: rgba(24, 24, 27, 0.04);
+	--bg-active: rgba(24, 24, 27, 0.07);
 
-	--line-color: rgba(74, 55, 40, 0.06);
-	--line-strong-color: rgba(74, 55, 40, 0.14);
+	--line-color: rgba(24, 24, 27, 0.07);
+	--line-strong-color: rgba(24, 24, 27, 0.14);
 
-	--fg: #2a1f16;
-	--fg-muted: #6b5a4a;
-	--fg-subtle: #9a8b7b;
-	--fg-faint: #bfb2a3;
+	--fg: #18181b;
+	--fg-muted: #52525b;
+	--fg-subtle: #8b8b94;
+	--fg-faint: #b9b9c0;
 
-	--accent-h: 22;
-	--brand-color: oklch(0.62 0.14 var(--accent-h));
-	--brand-bg-color: oklch(0.94 0.035 var(--accent-h));
-	--brand-fg-color: oklch(0.42 0.12 var(--accent-h));
-	--brand-hover-color: oklch(0.56 0.14 var(--accent-h));
-	--brand-ring-color: oklch(0.62 0.14 var(--accent-h) / 0.3);
+	--accent-h: 27;
+	--brand-color: oklch(0.59 0.21 var(--accent-h));
+	--brand-bg-color: oklch(0.95 0.03 var(--accent-h));
+	--brand-fg-color: oklch(0.47 0.18 var(--accent-h));
+	--brand-hover-color: oklch(0.53 0.2 var(--accent-h));
+	--brand-ring-color: oklch(0.59 0.21 var(--accent-h) / 0.3);
 
 	--s-todo: oklch(0.62 0.08 250);
 	--s-todo-bg: oklch(0.95 0.025 250);
@@ -107,16 +107,16 @@
 	--s-done-bg: oklch(0.94 0.035 155);
 	--s-done-fg: oklch(0.4 0.1 155);
 
-	--tag-bg: oklch(0.9 0.02 60);
-	--tag-fg: oklch(0.38 0.04 60);
+	--tag-bg: oklch(0.93 0.004 270);
+	--tag-fg: oklch(0.4 0.01 270);
 
-	--shadow-xs: 0 1px 2px rgba(74, 55, 40, 0.04);
-	--shadow-sm: 0 1px 2px rgba(74, 55, 40, 0.05),
-		0 0 0 1px rgba(74, 55, 40, 0.04);
-	--shadow-md: 0 4px 16px -4px rgba(74, 55, 40, 0.1),
-		0 1px 2px rgba(74, 55, 40, 0.05);
-	--shadow-lg: 0 16px 48px -12px rgba(74, 55, 40, 0.18),
-		0 2px 4px rgba(74, 55, 40, 0.06);
+	--shadow-xs: 0 1px 2px rgba(24, 24, 27, 0.04);
+	--shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.05),
+		0 0 0 1px rgba(24, 24, 27, 0.04);
+	--shadow-md: 0 4px 16px -4px rgba(24, 24, 27, 0.1),
+		0 1px 2px rgba(24, 24, 27, 0.05);
+	--shadow-lg: 0 16px 48px -12px rgba(24, 24, 27, 0.18),
+		0 2px 4px rgba(24, 24, 27, 0.06);
 	--shadow-focus: 0 0 0 3px var(--brand-ring-color);
 }
 
@@ -125,25 +125,25 @@
    Activated by `.dark` class on <html> (existing convention).
    ============================================================ */
 html.dark {
-	--bg: #1a1612;
-	--bg-raised: #22201c;
-	--bg-sunken: #15120f;
-	--bg-hover: rgba(255, 240, 220, 0.04);
-	--bg-active: rgba(255, 240, 220, 0.07);
+	--bg: #111113;
+	--bg-raised: #19191c;
+	--bg-sunken: #0b0b0d;
+	--bg-hover: rgba(255, 255, 255, 0.04);
+	--bg-active: rgba(255, 255, 255, 0.07);
 
-	--line-color: rgba(255, 240, 220, 0.05);
-	--line-strong-color: rgba(255, 240, 220, 0.12);
+	--line-color: rgba(255, 255, 255, 0.06);
+	--line-strong-color: rgba(255, 255, 255, 0.12);
 
-	--fg: #f4ece0;
-	--fg-muted: #bcb0a0;
-	--fg-subtle: #8a7e6e;
-	--fg-faint: #5c5246;
+	--fg: #f4f4f5;
+	--fg-muted: #a1a1aa;
+	--fg-subtle: #71717a;
+	--fg-faint: #52525b;
 
-	--brand-color: oklch(0.72 0.13 var(--accent-h));
-	--brand-bg-color: oklch(0.32 0.06 var(--accent-h));
-	--brand-fg-color: oklch(0.82 0.12 var(--accent-h));
-	--brand-hover-color: oklch(0.78 0.13 var(--accent-h));
-	--brand-ring-color: oklch(0.72 0.13 var(--accent-h) / 0.4);
+	--brand-color: oklch(0.68 0.19 var(--accent-h));
+	--brand-bg-color: oklch(0.3 0.08 var(--accent-h));
+	--brand-fg-color: oklch(0.8 0.12 var(--accent-h));
+	--brand-hover-color: oklch(0.74 0.17 var(--accent-h));
+	--brand-ring-color: oklch(0.68 0.19 var(--accent-h) / 0.4);
 
 	--s-todo: oklch(0.72 0.1 250);
 	--s-todo-bg: oklch(0.28 0.05 250);
@@ -165,11 +165,11 @@ html.dark {
 	--s-done-bg: oklch(0.28 0.06 155);
 	--s-done-fg: oklch(0.82 0.1 155);
 
-	--tag-bg: rgba(255, 240, 220, 0.06);
-	--tag-fg: oklch(0.82 0.03 60);
+	--tag-bg: rgba(255, 255, 255, 0.06);
+	--tag-fg: oklch(0.82 0.01 270);
 
 	--shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 240, 220, 0.04);
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
 	--shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
 	--shadow-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.6),
 		0 2px 4px rgba(0, 0, 0, 0.3);

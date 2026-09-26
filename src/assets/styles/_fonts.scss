@@ -22,26 +22,11 @@
 	-webkit-font-smoothing: antialiased;
 }
 
-@font-face {
-	font-family: 'CodecPro';
-	font-style: normal;
-	font-weight: 400;
-	font-display: swap;
-	src: url(../fonts/CodecPro-News.woff2) format('woff2');
-}
-
-@font-face {
-	font-family: 'CodecPro Bold';
-	font-style: normal;
-	font-display: swap;
-	src: url(../fonts/CodecPro-Bold.woff2) format('woff2');
-}
-
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-	font-family: 'CodecPro Bold', sans-serif;
+	font-family: var(--font-sans);
 }

@@ -35,8 +35,8 @@ module.exports = {
 				'xl-custom': '1080px',
 			},
 			fontFamily: {
-				sans: ['Inter', 'Quicksand', 'sans-serif'],
-				display: ['Inter', 'Quicksand', 'sans-serif'],
+				sans: ['"Exo 2"', 'Quicksand', 'sans-serif'],
+				display: ['"Exo 2"', 'Quicksand', 'sans-serif'],
 				serif: ['Instrument Serif', 'Georgia', 'serif'],
 				mono: [
 					'JetBrains Mono',

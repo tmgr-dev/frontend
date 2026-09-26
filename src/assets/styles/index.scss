@@ -20,7 +20,7 @@ html {
 
 body {
 	overflow-x: hidden;
-	font-family: 'CodecPro', sans-serif;
+	font-family: var(--font-sans);
 	background-color: var(--bg);
 	color: var(--fg);
 

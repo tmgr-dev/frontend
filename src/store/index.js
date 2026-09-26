@@ -27,7 +27,11 @@ const state = {
 	sessionGeneration: 0,
 	/** @type {import('@/types/store').User | Record<string, never>} */
 	user: {},
-	colorScheme: localStorage.getItem('colorScheme') || 'default',
+	colorScheme: localStorage.getItem('colorScheme') || 'system',
+	systemPrefersDark:
+		typeof window !== 'undefined' &&
+		!!window.matchMedia &&
+		window.matchMedia('(prefers-color-scheme: dark)').matches,
 	theme: localStorage.getItem('theme') || 'default',
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
@@ -69,13 +73,7 @@ const getters = {
 		return workspaceId ? state.workspacesById[workspaceId] : null;
 	},
 	isDarkTheme: (state) =>
-		isDarkTheme(
-			state.theme,
-			state.colorScheme,
-			typeof window !== 'undefined' &&
-				!!window.matchMedia &&
-				window.matchMedia('(prefers-color-scheme: dark)').matches,
-		),
+		isDarkTheme(state.theme, state.colorScheme, state.systemPrefersDark),
 };
 
 const mutations = {
@@ -211,11 +209,20 @@ const mutations = {
 		state.showCreatingTaskModal = true;
 	},
 	setColorScheme(state, colorScheme) {
-		const normalized = colorScheme === 'dark' ? 'dark' : 'default';
+		const normalized =
+			colorScheme === 'dark'
+				? 'dark'
+				: colorScheme === 'system' || colorScheme == null
+					? 'system'
+					: 'default';
 		state.userSettings.colorScheme = normalized;
 		state.colorScheme = normalized;
 		localStorage.setItem('colorScheme', normalized);
 		applyThemeToDocument(state.theme, normalized);
+	},
+	setSystemPrefersDark(state, prefersDark) {
+		state.systemPrefersDark = prefersDark;
+		applyThemeToDocument(state.theme, state.colorScheme);
 	},
 	setTheme(state, theme) {
 		const normalized = theme || 'default';
@@ -225,12 +232,7 @@ const mutations = {
 	},
 	setThemeToSystem(state) {
 		state.theme = 'default';
-		state.colorScheme =
-			typeof window !== 'undefined' &&
-			window.matchMedia &&
-			window.matchMedia('(prefers-color-scheme: dark)').matches
-				? 'dark'
-				: 'default';
+		state.colorScheme = 'system';
 		applyThemeToDocument('default', state.colorScheme);
 	},
 	closeTaskModal(state) {

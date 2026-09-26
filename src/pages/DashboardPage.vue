@@ -960,7 +960,7 @@
 									<HeatmapCalendar
 										v-else-if="heatmapData"
 										:data="heatmapData"
-										:theme="store.state.colorScheme"
+										:theme="store.getters.isDarkTheme ? 'dark' : 'default'"
 									/>
 
 									<div

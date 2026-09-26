@@ -1802,7 +1802,7 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'w-full flex-col lg:h-[calc(100dvh-4rem)] lg:flex-row lg:overflow-hidden',
+					: 'w-full flex-col lg:h-[calc(100dvh-var(--app-chrome-h,4rem))] lg:flex-row lg:overflow-hidden',
 			]"
 		>
 			<!-- Form Panel (main / left column) -->

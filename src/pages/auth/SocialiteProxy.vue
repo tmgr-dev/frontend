@@ -1,20 +1,20 @@
 <template>
-	<div>
-		<AuthBase>
-			<template #title>Welcome back!</template>
-			<template #body>
-				<div class="text-center" role="status" :aria-busy="isLoading">
-					{{ message }}
-					<router-link
-						v-if="!isLoading"
-						to="/login"
-						class="mt-3 block underline"
-						>Return to sign in</router-link
-					>
-				</div>
-			</template>
-		</AuthBase>
-	</div>
+	<AuthLayout>
+		<template #title>Welcome back!</template>
+		<div
+			class="text-sm text-muted-foreground"
+			role="status"
+			:aria-busy="isLoading"
+		>
+			{{ message }}
+			<router-link
+				v-if="!isLoading"
+				to="/login"
+				class="mt-3 block font-medium text-primary underline underline-offset-4"
+				>Return to sign in</router-link
+			>
+		</div>
+	</AuthLayout>
 </template>
 
 <script setup lang="ts">
@@ -30,7 +30,7 @@
 	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
-	import AuthBase from '@/components/layouts/AuthBase.vue';
+	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { AxiosError } from 'axios';
