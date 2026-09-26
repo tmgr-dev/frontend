@@ -12,7 +12,7 @@
 
 			<BaseLayout no-copyright :body-container-class="''">
 				<template #body>
-					<div class="flex min-h-0 flex-1 flex-col justify-center pl-4">
+					<div class="flex min-h-0 flex-1 flex-col justify-center">
 						<div class="flex h-full min-h-0 w-full flex-col overflow-x-auto">
 							<div
 								class="min-h-[56px] flex-shrink-0 px-4 py-2 max-sm:min-h-0 xl-custom:hidden"
@@ -162,11 +162,12 @@
 								<!-- Loading skeleton -->
 								<BoardSkeleton
 									v-if="!tasksLoaded && boardLoading"
+									class="pl-4"
 									:columns-count="columns.length || 4"
 								/>
 
 								<div v-show="tasksLoaded" class="board-container">
-									<div class="w-fit" ref="cont1">
+									<div class="w-fit pl-4" ref="cont1">
 										<Draggable
 											ref="cont2"
 											:disabled="!activeDraggable"
@@ -1822,7 +1823,7 @@
 		flex-grow: 1;
 		overflow-x: auto;
 		overflow-y: hidden;
-		width: calc(100vw - var(--sidebar-width, 16rem) - 1rem);
+		width: calc(100vw - var(--sidebar-width, 16rem) - var(--canvas-gap, 0px));
 		height: 100%;
 		min-height: 0;
 
@@ -1831,15 +1832,23 @@
 		&__item {
 			width: 300px;
 			flex-shrink: 0;
-			height: 100%;
+			height: calc(100vh - var(--app-chrome-h, 64px));
 			display: flex;
 			flex-direction: column;
 			min-height: 0;
+
+			@media (max-width: 768px) {
+				height: 100%;
+			}
 		}
 
 		@media (max-width: 768px) {
 			width: 100vw;
 		}
+	}
+
+	:global(.peer[data-state='collapsed'] ~ main .board-container) {
+		width: calc(100vw - var(--sidebar-width-icon, 3rem) - var(--canvas-gap, 0px));
 	}
 
 	.column-width {
@@ -1862,7 +1871,10 @@
 		margin-top: 8px;
 		flex: 1 1 0%;
 		min-height: 0;
-		max-height: calc(100vh - 110px);
+
+		@media (max-width: 768px) {
+			max-height: calc(100vh - 110px);
+		}
 	}
 
 	.board-card-draggable {
