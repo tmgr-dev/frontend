@@ -41,6 +41,7 @@
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
+	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
@@ -2261,6 +2262,12 @@
 							No time logged yet — click “Add entry” to log what you worked on.
 						</div>
 					</section>
+
+					<TaskAgentWork
+						v-if="taskId || form.id"
+						:task-id="Number(taskId || form.id)"
+						:workspace-id="form.workspace_id"
+					/>
 
 					<!-- Task Relations -->
 					<div
