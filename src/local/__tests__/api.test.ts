@@ -1,5 +1,6 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
+import { taskExport, workspaceExport } from '../export';
 import { LATEST_SCHEMA, migrate, readSchemaVersion } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -237,5 +238,21 @@ describeSqlite('local workspace API on SQLite', () => {
 		const file = await data('POST', `tasks/${task.id}/files`, { file_name: 'a.txt', file_path: target.key });
 		const res = await call('GET', `files/${file.id}/content`);
 		expect(res.data).toBeInstanceOf(Blob);
+	});
+
+	it('exports the workspace and a single task from the database', async () => {
+		const category = await data('POST', 'project_categories', { title: 'Taskmgr', code: 'tm' });
+		const task = await data('POST', 'tasks', { title: 'Export me', project_category_id: category.id });
+		await data('POST', `tasks/${task.id}/comments`, { message: 'noted' });
+		await data('POST', 'tasks', { title: 'Gone' }).then((t) => call('DELETE', `tasks/${t.id}`));
+
+		const files = await workspaceExport(ctx.db, 'Personal', 'Yurij', '2026-09-26');
+		expect(files.map((f) => f.path)).toEqual(['README.md', 'tasks/TM-1-export-me.md']);
+		expect(files[1].content).toContain('**Yurij** · ');
+		expect(files[1].content).toContain('noted');
+
+		const single = await taskExport(ctx.db, task.id, 'Yurij');
+		expect(single?.path).toBe('TM-1-export-me.md');
+		expect(await taskExport(ctx.db, 9999, 'Yurij')).toBeNull();
 	});
 });

@@ -92,6 +92,7 @@
 		XMarkIcon,
 	} from '@heroicons/vue/20/solid';
 	import {
+		ArrowDownTrayIcon,
 		ArrowTopRightOnSquareIcon,
 		CodeBracketIcon,
 		FolderIcon,
@@ -1102,6 +1103,17 @@
 			} catch (e) {
 				console.error(e);
 			}
+		}
+	};
+
+	const isLocalWorkspaceTask = computed(() => Number(store.getters.currentWorkspaceId) < 0);
+
+	const exportTaskToMarkdown = async () => {
+		try {
+			const { exportLocalTask } = await import('@/local/runtime');
+			await exportLocalTask(Number(taskId.value || form.value.id), store.state.user?.name ?? '');
+		} catch (error) {
+			console.error('Markdown export failed', error);
 		}
 	};
 
@@ -2413,6 +2425,16 @@
 						>
 							<DocumentPlusIcon class="size-5" />
 							Create
+						</button>
+
+						<button
+							v-if="isLocalWorkspaceTask && (taskId || form.id)"
+							type="button"
+							title="Export to Markdown"
+							class="inline-flex items-center justify-center rounded-md border border-line px-3 py-2 text-ink-subtle outline-none transition hover:bg-surface-hover hover:text-ink dark:border-line"
+							@click="exportTaskToMarkdown"
+						>
+							<ArrowDownTrayIcon class="size-5" />
 						</button>
 
 						<button

@@ -82,6 +82,8 @@
 		ClipboardListIcon,
 		FolderClosedIcon,
 		Inbox,
+		FileDown,
+		FolderOpen,
 		HardDrive,
 		LayoutDashboard,
 		LogOut,
@@ -434,6 +436,16 @@
 		}
 	};
 
+	const runLocalAction = async (action: 'reveal' | 'export') => {
+		try {
+			const runtime = await import('@/local/runtime');
+			if (action === 'reveal') await runtime.revealLocalWorkspace();
+			else await runtime.exportLocalWorkspace(store.state.user?.name ?? '');
+		} catch (error) {
+			console.error(`Local workspace ${action} failed`, error);
+		}
+	};
+
 	const canLeaveWorkspace = (workspace: Workspace) => {
 		if (workspace.is_local) {
 			return false;
@@ -573,6 +585,35 @@
 											Add workspace
 										</div>
 									</DropdownMenuItem>
+
+									<template v-if="isDesktop && activeWorkspace?.is_local">
+										<DropdownMenuItem
+											class="cursor-pointer gap-2 p-2"
+											@click="runLocalAction('reveal')"
+										>
+											<div
+												class="flex size-6 items-center justify-center rounded-md border bg-background"
+											>
+												<FolderOpen class="size-4" />
+											</div>
+											<div class="font-medium text-muted-foreground">
+												Show in Finder
+											</div>
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											class="cursor-pointer gap-2 p-2"
+											@click="runLocalAction('export')"
+										>
+											<div
+												class="flex size-6 items-center justify-center rounded-md border bg-background"
+											>
+												<FileDown class="size-4" />
+											</div>
+											<div class="font-medium text-muted-foreground">
+												Export to Markdown
+											</div>
+										</DropdownMenuItem>
+									</template>
 
 									<DropdownMenuItem
 										v-if="isDesktop"

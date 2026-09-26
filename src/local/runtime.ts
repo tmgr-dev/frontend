@@ -105,3 +105,37 @@ export const localContext = async (
 	}
 	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace) };
 };
+
+const stamp = (date: Date) =>
+	date.toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '');
+
+/** Writes the whole local workspace as Markdown into its exports/ folder and shows it in Finder. */
+export const exportLocalWorkspace = async (author: string): Promise<string> => {
+	const workspace = activeLocalWorkspace();
+	if (!workspace) throw new Error('No local workspace is open');
+	const { workspaceExport } = await import('./export');
+	const ctx = await localContext(workspace, { id: 0, name: author, email: '' });
+	const now = new Date();
+	const files = await workspaceExport(ctx.db, workspace.name, author, now.toLocaleString());
+	const folder = stamp(now);
+	const dir = await invoke<string>('local_export_write', { code: workspace.code, folder, files });
+	await invoke('local_reveal', { code: workspace.code, relative: `exports/${folder}/README.md` });
+	return dir;
+};
+
+/** Writes one task to exports/tasks/ of the local workspace and shows the file in Finder. */
+export const exportLocalTask = async (taskId: number, author: string): Promise<void> => {
+	const workspace = activeLocalWorkspace();
+	if (!workspace) throw new Error('No local workspace is open');
+	const { taskExport } = await import('./export');
+	const ctx = await localContext(workspace, { id: 0, name: author, email: '' });
+	const file = await taskExport(ctx.db, taskId, author);
+	if (!file) throw new Error('Task not found');
+	await invoke('local_export_write', { code: workspace.code, folder: 'tasks', files: [file] });
+	await invoke('local_reveal', { code: workspace.code, relative: `exports/tasks/${file.path}` });
+};
+
+export const revealLocalWorkspace = async (): Promise<void> => {
+	const workspace = activeLocalWorkspace();
+	if (workspace) await invoke('local_reveal', { code: workspace.code, relative: null });
+};

@@ -6,11 +6,12 @@ const fakeShell = async () => {
   const { DatabaseSync } = await import('node:sqlite');
   const workspaces = [];
   const dbs = new Map();
+  const exports = [];
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
     return dbs.get(code);
   };
-  return async (command, args = {}) => {
+  const handler = async (command, args = {}) => {
     switch (command) {
       case 'local_workspaces_list':
         return workspaces;
@@ -37,10 +38,14 @@ const fakeShell = async () => {
           lastInsertId: Number(result.lastInsertRowid),
         };
       }
+      case 'local_export_write':
+        exports.push(args);
+        return `/tmp/${args.code}/exports/${args.folder}`;
       default:
         return null;
     }
   };
+  return Object.assign(handler, { exports });
 };
 
 test('a local workspace is created from the switcher and keeps its tasks off the server', async ({
@@ -118,6 +123,13 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/board');
   await expect(page.getByText('Written offline').first()).toBeVisible();
+
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /Export to Markdown/ }).click();
+  await expect.poll(() => shell.exports.length).toBe(1);
+  const exported = shell.exports[0].files.map((file) => file.path);
+  expect(exported[0]).toBe('README.md');
+  expect(exported.some((path) => /^tasks\/T-\d+-written-offline\.md$/.test(path))).toBe(true);
 
   const workspaceCalls = sent.filter(
     (path) =>

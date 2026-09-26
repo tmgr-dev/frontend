@@ -1,6 +1,7 @@
 mod capture;
 mod idle;
 mod local_db;
+mod local_export;
 mod local_files;
 mod local_workspaces;
 mod quick_add;
@@ -104,7 +105,9 @@ pub fn run() {
       local_workspaces::local_workspace_set_schema,
       local_db::local_db_select,
       local_db::local_db_execute,
-      local_db::local_db_backup
+      local_db::local_db_backup,
+      local_export::local_export_write,
+      local_export::local_reveal
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {
