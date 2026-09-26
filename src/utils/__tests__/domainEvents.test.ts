@@ -212,3 +212,17 @@ describe('installDomainEvents', () => {
 		]);
 	});
 });
+
+it('marks events caused by a plugin with that plugin as the actor', async () => {
+	const instance = axios.create({
+		adapter: async (config) => ({ data: { data: task }, status: 200, statusText: 'OK', headers: {}, config }),
+	});
+	const bus = createDomainEvents();
+	const seen: DomainEvent[] = [];
+	bus.on((event) => seen.push(event));
+	installDomainEvents(instance, bus, () => 5);
+
+	await instance.put('tasks/7', { title: 'x' }, { headers: { 'X-TMGR-Plugin': 'tmgr.estimate' } });
+
+	expect(seen).toEqual([{ type: 'task.updated', workspaceId: -42, taskId: 7, task, actor: 'plugin:tmgr.estimate' }]);
+});

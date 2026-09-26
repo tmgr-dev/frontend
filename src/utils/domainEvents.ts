@@ -2,7 +2,8 @@ import type { AxiosInstance } from 'axios';
 
 type Entity = Record<string, any>;
 
-export type DomainEvent =
+/** `actor` is set when a plugin caused the write, so the host can keep a plugin from reacting to itself. */
+export type DomainEvent = (
 	| {
 			type: 'task.created' | 'task.updated';
 			workspaceId: number | null;
@@ -29,7 +30,8 @@ export type DomainEvent =
 			taskId: number;
 			comment: Entity;
 	  }
-	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number };
+	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number }
+) & { actor?: string };
 
 export type DomainEventHandler = (event: DomainEvent) => void;
 
@@ -220,8 +222,9 @@ export const installDomainEvents = (
 ) =>
 	instance.interceptors.response.use((response) => {
 		try {
+			const plugin = response.config.headers?.['X-TMGR-Plugin'];
 			eventsForResponse(response, currentWorkspaceId).forEach((event) =>
-				bus.emit(event),
+				bus.emit(plugin ? { ...event, actor: `plugin:${plugin}` } : event),
 			);
 		} catch (error) {
 			console.error(error);

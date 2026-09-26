@@ -1,0 +1,160 @@
+export const PLUGIN_API_VERSION = '1.0';
+
+export const PERMISSIONS = [
+	'tasks:read',
+	'tasks:write',
+	'statuses:read',
+	'categories:read',
+	'time:read',
+	'time:write',
+	'comments:read',
+	'comments:write',
+	'notifications',
+] as const;
+
+export type Permission = (typeof PERMISSIONS)[number];
+
+export interface SettingSchema {
+	type: 'number' | 'string' | 'boolean';
+	title?: string;
+	description?: string;
+	default?: number | string | boolean;
+}
+
+export interface PluginManifest {
+	id: string;
+	name: string;
+	version: string;
+	publisher: string;
+	description: string;
+	main: string;
+	permissions: Permission[];
+	contributes: {
+		boardCardBadges: { id: string }[];
+		statusBarItems: { id: string }[];
+		commands: { id: string; title: string }[];
+		views: { id: string; title: string }[];
+		taskPanelSections: { id: string; title: string }[];
+		settings: {
+			type: 'object';
+			properties: Record<string, SettingSchema>;
+		} | null;
+	};
+}
+
+const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+const LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
+const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+const fail = (message: string): never => {
+	throw new Error(`Invalid plugin manifest: ${message}`);
+};
+
+const text = (value: unknown, field: string, max = 200): string =>
+	typeof value === 'string' && value.trim() && value.length <= max
+		? value.trim()
+		: fail(`${field} must be a non-empty string`);
+
+const list = <T>(
+	value: unknown,
+	field: string,
+	parse: (item: any) => T,
+): T[] => {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > 50)
+		fail(`${field} must be a list`);
+	return (value as unknown[]).map(parse);
+};
+
+const engineSupported = (range: unknown) => {
+	const major =
+		typeof range === 'string' ? range.match(/^\^?(\d+)\./)?.[1] : null;
+	return major === PLUGIN_API_VERSION.split('.')[0];
+};
+
+const parseSettings = (
+	value: any,
+): PluginManifest['contributes']['settings'] => {
+	if (value === undefined || value === null) return null;
+	if (value?.type !== 'object' || typeof value.properties !== 'object') {
+		fail('contributes.settings must be an object schema');
+	}
+	const properties: Record<string, SettingSchema> = {};
+	for (const [key, property] of Object.entries<any>(value.properties)) {
+		if (!LOCAL_ID.test(key.toLowerCase())) fail(`setting ${key}`);
+		if (!['number', 'string', 'boolean'].includes(property?.type))
+			fail(`setting ${key} type`);
+		properties[key] = {
+			type: property.type,
+			...(typeof property.title === 'string' ? { title: property.title } : {}),
+			...(typeof property.description === 'string'
+				? { description: property.description }
+				: {}),
+			...(typeof property.default === property.type
+				? { default: property.default }
+				: {}),
+		};
+	}
+	return { type: 'object', properties };
+};
+
+/** Validates a manifest from any source (built-in or a folder) before anything of the plugin runs. */
+export const parseManifest = (raw: any): PluginManifest => {
+	if (!raw || typeof raw !== 'object') fail('not an object');
+	const id = text(raw.id, 'id', 80);
+	if (!PLUGIN_ID.test(id)) fail(`id "${id}" must look like publisher.name`);
+	const version = text(raw.version, 'version', 40);
+	if (!SEMVER.test(version)) fail(`version "${version}" is not semver`);
+	if (!engineSupported(raw.engines?.tmgr))
+		fail(`engines.tmgr must be ^${PLUGIN_API_VERSION}`);
+	const permissions = list(raw.permissions, 'permissions', (permission) =>
+		(PERMISSIONS as readonly string[]).includes(permission)
+			? (permission as Permission)
+			: fail(`unknown permission ${permission}`),
+	);
+	const localId = (item: any, field: string) => {
+		const value = text(item?.id, `${field}.id`, 60);
+		return LOCAL_ID.test(value) ? value : fail(`${field} id "${value}"`);
+	};
+	const c = raw.contributes ?? {};
+	return {
+		id,
+		name: text(raw.name, 'name', 80),
+		version,
+		publisher: text(raw.publisher ?? id.split('.')[0], 'publisher', 80),
+		description:
+			typeof raw.description === 'string' ? raw.description.slice(0, 500) : '',
+		main: text(raw.main ?? 'main.js', 'main', 80),
+		permissions: [...new Set(permissions)],
+		contributes: {
+			boardCardBadges: list(c.boardCardBadges, 'boardCardBadges', (item) => ({
+				id: localId(item, 'boardCardBadges'),
+			})),
+			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({
+				id: localId(item, 'statusBarItems'),
+			})),
+			commands: list(c.commands, 'commands', (item) => {
+				const commandId = text(item?.id, 'commands.id', 120);
+				if (!commandId.startsWith(`${id}.`))
+					fail(`command ${commandId} must start with ${id}.`);
+				return {
+					id: commandId,
+					title: text(item?.title, 'commands.title', 80),
+				};
+			}),
+			views: list(c.views, 'views', (item) => ({
+				id: localId(item, 'views'),
+				title: text(item?.title, 'views.title', 60),
+			})),
+			taskPanelSections: list(
+				c.taskPanelSections,
+				'taskPanelSections',
+				(item) => ({
+					id: localId(item, 'taskPanelSections'),
+					title: text(item?.title, 'taskPanelSections.title', 60),
+				}),
+			),
+			settings: parseSettings(c.settings),
+		},
+	};
+};
