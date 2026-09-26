@@ -7,8 +7,18 @@
 			data-tauri-drag-region
 			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
 		>
-			<span data-tauri-drag-region>Add to today's routines</span>
-			<span data-tauri-drag-region>↵ add · esc</span>
+			<span data-tauri-drag-region>Add to Daily Routines</span>
+			<div class="flex items-center gap-2">
+				<span data-tauri-drag-region>esc to close</span>
+				<button
+					type="button"
+					class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+					:disabled="saving || !title.trim()"
+					@click="submit"
+				>
+					Add ↵
+				</button>
+			</div>
 		</div>
 
 		<form class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3" @submit.prevent="submit">
@@ -25,7 +35,7 @@
 				v-model="note"
 				data-selectable
 				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-none dark:bg-muted/30"
-				placeholder="Note (added as a comment)"
+				placeholder="Description"
 				:disabled="saving"
 			/>
 			<div v-if="screenshotUrl" class="flex min-h-0 flex-1 items-start gap-2">
@@ -50,7 +60,7 @@
 					class="text-muted-foreground hover:text-foreground"
 					@click="showNote = true"
 				>
-					+ Note
+					+ Description
 				</button>
 				<span v-if="message" :class="error ? 'text-destructive' : 'text-emerald-500'">
 					{{ message }}
@@ -61,8 +71,7 @@
 </template>
 
 <script>
-	import { createComment } from '@/actions/tmgr/comments';
-	import { quickCreateRoutine } from '@/actions/tmgr/daily-tasks';
+	import { createDailyTask } from '@/actions/tmgr/daily-tasks';
 	import { uploadTaskFile } from '@/actions/tmgr/files';
 	import { splitQuickText } from '@/utils/desktopShortcuts';
 	import { format } from 'date-fns';
@@ -141,14 +150,11 @@
 				error.value = false;
 				message.value = 'Adding…';
 				try {
-					const task = await quickCreateRoutine({
+					const task = await createDailyTask({
 						title: title.value.trim(),
-						scheduled_date: format(new Date(), 'yyyy-MM-dd'),
+						description: note.value.trim() || undefined,
 						workspace_id: workspaceId.value || undefined,
 					});
-					if (note.value.trim()) {
-						await createComment(task.id, { message: note.value.trim() });
-					}
 					if (screenshot.value) await uploadTaskFile(task.id, screenshot.value);
 					message.value = 'Added';
 					setTimeout(async () => {

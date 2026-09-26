@@ -238,8 +238,6 @@ export const quickCreateRoutine = async (payload: {
 	date?: string;
 	time?: string;
 	category?: string;
-	scheduled_date?: string;
-	workspace_id?: number;
 }) => {
 	const {
 		data: { data },
