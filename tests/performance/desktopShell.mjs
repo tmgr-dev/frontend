@@ -4,7 +4,10 @@ import { mockApp } from './mockApp.mjs';
 const fakeShell = async ({
   devPlugins = [],
   localHttp = () => ({ status: 404, headers: [], body: '' }),
+  releases = {},
 } = {}) => {
+  const { createHash } = await import('node:crypto');
+  const installed = new Map();
   const { DatabaseSync } = await import('node:sqlite');
   const workspaces = [];
   const dbs = new Map();
@@ -55,6 +58,28 @@ const fakeShell = async ({
       case 'local_file_write':
         files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
         return null;
+      case 'plugin_github_release': {
+        const bundle = releases[args.repo];
+        if (!bundle)
+          throw new Error(
+            `the latest release of ${args.repo} has no tmgr-plugin.json`,
+          );
+        const text = JSON.stringify(bundle.content);
+        return {
+          repo: args.repo,
+          tag: bundle.tag,
+          sha256: createHash('sha256').update(text).digest('hex'),
+          bundle: text,
+        };
+      }
+      case 'plugin_install':
+        installed.set(args.plugin.id, args.plugin);
+        return null;
+      case 'plugins_installed_list':
+        return [...installed.values()];
+      case 'plugin_uninstall':
+        installed.delete(args.id);
+        return null;
       case 'plugin_page_put':
         pages.set(args.key, args.html);
         return null;
@@ -95,6 +120,7 @@ const fakeShell = async ({
     windows,
     replies,
     closed,
+    installed,
   });
 };
 

@@ -28,6 +28,10 @@ const APP_COMMANDS: &[&str] = &[
   "plugin_window_call",
   "plugin_window_reply",
   "plugin_windows_close",
+  "plugin_github_release",
+  "plugin_install",
+  "plugins_installed_list",
+  "plugin_uninstall",
 ];
 
 fn main() {

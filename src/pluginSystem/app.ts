@@ -4,7 +4,7 @@ import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import type { AxiosInstance } from 'axios';
-import { watch } from 'vue';
+import { reactive, watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
@@ -12,6 +12,7 @@ import { createDataApi } from './dataApi';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, type PluginPackage } from './host';
+import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
 import {
 	folderPluginErrors,
@@ -25,6 +26,29 @@ import {
 	safeModeStored,
 	settingsStore,
 } from './storage';
+
+export const installedPluginErrors = reactive<Record<string, string>>({});
+
+/** Installed from GitHub; Rust drops any whose bundle no longer matches the checksum agreed to. */
+const installedPackages = async (): Promise<PluginPackage[]> => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	const found =
+		(await invoke<(Release & { id: string })[]>('plugins_installed_list').catch(
+			() => null,
+		)) ?? [];
+	Object.keys(installedPluginErrors).forEach(
+		(key) => delete installedPluginErrors[key],
+	);
+	return found.flatMap((release) => {
+		try {
+			return [bundleToPackage(release)];
+		} catch (error) {
+			installedPluginErrors[release.id] =
+				error instanceof Error ? error.message : String(error);
+			return [];
+		}
+	});
+};
 
 const folderPackages = async (
 	reservedIds: string[],
@@ -143,10 +167,11 @@ export const installPlugins = async (
 		state: pluginState,
 		packages: async () => {
 			const builtins = builtinPackages();
-			return [
-				...builtins,
-				...(await folderPackages(builtins.map((p) => p.manifest.id))),
-			];
+			const installed = (await installedPackages()).filter(
+				(p) => !builtins.some((b) => b.manifest.id === p.manifest.id),
+			);
+			const reserved = [...builtins, ...installed].map((p) => p.manifest.id);
+			return [...builtins, ...installed, ...(await folderPackages(reserved))];
 		},
 		createEndpoint: () =>
 			new Worker(new URL('./worker.ts', import.meta.url), {
@@ -263,4 +288,24 @@ export const reloadPlugins = async () => {
 	if (!host) return;
 	await host.load();
 	await host.activate(pluginState.workspace);
+};
+
+/** Reads the latest GitHub release of a plugin and checks it; nothing is installed until the user agrees. */
+export const fetchRelease = async (repo: string) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	const release = await invoke<Release>('plugin_github_release', { repo });
+	return { release, pkg: bundleToPackage(release) };
+};
+
+export const installRelease = async (release: Release) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	const { manifest } = bundleToPackage(release);
+	await invoke('plugin_install', { plugin: { id: manifest.id, ...release } });
+	await reloadPlugins();
+};
+
+export const uninstallPlugin = async (pluginId: string) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	await invoke('plugin_uninstall', { id: pluginId });
+	pluginHost()?.forget(pluginId);
 };

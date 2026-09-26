@@ -51,6 +51,10 @@
     "allow-plugin-page-put",
     "allow-plugin-window-open",
     "allow-plugin-window-reply",
-    "allow-plugin-windows-close"
+    "allow-plugin-windows-close",
+    "allow-plugin-github-release",
+    "allow-plugin-install",
+    "allow-plugins-installed-list",
+    "allow-plugin-uninstall"
   ]
 }

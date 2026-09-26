@@ -18,7 +18,7 @@ import {
 } from './process';
 import { sanitizeTree, type Color, type UiNode } from './uiTree';
 
-export type PluginSource = 'builtin' | 'folder';
+export type PluginSource = 'builtin' | 'folder' | 'installed';
 export type PluginStatus =
 	| 'stopped'
 	| 'starting'
@@ -32,6 +32,8 @@ export interface PluginPackage {
 	source: PluginSource;
 	/** HTML pages from the plugin's ui/ folder, by path, for views that open in a window. */
 	pages?: Record<string, string>;
+	/** Where an installed plugin came from. */
+	origin?: { repo: string; tag: string; sha256: string };
 }
 
 export interface PluginLogLine {
@@ -43,6 +45,7 @@ export interface PluginLogLine {
 export interface PluginEntry {
 	manifest: PluginManifest;
 	source: PluginSource;
+	origin?: PluginPackage['origin'];
 	status: PluginStatus;
 	error: string | null;
 	log: PluginLogLine[];
@@ -341,10 +344,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (entry) {
 					entry.manifest = pkg.manifest;
 					entry.source = pkg.source;
+					entry.origin = pkg.origin;
 				} else {
 					state.plugins[pkg.manifest.id] = {
 						manifest: pkg.manifest,
 						source: pkg.source,
+						origin: pkg.origin,
 						status: 'stopped',
 						error: null,
 						log: [],
@@ -429,6 +434,13 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			);
 		},
 		/** A view with its own HTML page opens in a separate window: a busy page cannot freeze the app. */
+		/** Stops a removed plugin and drops it from the list. */
+		forget(pluginId: string) {
+			stop(pluginId);
+			packages.delete(pluginId);
+			delete state.plugins[pluginId];
+			delete state.revisions[pluginId];
+		},
 		async openView(pluginId: string, viewId: string) {
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);

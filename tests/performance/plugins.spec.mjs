@@ -415,3 +415,97 @@ test('a plugin view with its own page opens in a window whose calls go through t
     .click();
   await expect.poll(() => shell.closed).toContain('dev.win');
 });
+
+test('a plugin is installed from a GitHub release only after the user agrees, and an update shows new permissions', async ({
+  page,
+}) => {
+  const releases = {
+    'acme/board': {
+      tag: 'v1.0.0',
+      content: {
+        manifest: {
+          id: 'acme.board',
+          name: 'Acme board',
+          version: '1.0.0',
+          engines: { tmgr: '^1.0' },
+          description: 'A board overview',
+          permissions: ['tasks:read'],
+          contributes: { commands: [{ id: 'acme.board.ping', title: 'Ping' }] },
+        },
+        code: `tmgr.commands.register('acme.board.ping', () => 'pong');`,
+      },
+    },
+  };
+  const shell = await desktopPage(page, {}, { releases });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+
+  await page
+    .getByLabel('Plugin repository')
+    .fill('https://github.com/acme/missing');
+  await page.getByRole('button', { name: 'Check' }).click();
+  await expect(
+    page.getByText(
+      'the latest release of https://github.com/acme/missing has no tmgr-plugin.json',
+    ),
+  ).toBeVisible();
+
+  await page.getByLabel('Plugin repository').fill('acme/board');
+  await page.getByRole('button', { name: 'Check' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Install Acme board 1.0.0?')).toBeVisible();
+  await expect(dialog.getByText('read tasks')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  expect(shell.installed.size).toBe(0);
+
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Install' })
+    .click();
+  const card = page.locator('article', { hasText: 'Acme board' });
+  await expect(
+    card.getByText('From github.com/acme/board · v1.0.0'),
+  ).toBeVisible();
+  await expect(card.getByText('Off')).toBeVisible();
+  await card.getByRole('switch').click();
+  await expect(card.getByText('Running')).toBeVisible();
+
+  releases['acme/board'] = {
+    tag: 'v1.1.0',
+    content: {
+      ...releases['acme/board'].content,
+      manifest: {
+        ...releases['acme/board'].content.manifest,
+        version: '1.1.0',
+        permissions: ['tasks:read', 'tasks:write'],
+      },
+    },
+  };
+  await card.getByRole('button', { name: 'Check for update' }).click();
+  const update = page.getByRole('dialog');
+  await expect(update.getByText('Update Acme board 1.1.0?')).toBeVisible();
+  await expect(
+    update.getByText('New in this version: create and change tasks'),
+  ).toBeVisible();
+  await update.getByRole('button', { name: 'Update' }).click();
+  await expect(
+    card.getByText('From github.com/acme/board · v1.1.0'),
+  ).toBeVisible();
+
+  await card.getByRole('button', { name: 'Remove' }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Remove' })
+    .click();
+  await expect(page.locator('article', { hasText: 'Acme board' })).toHaveCount(
+    0,
+  );
+  expect(shell.installed.size).toBe(0);
+});

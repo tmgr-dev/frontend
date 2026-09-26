@@ -7,6 +7,7 @@ mod local_files;
 mod local_workspaces;
 mod plugin_dev;
 mod plugin_files;
+mod plugin_market;
 mod plugin_net;
 mod plugin_windows;
 mod quick_add;
@@ -122,6 +123,10 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_market::plugin_github_release,
+      plugin_market::plugin_install,
+      plugin_market::plugins_installed_list,
+      plugin_market::plugin_uninstall,
       plugin_files::plugin_pick_file,
       plugin_windows::plugin_page_put,
       plugin_windows::plugin_window_open,

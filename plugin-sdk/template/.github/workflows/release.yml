@@ -1,0 +1,18 @@
+name: Release plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build.mjs
+      - run: gh release create "$GITHUB_REF_NAME" dist/tmgr-plugin.json --title "$GITHUB_REF_NAME" --notes "Plugin $GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}
