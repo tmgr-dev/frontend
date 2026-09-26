@@ -14,17 +14,38 @@ export const runPluginWorker = (
 ) => {
 	let sandbox: Sandbox | null = null;
 	let nextCall = 1;
+	const MAX_IN_FLIGHT = 32;
+	const REJECT_DELAY_MS = 200;
 	const waiting = new Map<
 		number,
 		{ resolve: (value: unknown) => void; reject: (error: unknown) => void }
 	>();
 
-	const call = (method: string, params: unknown) =>
-		new Promise<unknown>((resolve, reject) => {
+	const refuse = (message: string) =>
+		new Promise<never>((_, reject) =>
+			setTimeout(
+				() =>
+					reject(Object.assign(new Error(message), { code: 'RATE_LIMITED' })),
+				REJECT_DELAY_MS,
+			),
+		);
+
+	/** Floods stay in the Worker: at most 32 calls reach the app at once, and refusals come back slowly. */
+	const call = (method: string, params: unknown) => {
+		if (waiting.size >= MAX_IN_FLIGHT)
+			return refuse('too many calls in flight');
+		return new Promise<unknown>((resolve, reject) => {
 			const callId = nextCall++;
-			waiting.set(callId, { resolve, reject });
+			waiting.set(callId, {
+				resolve,
+				reject: (error: any) =>
+					error?.code === 'RATE_LIMITED'
+						? setTimeout(() => reject(error), REJECT_DELAY_MS)
+						: reject(error),
+			});
 			endpoint.postMessage({ type: 'call', callId, method, params });
 		});
+	};
 
 	endpoint.addEventListener('message', async ({ data }) => {
 		if (data.type === 'result') {
@@ -48,6 +69,8 @@ export const runPluginWorker = (
 					call,
 					cpuMs: data.cpuMs,
 					wallMs: data.wallMs,
+					onBackgroundError: (error) =>
+						endpoint.postMessage({ type: 'fault', error: wireError(error) }),
 				});
 				await sandbox.start();
 				endpoint.postMessage({ type: 'started' });

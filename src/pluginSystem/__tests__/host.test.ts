@@ -69,6 +69,7 @@ const setup = (packages: PluginPackage[], api: Partial<DataApi> = {}) => {
 		plugins: {},
 		statusBar: {},
 		revision: 0,
+		revisions: {},
 	};
 	const events = createDomainEvents();
 	const notices: string[] = [];
@@ -182,7 +183,7 @@ it('shows status bar items while the plugin runs and badges it provides', async 
 			'tmgr.bar',
 			`tmgr.ui.setStatusBarItem('total', { text: '2h over', tooltip: 'Across 3 tasks' });
 			 tmgr.ui.provideBadges('over', (tasks) => Object.fromEntries(tasks.map((t) => [t.id, { text: t.id + '!', color: 'red' }])));`,
-			[],
+			['tasks:read'],
 			{ statusBarItems: [{ id: 'total' }], boardCardBadges: [{ id: 'over' }] },
 		),
 	]);
@@ -192,6 +193,7 @@ it('shows status bar items while the plugin runs and badges it provides', async 
 	expect(Object.values(state.statusBar)).toEqual([
 		{
 			pluginId: 'tmgr.bar',
+			pluginName: 'tmgr.bar',
 			itemId: 'total',
 			text: '2h over',
 			tooltip: 'Across 3 tasks',
@@ -246,7 +248,9 @@ it('turns a plugin off after three timeouts and tells the user', async () => {
 		await host.runCommand('tmgr.spin', 'tmgr.spin.go').catch(() => undefined);
 	expect(state.plugins['tmgr.spin'].status).toBe('crashed');
 	expect(notices).toEqual([
-		expect.stringMatching(/^tmgr.spin was turned off: It failed 3 times/),
+		expect.stringMatching(
+			/^Plugin tmgr.spin was turned off: It failed 3 times/,
+		),
 	]);
 	expect(await host.runCommand('tmgr.spin', 'tmgr.spin.go')).toBeUndefined();
 	host.dispose();
@@ -260,5 +264,86 @@ it('marks a plugin whose script throws as failed', async () => {
 		status: 'failed',
 		error: expect.stringContaining('broken'),
 	});
+	host.dispose();
+});
+
+it('marks a plugin whose worker was killed as crashed at once', async () => {
+	const { host, state } = setup([pkg('tmgr.silent', '')]);
+	await host.load();
+	const silent = {
+		postMessage: (message: any) =>
+			message.type === 'start' && setTimeout(() => undefined, 0),
+		addEventListener: () => undefined,
+		terminate: () => undefined,
+	};
+	const hostWithSilent = createPluginHost({
+		state,
+		packages: async () => [pkg('tmgr.silent', '')],
+		createEndpoint: () => silent as any,
+		api: () => ({} as DataApi),
+		subscribe: () => () => undefined,
+		enabled: { get: () => undefined, set: () => undefined },
+		settings: { get: () => undefined, set: () => undefined },
+		notify: () => undefined,
+		currentWorkspaceId: () => LOCAL.id,
+	});
+	host.dispose();
+	await hostWithSilent.load();
+	jest.useFakeTimers();
+	const activating = hostWithSilent.activate(LOCAL);
+	jest.advanceTimersByTime(10_001);
+	jest.useRealTimers();
+	await activating;
+	expect(state.plugins['tmgr.silent'].status).toBe('crashed');
+	hostWithSilent.dispose();
+});
+
+it('gives task snapshots in events only to plugins with tasks:read', async () => {
+	const seen: unknown[] = [];
+	const { host, events } = setup(
+		[
+			pkg(
+				'tmgr.timeonly',
+				`tmgr.events.on('timer.stopped', (e) => tmgr.storage.set('e', e));`,
+				['time:read'],
+			),
+		],
+		{
+			storageSet: async (_key: string, json: string) =>
+				void seen.push(JSON.parse(json)),
+		},
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	events.emit({
+		type: 'timer.stopped',
+		workspaceId: LOCAL.id,
+		taskId: 1,
+		task: { title: 'Secret' },
+	} as DomainEvent);
+	await flush();
+	expect(seen).toEqual([
+		{ type: 'timer.stopped', workspaceId: LOCAL.id, taskId: 1 },
+	]);
+	host.dispose();
+});
+
+it('coalesces a flood of refresh requests into one redraw', async () => {
+	const { host, state } = setup([
+		pkg(
+			'tmgr.chatty',
+			`tmgr.commands.register('tmgr.chatty.go', async () => { for (let i = 0; i < 10; i++) await tmgr.ui.refresh('page', 'report'); });`,
+			[],
+			{
+				commands: [{ id: 'tmgr.chatty.go', title: 'Go' }],
+				views: [{ id: 'report', title: 'Report' }],
+			},
+		),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	await host.runCommand('tmgr.chatty', 'tmgr.chatty.go');
+	await new Promise((resolve) => setTimeout(resolve, 600));
+	expect(state.revisions['tmgr.chatty']).toBe(1);
 	host.dispose();
 });

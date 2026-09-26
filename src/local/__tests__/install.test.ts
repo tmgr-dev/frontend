@@ -45,6 +45,8 @@ jest.mock('../runtime', () => ({
 
 // eslint-disable-next-line import/first
 import { installLocalWorkspaces } from '../install';
+// eslint-disable-next-line import/first
+import { pinnedLocalClient } from '../pinned';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
@@ -123,6 +125,19 @@ describeSqlite('installLocalWorkspaces', () => {
 			['task.created', LOCAL.id],
 			['timer.started', LOCAL.id],
 		]);
+		expect(sent).toEqual([]);
+	});
+
+	it('a pinned client stays in its local workspace whatever the app switches to', async () => {
+		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
+		active = null;
+		const created = await pinned.post('tasks', { title: 'Written by a plugin' });
+		expect(created.data.data.workspace_id).toBe(LOCAL.id);
+		expect(sent).toEqual([]);
+
+		const gone = pinnedLocalClient(-999, () => ({ id: 7, name: '', email: '' }));
+		await expect(gone.get('tasks')).rejects.toMatchObject({ response: { status: 409 } });
+		await expect(pinned.post('agent/conversations', {})).rejects.toMatchObject({ response: { status: 501 } });
 		expect(sent).toEqual([]);
 	});
 

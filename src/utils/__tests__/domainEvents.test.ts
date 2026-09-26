@@ -215,14 +215,65 @@ describe('installDomainEvents', () => {
 
 it('marks events caused by a plugin with that plugin as the actor', async () => {
 	const instance = axios.create({
-		adapter: async (config) => ({ data: { data: task }, status: 200, statusText: 'OK', headers: {}, config }),
+		adapter: async (config) => ({
+			data: { data: task },
+			status: 200,
+			statusText: 'OK',
+			headers: {},
+			config,
+		}),
 	});
 	const bus = createDomainEvents();
 	const seen: DomainEvent[] = [];
 	bus.on((event) => seen.push(event));
 	installDomainEvents(instance, bus, () => 5);
 
-	await instance.put('tasks/7', { title: 'x' }, { headers: { 'X-TMGR-Plugin': 'tmgr.estimate' } });
+	await instance.put(
+		'tasks/7',
+		{ title: 'x' },
+		{ headers: { 'X-TMGR-Plugin': 'tmgr.estimate' } },
+	);
 
-	expect(seen).toEqual([{ type: 'task.updated', workspaceId: -42, taskId: 7, task, actor: 'plugin:tmgr.estimate' }]);
+	expect(seen).toEqual([
+		{
+			type: 'task.updated',
+			workspaceId: -42,
+			taskId: 7,
+			task,
+			actor: 'plugin:tmgr.estimate',
+		},
+	]);
+});
+
+it('attributes an event to the workspace that was current when the request was sent', async () => {
+	let finish: () => void = () => undefined;
+	let arrived: () => void = () => undefined;
+	const inAdapter = new Promise<void>((resolve) => (arrived = resolve));
+	const instance = axios.create({
+		adapter: (config) =>
+			new Promise((resolve) => {
+				arrived();
+				finish = () =>
+					resolve({
+						data: { data: { id: 3, task_id: 7, message: 'hi' } },
+						status: 201,
+						statusText: 'Created',
+						headers: {},
+						config,
+					});
+			}),
+	});
+	const bus = createDomainEvents();
+	const seen: DomainEvent[] = [];
+	bus.on((event) => seen.push(event));
+	let current = 56;
+	installDomainEvents(instance, bus, () => current);
+
+	const request = instance.post('tasks/7/comments', { message: 'hi' });
+	await inAdapter;
+	current = -42;
+	finish();
+	await request;
+
+	expect(seen.map((e) => e.workspaceId)).toEqual([56]);
 });

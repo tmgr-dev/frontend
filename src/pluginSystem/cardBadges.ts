@@ -44,7 +44,9 @@ export const createCardBadgeFeed = (delayMs = 300) => {
 
 	const stop = watch(
 		() =>
-			`${pluginState.revision}|${Object.values(pluginState.plugins)
+			`${pluginState.revision}:${Object.values(pluginState.revisions).join(
+				':',
+			)}|${Object.values(pluginState.plugins)
 				.map((p) => p.status)
 				.join()}`,
 		refresh,

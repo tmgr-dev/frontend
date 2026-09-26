@@ -107,3 +107,31 @@ it('caps size and depth', () => {
 		(sanitizeTree({ type: 'text', text: 'x'.repeat(5000) }) as any).text.length,
 	).toBe(1000);
 });
+
+it('counts table rows against the node budget, so nested tables cannot multiply', () => {
+	const row = { cells: { a: 'x' } };
+	const inner = {
+		type: 'table',
+		columns: [{ key: 'a', title: 'A' }],
+		rows: Array.from({ length: 500 }, () => row),
+	};
+	const outer = {
+		type: 'table',
+		columns: [{ key: 'a', title: 'A' }],
+		rows: Array.from({ length: 500 }, () => ({ cells: { a: inner } })),
+	};
+	const count = (node: any): number =>
+		node.type === 'table'
+			? node.rows.length +
+			  node.rows.reduce(
+					(sum: number, r: any) =>
+						sum +
+						(Object.values(r.cells) as any[]).reduce(
+							(s: number, c: any) => s + count(c),
+							0,
+						),
+					0,
+			  )
+			: 1;
+	expect(count(sanitizeTree(outer))).toBeLessThanOrEqual(3000);
+});

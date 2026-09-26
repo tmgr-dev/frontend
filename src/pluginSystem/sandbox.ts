@@ -26,17 +26,26 @@ export interface SandboxOptions {
 	/** Wall-clock budget for a whole dispatch, including awaited host calls. */
 	wallMs?: number;
 	memoryBytes?: number;
+	/** An error in plugin code that runs outside any call from the host (a timer-less background job). */
+	onBackgroundError?: (error: SandboxError) => void;
 }
 
 /**
  * The only globals a plugin gets. Everything goes through `__host(method, json)`, which the host
  * answers with the broker; `__host` and `__dispatch` are removed before the plugin's code runs.
  */
+const MAX_CALL_BYTES = 1024 * 1024;
+const MAX_RESULT_BYTES = 2 * 1024 * 1024;
+const MAX_MESSAGE = 1000;
+
 const PRELUDE = `(() => {
 	const host = globalThis.__host;
 	const handlers = { event: new Map(), command: new Map(), badges: new Map(), page: new Map(), section: new Map() };
-	const call = (method, params) =>
-		host(method, JSON.stringify(params === undefined ? null : params)).then((json) => JSON.parse(json));
+	const call = (method, params) => {
+		const json = JSON.stringify(params === undefined ? null : params);
+		if (json.length > ${MAX_CALL_BYTES}) return Promise.reject(new RangeError('call arguments are larger than 1 MB'));
+		return host(method, json).then((result) => JSON.parse(result));
+	};
 	const register = (kind, id, fn) => {
 		if (typeof fn !== 'function') throw new TypeError(kind + ' handler must be a function');
 		if (kind === 'event') {
@@ -97,7 +106,11 @@ const PRELUDE = `(() => {
 		if (!fn) return Promise.reject(new Error('no ' + kind + ' handler for ' + id));
 		return Promise.resolve()
 			.then(() => fn(args))
-			.then((result) => JSON.stringify(result === undefined ? null : result));
+			.then((result) => {
+				const json = JSON.stringify(result === undefined ? null : result);
+				if (json.length > ${MAX_RESULT_BYTES}) throw new RangeError('result is larger than 2 MB');
+				return json;
+			});
 	};
 })();
 delete globalThis.__host;`;
@@ -113,6 +126,7 @@ export const createSandbox = ({
 	cpuMs = 500,
 	wallMs = 15_000,
 	memoryBytes = 32 * 1024 * 1024,
+	onBackgroundError = () => undefined,
 }: SandboxOptions) => {
 	const runtime = quickjs.newRuntime();
 	runtime.setMemoryLimit(memoryBytes);
@@ -139,28 +153,41 @@ export const createSandbox = ({
 			? new SandboxError('TIMEOUT', `plugin code ran longer than ${cpuMs} ms`)
 			: new SandboxError(
 					'PLUGIN_ERROR',
-					typeof error === 'object' && error
+					(typeof error === 'object' && error
 						? `${error.name ?? 'Error'}: ${error.message}`
-						: String(error),
+						: String(error)
+					).slice(0, MAX_MESSAGE),
 			  );
 	};
 
 	const inFlight = new Set<(error: SandboxError) => void>();
+	let started = false;
 	let startError: SandboxError | null = null;
 	const pump = () => {
 		if (disposed) return;
 		const result = guarded(() => runtime.executePendingJobs());
 		if (!result.error) return result.dispose();
 		const error = failure(result.error);
-		if (inFlight.size === 0) startError = error;
+		if (inFlight.size === 0) {
+			if (started) onBackgroundError(error);
+			else startError = error;
+		}
 		inFlight.forEach((reject) => reject(error));
 	};
 
 	const host = ctx.newFunction('__host', (methodHandle, paramsHandle) => {
 		const method = ctx.getString(methodHandle);
-		const params = JSON.parse(ctx.getString(paramsHandle));
+		const json = ctx.getString(paramsHandle);
 		const deferred = ctx.newPromise();
-		call(method, params).then(
+		const request =
+			json.length > MAX_CALL_BYTES
+				? Promise.reject(
+						Object.assign(new Error('call arguments are larger than 1 MB'), {
+							code: 'INVALID_PARAMS',
+						}),
+				  )
+				: call(method, JSON.parse(json));
+		request.then(
 			(result) => {
 				if (disposed) return;
 				ctx
@@ -172,7 +199,10 @@ export const createSandbox = ({
 				ctx
 					.newError({
 						name: typeof error?.code === 'string' ? error.code : 'Error',
-						message: error instanceof Error ? error.message : String(error),
+						message: (error instanceof Error
+							? error.message
+							: String(error)
+						).slice(0, MAX_MESSAGE),
 					})
 					.consume((value) => deferred.reject(value));
 			},
@@ -214,6 +244,11 @@ export const createSandbox = ({
 		try {
 			pump();
 			result = await Promise.race([native, aborted]);
+		} catch (error) {
+			native
+				.then((late) => (isFail(late) ? late.error : late.value).dispose())
+				.catch(() => undefined);
+			throw error;
 		} finally {
 			inFlight.delete(reject);
 			clearTimeout(timer);
@@ -221,6 +256,8 @@ export const createSandbox = ({
 		if (isFail(result)) throw failure(result.error);
 		const json = ctx.getString(result.value);
 		result.value.dispose();
+		if (json.length > MAX_RESULT_BYTES)
+			throw new SandboxError('PLUGIN_ERROR', 'result is larger than 2 MB');
 		return JSON.parse(json);
 	};
 
@@ -230,6 +267,7 @@ export const createSandbox = ({
 			if (result.error) throw failure(result.error);
 			result.dispose();
 			pump();
+			started = true;
 			if (startError) throw startError;
 		},
 		async dispatch(

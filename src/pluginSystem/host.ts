@@ -44,6 +44,7 @@ export interface PluginEntry {
 
 export interface StatusBarEntry {
 	pluginId: string;
+	pluginName: string;
 	itemId: string;
 	text: string;
 	tooltip: string | null;
@@ -62,15 +63,18 @@ export interface PluginHostState {
 	safeMode: boolean;
 	plugins: Record<string, PluginEntry>;
 	statusBar: Record<string, StatusBarEntry>;
-	/** Bumped whenever badges, pages or sections should be asked again. */
+	/** Bumped when plugins start or stop: every badge, page and section is asked again. */
 	revision: number;
+	/** Per plugin, bumped (throttled) when that plugin asks for its UI to be drawn again. */
+	revisions: Record<string, number>;
 }
 
 export interface PluginHostDeps {
 	state: PluginHostState;
 	packages: () => Promise<PluginPackage[]>;
 	createEndpoint: () => WorkerEndpoint;
-	api: (pluginId: string) => DataApi;
+	/** Data access pinned to the workspace the plugin was started in. */
+	api: (pluginId: string, workspace: PluginWorkspace) => DataApi;
 	subscribe: (handler: (event: DomainEvent) => void) => () => void;
 	enabled: {
 		get: (pluginId: string, workspaceId: number) => boolean | undefined;
@@ -90,6 +94,8 @@ export interface PluginHostDeps {
 const FAULT_LIMIT = 3;
 const FAULT_WINDOW_MS = 5 * 60_000;
 const LOG_LIMIT = 200;
+const MESSAGE_LIMIT = 1000;
+const REFRESH_THROTTLE_MS = 500;
 const COLORS: Color[] = ['gray', 'green', 'yellow', 'red', 'blue'];
 
 interface Running {
@@ -103,6 +109,19 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const packages = new Map<string, PluginPackage>();
 	const running = new Map<string, Running>();
 	const faults = new Map<string, number[]>();
+	const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+	/** Coalesces a plugin's refresh requests so a chatty plugin cannot flood the UI with re-renders. */
+	const bump = (pluginId: string) => {
+		if (refreshTimers.has(pluginId)) return;
+		refreshTimers.set(
+			pluginId,
+			setTimeout(() => {
+				refreshTimers.delete(pluginId);
+				state.revisions[pluginId] = (state.revisions[pluginId] ?? 0) + 1;
+			}, REFRESH_THROTTLE_MS),
+		);
+	};
 
 	const log = (
 		pluginId: string,
@@ -111,7 +130,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	) => {
 		const entry = state.plugins[pluginId];
 		if (!entry) return;
-		entry.log.push({ at: now(), level, message });
+		entry.log.push({
+			at: now(),
+			level,
+			message: message.slice(0, MESSAGE_LIMIT),
+		});
 		if (entry.log.length > LOG_LIMIT)
 			entry.log.splice(0, entry.log.length - LOG_LIMIT);
 	};
@@ -148,7 +171,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const entry = state.plugins[pluginId];
 		if (entry) {
 			entry.status = status;
-			entry.error = error;
+			entry.error = error?.slice(0, MESSAGE_LIMIT) ?? null;
 		}
 		state.revision++;
 	};
@@ -163,8 +186,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			stop(pluginId, 'crashed', reason);
 			const name = state.plugins[pluginId]?.manifest.name ?? pluginId;
 			deps.notify(
-				`${name} was turned off`,
-				`It failed ${FAULT_LIMIT} times in 5 minutes: ${reason}`,
+				`Plugin ${name} was turned off`,
+				`It failed ${FAULT_LIMIT} times in 5 minutes: ${reason.slice(0, 300)}`,
 			);
 		}
 	};
@@ -187,18 +210,25 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			manifest,
 			workspace,
 			currentWorkspaceId: deps.currentWorkspaceId,
-			api: deps.api(pluginId),
+			api: deps.api(pluginId, workspace),
 			settings: () => settingsOf(pluginId),
-			notify: (message) => deps.notify(manifest.name, message),
+			notify: (message) => deps.notify(`Plugin ${manifest.name}`, message),
 			setStatusBarItem: (itemId, item) => {
 				const key = `${pluginId}:${itemId}`;
-				if (item) state.statusBar[key] = { pluginId, itemId, ...item };
-				else delete state.statusBar[key];
+				if (item) {
+					state.statusBar[key] = {
+						pluginId,
+						pluginName: manifest.name,
+						itemId,
+						...item,
+					};
+				} else delete state.statusBar[key];
 			},
-			refresh: () => void state.revision++,
+			refresh: () => bump(pluginId),
 			register: (kind, id) => {
+				if (registered[kind].has(id)) return;
 				registered[kind].add(id);
-				if (kind !== 'event' && kind !== 'command') state.revision++;
+				if (kind !== 'event' && kind !== 'command') bump(pluginId);
 			},
 			log: (level, message) => log(pluginId, level, message),
 			now,
@@ -206,7 +236,13 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const process = startPluginProcess(pkg.code, {
 			endpoint: deps.createEndpoint(),
 			call: (method, params) => broker.call(method, params),
-			onCrash: (reason) => fault(pluginId, reason),
+			onCrash: (reason) => {
+				fault(pluginId, reason);
+				// The Worker is gone; a dead plugin must not keep looking alive.
+				if (running.get(pluginId)?.process === process)
+					stop(pluginId, 'crashed', reason);
+			},
+			onFault: (reason) => fault(pluginId, `background: ${reason}`),
 			cpuMs: deps.cpuMs,
 			wallMs: deps.wallMs,
 		});
@@ -258,7 +294,15 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			)
 				continue;
 			if (!PLUGIN_EVENTS[event.type]) continue;
-			const { actor: _actor, ...payload } = event;
+			const { actor: _actor, ...payload } = event as DomainEvent & {
+				task?: unknown;
+			};
+			// A task snapshot rides along with timer and status events; it is only for tasks:read.
+			if (
+				!packages.get(pluginId)?.manifest.permissions.includes('tasks:read')
+			) {
+				delete (payload as { task?: unknown }).task;
+			}
 			void dispatch(pluginId, 'event', event.type, payload).catch(
 				() => undefined,
 			);
@@ -273,13 +317,19 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		async load() {
 			for (const pkg of await deps.packages()) {
 				packages.set(pkg.manifest.id, pkg);
-				state.plugins[pkg.manifest.id] ??= {
-					manifest: pkg.manifest,
-					source: pkg.source,
-					status: 'stopped',
-					error: null,
-					log: [],
-				};
+				const entry = state.plugins[pkg.manifest.id];
+				if (entry) {
+					entry.manifest = pkg.manifest;
+					entry.source = pkg.source;
+				} else {
+					state.plugins[pkg.manifest.id] = {
+						manifest: pkg.manifest,
+						source: pkg.source,
+						status: 'stopped',
+						error: null,
+						log: [],
+					};
+				}
 			}
 		},
 		/** Plugins run only inside a local workspace, and never in safe mode. */
@@ -388,10 +438,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 							return;
 						}
 						if (!answer || typeof answer !== 'object') return;
-						for (const [key, badge] of Object.entries<any>(answer)) {
-							const taskId = Number(key);
-							if (!ids.has(taskId) || !badge || typeof badge.text !== 'string')
-								continue;
+						for (const taskId of ids) {
+							const badge = Object.prototype.hasOwnProperty.call(answer, taskId)
+								? (answer as Record<number, any>)[taskId]
+								: null;
+							if (!badge || typeof badge.text !== 'string') continue;
 							(result[taskId] ??= []).push({
 								pluginId,
 								text: badge.text.slice(0, 16),
@@ -409,6 +460,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		},
 		dispose() {
 			unsubscribe();
+			refreshTimers.forEach((timer) => clearTimeout(timer));
+			refreshTimers.clear();
 			stopAll();
 		},
 	};

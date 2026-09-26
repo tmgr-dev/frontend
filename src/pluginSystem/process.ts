@@ -14,6 +14,8 @@ export interface PluginProcessOptions {
 	endpoint: WorkerEndpoint;
 	call: (method: string, params: unknown) => Promise<unknown>;
 	onCrash: (reason: string) => void;
+	/** Plugin code failed in the background, outside any call from the app. */
+	onFault?: (reason: string) => void;
 	cpuMs?: number;
 	wallMs?: number;
 	startMs?: number;
@@ -59,6 +61,8 @@ export const startPluginProcess = (
 		switch (data.type) {
 			case 'started':
 				return started?.resolve();
+			case 'fault':
+				return options.onFault?.(`${data.error.code}: ${data.error.message}`);
 			case 'startFailed':
 				return started?.reject(
 					new DispatchError(data.error.code, data.error.message),
@@ -136,6 +140,7 @@ export const startPluginProcess = (
 			if (stopped) return;
 			stopped = true;
 			endpoint.terminate();
+			started?.reject(new DispatchError('STOPPED', 'plugin was stopped'));
 			pending.forEach(({ reject }) =>
 				reject(new DispatchError('STOPPED', 'plugin was stopped')),
 			);

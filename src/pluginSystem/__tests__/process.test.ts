@@ -116,3 +116,41 @@ it('kills a worker that stops answering and reports the crash', async () => {
 		code: 'CRASHED',
 	});
 });
+
+it('lets at most 32 calls from one plugin reach the app at once', async () => {
+	const endpoint = pair();
+	let reached = 0;
+	const process = startPluginProcess(
+		`tmgr.commands.register('tmgr.p.flood', async () => {
+			const results = await Promise.all(Array.from({ length: 100 }, () => tmgr.workspace.current().then(() => 'ok', (e) => e.name)));
+			return results.filter((r) => r === 'RATE_LIMITED').length;
+		});`,
+		{
+			endpoint,
+			call: () => {
+				reached++;
+				return new Promise((resolve) => setTimeout(() => resolve(null), 50));
+			},
+			onCrash: () => undefined,
+		},
+	);
+	await process.ready;
+	const refused = await process.dispatch('command', 'tmgr.p.flood', null);
+	expect(refused).toBeGreaterThanOrEqual(68);
+	expect(reached).toBeLessThanOrEqual(33);
+	process.stop();
+});
+
+it('stopping a plugin that is still starting settles its start', async () => {
+	const process = startPluginProcess('', {
+		endpoint: {
+			postMessage: () => undefined,
+			addEventListener: () => undefined,
+			terminate: () => undefined,
+		},
+		call: async () => null,
+		onCrash: () => undefined,
+	});
+	process.stop();
+	await expect(process.ready).rejects.toMatchObject({ code: 'STOPPED' });
+});

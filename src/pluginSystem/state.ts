@@ -8,6 +8,7 @@ export const pluginState = reactive<PluginHostState>({
 	plugins: {},
 	statusBar: {},
 	revision: 0,
+	revisions: {},
 });
 
 export const folderPluginErrors = reactive<Record<string, string>>({});

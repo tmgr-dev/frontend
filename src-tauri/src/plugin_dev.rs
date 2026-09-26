@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -19,12 +20,22 @@ fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
   Ok(home.join(".tmgr.dev").join("plugins"))
 }
 
+/// A plain file of at most 1 MB. The size is enforced on the read itself, so a file swapped for a
+/// symlink or a device between the check and the read still yields at most MAX_FILE_BYTES + 1 bytes.
 fn read_small(path: &Path) -> Option<String> {
-  let meta = fs::symlink_metadata(path).ok()?;
-  if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
+  if !fs::symlink_metadata(path).ok()?.is_file() {
     return None;
   }
-  fs::read_to_string(path).ok()
+  let file = fs::File::open(path).ok()?;
+  if !file.metadata().ok()?.is_file() {
+    return None;
+  }
+  let mut bytes = Vec::new();
+  file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).ok()?;
+  if bytes.len() as u64 > MAX_FILE_BYTES {
+    return None;
+  }
+  String::from_utf8(bytes).ok()
 }
 
 /// Every `<root>/<folder>/` with a `manifest.json` and a `main.js` (plain files, at most 1 MB each).

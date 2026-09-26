@@ -90,7 +90,9 @@
 					const t = props.task as Record<string, any>;
 					return `${sections.value.map((s) => s.key).join()}|${
 						pluginState.revision
-					}|${t?.id}:${t?.common_time}:${t?.approximately_time}:${
+					}:${sections.value
+						.map((s) => pluginState.revisions[s.pluginId] ?? 0)
+						.join(':')}|${t?.id}:${t?.common_time}:${t?.approximately_time}:${
 						t?.start_time
 					}`;
 				},

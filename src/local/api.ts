@@ -174,6 +174,8 @@ const categoryCounts = `
 	FROM categories c`;
 
 const PLUGIN_STORAGE_QUOTA = 5 * 1024 * 1024;
+const PLUGIN_STORAGE_KEYS = 1000;
+const PLUGIN_ROW_OVERHEAD = 64;
 
 const FEATURE_TOGGLES: Record<string, boolean> = {
 	board: true,
@@ -553,18 +555,27 @@ export const createLocalApi = () =>
 		.add('PUT', 'plugins/:pid/storage/:key', async ({ ctx, params, body }) => {
 			const value = typeof body?.value === 'string' ? body.value : null;
 			if (value === null) throw new LocalHttpError(422, 'value must be a JSON string');
-			const [{ used }] = await ctx.db.select<{ used: number }>(
-				`SELECT COALESCE(SUM(LENGTH(value)), 0) AS used FROM plugin_kv WHERE plugin_id = ? AND key <> ?`,
-				[params.pid, params.key],
-			);
-			if (Number(used) + value.length > PLUGIN_STORAGE_QUOTA) {
-				throw new LocalHttpError(413, 'plugin storage is full (5 MB)');
-			}
-			await ctx.db.execute(
-				`INSERT INTO plugin_kv (plugin_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+			// One statement, so concurrent writes cannot all pass the check before any of them lands.
+			const { rowsAffected } = await ctx.db.execute(
+				`INSERT INTO plugin_kv (plugin_id, key, value, updated_at)
+				 SELECT ?, ?, ?, ?
+				 WHERE (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				        FROM plugin_kv WHERE plugin_id = ? AND key <> ?) + ? <= ${PLUGIN_STORAGE_QUOTA}
+				   AND (SELECT COUNT(*) FROM plugin_kv WHERE plugin_id = ? AND key <> ?) < ${PLUGIN_STORAGE_KEYS}
 				 ON CONFLICT (plugin_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-				[params.pid, params.key, value, iso(ctx)],
+				[
+					params.pid,
+					params.key,
+					value,
+					iso(ctx),
+					params.pid,
+					params.key,
+					params.key.length + value.length + PLUGIN_ROW_OVERHEAD,
+					params.pid,
+					params.key,
+				],
 			);
+			if (!rowsAffected) throw new LocalHttpError(413, 'plugin storage is full (5 MB or 1000 keys)');
 			return { success: true };
 		})
 		.add('DELETE', 'plugins/:pid/storage/:key', async ({ ctx, params }) => {

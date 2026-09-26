@@ -215,15 +215,25 @@ export const eventsForResponse = (
 };
 
 /** Turns every successful write through `instance` (cloud API or the local workspace adapter) into events. */
+const SENT_IN = Symbol('workspace the request was sent in');
+
 export const installDomainEvents = (
 	instance: AxiosInstance,
 	bus: ReturnType<typeof createDomainEvents>,
 	currentWorkspaceId: () => number | null,
-) =>
-	instance.interceptors.response.use((response) => {
+) => {
+	// A slow response can arrive after a workspace switch; its events belong to the workspace it was sent in.
+	instance.interceptors.request.use((config) => {
+		(config as any)[SENT_IN] = currentWorkspaceId();
+		return config;
+	});
+	return instance.interceptors.response.use((response) => {
 		try {
 			const plugin = response.config.headers?.['X-TMGR-Plugin'];
-			eventsForResponse(response, currentWorkspaceId).forEach((event) =>
+			const sentIn = (response.config as any)[SENT_IN];
+			const workspaceId = () =>
+				sentIn === undefined ? currentWorkspaceId() : sentIn;
+			eventsForResponse(response, workspaceId).forEach((event) =>
 				bus.emit(plugin ? { ...event, actor: `plugin:${plugin}` } : event),
 			);
 		} catch (error) {
@@ -231,3 +241,4 @@ export const installDomainEvents = (
 		}
 		return response;
 	});
+};

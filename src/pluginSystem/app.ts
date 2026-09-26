@@ -1,15 +1,16 @@
 import { toast } from '@/components/ui/toast';
+import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
-import { domainEvents } from '@/utils/domainEvents';
+import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import type { AxiosInstance } from 'axios';
 import { watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
 import { createDataApi } from './dataApi';
+import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, type PluginPackage } from './host';
-import { parseManifest } from './manifest';
 import type { WorkerEndpoint } from './process';
 import {
 	folderPluginErrors,
@@ -24,35 +25,39 @@ import {
 	settingsStore,
 } from './storage';
 
-export interface FolderPlugin {
-	folder: string;
-	manifest: string;
-	code: string;
-}
-
-const folderPackages = async (): Promise<PluginPackage[]> => {
+const folderPackages = async (
+	reservedIds: string[],
+): Promise<PluginPackage[]> => {
 	if (!devModeStored()) return [];
 	const { invoke } = await import('@tauri-apps/api/core');
 	const found =
 		(await invoke<FolderPlugin[]>('plugins_dev_list').catch(() => null)) ?? [];
+	const { packages, errors } = folderPackagesFrom(found, reservedIds);
 	Object.keys(folderPluginErrors).forEach(
 		(key) => delete folderPluginErrors[key],
 	);
-	return found.flatMap(({ folder, manifest, code }) => {
-		try {
-			return [
-				{
-					manifest: parseManifest(JSON.parse(manifest)),
-					code,
-					source: 'folder' as const,
-				},
-			];
-		} catch (error) {
-			folderPluginErrors[folder] =
-				error instanceof Error ? error.message : String(error);
-			return [];
-		}
-	});
+	Object.assign(folderPluginErrors, errors);
+	return packages;
+};
+
+const clients = new Map<number, AxiosInstance>();
+
+/** Plugin data never goes through the app's client: one client per local workspace, no network at all. */
+const clientFor = (workspaceId: number, store: Store<any>) => {
+	let client = clients.get(workspaceId);
+	if (!client) {
+		client = pinnedLocalClient(workspaceId, () => {
+			const user = store.state.user ?? {};
+			return {
+				id: Number(user.id ?? 0),
+				name: user.name ?? '',
+				email: user.email ?? '',
+			};
+		});
+		installDomainEvents(client, domainEvents, () => workspaceId);
+		clients.set(workspaceId, client);
+	}
+	return client;
 };
 
 const workspaceOf = (workspace: any): PluginWorkspace | null =>
@@ -86,7 +91,6 @@ const resolveWorkspace = async (
 
 /** Desktop only: starts the plugin host and follows the current workspace. */
 export const installPlugins = async (
-	http: AxiosInstance,
 	store: Store<any>,
 	safeModeFlag: boolean,
 ) => {
@@ -95,17 +99,17 @@ export const installPlugins = async (
 		state: pluginState,
 		packages: async () => {
 			const builtins = builtinPackages();
-			const ids = new Set(builtins.map((p) => p.manifest.id));
 			return [
 				...builtins,
-				...(await folderPackages()).filter((p) => !ids.has(p.manifest.id)),
+				...(await folderPackages(builtins.map((p) => p.manifest.id))),
 			];
 		},
 		createEndpoint: () =>
 			new Worker(new URL('./worker.ts', import.meta.url), {
 				type: 'module',
 			}) as unknown as WorkerEndpoint,
-		api: (pluginId) => createDataApi(http, pluginId),
+		api: (pluginId, workspace) =>
+			createDataApi(clientFor(workspace.id, store), pluginId),
 		subscribe: (handler) => domainEvents.on(handler),
 		enabled: enabledStore,
 		settings: settingsStore,

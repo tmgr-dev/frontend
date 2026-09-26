@@ -116,16 +116,19 @@ export const sanitizeTree = (raw: unknown): UiNode | null => {
 					);
 				const rows = (
 					Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : []
-				).map((row: any) => {
-					const cells: Record<string, UiNode> = {};
-					for (const { key } of columns) {
-						const cell = node(row?.cells?.[key], depth + 1);
-						if (cell) cells[key] = cell;
-					}
-					return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-						? { taskId: row.taskId, cells }
-						: { cells };
-				});
+				)
+					// Rows count against the same budget as nodes, so nested tables cannot multiply.
+					.filter(() => budget-- > 0)
+					.map((row: any) => {
+						const cells: Record<string, UiNode> = {};
+						for (const { key } of columns) {
+							const cell = node(row?.cells?.[key], depth + 1);
+							if (cell) cells[key] = cell;
+						}
+						return Number.isSafeInteger(row?.taskId) && row.taskId > 0
+							? { taskId: row.taskId, cells }
+							: { cells };
+					});
 				return { type: 'table', columns, rows };
 			}
 			case 'button': {

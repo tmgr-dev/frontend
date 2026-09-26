@@ -177,7 +177,7 @@ it('limits writes per second', async () => {
 });
 
 it('registers only what the manifest declares, and events only with read access', async () => {
-	const { broker, registered } = setup(['time:read']);
+	const { broker, registered } = setup(['time:read', 'tasks:read']);
 	expect(
 		await code(
 			broker.call('register', { kind: 'command', id: 'tmgr.test.go' }),
@@ -201,7 +201,9 @@ it('registers only what the manifest declares, and events only with read access'
 		await code(broker.call('register', { kind: 'event', id: 'timer.stopped' })),
 	).toBe('ok');
 	expect(
-		await code(broker.call('register', { kind: 'event', id: 'task.updated' })),
+		await code(
+			broker.call('register', { kind: 'event', id: 'comment.created' }),
+		),
 	).toBe('PERMISSION_DENIED');
 	expect(
 		await code(broker.call('register', { kind: 'event', id: 'app.quit' })),
@@ -213,6 +215,30 @@ it('registers only what the manifest declares, and events only with read access'
 		['section', 'summary'],
 		['event', 'timer.stopped'],
 	]);
+});
+
+it('ignores inherited names in task patches', async () => {
+	const { broker, api } = setup(['tasks:write']);
+	await broker.call('tasks.update', {
+		id: 4,
+		patch: JSON.parse(
+			'{"constructor":{"workspace_id":5},"toString":1,"hasOwnProperty":false,"title":"ok"}',
+		),
+	});
+	expect(api.calls).toEqual([['updateTask', 4, { title: 'ok' }]]);
+});
+
+it('needs tasks:read to receive task snapshots in badges or sections', async () => {
+	const { broker } = setup([]);
+	expect(
+		await code(broker.call('register', { kind: 'badges', id: 'overrun' })),
+	).toBe('PERMISSION_DENIED');
+	expect(
+		await code(broker.call('register', { kind: 'section', id: 'summary' })),
+	).toBe('PERMISSION_DENIED');
+	expect(
+		await code(broker.call('register', { kind: 'page', id: 'report' })),
+	).toBe('ok');
 });
 
 it('keeps plugin storage within its quota and hands out settings and the workspace', async () => {

@@ -76,7 +76,7 @@ const recall = (key: string): any => {
 	return owner === null ? null : storage.get(`${CACHE_PREFIX}${owner}:${key}`);
 };
 
-const respond = (
+export const respond = (
 	config: InternalAxiosRequestConfig,
 	status: number,
 	data: unknown,

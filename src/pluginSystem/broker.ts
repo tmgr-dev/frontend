@@ -131,7 +131,9 @@ const taskFields = (patch: unknown) => {
 		invalid('patch must be an object');
 	const fields: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-		if (key in TASK_FIELDS) fields[key] = TASK_FIELDS[key](value);
+		if (Object.prototype.hasOwnProperty.call(TASK_FIELDS, key)) {
+			fields[key] = TASK_FIELDS[key](value);
+		}
 	}
 	return fields;
 };
@@ -314,8 +316,21 @@ export const createBroker = (deps: BrokerDeps) => {
 							`${target} needs ${permission}`,
 						);
 					}
-				} else if (kind in declared && kind !== ('statusBar' as string)) {
+				} else if (
+					Object.prototype.hasOwnProperty.call(declared, kind) &&
+					kind !== ('statusBar' as string)
+				) {
 					mustDeclare(declared[kind as keyof typeof declared], target);
+					// Badges and sections are handed task snapshots, so they need read access to tasks.
+					if (
+						(kind === 'badges' || kind === 'section') &&
+						!granted.has('tasks:read')
+					) {
+						throw new PluginError(
+							'PERMISSION_DENIED',
+							`${kind} needs tasks:read`,
+						);
+					}
 				} else {
 					invalid(`unknown registration ${kind}`);
 				}

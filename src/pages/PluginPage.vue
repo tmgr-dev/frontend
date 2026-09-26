@@ -76,6 +76,7 @@
 					viewId.value,
 					entry.value?.status,
 					pluginState.revision,
+					pluginState.revisions[pluginId.value],
 				],
 				() => void render(),
 				{ immediate: true },

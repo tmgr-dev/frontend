@@ -44,7 +44,7 @@ if (isDesktopApp()) {
 			import('@tauri-apps/api/core').then(({ invoke }) =>
 				invoke<boolean>('plugins_safe_mode').catch(() => false),
 			),
-		]).then(([{ installPlugins }, safeMode]) => installPlugins($axios, store, safeMode));
+		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
 	}
 }
 

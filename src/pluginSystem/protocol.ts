@@ -19,6 +19,7 @@ export type ToWorker =
 
 export type FromWorker =
 	| { type: 'started' }
+	| { type: 'fault'; error: WireError }
 	| { type: 'startFailed'; error: WireError }
 	| { type: 'call'; callId: number; method: string; params: unknown }
 	| { type: 'dispatched'; id: number; ok: true; value: unknown }
@@ -37,5 +38,8 @@ export const wireError = (error: unknown): WireError => ({
 		typeof (error as any)?.code === 'string'
 			? (error as any).code
 			: 'PLUGIN_ERROR',
-	message: error instanceof Error ? error.message : String(error),
+	message: (error instanceof Error ? error.message : String(error)).slice(
+		0,
+		1000,
+	),
 });

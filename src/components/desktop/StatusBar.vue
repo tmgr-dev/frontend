@@ -46,7 +46,7 @@
 			v-for="item in pluginItems"
 			:key="`${item.pluginId}:${item.itemId}`"
 			:type="item.command ? 'button' : undefined"
-			:title="item.tooltip || undefined"
+			:title="`${item.pluginName} (plugin)${item.tooltip ? `: ${item.tooltip}` : ''}`"
 			:class="[
 				'flex h-full items-center px-3',
 				item.command && 'hover:bg-muted hover:text-foreground',

@@ -154,3 +154,49 @@ it('stops a handler that spins after an await, without failing the next call', a
 	expect(await sandbox.dispatch('command', 'tmgr.t.ok', null)).toBe('fine');
 	sandbox.dispose();
 });
+
+it('keeps big payloads and long errors inside the sandbox', async () => {
+	const { sandbox, calls } = await start(
+		`tmgr.commands.register('tmgr.t.bigcall', () => tmgr.storage.set('k', 'x'.repeat(1100000)).then(() => 'sent', (e) => e.name));
+		 tmgr.commands.register('tmgr.t.bigresult', () => 'x'.repeat(2200000));
+		 tmgr.commands.register('tmgr.t.longerror', () => { throw new Error('x'.repeat(100000)); });`,
+	);
+	expect(await sandbox.dispatch('command', 'tmgr.t.bigcall', null)).toBe(
+		'RangeError',
+	);
+	expect(calls.filter(([method]) => method === 'storage.set')).toEqual([]);
+	await expect(
+		sandbox.dispatch('command', 'tmgr.t.bigresult', null),
+	).rejects.toMatchObject({
+		code: 'PLUGIN_ERROR',
+		message: expect.stringContaining('larger than 2 MB'),
+	});
+	const error: any = await sandbox
+		.dispatch('command', 'tmgr.t.longerror', null)
+		.catch((e) => e);
+	expect(error.message.length).toBeLessThanOrEqual(1000);
+	sandbox.dispose();
+});
+
+it('cuts off a loop that runs in the background and keeps answering', async () => {
+	let answer: () => void = () => undefined;
+	const sandbox = createSandbox({
+		quickjs,
+		code: `tmgr.workspace.current().then(() => { while (true) {} });
+		       tmgr.commands.register('tmgr.t.ok', () => 'still here');`,
+		cpuMs: 100,
+		call: (method) =>
+			method === 'workspace.current'
+				? new Promise((resolve) => (answer = () => resolve(null)))
+				: Promise.resolve(null),
+	});
+	await sandbox.start();
+	const started = Date.now();
+	answer();
+	await new Promise((resolve) => setTimeout(resolve, 20));
+	expect(await sandbox.dispatch('command', 'tmgr.t.ok', null)).toBe(
+		'still here',
+	);
+	expect(Date.now() - started).toBeLessThan(1000);
+	sandbox.dispose();
+});
