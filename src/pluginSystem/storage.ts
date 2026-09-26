@@ -32,15 +32,21 @@ export const enabledStore = {
 		}),
 };
 
-/** A member's consent that a plugin of a shared workspace may reach this computer, per pinned release. */
+/** A member's consent that a plugin of a shared workspace may reach this computer, per member and pinned release. */
 export const machineConsentStore = {
-	has: (workspaceId: number, pluginId: string, release: string) =>
+	has: (memberId: number, workspaceId: number, pluginId: string, release: string) =>
 		read<Record<string, boolean>>(MACHINE_CONSENT, {})[
-			`${pluginId}@${workspaceId}#${release}`
+			`${memberId}:${pluginId}@${workspaceId}#${release}`
 		] === true,
-	set: (workspaceId: number, pluginId: string, release: string, value: boolean) => {
+	set: (
+		memberId: number,
+		workspaceId: number,
+		pluginId: string,
+		release: string,
+		value: boolean,
+	) => {
 		const all = read<Record<string, boolean>>(MACHINE_CONSENT, {});
-		const key = `${pluginId}@${workspaceId}#${release}`;
+		const key = `${memberId}:${pluginId}@${workspaceId}#${release}`;
 		if (value) all[key] = true;
 		else delete all[key];
 		write(MACHINE_CONSENT, all);

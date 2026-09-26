@@ -281,11 +281,14 @@ const answerPluginWindows = async (
 	});
 };
 
+let memberId = () => 0;
+
 /** Desktop only: starts the plugin host and follows the current workspace. */
 export const installPlugins = async (
 	store: Store<any>,
 	safeModeFlag: boolean,
 ) => {
+	memberId = () => Number(store.state.user?.id ?? 0);
 	pluginState.safeMode = safeModeFlag || safeModeStored();
 	const host = createPluginHost({
 		state: pluginState,
@@ -317,7 +320,7 @@ export const installPlugins = async (
 			},
 		},
 		machineAllowed: (pluginId, workspace) =>
-			hasMachineConsent(workspace, pluginId),
+			hasMachineConsent(workspace, pluginId, memberId()),
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
 		files: (pluginId, workspace, pluginName) => {
@@ -415,17 +418,36 @@ export const installPlugins = async (
 	void refreshCatalog();
 	setInterval(() => void refreshCatalog(), REFRESH_MS);
 	let sequence = 0;
+	let session: string | null = null;
 	watch(
 		() =>
 			`${store.getters.currentWorkspaceId}|${
 				store.getters.currentWorkspace?.code ?? ''
-			}`,
+			}|${store.state.token ? store.state.user?.id ?? '' : ''}`,
 		async () => {
 			const current = ++sequence;
+			// Another person (or nobody) signed in: nothing of the previous session may keep running.
+			const now = store.state.token ? String(store.state.user?.id ?? '') : '';
+			const sessionChanged = now !== session;
+			if (sessionChanged) {
+				session = now;
+				cloudClients.clear();
+				Object.keys(workspacePlugins).forEach(
+					(id) => delete workspacePlugins[Number(id)],
+				);
+			}
+			if (!now) {
+				await host.activate(null);
+				return;
+			}
 			const workspace = await resolveWorkspace(store);
 			if (current !== sequence) return;
 			const active = pluginState.workspace;
-			if (active?.id === workspace?.id && active?.code === workspace?.code)
+			if (
+				!sessionChanged &&
+				active?.id === workspace?.id &&
+				active?.code === workspace?.code
+			)
 				return;
 			if (workspace?.kind === 'cloud') {
 				await loadWorkspacePlugins(workspace.id).catch(() => undefined);
@@ -513,8 +535,14 @@ export const setMachineConsent = async (pluginId: string, allowed: boolean) => {
 	const workspace = pluginState.workspace;
 	if (!workspace || workspace.kind !== 'cloud') return;
 	const record = recordFor(workspace.id, pluginId);
-	if (!record) return;
-	machineConsentStore.set(workspace.id, pluginId, releaseOf(record), allowed);
+	if (!record || memberId() <= 0) return;
+	machineConsentStore.set(
+		memberId(),
+		workspace.id,
+		pluginId,
+		releaseOf(record),
+		allowed,
+	);
 	await pluginHost()?.restart(pluginId);
 };
 

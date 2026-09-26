@@ -657,7 +657,11 @@
 				},
 				consented: (pluginId: string) =>
 					consentTick.value >= 0 &&
-					hasMachineConsent(pluginState.workspace, pluginId),
+					hasMachineConsent(
+						pluginState.workspace,
+						pluginId,
+						Number(store.state.user?.id ?? 0),
+					),
 				async setConsent(pluginId: string, allowed: boolean) {
 					const { setMachineConsent } = await import('@/pluginSystem/app');
 					await setMachineConsent(pluginId, allowed);

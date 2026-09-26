@@ -79,12 +79,14 @@ export const releaseOf = (record: WorkspacePluginRecord) =>
 export const hasMachineConsent = (
 	workspace: PluginWorkspace | null,
 	pluginId: string,
+	memberId: number,
 ) => {
 	if (!workspace) return false;
 	if (workspace.kind === 'local') return true;
 	const record = recordFor(workspace.id, pluginId);
 	return (
 		!!record &&
-		machineConsentStore.has(workspace.id, pluginId, releaseOf(record))
+		memberId > 0 &&
+		machineConsentStore.has(memberId, workspace.id, pluginId, releaseOf(record))
 	);
 };
