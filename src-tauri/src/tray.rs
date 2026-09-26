@@ -85,10 +85,9 @@ pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
 fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Result<Menu<R>> {
   let mut menu = MenuBuilder::new(app);
   for task in &state.running {
-    menu = menu.item(
-      &MenuItemBuilder::with_id(format!("stop:{}", task.id), format!("■  Stop  {}", truncate(&task.title, LABEL_MAX)))
-        .build(app)?,
-    );
+    menu = menu
+      .item(&MenuItemBuilder::with_id(format!("open:{}", task.id), truncate(&task.title, LABEL_MAX)).build(app)?)
+      .item(&MenuItemBuilder::with_id(format!("stop:{}", task.id), "      ■  Stop timer").build(app)?);
   }
   let recent: Vec<&TrayTask> = state
     .recent
@@ -152,6 +151,11 @@ fn refresh<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
 
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
+  if let Some(task_id) = id.strip_prefix("open:") {
+    show_main(app);
+    let _ = app.emit("tray://open", task_id.parse::<i64>().unwrap_or_default());
+    return;
+  }
   if let Some(task_id) = id.strip_prefix("stop:") {
     let _ = app.emit("tray://stop", task_id.parse::<i64>().unwrap_or_default());
     return;

@@ -164,6 +164,9 @@
 			onMounted(async () => {
 				const { listen } = await import('@tauri-apps/api/event');
 				unlisteners.push(
+					await listen('tray://open', (event) =>
+						store.commit('setCurrentTaskIdForModal', event.payload),
+					),
 					await listen('tray://stop', safely(stopTaskTimeCounter)),
 					await listen('tray://switch', safely(switchTo)),
 					await listen('idle://returned', async (event) => {
