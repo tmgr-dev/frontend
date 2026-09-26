@@ -23,6 +23,7 @@ import {
 import {
 	devModeStored,
 	enabledStore,
+	forgetPlugin,
 	safeModeStored,
 	settingsStore,
 } from './storage';
@@ -117,6 +118,7 @@ const resolveWorkspace = async (
 interface WindowCall {
 	call_id: number;
 	plugin_id: string;
+	generation: string;
 	method: string;
 	params: unknown;
 }
@@ -137,6 +139,7 @@ const answerPluginWindows = async (
 				JSON.stringify(
 					(await host.windowCall(
 						payload.plugin_id,
+						payload.generation,
 						payload.method,
 						payload.params,
 					)) ?? null,
@@ -177,8 +180,8 @@ export const installPlugins = async (
 			new Worker(new URL('./worker.ts', import.meta.url), {
 				type: 'module',
 			}) as unknown as WorkerEndpoint,
-		api: (pluginId, workspace) =>
-			createDataApi(clientFor(workspace.id, store), pluginId),
+		api: (pluginId, workspace, storageId) =>
+			createDataApi(clientFor(workspace.id, store), pluginId, storageId),
 		subscribe: (handler) => domainEvents.on(handler),
 		enabled: enabledStore,
 		settings: settingsStore,
@@ -222,10 +225,10 @@ export const installPlugins = async (
 			};
 		},
 		windows: {
-			open: async (key, html, title) => {
+			open: async (key, html, title, generation) => {
 				const { invoke } = await import('@tauri-apps/api/core');
 				await invoke('plugin_page_put', { key, html });
-				await invoke('plugin_window_open', { key, title });
+				await invoke('plugin_window_open', { key, title, generation });
 			},
 			close: async (pluginId) => {
 				const { invoke } = await import('@tauri-apps/api/core');
@@ -297,9 +300,33 @@ export const fetchRelease = async (repo: string) => {
 	return { release, pkg: bundleToPackage(release) };
 };
 
-export const installRelease = async (release: Release) => {
+/** Why a release may not be installed over what is there: another plugin's id, or another repository. */
+export const installConflict = (
+	release: Release,
+	manifestId: string,
+	expectedId?: string,
+) => {
+	if (expectedId && manifestId !== expectedId) {
+		return `this release is ${manifestId}, not ${expectedId}`;
+	}
+	const existing = pluginState.plugins[manifestId];
+	if (!existing) return null;
+	if (existing.source !== 'installed') {
+		return `${manifestId} is already used by a ${
+			existing.source === 'builtin' ? 'built-in' : 'folder'
+		} plugin`;
+	}
+	if (existing.origin?.repo !== release.repo) {
+		return `${manifestId} is already installed from github.com/${existing.origin?.repo}`;
+	}
+	return null;
+};
+
+export const installRelease = async (release: Release, expectedId?: string) => {
 	const { invoke } = await import('@tauri-apps/api/core');
 	const { manifest } = bundleToPackage(release);
+	const conflict = installConflict(release, manifest.id, expectedId);
+	if (conflict) throw new Error(conflict);
 	await invoke('plugin_install', { plugin: { id: manifest.id, ...release } });
 	await reloadPlugins();
 };
@@ -307,5 +334,6 @@ export const installRelease = async (release: Release) => {
 export const uninstallPlugin = async (pluginId: string) => {
 	const { invoke } = await import('@tauri-apps/api/core');
 	await invoke('plugin_uninstall', { id: pluginId });
+	forgetPlugin(pluginId);
 	pluginHost()?.forget(pluginId);
 };

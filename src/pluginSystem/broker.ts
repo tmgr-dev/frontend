@@ -165,6 +165,20 @@ const taskFields = (patch: unknown) => {
 const MAX_VALUE_BYTES = 256 * 1024;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
 const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
+// Data and documents only: nothing Finder would run or follow on a double-click.
+const EXPORT_EXTENSIONS = new Set([
+	'md',
+	'txt',
+	'csv',
+	'tsv',
+	'json',
+	'html',
+	'xml',
+	'yaml',
+	'yml',
+	'log',
+	'ics',
+]);
 
 /** A relative path of at most 5 plain segments: no `..`, no absolute paths, no backslashes. */
 const exportPath = (value: unknown): string => {
@@ -178,6 +192,16 @@ const exportPath = (value: unknown): string => {
 		)
 	) {
 		invalid('path must be relative, like "reports/week 39.md"');
+	}
+	const extension = segments[segments.length - 1]
+		.split('.')
+		.pop()!
+		.toLowerCase();
+	if (
+		!segments[segments.length - 1].includes('.') ||
+		!EXPORT_EXTENSIONS.has(extension)
+	) {
+		invalid(`exports may be ${[...EXPORT_EXTENSIONS].join(', ')} files`);
 	}
 	return path;
 };
@@ -459,7 +483,24 @@ export const createBroker = (deps: BrokerDeps) => {
 		},
 	};
 
+	/** Same workspace and within the rate limit: every call, and anything else that acts for the plugin. */
+	const admit = (write: boolean) => {
+		if (deps.currentWorkspaceId() !== deps.workspace.id) {
+			throw new PluginError(
+				'WORKSPACE_CHANGED',
+				'the app has left the plugin workspace',
+			);
+		}
+		if (!(write ? writes() : reads())) {
+			throw new PluginError(
+				'RATE_LIMITED',
+				`too many ${write ? 'writes' : 'calls'}`,
+			);
+		}
+	};
+
 	return {
+		admit,
 		async call(method: string, params: unknown): Promise<unknown> {
 			const entry = Object.prototype.hasOwnProperty.call(methods, method)
 				? methods[method]
@@ -472,18 +513,7 @@ export const createBroker = (deps: BrokerDeps) => {
 					`${method} needs ${entry.permission}`,
 				);
 			}
-			if (deps.currentWorkspaceId() !== deps.workspace.id) {
-				throw new PluginError(
-					'WORKSPACE_CHANGED',
-					'the app has left the plugin workspace',
-				);
-			}
-			if (!(entry.write ? writes() : reads())) {
-				throw new PluginError(
-					'RATE_LIMITED',
-					`too many ${entry.write ? 'writes' : 'calls'}`,
-				);
-			}
+			admit(!!entry.write);
 			const p =
 				params && typeof params === 'object' && !Array.isArray(params)
 					? (params as Params)

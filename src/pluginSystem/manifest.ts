@@ -51,7 +51,7 @@ export interface PluginManifest {
 const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 const LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
 const LOOPBACK_ORIGIN =
-	/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):(\d{1,5})\/?$/;
+	/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):([1-9]\d{0,4})\/?$/;
 
 const parseOrigin = (value: unknown): string => {
 	const match = typeof value === 'string' ? value.match(LOOPBACK_ORIGIN) : null;
@@ -62,7 +62,8 @@ const parseOrigin = (value: unknown): string => {
 			)} must be http://localhost:<port> (or 127.0.0.1 / [::1])`,
 		);
 	}
-	return value!.toString().replace(/\/$/, '');
+	// Written as the browser's URL.origin writes it, so the broker's comparison can match: port 80 is implied.
+	return `http://${match![1]}${match![2] === '80' ? '' : `:${match![2]}`}`;
 };
 
 const UI_PAGE = /^ui\/[a-z0-9][a-z0-9_-]*\.html$/i;

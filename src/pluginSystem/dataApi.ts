@@ -5,16 +5,18 @@ import { encodeFile, MAX_FILE_BYTES } from './fileData';
 const unwrap = (response: { data: any }) => response.data?.data ?? null;
 
 /**
- * Plugin data calls go through the app's own axios instance, so they reach the same local workspace
- * adapter as the UI. The header marks the write as the plugin's for domain events.
+ * Plugin data calls go through a client pinned to the plugin's workspace (see src/local/pinned.ts).
+ * The header marks the write as the plugin's for domain events.
  */
+/** `storageId` namespaces the plugin's storage; installed plugins include their repository in it. */
 export const createDataApi = (
 	http: AxiosInstance,
 	pluginId: string,
+	storageId = pluginId,
 ): DataApi => {
 	const headers = { 'X-TMGR-Plugin': pluginId };
 	const storage = (key?: string) =>
-		`plugins/${encodeURIComponent(pluginId)}/storage${
+		`plugins/${encodeURIComponent(storageId)}/storage${
 			key === undefined ? '' : `/${encodeURIComponent(key)}`
 		}`;
 	return {

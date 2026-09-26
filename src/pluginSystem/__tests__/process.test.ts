@@ -197,3 +197,26 @@ it('notify answers with plain data', async () => {
 	} as any);
 	expect(await broker.call('ui.notify', { message: 'hi' })).toBeNull();
 });
+
+it('does not count the time a user spends in a file dialog against the plugin deadline', async () => {
+	const endpoint = pair();
+	const process = startPluginProcess(
+		`tmgr.commands.register('tmgr.p.pick', async () => { const f = await tmgr.files.pick(); return f.name; });`,
+		{
+			endpoint,
+			wallMs: 200,
+			call: (method) =>
+				method === 'files.pick'
+					? new Promise((resolve) =>
+							setTimeout(() => resolve({ name: 'chosen.txt' }), 2600),
+					  )
+					: Promise.resolve(null),
+			onCrash: () => undefined,
+		},
+	);
+	await process.ready;
+	expect(await process.dispatch('command', 'tmgr.p.pick', null)).toBe(
+		'chosen.txt',
+	);
+	process.stop();
+}, 10000);

@@ -104,3 +104,15 @@ it('lists and reads attachments with text and base64', async () => {
 		'GET files/9/content',
 	]);
 });
+
+it('keeps storage in the namespace it is given', async () => {
+	const { http, seen } = recording(() => ({ data: { value: null } }));
+	await createDataApi(
+		http,
+		'acme.board',
+		'acme.board@github.com/acme/board',
+	).storageGet('k');
+	expect(seen[0]).toBe(
+		'GET plugins/acme.board%40github.com%2Facme%2Fboard/storage/k acme.board',
+	);
+});

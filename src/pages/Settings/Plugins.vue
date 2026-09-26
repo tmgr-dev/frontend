@@ -442,6 +442,7 @@
 				release: Release;
 				pkg: PluginPackage;
 				update: boolean;
+				expectedId?: string;
 				changes: ReturnType<typeof permissionChanges> | null;
 			} | null>(null);
 			const removing = ref<PluginEntry | null>(null);
@@ -459,16 +460,21 @@
 						toast({ title: `${current.manifest.name} is up to date` });
 						return;
 					}
-					const existing = pluginState.plugins[pkg.manifest.id];
-					if (existing && existing.source !== 'installed') {
-						installError.value = `${pkg.manifest.id} is already used by a ${
-							existing.source === 'builtin' ? 'built-in' : 'folder'
-						} plugin`;
+					const { installConflict } = await import('@/pluginSystem/app');
+					const conflict = installConflict(
+						release,
+						pkg.manifest.id,
+						current?.manifest.id,
+					);
+					if (conflict) {
+						installError.value = conflict;
 						return;
 					}
+					const existing = pluginState.plugins[pkg.manifest.id];
 					offer.value = {
 						release,
 						pkg,
+						expectedId: current?.manifest.id,
 						update: !!existing,
 						changes: existing
 							? permissionChanges(existing.manifest, pkg.manifest)
@@ -497,7 +503,7 @@
 					installing.value = true;
 					try {
 						const { installRelease } = await import('@/pluginSystem/app');
-						await installRelease(offer.value.release);
+						await installRelease(offer.value.release, offer.value.expectedId);
 						toast({
 							title: `${offer.value.pkg.manifest.name} ${
 								offer.value.update ? 'updated' : 'installed'

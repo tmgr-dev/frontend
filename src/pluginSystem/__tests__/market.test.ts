@@ -49,6 +49,14 @@ it.each([
 	],
 	[{ manifest: manifest(), code: '', pages: { '../main.js': 'x' } }, 'page'],
 	[{ manifest: { ...manifest(), permissions: ['shell'] }, code: '' }, 'shell'],
+	[
+		{
+			manifest: manifest(),
+			code: '',
+			pages: { 'ui/big.html': 'ж'.repeat(600_000) },
+		},
+		'1 MB',
+	],
 ])('refuses a broken bundle %#', (bundle, message) => {
 	const input =
 		typeof bundle === 'string'

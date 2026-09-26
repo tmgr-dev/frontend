@@ -1,4 +1,6 @@
 import {
+	MAX_USER_WAIT_MS,
+	USER_WAIT_METHODS,
 	wireError,
 	type Endpoint,
 	type FromWorker,
@@ -37,6 +39,7 @@ export const startPluginProcess = (
 ) => {
 	const { endpoint, cpuMs = 500, wallMs = 15_000, startMs = 10_000 } = options;
 	let stopped = false;
+	let userWaits = 0;
 	let nextDispatch = 1;
 	const pending = new Map<
 		number,
@@ -68,6 +71,8 @@ export const startPluginProcess = (
 					new DispatchError(data.error.code, data.error.message),
 				);
 			case 'call': {
+				const waitsForUser = USER_WAIT_METHODS.has(data.method);
+				if (waitsForUser) userWaits++;
 				const answer = (message: ToWorker) => {
 					if (stopped) return;
 					try {
@@ -87,7 +92,14 @@ export const startPluginProcess = (
 						});
 					}
 				};
-				options.call(data.method, data.params).then(
+				const call = options.call(data.method, data.params);
+				if (waitsForUser) {
+					call.then(
+						() => userWaits--,
+						() => userWaits--,
+					);
+				}
+				call.then(
 					(value) =>
 						answer({ type: 'result', callId: data.callId, ok: true, value }),
 					(error) =>
@@ -137,11 +149,18 @@ export const startPluginProcess = (
 				);
 			const id = nextDispatch++;
 			return new Promise((resolve, reject) => {
-				// The sandbox gives up after wallMs itself; a Worker silent past that is stuck, not slow.
-				const timer = setTimeout(
-					() => kill(`plugin did not answer ${kind} ${target}`),
-					wallMs + 2_000,
-				);
+				// The sandbox gives up after wallMs itself; a Worker silent past that is stuck, not slow,
+				// unless it is waiting for the user in a dialog.
+				const started = Date.now();
+				let timer: ReturnType<typeof setTimeout>;
+				const arm = () => {
+					timer = setTimeout(() => {
+						if (userWaits > 0 && Date.now() - started < MAX_USER_WAIT_MS)
+							return arm();
+						kill(`plugin did not answer ${kind} ${target}`);
+					}, wallMs + 2_000);
+				};
+				arm();
 				pending.set(id, {
 					resolve: (value) => (clearTimeout(timer), resolve(value)),
 					reject: (error) => (clearTimeout(timer), reject(error)),

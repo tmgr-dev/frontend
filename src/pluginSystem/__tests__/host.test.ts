@@ -255,8 +255,10 @@ it('turns a plugin off after three timeouts and tells the user', async () => {
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	for (let i = 0; i < 3; i++)
+	for (let i = 0; i < 3; i++) {
+		while (state.plugins['tmgr.spin'].status === 'starting') await flush();
 		await host.runCommand('tmgr.spin', 'tmgr.spin.go').catch(() => undefined);
+	}
 	expect(state.plugins['tmgr.spin'].status).toBe('crashed');
 	expect(notices).toEqual([
 		expect.stringMatching(
@@ -360,6 +362,9 @@ it('coalesces a flood of refresh requests into one redraw', async () => {
 });
 
 describe('plugin windows', () => {
+	let generation = '';
+	const gen = () => generation;
+
 	const windowPlugin = (permissions: any[] = ['tasks:read']) =>
 		({
 			...pkg(
@@ -384,7 +389,9 @@ describe('plugin windows', () => {
 		await host.load();
 		await host.activate(LOCAL);
 		await host.openView('tmgr.win', 'board');
-		expect(opened).toEqual([['tmgr.win/board', '<h1>Board</h1>', 'Board']]);
+		expect(opened).toEqual([
+			['tmgr.win/board', '<h1>Board</h1>', 'Board', expect.any(String)],
+		]);
 		host.dispose();
 	});
 
@@ -394,12 +401,13 @@ describe('plugin windows', () => {
 		});
 		await host.load();
 		await host.activate(LOCAL);
-		expect(await host.windowCall('tmgr.win', 'tasks.list', {})).toEqual({
+		generation = host.generationOf('tmgr.win')!;
+		expect(await host.windowCall('tmgr.win', gen(), 'tasks.list', {})).toEqual({
 			items: [{ id: 1 }],
 			total: 1,
 		});
 		await expect(
-			host.windowCall('tmgr.win', 'tasks.update', {
+			host.windowCall('tmgr.win', gen(), 'tasks.update', {
 				id: 1,
 				patch: { title: 'x' },
 			}),
@@ -407,18 +415,18 @@ describe('plugin windows', () => {
 			code: 'PERMISSION_DENIED',
 		});
 		expect(
-			await host.windowCall('tmgr.win', 'commands.run', {
+			await host.windowCall('tmgr.win', gen(), 'commands.run', {
 				id: 'tmgr.win.hello',
 				args: { name: 'Ann' },
 			}),
 		).toBe('hello Ann');
 		await expect(
-			host.windowCall('tmgr.win', 'commands.run', { id: 'other.cmd' }),
+			host.windowCall('tmgr.win', gen(), 'commands.run', { id: 'other.cmd' }),
 		).rejects.toMatchObject({
 			code: 'NOT_DECLARED',
 		});
 		await expect(
-			host.windowCall('tmgr.win', 'register', {
+			host.windowCall('tmgr.win', gen(), 'register', {
 				kind: 'command',
 				id: 'tmgr.win.hello',
 			}),
@@ -427,7 +435,7 @@ describe('plugin windows', () => {
 		});
 		await host.setEnabled('tmgr.win', false);
 		await expect(
-			host.windowCall('tmgr.win', 'tasks.list', {}),
+			host.windowCall('tmgr.win', gen(), 'tasks.list', {}),
 		).rejects.toMatchObject({ code: 'NOT_RUNNING' });
 		host.dispose();
 	});
@@ -443,6 +451,78 @@ describe('plugin windows', () => {
 		await host.activate(LOCAL);
 		await host.setEnabled('tmgr.win', false);
 		expect(closed).toContain('tmgr.win');
+		host.dispose();
+	});
+});
+
+describe('plugin runs', () => {
+	const runPlugin = pkg(
+		'tmgr.run',
+		`tmgr.commands.register('tmgr.run.go', () => 'ok');
+		 tmgr.commands.register('tmgr.run.spin', () => { while (true) {} });`,
+		['tasks:read'],
+		{
+			commands: [
+				{ id: 'tmgr.run.go', title: 'Go' },
+				{ id: 'tmgr.run.spin', title: 'Spin' },
+			],
+			views: [{ id: 'board', title: 'Board', ui: 'ui/board.html' }],
+		},
+	);
+	(runPlugin as PluginPackage).pages = { 'ui/board.html': '<h1>B</h1>' };
+
+	it('refuses window calls from an earlier run of the plugin', async () => {
+		const { host } = setup([runPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const first = host.generationOf('tmgr.run')!;
+		await host.restart('tmgr.run');
+		const second = host.generationOf('tmgr.run')!;
+		expect(second).not.toBe(first);
+		await expect(
+			host.windowCall('tmgr.run', first, 'commands.run', { id: 'tmgr.run.go' }),
+		).rejects.toMatchObject({
+			code: 'NOT_RUNNING',
+		});
+		expect(
+			await host.windowCall('tmgr.run', second, 'commands.run', {
+				id: 'tmgr.run.go',
+			}),
+		).toBe('ok');
+		host.dispose();
+	});
+
+	it('closes a window that finished opening after its run ended', async () => {
+		const closed: string[] = [];
+		let finishOpen: () => void = () => undefined;
+		const { host } = setup(
+			[runPlugin],
+			{},
+			{
+				open: () => new Promise<void>((resolve) => (finishOpen = resolve)),
+				close: async (pluginId: string) => void closed.push(pluginId),
+			},
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		const opening = host.openView('tmgr.run', 'board');
+		await host.restart('tmgr.run');
+		closed.length = 0;
+		finishOpen();
+		await opening;
+		expect(closed).toEqual(['tmgr.run']);
+		host.dispose();
+	});
+
+	it('restarts a plugin whose call timed out, so its unfinished work cannot write later', async () => {
+		const { host, state } = setup([runPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const before = host.generationOf('tmgr.run');
+		await host.runCommand('tmgr.run', 'tmgr.run.spin').catch(() => undefined);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(state.plugins['tmgr.run'].status).toBe('running');
+		expect(host.generationOf('tmgr.run')).not.toBe(before);
 		host.dispose();
 	});
 });

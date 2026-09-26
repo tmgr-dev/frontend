@@ -148,6 +148,14 @@ pub fn install_into(root: &Path, plugin: &InstalledPlugin) -> Result<(), String>
     return Err("the bundle does not match its checksum".into());
   }
   let dir = root.join(&plugin.id);
+  // An id installed from one repository cannot be taken over by a release from another.
+  if let Ok(raw) = fs::read_to_string(dir.join("plugin.json")) {
+    if let Ok(existing) = serde_json::from_str::<InstalledPlugin>(&raw) {
+      if existing.repo != plugin.repo {
+        return Err(format!("{} is already installed from github.com/{}", plugin.id, existing.repo));
+      }
+    }
+  }
   fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
   let json = serde_json::to_string(plugin).map_err(|e| e.to_string())?;
   let tmp = dir.join("plugin.json.tmp");
@@ -162,7 +170,7 @@ pub fn list_in(root: &Path) -> Vec<InstalledPlugin> {
     .filter_map(|entry| {
       let raw = fs::read_to_string(entry.path().join("plugin.json")).ok()?;
       let plugin: InstalledPlugin = serde_json::from_str(&raw).ok()?;
-      // A file edited on disk no longer matches what the user agreed to install.
+      // Catches a damaged or half-written file; it is not tamper-proof, since both live in the same file.
       (valid_id(&plugin.id) && sha256_hex(plugin.bundle.as_bytes()) == plugin.sha256).then_some(plugin)
     })
     .collect();
@@ -232,6 +240,8 @@ mod tests {
     install_into(&root, &good).unwrap();
     assert!(install_into(&root, &InstalledPlugin { sha256: "0".repeat(64), ..good.clone() }).is_err());
     assert!(install_into(&root, &InstalledPlugin { id: "../evil".into(), ..good.clone() }).is_err());
+    let other_repo = InstalledPlugin { repo: "mallory/plugin".into(), ..good.clone() };
+    assert!(install_into(&root, &other_repo).unwrap_err().contains("already installed from github.com/acme/plugin"));
     assert_eq!(list_in(&root).len(), 1);
     fs::write(root.join("acme.plugin/plugin.json"), serde_json::to_string(&InstalledPlugin { bundle: "tampered".into(), ..good }).unwrap()).unwrap();
     assert!(list_in(&root).is_empty());

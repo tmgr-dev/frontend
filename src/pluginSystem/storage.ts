@@ -45,3 +45,19 @@ export const safeModeStored = () => read<boolean>(SAFE_MODE, false) === true;
 export const storeSafeMode = (value: boolean) => write(SAFE_MODE, value);
 export const devModeStored = () => read<boolean>(DEV_MODE, false) === true;
 export const storeDevMode = (value: boolean) => write(DEV_MODE, value);
+
+/** A removed plugin leaves nothing a later plugin with the same id could inherit. */
+export const forgetPlugin = (pluginId: string) => {
+	const enabled = read<Record<string, boolean>>(ENABLED, {});
+	write(
+		ENABLED,
+		Object.fromEntries(
+			Object.entries(enabled).filter(
+				([key]) => !key.startsWith(`${pluginId}@`),
+			),
+		),
+	);
+	const settings = read<Record<string, Record<string, unknown>>>(SETTINGS, {});
+	delete settings[pluginId];
+	write(SETTINGS, settings);
+};

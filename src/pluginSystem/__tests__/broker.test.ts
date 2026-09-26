@@ -354,6 +354,9 @@ describe('files', () => {
 		});
 		for (const path of [
 			'../escape.md',
+			'run.command',
+			'page.webloc',
+			'noext',
 			'/etc/passwd',
 			'a/../../b',
 			'a\\\\b',

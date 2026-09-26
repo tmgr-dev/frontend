@@ -1,8 +1,10 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::Url;
+use tokio::sync::Semaphore;
 
 const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
@@ -41,7 +43,30 @@ pub fn loopback_target(url: &Url) -> Result<SocketAddr, String> {
   Ok(SocketAddr::new(ip, port))
 }
 
+/// Headers the client sets itself, or that could change how the request is framed or routed.
+pub fn forbidden_header(name: &str) -> bool {
+  matches!(
+    name.to_ascii_lowercase().as_str(),
+    "host"
+      | "cookie"
+      | "connection"
+      | "content-length"
+      | "transfer-encoding"
+      | "te"
+      | "trailer"
+      | "upgrade"
+      | "expect"
+      | "keep-alive"
+      | "proxy-authorization"
+      | "proxy-connection"
+  )
+}
+
+/// At most four plugin requests at once, whatever plugins ask for.
+static IN_FLIGHT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(4));
+
 pub async fn fetch(request: FetchRequest) -> Result<FetchResponse, String> {
+  let _permit = IN_FLIGHT.acquire().await.map_err(|e| e.to_string())?;
   let url = Url::parse(&request.url).map_err(|e| e.to_string())?;
   let target = loopback_target(&url)?;
   let method = request.method.unwrap_or_else(|| "GET".into()).to_uppercase();
@@ -67,8 +92,7 @@ pub async fn fetch(request: FetchRequest) -> Result<FetchResponse, String> {
     .map_err(|e| e.to_string())?;
   let mut builder = client.request(method.parse().map_err(|_| "bad method")?, url);
   for (name, value) in request.headers.unwrap_or_default().into_iter().take(32) {
-    let lower = name.to_ascii_lowercase();
-    if matches!(lower.as_str(), "host" | "cookie" | "proxy-authorization" | "connection" | "transfer-encoding") {
+    if forbidden_header(&name) {
       continue;
     }
     builder = builder.header(name, value);
@@ -107,6 +131,15 @@ mod tests {
 
   fn target(url: &str) -> Result<SocketAddr, String> {
     loopback_target(&Url::parse(url).unwrap())
+  }
+
+  #[test]
+  fn drops_headers_that_change_framing_or_routing() {
+    for name in ["Host", "content-length", "Transfer-Encoding", "TE", "Upgrade", "Expect", "Connection"] {
+      assert!(forbidden_header(name), "{name}");
+    }
+    assert!(!forbidden_header("Content-Type"));
+    assert!(!forbidden_header("Authorization"));
   }
 
   #[test]

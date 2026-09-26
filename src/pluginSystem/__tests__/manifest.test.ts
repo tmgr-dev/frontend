@@ -78,7 +78,14 @@ it('accepts network origins only on this computer', () => {
 		allowedOrigins: ['http://localhost:11434', 'http://127.0.0.1:8080'],
 	});
 	expect(parseManifest(valid).network).toEqual({ allowedOrigins: [] });
+	expect(
+		parseManifest({
+			...valid,
+			network: { allowedOrigins: ['http://localhost:80'] },
+		}).network.allowedOrigins,
+	).toEqual(['http://localhost']);
 	for (const origin of [
+		'http://localhost:08080',
 		'https://api.openai.com',
 		'http://localhost',
 		'https://localhost:1',

@@ -35,7 +35,7 @@ export const bundleToPackage = (
 		if (
 			!PAGE.test(path) ||
 			typeof html !== 'string' ||
-			html.length > MAX_PAGE_BYTES
+			new TextEncoder().encode(html).length > MAX_PAGE_BYTES
 		) {
 			throw new Error(
 				`page ${path} must be a ui/<name>.html file of at most 1 MB`,

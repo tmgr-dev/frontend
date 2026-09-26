@@ -5,6 +5,7 @@ import {
 	type QuickJSHandle,
 	type QuickJSWASMModule,
 } from 'quickjs-emscripten-core';
+import { MAX_USER_WAIT_MS, USER_WAIT_METHODS } from './protocol';
 
 export type SandboxErrorCode = 'TIMEOUT' | 'PLUGIN_ERROR' | 'DISPOSED';
 
@@ -183,6 +184,7 @@ export const createSandbox = ({
 	};
 
 	const inFlight = new Set<(error: SandboxError) => void>();
+	let userWaits = 0;
 	let started = false;
 	let startError: SandboxError | null = null;
 	const pump = () => {
@@ -209,6 +211,13 @@ export const createSandbox = ({
 						}),
 				  )
 				: call(method, JSON.parse(json));
+		if (USER_WAIT_METHODS.has(method)) {
+			userWaits++;
+			request.then(
+				() => userWaits--,
+				() => userWaits--,
+			);
+		}
 		request.then(
 			(result) => {
 				if (disposed) return;
@@ -259,6 +268,23 @@ export const createSandbox = ({
 				wallMs,
 			);
 		});
+		// A plugin waiting on the user (a file dialog) is not slow: that wait does not count, up to a cap.
+		const started = Date.now();
+		const rearm = (): ReturnType<typeof setTimeout> =>
+			setTimeout(() => {
+				if (userWaits > 0 && Date.now() - started < MAX_USER_WAIT_MS) {
+					timer = rearm();
+					return;
+				}
+				reject(
+					new SandboxError(
+						'TIMEOUT',
+						`plugin did not answer within ${wallMs} ms`,
+					),
+				);
+			}, wallMs);
+		clearTimeout(timer);
+		timer = rearm();
 		inFlight.add(reject);
 		const native = ctx.resolvePromise(promise);
 		promise.dispose();

@@ -83,7 +83,11 @@ export interface PluginHostDeps {
 	packages: () => Promise<PluginPackage[]>;
 	createEndpoint: () => WorkerEndpoint;
 	/** Data access pinned to the workspace the plugin was started in. */
-	api: (pluginId: string, workspace: PluginWorkspace) => DataApi;
+	api: (
+		pluginId: string,
+		workspace: PluginWorkspace,
+		storageId: string,
+	) => DataApi;
 	subscribe: (handler: (event: DomainEvent) => void) => () => void;
 	enabled: {
 		get: (pluginId: string, workspaceId: number) => boolean | undefined;
@@ -102,7 +106,12 @@ export interface PluginHostDeps {
 		pluginName: string,
 	) => BrokerDeps['files'];
 	windows?: {
-		open: (key: string, html: string, title: string) => Promise<void>;
+		open: (
+			key: string,
+			html: string,
+			title: string,
+			generation: string,
+		) => Promise<void>;
 		close: (pluginId: string) => Promise<void>;
 	};
 	now?: () => number;
@@ -121,6 +130,8 @@ interface Running {
 	process: PluginProcess;
 	broker: ReturnType<typeof createBroker>;
 	registered: Record<RegistrationKind, Set<string>>;
+	/** Changes on every start: windows and calls of an earlier run are refused. */
+	generation: string;
 }
 
 export const createPluginHost = (deps: PluginHostDeps) => {
@@ -129,6 +140,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const packages = new Map<string, PluginPackage>();
 	const running = new Map<string, Running>();
 	const faults = new Map<string, number[]>();
+	let nextGeneration = 0;
 	const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	/** Coalesces a plugin's refresh requests so a chatty plugin cannot flood the UI with re-renders. */
@@ -231,7 +243,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			manifest,
 			workspace,
 			currentWorkspaceId: deps.currentWorkspaceId,
-			api: deps.api(pluginId, workspace),
+			// An installed plugin's data belongs to its repository: another author reusing the id gets none of it.
+			api: deps.api(
+				pluginId,
+				workspace,
+				pkg.origin ? `${pluginId}@github.com/${pkg.origin.repo}` : pluginId,
+			),
 			settings: () => settingsOf(pluginId),
 			notify: (message) => deps.notify(`Plugin ${manifest.name}`, message),
 			setStatusBarItem: (itemId, item) => {
@@ -269,7 +286,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			cpuMs: deps.cpuMs,
 			wallMs: deps.wallMs,
 		});
-		running.set(pluginId, { process, broker, registered });
+		running.set(pluginId, {
+			process,
+			broker,
+			registered,
+			generation: String(++nextGeneration),
+		});
 		state.plugins[pluginId].status = 'starting';
 		state.plugins[pluginId].error = null;
 		try {
@@ -303,7 +325,24 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (error?.code === 'TIMEOUT' || error?.code === 'CRASHED')
 				fault(pluginId, message);
 			else log(pluginId, 'error', message);
+			// Work the timed-out call left behind could still write later; a fresh run drops it.
+			if (error?.code === 'TIMEOUT' && running.get(pluginId) === plugin)
+				void relaunch(pluginId);
 			throw error;
+		}
+	};
+
+	const relaunch = async (pluginId: string) => {
+		const pkg = packages.get(pluginId);
+		const workspace = state.workspace;
+		stop(pluginId);
+		if (
+			pkg &&
+			workspace?.kind === 'local' &&
+			!state.safeMode &&
+			isEnabled(pluginId, workspace.id)
+		) {
+			await start(pkg, workspace);
 		}
 	};
 
@@ -447,13 +486,35 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			const view = pkg?.manifest.contributes.views.find((v) => v.id === viewId);
 			const html = view?.ui ? pkg?.pages?.[view.ui] : undefined;
 			if (!plugin || !view || !html || !deps.windows) return false;
-			await deps.windows.open(`${pluginId}/${viewId}`, html, view.title);
+			await deps.windows.open(
+				`${pluginId}/${viewId}`,
+				html,
+				view.title,
+				plugin.generation,
+			);
+			// The run may have ended while the window was opening; its window must not outlive it.
+			if (running.get(pluginId)?.generation !== plugin.generation) {
+				await deps.windows.close(pluginId).catch(() => undefined);
+				return false;
+			}
 			return true;
 		},
+		generationOf(pluginId: string) {
+			return running.get(pluginId)?.generation ?? null;
+		},
 		/** Calls from a plugin's window use that plugin's broker: the same permissions as its logic. */
-		async windowCall(pluginId: string, method: string, params: unknown) {
+		async windowCall(
+			pluginId: string,
+			generation: string,
+			method: string,
+			params: unknown,
+		) {
 			const plugin = running.get(pluginId);
-			if (!plugin || state.plugins[pluginId]?.status !== 'running') {
+			if (
+				!plugin ||
+				plugin.generation !== generation ||
+				state.plugins[pluginId]?.status !== 'running'
+			) {
 				throw new PluginError('NOT_RUNNING', `${pluginId} is not running`);
 			}
 			if (method === 'register' || method === 'log') {
@@ -473,6 +534,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 						`${String(p.id)} is not a command of ${pluginId}`,
 					);
 				}
+				plugin.broker.admit(true);
 				return dispatch(pluginId, 'command', String(p.id), p.args ?? null);
 			}
 			return plugin.broker.call(method, params);

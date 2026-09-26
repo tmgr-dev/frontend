@@ -122,15 +122,16 @@ test('a hostile folder plugin is refused writes, cut off when it spins and turne
   });
   expect(task.title).toBe('Mine');
 
+  await card.locator('details summary').click();
+  const timeouts = async () =>
+    (
+      (await card.locator('details').innerText()).match(/ran longer than/g) ??
+      []
+    ).length;
   for (let i = 0; i < 3; i++) {
-    const started = Date.now();
     await card.getByRole('button', { name: 'Spin forever' }).click();
-    const responsive = await page.evaluate(() => performance.now());
-    expect(responsive).toBeGreaterThan(0);
-    await expect(
-      page.getByText('The plugin command failed').first(),
-    ).toBeVisible();
-    expect(Date.now() - started).toBeLessThan(5000);
+    expect(await page.evaluate(() => performance.now())).toBeGreaterThan(0);
+    await expect.poll(timeouts).toBe(i + 1);
   }
   await expect(card.getByText('Turned off after errors')).toBeVisible();
   await expect(page.getByText(/Hostile was turned off/).first()).toBeVisible();
@@ -378,15 +379,19 @@ test('a plugin view with its own page opens in a window whose calls go through t
     .click();
   await page.getByRole('link', { name: 'Big board' }).first().click();
   await expect(page.getByRole('button', { name: 'Open window' })).toBeVisible();
-  await expect
-    .poll(() => shell.windows)
-    .toEqual([{ key: 'dev.win/board', title: 'Big board' }]);
+  await expect.poll(() => shell.windows.length).toBe(1);
+  expect(shell.windows[0]).toMatchObject({
+    key: 'dev.win/board',
+    title: 'Big board',
+  });
+  const generation = shell.windows[0].generation;
   expect(shell.pages.get('dev.win/board')).toBe('<h1>Big board</h1>');
 
   const call = (call_id, method, params) =>
     page.evaluate((payload) => window.__emit('plugin-window://call', payload), {
       call_id,
       plugin_id: 'dev.win',
+      generation,
       method,
       params,
     });
@@ -449,7 +454,7 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   await page
     .getByLabel('Plugin repository')
     .fill('https://github.com/acme/missing');
-  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(
     page.getByText(
       'the latest release of https://github.com/acme/missing has no tmgr-plugin.json',
@@ -457,14 +462,14 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   ).toBeVisible();
 
   await page.getByLabel('Plugin repository').fill('acme/board');
-  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Install Acme board 1.0.0?')).toBeVisible();
   await expect(dialog.getByText('read tasks')).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   expect(shell.installed.size).toBe(0);
 
-  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
   await page
     .getByRole('dialog')
     .getByRole('button', { name: 'Install' })
@@ -499,6 +504,19 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
     card.getByText('From github.com/acme/board · v1.1.0'),
   ).toBeVisible();
 
+  releases['mallory/board'] = {
+    tag: 'v9',
+    content: releases['acme/board'].content,
+  };
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByLabel('Plugin repository').fill('mallory/board');
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await expect(
+    page.getByText(
+      'acme.board is already installed from github.com/acme/board',
+    ),
+  ).toBeVisible();
+
   await card.getByRole('button', { name: 'Remove' }).click();
   await page
     .getByRole('dialog')
@@ -508,4 +526,14 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
     0,
   );
   expect(shell.installed.size).toBe(0);
+
+  await page.getByLabel('Plugin repository').fill('acme/board');
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Install' })
+    .click();
+  await expect(
+    page.locator('article', { hasText: 'Acme board' }).getByText('Off'),
+  ).toBeVisible();
 });
