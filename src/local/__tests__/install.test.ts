@@ -3,6 +3,7 @@ import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig 
 import { migrate } from '../schema';
 import type { LocalWorkspace } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
+import { createDomainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
 
 const LOCAL: LocalWorkspace = {
 	id: -42,
@@ -68,6 +69,8 @@ describeSqlite('installLocalWorkspaces', () => {
 
 	const client = axios.create({ adapter: server });
 	installLocalWorkspaces(client, { currentUser: () => user, hasSession: () => true });
+	const events = createDomainEvents();
+	installDomainEvents(client, events, () => 56);
 
 	beforeAll(async () => {
 		await migrate(db!, '2026-09-26T10:00:00Z');
@@ -104,6 +107,22 @@ describeSqlite('installLocalWorkspaces', () => {
 
 		expect(created.status).toBe(201);
 		expect(list.data.data.map((t: any) => t.title)).toContain('Offline task');
+		expect(sent).toEqual([]);
+	});
+
+	it('reports domain events for local writes with the local workspace id', async () => {
+		active = LOCAL;
+		const seen: DomainEvent[] = [];
+		const off = events.on((event) => seen.push(event));
+		const task = (await client.post('tasks', { title: 'Evented' })).data.data;
+		await client.post(`tasks/${task.id}/countdown`);
+		off();
+		await client.delete(`tasks/${task.id}/countdown`);
+
+		expect(seen.map((e) => [e.type, e.workspaceId])).toEqual([
+			['task.created', LOCAL.id],
+			['timer.started', LOCAL.id],
+		]);
 		expect(sent).toEqual([]);
 	});
 
