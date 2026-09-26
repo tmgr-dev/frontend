@@ -1,7 +1,7 @@
 import { mockApp } from './mockApp.mjs';
 
 /** The desktop shell's local-workspace commands, run on node:sqlite (Node ≥ 22) instead of Rust. */
-const fakeShell = async () => {
+const fakeShell = async ({ devPlugins = [] } = {}) => {
   const { DatabaseSync } = await import('node:sqlite');
   const workspaces = [];
   const dbs = new Map();
@@ -46,6 +46,8 @@ const fakeShell = async () => {
       case 'local_file_write':
         files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
         return null;
+      case 'plugins_dev_list':
+        return devPlugins;
       case 'reveal_download':
         revealed.push(args.path);
         return null;
@@ -60,8 +62,12 @@ const fakeShell = async () => {
 };
 
 /** A page that believes it runs inside the desktop app, backed by `fakeShell` and a fake file scheme. */
-export const desktopPage = async (page, mockOptions = {}) => {
-  const shell = await fakeShell();
+export const desktopPage = async (
+  page,
+  mockOptions = {},
+  shellOptions = {},
+) => {
+  const shell = await fakeShell(shellOptions);
   await page.exposeFunction('__shellInvoke', (command, args) =>
     shell(command, args),
   );

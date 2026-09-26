@@ -128,7 +128,7 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
-	import { pluginHost } from '@/pluginSystem/state';
+	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { Color, Tone, UiNode } from '@/pluginSystem/uiTree';
 	import store from '@/store';
 	import { defineComponent, ref, type PropType } from 'vue';
@@ -176,6 +176,7 @@
 						props.node.args ?? null,
 					);
 				} catch (error) {
+					if (pluginState.plugins[props.pluginId]?.status === 'crashed') return;
 					toast({
 						title: 'The plugin command failed',
 						description: error instanceof Error ? error.message : String(error),

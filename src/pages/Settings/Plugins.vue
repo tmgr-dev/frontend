@@ -307,6 +307,8 @@
 					try {
 						await pluginHost()?.runCommand(pluginId, commandId);
 					} catch (error) {
+						// The host already told the user when it turned the plugin off.
+						if (pluginState.plugins[pluginId]?.status === 'crashed') return;
 						toast({
 							title: 'The plugin command failed',
 							description:
