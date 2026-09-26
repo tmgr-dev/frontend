@@ -38,6 +38,14 @@ if (isDesktopApp()) {
 		return Number.isFinite(id) && id !== 0 ? id : null;
 	});
 	if (desktopWindowLabel() === 'main') startUpdateChecks();
+	if (desktopWindowLabel() === 'main') {
+		void Promise.all([
+			import('@/pluginSystem/app'),
+			import('@tauri-apps/api/core').then(({ invoke }) =>
+				invoke<boolean>('plugins_safe_mode').catch(() => false),
+			),
+		]).then(([{ installPlugins }, safeMode]) => installPlugins($axios, store, safeMode));
+	}
 }
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));

@@ -41,6 +41,21 @@
 
 		<div class="flex-1" />
 
+		<component
+			:is="item.command ? 'button' : 'div'"
+			v-for="item in pluginItems"
+			:key="`${item.pluginId}:${item.itemId}`"
+			:type="item.command ? 'button' : undefined"
+			:title="item.tooltip || undefined"
+			:class="[
+				'flex h-full items-center px-3',
+				item.command && 'hover:bg-muted hover:text-foreground',
+			]"
+			@click="item.command && runPluginCommand(item)"
+		>
+			{{ item.text }}
+		</component>
+
 		<div
 			class="flex h-full items-center gap-1.5 px-3"
 			:title="`Realtime: ${connectionState}`"
@@ -89,6 +104,7 @@
 <script>
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import { usePusher } from '@/composable/usePusher';
+	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import store from '@/store';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
 	import { ChevronRight, Download, Sparkles } from 'lucide-vue-next';
@@ -176,6 +192,11 @@
 				version,
 				update: updateState,
 				installUpdate,
+				pluginItems: computed(() => Object.values(pluginState.statusBar)),
+				runPluginCommand: (item) =>
+					pluginHost()
+						?.runCommand(item.pluginId, item.command)
+						.catch(() => undefined),
 			};
 		},
 	});

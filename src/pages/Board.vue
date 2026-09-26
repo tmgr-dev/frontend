@@ -778,6 +778,8 @@
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
+	import { createCardBadgeFeed } from '@/pluginSystem/cardBadges';
+	import { markRaw } from 'vue';
 	import { createBoardLoader, filterBoardTasks } from '@/utils/boardLoading';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
@@ -793,6 +795,9 @@
 
 	export default {
 		name: 'Board',
+		provide() {
+			return { pluginBadges: this.pluginBadgeFeed.badges };
+		},
 		components: {
 			BreadcrumbItem,
 			BreadcrumbLink,
@@ -866,6 +871,7 @@
 				},
 			],
 			columns: [],
+			pluginBadgeFeed: markRaw(createCardBadgeFeed()),
 			activeDraggable: false,
 			color: {
 				hue: 235,
@@ -908,6 +914,9 @@
 		}),
 
 		watch: {
+			pluginBadgeKey() {
+				this.pluginBadgeFeed.update(this.columns.flatMap((column) => column.tasks));
+			},
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
 			},
@@ -955,6 +964,12 @@
 			},
 		},
 		computed: {
+			pluginBadgeKey() {
+				return this.columns
+					.flatMap((column) => column.tasks)
+					.map((t) => `${t.id}:${t.common_time}:${t.approximately_time}:${t.start_time}`)
+					.join(',');
+			},
 			workspaceUsersWithoutAll() {
 				return this.workspaceUsers.filter((user) => user.id !== 0);
 			},
@@ -1708,6 +1723,7 @@
 		},
 		beforeUnmount() {
 			this.boardDisposed = true;
+			this.pluginBadgeFeed.dispose();
 			this.boardLoader.dispose();
 			this.columnSequence.dispose();
 		},

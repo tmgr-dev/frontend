@@ -78,6 +78,24 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(onlyArchived.map((t: any) => t.title)).toEqual(['Done']);
 	});
 
+	it('keeps plugin storage per plugin within a quota', async () => {
+		await call('PUT', 'plugins/tmgr.estimate/storage/last%20run', { value: '{"at":1}' });
+		await call('PUT', 'plugins/tmgr.other/storage/last%20run', { value: '2' });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage/last%20run')).toEqual({ value: '{"at":1}' });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage/missing')).toEqual({ value: null });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual(['last run']);
+		await call('DELETE', 'plugins/tmgr.estimate/storage/last%20run');
+		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual([]);
+		expect(await data('GET', 'plugins/tmgr.other/storage')).toEqual(['last run']);
+
+		const big = JSON.stringify('x'.repeat(250_000));
+		for (let i = 0; i < 20; i++) {
+			expect((await call('PUT', `plugins/tmgr.big/storage/k${i}`, { value: big })).status).toBe(200);
+		}
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k20', { value: big })).status).toBe(413);
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+	});
+
 	it('migrating twice is a no-op and does not duplicate statuses', async () => {
 		await migrate(ctx.db, clock.toISOString());
 		expect(await data('GET', 'workspaces/statuses')).toHaveLength(4);

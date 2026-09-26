@@ -173,6 +173,8 @@ const categoryCounts = `
 		(SELECT COUNT(*) FROM tasks t WHERE t.project_category_id = c.id AND t.deleted_at IS NULL) AS tasks_count
 	FROM categories c`;
 
+const PLUGIN_STORAGE_QUOTA = 5 * 1024 * 1024;
+
 const FEATURE_TOGGLES: Record<string, boolean> = {
 	board: true,
 	categories: true,
@@ -531,6 +533,42 @@ export const createLocalApi = () =>
 		})
 		.add('DELETE', 'project_categories/:id(\\d+)', async ({ ctx, params }) => {
 			await ctx.db.execute(`UPDATE categories SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
+			return { success: true };
+		})
+		// ── plugin storage ──────────────────────────────────────────────────────
+		.add('GET', 'plugins/:pid/storage', async ({ ctx, params }) =>
+			(
+				await ctx.db.select<{ key: string }>(`SELECT key FROM plugin_kv WHERE plugin_id = ? ORDER BY key`, [
+					params.pid,
+				])
+			).map((row) => row.key),
+		)
+		.add('GET', 'plugins/:pid/storage/:key', async ({ ctx, params }) => {
+			const [row] = await ctx.db.select<{ value: string }>(
+				`SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?`,
+				[params.pid, params.key],
+			);
+			return { value: row?.value ?? null };
+		})
+		.add('PUT', 'plugins/:pid/storage/:key', async ({ ctx, params, body }) => {
+			const value = typeof body?.value === 'string' ? body.value : null;
+			if (value === null) throw new LocalHttpError(422, 'value must be a JSON string');
+			const [{ used }] = await ctx.db.select<{ used: number }>(
+				`SELECT COALESCE(SUM(LENGTH(value)), 0) AS used FROM plugin_kv WHERE plugin_id = ? AND key <> ?`,
+				[params.pid, params.key],
+			);
+			if (Number(used) + value.length > PLUGIN_STORAGE_QUOTA) {
+				throw new LocalHttpError(413, 'plugin storage is full (5 MB)');
+			}
+			await ctx.db.execute(
+				`INSERT INTO plugin_kv (plugin_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+				 ON CONFLICT (plugin_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+				[params.pid, params.key, value, iso(ctx)],
+			);
+			return { success: true };
+		})
+		.add('DELETE', 'plugins/:pid/storage/:key', async ({ ctx, params }) => {
+			await ctx.db.execute(`DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?`, [params.pid, params.key]);
 			return { success: true };
 		})
 		// ── workspace-level odds and ends ───────────────────────────────────────

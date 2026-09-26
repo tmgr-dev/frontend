@@ -276,6 +276,12 @@ const routes = [
 		name: 'WorkspaceFiles',
 	},
 	{
+		path: '/:workspace_code/plugins/:pluginId/:viewId',
+		component: () => import('@/pages/PluginPage.vue'),
+		meta: { title: 'Plugin', transitionName: 'slide', navbarHidden: true },
+		name: 'WorkspacePluginPage',
+	},
+	{
 		path: '/:workspace_code/archive',
 		component: TasksListPage,
 		meta: {
@@ -411,6 +417,12 @@ const routes = [
 			navbarHidden: true,
 		},
 		name: 'FeatureSettings',
+	},
+	{
+		path: '/settings/plugins',
+		component: () => import('@/pages/Settings/Plugins.vue'),
+		meta: { title: 'Plugins', transitionName: 'fade-fast', navbarHidden: true },
+		name: 'PluginSettings',
 	},
 	{
 		path: '/profile',

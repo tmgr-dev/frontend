@@ -42,6 +42,7 @@
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
 	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
+	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
@@ -2280,6 +2281,8 @@
 						:task-id="Number(taskId || form.id)"
 						:workspace-id="form.workspace_id"
 					/>
+
+					<PluginTaskSections v-if="form.id" :task="form" />
 
 					<!-- Task Relations -->
 					<div

@@ -5,6 +5,7 @@ mod local_db;
 mod local_export;
 mod local_files;
 mod local_workspaces;
+mod plugin_dev;
 mod quick_add;
 mod tray;
 
@@ -110,6 +111,9 @@ pub fn run() {
       local_db::local_db_backup,
       local_files::local_file_write,
       downloads::reveal_download,
+      plugin_dev::plugins_dev_list,
+      plugin_dev::plugins_dev_reveal,
+      plugin_dev::plugins_safe_mode,
       local_export::local_export_write,
       local_export::local_reveal
     ])
