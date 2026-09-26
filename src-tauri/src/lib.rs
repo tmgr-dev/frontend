@@ -1,7 +1,11 @@
+mod idle;
+mod tray;
+
 use std::path::{Path, PathBuf};
 
 use tauri::webview::{DownloadEvent, NewWindowResponse};
-use tauri::{Manager, Url, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, Url, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_window_state::StateFlags;
 use tauri_plugin_opener::OpenerExt;
 
 fn is_app_url(url: &Url) -> bool {
@@ -63,7 +67,27 @@ fn hide_traffic_lights(window: &WebviewWindow) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_window_state::Builder::default().build())
+    .plugin(
+      tauri_plugin_window_state::Builder::default()
+        .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+        .build(),
+    )
+    .plugin(tauri_plugin_autostart::init(
+      tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+      Some(vec!["--hidden"]),
+    ))
+    .plugin(tauri_plugin_notification::init())
+    .manage(tray::TrayStore::default())
+    .invoke_handler(tauri::generate_handler![tray::tray_update])
+    .on_window_event(|window, event| {
+      if let WindowEvent::CloseRequested { api, .. } = event {
+        if window.label() == "main" {
+          api.prevent_close();
+          let _ = window.hide();
+          log::info!("[window] hidden on close");
+        }
+      }
+    })
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
@@ -114,11 +138,24 @@ pub fn run() {
 
       #[cfg(target_os = "macos")]
       hide_traffic_lights(&window);
-      #[cfg(not(target_os = "macos"))]
-      let _ = window;
+      if std::env::args().any(|arg| arg == "--hidden") {
+        log::info!("[window] started hidden (launch at login)");
+      } else {
+        window.show()?;
+      }
 
+      tray::setup(app.handle())?;
+      idle::start(app.handle());
       Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|app, event| {
+      #[cfg(target_os = "macos")]
+      if let RunEvent::Reopen { .. } = event {
+        tray::show_main(app);
+      }
+      #[cfg(not(target_os = "macos"))]
+      let _ = (app, event);
+    });
 }

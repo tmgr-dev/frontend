@@ -26,6 +26,10 @@
 			:tasks="activeTasks"
 		/>
 		<ActiveTasks v-else :tasks="activeTasks" />
+		<DesktopTray
+			v-if="isDesktop && $store.getters.isLoggedIn"
+			:tasks="activeTasks"
+		/>
 
 		<Transition name="fade">
 			<TaskSidePanel
@@ -56,6 +60,7 @@
 		getWorkspaces,
 	} from '@/actions/tmgr/workspaces';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import DesktopTray from '@/components/desktop/DesktopTray.vue';
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
@@ -86,6 +91,7 @@
 			CustomSidebar,
 			NewForm,
 			ActiveTasks,
+			DesktopTray,
 			Modal,
 			TaskSidePanel,
 			Alert,
