@@ -223,7 +223,10 @@
 				form: {
 					title: '',
 					code: '',
-					project_category_id: this.$route.params.project_category_id || null,
+					project_category_id:
+						this.$route.params.category_id ||
+						this.$route.params.project_category_id ||
+						null,
 					slug: '',
 				},
 				errors: {},
@@ -357,8 +360,11 @@
 				}
 
 				if (withRoutePush) {
+					const workspaceCode = this.$route.params.workspace_code;
 					await this.$router.push(
-						`/projects-categories/${this.form.id}/children`,
+						workspaceCode
+							? `/${workspaceCode}/categories/${this.form.id}/children`
+							: `/projects-categories/${this.form.id}/children`,
 					);
 				}
 			},

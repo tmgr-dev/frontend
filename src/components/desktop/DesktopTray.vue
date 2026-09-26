@@ -43,6 +43,7 @@
 		pushTrayState,
 		rememberRecent,
 		saveRecent,
+		sameTask,
 	} from '@/utils/desktopTray';
 	import {
 		computed,
@@ -107,18 +108,24 @@
 
 			const stopAll = async () => {
 				await Promise.all(
-					props.tasks.map((task) => stopTaskTimeCounter(task.id)),
+					props.tasks.map((task) =>
+						stopTaskTimeCounter(task.id, task.workspace_id),
+					),
 				);
 			};
 
-			const switchTo = async (taskId) => {
+			const stopOne = ({ taskId, workspaceId }) =>
+				stopTaskTimeCounter(taskId, workspaceId);
+
+			const switchTo = async (target) => {
+				const chosen = { id: target.taskId, workspaceId: target.workspaceId };
 				await Promise.all(
 					props.tasks
-						.filter((task) => task.id !== taskId)
-						.map((task) => stopTaskTimeCounter(task.id)),
+						.filter((task) => !sameTask(task, chosen))
+						.map((task) => stopTaskTimeCounter(task.id, task.workspace_id)),
 				);
-				if (!props.tasks.some((task) => task.id === taskId)) {
-					await startTaskTimeCounter(taskId);
+				if (!props.tasks.some((task) => sameTask(task, chosen))) {
+					await startTaskTimeCounter(target.taskId, target.workspaceId);
 				}
 			};
 
@@ -165,13 +172,17 @@
 			onMounted(async () => {
 				const { listen } = await import('@tauri-apps/api/event');
 				unlisteners.push(
-					await listen('tray://open', (event) =>
-						store.commit('setCurrentTaskIdForModal', event.payload),
-					),
+					await listen('tray://open', ({ payload }) => {
+						// The panel loads tasks of the open workspace; another workspace's task only
+						// brings the window forward.
+						if (payload.workspaceId === store.getters.currentWorkspaceId) {
+							store.commit('setCurrentTaskIdForModal', payload.taskId);
+						}
+					}),
 					await listen('tray://shortcuts', () =>
 						router.push('/settings?tab=desktop'),
 					),
-					await listen('tray://stop', safely(stopTaskTimeCounter)),
+					await listen('tray://stop', safely(stopOne)),
 					await listen('tray://switch', safely(switchTo)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();

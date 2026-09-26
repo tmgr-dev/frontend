@@ -3,6 +3,12 @@
 		class="statusbar-offset fixed bottom-0 right-0 z-30 flex h-[var(--statusbar-h)] items-center bg-sidebar text-xs text-muted-foreground"
 	>
 		<div class="flex h-full min-w-0 items-center gap-1.5 px-3">
+			<span
+				v-if="workspace?.is_local"
+				class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+				:title="workspace.path"
+				>Local</span
+			>
 			<router-link
 				v-if="workspace"
 				:to="`/${workspace.code}/list`"
@@ -19,7 +25,7 @@
 			type="button"
 			class="flex h-full min-w-0 items-center gap-2 rounded-md px-2 text-foreground hover:bg-muted"
 			:title="runningTask.title"
-			@click="openTask(runningTask.id)"
+			@click="openTask(runningTask)"
 		>
 			<span
 				class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500"
@@ -156,7 +162,12 @@
 				title: computed(() => store.state.metaTitle || ''),
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
 				toggleAi: () => store.commit('toggleAiPanel'),
-				openTask: (id) => store.commit('setCurrentTaskIdForModal', id),
+				openTask: (task) => {
+					const workspaceId = task.workspace_id;
+					if (workspaceId == null || workspaceId === store.getters.currentWorkspaceId) {
+						store.commit('setCurrentTaskIdForModal', task.id);
+					}
+				},
 				runningTask,
 				runningElapsed,
 				connectionState,

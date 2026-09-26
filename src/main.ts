@@ -9,6 +9,8 @@ import {
 	installAutoHideScrollbars,
 	isDesktopApp,
 } from '@/utils/desktop';
+import { installLocalWorkspaces } from '@/local/install';
+import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
@@ -26,6 +28,10 @@ import App from './App.vue';
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	installAutoHideScrollbars();
+	installLocalWorkspaces($axios, {
+		currentUser: () => store.state.user,
+		hasSession: () => !!store.state.token?.token,
+	});
 	if (desktopWindowLabel() === 'main') startUpdateChecks();
 }
 

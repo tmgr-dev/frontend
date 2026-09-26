@@ -20,6 +20,30 @@ pub struct TrayTask {
   pub common_time: i64,
   #[serde(default)]
   pub start_time: i64,
+  /// Cloud and local tasks share the tray and can share an id; the workspace tells them apart.
+  #[serde(default)]
+  pub workspace_id: i64,
+}
+
+impl TrayTask {
+  fn key(&self) -> String {
+    format!("{}:{}", self.workspace_id, self.id)
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskRef {
+  task_id: i64,
+  workspace_id: i64,
+}
+
+fn task_ref(key: &str) -> TaskRef {
+  let (workspace, task) = key.split_once(':').unwrap_or(("0", key));
+  TaskRef {
+    task_id: task.parse().unwrap_or_default(),
+    workspace_id: workspace.parse().unwrap_or_default(),
+  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -86,13 +110,13 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
   let mut menu = MenuBuilder::new(app);
   for task in &state.running {
     menu = menu
-      .item(&MenuItemBuilder::with_id(format!("open:{}", task.id), truncate(&task.title, LABEL_MAX)).build(app)?)
-      .item(&MenuItemBuilder::with_id(format!("stop:{}", task.id), "      ■  Stop timer").build(app)?);
+      .item(&MenuItemBuilder::with_id(format!("open:{}", task.key()), truncate(&task.title, LABEL_MAX)).build(app)?)
+      .item(&MenuItemBuilder::with_id(format!("stop:{}", task.key()), "      ■  Stop timer").build(app)?);
   }
   let recent: Vec<&TrayTask> = state
     .recent
     .iter()
-    .filter(|r| !state.running.iter().any(|t| t.id == r.id))
+    .filter(|r| !state.running.iter().any(|t| t.key() == r.key()))
     .collect();
   if !state.running.is_empty() && !recent.is_empty() {
     menu = menu.separator();
@@ -101,7 +125,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     menu = menu.item(&MenuItemBuilder::new("Switch to").enabled(false).build(app)?);
     for task in recent {
       menu = menu.item(
-        &MenuItemBuilder::with_id(format!("switch:{}", task.id), format!("▶  {}", truncate(&task.title, LABEL_MAX)))
+        &MenuItemBuilder::with_id(format!("switch:{}", task.key()), format!("▶  {}", truncate(&task.title, LABEL_MAX)))
           .build(app)?,
       );
     }
@@ -154,15 +178,15 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
   if let Some(task_id) = id.strip_prefix("open:") {
     show_main(app);
-    let _ = app.emit("tray://open", task_id.parse::<i64>().unwrap_or_default());
+    let _ = app.emit("tray://open", task_ref(task_id));
     return;
   }
   if let Some(task_id) = id.strip_prefix("stop:") {
-    let _ = app.emit("tray://stop", task_id.parse::<i64>().unwrap_or_default());
+    let _ = app.emit("tray://stop", task_ref(task_id));
     return;
   }
   if let Some(task_id) = id.strip_prefix("switch:") {
-    let _ = app.emit("tray://switch", task_id.parse::<i64>().unwrap_or_default());
+    let _ = app.emit("tray://switch", task_ref(task_id));
     return;
   }
   match id {
@@ -239,7 +263,7 @@ mod tests {
   use super::*;
 
   fn task(id: i64, title: &str, common_time: i64, start_time: i64) -> TrayTask {
-    TrayTask { id, title: title.into(), common_time, start_time }
+    TrayTask { id, title: title.into(), common_time, start_time, workspace_id: 0 }
   }
 
   #[test]
@@ -280,6 +304,15 @@ mod tests {
       recent: vec![],
     };
     assert_eq!(tray_title(&state, 0).as_deref(), Some("0:05 · A very long task…"));
+  }
+
+  #[test]
+  fn menu_keys_carry_the_workspace() {
+    assert_eq!(task_ref("-42:5"), TaskRef { task_id: 5, workspace_id: -42 });
+    assert_eq!(task_ref("56:5"), TaskRef { task_id: 5, workspace_id: 56 });
+    let cloud = TrayTask { workspace_id: 56, ..task(5, "a", 0, 0) };
+    let local = TrayTask { workspace_id: -42, ..task(5, "a", 0, 0) };
+    assert_ne!(cloud.key(), local.key());
   }
 
   #[test]

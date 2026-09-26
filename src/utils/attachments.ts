@@ -72,11 +72,14 @@ export const attachmentErrorMessage = (
  * validation and comes back as a generic "data was invalid", and a file the browser could not type
  * would be sent as application/octet-stream, which the allow list rejects on purpose.
  */
-export const preflightError = (file: File): string | null => {
+export const preflightError = (
+	file: File,
+	{ anyType = false }: { anyType?: boolean } = {},
+): string | null => {
 	if (!file.size) {
 		return 'File is empty.';
 	}
-	if (!file.type) {
+	if (!file.type && !anyType) {
 		return 'This file type cannot be attached.';
 	}
 	return null;

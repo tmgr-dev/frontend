@@ -42,7 +42,16 @@
 		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import {
+		Dialog,
+		DialogContent,
+		DialogDescription,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
 	import { Separator } from '@/components/ui/separator';
+	import { requestCache } from '@/utils/requestCache';
 	import {
 		Sidebar,
 		SidebarContent,
@@ -73,6 +82,9 @@
 		ClipboardListIcon,
 		FolderClosedIcon,
 		Inbox,
+		FileDown,
+		FolderOpen,
+		HardDrive,
 		LayoutDashboard,
 		LogOut,
 		Package,
@@ -392,7 +404,52 @@
 		workspaceToExit.value = null;
 	};
 
+	const showLocalDialog = ref(false);
+	const localName = ref('');
+	const localError = ref('');
+	const creatingLocal = ref(false);
+
+	const openLocalWorkspaceDialog = () => {
+		localName.value = '';
+		localError.value = '';
+		showLocalDialog.value = true;
+	};
+
+	const createLocalWorkspaceFromDialog = async () => {
+		const name = localName.value.trim();
+		if (!name || creatingLocal.value) return;
+		creatingLocal.value = true;
+		localError.value = '';
+		try {
+			const { createLocalWorkspace } = await import('@/local/runtime');
+			const created = await createLocalWorkspace(name);
+			requestCache.invalidate('workspaces');
+			workspaces.value = await getWorkspaces(false);
+			await store.dispatch('loadWorkspaces');
+			showLocalDialog.value = false;
+			const workspace = workspaces.value.find((w) => w.id === created.id);
+			if (workspace) await setActiveWorkspace(workspace);
+		} catch (error) {
+			localError.value = String(error);
+		} finally {
+			creatingLocal.value = false;
+		}
+	};
+
+	const runLocalAction = async (action: 'reveal' | 'export') => {
+		try {
+			const runtime = await import('@/local/runtime');
+			if (action === 'reveal') await runtime.revealLocalWorkspace();
+			else await runtime.exportLocalWorkspace(store.state.user?.name ?? '');
+		} catch (error) {
+			console.error(`Local workspace ${action} failed`, error);
+		}
+	};
+
 	const canLeaveWorkspace = (workspace: Workspace) => {
+		if (workspace.is_local) {
+			return false;
+		}
 		// Can't leave default workspace
 		if (workspace.type === 'default' || workspace.is_default) {
 			return false;
@@ -451,10 +508,22 @@
 											</div>
 
 											<div class="grid flex-1 text-left text-sm leading-tight">
-												<span class="truncate font-semibold">
-													{{ activeWorkspace?.name }}
+												<span class="flex min-w-0 items-center gap-1.5">
+													<span class="truncate font-semibold">
+														{{ activeWorkspace?.name }}
+													</span>
+													<span
+														v-if="activeWorkspace?.is_local"
+														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+														data-testid="local-workspace-badge"
+														>Local</span
+													>
 												</span>
-												<span class="truncate text-xs">current workspace</span>
+												<span class="truncate text-xs">{{
+													activeWorkspace?.is_local
+														? 'stored on this computer'
+														: 'current workspace'
+												}}</span>
 											</div>
 										</div>
 										<span
@@ -496,6 +565,12 @@
 										</div>
 
 										<span class="flex-1">{{ workspace.name }}</span>
+										<span
+											v-if="workspace.is_local"
+											class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground dark:bg-muted"
+											:title="workspace.path"
+											>Local</span
+										>
 
 										<button
 											v-if="canLeaveWorkspace(workspace)"
@@ -520,6 +595,50 @@
 										</div>
 										<div class="font-medium text-muted-foreground">
 											Add workspace
+										</div>
+									</DropdownMenuItem>
+
+									<template v-if="isDesktop && activeWorkspace?.is_local">
+										<DropdownMenuItem
+											class="cursor-pointer gap-2 p-2"
+											@click="runLocalAction('reveal')"
+										>
+											<div
+												class="flex size-6 items-center justify-center rounded-md border bg-background"
+											>
+												<FolderOpen class="size-4" />
+											</div>
+											<div class="font-medium text-muted-foreground">
+												Show in Finder
+											</div>
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											class="cursor-pointer gap-2 p-2"
+											@click="runLocalAction('export')"
+										>
+											<div
+												class="flex size-6 items-center justify-center rounded-md border bg-background"
+											>
+												<FileDown class="size-4" />
+											</div>
+											<div class="font-medium text-muted-foreground">
+												Export to Markdown
+											</div>
+										</DropdownMenuItem>
+									</template>
+
+									<DropdownMenuItem
+										v-if="isDesktop"
+										class="cursor-pointer gap-2 p-2"
+										@click="openLocalWorkspaceDialog"
+									>
+										<div
+											class="flex size-6 items-center justify-center rounded-md border bg-background"
+										>
+											<HardDrive class="size-4" />
+										</div>
+										<div class="font-medium text-muted-foreground">
+											New local workspace
 										</div>
 									</DropdownMenuItem>
 
@@ -892,6 +1011,37 @@
 	</SidebarProvider>
 
 	<!-- Exit Workspace Confirm Dialog -->
+	<Dialog v-if="isDesktop" v-model:open="showLocalDialog">
+		<DialogContent class="max-w-md">
+			<DialogHeader>
+				<DialogTitle>New local workspace</DialogTitle>
+				<DialogDescription>
+					Stored only on this Mac in ~/.tmgr.dev/workspaces — it never reaches the
+					server. Back it up by copying the folder.
+				</DialogDescription>
+			</DialogHeader>
+			<form class="flex flex-col gap-3" @submit.prevent="createLocalWorkspaceFromDialog">
+				<input
+					v-model="localName"
+					data-selectable
+					autofocus
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:border-input dark:bg-background"
+					placeholder="Personal, Client under NDA…"
+				/>
+				<p v-if="localError" class="text-xs text-destructive">{{ localError }}</p>
+				<DialogFooter>
+					<button
+						type="submit"
+						class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+						:disabled="!localName.trim() || creatingLocal"
+					>
+						{{ creatingLocal ? 'Creating…' : 'Create' }}
+					</button>
+				</DialogFooter>
+			</form>
+		</DialogContent>
+	</Dialog>
+
 	<Confirm
 		v-if="showExitConfirm"
 		title="Leave workspace"

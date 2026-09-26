@@ -95,6 +95,9 @@
 
 		return foundWorkspace?.type;
 	});
+	const isLocalActiveWorkspace = computed(
+		() => Number(activeWorkspace.value?.value) < 0,
+	);
 	const isOwnedActiveWorkspace = computed(() => {
 		const foundWorkspace = workspaces.value.find(
 			(workspace) => workspace.id == activeWorkspace.value?.value,
@@ -485,7 +488,7 @@
 		() => {
 			members.value = [];
 			membersLoaded.value = false;
-			if (activeWorkspace.value) {
+			if (activeWorkspace.value && !isLocalActiveWorkspace.value) {
 				loadMembers();
 			}
 		},
@@ -537,7 +540,10 @@
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
-					<Dialog v-model:open="isOpenInvitation">
+					<Dialog
+						v-if="!isLocalActiveWorkspace"
+						v-model:open="isOpenInvitation"
+					>
 						<DialogTrigger as-child>
 							<Button variant="default">
 								<UserPlus />
@@ -588,6 +594,7 @@
 					<AlertDialog
 						v-if="
 							!isLoading &&
+							!isLocalActiveWorkspace &&
 							activeWorkspaceType !== 'default' &&
 							isOwnedActiveWorkspace
 						"
@@ -616,7 +623,11 @@
 							</AlertDialogFooter>
 						</AlertDialogContent>
 					</AlertDialog>
-					<AlertDialog v-if="!isLoading && !isOwnedActiveWorkspace">
+					<AlertDialog
+						v-if="
+							!isLoading && !isLocalActiveWorkspace && !isOwnedActiveWorkspace
+						"
+					>
 						<AlertDialogTrigger as-child>
 							<Button variant="destructive">
 								<LogOutIcon />
@@ -714,7 +725,7 @@
 					</Button>
 				</footer>
 
-				<div class="mt-8 border-t pt-6">
+				<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
 					<div class="mb-4 flex items-center justify-between">
 						<h4 class="text-md font-semibold">Workspace Members</h4>
 					</div>
@@ -782,7 +793,7 @@
 					</AsyncContent>
 				</div>
 
-				<div class="mt-8 border-t pt-6">
+				<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
 					<WorkspaceInvitationsList />
 				</div>
 

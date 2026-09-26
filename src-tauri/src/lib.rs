@@ -1,5 +1,10 @@
 mod capture;
+mod downloads;
 mod idle;
+mod local_db;
+mod local_export;
+mod local_files;
+mod local_workspaces;
 mod quick_add;
 mod tray;
 
@@ -84,6 +89,11 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .manage(tray::TrayStore::default())
     .manage(quick_add::QuickAddStore::default())
+    .manage(local_db::LocalDbs::default())
+    .manage(downloads::PendingDownloads::default())
+    .register_uri_scheme_protocol(local_files::SCHEME, |ctx, request| {
+      local_files::handle(ctx.app_handle(), request)
+    })
     .invoke_handler(tauri::generate_handler![
       tray::tray_update,
       quick_add::open_quick_add,
@@ -91,7 +101,17 @@ pub fn run() {
       quick_add::hide_quick_add,
       capture::capture_screenshot,
       capture::take_capture,
-      capture::capture_selection
+      capture::capture_selection,
+      local_workspaces::local_workspaces_list,
+      local_workspaces::local_workspace_create,
+      local_workspaces::local_workspace_set_schema,
+      local_db::local_db_select,
+      local_db::local_db_execute,
+      local_db::local_db_backup,
+      local_files::local_file_write,
+      downloads::reveal_download,
+      local_export::local_export_write,
+      local_export::local_reveal
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {
@@ -146,10 +166,17 @@ pub fn run() {
           NewWindowResponse::Deny
         })
         .on_download(move |_webview, event| {
-          if let DownloadEvent::Requested { url, destination } = event {
-            if let Ok(dir) = download_handle.path().download_dir() {
-              *destination = unique_download_path(dir, destination, &url);
+          match event {
+            DownloadEvent::Requested { url, destination } => {
+              if let Ok(dir) = download_handle.path().download_dir() {
+                *destination = unique_download_path(dir, destination, &url);
+              }
+              downloads::remember(&download_handle, url.as_str(), destination);
             }
+            DownloadEvent::Finished { url, path, success } => {
+              downloads::finished(&download_handle, url.as_str(), path, success);
+            }
+            _ => {}
           }
           true
         })

@@ -3,6 +3,7 @@ export interface TrayTask {
 	title: string;
 	commonTime: number;
 	startTime: number;
+	workspaceId: number | null;
 }
 
 export interface TrayState {
@@ -20,6 +21,7 @@ interface ApiTask {
 	title: string;
 	common_time?: number | null;
 	start_time?: number | null;
+	workspace_id?: number | null;
 }
 
 const recentKey = (userId: number) => `desktop.recentTasks.${userId}`;
@@ -29,7 +31,16 @@ export const toTrayTask = (task: ApiTask): TrayTask => ({
 	title: task.title,
 	commonTime: task.common_time || 0,
 	startTime: task.start_time || 0,
+	workspaceId: task.workspace_id ?? null,
 });
+
+/** Cloud and local tasks can share an id; the workspace tells them apart. */
+export const sameTask = (
+	a: { id: number; workspaceId?: number | null; workspace_id?: number | null },
+	b: { id: number; workspaceId?: number | null; workspace_id?: number | null },
+) =>
+	a.id === b.id &&
+	(a.workspaceId ?? a.workspace_id ?? null) === (b.workspaceId ?? b.workspace_id ?? null);
 
 export const rememberRecent = (
 	previous: TrayTask[],
@@ -37,7 +48,7 @@ export const rememberRecent = (
 	max = 5,
 ): TrayTask[] => {
 	const fresh = running.map(toTrayTask);
-	const rest = previous.filter((p) => !fresh.some((f) => f.id === p.id));
+	const rest = previous.filter((p) => !fresh.some((f) => sameTask(f, p)));
 	return [...fresh, ...rest].slice(0, max);
 };
 

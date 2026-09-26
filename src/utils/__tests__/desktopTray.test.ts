@@ -14,17 +14,19 @@ const api = (id: number, extra: Record<string, unknown> = {}) => ({
 });
 
 it('maps an API task to the tray payload shape', () => {
-	expect(toTrayTask(api(7))).toEqual({
+	expect(toTrayTask(api(7, { workspace_id: 56 }))).toEqual({
 		id: 7,
 		title: 'TM-7: task 7',
 		commonTime: 60,
 		startTime: 1_000,
+		workspaceId: 56,
 	});
 	expect(toTrayTask({ id: 8, title: 'x' })).toEqual({
 		id: 8,
 		title: 'x',
 		commonTime: 0,
 		startTime: 0,
+		workspaceId: null,
 	});
 });
 
@@ -56,4 +58,15 @@ it('formats away time for the prompt', () => {
 	expect(formatAway(59)).toBe('1 min');
 	expect(formatAway(23 * 60 + 10)).toBe('23 min');
 	expect(formatAway(2 * 3600 + 5 * 60)).toBe('2 h 5 min');
+});
+
+it('keeps a cloud and a local task with the same id apart', () => {
+	const recent = rememberRecent(
+		[toTrayTask(api(5, { workspace_id: 56 }))],
+		[api(5, { workspace_id: -42 })],
+	);
+	expect(recent.map((t) => [t.id, t.workspaceId])).toEqual([
+		[5, -42],
+		[5, 56],
+	]);
 });
