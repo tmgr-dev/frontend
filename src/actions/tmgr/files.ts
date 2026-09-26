@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import { hasActiveLocalWorkspace, writeLocalFile } from '@/local/runtime';
 import requestCache from '@/utils/requestCache';
 import {
 	absoluteLinkUrl,
@@ -58,6 +59,10 @@ export const putToStorage = async (
 	target: PresignedUpload,
 	file: File,
 ): Promise<void> => {
+	if (hasActiveLocalWorkspace()) {
+		await writeLocalFile(target.key, file);
+		return;
+	}
 	const response = await fetch(target.upload_url, {
 		method: 'PUT',
 		headers: { 'Content-Type': target.content_type },

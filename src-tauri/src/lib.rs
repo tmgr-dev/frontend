@@ -106,6 +106,7 @@ pub fn run() {
       local_db::local_db_select,
       local_db::local_db_execute,
       local_db::local_db_backup,
+      local_files::local_file_write,
       local_export::local_export_write,
       local_export::local_reveal
     ])

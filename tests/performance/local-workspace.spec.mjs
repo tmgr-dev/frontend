@@ -7,6 +7,7 @@ const fakeShell = async () => {
   const workspaces = [];
   const dbs = new Map();
   const exports = [];
+  const files = new Map();
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
     return dbs.get(code);
@@ -38,6 +39,9 @@ const fakeShell = async () => {
           lastInsertId: Number(result.lastInsertRowid),
         };
       }
+      case 'local_file_write':
+        files.set(args.headers['x-tmgr-target'], Buffer.from(args.raw));
+        return null;
       case 'local_export_write':
         exports.push(args);
         return `/tmp/${args.code}/exports/${args.folder}`;
@@ -45,7 +49,7 @@ const fakeShell = async () => {
         return null;
     }
   };
-  return Object.assign(handler, { exports });
+  return Object.assign(handler, { exports, files });
 };
 
 test('a local workspace is created from the switcher and keeps its tasks off the server', async ({
@@ -56,19 +60,23 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.addInitScript(() => {
     window.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' } },
-      invoke: (command, args) => window.__shellInvoke(command, args ?? {}),
+      invoke: (command, args, options) =>
+        window.__shellInvoke(
+          command,
+          args instanceof Uint8Array ? { raw: Array.from(args), headers: options?.headers ?? {} } : (args ?? {}),
+        ),
       convertFileSrc: (path, protocol) => `${location.origin}/__${protocol}/${encodeURIComponent(path)}`,
       transformCallback: () => 0,
     };
   });
   await mockApp(page);
-  const stored = new Map();
+  const stored = shell.files;
   await page.route('**/__tmgrfile/**', async (route) => {
     const key = decodeURIComponent(new URL(route.request().url()).pathname.replace('/__tmgrfile/', ''));
     const method = route.request().method();
     if (method === 'PUT') {
-      stored.set(key, route.request().postDataBuffer());
-      await route.fulfill({ status: 200, body: '' });
+      // WKWebView hands a custom scheme handler no fetch() body.
+      await route.fulfill({ status: 400, body: 'empty file body' });
     } else if (method === 'DELETE') {
       stored.delete(key);
       await route.fulfill({ status: 204, body: '' });
@@ -121,7 +129,13 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     ),
   });
   await expect(page.getByText('notes.png').first()).toBeVisible();
-  expect([...stored.keys()].some((key) => key.startsWith('personal/') && key.endsWith('/notes.png'))).toBe(true);
+  await expect
+    .poll(() => [...stored.entries()].find(([key]) => key.startsWith('personal/') && key.endsWith('/notes.png'))?.[1].length)
+    .toBeGreaterThan(0);
+  await attachments.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() => attachments.locator('img').first().evaluate((img) => img.complete && img.naturalWidth))
+    .toBeGreaterThan(0);
   await attachments.locator('input[type="file"]').setInputFiles({
     name: 'framework_blank.stl',
     mimeType: '',
@@ -143,6 +157,24 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.goto('/local-personal/categories/1/children');
   await expect(page.getByText('Nested').first()).toBeVisible();
   await expect(page.getByText('Written offline').first()).toBeVisible();
+  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create subcategory' }).click();
+  await expect(page).toHaveURL(/\/local-personal\/categories\/1\/create$/);
+  await expect(page.getByText('Parent category').locator('..')).toContainText('Parent');
+  await expect(page.getByText('Parent category').locator('..')).not.toContainText('Select');
+  await page.getByPlaceholder('Name').fill('Fresh child');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page).toHaveURL(/\/local-personal\/categories\/3\/children$/);
+  expect(
+    (await shell('local_db_select', { code: 'personal', sql: 'SELECT parent_id FROM categories WHERE id = 3', params: [] }))[0]
+      .parent_id,
+  ).toBe(1);
+
+  await page.goto('/settings/workspaces');
+  await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+  await expect(page.getByText('Workspace Invitations')).toHaveCount(0);
+  await expect(page.getByText('Workspace Members')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Invite|Delete workspace|Exit/ })).toHaveCount(0);
   await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
 
   await page.getByTitle('Switch workspace').first().click();

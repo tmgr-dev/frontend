@@ -106,6 +106,16 @@ export const localContext = async (
 	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace) };
 };
 
+/** Stores an attachment of the active local workspace over IPC (WKWebView drops fetch bodies to custom schemes). */
+export const writeLocalFile = async (key: string, file: Blob): Promise<void> => {
+	const workspace = activeLocalWorkspace();
+	if (!workspace) throw new Error('No local workspace is open');
+	const core = await import('@tauri-apps/api/core');
+	await core.invoke('local_file_write', new Uint8Array(await file.arrayBuffer()), {
+		headers: { 'x-tmgr-target': `${workspace.code}/${key}` },
+	});
+};
+
 const stamp = (date: Date) =>
 	date.toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '');
 

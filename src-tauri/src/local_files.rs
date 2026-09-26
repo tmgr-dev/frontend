@@ -87,6 +87,48 @@ pub fn file_path(workspace_dir: &Path, key: &str) -> PathBuf {
   key.split('/').fold(workspace_dir.join("files"), |path, segment| path.join(segment))
 }
 
+/// Writes a new attachment. An empty body is refused: a webview that drops the body must fail loudly.
+pub fn store(path: &Path, body: &[u8]) -> Result<(), (StatusCode, String)> {
+  if body.is_empty() {
+    return Err((StatusCode::BAD_REQUEST, "empty file body".into()));
+  }
+  if body.len() > MAX_BYTES {
+    return Err((StatusCode::PAYLOAD_TOO_LARGE, "file is larger than 25 MB".into()));
+  }
+  if path.exists() {
+    return Err((StatusCode::CONFLICT, "file already exists".into()));
+  }
+  path
+    .parent()
+    .map(fs::create_dir_all)
+    .unwrap_or(Ok(()))
+    .and_then(|_| fs::write(path, body))
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+/// Upload over IPC: WKWebView does not hand a fetch() body to a custom scheme handler, the raw IPC body
+/// arrives intact. The target `<code>/<key>` travels in the `x-tmgr-target` header.
+#[tauri::command]
+pub async fn local_file_write<R: Runtime>(app: AppHandle<R>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+  let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
+    return Err("file body must be raw bytes".into());
+  };
+  let target = request
+    .headers()
+    .get("x-tmgr-target")
+    .and_then(|v| v.to_str().ok())
+    .and_then(parse_target)
+    .ok_or("bad file path")?;
+  let (code, key) = target;
+  let workspace = local_workspaces::find(&app, &code)?;
+  let path = file_path(Path::new(&workspace.path), &key);
+  let body = body.clone();
+  tauri::async_runtime::spawn_blocking(move || store(&path, &body))
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|(_, message)| message)
+}
+
 pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
   if request.method() == Method::OPTIONS {
     return respond(StatusCode::NO_CONTENT, Vec::new(), "text/plain");
@@ -103,24 +145,10 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Resp
       Ok(bytes) => respond(StatusCode::OK, bytes, content_type(&key)),
       Err(_) => error(StatusCode::NOT_FOUND, "file not found"),
     },
-    Method::PUT => {
-      let body = request.body();
-      if body.len() > MAX_BYTES {
-        return error(StatusCode::PAYLOAD_TOO_LARGE, "file is larger than 25 MB");
-      }
-      if path.exists() {
-        return error(StatusCode::CONFLICT, "file already exists");
-      }
-      let written = path
-        .parent()
-        .map(fs::create_dir_all)
-        .unwrap_or(Ok(()))
-        .and_then(|_| fs::write(&path, body));
-      match written {
-        Ok(()) => respond(StatusCode::OK, Vec::new(), "text/plain"),
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-      }
-    }
+    Method::PUT => match store(&path, request.body()) {
+      Ok(()) => respond(StatusCode::OK, Vec::new(), "text/plain"),
+      Err((status, message)) => error(status, &message),
+    },
     Method::DELETE => {
       let _ = fs::remove_file(&path);
       if let Some(dir) = path.parent() {
@@ -154,6 +182,19 @@ mod tests {
   fn files_stay_inside_the_workspace_files_folder() {
     let path = file_path(Path::new("/ws/personal"), "abc/x.png");
     assert_eq!(path, PathBuf::from("/ws/personal/files/abc/x.png"));
+  }
+
+  #[test]
+  fn store_refuses_empty_bodies_and_overwrites() {
+    let dir = std::env::temp_dir().join(format!("tmgr-files-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let path = file_path(&dir, "abc/notes.png");
+    assert_eq!(store(&path, b"").unwrap_err().0, StatusCode::BAD_REQUEST);
+    assert!(!path.exists());
+    store(&path, b"png").unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"png");
+    assert_eq!(store(&path, b"again").unwrap_err().0, StatusCode::CONFLICT);
+    let _ = fs::remove_dir_all(&dir);
   }
 
   #[test]
