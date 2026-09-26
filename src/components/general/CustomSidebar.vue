@@ -73,6 +73,7 @@
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import store from '@/store';
 	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
+	import { pluginState } from '@/pluginSystem/state';
 	import {
 		ArchiveIcon,
 		BadgeCheck,
@@ -92,6 +93,7 @@
 		Keyboard,
 		Palette,
 		PaperclipIcon,
+		Plug,
 		Plus,
 		Settings2,
 		Sliders,
@@ -118,6 +120,16 @@
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
+	const pluginPages = computed(() =>
+		Object.values(pluginState.plugins)
+			.filter((plugin) => plugin.status === 'running')
+			.flatMap((plugin) =>
+				plugin.manifest.contributes.views.map((view) => ({
+					key: `${plugin.manifest.id}/${view.id}`,
+					title: view.title,
+				})),
+			),
+	);
 
 	const openWorkspaceHome = (event: MouseEvent) => {
 		const target = event.currentTarget as HTMLElement | null;
@@ -794,6 +806,22 @@
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
+
+					<SidebarGroup v-if="pluginPages.length && activeWorkspace?.code">
+						<SidebarGroupLabel>Plugins</SidebarGroupLabel>
+						<SidebarMenu>
+							<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/plugins/${page.key}`"
+									>
+										<Plug />
+										<span>{{ page.title }}</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						</SidebarMenu>
+					</SidebarGroup>
 				</SidebarContent>
 
 				<SidebarFooter>
@@ -883,6 +911,14 @@
 										>
 											<Sliders />
 											Feature Settings
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="isDesktop"
+											@click="$router.push('/settings/plugins')"
+											class="cursor-pointer"
+										>
+											<Plug />
+											Plugins
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings?tab=theme')"

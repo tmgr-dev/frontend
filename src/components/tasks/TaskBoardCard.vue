@@ -188,6 +188,17 @@
 				:category="task.category"
 				:status-id="task.status_id"
 			/>
+			<span
+				v-for="badge in pluginBadges[task.id] || []"
+				:key="badge.pluginId + badge.text"
+				:title="badge.tooltip || undefined"
+				:class="[
+					'rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
+					pluginBadgeClass(badge.color),
+				]"
+			>
+				{{ badge.text }}
+			</span>
 
 			<span class="flex-1"></span>
 
@@ -278,6 +289,7 @@
 
 	export default {
 		mixins: [TimePreparationMixin, TasksListMixin],
+		inject: { pluginBadges: { default: () => ({}) } },
 		setup() {
 			const { isFeatureEnabled } = useFeatureToggles();
 			return { isFeatureEnabled };
@@ -350,6 +362,15 @@
 			};
 		},
 		computed: {
+			pluginBadgeClass() {
+				return (color) =>
+					({
+						green: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+						yellow: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+						red: 'bg-red-500/15 text-red-700 dark:text-red-300',
+						blue: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+					})[color] || 'bg-muted text-muted-foreground';
+			},
 			...mapState({
 				workspaces: (state) => state.workspaces || [],
 				currentWorkspaceId: (state) => {

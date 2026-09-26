@@ -80,6 +80,18 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS files_task_idx ON files (task_id)`,
 		],
 	},
+	{
+		version: 3,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS plugin_kv (
+				plugin_id TEXT NOT NULL,
+				key TEXT NOT NULL,
+				value TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (plugin_id, key)
+			)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

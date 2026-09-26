@@ -1,6 +1,6 @@
 [package]
 name = "tmgr"
-version = "0.4.0"
+version = "0.5.0"
 description = "TMGR desktop app"
 authors = ["TMGR"]
 license = ""
@@ -11,6 +11,10 @@ rust-version = "1.77.2"
 [lib]
 name = "tmgr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Real-build containment check for plugin windows (npm run test:desktop-isolation). Never in release builds.
+isolation-selftest = []
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
@@ -24,6 +28,14 @@ tauri-plugin-log = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
 rusqlite = { version = "0.37", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+sha2 = "0.10"
+minisign-verify = "0.2"
+url = "2"
+tauri-plugin-dialog = "2"
+base64 = "0.22"
+tokio = { version = "1", features = ["sync", "time"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

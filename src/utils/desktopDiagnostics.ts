@@ -33,6 +33,12 @@ export function installDesktopDiagnostics(
 	window.addEventListener('unhandledrejection', (event) =>
 		write('error', `[unhandledrejection] ${describe(event.reason)}`),
 	);
+	document.addEventListener('securitypolicyviolation', (event) =>
+		write(
+			'warn',
+			`[csp] ${event.violatedDirective} blocked=${event.blockedURI} source=${event.sourceFile}:${event.lineNumber}`,
+		),
+	);
 
 	const previousErrorHandler = app.config.errorHandler;
 	app.config.errorHandler = (err, instance, info) => {

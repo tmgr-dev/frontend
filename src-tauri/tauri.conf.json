@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TMGR",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "identifier": "dev.tmgr.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -29,7 +29,46 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": ["'self'", "https://www.googletagmanager.com", "https://telegram.org", "https://mc.yandex.ru", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
+        "img-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
+        "media-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
+        "font-src": ["'self'", "data:"],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "tmgrfile:",
+          "http://tmgrfile.localhost",
+          "https://api.tmgr.dev",
+          "wss://ws.tmgr.dev",
+          "https://ws.tmgr.dev",
+          "https://ntfy.tmgr.dev",
+          "wss://ntfy.tmgr.dev",
+          "https://s3.danubedata.ro",
+          "https://*.google-analytics.com",
+          "https://*.analytics.google.com",
+          "https://www.googletagmanager.com",
+          "https://mc.yandex.ru",
+          "https://mc.yandex.com"
+        ],
+        "frame-src": [
+          "https://oauth.telegram.org",
+          "https://www.youtube.com",
+          "https://codesandbox.io",
+          "https://codepen.io",
+          "https://www.figma.com"
+        ],
+        "worker-src": ["'self'", "blob:"],
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'self'",
+        "frame-ancestors": "'none'"
+      },
+      "devCsp": null,
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "bundle": {

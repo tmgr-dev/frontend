@@ -1,0 +1,11 @@
+<!-- A page in its own window: inline script and style only, no network. window.tmgr talks to the app. -->
+<style>
+	body { font: 14px system-ui; margin: 24px; }
+</style>
+<h1>Hello page</h1>
+<p id="count">Counting…</p>
+<script>
+	tmgr.tasks.list({ perPage: 1 }).then(({ total }) => {
+		document.getElementById('count').textContent = `${total} tasks in this workspace`;
+	});
+</script>

@@ -10,6 +10,7 @@ import {
 	isDesktopApp,
 } from '@/utils/desktop';
 import { installLocalWorkspaces } from '@/local/install';
+import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
@@ -32,7 +33,19 @@ if (isDesktopApp()) {
 		currentUser: () => store.state.user,
 		hasSession: () => !!store.state.token?.token,
 	});
+	installDomainEvents($axios, domainEvents, () => {
+		const id = Number(store.getters.currentWorkspaceId);
+		return Number.isFinite(id) && id !== 0 ? id : null;
+	});
 	if (desktopWindowLabel() === 'main') startUpdateChecks();
+	if (desktopWindowLabel() === 'main') {
+		void Promise.all([
+			import('@/pluginSystem/app'),
+			import('@tauri-apps/api/core').then(({ invoke }) =>
+				invoke<boolean>('plugins_safe_mode').catch(() => false),
+			),
+		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
+	}
 }
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));

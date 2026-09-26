@@ -78,6 +78,40 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(onlyArchived.map((t: any) => t.title)).toEqual(['Done']);
 	});
 
+	it('keeps plugin storage per plugin within a quota', async () => {
+		await call('PUT', 'plugins/tmgr.estimate/storage/last%20run', { value: '{"at":1}' });
+		await call('PUT', 'plugins/tmgr.other/storage/last%20run', { value: '2' });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage/last%20run')).toEqual({ value: '{"at":1}' });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage/missing')).toEqual({ value: null });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual(['last run']);
+		await call('DELETE', 'plugins/tmgr.estimate/storage/last%20run');
+		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual([]);
+		expect(await data('GET', 'plugins/tmgr.other/storage')).toEqual(['last run']);
+
+		const big = JSON.stringify('x'.repeat(250_000));
+		for (let i = 0; i < 20; i++) {
+			expect((await call('PUT', `plugins/tmgr.big/storage/k${i}`, { value: big })).status).toBe(200);
+		}
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k20', { value: big })).status).toBe(413);
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+	});
+
+	it('holds the plugin storage quota under concurrent writes and counts keys too', async () => {
+		const big = JSON.stringify('x'.repeat(250_000));
+		const results = await Promise.all(
+			Array.from({ length: 25 }, (_, i) => call('PUT', `plugins/tmgr.race/storage/k${i}`, { value: big })),
+		);
+		expect(results.filter((r) => r.status === 200).length).toBeLessThanOrEqual(20);
+		const [{ used }] = await ctx.db.select<{ used: number }>(
+			`SELECT SUM(LENGTH(value)) AS used FROM plugin_kv WHERE plugin_id = 'tmgr.race'`,
+		);
+		expect(Number(used)).toBeLessThanOrEqual(5 * 1024 * 1024);
+
+		for (let i = 0; i < 1000; i++) await call('PUT', `plugins/tmgr.keys/storage/${i}`, { value: '1' });
+		expect((await call('PUT', 'plugins/tmgr.keys/storage/one-more', { value: '1' })).status).toBe(413);
+		expect((await call('PUT', 'plugins/tmgr.keys/storage/0', { value: '2' })).status).toBe(200);
+	});
+
 	it('migrating twice is a no-op and does not duplicate statuses', async () => {
 		await migrate(ctx.db, clock.toISOString());
 		expect(await data('GET', 'workspaces/statuses')).toHaveLength(4);

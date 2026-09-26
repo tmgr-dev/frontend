@@ -1,21 +1,30 @@
 mod capture;
 mod downloads;
+mod embeds;
 mod idle;
 mod local_db;
 mod local_export;
 mod local_files;
 mod local_workspaces;
+mod plugin_catalog;
+mod plugin_dev;
+mod plugin_files;
+mod plugin_market;
+mod plugin_net;
+#[cfg(feature = "isolation-selftest")]
+mod plugin_selftest;
+mod plugin_windows;
 mod quick_add;
 mod tray;
 
 use std::path::{Path, PathBuf};
 
-use tauri::webview::{DownloadEvent, NewWindowResponse};
+use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::{Manager, RunEvent, Url, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
 use tauri_plugin_opener::OpenerExt;
 
-fn is_app_url(url: &Url) -> bool {
+pub(crate) fn is_app_url(url: &Url) -> bool {
   match url.scheme() {
     "tauri" | "about" | "blob" | "data" => true,
     "http" | "https" => matches!(url.host_str(), Some("tauri.localhost") | Some("localhost")),
@@ -91,6 +100,10 @@ pub fn run() {
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(downloads::PendingDownloads::default())
+    .manage(plugin_windows::PluginWindows::default())
+    .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
+      plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
+    })
     .register_uri_scheme_protocol(local_files::SCHEME, |ctx, request| {
       local_files::handle(ctx.app_handle(), request)
     })
@@ -110,6 +123,22 @@ pub fn run() {
       local_db::local_db_backup,
       local_files::local_file_write,
       downloads::reveal_download,
+      plugin_dev::plugins_dev_list,
+      plugin_dev::plugins_dev_reveal,
+      plugin_dev::plugins_safe_mode,
+      plugin_net::plugin_fetch,
+      plugin_catalog::plugin_catalog,
+      plugin_catalog::plugin_catalog_refresh,
+      plugin_market::plugin_github_release,
+      plugin_market::plugin_install,
+      plugin_market::plugins_installed_list,
+      plugin_market::plugin_uninstall,
+      plugin_files::plugin_pick_file,
+      plugin_windows::plugin_page_put,
+      plugin_windows::plugin_window_open,
+      plugin_windows::plugin_window_call,
+      plugin_windows::plugin_window_reply,
+      plugin_windows::plugin_windows_close,
       local_export::local_export_write,
       local_export::local_reveal
     ])
@@ -128,6 +157,7 @@ pub fn run() {
       }
     })
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {
@@ -136,6 +166,12 @@ pub fn run() {
           .level(log::LevelFilter::Info)
           .build(),
       )?;
+
+      #[cfg(feature = "isolation-selftest")]
+      if let Some(report) = plugin_selftest::requested() {
+        plugin_selftest::start(app.handle(), report)?;
+        return Ok(());
+      }
 
       let config = app
         .config()
@@ -148,16 +184,31 @@ pub fn run() {
       let nav_handle = app.handle().clone();
       let popup_handle = app.handle().clone();
       let download_handle = app.handle().clone();
+      let home: Url = if cfg!(debug_assertions) {
+        app.config().build.dev_url.clone().unwrap_or_else(|| "tauri://localhost".parse().unwrap())
+      } else if cfg!(windows) {
+        "http://tauri.localhost".parse().unwrap()
+      } else {
+        "tauri://localhost".parse().unwrap()
+      };
 
       let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
         .on_navigation(move |url| {
-          if is_app_url(url) {
+          if is_app_url(url) || embeds::is_embed_url(url) {
             return true;
           }
           if is_external_url(url) {
             let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
           }
           false
+        })
+        // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
+        // ever lands on one, bring the app back.
+        .on_page_load(move |window, payload| {
+          if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
+            log::warn!("[nav] main window left the app for {}; returning", payload.url().host_str().unwrap_or(""));
+            let _ = window.navigate(home.clone());
+          }
         })
         .on_new_window(move |url, _features| {
           if is_external_url(&url) {

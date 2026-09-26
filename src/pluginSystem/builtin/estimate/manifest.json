@@ -1,0 +1,30 @@
+{
+	"id": "tmgr.estimate",
+	"name": "Estimate vs actual",
+	"version": "1.0.0",
+	"publisher": "tmgr",
+	"description": "Compares tracked time with the estimate: a badge on board cards, the total overrun in the status bar, a report page and a section in the task panel.",
+	"engines": { "tmgr": "^1.0" },
+	"main": "main.js",
+	"permissions": ["tasks:read", "statuses:read", "time:read"],
+	"contributes": {
+		"boardCardBadges": [{ "id": "ratio" }],
+		"statusBarItems": [{ "id": "overrun" }],
+		"commands": [
+			{ "id": "tmgr.estimate.refresh", "title": "Recalculate overrun" }
+		],
+		"views": [{ "id": "report", "title": "Estimate vs actual" }],
+		"taskPanelSections": [{ "id": "estimate", "title": "Estimate vs actual" }],
+		"settings": {
+			"type": "object",
+			"properties": {
+				"warnAt": {
+					"type": "number",
+					"title": "Warn at (share of the estimate)",
+					"description": "The badge turns yellow from this share of the estimate, for example 0.8 = 80%.",
+					"default": 0.8
+				}
+			}
+		}
+	}
+}

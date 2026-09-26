@@ -3,6 +3,7 @@ import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig 
 import { migrate } from '../schema';
 import type { LocalWorkspace } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
+import { createDomainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
 
 const LOCAL: LocalWorkspace = {
 	id: -42,
@@ -44,6 +45,8 @@ jest.mock('../runtime', () => ({
 
 // eslint-disable-next-line import/first
 import { installLocalWorkspaces } from '../install';
+// eslint-disable-next-line import/first
+import { pinnedLocalClient } from '../pinned';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
@@ -68,6 +71,8 @@ describeSqlite('installLocalWorkspaces', () => {
 
 	const client = axios.create({ adapter: server });
 	installLocalWorkspaces(client, { currentUser: () => user, hasSession: () => true });
+	const events = createDomainEvents();
+	installDomainEvents(client, events, () => 56);
 
 	beforeAll(async () => {
 		await migrate(db!, '2026-09-26T10:00:00Z');
@@ -104,6 +109,35 @@ describeSqlite('installLocalWorkspaces', () => {
 
 		expect(created.status).toBe(201);
 		expect(list.data.data.map((t: any) => t.title)).toContain('Offline task');
+		expect(sent).toEqual([]);
+	});
+
+	it('reports domain events for local writes with the local workspace id', async () => {
+		active = LOCAL;
+		const seen: DomainEvent[] = [];
+		const off = events.on((event) => seen.push(event));
+		const task = (await client.post('tasks', { title: 'Evented' })).data.data;
+		await client.post(`tasks/${task.id}/countdown`);
+		off();
+		await client.delete(`tasks/${task.id}/countdown`);
+
+		expect(seen.map((e) => [e.type, e.workspaceId])).toEqual([
+			['task.created', LOCAL.id],
+			['timer.started', LOCAL.id],
+		]);
+		expect(sent).toEqual([]);
+	});
+
+	it('a pinned client stays in its local workspace whatever the app switches to', async () => {
+		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
+		active = null;
+		const created = await pinned.post('tasks', { title: 'Written by a plugin' });
+		expect(created.data.data.workspace_id).toBe(LOCAL.id);
+		expect(sent).toEqual([]);
+
+		const gone = pinnedLocalClient(-999, () => ({ id: 7, name: '', email: '' }));
+		await expect(gone.get('tasks')).rejects.toMatchObject({ response: { status: 409 } });
+		await expect(pinned.post('agent/conversations', {})).rejects.toMatchObject({ response: { status: 501 } });
 		expect(sent).toEqual([]);
 	});
 
