@@ -8,10 +8,10 @@
 			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
 		>
 			<span data-tauri-drag-region>Add to today's routines</span>
-			<span data-tauri-drag-region>↵ add · ⌘↵ add &amp; start timer · esc</span>
+			<span data-tauri-drag-region>↵ add · esc</span>
 		</div>
 
-		<form class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3" @submit.prevent="submit(false)">
+		<form class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3" @submit.prevent="submit">
 			<input
 				ref="titleInput"
 				v-model="title"
@@ -19,7 +19,6 @@
 				class="w-full bg-transparent text-xl font-medium outline-none placeholder:text-muted-foreground"
 				placeholder="What needs to be done?"
 				:disabled="saving"
-				@keydown.meta.enter.prevent="submit(true)"
 			/>
 			<textarea
 				v-if="note || showNote"
@@ -28,7 +27,6 @@
 				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-none dark:bg-muted/30"
 				placeholder="Note (added as a comment)"
 				:disabled="saving"
-				@keydown.meta.enter.prevent="submit(true)"
 			/>
 			<div v-if="screenshotUrl" class="flex min-h-0 flex-1 items-start gap-2">
 				<img
@@ -66,10 +64,9 @@
 	import { createComment } from '@/actions/tmgr/comments';
 	import { quickCreateRoutine } from '@/actions/tmgr/daily-tasks';
 	import { uploadTaskFile } from '@/actions/tmgr/files';
-	import { startTaskTimeCounter } from '@/actions/tmgr/tasks';
 	import { splitQuickText } from '@/utils/desktopShortcuts';
 	import { format } from 'date-fns';
-	import { defineComponent, nextTick, onMounted, ref } from 'vue';
+	import { defineComponent, nextTick, onMounted, ref, watch } from 'vue';
 
 	const invoke = async (command, args) => {
 		const core = await import('@tauri-apps/api/core');
@@ -138,7 +135,7 @@
 				titleInput.value?.focus();
 			};
 
-			const submit = async (startTimer) => {
+			const submit = async () => {
 				if (!title.value.trim() || saving.value) return;
 				saving.value = true;
 				error.value = false;
@@ -153,7 +150,6 @@
 						await createComment(task.id, { message: note.value.trim() });
 					}
 					if (screenshot.value) await uploadTaskFile(task.id, screenshot.value);
-					if (startTimer) await startTaskTimeCounter(task.id);
 					message.value = 'Added';
 					setTimeout(async () => {
 						await hide();
@@ -167,6 +163,20 @@
 					saving.value = false;
 				}
 			};
+
+			const COMPACT = 132;
+			const EXPANDED = 320;
+			watch(
+				() => Boolean(note.value || showNote.value || screenshotUrl.value),
+				async (expanded) => {
+					const { getCurrentWindow, LogicalSize } = await import(
+						'@tauri-apps/api/window'
+					);
+					await getCurrentWindow().setSize(
+						new LogicalSize(620, expanded ? EXPANDED : COMPACT),
+					);
+				},
+			);
 
 			onMounted(async () => {
 				const { listen } = await import('@tauri-apps/api/event');

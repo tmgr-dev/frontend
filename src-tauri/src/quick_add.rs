@@ -14,7 +14,7 @@ fn window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::WebviewWindow<
   }
   WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("quick-add".into()))
     .title("Quick add")
-    .inner_size(620.0, 300.0)
+    .inner_size(620.0, 132.0)
     .resizable(false)
     .decorations(false)
     .always_on_top(true)
