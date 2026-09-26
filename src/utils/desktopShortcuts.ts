@@ -21,8 +21,8 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
 	quickAdd: { accelerator: 'Alt+Space', enabled: true },
 	timer: { accelerator: 'Alt+Shift+T', enabled: true },
-	screenshot: { accelerator: 'Alt+Shift+S', enabled: false },
-	selection: { accelerator: 'Alt+Shift+C', enabled: false },
+	screenshot: { accelerator: 'Alt+Shift+S', enabled: true },
+	selection: { accelerator: 'Alt+Shift+C', enabled: true },
 };
 
 const PRIMARY_MODIFIERS = ['Command', 'Control', 'Alt'];

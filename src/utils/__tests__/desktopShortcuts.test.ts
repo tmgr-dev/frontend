@@ -71,11 +71,8 @@ it('merges stored settings over defaults', () => {
 	expect(merged.quickAdd).toEqual(DEFAULT_SHORTCUTS.quickAdd);
 });
 
-it('enables quick add and the timer by default but not the permission-heavy ones', () => {
-	expect(DEFAULT_SHORTCUTS.quickAdd.enabled).toBe(true);
-	expect(DEFAULT_SHORTCUTS.timer.enabled).toBe(true);
-	expect(DEFAULT_SHORTCUTS.screenshot.enabled).toBe(false);
-	expect(DEFAULT_SHORTCUTS.selection.enabled).toBe(false);
+it('enables every shortcut by default', () => {
+	expect(Object.values(DEFAULT_SHORTCUTS).every((s) => s.enabled)).toBe(true);
 });
 
 it('describes an accelerator with macOS symbols', () => {
