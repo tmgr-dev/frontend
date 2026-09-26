@@ -78,7 +78,7 @@
 		{
 			id: 'quickAdd',
 			label: 'Quick add',
-			hint: "Opens a small window to add a task to today's routines",
+			hint: 'Opens a small window to add a Daily Routine',
 		},
 		{
 			id: 'timer',
@@ -88,7 +88,7 @@
 		{
 			id: 'screenshot',
 			label: 'Screenshot to task',
-			hint: 'Select an area of the screen; needs Screen Recording permission',
+			hint: 'Select an area; creates a backlog task with the image (needs Screen Recording)',
 		},
 		{
 			id: 'selection',

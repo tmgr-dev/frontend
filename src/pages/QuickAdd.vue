@@ -7,7 +7,9 @@
 			data-tauri-drag-region
 			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
 		>
-			<span data-tauri-drag-region>Add to Daily Routines</span>
+			<span data-tauri-drag-region>
+				{{ screenshotUrl ? 'Add task with screenshot to backlog' : 'Add to Daily Routines' }}
+			</span>
 			<div class="flex items-center gap-2">
 				<span data-tauri-drag-region>esc to close</span>
 				<button
@@ -73,6 +75,9 @@
 <script>
 	import { createDailyTask } from '@/actions/tmgr/daily-tasks';
 	import { uploadTaskFile } from '@/actions/tmgr/files';
+	import { getStatuses } from '@/actions/tmgr/statuses';
+	import { createTask } from '@/actions/tmgr/tasks';
+	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import { splitQuickText } from '@/utils/desktopShortcuts';
 	import { format } from 'date-fns';
 	import { defineComponent, nextTick, onMounted, ref, watch } from 'vue';
@@ -150,12 +155,22 @@
 				error.value = false;
 				message.value = 'Adding…';
 				try {
-					const task = await createDailyTask({
+					const fields = {
 						title: title.value.trim(),
 						description: note.value.trim() || undefined,
 						workspace_id: workspaceId.value || undefined,
-					});
-					if (screenshot.value) await uploadTaskFile(task.id, screenshot.value);
+					};
+					if (screenshot.value) {
+						const task = await createTask({
+							...fields,
+							status: 'created',
+							status_id: pickDefaultStatusId(await getStatuses()),
+							is_daily_routine: false,
+						});
+						await uploadTaskFile(task.id, screenshot.value);
+					} else {
+						await createDailyTask(fields);
+					}
 					message.value = 'Added';
 					setTimeout(async () => {
 						await hide();
