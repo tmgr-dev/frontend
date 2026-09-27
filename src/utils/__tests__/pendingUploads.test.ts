@@ -1,6 +1,6 @@
 import { uploadPendingFiles } from '../pendingUploads';
 
-const file = (name: string) => ({ name }) as File;
+const file = (name: string) => ({ name } as File);
 
 describe('uploadPendingFiles', () => {
 	it('uploads every queued file', async () => {

@@ -1,10 +1,14 @@
-import { createFileDragDepth, installFileDropGuard, isFileDrag } from '../fileDrag';
+import {
+	createFileDragDepth,
+	installFileDropGuard,
+	isFileDrag,
+} from '../fileDrag';
 
 const dragOf = (types: string[] | null) =>
 	({
 		dataTransfer: types ? ({ types } as unknown as DataTransfer) : null,
 		preventDefault: jest.fn(),
-	}) as unknown as DragEvent & { preventDefault: jest.Mock };
+	} as unknown as DragEvent & { preventDefault: jest.Mock });
 
 describe('isFileDrag', () => {
 	it('recognises a drag that carries files', () => {
