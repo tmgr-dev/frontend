@@ -13,7 +13,9 @@ module.exports = {
   },
   // marked ships ESM only and jest runs CommonJS here, so it is compiled like
   // the rest of the sources instead of being skipped as a node_modules file.
-  transformIgnorePatterns: ['/node_modules/(?!marked/)'],
+  // plugin-sdk/testing is already plain CommonJS (see plugin-sdk/testing/sync-prelude.mjs)
+  // and needs no further transform.
+  transformIgnorePatterns: ['/node_modules/(?!marked/)', '/plugin-sdk/testing/'],
   transform: {
     '^.+\\.m?js$': [
       'ts-jest',

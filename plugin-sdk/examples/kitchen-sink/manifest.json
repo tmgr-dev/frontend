@@ -1,0 +1,46 @@
+{
+	"id": "tmgr-dev.kitchen-sink",
+	"name": "Kitchen Sink",
+	"version": "1.0.0",
+	"publisher": "tmgr-dev",
+	"description": "Exercises every plugin API v1.1 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.1" },
+	"main": "main.js",
+	"permissions": [
+		"tasks:read",
+		"tasks:write",
+		"statuses:read",
+		"statuses:write",
+		"categories:read",
+		"categories:write",
+		"comments:write",
+		"relations:write",
+		"agent_work:read",
+		"agent_work:write",
+		"alarms",
+		"notifications",
+		"tray",
+		"deeplinks",
+		"links:open"
+	],
+	"links": { "allowedDomains": ["example.com"] },
+	"contributes": {
+		"boardCardBadges": [{ "id": "ks-badges" }],
+		"statusBarItems": [{ "id": "count" }],
+		"trayItems": [{ "id": "ks-tray" }],
+		"commands": [
+			{ "id": "tmgr-dev.kitchen-sink.setup", "title": "Set up workspace" },
+			{ "id": "tmgr-dev.kitchen-sink.createSample", "title": "Create sample task" },
+			{ "id": "tmgr-dev.kitchen-sink.sayHi", "title": "Say hi (from a task section button)" },
+			{ "id": "tmgr-dev.kitchen-sink.ping", "title": "Ping Kitchen Sink", "deepLink": true }
+		],
+		"views": [
+			{ "id": "view", "title": "Kitchen Sink view" },
+			{ "id": "window", "title": "Kitchen Sink window", "ui": "ui/page.html" }
+		],
+		"taskPanelSections": [{ "id": "ks-section", "title": "Kitchen Sink" }],
+		"boardFilters": [
+			{ "id": "ks-touched", "title": "Touched by Kitchen Sink", "badge": "ks-badges", "key": "kitchen-sink" }
+		]
+	}
+}

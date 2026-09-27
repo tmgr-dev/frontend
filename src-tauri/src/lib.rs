@@ -128,6 +128,7 @@ pub fn run() {
       local_files::local_file_write,
       downloads::reveal_download,
       plugin_dev::plugins_dev_list,
+      plugin_dev::plugins_dev_fingerprints,
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,

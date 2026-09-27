@@ -15,6 +15,7 @@ const APP_COMMANDS: &[&str] = &[
   "local_workspace_set_schema",
   "local_workspaces_list",
   "plugins_dev_list",
+  "plugins_dev_fingerprints",
   "plugins_dev_reveal",
   "plugins_safe_mode",
   "plugin_pick_file",

@@ -39,7 +39,7 @@ const MAX_CALL_BYTES = 1024 * 1024;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 const MAX_MESSAGE = 1000;
 
-const PRELUDE = `(() => {
+export const PRELUDE = `(() => {
 	const host = globalThis.__host;
 	const handlers = { event: new Map(), command: new Map(), badges: new Map(), page: new Map(), section: new Map() };
 	const call = (method, params) => {

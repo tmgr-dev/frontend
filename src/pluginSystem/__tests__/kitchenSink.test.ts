@@ -1,0 +1,79 @@
+import variant from '@jitl/quickjs-wasmfile-release-sync';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+	newQuickJSWASMModuleFromVariant,
+	type QuickJSWASMModule,
+} from 'quickjs-emscripten-core';
+import { parseManifest } from '../manifest';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { createTestHost } = require('../../../plugin-sdk/testing/index.js');
+
+const dir = join(__dirname, '../../../plugin-sdk/examples/kitchen-sink');
+const loadManifest = () => JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+
+let quickjs: QuickJSWASMModule;
+beforeAll(async () => {
+	// jest runs CommonJS without dynamic import(); load the same emscripten module with require (see
+	// sandbox.test.ts).
+	quickjs = await newQuickJSWASMModuleFromVariant({
+		...variant,
+		importModuleLoader: async () =>
+			require('@jitl/quickjs-wasmfile-release-sync/emscripten-module'),
+	});
+});
+
+const startHost = () =>
+	createTestHost({ manifest: loadManifest(), mainPath: join(dir, 'main.js'), quickjs });
+
+it('the kitchen-sink manifest is valid', () => {
+	expect(() => parseManifest(loadManifest())).not.toThrow();
+});
+
+it('"Set up workspace" creates the status and category', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	expect(host.tmgr.statuses.map((s: any) => s.name)).toContain('Needs answer');
+	expect(host.tmgr.categories.map((c: any) => c.code)).toContain('KS');
+	// Idempotent: running it again must not create a second status or category.
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	expect(host.tmgr.statuses).toHaveLength(1);
+	expect(host.tmgr.categories).toHaveLength(1);
+	host.dispose();
+});
+
+it('"Create sample task" gets a key, a comment and taskData', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	expect(task.key).toBe('KS-1');
+	expect(host.tmgr.comments[task.id]).toHaveLength(1);
+	expect(host.tmgr.comments[task.id][0].reactions['👍']).toBe(1);
+	expect(host.tmgr.taskData[`${task.id}:kitchenSink.note`]).toBeDefined();
+	expect(host.tmgr.relations[task.id]).toEqual([{ taskId: expect.any(Number), type: 'relates to' }]);
+	host.dispose();
+});
+
+it('badges returns an array of normalized badges per task', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	const badges = await host.badges([task]);
+	expect(Array.isArray(badges[task.id])).toBe(true);
+	expect(badges[task.id].map((b: any) => b.text)).toEqual(expect.arrayContaining(['HIGH', 'KS']));
+	host.dispose();
+});
+
+it('the alarm fires and refreshes the tray item', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	expect(host.tmgr.alarms['ks-tick']).toBeDefined();
+	const scheduledAt = host.tmgr.alarms['ks-tick'].scheduledAtMs;
+	await host.fireAlarms(scheduledAt + 1);
+	expect(host.tmgr.trayItems['ks-tray']).toBeDefined();
+	// Periodic: the alarm reschedules itself instead of disappearing.
+	expect(host.tmgr.alarms['ks-tick'].scheduledAtMs).toBeGreaterThan(scheduledAt);
+	host.dispose();
+});
