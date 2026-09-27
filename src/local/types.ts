@@ -37,6 +37,8 @@ export interface LocalActor {
 	kind: 'user' | 'plugin' | 'persona' | 'companion' | 'agent';
 	id: string;
 	name: string;
+	/** Set from the plugin's storage id header: distinguishes repos that reuse the same plugin id. */
+	ownerId?: string;
 }
 
 export interface LocalContext {

@@ -10,6 +10,7 @@ import {
 	type PluginWorkspace,
 	type RegistrationKind,
 } from './broker';
+import { taskKey } from './dataApi';
 import type { PluginManifest } from './manifest';
 import {
 	startPluginProcess,
@@ -374,6 +375,24 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const unsubscribe = deps.subscribe((event) => {
 		const workspace = state.workspace;
 		if (!workspace || event.workspaceId !== workspace.id) return;
+		const { actor: _actor, ...basePayload } = event as DomainEvent & {
+			task?: unknown;
+			reactions?: unknown;
+		};
+		// Reacted/users are actor-relative; a broadcast has no single actor, so no plugin gets them.
+		if (
+			event.type === 'comment.reactionChanged' &&
+			Array.isArray(basePayload.reactions)
+		) {
+			basePayload.reactions = basePayload.reactions.map((r: any) => ({
+				emoji: r?.emoji,
+				count: r?.count,
+			}));
+		}
+		const task =
+			basePayload.task && typeof basePayload.task === 'object'
+				? { ...basePayload.task, key: taskKey(basePayload.task) }
+				: basePayload.task;
 		for (const [pluginId, plugin] of running) {
 			if (
 				!plugin.registered.event.has(event.type) ||
@@ -381,15 +400,17 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			)
 				continue;
 			if (!PLUGIN_EVENTS[event.type]) continue;
-			const { actor: _actor, ...payload } = event as DomainEvent & {
-				task?: unknown;
-			};
+			const permissions = packages.get(pluginId)?.manifest.permissions ?? [];
+			let payloadTask = task;
 			// A task snapshot rides along with timer and status events; it is only for tasks:read.
-			if (
-				!packages.get(pluginId)?.manifest.permissions.includes('tasks:read')
-			) {
-				delete (payload as { task?: unknown }).task;
+			if (!permissions.includes('tasks:read')) {
+				payloadTask = undefined;
+			} else if (payloadTask && typeof payloadTask === 'object' && !permissions.includes('relations:read')) {
+				const { relationTypeWithTask, ...rest } = payloadTask as Record<string, unknown>;
+				payloadTask = rest;
 			}
+			const payload = { ...basePayload, task: payloadTask };
+			if (payloadTask === undefined) delete (payload as { task?: unknown }).task;
 			void dispatch(pluginId, 'event', event.type, payload).catch(
 				() => undefined,
 			);

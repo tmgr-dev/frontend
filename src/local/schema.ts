@@ -179,6 +179,42 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS task_relations_task_idx ON task_relations (task_id)`,
 		],
 	},
+	{
+		version: 6,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS plugin_task_data (
+				plugin_id TEXT NOT NULL,
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				key TEXT NOT NULL,
+				value TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (plugin_id, task_id, key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS plugin_task_data_plugin_key_idx ON plugin_task_data (plugin_id, key)`,
+			`CREATE TABLE IF NOT EXISTS agent_work_runs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				agent TEXT NOT NULL,
+				model TEXT,
+				session_id TEXT,
+				branch TEXT,
+				status TEXT NOT NULL DEFAULT 'running',
+				started_at TEXT NOT NULL,
+				ended_at TEXT,
+				duration_seconds INTEGER,
+				summary TEXT,
+				pr_url TEXT,
+				commits TEXT,
+				tests TEXT,
+				actor_kind TEXT NOT NULL,
+				actor_id TEXT NOT NULL,
+				version INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS agent_work_runs_task_idx ON agent_work_runs (task_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

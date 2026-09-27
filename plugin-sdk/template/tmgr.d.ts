@@ -23,6 +23,8 @@ interface TmgrTask {
 	project_category_id: number | null;
 	category: { code: string | null; title?: string } | null;
 	category_tasks_sequence_id: number | null;
+	/** "CODE-N" from the category's code and category_tasks_sequence_id, or null without a category. */
+	key: string | null;
 	priority: string | null;
 	/** Seconds tracked before the current run. */
 	common_time: number;
@@ -30,6 +32,8 @@ interface TmgrTask {
 	approximately_time: number;
 	/** Unix seconds when the running timer started, 0 when stopped. */
 	start_time: number;
+	/** ISO 8601 date-time, or null when no deadline is set. */
+	expired_at: string | null;
 	[field: string]: unknown;
 }
 
@@ -40,6 +44,74 @@ interface TmgrTaskFields {
 	project_category_id?: number | null;
 	priority?: 'low' | 'medium' | 'high' | 'urgent';
 	approximately_time?: number;
+	/** ISO 8601 date-time (e.g. "2026-10-01T12:00:00Z"), or null to clear it. */
+	expired_at?: string | null;
+}
+
+interface TmgrStatusFields {
+	name: string;
+	type: 'default' | 'active' | 'completed' | 'hidden' | 'archived';
+	color?: string;
+}
+
+interface TmgrStatusPatch {
+	name?: string;
+	type?: 'default' | 'active' | 'completed' | 'hidden' | 'archived';
+	color?: string;
+}
+
+interface TmgrCategoryFields {
+	title: string;
+	code?: string;
+}
+
+interface TmgrCategoryPatch {
+	title?: string;
+	code?: string;
+}
+
+interface TmgrAgentWorkCommit {
+	sha: string;
+	message: string | null;
+}
+
+interface TmgrAgentWorkTests {
+	passed: number | null;
+	failed: number | null;
+	command: string | null;
+}
+
+interface TmgrAgentWorkRun {
+	id: number;
+	task_id: number;
+	workspace_id: number;
+	user_id: number;
+	agent: string;
+	model: string | null;
+	session_id: string | null;
+	branch: string | null;
+	status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'abandoned';
+	started_at: string;
+	ended_at: string | null;
+	duration_seconds: number;
+	summary: string | null;
+	pr_url: string | null;
+	commits: TmgrAgentWorkCommit[];
+	tests: TmgrAgentWorkTests | null;
+	version: number;
+}
+
+interface TmgrAgentWorkOverview {
+	runs: TmgrAgentWorkRun[];
+	totals: { agent_seconds: number; human_seconds: number; human_timer_running: boolean };
+}
+
+interface TmgrAgentWorkProgress {
+	branch?: string;
+	summary?: string;
+	prUrl?: string;
+	commits?: TmgrAgentWorkCommit[];
+	tests?: TmgrAgentWorkTests;
 }
 
 /**
@@ -72,9 +144,11 @@ type TmgrEvent =
 	| { type: 'task.deleted'; workspaceId: number; taskId: number }
 	| { type: 'task.statusChanged'; workspaceId: number; taskId: number; statusId: number; task?: TmgrTask }
 	| { type: 'timer.started' | 'timer.stopped'; workspaceId: number; taskId: number; task: TmgrTask }
-	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author: TmgrCommentAuthor } }
+	/** `author` may be missing in a shared workspace until the server names the writer (TM-296). */
+	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author?: TmgrCommentAuthor | null } }
 	| { type: 'comment.deleted'; workspaceId: number; commentId: number }
-	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: TmgrReaction[] }
+	/** No `reacted`/`users`: those are actor-relative. Read this plugin's own state via comments.list. */
+	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: { emoji: string; count: number }[] }
 	/** `relationType` is the fixed name (e.g. "blocks") when known, otherwise the numeric relation type id. */
 	| {
 			type: 'task.relationChanged';
@@ -112,8 +186,28 @@ declare const tmgr: {
 	workspace: { current(): Promise<{ id: number; code: string; name: string; kind: 'local' | 'cloud' }> };
 	settings: { get(): Promise<Record<string, unknown>> };
 	tasks: {
-		/** Needs tasks:read. perPage is at most 100. */
-		list(query?: { statusId?: number; categoryId?: number; search?: string; page?: number; perPage?: number }): Promise<{
+		/**
+		 * Needs tasks:read. perPage is at most 100. `search` matches the title and description
+		 * substring. `updatedSince`/`dueBefore`/`dueAfter` are ISO 8601 date-times, compared to
+		 * `expired_at` including the time (a task with no due date never matches `dueBefore`/`dueAfter`).
+		 * `sort` defaults to newest first; `direction` defaults to "asc". Any of `updatedSince`,
+		 * `dueBefore`, `dueAfter`, `statusType`, `priority` or `sort` rejects with NOT_SUPPORTED in a
+		 * shared workspace until the server supports it.
+		 */
+		list(query?: {
+			statusId?: number;
+			categoryId?: number;
+			search?: string;
+			page?: number;
+			perPage?: number;
+			updatedSince?: string;
+			dueBefore?: string;
+			dueAfter?: string;
+			statusType?: 'default' | 'active' | 'completed' | 'hidden' | 'archived';
+			priority?: 'low' | 'medium' | 'high' | 'urgent';
+			sort?: 'due' | 'updated' | 'created';
+			direction?: 'asc' | 'desc';
+		}): Promise<{
 			items: TmgrTask[];
 			total: number;
 		}>;
@@ -130,15 +224,32 @@ declare const tmgr: {
 		relate(taskId: number, otherId: number, type: string): Promise<unknown>;
 		unrelate(taskId: number, otherId: number, type: string): Promise<unknown>;
 	};
-	/** Needs statuses:read. */
-	statuses: { list(): Promise<{ id: number; name: string; type: string }[]> };
-	/** Needs categories:read. */
-	categories: { list(): Promise<{ id: number; title: string; code: string | null }[]> };
+	statuses: {
+		/** Needs statuses:read. */
+		list(): Promise<{ id: number; name: string; type: string }[]>;
+		/** Needs statuses:write. Cannot delete a status. */
+		create(fields: TmgrStatusFields): Promise<unknown>;
+		/** Needs statuses:write. `type` rejects with NOT_SUPPORTED in a shared workspace (the server ignores it there). */
+		update(id: number, patch: TmgrStatusPatch): Promise<unknown>;
+		/** Needs statuses:write. The full ordered list of status ids. */
+		reorder(ids: number[]): Promise<unknown>;
+	};
+	categories: {
+		/** Needs categories:read. */
+		list(): Promise<{ id: number; title: string; code: string | null }[]>;
+		/** Needs categories:write. Cannot delete a category. */
+		create(fields: TmgrCategoryFields): Promise<unknown>;
+		/** Needs categories:write. `code` rejects with NOT_SUPPORTED in a shared workspace (the server ignores it there). */
+		update(id: number, patch: TmgrCategoryPatch): Promise<unknown>;
+	};
 	/** Needs time:write. */
 	time: { start(taskId: number): Promise<TmgrTask>; stop(taskId: number): Promise<TmgrTask> };
 	comments: {
-		/** Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'companion' | 'agent'). */
-		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor })[]>;
+		/**
+		 * Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'persona' | …),
+		 * or `null` in a shared workspace when the server does not yet say who wrote it.
+		 */
+		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor | null })[]>;
 		/** Needs comments:write. Written with this plugin as the author; a body `author` field is ignored. */
 		add(taskId: number, text: string): Promise<Record<string, unknown> & { author: TmgrCommentAuthor }>;
 		/** Needs comments:write. Toggles the emoji reaction for this plugin; returns the comment's reactions. */
@@ -150,6 +261,42 @@ declare const tmgr: {
 		set(key: string, value: unknown): Promise<void>;
 		delete(key: string): Promise<void>;
 		keys(): Promise<string[]>;
+	};
+	/**
+	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. No
+	 * permission needed beyond the task existing. Not available in shared workspaces yet.
+	 */
+	taskData: {
+		get<T = unknown>(taskId: number, key: string): Promise<T | null>;
+		set(taskId: number, key: string, value: unknown): Promise<void>;
+		delete(taskId: number, key: string): Promise<void>;
+		/** Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
+		getMany<T = unknown>(taskIds: number[], key: string): Promise<Record<number, T | null>>;
+	};
+	agentWork: {
+		/** Needs agent_work:read. Newest first, with agent time next to time tracked on the task timer. */
+		list(taskId: number): Promise<TmgrAgentWorkOverview>;
+		/**
+		 * Needs agent_work:write. Opens a work run under this plugin's own identity: the stored agent
+		 * is "plugin:<pluginId>/<agent>" ("plugin:<pluginId>" when `agent` is omitted), so a plugin can
+		 * never claim to be a bare agent name. A still-running run of the same (namespaced) agent on
+		 * the task is closed as abandoned; this never touches a run started by another plugin or by the
+		 * human user.
+		 */
+		start(
+			taskId: number,
+			fields: { agent?: string; model?: string; sessionId?: string; branch?: string },
+		): Promise<TmgrAgentWorkRun>;
+		/**
+		 * Needs agent_work:write. Only the run's own starting actor may update it, and only within its
+		 * own agent namespace; 409 once it is finished.
+		 */
+		update(runId: number, patch: TmgrAgentWorkProgress): Promise<TmgrAgentWorkRun>;
+		/** Needs agent_work:write. Closes the run; `branch` cannot be changed here. */
+		finish(
+			runId: number,
+			patch: { status: 'succeeded' | 'failed' | 'cancelled' } & Omit<TmgrAgentWorkProgress, 'branch'>,
+		): Promise<TmgrAgentWorkRun>;
 	};
 	files: {
 		/** files:export. Text into <workspace>/exports/plugins/<plugin id>/<path>; path is relative, up to 5 segments. */

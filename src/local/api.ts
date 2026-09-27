@@ -4,20 +4,27 @@ import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
 	categoryJson,
 	paginate,
+	parseJson,
 	statusJson,
 	TASK_SELECT,
 	taskJson,
 	toJson,
 } from './serialize';
-import { LocalHttpError, LocalRaw, type LocalContext, type LocalRequest } from './types';
+import { LocalHttpError, LocalRaw, type LocalActor, type LocalContext, type LocalRequest } from './types';
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
 const epoch = (ctx: LocalContext) => Math.floor(ctx.now().getTime() / 1000);
 
 const notFound = (what: string) => new LocalHttpError(404, `${what} not found`);
 
-const actorOf = (ctx: LocalContext) =>
-	ctx.actor ?? { kind: 'user' as const, id: String(ctx.user.id), name: ctx.user.name };
+const actorOf = (ctx: LocalContext): LocalActor =>
+	ctx.actor ?? { kind: 'user', id: String(ctx.user.id), name: ctx.user.name };
+
+/**
+ * Who owns a plugin's runs and reactions: its storage id when known (so a different repository that
+ * reuses the same plugin id owns nothing of the original), else the plain actor id.
+ */
+const ownerIdOf = (actor: LocalActor): string => actor.ownerId ?? actor.id;
 
 /** Relations from this task's side only, matching the legacy `relatedTypesWithTask` shape the UI reads. */
 const taskRelationsFor = async (ctx: LocalContext, taskId: number) => {
@@ -48,6 +55,152 @@ const loadTask = async (ctx: LocalContext, id: number) => {
 	const rows = await ctx.db.select(`${TASK_SELECT} WHERE t.id = ? AND t.deleted_at IS NULL`, [id]);
 	if (!rows.length) throw notFound('Task');
 	return { ...taskJson(rows[0], ctx), relationTypeWithTask: await taskRelationsFor(ctx, id) };
+};
+
+const requireActiveTask = async (ctx: LocalContext, id: number) => {
+	const [row] = await ctx.db.select<any>(
+		`SELECT id, common_time, start_time FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+		[id],
+	);
+	if (!row) throw notFound('Task');
+	return row;
+};
+
+const agentWorkDuration = (row: any, ctx: LocalContext) => {
+	if (row.duration_seconds != null) return row.duration_seconds;
+	if (row.status !== 'running') return 0;
+	return Math.max(0, epoch(ctx) - Math.floor(new Date(row.started_at).getTime() / 1000));
+};
+
+const agentWorkJson = (row: any, ctx: LocalContext) => ({
+	id: row.id,
+	task_id: row.task_id,
+	workspace_id: ctx.workspace.id,
+	user_id: ctx.user.id,
+	agent: row.agent,
+	model: row.model,
+	session_id: row.session_id,
+	branch: row.branch,
+	status: row.status,
+	started_at: row.started_at,
+	ended_at: row.ended_at,
+	duration_seconds: agentWorkDuration(row, ctx),
+	summary: row.summary,
+	pr_url: row.pr_url,
+	commits: parseJson(row.commits, []),
+	tests: parseJson(row.tests, null),
+	version: row.version,
+});
+
+const normalizeAgent = (value: unknown): string => {
+	const normalized = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+	if (!normalized) throw new LocalHttpError(422, 'agent is required');
+	if (normalized.length > 64) throw new LocalHttpError(422, 'agent must be at most 64 characters');
+	return normalized;
+};
+
+const limitedOrNull = (value: unknown, max: number): string | null => {
+	if (value == null) return null;
+	const trimmed = String(value).trim();
+	if (!trimmed) return null;
+	if (trimmed.length > max) throw new LocalHttpError(422, `must be at most ${max} characters`);
+	return trimmed;
+};
+
+const httpUrlOrThrow = (value: unknown): string => {
+	const trimmed = String(value ?? '').trim();
+	if (trimmed.length <= 512) {
+		try {
+			const url = new URL(trimmed);
+			if ((url.protocol === 'http:' || url.protocol === 'https:') && url.host) return trimmed;
+		} catch {
+			// falls through to the rejection below
+		}
+	}
+	throw new LocalHttpError(422, 'pr_url must be an http(s) url');
+};
+
+const MAX_AGENT_WORK_COMMITS = 200;
+
+const validCommits = (value: unknown): { sha: string; message: string | null }[] => {
+	if (!Array.isArray(value) || value.length > MAX_AGENT_WORK_COMMITS) {
+		throw new LocalHttpError(422, `at most ${MAX_AGENT_WORK_COMMITS} commits per run`);
+	}
+	return (value as any[])
+		.filter((commit) => commit && typeof commit.sha === 'string' && commit.sha.trim())
+		.map((commit) => ({
+			sha: limitedOrNull(commit.sha, 64) ?? '',
+			message: limitedOrNull(commit.message, 500),
+		}));
+};
+
+const validTests = (value: unknown): { passed: number | null; failed: number | null; command: string | null } => {
+	const v = (value ?? {}) as any;
+	if ((v.passed != null && Number(v.passed) < 0) || (v.failed != null && Number(v.failed) < 0)) {
+		throw new LocalHttpError(422, 'test counts cannot be negative');
+	}
+	return {
+		passed: v.passed == null ? null : Number(v.passed),
+		failed: v.failed == null ? null : Number(v.failed),
+		command: limitedOrNull(v.command, 500),
+	};
+};
+
+const AGENT_WORK_FINISHED = ['succeeded', 'failed', 'cancelled'];
+
+const finishedStatus = (value: unknown): string => {
+	const normalized = String(value ?? '').trim().toLowerCase();
+	if (!AGENT_WORK_FINISHED.includes(normalized)) {
+		throw new LocalHttpError(422, 'status must be one of succeeded, failed, cancelled');
+	}
+	return normalized;
+};
+
+const inPluginNamespace = (agent: string, pluginId: string): boolean =>
+	agent === `plugin:${pluginId}` || agent.startsWith(`plugin:${pluginId}/`);
+
+/**
+ * Only the run's own starting actor may change it (403), and never after it is finished (409). A
+ * plugin actor is checked twice, like the server: by actor identity and by the run's agent namespace.
+ */
+const requireOwnRunningRun = async (ctx: LocalContext, id: number) => {
+	const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [id]);
+	if (!row) throw notFound('Agent work run');
+	const actor = actorOf(ctx);
+	const sameActor = row.actor_kind === actor.kind && String(row.actor_id) === ownerIdOf(actor);
+	const sameNamespace = actor.kind !== 'plugin' || inPluginNamespace(row.agent, actor.id);
+	if (!sameActor || !sameNamespace) {
+		throw new LocalHttpError(403, 'Only the user the agent works for can change this run');
+	}
+	if (row.status !== 'running') throw new LocalHttpError(409, `Agent work run is already ${row.status}`);
+	return row;
+};
+
+/** Column assignments for a progress update; the caller adds its own version/status/updated_at and runs one UPDATE. */
+const progressAssignments = (body: any, includeBranch: boolean): { sets: string[]; values: any[] } => {
+	const sets: string[] = [];
+	const values: any[] = [];
+	if (includeBranch && body?.branch != null) {
+		sets.push('branch = ?');
+		values.push(limitedOrNull(body.branch, 255));
+	}
+	if (body?.summary != null) {
+		sets.push('summary = ?');
+		values.push(limitedOrNull(body.summary, 10_000));
+	}
+	if (body?.pr_url != null) {
+		sets.push('pr_url = ?');
+		values.push(httpUrlOrThrow(body.pr_url));
+	}
+	if (body?.commits != null) {
+		sets.push('commits = ?');
+		values.push(toJson(validCommits(body.commits)));
+	}
+	if (body?.tests != null) {
+		sets.push('tests = ?');
+		values.push(toJson(validTests(body.tests)));
+	}
+	return { sets, values };
 };
 
 const loadStatuses = (ctx: LocalContext) =>
@@ -97,6 +250,12 @@ const writableTaskFields = (body: any) => {
 };
 
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
+	if ('status_id' in fields && fields.status_id != null) {
+		const [status] = await ctx.db.select<any>(`SELECT type FROM statuses WHERE id = ?`, [
+			fields.status_id,
+		]);
+		if (status?.type === 'archived') await stopTimer(ctx, id);
+	}
 	const keys = Object.keys(fields);
 	const sets = [...keys.map((k) => `${k} = ?`), 'updated_at = ?'];
 	const values: any[] = [...keys.map((k) => fields[k]), iso(ctx)];
@@ -144,7 +303,41 @@ const searchClause = (req: LocalRequest, params: any[]) => {
 		clauses.push(`t.status_id = ?`);
 		params.push(Number(status));
 	}
+	const statusType = req.query.get('status_type');
+	if (statusType) {
+		clauses.push(`s.type = ?`);
+		params.push(statusType);
+	}
+	const priority = req.query.get('priority');
+	if (priority) {
+		clauses.push(`t.priority = ?`);
+		params.push(priority);
+	}
+	const updatedSince = req.query.get('updated_since');
+	if (updatedSince) {
+		clauses.push(`julianday(t.updated_at) >= julianday(?)`);
+		params.push(updatedSince);
+	}
+	const dueBefore = req.query.get('due_before');
+	if (dueBefore) {
+		clauses.push(`julianday(t.expired_at) < julianday(?)`);
+		params.push(dueBefore);
+	}
+	const dueAfter = req.query.get('due_after');
+	if (dueAfter) {
+		clauses.push(`julianday(t.expired_at) > julianday(?)`);
+		params.push(dueAfter);
+	}
 	return clauses;
+};
+
+const taskSortOrder = (req: LocalRequest): string => {
+	const sort = req.query.get('sort');
+	const direction = req.query.get('direction') === 'desc' ? 'DESC' : 'ASC';
+	if (sort === 'due') return `t.expired_at IS NULL, julianday(t.expired_at) ${direction}, t.id DESC`;
+	if (sort === 'updated') return `t.updated_at ${direction}, t.id DESC`;
+	if (sort === 'created') return `t.created_at ${direction}, t.id DESC`;
+	return 't.id DESC';
 };
 
 const listTasks = async (
@@ -203,9 +396,20 @@ const categoryCounts = `
 		(SELECT COUNT(*) FROM tasks t WHERE t.project_category_id = c.id AND t.deleted_at IS NULL) AS tasks_count
 	FROM categories c`;
 
+const requireUniqueCategoryCode = async (ctx: LocalContext, code: string, exceptId?: number) => {
+	const [{ n }] = await ctx.db.select<{ n: number }>(
+		`SELECT COUNT(*) AS n FROM categories WHERE deleted_at IS NULL AND UPPER(code) = UPPER(?)${
+			exceptId ? ' AND id <> ?' : ''
+		}`,
+		exceptId ? [code, exceptId] : [code],
+	);
+	if (Number(n)) throw new LocalHttpError(422, `code ${code} is already used`);
+};
+
 const PLUGIN_STORAGE_QUOTA = 5 * 1024 * 1024;
 const PLUGIN_STORAGE_KEYS = 1000;
 const PLUGIN_ROW_OVERHEAD = 64;
+const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
 
 const FEATURE_TOGGLES: Record<string, boolean> = {
 	board: true,
@@ -275,7 +479,7 @@ export const createLocalApi = () => {
 			);
 			return loadTask(ctx, Number(result.lastInsertId));
 		}, 201)
-		.add('GET', 'tasks', (req) => listTasks(req, [], [], 't.id DESC', 'tasks'))
+		.add('GET', 'tasks', (req) => listTasks(req, [], [], taskSortOrder(req), 'tasks'))
 		.add('GET', 'tasks/settings', () => [])
 		.add('GET', 'tasks/:id(\\d+)', ({ ctx, params }) => loadTask(ctx, Number(params.id)))
 		.add('PUT', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
@@ -298,6 +502,14 @@ export const createLocalApi = () => {
 				[iso(ctx), iso(ctx), id],
 			);
 			if (!result.rowsAffected) throw notFound('Task');
+			// Soft-deleted, so the ON DELETE CASCADE on task_id never fires: clean these up explicitly.
+			await ctx.db.execute(`DELETE FROM plugin_task_data WHERE task_id = ?`, [id]);
+			await ctx.db.execute(`DELETE FROM agent_work_runs WHERE task_id = ?`, [id]);
+			await ctx.db.execute(`DELETE FROM task_relations WHERE task_id = ? OR related_task_id = ?`, [id, id]);
+			await ctx.db.execute(
+				`DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE task_id = ?)`,
+				[id],
+			);
 			return { success: true };
 		})
 		.add('POST', 'tasks/:id(\\d+)/countdown', async ({ ctx, params }) => {
@@ -355,21 +567,23 @@ export const createLocalApi = () => {
 			const emoji = String(body?.emoji ?? '');
 			if (!emoji.trim() || emoji.length > 32) throw new LocalHttpError(422, 'emoji is required');
 			const [comment] = await ctx.db.select<any>(
-				`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`,
+				`SELECT c.* FROM comments c JOIN tasks t ON t.id = c.task_id
+				 WHERE c.id = ? AND c.deleted_at IS NULL AND t.deleted_at IS NULL`,
 				[Number(params.id)],
 			);
 			if (!comment) throw notFound('Comment');
 			const actor = actorOf(ctx);
+			const ownerId = ownerIdOf(actor);
 			const existing = await ctx.db.select<{ id: number }>(
 				`SELECT id FROM comment_reactions WHERE comment_id = ? AND emoji = ? AND actor_kind = ? AND actor_id = ?`,
-				[comment.id, emoji, actor.kind, actor.id],
+				[comment.id, emoji, actor.kind, ownerId],
 			);
 			if (existing.length) {
 				await ctx.db.execute(`DELETE FROM comment_reactions WHERE id = ?`, [existing[0].id]);
 			} else {
 				await ctx.db.execute(
 					`INSERT INTO comment_reactions (comment_id, emoji, actor_kind, actor_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-					[comment.id, emoji, actor.kind, actor.id, iso(ctx)],
+					[comment.id, emoji, actor.kind, ownerId, iso(ctx)],
 				);
 			}
 			const reactions = (await reactionsFor(ctx, [comment.id])).get(comment.id) ?? [];
@@ -627,6 +841,8 @@ export const createLocalApi = () => {
 		.add('POST', 'project_categories', async ({ ctx, body }) => {
 			const title = String(body?.title ?? '').trim();
 			if (!title) throw new LocalHttpError(422, 'title is required');
+			const code = body?.code ? String(body.code).toUpperCase() : null;
+			if (code) await requireUniqueCategoryCode(ctx, code);
 			const now = iso(ctx);
 			const result = await ctx.db.execute(
 				`INSERT INTO categories (title, slug, code, parent_id, settings, created_at, updated_at)
@@ -634,7 +850,7 @@ export const createLocalApi = () => {
 				[
 					title,
 					body?.slug ?? slugOf(title),
-					body?.code ? String(body.code).toUpperCase() : null,
+					code,
 					numberOrNull(body?.project_category_id),
 					toJson(Array.isArray(body?.settings) ? body.settings : []),
 					now,
@@ -648,11 +864,15 @@ export const createLocalApi = () => {
 			const id = Number(params.id);
 			const [row] = await ctx.db.select<any>(`SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL`, [id]);
 			if (!row) throw notFound('Category');
+			const nextCode = 'code' in (body ?? {}) ? (body.code ? String(body.code).toUpperCase() : null) : row.code;
+			if (nextCode && nextCode.toUpperCase() !== String(row.code ?? '').toUpperCase()) {
+				await requireUniqueCategoryCode(ctx, nextCode, id);
+			}
 			await ctx.db.execute(
 				`UPDATE categories SET title = ?, code = ?, parent_id = ?, settings = ?, updated_at = ? WHERE id = ?`,
 				[
 					body?.title ?? row.title,
-					'code' in (body ?? {}) ? (body.code ? String(body.code).toUpperCase() : null) : row.code,
+					nextCode,
 					'project_category_id' in (body ?? {}) ? numberOrNull(body.project_category_id) : row.parent_id,
 					Array.isArray(body?.settings) ? toJson(body.settings) : row.settings,
 					iso(ctx),
@@ -688,9 +908,14 @@ export const createLocalApi = () => {
 			const { rowsAffected } = await ctx.db.execute(
 				`INSERT INTO plugin_kv (plugin_id, key, value, updated_at)
 				 SELECT ?, ?, ?, ?
-				 WHERE (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
-				        FROM plugin_kv WHERE plugin_id = ? AND key <> ?) + ? <= ${PLUGIN_STORAGE_QUOTA}
-				   AND (SELECT COUNT(*) FROM plugin_kv WHERE plugin_id = ? AND key <> ?) < ${PLUGIN_STORAGE_KEYS}
+				 WHERE ((SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				         FROM plugin_kv WHERE plugin_id = ? AND key <> ?)
+				        + (SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				           FROM plugin_task_data WHERE plugin_id = ?)
+				        + ? <= ${PLUGIN_STORAGE_QUOTA})
+				   AND ((SELECT COUNT(*) FROM plugin_kv WHERE plugin_id = ? AND key <> ?)
+				        + (SELECT COUNT(*) FROM plugin_task_data WHERE plugin_id = ?)
+				        < ${PLUGIN_STORAGE_KEYS})
 				 ON CONFLICT (plugin_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
 				[
 					params.pid,
@@ -699,9 +924,11 @@ export const createLocalApi = () => {
 					iso(ctx),
 					params.pid,
 					params.key,
-					params.key.length + value.length + PLUGIN_ROW_OVERHEAD,
+					params.pid,
+					byteLength(params.key) + byteLength(value) + PLUGIN_ROW_OVERHEAD,
 					params.pid,
 					params.key,
+					params.pid,
 				],
 			);
 			if (!rowsAffected) throw new LocalHttpError(413, 'plugin storage is full (5 MB or 1000 keys)');
@@ -710,6 +937,163 @@ export const createLocalApi = () => {
 		.add('DELETE', 'plugins/:pid/storage/:key', async ({ ctx, params }) => {
 			await ctx.db.execute(`DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?`, [params.pid, params.key]);
 			return { success: true };
+		})
+		// ── per-task plugin data ────────────────────────────────────────────────
+		.add('GET', 'plugins/:pid/tasks/:tid(\\d+)/data/:key', async ({ ctx, params }) => {
+			await requireActiveTask(ctx, Number(params.tid));
+			const [row] = await ctx.db.select<{ value: string }>(
+				`SELECT value FROM plugin_task_data WHERE plugin_id = ? AND task_id = ? AND key = ?`,
+				[params.pid, Number(params.tid), params.key],
+			);
+			return { value: row?.value ?? null };
+		})
+		.add('PUT', 'plugins/:pid/tasks/:tid(\\d+)/data/:key', async ({ ctx, params, body }) => {
+			const taskId = Number(params.tid);
+			const value = typeof body?.value === 'string' ? body.value : null;
+			if (value === null) throw new LocalHttpError(422, 'value must be a JSON string');
+			// EXISTS keeps "the task is active" and the write atomic, closing the race with a concurrent delete.
+			const { rowsAffected } = await ctx.db.execute(
+				`INSERT INTO plugin_task_data (plugin_id, task_id, key, value, updated_at)
+				 SELECT ?, ?, ?, ?, ?
+				 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL)
+				   AND ((SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				         FROM plugin_task_data WHERE plugin_id = ? AND NOT (task_id = ? AND key = ?))
+				        + (SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				           FROM plugin_kv WHERE plugin_id = ?)
+				        + ? <= ${PLUGIN_STORAGE_QUOTA})
+				   AND ((SELECT COUNT(*) FROM plugin_task_data WHERE plugin_id = ? AND NOT (task_id = ? AND key = ?))
+				        + (SELECT COUNT(*) FROM plugin_kv WHERE plugin_id = ?)
+				        < ${PLUGIN_STORAGE_KEYS})
+				 ON CONFLICT (plugin_id, task_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+				[
+					params.pid,
+					taskId,
+					params.key,
+					value,
+					iso(ctx),
+					taskId,
+					params.pid,
+					taskId,
+					params.key,
+					params.pid,
+					byteLength(params.key) + byteLength(value) + PLUGIN_ROW_OVERHEAD,
+					params.pid,
+					taskId,
+					params.key,
+					params.pid,
+				],
+			);
+			if (!rowsAffected) {
+				await requireActiveTask(ctx, taskId);
+				throw new LocalHttpError(413, 'plugin storage is full (5 MB or 1000 keys)');
+			}
+			return { success: true };
+		})
+		.add('DELETE', 'plugins/:pid/tasks/:tid(\\d+)/data/:key', async ({ ctx, params }) => {
+			await requireActiveTask(ctx, Number(params.tid));
+			await ctx.db.execute(`DELETE FROM plugin_task_data WHERE plugin_id = ? AND task_id = ? AND key = ?`, [
+				params.pid,
+				Number(params.tid),
+				params.key,
+			]);
+			return { success: true };
+		})
+		.add('POST', 'plugins/:pid/task-data/query', async ({ ctx, params, body }) => {
+			const taskIds = Array.isArray(body?.task_ids) ? body.task_ids.map(Number).slice(0, 500) : [];
+			const key = String(body?.key ?? '');
+			if (!taskIds.length || !key) return {};
+			const placeholders = taskIds.map(() => '?').join(',');
+			const rows = await ctx.db.select<{ task_id: number; value: string }>(
+				`SELECT task_id, value FROM plugin_task_data WHERE plugin_id = ? AND key = ? AND task_id IN (${placeholders})`,
+				[params.pid, key, ...taskIds],
+			);
+			const result: Record<number, string> = {};
+			for (const row of rows) result[row.task_id] = row.value;
+			return result;
+		})
+		// ── agent work ──────────────────────────────────────────────────────────
+		.add('GET', 'tasks/:id(\\d+)/agent-work', async ({ ctx, params }) => {
+			const task = await requireActiveTask(ctx, Number(params.id));
+			const rows = await ctx.db.select<any>(
+				`SELECT * FROM agent_work_runs WHERE task_id = ? ORDER BY started_at DESC, id DESC LIMIT 50`,
+				[task.id],
+			);
+			const runningRows = await ctx.db.select<any>(
+				`SELECT started_at FROM agent_work_runs WHERE task_id = ? AND status = 'running'`,
+				[task.id],
+			);
+			const [{ finished }] = await ctx.db.select<{ finished: number }>(
+				`SELECT COALESCE(SUM(duration_seconds), 0) AS finished FROM agent_work_runs
+				 WHERE task_id = ? AND status <> 'running'`,
+				[task.id],
+			);
+			const now = epoch(ctx);
+			const running = runningRows.reduce(
+				(sum, row) => sum + Math.max(0, now - Math.floor(new Date(row.started_at).getTime() / 1000)),
+				0,
+			);
+			return {
+				runs: rows.map((row) => agentWorkJson(row, ctx)),
+				totals: {
+					agent_seconds: Number(finished) + running,
+					human_seconds: Number(task.common_time ?? 0) + (task.start_time > 0 ? Math.max(0, now - task.start_time) : 0),
+					human_timer_running: Number(task.start_time ?? 0) > 0,
+				},
+			};
+		})
+		.add('POST', 'tasks/:id(\\d+)/agent-work', async ({ ctx, params, body }) => {
+			const taskId = Number(params.id);
+			// A plugin's DataApi already sends "plugin:<pluginId>[/<agent>]"; this just stores it as given.
+			const agent = normalizeAgent(body?.agent);
+			const model = limitedOrNull(body?.model, 128);
+			const sessionId = limitedOrNull(body?.session_id, 191);
+			const branch = limitedOrNull(body?.branch, 255);
+			const actor = actorOf(ctx);
+			const ownerId = ownerIdOf(actor);
+			const now = iso(ctx);
+			await ctx.db.execute(
+				`UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
+					duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
+					version = version + 1, updated_at = ?
+				 WHERE task_id = ? AND actor_kind = ? AND actor_id = ? AND agent = ? AND status = 'running'`,
+				[now, taskId, actor.kind, ownerId, agent],
+			);
+			// EXISTS keeps the check and the insert atomic: the task cannot vanish between them.
+			const result = await ctx.db.execute(
+				`INSERT INTO agent_work_runs
+					(task_id, agent, model, session_id, branch, status, started_at, actor_kind, actor_id, version, created_at, updated_at)
+				 SELECT ?, ?, ?, ?, ?, 'running', ?, ?, ?, 1, ?, ?
+				 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL)`,
+				[taskId, agent, model, sessionId, branch, now, actor.kind, ownerId, now, now, taskId],
+			);
+			if (!result.rowsAffected) throw notFound('Task');
+			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [
+				Number(result.lastInsertId),
+			]);
+			return agentWorkJson(row, ctx);
+		}, 201)
+		.add('PATCH', 'agent-work/:id(\\d+)', async ({ ctx, params, body }) => {
+			const run = await requireOwnRunningRun(ctx, Number(params.id));
+			const { sets, values } = progressAssignments(body, true);
+			sets.push('version = version + 1', 'updated_at = ?');
+			values.push(iso(ctx));
+			await ctx.db.execute(`UPDATE agent_work_runs SET ${sets.join(', ')} WHERE id = ?`, [...values, run.id]);
+			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [run.id]);
+			return agentWorkJson(row, ctx);
+		})
+		.add('POST', 'agent-work/:id(\\d+)/finish', async ({ ctx, params, body }) => {
+			const run = await requireOwnRunningRun(ctx, Number(params.id));
+			const status = finishedStatus(body?.status);
+			const { sets, values } = progressAssignments(body, false);
+			const now = ctx.now();
+			const started = new Date(run.started_at);
+			const end = now < started ? started : now;
+			const durationSeconds = Math.round((end.getTime() - started.getTime()) / 1000);
+			sets.push('status = ?', 'ended_at = ?', 'duration_seconds = ?', 'version = version + 1', 'updated_at = ?');
+			values.push(status, end.toISOString(), durationSeconds, iso(ctx));
+			await ctx.db.execute(`UPDATE agent_work_runs SET ${sets.join(', ')} WHERE id = ?`, [...values, run.id]);
+			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [run.id]);
+			return agentWorkJson(row, ctx);
 		})
 		// ── workspace-level odds and ends ───────────────────────────────────────
 		.add('GET', 'workspaces/:wid/members', ({ ctx }) => [
@@ -787,13 +1171,14 @@ const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
 		commentIds,
 	);
 	const actor = actorOf(ctx);
+	const ownerId = ownerIdOf(actor);
 	const byComment = new Map<number, Map<string, { emoji: string; count: number; reacted: boolean; users: { id: number; name: string }[] }>>();
 	for (const row of rows) {
 		const perComment = byComment.get(row.comment_id) ?? new Map();
 		byComment.set(row.comment_id, perComment);
 		const entry = perComment.get(row.emoji) ?? { emoji: row.emoji, count: 0, reacted: false, users: [] };
 		entry.count += 1;
-		if (row.actor_kind === actor.kind && String(row.actor_id) === String(actor.id)) entry.reacted = true;
+		if (row.actor_kind === actor.kind && String(row.actor_id) === ownerId) entry.reacted = true;
 		if (row.actor_kind === 'user') entry.users.push({ id: Number(row.actor_id), name: ctx.user.name });
 		perComment.set(row.emoji, entry);
 	}

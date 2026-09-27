@@ -51,7 +51,7 @@
 			id: string;
 			name: string;
 			owner?: { id: string; name: string };
-		};
+		} | null;
 	}
 
 	interface Props {
