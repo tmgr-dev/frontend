@@ -604,7 +604,7 @@
 				showTaskForm: false,
 				modalTaskId: null,
 				confirm: null,
-				settingsTask: null,
+				settingsTask: null as Task | null,
 				isShowSelectedTasksCommonTime: false,
 				selected: [],
 				selecting: [],
