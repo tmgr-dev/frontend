@@ -14,6 +14,7 @@ const valid = {
 		commands: [{ id: 'tmgr.estimate.refresh', title: 'Refresh estimates' }],
 		views: [{ id: 'report', title: 'Overrun' }],
 		taskPanelSections: [{ id: 'summary', title: 'Estimate' }],
+		boardFilters: [{ id: 'overrun-only', title: 'Overrun', badge: 'overrun' }],
 		settings: {
 			type: 'object',
 			properties: {
@@ -30,6 +31,9 @@ it('accepts a complete manifest and fills defaults', () => {
 	expect(manifest.contributes.views).toEqual([
 		{ id: 'report', title: 'Overrun' },
 	]);
+	expect(manifest.contributes.boardFilters).toEqual([
+		{ id: 'overrun-only', title: 'Overrun', badge: 'overrun', key: undefined },
+	]);
 	expect(
 		parseManifest({ ...valid, contributes: undefined }).contributes,
 	).toEqual({
@@ -38,8 +42,32 @@ it('accepts a complete manifest and fills defaults', () => {
 		commands: [],
 		views: [],
 		taskPanelSections: [],
+		boardFilters: [],
 		settings: null,
 	});
+});
+
+it('validates boardFilters against a declared boardCardBadges id', () => {
+	expect(() =>
+		parseManifest({
+			...valid,
+			contributes: {
+				...valid.contributes,
+				boardFilters: [{ id: 'x', title: 'X', badge: 'not-declared' }],
+			},
+		}),
+	).toThrow('boardFilters');
+	expect(
+		parseManifest({
+			...valid,
+			contributes: {
+				...valid.contributes,
+				boardFilters: [
+					{ id: 'x', title: 'X', badge: 'overrun', key: 'over-budget' },
+				],
+			},
+		}).contributes.boardFilters,
+	).toEqual([{ id: 'x', title: 'X', badge: 'overrun', key: 'over-budget' }]);
 });
 
 it.each([

@@ -135,6 +135,24 @@ it('delivers an event to every handler registered for it', async () => {
 	sandbox.dispose();
 });
 
+it('does not keep a handler whose registration the host refused', async () => {
+	const { sandbox } = await start(
+		`tmgr.commands.register('tmgr.t.blocked', () => 'ran').catch(() => {});
+		 tmgr.commands.register('tmgr.t.ok', () => 'fine');`,
+		async (method, params) => {
+			if (method === 'register' && (params as any).id === 'tmgr.t.blocked') {
+				throw new PluginError('NOT_DECLARED', 'not declared');
+			}
+			return null;
+		},
+	);
+	await expect(
+		sandbox.dispatch('command', 'tmgr.t.blocked', null),
+	).rejects.toBeInstanceOf(SandboxError);
+	expect(await sandbox.dispatch('command', 'tmgr.t.ok', null)).toBe('fine');
+	sandbox.dispose();
+});
+
 it('rejects a dispatch to something the plugin never registered', async () => {
 	const { sandbox } = await start('');
 	await expect(

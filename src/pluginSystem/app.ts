@@ -387,6 +387,11 @@ export const installPlugins = async (
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });
 		},
+		// Not the app's own origin: the main window's on_new_window hook denies the popup and hands the
+		// URL to the system opener, the same way any other external link in the app already opens.
+		openExternal: (url) => {
+			window.open(url, '_blank', 'noopener,noreferrer');
+		},
 		currentWorkspaceId: () => {
 			const id = Number(store.getters.currentWorkspaceId);
 			return Number.isFinite(id) && id !== 0 ? id : null;

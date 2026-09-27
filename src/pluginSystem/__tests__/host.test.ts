@@ -216,11 +216,190 @@ it('shows status bar items while the plugin runs and badges it provides', async 
 		},
 	]);
 	expect(await host.badges([{ id: 5 }])).toEqual({
-		5: [{ pluginId: 'tmgr.bar', text: '5!', color: 'red', tooltip: null }],
+		5: [
+			{
+				pluginId: 'tmgr.bar',
+				badgeId: 'over',
+				text: '5!',
+				color: 'red',
+				tooltip: null,
+				priority: 0,
+			},
+		],
 	});
 	await host.setEnabled('tmgr.bar', false);
 	expect(state.statusBar).toEqual({});
 	host.dispose();
+});
+
+it('passes command args through host.runCommand, the same path pages and task sections use', async () => {
+	const { host } = setup([
+		pkg('tmgr.echo', `tmgr.commands.register('tmgr.echo.go', (args) => args);`, [], {
+			commands: [{ id: 'tmgr.echo.go', title: 'Echo' }],
+		}),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	expect(
+		await host.runCommand('tmgr.echo', 'tmgr.echo.go', { force: true, n: 3 }),
+	).toEqual({ force: true, n: 3 });
+	host.dispose();
+});
+
+it('refuses runCommand for a command not declared in the manifest or not registered by the plugin', async () => {
+	const { host } = setup([
+		pkg('tmgr.echo', `tmgr.commands.register('tmgr.echo.go', (args) => args);`, [], {
+			commands: [
+				{ id: 'tmgr.echo.go', title: 'Echo' },
+				{ id: 'tmgr.echo.ghost', title: 'Ghost' },
+			],
+		}),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	// declared in the manifest, but the plugin never registered a handler for it
+	await expect(
+		host.runCommand('tmgr.echo', 'tmgr.echo.ghost'),
+	).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+	// not declared anywhere
+	await expect(
+		host.runCommand('tmgr.echo', 'not.a.command'),
+	).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+	expect(
+		await host.runCommand('tmgr.echo', 'tmgr.echo.go', { ok: true }),
+	).toEqual({ ok: true });
+	host.dispose();
+});
+
+it('accepts several badges per task, caps at 5 per plugin in total across its providers, and sorts by priority', async () => {
+	const { host } = setup([
+		pkg(
+			'tmgr.multi',
+			`tmgr.ui.provideBadges('m', () => ({
+				5: [
+					{ text: 'low', priority: 0 },
+					{ text: 'high', priority: 5, key: 'Not Valid!' },
+					{ text: 'mid', priority: 2, key: 'over-budget' },
+					{ text: '4', priority: 1 },
+					{ text: '5', priority: 1 },
+					{ text: '6', priority: 1 },
+				],
+			}));`,
+			['tasks:read'],
+			{ boardCardBadges: [{ id: 'm' }] },
+		),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	await flush();
+	const result = await host.badges([{ id: 5 }]);
+	expect(result[5].map((b) => b.text)).toEqual(['high', 'mid', '4', '5', 'low']);
+	expect(result[5][0]).toMatchObject({ text: 'high', priority: 5, key: undefined });
+	expect(result[5][1]).toMatchObject({
+		text: 'mid',
+		priority: 2,
+		key: 'over-budget',
+	});
+	host.dispose();
+});
+
+it('caps badges at 5 per plugin even when it registers several providers, and clamps priority', async () => {
+	const { host } = setup([
+		pkg(
+			'tmgr.two',
+			`tmgr.ui.provideBadges('a', () => ({ 5: [
+				{ text: 'a1', priority: 999 }, { text: 'a2' }, { text: 'a3' }
+			] }));
+			 tmgr.ui.provideBadges('b', () => ({ 5: [
+				{ text: 'b1', priority: -999 }, { text: 'b2' }, { text: 'b3' }
+			] }));`,
+			['tasks:read'],
+			{ boardCardBadges: [{ id: 'a' }, { id: 'b' }] },
+		),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	await flush();
+	const result = await host.badges([{ id: 5 }]);
+	expect(result[5]).toHaveLength(5);
+	expect(result[5].every((b) => b.pluginId === 'tmgr.two')).toBe(true);
+	expect(result[5].find((b) => b.text === 'a1')).toMatchObject({
+		badgeId: 'a',
+		priority: 100,
+	});
+	expect(result[5].find((b) => b.text === 'b1')).toMatchObject({
+		badgeId: 'b',
+		priority: -100,
+	});
+	host.dispose();
+});
+
+describe('openLink', () => {
+	const linkPackage = (
+		permissions: string[],
+		allowedDomains: string[],
+	): PluginPackage => ({
+		manifest: parseManifest({
+			id: 'tmgr.link',
+			name: 'Link',
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			permissions,
+			links: { allowedDomains },
+		}),
+		code: '',
+		source: 'builtin',
+	});
+
+	it('opens only an https link on a declared domain, from a plugin with links:open', async () => {
+		const opened: string[] = [];
+		const { host } = setup(
+			[linkPackage(['links:open'], ['a.example.com'])],
+			{},
+			{},
+			{},
+			{ openExternal: (url: string) => opened.push(url) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.openLink('tmgr.link', 'https://a.example.com/x')).toBe(true);
+		expect(host.openLink('tmgr.link', 'http://a.example.com/x')).toBe(false);
+		expect(host.openLink('tmgr.link', 'https://evil.example.com/x')).toBe(false);
+		expect(host.openLink('nope', 'https://a.example.com/x')).toBe(false);
+		expect(opened).toEqual(['https://a.example.com/x']);
+		host.dispose();
+	});
+
+	it('refuses links until the member allows the plugin on this computer', async () => {
+		const opened: string[] = [];
+		const { host } = setup(
+			[linkPackage(['links:open'], ['a.example.com'])],
+			{},
+			{},
+			{},
+			{
+				openExternal: (url: string) => opened.push(url),
+				machineAllowed: () => false,
+			},
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.openLink('tmgr.link', 'https://a.example.com/x')).toBe(false);
+		expect(opened).toEqual([]);
+		host.dispose();
+	});
+
+	it('refuses a link from a plugin without links:open, even to a domain it once had', async () => {
+		const opened: string[] = [];
+		const { host } = setup([linkPackage([], [])], {}, {}, {}, {
+			openExternal: (url: string) => opened.push(url),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.openLink('tmgr.link', 'https://a.example.com/x')).toBe(false);
+		expect(opened).toEqual([]);
+		host.dispose();
+	});
 });
 
 it('renders declared pages through the sanitiser', async () => {
@@ -242,6 +421,41 @@ it('renders declared pages through the sanitiser', async () => {
 		type: 'stack',
 		direction: 'column',
 		children: [{ type: 'heading', text: 'Report', level: 2 }],
+	});
+	host.dispose();
+});
+
+it('renders a link node only for a plugin allowed to open that domain', async () => {
+	const page = (id: string, allowedDomains: string[], permissions: string[]) => ({
+		manifest: parseManifest({
+			id,
+			name: id,
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			permissions,
+			links: { allowedDomains },
+			contributes: { views: [{ id: 'report', title: 'Report' }] },
+		}),
+		code: `tmgr.ui.providePage('report', () => ({ type: 'link', url: 'https://a.example.com/x', text: 'Open' }));`,
+		source: 'builtin' as const,
+	});
+	const { host } = setup([
+		page('tmgr.allowed', ['a.example.com'], ['links:open']),
+		page('tmgr.blocked', [], []),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	await flush();
+	expect(await host.renderPage('tmgr.allowed', 'report')).toEqual({
+		type: 'link',
+		url: 'https://a.example.com/x',
+		text: 'Open',
+		host: 'a.example.com',
+	});
+	expect(await host.renderPage('tmgr.blocked', 'report')).toEqual({
+		type: 'text',
+		text: 'Open',
+		tone: 'default',
 	});
 	host.dispose();
 });

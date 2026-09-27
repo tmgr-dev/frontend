@@ -160,7 +160,7 @@ type TmgrEvent =
 	  };
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
-type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue';
+type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
 /** The only things a plugin can draw. Unknown nodes are dropped by the host. */
 type TmgrNode =
@@ -178,9 +178,20 @@ type TmgrNode =
 			columns: { key: string; title: string }[];
 			rows: { taskId?: number; cells: Record<string, TmgrNode> }[];
 	  }
-	| { type: 'button'; text: string; command: string; args?: unknown }
+	/** confirm (≤200 chars) asks the user, naming your plugin, before the command runs. */
+	| { type: 'button'; text: string; command: string; args?: unknown; confirm?: string }
 	| { type: 'taskLink'; taskId: number; text: string }
-	| { type: 'divider' };
+	| { type: 'divider' }
+	/** Monospace text with a copy-to-clipboard button. */
+	| { type: 'copyable'; text: string; label?: string }
+	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. */
+	| { type: 'link'; url: string; text?: string }
+	/** Relative time, e.g. "5 min ago" / "in 2 h"; at is an ISO 8601 timestamp. */
+	| { type: 'timeAgo'; at: string }
+	/** Like timeAgo, but colored: red once past, yellow within 24 h. */
+	| { type: 'dueTime'; at: string }
+	/** A two-column definition list, up to 50 rows. */
+	| { type: 'keyValue'; items: { key: string; value: TmgrNode }[] };
 
 declare const tmgr: {
 	workspace: { current(): Promise<{ id: number; code: string; name: string; kind: 'local' | 'cloud' }> };
@@ -320,10 +331,28 @@ declare const tmgr: {
 	/** The command id must be declared in contributes.commands and start with the plugin id. */
 	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
 	ui: {
-		/** Called with the visible board cards; return badges by task id. */
+		/**
+		 * Called with the visible board cards; return one badge or an array (up to 5 kept, the rest dropped) by task id.
+		 * `priority` orders several badges together (higher first, default 0). `key` (≤40, [a-z0-9_-]) lets a
+		 * contributes.boardFilters entry target this particular badge.
+		 */
 		provideBadges(
 			id: string,
-			provider: (tasks: TmgrTask[]) => Record<number, { text: string; color?: TmgrColor; tooltip?: string }> | Promise<Record<number, { text: string; color?: TmgrColor; tooltip?: string }>>,
+			provider: (
+				tasks: TmgrTask[],
+			) =>
+				| Record<
+						number,
+						| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }
+						| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }[]
+				  >
+				| Promise<
+						Record<
+							number,
+							| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }
+							| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }[]
+						>
+				  >,
 		): Promise<void>;
 		providePage(id: string, render: (props: unknown) => TmgrNode | Promise<TmgrNode>): Promise<void>;
 		provideTaskSection(id: string, render: (task: TmgrTask) => TmgrNode | Promise<TmgrNode>): Promise<void>;

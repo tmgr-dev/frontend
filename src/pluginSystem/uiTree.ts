@@ -1,5 +1,12 @@
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
-export type Color = 'gray' | 'green' | 'yellow' | 'red' | 'blue';
+export type Color =
+	| 'gray'
+	| 'green'
+	| 'yellow'
+	| 'red'
+	| 'blue'
+	| 'purple'
+	| 'orange';
 
 export type UiNode =
 	| { type: 'stack'; direction: 'row' | 'column'; children: UiNode[] }
@@ -14,16 +21,55 @@ export type UiNode =
 			columns: { key: string; title: string }[];
 			rows: { taskId?: number; cells: Record<string, UiNode> }[];
 	  }
-	| { type: 'button'; text: string; command: string; args?: unknown }
+	| { type: 'button'; text: string; command: string; args?: unknown; confirm?: string }
 	| { type: 'taskLink'; taskId: number; text: string }
-	| { type: 'divider' };
+	| { type: 'divider' }
+	| { type: 'copyable'; text: string; label?: string }
+	| { type: 'link'; url: string; text: string; host: string }
+	| { type: 'timeAgo'; at: string }
+	| { type: 'dueTime'; at: string }
+	| { type: 'keyValue'; items: { key: string; value: UiNode }[] };
 
 const TONES: Tone[] = ['default', 'muted', 'success', 'warning', 'danger'];
-const COLORS: Color[] = ['gray', 'green', 'yellow', 'red', 'blue'];
+export const COLORS: Color[] = [
+	'gray',
+	'green',
+	'yellow',
+	'red',
+	'blue',
+	'purple',
+	'orange',
+];
 const MAX_DEPTH = 8;
 const MAX_NODES = 3000;
 const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
+const MAX_COPYABLE_TEXT = 2000;
+const MAX_KEY_VALUE_ITEMS = 50;
+const MAX_BUTTON_ARGS_BYTES = 8 * 1024;
+const MAX_AT_LENGTH = 64;
+
+/** What a plugin's manifest allows a `link` node to open; the sanitiser stays pure by taking this in. */
+export interface LinkContext {
+	allowedDomains: string[];
+	linksOpen: boolean;
+}
+
+export const NO_LINKS: LinkContext = { allowedDomains: [], linksOpen: false };
+
+/** https only, and only a domain the plugin declared and has permission for. Shared by sanitizeTree and host.openLink. */
+export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
+	if (!context.linksOpen) return false;
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return false;
+	}
+	return (
+		parsed.protocol === 'https:' && context.allowedDomains.includes(parsed.hostname)
+	);
+};
 
 const pick = <T>(value: unknown, allowed: readonly T[], fallback: T): T =>
 	allowed.includes(value as T) ? (value as T) : fallback;
@@ -39,7 +85,10 @@ const text = (value: unknown): string | null =>
  * Plugin UI is data, never markup: only these components, only plain strings and numbers, bounded size.
  * Whatever does not fit is dropped rather than rendered.
  */
-export const sanitizeTree = (raw: unknown): UiNode | null => {
+export const sanitizeTree = (
+	raw: unknown,
+	context: LinkContext = NO_LINKS,
+): UiNode | null => {
 	let budget = MAX_NODES;
 	const node = (value: any, depth: number): UiNode | null => {
 		if (depth > MAX_DEPTH || budget-- <= 0) return null;
@@ -140,16 +189,24 @@ export const sanitizeTree = (raw: unknown): UiNode | null => {
 				if (t === null || !command) return null;
 				let args: unknown;
 				try {
-					args =
-						value.args === undefined
-							? undefined
-							: JSON.parse(JSON.stringify(value.args));
+					if (value.args !== undefined) {
+						const json = JSON.stringify(value.args);
+						if (json.length > MAX_BUTTON_ARGS_BYTES) return null;
+						args = JSON.parse(json);
+					}
 				} catch {
 					return null;
 				}
-				return args === undefined
-					? { type: 'button', text: t, command }
-					: { type: 'button', text: t, command, args };
+				const confirmText =
+					typeof value.confirm === 'string' ? value.confirm.trim() : '';
+				const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
+				return {
+					type: 'button',
+					text: t,
+					command,
+					...(args !== undefined ? { args } : {}),
+					...(confirm !== undefined ? { confirm } : {}),
+				};
 			}
 			case 'taskLink': {
 				const t = text(value.text);
@@ -161,6 +218,58 @@ export const sanitizeTree = (raw: unknown): UiNode | null => {
 			}
 			case 'divider':
 				return { type: 'divider' };
+			case 'copyable': {
+				const t =
+					typeof value.text === 'string'
+						? value.text.slice(0, MAX_COPYABLE_TEXT)
+						: null;
+				if (t === null) return null;
+				const label = text(value.label);
+				return label === null
+					? { type: 'copyable', text: t }
+					: { type: 'copyable', text: t, label };
+			}
+			case 'link': {
+				const url = typeof value.url === 'string' ? value.url.slice(0, 2000) : null;
+				if (url === null) return null;
+				const label = text(value.text) ?? url;
+				if (!isLinkAllowed(url, context)) {
+					return { type: 'text', text: label, tone: 'default' };
+				}
+				let host: string;
+				try {
+					host = new URL(url).hostname;
+				} catch {
+					return null;
+				}
+				return { type: 'link', url, text: label, host };
+			}
+			case 'timeAgo':
+			case 'dueTime': {
+				const at =
+					typeof value.at === 'string' && value.at.length <= MAX_AT_LENGTH
+						? value.at
+						: null;
+				return at === null || Number.isNaN(Date.parse(at))
+					? null
+					: { type: value.type, at };
+			}
+			case 'keyValue': {
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_KEY_VALUE_ITEMS) : []
+				)
+					// Rows count against the node budget, like table rows, so nesting cannot multiply it.
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const key = text(item?.key)?.slice(0, 60) ?? null;
+						const value_ = node(item?.value, depth + 1);
+						return key !== null && value_ !== null ? { key, value: value_ } : null;
+					})
+					.filter(
+						(item: any): item is { key: string; value: UiNode } => item !== null,
+					);
+				return { type: 'keyValue', items };
+			}
 			default:
 				return null;
 		}

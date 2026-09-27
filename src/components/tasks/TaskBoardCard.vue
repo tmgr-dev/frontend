@@ -189,8 +189,8 @@
 				:status-id="task.status_id"
 			/>
 			<span
-				v-for="badge in pluginBadges[task.id] || []"
-				:key="badge.pluginId + badge.text"
+				v-for="(badge, index) in visiblePluginBadges.shown"
+				:key="badge.pluginId + (badge.key || '') + index"
 				:title="badge.tooltip || undefined"
 				:class="[
 					'rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
@@ -198,6 +198,13 @@
 				]"
 			>
 				{{ badge.text }}
+			</span>
+			<span
+				v-if="visiblePluginBadges.extra.length"
+				:title="visiblePluginBadges.extra.map((b) => b.text).join(', ')"
+				class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-muted-foreground"
+			>
+				+{{ visiblePluginBadges.extra.length }}
 			</span>
 
 			<span class="flex-1"></span>
@@ -369,7 +376,13 @@
 						yellow: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
 						red: 'bg-red-500/15 text-red-700 dark:text-red-300',
 						blue: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+						purple: 'bg-purple-500/15 text-purple-700 dark:text-purple-300',
+						orange: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
 					})[color] || 'bg-muted text-muted-foreground';
+			},
+			visiblePluginBadges() {
+				const badges = this.pluginBadges[this.task.id] || [];
+				return { shown: badges.slice(0, 3), extra: badges.slice(3) };
 			},
 			...mapState({
 				workspaces: (state) => state.workspaces || [],
