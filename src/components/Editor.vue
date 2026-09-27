@@ -72,6 +72,11 @@
 </template>
 
 <style>
+	/* CodeMirror's own theme rule is more specific than any selector we can target. */
+	.md-editor .cm-editor .cm-selectionBackground {
+		background: var(--selection-bg) !important;
+	}
+
 	.md-editor-dark:not(.md-editor-fullscreen) {
 		--md-bk-color: transparent;
 	}

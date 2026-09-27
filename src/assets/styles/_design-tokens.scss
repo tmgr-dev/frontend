@@ -86,6 +86,7 @@
 	--brand-fg-color: oklch(0.47 0.18 var(--accent-h));
 	--brand-hover-color: oklch(0.53 0.2 var(--accent-h));
 	--brand-ring-color: oklch(0.59 0.21 var(--accent-h) / 0.3);
+	--selection-bg: color-mix(in srgb, var(--brand-color) 32%, transparent);
 
 	--s-todo: oklch(0.62 0.08 250);
 	--s-todo-bg: oklch(0.95 0.025 250);

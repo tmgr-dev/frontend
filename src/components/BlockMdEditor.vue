@@ -104,6 +104,7 @@
 	   intact because Crepe paints the slash menu, toolbar and tooltips with it. */
 	.blockmd-editor .milkdown {
 		--crepe-color-background: transparent;
+		--crepe-color-selected: var(--selection-bg);
 		background: transparent;
 	}
 
