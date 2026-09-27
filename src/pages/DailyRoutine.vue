@@ -355,6 +355,26 @@
 						@convert="onConvertRoutine"
 					/>
 
+					<AlertDialog
+						:open="showConvertedTaskPrompt"
+						@update:open="(open) => (showConvertedTaskPrompt = open)"
+					>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Routine converted to a task</AlertDialogTitle>
+								<AlertDialogDescription>
+									Open the task now?
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>No</AlertDialogCancel>
+								<AlertDialogAction @click="openConvertedTask">
+									Yes
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+
 					<RoutineContextMenu
 						v-if="contextMenu"
 						:entry="contextMenu.entry"
@@ -390,6 +410,16 @@
 	import { updateTask } from '@/actions/tmgr/tasks';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
@@ -879,9 +909,21 @@
 		workspaceId: number;
 		projectCategoryId: number | null;
 	}) {
-		await store.dispatch('dailyRoutines/convertRoutine', payload);
+		const task = await store.dispatch('dailyRoutines/convertRoutine', payload);
 		editingRoutine.value = null;
 		await reload();
+		convertedTaskId.value = task.id;
+		showConvertedTaskPrompt.value = true;
+	}
+
+	const convertedTaskId = ref<number | null>(null);
+	const showConvertedTaskPrompt = ref(false);
+
+	function openConvertedTask() {
+		showConvertedTaskPrompt.value = false;
+		if (convertedTaskId.value) {
+			store.commit('setCurrentTaskIdForModal', convertedTaskId.value);
+		}
 	}
 
 	function triggerImport() {
