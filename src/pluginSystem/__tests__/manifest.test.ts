@@ -48,6 +48,12 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
+	[{ engines: { tmgr: '^1.2' } }, 'engines'],
+	[{ links: { allowedDomains: ['gitlab.com'] } }, 'links:open'],
+	[
+		{ permissions: ['links:open'], links: { allowedDomains: ['https://x.io'] } },
+		'links domain',
+	],
 	[
 		{ contributes: { commands: [{ id: 'other.plugin.cmd', title: 'x' }] } },
 		'other.plugin.cmd',
@@ -55,6 +61,21 @@ it.each([
 	[{ contributes: { views: [{ id: 'a b', title: 'x' }] } }, 'a b'],
 ])('rejects %j', (patch, message) => {
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
+});
+
+it('accepts plugins written for 1.0 and 1.1', () => {
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(valid.id);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(valid.id);
+});
+
+it('keeps link domains of a plugin allowed to open links', () => {
+	expect(
+		parseManifest({
+			...valid,
+			permissions: ['links:open'],
+			links: { allowedDomains: ['gitlab.com', 'gitlab.com', 'jira.example.org'] },
+		}).links,
+	).toEqual({ allowedDomains: ['gitlab.com', 'jira.example.org'] });
 });
 
 it('ignores contribution kinds it does not know', () => {

@@ -8,6 +8,7 @@ export type PluginErrorCode =
 	| 'WORKSPACE_CHANGED'
 	| 'NOT_RUNNING'
 	| 'RATE_LIMITED'
+	| 'NOT_SUPPORTED'
 	| 'HOST_ERROR';
 
 export class PluginError extends Error {

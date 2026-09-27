@@ -46,10 +46,18 @@ export const pinMismatch = (record: WorkspacePluginRecord, release: Release) =>
 		? 'the release is signed with a different key than the pinned one'
 		: null;
 
-/** Files it writes or reads, or services it connects to, on the member's own computer. */
+const MACHINE_PERMISSIONS = new Set([
+	'files:export',
+	'files:pick',
+	'tray',
+	'deeplinks',
+	'links:open',
+]);
+
+/** Files, local services, the menu bar, tmgr:// links or the browser of the member's own computer. */
 export const reachesThisComputer = (manifest: PluginManifest) =>
 	manifest.network.allowedOrigins.length > 0 ||
-	manifest.permissions.some((p) => p === 'files:export' || p === 'files:pick');
+	manifest.permissions.some((p) => MACHINE_PERMISSIONS.has(p));
 
 /** What the server stores when the creator turns a plugin on; folder plugins cannot be shared. */
 export const pinOf = (entry: PluginEntry) => {

@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.0). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.1). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -11,6 +11,8 @@ type PluginErrorCode =
 	| 'NOT_DECLARED'
 	| 'WORKSPACE_CHANGED'
 	| 'RATE_LIMITED'
+	/** The call exists but this workspace cannot do it yet (e.g. a shared workspace on an older server). */
+	| 'NOT_SUPPORTED'
 	| 'HOST_ERROR';
 
 interface TmgrTask {
