@@ -17,6 +17,8 @@ describe('classify', () => {
 			'notification-settings',
 			'/broadcasting/auth',
 			'v2/user/settings',
+			'personas',
+			'personas/abc-123',
 		]) {
 			expect(classify('GET', url, true)).toBe('server');
 		}

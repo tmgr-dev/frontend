@@ -1,6 +1,6 @@
 import { LocalHttpError, type LocalContext } from './types';
 
-/** Exact vocabulary from the personas contract (shared with the cloud gate). */
+/** Same permission vocabulary the cloud gate uses. */
 export const PERSONA_PERMISSIONS = [
 	'tasks:read',
 	'tasks:write',
@@ -23,8 +23,7 @@ export interface WhitelistEntry {
 	permission: PersonaPermission;
 }
 
-/** Closed by default: a route not listed here is a 403 for a persona actor, whatever permission it
- * would otherwise map to. */
+/** Closed by default: a route missing here is a 403 for a persona, whatever permission it implies. */
 export const PERSONA_WHITELIST: WhitelistEntry[] = [
 	{ method: 'GET', pattern: 'tasks', permission: 'tasks:read' },
 	{ method: 'POST', pattern: 'tasks', permission: 'tasks:write' },
@@ -55,12 +54,7 @@ export const PERSONA_WHITELIST: WhitelistEntry[] = [
 export const personaWhitelistFor = (method: string, pattern: string): WhitelistEntry | null =>
 	PERSONA_WHITELIST.find((entry) => entry.method === method.toUpperCase() && entry.pattern === pattern) ?? null;
 
-/**
- * Enforced only for `ctx.actor.kind === 'persona'`. A single local workspace has no workspace
- * policy or cross-workspace resource checks to apply, so this is: persona unknown/archived, or its
- * grant missing/disabled -> 401 (checked first, so an offline revoke always wins); not in the
- * whitelist, or the grant is missing the permission -> 403.
- */
+/** Checked before the whitelist, so an offline disable/archive always wins with 401 over a 403. */
 export const checkPersonaAccess = async (
 	ctx: LocalContext,
 	method: string,

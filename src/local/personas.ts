@@ -36,11 +36,7 @@ export interface WorkspacePersonaRow extends PersonaRow {
 	disabled_at: string | null;
 }
 
-/**
- * Cloud -> local only. Upserts identity rows for the owner's personas and copies the prompt (when
- * present) into the app-data cache; never writes it to `personas`. `copyAvatar` is best effort and
- * its failure never fails the sync.
- */
+/** Cloud -> local only; `copyAvatar` failing never fails the sync. */
 export const syncPersonasSnapshot = async (
 	ctx: LocalContext,
 	fetchPersonas: () => Promise<CloudPersona[]>,

@@ -56,8 +56,15 @@
 			const error = ref<string | null>(null);
 			let cancelCurrent: (() => Promise<void>) | null = null;
 
+			// Asking needs agent_work:write to record the run and comments:write to post the answer.
 			const enabledPersonas = computed(() =>
-				personas.value.filter((p) => p.permissions && !p.disabled_at && !p.archived_at),
+				personas.value.filter(
+					(p) =>
+						!p.disabled_at &&
+						!p.archived_at &&
+						p.permissions?.includes('agent_work:write') &&
+						p.permissions?.includes('comments:write'),
+				),
 			);
 
 			const currentUser = () => ({

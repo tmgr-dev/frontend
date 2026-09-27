@@ -109,6 +109,30 @@ describeSqlite('local persona agent loop', () => {
 		expect(tool.function.parameters.required).toEqual(['method', 'path']);
 	});
 
+	it('reports a malformed tool call instead of crashing, and keeps going', async () => {
+		let calls = 0;
+		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+			calls += 1;
+			if (calls === 1) {
+				yield { type: 'tool_call', call: { id: 'bad', name: 'tmgr_request', rawArguments: '{}', args: {} as any } };
+			} else {
+				yield { type: 'text', delta: 'done' };
+			}
+		};
+
+		const result = await runPersonaAgent({
+			ctx,
+			router,
+			persona,
+			taskId,
+			systemPrompt: 'x',
+			grantedPermissions: ['tasks:read'],
+			chat,
+		});
+
+		expect(result).toEqual({ text: 'done', toolCalls: 1 });
+	});
+
 	it('stops after maxToolCalls even if the model keeps calling tools', async () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield toolCallEvent(`tasks/${taskId}`, 't');

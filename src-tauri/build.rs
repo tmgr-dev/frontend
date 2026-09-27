@@ -37,6 +37,12 @@ const APP_COMMANDS: &[&str] = &[
   "plugin_install",
   "plugins_installed_list",
   "plugin_uninstall",
+  "persona_cache_put",
+  "persona_cache_get",
+  "llm_config_set",
+  "llm_config_get",
+  "llm_chat",
+  "llm_cancel",
 ];
 
 fn main() {

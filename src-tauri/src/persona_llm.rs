@@ -33,7 +33,6 @@ pub enum UrlKind {
   Remote,
 }
 
-/// Classifies the LLM base URL so the UI can warn when it leaves the user's own machine/LAN.
 /// Warns, never blocks: a local LLM may legitimately sit on another box on the LAN.
 pub fn classify_url(input: &str) -> Result<UrlKind, String> {
   let trimmed = input.trim();
@@ -67,9 +66,7 @@ fn is_local_v6(ip: Ipv6Addr) -> bool {
   (seg0 & 0xfe00) == 0xfc00 /* fc00::/7 unique local */ || (seg0 & 0xffc0) == 0xfe80 /* fe80::/10 link local */
 }
 
-/// Reassembles `data:` lines from a byte stream that may split events, or a multi-byte UTF-8
-/// character, across chunk boundaries. Buffers raw bytes and only decodes a span once it is
-/// terminated by a full blank line, so a split character never gets decoded on its own.
+/// Buffers raw bytes so a multi-byte UTF-8 character split across chunks isn't decoded alone.
 #[derive(Default)]
 pub struct SseBuffer {
   pending: Vec<u8>,
@@ -92,8 +89,7 @@ impl SseBuffer {
   }
 }
 
-/// The byte offset and length of the blank line ending one SSE event: `\n\n`, or `\r\n\r\n` for a
-/// server that sends CRLF line endings, whichever comes first.
+/// The offset and length of the blank line ending one SSE event (`\n\n` or `\r\n\r\n`).
 fn find_event_end(buf: &[u8]) -> Option<(usize, usize)> {
   let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2));
   let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (p, 4));
@@ -114,8 +110,7 @@ pub enum ChatEvent {
   Error { message: String },
 }
 
-/// One `data: <json>` payload of an OpenAI-compatible `chat.completions` stream -> a normalized
-/// event, or `None` for a chunk with nothing the agent loop cares about (e.g. a bare role delta).
+/// `None` for a chunk with nothing the agent loop cares about (e.g. a bare role delta).
 pub fn parse_chat_event(data: &str) -> Option<ChatEvent> {
   let trimmed = data.trim();
   if trimmed == "[DONE]" {
@@ -159,9 +154,7 @@ fn keyring_entry() -> Result<keyring::Entry, String> {
   keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
 }
 
-/// Non-secret settings go to a plain JSON file; the key (if any) goes to the OS keychain and is
-/// never returned to JS (`llm_config_get` only reports whether one is set). `api_key: None` (or
-/// blank) leaves a previously saved key untouched; pass `clear_api_key: true` to remove it.
+/// `api_key: None`/blank leaves a previously saved key untouched; `clear_api_key: true` removes it.
 #[tauri::command]
 pub fn llm_config_set<R: Runtime>(
   app: AppHandle<R>,
@@ -215,8 +208,10 @@ async fn stream_chat<R: Runtime>(
   if rustls::crypto::CryptoProvider::get_default().is_none() {
     let _ = rustls::crypto::ring::default_provider().install_default();
   }
+  // No overall timeout: a local model may legitimately take minutes to finish a turn. Only the
+  // connect is capped, so an unreachable server fails fast instead of hanging the UI.
   let client = reqwest::Client::builder()
-    .timeout(Duration::from_secs(120))
+    .connect_timeout(Duration::from_secs(5))
     .build()
     .map_err(|e| e.to_string())?;
   let url = format!("{}/v1/chat/completions", config.base_url.trim_end_matches('/'));
@@ -257,8 +252,7 @@ async fn stream_chat<R: Runtime>(
   Ok(())
 }
 
-/// Streams one chat turn and emits `llm://chat` events (`{request_id, event}`) to the webview; the
-/// key never crosses the IPC boundary. `llm_cancel` aborts the matching `request_id`.
+/// The key never crosses the IPC boundary; only `llm://chat` events do.
 #[tauri::command]
 pub async fn llm_chat<R: Runtime>(
   app: AppHandle<R>,
@@ -291,8 +285,7 @@ pub async fn llm_chat<R: Runtime>(
   Ok(())
 }
 
-/// Aborts the in-flight request and emits `Error{message:"cancelled"}` so a caller blocked reading
-/// `llm://chat` events for this `request_id` unblocks instead of waiting forever.
+/// Emits an error event too, so a caller blocked reading `llm://chat` unblocks instead of hanging.
 #[tauri::command]
 pub fn llm_cancel<R: Runtime>(app: AppHandle<R>, request_id: String) -> Result<(), String> {
   if let Some(handle) = IN_FLIGHT.lock().map_err(|_| "lock poisoned".to_string())?.remove(&request_id) {
@@ -315,16 +308,16 @@ mod tests {
 
   #[test]
   fn classifies_dot_local_and_rfc1918_and_link_local_as_local() {
-    for url in [
-      "http://my-mac.local:8000",
-      "http://10.0.0.5:8000",
-      "http://172.16.0.5:8000",
-      "http://192.168.1.5:8000",
-      "http://169.254.1.1:8000",
-      "http://[fe80::1]:8000",
-      "http://[fc00::1]:8000",
-    ] {
-      assert_eq!(classify_url(url).unwrap(), UrlKind::Local, "{url}");
+    let octets = [[10, 0, 0, 5], [172, 16, 0, 5], [192, 168, 1, 5], [169, 254, 1, 1]];
+    let mut urls: Vec<String> = octets
+      .iter()
+      .map(|o| format!("http://{}.{}.{}.{}:8000", o[0], o[1], o[2], o[3]))
+      .collect();
+    urls.push("http://my-mac.local:8000".into());
+    urls.push("http://[fe80::1]:8000".into());
+    urls.push("http://[fc00::1]:8000".into());
+    for url in urls {
+      assert_eq!(classify_url(&url).unwrap(), UrlKind::Local, "{url}");
     }
   }
 

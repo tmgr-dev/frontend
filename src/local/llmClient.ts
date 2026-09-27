@@ -15,10 +15,7 @@ const invoke = async <T>(command: string, args?: Record<string, unknown>): Promi
 	return core.invoke<T>(command, args);
 };
 
-/** Wraps the Rust `llm_chat`/`llm_cancel` commands (streamed via `llm://chat` events) into the
- * `ChatFn` shape `personaAgent.ts` expects. Tool-call argument chunks are streamed by index and
- * only assembled into a single tool call once the turn is `done`, since OpenAI-compatible servers
- * send `function.arguments` as text deltas. */
+/** Tool-call argument chunks stream by index; only assembled into a call once the turn is `done`. */
 export const createLlmChat = (tools: unknown): { chat: ChatFn; cancel: () => Promise<void> } => {
 	let activeRequestId: string | null = null;
 

@@ -13,8 +13,7 @@ export interface ChatMessage {
 export interface ToolCall {
 	id: string;
 	name: string;
-	/** Raw JSON text the model sent for `function.arguments`, needed to echo the assistant message
-	 * back verbatim on the next turn. */
+	/** Echoed back verbatim in the assistant message the next turn sees. */
 	rawArguments: string;
 	args: { method: string; path: string; body?: unknown };
 }
@@ -26,10 +25,7 @@ export type ChatFn = (messages: ChatMessage[]) => AsyncIterable<ChatStreamEvent>
 
 const TOOL_NAME = 'tmgr_request';
 
-/** One generic REST tool, exactly like the cloud `tmgr_request` MCP tool for personas: every call
- * still goes through `dispatchLocal`, so the whitelist gate (personaGate.ts) is what actually
- * decides what the persona may do — this loop never widens or narrows it. OpenAI-compatible servers
- * expect a `{type: 'function', function: {...}}` wrapper per tool. */
+/** Every call still goes through `dispatchLocal`, so the whitelist gate decides what runs, not this. */
 export const personaToolDefinition = (grantedPermissions: string[]) => {
 	const routes = PERSONA_WHITELIST.filter((entry) => grantedPermissions.includes(entry.permission)).map(
 		(entry) => `${entry.method} ${entry.pattern}`,
@@ -70,11 +66,6 @@ export interface PersonaAgentResult {
 	toolCalls: number;
 }
 
-/**
- * Runs one agent turn: system prompt + granted-permission tool, executing every tool call as the
- * persona actor via the local router, and recording a local agent-work run for it. Stops as soon as
- * the model answers with plain text, or after `maxToolCalls`.
- */
 export const runPersonaAgent = async ({
 	ctx,
 	router,
@@ -127,13 +118,13 @@ export const runPersonaAgent = async ({
 			for (const call of calls) {
 				if (toolCalls >= maxToolCalls) break;
 				toolCalls += 1;
-				const { method, path, body } = call.args;
-				const result = await dispatchLocal(router, personaCtx, method, path, body);
-				messages.push({
-					role: 'tool',
-					tool_call_id: call.id,
-					content: JSON.stringify(result ? result.data : { message: `no local route for ${method} ${path}` }),
-				});
+				const { method, path, body } = call.args ?? {};
+				const content =
+					typeof method !== 'string' || typeof path !== 'string'
+						? { message: 'method and path are required strings' }
+						: (await dispatchLocal(router, personaCtx, method, path, body))?.data ??
+							{ message: `no local route for ${method} ${path}` };
+				messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content) });
 			}
 		}
 	} catch (error) {
@@ -148,8 +139,7 @@ export const runPersonaAgent = async ({
 	return { text: finalText, toolCalls };
 };
 
-/** "Ask persona" on a task: runs one turn, then posts whatever text it ends on as a comment
- * authored by the persona (needs `comments:write` in its grant, same as any other persona write). */
+/** Needs `comments:write` in the grant, same as any other persona-authored comment. */
 export const askPersonaOnTask = async (params: PersonaAgentParams): Promise<PersonaAgentResult> => {
 	const result = await runPersonaAgent(params);
 	if (result.text.trim()) {
