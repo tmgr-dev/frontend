@@ -986,7 +986,8 @@ describe('alarms', () => {
 	});
 
 	it('allows at most 10 alarms per plugin per workspace, but an update does not count', async () => {
-		const { host } = setup([alarmPlugin]);
+		let clock = Date.now();
+		const { host } = setup([alarmPlugin], {}, {}, {}, { now: () => (clock += 1000) });
 		await host.load();
 		await host.activate(LOCAL);
 		const create = (name: string) =>
