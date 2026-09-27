@@ -215,6 +215,27 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS agent_work_runs_task_idx ON agent_work_runs (task_id)`,
 		],
 	},
+	{
+		version: 7,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS personas (
+				uuid TEXT PRIMARY KEY,
+				owner_user_id INTEGER NOT NULL,
+				owner_name TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT,
+				avatar_file TEXT,
+				synced_at TEXT NOT NULL,
+				archived_at TEXT
+			)`,
+			`CREATE TABLE IF NOT EXISTS workspace_personas (
+				persona_uuid TEXT PRIMARY KEY REFERENCES personas(uuid),
+				permissions TEXT NOT NULL,
+				enabled_at TEXT NOT NULL,
+				disabled_at TEXT
+			)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
