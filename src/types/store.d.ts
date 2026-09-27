@@ -24,6 +24,8 @@ export interface Workspace {
 	is_default: boolean;
 	type: string;
 	user_id: number;
+	is_local?: boolean;
+	path?: string;
 }
 
 export interface WorkspaceStatus {

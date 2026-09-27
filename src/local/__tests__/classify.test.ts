@@ -53,6 +53,41 @@ describe('classify', () => {
 		expect(classify('GET', 'users/5/tasks', true)).toBe('local');
 		expect(classify('GET', 'user-stats', true)).toBe('local');
 	});
+
+	it('routes every daily-routines/* path to local, never to the server', () => {
+		for (const [method, url] of [
+			['GET', 'daily-routines/workspace'],
+			['GET', 'daily-routines/tasks'],
+			['GET', 'daily-routines/tasks/count'],
+			['GET', 'daily-routines/tasks/archived/count'],
+			['GET', 'daily-routines/tasks/completed/count'],
+			['POST', 'daily-routines/tasks'],
+			['POST', 'daily-routines/tasks/recurring'],
+			['POST', 'daily-routines/tasks/quick'],
+			['GET', 'daily-routines/tasks/1000000001'],
+			['PUT', 'daily-routines/tasks/1000000001'],
+			['DELETE', 'daily-routines/tasks/1000000001'],
+			['POST', 'daily-routines/tasks/1000000001/complete'],
+			['POST', 'daily-routines/tasks/1000000001/archive'],
+			['POST', 'daily-routines/tasks/1000000001/complete-on'],
+			['POST', 'daily-routines/tasks/1000000001/convert'],
+			['GET', 'daily-routines/tasks/1000000001/instances'],
+			['POST', 'daily-routines/tasks/1000000001/instances/1/complete'],
+			['POST', 'daily-routines/tasks/1000000001/instances/1/skip'],
+			['DELETE', 'daily-routines/tasks/1000000001/instances/1'],
+			['PATCH', 'daily-routines/tasks/1000000001/instances/virtual'],
+			['PUT', 'daily-routines/tasks/1000000001/pattern'],
+			['GET', 'daily-routines/tasks/1000000001/stats'],
+			['GET', 'daily-routines/tasks/upcoming'],
+			['GET', 'daily-routines/expand'],
+			['GET', 'daily-routines/expand/stats'],
+			['GET', 'daily-routines/ics/import'],
+			['GET', 'daily-routines/ics/export'],
+		]) {
+			expect(classify(method, url, true)).toBe('local');
+			expect(classify(method, url, true)).not.toBe('server');
+		}
+	});
 });
 
 describe('crossesWorkspaces', () => {

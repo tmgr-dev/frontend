@@ -92,6 +92,54 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		version: 4,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS routines (
+				id INTEGER PRIMARY KEY,
+				title TEXT NOT NULL,
+				description TEXT,
+				routine_category TEXT,
+				priority TEXT,
+				approximately_time INTEGER,
+				scheduled_date TEXT,
+				scheduled_time TEXT,
+				settings TEXT NOT NULL DEFAULT '[]',
+				archived_at TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				deleted_at TEXT
+			)`,
+			`CREATE TABLE IF NOT EXISTS routine_patterns (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				routine_id INTEGER NOT NULL UNIQUE REFERENCES routines(id) ON DELETE CASCADE,
+				frequency TEXT,
+				interval INTEGER NOT NULL DEFAULT 1,
+				day_of_frequency INTEGER,
+				month INTEGER,
+				days_of_week TEXT,
+				start_at TEXT,
+				end_at TEXT,
+				occurrences INTEGER,
+				scheduled_time TEXT,
+				duration_min INTEGER,
+				reminder_min INTEGER,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+			`CREATE TABLE IF NOT EXISTS routine_instances (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+				scheduled_for TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'PENDING',
+				completed_at TEXT,
+				skipped_at TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS routine_instances_routine_idx ON routine_instances (routine_id, scheduled_for)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

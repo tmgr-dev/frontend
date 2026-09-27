@@ -1,4 +1,6 @@
 import { LocalRouter } from './router';
+import { addRoutineRoutes } from './routines/routes';
+import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
 	categoryJson,
 	paginate,
@@ -181,7 +183,7 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	board: true,
 	categories: true,
 	dashboard: false,
-	daily_routines: false,
+	daily_routines: true,
 	'task.countdown': true,
 	'task.checkpoints': true,
 	'task.assignees': false,
@@ -189,8 +191,8 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	'task.relations': false,
 };
 
-export const createLocalApi = () =>
-	new LocalRouter()
+export const createLocalApi = () => {
+	const router = new LocalRouter()
 		// ── tasks ───────────────────────────────────────────────────────────────
 		.add('GET', 'tasks/current', (req) =>
 			listTasks(req, [`(s.id IS NULL OR s.type <> 'archived')`], [], 't.id DESC', 'tasks/current'),
@@ -248,12 +250,18 @@ export const createLocalApi = () =>
 		.add('GET', 'tasks', (req) => listTasks(req, [], [], 't.id DESC', 'tasks'))
 		.add('GET', 'tasks/settings', () => [])
 		.add('GET', 'tasks/:id(\\d+)', ({ ctx, params }) => loadTask(ctx, Number(params.id)))
-		.add('PUT', 'tasks/:id(\\d+)', ({ ctx, params, body }) =>
-			updateTask(ctx, Number(params.id), writableTaskFields(body ?? {})),
-		)
-		.add('PATCH', 'tasks/:id(\\d+)', ({ ctx, params, body }) =>
-			updateTask(ctx, Number(params.id), writableTaskFields(body ?? {})),
-		)
+		.add('PUT', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
+			const id = Number(params.id);
+			return isRoutineId(id)
+				? updateRoutineTaskFields(ctx, id, body ?? {})
+				: updateTask(ctx, id, writableTaskFields(body ?? {}));
+		})
+		.add('PATCH', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
+			const id = Number(params.id);
+			return isRoutineId(id)
+				? updateRoutineTaskFields(ctx, id, body ?? {})
+				: updateTask(ctx, id, writableTaskFields(body ?? {}));
+		})
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);
 			await stopTimer(ctx, id);
@@ -591,8 +599,10 @@ export const createLocalApi = () =>
 			Object.fromEntries(
 				Object.entries(FEATURE_TOGGLES).map(([key, enabled]) => [key, { key, name: key, group: 'local', enabled }]),
 			),
-		)
-		.add('GET', 'daily-routines/tasks/count', () => ({ count: 0 }));
+		);
+	addRoutineRoutes(router);
+	return router;
+};
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 

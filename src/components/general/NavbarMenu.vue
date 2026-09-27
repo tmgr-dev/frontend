@@ -118,7 +118,11 @@
 			name: 'Categories',
 			path: generateWorkspaceUrl('categories', currentWorkspace.value),
 		},
-		{ id: 5, name: 'Daily Routines', path: '/routines' },
+		{
+			id: 5,
+			name: currentWorkspace.value?.is_local ? 'Local routines' : 'Daily Routines',
+			path: '/routines',
+		},
 	]);
 
 	const handleNavigate = (navigate: () => void) => {

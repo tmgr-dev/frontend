@@ -306,7 +306,7 @@
 									@change="loadConvertCategories"
 								>
 									<option
-										v-for="w in $store.state.workspaces"
+										v-for="w in convertWorkspaceOptions"
 										:key="w.id"
 										:value="w.id"
 									>
@@ -386,6 +386,7 @@
 		getWorkspaceCategories,
 		type Category,
 	} from '@/actions/tmgr/categories';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import type {
 		RoutineCategoryId,
 		RoutineFrequency,
@@ -629,6 +630,9 @@
 	const convertWorkspaceId = ref<number | null>(null);
 	const convertCategoryId = ref<number | null>(null);
 	const convertCategories = ref<Category[]>([]);
+	const convertWorkspaceOptions = ref<{ id: number; name: string }[]>(
+		store.state.workspaces ?? [],
+	);
 
 	function openConvert() {
 		convertOpen.value = true;
@@ -636,6 +640,15 @@
 			store.getters.currentWorkspaceId ??
 			store.state.workspaces?.[0]?.id ??
 			null;
+		// The local API rejects any target other than the active local workspace with 409.
+		getWorkspaces()
+			.then((workspaces) => {
+				const current = workspaces.find(
+					(w) => Number(w.id) === Number(convertWorkspaceId.value),
+				);
+				convertWorkspaceOptions.value = current?.is_local ? [current] : workspaces;
+			})
+			.catch(() => {});
 		loadConvertCategories();
 	}
 

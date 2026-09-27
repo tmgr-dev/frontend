@@ -15,6 +15,23 @@
 					ref="rootRef"
 					class="relative flex h-full flex-col overflow-hidden pb-10"
 				>
+					<div
+						v-if="isLocalWorkspace"
+						class="flex flex-wrap items-center gap-2 border-b border-line px-2 pb-2 pt-3 md:px-6 md:pt-4"
+					>
+						<span class="text-sm font-semibold text-ink">Local routines</span>
+						<span
+							class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+							>Local</span
+						>
+						<span
+							data-testid="local-routines-label"
+							class="w-full text-xs text-ink-subtle md:w-auto"
+						>
+							Stored only on this device — not synced to the cloud.
+						</span>
+					</div>
+
 					<!-- Top toolbar -->
 					<div
 						class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4"
@@ -77,6 +94,7 @@
 								</div>
 							</div>
 							<input
+								v-if="!isLocalWorkspace"
 								ref="fileRef"
 								type="file"
 								accept=".ics,text/calendar"
@@ -141,26 +159,28 @@
 									/>
 									<CountChip :n="counts.archived" label="ARCHIVED" />
 								</div>
-								<button
-									type="button"
-									class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-									title="Import .ics calendar"
-									@click="triggerImport"
-								>
-									<Upload :size="14" stroke-width="2" />
-									<span>Import</span>
-								</button>
-								<button
-									type="button"
-									class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-									title="Export .ics calendar"
-									@click="onExport"
-								>
-									<Download :size="14" stroke-width="2" />
-									<span>Export</span>
-								</button>
+								<template v-if="!isLocalWorkspace">
+									<button
+										type="button"
+										class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+										title="Import .ics calendar"
+										@click="triggerImport"
+									>
+										<Upload :size="14" stroke-width="2" />
+										<span>Import</span>
+									</button>
+									<button
+										type="button"
+										class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
+										title="Export .ics calendar"
+										@click="onExport"
+									>
+										<Download :size="14" stroke-width="2" />
+										<span>Export</span>
+									</button>
+								</template>
 							</template>
-							<template v-if="isMobile">
+							<template v-if="isMobile && !isLocalWorkspace">
 								<button
 									type="button"
 									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
@@ -368,6 +388,7 @@
 		updateDailyTask,
 	} from '@/actions/tmgr/daily-tasks';
 	import { updateTask } from '@/actions/tmgr/tasks';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
@@ -565,6 +586,23 @@
 				(s: { key: string; value: unknown }) => s.key === 'current_workspace',
 			)?.value,
 	);
+	// /routines is workspace-independent, so store.state.workspaces may be empty here.
+	const isLocalWorkspace = ref(false);
+	watch(
+		workspaceIdentity,
+		async (id) => {
+			const workspaces = await getWorkspaces().catch(() => []);
+			isLocalWorkspace.value = Boolean(
+				workspaces.find((w) => Number(w.id) === Number(id))?.is_local,
+			);
+		},
+		{ immediate: true },
+	);
+	watch(isLocalWorkspace, (local) => {
+		const title = local ? 'Local routines' : 'Daily routines';
+		store.commit('setMetaTitle', title);
+		setDocumentTitle(title);
+	});
 	async function reload() {
 		const request = ++viewRequest;
 		viewPending.value = true;

@@ -724,10 +724,36 @@
 							</SidebarMenuItem>
 
 							<SidebarMenuItem v-if="isFeatureEnabled('daily_routines')">
-								<SidebarMenuButton as-child>
-									<router-link to="/routines">
+								<SidebarMenuButton
+									as-child
+									:tooltip="
+										activeWorkspace?.is_local
+											? 'Stored only on this device — not synced'
+											: undefined
+									"
+								>
+									<router-link
+										to="/routines"
+										:title="
+											activeWorkspace?.is_local
+												? 'Stored only on this device — not synced'
+												: undefined
+										"
+									>
 										<Inbox />
-										<span>Daily Routines</span>
+										<span class="flex min-w-0 items-center gap-1.5">
+											<span class="truncate">{{
+												activeWorkspace?.is_local
+													? 'Local routines'
+													: 'Daily Routines'
+											}}</span>
+											<span
+												v-if="activeWorkspace?.is_local"
+												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+												data-testid="local-routines-menu-badge"
+												>Local</span
+											>
+										</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
