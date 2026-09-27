@@ -4,6 +4,7 @@
 		getComments,
 		toggleCommentReaction,
 	} from '@/actions/tmgr/comments';
+	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { Avatar } from '@/components/ui/avatar';
@@ -19,6 +20,7 @@
 		type ReactionSummary,
 		toggleReaction,
 	} from '@/utils/commentReactions';
+	import { type AuthorFilter, matchesAuthorFilter } from '@/utils/personas';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		Bot,
@@ -51,6 +53,7 @@
 			id: string;
 			name: string;
 			owner?: { id: string; name: string };
+			avatar?: string;
 		} | null;
 	}
 
@@ -69,6 +72,13 @@
 	const isLoading = ref(false);
 	const reactionPickerFor = ref<number | null>(null);
 	const reactionInFlight = new Set<string>();
+	const authorFilter = ref<AuthorFilter>('all');
+	const authorFilterOptions: { value: AuthorFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'people', label: 'People' },
+		{ value: 'personas', label: 'Personas' },
+		{ value: 'plugins', label: 'Plugins' },
+	];
 
 	const currentUser = computed(() => store.state.user);
 	const commentsCount = computed(() => comments.value.length);
@@ -77,6 +87,14 @@
 	// comment is the one next to the composer (TM-144).
 	const sortedComments = computed(() =>
 		sortCommentsOldestFirst(comments.value),
+	);
+
+	const hasNonUserAuthors = computed(() =>
+		comments.value.some((c) => c.author && c.author.kind !== 'user'),
+	);
+
+	const filteredComments = computed(() =>
+		sortedComments.value.filter((c) => matchesAuthorFilter(c, authorFilter.value)),
 	);
 
 	const loadComments = async () => {
@@ -213,6 +231,23 @@
 			</span>
 		</div>
 
+		<div v-if="hasNonUserAuthors" class="mb-3 flex gap-1">
+			<button
+				v-for="option in authorFilterOptions"
+				:key="option.value"
+				type="button"
+				:class="[
+					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
+					authorFilter === option.value
+						? 'bg-tmgr-blue text-white'
+						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600',
+				]"
+				@click="authorFilter = option.value"
+			>
+				{{ option.label }}
+			</button>
+		</div>
+
 		<!-- Comments List -->
 		<div v-if="isLoading" class="flex items-center justify-center py-4">
 			<div
@@ -224,9 +259,16 @@
 			No comments yet
 		</div>
 
+		<div
+			v-else-if="filteredComments.length === 0"
+			class="py-2 text-xs text-ink-subtle"
+		>
+			No comments match this filter
+		</div>
+
 		<div v-else class="space-y-3">
 			<div
-				v-for="comment in sortedComments"
+				v-for="comment in filteredComments"
 				:key="comment.id"
 				:class="[
 					'group flex gap-3',
@@ -256,6 +298,12 @@
 						<Sparkles class="h-4 w-4 text-blue-600 dark:text-blue-400" />
 					</div>
 				</template>
+				<span
+					v-else-if="comment.author && comment.author.kind !== 'user'"
+					class="mt-0.5 flex-shrink-0"
+				>
+					<AuthorBadge :author="comment.author" :size="28" :show-label="false" />
+				</span>
 				<Avatar v-else class="mt-0.5 h-7 w-7 flex-shrink-0">
 					<UserAvatar
 						:user-id="comment.user.id"
@@ -284,14 +332,13 @@
 						>
 							AI Assistant
 						</span>
+						<AuthorBadge
+							v-else-if="comment.author && comment.author.kind !== 'user'"
+							:author="comment.author"
+							hide-avatar
+						/>
 						<span v-else class="text-sm font-semibold text-ink">
 							{{ comment.user.name }}
-						</span>
-						<span
-							v-if="comment.author && comment.author.kind !== 'user'"
-							class="rounded-full bg-gray-100 px-1.5 py-0.5 text-2xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-						>
-							{{ comment.author.kind }}: {{ comment.author.name }}
 						</span>
 						<span class="text-2xs text-ink-faint">
 							{{ formatRelativeTime(new Date(comment.created_at)) }}

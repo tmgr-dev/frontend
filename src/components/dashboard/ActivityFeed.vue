@@ -22,6 +22,23 @@
 			</div>
 		</div>
 
+		<div v-if="hasNonUserActors" class="mb-3 flex gap-1">
+			<button
+				v-for="option in authorFilterOptions"
+				:key="option.value"
+				type="button"
+				:class="[
+					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
+					authorFilter === option.value
+						? 'bg-tmgr-blue text-white'
+						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600',
+				]"
+				@click="authorFilter = option.value"
+			>
+				{{ option.label }}
+			</button>
+		</div>
+
 		<div class="activity-list space-y-3">
 			<!-- Loading skeleton -->
 			<template v-if="loading && activities.length === 0">
@@ -29,9 +46,9 @@
 			</template>
 
 			<!-- Activities -->
-			<template v-else-if="activities.length > 0">
+			<template v-else-if="visibleActivities.length > 0">
 				<ActivityItem
-					v-for="activity in activities"
+					v-for="activity in visibleActivities"
 					:key="activity.id"
 					:activity="activity"
 					@click="handleActivityClick(activity)"
@@ -52,6 +69,13 @@
 						<template v-else> Load More Activities </template>
 					</Button>
 				</div>
+			</template>
+
+			<!-- Filtered to nothing -->
+			<template v-else-if="activities.length > 0">
+				<p class="py-4 text-center text-sm text-ink-subtle">
+					No activities match this filter
+				</p>
 			</template>
 
 			<!-- Empty state -->
@@ -82,6 +106,7 @@
 		Activity,
 		ActivityFilters as ActivityFiltersType,
 	} from '@/types/dashboard';
+	import { type AuthorFilter, matchesAuthorFilter } from '@/utils/personas';
 	import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 	import { computed, ref } from 'vue';
 	import ActivityFilters from './ActivityFilters.vue';
@@ -118,6 +143,20 @@
 	});
 
 	const isRealTimeConnected = computed(() => props.connected ?? false);
+
+	const authorFilter = ref<AuthorFilter>('all');
+	const authorFilterOptions: { value: AuthorFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'people', label: 'People' },
+		{ value: 'personas', label: 'Personas' },
+		{ value: 'plugins', label: 'Plugins' },
+	];
+	const hasNonUserActors = computed(() =>
+		props.activities.some((a) => a.actor && a.actor.kind !== 'user'),
+	);
+	const visibleActivities = computed(() =>
+		props.activities.filter((a) => matchesAuthorFilter(a, authorFilter.value)),
+	);
 
 	const handleFiltersChange = (newFilters: ActivityFiltersType) => {
 		emit('filter-change', newFilters);

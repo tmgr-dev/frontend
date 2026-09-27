@@ -419,6 +419,12 @@ const routes = [
 		name: 'FeatureSettings',
 	},
 	{
+		path: '/settings/personas',
+		component: () => import('@/pages/Settings/Personas.vue'),
+		meta: { title: 'Personas', transitionName: 'fade-fast', navbarHidden: true },
+		name: 'PersonaSettings',
+	},
+	{
 		path: '/settings/plugins',
 		component: () => import('@/pages/Settings/Plugins.vue'),
 		meta: { title: 'Plugins', transitionName: 'fade-fast', navbarHidden: true },

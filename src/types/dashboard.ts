@@ -3,6 +3,7 @@ import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
 
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
+import type { AuthorRef } from '@/types/author';
 
 // Activity Types Enum
 export enum ActivityType {
@@ -73,6 +74,7 @@ export interface Activity {
 	subject_name: string;
 	description: string;
 	user: ActivityUser;
+	actor?: AuthorRef | null;
 	workspace_id: number;
 	subject_type?: string;
 	subject_id?: number;
