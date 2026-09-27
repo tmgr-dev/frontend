@@ -215,7 +215,10 @@
 					</li>
 					<li class="flex flex-wrap items-center gap-2">
 						<Check class="h-4 w-4 shrink-0 text-emerald-600" />
-						<span>Network and files on your computer wait for</span>
+						<span
+							>Network, files, the menu bar, tmgr:// links and web links on your
+							computer wait for</span
+						>
 						<span
 							class="rounded-md border border-border px-2 py-0.5 text-xs font-medium"
 							>Allow on this computer</span
@@ -301,6 +304,13 @@
 						>
 					</li>
 				</ol>
+				<p class="text-muted-foreground">
+					API 1.1: every new ability is its own permission (alarms, menu bar,
+					tmgr:// links, web links, statuses, relations, agent work), shown when
+					you install or update. Try them all with
+					<code>plugin-sdk/examples/kitchen-sink</code> in developer mode; the
+					plugin log shows why a call was refused.
+				</p>
 			</section>
 		</div>
 	</div>
