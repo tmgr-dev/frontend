@@ -11,6 +11,7 @@ mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
 mod plugin_net;
+mod plugin_notify;
 #[cfg(feature = "isolation-selftest")]
 mod plugin_selftest;
 mod plugin_tick;
@@ -130,6 +131,7 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_notify::plugin_notify,
       plugin_catalog::plugin_catalog,
       plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,

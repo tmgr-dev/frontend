@@ -44,6 +44,7 @@
     "allow-plugins-safe-mode",
     "allow-plugin-pick-file",
     "allow-plugin-fetch",
+    "allow-plugin-notify",
     "allow-hide-quick-add",
     "allow-open-quick-add",
     "allow-take-quick-add",

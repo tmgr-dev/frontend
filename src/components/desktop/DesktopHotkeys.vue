@@ -11,6 +11,15 @@
 						pendingConfirm?.commandTitle
 					}}" from a link?
 				</AlertDialogTitle>
+				<AlertDialogDescription v-if="pendingConfirmParams.length">
+					<span
+						v-for="param in pendingConfirmParams"
+						:key="param.key"
+						class="block truncate"
+					>
+						{{ param.key }}: {{ param.value }}
+					</span>
+				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
 				<AlertDialogCancel @click="cancelConfirm">Cancel</AlertDialogCancel>
@@ -33,6 +42,7 @@
 		AlertDialogAction,
 		AlertDialogCancel,
 		AlertDialogContent,
+		AlertDialogDescription,
 		AlertDialogFooter,
 		AlertDialogHeader,
 		AlertDialogTitle,
@@ -40,20 +50,30 @@
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
 	import { pluginsReady } from '@/pluginSystem/app';
+	import { storageIdOf } from '@/pluginSystem/host';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import { deepLinkConsentStore } from '@/pluginSystem/storage';
 	import router from '@/router';
 	import store from '@/store';
 	import {
+		createRecentUrlGuard,
 		parseDeepLink,
 		SHORTCUT_ACTIONS,
 		shortcutConfig,
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
 	import { loadRecent } from '@/utils/desktopTray';
-	import { defineComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		watch,
+	} from 'vue';
 
 	const DEEP_LINK_TIMEOUT_MS = 10_000;
+	const MAX_PARAM_VALUE_DISPLAY = 60;
 
 	const showMainWindow = async () => {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -67,6 +87,8 @@
 
 	/** Module-scoped: a remount of this component must not run the cold-start link a second time. */
 	let coldStartHandled = false;
+	/** Module-scoped like `coldStartHandled`: getCurrent() and onOpenUrl may both deliver the same URL. */
+	const isRecentDuplicateUrl = createRecentUrlGuard();
 
 	const openQuickAdd = async (extra = {}) => {
 		const { invoke } = await import('@tauri-apps/api/core');
@@ -82,6 +104,7 @@
 			AlertDialogAction,
 			AlertDialogCancel,
 			AlertDialogContent,
+			AlertDialogDescription,
 			AlertDialogFooter,
 			AlertDialogHeader,
 			AlertDialogTitle,
@@ -161,14 +184,25 @@
 				shortcutStatus.value = status;
 			};
 
+			/** Captured right when a link is accepted, before any await: the run and workspace it is good for. */
+			const capturedExpectation = (pluginId) => ({
+				generation: pluginHost()?.generationOf(pluginId) ?? null,
+				workspaceId: pluginHost()?.currentWorkspaceId() ?? null,
+			});
+
 			const openViewLink = async (link) => {
 				const view = pluginHost()?.deepLinkView(link.pluginId, link.viewId);
 				if (!view) return cantOpenLink();
+				const expected = capturedExpectation(link.pluginId);
 				await showMainWindow();
-				if (view.ui) {
-					await pluginHost()?.openView(link.pluginId, link.viewId, link.params);
-					return;
-				}
+				const result = await pluginHost()?.openDeepLinkView(
+					link.pluginId,
+					link.viewId,
+					link.params,
+					expected,
+				);
+				if (!result) return cantOpenLink();
+				if (result.view.ui) return;
 				await router.push({
 					name: 'WorkspacePluginPage',
 					params: {
@@ -180,13 +214,14 @@
 				});
 			};
 
-			/** Runs the command after re-checking it, in case the plugin stopped or left while the dialog was open. */
-			const runCommandLink = async (link) => {
+			/** Re-validates the run and workspace inside the host, right before it runs the command. */
+			const runCommandLink = async (link, expected) => {
 				try {
 					const ran = await pluginHost()?.runDeepLinkCommand(
 						link.pluginId,
 						link.commandId,
 						link.params,
+						expected,
 					);
 					if (!ran) cantOpenLink();
 				} catch (error) {
@@ -199,45 +234,56 @@
 			};
 
 			const confirmOnce = async () => {
-				const link = pendingConfirm.value?.link;
+				const confirm = pendingConfirm.value;
 				pendingConfirm.value = null;
-				if (link) await runCommandLink(link);
+				if (confirm) {
+					await runCommandLink(confirm.link, {
+						generation: confirm.generation,
+						workspaceId: confirm.workspaceId,
+					});
+				}
 			};
 
 			const confirmAlways = async () => {
 				const confirm = pendingConfirm.value;
 				pendingConfirm.value = null;
 				if (!confirm) return;
-				const entry = pluginState.plugins[confirm.link.pluginId];
-				if (entry) {
-					deepLinkConsentStore.remember(
-						confirm.link.pluginId,
-						confirm.link.commandId,
-						entry.manifest.version,
-					);
-				}
-				await runCommandLink(confirm.link);
+				deepLinkConsentStore.remember(confirm.storageId, confirm.link.commandId, confirm.version);
+				await runCommandLink(confirm.link, {
+					generation: confirm.generation,
+					workspaceId: confirm.workspaceId,
+				});
 			};
 
 			const openCommandLink = async (link) => {
+				// A second command link while a dialog is open is ignored: not queued, not swapped in.
+				if (pendingConfirm.value) return;
 				const command = pluginHost()?.deepLinkCommand(link.pluginId, link.commandId);
 				if (!command) return cantOpenLink();
 				const entry = pluginState.plugins[link.pluginId];
-				const alwaysAllowed =
-					!!entry &&
-					deepLinkConsentStore.has(link.pluginId, link.commandId, entry.manifest.version);
-				if (alwaysAllowed) return runCommandLink(link);
-				await showMainWindow();
+				const storageId = entry ? storageIdOf(entry) : link.pluginId;
+				const version = entry?.manifest.version ?? '';
+				const expected = capturedExpectation(link.pluginId);
+				if (deepLinkConsentStore.has(storageId, link.commandId, version)) {
+					return runCommandLink(link, expected);
+				}
+				// Set before the await below: a link arriving during it must see the dialog already open.
 				pendingConfirm.value = {
 					link,
 					pluginName: entry?.manifest.name ?? link.pluginId,
 					commandTitle: command.title,
+					storageId,
+					version,
+					generation: expected.generation,
+					workspaceId: expected.workspaceId,
 				};
+				await showMainWindow();
 			};
 
 			const openLinks = async (urls) => {
-				const link = (urls || []).map(parseDeepLink).find(Boolean);
-				if (!link) return;
+				const url = (urls || []).find((u) => parseDeepLink(u));
+				if (!url || isRecentDuplicateUrl(url)) return;
+				const link = parseDeepLink(url);
 				if (link.type === 'task') {
 					await showMainWindow();
 					store.commit('setCurrentTaskIdForModal', link.taskId);
@@ -272,7 +318,23 @@
 				}
 			});
 
-			return { pendingConfirm, cancelConfirm, confirmOnce, confirmAlways };
+			const pendingConfirmParams = computed(() =>
+				Object.entries(pendingConfirm.value?.link.params ?? {}).map(([key, value]) => ({
+					key,
+					value:
+						value.length > MAX_PARAM_VALUE_DISPLAY
+							? `${value.slice(0, MAX_PARAM_VALUE_DISPLAY)}…`
+							: value,
+				})),
+			);
+
+			return {
+				pendingConfirm,
+				pendingConfirmParams,
+				cancelConfirm,
+				confirmOnce,
+				confirmAlways,
+			};
 		},
 	});
 </script>

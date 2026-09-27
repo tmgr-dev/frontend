@@ -19,6 +19,7 @@ const APP_COMMANDS: &[&str] = &[
   "plugins_safe_mode",
   "plugin_pick_file",
   "plugin_fetch",
+  "plugin_notify",
   "hide_quick_add",
   "open_quick_add",
   "take_quick_add",

@@ -136,15 +136,21 @@ export type DeepLink =
 const MAX_DEEP_LINK_PARAMS = 20;
 const MAX_DEEP_LINK_PARAM_VALUE = 500;
 const PARAM_KEY = /^[a-zA-Z0-9_-]{1,40}$/;
+const FORBIDDEN_PARAM_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/** Rejects duplicate keys, too many params, bad keys and oversized values. `entries` come already decoded. */
+/** Rejects duplicate keys, too many params, bad or forbidden keys, and oversized values. */
 export const sanitizeDeepLinkParams = (
 	entries: Iterable<[string, string]>,
 ): Record<string, string> | null => {
 	const params: Record<string, string> = Object.create(null);
 	let count = 0;
 	for (const [key, value] of entries) {
-		if (!PARAM_KEY.test(key) || value.length > MAX_DEEP_LINK_PARAM_VALUE) return null;
+		if (
+			!PARAM_KEY.test(key) ||
+			FORBIDDEN_PARAM_KEYS.has(key) ||
+			value.length > MAX_DEEP_LINK_PARAM_VALUE
+		)
+			return null;
 		if (key in params) return null;
 		if (++count > MAX_DEEP_LINK_PARAMS) return null;
 		params[key] = value;
@@ -235,4 +241,19 @@ export const saveShortcuts = (config: ShortcutConfig): void => {
 	} catch {
 		/* storage unavailable: settings last until restart */
 	}
+};
+
+const RECENT_URL_WINDOW_MS = 5000;
+
+/** `getCurrent()` and `onOpenUrl` may both deliver the same cold-start URL; skip the second delivery. */
+export const createRecentUrlGuard = (now: () => number = Date.now) => {
+	let lastUrl: string | null = null;
+	let lastAt = 0;
+	return (url: string): boolean => {
+		const at = now();
+		if (lastUrl === url && at - lastAt < RECENT_URL_WINDOW_MS) return true;
+		lastUrl = url;
+		lastAt = at;
+		return false;
+	};
 };

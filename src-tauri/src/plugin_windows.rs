@@ -50,6 +50,7 @@ const BRIDGE: &str = r#"<script>
 #[derive(Clone)]
 struct Owner {
   plugin_id: String,
+  view_id: String,
   generation: String,
 }
 
@@ -67,6 +68,7 @@ pub struct PluginWindows {
 struct WindowCall {
   call_id: u64,
   plugin_id: String,
+  view_id: String,
   generation: String,
   method: String,
   params: Value,
@@ -90,6 +92,12 @@ pub fn valid_key(key: &str) -> bool {
 pub fn page_url(key: &str) -> Result<Url, String> {
   let (plugin, view) = key.split_once('/').ok_or("bad plugin page key")?;
   format!("{SCHEME}://{plugin}/{view}").parse().map_err(|e: url::ParseError| e.to_string())
+}
+
+/// Splits an already-`valid_key` page key into its plugin id and view id.
+fn split_plugin_view(key: &str) -> (String, String) {
+  let (plugin_id, view_id) = key.split_once('/').unwrap_or((key, ""));
+  (plugin_id.to_string(), view_id.to_string())
 }
 
 fn key_of(uri: &tauri::http::Uri) -> Option<String> {
@@ -152,13 +160,12 @@ pub fn plugin_window_open<R: Runtime>(
   }
   let state = app.state::<PluginWindows>();
   let url = page_url(&key)?;
-  let plugin_id = key.split('/').next().unwrap_or_default().to_string();
+  let (plugin_id, view_id) = split_plugin_view(&key);
   let label = format!("{LABEL_PREFIX}{}", state.next_window.fetch_add(1, Ordering::Relaxed) + 1);
-  state
-    .owners
-    .lock()
-    .map_err(|e| e.to_string())?
-    .insert(label.clone(), Owner { plugin_id, generation: generation.chars().take(40).collect() });
+  state.owners.lock().map_err(|e| e.to_string())?.insert(
+    label.clone(),
+    Owner { plugin_id, view_id, generation: generation.chars().take(40).collect() },
+  );
   let title: String = title.chars().take(60).collect();
   let allowed = url.clone();
   WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
@@ -223,6 +230,7 @@ pub async fn plugin_window_call<R: Runtime>(
   let call = WindowCall {
     call_id,
     plugin_id: owner.plugin_id,
+    view_id: owner.view_id,
     generation: owner.generation,
     method: method.chars().take(80).collect(),
     params,
@@ -285,6 +293,14 @@ mod tests {
   }
 
   #[test]
+  fn splits_a_page_key_into_plugin_and_view() {
+    assert_eq!(
+      split_plugin_view("tmgr.estimate/report"),
+      ("tmgr.estimate".to_string(), "report".to_string()),
+    );
+  }
+
+  #[test]
   fn each_plugin_has_its_own_origin() {
     assert_eq!(page_url("tmgr.estimate/report").unwrap().as_str(), "tmgrplugin://tmgr.estimate/report");
     assert_ne!(page_url("a.one/x").unwrap().origin(), page_url("b.two/x").unwrap().origin());
@@ -292,7 +308,8 @@ mod tests {
 
   #[test]
   fn pages_are_served_only_to_their_plugin_window() {
-    let owner = |plugin: &str| Owner { plugin_id: plugin.into(), generation: "1".into() };
+    let owner =
+      |plugin: &str| Owner { plugin_id: plugin.into(), view_id: "page".into(), generation: "1".into() };
     let owners = HashMap::from([("plugin-1".to_string(), owner("a.one")), ("plugin-2".to_string(), owner("b.two"))]);
     assert!(may_serve(&owners, "plugin-1", "a.one/page"));
     assert!(!may_serve(&owners, "plugin-1", "b.two/page"));

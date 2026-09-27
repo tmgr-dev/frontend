@@ -1,4 +1,4 @@
-import { dndState, isDndActive, setDnd } from '../dnd';
+import { dndState, expireDndIfNeeded, isDndActive, setDnd } from '../dnd';
 
 describe('dnd', () => {
 	let errorSpy: jest.SpyInstance;
@@ -44,5 +44,42 @@ describe('dnd', () => {
 		setDnd('off');
 		expect(dndState.until).toBeNull();
 		expect(isDndActive()).toBe(false);
+	});
+
+	it('until tomorrow chosen before 9am means today at 9am', () => {
+		const before9 = new Date(2026, 0, 5, 3, 0, 0).getTime();
+		jest.spyOn(Date, 'now').mockReturnValue(before9);
+		setDnd('tomorrow');
+		const until = new Date(dndState.until!);
+		expect(until.getDate()).toBe(5);
+		expect(until.getHours()).toBe(9);
+		(Date.now as jest.Mock).mockRestore();
+	});
+
+	it('until tomorrow chosen after 9am means tomorrow at 9am', () => {
+		const after9 = new Date(2026, 0, 5, 14, 0, 0).getTime();
+		jest.spyOn(Date, 'now').mockReturnValue(after9);
+		setDnd('tomorrow');
+		const until = new Date(dndState.until!);
+		expect(until.getDate()).toBe(6);
+		expect(until.getHours()).toBe(9);
+		(Date.now as jest.Mock).mockRestore();
+	});
+
+	it('expireDndIfNeeded turns it off once the until time has passed, and pushes that to the tray', () => {
+		setDnd('1h');
+		const until = dndState.until!;
+		expireDndIfNeeded(until + 1);
+		expect(dndState.option).toBe('off');
+		expect(dndState.until).toBeNull();
+	});
+
+	it('expireDndIfNeeded does nothing while still active or already off', () => {
+		expireDndIfNeeded();
+		expect(dndState.option).toBe('off');
+		setDnd('1h');
+		const until = dndState.until!;
+		expireDndIfNeeded(until - 1000);
+		expect(dndState.option).toBe('1h');
 	});
 });

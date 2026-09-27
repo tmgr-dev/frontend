@@ -101,8 +101,9 @@ export const trayTitlePluginStore = {
 	set: (pluginId: string | null) => write(TRAY_TITLE_PLUGIN, pluginId),
 };
 
-/** A removed plugin leaves nothing a later plugin with the same id could inherit. */
-export const forgetPlugin = (pluginId: string) => {
+/** A removed plugin leaves nothing a later plugin with the same id could inherit; `storageId` is what
+ *  the "Always" consent and the menu bar text choice were actually keyed by. */
+export const forgetPlugin = (pluginId: string, storageId: string = pluginId) => {
 	const enabled = read<Record<string, boolean>>(ENABLED, {});
 	write(
 		ENABLED,
@@ -126,8 +127,8 @@ export const forgetPlugin = (pluginId: string) => {
 	write(
 		DEEP_LINK_CONSENT,
 		Object.fromEntries(
-			Object.entries(consent).filter(([key]) => !key.startsWith(`${pluginId}:`)),
+			Object.entries(consent).filter(([key]) => !key.startsWith(`${storageId}:`)),
 		),
 	);
-	if (trayTitlePluginStore.get() === pluginId) trayTitlePluginStore.set(null);
+	if (trayTitlePluginStore.get() === storageId) trayTitlePluginStore.set(null);
 };

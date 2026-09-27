@@ -22,6 +22,9 @@ impl Default for DndStore {
 const TRAY_ID: &str = "timer";
 const LABEL_MAX: usize = 42;
 const TITLE_MAX: usize = 18;
+/// Caps how large the plugin part of the tray menu can grow, regardless of how many plugins run.
+const MAX_PLUGIN_SECTIONS: usize = 20;
+const MAX_PLUGIN_ITEMS: usize = 10;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -141,12 +144,44 @@ fn timer_title(state: &TrayState, now: i64) -> Option<String> {
   Some(format!("{} · {}{}", format_elapsed(elapsed(task, now)), name, more))
 }
 
-/// Trims, drops control characters and line separators, and re-truncates: Rust never trusts JS's own checks.
+/// Unicode format (Cf) characters that can hide or reorder text: bidi overrides, joiners, zero-width marks.
+fn is_format_control(c: char) -> bool {
+  matches!(c as u32,
+    0x00AD
+      | 0x0600..=0x0605
+      | 0x061C
+      | 0x06DD
+      | 0x070F
+      | 0x180E
+      | 0x200B..=0x200F
+      | 0x202A..=0x202E
+      | 0x2060..=0x2064
+      | 0x2066..=0x206F
+      | 0xFEFF
+      | 0xFFF9..=0xFFFB
+      | 0xE0001
+      | 0xE0020..=0xE007F
+  )
+}
+
+/// Maps newlines to a space, drops control/Cf characters, collapses whitespace, trims, and truncates.
+fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
+  let mapped: String = text
+    .chars()
+    .map(|c| if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}') { ' ' } else { c })
+    .filter(|c| !c.is_control() && !is_format_control(*c))
+    .collect();
+  let collapsed = mapped.split_whitespace().collect::<Vec<_>>().join(" ");
+  (!collapsed.is_empty()).then(|| truncate(&collapsed, max))
+}
+
 fn sanitize_plugin_title(text: &str) -> Option<String> {
-  let cleaned: String =
-    text.chars().filter(|c| !c.is_control() && *c != '\u{2028}' && *c != '\u{2029}').collect();
-  let trimmed = cleaned.trim();
-  (!trimmed.is_empty()).then(|| truncate(trimmed, PLUGIN_TITLE_MAX))
+  sanitize_plugin_text(text, PLUGIN_TITLE_MAX)
+}
+
+/// Same cleanup as `sanitize_plugin_title`, but for a tray section title, item title or plugin name.
+fn sanitize_plugin_label(text: &str) -> Option<String> {
+  sanitize_plugin_text(text, LABEL_MAX)
 }
 
 pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
@@ -208,13 +243,12 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     );
   if !state.plugin_sections.is_empty() {
     menu = menu.separator();
-    for section in &state.plugin_sections {
+    for section in state.plugin_sections.iter().take(MAX_PLUGIN_SECTIONS) {
       let mut submenu = SubmenuBuilder::new(app, plugin_section_label(section));
-      for item in &section.items {
-        submenu = submenu.item(
-          &MenuItemBuilder::with_id(format!("plugin-item:{}", item.id), truncate(&item.title, LABEL_MAX))
-            .build(app)?,
-        );
+      for item in section.items.iter().take(MAX_PLUGIN_ITEMS) {
+        let title = sanitize_plugin_label(&item.title).unwrap_or_else(|| "…".to_owned());
+        submenu =
+          submenu.item(&MenuItemBuilder::with_id(format!("plugin-item:{}", item.id), title).build(app)?);
       }
       menu = menu.item(&submenu.build()?);
     }
@@ -231,7 +265,9 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
 
 /// Prefixed with the plugin's own name, so a section titled to look like an app item can't be mistaken for one.
 fn plugin_section_label(section: &PluginTraySection) -> String {
-  truncate(&format!("{}: {}", section.plugin_name, section.title), LABEL_MAX)
+  let name = sanitize_plugin_label(&section.plugin_name).unwrap_or_else(|| "Plugin".to_owned());
+  let title = sanitize_plugin_label(&section.title).unwrap_or_default();
+  truncate(&format!("{name}: {title}"), LABEL_MAX)
 }
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
@@ -274,14 +310,14 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   if let Some(item_id) = id.strip_prefix("plugin-item:") {
     // Whether this opens the app is up to JS, once it knows what the click resolves to.
-    let _ = app.emit("tray://plugin-item", item_id.to_owned());
+    let _ = app.emit_to("main", "tray://plugin-item", item_id.to_owned());
     return;
   }
   if let Some(option) = id.strip_prefix("dnd:") {
     *app.state::<DndStore>().0.lock().unwrap() = option.to_owned();
     let state = app.state::<TrayStore>().0.lock().unwrap().clone();
     refresh(app, &state);
-    let _ = app.emit("tray://dnd", option.to_owned());
+    let _ = app.emit_to("main", "tray://dnd", option.to_owned());
     return;
   }
   match id {
@@ -471,10 +507,21 @@ mod tests {
   #[test]
   fn plugin_title_is_trimmed_stripped_of_control_characters_and_re_truncated() {
     assert_eq!(sanitize_plugin_title("  ok  "), Some("ok".into()));
-    assert_eq!(sanitize_plugin_title("a\u{0}b\u{2028}c"), Some("abc".into()));
+    assert_eq!(sanitize_plugin_title("a\u{0}b\u{2028}c"), Some("ab c".into()));
     assert_eq!(sanitize_plugin_title("   "), None);
     assert_eq!(sanitize_plugin_title(""), None);
     assert_eq!(sanitize_plugin_title("a very long plugin title"), Some("a very long…".into()));
+  }
+
+  #[test]
+  fn plugin_text_collapses_newlines_and_runs_of_whitespace_to_a_single_space() {
+    assert_eq!(sanitize_plugin_label("Open\ntask\r\nnow"), Some("Open task now".into()));
+    assert_eq!(sanitize_plugin_label("a   b"), Some("a b".into()));
+  }
+
+  #[test]
+  fn plugin_text_strips_unicode_format_characters() {
+    assert_eq!(sanitize_plugin_label("a\u{200b}b\u{202e}c"), Some("abc".into()));
   }
 
   #[test]
@@ -491,5 +538,15 @@ mod tests {
       items: vec![],
     };
     assert_eq!(plugin_section_label(&section), "Sprint Board: Quick actions");
+  }
+
+  #[test]
+  fn plugin_section_label_sanitizes_the_name_and_the_title_separately() {
+    let section = PluginTraySection {
+      plugin_name: "Sprint\u{200b}Board".into(),
+      title: "Quick\nactions".into(),
+      items: vec![],
+    };
+    assert_eq!(plugin_section_label(&section), "SprintBoard: Quick actions");
   }
 }

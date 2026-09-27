@@ -693,6 +693,34 @@ describe('plugin windows', () => {
 		host.dispose();
 	});
 
+	it('gives deepLink.params to only the window it was opened for, once each', async () => {
+		const twoViewPlugin = {
+			...pkg('tmgr.win2', '', [], {
+				views: [
+					{ id: 'board', title: 'Board', ui: 'ui/board.html' },
+					{ id: 'other', title: 'Other', ui: 'ui/other.html' },
+				],
+			}),
+			pages: { 'ui/board.html': '<h1>Board</h1>', 'ui/other.html': '<h1>Other</h1>' },
+		} as PluginPackage;
+		const { host } = setup([twoViewPlugin], {}, { open: async () => undefined });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.openView('tmgr.win2', 'board', { a: '1' });
+		await host.openView('tmgr.win2', 'other', { b: '2' });
+		const generation = host.generationOf('tmgr.win2')!;
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'other', 'deepLink.params', {}),
+		).toEqual({ b: '2' });
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'board', 'deepLink.params', {}),
+		).toEqual({ a: '1' });
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'board', 'deepLink.params', {}),
+		).toBeNull();
+		host.dispose();
+	});
+
 	it('answers window calls through the plugin broker, with the same permissions', async () => {
 		const { host } = setup([windowPlugin(['tasks:read'])], {
 			listTasks: async () => ({ items: [{ id: 1 }], total: 1 }),
@@ -700,12 +728,12 @@ describe('plugin windows', () => {
 		await host.load();
 		await host.activate(LOCAL);
 		generation = host.generationOf('tmgr.win')!;
-		expect(await host.windowCall('tmgr.win', gen(), 'tasks.list', {})).toEqual({
+		expect(await host.windowCall('tmgr.win', gen(), 'board', 'tasks.list', {})).toEqual({
 			items: [{ id: 1 }],
 			total: 1,
 		});
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'tasks.update', {
+			host.windowCall('tmgr.win', gen(), 'board', 'tasks.update', {
 				id: 1,
 				patch: { title: 'x' },
 			}),
@@ -713,18 +741,18 @@ describe('plugin windows', () => {
 			code: 'PERMISSION_DENIED',
 		});
 		expect(
-			await host.windowCall('tmgr.win', gen(), 'commands.run', {
+			await host.windowCall('tmgr.win', gen(), 'board', 'commands.run', {
 				id: 'tmgr.win.hello',
 				args: { name: 'Ann' },
 			}),
 		).toBe('hello Ann');
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'commands.run', { id: 'other.cmd' }),
+			host.windowCall('tmgr.win', gen(), 'board', 'commands.run', { id: 'other.cmd' }),
 		).rejects.toMatchObject({
 			code: 'NOT_DECLARED',
 		});
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'register', {
+			host.windowCall('tmgr.win', gen(), 'board', 'register', {
 				kind: 'command',
 				id: 'tmgr.win.hello',
 			}),
@@ -733,7 +761,7 @@ describe('plugin windows', () => {
 		});
 		await host.setEnabled('tmgr.win', false);
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'tasks.list', {}),
+			host.windowCall('tmgr.win', gen(), 'board', 'tasks.list', {}),
 		).rejects.toMatchObject({ code: 'NOT_RUNNING' });
 		host.dispose();
 	});
@@ -778,12 +806,12 @@ describe('plugin runs', () => {
 		const second = host.generationOf('tmgr.run')!;
 		expect(second).not.toBe(first);
 		await expect(
-			host.windowCall('tmgr.run', first, 'commands.run', { id: 'tmgr.run.go' }),
+			host.windowCall('tmgr.run', first, 'board', 'commands.run', { id: 'tmgr.run.go' }),
 		).rejects.toMatchObject({
 			code: 'NOT_RUNNING',
 		});
 		expect(
-			await host.windowCall('tmgr.run', second, 'commands.run', {
+			await host.windowCall('tmgr.run', second, 'board', 'commands.run', {
 				id: 'tmgr.run.go',
 			}),
 		).toBe('ok');
@@ -969,6 +997,44 @@ describe('alarms', () => {
 		for (let i = 0; i < 10; i++) expect(await create(`a${i}`)).toMatchObject({ name: `a${i}` });
 		expect(await create('a10')).toEqual({ error: 'INVALID_PARAMS' });
 		expect(await create('a0')).toMatchObject({ name: 'a0' });
+		host.dispose();
+	});
+
+	it('caps delayMinutes and periodMinutes at one year', async () => {
+		const { host } = setup([alarmPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string, opts: unknown) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name, opts });
+		expect(await create('tooLongDelay', { delayMinutes: 525_601 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('tooLongPeriod', { periodMinutes: 525_601 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('capOk', { delayMinutes: 525_600 })).toMatchObject({ name: 'capOk' });
+		host.dispose();
+	});
+
+	it('drops a corrupt stored entry instead of crashing the scheduler or list, and it does not hold a slot', async () => {
+		const store: Record<string, unknown> = {
+			[`tmgr.alarm@${LOCAL.id}`]: { bad: { name: 'bad', scheduledAtMs: NaN, periodMinutes: null } },
+		};
+		const alarms = {
+			get: (key: string) => store[key] as any,
+			set: (key: string, defs: unknown) => void (store[key] = defs),
+		};
+		const { host } = setup([alarmPlugin], {}, {}, {}, { alarms });
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})).toEqual([]);
+		expect(() => host.tick()).not.toThrow();
+		expect(
+			await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+				name: 'fresh',
+				opts: { delayMinutes: 1 },
+			}),
+		).toMatchObject({ name: 'fresh' });
 		host.dispose();
 	});
 
@@ -1176,6 +1242,17 @@ describe('notifications', () => {
 		host.dispose();
 	});
 
+	it('always attributes the title to the plugin, native or toast', async () => {
+		const { host, notifications } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { title: 'Hello' });
+		expect(notifications[0].title).toBe('tmgr.notif: Hello');
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {});
+		expect(notifications[1].title).toBe('tmgr.notif');
+		host.dispose();
+	});
+
 	it('limits a plugin to 5 notifications per minute', async () => {
 		const { host } = setupNotify();
 		await host.load();
@@ -1275,10 +1352,30 @@ describe('tray', () => {
 			type: 'task',
 			taskId: 9,
 			workspaceId: LOCAL.id,
+			pluginId: 'tmgr.tray',
+			generation: expect.any(String),
 		});
 		await host.setEnabled('tmgr.tray', false);
 		expect(state.trayItems['tmgr.tray:menu']).toBeUndefined();
 		expect(await host.resolveTrayClick(actItem.id)).toBeNull();
+		host.dispose();
+	});
+
+	it('a task result from a tray click is no longer current once the plugin restarts', async () => {
+		const { host, state } = setup([trayPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const [, openItem] = state.trayItems['tmgr.tray:menu'].items;
+		const result = await host.resolveTrayClick(openItem.id);
+		expect(result?.type).toBe('task');
+		await host.restart('tmgr.tray');
+		expect(
+			host.isCurrentRun(result!.pluginId!, {
+				generation: result!.generation!,
+				workspaceId: result!.workspaceId!,
+			}),
+		).toBe(false);
 		host.dispose();
 	});
 
@@ -1371,6 +1468,90 @@ describe('deep links', () => {
 		await expect(
 			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.silent', {}),
 		).resolves.toBe(false);
+		host.dispose();
+	});
+
+	it('refuses a deep-linked command once the run it was confirmed for is no longer running', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		await host.restart('tmgr.link');
+		await flush();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, expected),
+		).resolves.toBe(false);
+		const fresh = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, fresh),
+		).resolves.toBe(true);
+		host.dispose();
+	});
+
+	it('refuses a deep-linked command once the app has left the confirmed workspace', async () => {
+		const { host, leave } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		leave();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, expected),
+		).resolves.toBe(false);
+		host.dispose();
+	});
+
+	const uiLinkPlugin = {
+		...pkg('tmgr.linkui', '', ['deeplinks'], {
+			views: [{ id: 'board', title: 'Board', ui: 'ui/board.html' }],
+		}),
+		pages: { 'ui/board.html': '<h1>Board</h1>' },
+	} as PluginPackage;
+
+	it('openDeepLinkView refuses once the app has left the confirmed workspace', async () => {
+		const opened: unknown[] = [];
+		const { host, leave } = setup(
+			[uiLinkPlugin],
+			{},
+			{ open: async (...args: unknown[]) => void opened.push(args) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
+		leave();
+		expect(await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected)).toBeNull();
+		expect(opened).toEqual([]);
+		host.dispose();
+	});
+
+	it('openDeepLinkView opens a ui view itself once re-validated', async () => {
+		const opened: unknown[] = [];
+		const { host } = setup(
+			[uiLinkPlugin],
+			{},
+			{ open: async (...args: unknown[]) => void opened.push(args) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
+		const result = await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected);
+		expect(result).toEqual({ view: { id: 'board', title: 'Board', ui: 'ui/board.html' } });
+		expect(opened).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('openDeepLinkView leaves a plain view (no ui) for the caller to route to', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		expect(await host.openDeepLinkView('tmgr.link', 'report', undefined, expected)).toEqual({
+			view: { id: 'report', title: 'Report' },
+		});
 		host.dispose();
 	});
 

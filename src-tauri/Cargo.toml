@@ -41,6 +41,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 core-foundation = "0.10"
 core-graphics = "0.25"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSButton", "NSControl", "NSView", "NSResponder"] }
+# Same copy notify-rust already pulls in; exposes the click callback notify-rust does not.
+mac-notification-sys = "=0.6.15"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"

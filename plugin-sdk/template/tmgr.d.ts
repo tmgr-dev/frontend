@@ -342,7 +342,7 @@ declare const tmgr: {
 	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
 	/** Needs the alarms permission. Host-scheduled: fires even if the plugin was not running when it was due, coalesced into one event. */
 	alarms: {
-		/** name is 1-60 characters of letters, digits, ".", "_" or "-". Delay/period are minutes, at least 1. */
+		/** name is 1-60 characters of letters, digits, ".", "_" or "-". Delay/period are minutes, from 1 to 525600 (one year); `when` is at most a year ahead. */
 		create(
 			name: string,
 			spec:
@@ -383,9 +383,10 @@ declare const tmgr: {
 		setStatusBarItem(id: string, item: { text: string; tooltip?: string; command?: string } | null): Promise<void>;
 		/**
 		 * Needs notifications. title is at most 80 characters, message at most 300, args at most 4 KB of JSON.
-		 * command must be declared in contributes.commands. At most 5 notifications per plugin per minute.
+		 * The shown title always names this plugin: "<plugin name>: <title>", or just the plugin name without
+		 * one. command must be declared in contributes.commands. At most 5 notifications per plugin per minute.
 		 * Clicking opens the task (taskId) or runs command with args, only while this plugin still runs in
-		 * that workspace; the plugin is told nothing about the click besides the command running.
+		 * that same run and workspace; the plugin is told nothing about the click besides the command running.
 		 */
 		notify(
 			message: string,

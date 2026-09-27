@@ -37,7 +37,7 @@
 	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
-	import { setDnd } from '@/utils/dnd';
+	import { isDndActive, setDnd } from '@/utils/dnd';
 	import {
 		buildTrayState,
 		formatAway,
@@ -62,7 +62,8 @@
 		if (
 			'Notification' in window &&
 			Notification.permission === 'granted' &&
-			!document.hasFocus()
+			!document.hasFocus() &&
+			!isDndActive()
 		) {
 			new Notification(title, { body });
 		}

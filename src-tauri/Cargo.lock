@@ -4772,6 +4772,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-graphics",
  "log",
+ "mac-notification-sys",
  "minisign-verify",
  "objc2-app-kit",
  "reqwest",

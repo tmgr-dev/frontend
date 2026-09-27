@@ -44,8 +44,13 @@ const persist = () => {
 export const isDndActive = (now: number = Date.now()): boolean =>
 	dndState.option !== 'off' && dndState.until != null && now < dndState.until;
 
+/** Before 9am, "until tomorrow" means today at 9am: that hour has not happened yet today. */
 const tomorrowNine = (from: number): number => {
 	const d = new Date(from);
+	if (d.getHours() < 9) {
+		d.setHours(9, 0, 0, 0);
+		return d.getTime();
+	}
 	d.setDate(d.getDate() + 1);
 	d.setHours(9, 0, 0, 0);
 	return d.getTime();
@@ -80,8 +85,18 @@ export const setDnd = (option: DndOption): void => {
 	void pushToTray(option);
 };
 
+/** Turns an expired "until" off so the tray checkmark and status bar do not stay on past it. */
+export const expireDndIfNeeded = (now: number = Date.now()): void => {
+	if (dndState.option === 'off' || dndState.until == null || now < dndState.until) return;
+	dndState.option = 'off';
+	dndState.until = null;
+	persist();
+	void pushToTray('off');
+};
+
 /** Called once at startup: an "until" saved from a previous session may already have expired. */
 export const syncDndToTray = (): void => {
+	expireDndIfNeeded();
 	void pushToTray(isDndActive() ? dndState.option : 'off');
 };
 
@@ -92,5 +107,6 @@ export const startDndClock = (): void => {
 	if (ticker) return;
 	ticker = setInterval(() => {
 		dndClock.now = Date.now();
+		expireDndIfNeeded(dndClock.now);
 	}, 30_000);
 };

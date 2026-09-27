@@ -49,3 +49,12 @@ it('keeps the menu bar text choice when a different plugin is forgotten', () => 
 	forgetPlugin('acme.board');
 	expect(trayTitlePluginStore.get()).toBe('acme.boardx');
 });
+
+it('forgets an installed plugin\'s consent and menu bar text by its storage id, not the bare id', () => {
+	const storageId = 'acme.board@github.com/acme/board';
+	deepLinkConsentStore.remember(storageId, 'acme.board.go', '1.0.0');
+	trayTitlePluginStore.set(storageId);
+	forgetPlugin('acme.board', storageId);
+	expect(deepLinkConsentStore.has(storageId, 'acme.board.go', '1.0.0')).toBe(false);
+	expect(trayTitlePluginStore.get()).toBeNull();
+});

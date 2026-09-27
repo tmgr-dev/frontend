@@ -81,6 +81,9 @@ export interface NotificationClickResult {
 	type: 'task' | 'command';
 	taskId?: number;
 	workspaceId?: number;
+	/** For a task result: re-check with `isCurrentRun` right before acting on it. */
+	pluginId?: string;
+	generation?: string;
 }
 
 export interface StatusBarEntry {
@@ -218,6 +221,22 @@ const MAX_ALARMS = 10;
 const NOTIFY_LIMIT = 5;
 const NOTIFY_WINDOW_MS = 60_000;
 const CLICK_TTL_MS = 60 * 60_000;
+const ONE_YEAR_MINUTES = 525_600;
+const ONE_YEAR_MS = ONE_YEAR_MINUTES * 60_000;
+
+/** An installed plugin's data belongs to its repository, so its id alone is not enough to key storage or consent. */
+export const storageIdOf = (pkg: {
+	manifest: { id: string };
+	origin?: { repo: string };
+}): string =>
+	pkg.origin ? `${pkg.manifest.id}@github.com/${pkg.origin.repo}` : pkg.manifest.id;
+
+const isValidAlarmDef = (def: AlarmDef): boolean =>
+	Number.isFinite(def.scheduledAtMs) &&
+	(def.periodMinutes === null ||
+		(Number.isFinite(def.periodMinutes) &&
+			def.periodMinutes >= 1 &&
+			def.periodMinutes <= ONE_YEAR_MINUTES));
 
 interface Running {
 	process: PluginProcess;
@@ -252,6 +271,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		{
 			pluginId: string;
 			workspaceId: number;
+			generation: string;
 			taskId: number | null;
 			command: string | null;
 			args: unknown;
@@ -259,14 +279,21 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	>();
 
-	const storageIdOf = (pkg: PluginPackage) =>
-		pkg.origin ? `${pkg.manifest.id}@github.com/${pkg.origin.repo}` : pkg.manifest.id;
-
 	const alarmsFor = (workspace: PluginWorkspace, storageId: string) => {
 		const key = `${storageId}@${workspace.id}`;
 		return {
 			create: (name: string, spec: AlarmSpec): AlarmInfo => {
+				if (!Number.isFinite(spec.scheduledAtMs) || spec.scheduledAtMs > now() + ONE_YEAR_MS) {
+					throw new PluginError(
+						'INVALID_PARAMS',
+						'scheduled time must be finite and at most a year ahead',
+					);
+				}
 				const current = alarmsDep.get(key) ?? {};
+				// A corrupt entry from before this check existed must not hold a slot forever.
+				for (const [existingName, def] of Object.entries(current)) {
+					if (!isValidAlarmDef(def)) delete current[existingName];
+				}
 				if (
 					!Object.prototype.hasOwnProperty.call(current, name) &&
 					Object.keys(current).length >= MAX_ALARMS
@@ -291,10 +318,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				alarmsDep.set(key, current);
 			},
 			list: (): AlarmInfo[] =>
-				Object.values(alarmsDep.get(key) ?? {}).map((def) => ({
-					name: def.name,
-					scheduledAt: new Date(def.scheduledAtMs).toISOString(),
-				})),
+				Object.values(alarmsDep.get(key) ?? {})
+					.filter(isValidAlarmDef)
+					.map((def) => ({
+						name: def.name,
+						scheduledAt: new Date(def.scheduledAtMs).toISOString(),
+					})),
 		};
 	};
 
@@ -315,6 +344,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const registerClick = (
 		pluginId: string,
 		workspaceId: number,
+		generation: string,
 		payload: NotifyPayload,
 	): string => {
 		for (const [key, entry] of pendingClicks) {
@@ -324,6 +354,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		pendingClicks.set(token, {
 			pluginId,
 			workspaceId,
+			generation,
 			taskId: payload.taskId,
 			command: payload.command,
 			args: payload.args,
@@ -396,6 +427,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		{
 			pluginId: string;
 			workspaceId: number;
+			generation: string;
 			taskId: number | null;
 			command: string | null;
 			args: unknown;
@@ -428,6 +460,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		pluginId: string,
 		pluginName: string,
 		itemId: string,
+		generation: string,
 		spec: TrayItemSpec | null,
 	) => {
 		const key = `${pluginId}:${itemId}`;
@@ -439,6 +472,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			trayClickTargets.set(token, {
 				pluginId,
 				workspaceId,
+				generation,
 				taskId: item.taskId,
 				command: item.command,
 				args: item.args,
@@ -463,8 +497,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		running.delete(pluginId);
 		clearStatusBar(pluginId);
 		clearTrayItemsOf(pluginId);
-		clearTrayTitleOf(pluginId);
-		windowProps.delete(pluginId);
+		const pkg = packages.get(pluginId);
+		clearTrayTitleOf(pkg ? storageIdOf(pkg) : pluginId);
+		for (const key of windowProps.keys()) {
+			if (key.startsWith(`${pluginId}/`)) windowProps.delete(key);
+		}
 		for (const [token, entry] of pendingClicks) {
 			if (entry.pluginId === pluginId) pendingClicks.delete(token);
 		}
@@ -522,6 +559,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		};
 		const machine = deps.machineAllowed?.(pluginId, workspace) ?? true;
 		const storageId = storageIdOf(pkg);
+		// Fixed for this run: closures below must not ask `running` for "the current" generation later.
+		const generation = String(++nextGeneration);
 		const broker = createBroker({
 			manifest,
 			workspace,
@@ -535,18 +574,22 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (deps.dnd?.().active) return;
 				const token =
 					payload.taskId != null || payload.command != null
-						? registerClick(pluginId, workspace.id, payload)
+						? registerClick(pluginId, workspace.id, generation, payload)
 						: null;
-				deps.notifyPlugin?.(pluginId, manifest.name, { ...payload, token });
+				// Always attributed: a native/toast title never looks like it came from the app itself.
+				const title = payload.title
+					? `${manifest.name}: ${payload.title}`
+					: manifest.name;
+				deps.notifyPlugin?.(pluginId, manifest.name, { ...payload, title, token });
 			},
 			dnd: deps.dnd,
 			alarms: alarmsFor(workspace, storageId),
 			tray: machine
 				? {
 						setItem: (itemId, item) =>
-							setTrayItem(pluginId, manifest.name, itemId, item),
-						setTitle: (text) => setTrayTitle(pluginId, text),
-						isTitleOwner: () => deps.trayTitleOwner?.() === pluginId,
+							setTrayItem(pluginId, manifest.name, itemId, generation, item),
+						setTitle: (text) => setTrayTitle(storageId, text),
+						isTitleOwner: () => deps.trayTitleOwner?.() === storageId,
 				  }
 				: undefined,
 			setStatusBarItem: (itemId, item) => {
@@ -590,7 +633,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			process,
 			broker,
 			registered,
-			generation: String(++nextGeneration),
+			generation,
 			machine,
 		});
 		state.plugins[pluginId].status = 'starting';
@@ -608,7 +651,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					);
 			}
 			if (fromActivate) {
-				const previous = lastWorkspaceOf.get(pluginId);
+				const previous = lastWorkspaceOf.get(storageId);
 				if (previous !== undefined && previous !== workspace.id) {
 					if (registered.event.has('workspace.switched'))
 						void dispatch(pluginId, 'event', 'workspace.switched', {
@@ -616,7 +659,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 							to: workspace.id,
 						}).catch(() => undefined);
 				}
-				lastWorkspaceOf.set(pluginId, workspace.id);
+				lastWorkspaceOf.set(storageId, workspace.id);
 			}
 			tick();
 		} catch (error) {
@@ -663,8 +706,18 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (!pkg?.manifest.permissions.includes('alarms')) continue;
 			const key = `${storageIdOf(pkg)}@${workspace.id}`;
 			const current = alarmsDep.get(key) ?? {};
+			let corrupted = false;
+			for (const [name, def] of Object.entries(current)) {
+				if (!isValidAlarmDef(def)) {
+					delete current[name];
+					corrupted = true;
+				}
+			}
 			const due = Object.values(current).filter((def) => def.scheduledAtMs <= time);
-			if (!due.length) continue;
+			if (!due.length) {
+				if (corrupted) alarmsDep.set(key, current);
+				continue;
+			}
 			// Persist the reschedule/removal before dispatching: an overlapping tick must not double-fire.
 			for (const def of due) {
 				if (def.periodMinutes) {
@@ -683,16 +736,26 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	};
 
-	/** The declared+registered+running+same-workspace+admit checks shared by notification and tray clicks. */
+	/** The same plugin run, still in the same workspace: the check every click and deep link re-runs right before acting. */
+	const isCurrentRun = (
+		pluginId: string,
+		expected: { generation: string | null; workspaceId: number | null },
+	): boolean =>
+		running.get(pluginId)?.generation === expected.generation &&
+		deps.currentWorkspaceId() === expected.workspaceId;
+
+	/** The declared+registered+running+same-run+same-workspace+admit checks shared by notification and tray clicks. */
 	const resolveClick = async (
 		pluginId: string,
 		workspaceId: number,
+		generation: string,
 		taskId: number | null,
 		command: string | null,
 		args: unknown,
 	): Promise<NotificationClickResult | null> => {
 		const plugin = running.get(pluginId);
-		if (!plugin || state.plugins[pluginId]?.status !== 'running') return null;
+		if (!plugin || plugin.generation !== generation) return null;
+		if (state.plugins[pluginId]?.status !== 'running') return null;
 		if (deps.currentWorkspaceId() !== workspaceId) return null;
 		if (command) {
 			const declared = packages
@@ -707,7 +770,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			void dispatch(pluginId, 'command', command, args).catch(() => undefined);
 			return { type: 'command' };
 		}
-		if (taskId != null) return { type: 'task', taskId, workspaceId };
+		if (taskId != null) return { type: 'task', taskId, workspaceId, pluginId, generation };
 		return null;
 	};
 
@@ -718,7 +781,14 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		if (!entry) return null;
 		pendingClicks.delete(token);
 		if (now() > entry.expiresAt) return null;
-		return resolveClick(entry.pluginId, entry.workspaceId, entry.taskId, entry.command, entry.args);
+		return resolveClick(
+			entry.pluginId,
+			entry.workspaceId,
+			entry.generation,
+			entry.taskId,
+			entry.command,
+			entry.args,
+		);
 	};
 
 	const resolveTrayClick = async (
@@ -726,7 +796,14 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	): Promise<NotificationClickResult | null> => {
 		const entry = trayClickTargets.get(token);
 		if (!entry) return null;
-		return resolveClick(entry.pluginId, entry.workspaceId, entry.taskId, entry.command, entry.args);
+		return resolveClick(
+			entry.pluginId,
+			entry.workspaceId,
+			entry.generation,
+			entry.taskId,
+			entry.command,
+			entry.args,
+		);
 	};
 
 	const relaunch = async (pluginId: string) => {
@@ -933,12 +1010,14 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		/** A view with its own HTML page opens in a separate window: a busy page cannot freeze the app. */
 		/** Stops a removed plugin and drops it from the list. */
 		forget(pluginId: string) {
+			const pkg = packages.get(pluginId);
+			const storageId = pkg ? storageIdOf(pkg) : pluginId;
 			stop(pluginId);
 			packages.delete(pluginId);
 			delete state.plugins[pluginId];
 			delete state.revisions[pluginId];
 			startedThisSession.delete(pluginId);
-			lastWorkspaceOf.delete(pluginId);
+			lastWorkspaceOf.delete(storageId);
 			notifyTimestamps.delete(pluginId);
 		},
 		tick,
@@ -969,36 +1048,60 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (!command?.deepLink || !plugin.registered.command.has(commandId)) return null;
 			return command;
 		},
-		/** Runs a deep-linked command after the same checks, counted as a write so a link flood hits the rate limit. */
+		/** Runs a deep-linked command after the same checks; `expected` must still match, or it is refused. */
 		async runDeepLinkCommand(
 			pluginId: string,
 			commandId: string,
 			args: Record<string, string>,
+			expected?: { generation: string | null; workspaceId: number | null },
 		) {
 			if (!host.deepLinkCommand(pluginId, commandId)) return false;
+			if (expected && !isCurrentRun(pluginId, expected)) return false;
 			running.get(pluginId)!.broker.admit(true);
 			await dispatch(pluginId, 'command', commandId, args);
 			return true;
+		},
+		/** Re-validates the view right before opening it, instead of trusting a check made before an earlier await. */
+		async openDeepLinkView(
+			pluginId: string,
+			viewId: string,
+			params: Record<string, string> | undefined,
+			expected: { generation: string | null; workspaceId: number | null },
+		) {
+			const view = host.deepLinkView(pluginId, viewId);
+			if (!view || !isCurrentRun(pluginId, expected)) return null;
+			if (!view.ui) return { view };
+			try {
+				return (await host.openView(pluginId, viewId, params)) ? { view } : null;
+			} catch {
+				return null;
+			}
 		},
 		async openView(
 			pluginId: string,
 			viewId: string,
 			props?: Record<string, string>,
 		) {
+			const key = `${pluginId}/${viewId}`;
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);
 			const view = pkg?.manifest.contributes.views.find((v) => v.id === viewId);
 			const html = view?.ui ? pkg?.pages?.[view.ui] : undefined;
-			if (!plugin || !view || !html || !deps.windows) return false;
-			if (props) windowProps.set(pluginId, props);
-			await deps.windows.open(
-				`${pluginId}/${viewId}`,
-				html,
-				view.title,
-				plugin.generation,
-			);
+			if (!plugin || !view || !html || !deps.windows) {
+				windowProps.delete(key);
+				return false;
+			}
+			if (props) windowProps.set(key, props);
+			else windowProps.delete(key);
+			try {
+				await deps.windows.open(key, html, view.title, plugin.generation);
+			} catch (error) {
+				windowProps.delete(key);
+				throw error;
+			}
 			// The run may have ended while the window was opening; its window must not outlive it.
 			if (running.get(pluginId)?.generation !== plugin.generation) {
+				windowProps.delete(key);
 				await deps.windows.close(pluginId).catch(() => undefined);
 				return false;
 			}
@@ -1007,10 +1110,16 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		generationOf(pluginId: string) {
 			return running.get(pluginId)?.generation ?? null;
 		},
+		/** Callers must capture this, not a raw store getter: `isCurrentRun` compares against this normalization. */
+		currentWorkspaceId() {
+			return deps.currentWorkspaceId();
+		},
+		isCurrentRun,
 		/** Calls from a plugin's window use that plugin's broker: the same permissions as its logic. */
 		async windowCall(
 			pluginId: string,
 			generation: string,
+			viewId: string,
 			method: string,
 			params: unknown,
 		) {
@@ -1029,8 +1138,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				);
 			}
 			if (method === 'deepLink.params') {
-				const props = windowProps.get(pluginId) ?? null;
-				windowProps.delete(pluginId);
+				const key = `${pluginId}/${viewId}`;
+				const props = windowProps.get(key) ?? null;
+				windowProps.delete(key);
 				return props;
 			}
 			if (method === 'commands.run') {

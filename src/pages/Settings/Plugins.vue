@@ -67,8 +67,8 @@
 						<SelectItem value="none">None</SelectItem>
 						<SelectItem
 							v-for="plugin in trayTitleCandidates"
-							:key="plugin.manifest.id"
-							:value="plugin.manifest.id"
+							:key="storageIdOf(plugin)"
+							:value="storageIdOf(plugin)"
 						>
 							{{ plugin.manifest.name }}
 						</SelectItem>
@@ -466,11 +466,12 @@
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import type {
-		PluginEntry,
-		PluginPackage,
-		PluginSource,
-		PluginStatus,
+	import {
+		storageIdOf,
+		type PluginEntry,
+		type PluginPackage,
+		type PluginSource,
+		type PluginStatus,
 	} from '@/pluginSystem/host';
 	import type { Permission } from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
@@ -684,6 +685,7 @@
 				plugins,
 				drafts,
 				devMode,
+				storageIdOf,
 				trayTitlePlugin,
 				trayTitleCandidates: computed(() =>
 					plugins.value.filter((p) => p.manifest.permissions.includes('tray')),

@@ -445,8 +445,13 @@ const ALARM_NAME = /^[A-Za-z0-9._-]{1,60}$/;
 const ONE_YEAR_MS = 365 * 24 * 60 * 60_000;
 
 const minutesValue = (value: unknown, field: string): number => {
-	if (typeof value !== 'number' || !Number.isFinite(value) || value < 1)
-		invalid(`${field} must be a number of minutes, at least 1`);
+	if (
+		typeof value !== 'number' ||
+		!Number.isFinite(value) ||
+		value < 1 ||
+		value > ONE_YEAR_MS / 60_000
+	)
+		invalid(`${field} must be a number of minutes, from 1 to ${ONE_YEAR_MS / 60_000}`);
 	return value as number;
 };
 

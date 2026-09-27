@@ -1,5 +1,6 @@
 import {
 	DEFAULT_SHORTCUTS,
+	createRecentUrlGuard,
 	describeAccelerator,
 	eventToAccelerator,
 	findConflict,
@@ -150,10 +151,30 @@ describe('parseDeepLink', () => {
 });
 
 describe('sanitizeDeepLinkParams', () => {
-	it('keeps __proto__ as a plain, harmless own key instead of a prototype', () => {
-		const params = sanitizeDeepLinkParams([['__proto__', 'x']]);
+	it.each(['__proto__', 'constructor', 'prototype'])(
+		'rejects %s as a param key',
+		(key) => {
+			expect(sanitizeDeepLinkParams([[key, 'x']])).toBeNull();
+		},
+	);
+
+	it('keeps an ordinary key as a plain, harmless own key', () => {
+		const params = sanitizeDeepLinkParams([['taskId', '5']]);
 		expect(Object.getPrototypeOf(params)).toBeNull();
-		expect(Object.getOwnPropertyDescriptor(params, '__proto__')?.value).toBe('x');
+		expect(params).toEqual({ taskId: '5' });
+	});
+});
+
+describe('createRecentUrlGuard', () => {
+	it('treats the same url within the window as a duplicate, a new url or the same one later as not', () => {
+		let now = 1000;
+		const isDuplicate = createRecentUrlGuard(() => now);
+		expect(isDuplicate('tmgr://task/1')).toBe(false);
+		now += 1000;
+		expect(isDuplicate('tmgr://task/1')).toBe(true);
+		now += 10_000;
+		expect(isDuplicate('tmgr://task/1')).toBe(false);
+		expect(isDuplicate('tmgr://task/2')).toBe(false);
 	});
 });
 
