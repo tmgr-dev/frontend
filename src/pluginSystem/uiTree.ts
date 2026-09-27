@@ -46,6 +46,8 @@ const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
 const MAX_COPYABLE_TEXT = 2000;
 const MAX_KEY_VALUE_ITEMS = 50;
+const MAX_BUTTON_ARGS_BYTES = 8 * 1024;
+const MAX_AT_LENGTH = 64;
 
 /** What a plugin's manifest allows a `link` node to open; the sanitiser stays pure by taking this in. */
 export interface LinkContext {
@@ -187,15 +189,17 @@ export const sanitizeTree = (
 				if (t === null || !command) return null;
 				let args: unknown;
 				try {
-					args =
-						value.args === undefined
-							? undefined
-							: JSON.parse(JSON.stringify(value.args));
+					if (value.args !== undefined) {
+						const json = JSON.stringify(value.args);
+						if (json.length > MAX_BUTTON_ARGS_BYTES) return null;
+						args = JSON.parse(json);
+					}
 				} catch {
 					return null;
 				}
-				const confirm =
-					typeof value.confirm === 'string' ? value.confirm.slice(0, 200) : undefined;
+				const confirmText =
+					typeof value.confirm === 'string' ? value.confirm.trim() : '';
+				const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
 				return {
 					type: 'button',
 					text: t,
@@ -242,7 +246,10 @@ export const sanitizeTree = (
 			}
 			case 'timeAgo':
 			case 'dueTime': {
-				const at = typeof value.at === 'string' ? value.at : null;
+				const at =
+					typeof value.at === 'string' && value.at.length <= MAX_AT_LENGTH
+						? value.at
+						: null;
 				return at === null || Number.isNaN(Date.parse(at))
 					? null
 					: { type: value.type, at };

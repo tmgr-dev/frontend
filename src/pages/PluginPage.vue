@@ -29,7 +29,12 @@
 		<p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
 			{{ error }}
 		</p>
-		<PluginView v-else-if="tree" :node="tree" :plugin-id="pluginId" />
+		<PluginView
+			v-else-if="tree"
+			:key="`${pluginId}/${viewId}`"
+			:node="tree"
+			:plugin-id="pluginId"
+		/>
 		<p v-else class="text-sm text-muted-foreground">Loading…</p>
 	</div>
 </template>
@@ -63,9 +68,18 @@
 			const error = ref<string | null>(null);
 			let request = 0;
 			let openedFor = '';
+			// Which pluginId/viewId `tree` was last drawn for: switching target clears it at
+			// once, so a click can never run the old plugin's command under the new plugin id.
+			let treeFor = '';
 
 			const render = async () => {
 				const current = ++request;
+				const target = `${pluginId.value}/${viewId.value}`;
+				if (target !== treeFor) {
+					treeFor = target;
+					tree.value = null;
+					error.value = null;
+				}
 				if (entry.value?.status !== 'running') return;
 				if (view.value?.ui) {
 					setDocumentTitle(view.value.title);
@@ -105,7 +119,7 @@
 				{ immediate: true },
 			);
 
-			return { pluginId, entry, tree, error, view, openWindow };
+			return { pluginId, viewId, entry, tree, error, view, openWindow };
 		},
 	});
 </script>

@@ -219,6 +219,7 @@ it('shows status bar items while the plugin runs and badges it provides', async 
 		5: [
 			{
 				pluginId: 'tmgr.bar',
+				badgeId: 'over',
 				text: '5!',
 				color: 'red',
 				tooltip: null,
@@ -245,7 +246,32 @@ it('passes command args through host.runCommand, the same path pages and task se
 	host.dispose();
 });
 
-it('accepts several badges per task, caps at 5 per provider, and sorts by priority', async () => {
+it('refuses runCommand for a command not declared in the manifest or not registered by the plugin', async () => {
+	const { host } = setup([
+		pkg('tmgr.echo', `tmgr.commands.register('tmgr.echo.go', (args) => args);`, [], {
+			commands: [
+				{ id: 'tmgr.echo.go', title: 'Echo' },
+				{ id: 'tmgr.echo.ghost', title: 'Ghost' },
+			],
+		}),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	// declared in the manifest, but the plugin never registered a handler for it
+	await expect(
+		host.runCommand('tmgr.echo', 'tmgr.echo.ghost'),
+	).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+	// not declared anywhere
+	await expect(
+		host.runCommand('tmgr.echo', 'not.a.command'),
+	).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+	expect(
+		await host.runCommand('tmgr.echo', 'tmgr.echo.go', { ok: true }),
+	).toEqual({ ok: true });
+	host.dispose();
+});
+
+it('accepts several badges per task, caps at 5 per plugin in total across its providers, and sorts by priority', async () => {
 	const { host } = setup([
 		pkg(
 			'tmgr.multi',
@@ -273,6 +299,37 @@ it('accepts several badges per task, caps at 5 per provider, and sorts by priori
 		text: 'mid',
 		priority: 2,
 		key: 'over-budget',
+	});
+	host.dispose();
+});
+
+it('caps badges at 5 per plugin even when it registers several providers, and clamps priority', async () => {
+	const { host } = setup([
+		pkg(
+			'tmgr.two',
+			`tmgr.ui.provideBadges('a', () => ({ 5: [
+				{ text: 'a1', priority: 999 }, { text: 'a2' }, { text: 'a3' }
+			] }));
+			 tmgr.ui.provideBadges('b', () => ({ 5: [
+				{ text: 'b1', priority: -999 }, { text: 'b2' }, { text: 'b3' }
+			] }));`,
+			['tasks:read'],
+			{ boardCardBadges: [{ id: 'a' }, { id: 'b' }] },
+		),
+	]);
+	await host.load();
+	await host.activate(LOCAL);
+	await flush();
+	const result = await host.badges([{ id: 5 }]);
+	expect(result[5]).toHaveLength(5);
+	expect(result[5].every((b) => b.pluginId === 'tmgr.two')).toBe(true);
+	expect(result[5].find((b) => b.text === 'a1')).toMatchObject({
+		badgeId: 'a',
+		priority: 100,
+	});
+	expect(result[5].find((b) => b.text === 'b1')).toMatchObject({
+		badgeId: 'b',
+		priority: -100,
 	});
 	host.dispose();
 });

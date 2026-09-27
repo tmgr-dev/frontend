@@ -116,7 +116,7 @@
 		</Button>
 		<AlertDialogContent v-if="node.confirm">
 			<AlertDialogHeader>
-				<AlertDialogTitle>{{ pluginName }}</AlertDialogTitle>
+				<AlertDialogTitle>Plugin {{ pluginName }}: {{ node.text }}</AlertDialogTitle>
 				<AlertDialogDescription>{{ node.confirm }}</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>

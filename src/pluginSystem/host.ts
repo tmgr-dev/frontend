@@ -77,6 +77,7 @@ export interface StatusBarEntry {
 
 export interface CardBadge {
 	pluginId: string;
+	badgeId: string;
 	text: string;
 	color: Color;
 	tooltip: string | null;
@@ -151,15 +152,18 @@ const REFRESH_THROTTLE_MS = 500;
 const MAX_BADGES_PER_TASK = 5;
 const BADGE_KEY = /^[a-z0-9_-]{1,40}$/;
 
-const normalizeBadge = (pluginId: string, badge: any): CardBadge => ({
+const clampPriority = (value: unknown): number => {
+	const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+	return Math.max(-100, Math.min(100, n));
+};
+
+const normalizeBadge = (pluginId: string, badgeId: string, badge: any): CardBadge => ({
 	pluginId,
+	badgeId,
 	text: String(badge.text).slice(0, 16),
 	color: COLORS.includes(badge.color) ? badge.color : 'gray',
 	tooltip: typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
-	priority:
-		typeof badge.priority === 'number' && Number.isFinite(badge.priority)
-			? badge.priority
-			: 0,
+	priority: clampPriority(badge.priority),
 	key: typeof badge.key === 'string' && BADGE_KEY.test(badge.key) ? badge.key : undefined,
 });
 
@@ -562,6 +566,21 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			commandId: string,
 			args: unknown = null,
 		) {
+			const plugin = running.get(pluginId);
+			// A plugin that is not running (or already gone) is not a security question, just a no-op.
+			if (!plugin || state.plugins[pluginId]?.status !== 'running') {
+				return dispatch(pluginId, 'command', commandId, args);
+			}
+			const declared = packages
+				.get(pluginId)!
+				.manifest.contributes.commands.some((c) => c.id === commandId);
+			if (!declared || !plugin.registered.command.has(commandId)) {
+				throw new PluginError(
+					'NOT_DECLARED',
+					`${commandId} is not a command of ${pluginId}`,
+				);
+			}
+			plugin.broker.admit(true);
 			return dispatch(pluginId, 'command', commandId, args);
 		},
 		pages() {
@@ -680,24 +699,36 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			const answers = await Promise.all(
 				providers.map(async ({ pluginId, badgeId }) => {
 					try {
-						return { pluginId, answer: await dispatch(pluginId, 'badges', badgeId, tasks) };
+						return {
+							pluginId,
+							badgeId,
+							answer: await dispatch(pluginId, 'badges', badgeId, tasks),
+						};
 					} catch {
-						return { pluginId, answer: null };
+						return { pluginId, badgeId, answer: null };
 					}
 				}),
 			);
 			const result: Record<number, CardBadge[]> = {};
-			for (const { pluginId, answer } of answers) {
+			// Keyed by plugin then task: the cap is per plugin in total, shared by all of its badge providers.
+			const usedByPlugin: Record<string, Record<number, number>> = {};
+			for (const { pluginId, badgeId, answer } of answers) {
 				if (!answer || typeof answer !== 'object') continue;
+				const used = (usedByPlugin[pluginId] ??= {});
 				for (const taskId of ids) {
 					if (!Object.prototype.hasOwnProperty.call(answer, taskId)) continue;
+					const room = MAX_BADGES_PER_TASK - (used[taskId] ?? 0);
+					if (room <= 0) continue;
 					const raw = (answer as Record<number, any>)[taskId];
 					const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
 					const parsed = list
 						.filter((b) => b && typeof b.text === 'string')
-						.slice(0, MAX_BADGES_PER_TASK)
-						.map((b) => normalizeBadge(pluginId, b));
-					if (parsed.length) (result[taskId] ??= []).push(...parsed);
+						.slice(0, room)
+						.map((b) => normalizeBadge(pluginId, badgeId, b));
+					if (parsed.length) {
+						(result[taskId] ??= []).push(...parsed);
+						used[taskId] = (used[taskId] ?? 0) + parsed.length;
+					}
 				}
 			}
 			for (const list of Object.values(result)) {

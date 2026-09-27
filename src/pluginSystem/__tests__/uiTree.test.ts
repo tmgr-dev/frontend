@@ -164,6 +164,40 @@ it('keeps a confirm prompt on a button, capped, and drops it when absent', () =>
 		(sanitizeTree({ type: 'button', text: 'Go', command: 'a.b' }) as any)
 			.confirm,
 	).toBeUndefined();
+	expect(
+		(
+			sanitizeTree({
+				type: 'button',
+				text: 'Go',
+				command: 'a.b',
+				confirm: '   ',
+			}) as any
+		).confirm,
+	).toBeUndefined();
+});
+
+it('drops a button whose args are over 8 KB', () => {
+	expect(
+		sanitizeTree({
+			type: 'button',
+			text: 'Go',
+			command: 'a.b',
+			args: { big: 'x'.repeat(8 * 1024) },
+		}),
+	).toBeNull();
+	expect(
+		sanitizeTree({
+			type: 'button',
+			text: 'Go',
+			command: 'a.b',
+			args: { ok: 'x'.repeat(100) },
+		}),
+	).toEqual({
+		type: 'button',
+		text: 'Go',
+		command: 'a.b',
+		args: { ok: 'x'.repeat(100) },
+	});
 });
 
 it('caps a copyable node and keeps its optional label', () => {
@@ -186,6 +220,14 @@ it('drops timeAgo and dueTime with an unparsable date, keeps a valid one', () =>
 	).toEqual({ type: 'dueTime', at: '2026-09-27T10:00:00Z' });
 	expect(sanitizeTree({ type: 'timeAgo', at: 'not a date' })).toBeNull();
 	expect(sanitizeTree({ type: 'dueTime', at: 123 })).toBeNull();
+});
+
+it('drops timeAgo and dueTime whose at string is over 64 chars, even if parsable', () => {
+	const long = 'Sun Sep 27 2026 10:00:00 GMT+0000 (Coordinated Universal Time Zone)';
+	expect(long.length).toBeGreaterThan(64);
+	expect(Number.isNaN(Date.parse(long))).toBe(false);
+	expect(sanitizeTree({ type: 'timeAgo', at: long })).toBeNull();
+	expect(sanitizeTree({ type: 'dueTime', at: long })).toBeNull();
 });
 
 it('builds a keyValue list from valid rows only, capped at 50', () => {

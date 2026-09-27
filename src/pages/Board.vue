@@ -1023,6 +1023,7 @@
 							pluginId: plugin.manifest.id,
 							pluginName: plugin.manifest.name,
 							title: filter.title,
+							badgeId: filter.badge,
 							badgeKey: filter.key,
 						})),
 					);
@@ -1047,6 +1048,7 @@
 					badges.some(
 						(badge) =>
 							badge.pluginId === filter.pluginId &&
+							badge.badgeId === filter.badgeId &&
 							(!filter.badgeKey || badge.key === filter.badgeKey),
 					),
 				);

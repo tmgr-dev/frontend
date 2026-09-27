@@ -51,13 +51,24 @@ const PRELUDE = `(() => {
 		if (typeof fn !== 'function') throw new TypeError(kind + ' handler must be a function');
 		if (kind === 'event') {
 			const list = handlers.event.get(id) || [];
+			const first = list.length === 0;
 			list.push(fn);
 			handlers.event.set(id, list);
-			if (list.length > 1) return Promise.resolve(null);
-		} else {
-			handlers[kind].set(id, fn);
+			if (!first) return Promise.resolve(null);
+			return call('register', { kind, id }).catch((error) => {
+				const current = handlers.event.get(id) || [];
+				const at = current.indexOf(fn);
+				if (at !== -1) current.splice(at, 1);
+				throw error;
+			});
 		}
-		return call('register', { kind, id });
+		// Stored right away so a call arriving before the host answers still works; removed
+		// again if the host refuses, so a rejected registration is never left dispatchable.
+		handlers[kind].set(id, fn);
+		return call('register', { kind, id }).catch((error) => {
+			if (handlers[kind].get(id) === fn) handlers[kind].delete(id);
+			throw error;
+		});
 	};
 	const text = (value) => (typeof value === 'string' ? value : JSON.stringify(value));
 	const logger = (level) => (...args) => { call('log', { level, message: args.map(text).join(' ') }); };
