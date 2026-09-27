@@ -1,14 +1,22 @@
 import type { AuthorRef } from '@/types/author';
 import {
 	authorKindOf,
+	buildMcpUrl,
+	buildPersonaTokenSnippet,
 	byteLength,
 	DEFAULT_GRANT_PERMISSIONS,
+	DEFAULT_TOKEN_EXPIRY_DAYS,
 	effectivePermissions,
+	EXPIRY_OPTIONS,
 	extractFieldErrors,
 	isReadPermission,
 	matchesAuthorFilter,
+	parseSkillFrontMatter,
+	PERSONA_TOKEN_ENV_VAR,
 	resolveAuthor,
 	validatePersonaName,
+	validateSkillMarkdown,
+	validateTokenLabel,
 } from '../personas';
 
 describe('DEFAULT_GRANT_PERMISSIONS', () => {
@@ -90,6 +98,67 @@ describe('validatePersonaName', () => {
 
 	it('accepts a valid name', () => {
 		expect(validatePersonaName('Reviewer')).toBeNull();
+	});
+});
+
+const WELL_FORMED_SKILL =
+	'---\nslug: triage\ntitle: Triage\nwhen: sort the inbox\nactions: [tasks:read, tasks:write]\n---\nbody\n';
+
+describe('parseSkillFrontMatter', () => {
+	it('parses slug, title, when and actions', () => {
+		expect(parseSkillFrontMatter(WELL_FORMED_SKILL)).toEqual({
+			slug: 'triage',
+			title: 'Triage',
+			when: 'sort the inbox',
+			actions: ['tasks:read', 'tasks:write'],
+		});
+	});
+
+	it('returns an empty actions list when actions is missing', () => {
+		const markdown = '---\nslug: triage\ntitle: Triage\nwhen: sort it\n---\nbody\n';
+		expect(parseSkillFrontMatter(markdown)?.actions).toEqual([]);
+	});
+
+	it('returns null when there is no closing delimiter', () => {
+		expect(parseSkillFrontMatter('---\nslug: triage\nbody')).toBeNull();
+	});
+});
+
+describe('validateSkillMarkdown', () => {
+	it('accepts a well-formed skill matching the URL slug', () => {
+		expect(validateSkillMarkdown(WELL_FORMED_SKILL, 'triage')).toBeNull();
+	});
+
+	it('rejects a missing required field', () => {
+		const markdown = '---\nslug: triage\ntitle: Triage\n---\nbody\n';
+		expect(validateSkillMarkdown(markdown, 'triage')).toEqual(
+			expect.objectContaining({ when: expect.any(Array) }),
+		);
+	});
+
+	it('rejects a slug that does not match the URL slug', () => {
+		const errors = validateSkillMarkdown(WELL_FORMED_SKILL, 'other-slug');
+		expect(errors?.slug).toBeDefined();
+	});
+
+	it('rejects a bad slug pattern', () => {
+		const markdown = '---\nslug: Bad_Slug!\ntitle: T\nwhen: w\n---\nbody\n';
+		expect(validateSkillMarkdown(markdown, 'Bad_Slug!')?.slug).toBeDefined();
+	});
+
+	it('rejects a title over 120 characters', () => {
+		const markdown = `---\nslug: triage\ntitle: ${'x'.repeat(121)}\nwhen: w\n---\nbody\n`;
+		expect(validateSkillMarkdown(markdown, 'triage')?.title).toBeDefined();
+	});
+
+	it('rejects a body over the byte limit, counted in UTF-8', () => {
+		const cyrillic = 'я'.repeat(9000);
+		const markdown = `---\nslug: triage\ntitle: T\nwhen: w\n---\n${cyrillic}\n`;
+		expect(validateSkillMarkdown(markdown, 'triage')?.body).toBeDefined();
+	});
+
+	it('rejects markdown missing the closing delimiter', () => {
+		expect(validateSkillMarkdown('---\nslug: triage\nno closing', 'triage')?.body).toBeDefined();
 	});
 });
 
@@ -239,5 +308,51 @@ describe('matchesAuthorFilter', () => {
 				{ persona: 'uuid-1' },
 			),
 		).toBe(false);
+	});
+});
+
+describe('validateTokenLabel', () => {
+	it('requires a non-blank label', () => {
+		expect(validateTokenLabel('')).toBe('Label is required');
+		expect(validateTokenLabel('   ')).toBe('Label is required');
+	});
+
+	it('rejects a label over 60 characters', () => {
+		expect(validateTokenLabel('a'.repeat(61))).toMatch(/60/);
+	});
+
+	it('accepts a valid label', () => {
+		expect(validateTokenLabel('Claude Code on my laptop')).toBeNull();
+	});
+});
+
+describe('EXPIRY_OPTIONS', () => {
+	it('offers 30/90/180/365 days with 90 as the default, and no "never"', () => {
+		expect(EXPIRY_OPTIONS).toEqual([30, 90, 180, 365]);
+		expect(DEFAULT_TOKEN_EXPIRY_DAYS).toBe(90);
+		expect(EXPIRY_OPTIONS).toContain(DEFAULT_TOKEN_EXPIRY_DAYS);
+	});
+});
+
+describe('buildMcpUrl', () => {
+	it('derives the MCP origin from an absolute API base URL', () => {
+		expect(buildMcpUrl('http://taskmanager.localhost/api/')).toBe(
+			'http://taskmanager.localhost/mcp',
+		);
+	});
+
+	it('falls back to a default origin for a relative API base URL', () => {
+		expect(buildMcpUrl('/api/')).toBe('http://localhost/mcp');
+	});
+});
+
+describe('buildPersonaTokenSnippet', () => {
+	it('contains the env var placeholder and never a real secret', () => {
+		const snippet = buildPersonaTokenSnippet('http://taskmanager.localhost/mcp');
+
+		expect(snippet).toContain(`\${${PERSONA_TOKEN_ENV_VAR}}`);
+		expect(snippet).toContain('X-Persona-Token');
+		expect(snippet).toContain('http://taskmanager.localhost/mcp');
+		expect(snippet).not.toMatch(/tmgrp_[A-Za-z0-9]/);
 	});
 });

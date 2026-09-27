@@ -9,13 +9,22 @@ import {
 	archivePersona,
 	blockWorkspacePersona,
 	createPersona,
+	deletePersonaSkill,
 	forgetPersonaAvatar,
 	getPersonaPolicy,
+	getPersonaSkill,
+	issuePersonaToken,
 	listPersonas,
+	listPersonaSkills,
+	listPersonaTokens,
 	listWorkspacePersonas,
 	personaAvatarObjectUrl,
+	putPersonaSkill,
 	removeWorkspaceGrant,
 	restorePersona,
+	revokeAllMyPersonaTokens,
+	revokeAllPersonaTokens,
+	revokePersonaToken,
 	setPersonaPolicy,
 	unblockWorkspacePersona,
 	updatePersona,
@@ -127,6 +136,131 @@ describe('personaAvatarObjectUrl', () => {
 		(axios.get as jest.Mock).mockRejectedValue(new Error('403'));
 		const result = await personaAvatarObjectUrl('uuid-2');
 		expect(result).toBeNull();
+	});
+});
+
+describe('persona skills', () => {
+	const SKILL = { slug: 'triage', title: 'Triage', when: 'sort it', actions: [], version: 1 };
+
+	it('lists skills for a persona', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		const result = await listPersonaSkills('uuid-1');
+		expect(axios.get).toHaveBeenCalledWith('/personas/uuid-1/skills');
+		expect(result).toEqual([SKILL]);
+	});
+
+	it('gets one skill with its body', async () => {
+		const full = { ...SKILL, body: '---\n...' };
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: full } });
+		const result = await getPersonaSkill('uuid-1', 'triage');
+		expect(axios.get).toHaveBeenCalledWith('/personas/uuid-1/skills/triage');
+		expect(result).toEqual(full);
+	});
+
+	it('puts a skill body and invalidates the skills cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		await listPersonaSkills('uuid-1');
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(true);
+
+		(axios.put as jest.Mock).mockResolvedValue({ data: { data: SKILL } });
+		const result = await putPersonaSkill('uuid-1', 'triage', '---\nbody');
+
+		expect(axios.put).toHaveBeenCalledWith('/personas/uuid-1/skills/triage', {
+			body: '---\nbody',
+		});
+		expect(result).toEqual(SKILL);
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(false);
+	});
+
+	it('deletes a skill and invalidates the skills cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		await listPersonaSkills('uuid-1');
+
+		(axios.delete as jest.Mock).mockResolvedValue({});
+		await deletePersonaSkill('uuid-1', 'triage');
+
+		expect(axios.delete).toHaveBeenCalledWith('/personas/uuid-1/skills/triage');
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(false);
+	});
+});
+
+describe('persona tokens', () => {
+	const TOKEN = {
+		id: 1,
+		persona_id: 'uuid-1',
+		workspace_id: 5,
+		workspace_name: 'Demo',
+		prefix: 'tmgrp_ab12',
+		label: 'Claude Code',
+		expires_at: '2026-04-01T00:00:00Z',
+		last_used_at: null,
+		revoked_at: null,
+		created_at: '2026-01-01T00:00:00Z',
+	};
+
+	it('lists tokens for a persona', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
+		const result = await listPersonaTokens('uuid-1');
+		expect(axios.get).toHaveBeenCalledWith('/personas/uuid-1/tokens');
+		expect(result).toEqual([TOKEN]);
+	});
+
+	it('issues a token and invalidates that persona\'s token cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
+		await listPersonaTokens('uuid-1');
+		expect(requestCache.has('personas-uuid-1-tokens')).toBe(true);
+
+		(axios.post as jest.Mock).mockResolvedValue({
+			data: { data: { token: TOKEN, secret: 'tmgrp_secretvalue' } },
+		});
+		const result = await issuePersonaToken('uuid-1', {
+			workspace_id: 5,
+			label: 'Claude Code',
+			expires_in_days: 90,
+		});
+
+		expect(axios.post).toHaveBeenCalledWith('/personas/uuid-1/tokens', {
+			workspace_id: 5,
+			label: 'Claude Code',
+			expires_in_days: 90,
+		});
+		expect(result).toEqual({ token: TOKEN, secret: 'tmgrp_secretvalue' });
+		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
+	});
+
+	it('revokes one token and invalidates that persona\'s token cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
+		await listPersonaTokens('uuid-1');
+
+		(axios.delete as jest.Mock).mockResolvedValue({});
+		await revokePersonaToken(1, 'uuid-1');
+
+		expect(axios.delete).toHaveBeenCalledWith('/persona-tokens/1');
+		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
+	});
+
+	it('revokes all tokens for a persona', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
+		await listPersonaTokens('uuid-1');
+
+		(axios.delete as jest.Mock).mockResolvedValue({});
+		await revokeAllPersonaTokens('uuid-1');
+
+		expect(axios.delete).toHaveBeenCalledWith('/personas/uuid-1/tokens');
+		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
+	});
+
+	it('revokes all of the owner\'s persona tokens across every persona', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
+		await listPersonaTokens('uuid-1');
+		await listPersonaTokens('uuid-2');
+
+		(axios.delete as jest.Mock).mockResolvedValue({});
+		await revokeAllMyPersonaTokens();
+
+		expect(axios.delete).toHaveBeenCalledWith('/persona-tokens');
+		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
+		expect(requestCache.has('personas-uuid-2-tokens')).toBe(false);
 	});
 });
 

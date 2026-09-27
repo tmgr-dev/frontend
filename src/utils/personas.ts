@@ -79,6 +79,145 @@ export const extractFieldErrors = (error: unknown): FieldErrors | null => {
 	return { message: data.message ?? 'Validation failed', errors: data.errors };
 };
 
+export const SKILL_LIMIT = 20;
+export const SKILL_BODY_MAX_BYTES = 16384;
+export const SKILL_TITLE_MAX_LENGTH = 120;
+export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
+export const SKILL_TEMPLATE = '---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
+
+export interface ParsedSkillFrontMatter {
+	slug: string;
+	title: string;
+	when: string;
+	actions: string[];
+}
+
+/** Mirrors the server's front-matter parser closely enough for instant client-side feedback;
+ *  the server is still the source of truth and its 422 errors are shown alongside these. */
+export const parseSkillFrontMatter = (
+	markdown: string,
+): ParsedSkillFrontMatter | null => {
+	const normalized = (markdown ?? '').replace(/\r\n/g, '\n');
+	const lines = normalized.split('\n');
+	if (lines[0]?.trim() !== '---') return null;
+	const closing = lines.findIndex(
+		(line, index) => index > 0 && line.trim() === '---',
+	);
+	if (closing < 0) return null;
+
+	const fields: Record<string, string> = {};
+	for (let i = 1; i < closing; i++) {
+		const line = lines[i];
+		if (!line.trim()) continue;
+		const colon = line.indexOf(':');
+		if (colon < 0) continue;
+		fields[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+	}
+
+	const actionsRaw = (fields.actions ?? '').trim();
+	const inner = actionsRaw.startsWith('[') && actionsRaw.endsWith(']')
+		? actionsRaw.slice(1, -1)
+		: actionsRaw;
+	const actions = inner
+		.split(',')
+		.map((item) => item.trim())
+		.filter((item) => item.length > 0);
+
+	return {
+		slug: fields.slug ?? '',
+		title: fields.title ?? '',
+		when: fields.when ?? '',
+		actions,
+	};
+};
+
+export const validateSkillMarkdown = (
+	markdown: string,
+	expectedSlug: string,
+): Record<string, string[]> | null => {
+	const errors: Record<string, string[]> = {};
+
+	if (byteLength(markdown) > SKILL_BODY_MAX_BYTES) {
+		errors.body = [`must not exceed ${SKILL_BODY_MAX_BYTES} bytes`];
+	}
+
+	const parsed = parseSkillFrontMatter(markdown);
+	if (!parsed) {
+		errors.body = [
+			...(errors.body ?? []),
+			"must start with a '---' front-matter block closed by a second '---'",
+		];
+		return errors;
+	}
+
+	if (!parsed.slug) {
+		errors.slug = ['is required'];
+	} else if (!SKILL_SLUG_PATTERN.test(parsed.slug)) {
+		errors.slug = ['must be lowercase letters, digits or \'-\', up to 60 characters'];
+	} else if (expectedSlug && parsed.slug !== expectedSlug) {
+		errors.slug = ['must match the URL slug'];
+	}
+
+	if (!parsed.title) {
+		errors.title = ['is required'];
+	} else if (parsed.title.length > SKILL_TITLE_MAX_LENGTH) {
+		errors.title = [`must not exceed ${SKILL_TITLE_MAX_LENGTH} characters`];
+	}
+
+	if (!parsed.when) {
+		errors.when = ['is required'];
+	}
+
+	return Object.keys(errors).length > 0 ? errors : null;
+};
+
+export const TOKEN_LABEL_MAX_LENGTH = 60;
+export const EXPIRY_OPTIONS = [30, 90, 180, 365] as const;
+export const DEFAULT_TOKEN_EXPIRY_DAYS = 90;
+
+export const validateTokenLabel = (label: string): string | null => {
+	if (!label || !label.trim()) return 'Label is required';
+	if (label.length > TOKEN_LABEL_MAX_LENGTH)
+		return `Label must be ${TOKEN_LABEL_MAX_LENGTH} characters or fewer`;
+	return null;
+};
+
+export const PERSONA_TOKEN_ENV_VAR = 'TMGR_PERSONA_TOKEN';
+
+/** Node tests have no `window`; production always has one, so the fallback origin never applies there. */
+export const buildMcpUrl = (apiBaseUrl: string | undefined): string => {
+	const origin =
+		typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+	try {
+		const url = new URL(apiBaseUrl || '/api/', origin);
+		const basePath = url.pathname.replace(/\/api\/?$/, '').replace(/\/$/, '');
+		url.pathname = `${basePath}/mcp`;
+		url.search = '';
+		url.hash = '';
+		return url.toString();
+	} catch {
+		return 'https://api.tmgr.dev/mcp';
+	}
+};
+
+/** Never takes the secret itself — the placeholder is all this snippet can ever contain. */
+export const buildPersonaTokenSnippet = (mcpUrl: string): string =>
+	JSON.stringify(
+		{
+			mcpServers: {
+				tmgr: {
+					type: 'http',
+					url: mcpUrl,
+					headers: {
+						'X-Persona-Token': `\${${PERSONA_TOKEN_ENV_VAR}}`,
+					},
+				},
+			},
+		},
+		null,
+		2,
+	);
+
 export type AuthorFilter = 'all' | 'people' | 'personas' | 'plugins';
 
 export interface ResolvedAuthor {

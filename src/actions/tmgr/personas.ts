@@ -20,6 +20,11 @@ export interface Persona {
 	owner: PersonaOwnerRef;
 }
 
+export interface PersonaSkillTitle {
+	slug: string;
+	title: string;
+}
+
 export interface PersonaGrantSummary {
 	id: string;
 	name: string;
@@ -27,6 +32,20 @@ export interface PersonaGrantSummary {
 	avatar_url: string | null;
 	archived: boolean;
 	owner: PersonaOwnerRef;
+	skills?: PersonaSkillTitle[];
+}
+
+export interface PersonaSkillSummary {
+	slug: string;
+	title: string;
+	when: string;
+	actions: string[];
+	version: number;
+	updated_at: string;
+}
+
+export interface PersonaSkill extends PersonaSkillSummary {
+	body: string;
 }
 
 export interface PersonaGrant {
@@ -47,6 +66,30 @@ export interface PersonaInput {
 	name: string;
 	description?: string;
 	system_prompt?: string;
+}
+
+export interface PersonaToken {
+	id: number;
+	persona_id: string;
+	workspace_id: number;
+	workspace_name: string;
+	prefix: string;
+	label: string;
+	expires_at: string;
+	last_used_at: string | null;
+	revoked_at: string | null;
+	created_at: string;
+}
+
+export interface IssuePersonaTokenPayload {
+	workspace_id: number;
+	label: string;
+	expires_in_days: number;
+}
+
+export interface IssuedPersonaToken {
+	token: PersonaToken;
+	secret: string;
 }
 
 const PERSONAS_KEY = 'personas';
@@ -153,6 +196,101 @@ export const forgetPersonaAvatar = (uuid: string): void => {
 	const url = avatarObjectUrls.get(uuid);
 	if (url) URL.revokeObjectURL(url);
 	avatarObjectUrls.delete(uuid);
+};
+
+const skillsKey = (personaUuid: string) => `personas-${personaUuid}-skills`;
+
+export const listPersonaSkills = async (
+	personaUuid: string,
+	useCache = true,
+): Promise<PersonaSkillSummary[]> =>
+	requestCache.getOrFetch(
+		skillsKey(personaUuid),
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/personas/${personaUuid}/skills`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const getPersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<PersonaSkill> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/personas/${personaUuid}/skills/${slug}`);
+	return data;
+};
+
+export const putPersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+	body: string,
+): Promise<PersonaSkill> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/personas/${personaUuid}/skills/${slug}`, { body });
+	requestCache.invalidate(skillsKey(personaUuid));
+	return data;
+};
+
+export const deletePersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<void> => {
+	await $axios.delete(`/personas/${personaUuid}/skills/${slug}`);
+	requestCache.invalidate(skillsKey(personaUuid));
+};
+
+const tokensKey = (personaUuid: string) => `personas-${personaUuid}-tokens`;
+
+export const listPersonaTokens = async (
+	personaUuid: string,
+	useCache = true,
+): Promise<PersonaToken[]> =>
+	requestCache.getOrFetch(
+		tokensKey(personaUuid),
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/personas/${personaUuid}/tokens`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const issuePersonaToken = async (
+	personaUuid: string,
+	payload: IssuePersonaTokenPayload,
+): Promise<IssuedPersonaToken> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/personas/${personaUuid}/tokens`, payload);
+	requestCache.invalidate(tokensKey(personaUuid));
+	return data;
+};
+
+export const revokePersonaToken = async (
+	tokenId: number,
+	personaUuid: string,
+): Promise<void> => {
+	await $axios.delete(`/persona-tokens/${tokenId}`);
+	requestCache.invalidate(tokensKey(personaUuid));
+};
+
+export const revokeAllPersonaTokens = async (
+	personaUuid: string,
+): Promise<void> => {
+	await $axios.delete(`/personas/${personaUuid}/tokens`);
+	requestCache.invalidate(tokensKey(personaUuid));
+};
+
+export const revokeAllMyPersonaTokens = async (): Promise<void> => {
+	await $axios.delete('/persona-tokens');
+	requestCache.invalidate(/^personas-.*-tokens$/);
 };
 
 export const listWorkspacePersonas = async (
