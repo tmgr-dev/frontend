@@ -46,18 +46,22 @@
 
 				<!-- User Info -->
 				<div class="mt-2 flex items-center space-x-2">
-					<!-- User Avatar -->
-					<UserAvatar
-						:user-id="activity.user.id"
-						:name="activity.user.name"
-						:has-avatar="activity.user.has_avatar ?? false"
+					<AuthorBadge
+						v-if="activity.actor && activity.actor.kind !== 'user'"
+						:author="activity.actor"
 						:size="20"
 					/>
-
-					<!-- User Name -->
-					<span class="text-xs text-gray-600 dark:text-gray-400">
-						by {{ activity.user.name }}
-					</span>
+					<template v-else>
+						<UserAvatar
+							:user-id="activity.user.id"
+							:name="activity.user.name"
+							:has-avatar="activity.user.has_avatar ?? false"
+							:size="20"
+						/>
+						<span class="text-xs text-gray-600 dark:text-gray-400">
+							by {{ activity.user.name }}
+						</span>
+					</template>
 				</div>
 			</div>
 		</div>
@@ -65,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { Activity } from '@/types/dashboard';
 	import { cn } from '@/utils';

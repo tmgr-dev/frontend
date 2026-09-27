@@ -100,6 +100,7 @@
 		Sparkles,
 		SquareKanban,
 		UserPlus,
+		VenetianMask,
 	} from 'lucide-vue-next';
 	import {
 		computed,
@@ -937,6 +938,13 @@
 										>
 											<Sliders />
 											Feature Settings
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/settings/personas')"
+											class="cursor-pointer"
+										>
+											<VenetianMask />
+											Personas
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="isDesktop"

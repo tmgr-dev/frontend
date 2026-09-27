@@ -77,6 +77,12 @@
 				</div>
 			</div>
 
+			<WorkspacePersonasSection
+				v-if="currentWorkspaceId"
+				:workspace-id="Number(currentWorkspaceId)"
+				:is-creator="isWorkspaceOwner"
+			/>
+
 			<!-- Workspace Features (Only for workspace owners) -->
 			<div
 				v-if="!isWorkspaceOwner && currentWorkspace"
@@ -137,6 +143,7 @@
 		getWorkspaceFeatureToggles,
 	} from '@/actions/tmgr/featureToggles';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
+	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 
 	import { useToast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
