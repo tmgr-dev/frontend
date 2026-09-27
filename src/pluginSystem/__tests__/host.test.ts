@@ -77,6 +77,8 @@ const setup = (
 		safeMode: false,
 		plugins: {},
 		statusBar: {},
+		trayItems: {},
+		trayTitle: null,
 		revision: 0,
 		revisions: {},
 	};
@@ -1228,6 +1230,169 @@ describe('notifications', () => {
 			active: true,
 			until: '2999-01-01T00:00:00.000Z',
 		});
+		host.dispose();
+	});
+});
+
+describe('tray', () => {
+	const trayPlugin = pkg(
+		'tmgr.tray',
+		`tmgr.commands.register('tmgr.tray.act', (args) => tmgr.storage.set('acted', args));
+		 tmgr.ui.setTrayItem('menu', {
+			title: 'Menu',
+			items: [
+				{ title: 'Act', command: 'tmgr.tray.act', args: { x: 1 } },
+				{ title: 'Open', taskId: 9 },
+			],
+		 }).catch(() => undefined);
+		 tmgr.commands.register('tmgr.tray.title', (text) => tmgr.ui.setTrayTitle(text).catch((e) => e.name));`,
+		['tray'],
+		{
+			commands: [
+				{ id: 'tmgr.tray.act', title: 'Act' },
+				{ id: 'tmgr.tray.title', title: 'Title' },
+			],
+			trayItems: [{ id: 'menu' }],
+		},
+	);
+
+	it('shows tray items while the plugin runs, resolves clicks like a notification click, and clears them on stop', async () => {
+		const stored: unknown[] = [];
+		const { host, state } = setup([trayPlugin], {
+			storageSet: async (key: string, json: string) => void stored.push([key, JSON.parse(json)]),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const entry = state.trayItems['tmgr.tray:menu'];
+		expect(entry.title).toBe('Menu');
+		expect(entry.pluginName).toBe('tmgr.tray');
+		const [actItem, openItem] = entry.items;
+		expect(await host.resolveTrayClick(actItem.id)).toEqual({ type: 'command' });
+		await flush();
+		expect(stored).toEqual([['acted', { x: 1 }]]);
+		expect(await host.resolveTrayClick(openItem.id)).toEqual({
+			type: 'task',
+			taskId: 9,
+			workspaceId: LOCAL.id,
+		});
+		await host.setEnabled('tmgr.tray', false);
+		expect(state.trayItems['tmgr.tray:menu']).toBeUndefined();
+		expect(await host.resolveTrayClick(actItem.id)).toBeNull();
+		host.dispose();
+	});
+
+	it('needs machine access for tray items, like fetch and files', async () => {
+		const { host, state } = setup([trayPlugin], {}, {}, {}, {
+			machineAllowed: () => false,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(state.trayItems).toEqual({});
+		expect(state.plugins['tmgr.tray'].status).toBe('running');
+		host.dispose();
+	});
+
+	it('lets only the plugin chosen for the menu bar text set it, and clears it on stop or on a new choice', async () => {
+		let owner: string | null = 'tmgr.tray';
+		const { host, state } = setup([trayPlugin], {}, {}, {}, {
+			trayTitleOwner: () => owner,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runCommand('tmgr.tray', 'tmgr.tray.title', '3 tasks')).toBeNull();
+		expect(state.trayTitle).toBe('3 tasks');
+
+		owner = null;
+		host.refreshTrayTitleOwner();
+		expect(state.trayTitle).toBeNull();
+		expect(await host.runCommand('tmgr.tray', 'tmgr.tray.title', 'x')).toBe(
+			'PERMISSION_DENIED',
+		);
+
+		owner = 'tmgr.tray';
+		await host.runCommand('tmgr.tray', 'tmgr.tray.title', 'again');
+		expect(state.trayTitle).toBe('again');
+		await host.setEnabled('tmgr.tray', false);
+		expect(state.trayTitle).toBeNull();
+		host.dispose();
+	});
+});
+
+describe('deep links', () => {
+	const linkPlugin = (permissions: any[] = ['deeplinks']) =>
+		pkg(
+			'tmgr.link',
+			`tmgr.commands.register('tmgr.link.go', () => 'ran');`,
+			permissions,
+			{
+				commands: [
+					{ id: 'tmgr.link.go', title: 'Go', deepLink: true },
+					{ id: 'tmgr.link.silent', title: 'Silent' },
+				],
+				views: [{ id: 'report', title: 'Report' }],
+			},
+		);
+
+	it('gives the view or command only while the plugin runs here with deeplinks and machine access', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toEqual({
+			id: 'report',
+			title: 'Report',
+		});
+		expect(host.deepLinkView('tmgr.link', 'missing')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toEqual({
+			id: 'tmgr.link.go',
+			title: 'Go',
+			deepLink: true,
+		});
+		// Declared but not marked deepLink: true, and never registered either way.
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.silent')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'not.declared')).toBeNull();
+
+		await host.setEnabled('tmgr.link', false);
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
+		host.dispose();
+	});
+
+	it('runs a deep-linked command only through the same checks', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', { a: '1' }),
+		).resolves.toBe(true);
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.silent', {}),
+		).resolves.toBe(false);
+		host.dispose();
+	});
+
+	it('needs the deeplinks permission', async () => {
+		const { host } = setup([linkPlugin([])]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
+		host.dispose();
+	});
+
+	it('needs machine access, like fetch and files', async () => {
+		const { host } = setup([linkPlugin()], {}, {}, {}, {
+			machineAllowed: () => false,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
 		host.dispose();
 	});
 });

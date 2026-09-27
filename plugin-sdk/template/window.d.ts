@@ -4,7 +4,11 @@
  * Its one way to the app is `window.tmgr`, answered by the plugin's broker with the plugin's permissions.
  */
 declare const tmgr: {
-	/** Any broker method the plugin may call from its logic, except register and log. */
+	/**
+	 * Any broker method the plugin may call from its logic, except register and log. If this window was
+	 * opened from a `tmgr://plugin/<id>/view/<id>?...` link, `call('deepLink.params')` returns the link's
+	 * query params as a flat string map once, then null on later calls.
+	 */
 	call<T = unknown>(method: string, params?: unknown): Promise<T>;
 	/** Runs one of the plugin's own declared commands in its sandbox. */
 	runCommand<T = unknown>(id: string, args?: unknown): Promise<T>;

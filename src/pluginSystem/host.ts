@@ -12,6 +12,7 @@ import {
 	type NotifyPayload,
 	type PluginWorkspace,
 	type RegistrationKind,
+	type TrayItemSpec,
 } from './broker';
 import { taskKey } from './dataApi';
 import type { PluginManifest } from './manifest';
@@ -101,11 +102,28 @@ export interface CardBadge {
 	key?: string;
 }
 
+export interface TrayMenuItem {
+	/** Opaque: the host maps it back to the plugin's taskId/command/args; Rust never sees those. */
+	id: string;
+	title: string;
+}
+
+export interface TrayItemEntry {
+	pluginId: string;
+	pluginName: string;
+	itemId: string;
+	title: string;
+	items: TrayMenuItem[];
+}
+
 export interface PluginHostState {
 	workspace: PluginWorkspace | null;
 	safeMode: boolean;
 	plugins: Record<string, PluginEntry>;
 	statusBar: Record<string, StatusBarEntry>;
+	trayItems: Record<string, TrayItemEntry>;
+	/** Set by the one plugin chosen in Settings for the menu bar text; null when none is chosen or set. */
+	trayTitle: string | null;
 	/** Bumped when plugins start or stop: every badge, page and section is asked again. */
 	revision: number;
 	/** Per plugin, bumped (throttled) when that plugin asks for its UI to be drawn again. */
@@ -163,6 +181,8 @@ export interface PluginHostDeps {
 	};
 	/** Whether a plugin may reach this computer (network, files) there; a shared workspace needs the member's consent. */
 	machineAllowed?: (pluginId: string, workspace: PluginWorkspace) => boolean;
+	/** The plugin id chosen in Settings to show text in the menu bar, or null when none is chosen. */
+	trayTitleOwner?: () => string | null;
 	/** Why a plugin must not run (the signed blocklist); it wins over every other setting. */
 	blocked?: (pluginId: string) => string | null;
 	/** Opens a link a `link` node was allowed to open; desktop only, so the web build has no-op links. */
@@ -371,6 +391,69 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	};
 
+	const trayClickTargets = new Map<
+		string,
+		{
+			pluginId: string;
+			workspaceId: number;
+			taskId: number | null;
+			command: string | null;
+			args: unknown;
+		}
+	>();
+	let nextTrayToken = 1;
+	let trayTitleSetBy: string | null = null;
+	/** A deep link's params for the next window a plugin opens; read once via `deepLink.params`. */
+	const windowProps = new Map<string, Record<string, string>>();
+
+	const clearTrayItem = (key: string) => {
+		state.trayItems[key]?.items.forEach((item) => trayClickTargets.delete(item.id));
+		delete state.trayItems[key];
+	};
+
+	const clearTrayItemsOf = (pluginId: string) => {
+		for (const key of Object.keys(state.trayItems)) {
+			if (state.trayItems[key].pluginId === pluginId) clearTrayItem(key);
+		}
+	};
+
+	const clearTrayTitleOf = (pluginId: string) => {
+		if (trayTitleSetBy === pluginId) {
+			state.trayTitle = null;
+			trayTitleSetBy = null;
+		}
+	};
+
+	const setTrayItem = (
+		pluginId: string,
+		pluginName: string,
+		itemId: string,
+		spec: TrayItemSpec | null,
+	) => {
+		const key = `${pluginId}:${itemId}`;
+		clearTrayItem(key);
+		if (!spec || !state.workspace) return;
+		const workspaceId = state.workspace.id;
+		const items = spec.items.map((item) => {
+			const token = `t${nextTrayToken++}`;
+			trayClickTargets.set(token, {
+				pluginId,
+				workspaceId,
+				taskId: item.taskId,
+				command: item.command,
+				args: item.args,
+			});
+			return { id: token, title: item.title };
+		});
+		state.trayItems[key] = { pluginId, pluginName, itemId, title: spec.title, items };
+	};
+
+	const setTrayTitle = (pluginId: string, text: string | null) => {
+		if (text === null) return clearTrayTitleOf(pluginId);
+		state.trayTitle = text;
+		trayTitleSetBy = pluginId;
+	};
+
 	const stop = (
 		pluginId: string,
 		status: PluginStatus = 'stopped',
@@ -379,6 +462,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		running.get(pluginId)?.process.stop();
 		running.delete(pluginId);
 		clearStatusBar(pluginId);
+		clearTrayItemsOf(pluginId);
+		clearTrayTitleOf(pluginId);
+		windowProps.delete(pluginId);
 		for (const [token, entry] of pendingClicks) {
 			if (entry.pluginId === pluginId) pendingClicks.delete(token);
 		}
@@ -455,6 +541,14 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			},
 			dnd: deps.dnd,
 			alarms: alarmsFor(workspace, storageId),
+			tray: machine
+				? {
+						setItem: (itemId, item) =>
+							setTrayItem(pluginId, manifest.name, itemId, item),
+						setTitle: (text) => setTrayTitle(pluginId, text),
+						isTitleOwner: () => deps.trayTitleOwner?.() === pluginId,
+				  }
+				: undefined,
 			setStatusBarItem: (itemId, item) => {
 				const key = `${pluginId}:${itemId}`;
 				if (item) {
@@ -589,6 +683,34 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	};
 
+	/** The declared+registered+running+same-workspace+admit checks shared by notification and tray clicks. */
+	const resolveClick = async (
+		pluginId: string,
+		workspaceId: number,
+		taskId: number | null,
+		command: string | null,
+		args: unknown,
+	): Promise<NotificationClickResult | null> => {
+		const plugin = running.get(pluginId);
+		if (!plugin || state.plugins[pluginId]?.status !== 'running') return null;
+		if (deps.currentWorkspaceId() !== workspaceId) return null;
+		if (command) {
+			const declared = packages
+				.get(pluginId)!
+				.manifest.contributes.commands.some((c) => c.id === command);
+			if (!declared || !plugin.registered.command.has(command)) return null;
+			try {
+				plugin.broker.admit(true);
+			} catch {
+				return null;
+			}
+			void dispatch(pluginId, 'command', command, args).catch(() => undefined);
+			return { type: 'command' };
+		}
+		if (taskId != null) return { type: 'task', taskId, workspaceId };
+		return null;
+	};
+
 	const resolveNotificationClick = async (
 		token: string,
 	): Promise<NotificationClickResult | null> => {
@@ -596,28 +718,15 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		if (!entry) return null;
 		pendingClicks.delete(token);
 		if (now() > entry.expiresAt) return null;
-		const plugin = running.get(entry.pluginId);
-		if (!plugin || state.plugins[entry.pluginId]?.status !== 'running') return null;
-		if (deps.currentWorkspaceId() !== entry.workspaceId) return null;
-		if (entry.command) {
-			const declared = packages
-				.get(entry.pluginId)!
-				.manifest.contributes.commands.some((c) => c.id === entry.command);
-			if (!declared || !plugin.registered.command.has(entry.command)) return null;
-			try {
-				plugin.broker.admit(true);
-			} catch {
-				return null;
-			}
-			void dispatch(entry.pluginId, 'command', entry.command, entry.args).catch(
-				() => undefined,
-			);
-			return { type: 'command' };
-		}
-		if (entry.taskId != null) {
-			return { type: 'task', taskId: entry.taskId, workspaceId: entry.workspaceId };
-		}
-		return null;
+		return resolveClick(entry.pluginId, entry.workspaceId, entry.taskId, entry.command, entry.args);
+	};
+
+	const resolveTrayClick = async (
+		token: string,
+	): Promise<NotificationClickResult | null> => {
+		const entry = trayClickTargets.get(token);
+		if (!entry) return null;
+		return resolveClick(entry.pluginId, entry.workspaceId, entry.taskId, entry.command, entry.args);
 	};
 
 	const relaunch = async (pluginId: string) => {
@@ -834,12 +943,54 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		},
 		tick,
 		resolveNotificationClick,
-		async openView(pluginId: string, viewId: string) {
+		resolveTrayClick,
+		/** Clears the menu bar text when the user's choice in Settings no longer names who set it. */
+		refreshTrayTitleOwner() {
+			if (trayTitleSetBy && deps.trayTitleOwner?.() !== trayTitleSetBy) {
+				state.trayTitle = null;
+				trayTitleSetBy = null;
+			}
+		},
+		/** The declared view, only while the plugin runs here with deeplinks and machine access. */
+		deepLinkView(pluginId: string, viewId: string) {
+			const plugin = running.get(pluginId);
+			const pkg = packages.get(pluginId);
+			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running') return null;
+			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine) return null;
+			return pkg.manifest.contributes.views.find((v) => v.id === viewId) ?? null;
+		},
+		/** The declared, deep-linkable, registered command, only while the plugin runs here with deeplinks and machine access. */
+		deepLinkCommand(pluginId: string, commandId: string) {
+			const plugin = running.get(pluginId);
+			const pkg = packages.get(pluginId);
+			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running') return null;
+			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine) return null;
+			const command = pkg.manifest.contributes.commands.find((c) => c.id === commandId);
+			if (!command?.deepLink || !plugin.registered.command.has(commandId)) return null;
+			return command;
+		},
+		/** Runs a deep-linked command after the same checks, counted as a write so a link flood hits the rate limit. */
+		async runDeepLinkCommand(
+			pluginId: string,
+			commandId: string,
+			args: Record<string, string>,
+		) {
+			if (!host.deepLinkCommand(pluginId, commandId)) return false;
+			running.get(pluginId)!.broker.admit(true);
+			await dispatch(pluginId, 'command', commandId, args);
+			return true;
+		},
+		async openView(
+			pluginId: string,
+			viewId: string,
+			props?: Record<string, string>,
+		) {
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);
 			const view = pkg?.manifest.contributes.views.find((v) => v.id === viewId);
 			const html = view?.ui ? pkg?.pages?.[view.ui] : undefined;
 			if (!plugin || !view || !html || !deps.windows) return false;
+			if (props) windowProps.set(pluginId, props);
 			await deps.windows.open(
 				`${pluginId}/${viewId}`,
 				html,
@@ -876,6 +1027,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					'UNKNOWN_METHOD',
 					`${method} is not available to plugin windows`,
 				);
+			}
+			if (method === 'deepLink.params') {
+				const props = windowProps.get(pluginId) ?? null;
+				windowProps.delete(pluginId);
+				return props;
 			}
 			if (method === 'commands.run') {
 				const p = (params ?? {}) as { id?: unknown; args?: unknown };

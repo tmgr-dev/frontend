@@ -6,9 +6,22 @@ export interface TrayTask {
 	workspaceId: number | null;
 }
 
+export interface PluginTrayMenuItem {
+	id: string;
+	title: string;
+}
+
+export interface PluginTraySection {
+	pluginName: string;
+	title: string;
+	items: PluginTrayMenuItem[];
+}
+
 export interface TrayState {
 	running: TrayTask[];
 	recent: TrayTask[];
+	pluginSections?: PluginTraySection[];
+	trayTitle?: string | null;
 }
 
 export interface AwayEvent {

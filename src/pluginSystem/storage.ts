@@ -21,6 +21,8 @@ const SAFE_MODE = 'plugins.safeMode';
 const DEV_MODE = 'plugins.devMode';
 const MACHINE_CONSENT = 'plugins.machineConsent';
 const ALARMS = 'plugins.alarms';
+const DEEP_LINK_CONSENT = 'plugins.deepLinkConsent';
+const TRAY_TITLE_PLUGIN = 'plugins.trayTitlePlugin';
 
 /** Per workspace: `{ "<plugin>@<workspace id>": true | false }`. */
 export const enabledStore = {
@@ -80,6 +82,25 @@ export const alarmsStore = {
 		}),
 };
 
+/** Per (plugin, command, plugin version): the user chose "Always" for a deep-linked command. */
+export const deepLinkConsentStore = {
+	has: (pluginId: string, commandId: string, version: string) =>
+		read<Record<string, boolean>>(DEEP_LINK_CONSENT, {})[
+			`${pluginId}:${commandId}@${version}`
+		] === true,
+	remember: (pluginId: string, commandId: string, version: string) =>
+		write(DEEP_LINK_CONSENT, {
+			...read<Record<string, boolean>>(DEEP_LINK_CONSENT, {}),
+			[`${pluginId}:${commandId}@${version}`]: true,
+		}),
+};
+
+/** The plugin id chosen in Settings to show text in the menu bar, or null when none is chosen. */
+export const trayTitlePluginStore = {
+	get: () => read<string | null>(TRAY_TITLE_PLUGIN, null),
+	set: (pluginId: string | null) => write(TRAY_TITLE_PLUGIN, pluginId),
+};
+
 /** A removed plugin leaves nothing a later plugin with the same id could inherit. */
 export const forgetPlugin = (pluginId: string) => {
 	const enabled = read<Record<string, boolean>>(ENABLED, {});
@@ -101,4 +122,12 @@ export const forgetPlugin = (pluginId: string) => {
 			Object.entries(alarms).filter(([key]) => !key.startsWith(`${pluginId}@`)),
 		),
 	);
+	const consent = read<Record<string, boolean>>(DEEP_LINK_CONSENT, {});
+	write(
+		DEEP_LINK_CONSENT,
+		Object.fromEntries(
+			Object.entries(consent).filter(([key]) => !key.startsWith(`${pluginId}:`)),
+		),
+	);
+	if (trayTitlePluginStore.get() === pluginId) trayTitlePluginStore.set(null);
 };

@@ -34,6 +34,7 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { usePusher } from '@/composable/usePusher';
+	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
 	import { setDnd } from '@/utils/dnd';
@@ -97,15 +98,29 @@
 			let userSubscription = null;
 			let subscribedUserId = null;
 
+			const pluginTraySections = () =>
+				Object.values(pluginState.trayItems).map((entry) => ({
+					pluginName: entry.pluginName,
+					title: entry.title,
+					items: entry.items,
+				}));
+
 			const sync = () => {
 				const userId = store.state.user?.id;
 				if (!userId) return;
 				recent.value = rememberRecent(recent.value, props.tasks);
 				saveRecent(userId, recent.value);
-				pushTrayState(buildTrayState(props.tasks, recent.value));
+				pushTrayState({
+					...buildTrayState(props.tasks, recent.value),
+					pluginSections: pluginTraySections(),
+					trayTitle: pluginState.trayTitle,
+				});
 			};
 
 			watch(() => props.tasks, sync, { deep: true });
+			watch(() => [pluginState.trayItems, pluginState.trayTitle], sync, {
+				deep: true,
+			});
 
 			const stopAll = async () => {
 				await Promise.all(

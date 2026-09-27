@@ -50,6 +50,7 @@ import {
 	machineConsentStore,
 	safeModeStored,
 	settingsStore,
+	trayTitlePluginStore,
 } from './storage';
 
 const installedBlocked = new Map<string, string>();
@@ -285,6 +286,19 @@ const answerPluginWindows = async (
 
 let memberId = () => 0;
 
+let markPluginsReady: (() => void) | null = null;
+let pluginsReadyPromise: Promise<void> | null = null;
+
+/** Resolves once plugins have started (or given up starting) for the app's first workspace. */
+export const pluginsReady = (): Promise<void> => {
+	if (!pluginsReadyPromise) {
+		pluginsReadyPromise = new Promise((resolve) => {
+			markPluginsReady = resolve;
+		});
+	}
+	return pluginsReadyPromise;
+};
+
 const focusMainWindow = async () => {
 	const { getCurrentWindow } = await import('@tauri-apps/api/window');
 	const win = getCurrentWindow();
@@ -300,6 +314,19 @@ const followNotificationClick = async (
 ) => {
 	const result = await host.resolveNotificationClick(token).catch(() => null);
 	if (result?.type === 'task' && result.taskId != null) {
+		store.commit('setCurrentTaskIdForModal', result.taskId);
+	}
+};
+
+/** A tray click may arrive while the app is hidden; only bring it forward for a task, not a silent command. */
+const followTrayClick = async (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	id: string,
+) => {
+	const result = await host.resolveTrayClick(id).catch(() => null);
+	if (result?.type === 'task' && result.taskId != null) {
+		await focusMainWindow();
 		store.commit('setCurrentTaskIdForModal', result.taskId);
 	}
 };
@@ -398,6 +425,7 @@ export const installPlugins = async (
 		},
 		machineAllowed: (pluginId, workspace) =>
 			hasMachineConsent(workspace, pluginId, memberId()),
+		trayTitleOwner: () => trayTitlePluginStore.get(),
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
 		notifyPlugin: (_pluginId, pluginName, payload) =>
@@ -487,6 +515,9 @@ export const installPlugins = async (
 	window.addEventListener('focus', wake);
 	const { listen } = await import('@tauri-apps/api/event');
 	await listen('plugins://tick', wake);
+	await listen<string>('tray://plugin-item', ({ payload }) =>
+		void followTrayClick(host, store, payload),
+	);
 	watch(
 		() =>
 			Object.values(pluginState.plugins)
@@ -539,6 +570,8 @@ export const installPlugins = async (
 			}
 			if (!now) {
 				await host.activate(null);
+				markPluginsReady?.();
+				markPluginsReady = null;
 				return;
 			}
 			const workspace = await resolveWorkspace(store);
@@ -556,9 +589,17 @@ export const installPlugins = async (
 				if (current !== sequence) return;
 			}
 			await host.activate(workspace);
+			markPluginsReady?.();
+			markPluginsReady = null;
 		},
 		{ immediate: true },
 	);
+};
+
+/** The one plugin the user chose in Settings to show text in the menu bar, or none to clear it. */
+export const setTrayTitlePlugin = (pluginId: string | null) => {
+	trayTitlePluginStore.set(pluginId);
+	pluginHost()?.refreshTrayTitleOwner();
 };
 
 /** Re-reads folder plugins (developer mode) and restarts everything for the current workspace. */

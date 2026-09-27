@@ -1,3 +1,4 @@
+import { LOCAL_ID, PLUGIN_ID } from '@/pluginSystem/manifest';
 import { ref } from 'vue';
 
 export type ShortcutAction = 'quickAdd' | 'timer' | 'screenshot' | 'selection';
@@ -127,9 +128,61 @@ export const describeAccelerator = (accelerator: string): string =>
 		.map((part) => SYMBOLS[part] ?? part)
 		.join('');
 
-export const parseDeepLink = (url: string): { taskId: number } | null => {
-	const match = /^tmgr:\/\/task\/(\d+)\/?$/.exec(url.trim());
-	return match ? { taskId: Number(match[1]) } : null;
+export type DeepLink =
+	| { type: 'task'; taskId: number }
+	| { type: 'view'; pluginId: string; viewId: string; params: Record<string, string> }
+	| { type: 'command'; pluginId: string; commandId: string; params: Record<string, string> };
+
+const MAX_DEEP_LINK_PARAMS = 20;
+const MAX_DEEP_LINK_PARAM_VALUE = 500;
+const PARAM_KEY = /^[a-zA-Z0-9_-]{1,40}$/;
+
+/** Rejects duplicate keys, too many params, bad keys and oversized values. `entries` come already decoded. */
+export const sanitizeDeepLinkParams = (
+	entries: Iterable<[string, string]>,
+): Record<string, string> | null => {
+	const params: Record<string, string> = Object.create(null);
+	let count = 0;
+	for (const [key, value] of entries) {
+		if (!PARAM_KEY.test(key) || value.length > MAX_DEEP_LINK_PARAM_VALUE) return null;
+		if (key in params) return null;
+		if (++count > MAX_DEEP_LINK_PARAMS) return null;
+		params[key] = value;
+	}
+	return params;
+};
+
+const parseParams = (search: string): Record<string, string> | null => {
+	let usp: URLSearchParams;
+	try {
+		usp = new URLSearchParams(search);
+	} catch {
+		return null;
+	}
+	return sanitizeDeepLinkParams(usp);
+};
+
+/** Matched on the raw string, before any percent-decoding, so `%2F` or `%2E` can never forge a segment. */
+const PLUGIN_LINK =
+	/^tmgr:\/\/plugin\/([^/?#]+)\/(view|command)\/([^/?#]+)(\?[^#]*)?$/;
+
+export const parseDeepLink = (url: string): DeepLink | null => {
+	const trimmed = url.trim();
+	const taskMatch = /^tmgr:\/\/task\/(\d+)\/?$/.exec(trimmed);
+	if (taskMatch) return { type: 'task', taskId: Number(taskMatch[1]) };
+
+	const match = PLUGIN_LINK.exec(trimmed);
+	if (!match) return null;
+	const [, pluginId, kind, targetId, search] = match;
+	if (!PLUGIN_ID.test(pluginId)) return null;
+	const params = parseParams(search ? search.slice(1) : '');
+	if (!params) return null;
+	if (kind === 'view') {
+		return LOCAL_ID.test(targetId) ? { type: 'view', pluginId, viewId: targetId, params } : null;
+	}
+	return LOCAL_ID.test(targetId)
+		? { type: 'command', pluginId, commandId: `${pluginId}.${targetId}`, params }
+		: null;
 };
 
 export const splitQuickText = (

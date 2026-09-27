@@ -334,7 +334,11 @@ declare const tmgr: {
 	};
 	/** task.* needs tasks:read, timer.* needs time:read, comment.* needs comments:read. Own writes are not delivered. */
 	events: { on<T extends TmgrEvent['type']>(type: T, handler: (event: Extract<TmgrEvent, { type: T }>) => unknown): Promise<void> };
-	/** The command id must be declared in contributes.commands and start with the plugin id. */
+	/**
+	 * The command id must be declared in contributes.commands and start with the plugin id. A command with
+	 * `"deepLink": true` in its manifest entry can also be run from `tmgr://plugin/<id>/command/<local id>`
+	 * links; needs the deeplinks permission, and the user confirms the first time per command and version.
+	 */
 	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
 	/** Needs the alarms permission. Host-scheduled: fires even if the plugin was not running when it was due, coalesced into one event. */
 	alarms: {
@@ -395,6 +399,25 @@ declare const tmgr: {
 		): Promise<void>;
 		/** No permission needed, read-only. While active, this plugin's notifications are not shown. */
 		dnd(): Promise<{ active: boolean; until: string | null }>;
+		/**
+		 * Needs tray. id must be declared in contributes.trayItems (at most 5 per plugin). title and each
+		 * item's title are at most 60 characters; at most 10 items; each item's args at most 4 KB of JSON.
+		 * Rust shows the section as a submenu after the app's own tray items; clicking an item opens the
+		 * task or runs the command, under the same rules as ui.notify. null removes the section.
+		 */
+		setTrayItem(
+			id: string,
+			item: {
+				title: string;
+				items: { title: string; taskId?: number; command?: string; args?: unknown }[];
+			} | null,
+		): Promise<void>;
+		/**
+		 * Needs tray. Only the one plugin chosen in Settings -> Plugins for the menu bar text may call this;
+		 * others get PERMISSION_DENIED. text is trimmed, must be at most 12 characters, a single line, and
+		 * free of control characters. null clears it. Cleared automatically when this plugin stops.
+		 */
+		setTrayTitle(text: string | null): Promise<void>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
 	};

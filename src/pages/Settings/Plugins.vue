@@ -52,6 +52,29 @@
 				</span>
 				<Switch :checked="devMode" @update:checked="setDevMode" />
 			</label>
+			<label class="flex items-center justify-between gap-4">
+				<span>
+					<span class="block text-sm font-medium">Menu bar text</span>
+					<span class="block text-xs text-muted-foreground">
+						Let one plugin show text next to the timer in the menu bar.
+					</span>
+				</span>
+				<Select :model-value="trayTitlePlugin" @update:model-value="setTrayTitlePlugin">
+					<SelectTrigger class="w-48">
+						<SelectValue placeholder="None" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="none">None</SelectItem>
+						<SelectItem
+							v-for="plugin in trayTitleCandidates"
+							:key="plugin.manifest.id"
+							:value="plugin.manifest.id"
+						>
+							{{ plugin.manifest.name }}
+						</SelectItem>
+					</SelectContent>
+				</Select>
+			</label>
 			<div v-if="devMode" class="flex flex-wrap gap-2">
 				<Button variant="outline" size="sm" @click="revealFolder"
 					>Show folder</Button
@@ -433,6 +456,13 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -455,6 +485,7 @@
 		devModeStored,
 		storeDevMode,
 		storeSafeMode,
+		trayTitlePluginStore,
 	} from '@/pluginSystem/storage';
 	import {
 		computed,
@@ -502,12 +533,18 @@
 			DialogHeader,
 			DialogTitle,
 			Input,
+			Select,
+			SelectContent,
+			SelectItem,
+			SelectTrigger,
+			SelectValue,
 			Switch,
 		},
 		setup() {
 			setDocumentTitle('Plugins');
 			const store = useStore();
 			const devMode = ref(devModeStored());
+			const trayTitlePlugin = ref(trayTitlePluginStore.get() ?? 'none');
 			const consentTick = ref(0);
 			const isCreator = computed(
 				() =>
@@ -647,6 +684,15 @@
 				plugins,
 				drafts,
 				devMode,
+				trayTitlePlugin,
+				trayTitleCandidates: computed(() =>
+					plugins.value.filter((p) => p.manifest.permissions.includes('tray')),
+				),
+				async setTrayTitlePlugin(value: string) {
+					const { setTrayTitlePlugin } = await import('@/pluginSystem/app');
+					setTrayTitlePlugin(value === 'none' ? null : value);
+					trayTitlePlugin.value = value;
+				},
 				reloading,
 				folderErrors: folderPluginErrors,
 				installedErrors: installedPluginErrors,

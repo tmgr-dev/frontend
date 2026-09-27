@@ -17,6 +17,7 @@ const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 		contributes: {
 			boardCardBadges: [{ id: 'overrun' }],
 			statusBarItems: [{ id: 'total' }],
+			trayItems: [{ id: 'menu' }],
 			commands: [{ id: 'tmgr.test.go', title: 'Go' }],
 			views: [{ id: 'report', title: 'Report' }],
 			taskPanelSections: [{ id: 'summary', title: 'Summary' }],
@@ -692,6 +693,92 @@ describe('agent work', () => {
 		expect(
 			await code(broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(8) })),
 		).toBe('INVALID_PARAMS');
+	});
+});
+
+describe('tray', () => {
+	const tray = () => {
+		const items: unknown[] = [];
+		const titles: unknown[] = [];
+		let owner = true;
+		return {
+			items,
+			titles,
+			setOwner: (value: boolean) => (owner = value),
+			tray: {
+				setItem: (id: string, item: unknown) => void items.push([id, item]),
+				setTitle: (text: string | null) => void titles.push(text),
+				isTitleOwner: () => owner,
+			},
+		};
+	};
+
+	it('needs the tray permission and machine access, and validates the item', async () => {
+		const { tray: deps, items } = tray();
+		expect(
+			await code(setup([], { tray: deps }).broker.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] })),
+		).toBe('PERMISSION_DENIED');
+		const { broker } = setup(['tray'], { tray: deps });
+		expect(
+			await code(broker.call('ui.setTrayItem', { id: 'other', title: 'x', items: [] })),
+		).toBe('NOT_DECLARED');
+		expect(
+			await code(
+				broker.call('ui.setTrayItem', {
+					id: 'menu',
+					title: 'x',
+					items: Array.from({ length: 11 }, () => ({ title: 'a' })),
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('ui.setTrayItem', {
+					id: 'menu',
+					title: 'x',
+					items: [{ title: 'Go', command: 'not.declared' }],
+				}),
+			),
+		).toBe('NOT_DECLARED');
+		expect(
+			await broker.call('ui.setTrayItem', {
+				id: 'menu',
+				title: 'Section',
+				items: [{ title: 'Go', command: 'tmgr.test.go', taskId: 4, args: { a: 1 } }],
+			}),
+		).toBeNull();
+		expect(await broker.call('ui.setTrayItem', { id: 'menu', items: null })).toBeNull();
+		expect(items).toEqual([
+			[
+				'menu',
+				{
+					title: 'Section',
+					items: [{ title: 'Go', taskId: 4, command: 'tmgr.test.go', args: { a: 1 } }],
+				},
+			],
+			['menu', null],
+		]);
+		const { broker: noTray } = setup(['tray']);
+		expect(
+			await code(noTray.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] })),
+		).toBe('PERMISSION_DENIED');
+	});
+
+	it('lets only the chosen plugin set the menu bar title, within the length and shape limits', async () => {
+		const { tray: deps, titles, setOwner } = tray();
+		const { broker } = setup(['tray'], { tray: deps });
+		expect(await broker.call('ui.setTrayTitle', { text: ' 3 tasks ' })).toBeNull();
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'way too long text' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'a\nb' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'a\u0000b' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await broker.call('ui.setTrayTitle', { text: null })).toBeNull();
+		setOwner(false);
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'x' }))).toBe('PERMISSION_DENIED');
+		expect(titles).toEqual(['3 tasks', null]);
 	});
 });
 

@@ -156,6 +156,9 @@ const PRELUDE = `(() => {
 			provideTaskSection: (id, fn) => register('section', id, fn),
 			setStatusBarItem: (id, item) =>
 				call('ui.setStatusBarItem', item === null ? { id, text: null } : Object.assign({}, item, { id })),
+			setTrayItem: (id, item) =>
+				call('ui.setTrayItem', item === null ? { id, items: null } : Object.assign({}, item, { id })),
+			setTrayTitle: (text) => call('ui.setTrayTitle', { text }),
 			notify: (message, options) => call('ui.notify', Object.assign({ message }, options || {})),
 			dnd: () => call('ui.dnd'),
 			refresh: (kind, id) => call('ui.refresh', { kind, id }),

@@ -99,6 +99,16 @@ export interface StatusBarItem {
 	command: string | null;
 }
 
+export interface TrayItemSpec {
+	title: string;
+	items: {
+		title: string;
+		taskId: number | null;
+		command: string | null;
+		args: unknown;
+	}[];
+}
+
 export interface NotifyPayload {
 	message: string;
 	title: string | null;
@@ -146,6 +156,12 @@ export interface BrokerDeps {
 		list: () => AlarmInfo[];
 	};
 	dnd?: () => { active: boolean; until: string | null };
+	/** Bound to this plugin; requires machine consent in shared workspaces, like fetch and files. */
+	tray?: {
+		setItem: (itemId: string, item: TrayItemSpec | null) => void;
+		setTitle: (text: string | null) => void;
+		isTitleOwner: () => boolean;
+	};
 }
 
 export interface FetchRequest {
@@ -421,6 +437,10 @@ const exportPath = (value: unknown): string => {
 	return path;
 };
 
+const TRAY_ITEM_LIMIT = 10;
+const TRAY_TITLE_MAX = 12;
+const CONTROL_CHARS = /[\u0000-\u001f\u007f\u2028\u2029]/;
+
 const ALARM_NAME = /^[A-Za-z0-9._-]{1,60}$/;
 const ONE_YEAR_MS = 365 * 24 * 60 * 60_000;
 
@@ -500,6 +520,7 @@ export const createBroker = (deps: BrokerDeps) => {
 		page: new Set(manifest.contributes.views.map((v) => v.id)),
 		section: new Set(manifest.contributes.taskPanelSections.map((s) => s.id)),
 		statusBar: new Set(manifest.contributes.statusBarItems.map((s) => s.id)),
+		trayItem: new Set(manifest.contributes.trayItems.map((t) => t.id)),
 	};
 	const mustDeclare = (set: Set<string>, value: string) => {
 		if (!set.has(value))
@@ -519,6 +540,16 @@ export const createBroker = (deps: BrokerDeps) => {
 		if (!deps.alarms)
 			throw new PluginError('HOST_ERROR', 'alarms are not available');
 		return deps.alarms;
+	};
+
+	const needTray = () => {
+		if (!deps.tray) {
+			throw new PluginError(
+				'PERMISSION_DENIED',
+				'the menu bar is not available: not allowed on this computer',
+			);
+		}
+		return deps.tray;
 	};
 
 	const methods: Record<string, Method> = {
@@ -901,6 +932,54 @@ export const createBroker = (deps: BrokerDeps) => {
 					tooltip: p.tooltip == null ? null : string(p.tooltip, 'tooltip', 300),
 					command,
 				});
+			},
+		},
+		'ui.setTrayItem': {
+			permission: 'tray',
+			run: (p) => {
+				const itemId = string(p.id, 'id', 60);
+				mustDeclare(declared.trayItem, itemId);
+				const tray = needTray();
+				if (p.items === null) return tray.setItem(itemId, null);
+				const title = string(p.title, 'title', 60);
+				if (!Array.isArray(p.items) || p.items.length > TRAY_ITEM_LIMIT)
+					invalid(`items must be a list of at most ${TRAY_ITEM_LIMIT}`);
+				const items = (p.items as Params[]).map((raw) => {
+					const itemTitle = string(raw?.title, 'items.title', 60);
+					const taskId = optionalId(raw?.taskId, 'items.taskId');
+					const command =
+						raw?.command == null ? null : string(raw.command, 'items.command', 120);
+					if (command) mustDeclare(declared.command, command);
+					let args: unknown = null;
+					if (raw?.args !== undefined && raw?.args !== null) {
+						if (JSON.stringify(raw.args).length > 4096)
+							invalid('items.args must be at most 4 KB of JSON');
+						args = raw.args;
+					}
+					return { title: itemTitle, taskId, command, args };
+				});
+				return tray.setItem(itemId, { title, items });
+			},
+		},
+		'ui.setTrayTitle': {
+			permission: 'tray',
+			run: (p) => {
+				const tray = needTray();
+				if (!tray.isTitleOwner()) {
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						`${manifest.name} is not chosen for the menu bar text in Settings`,
+					);
+				}
+				if (p.text === null) return tray.setTitle(null);
+				const trimmed = string(p.text, 'text', 60).trim();
+				if (!trimmed) invalid('text must not be empty');
+				if (/[\r\n]/.test(trimmed)) invalid('text must be a single line');
+				if (CONTROL_CHARS.test(trimmed))
+					invalid('text must not contain control characters');
+				if ([...trimmed].length > TRAY_TITLE_MAX)
+					invalid(`text must be at most ${TRAY_TITLE_MAX} characters`);
+				return tray.setTitle(trimmed);
 			},
 		},
 		'ui.refresh': {
