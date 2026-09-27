@@ -155,10 +155,36 @@
 						</PopoverContent>
 					</Popover>
 
+					<DropdownMenu>
+						<DropdownMenuTrigger as-child>
+							<button
+								type="button"
+								class="absolute top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+								:class="isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'"
+								aria-label="Task actions"
+								@click.stop
+							>
+								<MoreVertical class="h-4 w-4" />
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" class="w-48">
+							<DropdownMenuItem
+								@click="$store.commit('setCurrentTaskIdForModal', task.id)"
+							>
+								<Eye class="mr-2 h-4 w-4" />
+								<span>Open details</span>
+							</DropdownMenuItem>
+							<DropdownMenuItem @click="settingsTask = task">
+								<Settings2 class="mr-2 h-4 w-4" />
+								<span>Settings</span>
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+
 					<div
 						class="w-full px-4 py-3 transition-colors duration-150 group-hover/list-item:bg-surface-hover"
 					>
-						<div class="flex items-start gap-2 pr-9">
+						<div class="flex items-start gap-2 pr-16">
 							<div
 								v-if="draggable"
 								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
@@ -340,6 +366,12 @@
 				</div>
 			</div>
 		</div>
+		<SettingsComponent
+			v-if="settingsTask"
+			:form="settingsTask"
+			hide-trigger
+			@close="settingsTask = null"
+		/>
 	</div>
 
 	<Confirm
@@ -399,6 +431,13 @@
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
@@ -419,7 +458,10 @@
 		AlarmClock,
 		Check,
 		ClockPlus,
+		Eye,
+		MoreVertical,
 		Play,
+		Settings2,
 		Square,
 		UserPlus,
 	} from 'lucide-vue-next';
@@ -443,6 +485,11 @@
 			Popover,
 			PopoverContent,
 			PopoverTrigger,
+			DropdownMenu,
+			DropdownMenuContent,
+			DropdownMenuItem,
+			DropdownMenuTrigger,
+			SettingsComponent,
 			Command,
 			CommandEmpty,
 			CommandGroup,
@@ -451,6 +498,9 @@
 			CommandList,
 			UserPlus,
 			Check,
+			Eye,
+			MoreVertical,
+			Settings2,
 			ClockPlus,
 			Play,
 			Square,
@@ -554,6 +604,7 @@
 				showTaskForm: false,
 				modalTaskId: null,
 				confirm: null,
+				settingsTask: null,
 				isShowSelectedTasksCommonTime: false,
 				selected: [],
 				selecting: [],
