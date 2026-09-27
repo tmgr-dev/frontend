@@ -79,6 +79,7 @@
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import { Toaster } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { routeViewKey } from '@/utils/routeViewKey';
@@ -87,6 +88,7 @@
 		defineAsyncComponent,
 		defineComponent,
 		onBeforeMount,
+		onBeforeUnmount,
 		ref,
 		watch,
 	} from 'vue';
@@ -130,6 +132,14 @@
 					localStorage.setItem('sidebarExpanded', newValue.toString());
 				});
 			}
+
+			watch(
+				() => store.getters.isLoggedIn,
+				(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
+				{ immediate: true },
+			);
+			onBeforeUnmount(stopRoutineScheduler);
+
 			return {
 				routeViewKey,
 				isDesktop: isDesktopApp(),

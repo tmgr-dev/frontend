@@ -88,6 +88,7 @@
 	import { getStatusesOfWorkspace } from '@/actions/tmgr/statuses';
 	import { createTask } from '@/actions/tmgr/tasks';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import { activeLocalWorkspace } from '@/local/runtime';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
@@ -159,7 +160,13 @@
 				if (payload === null || payload === undefined) return;
 				reset();
 				try {
-					workspaces.value = await getWorkspaces();
+					const loaded = await getWorkspaces();
+					// A local workspace other than the active one would 409 on submit
+					// (local writes are refused outside the workspace that is open).
+					const active = activeLocalWorkspace();
+					workspaces.value = loaded.filter(
+						(ws) => !ws.is_local || ws.id === active?.id,
+					);
 				} catch (e) {
 					console.error('quick add: workspaces not loaded', e);
 				}
