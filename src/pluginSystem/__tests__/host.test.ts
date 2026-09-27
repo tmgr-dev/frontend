@@ -77,6 +77,8 @@ const setup = (
 		safeMode: false,
 		plugins: {},
 		statusBar: {},
+		trayItems: {},
+		trayTitle: null,
 		revision: 0,
 		revisions: {},
 	};
@@ -691,6 +693,34 @@ describe('plugin windows', () => {
 		host.dispose();
 	});
 
+	it('gives deepLink.params to only the window it was opened for, once each', async () => {
+		const twoViewPlugin = {
+			...pkg('tmgr.win2', '', [], {
+				views: [
+					{ id: 'board', title: 'Board', ui: 'ui/board.html' },
+					{ id: 'other', title: 'Other', ui: 'ui/other.html' },
+				],
+			}),
+			pages: { 'ui/board.html': '<h1>Board</h1>', 'ui/other.html': '<h1>Other</h1>' },
+		} as PluginPackage;
+		const { host } = setup([twoViewPlugin], {}, { open: async () => undefined });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.openView('tmgr.win2', 'board', { a: '1' });
+		await host.openView('tmgr.win2', 'other', { b: '2' });
+		const generation = host.generationOf('tmgr.win2')!;
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'other', 'deepLink.params', {}),
+		).toEqual({ b: '2' });
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'board', 'deepLink.params', {}),
+		).toEqual({ a: '1' });
+		expect(
+			await host.windowCall('tmgr.win2', generation, 'board', 'deepLink.params', {}),
+		).toBeNull();
+		host.dispose();
+	});
+
 	it('answers window calls through the plugin broker, with the same permissions', async () => {
 		const { host } = setup([windowPlugin(['tasks:read'])], {
 			listTasks: async () => ({ items: [{ id: 1 }], total: 1 }),
@@ -698,12 +728,12 @@ describe('plugin windows', () => {
 		await host.load();
 		await host.activate(LOCAL);
 		generation = host.generationOf('tmgr.win')!;
-		expect(await host.windowCall('tmgr.win', gen(), 'tasks.list', {})).toEqual({
+		expect(await host.windowCall('tmgr.win', gen(), 'board', 'tasks.list', {})).toEqual({
 			items: [{ id: 1 }],
 			total: 1,
 		});
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'tasks.update', {
+			host.windowCall('tmgr.win', gen(), 'board', 'tasks.update', {
 				id: 1,
 				patch: { title: 'x' },
 			}),
@@ -711,18 +741,18 @@ describe('plugin windows', () => {
 			code: 'PERMISSION_DENIED',
 		});
 		expect(
-			await host.windowCall('tmgr.win', gen(), 'commands.run', {
+			await host.windowCall('tmgr.win', gen(), 'board', 'commands.run', {
 				id: 'tmgr.win.hello',
 				args: { name: 'Ann' },
 			}),
 		).toBe('hello Ann');
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'commands.run', { id: 'other.cmd' }),
+			host.windowCall('tmgr.win', gen(), 'board', 'commands.run', { id: 'other.cmd' }),
 		).rejects.toMatchObject({
 			code: 'NOT_DECLARED',
 		});
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'register', {
+			host.windowCall('tmgr.win', gen(), 'board', 'register', {
 				kind: 'command',
 				id: 'tmgr.win.hello',
 			}),
@@ -731,7 +761,7 @@ describe('plugin windows', () => {
 		});
 		await host.setEnabled('tmgr.win', false);
 		await expect(
-			host.windowCall('tmgr.win', gen(), 'tasks.list', {}),
+			host.windowCall('tmgr.win', gen(), 'board', 'tasks.list', {}),
 		).rejects.toMatchObject({ code: 'NOT_RUNNING' });
 		host.dispose();
 	});
@@ -776,12 +806,12 @@ describe('plugin runs', () => {
 		const second = host.generationOf('tmgr.run')!;
 		expect(second).not.toBe(first);
 		await expect(
-			host.windowCall('tmgr.run', first, 'commands.run', { id: 'tmgr.run.go' }),
+			host.windowCall('tmgr.run', first, 'board', 'commands.run', { id: 'tmgr.run.go' }),
 		).rejects.toMatchObject({
 			code: 'NOT_RUNNING',
 		});
 		expect(
-			await host.windowCall('tmgr.run', second, 'commands.run', {
+			await host.windowCall('tmgr.run', second, 'board', 'commands.run', {
 				id: 'tmgr.run.go',
 			}),
 		).toBe('ok');
@@ -899,4 +929,652 @@ it('in a cloud workspace runs only what is turned on there, and reaches this com
 	expect(await host.runCommand('tmgr.net', 'tmgr.net.go')).toBe('fetched');
 	expect(fetches).toEqual(['http://localhost:11434/x']);
 	host.dispose();
+});
+
+describe('alarms', () => {
+	const alarmPlugin = pkg(
+		'tmgr.alarm',
+		`tmgr.commands.register('tmgr.alarm.create', (a) => tmgr.alarms.create(a.name, a.opts).catch((e) => ({ error: e.name })));
+		 tmgr.commands.register('tmgr.alarm.list', () => tmgr.alarms.list());
+		 tmgr.commands.register('tmgr.alarm.clear', (a) => tmgr.alarms.clear(a.name));
+		 tmgr.events.on('alarm', (e) => tmgr.storage.set('fired', e));`,
+		['alarms'],
+		{
+			commands: [
+				{ id: 'tmgr.alarm.create', title: 'Create' },
+				{ id: 'tmgr.alarm.list', title: 'List' },
+				{ id: 'tmgr.alarm.clear', title: 'Clear' },
+			],
+		},
+	);
+
+	const stored = () => {
+		const rows: unknown[] = [];
+		return {
+			rows,
+			api: { storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]) },
+		};
+	};
+
+	it('validates name, minimum delay/period, and mixing when with delay/period', async () => {
+		const { host } = setup([alarmPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string, opts: unknown) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name, opts });
+		expect(await create('ok', { delayMinutes: 1 })).toMatchObject({ name: 'ok' });
+		expect(await create('too short', { delayMinutes: 0.5 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('bad name!', { delayMinutes: 1 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('a'.repeat(61), { delayMinutes: 1 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('mixed', { delayMinutes: 1, when: '2999-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('past', { when: '2000-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('far', { when: '2999-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('none', {})).toEqual({ error: 'INVALID_PARAMS' });
+		host.dispose();
+	});
+
+	it('allows at most 10 alarms per plugin per workspace, but an update does not count', async () => {
+		let clock = Date.now();
+		const { host } = setup([alarmPlugin], {}, {}, {}, { now: () => (clock += 1000) });
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+				name,
+				opts: { delayMinutes: 5 },
+			});
+		for (let i = 0; i < 10; i++) expect(await create(`a${i}`)).toMatchObject({ name: `a${i}` });
+		expect(await create('a10')).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await create('a0')).toMatchObject({ name: 'a0' });
+		host.dispose();
+	});
+
+	it('caps delayMinutes and periodMinutes at one year', async () => {
+		const { host } = setup([alarmPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string, opts: unknown) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name, opts });
+		expect(await create('tooLongDelay', { delayMinutes: 525_601 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('tooLongPeriod', { periodMinutes: 525_601 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('capOk', { delayMinutes: 525_600 })).toMatchObject({ name: 'capOk' });
+		host.dispose();
+	});
+
+	it('drops a corrupt stored entry instead of crashing the scheduler or list, and it does not hold a slot', async () => {
+		const store: Record<string, unknown> = {
+			[`tmgr.alarm@${LOCAL.id}`]: { bad: { name: 'bad', scheduledAtMs: NaN, periodMinutes: null } },
+		};
+		const alarms = {
+			get: (key: string) => store[key] as any,
+			set: (key: string, defs: unknown) => void (store[key] = defs),
+		};
+		const { host } = setup([alarmPlugin], {}, {}, {}, { alarms });
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})).toEqual([]);
+		expect(() => host.tick()).not.toThrow();
+		expect(
+			await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+				name: 'fresh',
+				opts: { delayMinutes: 1 },
+			}),
+		).toMatchObject({ name: 'fresh' });
+		host.dispose();
+	});
+
+	it('needs the alarms permission', async () => {
+		const { host } = setup([
+			pkg(
+				'tmgr.noalarm',
+				`tmgr.commands.register('tmgr.noalarm.create', (a) => tmgr.alarms.create(a.name, a.opts).catch((e) => ({ error: e.name })));`,
+				[],
+				{ commands: [{ id: 'tmgr.noalarm.create', title: 'Create' }] },
+			),
+		]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(
+			await host.runCommand('tmgr.noalarm', 'tmgr.noalarm.create', {
+				name: 'x',
+				opts: { delayMinutes: 1 },
+			}),
+		).toEqual({ error: 'PERMISSION_DENIED' });
+		host.dispose();
+	});
+
+	it('fires a due alarm through dispatch, and reschedules a periodic one from now', async () => {
+		let clock = 1_000_000;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+			name: 'p',
+			opts: { periodMinutes: 5 },
+		});
+		clock += 5 * 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toEqual(['fired', { name: 'p', scheduledAt: new Date(1_000_000 + 5 * 60_000).toISOString() }]);
+		const list = (await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})) as { name: string; scheduledAt: string }[];
+		expect(list).toEqual([{ name: 'p', scheduledAt: new Date(clock + 5 * 60_000).toISOString() }]);
+		host.dispose();
+	});
+
+	it('removes a one-shot alarm once it fires', async () => {
+		let clock = 0;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name: 'once', opts: { delayMinutes: 1 } });
+		clock += 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		expect(await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})).toEqual([]);
+		host.dispose();
+	});
+
+	it('coalesces missed firings after a long gap into a single event', async () => {
+		let clock = 0;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+			name: 'p',
+			opts: { periodMinutes: 5 },
+		});
+		clock += 60 * 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('reloads persisted alarms on start, and nothing fires after stop or in safe mode', async () => {
+		let clock = 0;
+		const store: Record<string, unknown> = {};
+		const alarms = {
+			get: (key: string) => store[key] as any,
+			set: (key: string, defs: unknown) => void (store[key] = defs),
+		};
+		const { rows, api } = stored();
+		const { host, state } = setup([alarmPlugin], api, {}, {}, { now: () => clock, alarms });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name: 'p', opts: { delayMinutes: 1 } });
+		clock += 60_000;
+
+		await host.setEnabled('tmgr.alarm', false);
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(0);
+
+		state.safeMode = true;
+		await host.activate(LOCAL);
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(0);
+		state.safeMode = false;
+
+		const second = setup([alarmPlugin], api, {}, {}, { now: () => clock, alarms }).host;
+		await second.load();
+		await second.activate(LOCAL);
+		second.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		second.dispose();
+		host.dispose();
+	});
+});
+
+describe('start events', () => {
+	const CLOUD = { id: 56, code: 'team', name: 'Team', kind: 'cloud' as const };
+	const startPlugin = pkg(
+		'tmgr.start',
+		`tmgr.events.on('app.started', () => tmgr.storage.set('started', 1));
+		 tmgr.events.on('workspace.switched', (e) => tmgr.storage.set('switched', e));`,
+	);
+
+	it('delivers app.started once per session, even across restarts', async () => {
+		const rows: [string, unknown][] = [];
+		const { host } = setup([startPlugin], {
+			storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(rows.filter(([k]) => k === 'started')).toHaveLength(1);
+		await host.setEnabled('tmgr.start', false);
+		await host.setEnabled('tmgr.start', true);
+		await flush();
+		expect(rows.filter(([k]) => k === 'started')).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('delivers workspace.switched with from/to only when the active workspace actually changes', async () => {
+		const rows: [string, unknown][] = [];
+		const { host, leave } = setup(
+			[startPlugin],
+			{ storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]) },
+			{},
+			{},
+			{ enabled: { get: () => true, set: () => undefined } },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toHaveLength(0);
+		leave();
+		await host.activate(CLOUD);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toEqual([
+			['switched', { from: LOCAL.id, to: CLOUD.id }],
+		]);
+		await host.activate(CLOUD);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toHaveLength(1);
+		host.dispose();
+	});
+});
+
+describe('notifications', () => {
+	const notifyPlugin = pkg(
+		'tmgr.notif',
+		`tmgr.commands.register('tmgr.notif.act', (args) => tmgr.storage.set('acted', args));
+		 tmgr.commands.register('tmgr.notif.send', (args) => tmgr.ui.notify('hi', args).catch((e) => ({ error: e.name })));
+		 tmgr.commands.register('tmgr.notif.dnd', () => tmgr.ui.dnd());`,
+		['notifications'],
+		{
+			commands: [
+				{ id: 'tmgr.notif.act', title: 'Act' },
+				{ id: 'tmgr.notif.send', title: 'Send' },
+				{ id: 'tmgr.notif.dnd', title: 'DND' },
+			],
+		},
+	);
+
+	const setupNotify = (extra: Partial<Parameters<typeof createPluginHost>[0]> = {}) => {
+		const notifications: any[] = [];
+		const stored: unknown[] = [];
+		const rest = setup(
+			[notifyPlugin],
+			{ storageSet: async (key: string, json: string) => void stored.push([key, JSON.parse(json)]) },
+			{},
+			{},
+			{
+				notifyPlugin: (_pluginId, _name, payload) => notifications.push(payload),
+				...extra,
+			},
+		);
+		return { ...rest, notifications, stored };
+	};
+
+	it('validates title, message, args size, and requires a declared command', async () => {
+		const { host } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		const send = (args: unknown) => host.runCommand('tmgr.notif', 'tmgr.notif.send', args);
+		expect(await send({ message: 'x'.repeat(301) })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ title: 'x'.repeat(81) })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ args: { big: 'x'.repeat(5000) } })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ command: 'not.declared' })).toEqual({ error: 'NOT_DECLARED' });
+		expect(await send({ command: 'tmgr.notif.act' })).toBeNull();
+		host.dispose();
+	});
+
+	it('always attributes the title to the plugin, native or toast', async () => {
+		const { host, notifications } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { title: 'Hello' });
+		expect(notifications[0].title).toBe('tmgr.notif: Hello');
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {});
+		expect(notifications[1].title).toBe('tmgr.notif');
+		host.dispose();
+	});
+
+	it('limits a plugin to 5 notifications per minute', async () => {
+		const { host } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		const results = [];
+		for (let i = 0; i < 6; i++)
+			results.push(await host.runCommand('tmgr.notif', 'tmgr.notif.send', {}));
+		expect(results.slice(0, 5)).toEqual([null, null, null, null, null]);
+		expect(results[5]).toEqual({ error: 'RATE_LIMITED' });
+		host.dispose();
+	});
+
+	it('a notification click runs the declared command only while the plugin still runs in that workspace', async () => {
+		const { host, notifications, stored, leave } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {
+			command: 'tmgr.notif.act',
+			args: { x: 1 },
+		});
+		const token = notifications[0].token;
+		expect(token).toEqual(expect.any(String));
+		expect(await host.resolveNotificationClick(token)).toEqual({ type: 'command' });
+		await flush();
+		expect(stored).toEqual([['acted', { x: 1 }]]);
+
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { command: 'tmgr.notif.act' });
+		const secondToken = notifications[1].token;
+		leave();
+		expect(await host.resolveNotificationClick(secondToken)).toBeNull();
+		host.dispose();
+	});
+
+	it('drops pending click tokens when the plugin stops', async () => {
+		const { host, notifications } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { taskId: 5 });
+		const token = notifications[0].token;
+		await host.setEnabled('tmgr.notif', false);
+		expect(await host.resolveNotificationClick(token)).toBeNull();
+		host.dispose();
+	});
+
+	it('suppresses notifications while do-not-disturb is active, and exposes it read-only', async () => {
+		const { host, notifications } = setupNotify({ dnd: () => ({ active: true, until: '2999-01-01T00:00:00.000Z' }) });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {});
+		expect(notifications).toEqual([]);
+		expect(await host.runCommand('tmgr.notif', 'tmgr.notif.dnd', {})).toEqual({
+			active: true,
+			until: '2999-01-01T00:00:00.000Z',
+		});
+		host.dispose();
+	});
+});
+
+describe('tray', () => {
+	const trayPlugin = pkg(
+		'tmgr.tray',
+		`tmgr.commands.register('tmgr.tray.act', (args) => tmgr.storage.set('acted', args));
+		 tmgr.ui.setTrayItem('menu', {
+			title: 'Menu',
+			items: [
+				{ title: 'Act', command: 'tmgr.tray.act', args: { x: 1 } },
+				{ title: 'Open', taskId: 9 },
+			],
+		 }).catch(() => undefined);
+		 tmgr.commands.register('tmgr.tray.title', (text) => tmgr.ui.setTrayTitle(text).catch((e) => e.name));`,
+		['tray'],
+		{
+			commands: [
+				{ id: 'tmgr.tray.act', title: 'Act' },
+				{ id: 'tmgr.tray.title', title: 'Title' },
+			],
+			trayItems: [{ id: 'menu' }],
+		},
+	);
+
+	it('shows tray items while the plugin runs, resolves clicks like a notification click, and clears them on stop', async () => {
+		const stored: unknown[] = [];
+		const { host, state } = setup([trayPlugin], {
+			storageSet: async (key: string, json: string) => void stored.push([key, JSON.parse(json)]),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const entry = state.trayItems['tmgr.tray:menu'];
+		expect(entry.title).toBe('Menu');
+		expect(entry.pluginName).toBe('tmgr.tray');
+		const [actItem, openItem] = entry.items;
+		expect(await host.resolveTrayClick(actItem.id)).toEqual({ type: 'command' });
+		await flush();
+		expect(stored).toEqual([['acted', { x: 1 }]]);
+		expect(await host.resolveTrayClick(openItem.id)).toEqual({
+			type: 'task',
+			taskId: 9,
+			workspaceId: LOCAL.id,
+			pluginId: 'tmgr.tray',
+			generation: expect.any(String),
+		});
+		await host.setEnabled('tmgr.tray', false);
+		expect(state.trayItems['tmgr.tray:menu']).toBeUndefined();
+		expect(await host.resolveTrayClick(actItem.id)).toBeNull();
+		host.dispose();
+	});
+
+	it('a task result from a tray click is no longer current once the plugin restarts', async () => {
+		const { host, state } = setup([trayPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const [, openItem] = state.trayItems['tmgr.tray:menu'].items;
+		const result = await host.resolveTrayClick(openItem.id);
+		expect(result?.type).toBe('task');
+		await host.restart('tmgr.tray');
+		expect(
+			host.isCurrentRun(result!.pluginId!, {
+				generation: result!.generation!,
+				workspaceId: result!.workspaceId!,
+			}),
+		).toBe(false);
+		host.dispose();
+	});
+
+	it('needs machine access for tray items, like fetch and files', async () => {
+		const { host, state } = setup([trayPlugin], {}, {}, {}, {
+			machineAllowed: () => false,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(state.trayItems).toEqual({});
+		expect(state.plugins['tmgr.tray'].status).toBe('running');
+		host.dispose();
+	});
+
+	it('lets only the plugin chosen for the menu bar text set it, and clears it on stop or on a new choice', async () => {
+		let owner: string | null = 'tmgr.tray';
+		const { host, state } = setup([trayPlugin], {}, {}, {}, {
+			trayTitleOwner: () => owner,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runCommand('tmgr.tray', 'tmgr.tray.title', '3 tasks')).toBeNull();
+		expect(state.trayTitle).toBe('3 tasks');
+
+		owner = null;
+		host.refreshTrayTitleOwner();
+		expect(state.trayTitle).toBeNull();
+		expect(await host.runCommand('tmgr.tray', 'tmgr.tray.title', 'x')).toBe(
+			'PERMISSION_DENIED',
+		);
+
+		owner = 'tmgr.tray';
+		await host.runCommand('tmgr.tray', 'tmgr.tray.title', 'again');
+		expect(state.trayTitle).toBe('again');
+		await host.setEnabled('tmgr.tray', false);
+		expect(state.trayTitle).toBeNull();
+		host.dispose();
+	});
+});
+
+describe('deep links', () => {
+	const linkPlugin = (permissions: any[] = ['deeplinks']) =>
+		pkg(
+			'tmgr.link',
+			`tmgr.commands.register('tmgr.link.go', () => 'ran');`,
+			permissions,
+			{
+				commands: [
+					{ id: 'tmgr.link.go', title: 'Go', deepLink: true },
+					{ id: 'tmgr.link.silent', title: 'Silent' },
+				],
+				views: [{ id: 'report', title: 'Report' }],
+			},
+		);
+
+	it('gives the view or command only while the plugin runs here with deeplinks and machine access', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toEqual({
+			id: 'report',
+			title: 'Report',
+		});
+		expect(host.deepLinkView('tmgr.link', 'missing')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toEqual({
+			id: 'tmgr.link.go',
+			title: 'Go',
+			deepLink: true,
+		});
+		// Declared but not marked deepLink: true, and never registered either way.
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.silent')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'not.declared')).toBeNull();
+
+		await host.setEnabled('tmgr.link', false);
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
+		host.dispose();
+	});
+
+	it('runs a deep-linked command only through the same checks', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', { a: '1' }),
+		).resolves.toBe(true);
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.silent', {}),
+		).resolves.toBe(false);
+		host.dispose();
+	});
+
+	it('refuses a deep-linked command once the run it was confirmed for is no longer running', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		await host.restart('tmgr.link');
+		await flush();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, expected),
+		).resolves.toBe(false);
+		const fresh = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, fresh),
+		).resolves.toBe(true);
+		host.dispose();
+	});
+
+	it('refuses a deep-linked command once the app has left the confirmed workspace', async () => {
+		const { host, leave } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		leave();
+		await expect(
+			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, expected),
+		).resolves.toBe(false);
+		host.dispose();
+	});
+
+	const uiLinkPlugin = {
+		...pkg('tmgr.linkui', '', ['deeplinks'], {
+			views: [{ id: 'board', title: 'Board', ui: 'ui/board.html' }],
+		}),
+		pages: { 'ui/board.html': '<h1>Board</h1>' },
+	} as PluginPackage;
+
+	it('openDeepLinkView refuses once the app has left the confirmed workspace', async () => {
+		const opened: unknown[] = [];
+		const { host, leave } = setup(
+			[uiLinkPlugin],
+			{},
+			{ open: async (...args: unknown[]) => void opened.push(args) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
+		leave();
+		expect(await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected)).toBeNull();
+		expect(opened).toEqual([]);
+		host.dispose();
+	});
+
+	it('openDeepLinkView opens a ui view itself once re-validated', async () => {
+		const opened: unknown[] = [];
+		const { host } = setup(
+			[uiLinkPlugin],
+			{},
+			{ open: async (...args: unknown[]) => void opened.push(args) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
+		const result = await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected);
+		expect(result).toEqual({ view: { id: 'board', title: 'Board', ui: 'ui/board.html' } });
+		expect(opened).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('openDeepLinkView leaves a plain view (no ui) for the caller to route to', async () => {
+		const { host } = setup([linkPlugin()]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
+		expect(await host.openDeepLinkView('tmgr.link', 'report', undefined, expected)).toEqual({
+			view: { id: 'report', title: 'Report' },
+		});
+		host.dispose();
+	});
+
+	it('needs the deeplinks permission', async () => {
+		const { host } = setup([linkPlugin([])]);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
+		host.dispose();
+	});
+
+	it('needs machine access, like fetch and files', async () => {
+		const { host } = setup([linkPlugin()], {}, {}, {}, {
+			machineAllowed: () => false,
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
+		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
+		host.dispose();
+	});
 });

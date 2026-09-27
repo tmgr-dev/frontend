@@ -11,8 +11,10 @@ mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
 mod plugin_net;
+mod plugin_notify;
 #[cfg(feature = "isolation-selftest")]
 mod plugin_selftest;
+mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod tray;
@@ -97,6 +99,7 @@ pub fn run() {
     .plugin(tauri_plugin_deep_link::init())
     .plugin(tauri_plugin_clipboard_manager::init())
     .manage(tray::TrayStore::default())
+    .manage(tray::DndStore::default())
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(downloads::PendingDownloads::default())
@@ -109,6 +112,7 @@ pub fn run() {
     })
     .invoke_handler(tauri::generate_handler![
       tray::tray_update,
+      tray::dnd_update,
       quick_add::open_quick_add,
       quick_add::take_quick_add,
       quick_add::hide_quick_add,
@@ -127,6 +131,7 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_notify::plugin_notify,
       plugin_catalog::plugin_catalog,
       plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,
@@ -243,6 +248,7 @@ pub fn run() {
 
       tray::setup(app.handle())?;
       idle::start(app.handle());
+      plugin_tick::start(app.handle());
       Ok(())
     })
     .build(tauri::generate_context!())

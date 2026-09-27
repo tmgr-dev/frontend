@@ -20,6 +20,9 @@ const SETTINGS = 'plugins.settings';
 const SAFE_MODE = 'plugins.safeMode';
 const DEV_MODE = 'plugins.devMode';
 const MACHINE_CONSENT = 'plugins.machineConsent';
+const ALARMS = 'plugins.alarms';
+const DEEP_LINK_CONSENT = 'plugins.deepLinkConsent';
+const TRAY_TITLE_PLUGIN = 'plugins.trayTitlePlugin';
 
 /** Per workspace: `{ "<plugin>@<workspace id>": true | false }`. */
 export const enabledStore = {
@@ -68,8 +71,39 @@ export const storeSafeMode = (value: boolean) => write(SAFE_MODE, value);
 export const devModeStored = () => read<boolean>(DEV_MODE, false) === true;
 export const storeDevMode = (value: boolean) => write(DEV_MODE, value);
 
-/** A removed plugin leaves nothing a later plugin with the same id could inherit. */
-export const forgetPlugin = (pluginId: string) => {
+/** Keyed by `${storageId}@${workspaceId}`; a plain plugin's storageId is its id, so the prefix still matches. */
+export const alarmsStore = {
+	get: (key: string) =>
+		read<Record<string, Record<string, unknown>>>(ALARMS, {})[key],
+	set: (key: string, defs: Record<string, unknown>) =>
+		write(ALARMS, {
+			...read<Record<string, Record<string, unknown>>>(ALARMS, {}),
+			[key]: defs,
+		}),
+};
+
+/** Per (plugin, command, plugin version): the user chose "Always" for a deep-linked command. */
+export const deepLinkConsentStore = {
+	has: (pluginId: string, commandId: string, version: string) =>
+		read<Record<string, boolean>>(DEEP_LINK_CONSENT, {})[
+			`${pluginId}:${commandId}@${version}`
+		] === true,
+	remember: (pluginId: string, commandId: string, version: string) =>
+		write(DEEP_LINK_CONSENT, {
+			...read<Record<string, boolean>>(DEEP_LINK_CONSENT, {}),
+			[`${pluginId}:${commandId}@${version}`]: true,
+		}),
+};
+
+/** The plugin id chosen in Settings to show text in the menu bar, or null when none is chosen. */
+export const trayTitlePluginStore = {
+	get: () => read<string | null>(TRAY_TITLE_PLUGIN, null),
+	set: (pluginId: string | null) => write(TRAY_TITLE_PLUGIN, pluginId),
+};
+
+/** A removed plugin leaves nothing a later plugin with the same id could inherit; `storageId` is what
+ *  the "Always" consent and the menu bar text choice were actually keyed by. */
+export const forgetPlugin = (pluginId: string, storageId: string = pluginId) => {
 	const enabled = read<Record<string, boolean>>(ENABLED, {});
 	write(
 		ENABLED,
@@ -82,4 +116,19 @@ export const forgetPlugin = (pluginId: string) => {
 	const settings = read<Record<string, Record<string, unknown>>>(SETTINGS, {});
 	delete settings[pluginId];
 	write(SETTINGS, settings);
+	const alarms = read<Record<string, Record<string, unknown>>>(ALARMS, {});
+	write(
+		ALARMS,
+		Object.fromEntries(
+			Object.entries(alarms).filter(([key]) => !key.startsWith(`${pluginId}@`)),
+		),
+	);
+	const consent = read<Record<string, boolean>>(DEEP_LINK_CONSENT, {});
+	write(
+		DEEP_LINK_CONSENT,
+		Object.fromEntries(
+			Object.entries(consent).filter(([key]) => !key.startsWith(`${storageId}:`)),
+		),
+	);
+	if (trayTitlePluginStore.get() === storageId) trayTitlePluginStore.set(null);
 };

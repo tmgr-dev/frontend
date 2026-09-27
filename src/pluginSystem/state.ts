@@ -7,6 +7,8 @@ export const pluginState = reactive<PluginHostState>({
 	safeMode: false,
 	plugins: {},
 	statusBar: {},
+	trayItems: {},
+	trayTitle: null,
 	revision: 0,
 	revisions: {},
 });

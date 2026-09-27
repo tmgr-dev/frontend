@@ -49,7 +49,10 @@ export interface PluginManifest {
 	contributes: {
 		boardCardBadges: { id: string }[];
 		statusBarItems: { id: string }[];
-		commands: { id: string; title: string }[];
+		/** At most 5, each set with `tmgr.ui.setTrayItem`; needs the tray permission. */
+		trayItems: { id: string }[];
+		/** `deepLink` lets `tmgr://plugin/<id>/command/<local id>` run it; needs the deeplinks permission. */
+		commands: { id: string; title: string; deepLink?: boolean }[];
 		/** With `ui`, the view is the plugin's own HTML page, opened in a separate window. */
 		views: { id: string; title: string; ui?: string }[];
 		taskPanelSections: { id: string; title: string }[];
@@ -62,8 +65,8 @@ export interface PluginManifest {
 	};
 }
 
-const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
-const LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
+export const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+export const LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
 const LOOPBACK_ORIGIN =
 	/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):([1-9]\d{0,4})\/?$/;
 
@@ -201,13 +204,26 @@ export const parseManifest = (raw: any): PluginManifest => {
 			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({
 				id: localId(item, 'statusBarItems'),
 			})),
+			trayItems: (() => {
+				const items = list(c.trayItems, 'trayItems', (item) => ({
+					id: localId(item, 'trayItems'),
+				}));
+				if (items.length > 5) fail('contributes.trayItems must have at most 5 entries');
+				return items;
+			})(),
 			commands: list(c.commands, 'commands', (item) => {
 				const commandId = text(item?.id, 'commands.id', 120);
 				if (!commandId.startsWith(`${id}.`))
 					fail(`command ${commandId} must start with ${id}.`);
+				if (item?.deepLink !== undefined && typeof item.deepLink !== 'boolean')
+					fail(`commands.deepLink must be a boolean`);
+				const deepLink = item?.deepLink === true;
+				if (deepLink && !LOCAL_ID.test(commandId.slice(id.length + 1)))
+					fail(`command ${commandId} needs a plain local id to be linkable`);
 				return {
 					id: commandId,
 					title: text(item?.title, 'commands.title', 80),
+					...(deepLink ? { deepLink: true as const } : {}),
 				};
 			}),
 			views: list(c.views, 'views', (item) => {

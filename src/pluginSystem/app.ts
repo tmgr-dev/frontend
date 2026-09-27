@@ -1,11 +1,18 @@
-import { toast } from '@/components/ui/toast';
+import { ToastAction, toast } from '@/components/ui/toast';
 import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import {
+	dndState,
+	expireDndIfNeeded,
+	isDndActive,
+	startDndClock,
+	syncDndToTray,
+} from '@/utils/dnd';
 import type { AxiosInstance } from 'axios';
-import { watch } from 'vue';
+import { h, watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
@@ -24,7 +31,7 @@ import {
 import { createDataApi } from './dataApi';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
-import { createPluginHost, type PluginPackage } from './host';
+import { createPluginHost, storageIdOf, type PluginPackage } from './host';
 import {
 	blockedById,
 	pluginCatalog,
@@ -42,12 +49,14 @@ import {
 	setPluginHost,
 } from './state';
 import {
+	alarmsStore,
 	devModeStored,
 	enabledStore,
 	forgetPlugin,
 	machineConsentStore,
 	safeModeStored,
 	settingsStore,
+	trayTitlePluginStore,
 } from './storage';
 
 const installedBlocked = new Map<string, string>();
@@ -239,6 +248,7 @@ const resolveWorkspace = async (
 interface WindowCall {
 	call_id: number;
 	plugin_id: string;
+	view_id: string;
 	generation: string;
 	method: string;
 	params: unknown;
@@ -261,6 +271,7 @@ const answerPluginWindows = async (
 					(await host.windowCall(
 						payload.plugin_id,
 						payload.generation,
+						payload.view_id,
 						payload.method,
 						payload.params,
 					)) ?? null,
@@ -282,6 +293,120 @@ const answerPluginWindows = async (
 };
 
 let memberId = () => 0;
+
+let markPluginsReady: (() => void) | null = null;
+let pluginsReadyPromise: Promise<void> | null = null;
+let pluginsReadyDone = false;
+
+/** Resolves once plugins have started (or given up starting); callers after that point resolve immediately. */
+export const pluginsReady = (): Promise<void> => {
+	if (pluginsReadyDone) return Promise.resolve();
+	if (!pluginsReadyPromise) {
+		pluginsReadyPromise = new Promise((resolve) => {
+			markPluginsReady = resolve;
+		});
+	}
+	return pluginsReadyPromise;
+};
+
+const resolvePluginsReady = () => {
+	pluginsReadyDone = true;
+	markPluginsReady?.();
+	markPluginsReady = null;
+};
+
+const focusMainWindow = async () => {
+	const { getCurrentWindow } = await import('@tauri-apps/api/window');
+	const win = getCurrentWindow();
+	await win.show();
+	await win.setFocus();
+};
+
+/** The plugin never learns anything about the click itself; the host already ran the command, if any. */
+const followNotificationClick = async (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	token: string,
+) => {
+	const result = await host.resolveNotificationClick(token).catch(() => null);
+	if (
+		result?.type === 'task' &&
+		result.taskId != null &&
+		result.pluginId &&
+		host.isCurrentRun(result.pluginId, {
+			generation: result.generation ?? null,
+			workspaceId: result.workspaceId ?? null,
+		})
+	) {
+		store.commit('setCurrentTaskIdForModal', result.taskId);
+	}
+};
+
+/** A tray click may arrive while the app is hidden; only bring it forward for a task, not a silent command. */
+const followTrayClick = async (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	id: string,
+) => {
+	const result = await host.resolveTrayClick(id).catch(() => null);
+	if (result?.type === 'task' && result.taskId != null) {
+		await focusMainWindow();
+		if (
+			!result.pluginId ||
+			!host.isCurrentRun(result.pluginId, {
+				generation: result.generation ?? null,
+				workspaceId: result.workspaceId ?? null,
+			})
+		)
+			return;
+		store.commit('setCurrentTaskIdForModal', result.taskId);
+	}
+};
+
+const showPluginNotification = (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	pluginName: string,
+	payload: {
+		message: string;
+		title: string | null;
+		command: string | null;
+		urgency: 'normal' | 'high';
+		token: string | null;
+	},
+) => {
+	const title = payload.title ?? pluginName;
+	if (document.hasFocus() && payload.urgency === 'normal') {
+		toast({
+			title,
+			description: payload.message,
+			action: payload.token
+				? h(
+						ToastAction,
+						{
+							altText: payload.command ? 'Run' : 'Open',
+							onClick: () => void followNotificationClick(host, store, payload.token!),
+						},
+						() => (payload.command ? 'Run' : 'Open'),
+				  )
+				: undefined,
+		});
+		return;
+	}
+	void showNativeNotification(title, payload.message, payload.token);
+};
+
+// Not the web Notification API: tauri-plugin-notification's init script replaces it with a click-less shim.
+const showNativeNotification = async (
+	title: string,
+	body: string,
+	token: string | null,
+) => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	await invoke('plugin_notify', { title, body, token }).catch((error) =>
+		console.error('plugin_notify failed', error),
+	);
+};
 
 /** Desktop only: starts the plugin host and follows the current workspace. */
 export const installPlugins = async (
@@ -335,8 +460,19 @@ export const installPlugins = async (
 		},
 		machineAllowed: (pluginId, workspace) =>
 			hasMachineConsent(workspace, pluginId, memberId()),
+		trayTitleOwner: () => trayTitlePluginStore.get(),
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
+		notifyPlugin: (_pluginId, pluginName, payload) =>
+			showPluginNotification(host, store, pluginName, payload),
+		dnd: () => ({
+			active: isDndActive(),
+			until: dndState.until == null ? null : new Date(dndState.until).toISOString(),
+		}),
+		alarms: {
+			get: (key) => alarmsStore.get(key) as any,
+			set: (key, defs) => alarmsStore.set(key, defs),
+		},
 		files: (pluginId, workspace, pluginName) => {
 			const code = workspace.code.replace(LOCAL_CODE_PREFIX, '');
 			const folder = `plugins/${pluginId}`;
@@ -405,6 +541,25 @@ export const installPlugins = async (
 		await invoke<Catalog>('plugin_catalog').catch(() => pluginCatalog),
 	);
 	await answerPluginWindows(host);
+	startDndClock();
+	syncDndToTray();
+	const wake = () => {
+		// The webview's own setInterval is throttled while hidden, so an expired DND must be caught here too.
+		expireDndIfNeeded();
+		host.tick();
+	};
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible') wake();
+	});
+	window.addEventListener('focus', wake);
+	const { listen } = await import('@tauri-apps/api/event');
+	await listen('plugins://tick', wake);
+	await listen<string>('plugins://notification-click', ({ payload }) =>
+		void followNotificationClick(host, store, payload),
+	);
+	await listen<string>('tray://plugin-item', ({ payload }) =>
+		void followTrayClick(host, store, payload),
+	);
 	watch(
 		() =>
 			Object.values(pluginState.plugins)
@@ -455,28 +610,39 @@ export const installPlugins = async (
 					(id) => delete workspacePlugins[Number(id)],
 				);
 			}
-			if (!now) {
-				await host.activate(null);
-				return;
-			}
-			const workspace = await resolveWorkspace(store);
-			if (current !== sequence) return;
-			const active = pluginState.workspace;
-			if (
-				!sessionChanged &&
-				active?.id === workspace?.id &&
-				active?.code === workspace?.code
-			)
-				return;
-			if (workspace?.kind === 'cloud') {
-				await loadWorkspacePlugins(workspace.id).catch(() => undefined);
-				await syncWorkspacePlugins(workspace.id);
+			// A throw here must still resolve pluginsReady(), not leave its callers waiting forever.
+			try {
+				if (!now) {
+					await host.activate(null);
+					return;
+				}
+				const workspace = await resolveWorkspace(store);
 				if (current !== sequence) return;
+				const active = pluginState.workspace;
+				if (
+					!sessionChanged &&
+					active?.id === workspace?.id &&
+					active?.code === workspace?.code
+				)
+					return;
+				if (workspace?.kind === 'cloud') {
+					await loadWorkspacePlugins(workspace.id).catch(() => undefined);
+					await syncWorkspacePlugins(workspace.id);
+					if (current !== sequence) return;
+				}
+				await host.activate(workspace);
+			} finally {
+				if (current === sequence) resolvePluginsReady();
 			}
-			await host.activate(workspace);
 		},
 		{ immediate: true },
 	);
+};
+
+/** The one plugin the user chose in Settings to show text in the menu bar, or none to clear it. */
+export const setTrayTitlePlugin = (pluginId: string | null) => {
+	trayTitlePluginStore.set(pluginId);
+	pluginHost()?.refreshTrayTitleOwner();
 };
 
 /** Re-reads folder plugins (developer mode) and restarts everything for the current workspace. */
@@ -527,8 +693,10 @@ export const installRelease = async (release: Release, expectedId?: string) => {
 
 export const uninstallPlugin = async (pluginId: string) => {
 	const { invoke } = await import('@tauri-apps/api/core');
+	const entry = pluginState.plugins[pluginId];
+	const storageId = entry ? storageIdOf(entry) : pluginId;
 	await invoke('plugin_uninstall', { id: pluginId });
-	forgetPlugin(pluginId);
+	forgetPlugin(pluginId, storageId);
 	pluginHost()?.forget(pluginId);
 };
 

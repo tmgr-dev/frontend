@@ -56,6 +56,33 @@
 			{{ item.text }}
 		</component>
 
+		<DropdownMenu>
+			<DropdownMenuTrigger as-child>
+				<button
+					type="button"
+					class="flex h-full items-center px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+					:class="dndActive && 'text-amber-600 dark:text-amber-400'"
+					:title="dndActive ? 'Do not disturb is on' : 'Do not disturb'"
+				>
+					<BellOff v-if="dndActive" class="h-3.5 w-3.5" />
+					<Bell v-else class="h-3.5 w-3.5" />
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem
+					v-for="option in dndOptions"
+					:key="option.value"
+					@select="setDnd(option.value)"
+				>
+					<Check
+						class="mr-2 h-3.5 w-3.5"
+						:class="dndOption === option.value ? 'opacity-100' : 'opacity-0'"
+					/>
+					{{ option.label }}
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+
 		<div
 			class="flex h-full items-center gap-1.5 px-3"
 			:title="`Realtime: ${connectionState}`"
@@ -103,11 +130,25 @@
 
 <script>
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
 	import { usePusher } from '@/composable/usePusher';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import store from '@/store';
+	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
-	import { ChevronRight, Download, Sparkles } from 'lucide-vue-next';
+	import {
+		Bell,
+		BellOff,
+		Check,
+		ChevronRight,
+		Download,
+		Sparkles,
+	} from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -123,9 +164,28 @@
 		return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 	};
 
+	const DND_OPTIONS = [
+		{ value: 'off', label: 'Off' },
+		{ value: '1h', label: 'For 1 hour' },
+		{ value: '3h', label: 'For 3 hours' },
+		{ value: 'tomorrow', label: 'Until tomorrow' },
+	];
+
 	export default defineComponent({
 		name: 'StatusBar',
-		components: { ActiveCursorAgents, ChevronRight, Download, Sparkles },
+		components: {
+			ActiveCursorAgents,
+			DropdownMenu,
+			DropdownMenuContent,
+			DropdownMenuItem,
+			DropdownMenuTrigger,
+			Bell,
+			BellOff,
+			Check,
+			ChevronRight,
+			Download,
+			Sparkles,
+		},
 		props: {
 			tasks: { type: Array, default: () => [] },
 		},
@@ -197,6 +257,10 @@
 					pluginHost()
 						?.runCommand(item.pluginId, item.command)
 						.catch(() => undefined),
+				dndOptions: DND_OPTIONS,
+				dndOption: computed(() => dndState.option),
+				dndActive: computed(() => isDndActive(dndClock.now)),
+				setDnd,
 			};
 		},
 	});

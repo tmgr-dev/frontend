@@ -45,6 +45,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
+	import { sanitizeDeepLinkParams } from '@/utils/desktopShortcuts';
 	import { computed, defineComponent, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
 
@@ -72,6 +73,19 @@
 			// once, so a click can never run the old plugin's command under the new plugin id.
 			let treeFor = '';
 
+			/** Query params of an in-app deep link (`tmgr://plugin/<id>/view/<id>?...`), re-sanitised here too. */
+			const queryProps = computed<Record<string, string> | null>(() => {
+				const keys = Object.keys(route.query);
+				if (!keys.length) return null;
+				const entries: [string, string][] = [];
+				for (const key of keys) {
+					const value = route.query[key];
+					const v = Array.isArray(value) ? value[0] : value;
+					if (typeof v === 'string') entries.push([key, v]);
+				}
+				return sanitizeDeepLinkParams(entries) ?? {};
+			});
+
 			const render = async () => {
 				const current = ++request;
 				const target = `${pluginId.value}/${viewId.value}`;
@@ -86,7 +100,11 @@
 					const key = `${pluginId.value}/${viewId.value}`;
 					if (openedFor !== key) {
 						openedFor = key;
-						void openWindow();
+						void pluginHost()?.openView(
+							pluginId.value,
+							viewId.value,
+							queryProps.value ?? undefined,
+						);
 					}
 					return;
 				}
@@ -95,6 +113,7 @@
 					const next = await pluginHost()?.renderPage(
 						pluginId.value,
 						viewId.value,
+						queryProps.value,
 					);
 					if (current !== request) return;
 					tree.value = next ?? null;
@@ -114,6 +133,7 @@
 					entry.value?.status,
 					pluginState.revision,
 					pluginState.revisions[pluginId.value],
+					JSON.stringify(route.query),
 				],
 				() => void render(),
 				{ immediate: true },

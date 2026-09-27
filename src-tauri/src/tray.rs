@@ -2,14 +2,29 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder};
+use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_autostart::ManagerExt;
 
+/// The tray shows which do-not-disturb option is active; the timing itself is owned by JS (localStorage).
+const DND_OPTIONS: [(&str, &str); 4] =
+  [("off", "Off"), ("1h", "For 1 hour"), ("3h", "For 3 hours"), ("tomorrow", "Until tomorrow")];
+
+pub struct DndStore(pub Mutex<String>);
+
+impl Default for DndStore {
+  fn default() -> Self {
+    Self(Mutex::new("off".to_owned()))
+  }
+}
+
 const TRAY_ID: &str = "timer";
 const LABEL_MAX: usize = 42;
 const TITLE_MAX: usize = 18;
+/// Caps how large the plugin part of the tray menu can grow, regardless of how many plugins run.
+const MAX_PLUGIN_SECTIONS: usize = 20;
+const MAX_PLUGIN_ITEMS: usize = 10;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -47,9 +62,30 @@ fn task_ref(key: &str) -> TaskRef {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTrayItem {
+  pub id: String,
+  pub title: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTraySection {
+  pub plugin_name: String,
+  pub title: String,
+  pub items: Vec<PluginTrayItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TrayState {
   pub running: Vec<TrayTask>,
   pub recent: Vec<TrayTask>,
+  #[serde(default)]
+  pub plugin_sections: Vec<PluginTraySection>,
+  /// Set by the one plugin chosen in Settings for the menu bar text; JS owns the choice.
+  #[serde(default)]
+  pub tray_title: Option<String>,
 }
 
 #[derive(Default)]
@@ -94,7 +130,9 @@ pub fn format_elapsed(seconds: i64) -> String {
   }
 }
 
-pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
+const PLUGIN_TITLE_MAX: usize = 12;
+
+fn timer_title(state: &TrayState, now: i64) -> Option<String> {
   let task = state.running.first()?;
   let name = ticket_code(&task.title)
     .map(str::to_owned)
@@ -104,6 +142,57 @@ pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
     n => format!(" +{}", n - 1),
   };
   Some(format!("{} · {}{}", format_elapsed(elapsed(task, now)), name, more))
+}
+
+/// Unicode format (Cf) characters that can hide or reorder text: bidi overrides, joiners, zero-width marks.
+fn is_format_control(c: char) -> bool {
+  matches!(c as u32,
+    0x00AD
+      | 0x0600..=0x0605
+      | 0x061C
+      | 0x06DD
+      | 0x070F
+      | 0x180E
+      | 0x200B..=0x200F
+      | 0x202A..=0x202E
+      | 0x2060..=0x2064
+      | 0x2066..=0x206F
+      | 0xFEFF
+      | 0xFFF9..=0xFFFB
+      | 0xE0001
+      | 0xE0020..=0xE007F
+  )
+}
+
+/// Maps newlines to a space, drops control/Cf characters, collapses whitespace, trims, and truncates.
+fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
+  let mapped: String = text
+    .chars()
+    .map(|c| if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}') { ' ' } else { c })
+    .filter(|c| !c.is_control() && !is_format_control(*c))
+    .collect();
+  let collapsed = mapped.split_whitespace().collect::<Vec<_>>().join(" ");
+  (!collapsed.is_empty()).then(|| truncate(&collapsed, max))
+}
+
+fn sanitize_plugin_title(text: &str) -> Option<String> {
+  sanitize_plugin_text(text, PLUGIN_TITLE_MAX)
+}
+
+/// Same cleanup as `sanitize_plugin_title`, but for a tray section title, item title or plugin name.
+fn sanitize_plugin_label(text: &str) -> Option<String> {
+  sanitize_plugin_text(text, LABEL_MAX)
+}
+
+pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
+  let timer = timer_title(state, now);
+  let plugin = state.tray_title.as_deref().and_then(sanitize_plugin_title);
+  match (timer, plugin) {
+    (Some(t), Some(p)) => Some(format!("{t} · {p}")),
+    (Some(t), None) => Some(t),
+    (None, Some(p)) => Some(p),
+    (None, None) => None,
+  }
 }
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Result<Menu<R>> {
@@ -134,14 +223,37 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     menu = menu.separator();
   }
   let autostart = app.autolaunch().is_enabled().unwrap_or(false);
-  menu
+  let dnd_current = app.state::<DndStore>().0.lock().unwrap().clone();
+  let mut dnd_menu = SubmenuBuilder::new(app, "Do Not Disturb");
+  for (id, label) in DND_OPTIONS {
+    dnd_menu = dnd_menu.item(
+      &CheckMenuItemBuilder::with_id(format!("dnd:{id}"), label)
+        .checked(dnd_current == id)
+        .build(app)?,
+    );
+  }
+  menu = menu
     .item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?)
+    .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
     .item(
       &CheckMenuItemBuilder::with_id("autostart", "Launch at Login")
         .checked(autostart)
         .build(app)?,
-    )
+    );
+  if !state.plugin_sections.is_empty() {
+    menu = menu.separator();
+    for section in state.plugin_sections.iter().take(MAX_PLUGIN_SECTIONS) {
+      let mut submenu = SubmenuBuilder::new(app, plugin_section_label(section));
+      for item in section.items.iter().take(MAX_PLUGIN_ITEMS) {
+        let title = sanitize_plugin_label(&item.title).unwrap_or_else(|| "…".to_owned());
+        submenu =
+          submenu.item(&MenuItemBuilder::with_id(format!("plugin-item:{}", item.id), title).build(app)?);
+      }
+      menu = menu.item(&submenu.build()?);
+    }
+  }
+  menu
     .separator()
     .item(
       &MenuItemBuilder::with_id("quit", "Quit TMGR")
@@ -149,6 +261,13 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
         .build(app)?,
     )
     .build()
+}
+
+/// Prefixed with the plugin's own name, so a section titled to look like an app item can't be mistaken for one.
+fn plugin_section_label(section: &PluginTraySection) -> String {
+  let name = sanitize_plugin_label(&section.plugin_name).unwrap_or_else(|| "Plugin".to_owned());
+  let title = sanitize_plugin_label(&section.title).unwrap_or_default();
+  truncate(&format!("{name}: {title}"), LABEL_MAX)
 }
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
@@ -187,6 +306,18 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   if let Some(task_id) = id.strip_prefix("switch:") {
     let _ = app.emit("tray://switch", task_ref(task_id));
+    return;
+  }
+  if let Some(item_id) = id.strip_prefix("plugin-item:") {
+    // Whether this opens the app is up to JS, once it knows what the click resolves to.
+    let _ = app.emit_to("main", "tray://plugin-item", item_id.to_owned());
+    return;
+  }
+  if let Some(option) = id.strip_prefix("dnd:") {
+    *app.state::<DndStore>().0.lock().unwrap() = option.to_owned();
+    let state = app.state::<TrayStore>().0.lock().unwrap().clone();
+    refresh(app, &state);
+    let _ = app.emit_to("main", "tray://dnd", option.to_owned());
     return;
   }
   match id {
@@ -258,6 +389,28 @@ pub fn tray_update<R: Runtime>(app: AppHandle<R>, store: State<'_, TrayStore>, s
   refresh(&app, &state);
 }
 
+pub fn normalize_dnd_option(option: &str) -> &str {
+  DND_OPTIONS
+    .iter()
+    .find_map(|(id, _)| (*id == option).then_some(*id))
+    .unwrap_or("off")
+}
+
+/// Pushed from JS the same way `tray_update` is: JS owns the actual until-timestamp, this is only for the checkmark.
+#[tauri::command]
+pub fn dnd_update<R: Runtime>(app: AppHandle<R>, dnd: State<'_, DndStore>, option: String) {
+  let option = normalize_dnd_option(&option).to_owned();
+  {
+    let mut current = dnd.0.lock().unwrap();
+    if *current == option {
+      return;
+    }
+    *current = option;
+  }
+  let state = app.state::<TrayStore>().0.lock().unwrap().clone();
+  refresh(&app, &state);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -293,6 +446,7 @@ mod tests {
     let state = TrayState {
       running: vec![task(1, "TM-157: Tray", 0, 1_000), task(2, "Other", 0, 1_000)],
       recent: vec![],
+      ..Default::default()
     };
     assert_eq!(tray_title(&state, 1_000 + 42 * 60).as_deref(), Some("42:00 · TM-157 +1"));
   }
@@ -302,6 +456,7 @@ mod tests {
     let state = TrayState {
       running: vec![task(1, "A very long task name without a ticket", 5, 0)],
       recent: vec![],
+      ..Default::default()
     };
     assert_eq!(tray_title(&state, 0).as_deref(), Some("0:05 · A very long task…"));
   }
@@ -318,5 +473,80 @@ mod tests {
   #[test]
   fn no_title_when_nothing_runs() {
     assert_eq!(tray_title(&TrayState::default(), 0), None);
+  }
+
+  #[test]
+  fn dnd_option_falls_back_to_off_when_unknown() {
+    assert_eq!(normalize_dnd_option("1h"), "1h");
+    assert_eq!(normalize_dnd_option("tomorrow"), "tomorrow");
+    assert_eq!(normalize_dnd_option("bogus"), "off");
+    assert_eq!(normalize_dnd_option(""), "off");
+  }
+
+  #[test]
+  fn dnd_store_defaults_to_off() {
+    assert_eq!(*DndStore::default().0.lock().unwrap(), "off");
+  }
+
+  #[test]
+  fn title_combines_the_timer_and_the_chosen_plugin_text() {
+    let state = TrayState {
+      running: vec![task(1, "TM-157: Tray", 0, 1_000)],
+      tray_title: Some("⚑ 3".into()),
+      ..Default::default()
+    };
+    assert_eq!(tray_title(&state, 1_000 + 42 * 60).as_deref(), Some("42:00 · TM-157 · ⚑ 3"));
+  }
+
+  #[test]
+  fn title_shows_the_plugin_text_alone_when_no_timer_runs() {
+    let state = TrayState { tray_title: Some("3 tasks".into()), ..Default::default() };
+    assert_eq!(tray_title(&state, 0).as_deref(), Some("3 tasks"));
+  }
+
+  #[test]
+  fn plugin_title_is_trimmed_stripped_of_control_characters_and_re_truncated() {
+    assert_eq!(sanitize_plugin_title("  ok  "), Some("ok".into()));
+    assert_eq!(sanitize_plugin_title("a\u{0}b\u{2028}c"), Some("ab c".into()));
+    assert_eq!(sanitize_plugin_title("   "), None);
+    assert_eq!(sanitize_plugin_title(""), None);
+    assert_eq!(sanitize_plugin_title("a very long plugin title"), Some("a very long…".into()));
+  }
+
+  #[test]
+  fn plugin_text_collapses_newlines_and_runs_of_whitespace_to_a_single_space() {
+    assert_eq!(sanitize_plugin_label("Open\ntask\r\nnow"), Some("Open task now".into()));
+    assert_eq!(sanitize_plugin_label("a   b"), Some("a b".into()));
+  }
+
+  #[test]
+  fn plugin_text_strips_unicode_format_characters() {
+    assert_eq!(sanitize_plugin_label("a\u{200b}b\u{202e}c"), Some("abc".into()));
+  }
+
+  #[test]
+  fn empty_or_blank_plugin_title_gives_no_title_at_all() {
+    let state = TrayState { tray_title: Some("   ".into()), ..Default::default() };
+    assert_eq!(tray_title(&state, 0), None);
+  }
+
+  #[test]
+  fn plugin_section_label_names_the_plugin_and_truncates() {
+    let section = PluginTraySection {
+      plugin_name: "Sprint Board".into(),
+      title: "Quick actions".into(),
+      items: vec![],
+    };
+    assert_eq!(plugin_section_label(&section), "Sprint Board: Quick actions");
+  }
+
+  #[test]
+  fn plugin_section_label_sanitizes_the_name_and_the_title_separately() {
+    let section = PluginTraySection {
+      plugin_name: "Sprint\u{200b}Board".into(),
+      title: "Quick\nactions".into(),
+      items: vec![],
+    };
+    assert_eq!(plugin_section_label(&section), "SprintBoard: Quick actions");
   }
 }

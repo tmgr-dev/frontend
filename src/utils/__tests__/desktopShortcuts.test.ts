@@ -1,11 +1,13 @@
 import {
 	DEFAULT_SHORTCUTS,
+	createRecentUrlGuard,
 	describeAccelerator,
 	eventToAccelerator,
 	findConflict,
 	mergeShortcuts,
 	parseDeepLink,
 	pickQuickAddWorkspace,
+	sanitizeDeepLinkParams,
 	splitQuickText,
 	validateAccelerator,
 } from '../desktopShortcuts';
@@ -83,14 +85,96 @@ it('describes an accelerator with macOS symbols', () => {
 
 describe('parseDeepLink', () => {
 	it('extracts a task id', () => {
-		expect(parseDeepLink('tmgr://task/9233')).toEqual({ taskId: 9233 });
-		expect(parseDeepLink('tmgr://task/9233/')).toEqual({ taskId: 9233 });
+		expect(parseDeepLink('tmgr://task/9233')).toEqual({ type: 'task', taskId: 9233 });
+		expect(parseDeepLink('tmgr://task/9233/')).toEqual({ type: 'task', taskId: 9233 });
 	});
 
 	it('ignores unknown links', () => {
 		expect(parseDeepLink('tmgr://task/abc')).toBeNull();
 		expect(parseDeepLink('https://tmgr.dev/task/1')).toBeNull();
 		expect(parseDeepLink('tmgr://other/1')).toBeNull();
+	});
+
+	it('opens a plugin view, with query params as a flat string map', () => {
+		expect(parseDeepLink('tmgr://plugin/acme.board/view/report')).toEqual({
+			type: 'view',
+			pluginId: 'acme.board',
+			viewId: 'report',
+			params: {},
+		});
+		expect(
+			parseDeepLink('tmgr://plugin/acme.board/view/report?taskId=5&tab=done'),
+		).toEqual({
+			type: 'view',
+			pluginId: 'acme.board',
+			viewId: 'report',
+			params: { taskId: '5', tab: 'done' },
+		});
+	});
+
+	it('runs a plugin command, expanding the local id to the manifest command id', () => {
+		expect(parseDeepLink('tmgr://plugin/acme.board/command/refresh')).toEqual({
+			type: 'command',
+			pluginId: 'acme.board',
+			commandId: 'acme.board.refresh',
+			params: {},
+		});
+	});
+
+	it.each([
+		'tmgr://plugin/acme.board/view/report/extra',
+		'tmgr://plugin/Acme.Board/view/report',
+		'tmgr://plugin/acme.board/view/re port',
+		'tmgr://plugin/acme.board/view/re%2Fport',
+		'tmgr://plugin/acme%2eboard/view/report',
+		'tmgr://plugin/acme.board/other/report',
+		'tmgr://plugin/acme.board/view/',
+		'tmgr://plugin//view/report',
+		'tmgr://plugin/acme.board/view/report#frag',
+	])('rejects malformed plugin links: %s', (url) => {
+		expect(parseDeepLink(url)).toBeNull();
+	});
+
+	it('rejects params that are not a flat, bounded string map', () => {
+		expect(parseDeepLink('tmgr://plugin/acme.board/view/report?a=1&a=2')).toBeNull();
+		expect(
+			parseDeepLink(
+				`tmgr://plugin/acme.board/view/report?${'x'.repeat(41)}=1`,
+			),
+		).toBeNull();
+		expect(
+			parseDeepLink(`tmgr://plugin/acme.board/view/report?v=${'x'.repeat(501)}`),
+		).toBeNull();
+		const manyParams = Array.from({ length: 21 }, (_, i) => `p${i}=1`).join('&');
+		expect(parseDeepLink(`tmgr://plugin/acme.board/view/report?${manyParams}`)).toBeNull();
+	});
+});
+
+describe('sanitizeDeepLinkParams', () => {
+	it.each(['__proto__', 'constructor', 'prototype'])(
+		'rejects %s as a param key',
+		(key) => {
+			expect(sanitizeDeepLinkParams([[key, 'x']])).toBeNull();
+		},
+	);
+
+	it('keeps an ordinary key as a plain, harmless own key', () => {
+		const params = sanitizeDeepLinkParams([['taskId', '5']]);
+		expect(Object.getPrototypeOf(params)).toBeNull();
+		expect(params).toEqual({ taskId: '5' });
+	});
+});
+
+describe('createRecentUrlGuard', () => {
+	it('treats the same url within the window as a duplicate, a new url or the same one later as not', () => {
+		let now = 1000;
+		const isDuplicate = createRecentUrlGuard(() => now);
+		expect(isDuplicate('tmgr://task/1')).toBe(false);
+		now += 1000;
+		expect(isDuplicate('tmgr://task/1')).toBe(true);
+		now += 10_000;
+		expect(isDuplicate('tmgr://task/1')).toBe(false);
+		expect(isDuplicate('tmgr://task/2')).toBe(false);
 	});
 });
 

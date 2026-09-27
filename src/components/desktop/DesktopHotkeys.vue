@@ -1,5 +1,35 @@
 <template>
 	<span class="hidden" />
+	<AlertDialog
+		:open="!!pendingConfirm"
+		@update:open="(open) => !open && cancelConfirm()"
+	>
+		<AlertDialogContent>
+			<AlertDialogHeader>
+				<AlertDialogTitle>
+					Let {{ pendingConfirm?.pluginName }} run "{{
+						pendingConfirm?.commandTitle
+					}}" from a link?
+				</AlertDialogTitle>
+				<AlertDialogDescription v-if="pendingConfirmParams.length">
+					<span
+						v-for="param in pendingConfirmParams"
+						:key="param.key"
+						class="block truncate"
+					>
+						{{ param.key }}: {{ param.value }}
+					</span>
+				</AlertDialogDescription>
+			</AlertDialogHeader>
+			<AlertDialogFooter>
+				<AlertDialogCancel @click="cancelConfirm">Cancel</AlertDialogCancel>
+				<Button variant="outline" size="sm" @click="confirmOnce"
+					>Allow once</Button
+				>
+				<AlertDialogAction @click="confirmAlways">Always</AlertDialogAction>
+			</AlertDialogFooter>
+		</AlertDialogContent>
+	</AlertDialog>
 </template>
 
 <script>
@@ -7,15 +37,43 @@
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 	} from '@/actions/tmgr/tasks';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
+	import { Button } from '@/components/ui/button';
+	import { toast } from '@/components/ui/toast';
+	import { pluginsReady } from '@/pluginSystem/app';
+	import { storageIdOf } from '@/pluginSystem/host';
+	import { pluginHost, pluginState } from '@/pluginSystem/state';
+	import { deepLinkConsentStore } from '@/pluginSystem/storage';
+	import router from '@/router';
 	import store from '@/store';
 	import {
+		createRecentUrlGuard,
 		parseDeepLink,
 		SHORTCUT_ACTIONS,
 		shortcutConfig,
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
 	import { loadRecent } from '@/utils/desktopTray';
-	import { defineComponent, onBeforeUnmount, onMounted, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		watch,
+	} from 'vue';
+
+	const DEEP_LINK_TIMEOUT_MS = 10_000;
+	const MAX_PARAM_VALUE_DISPLAY = 60;
 
 	const showMainWindow = async () => {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -23,6 +81,14 @@
 		await win.show();
 		await win.setFocus();
 	};
+
+	const cantOpenLink = () =>
+		toast({ title: "Can't open this link", variant: 'destructive' });
+
+	/** Module-scoped: a remount of this component must not run the cold-start link a second time. */
+	let coldStartHandled = false;
+	/** Module-scoped like `coldStartHandled`: getCurrent() and onOpenUrl may both deliver the same URL. */
+	const isRecentDuplicateUrl = createRecentUrlGuard();
 
 	const openQuickAdd = async (extra = {}) => {
 		const { invoke } = await import('@tauri-apps/api/core');
@@ -33,12 +99,24 @@
 
 	export default defineComponent({
 		name: 'DesktopHotkeys',
+		components: {
+			AlertDialog,
+			AlertDialogAction,
+			AlertDialogCancel,
+			AlertDialogContent,
+			AlertDialogDescription,
+			AlertDialogFooter,
+			AlertDialogHeader,
+			AlertDialogTitle,
+			Button,
+		},
 		props: {
 			tasks: { type: Array, default: () => [] },
 		},
 		setup(props) {
 			let registered = [];
 			let unlistenDeepLink = null;
+			const pendingConfirm = ref(null);
 
 			const toggleTimer = async () => {
 				if (props.tasks.length) {
@@ -106,11 +184,118 @@
 				shortcutStatus.value = status;
 			};
 
-			const openLinks = async (urls) => {
-				const link = (urls || []).map(parseDeepLink).find(Boolean);
-				if (!link) return;
+			/** Captured right when a link is accepted, before any await: the run and workspace it is good for. */
+			const capturedExpectation = (pluginId) => ({
+				generation: pluginHost()?.generationOf(pluginId) ?? null,
+				workspaceId: pluginHost()?.currentWorkspaceId() ?? null,
+			});
+
+			const openViewLink = async (link) => {
+				const view = pluginHost()?.deepLinkView(link.pluginId, link.viewId);
+				if (!view) return cantOpenLink();
+				const expected = capturedExpectation(link.pluginId);
 				await showMainWindow();
-				store.commit('setCurrentTaskIdForModal', link.taskId);
+				const result = await pluginHost()?.openDeepLinkView(
+					link.pluginId,
+					link.viewId,
+					link.params,
+					expected,
+				);
+				if (!result) return cantOpenLink();
+				if (result.view.ui) return;
+				await router.push({
+					name: 'WorkspacePluginPage',
+					params: {
+						workspace_code: store.getters.currentWorkspace?.code,
+						pluginId: link.pluginId,
+						viewId: link.viewId,
+					},
+					query: link.params,
+				});
+			};
+
+			/** Re-validates the run and workspace inside the host, right before it runs the command. */
+			const runCommandLink = async (link, expected) => {
+				try {
+					const ran = await pluginHost()?.runDeepLinkCommand(
+						link.pluginId,
+						link.commandId,
+						link.params,
+						expected,
+					);
+					if (!ran) cantOpenLink();
+				} catch (error) {
+					console.error('deep link command failed', error);
+				}
+			};
+
+			const cancelConfirm = () => {
+				pendingConfirm.value = null;
+			};
+
+			const confirmOnce = async () => {
+				const confirm = pendingConfirm.value;
+				pendingConfirm.value = null;
+				if (confirm) {
+					await runCommandLink(confirm.link, {
+						generation: confirm.generation,
+						workspaceId: confirm.workspaceId,
+					});
+				}
+			};
+
+			const confirmAlways = async () => {
+				const confirm = pendingConfirm.value;
+				pendingConfirm.value = null;
+				if (!confirm) return;
+				deepLinkConsentStore.remember(confirm.storageId, confirm.link.commandId, confirm.version);
+				await runCommandLink(confirm.link, {
+					generation: confirm.generation,
+					workspaceId: confirm.workspaceId,
+				});
+			};
+
+			const openCommandLink = async (link) => {
+				// A second command link while a dialog is open is ignored: not queued, not swapped in.
+				if (pendingConfirm.value) return;
+				const command = pluginHost()?.deepLinkCommand(link.pluginId, link.commandId);
+				if (!command) return cantOpenLink();
+				const entry = pluginState.plugins[link.pluginId];
+				const storageId = entry ? storageIdOf(entry) : link.pluginId;
+				const version = entry?.manifest.version ?? '';
+				const expected = capturedExpectation(link.pluginId);
+				if (deepLinkConsentStore.has(storageId, link.commandId, version)) {
+					return runCommandLink(link, expected);
+				}
+				// Set before the await below: a link arriving during it must see the dialog already open.
+				pendingConfirm.value = {
+					link,
+					pluginName: entry?.manifest.name ?? link.pluginId,
+					commandTitle: command.title,
+					storageId,
+					version,
+					generation: expected.generation,
+					workspaceId: expected.workspaceId,
+				};
+				await showMainWindow();
+			};
+
+			const openLinks = async (urls) => {
+				const url = (urls || []).find((u) => parseDeepLink(u));
+				if (!url || isRecentDuplicateUrl(url)) return;
+				const link = parseDeepLink(url);
+				if (link.type === 'task') {
+					await showMainWindow();
+					store.commit('setCurrentTaskIdForModal', link.taskId);
+					return;
+				}
+				const ready = await Promise.race([
+					pluginsReady().then(() => true),
+					new Promise((resolve) => setTimeout(() => resolve(false), DEEP_LINK_TIMEOUT_MS)),
+				]);
+				if (!ready) return cantOpenLink();
+				if (link.type === 'view') return openViewLink(link);
+				return openCommandLink(link);
 			};
 
 			watch(shortcutConfig, register, { deep: true });
@@ -119,7 +304,10 @@
 				await register(shortcutConfig.value);
 				const deepLink = await import('@tauri-apps/plugin-deep-link');
 				unlistenDeepLink = await deepLink.onOpenUrl(openLinks);
-				openLinks(await deepLink.getCurrent());
+				if (!coldStartHandled) {
+					coldStartHandled = true;
+					openLinks(await deepLink.getCurrent());
+				}
 			});
 
 			onBeforeUnmount(async () => {
@@ -130,7 +318,23 @@
 				}
 			});
 
-			return {};
+			const pendingConfirmParams = computed(() =>
+				Object.entries(pendingConfirm.value?.link.params ?? {}).map(([key, value]) => ({
+					key,
+					value:
+						value.length > MAX_PARAM_VALUE_DISPLAY
+							? `${value.slice(0, MAX_PARAM_VALUE_DISPLAY)}…`
+							: value,
+				})),
+			);
+
+			return {
+				pendingConfirm,
+				pendingConfirmParams,
+				cancelConfirm,
+				confirmOnce,
+				confirmAlways,
+			};
 		},
 	});
 </script>

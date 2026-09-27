@@ -11,6 +11,7 @@ const valid = {
 	contributes: {
 		boardCardBadges: [{ id: 'overrun' }],
 		statusBarItems: [{ id: 'total' }],
+		trayItems: [{ id: 'menu' }],
 		commands: [{ id: 'tmgr.estimate.refresh', title: 'Refresh estimates' }],
 		views: [{ id: 'report', title: 'Overrun' }],
 		taskPanelSections: [{ id: 'summary', title: 'Estimate' }],
@@ -39,6 +40,7 @@ it('accepts a complete manifest and fills defaults', () => {
 	).toEqual({
 		boardCardBadges: [],
 		statusBarItems: [],
+		trayItems: [],
 		commands: [],
 		views: [],
 		taskPanelSections: [],
@@ -68,6 +70,60 @@ it('validates boardFilters against a declared boardCardBadges id', () => {
 			},
 		}).contributes.boardFilters,
 	).toEqual([{ id: 'x', title: 'X', badge: 'overrun', key: 'over-budget' }]);
+});
+
+it('caps trayItems at 5 and validates their ids like statusBarItems', () => {
+	const trayItems = (n: number) =>
+		Array.from({ length: n }, (_, i) => ({ id: `item${i}` }));
+	expect(
+		parseManifest({
+			...valid,
+			contributes: { ...valid.contributes, trayItems: trayItems(5) },
+		}).contributes.trayItems,
+	).toHaveLength(5);
+	expect(() =>
+		parseManifest({
+			...valid,
+			contributes: { ...valid.contributes, trayItems: trayItems(6) },
+		}),
+	).toThrow('trayItems');
+	expect(() =>
+		parseManifest({
+			...valid,
+			contributes: { ...valid.contributes, trayItems: [{ id: 'a b' }] },
+		}),
+	).toThrow('trayItems');
+});
+
+it('accepts a deepLink command with a plain local id, and rejects the rest', () => {
+	const withCommand = (command: unknown) => ({
+		...valid,
+		contributes: { commands: [command] },
+	});
+	expect(
+		parseManifest(
+			withCommand({ id: 'tmgr.estimate.refresh', title: 'x', deepLink: true }),
+		).contributes.commands,
+	).toEqual([{ id: 'tmgr.estimate.refresh', title: 'x', deepLink: true }]);
+	expect(
+		parseManifest(
+			withCommand({ id: 'tmgr.estimate.refresh', title: 'x', deepLink: false }),
+		).contributes.commands,
+	).toEqual([{ id: 'tmgr.estimate.refresh', title: 'x' }]);
+	expect(() =>
+		parseManifest(
+			withCommand({ id: 'tmgr.estimate.refresh', title: 'x', deepLink: 'yes' }),
+		),
+	).toThrow('deepLink');
+	expect(() =>
+		parseManifest(
+			withCommand({
+				id: 'tmgr.estimate.a.b',
+				title: 'x',
+				deepLink: true,
+			}),
+		),
+	).toThrow('linkable');
 });
 
 it.each([

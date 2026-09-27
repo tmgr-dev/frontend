@@ -34,8 +34,10 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { usePusher } from '@/composable/usePusher';
+	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
+	import { isDndActive, setDnd } from '@/utils/dnd';
 	import {
 		buildTrayState,
 		formatAway,
@@ -60,7 +62,8 @@
 		if (
 			'Notification' in window &&
 			Notification.permission === 'granted' &&
-			!document.hasFocus()
+			!document.hasFocus() &&
+			!isDndActive()
 		) {
 			new Notification(title, { body });
 		}
@@ -96,15 +99,29 @@
 			let userSubscription = null;
 			let subscribedUserId = null;
 
+			const pluginTraySections = () =>
+				Object.values(pluginState.trayItems).map((entry) => ({
+					pluginName: entry.pluginName,
+					title: entry.title,
+					items: entry.items,
+				}));
+
 			const sync = () => {
 				const userId = store.state.user?.id;
 				if (!userId) return;
 				recent.value = rememberRecent(recent.value, props.tasks);
 				saveRecent(userId, recent.value);
-				pushTrayState(buildTrayState(props.tasks, recent.value));
+				pushTrayState({
+					...buildTrayState(props.tasks, recent.value),
+					pluginSections: pluginTraySections(),
+					trayTitle: pluginState.trayTitle,
+				});
 			};
 
 			watch(() => props.tasks, sync, { deep: true });
+			watch(() => [pluginState.trayItems, pluginState.trayTitle], sync, {
+				deep: true,
+			});
 
 			const stopAll = async () => {
 				await Promise.all(
@@ -184,6 +201,7 @@
 					),
 					await listen('tray://stop', safely(stopOne)),
 					await listen('tray://switch', safely(switchTo)),
+					await listen('tray://dnd', ({ payload }) => setDnd(payload)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();
 						if (!props.tasks.length) return;
