@@ -103,7 +103,11 @@
 		UserIcon,
 	} from '@heroicons/vue/24/outline';
 	import { useMagicKeys } from '@vueuse/core';
-	import { Bot, Loader2, Save, Send, Sparkles } from 'lucide-vue-next';
+	import { Bot, Loader2, Save, Send, Sparkles, Upload } from 'lucide-vue-next';
+	import { uploadTaskFile } from '@/actions/tmgr/files';
+	import { useToast } from '@/components/ui/toast/use-toast';
+	import { createFileDragDepth, isFileDrag } from '@/utils/fileDrag';
+	import { uploadPendingFiles } from '@/utils/pendingUploads';
 	import {
 		computed,
 		defineAsyncComponent,
@@ -1119,6 +1123,80 @@
 	};
 
 	const isCreatingTask = ref(false);
+	const pendingFiles = ref<File[]>([]);
+	const attachmentsRef = ref<InstanceType<typeof TaskAttachments> | null>(
+		null,
+	);
+	const { toast } = useToast();
+
+	const attachPendingFiles = async (newTaskId: number) => {
+		if (!pendingFiles.value.length) {
+			return;
+		}
+		const { failed } = await uploadPendingFiles(pendingFiles.value, (file) =>
+			uploadTaskFile(newTaskId, file),
+		);
+		pendingFiles.value = [];
+		if (failed.length) {
+			toast({
+				title: 'Some files were not attached',
+				description: failed.map((file) => file.name).join(', '),
+				variant: 'destructive',
+			});
+		}
+	};
+
+	const fileDragDepth = createFileDragDepth();
+	const isFileDragActive = ref(false);
+	const acceptsFileDrag = (event: DragEvent) =>
+		isFeatureEnabled('task.files') && isFileDrag(event);
+	const resetFileDrag = () => {
+		fileDragDepth.reset();
+		isFileDragActive.value = false;
+	};
+	const onFormDragEnter = (event: DragEvent) => {
+		if (!acceptsFileDrag(event)) {
+			return;
+		}
+		event.preventDefault();
+		isFileDragActive.value = fileDragDepth.enter();
+	};
+	const onFormDragOver = (event: DragEvent) => {
+		if (acceptsFileDrag(event)) {
+			event.preventDefault();
+		}
+	};
+	const onFormDragLeave = (event: DragEvent) => {
+		if (!acceptsFileDrag(event)) {
+			return;
+		}
+		if (event.relatedTarget === null) {
+			resetFileDrag();
+			return;
+		}
+		isFileDragActive.value = fileDragDepth.leave();
+	};
+	const onFormDrop = (event: DragEvent) => {
+		if (!acceptsFileDrag(event)) {
+			return;
+		}
+		resetFileDrag();
+		if (event.defaultPrevented) {
+			return;
+		}
+		event.preventDefault();
+		attachmentsRef.value?.uploadAll(
+			Array.from(event.dataTransfer?.files ?? []),
+		);
+	};
+	onMounted(() => {
+		window.addEventListener('dragend', resetFileDrag);
+		window.addEventListener('drop', resetFileDrag);
+	});
+	onBeforeUnmount(() => {
+		window.removeEventListener('dragend', resetFileDrag);
+		window.removeEventListener('drop', resetFileDrag);
+	});
 
 	const createTask = async () => {
 		if (isCreatingTask.value) {
@@ -1129,7 +1207,11 @@
 
 		try {
 			suppressAutoSavingForOnce.value = true;
-			form.value = await createTaskAction(form.value as Task);
+			const created = await createTaskAction(form.value as Task);
+			if (created.id) {
+				await attachPendingFiles(created.id as number);
+			}
+			form.value = created;
 
 			// Set current task ID in the store to transition to edit mode
 			if (form.value.id) {
@@ -1808,8 +1890,12 @@
 	</div>
 	<div
 		v-else
-		class="new-form-container h-full font-display text-ink"
+		class="new-form-container relative h-full font-display text-ink"
 		:class="{ 'bg-surface-sunken': !isModal }"
+		@dragenter="onFormDragEnter"
+		@dragover="onFormDragOver"
+		@dragleave="onFormDragLeave"
+		@drop="onFormDrop"
 	>
 		<div
 			class="flex transition-all duration-300"
@@ -2232,7 +2318,9 @@
 
 					<!-- Task Attachments -->
 					<TaskAttachments
-						v-if="isFeatureEnabled('task.files') && (taskId || form.id)"
+						v-if="isFeatureEnabled('task.files')"
+						ref="attachmentsRef"
+						v-model:pending-files="pendingFiles"
 						:task-id="taskId || form.id"
 					/>
 
@@ -2630,6 +2718,17 @@
 				</div>
 			</DialogContent>
 		</Dialog>
+		<div
+			v-if="isFileDragActive"
+			class="pointer-events-none absolute inset-0 z-50 rounded-panel border-2 border-dashed border-blue-500 bg-blue-50/80 dark:border-blue-400 dark:bg-gray-900/80"
+		>
+			<div
+				class="sticky top-0 flex h-full max-h-[100dvh] flex-col items-center justify-center gap-2 text-blue-600 dark:text-blue-300"
+			>
+				<Upload :size="32" />
+				<span class="text-lg font-semibold">Drop it here to upload</span>
+			</div>
+		</div>
 	</div>
 </template>
 
