@@ -66,3 +66,10 @@ PWA is configured in `vite.config.ts` with `NetworkFirst` for `/api/*` (5min TTL
 - **shadcn-vue components** live in `src/components/ui/`; brand colors `tmgr-blue`, `tmgr-light-blue`, `tmgr-gray` are defined in `tailwind.config.js`.
 - **Workspace context** must be in URLs and API calls — pull `currentWorkspace.code` from the store rather than hardcoding.
 - The full style guide (`.cursorrules`) has extensive examples for Options API, Vuex modules, composables, and shadcn usage; consult it for boilerplate but treat the points above as the binding constraints.
+
+## Boilerplate tracking
+
+This project tracks `project-boilerplate-monorepo` via `.boilerplate.json`.
+A commit that touches a generic path (see `.boilerplate.json`) is a
+candidate to upstream — run the `upstreaming-to-boilerplate` skill or
+`/upstream` on it.
