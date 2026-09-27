@@ -144,9 +144,11 @@ type TmgrEvent =
 	| { type: 'task.deleted'; workspaceId: number; taskId: number }
 	| { type: 'task.statusChanged'; workspaceId: number; taskId: number; statusId: number; task?: TmgrTask }
 	| { type: 'timer.started' | 'timer.stopped'; workspaceId: number; taskId: number; task: TmgrTask }
-	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author: TmgrCommentAuthor } }
+	/** `author` may be missing in a shared workspace until the server names the writer (TM-296). */
+	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author?: TmgrCommentAuthor | null } }
 	| { type: 'comment.deleted'; workspaceId: number; commentId: number }
-	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: TmgrReaction[] }
+	/** No `reacted`/`users`: those are actor-relative. Read this plugin's own state via comments.list. */
+	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: { emoji: string; count: number }[] }
 	/** `relationType` is the fixed name (e.g. "blocks") when known, otherwise the numeric relation type id. */
 	| {
 			type: 'task.relationChanged';
@@ -243,8 +245,11 @@ declare const tmgr: {
 	/** Needs time:write. */
 	time: { start(taskId: number): Promise<TmgrTask>; stop(taskId: number): Promise<TmgrTask> };
 	comments: {
-		/** Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'companion' | 'agent'). */
-		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor })[]>;
+		/**
+		 * Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'persona' | …),
+		 * or `null` in a shared workspace when the server does not yet say who wrote it.
+		 */
+		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor | null })[]>;
 		/** Needs comments:write. Written with this plugin as the author; a body `author` field is ignored. */
 		add(taskId: number, text: string): Promise<Record<string, unknown> & { author: TmgrCommentAuthor }>;
 		/** Needs comments:write. Toggles the emoji reaction for this plugin; returns the comment's reactions. */

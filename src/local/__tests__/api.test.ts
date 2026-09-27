@@ -22,14 +22,22 @@ describeSqlite('local workspace API on SQLite', () => {
 	};
 	const data = async (method: string, url: string, body?: unknown) =>
 		(await call(method, url, body)).data.data;
-	// Mirrors src/local/pinned.ts: the actor comes from the plugin's own header, never the body.
-	const pluginApi = (pluginId = 'tmgr.estimate') =>
+	// Mirrors src/local/pinned.ts: the actor comes from the plugin's own headers, never the body.
+	const pluginApi = (pluginId = 'tmgr.estimate', storageId = pluginId) =>
 		createDataApi(
 			axios.create({
 				adapter: async (config) => {
 					const headerPluginId = config.headers?.['X-TMGR-Plugin'];
+					const headerStorageId = config.headers?.['X-TMGR-Plugin-Storage'];
 					const actor = headerPluginId
-						? { kind: 'plugin' as const, id: String(headerPluginId), name: String(headerPluginId) }
+						? {
+								kind: 'plugin' as const,
+								id: String(headerPluginId),
+								name: String(headerPluginId),
+								ownerId: headerStorageId
+									? decodeURIComponent(String(headerStorageId))
+									: String(headerPluginId),
+						  }
 						: undefined;
 					const result = await dispatchLocal(
 						api,
@@ -44,7 +52,7 @@ describeSqlite('local workspace API on SQLite', () => {
 				},
 			}),
 			pluginId,
-			pluginId,
+			storageId,
 			pluginId,
 			false,
 			ctx.workspace.id,
@@ -124,6 +132,16 @@ describeSqlite('local workspace API on SQLite', () => {
 		}
 		expect((await call('PUT', 'plugins/tmgr.big/storage/k20', { value: big })).status).toBe(413);
 		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+	});
+
+	it('measures the plugin storage quota in bytes, not characters, for multi-byte text', async () => {
+		// 1.8M CJK characters are under the 5 MB character count but over 5 MB once encoded as UTF-8.
+		const cjk = JSON.stringify('字'.repeat(1_800_000));
+		expect((await call('PUT', 'plugins/tmgr.cjk/storage/k0', { value: cjk })).status).toBe(413);
+		const [{ n }] = await ctx.db.select<{ n: number }>(
+			`SELECT COUNT(*) AS n FROM plugin_kv WHERE plugin_id = 'tmgr.cjk'`,
+		);
+		expect(Number(n)).toBe(0);
 	});
 
 	it('holds the plugin storage quota under concurrent writes and counts keys too', async () => {
@@ -248,6 +266,17 @@ describeSqlite('local workspace API on SQLite', () => {
 	it('refuses to delete a status that still has tasks', async () => {
 		const task = await data('POST', 'tasks', { title: 'Stay' });
 		expect((await call('DELETE', `statuses/${task.status_id}`)).status).toBe(409);
+	});
+
+	it('refuses a duplicate category code, case-insensitively, but allows saving a category unchanged', async () => {
+		const a = await data('POST', 'project_categories', { title: 'Alpha', code: 'AB' });
+		expect((await call('POST', 'project_categories', { title: 'Beta', code: 'ab' })).status).toBe(422);
+		const b = await data('POST', 'project_categories', { title: 'Beta', code: 'CD' });
+
+		expect((await call('PUT', `project_categories/${b.id}`, { title: 'Beta', code: 'ab' })).status).toBe(422);
+		// Unchanged code (even by case) must not trip over the category's own row.
+		expect((await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2', code: 'ab' })).status).toBe(200);
+		expect((await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2' })).status).toBe(200);
 	});
 
 	it('answers workspace odds and ends and leaves unknown routes unmatched', async () => {
@@ -412,6 +441,13 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect((await call('POST', `comments/999999/reactions/toggle`, { emoji: '👍' })).status).toBe(404);
 	});
 
+	it('refuses to react to a comment whose task was deleted', async () => {
+		const task = await data('POST', 'tasks', { title: 'Doomed' });
+		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+		await call('DELETE', `tasks/${task.id}`);
+		expect((await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' })).status).toBe(404);
+	});
+
 	it('creates, lists and deletes task relations; refuses the same task and unknown tasks', async () => {
 		const a = await data('POST', 'tasks', { title: 'A' });
 		const b = await data('POST', 'tasks', { title: 'B' });
@@ -451,6 +487,29 @@ describeSqlite('local workspace API on SQLite', () => {
 
 		await call('DELETE', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
 		expect(await data('GET', `tasks/${a.id}/relations`)).toEqual([]);
+	});
+
+	it('deletes task relations and comment reactions when either task is deleted', async () => {
+		const a = await data('POST', 'tasks', { title: 'A' });
+		const b = await data('POST', 'tasks', { title: 'B' });
+		const blocks = (await data('GET', 'task-relation-types')).find((t: any) => t.name === 'blocks');
+		await call('POST', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
+		const comment = await data('POST', `tasks/${a.id}/comments`, { message: 'hi' });
+		await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+
+		await call('DELETE', `tasks/${b.id}`);
+		const [{ relations }] = await ctx.db.select<{ relations: number }>(
+			`SELECT COUNT(*) AS relations FROM task_relations WHERE task_id = ? OR related_task_id = ?`,
+			[a.id, a.id],
+		);
+		expect(Number(relations)).toBe(0);
+
+		await call('DELETE', `tasks/${a.id}`);
+		const [{ reactions }] = await ctx.db.select<{ reactions: number }>(
+			`SELECT COUNT(*) AS reactions FROM comment_reactions WHERE comment_id = ?`,
+			[comment.id],
+		);
+		expect(Number(reactions)).toBe(0);
 	});
 
 	it('migration 6 adds per-task plugin data and agent work runs on top of a v4 db, and re-runs safely', async () => {
@@ -600,6 +659,14 @@ describeSqlite('local workspace API on SQLite', () => {
 			[other.id],
 		);
 		expect(Number(n)).toBe(0);
+	});
+
+	it('measures per-task plugin data quota in bytes too', async () => {
+		const task = await data('POST', 'tasks', { title: 'CJK data' });
+		const cjk = JSON.stringify('字'.repeat(1_800_000));
+		expect(
+			(await call('PUT', `plugins/tmgr.cjk/tasks/${task.id}/data/k0`, { value: cjk })).status,
+		).toBe(413);
 	});
 
 	it('shares the plugin storage quota between kv and per-task data', async () => {
@@ -761,5 +828,83 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(bare.agent).toBe('plugin:tmgr.other');
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
 		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe('running');
+	});
+
+	it('rejects an agent name over 64 characters instead of silently truncating it', async () => {
+		const task = await data('POST', 'tasks', { title: 'Long agent' });
+		expect(
+			(await call('POST', `tasks/${task.id}/agent-work`, { agent: 'a'.repeat(65) })).status,
+		).toBe(422);
+		expect(
+			(await call('POST', `tasks/${task.id}/agent-work`, { agent: 'a'.repeat(64) })).status,
+		).toBe(201);
+	});
+
+	it('isolates agent-work ownership by storage id, not the bare plugin id, when a different repo reuses it', async () => {
+		const task = await data('POST', 'tasks', { title: 'Contested' });
+		const authorA = pluginApi('tmgr.agent', 'tmgr.agent@github.com/authorA/repo');
+		const authorB = pluginApi('tmgr.agent', 'tmgr.agent@github.com/authorB/repo');
+
+		const run = (await authorA.startAgentWork(task.id, {
+			agent: 'claude-code',
+			model: null,
+			sessionId: null,
+			branch: null,
+		})) as any;
+		// The stored agent namespace is by bare plugin id, same for both repos.
+		expect(run.agent).toBe('plugin:tmgr.agent/claude-code');
+
+		await expect(authorB.updateAgentWork(run.id, { summary: 'hijack' })).rejects.toThrow();
+		await expect(authorB.finishAgentWork(run.id, { status: 'succeeded' })).rejects.toThrow();
+		const updated = (await authorA.updateAgentWork(run.id, { summary: 'mine' })) as any;
+		expect(updated.summary).toBe('mine');
+
+		// A same-named run from the other repo does not collide with, or abandon, author A's run.
+		const other = (await authorB.startAgentWork(task.id, {
+			agent: 'claude-code',
+			model: null,
+			sessionId: null,
+			branch: null,
+		})) as any;
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe('running');
+		expect(overview.runs.find((r: any) => r.id === other.id).status).toBe('running');
+
+		// Reactions are owned by storage id too: both repos can react independently under the same plugin id.
+		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+		await authorA.reactToComment(comment.id, '👍');
+		const afterA = (await authorA.listComments(task.id)) as any[];
+		expect(afterA.find((c) => c.id === comment.id).reactions).toEqual([
+			{ emoji: '👍', count: 1, reacted: true, users: [] },
+		]);
+		await authorB.reactToComment(comment.id, '👍');
+		const afterB = (await authorB.listComments(task.id)) as any[];
+		expect(afterB.find((c) => c.id === comment.id).reactions).toEqual([
+			{ emoji: '👍', count: 2, reacted: true, users: [] },
+		]);
+		// Comment authorship still names the bare plugin id, regardless of which repo wrote it.
+		const own = (await authorA.addComment(task.id, 'from A')) as any;
+		expect(own.author).toMatchObject({ kind: 'plugin', id: 'tmgr.agent' });
+	});
+
+	it('taskData PUT and agent-work POST guard the task\'s existence inside the write itself, not a separate check', async () => {
+		const task = await data('POST', 'tasks', { title: 'Deleted mid-flight' });
+		await call('DELETE', `tasks/${task.id}`);
+
+		const putRes = await call('PUT', `plugins/tmgr.race/tasks/${task.id}/data/k`, { value: '1' });
+		expect(putRes.status).toBe(404);
+		const [{ dataRows }] = await ctx.db.select<{ dataRows: number }>(
+			`SELECT COUNT(*) AS dataRows FROM plugin_task_data WHERE task_id = ?`,
+			[task.id],
+		);
+		expect(Number(dataRows)).toBe(0);
+
+		const postRes = await call('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		expect(postRes.status).toBe(404);
+		const [{ runRows }] = await ctx.db.select<{ runRows: number }>(
+			`SELECT COUNT(*) AS runRows FROM agent_work_runs WHERE task_id = ?`,
+			[task.id],
+		);
+		expect(Number(runRows)).toBe(0);
 	});
 });

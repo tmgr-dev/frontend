@@ -4,17 +4,34 @@ import { encodeFile, MAX_FILE_BYTES } from './fileData';
 
 const unwrap = (response: { data: any }) => response.data?.data ?? null;
 
-const withAuthor = (comment: any) =>
+/** Until the server names a plugin token's comment as its own (TM-296): unknown author is unknown, not 'user'. */
+const withUnknownAuthor = (comment: any) =>
 	comment && typeof comment === 'object' && !comment.author
-		? {
-				...comment,
-				author: {
-					kind: 'user',
-					id: String(comment.user_id ?? comment.userId ?? ''),
-					name: '',
-				},
-		  }
+		? { ...comment, author: null }
 		: comment;
+
+/** A comment this call just created under this plugin's token: we know it is ours even if the server doesn't say so. */
+const withOwnAuthor = (comment: any, pluginId: string, pluginName: string) =>
+	comment && typeof comment === 'object' && !comment.author
+		? { ...comment, author: { kind: 'plugin', id: pluginId, name: pluginName } }
+		: comment;
+
+/** The 7 relation types are fixed and identical on the server and in the local workspace. */
+const RELATION_TYPE_IDS: Record<string, number> = {
+	blocks: 1,
+	'is blocked by': 2,
+	'relates to': 3,
+	duplicates: 4,
+	'is duplicated by': 5,
+	'depends on': 6,
+	'is dependency of': 7,
+};
+
+const relationTypeId = (name: string): number => {
+	const found = RELATION_TYPE_IDS[name];
+	if (found === undefined) throw new Error(`unknown relation type ${name}`);
+	return found;
+};
 
 /**
  * Plugin data calls go through a client pinned to the plugin's workspace (see src/local/pinned.ts).
@@ -38,10 +55,12 @@ export const createDataApi = (
 	cloud = false,
 	workspaceId?: number,
 ): DataApi => {
-	// Header values must be Latin-1; plugin names may not be.
-	const headers = {
+	// Header values must be Latin-1; plugin names may not be. Storage id is set here, and only here: it is
+	// what pinned.ts (local) reads to tell apart repositories that reuse the same plugin id.
+	const headers: Record<string, string> = {
 		'X-TMGR-Plugin': pluginId,
 		'X-TMGR-Plugin-Name': encodeURIComponent(pluginName),
+		...(cloud ? {} : { 'X-TMGR-Plugin-Storage': encodeURIComponent(storageId) }),
 	};
 	const notInSharedWorkspaces = (what: string) => {
 		if (cloud)
@@ -54,23 +73,6 @@ export const createDataApi = (
 		`plugins/${encodeURIComponent(storageId)}/storage${
 			key === undefined ? '' : `/${encodeURIComponent(key)}`
 		}`;
-	let relationTypes: Promise<Map<string, number>> | null = null;
-	const relationTypeId = async (name: string): Promise<number> => {
-		if (!relationTypes) {
-			relationTypes = http
-				.get('task-relation-types', { headers })
-				.then((response) => {
-					const rows = (unwrap(response) ?? []) as {
-						id: number;
-						name: string;
-					}[];
-					return new Map(rows.map((row) => [row.name, row.id]));
-				});
-		}
-		const found = (await relationTypes).get(name);
-		if (found === undefined) throw new Error(`unknown relation type ${name}`);
-		return found;
-	};
 	return {
 		async listTasks({
 			statusId,
@@ -111,8 +113,13 @@ export const createDataApi = (
 		getTask: async (id) => withKey(unwrap(await http.get(`tasks/${id}`, { headers }))),
 		createTask: async (fields) =>
 			withKey(unwrap(await http.post('tasks', fields, { headers }))),
-		updateTask: async (id, fields) =>
-			withKey(unwrap(await http.patch(`tasks/${id}`, fields, { headers }))),
+		updateTask: async (id, fields) => {
+			// The server ignores a null expired_at instead of clearing it; NOT_SUPPORTED beats a silent no-op.
+			if (cloud && 'expired_at' in fields && fields.expired_at === null) {
+				notInSharedWorkspaces('clearing the due date');
+			}
+			return withKey(unwrap(await http.patch(`tasks/${id}`, fields, { headers })));
+		},
 		listStatuses: async () =>
 			unwrap(await http.get('workspaces/statuses', { headers })),
 		listCategories: async () =>
@@ -160,9 +167,9 @@ export const createDataApi = (
 			(
 				(unwrap(await http.get(`tasks/${taskId}/comments`, { headers })) ??
 					[]) as any[]
-			).map(withAuthor),
+			).map(withUnknownAuthor),
 		addComment: async (taskId, text) =>
-			withAuthor(
+			withOwnAuthor(
 				unwrap(
 					await http.post(
 						`tasks/${taskId}/comments`,
@@ -170,6 +177,8 @@ export const createDataApi = (
 						{ headers },
 					),
 				),
+				pluginId,
+				pluginName,
 			),
 		reactToComment: async (commentId, emoji) => {
 			const body = unwrap(

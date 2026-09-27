@@ -22,6 +22,7 @@ export const pinnedLocalClient = (
 			if (!workspace)
 				return respond(config, 409, { message: 'The local workspace is gone' });
 			const pluginId = config.headers?.['X-TMGR-Plugin'];
+			const storageId = config.headers?.['X-TMGR-Plugin-Storage'];
 			const actor: LocalActor | undefined = pluginId
 				? {
 						kind: 'plugin',
@@ -29,6 +30,7 @@ export const pinnedLocalClient = (
 						name: decodeURIComponent(
 							String(config.headers?.['X-TMGR-Plugin-Name'] ?? pluginId),
 						),
+						ownerId: storageId ? decodeURIComponent(String(storageId)) : String(pluginId),
 				  }
 				: undefined;
 			const ctx = await localContext(workspace, currentUser(), actor);

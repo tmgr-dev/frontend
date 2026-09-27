@@ -105,7 +105,7 @@ it('lists and reads attachments with text and base64', async () => {
 	]);
 });
 
-it('maps cloud comments (userId only) to a user author, and passes one through if present', async () => {
+it('leaves cloud comments without a server author as unknown (null), but passes one through if present', async () => {
 	const { http } = recording((method, url) =>
 		url === 'tasks/4/comments' && method === 'get'
 			? { data: [{ id: 1, userId: 9, message: 'hi' }, { id: 2, author: { kind: 'plugin', id: 'x', name: 'X' }, message: 'yo' }] }
@@ -113,24 +113,25 @@ it('maps cloud comments (userId only) to a user author, and passes one through i
 	);
 	const api = createDataApi(http, 'tmgr.estimate');
 	expect(await api.listComments(4)).toEqual([
-		{ id: 1, userId: 9, message: 'hi', author: { kind: 'user', id: '9', name: '' } },
+		{ id: 1, userId: 9, message: 'hi', author: null },
 		{ id: 2, author: { kind: 'plugin', id: 'x', name: 'X' }, message: 'yo' },
 	]);
+});
+
+it('names addComment\'s own author as this plugin, since we know it even when the server does not say so', async () => {
+	const { http } = recording(() => ({ data: { id: 3, userId: 9, message: 'new' } }));
+	const api = createDataApi(http, 'tmgr.estimate', 'tmgr.estimate', 'Estimate');
 	expect(await api.addComment(4, 'new')).toEqual({
 		id: 3,
 		userId: 9,
 		message: 'new',
-		author: { kind: 'user', id: '9', name: '' },
+		author: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' },
 	});
 });
 
-it('resolves a relation type name to its id, caching the lookup per instance', async () => {
-	let typeCalls = 0;
+it('resolves a relation type name to its fixed id, without asking the server', async () => {
 	const { http, seen } = recording((_method, url) => {
-		if (url === 'task-relation-types') {
-			typeCalls++;
-			return { data: [{ id: 1, name: 'blocks' }, { id: 3, name: 'relates to' }] };
-		}
+		if (url === 'task-relation-types') throw new Error('must not fetch relation types');
 		if (url === 'tasks/4/relations') {
 			return {
 				data: [
@@ -144,9 +145,9 @@ it('resolves a relation type name to its id, caching the lookup per instance', a
 	expect(await api.listRelations(4)).toEqual([{ taskId: 4, otherTaskId: 9, type: 'blocks' }]);
 	await api.relateTask(4, 9, 'blocks');
 	await api.unrelateTask(4, 9, 'relates to');
-	expect(typeCalls).toBe(1);
 	expect(seen.filter((line) => line.startsWith('POST tasks/4/related-to/9/with/1'))).toHaveLength(1);
 	expect(seen.filter((line) => line.startsWith('DELETE tasks/4/related-to/9/with/3'))).toHaveLength(1);
+	await expect(api.relateTask(4, 9, 'not a relation type' as any)).rejects.toThrow('unknown relation type');
 });
 
 it('keeps storage in the namespace it is given', async () => {
@@ -159,6 +160,39 @@ it('keeps storage in the namespace it is given', async () => {
 	expect(seen[0]).toBe(
 		'GET plugins/acme.board%40github.com%2Facme%2Fboard/storage/k acme.board',
 	);
+});
+
+it('tells the local workspace the storage id, so a different repo reusing the plugin id owns nothing of it', async () => {
+	let header: unknown;
+	const http = axios.create({
+		adapter: async (config) => {
+			header = config.headers['X-TMGR-Plugin-Storage'];
+			return { data: { data: null }, status: 200, statusText: 'OK', headers: {}, config };
+		},
+	});
+	await createDataApi(http, 'acme.board', 'acme.board@github.com/acme/board').storageGet('k');
+	expect(decodeURIComponent(String(header))).toBe('acme.board@github.com/acme/board');
+});
+
+it('never sends the storage header to the cloud client', async () => {
+	let header: unknown;
+	const http = axios.create({
+		adapter: async (config) => {
+			header = config.headers['X-TMGR-Plugin-Storage'];
+			return { data: { data: null }, status: 200, statusText: 'OK', headers: {}, config };
+		},
+	});
+	await createDataApi(http, 'acme.board', 'acme.board', 'Board', true).storageGet('k');
+	expect(header).toBeUndefined();
+});
+
+it('rejects clearing the due date in a shared workspace instead of silently keeping it (the server ignores null)', async () => {
+	const { http, seen } = recording(() => ({ data: { id: 4 } }));
+	const api = createDataApi(http, 'acme.board', 'acme.board', 'Board', true);
+	await expect(api.updateTask(4, { expired_at: null })).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
+	expect(seen).toEqual([]);
+	await api.updateTask(4, { title: 'x' });
+	expect(seen).toHaveLength(1);
 });
 
 it('sends the plugin name so a header can carry any script', async () => {

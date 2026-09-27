@@ -345,6 +345,84 @@ it('gives task snapshots in events only to plugins with tasks:read', async () =>
 	host.dispose();
 });
 
+it('strips relationTypeWithTask from event task snapshots unless relations:read is granted', async () => {
+	const seen: unknown[] = [];
+	const { host, events } = setup(
+		[
+			pkg(
+				'tmgr.norel',
+				`tmgr.events.on('task.updated', (e) => tmgr.storage.set('e', e));`,
+				['tasks:read'],
+			),
+			pkg(
+				'tmgr.withrel',
+				`tmgr.events.on('task.updated', (e) => tmgr.storage.set('e', e));`,
+				['tasks:read', 'relations:read'],
+			),
+		],
+		{
+			storageSet: async (_key: string, json: string) =>
+				void seen.push(JSON.parse(json)),
+		},
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	events.emit({
+		type: 'task.updated',
+		workspaceId: LOCAL.id,
+		taskId: 1,
+		task: { title: 'Secret', relationTypeWithTask: [{ id: 9 }] },
+	} as DomainEvent);
+	await flush();
+	expect(seen).toEqual(
+		expect.arrayContaining([
+			{ type: 'task.updated', workspaceId: LOCAL.id, taskId: 1, task: { title: 'Secret', key: null } },
+			{
+				type: 'task.updated',
+				workspaceId: LOCAL.id,
+				taskId: 1,
+				task: { title: 'Secret', relationTypeWithTask: [{ id: 9 }], key: null },
+			},
+		]),
+	);
+	host.dispose();
+});
+
+it('drops actor-relative reacted/users from the broadcast comment.reactionChanged payload', async () => {
+	const seen: unknown[] = [];
+	const { host, events } = setup(
+		[
+			pkg(
+				'tmgr.reactions',
+				`tmgr.events.on('comment.reactionChanged', (e) => tmgr.storage.set('e', e));`,
+				['comments:read'],
+			),
+		],
+		{
+			storageSet: async (_key: string, json: string) =>
+				void seen.push(JSON.parse(json)),
+		},
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	events.emit({
+		type: 'comment.reactionChanged',
+		workspaceId: LOCAL.id,
+		commentId: 5,
+		reactions: [{ emoji: '👍', count: 2, reacted: true, users: [{ id: 7, name: 'Yurij' }] }],
+	} as DomainEvent);
+	await flush();
+	expect(seen).toEqual([
+		{
+			type: 'comment.reactionChanged',
+			workspaceId: LOCAL.id,
+			commentId: 5,
+			reactions: [{ emoji: '👍', count: 2 }],
+		},
+	]);
+	host.dispose();
+});
+
 it('coalesces a flood of refresh requests into one redraw', async () => {
 	const { host, state } = setup([
 		pkg(

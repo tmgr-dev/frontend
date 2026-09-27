@@ -223,6 +223,32 @@ it('gates reactions and relations behind their permissions, validated and rate-l
 	expect(results[20]).toBe('RATE_LIMITED');
 });
 
+it('strips relationTypeWithTask from every task-returning call unless relations:read is granted', async () => {
+	const withRelation = { id: 1, title: 'x', relationTypeWithTask: [{ id: 9 }] };
+	const api: DataApi = {
+		...fakeApi(),
+		listTasks: async () => ({ items: [withRelation], total: 1 }),
+		getTask: async () => withRelation,
+		createTask: async () => withRelation,
+		updateTask: async () => withRelation,
+		startTimer: async () => withRelation,
+		stopTimer: async () => withRelation,
+	};
+	const { broker } = setup(['tasks:read', 'tasks:write', 'time:write'], { api });
+	expect(await broker.call('tasks.list', {})).toEqual({ items: [{ id: 1, title: 'x' }], total: 1 });
+	expect(await broker.call('tasks.get', { id: 1 })).toEqual({ id: 1, title: 'x' });
+	expect(await broker.call('tasks.create', { title: 'x' })).toEqual({ id: 1, title: 'x' });
+	expect(await broker.call('tasks.update', { id: 1, patch: { title: 'x' } })).toEqual({ id: 1, title: 'x' });
+	expect(await broker.call('time.start', { taskId: 1 })).toEqual({ id: 1, title: 'x' });
+	expect(await broker.call('time.stop', { taskId: 1 })).toEqual({ id: 1, title: 'x' });
+
+	const { broker: withRelations } = setup(
+		['tasks:read', 'relations:read'],
+		{ api: { ...fakeApi(), getTask: async () => withRelation } },
+	);
+	expect(await withRelations.call('tasks.get', { id: 1 })).toEqual(withRelation);
+});
+
 it('refuses every call once the app has left the plugin workspace', async () => {
 	const { broker, switchTo } = setup(['tasks:read']);
 	switchTo(56);
@@ -327,6 +353,12 @@ it('keeps plugin storage within its quota and hands out settings and the workspa
 	expect(
 		await code(
 			broker.call('storage.set', { key: 'big', value: 'x'.repeat(300_000) }),
+		),
+	).toBe('INVALID_PARAMS');
+	// Byte-accurate: 88,000 CJK characters are under 256K UTF-16 code units but over 256 KB in UTF-8.
+	expect(
+		await code(
+			broker.call('storage.set', { key: 'cjk', value: '字'.repeat(88_000) }),
 		),
 	).toBe('INVALID_PARAMS');
 	expect(
@@ -488,7 +520,7 @@ describe('statuses and categories writes', () => {
 });
 
 describe('per-task plugin data', () => {
-	it('needs no permission beyond the task existing, and round-trips JSON without one', async () => {
+	it('needs tasks:read (a plugin without it could otherwise probe task ids), then round-trips JSON', async () => {
 		const stored = new Map<string, string>();
 		const api = {
 			...fakeApi(),
@@ -508,7 +540,10 @@ describe('per-task plugin data', () => {
 				return result;
 			},
 		};
-		const { broker } = setup([], { api });
+		expect(await code(setup([], { api }).broker.call('taskData.get', { taskId: 1, key: 'estimate' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		const { broker } = setup(['tasks:read'], { api });
 		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
 		await broker.call('taskData.set', { taskId: 1, key: 'estimate', value: { points: 5 } });
 		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toEqual({ points: 5 });
@@ -519,11 +554,16 @@ describe('per-task plugin data', () => {
 		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
 	});
 
-	it('rejects an oversized value and a key that is too long', async () => {
-		const { broker } = setup([]);
+	it('rejects an oversized value and a key that is too long, byte-accurate for multi-byte text', async () => {
+		const { broker } = setup(['tasks:read']);
 		expect(
 			await code(
 				broker.call('taskData.set', { taskId: 1, key: 'k', value: 'x'.repeat(70_000) }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('taskData.set', { taskId: 1, key: 'k', value: '字'.repeat(22_000) }),
 			),
 		).toBe('INVALID_PARAMS');
 		expect(
@@ -620,6 +660,37 @@ describe('agent work', () => {
 					patch: { tests: { passed: -1 } },
 				}),
 			),
+		).toBe('INVALID_PARAMS');
+	});
+
+	it('rejects an agent label that would push "plugin:<id>/<label>" past 64 characters, never truncating it', async () => {
+		const longId = `${'p'.repeat(24)}.${'q'.repeat(24)}`; // "plugin:" + 49 = 56; 7 bytes of budget left
+		const longManifest = parseManifest({
+			network: { allowedOrigins: [] },
+			id: longId,
+			name: 'Long',
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			permissions: ['agent_work:write'],
+			contributes: {
+				boardCardBadges: [],
+				statusBarItems: [],
+				commands: [],
+				views: [],
+				taskPanelSections: [],
+			},
+		});
+		const { broker, api } = setup(['agent_work:write'], { manifest: longManifest });
+		expect(
+			await code(broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(7) })),
+		).toBe('ok');
+		expect(api.calls[0]).toEqual([
+			'startAgentWork',
+			1,
+			{ agent: 'a'.repeat(7), model: null, sessionId: null, branch: null },
+		]);
+		expect(
+			await code(broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(8) })),
 		).toBe('INVALID_PARAMS');
 	});
 });

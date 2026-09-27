@@ -10,15 +10,21 @@ import {
 	taskJson,
 	toJson,
 } from './serialize';
-import { LocalHttpError, LocalRaw, type LocalContext, type LocalRequest } from './types';
+import { LocalHttpError, LocalRaw, type LocalActor, type LocalContext, type LocalRequest } from './types';
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
 const epoch = (ctx: LocalContext) => Math.floor(ctx.now().getTime() / 1000);
 
 const notFound = (what: string) => new LocalHttpError(404, `${what} not found`);
 
-const actorOf = (ctx: LocalContext) =>
-	ctx.actor ?? { kind: 'user' as const, id: String(ctx.user.id), name: ctx.user.name };
+const actorOf = (ctx: LocalContext): LocalActor =>
+	ctx.actor ?? { kind: 'user', id: String(ctx.user.id), name: ctx.user.name };
+
+/**
+ * Who owns a plugin's runs and reactions: its storage id when known (so a different repository that
+ * reuses the same plugin id owns nothing of the original), else the plain actor id.
+ */
+const ownerIdOf = (actor: LocalActor): string => actor.ownerId ?? actor.id;
 
 /** Relations from this task's side only, matching the legacy `relatedTypesWithTask` shape the UI reads. */
 const taskRelationsFor = async (ctx: LocalContext, taskId: number) => {
@@ -89,7 +95,8 @@ const agentWorkJson = (row: any, ctx: LocalContext) => ({
 const normalizeAgent = (value: unknown): string => {
 	const normalized = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-');
 	if (!normalized) throw new LocalHttpError(422, 'agent is required');
-	return normalized.slice(0, 64);
+	if (normalized.length > 64) throw new LocalHttpError(422, 'agent must be at most 64 characters');
+	return normalized;
 };
 
 const limitedOrNull = (value: unknown, max: number): string | null => {
@@ -160,7 +167,7 @@ const requireOwnRunningRun = async (ctx: LocalContext, id: number) => {
 	const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [id]);
 	if (!row) throw notFound('Agent work run');
 	const actor = actorOf(ctx);
-	const sameActor = row.actor_kind === actor.kind && String(row.actor_id) === String(actor.id);
+	const sameActor = row.actor_kind === actor.kind && String(row.actor_id) === ownerIdOf(actor);
 	const sameNamespace = actor.kind !== 'plugin' || inPluginNamespace(row.agent, actor.id);
 	if (!sameActor || !sameNamespace) {
 		throw new LocalHttpError(403, 'Only the user the agent works for can change this run');
@@ -389,9 +396,20 @@ const categoryCounts = `
 		(SELECT COUNT(*) FROM tasks t WHERE t.project_category_id = c.id AND t.deleted_at IS NULL) AS tasks_count
 	FROM categories c`;
 
+const requireUniqueCategoryCode = async (ctx: LocalContext, code: string, exceptId?: number) => {
+	const [{ n }] = await ctx.db.select<{ n: number }>(
+		`SELECT COUNT(*) AS n FROM categories WHERE deleted_at IS NULL AND UPPER(code) = UPPER(?)${
+			exceptId ? ' AND id <> ?' : ''
+		}`,
+		exceptId ? [code, exceptId] : [code],
+	);
+	if (Number(n)) throw new LocalHttpError(422, `code ${code} is already used`);
+};
+
 const PLUGIN_STORAGE_QUOTA = 5 * 1024 * 1024;
 const PLUGIN_STORAGE_KEYS = 1000;
 const PLUGIN_ROW_OVERHEAD = 64;
+const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
 
 const FEATURE_TOGGLES: Record<string, boolean> = {
 	board: true,
@@ -487,6 +505,11 @@ export const createLocalApi = () => {
 			// Soft-deleted, so the ON DELETE CASCADE on task_id never fires: clean these up explicitly.
 			await ctx.db.execute(`DELETE FROM plugin_task_data WHERE task_id = ?`, [id]);
 			await ctx.db.execute(`DELETE FROM agent_work_runs WHERE task_id = ?`, [id]);
+			await ctx.db.execute(`DELETE FROM task_relations WHERE task_id = ? OR related_task_id = ?`, [id, id]);
+			await ctx.db.execute(
+				`DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE task_id = ?)`,
+				[id],
+			);
 			return { success: true };
 		})
 		.add('POST', 'tasks/:id(\\d+)/countdown', async ({ ctx, params }) => {
@@ -544,21 +567,23 @@ export const createLocalApi = () => {
 			const emoji = String(body?.emoji ?? '');
 			if (!emoji.trim() || emoji.length > 32) throw new LocalHttpError(422, 'emoji is required');
 			const [comment] = await ctx.db.select<any>(
-				`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`,
+				`SELECT c.* FROM comments c JOIN tasks t ON t.id = c.task_id
+				 WHERE c.id = ? AND c.deleted_at IS NULL AND t.deleted_at IS NULL`,
 				[Number(params.id)],
 			);
 			if (!comment) throw notFound('Comment');
 			const actor = actorOf(ctx);
+			const ownerId = ownerIdOf(actor);
 			const existing = await ctx.db.select<{ id: number }>(
 				`SELECT id FROM comment_reactions WHERE comment_id = ? AND emoji = ? AND actor_kind = ? AND actor_id = ?`,
-				[comment.id, emoji, actor.kind, actor.id],
+				[comment.id, emoji, actor.kind, ownerId],
 			);
 			if (existing.length) {
 				await ctx.db.execute(`DELETE FROM comment_reactions WHERE id = ?`, [existing[0].id]);
 			} else {
 				await ctx.db.execute(
 					`INSERT INTO comment_reactions (comment_id, emoji, actor_kind, actor_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-					[comment.id, emoji, actor.kind, actor.id, iso(ctx)],
+					[comment.id, emoji, actor.kind, ownerId, iso(ctx)],
 				);
 			}
 			const reactions = (await reactionsFor(ctx, [comment.id])).get(comment.id) ?? [];
@@ -816,6 +841,8 @@ export const createLocalApi = () => {
 		.add('POST', 'project_categories', async ({ ctx, body }) => {
 			const title = String(body?.title ?? '').trim();
 			if (!title) throw new LocalHttpError(422, 'title is required');
+			const code = body?.code ? String(body.code).toUpperCase() : null;
+			if (code) await requireUniqueCategoryCode(ctx, code);
 			const now = iso(ctx);
 			const result = await ctx.db.execute(
 				`INSERT INTO categories (title, slug, code, parent_id, settings, created_at, updated_at)
@@ -823,7 +850,7 @@ export const createLocalApi = () => {
 				[
 					title,
 					body?.slug ?? slugOf(title),
-					body?.code ? String(body.code).toUpperCase() : null,
+					code,
 					numberOrNull(body?.project_category_id),
 					toJson(Array.isArray(body?.settings) ? body.settings : []),
 					now,
@@ -837,11 +864,15 @@ export const createLocalApi = () => {
 			const id = Number(params.id);
 			const [row] = await ctx.db.select<any>(`SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL`, [id]);
 			if (!row) throw notFound('Category');
+			const nextCode = 'code' in (body ?? {}) ? (body.code ? String(body.code).toUpperCase() : null) : row.code;
+			if (nextCode && nextCode.toUpperCase() !== String(row.code ?? '').toUpperCase()) {
+				await requireUniqueCategoryCode(ctx, nextCode, id);
+			}
 			await ctx.db.execute(
 				`UPDATE categories SET title = ?, code = ?, parent_id = ?, settings = ?, updated_at = ? WHERE id = ?`,
 				[
 					body?.title ?? row.title,
-					'code' in (body ?? {}) ? (body.code ? String(body.code).toUpperCase() : null) : row.code,
+					nextCode,
 					'project_category_id' in (body ?? {}) ? numberOrNull(body.project_category_id) : row.parent_id,
 					Array.isArray(body?.settings) ? toJson(body.settings) : row.settings,
 					iso(ctx),
@@ -877,9 +908,9 @@ export const createLocalApi = () => {
 			const { rowsAffected } = await ctx.db.execute(
 				`INSERT INTO plugin_kv (plugin_id, key, value, updated_at)
 				 SELECT ?, ?, ?, ?
-				 WHERE ((SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				 WHERE ((SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
 				         FROM plugin_kv WHERE plugin_id = ? AND key <> ?)
-				        + (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				        + (SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
 				           FROM plugin_task_data WHERE plugin_id = ?)
 				        + ? <= ${PLUGIN_STORAGE_QUOTA})
 				   AND ((SELECT COUNT(*) FROM plugin_kv WHERE plugin_id = ? AND key <> ?)
@@ -894,7 +925,7 @@ export const createLocalApi = () => {
 					params.pid,
 					params.key,
 					params.pid,
-					params.key.length + value.length + PLUGIN_ROW_OVERHEAD,
+					byteLength(params.key) + byteLength(value) + PLUGIN_ROW_OVERHEAD,
 					params.pid,
 					params.key,
 					params.pid,
@@ -918,15 +949,16 @@ export const createLocalApi = () => {
 		})
 		.add('PUT', 'plugins/:pid/tasks/:tid(\\d+)/data/:key', async ({ ctx, params, body }) => {
 			const taskId = Number(params.tid);
-			await requireActiveTask(ctx, taskId);
 			const value = typeof body?.value === 'string' ? body.value : null;
 			if (value === null) throw new LocalHttpError(422, 'value must be a JSON string');
+			// EXISTS keeps "the task is active" and the write atomic, closing the race with a concurrent delete.
 			const { rowsAffected } = await ctx.db.execute(
 				`INSERT INTO plugin_task_data (plugin_id, task_id, key, value, updated_at)
 				 SELECT ?, ?, ?, ?, ?
-				 WHERE ((SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL)
+				   AND ((SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
 				         FROM plugin_task_data WHERE plugin_id = ? AND NOT (task_id = ? AND key = ?))
-				        + (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value) + ${PLUGIN_ROW_OVERHEAD}), 0)
+				        + (SELECT COALESCE(SUM(LENGTH(CAST(key AS BLOB)) + LENGTH(CAST(value AS BLOB)) + ${PLUGIN_ROW_OVERHEAD}), 0)
 				           FROM plugin_kv WHERE plugin_id = ?)
 				        + ? <= ${PLUGIN_STORAGE_QUOTA})
 				   AND ((SELECT COUNT(*) FROM plugin_task_data WHERE plugin_id = ? AND NOT (task_id = ? AND key = ?))
@@ -939,18 +971,22 @@ export const createLocalApi = () => {
 					params.key,
 					value,
 					iso(ctx),
+					taskId,
 					params.pid,
 					taskId,
 					params.key,
 					params.pid,
-					params.key.length + value.length + PLUGIN_ROW_OVERHEAD,
+					byteLength(params.key) + byteLength(value) + PLUGIN_ROW_OVERHEAD,
 					params.pid,
 					taskId,
 					params.key,
 					params.pid,
 				],
 			);
-			if (!rowsAffected) throw new LocalHttpError(413, 'plugin storage is full (5 MB or 1000 keys)');
+			if (!rowsAffected) {
+				await requireActiveTask(ctx, taskId);
+				throw new LocalHttpError(413, 'plugin storage is full (5 MB or 1000 keys)');
+			}
 			return { success: true };
 		})
 		.add('DELETE', 'plugins/:pid/tasks/:tid(\\d+)/data/:key', async ({ ctx, params }) => {
@@ -1006,27 +1042,31 @@ export const createLocalApi = () => {
 			};
 		})
 		.add('POST', 'tasks/:id(\\d+)/agent-work', async ({ ctx, params, body }) => {
-			const task = await requireActiveTask(ctx, Number(params.id));
+			const taskId = Number(params.id);
 			// A plugin's DataApi already sends "plugin:<pluginId>[/<agent>]"; this just stores it as given.
 			const agent = normalizeAgent(body?.agent);
 			const model = limitedOrNull(body?.model, 128);
 			const sessionId = limitedOrNull(body?.session_id, 191);
 			const branch = limitedOrNull(body?.branch, 255);
 			const actor = actorOf(ctx);
+			const ownerId = ownerIdOf(actor);
 			const now = iso(ctx);
 			await ctx.db.execute(
 				`UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
 					duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
 					version = version + 1, updated_at = ?
 				 WHERE task_id = ? AND actor_kind = ? AND actor_id = ? AND agent = ? AND status = 'running'`,
-				[now, task.id, actor.kind, actor.id, agent],
+				[now, taskId, actor.kind, ownerId, agent],
 			);
+			// EXISTS keeps the check and the insert atomic: the task cannot vanish between them.
 			const result = await ctx.db.execute(
 				`INSERT INTO agent_work_runs
 					(task_id, agent, model, session_id, branch, status, started_at, actor_kind, actor_id, version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, 1, ?, ?)`,
-				[task.id, agent, model, sessionId, branch, now, actor.kind, actor.id, now, now],
+				 SELECT ?, ?, ?, ?, ?, 'running', ?, ?, ?, 1, ?, ?
+				 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL)`,
+				[taskId, agent, model, sessionId, branch, now, actor.kind, ownerId, now, now, taskId],
 			);
+			if (!result.rowsAffected) throw notFound('Task');
 			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [
 				Number(result.lastInsertId),
 			]);
@@ -1131,13 +1171,14 @@ const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
 		commentIds,
 	);
 	const actor = actorOf(ctx);
+	const ownerId = ownerIdOf(actor);
 	const byComment = new Map<number, Map<string, { emoji: string; count: number; reacted: boolean; users: { id: number; name: string }[] }>>();
 	for (const row of rows) {
 		const perComment = byComment.get(row.comment_id) ?? new Map();
 		byComment.set(row.comment_id, perComment);
 		const entry = perComment.get(row.emoji) ?? { emoji: row.emoji, count: 0, reacted: false, users: [] };
 		entry.count += 1;
-		if (row.actor_kind === actor.kind && String(row.actor_id) === String(actor.id)) entry.reacted = true;
+		if (row.actor_kind === actor.kind && String(row.actor_id) === ownerId) entry.reacted = true;
 		if (row.actor_kind === 'user') entry.users.push({ id: Number(row.actor_id), name: ctx.user.name });
 		perComment.set(row.emoji, entry);
 	}
