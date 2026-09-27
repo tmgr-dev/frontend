@@ -1129,14 +1129,25 @@
 	);
 	const { toast } = useToast();
 
+	const isUploadingPendingFiles = ref(false);
+
 	const attachPendingFiles = async (newTaskId: number) => {
-		if (!pendingFiles.value.length) {
-			return;
+		const failed: File[] = [];
+		isUploadingPendingFiles.value = true;
+		try {
+			while (pendingFiles.value.length) {
+				const batch = pendingFiles.value;
+				const result = await uploadPendingFiles(batch, (file) =>
+					uploadTaskFile(newTaskId, file),
+				);
+				pendingFiles.value = pendingFiles.value.filter(
+					(file) => !batch.includes(file),
+				);
+				failed.push(...result.failed);
+			}
+		} finally {
+			isUploadingPendingFiles.value = false;
 		}
-		const { failed } = await uploadPendingFiles(pendingFiles.value, (file) =>
-			uploadTaskFile(newTaskId, file),
-		);
-		pendingFiles.value = [];
 		if (failed.length) {
 			toast({
 				title: 'Some files were not attached',
@@ -1168,10 +1179,6 @@
 	};
 	const onFormDragLeave = (event: DragEvent) => {
 		if (!acceptsFileDrag(event)) {
-			return;
-		}
-		if (event.relatedTarget === null) {
-			resetFileDrag();
 			return;
 		}
 		isFileDragActive.value = fileDragDepth.leave();
@@ -2719,14 +2726,21 @@
 			</DialogContent>
 		</Dialog>
 		<div
-			v-if="isFileDragActive"
-			class="pointer-events-none absolute inset-0 z-50 rounded-panel border-2 border-dashed border-blue-500 bg-blue-50/80 dark:border-blue-400 dark:bg-gray-900/80"
+			v-if="isFileDragActive || isUploadingPendingFiles"
+			class="absolute inset-0 z-50 rounded-panel border-2 border-dashed border-blue-500 bg-blue-50/80 dark:border-blue-400 dark:bg-gray-900/80"
+			:class="{ 'pointer-events-none': !isUploadingPendingFiles }"
 		>
 			<div
 				class="sticky top-0 flex h-full max-h-[100dvh] flex-col items-center justify-center gap-2 text-blue-600 dark:text-blue-300"
 			>
-				<Upload :size="32" />
-				<span class="text-lg font-semibold">Drop it here to upload</span>
+				<template v-if="isUploadingPendingFiles">
+					<Loader2 :size="32" class="animate-spin" />
+					<span class="text-lg font-semibold">Uploading files…</span>
+				</template>
+				<template v-else>
+					<Upload :size="32" />
+					<span class="text-lg font-semibold">Drop it here to upload</span>
+				</template>
 			</div>
 		</div>
 	</div>
