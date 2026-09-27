@@ -7,8 +7,10 @@ import {
 	extractFieldErrors,
 	isReadPermission,
 	matchesAuthorFilter,
+	parseSkillFrontMatter,
 	resolveAuthor,
 	validatePersonaName,
+	validateSkillMarkdown,
 } from '../personas';
 
 describe('DEFAULT_GRANT_PERMISSIONS', () => {
@@ -90,6 +92,67 @@ describe('validatePersonaName', () => {
 
 	it('accepts a valid name', () => {
 		expect(validatePersonaName('Reviewer')).toBeNull();
+	});
+});
+
+const WELL_FORMED_SKILL =
+	'---\nslug: triage\ntitle: Triage\nwhen: sort the inbox\nactions: [tasks:read, tasks:write]\n---\nbody\n';
+
+describe('parseSkillFrontMatter', () => {
+	it('parses slug, title, when and actions', () => {
+		expect(parseSkillFrontMatter(WELL_FORMED_SKILL)).toEqual({
+			slug: 'triage',
+			title: 'Triage',
+			when: 'sort the inbox',
+			actions: ['tasks:read', 'tasks:write'],
+		});
+	});
+
+	it('returns an empty actions list when actions is missing', () => {
+		const markdown = '---\nslug: triage\ntitle: Triage\nwhen: sort it\n---\nbody\n';
+		expect(parseSkillFrontMatter(markdown)?.actions).toEqual([]);
+	});
+
+	it('returns null when there is no closing delimiter', () => {
+		expect(parseSkillFrontMatter('---\nslug: triage\nbody')).toBeNull();
+	});
+});
+
+describe('validateSkillMarkdown', () => {
+	it('accepts a well-formed skill matching the URL slug', () => {
+		expect(validateSkillMarkdown(WELL_FORMED_SKILL, 'triage')).toBeNull();
+	});
+
+	it('rejects a missing required field', () => {
+		const markdown = '---\nslug: triage\ntitle: Triage\n---\nbody\n';
+		expect(validateSkillMarkdown(markdown, 'triage')).toEqual(
+			expect.objectContaining({ when: expect.any(Array) }),
+		);
+	});
+
+	it('rejects a slug that does not match the URL slug', () => {
+		const errors = validateSkillMarkdown(WELL_FORMED_SKILL, 'other-slug');
+		expect(errors?.slug).toBeDefined();
+	});
+
+	it('rejects a bad slug pattern', () => {
+		const markdown = '---\nslug: Bad_Slug!\ntitle: T\nwhen: w\n---\nbody\n';
+		expect(validateSkillMarkdown(markdown, 'Bad_Slug!')?.slug).toBeDefined();
+	});
+
+	it('rejects a title over 120 characters', () => {
+		const markdown = `---\nslug: triage\ntitle: ${'x'.repeat(121)}\nwhen: w\n---\nbody\n`;
+		expect(validateSkillMarkdown(markdown, 'triage')?.title).toBeDefined();
+	});
+
+	it('rejects a body over the byte limit, counted in UTF-8', () => {
+		const cyrillic = 'я'.repeat(9000);
+		const markdown = `---\nslug: triage\ntitle: T\nwhen: w\n---\n${cyrillic}\n`;
+		expect(validateSkillMarkdown(markdown, 'triage')?.body).toBeDefined();
+	});
+
+	it('rejects markdown missing the closing delimiter', () => {
+		expect(validateSkillMarkdown('---\nslug: triage\nno closing', 'triage')?.body).toBeDefined();
 	});
 });
 

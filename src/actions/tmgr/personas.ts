@@ -20,6 +20,11 @@ export interface Persona {
 	owner: PersonaOwnerRef;
 }
 
+export interface PersonaSkillTitle {
+	slug: string;
+	title: string;
+}
+
 export interface PersonaGrantSummary {
 	id: string;
 	name: string;
@@ -27,6 +32,20 @@ export interface PersonaGrantSummary {
 	avatar_url: string | null;
 	archived: boolean;
 	owner: PersonaOwnerRef;
+	skills?: PersonaSkillTitle[];
+}
+
+export interface PersonaSkillSummary {
+	slug: string;
+	title: string;
+	when: string;
+	actions: string[];
+	version: number;
+	updated_at: string;
+}
+
+export interface PersonaSkill extends PersonaSkillSummary {
+	body: string;
 }
 
 export interface PersonaGrant {
@@ -153,6 +172,53 @@ export const forgetPersonaAvatar = (uuid: string): void => {
 	const url = avatarObjectUrls.get(uuid);
 	if (url) URL.revokeObjectURL(url);
 	avatarObjectUrls.delete(uuid);
+};
+
+const skillsKey = (personaUuid: string) => `personas-${personaUuid}-skills`;
+
+export const listPersonaSkills = async (
+	personaUuid: string,
+	useCache = true,
+): Promise<PersonaSkillSummary[]> =>
+	requestCache.getOrFetch(
+		skillsKey(personaUuid),
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/personas/${personaUuid}/skills`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const getPersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<PersonaSkill> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/personas/${personaUuid}/skills/${slug}`);
+	return data;
+};
+
+export const putPersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+	body: string,
+): Promise<PersonaSkill> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/personas/${personaUuid}/skills/${slug}`, { body });
+	requestCache.invalidate(skillsKey(personaUuid));
+	return data;
+};
+
+export const deletePersonaSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<void> => {
+	await $axios.delete(`/personas/${personaUuid}/skills/${slug}`);
+	requestCache.invalidate(skillsKey(personaUuid));
 };
 
 export const listWorkspacePersonas = async (

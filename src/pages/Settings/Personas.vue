@@ -106,12 +106,14 @@
 					<PersonaWorkspaceGrants :persona="persona" class="mt-3" />
 				</details>
 
-				<div class="grid grid-cols-1 gap-2 border-t border-border pt-3 opacity-60 sm:grid-cols-2">
+				<details class="border-t border-border pt-3">
+					<summary class="cursor-pointer text-sm font-medium">Skills</summary>
+					<PersonaSkills :persona="persona" class="mt-3" />
+				</details>
+
+				<div class="grid grid-cols-1 gap-2 border-t border-border pt-3 opacity-60">
 					<div class="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
 						Agent connections — coming soon (tokens for MCP agents)
-					</div>
-					<div class="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-						Skills — coming soon (reusable playbooks)
 					</div>
 				</div>
 			</article>
@@ -143,6 +145,7 @@
 	import { extractFieldErrors, PERSONA_LIMIT } from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
+	import PersonaSkills from './PersonaSkills.vue';
 	import PersonaWorkspaceGrants from './PersonaWorkspaceGrants.vue';
 
 	const emptyForm = (): PersonaFormModel => ({
@@ -153,7 +156,14 @@
 
 	export default defineComponent({
 		name: 'PersonasSettings',
-		components: { Button, Switch, PersonaAvatar, PersonaForm, PersonaWorkspaceGrants },
+		components: {
+			Button,
+			Switch,
+			PersonaAvatar,
+			PersonaForm,
+			PersonaSkills,
+			PersonaWorkspaceGrants,
+		},
 		setup() {
 			setDocumentTitle('Personas');
 
