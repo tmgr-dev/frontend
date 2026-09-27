@@ -101,7 +101,7 @@ test('issuing a persona token shows the secret once, then clears it on close', a
 				json: {
 					data: {
 						token: {
-							id: 'tok-1',
+							id: 1,
 							persona_id: 'uuid-1',
 							workspace_id: 1,
 							workspace_name: 'Demo',
@@ -123,7 +123,7 @@ test('issuing a persona token shows the secret once, then clears it on close', a
 				data: issued
 					? [
 							{
-								id: 'tok-1',
+								id: 1,
 								persona_id: 'uuid-1',
 								workspace_id: 1,
 								workspace_name: 'Demo',
