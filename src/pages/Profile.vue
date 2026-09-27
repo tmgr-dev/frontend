@@ -71,6 +71,22 @@
 					Save
 				</button>
 			</div>
+
+			<div class="mt-6 border-t pt-4">
+				<h4 class="mb-1 text-sm font-semibold">Agent connections</h4>
+				<p class="mb-2 text-xs text-ink-subtle">
+					Revoke every persona token, across all your personas and
+					workspaces.
+				</p>
+				<button
+					type="button"
+					class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+					:disabled="revokingAllTokens"
+					@click="revokeAllPersonaTokens"
+				>
+					{{ revokingAllTokens ? 'Revoking…' : 'Revoke all persona tokens' }}
+				</button>
+			</div>
 		</div>
 	</div>
 </template>
@@ -82,6 +98,7 @@
 		storeAvatar,
 	} from '@/actions/tmgr/avatars';
 	import { presignUpload, putToStorage } from '@/actions/tmgr/files';
+	import { revokeAllMyPersonaTokens } from '@/actions/tmgr/personas';
 	import { getUser, updateUser } from '@/actions/tmgr/user';
 	import Button from '@/components/general/Button.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -104,6 +121,7 @@
 			errors: {},
 			avatarBusy: false,
 			avatarError: null,
+			revokingAllTokens: false,
 			// Bumped after an upload so the avatar re-reads its link instead of the cached one.
 			avatarKey: 0,
 		}),
@@ -163,6 +181,23 @@
 					this.showAlert('Saved', 'User data saved');
 				} catch (error) {
 					this.errors = error.response?.data?.errors ?? {};
+				}
+			},
+			async revokeAllPersonaTokens() {
+				if (
+					!window.confirm(
+						'Revoke every persona token across all your personas?',
+					)
+				)
+					return;
+				this.revokingAllTokens = true;
+				try {
+					await revokeAllMyPersonaTokens();
+					this.showAlert('Done', 'All persona tokens revoked');
+				} catch {
+					this.showAlert('Error', 'Could not revoke persona tokens');
+				} finally {
+					this.revokingAllTokens = false;
 				}
 			},
 		},
