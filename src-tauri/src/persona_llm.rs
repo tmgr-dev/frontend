@@ -33,8 +33,8 @@ pub enum UrlKind {
   Remote,
 }
 
-/// Classifies the LLM base URL so the UI can warn when it leaves the user's own machine/LAN
-/// (design TM-264: warn, don't block — a local LLM may sit on another box on the LAN).
+/// Classifies the LLM base URL so the UI can warn when it leaves the user's own machine/LAN.
+/// Warns, never blocks: a local LLM may legitimately sit on another box on the LAN.
 pub fn classify_url(input: &str) -> Result<UrlKind, String> {
   let trimmed = input.trim();
   if trimmed.is_empty() {
@@ -67,27 +67,41 @@ fn is_local_v6(ip: Ipv6Addr) -> bool {
   (seg0 & 0xfe00) == 0xfc00 /* fc00::/7 unique local */ || (seg0 & 0xffc0) == 0xfe80 /* fe80::/10 link local */
 }
 
-/// Reassembles `data:` lines from a byte stream that may split events across chunk boundaries.
+/// Reassembles `data:` lines from a byte stream that may split events, or a multi-byte UTF-8
+/// character, across chunk boundaries. Buffers raw bytes and only decodes a span once it is
+/// terminated by a full blank line, so a split character never gets decoded on its own.
 #[derive(Default)]
 pub struct SseBuffer {
-  pending: String,
+  pending: Vec<u8>,
 }
 
 impl SseBuffer {
-  pub fn push(&mut self, chunk: &str) -> Vec<String> {
-    self.pending.push_str(&chunk.replace("\r\n", "\n"));
+  pub fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+    self.pending.extend_from_slice(chunk);
     let mut events = Vec::new();
-    while let Some(pos) = self.pending.find("\n\n") {
-      let raw: String = self.pending.drain(..pos + 2).collect();
-      let data: Vec<&str> = raw
-        .lines()
-        .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
-        .collect();
+    while let Some((pos, len)) = find_event_end(&self.pending) {
+      let raw: Vec<u8> = self.pending.drain(..pos + len).collect();
+      let text = String::from_utf8_lossy(&raw).replace("\r\n", "\n");
+      let data: Vec<&str> =
+        text.lines().filter_map(|line| line.strip_prefix("data:").map(str::trim_start)).collect();
       if !data.is_empty() {
         events.push(data.join("\n"));
       }
     }
     events
+  }
+}
+
+/// The byte offset and length of the blank line ending one SSE event: `\n\n`, or `\r\n\r\n` for a
+/// server that sends CRLF line endings, whichever comes first.
+fn find_event_end(buf: &[u8]) -> Option<(usize, usize)> {
+  let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2));
+  let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (p, 4));
+  match (lf, crlf) {
+    (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+    (Some(a), None) => Some(a),
+    (None, Some(b)) => Some(b),
+    (None, None) => None,
   }
 }
 
@@ -146,24 +160,27 @@ fn keyring_entry() -> Result<keyring::Entry, String> {
 }
 
 /// Non-secret settings go to a plain JSON file; the key (if any) goes to the OS keychain and is
-/// never returned to JS (`llm_config_get` only reports whether one is set).
+/// never returned to JS (`llm_config_get` only reports whether one is set). `api_key: None` (or
+/// blank) leaves a previously saved key untouched; pass `clear_api_key: true` to remove it.
 #[tauri::command]
 pub fn llm_config_set<R: Runtime>(
   app: AppHandle<R>,
   base_url: String,
   model: String,
   api_key: Option<String>,
+  clear_api_key: bool,
 ) -> Result<(), String> {
   let file = LlmConfigFile { base_url, model };
   std::fs::write(config_path(&app)?, serde_json::to_vec(&file).map_err(|e| e.to_string())?)
     .map_err(|e| e.to_string())?;
   let entry = keyring_entry()?;
-  match api_key {
-    Some(key) if !key.is_empty() => entry.set_password(&key).map_err(|e| e.to_string())?,
-    _ => match entry.delete_credential() {
+  if clear_api_key {
+    match entry.delete_credential() {
       Ok(()) | Err(keyring::Error::NoEntry) => {}
       Err(e) => return Err(e.to_string()),
-    },
+    }
+  } else if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+    entry.set_password(&key).map_err(|e| e.to_string())?;
   }
   Ok(())
 }
@@ -180,12 +197,6 @@ pub fn llm_config_get<R: Runtime>(app: AppHandle<R>) -> Result<LlmConfigOut, Str
   Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local })
 }
 
-#[derive(Deserialize)]
-pub struct ChatMessageIn {
-  role: String,
-  content: String,
-}
-
 static IN_FLIGHT: LazyLock<Mutex<HashMap<String, tokio::task::AbortHandle>>> =
   LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -198,7 +209,7 @@ async fn stream_chat<R: Runtime>(
   request_id: &str,
   config: &LlmConfigFile,
   api_key: Option<&str>,
-  messages: &[ChatMessageIn],
+  messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
   if rustls::crypto::CryptoProvider::get_default().is_none() {
@@ -209,13 +220,12 @@ async fn stream_chat<R: Runtime>(
     .build()
     .map_err(|e| e.to_string())?;
   let url = format!("{}/v1/chat/completions", config.base_url.trim_end_matches('/'));
+  // `messages` is forwarded exactly as the agent loop built it (assistant `tool_calls`, `tool`
+  // messages with `tool_call_id`, ...): a typed struct here would silently drop those fields.
   let mut body = serde_json::json!({
     "model": config.model,
     "stream": true,
-    "messages": messages
-      .iter()
-      .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
-      .collect::<Vec<_>>(),
+    "messages": messages,
   });
   if let Some(tools) = tools {
     body["tools"] = tools;
@@ -233,8 +243,7 @@ async fn stream_chat<R: Runtime>(
   }
   let mut buffer = SseBuffer::default();
   while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-    let text = String::from_utf8_lossy(&chunk).into_owned();
-    for raw in buffer.push(&text) {
+    for raw in buffer.push(&chunk) {
       if let Some(event) = parse_chat_event(&raw) {
         let done = matches!(event, ChatEvent::Done);
         emit_event(app, request_id, event);
@@ -254,7 +263,7 @@ async fn stream_chat<R: Runtime>(
 pub async fn llm_chat<R: Runtime>(
   app: AppHandle<R>,
   request_id: String,
-  messages: Vec<ChatMessageIn>,
+  messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
   let config = read_config(&app)?;
@@ -270,7 +279,7 @@ pub async fn llm_chat<R: Runtime>(
   let task_app = app.clone();
   let task_request_id = request_id.clone();
   let join = tokio::spawn(async move {
-    if let Err(message) = stream_chat(&task_app, &task_request_id, &config, api_key.as_deref(), &messages, tools).await {
+    if let Err(message) = stream_chat(&task_app, &task_request_id, &config, api_key.as_deref(), messages, tools).await {
       emit_event(&task_app, &task_request_id, ChatEvent::Error { message });
     }
     IN_FLIGHT.lock().ok().map(|mut map| map.remove(&task_request_id));
@@ -282,10 +291,13 @@ pub async fn llm_chat<R: Runtime>(
   Ok(())
 }
 
+/// Aborts the in-flight request and emits `Error{message:"cancelled"}` so a caller blocked reading
+/// `llm://chat` events for this `request_id` unblocks instead of waiting forever.
 #[tauri::command]
-pub fn llm_cancel(request_id: String) -> Result<(), String> {
+pub fn llm_cancel<R: Runtime>(app: AppHandle<R>, request_id: String) -> Result<(), String> {
   if let Some(handle) = IN_FLIGHT.lock().map_err(|_| "lock poisoned".to_string())?.remove(&request_id) {
     handle.abort();
+    emit_event(&app, &request_id, ChatEvent::Error { message: "cancelled".into() });
   }
   Ok(())
 }
@@ -332,16 +344,33 @@ mod tests {
   #[test]
   fn sse_buffer_reassembles_an_event_split_across_chunks() {
     let mut buffer = SseBuffer::default();
-    assert!(buffer.push("data: {\"choices\":[{\"delta\":{\"content\":\"Hel").is_empty());
-    let events = buffer.push("lo\"}}]}\n\n");
+    assert!(buffer.push(b"data: {\"choices\":[{\"delta\":{\"content\":\"Hel").is_empty());
+    let events = buffer.push(b"lo\"}}]}\n\n");
     assert_eq!(events, vec!["{\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}"]);
   }
 
   #[test]
   fn sse_buffer_handles_multiple_events_in_one_chunk_and_a_done_sentinel() {
     let mut buffer = SseBuffer::default();
-    let events = buffer.push("data: {\"a\":1}\n\ndata: [DONE]\n\n");
+    let events = buffer.push(b"data: {\"a\":1}\n\ndata: [DONE]\n\n");
     assert_eq!(events, vec!["{\"a\":1}", "[DONE]"]);
+  }
+
+  #[test]
+  fn sse_buffer_never_decodes_a_multi_byte_character_split_across_chunks() {
+    // Cyrillic "П" is 2 bytes (0xD0 0x9F) in UTF-8; splitting it mid-character must not turn
+    // either half into a replacement character once the full event is reassembled.
+    let payload = "{\"choices\":[{\"delta\":{\"content\":\"Привет\"}}]}";
+    let bytes = payload.as_bytes();
+    let split = 3;
+    let mut buffer = SseBuffer::default();
+    let mut first = b"data: ".to_vec();
+    first.extend_from_slice(&bytes[..split]);
+    assert!(buffer.push(&first).is_empty());
+    let mut rest = bytes[split..].to_vec();
+    rest.extend_from_slice(b"\n\n");
+    let events = buffer.push(&rest);
+    assert_eq!(events, vec![payload]);
   }
 
   #[test]

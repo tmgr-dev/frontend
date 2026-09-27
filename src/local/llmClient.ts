@@ -68,7 +68,7 @@ export const createLlmChat = (tools: unknown): { chat: ChatFn; cancel: () => Pro
 				} catch {
 					throw new Error(`The model sent invalid tool arguments: ${buf.arguments}`);
 				}
-				yield { type: 'tool_call', call: { id: buf.id, args } };
+				yield { type: 'tool_call', call: { id: buf.id, name: buf.name, rawArguments: buf.arguments, args } };
 			}
 		} finally {
 			unlisten();

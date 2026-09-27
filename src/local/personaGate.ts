@@ -17,15 +17,15 @@ export const PERSONA_PERMISSIONS = [
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
 
-interface WhitelistEntry {
+export interface WhitelistEntry {
 	method: string;
 	pattern: string;
 	permission: PersonaPermission;
 }
 
-/** Appendix D of the design doc, restated as (method, route pattern) pairs. Closed by default: a
- * route not listed here is a 403 for a persona actor, whatever cloud permission it maps to. */
-const PERSONA_WHITELIST: WhitelistEntry[] = [
+/** Closed by default: a route not listed here is a 403 for a persona actor, whatever permission it
+ * would otherwise map to. */
+export const PERSONA_WHITELIST: WhitelistEntry[] = [
 	{ method: 'GET', pattern: 'tasks', permission: 'tasks:read' },
 	{ method: 'POST', pattern: 'tasks', permission: 'tasks:write' },
 	{ method: 'GET', pattern: 'tasks/:id(\\d+)', permission: 'tasks:read' },
@@ -56,10 +56,10 @@ export const personaWhitelistFor = (method: string, pattern: string): WhitelistE
 	PERSONA_WHITELIST.find((entry) => entry.method === method.toUpperCase() && entry.pattern === pattern) ?? null;
 
 /**
- * Enforced only for `ctx.actor.kind === 'persona'`. Mirrors 5.2 of the design doc, minus the parts
- * that don't apply to a single-workspace local file (workspace policy, resource-workspace checks):
- * not in the whitelist -> 403, persona unknown/archived/disabled locally -> 401, permission missing
- * from the grant -> 403.
+ * Enforced only for `ctx.actor.kind === 'persona'`. A single local workspace has no workspace
+ * policy or cross-workspace resource checks to apply, so this is: persona unknown/archived, or its
+ * grant missing/disabled -> 401 (checked first, so an offline revoke always wins); not in the
+ * whitelist, or the grant is missing the permission -> 403.
  */
 export const checkPersonaAccess = async (
 	ctx: LocalContext,
@@ -67,8 +67,6 @@ export const checkPersonaAccess = async (
 	pattern: string,
 ): Promise<void> => {
 	if (ctx.actor?.kind !== 'persona') return;
-	const entry = personaWhitelistFor(method, pattern);
-	if (!entry) throw new LocalHttpError(403, 'This route is not available to personas');
 	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
 		`SELECT archived_at FROM personas WHERE uuid = ?`,
 		[ctx.actor.id],
@@ -81,6 +79,8 @@ export const checkPersonaAccess = async (
 	);
 	if (!grant) throw new LocalHttpError(401, 'Persona is not enabled in this workspace');
 	if (grant.disabled_at) throw new LocalHttpError(401, 'Persona is disabled in this workspace');
+	const entry = personaWhitelistFor(method, pattern);
+	if (!entry) throw new LocalHttpError(403, 'This route is not available to personas');
 	const permissions: string[] = JSON.parse(grant.permissions || '[]');
 	if (!permissions.includes(entry.permission)) {
 		throw new LocalHttpError(403, `Persona is missing permission ${entry.permission}`);

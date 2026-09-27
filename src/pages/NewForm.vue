@@ -2321,7 +2321,7 @@
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
-						v-if="isModal && form.id"
+						v-if="isModal && form.id && isLocalWorkspaceTask"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>
@@ -2496,7 +2496,7 @@
 					@mousedown.stop
 				>
 					<AskPersonaButton
-						v-if="form.id"
+						v-if="form.id && isLocalWorkspaceTask"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>

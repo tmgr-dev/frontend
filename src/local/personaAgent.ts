@@ -1,15 +1,21 @@
 import { dispatchLocal } from './dispatch';
+import { PERSONA_WHITELIST } from './personaGate';
 import type { LocalRouter } from './router';
 import type { LocalContext } from './types';
 
 export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant' | 'tool';
-	content: string;
+	content: string | null;
 	tool_call_id?: string;
+	tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
 }
 
 export interface ToolCall {
 	id: string;
+	name: string;
+	/** Raw JSON text the model sent for `function.arguments`, needed to echo the assistant message
+	 * back verbatim on the next turn. */
+	rawArguments: string;
 	args: { method: string; path: string; body?: unknown };
 }
 
@@ -22,22 +28,31 @@ const TOOL_NAME = 'tmgr_request';
 
 /** One generic REST tool, exactly like the cloud `tmgr_request` MCP tool for personas: every call
  * still goes through `dispatchLocal`, so the whitelist gate (personaGate.ts) is what actually
- * decides what the persona may do — this loop never widens or narrows it. */
-export const personaToolDefinition = (grantedPermissions: string[]) => ({
-	name: TOOL_NAME,
-	description:
-		`Call the local TMGR REST API for this workspace. Restricted to this persona's granted ` +
-		`permissions: ${grantedPermissions.join(', ') || '(none)'}.`,
-	parameters: {
-		type: 'object',
-		properties: {
-			method: { type: 'string', enum: ['GET', 'POST', 'PATCH', 'DELETE'] },
-			path: { type: 'string' },
-			body: { type: 'object' },
+ * decides what the persona may do — this loop never widens or narrows it. OpenAI-compatible servers
+ * expect a `{type: 'function', function: {...}}` wrapper per tool. */
+export const personaToolDefinition = (grantedPermissions: string[]) => {
+	const routes = PERSONA_WHITELIST.filter((entry) => grantedPermissions.includes(entry.permission)).map(
+		(entry) => `${entry.method} ${entry.pattern}`,
+	);
+	return {
+		type: 'function',
+		function: {
+			name: TOOL_NAME,
+			description:
+				`Call the local TMGR REST API for this workspace. Only these routes will succeed: ` +
+				`${routes.join(', ') || '(none granted)'}.`,
+			parameters: {
+				type: 'object',
+				properties: {
+					method: { type: 'string', enum: ['GET', 'POST', 'PATCH', 'DELETE'] },
+					path: { type: 'string' },
+					body: { type: 'object' },
+				},
+				required: ['method', 'path'],
+			},
 		},
-		required: ['method', 'path'],
-	},
-});
+	};
+};
 
 export interface PersonaAgentParams {
 	ctx: LocalContext;
@@ -90,27 +105,35 @@ export const runPersonaAgent = async ({
 	let status: 'succeeded' | 'failed' = 'succeeded';
 	try {
 		while (toolCalls < maxToolCalls) {
-			let sawToolCall = false;
+			const calls: ToolCall[] = [];
 			let textBuffer = '';
 			for await (const event of chat(messages)) {
-				if (event.type === 'text') {
-					textBuffer += event.delta;
-					continue;
-				}
-				sawToolCall = true;
+				if (event.type === 'text') textBuffer += event.delta;
+				else calls.push(event.call);
+			}
+			if (!calls.length) {
+				finalText = textBuffer;
+				break;
+			}
+			messages.push({
+				role: 'assistant',
+				content: textBuffer || null,
+				tool_calls: calls.map((call) => ({
+					id: call.id,
+					type: 'function',
+					function: { name: call.name, arguments: call.rawArguments },
+				})),
+			});
+			for (const call of calls) {
+				if (toolCalls >= maxToolCalls) break;
 				toolCalls += 1;
-				const { method, path, body } = event.call.args;
+				const { method, path, body } = call.args;
 				const result = await dispatchLocal(router, personaCtx, method, path, body);
 				messages.push({
 					role: 'tool',
-					tool_call_id: event.call.id,
+					tool_call_id: call.id,
 					content: JSON.stringify(result ? result.data : { message: `no local route for ${method} ${path}` }),
 				});
-				if (toolCalls >= maxToolCalls) break;
-			}
-			if (!sawToolCall) {
-				finalText = textBuffer;
-				break;
 			}
 		}
 	} catch (error) {
@@ -131,9 +154,16 @@ export const askPersonaOnTask = async (params: PersonaAgentParams): Promise<Pers
 	const result = await runPersonaAgent(params);
 	if (result.text.trim()) {
 		const actor = { kind: 'persona' as const, id: params.persona.uuid, name: params.persona.name };
-		await dispatchLocal(params.router, { ...params.ctx, actor }, 'POST', `tasks/${params.taskId}/comments`, {
-			message: result.text,
-		});
+		const posted = await dispatchLocal(
+			params.router,
+			{ ...params.ctx, actor },
+			'POST',
+			`tasks/${params.taskId}/comments`,
+			{ message: result.text },
+		);
+		if (!posted || posted.status >= 400) {
+			throw new Error(`Could not post the persona's answer as a comment: ${posted?.data?.message ?? 'no route'}`);
+		}
 	}
 	return result;
 };

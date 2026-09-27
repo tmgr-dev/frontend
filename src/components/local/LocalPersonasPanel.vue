@@ -39,9 +39,12 @@
 				This URL is not on localhost or your LAN — the persona's traffic (and any
 				key you set) will leave this machine.
 			</p>
-			<div>
+			<div class="flex gap-2">
 				<Button size="sm" :disabled="savingLlm" @click="saveLlmConfig">
 					{{ savingLlm ? 'Saving…' : 'Save' }}
+				</Button>
+				<Button v-if="llmStatus.hasApiKey" size="sm" variant="outline" :disabled="savingLlm" @click="removeApiKey">
+					Remove key
 				</Button>
 			</div>
 		</section>
@@ -197,7 +200,7 @@
 				syncError.value = null;
 				try {
 					const ctx = await ctxFor();
-					await syncPersonasSnapshot(ctx, () => listPersonas(false, false), tauriPersonaCache);
+					await syncPersonasSnapshot(ctx, () => listPersonas(true, false), tauriPersonaCache);
 					await refreshPersonas();
 				} catch (error) {
 					syncError.value = error instanceof Error ? error.message : String(error);
@@ -213,6 +216,23 @@
 						baseUrl: llmForm.baseUrl,
 						model: llmForm.model,
 						apiKey: llmForm.apiKey || null,
+						clearApiKey: false,
+					});
+					llmForm.apiKey = '';
+					await refreshLlmConfig();
+				} finally {
+					savingLlm.value = false;
+				}
+			};
+
+			const removeApiKey = async () => {
+				savingLlm.value = true;
+				try {
+					await invoke('llm_config_set', {
+						baseUrl: llmForm.baseUrl,
+						model: llmForm.model,
+						apiKey: null,
+						clearApiKey: true,
 					});
 					llmForm.apiKey = '';
 					await refreshLlmConfig();
@@ -236,6 +256,7 @@
 				togglePermission,
 				sync,
 				saveLlmConfig,
+				removeApiKey,
 			};
 		},
 	});

@@ -490,9 +490,11 @@ export const createLocalApi = () => {
 		})
 		.add('PATCH', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
 			const id = Number(params.id);
+			// Personas have no timer permission: common_time is timer bookkeeping, not a task field.
+			const patchBody = ctx.actor?.kind === 'persona' ? { ...body, common_time: undefined } : body;
 			return isRoutineId(id)
-				? updateRoutineTaskFields(ctx, id, body ?? {})
-				: updateTask(ctx, id, writableTaskFields(body ?? {}));
+				? updateRoutineTaskFields(ctx, id, patchBody ?? {})
+				: updateTask(ctx, id, writableTaskFields(patchBody ?? {}));
 		})
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);
@@ -560,6 +562,14 @@ export const createLocalApi = () => {
 			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
+			if (ctx.actor?.kind === 'persona') {
+				const [comment] = await ctx.db.select<any>(`SELECT author_kind, author_id FROM comments WHERE id = ?`, [
+					Number(params.id),
+				]);
+				if (!comment || comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
+					throw new LocalHttpError(403, 'A persona may only delete its own comments');
+				}
+			}
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
 			return { success: true };
 		})

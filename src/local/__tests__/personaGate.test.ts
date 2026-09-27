@@ -80,6 +80,26 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		expect(res!.status).toBe(403);
 	});
 
+	it('returns 401, not 403, for a disabled persona even on a route outside the whitelist', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write']);
+		const { disableLocalPersona } = await import('../personas');
+		await disableLocalPersona(ctx, 'p-1');
+		const res = await call('DELETE', `tasks/${taskId}`, undefined, persona);
+		expect(res!.status).toBe(401);
+	});
+
+	it('lets a persona delete only its own comment, not the owner\'s', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
+		const own = await call('POST', `tasks/${taskId}/comments`, { message: 'mine' }, persona);
+		const ownersComment = await dispatchLocal(api, ctx, 'POST', `tasks/${taskId}/comments`, {
+			message: 'the owner said this',
+		});
+		const refused = await call('DELETE', `comments/${ownersComment!.data.data.id}`, undefined, persona);
+		expect(refused!.status).toBe(403);
+		const allowed = await call('DELETE', `comments/${own!.data.data.id}`, undefined, persona);
+		expect(allowed!.status).toBe(200);
+	});
+
 	it('does not gate the human user actor at all', async () => {
 		const res = await call('GET', `tasks/${taskId}`, undefined, undefined);
 		expect(res!.status).toBe(200);

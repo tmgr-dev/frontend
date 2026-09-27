@@ -5,7 +5,7 @@ import {
 	syncPersonasSnapshot,
 	type CloudPersona,
 } from '../personas';
-import { migrate } from '../schema';
+import { LATEST_SCHEMA, MIGRATIONS, migrate, readSchemaVersion } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
@@ -84,5 +84,52 @@ describeSqlite('local personas snapshot and gate state', () => {
 		await syncPersonasSnapshot(ctx, async () => [persona()], cache);
 		await expect(enableLocalPersona(ctx, 'p-1', ['tasks:delete' as any])).rejects.toThrow('Unknown permission');
 		await expect(enableLocalPersona(ctx, 'missing', ['tasks:read'])).rejects.toThrow('not found');
+	});
+
+	it('migration 7 adds the identity-only personas tables on top of a v6 db, keeps old data, and re-runs safely', async () => {
+		const fresh = memoryDb();
+		const now = clock.toISOString();
+		for (const migration of MIGRATIONS.filter((m) => m.version <= 6)) {
+			for (const statement of migration.statements) await fresh.execute(statement);
+		}
+		await fresh.execute(
+			`INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			['6'],
+		);
+		expect(await readSchemaVersion(fresh)).toBe(6);
+
+		await fresh.execute(
+			`INSERT INTO tasks (id, title, priority, created_at, updated_at) VALUES (1, 'Pre-existing task', 'medium', ?, ?)`,
+			[now, now],
+		);
+		await fresh.execute(
+			`INSERT INTO comments (task_id, message, author_kind, created_at, updated_at) VALUES (1, 'Pre-existing comment', 'user', ?, ?)`,
+			[now, now],
+		);
+
+		expect(await migrate(fresh, now)).toBe(LATEST_SCHEMA);
+
+		const personaColumns = (await fresh.select<any>(`PRAGMA table_info(personas)`)).map((c: any) => c.name);
+		expect(personaColumns).toEqual([
+			'uuid',
+			'owner_user_id',
+			'owner_name',
+			'name',
+			'description',
+			'avatar_file',
+			'synced_at',
+			'archived_at',
+		]);
+		const grantColumns = (await fresh.select<any>(`PRAGMA table_info(workspace_personas)`)).map((c: any) => c.name);
+		expect(grantColumns).toEqual(['persona_uuid', 'permissions', 'enabled_at', 'disabled_at']);
+
+		const [task] = await fresh.select<any>(`SELECT title FROM tasks WHERE id = 1`);
+		expect(task.title).toBe('Pre-existing task');
+		const [comment] = await fresh.select<any>(`SELECT message FROM comments WHERE task_id = 1`);
+		expect(comment.message).toBe('Pre-existing comment');
+
+		await fresh.execute(`UPDATE meta SET value = '6' WHERE key = 'schema_version'`);
+		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);
+		expect(await readSchemaVersion(fresh)).toBe(LATEST_SCHEMA);
 	});
 });
