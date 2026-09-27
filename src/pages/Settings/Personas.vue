@@ -120,6 +120,8 @@
 				No personas yet.
 			</p>
 		</div>
+
+		<LocalPersonasPanel v-if="isDesktop" class="mt-6" />
 	</div>
 </template>
 
@@ -136,10 +138,12 @@
 		uploadPersonaAvatar,
 	} from '@/actions/tmgr/personas';
 	import PersonaAvatar from '@/components/general/PersonaAvatar.vue';
+	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { extractFieldErrors, PERSONA_LIMIT } from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
@@ -153,7 +157,7 @@
 
 	export default defineComponent({
 		name: 'PersonasSettings',
-		components: { Button, Switch, PersonaAvatar, PersonaForm, PersonaWorkspaceGrants },
+		components: { Button, Switch, PersonaAvatar, PersonaForm, PersonaWorkspaceGrants, LocalPersonasPanel },
 		setup() {
 			setDocumentTitle('Personas');
 
@@ -165,6 +169,7 @@
 			const form = ref<PersonaFormModel>(emptyForm());
 			const formErrors = ref<Record<string, string[]>>({});
 			const saving = ref(false);
+			const isDesktop = isDesktopApp();
 
 			const activePersonas = computed(() =>
 				personas.value.filter((p) => !p.archived_at),
@@ -288,6 +293,7 @@
 				form,
 				formErrors,
 				saving,
+				isDesktop,
 				activePersonas,
 				visiblePersonas,
 				startEdit,

@@ -66,7 +66,6 @@ export const runPersonaAgent = async ({
 	persona,
 	taskId,
 	systemPrompt,
-	grantedPermissions,
 	chat,
 	maxToolCalls = 8,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
@@ -124,4 +123,17 @@ export const runPersonaAgent = async ({
 		});
 	}
 	return { text: finalText, toolCalls };
+};
+
+/** "Ask persona" on a task: runs one turn, then posts whatever text it ends on as a comment
+ * authored by the persona (needs `comments:write` in its grant, same as any other persona write). */
+export const askPersonaOnTask = async (params: PersonaAgentParams): Promise<PersonaAgentResult> => {
+	const result = await runPersonaAgent(params);
+	if (result.text.trim()) {
+		const actor = { kind: 'persona' as const, id: params.persona.uuid, name: params.persona.name };
+		await dispatchLocal(params.router, { ...params.ctx, actor }, 'POST', `tasks/${params.taskId}/comments`, {
+			message: result.text,
+		});
+	}
+	return result;
 };

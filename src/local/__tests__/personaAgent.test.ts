@@ -1,7 +1,7 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import type { ChatStreamEvent } from '../personaAgent';
-import { runPersonaAgent } from '../personaAgent';
+import { askPersonaOnTask, runPersonaAgent } from '../personaAgent';
 import { enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
@@ -83,6 +83,27 @@ describeSqlite('local persona agent loop', () => {
 
 		expect(result.toolCalls).toBe(3);
 		expect(result.text).toBe('');
+	});
+
+	it('posts the final text as a comment authored by the persona (ask persona on a task)', async () => {
+		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+			yield { type: 'text', delta: 'No blockers found.' };
+		};
+		await askPersonaOnTask({
+			ctx,
+			router,
+			persona,
+			taskId,
+			systemPrompt: 'Review the task',
+			grantedPermissions: ['comments:write'],
+			chat,
+		});
+		const comments = await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`);
+		expect(comments!.data.data).toHaveLength(1);
+		expect(comments!.data.data[0]).toMatchObject({
+			message: 'No blockers found.',
+			author: { kind: 'persona', id: 'p-1', name: 'Reviewer' },
+		});
 	});
 
 	it('refuses to record a run when the persona lacks agent_work:write', async () => {

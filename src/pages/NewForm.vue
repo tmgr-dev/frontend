@@ -36,6 +36,7 @@
 	import TimeCounter from '@/components/TimeCounter.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
 	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
@@ -2319,6 +2320,11 @@
 					class="shrink-0 border-t border-line bg-surface px-6 py-3"
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
+					<AskPersonaButton
+						v-if="isModal && form.id"
+						:task-id="form.id"
+						@posted="taskCommentsRef?.loadComments()"
+					/>
 					<div
 						v-if="isModal && aiPending"
 						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
@@ -2489,6 +2495,11 @@
 					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 lg:min-h-[var(--task-footer-height)]"
 					@mousedown.stop
 				>
+					<AskPersonaButton
+						v-if="form.id"
+						:task-id="form.id"
+						@posted="taskCommentsRef?.loadComments()"
+					/>
 					<div
 						v-if="aiPending"
 						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
