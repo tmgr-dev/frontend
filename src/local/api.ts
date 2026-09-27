@@ -249,6 +249,13 @@ const writableTaskFields = (body: any) => {
 	return fields;
 };
 
+// Personas have no timer permission: common_time is timer bookkeeping, not a task field.
+const personaWritableFields = (ctx: LocalContext, body: any) => {
+	const fields = writableTaskFields(body ?? {});
+	if (ctx.actor?.kind === 'persona') delete fields.common_time;
+	return fields;
+};
+
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
 	if ('status_id' in fields && fields.status_id != null) {
 		const [status] = await ctx.db.select<any>(`SELECT type FROM statuses WHERE id = ?`, [
@@ -463,7 +470,7 @@ export const createLocalApi = () => {
 			return [];
 		})
 		.add('POST', 'tasks', async ({ ctx, body }) => {
-			const fields = writableTaskFields(body ?? {});
+			const fields = personaWritableFields(ctx, body);
 			if (!fields.title) throw new LocalHttpError(422, 'title is required');
 			fields.status_id = fields.status_id ?? (await defaultStatusId(ctx));
 			const now = iso(ctx);
@@ -490,11 +497,9 @@ export const createLocalApi = () => {
 		})
 		.add('PATCH', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
 			const id = Number(params.id);
-			// Personas have no timer permission: common_time is timer bookkeeping, not a task field.
-			const patchBody = ctx.actor?.kind === 'persona' ? { ...body, common_time: undefined } : body;
 			return isRoutineId(id)
-				? updateRoutineTaskFields(ctx, id, patchBody ?? {})
-				: updateTask(ctx, id, writableTaskFields(patchBody ?? {}));
+				? updateRoutineTaskFields(ctx, id, body ?? {})
+				: updateTask(ctx, id, personaWritableFields(ctx, body));
 		})
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);

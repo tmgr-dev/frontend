@@ -36,7 +36,7 @@ export const dispatchLocal = async (
 	const route = router.match(method, path);
 	if (!route) return null;
 	try {
-		await checkPersonaAccess(ctx, method, route.pattern);
+		if (ctx.actor?.kind === 'persona') await checkPersonaAccess(ctx, method, route.pattern);
 		const data = await route.handler({
 			method: method.toUpperCase(),
 			path,

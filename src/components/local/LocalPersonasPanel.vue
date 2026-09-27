@@ -33,7 +33,7 @@
 				<Input v-model="llmForm.apiKey" type="password" placeholder="sk-…" />
 			</label>
 			<p
-				v-if="llmForm.baseUrl && !llmStatus.isLocal"
+				v-if="llmForm.baseUrl && !isTypedUrlLocal"
 				class="text-sm text-amber-600 dark:text-amber-400"
 			>
 				This URL is not on localhost or your LAN — the persona's traffic (and any
@@ -118,8 +118,25 @@
 		type WorkspacePersonaRow,
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
-	import { defineComponent, onMounted, reactive, ref } from 'vue';
+	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
 	import { useStore } from 'vuex';
+
+	/** Mirrors the Rust classify_url check, so the warning reacts to what's typed, not last saved. */
+	const isLocalLlmUrl = (input: string): boolean => {
+		try {
+			const { hostname } = new URL(input);
+			const host = hostname.replace(/^\[|\]$/g, '');
+			if (host === 'localhost' || host === '::1' || host.endsWith('.local')) return true;
+			const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
+			if (v4) {
+				const [a, b] = [Number(v4[1]), Number(v4[2])];
+				return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+			}
+			return false;
+		} catch {
+			return false;
+		}
+	};
 
 	export default defineComponent({
 		name: 'LocalPersonasPanel',
@@ -132,7 +149,8 @@
 			const syncError = ref<string | null>(null);
 			const drafts = reactive<Record<string, PersonaPermission[]>>({});
 			const llmForm = reactive({ baseUrl: '', model: '', apiKey: '' });
-			const llmStatus = reactive({ hasApiKey: false, isLocal: true });
+			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
+			const llmStatus = reactive({ hasApiKey: false });
 			const savingLlm = ref(false);
 
 			const currentUser = () => ({
@@ -165,7 +183,6 @@
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
-				llmStatus.isLocal = config.is_local;
 			};
 
 			onMounted(async () => {
@@ -248,6 +265,7 @@
 				syncError,
 				llmForm,
 				llmStatus,
+				isTypedUrlLocal,
 				savingLlm,
 				PERSONA_PERMISSIONS,
 				isEnabled,

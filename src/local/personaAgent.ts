@@ -28,7 +28,7 @@ const TOOL_NAME = 'tmgr_request';
 /** Every call still goes through `dispatchLocal`, so the whitelist gate decides what runs, not this. */
 export const personaToolDefinition = (grantedPermissions: string[]) => {
 	const routes = PERSONA_WHITELIST.filter((entry) => grantedPermissions.includes(entry.permission)).map(
-		(entry) => `${entry.method} ${entry.pattern}`,
+		(entry) => `${entry.method} ${entry.pattern.replace(/:(\w+)(\([^)]*\))?/g, '{$1}')}`,
 	);
 	return {
 		type: 'function',

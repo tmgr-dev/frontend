@@ -96,6 +96,13 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		expect(res!.data.data.common_time).toBe(0);
 	});
 
+	it('also strips common_time from a persona creating a task', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:write']);
+		const res = await call('POST', 'tasks', { title: 'New task', common_time: 999 }, persona);
+		expect(res!.status).toBe(201);
+		expect(res!.data.data.common_time).toBe(0);
+	});
+
 	it('lets a persona delete only its own comment, not the owner\'s', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
 		const own = await call('POST', `tasks/${taskId}/comments`, { message: 'mine' }, persona);
