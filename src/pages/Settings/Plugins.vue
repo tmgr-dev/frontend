@@ -6,6 +6,11 @@
 				Plugins run in local workspaces, and in a shared workspace once its
 				creator turns them on for everyone. Each runs in its own sandbox with
 				only the permissions listed on its card.
+				<router-link
+					to="/settings/plugins/help"
+					class="text-primary hover:underline"
+					>How plugins work</router-link
+				>
 			</p>
 			<p v-if="!workspace" class="text-sm text-amber-600 dark:text-amber-400">
 				Open a workspace to turn plugins on or off for it.
@@ -313,7 +318,7 @@
 					only)
 				</div>
 				<div class="text-xs">
-					<span class="font-medium">Can:</span>
+					<span class="font-medium">Can:</span>{{ ' ' }}
 					<span class="text-muted-foreground">
 						{{ permissionText(plugin.manifest.permissions) }}
 					</span>
