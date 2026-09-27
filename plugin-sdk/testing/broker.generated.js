@@ -187,6 +187,7 @@ const taskFields = (patch) => {
 };
 const MAX_VALUE_BYTES = 256 * 1024;
 const MAX_TASK_DATA_VALUE_BYTES = 64 * 1024;
+const byteLength = (value) => new TextEncoder().encode(value).byteLength;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
 const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
 // Data and documents only: nothing Finder would run or follow on a double-click.
@@ -227,8 +228,11 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f\u2028\u2029]/;
 const ALARM_NAME = /^[A-Za-z0-9._-]{1,60}$/;
 const ONE_YEAR_MS = 365 * 24 * 60 * 60000;
 const minutesValue = (value, field) => {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 1)
-        invalid(`${field} must be a number of minutes, at least 1`);
+    if (typeof value !== 'number' ||
+        !Number.isFinite(value) ||
+        value < 1 ||
+        value > ONE_YEAR_MS / 60000)
+        invalid(`${field} must be a number of minutes, from 1 to ${ONE_YEAR_MS / 60000}`);
     return value;
 };
 /** Exactly one of delayMinutes, periodMinutes (with an optional delayMinutes), or when. */
@@ -283,6 +287,13 @@ const createBroker = (deps) => {
     const granted = new Set(manifest.permissions);
     const reads = bucket(50, 100, deps.now);
     const writes = bucket(10, 20, deps.now);
+    /** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
+    const stripRelations = (task) => {
+        if (granted.has('relations:read') || !task || typeof task !== 'object')
+            return task;
+        const { relationTypeWithTask, ...rest } = task;
+        return rest;
+    };
     const declared = {
         command: new Set(manifest.contributes.commands.map((c) => c.id)),
         badges: new Set(manifest.contributes.boardCardBadges.map((b) => b.id)),
@@ -345,12 +356,17 @@ const createBroker = (deps) => {
                             ? p.direction
                             : invalid('direction must be asc or desc');
                 }
-                return api.listTasks(query);
+                return api.listTasks(query).then((result) => {
+                    const r = result;
+                    return Array.isArray(r?.items)
+                        ? { ...r, items: r.items.map(stripRelations) }
+                        : result;
+                });
             },
         },
         'tasks.get': {
             permission: 'tasks:read',
-            run: (p) => api.getTask(id(p.id)),
+            run: (p) => api.getTask(id(p.id)).then(stripRelations),
         },
         'tasks.create': {
             permission: 'tasks:write',
@@ -359,13 +375,13 @@ const createBroker = (deps) => {
                 const fields = taskFields(p);
                 if (!('title' in fields))
                     invalid('title is required');
-                return api.createTask(fields);
+                return api.createTask(fields).then(stripRelations);
             },
         },
         'tasks.update': {
             permission: 'tasks:write',
             write: true,
-            run: (p) => api.updateTask(id(p.id), taskFields(p.patch)),
+            run: (p) => api.updateTask(id(p.id), taskFields(p.patch)).then(stripRelations),
         },
         'statuses.list': {
             permission: 'statuses:read',
@@ -416,12 +432,12 @@ const createBroker = (deps) => {
         'time.start': {
             permission: 'time:write',
             write: true,
-            run: (p) => api.startTimer(id(p.taskId, 'taskId')),
+            run: (p) => api.startTimer(id(p.taskId, 'taskId')).then(stripRelations),
         },
         'time.stop': {
             permission: 'time:write',
             write: true,
-            run: (p) => api.stopTimer(id(p.taskId, 'taskId')),
+            run: (p) => api.stopTimer(id(p.taskId, 'taskId')).then(stripRelations),
         },
         'comments.list': {
             permission: 'comments:read',
@@ -452,25 +468,29 @@ const createBroker = (deps) => {
             run: (p) => api.unrelateTask(id(p.taskId, 'taskId'), id(p.otherId, 'otherId'), relationType(p.type)),
         },
         'taskData.get': {
+            permission: 'tasks:read',
             run: async (p) => {
                 const json = await api.taskDataGet(id(p.taskId, 'taskId'), taskDataKey(p.key));
                 return typeof json === 'string' ? JSON.parse(json) : null;
             },
         },
         'taskData.set': {
+            permission: 'tasks:read',
             write: true,
             run: (p) => {
                 const json = JSON.stringify(p.value ?? null);
-                if (json.length > MAX_TASK_DATA_VALUE_BYTES)
+                if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES)
                     invalid('value is larger than 64 KB');
                 return api.taskDataSet(id(p.taskId, 'taskId'), taskDataKey(p.key), json);
             },
         },
         'taskData.delete': {
+            permission: 'tasks:read',
             write: true,
             run: (p) => api.taskDataDelete(id(p.taskId, 'taskId'), taskDataKey(p.key)),
         },
         'taskData.getMany': {
+            permission: 'tasks:read',
             run: async (p) => {
                 const taskIds = idArrayMax(p.taskIds, 'taskIds', 500);
                 const raw = (await api.taskDataGetMany(taskIds, taskDataKey(p.key)));
@@ -488,12 +508,19 @@ const createBroker = (deps) => {
         'agentWork.start': {
             permission: 'agent_work:write',
             write: true,
-            run: (p) => api.startAgentWork(id(p.taskId, 'taskId'), {
-                agent: p.agent == null ? undefined : agentName(p.agent),
-                model: p.model == null ? null : string(p.model, 'model', 128),
-                sessionId: p.sessionId == null ? null : string(p.sessionId, 'sessionId', 191),
-                branch: p.branch == null ? null : string(p.branch, 'branch', 255),
-            }),
+            run: (p) => {
+                const agent = p.agent == null ? undefined : agentName(p.agent);
+                const namespace = `plugin:${manifest.id}${agent ? `/${agent}` : ''}`;
+                if (namespace.length > 64) {
+                    invalid(`agent namespace "${namespace}" is longer than 64 characters; use a shorter agent label`);
+                }
+                return api.startAgentWork(id(p.taskId, 'taskId'), {
+                    agent,
+                    model: p.model == null ? null : string(p.model, 'model', 128),
+                    sessionId: p.sessionId == null ? null : string(p.sessionId, 'sessionId', 191),
+                    branch: p.branch == null ? null : string(p.branch, 'branch', 255),
+                });
+            },
         },
         'agentWork.update': {
             permission: 'agent_work:write',
@@ -528,7 +555,7 @@ const createBroker = (deps) => {
             write: true,
             run: (p) => {
                 const json = JSON.stringify(p.value ?? null);
-                if (json.length > MAX_VALUE_BYTES)
+                if (byteLength(json) > MAX_VALUE_BYTES)
                     invalid('value is larger than 256 KB');
                 return api.storageSet(string(p.key, 'key', 200), json);
             },
