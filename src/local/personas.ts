@@ -1,8 +1,7 @@
 import { LocalHttpError, type LocalContext } from './types';
 import { PERSONA_PERMISSIONS, type PersonaPermission } from './personaGate';
 
-/** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally;
- * `system_prompt`/`prompt_version` go to the persona cache, never to workspace.db. */
+/** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally — the prompt goes to the persona cache, never to workspace.db. */
 export interface CloudPersona {
 	id: string;
 	name: string;

@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
 
-/// Prompt/skills cache, keyed by persona uuid, outside the workspace folder: the workspace copies
-/// and moves as a folder, and the prompt is the owner's personal data, not workspace data.
+/// Prompt/skills cache, keyed by persona uuid, outside the workspace folder: the prompt is the owner's data, not workspace data.
 fn cache_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
   let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("persona-cache");
   fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
