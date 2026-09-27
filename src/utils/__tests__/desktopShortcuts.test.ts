@@ -84,6 +84,15 @@ it('describes an accelerator with macOS symbols', () => {
 });
 
 describe('parseDeepLink', () => {
+	it('recognises the social sign-in callback', () => {
+		const code = 'c'.repeat(43);
+		const state = 's'.repeat(43);
+		expect(
+			parseDeepLink(`tmgr://auth/callback?code=${code}&state=${state}`),
+		).toEqual({ type: 'auth', code, state });
+		expect(parseDeepLink('tmgr://auth/callback?code=x')).toBeNull();
+	});
+
 	it('extracts a task id', () => {
 		expect(parseDeepLink('tmgr://task/9233')).toEqual({ type: 'task', taskId: 9233 });
 		expect(parseDeepLink('tmgr://task/9233/')).toEqual({ type: 'task', taskId: 9233 });

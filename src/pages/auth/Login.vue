@@ -30,8 +30,9 @@
 			</Button>
 		</div>
 
+		<DesktopSocialLogin v-if="isDesktop" />
 		<div
-			v-if="telegramBotName"
+			v-else-if="telegramBotName"
 			id="telegram-register-widget-container"
 			class="mt-3 flex justify-center"
 		>
@@ -104,6 +105,7 @@
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
+	import DesktopSocialLogin from '@/components/auth/DesktopSocialLogin.vue';
 	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import AppleIcon from '@/components/icons/AppleIcon.vue';
 	import GitHubIcon from '@/components/icons/GitHubIcon.vue';
@@ -112,13 +114,17 @@
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { Separator } from '@/components/ui/separator';
+	import { startDesktopSocialLogin } from '@/composable/useDesktopSocialLogin';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
+	import { DesktopAuthProvider } from '@/utils/desktopAuth';
 	import { AxiosError } from 'axios';
 	import { onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
 
 	const router = useRouter();
+	const isDesktop = isDesktopApp();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 	const telegramAuthUrl = `${
 		import.meta.env.VITE_API_BASE_URL
@@ -190,7 +196,8 @@
 		}
 	}
 
-	async function loginWithSocialite(platform: string) {
+	async function loginWithSocialite(platform: DesktopAuthProvider) {
+		if (isDesktop) return startDesktopSocialLogin(platform);
 		if (platform === 'telegram') return;
 		document.location.href = `${
 			import.meta.env.VITE_API_BASE_URL

@@ -83,6 +83,26 @@ const routes = [
 		},
 	},
 	{
+		path: '/desktop-auth/return',
+		component: () => import('@/pages/auth/DesktopAuthReturn.vue'),
+		name: 'DesktopAuthReturn',
+		meta: {
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
+		path: '/desktop-auth/telegram',
+		component: () => import('@/pages/auth/DesktopAuthTelegram.vue'),
+		name: 'DesktopAuthTelegram',
+		meta: {
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
 		path: '/register',
 		component: () => import('@/pages/auth/Register.vue'),
 		name: 'Register',

@@ -281,7 +281,10 @@
 			};
 
 			const openLinks = async (urls) => {
-				const url = (urls || []).find((u) => parseDeepLink(u));
+				const url = (urls || []).find((u) => {
+					const parsed = parseDeepLink(u);
+					return parsed && parsed.type !== 'auth';
+				});
 				if (!url || isRecentDuplicateUrl(url)) return;
 				const link = parseDeepLink(url);
 				if (link.type === 'task') {
