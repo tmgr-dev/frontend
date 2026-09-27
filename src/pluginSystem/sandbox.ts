@@ -75,8 +75,17 @@ const PRELUDE = `(() => {
 			relate: (taskId, otherId, type) => call('tasks.relate', { taskId, otherId, type }),
 			unrelate: (taskId, otherId, type) => call('tasks.unrelate', { taskId, otherId, type }),
 		}),
-		statuses: freeze({ list: () => call('statuses.list') }),
-		categories: freeze({ list: () => call('categories.list') }),
+		statuses: freeze({
+			list: () => call('statuses.list'),
+			create: (fields) => call('statuses.create', fields),
+			update: (id, patch) => call('statuses.update', { id, patch }),
+			reorder: (ids) => call('statuses.reorder', { ids }),
+		}),
+		categories: freeze({
+			list: () => call('categories.list'),
+			create: (fields) => call('categories.create', fields),
+			update: (id, patch) => call('categories.update', { id, patch }),
+		}),
 		time: freeze({ start: (taskId) => call('time.start', { taskId }), stop: (taskId) => call('time.stop', { taskId }) }),
 		comments: freeze({
 			list: (taskId) => call('comments.list', { taskId }),
@@ -88,6 +97,18 @@ const PRELUDE = `(() => {
 			set: (key, value) => call('storage.set', { key, value }),
 			delete: (key) => call('storage.delete', { key }),
 			keys: () => call('storage.keys'),
+		}),
+		taskData: freeze({
+			get: (taskId, key) => call('taskData.get', { taskId, key }),
+			set: (taskId, key, value) => call('taskData.set', { taskId, key, value }),
+			delete: (taskId, key) => call('taskData.delete', { taskId, key }),
+			getMany: (taskIds, key) => call('taskData.getMany', { taskIds, key }),
+		}),
+		agentWork: freeze({
+			list: (taskId) => call('agentWork.list', { taskId }),
+			start: (taskId, fields) => call('agentWork.start', Object.assign({ taskId }, fields)),
+			update: (runId, patch) => call('agentWork.update', { runId, patch }),
+			finish: (runId, patch) => call('agentWork.finish', { runId, patch }),
 		}),
 		files: freeze({
 			export: (path, content) => call('files.export', { path, content }),

@@ -312,12 +312,15 @@ export const installPlugins = async (
 						pluginId,
 						pluginName,
 						true,
+						workspace.id,
 				  )
 				: createDataApi(
 						clientFor(workspace.id, store),
 						pluginId,
 						storageId,
 						pluginName,
+						false,
+						workspace.id,
 				  ),
 		subscribe: (handler) => domainEvents.on(handler),
 		enabled: {

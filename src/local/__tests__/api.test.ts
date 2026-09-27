@@ -1,6 +1,9 @@
+import axios from 'axios';
+import { createDataApi } from '../../pluginSystem/dataApi';
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { taskExport, workspaceExport } from '../export';
+import { respond } from '../install';
 import { LATEST_SCHEMA, MIGRATIONS, migrate, readSchemaVersion } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -19,6 +22,33 @@ describeSqlite('local workspace API on SQLite', () => {
 	};
 	const data = async (method: string, url: string, body?: unknown) =>
 		(await call(method, url, body)).data.data;
+	// Mirrors src/local/pinned.ts: the actor comes from the plugin's own header, never the body.
+	const pluginApi = (pluginId = 'tmgr.estimate') =>
+		createDataApi(
+			axios.create({
+				adapter: async (config) => {
+					const headerPluginId = config.headers?.['X-TMGR-Plugin'];
+					const actor = headerPluginId
+						? { kind: 'plugin' as const, id: String(headerPluginId), name: String(headerPluginId) }
+						: undefined;
+					const result = await dispatchLocal(
+						api,
+						{ ...ctx, actor },
+						config.method ?? 'get',
+						config.url ?? '',
+						config.data,
+						config.params,
+					);
+					if (!result) throw new Error(`no local route for ${config.method} ${config.url}`);
+					return respond(config, result.status, result.data);
+				},
+			}),
+			pluginId,
+			pluginId,
+			pluginId,
+			false,
+			ctx.workspace.id,
+		);
 
 	beforeEach(async () => {
 		clock = new Date('2026-09-26T10:00:00Z');
@@ -421,5 +451,315 @@ describeSqlite('local workspace API on SQLite', () => {
 
 		await call('DELETE', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
 		expect(await data('GET', `tasks/${a.id}/relations`)).toEqual([]);
+	});
+
+	it('migration 6 adds per-task plugin data and agent work runs on top of a v4 db, and re-runs safely', async () => {
+		const fresh = memoryDb();
+		const now = clock.toISOString();
+		for (const migration of MIGRATIONS.filter((m) => m.version <= 4)) {
+			for (const statement of migration.statements) await fresh.execute(statement);
+		}
+		await fresh.execute(
+			`INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			['4'],
+		);
+		expect(await readSchemaVersion(fresh)).toBe(4);
+
+		expect(await migrate(fresh, now)).toBe(LATEST_SCHEMA);
+		const tables = (await fresh.select<any>(`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(
+			(t: any) => t.name,
+		);
+		expect(tables).toEqual(expect.arrayContaining(['plugin_task_data', 'agent_work_runs']));
+
+		await fresh.execute(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
+		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);
+	});
+
+	it('filters tasks by priority, status type, and updated/due dates including time, nulls never matching due', async () => {
+		const t1 = await data('POST', 'tasks', {
+			title: 'Low, due later',
+			priority: 'low',
+			expired_at: '2026-10-05T08:00:00Z',
+		});
+		const t2 = await data('POST', 'tasks', {
+			title: 'High, due soon',
+			priority: 'high',
+			expired_at: '2026-10-01T08:00:00Z',
+		});
+		const t3 = await data('POST', 'tasks', { title: 'High, no due date', priority: 'high' });
+
+		expect((await data('GET', 'tasks?priority=high')).map((t: any) => t.id).sort()).toEqual(
+			[t2.id, t3.id].sort(),
+		);
+		expect(await data('GET', 'tasks?due_before=2026-10-02T00:00:00Z')).toEqual([
+			expect.objectContaining({ id: t2.id }),
+		]);
+		expect(await data('GET', 'tasks?due_after=2026-10-02T00:00:00Z')).toEqual([
+			expect.objectContaining({ id: t1.id }),
+		]);
+		expect(
+			(await data('GET', 'tasks?status_type=default')).map((t: any) => t.id).sort(),
+		).toEqual([t1.id, t2.id, t3.id].sort());
+		expect(await data('GET', `tasks?updated_since=${clock.toISOString()}`)).toHaveLength(3);
+		clock = new Date('2026-09-26T10:30:00Z');
+		await data('PATCH', `tasks/${t2.id}`, { priority: 'urgent' });
+		expect(
+			(await data('GET', `tasks?updated_since=${clock.toISOString()}`)).map((t: any) => t.id),
+		).toEqual([t2.id]);
+
+		const byDue = await data('GET', 'tasks?sort=due&direction=asc');
+		expect(byDue.map((t: any) => t.id)).toEqual([t2.id, t1.id, t3.id]);
+	});
+
+	it('gives a plugin a task key immediately on create, and the next number when a category is set on update', async () => {
+		const category = await data('POST', 'project_categories', { title: 'Taskmgr', code: 'tm' });
+		const other = await data('POST', 'project_categories', { title: 'Other', code: 'ot' });
+		await data('POST', 'tasks', { title: 'other1', project_category_id: other.id });
+		const api = pluginApi();
+
+		const created = (await api.createTask({ title: 'One', project_category_id: category.id })) as any;
+		expect(created.key).toBe('TM-1');
+
+		const loose = await data('POST', 'tasks', { title: 'Loose' });
+		const updated = (await api.updateTask(loose.id, { project_category_id: other.id })) as any;
+		expect(updated.key).toBe('OT-2');
+
+		const fetched = (await api.getTask(created.id)) as any;
+		expect(fetched.key).toBe('TM-1');
+		const listed = (await api.listTasks({
+			statusId: null,
+			categoryId: category.id,
+			search: null,
+			page: 1,
+			perPage: 20,
+		})) as any;
+		expect(listed.items[0].key).toBe('TM-1');
+	});
+
+	it('round-trips priority and a markdown description byte-for-byte', async () => {
+		const description =
+			'  leading and trailing spaces  \r\n\r\nSome *markdown* with `code` and unicode: héllo 世界 🎉\r\n\r\n- item\r\n';
+		const task = await data('POST', 'tasks', { title: 'Desc', description, priority: 'urgent' });
+		expect(task.description).toBe(description);
+		expect(task.priority).toBe('urgent');
+
+		const fetched = await data('GET', `tasks/${task.id}`);
+		expect(fetched.description).toBe(description);
+
+		const updated = await data('PATCH', `tasks/${task.id}`, { priority: 'low' });
+		expect(updated.priority).toBe('low');
+	});
+
+	it('stores and clears expired_at', async () => {
+		const task = await data('POST', 'tasks', { title: 'Deadline', expired_at: '2026-10-01T12:00:00Z' });
+		expect(task.expired_at).toBe('2026-10-01T12:00:00Z');
+		const cleared = await data('PATCH', `tasks/${task.id}`, { expired_at: null });
+		expect(cleared.expired_at).toBeNull();
+	});
+
+	it('archiving a task via a plain field update stops its running timer', async () => {
+		const statuses = await data('GET', 'workspaces/statuses');
+		const archived = statuses.find((s: any) => s.type === 'archived');
+		const task = await data('POST', 'tasks', { title: 'Busy' });
+		await call('POST', `tasks/${task.id}/countdown`);
+		clock = new Date('2026-09-26T10:05:00Z');
+
+		const updated = await data('PATCH', `tasks/${task.id}`, { status_id: archived.id });
+
+		expect(updated.status).toBe('archived');
+		expect(updated.start_time).toBe(0);
+		expect(updated.common_time).toBe(300);
+	});
+
+	it('stores, queries and deletes per-task plugin data, namespaced by plugin, removed when the task is deleted', async () => {
+		const task = await data('POST', 'tasks', { title: 'With data' });
+		const other = await data('POST', 'tasks', { title: 'Other' });
+
+		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: null });
+		await call('PUT', `plugins/tmgr.estimate/tasks/${task.id}/data/points`, { value: '5' });
+		await call('PUT', `plugins/tmgr.other/tasks/${task.id}/data/points`, { value: '"mine"' });
+		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: '5' });
+		expect(await data('GET', `plugins/tmgr.other/tasks/${task.id}/data/points`)).toEqual({ value: '"mine"' });
+
+		await call('PUT', `plugins/tmgr.estimate/tasks/${other.id}/data/points`, { value: '8' });
+		expect(
+			await data('POST', 'plugins/tmgr.estimate/task-data/query', {
+				task_ids: [task.id, other.id],
+				key: 'points',
+			}),
+		).toEqual({ [task.id]: '5', [other.id]: '8' });
+
+		await call('DELETE', `plugins/tmgr.estimate/tasks/${task.id}/data/points`);
+		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: null });
+
+		expect((await call('PUT', `plugins/tmgr.estimate/tasks/999999/data/points`, { value: '1' })).status).toBe(404);
+
+		await call('DELETE', `tasks/${other.id}`);
+		const [{ n }] = await ctx.db.select<{ n: number }>(
+			`SELECT COUNT(*) AS n FROM plugin_task_data WHERE task_id = ?`,
+			[other.id],
+		);
+		expect(Number(n)).toBe(0);
+	});
+
+	it('shares the plugin storage quota between kv and per-task data', async () => {
+		const task = await data('POST', 'tasks', { title: 'Quota' });
+		const big = JSON.stringify('x'.repeat(250_000));
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+		for (let i = 1; i < 20; i++) {
+			expect((await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k${i}`, { value: big })).status).toBe(200);
+		}
+		expect((await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k20`, { value: big })).status).toBe(413);
+		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+	});
+
+	it('runs the agent work lifecycle: list, start, update, finish, and time totals', async () => {
+		const task = await data('POST', 'tasks', { title: 'Agent task' });
+
+		expect(await data('GET', `tasks/${task.id}/agent-work`)).toEqual({
+			runs: [],
+			totals: { agent_seconds: 0, human_seconds: 0, human_timer_running: false },
+		});
+
+		const run = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'Claude Code',
+			model: 'opus',
+			session_id: 'sess-1',
+			branch: 'feat/x',
+		});
+		expect(run).toMatchObject({
+			task_id: task.id,
+			agent: 'claude-code',
+			model: 'opus',
+			session_id: 'sess-1',
+			branch: 'feat/x',
+			status: 'running',
+			version: 1,
+			commits: [],
+			tests: null,
+		});
+
+		clock = new Date('2026-09-26T10:05:00Z');
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		expect(overview.runs[0].duration_seconds).toBe(300);
+		expect(overview.totals.agent_seconds).toBe(300);
+
+		const updated = await data('PATCH', `agent-work/${run.id}`, {
+			branch: 'feat/y',
+			summary: 'wip',
+			commits: [{ sha: 'abc1234', message: 'x' }],
+		});
+		expect(updated.branch).toBe('feat/y');
+		expect(updated.summary).toBe('wip');
+		expect(updated.commits).toEqual([{ sha: 'abc1234', message: 'x' }]);
+		expect(updated.version).toBe(2);
+
+		clock = new Date('2026-09-26T10:10:00Z');
+		const finished = await data('POST', `agent-work/${run.id}/finish`, {
+			status: 'succeeded',
+			summary: 'done',
+			pr_url: 'https://example.com/pr/1',
+		});
+		expect(finished.status).toBe('succeeded');
+		expect(finished.duration_seconds).toBe(600);
+		expect(finished.version).toBe(3);
+		expect(finished.branch).toBe('feat/y');
+		expect(finished.pr_url).toBe('https://example.com/pr/1');
+
+		expect((await data('GET', `tasks/${task.id}/agent-work`)).totals.agent_seconds).toBe(600);
+		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'late' })).status).toBe(409);
+		expect((await call('POST', `agent-work/${run.id}/finish`, { status: 'failed' })).status).toBe(409);
+	});
+
+	it('abandons a still-running run of the same agent and actor when a new one starts, ending at its last update', async () => {
+		const task = await data('POST', 'tasks', { title: 'Two runs' });
+		const first = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		clock = new Date('2026-09-26T10:02:00Z');
+		await data('PATCH', `agent-work/${first.id}`, { summary: 'progress' });
+		clock = new Date('2026-09-26T10:07:00Z');
+		const second = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		// Ends at the run's own last update, not "now" — it went silent, it was not just abandoned.
+		expect(overview.runs.find((r: any) => r.id === first.id)).toMatchObject({
+			status: 'abandoned',
+			duration_seconds: 120,
+		});
+		expect(overview.runs.find((r: any) => r.id === second.id)).toMatchObject({ status: 'running' });
+
+		await data('POST', `tasks/${task.id}/agent-work`, { agent: 'codex' });
+		const stillRunning = (await data('GET', `tasks/${task.id}/agent-work`)).runs.find(
+			(r: any) => r.id === second.id,
+		);
+		expect(stillRunning.status).toBe('running');
+	});
+
+	it('refuses to update or finish a run started by a different actor', async () => {
+		const task = await data('POST', 'tasks', { title: 'Owned' });
+		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.agent', name: 'Agent' } };
+		const run = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+
+		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.other', name: 'Other' } };
+		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status).toBe(403);
+		expect((await call('POST', `agent-work/${run.id}/finish`, { status: 'succeeded' })).status).toBe(403);
+
+		ctx = { ...ctx, actor: undefined };
+		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status).toBe(403);
+	});
+
+	it('validates starting agent work: the task must exist, agent is required', async () => {
+		expect((await call('POST', `tasks/999999/agent-work`, { agent: 'claude-code' })).status).toBe(404);
+		const task = await data('POST', 'tasks', { title: 'x' });
+		expect((await call('POST', `tasks/${task.id}/agent-work`, { agent: '  ' })).status).toBe(422);
+	});
+
+	it('includes the task timer in agent work totals', async () => {
+		const task = await data('POST', 'tasks', { title: 'Timed agent' });
+		await call('POST', `tasks/${task.id}/countdown`);
+		clock = new Date('2026-09-26T10:03:00Z');
+
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		expect(overview.totals.human_seconds).toBe(180);
+		expect(overview.totals.human_timer_running).toBe(true);
+	});
+
+	it('deletes agent work runs when the task is deleted', async () => {
+		const task = await data('POST', 'tasks', { title: 'Gone soon' });
+		await call('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		await call('DELETE', `tasks/${task.id}`);
+		const [{ n }] = await ctx.db.select<{ n: number }>(
+			`SELECT COUNT(*) AS n FROM agent_work_runs WHERE task_id = ?`,
+			[task.id],
+		);
+		expect(Number(n)).toBe(0);
+	});
+
+	it('namespaces agent work started through a plugin under its own identity, exclusively', async () => {
+		const task = await data('POST', 'tasks', { title: 'Plugin agent work' });
+		const mine = pluginApi('tmgr.agent');
+		const run = (await mine.startAgentWork(task.id, {
+			agent: 'claude-code',
+			model: null,
+			sessionId: null,
+			branch: null,
+		})) as any;
+		expect(run.agent).toBe('plugin:tmgr.agent/claude-code');
+
+		const other = pluginApi('tmgr.other');
+		await expect(other.updateAgentWork(run.id, { summary: 'hijack' })).rejects.toThrow();
+		await expect(other.finishAgentWork(run.id, { status: 'succeeded' })).rejects.toThrow();
+
+		const updated = (await mine.updateAgentWork(run.id, { summary: 'mine' })) as any;
+		expect(updated.summary).toBe('mine');
+
+		// A plugin's own second, unlabelled run does not collide with, or abandon, a different plugin's run.
+		const bare = (await other.startAgentWork(task.id, {
+			model: null,
+			sessionId: null,
+			branch: null,
+		})) as any;
+		expect(bare.agent).toBe('plugin:tmgr.other');
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe('running');
 	});
 });

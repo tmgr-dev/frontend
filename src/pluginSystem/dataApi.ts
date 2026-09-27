@@ -21,12 +21,22 @@ const withAuthor = (comment: any) =>
  * The headers mark the write as the plugin's for domain events and comment/reaction authorship.
  */
 /** `storageId` namespaces the plugin's storage; installed plugins include their repository in it. */
+/** `key: "CODE-N"` from the category's code and this task's ticket number in it, else null. */
+export const taskKey = (task: any): string | null =>
+	task?.category?.code && task?.category_tasks_sequence_id != null
+		? `${task.category.code}-${task.category_tasks_sequence_id}`
+		: null;
+
+const withKey = (task: any) =>
+	task && typeof task === 'object' ? { ...task, key: taskKey(task) } : task;
+
 export const createDataApi = (
 	http: AxiosInstance,
 	pluginId: string,
 	storageId = pluginId,
 	pluginName = pluginId,
 	cloud = false,
+	workspaceId?: number,
 ): DataApi => {
 	// Header values must be Latin-1; plugin names may not be.
 	const headers = {
@@ -62,7 +72,23 @@ export const createDataApi = (
 		return found;
 	};
 	return {
-		async listTasks({ statusId, categoryId, search, page, perPage }) {
+		async listTasks({
+			statusId,
+			categoryId,
+			search,
+			page,
+			perPage,
+			updatedSince,
+			dueBefore,
+			dueAfter,
+			statusType,
+			priority,
+			sort,
+			direction,
+		}) {
+			if (updatedSince || dueBefore || dueAfter || statusType || priority || sort) {
+				notInSharedWorkspaces('this task filter or sort');
+			}
 			const response = await http.get('tasks', {
 				headers,
 				params: {
@@ -71,26 +97,65 @@ export const createDataApi = (
 					...(statusId ? { status_id: statusId } : {}),
 					...(categoryId ? { project_category_id: categoryId } : {}),
 					...(search ? { search } : {}),
+					...(updatedSince ? { updated_since: updatedSince } : {}),
+					...(dueBefore ? { due_before: dueBefore } : {}),
+					...(dueAfter ? { due_after: dueAfter } : {}),
+					...(statusType ? { status_type: statusType } : {}),
+					...(priority ? { priority } : {}),
+					...(sort ? { sort, direction: direction ?? 'asc' } : {}),
 				},
 			});
-			const items = unwrap(response) ?? [];
+			const items = ((unwrap(response) ?? []) as any[]).map(withKey);
 			return { items, total: response.data?.meta?.total ?? items.length };
 		},
-		getTask: async (id) => unwrap(await http.get(`tasks/${id}`, { headers })),
+		getTask: async (id) => withKey(unwrap(await http.get(`tasks/${id}`, { headers }))),
 		createTask: async (fields) =>
-			unwrap(await http.post('tasks', fields, { headers })),
+			withKey(unwrap(await http.post('tasks', fields, { headers }))),
 		updateTask: async (id, fields) =>
-			unwrap(await http.patch(`tasks/${id}`, fields, { headers })),
+			withKey(unwrap(await http.patch(`tasks/${id}`, fields, { headers }))),
 		listStatuses: async () =>
 			unwrap(await http.get('workspaces/statuses', { headers })),
 		listCategories: async () =>
 			unwrap(await http.get('project_categories', { headers })),
-		startTimer: async (taskId) =>
+		createStatus: async (fields) =>
+			unwrap(await http.post(`workspaces/${workspaceId}/statuses`, fields, { headers })),
+		updateStatus: async (id, patch) => {
+			if (cloud && 'type' in patch) notInSharedWorkspaces('changing a status type');
+			return unwrap(await http.put(`statuses/${id}`, patch, { headers }));
+		},
+		reorderStatuses: async (ids) =>
 			unwrap(
-				await http.post(`tasks/${taskId}/countdown`, undefined, { headers }),
+				await http.put(
+					`workspaces/${workspaceId}/statuses/order`,
+					{
+						statuses_with_order: ids.map((statusId, index) => ({
+							status_id: statusId,
+							order: index + 1,
+						})),
+					},
+					{ headers },
+				),
+			),
+		createCategory: async (fields) =>
+			unwrap(
+				await http.post(
+					'project_categories',
+					cloud ? { ...fields, workspace_id: workspaceId } : fields,
+					{ headers },
+				),
+			),
+		updateCategory: async (id, patch) => {
+			if (cloud && 'code' in patch) notInSharedWorkspaces('changing a category code');
+			return unwrap(await http.put(`project_categories/${id}`, patch, { headers }));
+		},
+		startTimer: async (taskId) =>
+			withKey(
+				unwrap(
+					await http.post(`tasks/${taskId}/countdown`, undefined, { headers }),
+				),
 			),
 		stopTimer: async (taskId) =>
-			unwrap(await http.delete(`tasks/${taskId}/countdown`, { headers })),
+			withKey(unwrap(await http.delete(`tasks/${taskId}/countdown`, { headers }))),
 		listComments: async (taskId) =>
 			(
 				(unwrap(await http.get(`tasks/${taskId}/comments`, { headers })) ??
@@ -167,6 +232,88 @@ export const createDataApi = (
 			void (await http.delete(storage(key), { headers })),
 		storageKeys: async () =>
 			unwrap(await http.get(storage(), { headers })) ?? [],
+		taskDataGet: async (taskId, key) => {
+			notInSharedWorkspaces('per-task plugin data');
+			return (
+				unwrap(
+					await http.get(
+						`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+						{ headers },
+					),
+				)?.value ?? null
+			);
+		},
+		taskDataSet: async (taskId, key, json) => {
+			notInSharedWorkspaces('per-task plugin data');
+			void (await http.put(
+				`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+				{ value: json },
+				{ headers },
+			));
+		},
+		taskDataDelete: async (taskId, key) => {
+			notInSharedWorkspaces('per-task plugin data');
+			void (await http.delete(
+				`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+				{ headers },
+			));
+		},
+		taskDataGetMany: async (taskIds, key) => {
+			notInSharedWorkspaces('per-task plugin data');
+			return (
+				unwrap(
+					await http.post(
+						`plugins/${encodeURIComponent(storageId)}/task-data/query`,
+						{ task_ids: taskIds, key },
+						{ headers },
+					),
+				) ?? {}
+			);
+		},
+		listAgentWork: async (taskId) =>
+			unwrap(await http.get(`tasks/${taskId}/agent-work`, { headers })),
+		startAgentWork: async (taskId, fields) =>
+			unwrap(
+				await http.post(
+					`tasks/${taskId}/agent-work`,
+					{
+						// Namespaced under this plugin's own identity: it can never claim to be a bare agent.
+						agent: `plugin:${pluginId}${fields.agent ? `/${fields.agent}` : ''}`,
+						model: fields.model,
+						session_id: fields.sessionId,
+						branch: fields.branch,
+					},
+					{ headers },
+				),
+			),
+		updateAgentWork: async (runId, patch) =>
+			unwrap(
+				await http.patch(
+					`agent-work/${runId}`,
+					{
+						...('branch' in patch ? { branch: patch.branch } : {}),
+						...('summary' in patch ? { summary: patch.summary } : {}),
+						...('prUrl' in patch ? { pr_url: patch.prUrl } : {}),
+						...('commits' in patch ? { commits: patch.commits } : {}),
+						...('tests' in patch ? { tests: patch.tests } : {}),
+					},
+					{ headers },
+				),
+			),
+		finishAgentWork: async (runId, patch) =>
+			unwrap(
+				await http.post(
+					`agent-work/${runId}/finish`,
+					{
+						status: patch.status,
+						...('summary' in patch ? { summary: patch.summary } : {}),
+						...('prUrl' in patch ? { pr_url: patch.prUrl } : {}),
+						...('commits' in patch ? { commits: patch.commits } : {}),
+						...('tests' in patch ? { tests: patch.tests } : {}),
+					},
+					{ headers },
+				),
+			),
 		listAttachments: async (taskId) =>
 			(
 				(unwrap(await http.get(`tasks/${taskId}/files`, { headers })) ??

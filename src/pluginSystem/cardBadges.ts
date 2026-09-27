@@ -1,4 +1,5 @@
 import { reactive, watch } from 'vue';
+import { taskKey } from './dataApi';
 import type { CardBadge } from './host';
 import { pluginHost, pluginState } from './state';
 
@@ -19,6 +20,7 @@ export const taskSnapshot = (task: Record<string, any>) => {
 	const snapshot: Record<string, unknown> = {};
 	for (const field of FIELDS) snapshot[field] = task[field] ?? null;
 	snapshot.category = task.category?.code ? { code: task.category.code } : null;
+	snapshot.key = taskKey(task);
 	return snapshot as { id: number } & Record<string, unknown>;
 };
 

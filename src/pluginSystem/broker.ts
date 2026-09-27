@@ -23,6 +23,13 @@ export interface TaskQuery {
 	search: string | null;
 	page: number;
 	perPage: number;
+	updatedSince?: string;
+	dueBefore?: string;
+	dueAfter?: string;
+	statusType?: string;
+	priority?: string;
+	sort?: 'due' | 'updated' | 'created';
+	direction?: 'asc' | 'desc';
 }
 
 /** What the host lets plugins do with workspace data. The real one goes through the app's axios. */
@@ -33,6 +40,11 @@ export interface DataApi {
 	updateTask(id: number, fields: Record<string, unknown>): Promise<unknown>;
 	listStatuses(): Promise<unknown>;
 	listCategories(): Promise<unknown>;
+	createStatus(fields: Record<string, unknown>): Promise<unknown>;
+	updateStatus(id: number, patch: Record<string, unknown>): Promise<unknown>;
+	reorderStatuses(ids: number[]): Promise<unknown>;
+	createCategory(fields: Record<string, unknown>): Promise<unknown>;
+	updateCategory(id: number, patch: Record<string, unknown>): Promise<unknown>;
 	startTimer(taskId: number): Promise<unknown>;
 	stopTimer(taskId: number): Promise<unknown>;
 	listComments(taskId: number): Promise<unknown>;
@@ -47,6 +59,22 @@ export interface DataApi {
 	storageKeys(): Promise<unknown>;
 	listAttachments(taskId: number): Promise<unknown>;
 	readAttachment(fileId: number): Promise<unknown>;
+	taskDataGet(taskId: number, key: string): Promise<unknown>;
+	taskDataSet(taskId: number, key: string, json: string): Promise<unknown>;
+	taskDataDelete(taskId: number, key: string): Promise<unknown>;
+	taskDataGetMany(taskIds: number[], key: string): Promise<unknown>;
+	listAgentWork(taskId: number): Promise<unknown>;
+	startAgentWork(
+		taskId: number,
+		fields: {
+			agent?: string;
+			model: string | null;
+			sessionId: string | null;
+			branch: string | null;
+		},
+	): Promise<unknown>;
+	updateAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
+	finishAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface PluginWorkspace {
@@ -146,6 +174,15 @@ const string = (
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
+const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+/** Any offset is accepted, but stored/compared as UTC like Java's Instant ("…T12:00:00Z"). */
+const isoDateTime = (value: unknown, field: string): string => {
+	const ms = typeof value === 'string' && ISO_DATETIME.test(value) ? Date.parse(value) : NaN;
+	if (Number.isNaN(ms)) invalid(`${field} must be an ISO 8601 date-time`);
+	return new Date(ms).toISOString().replace(/\.000Z$/, 'Z');
+};
+
 const TASK_FIELDS: Record<string, (value: unknown) => unknown> = {
 	title: (v) => string(v, 'title', 500),
 	description: (v) =>
@@ -157,7 +194,127 @@ const TASK_FIELDS: Record<string, (value: unknown) => unknown> = {
 		Number.isSafeInteger(v) && (v as number) >= 0
 			? v
 			: invalid('approximately_time must be seconds'),
+	expired_at: (v) => (v === null ? null : isoDateTime(v, 'expired_at')),
 };
+
+const STATUS_TYPES = ['default', 'active', 'completed', 'hidden', 'archived'];
+
+const statusType = (value: unknown): string =>
+	STATUS_TYPES.includes(value as string)
+		? (value as string)
+		: invalid(`type must be one of ${STATUS_TYPES.join(', ')}`);
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+const hexColor = (value: unknown): string =>
+	typeof value === 'string' && HEX_COLOR.test(value)
+		? value
+		: invalid('color must be #rrggbb');
+
+const CATEGORY_CODE = /^[A-Z][A-Z0-9]{0,9}$/;
+
+const categoryCode = (value: unknown): string =>
+	typeof value === 'string' && CATEGORY_CODE.test(value)
+		? value
+		: invalid('code must match ^[A-Z][A-Z0-9]{0,9}$');
+
+const idArrayMax = (value: unknown, field: string, max: number): number[] => {
+	if (!Array.isArray(value) || value.length === 0 || value.length > max)
+		invalid(`${field} must be an array of up to ${max} ids`);
+	return (value as unknown[]).map((v) => id(v, field));
+};
+
+const idArray = (value: unknown, field: string): number[] => idArrayMax(value, field, 100);
+
+const statusPatch = (patch: unknown): Record<string, unknown> => {
+	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
+		invalid('patch must be an object');
+	const p = patch as Params;
+	const out: Record<string, unknown> = {};
+	if (p.name != null) out.name = string(p.name, 'name', 100);
+	if (p.type != null) out.type = statusType(p.type);
+	if (p.color != null) out.color = hexColor(p.color);
+	return out;
+};
+
+const categoryPatch = (patch: unknown): Record<string, unknown> => {
+	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
+		invalid('patch must be an object');
+	const p = patch as Params;
+	const out: Record<string, unknown> = {};
+	if (p.title != null) out.title = string(p.title, 'title', 100);
+	if (p.code != null) out.code = categoryCode(p.code);
+	return out;
+};
+
+const AGENT_NAME = /^[a-z0-9._-]{1,40}$/;
+
+/** The plugin's own agent label; the host namespaces it under the plugin's identity before sending it. */
+const agentName = (value: unknown): string =>
+	typeof value === 'string' && AGENT_NAME.test(value)
+		? value
+		: invalid('agent must match ^[a-z0-9._-]{1,40}$');
+
+const HTTPS_URL = /^https:\/\/.+/;
+
+const httpsUrl = (value: unknown): string =>
+	typeof value === 'string' && value.length <= 512 && HTTPS_URL.test(value)
+		? value
+		: invalid('prUrl must be an https url of at most 512 characters');
+
+const COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
+
+const commitsField = (value: unknown): { sha: string; message: string | null }[] => {
+	if (!Array.isArray(value) || value.length > 200)
+		invalid('commits must be an array of at most 200 items');
+	return (value as unknown[]).map((commit) => {
+		if (!commit || typeof commit !== 'object') invalid('each commit must be an object');
+		const sha = (commit as Params).sha;
+		if (typeof sha !== 'string' || !COMMIT_SHA.test(sha))
+			invalid('commit sha must be 7-40 hex characters');
+		const message = (commit as Params).message;
+		return {
+			sha,
+			message: message == null ? null : string(message, 'commit message', 500, true),
+		};
+	});
+};
+
+const nonNegativeInt = (value: unknown, field: string): number | null =>
+	value == null
+		? null
+		: Number.isSafeInteger(value) && (value as number) >= 0
+		  ? (value as number)
+		  : invalid(`${field} must be a non-negative integer`);
+
+const testsField = (
+	value: unknown,
+): { passed: number | null; failed: number | null; command: string | null } => {
+	if (!value || typeof value !== 'object') invalid('tests must be an object');
+	const v = value as Params;
+	return {
+		passed: nonNegativeInt(v.passed, 'passed'),
+		failed: nonNegativeInt(v.failed, 'failed'),
+		command: v.command == null ? null : string(v.command, 'command', 500, true),
+	};
+};
+
+const FINISH_STATUSES = ['succeeded', 'failed', 'cancelled'];
+
+const agentWorkProgress = (patch: unknown, includeBranch: boolean): Record<string, unknown> => {
+	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
+		invalid('patch must be an object');
+	const p = patch as Params;
+	const out: Record<string, unknown> = {};
+	if (includeBranch && p.branch != null) out.branch = string(p.branch, 'branch', 255);
+	if (p.summary != null) out.summary = string(p.summary, 'summary', 10_000, true);
+	if (p.prUrl != null) out.prUrl = httpsUrl(p.prUrl);
+	if (p.commits != null) out.commits = commitsField(p.commits);
+	if (p.tests != null) out.tests = testsField(p.tests);
+	return out;
+};
+
+const taskDataKey = (value: unknown): string => string(value, 'key', 200);
 
 const RELATION_TYPES = [
 	'blocks',
@@ -188,6 +345,7 @@ const taskFields = (patch: unknown) => {
 };
 
 const MAX_VALUE_BYTES = 256 * 1024;
+const MAX_TASK_DATA_VALUE_BYTES = 64 * 1024;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
 const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
 // Data and documents only: nothing Finder would run or follow on a double-click.
@@ -288,15 +446,34 @@ export const createBroker = (deps: BrokerDeps) => {
 		'settings.get': { run: () => deps.settings() },
 		'tasks.list': {
 			permission: 'tasks:read',
-			run: (p) =>
-				api.listTasks({
+			run: (p) => {
+				const query: TaskQuery = {
 					statusId: optionalId(p.statusId, 'statusId'),
 					categoryId: optionalId(p.categoryId, 'categoryId'),
 					search: p.search == null ? null : string(p.search, 'search', 200),
 					page: p.page == null ? 1 : id(p.page, 'page'),
 					perPage:
 						p.perPage == null ? 50 : Math.min(100, id(p.perPage, 'perPage')),
-				}),
+				};
+				if (p.updatedSince != null) query.updatedSince = isoDateTime(p.updatedSince, 'updatedSince');
+				if (p.dueBefore != null) query.dueBefore = isoDateTime(p.dueBefore, 'dueBefore');
+				if (p.dueAfter != null) query.dueAfter = isoDateTime(p.dueAfter, 'dueAfter');
+				if (p.statusType != null) query.statusType = statusType(p.statusType);
+				if (p.priority != null)
+					query.priority = PRIORITIES.includes(p.priority) ? p.priority : invalid('priority');
+				if (p.sort != null) {
+					query.sort = ['due', 'updated', 'created'].includes(p.sort)
+						? p.sort
+						: invalid('sort must be one of due, updated, created');
+				}
+				if (p.direction != null) {
+					query.direction =
+						p.direction === 'asc' || p.direction === 'desc'
+							? p.direction
+							: invalid('direction must be asc or desc');
+				}
+				return api.listTasks(query);
+			},
 		},
 		'tasks.get': {
 			permission: 'tasks:read',
@@ -323,6 +500,42 @@ export const createBroker = (deps: BrokerDeps) => {
 		'categories.list': {
 			permission: 'categories:read',
 			run: () => api.listCategories(),
+		},
+		'statuses.create': {
+			permission: 'statuses:write',
+			write: true,
+			run: (p) => {
+				const fields: Record<string, unknown> = {
+					name: string(p.name, 'name', 100),
+					type: statusType(p.type),
+				};
+				if (p.color != null) fields.color = hexColor(p.color);
+				return api.createStatus(fields);
+			},
+		},
+		'statuses.update': {
+			permission: 'statuses:write',
+			write: true,
+			run: (p) => api.updateStatus(id(p.id), statusPatch(p.patch)),
+		},
+		'statuses.reorder': {
+			permission: 'statuses:write',
+			write: true,
+			run: (p) => api.reorderStatuses(idArray(p.ids, 'ids')),
+		},
+		'categories.create': {
+			permission: 'categories:write',
+			write: true,
+			run: (p) => {
+				const fields: Record<string, unknown> = { title: string(p.title, 'title', 100) };
+				if (p.code != null) fields.code = categoryCode(p.code);
+				return api.createCategory(fields);
+			},
+		},
+		'categories.update': {
+			permission: 'categories:write',
+			write: true,
+			run: (p) => api.updateCategory(id(p.id), categoryPatch(p.patch)),
 		},
 		'time.start': {
 			permission: 'time:write',
@@ -376,6 +589,71 @@ export const createBroker = (deps: BrokerDeps) => {
 					id(p.otherId, 'otherId'),
 					relationType(p.type),
 				),
+		},
+		'taskData.get': {
+			run: async (p) => {
+				const json = await api.taskDataGet(id(p.taskId, 'taskId'), taskDataKey(p.key));
+				return typeof json === 'string' ? JSON.parse(json) : null;
+			},
+		},
+		'taskData.set': {
+			write: true,
+			run: (p) => {
+				const json = JSON.stringify(p.value ?? null);
+				if (json.length > MAX_TASK_DATA_VALUE_BYTES) invalid('value is larger than 64 KB');
+				return api.taskDataSet(id(p.taskId, 'taskId'), taskDataKey(p.key), json);
+			},
+		},
+		'taskData.delete': {
+			write: true,
+			run: (p) => api.taskDataDelete(id(p.taskId, 'taskId'), taskDataKey(p.key)),
+		},
+		'taskData.getMany': {
+			run: async (p) => {
+				const taskIds = idArrayMax(p.taskIds, 'taskIds', 500);
+				const raw = (await api.taskDataGetMany(taskIds, taskDataKey(p.key))) as Record<
+					string,
+					string
+				>;
+				const result: Record<string, unknown> = {};
+				for (const [taskId, json] of Object.entries(raw ?? {})) {
+					result[taskId] = typeof json === 'string' ? JSON.parse(json) : null;
+				}
+				return result;
+			},
+		},
+		'agentWork.list': {
+			permission: 'agent_work:read',
+			run: (p) => api.listAgentWork(id(p.taskId, 'taskId')),
+		},
+		'agentWork.start': {
+			permission: 'agent_work:write',
+			write: true,
+			run: (p) =>
+				api.startAgentWork(id(p.taskId, 'taskId'), {
+					agent: p.agent == null ? undefined : agentName(p.agent),
+					model: p.model == null ? null : string(p.model, 'model', 128),
+					sessionId: p.sessionId == null ? null : string(p.sessionId, 'sessionId', 191),
+					branch: p.branch == null ? null : string(p.branch, 'branch', 255),
+				}),
+		},
+		'agentWork.update': {
+			permission: 'agent_work:write',
+			write: true,
+			run: (p) => api.updateAgentWork(id(p.runId, 'runId'), agentWorkProgress(p.patch ?? {}, true)),
+		},
+		'agentWork.finish': {
+			permission: 'agent_work:write',
+			write: true,
+			run: (p) => {
+				const patch = (p.patch ?? {}) as Params;
+				if (!FINISH_STATUSES.includes(patch.status))
+					invalid(`status must be one of ${FINISH_STATUSES.join(', ')}`);
+				return api.finishAgentWork(id(p.runId, 'runId'), {
+					status: patch.status,
+					...agentWorkProgress(patch, false),
+				});
+			},
 		},
 		'storage.get': {
 			run: async (p) => {

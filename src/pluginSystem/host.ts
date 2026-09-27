@@ -10,6 +10,7 @@ import {
 	type PluginWorkspace,
 	type RegistrationKind,
 } from './broker';
+import { taskKey } from './dataApi';
 import type { PluginManifest } from './manifest';
 import {
 	startPluginProcess,
@@ -374,6 +375,13 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const unsubscribe = deps.subscribe((event) => {
 		const workspace = state.workspace;
 		if (!workspace || event.workspaceId !== workspace.id) return;
+		const { actor: _actor, ...basePayload } = event as DomainEvent & {
+			task?: unknown;
+		};
+		const task =
+			basePayload.task && typeof basePayload.task === 'object'
+				? { ...basePayload.task, key: taskKey(basePayload.task) }
+				: basePayload.task;
 		for (const [pluginId, plugin] of running) {
 			if (
 				!plugin.registered.event.has(event.type) ||
@@ -381,9 +389,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			)
 				continue;
 			if (!PLUGIN_EVENTS[event.type]) continue;
-			const { actor: _actor, ...payload } = event as DomainEvent & {
-				task?: unknown;
-			};
+			const payload = { ...basePayload, task };
 			// A task snapshot rides along with timer and status events; it is only for tasks:read.
 			if (
 				!packages.get(pluginId)?.manifest.permissions.includes('tasks:read')

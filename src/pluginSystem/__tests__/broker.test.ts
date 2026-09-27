@@ -43,6 +43,11 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		updateTask: record('updateTask'),
 		listStatuses: record('listStatuses'),
 		listCategories: record('listCategories'),
+		createStatus: record('createStatus'),
+		updateStatus: record('updateStatus'),
+		reorderStatuses: record('reorderStatuses'),
+		createCategory: record('createCategory'),
+		updateCategory: record('updateCategory'),
 		startTimer: record('startTimer'),
 		stopTimer: record('stopTimer'),
 		listComments: record('listComments'),
@@ -57,6 +62,14 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		storageKeys: record('storageKeys'),
 		listAttachments: record('listAttachments'),
 		readAttachment: record('readAttachment'),
+		taskDataGet: record('taskDataGet'),
+		taskDataSet: record('taskDataSet'),
+		taskDataDelete: record('taskDataDelete'),
+		taskDataGetMany: record('taskDataGetMany'),
+		listAgentWork: record('listAgentWork'),
+		startAgentWork: record('startAgentWork'),
+		updateAgentWork: record('updateAgentWork'),
+		finishAgentWork: record('finishAgentWork'),
 	};
 };
 
@@ -373,6 +386,242 @@ it('fetches only from the origins the manifest lists', async () => {
 	expect(
 		await code(offline.call('net.fetch', { url: 'http://localhost:11434/' })),
 	).toBe('PERMISSION_DENIED');
+});
+
+it('accepts expired_at as a nullable ISO date-time task field, normalised to UTC', async () => {
+	const { broker, api } = setup(['tasks:write']);
+	await broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01T12:30:00Z' } });
+	await broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01T14:30:00+02:00' } });
+	await broker.call('tasks.update', { id: 4, patch: { expired_at: null } });
+	expect(api.calls).toEqual([
+		['updateTask', 4, { expired_at: '2026-10-01T12:30:00Z' }],
+		['updateTask', 4, { expired_at: '2026-10-01T12:30:00Z' }],
+		['updateTask', 4, { expired_at: null }],
+	]);
+	expect(
+		await code(broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01' } })),
+	).toBe('INVALID_PARAMS');
+	expect(
+		await code(broker.call('tasks.update', { id: 4, patch: { expired_at: 'not a date' } })),
+	).toBe('INVALID_PARAMS');
+});
+
+it('passes the new list filters and sort through, validated', async () => {
+	const { broker, api } = setup(['tasks:read']);
+	await broker.call('tasks.list', {
+		updatedSince: '2026-09-01T00:00:00Z',
+		dueBefore: '2026-10-01T00:00:00Z',
+		dueAfter: '2026-08-01T00:00:00Z',
+		statusType: 'active',
+		priority: 'high',
+		sort: 'due',
+		direction: 'desc',
+	});
+	expect(api.calls).toEqual([
+		[
+			'listTasks',
+			{
+				statusId: null,
+				categoryId: null,
+				search: null,
+				page: 1,
+				perPage: 50,
+				updatedSince: '2026-09-01T00:00:00Z',
+				dueBefore: '2026-10-01T00:00:00Z',
+				dueAfter: '2026-08-01T00:00:00Z',
+				statusType: 'active',
+				priority: 'high',
+				sort: 'due',
+				direction: 'desc',
+			},
+		],
+	]);
+	expect(await code(broker.call('tasks.list', { statusType: 'nope' }))).toBe('INVALID_PARAMS');
+	expect(await code(broker.call('tasks.list', { priority: 'nope' }))).toBe('INVALID_PARAMS');
+	expect(await code(broker.call('tasks.list', { sort: 'nope' }))).toBe('INVALID_PARAMS');
+	expect(await code(broker.call('tasks.list', { direction: 'nope' }))).toBe('INVALID_PARAMS');
+	expect(await code(broker.call('tasks.list', { dueBefore: 'nope' }))).toBe('INVALID_PARAMS');
+});
+
+describe('statuses and categories writes', () => {
+	it('creates and updates statuses behind statuses:write, validated', async () => {
+		const { broker, api } = setup(['statuses:write']);
+		await broker.call('statuses.create', { name: 'Blocked', type: 'active', color: '#ff0000' });
+		await broker.call('statuses.update', { id: 3, patch: { name: 'Blocked v2' } });
+		await broker.call('statuses.reorder', { ids: [3, 1, 2] });
+		expect(api.calls).toEqual([
+			['createStatus', { name: 'Blocked', type: 'active', color: '#ff0000' }],
+			['updateStatus', 3, { name: 'Blocked v2' }],
+			['reorderStatuses', [3, 1, 2]],
+		]);
+		expect(
+			await code(broker.call('statuses.create', { name: 'x', type: 'not-a-type' })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(broker.call('statuses.create', { name: 'x', type: 'active', color: 'red' })),
+		).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('statuses.reorder', { ids: [] }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('statuses.reorder', { ids: 'nope' }))).toBe('INVALID_PARAMS');
+
+		const { broker: reader } = setup(['statuses:read']);
+		expect(
+			await code(reader.call('statuses.create', { name: 'x', type: 'active' })),
+		).toBe('PERMISSION_DENIED');
+	});
+
+	it('creates and updates categories behind categories:write, validated', async () => {
+		const { broker, api } = setup(['categories:write']);
+		await broker.call('categories.create', { title: 'Backend', code: 'BE' });
+		await broker.call('categories.update', { id: 5, patch: { title: 'Backend team' } });
+		expect(api.calls).toEqual([
+			['createCategory', { title: 'Backend', code: 'BE' }],
+			['updateCategory', 5, { title: 'Backend team' }],
+		]);
+		expect(await code(broker.call('categories.create', { title: '' }))).toBe('INVALID_PARAMS');
+		expect(
+			await code(broker.call('categories.create', { title: 'x', code: 'be' })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(broker.call('categories.create', { title: 'x', code: '1BE' })),
+		).toBe('INVALID_PARAMS');
+	});
+});
+
+describe('per-task plugin data', () => {
+	it('needs no permission beyond the task existing, and round-trips JSON without one', async () => {
+		const stored = new Map<string, string>();
+		const api = {
+			...fakeApi(),
+			taskDataGet: async (taskId: number, key: string) => stored.get(`${taskId}:${key}`) ?? null,
+			taskDataSet: async (taskId: number, key: string, json: string) => {
+				stored.set(`${taskId}:${key}`, json);
+			},
+			taskDataDelete: async (taskId: number, key: string) => {
+				stored.delete(`${taskId}:${key}`);
+			},
+			taskDataGetMany: async (taskIds: number[], key: string) => {
+				const result: Record<number, string> = {};
+				for (const id of taskIds) {
+					const value = stored.get(`${id}:${key}`);
+					if (value !== undefined) result[id] = value;
+				}
+				return result;
+			},
+		};
+		const { broker } = setup([], { api });
+		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
+		await broker.call('taskData.set', { taskId: 1, key: 'estimate', value: { points: 5 } });
+		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toEqual({ points: 5 });
+		expect(await broker.call('taskData.getMany', { taskIds: [1, 2], key: 'estimate' })).toEqual({
+			1: { points: 5 },
+		});
+		await broker.call('taskData.delete', { taskId: 1, key: 'estimate' });
+		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
+	});
+
+	it('rejects an oversized value and a key that is too long', async () => {
+		const { broker } = setup([]);
+		expect(
+			await code(
+				broker.call('taskData.set', { taskId: 1, key: 'k', value: 'x'.repeat(70_000) }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('taskData.set', { taskId: 1, key: 'k'.repeat(201), value: 1 }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('taskData.getMany', { taskIds: [], key: 'k' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(
+			await code(
+				broker.call('taskData.getMany', {
+					taskIds: Array.from({ length: 501 }, (_, i) => i + 1),
+					key: 'k',
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+	});
+});
+
+describe('agent work', () => {
+	it('gates reads and writes behind agent_work permissions, and validates start/update/finish', async () => {
+		const { broker, api } = setup(['agent_work:read']);
+		expect(await code(broker.call('agentWork.list', { taskId: 1 }))).toBe('ok');
+		expect(
+			await code(
+				broker.call('agentWork.start', { taskId: 1, agent: 'claude-code' }),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(api.calls).toEqual([['listAgentWork', 1]]);
+
+		const { broker: writer, api: writerApi } = setup(['agent_work:write']);
+		await writer.call('agentWork.start', {
+			taskId: 1,
+			agent: 'claude-code',
+			model: 'opus',
+			sessionId: 'sess-1',
+			branch: 'feat/x',
+		});
+		await writer.call('agentWork.update', { runId: 9, patch: { branch: 'feat/y', summary: 'wip' } });
+		await writer.call('agentWork.finish', {
+			runId: 9,
+			patch: { status: 'succeeded', summary: 'done', branch: 'ignored' },
+		});
+		expect(writerApi.calls).toEqual([
+			[
+				'startAgentWork',
+				1,
+				{ agent: 'claude-code', model: 'opus', sessionId: 'sess-1', branch: 'feat/x' },
+			],
+			['updateAgentWork', 9, { branch: 'feat/y', summary: 'wip' }],
+			['finishAgentWork', 9, { status: 'succeeded', summary: 'done' }],
+		]);
+
+		await writer.call('agentWork.start', { taskId: 1 });
+		expect(writerApi.calls[writerApi.calls.length - 1]).toEqual([
+			'startAgentWork',
+			1,
+			{ agent: undefined, model: null, sessionId: null, branch: null },
+		]);
+
+		expect(
+			await code(writer.call('agentWork.start', { taskId: 1, agent: 'Claude Code!' })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(writer.call('agentWork.start', { taskId: 1, agent: 'x'.repeat(41) })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				writer.call('agentWork.finish', { runId: 9, patch: { status: 'closed' } }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				writer.call('agentWork.update', {
+					runId: 9,
+					patch: { prUrl: 'ftp://example.com/x' },
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				writer.call('agentWork.update', {
+					runId: 9,
+					patch: { commits: [{ sha: 'zz', message: 'bad sha' }] },
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				writer.call('agentWork.update', {
+					runId: 9,
+					patch: { tests: { passed: -1 } },
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+	});
 });
 
 describe('files', () => {
