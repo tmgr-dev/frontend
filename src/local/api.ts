@@ -249,6 +249,13 @@ const writableTaskFields = (body: any) => {
 	return fields;
 };
 
+// Personas have no timer permission: common_time is timer bookkeeping, not a task field.
+const personaWritableFields = (ctx: LocalContext, body: any) => {
+	const fields = writableTaskFields(body ?? {});
+	if (ctx.actor?.kind === 'persona') delete fields.common_time;
+	return fields;
+};
+
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
 	if ('status_id' in fields && fields.status_id != null) {
 		const [status] = await ctx.db.select<any>(`SELECT type FROM statuses WHERE id = ?`, [
@@ -463,7 +470,7 @@ export const createLocalApi = () => {
 			return [];
 		})
 		.add('POST', 'tasks', async ({ ctx, body }) => {
-			const fields = writableTaskFields(body ?? {});
+			const fields = personaWritableFields(ctx, body);
 			if (!fields.title) throw new LocalHttpError(422, 'title is required');
 			fields.status_id = fields.status_id ?? (await defaultStatusId(ctx));
 			const now = iso(ctx);
@@ -492,7 +499,7 @@ export const createLocalApi = () => {
 			const id = Number(params.id);
 			return isRoutineId(id)
 				? updateRoutineTaskFields(ctx, id, body ?? {})
-				: updateTask(ctx, id, writableTaskFields(body ?? {}));
+				: updateTask(ctx, id, personaWritableFields(ctx, body));
 		})
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);
@@ -560,6 +567,14 @@ export const createLocalApi = () => {
 			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
+			if (ctx.actor?.kind === 'persona') {
+				const [comment] = await ctx.db.select<any>(`SELECT author_kind, author_id FROM comments WHERE id = ?`, [
+					Number(params.id),
+				]);
+				if (!comment || comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
+					throw new LocalHttpError(403, 'A persona may only delete its own comments');
+				}
+			}
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
 			return { success: true };
 		})

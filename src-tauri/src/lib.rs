@@ -7,6 +7,8 @@ mod local_export;
 mod local_files;
 mod local_workspaces;
 mod plugin_catalog;
+mod persona_cache;
+mod persona_llm;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
@@ -146,7 +148,13 @@ pub fn run() {
       plugin_windows::plugin_window_reply,
       plugin_windows::plugin_windows_close,
       local_export::local_export_write,
-      local_export::local_reveal
+      local_export::local_reveal,
+      persona_cache::persona_cache_put,
+      persona_cache::persona_cache_get,
+      persona_llm::llm_config_set,
+      persona_llm::llm_config_get,
+      persona_llm::llm_chat,
+      persona_llm::llm_cancel
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {

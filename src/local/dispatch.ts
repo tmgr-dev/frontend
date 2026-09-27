@@ -1,5 +1,6 @@
 import type { LocalRouter } from './router';
 import { normalizePath } from './router';
+import { checkPersonaAccess } from './personaGate';
 import { LocalHttpError, LocalRaw, type LocalContext, type LocalResponse } from './types';
 
 const parseBody = (body: unknown) => {
@@ -35,6 +36,7 @@ export const dispatchLocal = async (
 	const route = router.match(method, path);
 	if (!route) return null;
 	try {
+		if (ctx.actor?.kind === 'persona') await checkPersonaAccess(ctx, method, route.pattern);
 		const data = await route.handler({
 			method: method.toUpperCase(),
 			path,

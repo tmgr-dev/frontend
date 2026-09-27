@@ -60,6 +60,12 @@
     "allow-plugin-catalog-refresh",
     "allow-plugin-install",
     "allow-plugins-installed-list",
-    "allow-plugin-uninstall"
+    "allow-plugin-uninstall",
+    "allow-persona-cache-put",
+    "allow-persona-cache-get",
+    "allow-llm-config-set",
+    "allow-llm-config-get",
+    "allow-llm-chat",
+    "allow-llm-cancel"
   ]
 }

@@ -19,6 +19,8 @@ const ACCOUNT = [
 	/^notifications(\/|$)/,
 	/^notification-settings(\/|$)/,
 	/^broadcasting\/auth$/,
+	// Persona catalog lives on the account, not the workspace, even while a local one is active.
+	/^personas(\/|$)/,
 	/^error-reports$/,
 	/^v2\/user\/settings$/,
 ];
