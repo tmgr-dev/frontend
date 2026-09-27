@@ -14,6 +14,7 @@ import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
+import { installFileDropGuard } from '@/utils/fileDrag';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
@@ -29,6 +30,7 @@ import App from './App.vue';
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	installAutoHideScrollbars();
+	installFileDropGuard(window);
 	installLocalWorkspaces($axios, {
 		currentUser: () => store.state.user,
 		hasSession: () => !!store.state.token?.token,
