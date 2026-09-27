@@ -1,4 +1,5 @@
 import { LOCAL_ID, PLUGIN_ID } from '@/pluginSystem/manifest';
+import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
 import { ref } from 'vue';
 
 export type ShortcutAction = 'quickAdd' | 'timer' | 'screenshot' | 'selection';
@@ -129,6 +130,7 @@ export const describeAccelerator = (accelerator: string): string =>
 		.join('');
 
 export type DeepLink =
+	| AuthCallback
 	| { type: 'task'; taskId: number }
 	| { type: 'view'; pluginId: string; viewId: string; params: Record<string, string> }
 	| { type: 'command'; pluginId: string; commandId: string; params: Record<string, string> };
@@ -174,6 +176,8 @@ const PLUGIN_LINK =
 
 export const parseDeepLink = (url: string): DeepLink | null => {
 	const trimmed = url.trim();
+	const auth = parseAuthCallback(trimmed);
+	if (auth) return auth;
 	const taskMatch = /^tmgr:\/\/task\/(\d+)\/?$/.exec(trimmed);
 	if (taskMatch) return { type: 'task', taskId: Number(taskMatch[1]) };
 

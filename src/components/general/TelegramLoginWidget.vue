@@ -13,7 +13,11 @@
 		},
 		authUrl: {
 			type: String,
-			required: true,
+			default: '',
+		},
+		callback: {
+			type: Boolean,
+			default: false,
 		},
 		widgetSize: {
 			type: String,
@@ -24,6 +28,8 @@
 	const widgetContainerId = ref(`tg-widget-container-${nanoid(5)}`);
 	const widgetScriptId = ref(`tg-widget-script-${nanoid(5)}`);
 	const widgetContainer = ref<HTMLDivElement | null>(null);
+	const emit = defineEmits<{ auth: [user: Record<string, unknown>] }>();
+	const callbackName = `__tmgrTelegramAuth_${nanoid(8).replace(/[^A-Za-z0-9]/g, '')}`;
 
 	const loadWidgetScript = () => {
 		if (
@@ -40,7 +46,13 @@
 			script.src = 'https://telegram.org/js/telegram-widget.js?22';
 			script.setAttribute('data-telegram-login', props.botName);
 			script.setAttribute('data-size', props.widgetSize);
-			script.setAttribute('data-auth-url', props.authUrl);
+			if (props.callback) {
+				(window as any)[callbackName] = (user: Record<string, unknown>) =>
+					emit('auth', user);
+				script.setAttribute('data-onauth', `${callbackName}(user)`);
+			} else {
+				script.setAttribute('data-auth-url', props.authUrl);
+			}
 			script.setAttribute('data-userpic', 'false');
 			script.setAttribute('data-request-access', 'write');
 
@@ -55,6 +67,7 @@
 	};
 
 	const cleanupWidget = () => {
+		delete (window as any)[callbackName];
 		// Remove the script we added
 		const scriptElement = document.getElementById(widgetScriptId.value);
 		if (scriptElement) {

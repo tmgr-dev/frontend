@@ -33,6 +33,11 @@
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
+	import {
+		desktopCompleteUrl,
+		desktopTxFromState,
+		relayReturnHash,
+	} from '@/utils/desktopAuth';
 	import { AxiosError } from 'axios';
 	import { ref } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -49,7 +54,28 @@
 	const isLoading = ref(false);
 	const message = ref('Wait for redirect...');
 	const errors = ref({});
+	async function relayToDesktop(tx: string) {
+		const platform = route.params.platform;
+		isLoading.value = true;
+		if (platform !== 'github' && platform !== 'google') {
+			await router.replace({
+				name: 'DesktopAuthReturn',
+				hash: relayReturnHash({ error: 'login' }),
+			});
+			return;
+		}
+		window.location.replace(
+			desktopCompleteUrl(import.meta.env.VITE_API_BASE_URL, platform, {
+				code: (route.query?.code as string) ?? '',
+				tx,
+			}),
+		);
+	}
+
 	async function login() {
+		const desktopTx = desktopTxFromState(route.query.state);
+		if (desktopTx) return relayToDesktop(desktopTx);
+
 		// Check for token from Telegram Widget redirect
 		if (route.query.token) {
 			try {

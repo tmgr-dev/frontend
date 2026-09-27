@@ -23,6 +23,7 @@ export default defineConfig({
       VITE_API_BASE_URL: 'http://127.0.0.1:4179/api/',
       VITE_PUSHER_KEY: 'browser-test',
       VITE_PUSHER_HOST: '127.0.0.1',
+      VITE_TELEGRAM_BOT_NAME: 'tmgr_test_bot',
     },
   },
 });

@@ -106,3 +106,16 @@ export const setNewPassword = async (
 ) => {
 	return await $axios.post(`password/reset/${token}`, payload);
 };
+
+/** Resolves the envelope without installing it: the caller decides whether this attempt still owns the session. */
+export const acceptDesktopLogin = (
+	code: string,
+	codeVerifier: string,
+): Promise<LoginResponseWrapper> =>
+	$axios.post('auth/login/desktop/accept', {
+		code,
+		code_verifier: codeVerifier,
+	});
+
+export const installDesktopLogin = (response: LoginResponseWrapper): void =>
+	setAxiosHeaderBearerToken(response);
