@@ -5,8 +5,7 @@ const invoke = async <T>(command: string, args?: Record<string, unknown>): Promi
 	return core.invoke<T>(command, args);
 };
 
-/** `persona_cache_put/get` (Rust): JSON under the app data dir, keyed by persona uuid, outside any
- * workspace folder, so the prompt never rides along when the workspace folder is copied or moved. */
+/** Rust-side JSON under the app data dir, outside the workspace folder, so it never rides along when the folder is copied or moved. */
 export const tauriPersonaCache: PersonaCache = {
 	put: (uuid, data) => invoke('persona_cache_put', { uuid, data }),
 };

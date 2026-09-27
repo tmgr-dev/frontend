@@ -208,15 +208,13 @@ async fn stream_chat<R: Runtime>(
   if rustls::crypto::CryptoProvider::get_default().is_none() {
     let _ = rustls::crypto::ring::default_provider().install_default();
   }
-  // No overall timeout: a local model may legitimately take minutes to finish a turn. Only the
-  // connect is capped, so an unreachable server fails fast instead of hanging the UI.
+  // Only the connect is capped: a local model may legitimately take minutes to finish a turn.
   let client = reqwest::Client::builder()
     .connect_timeout(Duration::from_secs(5))
     .build()
     .map_err(|e| e.to_string())?;
   let url = format!("{}/v1/chat/completions", config.base_url.trim_end_matches('/'));
-  // `messages` is forwarded exactly as the agent loop built it (assistant `tool_calls`, `tool`
-  // messages with `tool_call_id`, ...): a typed struct here would silently drop those fields.
+  // A typed struct here would silently drop fields the agent loop already built (tool_calls, tool_call_id).
   let mut body = serde_json::json!({
     "model": config.model,
     "stream": true,
@@ -351,8 +349,7 @@ mod tests {
 
   #[test]
   fn sse_buffer_never_decodes_a_multi_byte_character_split_across_chunks() {
-    // Cyrillic "П" is 2 bytes (0xD0 0x9F) in UTF-8; splitting it mid-character must not turn
-    // either half into a replacement character once the full event is reassembled.
+    // "П" is 2 UTF-8 bytes (0xD0 0x9F); split mid-character it must not decode as U+FFFD.
     let payload = "{\"choices\":[{\"delta\":{\"content\":\"Привет\"}}]}";
     let bytes = payload.as_bytes();
     let split = 3;
