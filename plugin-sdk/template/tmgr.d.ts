@@ -42,10 +42,15 @@ interface TmgrTaskFields {
 	approximately_time?: number;
 }
 
+/**
+ * Who wrote a comment. More kinds may appear later: treat an unknown kind like any non-user author.
+ * `owner` is the accountable person behind a non-user author, when known.
+ */
 interface TmgrCommentAuthor {
-	kind: 'user' | 'plugin' | 'companion' | 'agent';
+	kind: 'user' | 'plugin' | 'persona' | 'companion' | 'agent' | (string & {});
 	id: string;
 	name: string;
+	owner?: { id: string; name: string };
 }
 
 interface TmgrReaction {

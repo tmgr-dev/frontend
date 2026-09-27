@@ -34,7 +34,7 @@ export interface LocalFiles {
 
 /** Who caused a write: the app's own human user, or a plugin acting through its pinned client. */
 export interface LocalActor {
-	kind: 'user' | 'plugin' | 'companion' | 'agent';
+	kind: 'user' | 'plugin' | 'persona' | 'companion' | 'agent';
 	id: string;
 	name: string;
 }

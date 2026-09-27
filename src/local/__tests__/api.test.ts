@@ -346,7 +346,12 @@ describeSqlite('local workspace API on SQLite', () => {
 			author_kind: 'user',
 			author_id: '999',
 		});
-		expect(comment.author).toEqual({ kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' });
+		expect(comment.author).toEqual({
+			kind: 'plugin',
+			id: 'tmgr.estimate',
+			name: 'Estimate',
+			owner: { id: String(ctx.user.id), name: ctx.user.name },
+		});
 
 		ctx = { ...ctx, actor: undefined };
 		const own = await data('POST', `tasks/${task.id}/comments`, { message: 'from the app' });

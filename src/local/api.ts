@@ -769,6 +769,9 @@ const commentJson = (row: any, ctx: LocalContext) => ({
 		kind: row.author_kind ?? 'user',
 		id: row.author_id ?? String(ctx.user.id),
 		name: row.author_name ?? ctx.user.name,
+		...((row.author_kind ?? 'user') === 'user'
+			? {}
+			: { owner: { id: String(ctx.user.id), name: ctx.user.name } }),
 	},
 	cursor_agent_id: null,
 	cursor_message_type: null,

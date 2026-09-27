@@ -46,7 +46,12 @@
 		cursor_message_id?: string | null;
 		cursor_message_type?: 'user_message' | 'assistant_message' | null;
 		reactions?: ReactionSummary[];
-		author?: { kind: 'user' | 'plugin' | 'companion' | 'agent'; id: string; name: string };
+		author?: {
+			kind: string;
+			id: string;
+			name: string;
+			owner?: { id: string; name: string };
+		};
 	}
 
 	interface Props {
