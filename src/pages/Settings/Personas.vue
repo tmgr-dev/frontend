@@ -111,11 +111,12 @@
 					<PersonaSkills :persona="persona" class="mt-3" />
 				</details>
 
-				<div class="grid grid-cols-1 gap-2 border-t border-border pt-3 opacity-60">
-					<div class="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-						Agent connections — coming soon (tokens for MCP agents)
-					</div>
-				</div>
+				<details class="border-t border-border pt-3">
+					<summary class="cursor-pointer text-sm font-medium">
+						Agent connections
+					</summary>
+					<PersonaTokens :persona="persona" class="mt-3" />
+				</details>
 			</article>
 
 			<p v-if="!loading && visiblePersonas.length === 0" class="text-sm text-muted-foreground">
@@ -146,6 +147,7 @@
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
 	import PersonaSkills from './PersonaSkills.vue';
+	import PersonaTokens from './PersonaTokens.vue';
 	import PersonaWorkspaceGrants from './PersonaWorkspaceGrants.vue';
 
 	const emptyForm = (): PersonaFormModel => ({
@@ -162,6 +164,7 @@
 			PersonaAvatar,
 			PersonaForm,
 			PersonaSkills,
+			PersonaTokens,
 			PersonaWorkspaceGrants,
 		},
 		setup() {
