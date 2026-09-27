@@ -278,12 +278,29 @@
 				</button>
 			</div>
 
+			<MobilePagination
+				v-if="pagination.total > pagination.per_page"
+				class="mt-6 sm:hidden"
+				:current="pagination.current_page"
+				:last="pagination.last_page"
+				:from="pagination.from"
+				:to="pagination.to"
+				:total="pagination.total"
+				:per-page="perPage"
+				@page="onPageChange"
+				@per-page="
+					(size) => {
+						perPage = size;
+						onPerPageChange();
+					}
+				"
+			/>
 			<!-- Add pagination controls -->
 			<div
 				v-if="pagination.total > pagination.per_page"
-				class="mt-6 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
+				class="mt-6 hidden items-center justify-between px-2 sm:flex"
 			>
-				<div class="flex flex-wrap items-center gap-3">
+				<div class="flex items-center gap-3">
 					<span class="text-sm text-ink-subtle">
 						Showing {{ pagination.from }} to {{ pagination.to }} of
 						{{ pagination.total }} tasks
@@ -300,7 +317,7 @@
 					</select>
 				</div>
 
-				<div class="flex items-center justify-between gap-2 sm:justify-start">
+				<div class="flex items-center gap-2">
 					<button
 						:disabled="pagination.current_page === 1"
 						@click="onPageChange(pagination.current_page - 1)"
@@ -360,6 +377,7 @@
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import Button from '@/components/general/Button.vue';
+	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
@@ -410,6 +428,7 @@
 	export default {
 		name: 'TasksListComponent',
 		components: {
+			MobilePagination,
 			TaskTimeInfo,
 			Button,
 			CategoryBadge,

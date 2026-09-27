@@ -13,6 +13,7 @@
 	import EmptyState from '@/components/EmptyState.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import Select from '@/components/general/Select.vue';
 	import CategoriesPreview from '@/components/previews/CategoriesPreview.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
@@ -748,12 +749,33 @@
 								</DialogContent>
 							</Dialog>
 
+							<MobilePagination
+								v-if="
+									categories &&
+									categories.length > 0 &&
+									categoriesPagination.total > categoriesPagination.per_page
+								"
+								class="mt-6 sm:hidden"
+								:current="categoriesPagination.current_page"
+								:last="categoriesPagination.last_page"
+								:from="categoriesPagination.from"
+								:to="categoriesPagination.to"
+								:total="categoriesPagination.total"
+								:per-page="categoriesPagination.per_page"
+								@page="handleCategoriesPageChange"
+								@per-page="handleCategoriesPerPageChange"
+							/>
 							<!-- Add categories pagination controls -->
 							<div
 								v-if="categories && categories.length > 0"
-								class="mt-6 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
+								:class="[
+									'mt-6 items-center justify-between px-2 sm:flex',
+									categoriesPagination.total > categoriesPagination.per_page
+										? 'hidden'
+										: 'flex',
+								]"
 							>
-								<div class="flex flex-wrap items-center gap-3">
+								<div class="flex items-center gap-3">
 									<span class="text-sm text-ink-subtle">
 										Showing {{ categoriesPagination.from }} to
 										{{ categoriesPagination.to }} of
@@ -774,7 +796,7 @@
 									v-if="
 										categoriesPagination.total > categoriesPagination.per_page
 									"
-									class="flex items-center justify-between gap-2 sm:justify-start"
+									class="flex items-center gap-2"
 								>
 									<Button
 										:disabled="categoriesPagination.current_page === 1"
