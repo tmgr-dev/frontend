@@ -37,6 +37,10 @@ export interface DataApi {
 	stopTimer(taskId: number): Promise<unknown>;
 	listComments(taskId: number): Promise<unknown>;
 	addComment(taskId: number, text: string): Promise<unknown>;
+	reactToComment(commentId: number, emoji: string): Promise<unknown>;
+	listRelations(taskId: number): Promise<unknown>;
+	relateTask(taskId: number, otherId: number, type: string): Promise<unknown>;
+	unrelateTask(taskId: number, otherId: number, type: string): Promise<unknown>;
 	storageGet(key: string): Promise<unknown>;
 	storageSet(key: string, json: string): Promise<unknown>;
 	storageDelete(key: string): Promise<unknown>;
@@ -112,6 +116,8 @@ export const PLUGIN_EVENTS: Record<string, Permission> = {
 	'comment.created': 'comments:read',
 	'comment.updated': 'comments:read',
 	'comment.deleted': 'comments:read',
+	'comment.reactionChanged': 'comments:read',
+	'task.relationChanged': 'relations:read',
 };
 
 const invalid = (message: string): never => {
@@ -152,6 +158,22 @@ const TASK_FIELDS: Record<string, (value: unknown) => unknown> = {
 			? v
 			: invalid('approximately_time must be seconds'),
 };
+
+const RELATION_TYPES = [
+	'blocks',
+	'is blocked by',
+	'relates to',
+	'duplicates',
+	'is duplicated by',
+	'depends on',
+	'is dependency of',
+] as const;
+
+const relationType = (value: unknown): string =>
+	typeof value === 'string' &&
+	(RELATION_TYPES as readonly string[]).includes(value)
+		? value
+		: invalid(`type must be one of ${RELATION_TYPES.join(', ')}`);
 
 const taskFields = (patch: unknown) => {
 	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
@@ -321,6 +343,39 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) =>
 				api.addComment(id(p.taskId, 'taskId'), string(p.text, 'text', 10_000)),
+		},
+		'comments.react': {
+			permission: 'comments:write',
+			write: true,
+			run: (p) =>
+				api.reactToComment(
+					id(p.commentId, 'commentId'),
+					string(p.emoji, 'emoji', 32),
+				),
+		},
+		'tasks.relations': {
+			permission: 'relations:read',
+			run: (p) => api.listRelations(id(p.taskId, 'taskId')),
+		},
+		'tasks.relate': {
+			permission: 'relations:write',
+			write: true,
+			run: (p) =>
+				api.relateTask(
+					id(p.taskId, 'taskId'),
+					id(p.otherId, 'otherId'),
+					relationType(p.type),
+				),
+		},
+		'tasks.unrelate': {
+			permission: 'relations:write',
+			write: true,
+			run: (p) =>
+				api.unrelateTask(
+					id(p.taskId, 'taskId'),
+					id(p.otherId, 'otherId'),
+					relationType(p.type),
+				),
 		},
 		'storage.get': {
 			run: async (p) => {

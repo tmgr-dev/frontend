@@ -32,12 +32,21 @@ export interface LocalFiles {
 	remove(key: string): Promise<void>;
 }
 
+/** Who caused a write: the app's own human user, or a plugin acting through its pinned client. */
+export interface LocalActor {
+	kind: 'user' | 'plugin' | 'companion' | 'agent';
+	id: string;
+	name: string;
+}
+
 export interface LocalContext {
 	db: LocalDb;
 	workspace: LocalWorkspace;
 	user: LocalUser;
 	now: () => Date;
 	files: LocalFiles;
+	/** Set by the plugin's pinned client from its headers; absent for the app's own client (kind 'user'). */
+	actor?: LocalActor;
 }
 
 /** A handler result sent as the response body as is (no `{data}` envelope), e.g. a Blob. */

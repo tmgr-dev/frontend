@@ -46,6 +46,7 @@
 		cursor_message_id?: string | null;
 		cursor_message_type?: 'user_message' | 'assistant_message' | null;
 		reactions?: ReactionSummary[];
+		author?: { kind: 'user' | 'plugin' | 'companion' | 'agent'; id: string; name: string };
 	}
 
 	interface Props {
@@ -280,6 +281,12 @@
 						</span>
 						<span v-else class="text-sm font-semibold text-ink">
 							{{ comment.user.name }}
+						</span>
+						<span
+							v-if="comment.author && comment.author.kind !== 'user'"
+							class="rounded-full bg-gray-100 px-1.5 py-0.5 text-2xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+						>
+							{{ comment.author.kind }}: {{ comment.author.name }}
 						</span>
 						<span class="text-2xs text-ink-faint">
 							{{ formatRelativeTime(new Date(comment.created_at)) }}

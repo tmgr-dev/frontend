@@ -42,13 +42,43 @@ interface TmgrTaskFields {
 	approximately_time?: number;
 }
 
+interface TmgrCommentAuthor {
+	kind: 'user' | 'plugin' | 'companion' | 'agent';
+	id: string;
+	name: string;
+}
+
+interface TmgrReaction {
+	emoji: string;
+	count: number;
+	reacted: boolean;
+	users?: { id: number; name: string }[];
+}
+
+interface TmgrTaskRelation {
+	taskId: number;
+	otherTaskId: number;
+	type: string;
+}
+
 type TmgrEvent =
-	| { type: 'task.created' | 'task.updated'; workspaceId: number; taskId: number; task: TmgrTask }
+	/** `changed` (task.updated only) names the fields the write's request body set. */
+	| { type: 'task.created' | 'task.updated'; workspaceId: number; taskId: number; task: TmgrTask; changed?: string[] }
 	| { type: 'task.deleted'; workspaceId: number; taskId: number }
 	| { type: 'task.statusChanged'; workspaceId: number; taskId: number; statusId: number; task?: TmgrTask }
 	| { type: 'timer.started' | 'timer.stopped'; workspaceId: number; taskId: number; task: TmgrTask }
-	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> }
-	| { type: 'comment.deleted'; workspaceId: number; commentId: number };
+	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author: TmgrCommentAuthor } }
+	| { type: 'comment.deleted'; workspaceId: number; commentId: number }
+	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: TmgrReaction[] }
+	/** `relationType` is the fixed name (e.g. "blocks") when known, otherwise the numeric relation type id. */
+	| {
+			type: 'task.relationChanged';
+			workspaceId: number;
+			taskId: number;
+			otherTaskId: number;
+			relationType: string | number;
+			change: 'added' | 'removed';
+	  };
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue';
@@ -86,6 +116,14 @@ declare const tmgr: {
 		/** Needs tasks:write. */
 		create(fields: TmgrTaskFields & { title: string }): Promise<TmgrTask>;
 		update(id: number, patch: TmgrTaskFields): Promise<TmgrTask>;
+		/** Needs relations:read. */
+		relations(taskId: number): Promise<TmgrTaskRelation[]>;
+		/**
+		 * Needs relations:write. `type` is one of: blocks, is blocked by, relates to, duplicates,
+		 * is duplicated by, depends on, is dependency of.
+		 */
+		relate(taskId: number, otherId: number, type: string): Promise<unknown>;
+		unrelate(taskId: number, otherId: number, type: string): Promise<unknown>;
 	};
 	/** Needs statuses:read. */
 	statuses: { list(): Promise<{ id: number; name: string; type: string }[]> };
@@ -94,10 +132,12 @@ declare const tmgr: {
 	/** Needs time:write. */
 	time: { start(taskId: number): Promise<TmgrTask>; stop(taskId: number): Promise<TmgrTask> };
 	comments: {
-		/** Needs comments:read. */
-		list(taskId: number): Promise<Record<string, unknown>[]>;
-		/** Needs comments:write. */
-		add(taskId: number, text: string): Promise<Record<string, unknown>>;
+		/** Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'companion' | 'agent'). */
+		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor })[]>;
+		/** Needs comments:write. Written with this plugin as the author; a body `author` field is ignored. */
+		add(taskId: number, text: string): Promise<Record<string, unknown> & { author: TmgrCommentAuthor }>;
+		/** Needs comments:write. Toggles the emoji reaction for this plugin; returns the comment's reactions. */
+		react(commentId: number, emoji: string): Promise<{ reactions: TmgrReaction[]; taskId?: number }>;
 	};
 	/** Per plugin and workspace, JSON values up to 256 KB, 5 MB in total. */
 	storage: {

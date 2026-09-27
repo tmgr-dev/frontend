@@ -16,10 +16,38 @@ const epoch = (ctx: LocalContext) => Math.floor(ctx.now().getTime() / 1000);
 
 const notFound = (what: string) => new LocalHttpError(404, `${what} not found`);
 
+const actorOf = (ctx: LocalContext) =>
+	ctx.actor ?? { kind: 'user' as const, id: String(ctx.user.id), name: ctx.user.name };
+
+/** Relations from this task's side only, matching the legacy `relatedTypesWithTask` shape the UI reads. */
+const taskRelationsFor = async (ctx: LocalContext, taskId: number) => {
+	const rows = await ctx.db.select<any>(
+		`SELECT r.id, rt.id AS type_id, rt.name AS type_name,
+			t.id AS rt_id, t.title AS rt_title, t.status_id AS rt_status_id, t.project_category_id AS rt_category_id
+		 FROM task_relations r
+		 JOIN task_relation_types rt ON rt.id = r.relation_type_id
+		 JOIN tasks t ON t.id = r.related_task_id
+		 WHERE r.task_id = ? AND t.deleted_at IS NULL
+		 ORDER BY r.id`,
+		[taskId],
+	);
+	return rows.map((row) => ({
+		id: row.id,
+		relation_type: { id: row.type_id, name: row.type_name },
+		related_task: {
+			id: row.rt_id,
+			title: row.rt_title,
+			status_id: row.rt_status_id,
+			workspace_id: ctx.workspace.id,
+			project_category_id: row.rt_category_id,
+		},
+	}));
+};
+
 const loadTask = async (ctx: LocalContext, id: number) => {
 	const rows = await ctx.db.select(`${TASK_SELECT} WHERE t.id = ? AND t.deleted_at IS NULL`, [id]);
 	if (!rows.length) throw notFound('Task');
-	return taskJson(rows[0], ctx);
+	return { ...taskJson(rows[0], ctx), relationTypeWithTask: await taskRelationsFor(ctx, id) };
 };
 
 const loadStatuses = (ctx: LocalContext) =>
@@ -188,7 +216,7 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	'task.checkpoints': true,
 	'task.assignees': false,
 	'task.files': true,
-	'task.relations': false,
+	'task.relations': true,
 };
 
 export const createLocalApi = () => {
@@ -298,28 +326,120 @@ export const createLocalApi = () => {
 		// ── comments ────────────────────────────────────────────────────────────
 		.add('GET', 'tasks/:id(\\d+)/comments', async ({ ctx, params }) => {
 			await loadTask(ctx, Number(params.id));
-			const rows = await ctx.db.select(
+			const rows = await ctx.db.select<any>(
 				`SELECT * FROM comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY id ASC`,
 				[Number(params.id)],
 			);
-			return rows.map((row: any) => commentJson(row, ctx));
+			const reactions = await reactionsFor(ctx, rows.map((row) => row.id));
+			return rows.map((row) => ({ ...commentJson(row, ctx), reactions: reactions.get(row.id) ?? [] }));
 		})
 		.add('POST', 'tasks/:id(\\d+)/comments', async ({ ctx, params, body }) => {
 			const message = String(body?.message ?? body?.content ?? '').trim();
 			if (!message) throw new LocalHttpError(422, 'message is required');
 			await loadTask(ctx, Number(params.id));
+			const actor = actorOf(ctx);
 			const now = iso(ctx);
 			const result = await ctx.db.execute(
-				`INSERT INTO comments (task_id, message, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-				[Number(params.id), message, now, now],
+				`INSERT INTO comments (task_id, message, author_kind, author_id, author_name, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				[Number(params.id), message, actor.kind, actor.id, actor.name, now, now],
 			);
 			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [Number(result.lastInsertId)]);
-			return commentJson(row, ctx);
+			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
 			return { success: true };
 		})
+		.add('POST', 'comments/:id(\\d+)/reactions/toggle', async ({ ctx, params, body }) => {
+			const emoji = String(body?.emoji ?? '');
+			if (!emoji.trim() || emoji.length > 32) throw new LocalHttpError(422, 'emoji is required');
+			const [comment] = await ctx.db.select<any>(
+				`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`,
+				[Number(params.id)],
+			);
+			if (!comment) throw notFound('Comment');
+			const actor = actorOf(ctx);
+			const existing = await ctx.db.select<{ id: number }>(
+				`SELECT id FROM comment_reactions WHERE comment_id = ? AND emoji = ? AND actor_kind = ? AND actor_id = ?`,
+				[comment.id, emoji, actor.kind, actor.id],
+			);
+			if (existing.length) {
+				await ctx.db.execute(`DELETE FROM comment_reactions WHERE id = ?`, [existing[0].id]);
+			} else {
+				await ctx.db.execute(
+					`INSERT INTO comment_reactions (comment_id, emoji, actor_kind, actor_id, created_at) VALUES (?, ?, ?, ?, ?)`,
+					[comment.id, emoji, actor.kind, actor.id, iso(ctx)],
+				);
+			}
+			const reactions = (await reactionsFor(ctx, [comment.id])).get(comment.id) ?? [];
+			return { reactions, task_id: comment.task_id };
+		})
+		// ── task relations ──────────────────────────────────────────────────────
+		.add('GET', 'task-relation-types', async ({ ctx }) =>
+			(await ctx.db.select<any>(`SELECT * FROM task_relation_types ORDER BY id`)).map((row) => ({
+				id: row.id,
+				name: row.name,
+			})),
+		)
+		.add('GET', 'tasks/:id(\\d+)/relations', async ({ ctx, params }) => {
+			await loadTask(ctx, Number(params.id));
+			return taskRelationsFor(ctx, Number(params.id));
+		})
+		.add(
+			'POST',
+			'tasks/:id(\\d+)/related-to/:otherId(\\d+)/with/:typeId(\\d+)',
+			async ({ ctx, params }) => {
+				const taskId = Number(params.id);
+				const otherId = Number(params.otherId);
+				const typeId = Number(params.typeId);
+				if (taskId === otherId) throw new LocalHttpError(422, 'A task cannot relate to itself');
+				await loadTask(ctx, taskId);
+				await loadTask(ctx, otherId);
+				const [type] = await ctx.db.select<any>(`SELECT * FROM task_relation_types WHERE id = ?`, [typeId]);
+				if (!type) throw notFound('Relation type');
+				await ctx.db.execute(
+					`INSERT INTO task_relations (task_id, related_task_id, relation_type_id, created_at)
+					 VALUES (?, ?, ?, ?)
+					 ON CONFLICT (task_id, related_task_id, relation_type_id) DO NOTHING`,
+					[taskId, otherId, typeId, iso(ctx)],
+				);
+				const [row] = await ctx.db.select<any>(
+					`SELECT id FROM task_relations WHERE task_id = ? AND related_task_id = ? AND relation_type_id = ?`,
+					[taskId, otherId, typeId],
+				);
+				return {
+					id: row.id,
+					task_id: taskId,
+					related_task_id: otherId,
+					task_relation_type_id: typeId,
+					relation_type: { id: type.id, name: type.name },
+				};
+			},
+		)
+		.add(
+			'DELETE',
+			'tasks/:id(\\d+)/related-to/:otherId(\\d+)/with/:typeId(\\d+)',
+			async ({ ctx, params }) => {
+				const taskId = Number(params.id);
+				const otherId = Number(params.otherId);
+				const typeId = Number(params.typeId);
+				await loadTask(ctx, taskId);
+				await loadTask(ctx, otherId);
+				const [type] = await ctx.db.select<any>(`SELECT * FROM task_relation_types WHERE id = ?`, [typeId]);
+				await ctx.db.execute(
+					`DELETE FROM task_relations WHERE task_id = ? AND related_task_id = ? AND relation_type_id = ?`,
+					[taskId, otherId, typeId],
+				);
+				return {
+					success: true,
+					task_id: taskId,
+					related_task_id: otherId,
+					task_relation_type_id: typeId,
+					relation_type: type ? { id: type.id, name: type.name } : null,
+				};
+			},
+		)
 		// ── attachments ─────────────────────────────────────────────────────────
 		.add('POST', 'files/presign-upload', ({ ctx, body }) => {
 			const size = Number(body?.size_bytes ?? 0);
@@ -645,10 +765,38 @@ const commentJson = (row: any, ctx: LocalContext) => ({
 	updated_at: row.updated_at,
 	user_id: ctx.user.id,
 	user: { id: ctx.user.id, name: ctx.user.name, email: ctx.user.email, has_avatar: false },
-	reactions: [],
+	author: {
+		kind: row.author_kind ?? 'user',
+		id: row.author_id ?? String(ctx.user.id),
+		name: row.author_name ?? ctx.user.name,
+	},
 	cursor_agent_id: null,
 	cursor_message_type: null,
 });
+
+/** Per-comment reaction summaries, `reacted` and `users` relative to who is asking (see `actorOf`). */
+const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
+	const result = new Map<number, { emoji: string; count: number; reacted: boolean; users: { id: number; name: string }[] }[]>();
+	if (!commentIds.length) return result;
+	const placeholders = commentIds.map(() => '?').join(',');
+	const rows = await ctx.db.select<any>(
+		`SELECT comment_id, emoji, actor_kind, actor_id FROM comment_reactions WHERE comment_id IN (${placeholders})`,
+		commentIds,
+	);
+	const actor = actorOf(ctx);
+	const byComment = new Map<number, Map<string, { emoji: string; count: number; reacted: boolean; users: { id: number; name: string }[] }>>();
+	for (const row of rows) {
+		const perComment = byComment.get(row.comment_id) ?? new Map();
+		byComment.set(row.comment_id, perComment);
+		const entry = perComment.get(row.emoji) ?? { emoji: row.emoji, count: 0, reacted: false, users: [] };
+		entry.count += 1;
+		if (row.actor_kind === actor.kind && String(row.actor_id) === String(actor.id)) entry.reacted = true;
+		if (row.actor_kind === 'user') entry.users.push({ id: Number(row.actor_id), name: ctx.user.name });
+		perComment.set(row.emoji, entry);
+	}
+	for (const [commentId, perComment] of byComment) result.set(commentId, [...perComment.values()]);
+	return result;
+};
 
 const slugOf = (title: string) =>
 	title

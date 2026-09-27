@@ -3,7 +3,7 @@ import { createLocalApi } from './api';
 import { dispatchLocal } from './dispatch';
 import { respond } from './install';
 import { localContext, localWorkspaceById } from './runtime';
-import type { LocalUser } from './types';
+import type { LocalActor, LocalUser } from './types';
 
 const api = createLocalApi();
 
@@ -21,7 +21,17 @@ export const pinnedLocalClient = (
 			const workspace = await localWorkspaceById(workspaceId);
 			if (!workspace)
 				return respond(config, 409, { message: 'The local workspace is gone' });
-			const ctx = await localContext(workspace, currentUser());
+			const pluginId = config.headers?.['X-TMGR-Plugin'];
+			const actor: LocalActor | undefined = pluginId
+				? {
+						kind: 'plugin',
+						id: String(pluginId),
+						name: decodeURIComponent(
+							String(config.headers?.['X-TMGR-Plugin-Name'] ?? pluginId),
+						),
+				  }
+				: undefined;
+			const ctx = await localContext(workspace, currentUser(), actor);
 			const result = await dispatchLocal(
 				api,
 				ctx,
