@@ -24,8 +24,6 @@
 	import { avatarInitials } from '@/utils/avatarInitials';
 	import { computed, defineComponent, ref, watch } from 'vue';
 
-	/** A persona's own picture, never the owner's — the persona avatar is auth-protected and has no
-	 * signed link yet, so it is loaded as a blob rather than a plain <img src>. */
 	export default defineComponent({
 		name: 'PersonaAvatar',
 		props: {
@@ -44,7 +42,6 @@
 				try {
 					url.value = await personaAvatarObjectUrl(props.uuid);
 				} catch {
-					// The initials are a good enough answer when the blob cannot be loaded.
 				}
 			};
 

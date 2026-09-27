@@ -57,8 +57,6 @@
 		has_avatar?: boolean;
 	}
 
-	/** Shared across comments, activity and reactions: persona -> its own avatar (never the owner's) with
-	 * a marker icon, plugin -> plugin icon, unknown kind -> generic "kind: name" (contract §Author object). */
 	export default defineComponent({
 		name: 'AuthorBadge',
 		components: { PersonaAvatar, UserAvatar, Plug, VenetianMask },

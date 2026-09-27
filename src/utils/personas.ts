@@ -16,7 +16,7 @@ export const PERSONA_PERMISSIONS = [
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
 
-/** files:attachments is a read despite the missing `:read` suffix (contract §Identifiers). */
+/** files:attachments is a read despite the missing `:read` suffix. */
 const READ_PERMISSIONS: ReadonlySet<string> = new Set<PersonaPermission>([
 	'tasks:read',
 	'statuses:read',
@@ -38,7 +38,6 @@ export const DEFAULT_GRANT_PERMISSIONS: PersonaPermission[] = [
 
 export type PersonaPolicy = 'allowed' | 'read_only' | 'forbidden';
 
-/** permissions ∩ policy: read_only keeps read rules, forbidden/blocked keep none. */
 export const effectivePermissions = (
 	permissions: string[],
 	policy: PersonaPolicy,
@@ -71,7 +70,6 @@ export interface FieldErrors {
 	errors: Record<string, string[]>;
 }
 
-/** Same 422 `{message, errors}` shape as the rest of the API. */
 export const extractFieldErrors = (error: unknown): FieldErrors | null => {
 	const response = (error as { response?: { data?: any; status?: number } })
 		?.response;
