@@ -425,6 +425,16 @@ const routes = [
 		name: 'PluginSettings',
 	},
 	{
+		path: '/settings/plugins/help',
+		component: () => import('@/pages/Settings/PluginsHelp.vue'),
+		meta: {
+			title: 'How plugins work',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'PluginSettingsHelp',
+	},
+	{
 		path: '/profile',
 		component: () => import('@/pages/Profile.vue'),
 		meta: {
