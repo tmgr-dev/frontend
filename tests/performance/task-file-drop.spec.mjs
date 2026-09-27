@@ -240,3 +240,124 @@ test('a file dropped while queued files are still uploading is attached too', as
     'second.txt',
   ]);
 });
+
+const openNewTaskWithFiles = async (page, { presignGate } = {}) => {
+  await mockApp(page);
+  const attached = [];
+  await page.route('**/api/workspaces/*/feature-toggles', (route) =>
+    route.fulfill({
+      json: {
+        data: { board: { enabled: true }, 'task.files': { enabled: true } },
+      },
+    }),
+  );
+  await page.route('**/api/tasks', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          json: {
+            data: {
+              ...route.request().postDataJSON(),
+              id: 7,
+              workspace_id: 1,
+              assignees: [],
+              checkpoints: [],
+            },
+          },
+        })
+      : route.fallback(),
+  );
+  await page.route('**/api/files/presign-upload', async (route) => {
+    if (presignGate) await presignGate;
+    await route.fulfill({
+      json: {
+        data: {
+          key: 'uploads/1/abc/note.txt',
+          upload_url: 'http://storage.test/storage-put',
+          method: 'PUT',
+          content_type: 'text/plain',
+          max_bytes: 1000,
+        },
+      },
+    });
+  });
+  await page.route('**/storage-put', (route) =>
+    route.fulfill({ status: 200, body: '' }),
+  );
+  await page.route('**/api/tasks/7/files', (route) => {
+    if (route.request().method() === 'POST') {
+      attached.push(route.request().postDataJSON().file_name);
+      return route.fulfill({
+        json: { data: { id: attached.length, name: 'x', size: 5 } },
+      });
+    }
+    return route.fulfill({ json: { data: [] } });
+  });
+  await page.goto('/');
+  await page.locator('[data-task-id="1"]').waitFor();
+  await page.evaluate(() =>
+    document
+      .querySelector('#app')
+      .__vue_app__.config.globalProperties.$store.commit(
+        'setShowCreatingTaskModal',
+        1,
+      ),
+  );
+  await expect(
+    page
+      .locator('.new-form-container')
+      .getByRole('heading', { name: 'Attachments' }),
+  ).toBeVisible();
+  return attached;
+};
+
+test('a file dropped on a field that cancels the drop itself still goes to the task', async ({
+  page,
+}) => {
+  await openNewTaskWithFiles(page);
+  await page.evaluate(() =>
+    document
+      .querySelector('.new-form-container input')
+      .addEventListener('drop', (event) => event.preventDefault()),
+  );
+  await dropFile(page, 'drop', '.new-form-container input');
+  await expect(
+    page.getByText('Will upload when the task is created'),
+  ).toBeVisible();
+});
+
+test('closing the form while its files upload does not hijack the next new task', async ({
+  page,
+}) => {
+  let releasePresign;
+  const presignGate = new Promise((resolve) => {
+    releasePresign = resolve;
+  });
+  const attached = await openNewTaskWithFiles(page, { presignGate });
+  const form = page.locator('.new-form-container');
+  await dropFile(page, 'drop', '.new-form-container input');
+  await form.getByPlaceholder('Task name').fill('First');
+  await form.getByTitle('Create').click();
+  await expect(page.getByText('Uploading files…')).toBeVisible();
+
+  await page.evaluate(() => {
+    const store =
+      document.querySelector('#app').__vue_app__.config.globalProperties
+        .$store;
+    store.commit('closeTaskModal');
+  });
+  await expect(form).toBeHidden();
+  await page.evaluate(() =>
+    document
+      .querySelector('#app')
+      .__vue_app__.config.globalProperties.$store.commit(
+        'setShowCreatingTaskModal',
+        1,
+      ),
+  );
+  await expect(form.getByPlaceholder('Task name')).toHaveValue('');
+  releasePresign();
+  await expect.poll(() => attached).toEqual(['note.txt']);
+  await page.waitForTimeout(300);
+  await expect(form.getByTitle('Create')).toBeVisible();
+  await expect(form.getByPlaceholder('Task name')).toHaveValue('');
+});

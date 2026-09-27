@@ -1188,10 +1188,8 @@
 			return;
 		}
 		resetFileDrag();
-		if (event.defaultPrevented) {
-			return;
-		}
 		event.preventDefault();
+		event.stopPropagation();
 		attachmentsRef.value?.uploadAll(
 			Array.from(event.dataTransfer?.files ?? []),
 		);
@@ -1217,6 +1215,10 @@
 			const created = await createTaskAction(form.value as Task);
 			if (created.id) {
 				await attachPendingFiles(created.id as number);
+			}
+			if (formDisposed) {
+				store.commit('taskCreated', created);
+				return;
 			}
 			form.value = created;
 
@@ -1902,7 +1904,7 @@
 		@dragenter="onFormDragEnter"
 		@dragover="onFormDragOver"
 		@dragleave="onFormDragLeave"
-		@drop="onFormDrop"
+		@drop.capture="onFormDrop"
 	>
 		<div
 			class="flex transition-all duration-300"

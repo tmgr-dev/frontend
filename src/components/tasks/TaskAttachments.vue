@@ -163,15 +163,7 @@
 
 		<div
 			@click="handleAddFiles"
-			@dragover.prevent="handleDragOver"
-			@dragleave.prevent="handleDragLeave"
-			@drop.prevent="handleDrop"
-			:class="[
-				'cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors',
-				isDragOver
-					? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
-					: 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50',
-			]"
+			class="cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition-colors hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50"
 		>
 			<FileIcon
 				:size="32"
@@ -284,7 +276,6 @@
 				files: [] as TaskFile[],
 				uploads: [] as PendingUpload[],
 				previews: {} as Record<number, string>,
-				isDragOver: false,
 				busyFileId: null as number | null,
 				galleryStartId: null as number | null,
 				nextUploadId: 1,
@@ -370,19 +361,6 @@
 				const input = event.target as HTMLInputElement;
 				this.uploadAll(Array.from(input.files ?? []));
 				input.value = '';
-			},
-			handleDragOver() {
-				this.isDragOver = true;
-			},
-			handleDragLeave(event: DragEvent) {
-				const target = event.currentTarget as Node;
-				if (!target.contains(event.relatedTarget as Node)) {
-					this.isDragOver = false;
-				}
-			},
-			handleDrop(event: DragEvent) {
-				this.isDragOver = false;
-				this.uploadAll(Array.from(event.dataTransfer?.files ?? []));
 			},
 			// TM-233: a screenshot in the clipboard becomes an attachment wherever the task has
 			// focus. A text paste carries no image, so typing into a field is unaffected; an editor
