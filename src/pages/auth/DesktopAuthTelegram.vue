@@ -14,13 +14,12 @@
 </template>
 
 <script>
-	import { completeDesktopTelegramRelay } from '@/actions/tmgr/auth';
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { relayReturnHash } from '@/utils/desktopAuth';
+	import { desktopCompleteUrl } from '@/utils/desktopAuth';
 	import { defineComponent, onMounted, ref } from 'vue';
-	import { useRoute, useRouter } from 'vue-router';
+	import { useRoute } from 'vue-router';
 
 	const TX = /^[A-Za-z0-9_-]{43}$/;
 
@@ -29,7 +28,6 @@
 		components: { AuthLayout, TelegramLoginWidget },
 		setup() {
 			const route = useRoute();
-			const router = useRouter();
 			const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 			const tx = typeof route.query.tx === 'string' ? route.query.tx : '';
 			const canSignIn = ref(!!telegramBotName && TX.test(tx));
@@ -39,19 +37,15 @@
 					: 'This sign-in link is not valid. Start again in TMGR.',
 			);
 
-			const complete = async (user) => {
+			const complete = (user) => {
 				canSignIn.value = false;
 				message.value = 'Signing you in…';
-				let result;
-				try {
-					result = await completeDesktopTelegramRelay(tx, user);
-				} catch {
-					result = { error: 'telegram' };
-				}
-				await router.replace({
-					name: 'DesktopAuthReturn',
-					hash: relayReturnHash(result),
-				});
+				window.location.replace(
+					desktopCompleteUrl(import.meta.env.VITE_API_BASE_URL, 'telegram', {
+						...user,
+						tx,
+					}),
+				);
 			};
 
 			onMounted(() => setDocumentTitle('TMGR sign-in'));

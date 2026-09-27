@@ -4,6 +4,7 @@ import {
 	beginDesktopAuth,
 	buildDesktopCallbackUrl,
 	createPkcePair,
+	desktopCompleteUrl,
 	desktopTxFromState,
 	parseAuthCallback,
 	parseRelayFragment,
@@ -24,6 +25,7 @@ const memoryStorage = () => {
 const cryptoImpl = webcrypto as unknown as Crypto;
 const CODE = 'c'.repeat(43);
 const STATE = 's'.repeat(43);
+const TX_ID = 't'.repeat(43);
 
 const startedAt = async (
 	storage: ReturnType<typeof memoryStorage>,
@@ -184,6 +186,27 @@ describe('website relay helpers', () => {
 		).toEqual({ code: CODE, state: STATE });
 		expect(parseRelayFragment(relayReturnHash({ error: 'telegram' }))).toEqual(
 			{ error: 'telegram' },
+		);
+	});
+
+	it('builds the top-level complete URL for the starting browser', () => {
+		expect(
+			desktopCompleteUrl('https://api.example/api/', 'github', {
+				code: 'a b&c',
+				tx: TX_ID,
+			}),
+		).toBe(
+			`https://api.example/api/auth/login/desktop/github/complete?code=a+b%26c&tx=${TX_ID}`,
+		);
+		expect(
+			desktopCompleteUrl('https://api.example/api/', 'telegram', {
+				tx: TX_ID,
+				id: 42,
+				first_name: 'Tele',
+				hash: 'ff',
+			}),
+		).toBe(
+			`https://api.example/api/auth/login/desktop/telegram/complete?tx=${TX_ID}&id=42&first_name=Tele&hash=ff`,
 		);
 	});
 

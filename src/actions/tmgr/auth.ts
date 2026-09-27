@@ -107,32 +107,15 @@ export const setNewPassword = async (
 	return await $axios.post(`password/reset/${token}`, payload);
 };
 
-export interface DesktopRelayResult {
-	code: string;
-	state: string;
-}
-
+/** Resolves the envelope without installing it: the caller decides whether this attempt still owns the session. */
 export const acceptDesktopLogin = (
 	code: string,
 	codeVerifier: string,
-): Promise<void> =>
-	$axios
-		.post('auth/login/desktop/accept', { code, code_verifier: codeVerifier })
-		.then(setAxiosHeaderBearerToken);
+): Promise<LoginResponseWrapper> =>
+	$axios.post('auth/login/desktop/accept', {
+		code,
+		code_verifier: codeVerifier,
+	});
 
-export const completeDesktopRelay = (
-	provider: 'github' | 'google',
-	code: string,
-	tx: string,
-): Promise<DesktopRelayResult> =>
-	$axios
-		.post(`auth/login/desktop/${provider}/complete`, { code, tx })
-		.then((response) => response.data.data);
-
-export const completeDesktopTelegramRelay = (
-	tx: string,
-	auth: Record<string, unknown>,
-): Promise<DesktopRelayResult> =>
-	$axios
-		.post('auth/login/desktop/telegram/complete', { tx, auth })
-		.then((response) => response.data.data);
+export const installDesktopLogin = (response: LoginResponseWrapper): void =>
+	setAxiosHeaderBearerToken(response);

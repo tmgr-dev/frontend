@@ -3,14 +3,16 @@
 </template>
 
 <script>
-	import { acceptDesktopLogin } from '@/actions/tmgr/auth';
+	import {
+		acceptDesktopLogin,
+		installDesktopLogin,
+	} from '@/actions/tmgr/auth';
 	import {
 		desktopAuthStatus,
 		failDesktopSocialLogin,
 	} from '@/composable/useDesktopSocialLogin';
 	import store from '@/store';
 	import {
-		clearPendingDesktopAuth,
 		hasPendingDesktopAuth,
 		parseAuthCallback,
 		takePendingDesktopAuth,
@@ -39,8 +41,8 @@
 				if (!url || isRecentDuplicateUrl(url)) return;
 				const link = parseAuthCallback(url);
 				if ('error' in link) {
+					// Uncorrelated (no state): report it, but keep the attempt redeemable.
 					if (!hasPendingDesktopAuth()) return;
-					clearPendingDesktopAuth();
 					await showMainWindow();
 					failDesktopSocialLogin('Sign-in was not completed. Please try again.');
 					return;
@@ -49,14 +51,20 @@
 				if (!pending) return;
 				desktopAuthStatus.value = 'completing';
 				await showMainWindow();
+				let response;
 				try {
-					await acceptDesktopLogin(link.code, pending.verifier);
+					response = await acceptDesktopLogin(link.code, pending.verifier);
 				} catch {
-					failDesktopSocialLogin(
-						'Sign-in link expired or was already used. Please try again.',
-					);
+					if (!hasPendingDesktopAuth() && !store.getters.isLoggedIn) {
+						failDesktopSocialLogin(
+							'Sign-in link expired or was already used. Please try again.',
+						);
+					}
 					return;
 				}
+				// A newer attempt or another login took over while this one was in flight.
+				if (hasPendingDesktopAuth() || store.getters.isLoggedIn) return;
+				installDesktopLogin(response);
 				desktopAuthStatus.value = 'idle';
 				const invitation = localStorage.getItem('workspace.invitation');
 				await router.push(

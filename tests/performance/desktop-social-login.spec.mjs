@@ -90,6 +90,57 @@ test('desktop: GitHub sign-in opens the browser flow and the deep link signs the
   ).toBe('desktop-jwt');
 });
 
+test('desktop: an uncorrelated error link does not cancel the attempt', async ({
+  page,
+}) => {
+  const { starts, accepts } = await loggedOutDesktop(page);
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await expect.poll(() => starts.length).toBe(1);
+  const state = starts[0].searchParams.get('state');
+
+  await page.evaluate(() =>
+    window.__emit('deep-link://new-url', ['tmgr://auth/callback?error=apple']),
+  );
+  await expect(page.getByText('Sign-in was not completed')).toBeVisible();
+  await page.evaluate(
+    (url) => window.__emit('deep-link://new-url', [url]),
+    `tmgr://auth/callback?code=${CODE}&state=${state}`,
+  );
+
+  await expect.poll(() => accepts.length).toBe(1);
+  await expect(page).not.toHaveURL(/\/login/);
+});
+
+test('desktop: a slow exchange of an older attempt does not replace a newer attempt', async ({
+  page,
+}) => {
+  const { starts } = await loggedOutDesktop(page);
+  let releaseAccept;
+  const acceptGate = new Promise((resolve) => (releaseAccept = resolve));
+  await page.route('**/api/auth/login/desktop/accept', async (route) => {
+    await acceptGate;
+    await route.fulfill({ json: ENVELOPE });
+  });
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await expect.poll(() => starts.length).toBe(1);
+  const oldState = starts[0].searchParams.get('state');
+
+  await page.evaluate(
+    (url) => window.__emit('deep-link://new-url', [url]),
+    `tmgr://auth/callback?code=${CODE}&state=${oldState}`,
+  );
+  await expect(page.getByText('Signing you in')).toBeVisible();
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await expect.poll(() => starts.length).toBe(2);
+  releaseAccept();
+
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/\/login/);
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();
+});
+
 test('desktop: Telegram is a button that opens the browser flow', async ({
   page,
 }) => {
@@ -113,10 +164,13 @@ test('website relay: GitHub callback with a desktop state hands the code to the 
 }) => {
   await mockApp(page);
   const relayed = [];
-  await page.route('**/api/auth/login/desktop/github/complete', async (route) => {
-    relayed.push(route.request().postDataJSON());
+  await page.route('**/api/auth/login/desktop/github/complete?*', async (route) => {
+    relayed.push(new URL(route.request().url()));
     await route.fulfill({
-      json: { data: { code: CODE, state: 's'.repeat(43) } },
+      status: 302,
+      headers: {
+        location: `/desktop-auth/return#code=${CODE}&state=${'s'.repeat(43)}`,
+      },
     });
   });
   const webLogins = [];
@@ -134,7 +188,9 @@ test('website relay: GitHub callback with a desktop state hands the code to the 
     'href',
     `tmgr://auth/callback?code=${CODE}&state=${'s'.repeat(43)}`,
   );
-  expect(relayed).toEqual([{ code: 'gh-code', tx: TX }]);
+  expect(relayed).toHaveLength(1);
+  expect(relayed[0].searchParams.get('code')).toBe('gh-code');
+  expect(relayed[0].searchParams.get('tx')).toBe(TX);
   expect(webLogins).toHaveLength(0);
   expect(new URL(page.url()).hash).toBe('');
   expect(
@@ -146,8 +202,11 @@ test('website relay: a failed exchange sends an error link back to the app', asy
   page,
 }) => {
   await mockApp(page);
-  await page.route('**/api/auth/login/desktop/google/complete', (route) =>
-    route.fulfill({ status: 401, json: { message: 'rejected' } }),
+  await page.route('**/api/auth/login/desktop/google/complete?*', (route) =>
+    route.fulfill({
+      status: 302,
+      headers: { location: '/desktop-auth/return#error=google' },
+    }),
   );
 
   await page.goto(`/login/google?code=bad&state=desktop.${TX}`, {

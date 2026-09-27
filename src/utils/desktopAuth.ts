@@ -138,3 +138,15 @@ export const relayReturnHash = (result: RelayResult): string =>
 	'error' in result
 		? `#error=${result.error}`
 		: `#code=${result.code}&state=${result.state}`;
+
+/** Top-level navigation (not XHR) so the API sees its browser-binding cookie. */
+export const desktopCompleteUrl = (
+	apiBaseUrl: string,
+	provider: DesktopAuthProvider,
+	params: Record<string, string | number | boolean>,
+): string => {
+	const query = new URLSearchParams(
+		Object.entries(params).map(([key, value]) => [key, String(value)]),
+	);
+	return `${apiBaseUrl}auth/login/desktop/${provider}/complete?${query}`;
+};

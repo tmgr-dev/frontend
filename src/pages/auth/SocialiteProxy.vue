@@ -19,7 +19,6 @@
 
 <script setup lang="ts">
 	import {
-		completeDesktopRelay,
 		loginApple,
 		loginGithub,
 		loginGoogle,
@@ -35,7 +34,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import {
-		RelayResult,
+		desktopCompleteUrl,
 		desktopTxFromState,
 		relayReturnHash,
 	} from '@/utils/desktopAuth';
@@ -58,21 +57,19 @@
 	async function relayToDesktop(tx: string) {
 		const platform = route.params.platform;
 		isLoading.value = true;
-		let result: RelayResult;
-		try {
-			if (platform !== 'github' && platform !== 'google') throw new Error();
-			result = await completeDesktopRelay(
-				platform,
-				route.query?.code as string,
-				tx,
-			);
-		} catch {
-			result = { error: String(platform).replace(/[^a-z]/g, '') || 'login' };
+		if (platform !== 'github' && platform !== 'google') {
+			await router.replace({
+				name: 'DesktopAuthReturn',
+				hash: relayReturnHash({ error: 'login' }),
+			});
+			return;
 		}
-		await router.replace({
-			name: 'DesktopAuthReturn',
-			hash: relayReturnHash(result),
-		});
+		window.location.replace(
+			desktopCompleteUrl(import.meta.env.VITE_API_BASE_URL, platform, {
+				code: (route.query?.code as string) ?? '',
+				tx,
+			}),
+		);
 	}
 
 	async function login() {
