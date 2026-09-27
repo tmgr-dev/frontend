@@ -79,6 +79,97 @@ export const extractFieldErrors = (error: unknown): FieldErrors | null => {
 	return { message: data.message ?? 'Validation failed', errors: data.errors };
 };
 
+export const SKILL_LIMIT = 20;
+export const SKILL_BODY_MAX_BYTES = 16384;
+export const SKILL_TITLE_MAX_LENGTH = 120;
+export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
+export const SKILL_TEMPLATE = '---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
+
+export interface ParsedSkillFrontMatter {
+	slug: string;
+	title: string;
+	when: string;
+	actions: string[];
+}
+
+/** Mirrors the server's front-matter parser for instant feedback; the server's 422 is still shown alongside this. */
+export const parseSkillFrontMatter = (
+	markdown: string,
+): ParsedSkillFrontMatter | null => {
+	const normalized = (markdown ?? '').replace(/\r\n/g, '\n');
+	const lines = normalized.split('\n');
+	if (lines[0]?.trim() !== '---') return null;
+	const closing = lines.findIndex(
+		(line, index) => index > 0 && line.trim() === '---',
+	);
+	if (closing < 0) return null;
+
+	const fields: Record<string, string> = {};
+	for (let i = 1; i < closing; i++) {
+		const line = lines[i];
+		if (!line.trim()) continue;
+		const colon = line.indexOf(':');
+		if (colon < 0) continue;
+		fields[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+	}
+
+	const actionsRaw = (fields.actions ?? '').trim();
+	const inner = actionsRaw.startsWith('[') && actionsRaw.endsWith(']')
+		? actionsRaw.slice(1, -1)
+		: actionsRaw;
+	const actions = inner
+		.split(',')
+		.map((item) => item.trim())
+		.filter((item) => item.length > 0);
+
+	return {
+		slug: fields.slug ?? '',
+		title: fields.title ?? '',
+		when: fields.when ?? '',
+		actions,
+	};
+};
+
+export const validateSkillMarkdown = (
+	markdown: string,
+	expectedSlug: string,
+): Record<string, string[]> | null => {
+	const errors: Record<string, string[]> = {};
+
+	if (byteLength(markdown) > SKILL_BODY_MAX_BYTES) {
+		errors.body = [`must not exceed ${SKILL_BODY_MAX_BYTES} bytes`];
+	}
+
+	const parsed = parseSkillFrontMatter(markdown);
+	if (!parsed) {
+		errors.body = [
+			...(errors.body ?? []),
+			"must start with a '---' front-matter block closed by a second '---'",
+		];
+		return errors;
+	}
+
+	if (!parsed.slug) {
+		errors.slug = ['is required'];
+	} else if (!SKILL_SLUG_PATTERN.test(parsed.slug)) {
+		errors.slug = ['must be lowercase letters, digits or \'-\', up to 60 characters'];
+	} else if (expectedSlug && parsed.slug !== expectedSlug) {
+		errors.slug = ['must match the URL slug'];
+	}
+
+	if (!parsed.title) {
+		errors.title = ['is required'];
+	} else if (parsed.title.length > SKILL_TITLE_MAX_LENGTH) {
+		errors.title = [`must not exceed ${SKILL_TITLE_MAX_LENGTH} characters`];
+	}
+
+	if (!parsed.when) {
+		errors.when = ['is required'];
+	}
+
+	return Object.keys(errors).length > 0 ? errors : null;
+};
+
 export type AuthorFilter = 'all' | 'people' | 'personas' | 'plugins';
 
 export interface ResolvedAuthor {

@@ -59,6 +59,12 @@
 						>
 							Blocked
 						</p>
+						<p
+							v-if="grant.persona.skills?.length"
+							class="text-xs text-gray-500"
+						>
+							Skills: {{ grant.persona.skills.map((s) => s.title).join(', ') }}
+						</p>
 					</div>
 				</div>
 				<button

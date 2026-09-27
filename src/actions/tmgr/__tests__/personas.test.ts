@@ -9,11 +9,15 @@ import {
 	archivePersona,
 	blockWorkspacePersona,
 	createPersona,
+	deletePersonaSkill,
 	forgetPersonaAvatar,
 	getPersonaPolicy,
+	getPersonaSkill,
 	listPersonas,
+	listPersonaSkills,
 	listWorkspacePersonas,
 	personaAvatarObjectUrl,
+	putPersonaSkill,
 	removeWorkspaceGrant,
 	restorePersona,
 	setPersonaPolicy,
@@ -127,6 +131,51 @@ describe('personaAvatarObjectUrl', () => {
 		(axios.get as jest.Mock).mockRejectedValue(new Error('403'));
 		const result = await personaAvatarObjectUrl('uuid-2');
 		expect(result).toBeNull();
+	});
+});
+
+describe('persona skills', () => {
+	const SKILL = { slug: 'triage', title: 'Triage', when: 'sort it', actions: [], version: 1 };
+
+	it('lists skills for a persona', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		const result = await listPersonaSkills('uuid-1');
+		expect(axios.get).toHaveBeenCalledWith('/personas/uuid-1/skills');
+		expect(result).toEqual([SKILL]);
+	});
+
+	it('gets one skill with its body', async () => {
+		const full = { ...SKILL, body: '---\n...' };
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: full } });
+		const result = await getPersonaSkill('uuid-1', 'triage');
+		expect(axios.get).toHaveBeenCalledWith('/personas/uuid-1/skills/triage');
+		expect(result).toEqual(full);
+	});
+
+	it('puts a skill body and invalidates the skills cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		await listPersonaSkills('uuid-1');
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(true);
+
+		(axios.put as jest.Mock).mockResolvedValue({ data: { data: SKILL } });
+		const result = await putPersonaSkill('uuid-1', 'triage', '---\nbody');
+
+		expect(axios.put).toHaveBeenCalledWith('/personas/uuid-1/skills/triage', {
+			body: '---\nbody',
+		});
+		expect(result).toEqual(SKILL);
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(false);
+	});
+
+	it('deletes a skill and invalidates the skills cache', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
+		await listPersonaSkills('uuid-1');
+
+		(axios.delete as jest.Mock).mockResolvedValue({});
+		await deletePersonaSkill('uuid-1', 'triage');
+
+		expect(axios.delete).toHaveBeenCalledWith('/personas/uuid-1/skills/triage');
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(false);
 	});
 });
 
