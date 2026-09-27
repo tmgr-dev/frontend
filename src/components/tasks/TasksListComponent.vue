@@ -281,9 +281,9 @@
 			<!-- Add pagination controls -->
 			<div
 				v-if="pagination.total > pagination.per_page"
-				class="mt-6 flex items-center justify-between px-2"
+				class="mt-6 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
 			>
-				<div class="flex items-center gap-3">
+				<div class="flex flex-wrap items-center gap-3">
 					<span class="text-sm text-ink-subtle">
 						Showing {{ pagination.from }} to {{ pagination.to }} of
 						{{ pagination.total }} tasks
@@ -300,7 +300,7 @@
 					</select>
 				</div>
 
-				<div class="flex items-center gap-2">
+				<div class="flex items-center justify-between gap-2 sm:justify-start">
 					<button
 						:disabled="pagination.current_page === 1"
 						@click="onPageChange(pagination.current_page - 1)"
@@ -309,7 +309,7 @@
 						Previous
 					</button>
 
-					<span class="px-2 text-sm text-ink-subtle">
+					<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
 

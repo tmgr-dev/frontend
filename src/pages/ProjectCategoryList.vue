@@ -751,9 +751,9 @@
 							<!-- Add categories pagination controls -->
 							<div
 								v-if="categories && categories.length > 0"
-								class="mt-6 flex items-center justify-between px-2"
+								class="mt-6 flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
 							>
-								<div class="flex items-center gap-3">
+								<div class="flex flex-wrap items-center gap-3">
 									<span class="text-sm text-ink-subtle">
 										Showing {{ categoriesPagination.from }} to
 										{{ categoriesPagination.to }} of
@@ -774,7 +774,7 @@
 									v-if="
 										categoriesPagination.total > categoriesPagination.per_page
 									"
-									class="flex items-center gap-2"
+									class="flex items-center justify-between gap-2 sm:justify-start"
 								>
 									<Button
 										:disabled="categoriesPagination.current_page === 1"
@@ -789,7 +789,7 @@
 										Previous
 									</Button>
 
-									<span class="px-2 text-sm text-ink-subtle">
+									<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
 										Page {{ categoriesPagination.current_page }} of
 										{{ categoriesPagination.last_page }}
 									</span>
