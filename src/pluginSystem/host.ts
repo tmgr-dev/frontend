@@ -379,16 +379,36 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		pluginId: string,
 		level: PluginLogLine['level'],
 		message: string,
-	) => {
+	): PluginLogLine | undefined => {
 		const entry = state.plugins[pluginId];
-		if (!entry) return;
-		entry.log.push({
-			at: now(),
-			level,
-			message: message.slice(0, MESSAGE_LIMIT),
-		});
+		if (!entry) return undefined;
+		const line: PluginLogLine = { at: now(), level, message: message.slice(0, MESSAGE_LIMIT) };
+		entry.log.push(line);
 		if (entry.log.length > LOG_LIMIT)
 			entry.log.splice(0, entry.log.length - LOG_LIMIT);
+		return line;
+	};
+
+	const REFUSAL_THROTTLE_MS = 5_000;
+	const brokerRefusals = new Map<
+		string,
+		{ message: string; count: number; at: number; line: PluginLogLine }
+	>();
+
+	/** Makes a plugin's broker refusals visible in its log, collapsing identical repeats within 5s. */
+	const logBrokerRefusal = (pluginId: string, method: string, error: unknown) => {
+		if (!(error instanceof PluginError)) return;
+		const message = `${method}: ${error.code} ${error.message}`;
+		const previous = brokerRefusals.get(pluginId);
+		if (previous && previous.message === message && now() - previous.at < REFUSAL_THROTTLE_MS) {
+			previous.count++;
+			previous.at = now();
+			previous.line.at = now();
+			previous.line.message = `${message} (×${previous.count})`.slice(0, MESSAGE_LIMIT);
+			return;
+		}
+		const line = log(pluginId, 'warn', message);
+		if (line) brokerRefusals.set(pluginId, { message, count: 1, at: now(), line });
 	};
 
 	const settingsOf = (pluginId: string) => {
@@ -618,7 +638,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		});
 		const process = startPluginProcess(pkg.code, {
 			endpoint: deps.createEndpoint(),
-			call: (method, params) => broker.call(method, params),
+			call: (method, params) =>
+				broker.call(method, params).catch((error) => {
+					logBrokerRefusal(pluginId, method, error);
+					throw error;
+				}),
 			onCrash: (reason) => {
 				fault(pluginId, reason);
 				// The Worker is gone; a dead plugin must not keep looking alive.
@@ -1157,7 +1181,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				plugin.broker.admit(true);
 				return dispatch(pluginId, 'command', String(p.id), p.args ?? null);
 			}
-			return plugin.broker.call(method, params);
+			return plugin.broker.call(method, params).catch((error) => {
+				logBrokerRefusal(pluginId, method, error);
+				throw error;
+			});
 		},
 		async renderPage(
 			pluginId: string,

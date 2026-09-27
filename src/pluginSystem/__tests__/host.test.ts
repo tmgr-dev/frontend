@@ -1578,3 +1578,41 @@ describe('deep links', () => {
 		host.dispose();
 	});
 });
+
+it("logs a plugin's broker refusals as warnings, collapsing identical repeats within 5s", async () => {
+	let now = 1000;
+	const { host, state } = setup(
+		[
+			pkg(
+				'tmgr.denied',
+				`tmgr.commands.register('tmgr.denied.go', () => tmgr.tasks.list({}).catch(() => null));`,
+				[],
+				{ commands: [{ id: 'tmgr.denied.go', title: 'Go' }] },
+			),
+		],
+		{},
+		{},
+		{},
+		{ now: () => now },
+	);
+	await host.load();
+	await host.activate(LOCAL);
+
+	await host.runCommand('tmgr.denied', 'tmgr.denied.go');
+	let warnings = state.plugins['tmgr.denied'].log.filter((l) => l.level === 'warn');
+	expect(warnings).toHaveLength(1);
+	expect(warnings[0].message).toBe('tasks.list: PERMISSION_DENIED tasks.list needs tasks:read');
+
+	now += 1000;
+	await host.runCommand('tmgr.denied', 'tmgr.denied.go');
+	warnings = state.plugins['tmgr.denied'].log.filter((l) => l.level === 'warn');
+	expect(warnings).toHaveLength(1);
+	expect(warnings[0].message).toBe('tasks.list: PERMISSION_DENIED tasks.list needs tasks:read (×2)');
+
+	now += 6000;
+	await host.runCommand('tmgr.denied', 'tmgr.denied.go');
+	warnings = state.plugins['tmgr.denied'].log.filter((l) => l.level === 'warn');
+	expect(warnings).toHaveLength(2);
+	expect(warnings[1].message).toBe('tasks.list: PERMISSION_DENIED tasks.list needs tasks:read');
+	host.dispose();
+});

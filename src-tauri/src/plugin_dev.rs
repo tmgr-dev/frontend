@@ -1,4 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -83,6 +85,42 @@ pub fn plugins_dev_list<R: Runtime>(app: AppHandle<R>) -> Result<Vec<FolderPlugi
   Ok(list_in(&root(&app)?))
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct FolderFingerprint {
+  folder: String,
+  fingerprint: String,
+}
+
+/// A hash of exactly what `list_in` loads for this folder (manifest.json, main.js, `ui/*.html`, the same
+/// bounds as `read_small`/`read_pages`), so hot reload watches the same files the plugin actually runs.
+fn folder_fingerprint(dir: &Path) -> String {
+  let mut hasher = DefaultHasher::new();
+  read_small(&dir.join("manifest.json")).hash(&mut hasher);
+  read_small(&dir.join("main.js")).hash(&mut hasher);
+  read_pages(dir).hash(&mut hasher);
+  format!("{:x}", hasher.finish())
+}
+
+/// One fingerprint per `<root>/<folder>/`, cheap enough to poll every couple of seconds.
+pub fn fingerprints_in(root: &Path) -> Vec<FolderFingerprint> {
+  let Ok(entries) = fs::read_dir(root) else { return Vec::new() };
+  let mut out: Vec<FolderFingerprint> = entries
+    .flatten()
+    .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
+    .map(|entry| FolderFingerprint {
+      folder: entry.file_name().to_string_lossy().into_owned(),
+      fingerprint: folder_fingerprint(&entry.path()),
+    })
+    .collect();
+  out.sort_by(|a, b| a.folder.cmp(&b.folder));
+  out
+}
+
+#[tauri::command]
+pub fn plugins_dev_fingerprints<R: Runtime>(app: AppHandle<R>) -> Result<Vec<FolderFingerprint>, String> {
+  Ok(fingerprints_in(&root(&app)?))
+}
+
 #[tauri::command]
 pub fn plugins_dev_reveal<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
   let dir = root(&app)?;
@@ -127,6 +165,37 @@ mod tests {
       }]
     );
     assert!(list_in(&root.join("missing")).is_empty());
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn fingerprint_changes_with_content_and_reverts_when_content_reverts() {
+    let root = std::env::temp_dir().join(format!("tmgr-fingerprint-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("p/ui")).unwrap();
+    fs::write(root.join("p/manifest.json"), "{}").unwrap();
+    fs::write(root.join("p/main.js"), "1").unwrap();
+    fs::write(root.join("p/ui/page.html"), "<h1>1</h1>").unwrap();
+
+    let before = fingerprints_in(&root);
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].folder, "p");
+
+    fs::write(root.join("p/main.js"), "2").unwrap();
+    let after_main = fingerprints_in(&root);
+    assert_ne!(before[0].fingerprint, after_main[0].fingerprint);
+
+    fs::write(root.join("p/main.js"), "1").unwrap();
+    fs::write(root.join("p/ui/page.html"), "<h1>2</h1>").unwrap();
+    let after_ui = fingerprints_in(&root);
+    assert_ne!(before[0].fingerprint, after_ui[0].fingerprint);
+    assert_ne!(after_main[0].fingerprint, after_ui[0].fingerprint);
+
+    fs::write(root.join("p/ui/page.html"), "<h1>1</h1>").unwrap();
+    let reverted = fingerprints_in(&root);
+    assert_eq!(before, reverted);
+
+    assert!(fingerprints_in(&root.join("missing")).is_empty());
     let _ = fs::remove_dir_all(&root);
   }
 }

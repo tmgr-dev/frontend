@@ -40,6 +40,7 @@
     "allow-local-workspace-set-schema",
     "allow-local-workspaces-list",
     "allow-plugins-dev-list",
+    "allow-plugins-dev-fingerprints",
     "allow-plugins-dev-reveal",
     "allow-plugins-safe-mode",
     "allow-plugin-pick-file",

@@ -29,6 +29,7 @@ import {
 	type WorkspacePluginRecord,
 } from './cloud';
 import { createDataApi } from './dataApi';
+import { stepDevWatch, type DevWatchState } from './devReload';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, storageIdOf, type PluginPackage } from './host';
@@ -101,6 +102,57 @@ const folderPackages = async (
 	Object.assign(folderPluginErrors, errors);
 	return packages;
 };
+
+const DEV_WATCH_INTERVAL_MS = 2000;
+
+/**
+ * Developer mode only: while the window is visible, polls each folder plugin's on-disk fingerprint and
+ * restarts just the ones that changed (their storage survives, since it lives on disk). `reset()` forces
+ * the next poll to reseed instead of restarting, so a change made while this was not the active host (or
+ * before a manual reload) is not treated as a hot-reload event on its own.
+ */
+const startDevPluginWatcher = (host: ReturnType<typeof createPluginHost>) => {
+	let watch: DevWatchState = null;
+	let polling = false;
+	const poll = async () => {
+		if (polling || !devModeStored() || document.visibilityState !== 'visible') return;
+		polling = true;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const found = await invoke<{ folder: string; fingerprint: string }[]>(
+				'plugins_dev_fingerprints',
+			).catch(() => null);
+			if (!found) return;
+			const fingerprints = Object.fromEntries(found.map((f) => [f.folder, f.fingerprint]));
+			const { next, changed } = stepDevWatch(watch, fingerprints);
+			watch = next;
+			if (!changed.length) return;
+			const list = (await invoke<FolderPlugin[]>('plugins_dev_list').catch(() => null)) ?? [];
+			const idByFolder = new Map<string, string>();
+			for (const plugin of list) {
+				try {
+					idByFolder.set(plugin.folder, JSON.parse(plugin.manifest).id);
+				} catch {
+					// an invalid manifest is already surfaced by the normal folderPackages() error list
+				}
+			}
+			await host.load();
+			for (const folder of changed) {
+				const pluginId = idByFolder.get(folder);
+				if (pluginId) await host.restart(pluginId);
+			}
+		} finally {
+			polling = false;
+		}
+	};
+	const timer = setInterval(() => void poll(), DEV_WATCH_INTERVAL_MS);
+	return {
+		reset: () => (watch = null),
+		dispose: () => clearInterval(timer),
+	};
+};
+
+let devPluginWatcher: ReturnType<typeof startDevPluginWatcher> | null = null;
 
 const clients = new Map<number, AxiosInstance>();
 
@@ -536,6 +588,7 @@ export const installPlugins = async (
 			installedBlocked.get(pluginId) ?? blockedById(pluginCatalog, pluginId),
 	});
 	setPluginHost(host);
+	devPluginWatcher = startDevPluginWatcher(host);
 	const { invoke } = await import('@tauri-apps/api/core');
 	setCatalog(
 		await invoke<Catalog>('plugin_catalog').catch(() => pluginCatalog),
@@ -649,6 +702,7 @@ export const setTrayTitlePlugin = (pluginId: string | null) => {
 export const reloadPlugins = async () => {
 	const host = pluginHost();
 	if (!host) return;
+	devPluginWatcher?.reset();
 	await host.load();
 	await host.activate(pluginState.workspace);
 };

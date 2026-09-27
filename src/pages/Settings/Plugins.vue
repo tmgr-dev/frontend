@@ -421,8 +421,17 @@
 				</form>
 
 				<details v-if="plugin.log.length" class="text-xs">
-					<summary class="cursor-pointer text-muted-foreground">
-						Log ({{ plugin.log.length }})
+					<summary
+						class="flex cursor-pointer items-center justify-between gap-2 text-muted-foreground"
+					>
+						<span>Log ({{ plugin.log.length }})</span>
+						<button
+							type="button"
+							class="text-primary hover:underline"
+							@click.prevent="copyDiagnostics(plugin)"
+						>
+							Copy diagnostics
+						</button>
 					</summary>
 					<ol
 						class="mt-2 flex max-h-48 flex-col gap-0.5 overflow-y-auto font-mono"
@@ -430,11 +439,7 @@
 						<li
 							v-for="(line, index) in plugin.log.slice(-50)"
 							:key="index"
-							:class="
-								line.level === 'error'
-									? 'text-red-600 dark:text-red-400'
-									: 'text-muted-foreground'
-							"
+							:class="logLineClass(line.level)"
 						>
 							{{ new Date(line.at).toLocaleTimeString() }} {{ line.message }}
 						</li>
@@ -466,6 +471,7 @@
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import {
 		storageIdOf,
 		type PluginEntry,
@@ -473,7 +479,7 @@
 		type PluginSource,
 		type PluginStatus,
 	} from '@/pluginSystem/host';
-	import type { Permission } from '@/pluginSystem/manifest';
+	import { PLUGIN_API_VERSION, type Permission } from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
 	import { hasMachineConsent, reachesThisComputer } from '@/pluginSystem/cloud';
 	import {
@@ -544,6 +550,7 @@
 		setup() {
 			setDocumentTitle('Plugins');
 			const store = useStore();
+			const [copyToClipboard] = useCopyToClipboard();
 			const devMode = ref(devModeStored());
 			const trayTitlePlugin = ref(trayTitlePluginStore.get() ?? 'none');
 			const consentTick = ref(0);
@@ -805,6 +812,36 @@
 						: status === 'failed' || status === 'crashed' || status === 'blocked'
 						? 'text-red-600 dark:text-red-400'
 						: 'text-muted-foreground',
+				logLineClass: (level: PluginEntry['log'][number]['level']) =>
+					({
+						error: 'text-red-600 dark:text-red-400',
+						warn: 'text-amber-600 dark:text-amber-400',
+						info: 'text-muted-foreground',
+					}[level]),
+				async copyDiagnostics(plugin: PluginEntry) {
+					const { getVersion } = await import('@tauri-apps/api/app');
+					const appVersion = await getVersion().catch(() => null);
+					const diagnostics = {
+						id: plugin.manifest.id,
+						version: plugin.manifest.version,
+						source: plugin.source,
+						origin: plugin.origin ?? null,
+						status: plugin.status,
+						error: plugin.error,
+						permissions: plugin.manifest.permissions,
+						appVersion,
+						apiVersion: PLUGIN_API_VERSION,
+						safeMode: pluginState.safeMode,
+						workspaceKind: pluginState.workspace?.kind ?? null,
+						log: plugin.log.slice(-200),
+					};
+					const ok = await copyToClipboard(JSON.stringify(diagnostics, null, 2));
+					toast(
+						ok
+							? { title: 'Diagnostics copied' }
+							: { title: 'Could not copy diagnostics', variant: 'destructive' },
+					);
+				},
 			};
 		},
 	});
