@@ -375,8 +375,12 @@ html.tauri-desktop main.app-canvas::before {
 }
 
 [data-sidebar='sidebar'] {
-	position: relative;
 	isolation: isolate;
+}
+
+/* The phone sheet carries the same attribute and must stay fixed, or it drops below the page. */
+[data-sidebar='sidebar']:not([data-mobile='true']) {
+	position: relative;
 }
 
 [data-sidebar='sidebar']::before {
