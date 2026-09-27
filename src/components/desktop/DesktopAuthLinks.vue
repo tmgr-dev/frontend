@@ -14,6 +14,7 @@
 	import store from '@/store';
 	import {
 		hasPendingDesktopAuth,
+		isLatestDesktopAuth,
 		parseAuthCallback,
 		takePendingDesktopAuth,
 	} from '@/utils/desktopAuth';
@@ -55,7 +56,7 @@
 				try {
 					response = await acceptDesktopLogin(link.code, pending.verifier);
 				} catch {
-					if (!hasPendingDesktopAuth() && !store.getters.isLoggedIn) {
+					if (isLatestDesktopAuth(pending.state) && !store.getters.isLoggedIn) {
 						failDesktopSocialLogin(
 							'Sign-in link expired or was already used. Please try again.',
 						);
@@ -63,7 +64,7 @@
 					return;
 				}
 				// A newer attempt or another login took over while this one was in flight.
-				if (hasPendingDesktopAuth() || store.getters.isLoggedIn) return;
+				if (!isLatestDesktopAuth(pending.state) || store.getters.isLoggedIn) return;
 				installDesktopLogin(response);
 				desktopAuthStatus.value = 'idle';
 				const invitation = localStorage.getItem('workspace.invitation');

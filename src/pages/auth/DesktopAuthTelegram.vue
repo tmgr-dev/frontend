@@ -37,15 +37,25 @@
 					: 'This sign-in link is not valid. Start again in TMGR.',
 			);
 
+			// A top-level form POST: the API accepts it only from this site's origin.
 			const complete = (user) => {
 				canSignIn.value = false;
 				message.value = 'Signing you in…';
-				window.location.replace(
-					desktopCompleteUrl(import.meta.env.VITE_API_BASE_URL, 'telegram', {
-						...user,
-						tx,
-					}),
+				const form = document.createElement('form');
+				form.method = 'POST';
+				form.action = desktopCompleteUrl(
+					import.meta.env.VITE_API_BASE_URL,
+					'telegram',
 				);
+				Object.entries({ ...user, tx }).forEach(([name, value]) => {
+					const input = document.createElement('input');
+					input.type = 'hidden';
+					input.name = name;
+					input.value = String(value);
+					form.appendChild(input);
+				});
+				document.body.appendChild(form);
+				form.submit();
 			};
 
 			onMounted(() => setDocumentTitle('TMGR sign-in'));

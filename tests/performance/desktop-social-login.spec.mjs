@@ -141,6 +141,51 @@ test('desktop: a slow exchange of an older attempt does not replace a newer atte
   expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();
 });
 
+test('desktop: when two attempts both reach the exchange, the older one resolving last is discarded', async ({
+  page,
+}) => {
+  const { starts } = await loggedOutDesktop(page);
+  let releaseOlder;
+  const olderGate = new Promise((resolve) => (releaseOlder = resolve));
+  let acceptCalls = 0;
+  await page.route('**/api/auth/login/desktop/accept', async (route) => {
+    acceptCalls += 1;
+    if (acceptCalls === 1) {
+      await olderGate;
+      await route.fulfill({
+        json: { data: { ...ENVELOPE.data, token: 'older-jwt' } },
+      });
+      return;
+    }
+    await route.fulfill({ json: ENVELOPE });
+  });
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await expect.poll(() => starts.length).toBe(1);
+  const olderState = starts[0].searchParams.get('state');
+  await page.evaluate(
+    (url) => window.__emit('deep-link://new-url', [url]),
+    `tmgr://auth/callback?code=${CODE}&state=${olderState}`,
+  );
+  await expect.poll(() => acceptCalls).toBe(1);
+
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await expect.poll(() => starts.length).toBe(2);
+  const newerState = starts[1].searchParams.get('state');
+  await page.evaluate(
+    (url) => window.__emit('deep-link://new-url', [url]),
+    `tmgr://auth/callback?code=${'d'.repeat(43)}&state=${newerState}`,
+  );
+  await expect.poll(() => acceptCalls).toBe(2);
+  await expect(page).not.toHaveURL(/\/login/);
+  releaseOlder();
+  await page.waitForTimeout(500);
+
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('token')).token),
+  ).toBe('desktop-jwt');
+});
+
 test('desktop: Telegram is a button that opens the browser flow', async ({
   page,
 }) => {
@@ -217,6 +262,44 @@ test('website relay: a failed exchange sends an error link back to the app', asy
     'href',
     'tmgr://auth/callback?error=google',
   );
+  await expect(page.getByText('Sign-in did not finish')).toBeVisible();
+});
+
+test('website relay: Telegram posts the signed fields with the transaction as a top-level form', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.route('https://telegram.org/js/telegram-widget.js*', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `const s = document.currentScript;
+        setTimeout(() => new Function('user', s.getAttribute('data-onauth'))(
+          { id: 42, first_name: 'Tele', auth_date: 1700000000, hash: 'ff' }), 0);`,
+    }),
+  );
+  const posted = [];
+  await page.route('**/api/auth/login/desktop/telegram/complete', async (route) => {
+    posted.push({
+      method: route.request().method(),
+      body: new URLSearchParams(route.request().postData()),
+    });
+    await route.fulfill({
+      status: 302,
+      headers: { location: '/desktop-auth/return#error=telegram' },
+    });
+  });
+
+  await page.goto(`/desktop-auth/telegram?tx=${TX}`, { waitUntil: 'commit' });
+
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0].method).toBe('POST');
+  expect(Object.fromEntries(posted[0].body)).toEqual({
+    id: '42',
+    first_name: 'Tele',
+    auth_date: '1700000000',
+    hash: 'ff',
+    tx: TX,
+  });
   await expect(page.getByText('Sign-in did not finish')).toBeVisible();
 });
 

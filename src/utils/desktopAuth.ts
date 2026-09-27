@@ -17,6 +17,7 @@ type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export const PENDING_TTL_MS = 10 * 60 * 1000;
 const PENDING_KEY = 'desktop.auth.pending';
+const LATEST_KEY = 'desktop.auth.latest';
 const CALLBACK_PREFIX = 'tmgr://auth/callback';
 const DESKTOP_STATE = /^desktop\.([A-Za-z0-9_-]{43})$/;
 const CODE = /^[A-Za-z0-9_-]{43}$/;
@@ -62,6 +63,7 @@ export const beginDesktopAuth = async (
 		createdAt: now(),
 	};
 	storage.setItem(PENDING_KEY, JSON.stringify(pending));
+	storage.setItem(LATEST_KEY, state);
 	return `${apiBaseUrl}auth/login/desktop/${provider}?code_challenge=${challenge}&state=${state}`;
 };
 
@@ -81,6 +83,12 @@ export const hasPendingDesktopAuth = (
 	const pending = readPending(storage);
 	return !!pending && now() - pending.createdAt < PENDING_TTL_MS;
 };
+
+/** False once a newer attempt was started: an older one's late result must not replace it. */
+export const isLatestDesktopAuth = (
+	state: string,
+	storage: KeyValueStorage = localStorage,
+): boolean => storage.getItem(LATEST_KEY) === state;
 
 export const clearPendingDesktopAuth = (
 	storage: KeyValueStorage = localStorage,
@@ -143,10 +151,11 @@ export const relayReturnHash = (result: RelayResult): string =>
 export const desktopCompleteUrl = (
 	apiBaseUrl: string,
 	provider: DesktopAuthProvider,
-	params: Record<string, string | number | boolean>,
+	params: Record<string, string | number | boolean> = {},
 ): string => {
 	const query = new URLSearchParams(
 		Object.entries(params).map(([key, value]) => [key, String(value)]),
-	);
-	return `${apiBaseUrl}auth/login/desktop/${provider}/complete?${query}`;
+	).toString();
+	const url = `${apiBaseUrl}auth/login/desktop/${provider}/complete`;
+	return query ? `${url}?${query}` : url;
 };

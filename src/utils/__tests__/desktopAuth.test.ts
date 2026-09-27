@@ -6,6 +6,7 @@ import {
 	createPkcePair,
 	desktopCompleteUrl,
 	desktopTxFromState,
+	isLatestDesktopAuth,
 	parseAuthCallback,
 	parseRelayFragment,
 	relayReturnHash,
@@ -114,6 +115,16 @@ describe('takePendingDesktopAuth', () => {
 		expect(takePendingDesktopAuth(newState, storage, () => 3000)).not.toBeNull();
 	});
 
+	it('only the most recently started attempt may install its session', async () => {
+		const storage = memoryStorage();
+		const older = (await startedAt(storage, 1000)).searchParams.get('state')!;
+		const newer = (await startedAt(storage, 2000)).searchParams.get('state')!;
+		takePendingDesktopAuth(newer, storage, () => 3000);
+
+		expect(isLatestDesktopAuth(older, storage)).toBe(false);
+		expect(isLatestDesktopAuth(newer, storage)).toBe(true);
+	});
+
 	it('rejects and clears an expired attempt', async () => {
 		const storage = memoryStorage();
 		const state = (await startedAt(storage, 1000)).searchParams.get('state')!;
@@ -121,7 +132,7 @@ describe('takePendingDesktopAuth', () => {
 		expect(
 			takePendingDesktopAuth(state, storage, () => 1001 + PENDING_TTL_MS),
 		).toBeNull();
-		expect(storage.data.size).toBe(0);
+		expect(storage.getItem('desktop.auth.pending')).toBeNull();
 	});
 
 	it('survives corrupted storage', () => {
@@ -198,15 +209,8 @@ describe('website relay helpers', () => {
 		).toBe(
 			`https://api.example/api/auth/login/desktop/github/complete?code=a+b%26c&tx=${TX_ID}`,
 		);
-		expect(
-			desktopCompleteUrl('https://api.example/api/', 'telegram', {
-				tx: TX_ID,
-				id: 42,
-				first_name: 'Tele',
-				hash: 'ff',
-			}),
-		).toBe(
-			`https://api.example/api/auth/login/desktop/telegram/complete?tx=${TX_ID}&id=42&first_name=Tele&hash=ff`,
+		expect(desktopCompleteUrl('https://api.example/api/', 'telegram')).toBe(
+			'https://api.example/api/auth/login/desktop/telegram/complete',
 		);
 	});
 
