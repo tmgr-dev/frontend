@@ -1,16 +1,22 @@
 import type { AuthorRef } from '@/types/author';
 import {
 	authorKindOf,
+	buildMcpUrl,
+	buildPersonaTokenSnippet,
 	byteLength,
 	DEFAULT_GRANT_PERMISSIONS,
+	DEFAULT_TOKEN_EXPIRY_DAYS,
 	effectivePermissions,
+	EXPIRY_OPTIONS,
 	extractFieldErrors,
 	isReadPermission,
 	matchesAuthorFilter,
 	parseSkillFrontMatter,
+	PERSONA_TOKEN_ENV_VAR,
 	resolveAuthor,
 	validatePersonaName,
 	validateSkillMarkdown,
+	validateTokenLabel,
 } from '../personas';
 
 describe('DEFAULT_GRANT_PERMISSIONS', () => {
@@ -302,5 +308,51 @@ describe('matchesAuthorFilter', () => {
 				{ persona: 'uuid-1' },
 			),
 		).toBe(false);
+	});
+});
+
+describe('validateTokenLabel', () => {
+	it('requires a non-blank label', () => {
+		expect(validateTokenLabel('')).toBe('Label is required');
+		expect(validateTokenLabel('   ')).toBe('Label is required');
+	});
+
+	it('rejects a label over 60 characters', () => {
+		expect(validateTokenLabel('a'.repeat(61))).toMatch(/60/);
+	});
+
+	it('accepts a valid label', () => {
+		expect(validateTokenLabel('Claude Code on my laptop')).toBeNull();
+	});
+});
+
+describe('EXPIRY_OPTIONS', () => {
+	it('offers 30/90/180/365 days with 90 as the default, and no "never"', () => {
+		expect(EXPIRY_OPTIONS).toEqual([30, 90, 180, 365]);
+		expect(DEFAULT_TOKEN_EXPIRY_DAYS).toBe(90);
+		expect(EXPIRY_OPTIONS).toContain(DEFAULT_TOKEN_EXPIRY_DAYS);
+	});
+});
+
+describe('buildMcpUrl', () => {
+	it('derives the MCP origin from an absolute API base URL', () => {
+		expect(buildMcpUrl('http://taskmanager.localhost/api/')).toBe(
+			'http://taskmanager.localhost/mcp',
+		);
+	});
+
+	it('falls back to a default origin for a relative API base URL', () => {
+		expect(buildMcpUrl('/api/')).toBe('http://localhost/mcp');
+	});
+});
+
+describe('buildPersonaTokenSnippet', () => {
+	it('contains the env var placeholder and never a real secret', () => {
+		const snippet = buildPersonaTokenSnippet('http://taskmanager.localhost/mcp');
+
+		expect(snippet).toContain(`\${${PERSONA_TOKEN_ENV_VAR}}`);
+		expect(snippet).toContain('X-Persona-Token');
+		expect(snippet).toContain('http://taskmanager.localhost/mcp');
+		expect(snippet).not.toMatch(/tmgrp_[A-Za-z0-9]/);
 	});
 });

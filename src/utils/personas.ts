@@ -171,6 +171,53 @@ export const validateSkillMarkdown = (
 	return Object.keys(errors).length > 0 ? errors : null;
 };
 
+export const TOKEN_LABEL_MAX_LENGTH = 60;
+export const EXPIRY_OPTIONS = [30, 90, 180, 365] as const;
+export const DEFAULT_TOKEN_EXPIRY_DAYS = 90;
+
+export const validateTokenLabel = (label: string): string | null => {
+	if (!label || !label.trim()) return 'Label is required';
+	if (label.length > TOKEN_LABEL_MAX_LENGTH)
+		return `Label must be ${TOKEN_LABEL_MAX_LENGTH} characters or fewer`;
+	return null;
+};
+
+export const PERSONA_TOKEN_ENV_VAR = 'TMGR_PERSONA_TOKEN';
+
+/** Node tests have no `window`; production always has one, so the fallback origin never applies there. */
+export const buildMcpUrl = (apiBaseUrl: string | undefined): string => {
+	const origin =
+		typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+	try {
+		const url = new URL(apiBaseUrl || '/api/', origin);
+		const basePath = url.pathname.replace(/\/api\/?$/, '').replace(/\/$/, '');
+		url.pathname = `${basePath}/mcp`;
+		url.search = '';
+		url.hash = '';
+		return url.toString();
+	} catch {
+		return 'https://api.tmgr.dev/mcp';
+	}
+};
+
+/** Never takes the secret itself — the placeholder is all this snippet can ever contain. */
+export const buildPersonaTokenSnippet = (mcpUrl: string): string =>
+	JSON.stringify(
+		{
+			mcpServers: {
+				tmgr: {
+					type: 'http',
+					url: mcpUrl,
+					headers: {
+						'X-Persona-Token': `\${${PERSONA_TOKEN_ENV_VAR}}`,
+					},
+				},
+			},
+		},
+		null,
+		2,
+	);
+
 export type AuthorFilter = 'all' | 'people' | 'personas' | 'plugins';
 
 export interface ResolvedAuthor {
