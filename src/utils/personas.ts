@@ -92,8 +92,7 @@ export interface ParsedSkillFrontMatter {
 	actions: string[];
 }
 
-/** Mirrors the server's front-matter parser closely enough for instant client-side feedback;
- *  the server is still the source of truth and its 422 errors are shown alongside these. */
+/** Mirrors the server's front-matter parser for instant feedback; the server's 422 is still shown alongside this. */
 export const parseSkillFrontMatter = (
 	markdown: string,
 ): ParsedSkillFrontMatter | null => {
