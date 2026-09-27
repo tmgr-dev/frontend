@@ -69,7 +69,7 @@ export interface PersonaInput {
 }
 
 export interface PersonaToken {
-	id: string;
+	id: number;
 	persona_id: string;
 	workspace_id: number;
 	workspace_name: string;
@@ -274,7 +274,7 @@ export const issuePersonaToken = async (
 };
 
 export const revokePersonaToken = async (
-	tokenId: string,
+	tokenId: number,
 	personaUuid: string,
 ): Promise<void> => {
 	await $axios.delete(`/persona-tokens/${tokenId}`);

@@ -186,7 +186,7 @@ describe('persona skills', () => {
 
 describe('persona tokens', () => {
 	const TOKEN = {
-		id: 'tok-1',
+		id: 1,
 		persona_id: 'uuid-1',
 		workspace_id: 5,
 		workspace_name: 'Demo',
@@ -233,9 +233,9 @@ describe('persona tokens', () => {
 		await listPersonaTokens('uuid-1');
 
 		(axios.delete as jest.Mock).mockResolvedValue({});
-		await revokePersonaToken('tok-1', 'uuid-1');
+		await revokePersonaToken(1, 'uuid-1');
 
-		expect(axios.delete).toHaveBeenCalledWith('/persona-tokens/tok-1');
+		expect(axios.delete).toHaveBeenCalledWith('/persona-tokens/1');
 		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
 	});
 
