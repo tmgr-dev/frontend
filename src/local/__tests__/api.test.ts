@@ -1,7 +1,7 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { taskExport, workspaceExport } from '../export';
-import { LATEST_SCHEMA, migrate, readSchemaVersion } from '../schema';
+import { LATEST_SCHEMA, MIGRATIONS, migrate, readSchemaVersion } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
@@ -226,8 +226,8 @@ describeSqlite('local workspace API on SQLite', () => {
 		]);
 		const toggles = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(toggles.board.enabled).toBe(true);
-		expect(toggles['task.relations'].enabled).toBe(false);
-		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/relations')).toBeNull();
+		expect(toggles['task.relations'].enabled).toBe(true);
+		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/nonexistent-route')).toBeNull();
 	});
 
 	it('gives a task the next ticket number of the category it moves to', async () => {
@@ -313,5 +313,113 @@ describeSqlite('local workspace API on SQLite', () => {
 		const single = await taskExport(ctx.db, task.id, 'Yurij');
 		expect(single?.path).toBe('TM-1-export-me.md');
 		expect(await taskExport(ctx.db, 9999, 'Yurij')).toBeNull();
+	});
+
+	it('migration 5 adds comment authorship, reactions and relations on top of a v4 db, and re-runs safely', async () => {
+		const fresh = memoryDb();
+		const now = clock.toISOString();
+		for (const migration of MIGRATIONS.filter((m) => m.version <= 4)) {
+			for (const statement of migration.statements) await fresh.execute(statement);
+		}
+		await fresh.execute(
+			`INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			['4'],
+		);
+		expect(await readSchemaVersion(fresh)).toBe(4);
+
+		expect(await migrate(fresh, now)).toBe(LATEST_SCHEMA);
+		const columns = (await fresh.select<any>(`PRAGMA table_info(comments)`)).map((c: any) => c.name);
+		expect(columns).toEqual(expect.arrayContaining(['author_kind', 'author_id', 'author_name']));
+
+		// A migration cut short leaves one ALTER already applied; re-running must not throw.
+		await fresh.execute(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
+		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);
+		expect(await readSchemaVersion(fresh)).toBe(LATEST_SCHEMA);
+	});
+
+	it('gives a plugin comment the author from ctx, ignoring any author fields in the body', async () => {
+		const task = await data('POST', 'tasks', { title: 'Plugin task' });
+		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' } };
+		const comment = await data('POST', `tasks/${task.id}/comments`, {
+			message: 'hi',
+			author: { kind: 'user', id: '999', name: 'Spoofed' },
+			author_kind: 'user',
+			author_id: '999',
+		});
+		expect(comment.author).toEqual({
+			kind: 'plugin',
+			id: 'tmgr.estimate',
+			name: 'Estimate',
+			owner: { id: String(ctx.user.id), name: ctx.user.name },
+		});
+
+		ctx = { ...ctx, actor: undefined };
+		const own = await data('POST', `tasks/${task.id}/comments`, { message: 'from the app' });
+		expect(own.author).toEqual({ kind: 'user', id: '7', name: 'Yurij' });
+	});
+
+	it('toggles a comment reaction per actor: on, off, and independently for a plugin', async () => {
+		const task = await data('POST', 'tasks', { title: 'React' });
+		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+
+		const toggled = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+		expect(toggled).toEqual({
+			reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 7, name: 'Yurij' }] }],
+			task_id: task.id,
+		});
+		const untoggled = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+		expect(untoggled.reactions).toEqual([]);
+
+		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' } };
+		const pluginReacted = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '🎉' });
+		expect(pluginReacted.reactions).toEqual([{ emoji: '🎉', count: 1, reacted: true, users: [] }]);
+
+		ctx = { ...ctx, actor: undefined };
+		const list = await data('GET', `tasks/${task.id}/comments`);
+		expect(list[0].reactions).toEqual([{ emoji: '🎉', count: 1, reacted: false, users: [] }]);
+
+		expect((await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '   ' })).status).toBe(422);
+		expect((await call('POST', `comments/999999/reactions/toggle`, { emoji: '👍' })).status).toBe(404);
+	});
+
+	it('creates, lists and deletes task relations; refuses the same task and unknown tasks', async () => {
+		const a = await data('POST', 'tasks', { title: 'A' });
+		const b = await data('POST', 'tasks', { title: 'B' });
+		const types = await data('GET', 'task-relation-types');
+		expect(types.map((t: any) => t.name)).toEqual([
+			'blocks',
+			'is blocked by',
+			'relates to',
+			'duplicates',
+			'is duplicated by',
+			'depends on',
+			'is dependency of',
+		]);
+		const blocks = types.find((t: any) => t.name === 'blocks');
+
+		const created = await data('POST', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
+		expect(created).toMatchObject({ task_id: a.id, related_task_id: b.id, task_relation_type_id: blocks.id });
+
+		const relations = await data('GET', `tasks/${a.id}/relations`);
+		expect(relations).toEqual([
+			{
+				id: created.id,
+				relation_type: { id: blocks.id, name: 'blocks' },
+				related_task: {
+					id: b.id,
+					title: 'B',
+					status_id: b.status_id,
+					workspace_id: -42,
+					project_category_id: null,
+				},
+			},
+		]);
+		expect((await data('GET', `tasks/${a.id}`)).relationTypeWithTask).toEqual(relations);
+
+		expect((await call('POST', `tasks/${a.id}/related-to/${a.id}/with/${blocks.id}`)).status).toBe(422);
+		expect((await call('POST', `tasks/${a.id}/related-to/999999/with/${blocks.id}`)).status).toBe(404);
+
+		await call('DELETE', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
+		expect(await data('GET', `tasks/${a.id}/relations`)).toEqual([]);
 	});
 });

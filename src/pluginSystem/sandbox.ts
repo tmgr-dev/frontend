@@ -71,6 +71,9 @@ const PRELUDE = `(() => {
 			get: (id) => call('tasks.get', { id }),
 			create: (fields) => call('tasks.create', fields),
 			update: (id, patch) => call('tasks.update', { id, patch }),
+			relations: (taskId) => call('tasks.relations', { taskId }),
+			relate: (taskId, otherId, type) => call('tasks.relate', { taskId, otherId, type }),
+			unrelate: (taskId, otherId, type) => call('tasks.unrelate', { taskId, otherId, type }),
 		}),
 		statuses: freeze({ list: () => call('statuses.list') }),
 		categories: freeze({ list: () => call('categories.list') }),
@@ -78,6 +81,7 @@ const PRELUDE = `(() => {
 		comments: freeze({
 			list: (taskId) => call('comments.list', { taskId }),
 			add: (taskId, text) => call('comments.add', { taskId, text }),
+			react: (commentId, emoji) => call('comments.react', { commentId, emoji }),
 		}),
 		storage: freeze({
 			get: (key) => call('storage.get', { key }),

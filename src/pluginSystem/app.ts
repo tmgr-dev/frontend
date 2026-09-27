@@ -304,10 +304,21 @@ export const installPlugins = async (
 			new Worker(new URL('./worker.ts', import.meta.url), {
 				type: 'module',
 			}) as unknown as WorkerEndpoint,
-		api: (pluginId, workspace, storageId) =>
+		api: (pluginId, workspace, storageId, pluginName) =>
 			workspace.kind === 'cloud'
-				? createDataApi(cloudClientFor(workspace.id, pluginId), pluginId, pluginId)
-				: createDataApi(clientFor(workspace.id, store), pluginId, storageId),
+				? createDataApi(
+						cloudClientFor(workspace.id, pluginId),
+						pluginId,
+						pluginId,
+						pluginName,
+						true,
+				  )
+				: createDataApi(
+						clientFor(workspace.id, store),
+						pluginId,
+						storageId,
+						pluginName,
+				  ),
 		subscribe: (handler) => domainEvents.on(handler),
 		enabled: {
 			get: (pluginId, workspaceId) => {

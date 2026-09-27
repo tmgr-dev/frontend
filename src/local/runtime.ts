@@ -1,5 +1,5 @@
 import { migrate } from './schema';
-import type { LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
+import type { LocalActor, LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
 
 const ACTIVE_KEY = 'local.activeWorkspace';
 
@@ -96,6 +96,7 @@ const filesOf = (workspace: LocalWorkspace): LocalFiles => {
 export const localContext = async (
 	workspace: LocalWorkspace,
 	user: LocalUser,
+	actor?: LocalActor,
 ): Promise<LocalContext> => {
 	let db = databases.get(workspace.code);
 	if (!db) {
@@ -103,7 +104,7 @@ export const localContext = async (
 		databases.set(workspace.code, db);
 		db.catch(() => databases.delete(workspace.code));
 	}
-	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace) };
+	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace), actor };
 };
 
 /** Stores an attachment of the active local workspace over IPC (WKWebView drops fetch bodies to custom schemes). */

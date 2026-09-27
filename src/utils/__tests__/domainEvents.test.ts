@@ -36,13 +36,17 @@ describe('eventsForResponse', () => {
 				response('put', 'tasks/7', task, { title: 'x' }),
 				current,
 			),
-		).toEqual([{ type: 'task.updated', workspaceId: -42, taskId: 7, task }]);
+		).toEqual([
+			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['title'] },
+		]);
 		expect(
 			eventsForResponse(
 				response('put', 'tasks/7/time', task, { common_time: 60 }),
 				current,
 			),
-		).toEqual([{ type: 'task.updated', workspaceId: -42, taskId: 7, task }]);
+		).toEqual([
+			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['common_time'] },
+		]);
 		expect(
 			eventsForResponse(
 				response('delete', '/tasks/7', { success: true }),
@@ -58,7 +62,7 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([
-			{ type: 'task.updated', workspaceId: -42, taskId: 7, task },
+			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['status_id'] },
 			{
 				type: 'task.statusChanged',
 				workspaceId: -42,
@@ -70,7 +74,7 @@ describe('eventsForResponse', () => {
 		expect(
 			eventsForResponse(response('put', 'tasks/7/done', task), current),
 		).toEqual([
-			{ type: 'task.updated', workspaceId: -42, taskId: 7, task },
+			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: [] },
 			{
 				type: 'task.statusChanged',
 				workspaceId: -42,
@@ -138,6 +142,71 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([{ type: 'comment.deleted', workspaceId: 5, commentId: 3 }]);
+	});
+
+	it('reports a reaction toggle, with the task id when the response carries it', () => {
+		const reactions = [{ emoji: '👍', count: 1, reacted: true }];
+		expect(
+			eventsForResponse(
+				response('post', 'comments/3/reactions/toggle', reactions),
+				current,
+			),
+		).toEqual([
+			{ type: 'comment.reactionChanged', workspaceId: 5, commentId: 3, reactions },
+		]);
+		expect(
+			eventsForResponse(
+				response('post', 'comments/3/reactions/toggle', { reactions, task_id: 7 }),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'comment.reactionChanged',
+				workspaceId: 5,
+				commentId: 3,
+				taskId: 7,
+				reactions,
+			},
+		]);
+	});
+
+	it('reports a relation change, naming the type when the response carries it', () => {
+		expect(
+			eventsForResponse(
+				response('post', 'tasks/7/related-to/9/with/1', {
+					id: 1,
+					task_id: 7,
+					related_task_id: 9,
+					task_relation_type_id: 1,
+					relation_type: { id: 1, name: 'blocks' },
+				}),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'task.relationChanged',
+				workspaceId: 5,
+				taskId: 7,
+				otherTaskId: 9,
+				relationType: 'blocks',
+				change: 'added',
+			},
+		]);
+		expect(
+			eventsForResponse(
+				response('delete', 'tasks/7/related-to/9/with/1', { success: true }),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'task.relationChanged',
+				workspaceId: 5,
+				taskId: 7,
+				otherTaskId: 9,
+				relationType: 1,
+				change: 'removed',
+			},
+		]);
 	});
 
 	it('ignores reads and unrelated writes', () => {
@@ -240,6 +309,7 @@ it('marks events caused by a plugin with that plugin as the actor', async () => 
 			workspaceId: -42,
 			taskId: 7,
 			task,
+			changed: ['title'],
 			actor: 'plugin:tmgr.estimate',
 		},
 	]);

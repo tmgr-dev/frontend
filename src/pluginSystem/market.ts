@@ -80,4 +80,7 @@ export const permissionChanges = (
 	origins: after.network.allowedOrigins.filter(
 		(o) => !before.network.allowedOrigins.includes(o),
 	),
+	domains: after.links.allowedDomains.filter(
+		(d) => !before.links.allowedDomains.includes(d),
+	),
 });

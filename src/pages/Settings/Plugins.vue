@@ -164,9 +164,18 @@
 						(this computer only)
 					</p>
 					<p
+						v-if="offer.pkg.manifest.links.allowedDomains.length"
+						class="font-medium text-red-600 dark:text-red-400"
+					>
+						It can open links to:
+						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
+					</p>
+					<p
 						v-if="
 							offer.changes &&
-							(offer.changes.permissions.length || offer.changes.origins.length)
+							(offer.changes.permissions.length ||
+								offer.changes.origins.length ||
+								offer.changes.domains.length)
 						"
 						class="font-medium text-red-600 dark:text-red-400"
 					>
@@ -175,6 +184,7 @@
 							[
 								...offer.changes.permissions.map((p) => permissionText([p])),
 								...offer.changes.origins,
+								...offer.changes.domains,
 							].join(', ')
 						}}
 					</p>
@@ -469,6 +479,16 @@
 		'files:export': "save files to this workspace's exports folder",
 		'files:attachments': 'read task attachments',
 		'files:pick': 'read a file you choose',
+		'statuses:write': 'create and change statuses',
+		'categories:write': 'create and change categories',
+		'relations:read': 'read links between tasks',
+		'relations:write': 'link and unlink tasks',
+		'agent_work:read': 'read AI agent work on tasks',
+		'agent_work:write': 'record AI agent work on tasks',
+		alarms: 'wake up on a schedule in the background',
+		tray: 'add items and text to the menu bar icon',
+		deeplinks: 'be opened from tmgr:// links in other apps',
+		'links:open': 'open web links in your browser',
 	};
 
 	export default defineComponent({

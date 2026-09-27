@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.0';
+export const PLUGIN_API_VERSION = '1.1';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -13,6 +13,16 @@ export const PERMISSIONS = [
 	'files:export',
 	'files:attachments',
 	'files:pick',
+	'statuses:write',
+	'categories:write',
+	'relations:read',
+	'relations:write',
+	'agent_work:read',
+	'agent_work:write',
+	'alarms',
+	'tray',
+	'deeplinks',
+	'links:open',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -34,6 +44,8 @@ export interface PluginManifest {
 	permissions: Permission[];
 	/** Only origins on this computer; a plugin never reaches the internet. */
 	network: { allowedOrigins: string[] };
+	/** Hosts a `link` node may open in the system browser (https only); needs links:open. */
+	links: { allowedDomains: string[] };
 	contributes: {
 		boardCardBadges: { id: string }[];
 		statusBarItems: { id: string }[];
@@ -90,11 +102,20 @@ const list = <T>(
 	return (value as unknown[]).map(parse);
 };
 
+/** Same major, and no newer minor than this app implements: a ^1.2 plugin would call methods 1.1 lacks. */
 const engineSupported = (range: unknown) => {
-	const major =
-		typeof range === 'string' ? range.match(/^\^?(\d+)\./)?.[1] : null;
-	return major === PLUGIN_API_VERSION.split('.')[0];
+	const match =
+		typeof range === 'string' ? range.match(/^\^?(\d+)\.(\d+)/) : null;
+	const [major, minor] = PLUGIN_API_VERSION.split('.').map(Number);
+	return !!match && Number(match[1]) === major && Number(match[2]) <= minor;
 };
+
+const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+const parseDomain = (value: unknown): string =>
+	typeof value === 'string' && DOMAIN.test(value)
+		? value
+		: fail(`links domain ${String(value)} must be a host name like example.com`);
 
 const parseSettings = (
 	value: any,
@@ -130,7 +151,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 	const version = text(raw.version, 'version', 40);
 	if (!SEMVER.test(version)) fail(`version "${version}" is not semver`);
 	if (!engineSupported(raw.engines?.tmgr))
-		fail(`engines.tmgr must be ^${PLUGIN_API_VERSION}`);
+		fail(`engines.tmgr must be ^1.0 up to ^${PLUGIN_API_VERSION}`);
 	const permissions = list(raw.permissions, 'permissions', (permission) =>
 		(PERMISSIONS as readonly string[]).includes(permission)
 			? (permission as Permission)
@@ -141,6 +162,13 @@ export const parseManifest = (raw: any): PluginManifest => {
 		return LOCAL_ID.test(value) ? value : fail(`${field} id "${value}"`);
 	};
 	const c = raw.contributes ?? {};
+	const allowedDomains = [
+		...new Set(
+			list(raw.links?.allowedDomains, 'links.allowedDomains', parseDomain),
+		),
+	];
+	if (allowedDomains.length && !permissions.includes('links:open'))
+		fail('links.allowedDomains needs the links:open permission');
 	return {
 		id,
 		name: text(raw.name, 'name', 80),
@@ -161,6 +189,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 				),
 			],
 		},
+		links: { allowedDomains },
 		contributes: {
 			boardCardBadges: list(c.boardCardBadges, 'boardCardBadges', (item) => ({
 				id: localId(item, 'boardCardBadges'),

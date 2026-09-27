@@ -140,6 +140,45 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS routine_instances_routine_idx ON routine_instances (routine_id, scheduled_for)`,
 		],
 	},
+	{
+		version: 5,
+		statements: [
+			`ALTER TABLE comments ADD COLUMN author_kind TEXT NOT NULL DEFAULT 'user'`,
+			`ALTER TABLE comments ADD COLUMN author_id TEXT`,
+			`ALTER TABLE comments ADD COLUMN author_name TEXT`,
+			`CREATE TABLE IF NOT EXISTS comment_reactions (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+				emoji TEXT NOT NULL,
+				actor_kind TEXT NOT NULL,
+				actor_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				UNIQUE (comment_id, emoji, actor_kind, actor_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS comment_reactions_comment_idx ON comment_reactions (comment_id)`,
+			`CREATE TABLE IF NOT EXISTS task_relation_types (
+				id INTEGER PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE
+			)`,
+			`INSERT OR IGNORE INTO task_relation_types (id, name) VALUES
+				(1, 'blocks'),
+				(2, 'is blocked by'),
+				(3, 'relates to'),
+				(4, 'duplicates'),
+				(5, 'is duplicated by'),
+				(6, 'depends on'),
+				(7, 'is dependency of')`,
+			`CREATE TABLE IF NOT EXISTS task_relations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				related_task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				relation_type_id INTEGER NOT NULL REFERENCES task_relation_types(id),
+				created_at TEXT NOT NULL,
+				UNIQUE (task_id, related_task_id, relation_type_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS task_relations_task_idx ON task_relations (task_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -180,7 +219,21 @@ export const migrate = async (
 	if (current > 0 && current < LATEST_SCHEMA && beforeMigration) await beforeMigration(current);
 	for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
 		for (const statement of migration.statements) {
-			await db.execute(statement);
+			try {
+				await db.execute(statement);
+			} catch (error) {
+				// A migration cut short may have already added this column; SQLite has no
+				// "ADD COLUMN IF NOT EXISTS", so re-running it is expected to hit this once. The
+				// error can be a plain string (Tauri's invoke rejects with the Rust side's String)
+				// or an Error (node:sqlite in tests), so match on whichever message it carries.
+				const message =
+					typeof error === 'string'
+						? error
+						: typeof (error as { message?: unknown })?.message === 'string'
+						  ? (error as { message: string }).message
+						  : '';
+				if (!/duplicate column name/i.test(message)) throw error;
+			}
 		}
 		await db.execute(
 			`INSERT INTO meta (key, value) VALUES ('schema_version', ?)

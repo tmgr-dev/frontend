@@ -76,18 +76,21 @@ it('lists what an update would newly allow', () => {
 		release({
 			manifest: manifest({
 				version: '1.1.0',
-				permissions: ['tasks:read', 'tasks:write'],
+				permissions: ['tasks:read', 'tasks:write', 'links:open'],
 				network: { allowedOrigins: ['http://localhost:11434'] },
+				links: { allowedDomains: ['gitlab.com'] },
 			}),
 			code: '',
 		}),
 	).manifest;
 	expect(permissionChanges(before, after)).toEqual({
-		permissions: ['tasks:write'],
+		permissions: ['tasks:write', 'links:open'],
 		origins: ['http://localhost:11434'],
+		domains: ['gitlab.com'],
 	});
 	expect(permissionChanges(after, before)).toEqual({
 		permissions: [],
 		origins: [],
+		domains: [],
 	});
 });

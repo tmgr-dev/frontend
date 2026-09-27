@@ -9,6 +9,8 @@ export type DomainEvent = (
 			workspaceId: number | null;
 			taskId: number;
 			task: Entity;
+			/** Only on task.updated: the task fields named in the write's request body. */
+			changed?: string[];
 	  }
 	| { type: 'task.deleted'; workspaceId: number | null; taskId: number }
 	| {
@@ -31,6 +33,21 @@ export type DomainEvent = (
 			comment: Entity;
 	  }
 	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number }
+	| {
+			type: 'comment.reactionChanged';
+			workspaceId: number | null;
+			commentId: number;
+			taskId?: number;
+			reactions: Entity[];
+	  }
+	| {
+			type: 'task.relationChanged';
+			workspaceId: number | null;
+			taskId: number;
+			otherTaskId: number;
+			relationType: string | number;
+			change: 'added' | 'removed';
+	  }
 ) & { actor?: string };
 
 export type DomainEventHandler = (event: DomainEvent) => void;
@@ -94,6 +111,24 @@ const bodyOf = (data: unknown): Entity => {
 
 const TASK_SUBRESOURCES = new Set(['time', 'settings']);
 
+const KNOWN_TASK_FIELDS = new Set([
+	'title',
+	'description',
+	'description_json',
+	'status_id',
+	'project_category_id',
+	'priority',
+	'approximately_time',
+	'checkpoints',
+	'settings',
+	'expired_at',
+	'common_time',
+]);
+
+/** Only the task fields the write's own request body named; a status-shortcut route with no body names none. */
+const changedFields = (body: Entity): string[] =>
+	Object.keys(body).filter((key) => KNOWN_TASK_FIELDS.has(key));
+
 /** The domain events a successful API write stands for. Pure: reads nothing but its arguments. */
 export const eventsForResponse = (
 	response: ObservedResponse,
@@ -112,9 +147,21 @@ export const eventsForResponse = (
 			  response.config.params?.workspace_id != null
 			? requested
 			: currentWorkspaceId();
-	const withTask = (type: 'task.created' | 'task.updated', id: number) =>
+	const withTask = (
+		type: 'task.created' | 'task.updated',
+		id: number,
+		changed?: string[],
+	) =>
 		payload
-			? [{ type, workspaceId: workspaceOf(payload), taskId: id, task: payload }]
+			? [
+					{
+						type,
+						workspaceId: workspaceOf(payload),
+						taskId: id,
+						task: payload,
+						...(changed ? { changed } : {}),
+					},
+			  ]
 			: [];
 
 	let match: RegExpMatchArray | null;
@@ -125,7 +172,11 @@ export const eventsForResponse = (
 		const taskId = Number(match[1]);
 		if (method === 'delete')
 			return [{ type: 'task.deleted', workspaceId: workspaceOf(), taskId }];
-		const events: DomainEvent[] = withTask('task.updated', taskId);
+		const events: DomainEvent[] = withTask(
+			'task.updated',
+			taskId,
+			changedFields(body),
+		);
 		if ('status_id' in body && payload?.status_id != null) {
 			events.push({
 				type: 'task.statusChanged',
@@ -167,7 +218,11 @@ export const eventsForResponse = (
 		payload
 	) {
 		const taskId = Number(match[1]);
-		const events: DomainEvent[] = withTask('task.updated', taskId);
+		const events: DomainEvent[] = withTask(
+			'task.updated',
+			taskId,
+			changedFields(body),
+		);
 		if (!TASK_SUBRESOURCES.has(match[2]) && payload.status_id != null) {
 			events.push({
 				type: 'task.statusChanged',
@@ -210,6 +265,43 @@ export const eventsForResponse = (
 				},
 			];
 		}
+	}
+	if (
+		(match = path.match(/^comments\/(\d+)\/reactions\/toggle$/)) &&
+		method === 'post'
+	) {
+		const raw = payload as unknown;
+		const reactions = Array.isArray(raw)
+			? raw
+			: Array.isArray((raw as Entity)?.reactions)
+			? (raw as Entity).reactions
+			: [];
+		const taskId = Array.isArray(raw) ? undefined : (raw as Entity)?.task_id;
+		return [
+			{
+				type: 'comment.reactionChanged',
+				workspaceId: workspaceOf(),
+				commentId: Number(match[1]),
+				...(taskId != null ? { taskId: Number(taskId) } : {}),
+				reactions,
+			},
+		];
+	}
+	if (
+		(match = path.match(/^tasks\/(\d+)\/related-to\/(\d+)\/with\/(\d+)$/)) &&
+		(method === 'post' || method === 'delete')
+	) {
+		const relationTypeName = (payload as Entity)?.relation_type?.name;
+		return [
+			{
+				type: 'task.relationChanged',
+				workspaceId: workspaceOf(),
+				taskId: Number(match[1]),
+				otherTaskId: Number(match[2]),
+				relationType: relationTypeName ?? Number(match[3]),
+				change: method === 'post' ? 'added' : 'removed',
+			},
+		];
 	}
 	return [];
 };

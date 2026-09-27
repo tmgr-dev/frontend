@@ -36,6 +36,9 @@ it('knows which plugins reach the member’s computer and what can be shared', (
 	expect(reachesThisComputer(manifest({ permissions: ['tasks:read'] }))).toBe(false);
 	expect(reachesThisComputer(manifest({ permissions: ['files:pick'] }))).toBe(true);
 	expect(reachesThisComputer(manifest({ network: { allowedOrigins: ['http://localhost:11434'] } }))).toBe(true);
+	expect(reachesThisComputer(manifest({ permissions: ['tray'] }))).toBe(true);
+	expect(reachesThisComputer(manifest({ permissions: ['links:open'] }))).toBe(true);
+	expect(reachesThisComputer(manifest({ permissions: ['alarms'] }))).toBe(false);
 	const entry = { manifest: manifest({ permissions: ['tasks:read'] }), status: 'stopped' as const, error: null, log: [] };
 	expect(pinOf({ ...entry, source: 'builtin' })).toMatchObject({ repo: 'builtin', sha256: null, version: '1.2.0' });
 	expect(pinOf({ ...entry, source: 'folder' })).toBeNull();

@@ -47,6 +47,10 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		stopTimer: record('stopTimer'),
 		listComments: record('listComments'),
 		addComment: record('addComment'),
+		reactToComment: record('reactToComment'),
+		listRelations: record('listRelations'),
+		relateTask: record('relateTask'),
+		unrelateTask: record('unrelateTask'),
 		storageGet: record('storageGet'),
 		storageSet: record('storageSet'),
 		storageDelete: record('storageDelete'),
@@ -153,6 +157,57 @@ it('passes only allowlisted, well-typed task fields', async () => {
 	expect(await code(broker.call('tasks.delete', { id: 4 }))).toBe(
 		'UNKNOWN_METHOD',
 	);
+});
+
+it('gates reactions and relations behind their permissions, validated and rate-limited as writes', async () => {
+	const { broker, api } = setup(['comments:read', 'relations:read']);
+	expect(
+		await code(broker.call('comments.react', { commentId: 1, emoji: '👍' })),
+	).toBe('PERMISSION_DENIED');
+	expect(
+		await code(broker.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' })),
+	).toBe('PERMISSION_DENIED');
+	expect(
+		await code(broker.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' })),
+	).toBe('PERMISSION_DENIED');
+	expect(await code(broker.call('tasks.relations', { taskId: 1 }))).toBe('ok');
+	expect(api.calls).toEqual([['listRelations', 1]]);
+
+	const { broker: writer, api: writerApi } = setup([
+		'comments:write',
+		'relations:write',
+	]);
+	expect(
+		await code(writer.call('comments.react', { commentId: 1, emoji: '  ' })),
+	).toBe('INVALID_PARAMS');
+	expect(
+		await code(writer.call('comments.react', { commentId: 1, emoji: 'x'.repeat(33) })),
+	).toBe('INVALID_PARAMS');
+	expect(
+		await code(writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'nope' })),
+	).toBe('INVALID_PARAMS');
+	expect(await code(writer.call('comments.react', { commentId: 1, emoji: '👍' }))).toBe(
+		'ok',
+	);
+	expect(
+		await code(writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' })),
+	).toBe('ok');
+	expect(
+		await code(writer.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' })),
+	).toBe('ok');
+	expect(writerApi.calls).toEqual([
+		['reactToComment', 1, '👍'],
+		['relateTask', 1, 2, 'blocks'],
+		['unrelateTask', 1, 2, 'blocks'],
+	]);
+
+	const { broker: burstWriter } = setup(['comments:write']);
+	const results: string[] = [];
+	for (let i = 0; i < 21; i++) {
+		results.push(await code(burstWriter.call('comments.react', { commentId: 1, emoji: '👍' })));
+	}
+	expect(results.filter((r) => r === 'ok')).toHaveLength(20);
+	expect(results[20]).toBe('RATE_LIMITED');
 });
 
 it('refuses every call once the app has left the plugin workspace', async () => {

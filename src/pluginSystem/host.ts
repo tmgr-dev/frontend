@@ -94,6 +94,7 @@ export interface PluginHostDeps {
 		pluginId: string,
 		workspace: PluginWorkspace,
 		storageId: string,
+		pluginName: string,
 	) => DataApi;
 	subscribe: (handler: (event: DomainEvent) => void) => () => void;
 	enabled: {
@@ -269,6 +270,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				pluginId,
 				workspace,
 				pkg.origin ? `${pluginId}@github.com/${pkg.origin.repo}` : pluginId,
+				manifest.name,
 			),
 			settings: () => settingsOf(pluginId),
 			notify: (message) => deps.notify(`Plugin ${manifest.name}`, message),
