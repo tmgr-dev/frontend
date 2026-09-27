@@ -74,7 +74,7 @@ export interface Activity {
 	subject_name: string;
 	description: string;
 	user: ActivityUser;
-	actor?: AuthorRef;
+	actor?: AuthorRef | null;
 	workspace_id: number;
 	subject_type?: string;
 	subject_id?: number;
