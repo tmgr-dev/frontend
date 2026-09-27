@@ -86,6 +86,24 @@
 												</a>
 											</template>
 										</FiltersBoard>
+										<template v-if="pluginBoardFilters.length">
+											<div class="h-5 w-px shrink-0 bg-line"></div>
+											<button
+												v-for="filter in pluginBoardFilters"
+												:key="filter.key"
+												type="button"
+												:title="filter.pluginName"
+												:class="[
+													'rounded-pill border px-3 py-1 text-xs font-medium transition-colors',
+													boardFilterToggles[filter.key]
+														? 'border-brand bg-brand/10 text-brand'
+														: 'border-line text-ink-subtle hover:bg-surface-hover',
+												]"
+												@click="toggleBoardFilter(filter.key)"
+											>
+												{{ filter.title }}
+											</button>
+										</template>
 									</div>
 								</Teleport>
 							</div>
@@ -382,6 +400,7 @@
 															>
 																<template #item="{ element: task }">
 																	<ViewportTaskCard
+																		v-show="taskMatchesBoardFilters(task)"
 																		:enabled="column.tasks.length > 100"
 																		:task="task"
 																		:statuses="statuses"
@@ -779,6 +798,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePusher } from '@/composable/usePusher';
 	import { createCardBadgeFeed } from '@/pluginSystem/cardBadges';
+	import { pluginState } from '@/pluginSystem/state';
 	import { markRaw } from 'vue';
 	import { createBoardLoader, filterBoardTasks } from '@/utils/boardLoading';
 	import { boardTaskCounts } from '@/utils/boardSummary';
@@ -872,6 +892,7 @@
 			],
 			columns: [],
 			pluginBadgeFeed: markRaw(createCardBadgeFeed()),
+			boardFilterToggles: {},
 			activeDraggable: false,
 			color: {
 				hue: 235,
@@ -962,6 +983,15 @@
 				},
 				deep: true,
 			},
+			pluginBoardFilters(next) {
+				const valid = new Set(next.map((filter) => filter.key));
+				const kept = Object.fromEntries(
+					Object.entries(this.boardFilterToggles).filter(([key]) => valid.has(key)),
+				);
+				if (Object.keys(kept).length !== Object.keys(this.boardFilterToggles).length) {
+					this.boardFilterToggles = kept;
+				}
+			},
 		},
 		computed: {
 			pluginBadgeKey() {
@@ -984,8 +1014,43 @@
 			sprintSummary() {
 				return boardTaskCounts(this.columns);
 			},
+			pluginBoardFilters() {
+				return Object.values(pluginState.plugins)
+					.filter((plugin) => plugin.status === 'running')
+					.flatMap((plugin) =>
+						plugin.manifest.contributes.boardFilters.map((filter) => ({
+							key: `${plugin.manifest.id}::${filter.id}`,
+							pluginId: plugin.manifest.id,
+							pluginName: plugin.manifest.name,
+							title: filter.title,
+							badgeKey: filter.key,
+						})),
+					);
+			},
+			activeBoardFilters() {
+				return this.pluginBoardFilters.filter(
+					(filter) => this.boardFilterToggles[filter.key],
+				);
+			},
 		},
 		methods: {
+			toggleBoardFilter(key) {
+				this.boardFilterToggles = {
+					...this.boardFilterToggles,
+					[key]: !this.boardFilterToggles[key],
+				};
+			},
+			taskMatchesBoardFilters(task) {
+				if (!this.activeBoardFilters.length) return true;
+				const badges = this.pluginBadgeFeed.badges[task.id] || [];
+				return this.activeBoardFilters.every((filter) =>
+					badges.some(
+						(badge) =>
+							badge.pluginId === filter.pluginId &&
+							(!filter.badgeKey || badge.key === filter.badgeKey),
+					),
+				);
+			},
 			updateSingleTaskInBoard(updatedTask) {
 				const affected = new Set(
 					this.columns

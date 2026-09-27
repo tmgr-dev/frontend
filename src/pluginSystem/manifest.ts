@@ -53,6 +53,8 @@ export interface PluginManifest {
 		/** With `ui`, the view is the plugin's own HTML page, opened in a separate window. */
 		views: { id: string; title: string; ui?: string }[];
 		taskPanelSections: { id: string; title: string }[];
+		/** Extra board quick-filters, each keyed to a badge (and optionally its `key`) from this plugin's own boardCardBadges. */
+		boardFilters: { id: string; title: string; badge: string; key?: string }[];
 		settings: {
 			type: 'object';
 			properties: Record<string, SettingSchema>;
@@ -162,6 +164,10 @@ export const parseManifest = (raw: any): PluginManifest => {
 		return LOCAL_ID.test(value) ? value : fail(`${field} id "${value}"`);
 	};
 	const c = raw.contributes ?? {};
+	const boardCardBadges = list(c.boardCardBadges, 'boardCardBadges', (item) => ({
+		id: localId(item, 'boardCardBadges'),
+	}));
+	const boardCardBadgeIds = new Set(boardCardBadges.map((b) => b.id));
 	const allowedDomains = [
 		...new Set(
 			list(raw.links?.allowedDomains, 'links.allowedDomains', parseDomain),
@@ -191,9 +197,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 		},
 		links: { allowedDomains },
 		contributes: {
-			boardCardBadges: list(c.boardCardBadges, 'boardCardBadges', (item) => ({
-				id: localId(item, 'boardCardBadges'),
-			})),
+			boardCardBadges,
 			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({
 				id: localId(item, 'statusBarItems'),
 			})),
@@ -227,6 +231,19 @@ export const parseManifest = (raw: any): PluginManifest => {
 					title: text(item?.title, 'taskPanelSections.title', 60),
 				}),
 			),
+			boardFilters: list(c.boardFilters, 'boardFilters', (item) => {
+				const badge = text(item?.badge, 'boardFilters.badge', 60);
+				if (!boardCardBadgeIds.has(badge))
+					fail(`boardFilters.badge "${badge}" is not a declared boardCardBadges id`);
+				const key = item?.key === undefined ? undefined : text(item.key, 'boardFilters.key', 40);
+				if (key !== undefined && !/^[a-z0-9_-]+$/.test(key)) fail('boardFilters.key');
+				return {
+					id: localId(item, 'boardFilters'),
+					title: text(item?.title, 'boardFilters.title', 40),
+					badge,
+					key,
+				};
+			}),
 			settings: parseSettings(c.settings),
 		},
 	};

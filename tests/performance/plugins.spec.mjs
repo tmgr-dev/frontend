@@ -57,6 +57,97 @@ test('the built-in estimate plugin draws its badge, status bar item, page and ta
   );
 });
 
+const multi = {
+  folder: 'dev.multi',
+  manifest: JSON.stringify({
+    id: 'dev.multi',
+    name: 'Multi badges',
+    version: '1.0.0',
+    engines: { tmgr: '^1.0' },
+    permissions: ['tasks:read', 'notifications'],
+    contributes: {
+      boardCardBadges: [{ id: 'multi' }],
+      taskPanelSections: [{ id: 'info', title: 'Info' }],
+      commands: [{ id: 'dev.multi.go', title: 'Run' }],
+    },
+  }),
+  code: `
+    tmgr.ui.provideBadges('multi', (tasks) => Object.fromEntries(tasks.map((t) => [t.id, [
+      { text: 'B1', color: 'blue' },
+      { text: 'B2', color: 'green' },
+      { text: 'B3', color: 'red' },
+      { text: 'B4', color: 'purple' },
+    ]])));
+    tmgr.commands.register('dev.multi.go', async (args) => {
+      await tmgr.ui.notify('ran ' + JSON.stringify(args));
+    });
+    tmgr.ui.provideTaskSection('info', (task) => ({
+      type: 'stack',
+      children: [
+        { type: 'copyable', text: 'id-' + task.id, label: 'ID' },
+        { type: 'keyValue', items: [{ key: 'Title', value: task.title }] },
+        {
+          type: 'button',
+          text: 'Run',
+          command: 'dev.multi.go',
+          args: { taskId: task.id },
+          confirm: 'Run this action?',
+        },
+      ],
+    }));
+  `,
+};
+
+test('several badges compact to 3 + "+N", and a task section runs a confirmed command with args', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('plugins.devMode', 'true'),
+  );
+  const shell = await desktopPage(page, {}, { devPlugins: [multi] });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+  const [backlog] = await shell('local_db_select', {
+    code: 'personal',
+    sql: `SELECT id FROM statuses WHERE type = 'default'`,
+    params: [],
+  });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO tasks (title, status_id, created_at, updated_at) VALUES ('Multi badge task', ?, '', '')`,
+    params: [backlog.id],
+  });
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page
+    .locator('article', { hasText: 'Multi badges' })
+    .getByRole('switch')
+    .click();
+  await page.goto('/local-personal/board');
+
+  await expect(page.getByText('B1').first()).toBeVisible();
+  await expect(page.getByText('B2').first()).toBeVisible();
+  await expect(page.getByText('B3').first()).toBeVisible();
+  await expect(page.getByText('B4')).toHaveCount(0);
+  await expect(page.getByTitle('B4')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Multi badge task' }).click();
+  await expect(page.getByText('id-1')).toBeVisible();
+  await expect(page.getByText('Title')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog.getByText('Multi badges')).toBeVisible();
+  await expect(dialog.getByText('Run this action?')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('ran {"taskId":1}').first()).toBeVisible();
+});
+
 const hostile = {
   folder: 'dev.hostile',
   manifest: JSON.stringify({

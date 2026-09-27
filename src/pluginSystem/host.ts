@@ -17,7 +17,14 @@ import {
 	type PluginProcess,
 	type WorkerEndpoint,
 } from './process';
-import { sanitizeTree, type Color, type UiNode } from './uiTree';
+import {
+	isLinkAllowed,
+	sanitizeTree,
+	COLORS,
+	type Color,
+	type LinkContext,
+	type UiNode,
+} from './uiTree';
 
 export type PluginSource = 'builtin' | 'folder' | 'installed';
 export type PluginStatus =
@@ -73,6 +80,8 @@ export interface CardBadge {
 	text: string;
 	color: Color;
 	tooltip: string | null;
+	priority: number;
+	key?: string;
 }
 
 export interface PluginHostState {
@@ -127,6 +136,8 @@ export interface PluginHostDeps {
 	machineAllowed?: (pluginId: string, workspace: PluginWorkspace) => boolean;
 	/** Why a plugin must not run (the signed blocklist); it wins over every other setting. */
 	blocked?: (pluginId: string) => string | null;
+	/** Opens a link a `link` node was allowed to open; desktop only, so the web build has no-op links. */
+	openExternal?: (url: string) => void;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -137,7 +148,20 @@ const FAULT_WINDOW_MS = 5 * 60_000;
 const LOG_LIMIT = 200;
 const MESSAGE_LIMIT = 1000;
 const REFRESH_THROTTLE_MS = 500;
-const COLORS: Color[] = ['gray', 'green', 'yellow', 'red', 'blue'];
+const MAX_BADGES_PER_TASK = 5;
+const BADGE_KEY = /^[a-z0-9_-]{1,40}$/;
+
+const normalizeBadge = (pluginId: string, badge: any): CardBadge => ({
+	pluginId,
+	text: String(badge.text).slice(0, 16),
+	color: COLORS.includes(badge.color) ? badge.color : 'gray',
+	tooltip: typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
+	priority:
+		typeof badge.priority === 'number' && Number.isFinite(badge.priority)
+			? badge.priority
+			: 0,
+	key: typeof badge.key === 'string' && BADGE_KEY.test(badge.key) ? badge.key : undefined,
+});
 
 interface Running {
 	process: PluginProcess;
@@ -145,6 +169,8 @@ interface Running {
 	registered: Record<RegistrationKind, Set<string>>;
 	/** Changes on every start: windows and calls of an earlier run are refused. */
 	generation: string;
+	/** The member allowed it to reach this computer (always true in a local workspace). */
+	machine: boolean;
 }
 
 export const createPluginHost = (deps: PluginHostDeps) => {
@@ -196,6 +222,16 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					: property.default ?? null;
 		}
 		return values;
+	};
+
+	const linkContext = (pluginId: string): LinkContext => {
+		const manifest = packages.get(pluginId)?.manifest;
+		return {
+			allowedDomains: manifest?.links.allowedDomains ?? [],
+			linksOpen:
+				(manifest?.permissions.includes('links:open') ?? false) &&
+				(running.get(pluginId)?.machine ?? false),
+		};
 	};
 
 	const clearStatusBar = (pluginId: string) => {
@@ -317,6 +353,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			broker,
 			registered,
 			generation: String(++nextGeneration),
+			machine,
 		});
 		state.plugins[pluginId].status = 'starting';
 		state.plugins[pluginId].error = null;
@@ -616,50 +653,70 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			viewId: string,
 			props: unknown = null,
 		): Promise<UiNode | null> {
-			return sanitizeTree(await dispatch(pluginId, 'page', viewId, props));
+			return sanitizeTree(
+				await dispatch(pluginId, 'page', viewId, props),
+				linkContext(pluginId),
+			);
 		},
 		async renderSection(
 			pluginId: string,
 			sectionId: string,
 			task: unknown,
 		): Promise<UiNode | null> {
-			return sanitizeTree(await dispatch(pluginId, 'section', sectionId, task));
+			return sanitizeTree(
+				await dispatch(pluginId, 'section', sectionId, task),
+				linkContext(pluginId),
+			);
 		},
-		/** One call per provider for the whole batch of visible cards. */
+		/** One call per provider for the whole batch of visible cards, merged in a fixed order and then by priority. */
 		async badges(
 			tasks: { id: number }[],
 		): Promise<Record<number, CardBadge[]>> {
-			const ids = new Set(tasks.map((t) => t.id));
-			const result: Record<number, CardBadge[]> = {};
-			await Promise.all(
-				[...running.entries()].flatMap(([pluginId, plugin]) =>
-					[...plugin.registered.badges].map(async (badgeId) => {
-						let answer: any;
-						try {
-							answer = await dispatch(pluginId, 'badges', badgeId, tasks);
-						} catch {
-							return;
-						}
-						if (!answer || typeof answer !== 'object') return;
-						for (const taskId of ids) {
-							const badge = Object.prototype.hasOwnProperty.call(answer, taskId)
-								? (answer as Record<number, any>)[taskId]
-								: null;
-							if (!badge || typeof badge.text !== 'string') continue;
-							(result[taskId] ??= []).push({
-								pluginId,
-								text: badge.text.slice(0, 16),
-								color: COLORS.includes(badge.color) ? badge.color : 'gray',
-								tooltip:
-									typeof badge.tooltip === 'string'
-										? badge.tooltip.slice(0, 200)
-										: null,
-							});
-						}
-					}),
-				),
+			const ids = tasks.map((t) => t.id);
+			const providers = [...running.entries()].flatMap(([pluginId, plugin]) =>
+				[...plugin.registered.badges].map((badgeId) => ({ pluginId, badgeId })),
 			);
+			// Promise.all keeps this in provider order regardless of which dispatch settles first.
+			const answers = await Promise.all(
+				providers.map(async ({ pluginId, badgeId }) => {
+					try {
+						return { pluginId, answer: await dispatch(pluginId, 'badges', badgeId, tasks) };
+					} catch {
+						return { pluginId, answer: null };
+					}
+				}),
+			);
+			const result: Record<number, CardBadge[]> = {};
+			for (const { pluginId, answer } of answers) {
+				if (!answer || typeof answer !== 'object') continue;
+				for (const taskId of ids) {
+					if (!Object.prototype.hasOwnProperty.call(answer, taskId)) continue;
+					const raw = (answer as Record<number, any>)[taskId];
+					const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+					const parsed = list
+						.filter((b) => b && typeof b.text === 'string')
+						.slice(0, MAX_BADGES_PER_TASK)
+						.map((b) => normalizeBadge(pluginId, b));
+					if (parsed.length) (result[taskId] ??= []).push(...parsed);
+				}
+			}
+			for (const list of Object.values(result)) {
+				list.sort((a, b) => b.priority - a.priority);
+			}
 			return result;
+		},
+		/** Re-checks permission, domain and https at click time; never trusts a tree rendered earlier. */
+		openLink(pluginId: string, url: string): boolean {
+			const plugin = running.get(pluginId);
+			if (!plugin || state.plugins[pluginId]?.status !== 'running') return false;
+			if (!isLinkAllowed(url, linkContext(pluginId))) return false;
+			try {
+				plugin.broker.admit(false);
+			} catch {
+				return false;
+			}
+			deps.openExternal?.(url);
+			return true;
 		},
 		dispose() {
 			unsubscribe();
