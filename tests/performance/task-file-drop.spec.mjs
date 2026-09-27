@@ -94,7 +94,9 @@ test('a file dropped on the new task form is attached once the task is created',
       ),
   );
   const form = page.locator('.new-form-container');
-  await expect(form.getByRole('heading', { name: 'Attachments' })).toBeVisible();
+  await expect(
+    form.getByRole('heading', { name: 'Attachments' }),
+  ).toBeVisible();
 
   await dropFile(page, 'dragenter', '.new-form-container input');
   await expect(page.getByText('Drop it here to upload')).toBeVisible();
@@ -137,19 +139,19 @@ test('dragging text over the task form does not show the file overlay', async ({
         1,
       ),
   );
-  await expect(page.getByRole('heading', { name: 'Attachments' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Attachments' }),
+  ).toBeVisible();
   await page.evaluate(() => {
     const transfer = new DataTransfer();
     transfer.setData('text/plain', 'hello');
-    document
-      .querySelector('.new-form-container input')
-      .dispatchEvent(
-        new DragEvent('dragenter', {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: transfer,
-        }),
-      );
+    document.querySelector('.new-form-container input').dispatchEvent(
+      new DragEvent('dragenter', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
   });
   await expect(page.getByText('Drop it here to upload')).toBeHidden();
 });
@@ -235,10 +237,9 @@ test('a file dropped while queued files are still uploading is attached too', as
   await dropFile(page, 'drop', '.new-form-container input', 'second.txt');
   releasePresign();
 
-  await expect.poll(() => [...attached].sort()).toEqual([
-    'first.txt',
-    'second.txt',
-  ]);
+  await expect
+    .poll(() => [...attached].sort())
+    .toEqual(['first.txt', 'second.txt']);
 });
 
 const openNewTaskWithFiles = async (page, { presignGate } = {}) => {
@@ -341,8 +342,7 @@ test('closing the form while its files upload does not hijack the next new task'
 
   await page.evaluate(() => {
     const store =
-      document.querySelector('#app').__vue_app__.config.globalProperties
-        .$store;
+      document.querySelector('#app').__vue_app__.config.globalProperties.$store;
     store.commit('closeTaskModal');
   });
   await expect(form).toBeHidden();
@@ -361,3 +361,44 @@ test('closing the form while its files upload does not hijack the next new task'
   await expect(form.getByTitle('Create')).toBeVisible();
   await expect(form.getByPlaceholder('Task name')).toHaveValue('');
 });
+
+for (const [editor, surface] of [
+  ['markdown', '.cm-content'],
+  ['blockmd', '.ProseMirror'],
+  ['block', '.codex-editor__redactor'],
+]) {
+  test(`file dragover is accepted over the ${editor} editor and the title so the browser allows the drop`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (value) => localStorage.setItem('preferred_editor', value),
+      editor,
+    );
+    await openNewTaskWithFiles(page);
+    await page.locator(`.new-form-container ${surface}`).first().waitFor();
+    const accepted = await page.evaluate(
+      (selectors) =>
+        selectors.map((selector) => {
+          const transfer = new DataTransfer();
+          transfer.items.add(new File(['x'], 'a.txt', { type: 'text/plain' }));
+          const event = new DragEvent('dragover', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: transfer,
+          });
+          document.querySelector(selector).dispatchEvent(event);
+          return event.defaultPrevented;
+        }),
+      [`.new-form-container ${surface}`, '.new-form-container textarea'],
+    );
+    expect(accepted).toEqual([true, true]);
+
+    await dropFile(page, 'drop', `.new-form-container ${surface}`);
+    await expect(
+      page.getByText('Will upload when the task is created'),
+    ).toBeVisible();
+    await expect(
+      page.locator(`.new-form-container ${surface}`),
+    ).not.toContainText('hello');
+  });
+}
