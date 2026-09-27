@@ -36,6 +36,7 @@
 	import { usePusher } from '@/composable/usePusher';
 	import router from '@/router';
 	import store from '@/store';
+	import { setDnd } from '@/utils/dnd';
 	import {
 		buildTrayState,
 		formatAway,
@@ -184,6 +185,7 @@
 					),
 					await listen('tray://stop', safely(stopOne)),
 					await listen('tray://switch', safely(switchTo)),
+					await listen('tray://dnd', ({ payload }) => setDnd(payload)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();
 						if (!props.tasks.length) return;

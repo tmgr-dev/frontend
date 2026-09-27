@@ -143,6 +143,11 @@ const PRELUDE = `(() => {
 				);
 			},
 		}),
+		alarms: freeze({
+			create: (name, spec) => call('alarms.create', Object.assign({ name }, spec || {})),
+			clear: (name) => call('alarms.clear', { name }),
+			list: () => call('alarms.list'),
+		}),
 		events: freeze({ on: (type, fn) => register('event', type, fn) }),
 		commands: freeze({ register: (id, fn) => register('command', id, fn) }),
 		ui: freeze({
@@ -151,7 +156,8 @@ const PRELUDE = `(() => {
 			provideTaskSection: (id, fn) => register('section', id, fn),
 			setStatusBarItem: (id, item) =>
 				call('ui.setStatusBarItem', item === null ? { id, text: null } : Object.assign({}, item, { id })),
-			notify: (message) => call('ui.notify', { message }),
+			notify: (message, options) => call('ui.notify', Object.assign({ message }, options || {})),
+			dnd: () => call('ui.dnd'),
 			refresh: (kind, id) => call('ui.refresh', { kind, id }),
 		}),
 	});

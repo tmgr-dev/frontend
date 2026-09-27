@@ -1,11 +1,12 @@
-import { toast } from '@/components/ui/toast';
+import { ToastAction, toast } from '@/components/ui/toast';
 import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import { dndState, isDndActive, startDndClock, syncDndToTray } from '@/utils/dnd';
 import type { AxiosInstance } from 'axios';
-import { watch } from 'vue';
+import { h, watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
@@ -42,6 +43,7 @@ import {
 	setPluginHost,
 } from './state';
 import {
+	alarmsStore,
 	devModeStored,
 	enabledStore,
 	forgetPlugin,
@@ -283,6 +285,67 @@ const answerPluginWindows = async (
 
 let memberId = () => 0;
 
+const focusMainWindow = async () => {
+	const { getCurrentWindow } = await import('@tauri-apps/api/window');
+	const win = getCurrentWindow();
+	await win.show();
+	await win.setFocus();
+};
+
+/** The plugin never learns anything about the click itself; the host already ran the command, if any. */
+const followNotificationClick = async (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	token: string,
+) => {
+	const result = await host.resolveNotificationClick(token).catch(() => null);
+	if (result?.type === 'task' && result.taskId != null) {
+		store.commit('setCurrentTaskIdForModal', result.taskId);
+	}
+};
+
+const showPluginNotification = (
+	host: ReturnType<typeof createPluginHost>,
+	store: Store<any>,
+	pluginName: string,
+	payload: {
+		message: string;
+		title: string | null;
+		command: string | null;
+		urgency: 'normal' | 'high';
+		token: string | null;
+	},
+) => {
+	const title = payload.title ?? pluginName;
+	if (document.hasFocus() && payload.urgency === 'normal') {
+		toast({
+			title,
+			description: payload.message,
+			action: payload.token
+				? h(
+						ToastAction,
+						{
+							altText: payload.command ? 'Run' : 'Open',
+							onClick: () => void followNotificationClick(host, store, payload.token!),
+						},
+						() => (payload.command ? 'Run' : 'Open'),
+				  )
+				: undefined,
+		});
+		return;
+	}
+	if (!('Notification' in window) || Notification.permission !== 'granted') return;
+	const notification = new Notification(title, { body: payload.message });
+	if (payload.token) {
+		// Standard Web Notification click; unverified on this machine whether it still fires once the
+		// window has been hidden a long time (WKWebView/App Nap may have suspended this page by then).
+		notification.onclick = () => {
+			void focusMainWindow();
+			void followNotificationClick(host, store, payload.token!);
+		};
+	}
+};
+
 /** Desktop only: starts the plugin host and follows the current workspace. */
 export const installPlugins = async (
 	store: Store<any>,
@@ -337,6 +400,16 @@ export const installPlugins = async (
 			hasMachineConsent(workspace, pluginId, memberId()),
 		settings: settingsStore,
 		notify: (title, description) => toast({ title, description }),
+		notifyPlugin: (_pluginId, pluginName, payload) =>
+			showPluginNotification(host, store, pluginName, payload),
+		dnd: () => ({
+			active: isDndActive(),
+			until: dndState.until == null ? null : new Date(dndState.until).toISOString(),
+		}),
+		alarms: {
+			get: (key) => alarmsStore.get(key) as any,
+			set: (key, defs) => alarmsStore.set(key, defs),
+		},
 		files: (pluginId, workspace, pluginName) => {
 			const code = workspace.code.replace(LOCAL_CODE_PREFIX, '');
 			const folder = `plugins/${pluginId}`;
@@ -405,6 +478,15 @@ export const installPlugins = async (
 		await invoke<Catalog>('plugin_catalog').catch(() => pluginCatalog),
 	);
 	await answerPluginWindows(host);
+	startDndClock();
+	syncDndToTray();
+	const wake = () => host.tick();
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible') wake();
+	});
+	window.addEventListener('focus', wake);
+	const { listen } = await import('@tauri-apps/api/event');
+	await listen('plugins://tick', wake);
 	watch(
 		() =>
 			Object.values(pluginState.plugins)

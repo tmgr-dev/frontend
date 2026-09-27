@@ -2,10 +2,22 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder};
+use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_autostart::ManagerExt;
+
+/// The tray shows which do-not-disturb option is active; the timing itself is owned by JS (localStorage).
+const DND_OPTIONS: [(&str, &str); 4] =
+  [("off", "Off"), ("1h", "For 1 hour"), ("3h", "For 3 hours"), ("tomorrow", "Until tomorrow")];
+
+pub struct DndStore(pub Mutex<String>);
+
+impl Default for DndStore {
+  fn default() -> Self {
+    Self(Mutex::new("off".to_owned()))
+  }
+}
 
 const TRAY_ID: &str = "timer";
 const LABEL_MAX: usize = 42;
@@ -134,8 +146,18 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     menu = menu.separator();
   }
   let autostart = app.autolaunch().is_enabled().unwrap_or(false);
+  let dnd_current = app.state::<DndStore>().0.lock().unwrap().clone();
+  let mut dnd_menu = SubmenuBuilder::new(app, "Do Not Disturb");
+  for (id, label) in DND_OPTIONS {
+    dnd_menu = dnd_menu.item(
+      &CheckMenuItemBuilder::with_id(format!("dnd:{id}"), label)
+        .checked(dnd_current == id)
+        .build(app)?,
+    );
+  }
   menu
     .item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?)
+    .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
     .item(
       &CheckMenuItemBuilder::with_id("autostart", "Launch at Login")
@@ -187,6 +209,13 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   if let Some(task_id) = id.strip_prefix("switch:") {
     let _ = app.emit("tray://switch", task_ref(task_id));
+    return;
+  }
+  if let Some(option) = id.strip_prefix("dnd:") {
+    *app.state::<DndStore>().0.lock().unwrap() = option.to_owned();
+    let state = app.state::<TrayStore>().0.lock().unwrap().clone();
+    refresh(app, &state);
+    let _ = app.emit("tray://dnd", option.to_owned());
     return;
   }
   match id {
@@ -258,6 +287,28 @@ pub fn tray_update<R: Runtime>(app: AppHandle<R>, store: State<'_, TrayStore>, s
   refresh(&app, &state);
 }
 
+pub fn normalize_dnd_option(option: &str) -> &str {
+  DND_OPTIONS
+    .iter()
+    .find_map(|(id, _)| (*id == option).then_some(*id))
+    .unwrap_or("off")
+}
+
+/// Pushed from JS the same way `tray_update` is: JS owns the actual until-timestamp, this is only for the checkmark.
+#[tauri::command]
+pub fn dnd_update<R: Runtime>(app: AppHandle<R>, dnd: State<'_, DndStore>, option: String) {
+  let option = normalize_dnd_option(&option).to_owned();
+  {
+    let mut current = dnd.0.lock().unwrap();
+    if *current == option {
+      return;
+    }
+    *current = option;
+  }
+  let state = app.state::<TrayStore>().0.lock().unwrap().clone();
+  refresh(&app, &state);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -318,5 +369,18 @@ mod tests {
   #[test]
   fn no_title_when_nothing_runs() {
     assert_eq!(tray_title(&TrayState::default(), 0), None);
+  }
+
+  #[test]
+  fn dnd_option_falls_back_to_off_when_unknown() {
+    assert_eq!(normalize_dnd_option("1h"), "1h");
+    assert_eq!(normalize_dnd_option("tomorrow"), "tomorrow");
+    assert_eq!(normalize_dnd_option("bogus"), "off");
+    assert_eq!(normalize_dnd_option(""), "off");
+  }
+
+  #[test]
+  fn dnd_store_defaults_to_off() {
+    assert_eq!(*DndStore::default().0.lock().unwrap(), "off");
   }
 }

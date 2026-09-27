@@ -99,13 +99,33 @@ export interface StatusBarItem {
 	command: string | null;
 }
 
+export interface NotifyPayload {
+	message: string;
+	title: string | null;
+	taskId: number | null;
+	command: string | null;
+	args: unknown;
+	urgency: 'normal' | 'high';
+}
+
+/** What a plugin asks for; the host turns it into an absolute time and persists it. */
+export interface AlarmSpec {
+	scheduledAtMs: number;
+	periodMinutes: number | null;
+}
+
+export interface AlarmInfo {
+	name: string;
+	scheduledAt: string;
+}
+
 export interface BrokerDeps {
 	manifest: PluginManifest;
 	workspace: PluginWorkspace;
 	currentWorkspaceId: () => number | null;
 	api: DataApi;
 	settings: () => Record<string, unknown>;
-	notify: (message: string) => void;
+	notify: (payload: NotifyPayload) => void;
 	setStatusBarItem: (id: string, item: StatusBarItem | null) => void;
 	refresh: (kind: 'badges' | 'page' | 'section', id: string) => void;
 	register: (kind: RegistrationKind, id: string) => void;
@@ -119,6 +139,13 @@ export interface BrokerDeps {
 		reveal: (path: string) => Promise<void>;
 		pick: () => Promise<unknown>;
 	};
+	/** Bound to this plugin and workspace; the host owns scheduling and persistence. */
+	alarms?: {
+		create: (name: string, spec: AlarmSpec) => AlarmInfo;
+		clear: (name: string) => void;
+		list: () => AlarmInfo[];
+	};
+	dnd?: () => { active: boolean; until: string | null };
 }
 
 export interface FetchRequest {
@@ -134,7 +161,8 @@ export interface FetchResponse {
 	body: string;
 }
 
-export const PLUGIN_EVENTS: Record<string, Permission> = {
+/** `null` means the event needs no permission. */
+export const PLUGIN_EVENTS: Record<string, Permission | null> = {
 	'task.created': 'tasks:read',
 	'task.updated': 'tasks:read',
 	'task.deleted': 'tasks:read',
@@ -146,6 +174,9 @@ export const PLUGIN_EVENTS: Record<string, Permission> = {
 	'comment.deleted': 'comments:read',
 	'comment.reactionChanged': 'comments:read',
 	'task.relationChanged': 'relations:read',
+	alarm: 'alarms',
+	'app.started': null,
+	'workspace.switched': null,
 };
 
 const invalid = (message: string): never => {
@@ -390,6 +421,41 @@ const exportPath = (value: unknown): string => {
 	return path;
 };
 
+const ALARM_NAME = /^[A-Za-z0-9._-]{1,60}$/;
+const ONE_YEAR_MS = 365 * 24 * 60 * 60_000;
+
+const minutesValue = (value: unknown, field: string): number => {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 1)
+		invalid(`${field} must be a number of minutes, at least 1`);
+	return value as number;
+};
+
+/** Exactly one of delayMinutes, periodMinutes (with an optional delayMinutes), or when. */
+const alarmSpec = (p: Params, now: number): AlarmSpec => {
+	const hasDelay = p.delayMinutes !== undefined && p.delayMinutes !== null;
+	const hasPeriod = p.periodMinutes !== undefined && p.periodMinutes !== null;
+	const hasWhen = p.when !== undefined && p.when !== null;
+	if (hasWhen) {
+		if (hasDelay || hasPeriod)
+			invalid('when cannot be combined with delayMinutes or periodMinutes');
+		const t = Date.parse(string(p.when, 'when', 40));
+		if (!Number.isFinite(t)) invalid('when must be an ISO date string');
+		if (t <= now) invalid('when must be in the future');
+		if (t - now > ONE_YEAR_MS) invalid('when must be at most a year ahead');
+		return { scheduledAtMs: t, periodMinutes: null };
+	}
+	if (hasPeriod) {
+		const period = minutesValue(p.periodMinutes, 'periodMinutes');
+		const delay = hasDelay ? minutesValue(p.delayMinutes, 'delayMinutes') : period;
+		return { scheduledAtMs: now + delay * 60_000, periodMinutes: period };
+	}
+	if (hasDelay) {
+		const delay = minutesValue(p.delayMinutes, 'delayMinutes');
+		return { scheduledAtMs: now + delay * 60_000, periodMinutes: null };
+	}
+	return invalid('provide delayMinutes, periodMinutes, or when');
+};
+
 type Params = Record<string, any>;
 interface Method {
 	permission?: Permission;
@@ -447,6 +513,12 @@ export const createBroker = (deps: BrokerDeps) => {
 		if (!deps.files)
 			throw new PluginError('HOST_ERROR', 'file access is not available');
 		return deps.files;
+	};
+
+	const needAlarms = () => {
+		if (!deps.alarms)
+			throw new PluginError('HOST_ERROR', 'alarms are not available');
+		return deps.alarms;
 	};
 
 	const methods: Record<string, Method> = {
@@ -776,8 +848,45 @@ export const createBroker = (deps: BrokerDeps) => {
 		'ui.notify': {
 			permission: 'notifications',
 			run: (p) => {
-				deps.notify(string(p.message, 'message', 300));
+				const message = string(p.message, 'message', 300);
+				const title = p.title == null ? null : string(p.title, 'title', 80);
+				const taskId = optionalId(p.taskId, 'taskId');
+				const command =
+					p.command == null ? null : string(p.command, 'command', 120);
+				if (command) mustDeclare(declared.command, command);
+				let args: unknown = null;
+				if (p.args !== undefined && p.args !== null) {
+					if (JSON.stringify(p.args).length > 4096)
+						invalid('args must be at most 4 KB of JSON');
+					args = p.args;
+				}
+				const urgency = p.urgency === 'high' ? 'high' : 'normal';
+				deps.notify({ message, title, taskId, command, args, urgency });
 			},
+		},
+		'ui.dnd': {
+			run: () => deps.dnd?.() ?? { active: false, until: null },
+		},
+		'alarms.create': {
+			permission: 'alarms',
+			write: true,
+			run: (p) => {
+				const name = string(p.name, 'name', 60);
+				if (!ALARM_NAME.test(name))
+					invalid(
+						'name must be 1-60 characters of letters, digits, ".", "_" or "-"',
+					);
+				return needAlarms().create(name, alarmSpec(p, deps.now()));
+			},
+		},
+		'alarms.clear': {
+			permission: 'alarms',
+			write: true,
+			run: (p) => needAlarms().clear(string(p.name, 'name', 60)),
+		},
+		'alarms.list': {
+			permission: 'alarms',
+			run: () => needAlarms().list(),
 		},
 		'ui.setStatusBarItem': {
 			run: (p) => {
@@ -816,9 +925,10 @@ export const createBroker = (deps: BrokerDeps) => {
 				const kind = p.kind as RegistrationKind;
 				const target = string(p.id, 'id', 120);
 				if (kind === 'event') {
+					if (!Object.prototype.hasOwnProperty.call(PLUGIN_EVENTS, target))
+						invalid(`unknown event ${target}`);
 					const permission = PLUGIN_EVENTS[target];
-					if (!permission) invalid(`unknown event ${target}`);
-					if (!granted.has(permission)) {
+					if (permission && !granted.has(permission)) {
 						throw new PluginError(
 							'PERMISSION_DENIED',
 							`${target} needs ${permission}`,

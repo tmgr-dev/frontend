@@ -157,7 +157,13 @@ type TmgrEvent =
 			otherTaskId: number;
 			relationType: string | number;
 			change: 'added' | 'removed';
-	  };
+	  }
+	/** Needs the alarms permission. */
+	| { type: 'alarm'; name: string; scheduledAt: string }
+	/** No permission needed. Delivered once, right after this plugin starts, if it registered a handler by then. */
+	| { type: 'app.started' }
+	/** No permission needed. Delivered when the host activates a different workspace and this plugin starts there. */
+	| { type: 'workspace.switched'; from: number | null; to: number };
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
@@ -330,6 +336,20 @@ declare const tmgr: {
 	events: { on<T extends TmgrEvent['type']>(type: T, handler: (event: Extract<TmgrEvent, { type: T }>) => unknown): Promise<void> };
 	/** The command id must be declared in contributes.commands and start with the plugin id. */
 	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
+	/** Needs the alarms permission. Host-scheduled: fires even if the plugin was not running when it was due, coalesced into one event. */
+	alarms: {
+		/** name is 1-60 characters of letters, digits, ".", "_" or "-". Delay/period are minutes, at least 1. */
+		create(
+			name: string,
+			spec:
+				| { delayMinutes: number }
+				| { periodMinutes: number; delayMinutes?: number }
+				| { when: string },
+		): Promise<{ name: string; scheduledAt: string }>;
+		clear(name: string): Promise<void>;
+		list(): Promise<{ name: string; scheduledAt: string }[]>;
+		/** At most 10 alarms per plugin per workspace. Persisted; cleared when the plugin is uninstalled. */
+	};
 	ui: {
 		/**
 		 * Called with the visible board cards; return one badge or an array (up to 5 kept, the rest dropped) by task id.
@@ -357,8 +377,24 @@ declare const tmgr: {
 		providePage(id: string, render: (props: unknown) => TmgrNode | Promise<TmgrNode>): Promise<void>;
 		provideTaskSection(id: string, render: (task: TmgrTask) => TmgrNode | Promise<TmgrNode>): Promise<void>;
 		setStatusBarItem(id: string, item: { text: string; tooltip?: string; command?: string } | null): Promise<void>;
-		/** Needs notifications. */
-		notify(message: string): Promise<void>;
+		/**
+		 * Needs notifications. title is at most 80 characters, message at most 300, args at most 4 KB of JSON.
+		 * command must be declared in contributes.commands. At most 5 notifications per plugin per minute.
+		 * Clicking opens the task (taskId) or runs command with args, only while this plugin still runs in
+		 * that workspace; the plugin is told nothing about the click besides the command running.
+		 */
+		notify(
+			message: string,
+			options?: {
+				title?: string;
+				taskId?: number;
+				command?: string;
+				args?: unknown;
+				urgency?: 'normal' | 'high';
+			},
+		): Promise<void>;
+		/** No permission needed, read-only. While active, this plugin's notifications are not shown. */
+		dnd(): Promise<{ active: boolean; until: string | null }>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
 	};

@@ -900,3 +900,334 @@ it('in a cloud workspace runs only what is turned on there, and reaches this com
 	expect(fetches).toEqual(['http://localhost:11434/x']);
 	host.dispose();
 });
+
+describe('alarms', () => {
+	const alarmPlugin = pkg(
+		'tmgr.alarm',
+		`tmgr.commands.register('tmgr.alarm.create', (a) => tmgr.alarms.create(a.name, a.opts).catch((e) => ({ error: e.name })));
+		 tmgr.commands.register('tmgr.alarm.list', () => tmgr.alarms.list());
+		 tmgr.commands.register('tmgr.alarm.clear', (a) => tmgr.alarms.clear(a.name));
+		 tmgr.events.on('alarm', (e) => tmgr.storage.set('fired', e));`,
+		['alarms'],
+		{
+			commands: [
+				{ id: 'tmgr.alarm.create', title: 'Create' },
+				{ id: 'tmgr.alarm.list', title: 'List' },
+				{ id: 'tmgr.alarm.clear', title: 'Clear' },
+			],
+		},
+	);
+
+	const stored = () => {
+		const rows: unknown[] = [];
+		return {
+			rows,
+			api: { storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]) },
+		};
+	};
+
+	it('validates name, minimum delay/period, and mixing when with delay/period', async () => {
+		const { host } = setup([alarmPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string, opts: unknown) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name, opts });
+		expect(await create('ok', { delayMinutes: 1 })).toMatchObject({ name: 'ok' });
+		expect(await create('too short', { delayMinutes: 0.5 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('bad name!', { delayMinutes: 1 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('a'.repeat(61), { delayMinutes: 1 })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('mixed', { delayMinutes: 1, when: '2999-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('past', { when: '2000-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('far', { when: '2999-01-01T00:00:00Z' })).toEqual({
+			error: 'INVALID_PARAMS',
+		});
+		expect(await create('none', {})).toEqual({ error: 'INVALID_PARAMS' });
+		host.dispose();
+	});
+
+	it('allows at most 10 alarms per plugin per workspace, but an update does not count', async () => {
+		const { host } = setup([alarmPlugin]);
+		await host.load();
+		await host.activate(LOCAL);
+		const create = (name: string) =>
+			host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+				name,
+				opts: { delayMinutes: 5 },
+			});
+		for (let i = 0; i < 10; i++) expect(await create(`a${i}`)).toMatchObject({ name: `a${i}` });
+		expect(await create('a10')).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await create('a0')).toMatchObject({ name: 'a0' });
+		host.dispose();
+	});
+
+	it('needs the alarms permission', async () => {
+		const { host } = setup([
+			pkg(
+				'tmgr.noalarm',
+				`tmgr.commands.register('tmgr.noalarm.create', (a) => tmgr.alarms.create(a.name, a.opts).catch((e) => ({ error: e.name })));`,
+				[],
+				{ commands: [{ id: 'tmgr.noalarm.create', title: 'Create' }] },
+			),
+		]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(
+			await host.runCommand('tmgr.noalarm', 'tmgr.noalarm.create', {
+				name: 'x',
+				opts: { delayMinutes: 1 },
+			}),
+		).toEqual({ error: 'PERMISSION_DENIED' });
+		host.dispose();
+	});
+
+	it('fires a due alarm through dispatch, and reschedules a periodic one from now', async () => {
+		let clock = 1_000_000;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+			name: 'p',
+			opts: { periodMinutes: 5 },
+		});
+		clock += 5 * 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toEqual(['fired', { name: 'p', scheduledAt: new Date(1_000_000 + 5 * 60_000).toISOString() }]);
+		const list = (await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})) as { name: string; scheduledAt: string }[];
+		expect(list).toEqual([{ name: 'p', scheduledAt: new Date(clock + 5 * 60_000).toISOString() }]);
+		host.dispose();
+	});
+
+	it('removes a one-shot alarm once it fires', async () => {
+		let clock = 0;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name: 'once', opts: { delayMinutes: 1 } });
+		clock += 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		expect(await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})).toEqual([]);
+		host.dispose();
+	});
+
+	it('coalesces missed firings after a long gap into a single event', async () => {
+		let clock = 0;
+		const { rows, api } = stored();
+		const { host } = setup([alarmPlugin], api, {}, {}, { now: () => clock });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', {
+			name: 'p',
+			opts: { periodMinutes: 5 },
+		});
+		clock += 60 * 60_000;
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('reloads persisted alarms on start, and nothing fires after stop or in safe mode', async () => {
+		let clock = 0;
+		const store: Record<string, unknown> = {};
+		const alarms = {
+			get: (key: string) => store[key] as any,
+			set: (key: string, defs: unknown) => void (store[key] = defs),
+		};
+		const { rows, api } = stored();
+		const { host, state } = setup([alarmPlugin], api, {}, {}, { now: () => clock, alarms });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name: 'p', opts: { delayMinutes: 1 } });
+		clock += 60_000;
+
+		await host.setEnabled('tmgr.alarm', false);
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(0);
+
+		state.safeMode = true;
+		await host.activate(LOCAL);
+		host.tick();
+		await flush();
+		expect(rows).toHaveLength(0);
+		state.safeMode = false;
+
+		const second = setup([alarmPlugin], api, {}, {}, { now: () => clock, alarms }).host;
+		await second.load();
+		await second.activate(LOCAL);
+		second.tick();
+		await flush();
+		expect(rows).toHaveLength(1);
+		second.dispose();
+		host.dispose();
+	});
+});
+
+describe('start events', () => {
+	const CLOUD = { id: 56, code: 'team', name: 'Team', kind: 'cloud' as const };
+	const startPlugin = pkg(
+		'tmgr.start',
+		`tmgr.events.on('app.started', () => tmgr.storage.set('started', 1));
+		 tmgr.events.on('workspace.switched', (e) => tmgr.storage.set('switched', e));`,
+	);
+
+	it('delivers app.started once per session, even across restarts', async () => {
+		const rows: [string, unknown][] = [];
+		const { host } = setup([startPlugin], {
+			storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]),
+		});
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(rows.filter(([k]) => k === 'started')).toHaveLength(1);
+		await host.setEnabled('tmgr.start', false);
+		await host.setEnabled('tmgr.start', true);
+		await flush();
+		expect(rows.filter(([k]) => k === 'started')).toHaveLength(1);
+		host.dispose();
+	});
+
+	it('delivers workspace.switched with from/to only when the active workspace actually changes', async () => {
+		const rows: [string, unknown][] = [];
+		const { host, leave } = setup(
+			[startPlugin],
+			{ storageSet: async (key: string, json: string) => void rows.push([key, JSON.parse(json)]) },
+			{},
+			{},
+			{ enabled: { get: () => true, set: () => undefined } },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toHaveLength(0);
+		leave();
+		await host.activate(CLOUD);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toEqual([
+			['switched', { from: LOCAL.id, to: CLOUD.id }],
+		]);
+		await host.activate(CLOUD);
+		await flush();
+		expect(rows.filter(([k]) => k === 'switched')).toHaveLength(1);
+		host.dispose();
+	});
+});
+
+describe('notifications', () => {
+	const notifyPlugin = pkg(
+		'tmgr.notif',
+		`tmgr.commands.register('tmgr.notif.act', (args) => tmgr.storage.set('acted', args));
+		 tmgr.commands.register('tmgr.notif.send', (args) => tmgr.ui.notify('hi', args).catch((e) => ({ error: e.name })));
+		 tmgr.commands.register('tmgr.notif.dnd', () => tmgr.ui.dnd());`,
+		['notifications'],
+		{
+			commands: [
+				{ id: 'tmgr.notif.act', title: 'Act' },
+				{ id: 'tmgr.notif.send', title: 'Send' },
+				{ id: 'tmgr.notif.dnd', title: 'DND' },
+			],
+		},
+	);
+
+	const setupNotify = (extra: Partial<Parameters<typeof createPluginHost>[0]> = {}) => {
+		const notifications: any[] = [];
+		const stored: unknown[] = [];
+		const rest = setup(
+			[notifyPlugin],
+			{ storageSet: async (key: string, json: string) => void stored.push([key, JSON.parse(json)]) },
+			{},
+			{},
+			{
+				notifyPlugin: (_pluginId, _name, payload) => notifications.push(payload),
+				...extra,
+			},
+		);
+		return { ...rest, notifications, stored };
+	};
+
+	it('validates title, message, args size, and requires a declared command', async () => {
+		const { host } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		const send = (args: unknown) => host.runCommand('tmgr.notif', 'tmgr.notif.send', args);
+		expect(await send({ message: 'x'.repeat(301) })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ title: 'x'.repeat(81) })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ args: { big: 'x'.repeat(5000) } })).toEqual({ error: 'INVALID_PARAMS' });
+		expect(await send({ command: 'not.declared' })).toEqual({ error: 'NOT_DECLARED' });
+		expect(await send({ command: 'tmgr.notif.act' })).toBeNull();
+		host.dispose();
+	});
+
+	it('limits a plugin to 5 notifications per minute', async () => {
+		const { host } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		const results = [];
+		for (let i = 0; i < 6; i++)
+			results.push(await host.runCommand('tmgr.notif', 'tmgr.notif.send', {}));
+		expect(results.slice(0, 5)).toEqual([null, null, null, null, null]);
+		expect(results[5]).toEqual({ error: 'RATE_LIMITED' });
+		host.dispose();
+	});
+
+	it('a notification click runs the declared command only while the plugin still runs in that workspace', async () => {
+		const { host, notifications, stored, leave } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {
+			command: 'tmgr.notif.act',
+			args: { x: 1 },
+		});
+		const token = notifications[0].token;
+		expect(token).toEqual(expect.any(String));
+		expect(await host.resolveNotificationClick(token)).toEqual({ type: 'command' });
+		await flush();
+		expect(stored).toEqual([['acted', { x: 1 }]]);
+
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { command: 'tmgr.notif.act' });
+		const secondToken = notifications[1].token;
+		leave();
+		expect(await host.resolveNotificationClick(secondToken)).toBeNull();
+		host.dispose();
+	});
+
+	it('drops pending click tokens when the plugin stops', async () => {
+		const { host, notifications } = setupNotify();
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { taskId: 5 });
+		const token = notifications[0].token;
+		await host.setEnabled('tmgr.notif', false);
+		expect(await host.resolveNotificationClick(token)).toBeNull();
+		host.dispose();
+	});
+
+	it('suppresses notifications while do-not-disturb is active, and exposes it read-only', async () => {
+		const { host, notifications } = setupNotify({ dnd: () => ({ active: true, until: '2999-01-01T00:00:00.000Z' }) });
+		await host.load();
+		await host.activate(LOCAL);
+		await host.runCommand('tmgr.notif', 'tmgr.notif.send', {});
+		expect(notifications).toEqual([]);
+		expect(await host.runCommand('tmgr.notif', 'tmgr.notif.dnd', {})).toEqual({
+			active: true,
+			until: '2999-01-01T00:00:00.000Z',
+		});
+		host.dispose();
+	});
+});

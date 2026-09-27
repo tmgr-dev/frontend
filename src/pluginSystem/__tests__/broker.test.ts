@@ -90,7 +90,7 @@ const setup = (
 		currentWorkspaceId: () => current,
 		api,
 		settings: () => ({ warnAt: 0.9 }),
-		notify: (message) => notified.push(message),
+		notify: (payload) => notified.push(payload.message),
 		setStatusBarItem: (id, item) => statusBar.push([id, item]),
 		refresh: () => undefined,
 		register: (kind, id) => registered.push([kind, id]),

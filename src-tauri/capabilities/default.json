@@ -48,6 +48,7 @@
     "allow-open-quick-add",
     "allow-take-quick-add",
     "allow-tray-update",
+    "allow-dnd-update",
     "allow-plugin-page-put",
     "allow-plugin-window-open",
     "allow-plugin-window-reply",

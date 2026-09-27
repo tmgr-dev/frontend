@@ -20,6 +20,7 @@ const SETTINGS = 'plugins.settings';
 const SAFE_MODE = 'plugins.safeMode';
 const DEV_MODE = 'plugins.devMode';
 const MACHINE_CONSENT = 'plugins.machineConsent';
+const ALARMS = 'plugins.alarms';
 
 /** Per workspace: `{ "<plugin>@<workspace id>": true | false }`. */
 export const enabledStore = {
@@ -68,6 +69,17 @@ export const storeSafeMode = (value: boolean) => write(SAFE_MODE, value);
 export const devModeStored = () => read<boolean>(DEV_MODE, false) === true;
 export const storeDevMode = (value: boolean) => write(DEV_MODE, value);
 
+/** Keyed by `${storageId}@${workspaceId}`; a plain plugin's storageId is its id, so the prefix still matches. */
+export const alarmsStore = {
+	get: (key: string) =>
+		read<Record<string, Record<string, unknown>>>(ALARMS, {})[key],
+	set: (key: string, defs: Record<string, unknown>) =>
+		write(ALARMS, {
+			...read<Record<string, Record<string, unknown>>>(ALARMS, {}),
+			[key]: defs,
+		}),
+};
+
 /** A removed plugin leaves nothing a later plugin with the same id could inherit. */
 export const forgetPlugin = (pluginId: string) => {
 	const enabled = read<Record<string, boolean>>(ENABLED, {});
@@ -82,4 +94,11 @@ export const forgetPlugin = (pluginId: string) => {
 	const settings = read<Record<string, Record<string, unknown>>>(SETTINGS, {});
 	delete settings[pluginId];
 	write(SETTINGS, settings);
+	const alarms = read<Record<string, Record<string, unknown>>>(ALARMS, {});
+	write(
+		ALARMS,
+		Object.fromEntries(
+			Object.entries(alarms).filter(([key]) => !key.startsWith(`${pluginId}@`)),
+		),
+	);
 };

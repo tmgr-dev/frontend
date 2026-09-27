@@ -3,10 +3,13 @@ import {
 	createBroker,
 	PLUGIN_EVENTS,
 	PluginError,
+	type AlarmInfo,
+	type AlarmSpec,
 	type BrokerDeps,
 	type DataApi,
 	type FetchRequest,
 	type FetchResponse,
+	type NotifyPayload,
 	type PluginWorkspace,
 	type RegistrationKind,
 } from './broker';
@@ -66,6 +69,19 @@ export interface PluginEntry {
 	log: PluginLogLine[];
 }
 
+/** Persisted form of an alarm, keyed by `${storageId}@${workspaceId}` in `deps.alarms`. */
+export interface AlarmDef {
+	name: string;
+	scheduledAtMs: number;
+	periodMinutes: number | null;
+}
+
+export interface NotificationClickResult {
+	type: 'task' | 'command';
+	taskId?: number;
+	workspaceId?: number;
+}
+
 export interface StatusBarEntry {
 	pluginId: string;
 	pluginName: string;
@@ -117,6 +133,18 @@ export interface PluginHostDeps {
 		set: (pluginId: string, values: Record<string, unknown>) => void;
 	};
 	notify: (title: string, message: string) => void;
+	/** A plugin's own `tmgr.ui.notify`; separate from `notify` above, which is for host-level messages. */
+	notifyPlugin?: (
+		pluginId: string,
+		pluginName: string,
+		payload: NotifyPayload & { token: string | null },
+	) => void;
+	dnd?: () => { active: boolean; until: string | null };
+	/** Persisted alarm definitions, keyed by `${storageId}@${workspaceId}`; the host holds none in memory. */
+	alarms?: {
+		get: (key: string) => Record<string, AlarmDef> | undefined;
+		set: (key: string, defs: Record<string, AlarmDef>) => void;
+	};
 	currentWorkspaceId: () => number | null;
 	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
 	files?: (
@@ -166,6 +194,10 @@ const normalizeBadge = (pluginId: string, badgeId: string, badge: any): CardBadg
 	priority: clampPriority(badge.priority),
 	key: typeof badge.key === 'string' && BADGE_KEY.test(badge.key) ? badge.key : undefined,
 });
+const MAX_ALARMS = 10;
+const NOTIFY_LIMIT = 5;
+const NOTIFY_WINDOW_MS = 60_000;
+const CLICK_TTL_MS = 60 * 60_000;
 
 interface Running {
 	process: PluginProcess;
@@ -185,6 +217,100 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const faults = new Map<string, number[]>();
 	let nextGeneration = 0;
 	const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const inMemoryAlarms = new Map<string, Record<string, AlarmDef>>();
+	const alarmsDep = deps.alarms ?? {
+		get: (key: string) => inMemoryAlarms.get(key),
+		set: (key: string, defs: Record<string, AlarmDef>) =>
+			void inMemoryAlarms.set(key, defs),
+	};
+	const startedThisSession = new Set<string>();
+	const lastWorkspaceOf = new Map<string, number>();
+	const notifyTimestamps = new Map<string, number[]>();
+	let nextClickToken = 1;
+	const pendingClicks = new Map<
+		string,
+		{
+			pluginId: string;
+			workspaceId: number;
+			taskId: number | null;
+			command: string | null;
+			args: unknown;
+			expiresAt: number;
+		}
+	>();
+
+	const storageIdOf = (pkg: PluginPackage) =>
+		pkg.origin ? `${pkg.manifest.id}@github.com/${pkg.origin.repo}` : pkg.manifest.id;
+
+	const alarmsFor = (workspace: PluginWorkspace, storageId: string) => {
+		const key = `${storageId}@${workspace.id}`;
+		return {
+			create: (name: string, spec: AlarmSpec): AlarmInfo => {
+				const current = alarmsDep.get(key) ?? {};
+				if (
+					!Object.prototype.hasOwnProperty.call(current, name) &&
+					Object.keys(current).length >= MAX_ALARMS
+				) {
+					throw new PluginError(
+						'INVALID_PARAMS',
+						`a plugin may have at most ${MAX_ALARMS} alarms per workspace`,
+					);
+				}
+				current[name] = {
+					name,
+					scheduledAtMs: spec.scheduledAtMs,
+					periodMinutes: spec.periodMinutes,
+				};
+				alarmsDep.set(key, current);
+				return { name, scheduledAt: new Date(spec.scheduledAtMs).toISOString() };
+			},
+			clear: (name: string) => {
+				const current = alarmsDep.get(key) ?? {};
+				if (!(name in current)) return;
+				delete current[name];
+				alarmsDep.set(key, current);
+			},
+			list: (): AlarmInfo[] =>
+				Object.values(alarmsDep.get(key) ?? {}).map((def) => ({
+					name: def.name,
+					scheduledAt: new Date(def.scheduledAtMs).toISOString(),
+				})),
+		};
+	};
+
+	/** Survives a plugin restart within the window: a crash loop must not reset the notification budget. */
+	const notifyAllowed = (pluginId: string) => {
+		const recent = (notifyTimestamps.get(pluginId) ?? []).filter(
+			(t) => now() - t < NOTIFY_WINDOW_MS,
+		);
+		if (recent.length >= NOTIFY_LIMIT) {
+			notifyTimestamps.set(pluginId, recent);
+			return false;
+		}
+		recent.push(now());
+		notifyTimestamps.set(pluginId, recent);
+		return true;
+	};
+
+	const registerClick = (
+		pluginId: string,
+		workspaceId: number,
+		payload: NotifyPayload,
+	): string => {
+		for (const [key, entry] of pendingClicks) {
+			if (entry.expiresAt < now()) pendingClicks.delete(key);
+		}
+		const token = `c${nextClickToken++}${Math.random().toString(36).slice(2, 8)}`;
+		pendingClicks.set(token, {
+			pluginId,
+			workspaceId,
+			taskId: payload.taskId,
+			command: payload.command,
+			args: payload.args,
+			expiresAt: now() + CLICK_TTL_MS,
+		});
+		return token;
+	};
 
 	/** Coalesces a plugin's refresh requests so a chatty plugin cannot flood the UI with re-renders. */
 	const bump = (pluginId: string) => {
@@ -253,6 +379,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		running.get(pluginId)?.process.stop();
 		running.delete(pluginId);
 		clearStatusBar(pluginId);
+		for (const [token, entry] of pendingClicks) {
+			if (entry.pluginId === pluginId) pendingClicks.delete(token);
+		}
 		void deps.windows?.close(pluginId).catch(() => undefined);
 		const entry = state.plugins[pluginId];
 		if (entry) {
@@ -286,7 +415,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		(workspace.kind === 'local' &&
 			packages.get(pluginId)?.source === 'builtin');
 
-	const start = async (pkg: PluginPackage, workspace: PluginWorkspace) => {
+	const start = async (
+		pkg: PluginPackage,
+		workspace: PluginWorkspace,
+		fromActivate = false,
+	) => {
 		const { manifest } = pkg;
 		const pluginId = manifest.id;
 		const blocked = blockedReason(pluginId);
@@ -302,19 +435,26 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			section: new Set(),
 		};
 		const machine = deps.machineAllowed?.(pluginId, workspace) ?? true;
+		const storageId = storageIdOf(pkg);
 		const broker = createBroker({
 			manifest,
 			workspace,
 			currentWorkspaceId: deps.currentWorkspaceId,
 			// An installed plugin's data belongs to its repository: another author reusing the id gets none of it.
-			api: deps.api(
-				pluginId,
-				workspace,
-				pkg.origin ? `${pluginId}@github.com/${pkg.origin.repo}` : pluginId,
-				manifest.name,
-			),
+			api: deps.api(pluginId, workspace, storageId, manifest.name),
 			settings: () => settingsOf(pluginId),
-			notify: (message) => deps.notify(`Plugin ${manifest.name}`, message),
+			notify: (payload) => {
+				if (!notifyAllowed(pluginId))
+					throw new PluginError('RATE_LIMITED', 'too many notifications');
+				if (deps.dnd?.().active) return;
+				const token =
+					payload.taskId != null || payload.command != null
+						? registerClick(pluginId, workspace.id, payload)
+						: null;
+				deps.notifyPlugin?.(pluginId, manifest.name, { ...payload, token });
+			},
+			dnd: deps.dnd,
+			alarms: alarmsFor(workspace, storageId),
 			setStatusBarItem: (itemId, item) => {
 				const key = `${pluginId}:${itemId}`;
 				if (item) {
@@ -366,6 +506,25 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (running.get(pluginId)?.process !== process) return;
 			state.plugins[pluginId].status = 'running';
 			log(pluginId, 'info', `started in ${workspace.name}`);
+			if (!startedThisSession.has(pluginId)) {
+				startedThisSession.add(pluginId);
+				if (registered.event.has('app.started'))
+					void dispatch(pluginId, 'event', 'app.started', {}).catch(
+						() => undefined,
+					);
+			}
+			if (fromActivate) {
+				const previous = lastWorkspaceOf.get(pluginId);
+				if (previous !== undefined && previous !== workspace.id) {
+					if (registered.event.has('workspace.switched'))
+						void dispatch(pluginId, 'event', 'workspace.switched', {
+							from: previous,
+							to: workspace.id,
+						}).catch(() => undefined);
+				}
+				lastWorkspaceOf.set(pluginId, workspace.id);
+			}
+			tick();
 		} catch (error) {
 			if (running.get(pluginId)?.process !== process) return;
 			stop(
@@ -397,6 +556,68 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				void relaunch(pluginId);
 			throw error;
 		}
+	};
+
+	/** The single scheduler for every plugin's alarms; call from a Rust tick, focus/visibility, or after a start. */
+	const tick = () => {
+		const workspace = state.workspace;
+		if (!workspace || state.safeMode) return;
+		const time = now();
+		for (const pluginId of running.keys()) {
+			if (state.plugins[pluginId]?.status !== 'running') continue;
+			const pkg = packages.get(pluginId);
+			if (!pkg?.manifest.permissions.includes('alarms')) continue;
+			const key = `${storageIdOf(pkg)}@${workspace.id}`;
+			const current = alarmsDep.get(key) ?? {};
+			const due = Object.values(current).filter((def) => def.scheduledAtMs <= time);
+			if (!due.length) continue;
+			// Persist the reschedule/removal before dispatching: an overlapping tick must not double-fire.
+			for (const def of due) {
+				if (def.periodMinutes) {
+					current[def.name] = { ...def, scheduledAtMs: time + def.periodMinutes * 60_000 };
+				} else {
+					delete current[def.name];
+				}
+			}
+			alarmsDep.set(key, current);
+			for (const def of due) {
+				void dispatch(pluginId, 'event', 'alarm', {
+					name: def.name,
+					scheduledAt: new Date(def.scheduledAtMs).toISOString(),
+				}).catch(() => undefined);
+			}
+		}
+	};
+
+	const resolveNotificationClick = async (
+		token: string,
+	): Promise<NotificationClickResult | null> => {
+		const entry = pendingClicks.get(token);
+		if (!entry) return null;
+		pendingClicks.delete(token);
+		if (now() > entry.expiresAt) return null;
+		const plugin = running.get(entry.pluginId);
+		if (!plugin || state.plugins[entry.pluginId]?.status !== 'running') return null;
+		if (deps.currentWorkspaceId() !== entry.workspaceId) return null;
+		if (entry.command) {
+			const declared = packages
+				.get(entry.pluginId)!
+				.manifest.contributes.commands.some((c) => c.id === entry.command);
+			if (!declared || !plugin.registered.command.has(entry.command)) return null;
+			try {
+				plugin.broker.admit(true);
+			} catch {
+				return null;
+			}
+			void dispatch(entry.pluginId, 'command', entry.command, entry.args).catch(
+				() => undefined,
+			);
+			return { type: 'command' };
+		}
+		if (entry.taskId != null) {
+			return { type: 'task', taskId: entry.taskId, workspaceId: entry.workspaceId };
+		}
+		return null;
 	};
 
 	const relaunch = async (pluginId: string) => {
@@ -492,7 +713,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			await Promise.all(
 				[...packages.values()]
 					.filter((pkg) => isEnabled(pkg.manifest.id, workspace))
-					.map((pkg) => start(pkg, workspace)),
+					.map((pkg) => start(pkg, workspace, true)),
 			);
 		},
 		isEnabled(pluginId: string) {
@@ -607,7 +828,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			packages.delete(pluginId);
 			delete state.plugins[pluginId];
 			delete state.revisions[pluginId];
+			startedThisSession.delete(pluginId);
+			lastWorkspaceOf.delete(pluginId);
+			notifyTimestamps.delete(pluginId);
 		},
+		tick,
+		resolveNotificationClick,
 		async openView(pluginId: string, viewId: string) {
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);
@@ -754,6 +980,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			refreshTimers.forEach((timer) => clearTimeout(timer));
 			refreshTimers.clear();
 			stopAll();
+			pendingClicks.clear();
 		},
 	};
 	return host;
