@@ -209,6 +209,110 @@ describe('eventsForResponse', () => {
 		]);
 	});
 
+	it('reports routine creation, updates and instance changes, never keyed as task', () => {
+		const routine = {
+			id: 1_000_000_005,
+			title: 'Water plants',
+			description: null,
+			scheduled_date: '2026-09-26',
+			scheduled_time: null,
+			workspace_id: -42,
+			created_at: 'a',
+			updated_at: 'b',
+		};
+		expect(
+			eventsForResponse(response('post', 'daily-routines/tasks', routine), current),
+		).toEqual([{ type: 'routine.created', workspaceId: -42, routineId: routine.id, routine }]);
+		expect(
+			eventsForResponse(
+				response('put', `daily-routines/tasks/${routine.id}`, routine),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
+		expect(
+			eventsForResponse(
+				response('delete', `daily-routines/tasks/${routine.id}`, null),
+				current,
+			),
+		).toEqual([{ type: 'routine.deleted', workspaceId: 5, routineId: routine.id }]);
+
+		const pattern = { id: 9, task_id: routine.id, frequency: 'WEEKLY', interval: 1 };
+		expect(
+			eventsForResponse(
+				response('put', `daily-routines/tasks/${routine.id}/pattern`, pattern),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+
+		const instance = {
+			id: 4,
+			task_id: routine.id,
+			scheduled_for: '2026-09-26T09:00:00Z',
+			status: 'COMPLETED',
+		};
+		expect(
+			eventsForResponse(
+				response('post', `daily-routines/tasks/${routine.id}/instances/4/complete`, instance),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, instance }]);
+		expect(
+			eventsForResponse(
+				response('patch', `daily-routines/tasks/${routine.id}/instances/virtual`, instance),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, instance }]);
+		expect(
+			eventsForResponse(
+				response('delete', `daily-routines/tasks/${routine.id}/instances/4`, null),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+
+		// complete-on's response is not instance-shaped, so no `instance` rides along.
+		expect(
+			eventsForResponse(
+				response('post', `daily-routines/tasks/${routine.id}/complete-on`, {
+					instance_id: 4,
+					task_id: routine.id,
+					date: '2026-09-26',
+					status: 'COMPLETED',
+					completed: true,
+				}),
+				current,
+			),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+	});
+
+	it('reports a routine conversion as both routine.deleted and task.created', () => {
+		const convertedTask = { id: 77, title: 'Water plants', workspace_id: -42 };
+		expect(
+			eventsForResponse(
+				response('post', 'daily-routines/tasks/1000000005/convert', convertedTask),
+				current,
+			),
+		).toEqual([
+			{ type: 'routine.deleted', workspaceId: -42, routineId: 1_000_000_005, taskId: 77 },
+			{ type: 'task.created', workspaceId: -42, taskId: 77, task: convertedTask },
+		]);
+	});
+
+	it('reports PUT/PATCH tasks/:id for a routine-range id as routine.updated, never task.updated', () => {
+		const routine = {
+			id: 1_000_000_005,
+			title: 'Resize me',
+			scheduled_date: null,
+			created_at: 'a',
+			updated_at: 'b',
+		};
+		expect(
+			eventsForResponse(response('put', 'tasks/1000000005', routine, { approximately_time: 90 }), current),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, routine }]);
+		expect(
+			eventsForResponse(response('patch', 'tasks/1000000005', routine, { title: 'x' }), current),
+		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, routine }]);
+	});
+
 	it('ignores reads and unrelated writes', () => {
 		expect(
 			eventsForResponse(response('get', 'tasks/7', task), current),

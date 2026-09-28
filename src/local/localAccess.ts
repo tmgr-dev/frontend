@@ -252,10 +252,10 @@ const stripReactionDetails = (event: DomainEvent): DomainEvent => {
 	return { ...event, reactions: reactions.map((r: any) => ({ emoji: r?.emoji, count: r?.count })) };
 };
 
-/** Forwards local-workspace domain events to Rust's SSE ring buffer; `timer.*` never reaches companions. */
+/** Forwards local-workspace domain events to Rust's SSE ring buffer; `timer.*` and owner-only `routine.*` never reach companions. */
 export const installLocalAccessEvents = (invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>) => {
 	return domainEvents.on((event) => {
-		if (event.type.startsWith('timer.')) return;
+		if (event.type.startsWith('timer.') || event.type.startsWith('routine.')) return;
 		const permission = PLUGIN_EVENTS[event.type];
 		if (!permission) return;
 		if (event.workspaceId === null || event.workspaceId === undefined || event.workspaceId >= 0) return;

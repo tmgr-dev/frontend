@@ -28,6 +28,9 @@ const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 		},
 	});
 
+const fakeRoutine = { id: 0, title: '', description: null, scheduledDate: null, scheduledTime: null, createdAt: '', updatedAt: '' };
+const fakeInstance = { id: 0, routineId: 0, date: '', time: null, status: 'PENDING' as const };
+
 const fakeApi = (): DataApi & { calls: unknown[][] } => {
 	const calls: unknown[][] = [];
 	const record =
@@ -35,6 +38,12 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		async (...args: unknown[]) => {
 			calls.push([name, ...args]);
 			return { name };
+		};
+	const recordAs =
+		<T,>(name: string, value: T) =>
+		async (...args: unknown[]) => {
+			calls.push([name, ...args]);
+			return value;
 		};
 	return {
 		calls,
@@ -71,6 +80,14 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		startAgentWork: record('startAgentWork'),
 		updateAgentWork: record('updateAgentWork'),
 		finishAgentWork: record('finishAgentWork'),
+		listRoutines: recordAs('listRoutines', []),
+		getRoutine: recordAs('getRoutine', fakeRoutine),
+		listRoutineInstances: recordAs('listRoutineInstances', []),
+		createRoutine: recordAs('createRoutine', fakeRoutine),
+		updateRoutine: recordAs('updateRoutine', fakeRoutine),
+		completeRoutine: recordAs('completeRoutine', fakeInstance),
+		skipRoutine: recordAs('skipRoutine', fakeInstance),
+		convertRoutine: record('convertRoutine'),
 	};
 };
 
@@ -958,5 +975,118 @@ describe('localAccess.requestConnection', () => {
 		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
 			'ok',
 		);
+	});
+});
+
+describe('routines', () => {
+	it('gates reads and writes behind routines permissions, validated', async () => {
+		const { broker, api } = setup(['routines:read']);
+		await broker.call('routines.list', { from: '2026-09-01', to: '2026-09-30' });
+		await broker.call('routines.get', { id: 4 });
+		await broker.call('routines.instances', { id: 4 });
+		expect(api.calls).toEqual([
+			['listRoutines', '2026-09-01', '2026-09-30'],
+			['getRoutine', 4],
+			['listRoutineInstances', 4],
+		]);
+		expect(
+			await code(broker.call('routines.create', { title: 'Read' })),
+		).toBe('PERMISSION_DENIED');
+
+		const { broker: writer, api: writerApi } = setup(['routines:write']);
+		await writer.call('routines.create', { title: 'Read', date: '2026-09-26', time: '09:00' });
+		await writer.call('routines.update', { id: 4, patch: { title: 'New' } });
+		await writer.call('routines.complete', { id: 4, date: '2026-09-26' });
+		await writer.call('routines.skip', { id: 4 });
+		expect(writerApi.calls).toEqual([
+			['createRoutine', { title: 'Read', description: null, date: '2026-09-26', time: '09:00' }],
+			['updateRoutine', 4, { title: 'New' }],
+			['completeRoutine', 4, '2026-09-26'],
+			['skipRoutine', 4, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)],
+		]);
+		expect(await code(writer.call('routines.list', { from: '2026-09-01', to: '2026-09-30' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+	});
+
+	it('validates the date range, dates, times and update patch', async () => {
+		const { broker } = setup(['routines:read']);
+		expect(await code(broker.call('routines.list', { from: '2026-09-30', to: '2026-09-01' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('routines.list', { from: '2026-01-01', to: '2026-12-31' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('routines.list', { from: '2026-02-30', to: '2026-02-30' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('routines.list', { from: 'nope', to: '2026-09-30' }))).toBe(
+			'INVALID_PARAMS',
+		);
+
+		const { broker: writer } = setup(['routines:write']);
+		expect(await code(writer.call('routines.create', { title: '' }))).toBe('INVALID_PARAMS');
+		expect(
+			await code(writer.call('routines.create', { title: 'x', time: '09:00' })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(writer.call('routines.create', { title: 'x', date: '2026-09-26', time: '9:00' })),
+		).toBe('INVALID_PARAMS');
+		expect(await code(writer.call('routines.update', { id: 4, patch: {} }))).toBe('INVALID_PARAMS');
+	});
+
+	it('refuses every routines.* call outside a local workspace, before touching the api', async () => {
+		const { broker, api } = setup(['routines:read', 'routines:write'], {
+			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
+		});
+		expect(
+			await code(broker.call('routines.list', { from: '2026-09-01', to: '2026-09-02' })),
+		).toBe('NOT_SUPPORTED');
+		expect(await code(broker.call('routines.get', { id: 1 }))).toBe('NOT_SUPPORTED');
+		expect(await code(broker.call('routines.create', { title: 'x' }))).toBe('NOT_SUPPORTED');
+		expect(await code(broker.call('routines.complete', { id: 1 }))).toBe('NOT_SUPPORTED');
+		expect(
+			await code(broker.call('routines.convertToTask', { id: 1 })),
+		).toBe('NOT_SUPPORTED');
+		expect(api.calls).toEqual([]);
+	});
+
+	it('convertToTask needs both routines:write and tasks:write', async () => {
+		const { broker, api } = setup(['routines:write']);
+		expect(await code(broker.call('routines.convertToTask', { id: 4 }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(api.calls).toEqual([]);
+
+		const { broker: allowed, api: allowedApi } = setup(['routines:write', 'tasks:write']);
+		await allowed.call('routines.convertToTask', {
+			id: 4,
+			categoryId: 9,
+			statusId: 2,
+		});
+		expect(allowedApi.calls).toEqual([
+			['convertRoutine', 4, { categoryId: 9, statusId: 2 }],
+		]);
+	});
+
+	it('refuses tasks.get and tasks.update for a routine-range id in a local workspace', async () => {
+		const { broker, api } = setup(['tasks:read', 'tasks:write']);
+		expect(await code(broker.call('tasks.get', { id: 1_000_000_005 }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(
+			await code(broker.call('tasks.update', { id: 1_000_000_005, patch: { title: 'x' } })),
+		).toBe('INVALID_PARAMS');
+		expect(api.calls).toEqual([]);
+		await broker.call('tasks.get', { id: 4 });
+		expect(api.calls).toEqual([['getTask', 4]]);
+	});
+
+	it('does not refuse routine-range task ids outside a local workspace (the server owns that check there)', async () => {
+		const { broker, api } = setup(['tasks:read'], {
+			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
+		});
+		await broker.call('tasks.get', { id: 1_000_000_005 });
+		expect(api.calls).toEqual([['getTask', 1_000_000_005]]);
 	});
 });

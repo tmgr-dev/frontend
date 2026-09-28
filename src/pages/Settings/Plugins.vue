@@ -543,6 +543,8 @@
 		tray: 'add items and text to the menu bar icon',
 		deeplinks: 'be opened from tmgr:// links in other apps',
 		'links:open': 'open web links in your browser',
+		'routines:read': 'read your notes and routines (local workspaces only)',
+		'routines:write': 'add, rename, complete and convert your notes and routines (local workspaces only)',
 	};
 
 	export default defineComponent({

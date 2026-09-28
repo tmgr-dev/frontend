@@ -24,8 +24,8 @@ beforeAll(async () => {
 	});
 });
 
-const startHost = () =>
-	createTestHost({ manifest: loadManifest(), mainPath: join(dir, 'main.js'), quickjs });
+const startHost = (options: Record<string, unknown> = {}) =>
+	createTestHost({ manifest: loadManifest(), mainPath: join(dir, 'main.js'), quickjs, ...options });
 
 it('the kitchen-sink manifest is valid', () => {
 	expect(() => parseManifest(loadManifest())).not.toThrow();
@@ -75,5 +75,34 @@ it('the alarm fires and refreshes the tray item', async () => {
 	expect(host.tmgr.trayItems['ks-tray']).toBeDefined();
 	// Periodic: the alarm reschedules itself instead of disappearing.
 	expect(host.tmgr.alarms['ks-tick'].scheduledAtMs).toBeGreaterThan(scheduledAt);
+	host.dispose();
+});
+
+it('"Capture today\'s notes" converts an undated note into a task (API 1.2)', async () => {
+	const host = await startHost({ routines: [{ title: 'Undated note' }] });
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	const task: any = await host.runCommand('tmgr-dev.kitchen-sink.captureNotes', null);
+	expect(task.title).toBe('Undated note');
+	expect(host.tmgr.routines).toHaveLength(0);
+	expect(host.tmgr.tasks.map((t: any) => t.title)).toContain('Undated note');
+	host.dispose();
+});
+
+it('routine.created is delivered to the plugin (API 1.2)', async () => {
+	const host = await startHost({ routines: [{ title: 'Undated note' }] });
+	await host.emit({
+		type: 'routine.created',
+		routineId: 1,
+		routine: {
+			id: 1,
+			title: 'Undated note',
+			description: null,
+			scheduledDate: null,
+			scheduledTime: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		},
+	});
+	expect(host.tmgr.log.some((l: any) => l.message.includes('routine.created 1'))).toBe(true);
 	host.dispose();
 });

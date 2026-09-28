@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import { PluginError, type DataApi } from './broker';
 import { encodeFile, MAX_FILE_BYTES } from './fileData';
+import { toRoutine, toRoutineEntry, toRoutineInstance } from './routines';
 
 const unwrap = (response: { data: any }) => response.data?.data ?? null;
 
@@ -68,6 +69,11 @@ export const createDataApi = (
 				'NOT_SUPPORTED',
 				`${what} is not available in shared workspaces yet`,
 			);
+	};
+	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
+	const routinesNotSupported = () => {
+		if (cloud)
+			throw new PluginError('NOT_SUPPORTED', 'routines are not available in shared workspaces yet');
 	};
 	const storage = (key?: string) =>
 		`plugins/${encodeURIComponent(storageId)}/storage${
@@ -350,6 +356,116 @@ export const createDataApi = (
 				mimeType: file.mime_type ?? null,
 				...encodeFile(bytes, file.mime_type ?? null, file.name),
 			};
+		},
+		listRoutines: async (from, to) => {
+			routinesNotSupported();
+			const rows = (unwrap(
+				await http.get('daily-routines/expand', { headers, params: { from, to } }),
+			) ?? []) as any[];
+			return rows.map(toRoutineEntry);
+		},
+		getRoutine: async (id) => {
+			routinesNotSupported();
+			return toRoutine(unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })));
+		},
+		listRoutineInstances: async (id) => {
+			routinesNotSupported();
+			const rows = (unwrap(
+				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+			) ?? []) as any[];
+			return rows.map(toRoutineInstance);
+		},
+		createRoutine: async ({ title, description, date, time }) => {
+			routinesNotSupported();
+			const response = date
+				? await http.post(
+						'daily-routines/tasks/recurring',
+						{ title, description, scheduled_date: date, scheduled_time: time },
+						{ headers },
+				  )
+				: await http.post('daily-routines/tasks', { title, description }, { headers });
+			return toRoutine(unwrap(response));
+		},
+		updateRoutine: async (id, patch) => {
+			routinesNotSupported();
+			return toRoutine(
+				unwrap(await http.put(`daily-routines/tasks/${id}`, patch, { headers })),
+			);
+		},
+		completeRoutine: async (id, date) => {
+			routinesNotSupported();
+			const instances = (unwrap(
+				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+			) ?? []) as any[];
+			const existing = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
+			if (existing) {
+				if (existing.status === 'COMPLETED') return toRoutineInstance(existing);
+				return toRoutineInstance(
+					unwrap(
+						await http.post(
+							`daily-routines/tasks/${id}/instances/${existing.id}/complete`,
+							undefined,
+							{ headers },
+						),
+					),
+				);
+			}
+			const completed = unwrap(
+				await http.post(`daily-routines/tasks/${id}/complete-on`, { date }, { headers }),
+			);
+			return toRoutineInstance({
+				id: completed.instance_id,
+				routine_id: id,
+				scheduled_for: `${date}T00:00:00`,
+				status: completed.status,
+			});
+		},
+		skipRoutine: async (id, date) => {
+			routinesNotSupported();
+			const instances = (unwrap(
+				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+			) ?? []) as any[];
+			const existing = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
+			if (existing) {
+				if (existing.status === 'SKIPPED') return toRoutineInstance(existing);
+				return toRoutineInstance(
+					unwrap(
+						await http.post(
+							`daily-routines/tasks/${id}/instances/${existing.id}/skip`,
+							undefined,
+							{ headers },
+						),
+					),
+				);
+			}
+			const created = unwrap(
+				await http.patch(
+					`daily-routines/tasks/${id}/instances/virtual`,
+					{ scheduled_date: date },
+					{ headers },
+				),
+			);
+			return toRoutineInstance(
+				unwrap(
+					await http.post(
+						`daily-routines/tasks/${id}/instances/${created.id}/skip`,
+						undefined,
+						{ headers },
+					),
+				),
+			);
+		},
+		convertRoutine: async (id, { categoryId, statusId }) => {
+			routinesNotSupported();
+			return withKey(
+				unwrap(
+					await http.post(
+						`daily-routines/tasks/${id}/convert`,
+						{ workspace_id: workspaceId, project_category_id: categoryId, status_id: statusId },
+						{ headers },
+					),
+				),
+			);
 		},
 	};
 };
