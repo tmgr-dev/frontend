@@ -125,6 +125,7 @@
 				<DropdownMenuTrigger as-child>
 					<button
 						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+						aria-label="Task actions"
 						@click.stop
 					>
 						<MoreVertical class="h-3.5 w-3.5" />
@@ -135,6 +136,10 @@
 					<DropdownMenuItem @click="handleOpenModal">
 						<Eye class="mr-2 h-4 w-4" />
 						<span>Open details</span>
+					</DropdownMenuItem>
+					<DropdownMenuItem @click="showSettings = true">
+						<Settings2 class="mr-2 h-4 w-4" />
+						<span>Settings</span>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem @click="handleMoveToTop">
@@ -223,6 +228,12 @@
 		<!-- Kept inside the root: the card must stay single-root so the board's
 		     fallthrough attrs (class="my-5", :data-task) and vuedraggable's item
 		     element keep working. Modal is position: fixed, so nesting is harmless. -->
+		<SettingsComponent
+			v-if="showSettings"
+			:form="task"
+			hide-trigger
+			@close="showSettings = false"
+		/>
 		<Confirm
 			v-if="timerStatusConfirm"
 			:title="timerStatusConfirm.title"
@@ -247,6 +258,7 @@
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
@@ -285,6 +297,7 @@
 		FilePenLine,
 		GripVertical,
 		MoreVertical,
+		Settings2,
 		Pause,
 		Play,
 		Siren,
@@ -304,6 +317,7 @@
 		components: {
 			TaskTimeInfo,
 			Confirm,
+			SettingsComponent,
 			ClockPlus,
 			FilePenLine,
 			Siren,
@@ -328,6 +342,7 @@
 			CommandItem,
 			CommandList,
 			MoreVertical,
+			Settings2,
 			ArrowUpToLine,
 			ArrowDownToLine,
 			Trash2,
@@ -366,6 +381,7 @@
 				showAssigneePopover: false,
 				workspaceMembers: [],
 				timerStatusConfirm: null,
+				showSettings: false,
 			};
 		},
 		computed: {

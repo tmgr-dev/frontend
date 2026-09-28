@@ -1,6 +1,9 @@
 <template>
-	<Dialog>
-		<DialogTrigger as-child>
+	<Dialog
+		:default-open="hideTrigger"
+		@update:open="(open) => !open && emit('close')"
+	>
+		<DialogTrigger v-if="!hideTrigger" as-child>
 			<button
 				type="button"
 				title="Settings"
@@ -126,6 +129,7 @@
 
 	interface Props {
 		form: Task;
+		hideTrigger?: boolean;
 	}
 
 	const props = defineProps<Props>();
