@@ -17,6 +17,7 @@ import {
 } from './broker';
 import { taskKey } from './dataApi';
 import type { PluginManifest } from './manifest';
+import { toRoutine, toRoutineInstance } from './routines';
 import {
 	startPluginProcess,
 	type PluginProcess,
@@ -858,9 +859,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const unsubscribe = deps.subscribe((event) => {
 		const workspace = state.workspace;
 		if (!workspace || event.workspaceId !== workspace.id) return;
+		if (event.type.startsWith('routine.') && workspace.kind !== 'local') return;
 		const { actor: _actor, ...basePayload } = event as DomainEvent & {
 			task?: unknown;
 			reactions?: unknown;
+			routine?: unknown;
+			instance?: unknown;
 		};
 		// Reacted/users are actor-relative; a broadcast has no single actor, so no plugin gets them.
 		if (
@@ -876,6 +880,14 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			basePayload.task && typeof basePayload.task === 'object'
 				? { ...basePayload.task, key: taskKey(basePayload.task) }
 				: basePayload.task;
+		const routine =
+			basePayload.routine && typeof basePayload.routine === 'object'
+				? toRoutine(basePayload.routine)
+				: undefined;
+		const instance =
+			basePayload.instance && typeof basePayload.instance === 'object'
+				? toRoutineInstance(basePayload.instance)
+				: undefined;
 		for (const [pluginId, plugin] of running) {
 			if (
 				!plugin.registered.event.has(event.type) ||
@@ -892,8 +904,13 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				const { relationTypeWithTask, ...rest } = payloadTask as Record<string, unknown>;
 				payloadTask = rest;
 			}
-			const payload = { ...basePayload, task: payloadTask };
-			if (payloadTask === undefined) delete (payload as { task?: unknown }).task;
+			const payload: Record<string, unknown> = { ...basePayload, task: payloadTask };
+			if (payloadTask === undefined) delete payload.task;
+			if (routine !== undefined) payload.routine = routine;
+			else delete payload.routine;
+			if (instance !== undefined) payload.instance = instance;
+			else delete payload.instance;
+			if (event.type === 'routine.deleted' && !permissions.includes('tasks:read')) delete payload.taskId;
 			void dispatch(pluginId, 'event', event.type, payload).catch(
 				() => undefined,
 			);

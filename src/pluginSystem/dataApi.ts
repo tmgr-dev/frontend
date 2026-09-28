@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import { PluginError, type DataApi } from './broker';
 import { encodeFile, MAX_FILE_BYTES } from './fileData';
+import { toRoutine, toRoutineEntry, toRoutineInstance } from './routines';
 
 const unwrap = (response: { data: any }) => response.data?.data ?? null;
 
@@ -68,6 +69,46 @@ export const createDataApi = (
 				'NOT_SUPPORTED',
 				`${what} is not available in shared workspaces yet`,
 			);
+	};
+	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
+	const routinesNotSupported = () => {
+		if (cloud)
+			throw new PluginError('NOT_SUPPORTED', 'routines are not available in shared workspaces yet');
+	};
+	// Overlapping calls on one routine would each see no instance for the date and create two.
+	const routineQueues = new Map<number, Promise<unknown>>();
+	const routineSerial = <T>(id: number, run: () => Promise<T>): Promise<T> => {
+		const next = (routineQueues.get(id) ?? Promise.resolve()).then(run, run);
+		const settled = next.catch(() => undefined);
+		routineQueues.set(id, settled);
+		void settled.then(() => {
+			if (routineQueues.get(id) === settled) routineQueues.delete(id);
+		});
+		return next;
+	};
+	/** Never the toggling complete-on route: a set status is what makes repeating the call harmless. */
+	const setRoutineStatus = async (id: number, date: string, status: 'COMPLETED' | 'SKIPPED') => {
+		const instances = (unwrap(
+			await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+		) ?? []) as any[];
+		let instance = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
+		if (instance?.status === status) return toRoutineInstance(instance);
+		instance ??= unwrap(
+			await http.patch(
+				`daily-routines/tasks/${id}/instances/virtual`,
+				{ scheduled_date: date },
+				{ headers },
+			),
+		);
+		return toRoutineInstance(
+			unwrap(
+				await http.post(
+					`daily-routines/tasks/${id}/instances/${instance.id}/${status === 'COMPLETED' ? 'complete' : 'skip'}`,
+					undefined,
+					{ headers },
+				),
+			),
+		);
 	};
 	const storage = (key?: string) =>
 		`plugins/${encodeURIComponent(storageId)}/storage${
@@ -350,6 +391,61 @@ export const createDataApi = (
 				mimeType: file.mime_type ?? null,
 				...encodeFile(bytes, file.mime_type ?? null, file.name),
 			};
+		},
+		listRoutines: async (from, to) => {
+			routinesNotSupported();
+			const rows = (unwrap(
+				await http.get('daily-routines/expand', { headers, params: { from, to } }),
+			) ?? []) as any[];
+			return rows.map(toRoutineEntry);
+		},
+		getRoutine: async (id) => {
+			routinesNotSupported();
+			return toRoutine(unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })));
+		},
+		listRoutineInstances: async (id) => {
+			routinesNotSupported();
+			const rows = (unwrap(
+				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+			) ?? []) as any[];
+			return rows.map(toRoutineInstance);
+		},
+		createRoutine: async ({ title, description, date, time }) => {
+			routinesNotSupported();
+			const response = date
+				? await http.post(
+						'daily-routines/tasks/recurring',
+						{ title, description, scheduled_date: date, scheduled_time: time },
+						{ headers },
+				  )
+				: await http.post('daily-routines/tasks', { title, description }, { headers });
+			return toRoutine(unwrap(response));
+		},
+		updateRoutine: async (id, patch) => {
+			routinesNotSupported();
+			return toRoutine(
+				unwrap(await http.put(`daily-routines/tasks/${id}`, patch, { headers })),
+			);
+		},
+		completeRoutine: async (id, date) => {
+			routinesNotSupported();
+			return routineSerial(id, () => setRoutineStatus(id, date, 'COMPLETED'));
+		},
+		skipRoutine: async (id, date) => {
+			routinesNotSupported();
+			return routineSerial(id, () => setRoutineStatus(id, date, 'SKIPPED'));
+		},
+		convertRoutine: async (id, { categoryId, statusId }) => {
+			routinesNotSupported();
+			return withKey(
+				unwrap(
+					await http.post(
+						`daily-routines/tasks/${id}/convert`,
+						{ workspace_id: workspaceId, project_category_id: categoryId, status_id: statusId },
+						{ headers },
+					),
+				),
+			);
 		},
 	};
 };

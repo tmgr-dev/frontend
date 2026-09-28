@@ -107,6 +107,24 @@ tmgr.commands.register('tmgr-dev.kitchen-sink.ping', async () => {
 	await tmgr.ui.notify('Pinged via a tmgr:// deep link.', { title: 'Kitchen Sink' });
 });
 
+/** Local workspaces only: converts the first undone one-off note of the day into a task. */
+const captureNotes = async () => {
+	const setup = (await tmgr.storage.get('setup')) ?? (await ensureWorkspace());
+	const now = new Date();
+	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+	const entries = await tmgr.routines.list({ from: today, to: today });
+	const todo = entries.find((entry) => !entry.completed && !entry.recurring);
+	if (!todo) {
+		await tmgr.ui.notify('Nothing to capture today.', { title: 'Kitchen Sink' });
+		return null;
+	}
+	const task = await tmgr.routines.convertToTask(todo.routineId, { categoryId: setup.categoryId });
+	await tmgr.ui.notify(`Converted "${task.title}" into a task.`, { title: 'Kitchen Sink', taskId: task.id });
+	return task;
+};
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.captureNotes', captureNotes);
+
 tmgr.ui.provideBadges(BADGE_ID, async (tasks) => {
 	const notes = await tmgr.taskData.getMany(tasks.map((t) => t.id), 'kitchenSink.note');
 	const result = {};
@@ -174,6 +192,12 @@ tmgr.events.on('app.started', async () => {
 tmgr.events.on('workspace.switched', async (payload) => {
 	console.info(`kitchen-sink: workspace.switched from ${payload.from} to ${payload.to}`);
 });
+
+tmgr.events
+	.on('routine.created', async (payload) => {
+		console.info(`kitchen-sink: routine.created ${payload.routineId}`);
+	})
+	.catch((error) => console.warn(`routine.created listener not registered: ${error.message}`));
 
 tmgr.events.on('alarm', async (payload) => {
 	if (payload.name !== ALARM_NAME) return;

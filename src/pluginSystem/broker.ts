@@ -1,4 +1,5 @@
 import type { Permission, PluginManifest } from './manifest';
+import type { Routine, RoutineEntry, RoutineInstance } from './routines';
 
 export type PluginErrorCode =
 	| 'UNKNOWN_METHOD'
@@ -75,6 +76,22 @@ export interface DataApi {
 	): Promise<unknown>;
 	updateAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
 	finishAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
+	listRoutines(from: string, to: string): Promise<RoutineEntry[]>;
+	getRoutine(id: number): Promise<Routine>;
+	listRoutineInstances(id: number): Promise<RoutineInstance[]>;
+	createRoutine(fields: {
+		title: string;
+		description: string | null;
+		date: string | null;
+		time: string | null;
+	}): Promise<Routine>;
+	updateRoutine(id: number, patch: Record<string, unknown>): Promise<Routine>;
+	completeRoutine(id: number, date: string): Promise<RoutineInstance>;
+	skipRoutine(id: number, date: string): Promise<RoutineInstance>;
+	convertRoutine(
+		id: number,
+		fields: { categoryId: number | null; statusId: number | null },
+	): Promise<unknown>;
 }
 
 export interface PluginWorkspace {
@@ -201,6 +218,9 @@ export const PLUGIN_EVENTS: Record<string, Permission | null> = {
 	'comment.deleted': 'comments:read',
 	'comment.reactionChanged': 'comments:read',
 	'task.relationChanged': 'relations:read',
+	'routine.created': 'routines:read',
+	'routine.updated': 'routines:read',
+	'routine.deleted': 'routines:read',
 	alarm: 'alarms',
 	'app.started': null,
 	'workspace.switched': null,
@@ -396,6 +416,34 @@ const relationType = (value: unknown): string =>
 		? value
 		: invalid(`type must be one of ${RELATION_TYPES.join(', ')}`);
 
+const ROUTINE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+const routineDate = (value: unknown, field: string): string => {
+	if (typeof value !== 'string' || !ROUTINE_DATE.test(value)) invalid(`${field} must be YYYY-MM-DD`);
+	const [y, m, d] = (value as string).split('-').map(Number);
+	const parsed = new Date(Date.UTC(y, m - 1, d));
+	if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+		invalid(`${field} must be a real date`);
+	}
+	return value as string;
+};
+
+const ROUTINE_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const routineTime = (value: unknown): string =>
+	typeof value === 'string' && ROUTINE_TIME.test(value) ? value : invalid('time must be HH:mm');
+
+const todayLocal = (nowMs: number): string => {
+	const d = new Date(nowMs);
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Local routine ids start above this; the local PUT/PATCH tasks/:id would edit a routine with one. */
+const ROUTINE_ID_BASE = 1_000_000_000;
+
+const routineIdRefused = (): never =>
+	invalid('id is a routine; use tmgr.routines');
+
 const taskFields = (patch: unknown) => {
 	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
 		invalid('patch must be an object');
@@ -565,6 +613,15 @@ export const createBroker = (deps: BrokerDeps) => {
 		return deps.alarms;
 	};
 
+	const requireLocalWorkspace = () => {
+		if (deps.workspace.kind !== 'local') {
+			throw new PluginError(
+				'NOT_SUPPORTED',
+				'routines are not available in shared workspaces yet',
+			);
+		}
+	};
+
 	const needTray = () => {
 		if (!deps.tray) {
 			throw new PluginError(
@@ -616,7 +673,11 @@ export const createBroker = (deps: BrokerDeps) => {
 		},
 		'tasks.get': {
 			permission: 'tasks:read',
-			run: (p) => api.getTask(id(p.id)).then(stripRelations),
+			run: (p) => {
+				const taskId = id(p.id);
+				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE) routineIdRefused();
+				return api.getTask(taskId).then(stripRelations);
+			},
 		},
 		'tasks.create': {
 			permission: 'tasks:write',
@@ -630,7 +691,11 @@ export const createBroker = (deps: BrokerDeps) => {
 		'tasks.update': {
 			permission: 'tasks:write',
 			write: true,
-			run: (p) => api.updateTask(id(p.id), taskFields(p.patch)).then(stripRelations),
+			run: (p) => {
+				const taskId = id(p.id);
+				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE) routineIdRefused();
+				return api.updateTask(taskId, taskFields(p.patch)).then(stripRelations);
+			},
 		},
 		'statuses.list': {
 			permission: 'statuses:read',
@@ -804,6 +869,99 @@ export const createBroker = (deps: BrokerDeps) => {
 					status: patch.status,
 					...agentWorkProgress(patch, false),
 				});
+			},
+		},
+		'routines.list': {
+			permission: 'routines:read',
+			run: (p) => {
+				requireLocalWorkspace();
+				const from = routineDate(p.from, 'from');
+				const to = routineDate(p.to, 'to');
+				if (from > to) invalid('from must not be after to');
+				const spanDays =
+					(Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+				if (spanDays > 92) invalid('from..to must span at most 92 days');
+				return api.listRoutines(from, to);
+			},
+		},
+		'routines.get': {
+			permission: 'routines:read',
+			run: (p) => {
+				requireLocalWorkspace();
+				return api.getRoutine(id(p.id));
+			},
+		},
+		'routines.instances': {
+			permission: 'routines:read',
+			run: (p) => {
+				requireLocalWorkspace();
+				return api.listRoutineInstances(id(p.id));
+			},
+		},
+		'routines.create': {
+			permission: 'routines:write',
+			write: true,
+			run: (p) => {
+				requireLocalWorkspace();
+				const title = string(p.title, 'title', 500);
+				const description =
+					p.description == null ? null : string(p.description, 'description', 20_000, true);
+				const date = p.date == null ? null : routineDate(p.date, 'date');
+				if (p.time != null && date == null) invalid('time requires date');
+				const time = p.time == null ? null : routineTime(p.time);
+				return api.createRoutine({ title, description, date, time });
+			},
+		},
+		'routines.update': {
+			permission: 'routines:write',
+			write: true,
+			run: (p) => {
+				requireLocalWorkspace();
+				if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch))
+					invalid('patch must be an object');
+				const patch = p.patch as Params;
+				const fields: Record<string, unknown> = {};
+				if ('title' in patch) fields.title = string(patch.title, 'title', 500);
+				if ('description' in patch) {
+					fields.description =
+						patch.description == null ? null : string(patch.description, 'description', 20_000, true);
+				}
+				if (!Object.keys(fields).length) invalid('patch must include title or description');
+				return api.updateRoutine(id(p.id), fields);
+			},
+		},
+		'routines.complete': {
+			permission: 'routines:write',
+			write: true,
+			run: (p) => {
+				requireLocalWorkspace();
+				const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
+				return api.completeRoutine(id(p.id), date);
+			},
+		},
+		'routines.skip': {
+			permission: 'routines:write',
+			write: true,
+			run: (p) => {
+				requireLocalWorkspace();
+				const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
+				return api.skipRoutine(id(p.id), date);
+			},
+		},
+		'routines.convertToTask': {
+			permission: 'routines:write',
+			write: true,
+			run: (p) => {
+				requireLocalWorkspace();
+				if (!granted.has('tasks:write')) {
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						'routines.convertToTask needs tasks:write',
+					);
+				}
+				const categoryId = optionalId(p.categoryId, 'categoryId');
+				const statusId = optionalId(p.statusId, 'statusId');
+				return api.convertRoutine(id(p.id), { categoryId, statusId });
 			},
 		},
 		'storage.get': {

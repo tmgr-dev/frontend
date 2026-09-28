@@ -59,6 +59,12 @@ export const reachesThisComputer = (manifest: PluginManifest) =>
 	manifest.network.allowedOrigins.length > 0 ||
 	manifest.permissions.some((p) => MACHINE_PERMISSIONS.has(p));
 
+/** Local-only permissions the server's EnablePluginRequest does not know and rejects with 400. */
+const CLOUD_UNSUPPORTED_PERMISSIONS = new Set(['routines:read', 'routines:write']);
+
+const cloudPermissionsOf = (manifest: PluginManifest) =>
+	manifest.permissions.filter((p) => !CLOUD_UNSUPPORTED_PERMISSIONS.has(p));
+
 /** What the server stores when the creator turns a plugin on; folder plugins cannot be shared. */
 export const pinOf = (entry: PluginEntry) => {
 	if (entry.source === 'builtin')
@@ -67,7 +73,7 @@ export const pinOf = (entry: PluginEntry) => {
 			version: entry.manifest.version,
 			sha256: null,
 			public_key: null,
-			permissions: entry.manifest.permissions,
+			permissions: cloudPermissionsOf(entry.manifest),
 		};
 	if (entry.source === 'installed' && entry.origin?.public_key)
 		return {
@@ -75,7 +81,7 @@ export const pinOf = (entry: PluginEntry) => {
 			version: entry.origin.tag,
 			sha256: entry.origin.sha256,
 			public_key: entry.origin.public_key,
-			permissions: entry.manifest.permissions,
+			permissions: cloudPermissionsOf(entry.manifest),
 		};
 	return null;
 };

@@ -68,6 +68,12 @@ describe('installLocalAccessEvents', () => {
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
+	it('never forwards routine events: routines are owner-only', async () => {
+		domainEvents.emit({ type: 'routine.created', workspaceId: -3, routineId: 1_000_000_001, routine: { id: 1_000_000_001 } });
+		await flush();
+		expect(invoke).not.toHaveBeenCalled();
+	});
+
 	it('ignores events with no plugin permission, such as app.started', async () => {
 		domainEvents.emit({ type: 'app.started', workspaceId: -3 } as any);
 		await flush();

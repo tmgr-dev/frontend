@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.1';
+export const PLUGIN_API_VERSION = '1.2';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -23,6 +23,8 @@ export const PERMISSIONS = [
 	'tray',
 	'deeplinks',
 	'links:open',
+	'routines:read',
+	'routines:write',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

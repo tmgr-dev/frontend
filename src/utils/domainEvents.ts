@@ -48,6 +48,15 @@ export type DomainEvent = (
 			relationType: string | number;
 			change: 'added' | 'removed';
 	  }
+	| { type: 'routine.created'; workspaceId: number | null; routineId: number; routine: Entity }
+	| {
+			type: 'routine.updated';
+			workspaceId: number | null;
+			routineId: number;
+			routine?: Entity;
+			instance?: Entity;
+	  }
+	| { type: 'routine.deleted'; workspaceId: number | null; routineId: number; taskId?: number }
 ) & { actor?: string };
 
 export type DomainEventHandler = (event: DomainEvent) => void;
@@ -129,6 +138,17 @@ const KNOWN_TASK_FIELDS = new Set([
 const changedFields = (body: Entity): string[] =>
 	Object.keys(body).filter((key) => KNOWN_TASK_FIELDS.has(key));
 
+/** Mirrors src/local/routines/service.ts#ROUTINE_ID_BASE: routine ids live above this in the local db. */
+const ROUTINE_ID_BASE = 1_000_000_000;
+
+/** A `routineJson` payload or a raw `routines` row: both carry `title` and `scheduled_date`, never `scheduled_for`. */
+const isRoutineShaped = (entity?: Entity): boolean =>
+	!!entity && typeof entity === 'object' && 'title' in entity && 'scheduled_date' in entity && !('scheduled_for' in entity);
+
+/** An `instanceJson` payload or a raw `routine_instances` row. */
+const isInstanceShaped = (entity?: Entity): boolean =>
+	!!entity && typeof entity === 'object' && 'scheduled_for' in entity && 'task_id' in entity;
+
 /** The domain events a successful API write stands for. Pure: reads nothing but its arguments. */
 export const eventsForResponse = (
 	response: ObservedResponse,
@@ -170,6 +190,18 @@ export const eventsForResponse = (
 	}
 	if ((match = path.match(/^tasks\/(\d+)$/))) {
 		const taskId = Number(match[1]);
+		// Local workspace ids are negative; a cloud task id above the base is still a task.
+		const inLocalWorkspace = (workspaceOf(payload) ?? 0) < 0;
+		if (taskId > ROUTINE_ID_BASE && inLocalWorkspace && (method === 'put' || method === 'patch')) {
+			return [
+				{
+					type: 'routine.updated',
+					workspaceId: workspaceOf(payload),
+					routineId: taskId,
+					...(isRoutineShaped(payload) ? { routine: payload } : {}),
+				},
+			];
+		}
 		if (method === 'delete')
 			return [{ type: 'task.deleted', workspaceId: workspaceOf(), taskId }];
 		const events: DomainEvent[] = withTask(
@@ -302,6 +334,101 @@ export const eventsForResponse = (
 				relationType: relationTypeName ?? Number(match[3]),
 				change: method === 'post' ? 'added' : 'removed',
 			},
+		];
+	}
+	if (
+		method === 'post' &&
+		(path === 'daily-routines/tasks' ||
+			path === 'daily-routines/tasks/recurring' ||
+			path === 'daily-routines/tasks/quick') &&
+		payload
+	) {
+		return [
+			{
+				type: 'routine.created',
+				workspaceId: workspaceOf(payload),
+				routineId: Number(payload.id),
+				routine: payload,
+			},
+		];
+	}
+	if ((match = path.match(/^daily-routines\/tasks\/(\d+)$/))) {
+		const routineId = Number(match[1]);
+		if (method === 'delete')
+			return [{ type: 'routine.deleted', workspaceId: workspaceOf(), routineId }];
+		if (method === 'put') {
+			return [
+				{
+					type: 'routine.updated',
+					workspaceId: workspaceOf(payload),
+					routineId,
+					...(isRoutineShaped(payload) ? { routine: payload } : {}),
+				},
+			];
+		}
+	}
+	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/pattern$/)) && method === 'put') {
+		return [{ type: 'routine.updated', workspaceId: workspaceOf(), routineId: Number(match[1]) }];
+	}
+	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/archive$/)) && method === 'post') {
+		const routineId = Number(match[1]);
+		return [
+			{
+				type: 'routine.updated',
+				workspaceId: workspaceOf(payload),
+				routineId,
+				...(isRoutineShaped(payload) ? { routine: payload } : {}),
+			},
+		];
+	}
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/(?:complete|complete-on)$/)) &&
+		method === 'post'
+	) {
+		const routineId = Number(match[1]);
+		return [
+			{
+				type: 'routine.updated',
+				workspaceId: workspaceOf(),
+				routineId,
+				...(isInstanceShaped(payload) ? { instance: payload } : {}),
+			},
+		];
+	}
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/instances\/[^/]+\/(?:complete|skip)$/)) &&
+		method === 'post'
+	) {
+		const routineId = Number(match[1]);
+		return [
+			{
+				type: 'routine.updated',
+				workspaceId: workspaceOf(),
+				routineId,
+				...(isInstanceShaped(payload) ? { instance: payload } : {}),
+			},
+		];
+	}
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/instances\/[^/]+$/)) &&
+		(method === 'patch' || method === 'delete')
+	) {
+		const routineId = Number(match[1]);
+		return [
+			{
+				type: 'routine.updated',
+				workspaceId: workspaceOf(),
+				routineId,
+				...(isInstanceShaped(payload) ? { instance: payload } : {}),
+			},
+		];
+	}
+	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/convert$/)) && method === 'post' && payload) {
+		const routineId = Number(match[1]);
+		const taskId = Number(payload.id);
+		return [
+			{ type: 'routine.deleted', workspaceId: workspaceOf(payload), routineId, taskId },
+			{ type: 'task.created', workspaceId: workspaceOf(payload), taskId, task: payload },
 		];
 	}
 	return [];

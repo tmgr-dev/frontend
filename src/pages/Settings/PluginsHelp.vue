@@ -311,6 +311,10 @@
 					<code>plugin-sdk/examples/kitchen-sink</code> in developer mode; the
 					plugin log shows why a call was refused.
 				</p>
+				<p class="text-muted-foreground">
+					API 1.2: plugins can read and write Daily Routines (notes and
+					routines), on this device only — not yet in shared workspaces.
+				</p>
 			</section>
 		</div>
 	</div>

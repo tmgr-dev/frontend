@@ -29,6 +29,26 @@ export interface TestCategory {
 	code?: string | null;
 }
 
+export interface TestRoutine {
+	id?: number;
+	title: string;
+	description?: string | null;
+	scheduledDate?: string | null;
+	/** Only used together with `scheduledDate`. */
+	scheduledTime?: string | null;
+	/** Only used together with `scheduledDate`. */
+	frequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | null;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface TestRoutineInstance {
+	routineId: number;
+	date: string;
+	time?: string | null;
+	status?: 'PENDING' | 'COMPLETED' | 'SKIPPED';
+}
+
 export interface CreateTestHostOptions {
 	/** The plugin's manifest.json, as a plain object (validated with the app's own `parseManifest`). */
 	manifest: Record<string, unknown>;
@@ -39,6 +59,9 @@ export interface CreateTestHostOptions {
 	tasks?: TestTask[];
 	statuses?: TestStatus[];
 	categories?: TestCategory[];
+	/** Local workspaces only, like `tmgr.routines.*` itself. */
+	routines?: TestRoutine[];
+	routineInstances?: TestRoutineInstance[];
 	/** Saved plugin settings, as `tmgr.settings.get()` would return them. */
 	settings?: Record<string, unknown>;
 	/** Fixed clock (ms since epoch) used for `tmgr.alarms`, timers and `fireAlarms`. Defaults to `Date.now()`. */
@@ -77,6 +100,8 @@ export interface TestHostState {
 	taskData: Record<string, string>;
 	storage: Record<string, string>;
 	agentWork: Record<number, Record<string, unknown>[]>;
+	routines: Record<string, unknown>[];
+	routineInstances: Record<string, unknown>[];
 	attachments: Record<number, unknown[]>;
 	files: Record<string, string>;
 	alarms: Record<string, { name: string; scheduledAtMs: number; periodMinutes: number | null }>;

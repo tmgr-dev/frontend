@@ -84,6 +84,16 @@ export const PRELUDE = `(() => {
 			update: (runId, patch) => call('agentWork.update', { runId, patch }),
 			finish: (runId, patch) => call('agentWork.finish', { runId, patch }),
 		}),
+		routines: freeze({
+			list: (query) => call('routines.list', query || {}),
+			get: (id) => call('routines.get', { id }),
+			instances: (id) => call('routines.instances', { id }),
+			create: (fields) => call('routines.create', fields),
+			update: (id, patch) => call('routines.update', { id, patch }),
+			complete: (id, opts) => call('routines.complete', Object.assign({ id }, opts || {})),
+			skip: (id, opts) => call('routines.skip', Object.assign({ id }, opts || {})),
+			convertToTask: (id, opts) => call('routines.convertToTask', Object.assign({ id }, opts || {})),
+		}),
 		files: freeze({
 			export: (path, content) => call('files.export', { path, content }),
 			reveal: (path) => call('files.reveal', { path }),

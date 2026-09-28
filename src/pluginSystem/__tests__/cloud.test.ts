@@ -46,3 +46,16 @@ it('knows which plugins reach the member’s computer and what can be shared', (
 		pinOf({ ...entry, source: 'installed', origin: { repo: 'acme/timer', tag: 'v1.2.0', sha256: 'a'.repeat(64), public_key: 'RWkey' } }),
 	).toEqual({ repo: 'acme/timer', version: 'v1.2.0', sha256: 'a'.repeat(64), public_key: 'RWkey', permissions: ['tasks:read'] });
 });
+
+it('drops routines:read/routines:write from the permissions pinned for the server (it rejects unknown permissions)', () => {
+	const withRoutines = manifest({ permissions: ['tasks:read', 'routines:read', 'routines:write'] });
+	const entry = { manifest: withRoutines, status: 'stopped' as const, error: null, log: [] };
+	expect(pinOf({ ...entry, source: 'builtin' })).toMatchObject({ permissions: ['tasks:read'] });
+	expect(
+		pinOf({
+			...entry,
+			source: 'installed',
+			origin: { repo: 'acme/timer', tag: 'v1.2.0', sha256: 'a'.repeat(64), public_key: 'RWkey' },
+		}),
+	).toMatchObject({ permissions: ['tasks:read'] });
+});

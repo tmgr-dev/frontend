@@ -630,6 +630,19 @@ export const installPlugins = async (
 	await listen<string>('tray://plugin-item', ({ payload }) =>
 		void followTrayClick(host, store, payload),
 	);
+	// The relay is only a hint: the routine is read back from that local workspace, never taken from the payload.
+	await listen<{ workspaceId?: unknown; routineId?: unknown }>(
+		'quick-add://routine-created',
+		({ payload }) =>
+			void (async () => {
+				const workspaceId = Number(payload?.workspaceId);
+				const routineId = Number(payload?.routineId);
+				if (!Number.isSafeInteger(workspaceId) || !Number.isSafeInteger(routineId)) return;
+				if (!(await localWorkspaceById(workspaceId))) return;
+				const { data } = await clientFor(workspaceId, store).get(`daily-routines/tasks/${routineId}`);
+				if (data?.data) domainEvents.emit({ type: 'routine.created', workspaceId, routineId, routine: data.data });
+			})().catch(() => undefined),
+	);
 	watch(
 		() =>
 			Object.values(pluginState.plugins)

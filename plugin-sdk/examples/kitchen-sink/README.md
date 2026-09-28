@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.1 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.2 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -48,6 +48,11 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
     read through `window.tmgr`.
 11. Switch to a different workspace and back — the plugin's log (Settings → Plugins → its card → Log)
     should show `kitchen-sink: workspace.switched from … to …`.
+12. In a LOCAL workspace, add a note under Daily Routines with no date, then click **"Capture today's
+    notes"** on the plugin's card. Expect: a new task with the note's title in the KS category, a toast
+    naming it, the note gone from Daily Routines, and the log showing
+    `kitchen-sink: routine.created …` for the note's creation. Routines are local-workspace only: the
+    command does nothing useful in a shared workspace (`routines.*` rejects with `NOT_SUPPORTED`).
 
 ## Manual-only checks
 
