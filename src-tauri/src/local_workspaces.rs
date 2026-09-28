@@ -27,7 +27,7 @@ pub struct LocalWorkspace {
   pub database: String,
 }
 
-fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+pub(crate) fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
   let home = app.path().home_dir().map_err(|e| e.to_string())?;
   Ok(home.join(".tmgr.dev").join("workspaces"))
 }
@@ -159,7 +159,7 @@ fn chrono_like_now() -> String {
 }
 
 /// Howard Hinnant's days-to-civil conversion.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
   let z = days + 719_468;
   let era = z.div_euclid(146_097);
   let doe = z.rem_euclid(146_097);
