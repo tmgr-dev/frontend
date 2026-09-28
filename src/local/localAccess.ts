@@ -2,7 +2,9 @@ import axios from 'axios';
 import { createLocalApi } from './api';
 import { dispatchLocal } from './dispatch';
 import { respond } from './install';
+import { handleMcpRequest } from './mcp';
 import { checkPersonaIdentity } from './personaGate';
+import { readPersonaCache } from './personaCache';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
 import { LocalHttpError, type LocalActor, type LocalContext, type LocalUser, type LocalWorkspace } from './types';
@@ -193,7 +195,11 @@ export const handleLocalAccessRequest = async (
 			return errorReply(404, 'Not found', 'NOT_FOUND');
 		}
 		if (normalized === 'mcp') {
-			return errorReply(501, 'MCP is not available locally yet', 'NOT_AVAILABLE_LOCALLY');
+			const ctx = await buildCtx();
+			const result = await handleMcpRequest(localApi, ctx, payload.body ?? '', {
+				personaPrompt: (uuid) => readPersonaCache(uuid),
+			});
+			return { status: result.status, body: result.body };
 		}
 
 		const client = localPersonaClient(buildCtx, payload.personaUuid, () => workspace.id);

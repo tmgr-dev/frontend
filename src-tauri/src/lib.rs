@@ -85,6 +85,12 @@ fn hide_traffic_lights(window: &WebviewWindow) {
   }
 }
 
+/// `TMGR mcp ...`: runs the stdio<->socket bridge and exits, called from `main()` before Tauri
+/// initializes. A no-op for any other invocation.
+pub fn maybe_run_mcp_bridge() {
+  local_access::bridge::maybe_run_and_exit();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
