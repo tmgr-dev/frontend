@@ -24,6 +24,16 @@ jobs:
           fi
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
+      - name: release notes from src-tauri/CHANGELOG.md
+        run: |
+          awk -v v="$APP_VERSION" '/^## /{p = ($2 == v); next} p' src-tauri/CHANGELOG.md \
+            | sed -e '/./,$!d' > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "::error::src-tauri/CHANGELOG.md has no '## $APP_VERSION' section"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -76,9 +86,10 @@ jobs:
             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg signature "$(cat "$OUT/$UPDATE.sig")" \
             --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$UPDATE" \
-            '{version: $version, pub_date: $date, notes: "", platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
+            --rawfile notes "$RUNNER_TEMP/notes.md" \
+            '{version: $version, pub_date: $date, notes: $notes, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
             > "$OUT/latest.json"
           gh release create "$GITHUB_REF_NAME" "$OUT"/* \
             --title "TMGR Desktop v$APP_VERSION" \
-            --notes "Download the .dmg below. Installed apps update themselves." \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             --latest
