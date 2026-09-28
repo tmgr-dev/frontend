@@ -805,6 +805,14 @@
 				if (sourceInstanceId === instanceId) return;
 
 				if (action === 'updated') {
+					if (
+						'relationTypeWithTask' in task &&
+						JSON.stringify(task.relationTypeWithTask) !==
+							JSON.stringify(form.value.relationTypeWithTask)
+					) {
+						suppressAutoSavingForOnce.value = true;
+						form.value.relationTypeWithTask = task.relationTypeWithTask;
+					}
 					const hasMeaningfulChanges = hasTaskMeaningfulChanges(
 						form.value,
 						task,

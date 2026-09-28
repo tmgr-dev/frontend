@@ -2,6 +2,7 @@ import axios from 'axios';
 import { createLocalApi } from './api';
 import { dispatchLocal } from './dispatch';
 import { respond } from './install';
+import { withLiveWrites } from './liveUpdates';
 import { handleMcpRequest } from './mcp';
 import { checkPersonaIdentity } from './personaGate';
 import { readPersonaCache } from './personaCache';
@@ -69,7 +70,7 @@ const localPersonaClient = (
 		adapter: async (config) => {
 			const ctx = await ctxFactory();
 			const result = await dispatchLocal(
-				localApi,
+				withLiveWrites(localApi, { workspaceId: ctx.workspace.id, personaUuid, emitDomainEvents: false }),
 				ctx,
 				config.method ?? 'get',
 				config.url ?? '',
@@ -210,7 +211,12 @@ export const handleLocalAccessRequest = async (
 		}
 		if (normalized === 'mcp') {
 			const ctx = await buildCtx();
-			const result = await handleMcpRequest(localApi, ctx, payload.body ?? '', {
+			const router = withLiveWrites(localApi, {
+				workspaceId: workspace.id,
+				personaUuid: payload.personaUuid,
+				emitDomainEvents: true,
+			});
+			const result = await handleMcpRequest(router, ctx, payload.body ?? '', {
 				personaPrompt: (uuid) => readPersonaCache(uuid),
 			});
 			return { status: result.status, body: result.body };

@@ -26,6 +26,7 @@ const fakeShell = async ({
   const closed = [];
   const files = new Map();
   const tokens = new Map();
+  const accessReplies = [];
   let tokenSeq = 0;
   let accessEnabled = false;
   const db = (code) => {
@@ -180,6 +181,9 @@ const fakeShell = async ({
           ready: true,
           bridgeCommand: '/tmp/tmgr-desktop',
         };
+      case 'local_access_reply':
+        accessReplies.push(args);
+        return null;
       case 'local_access_set_enabled':
         accessEnabled = !!args.enabled;
         return null;
@@ -200,6 +204,7 @@ const fakeShell = async ({
     installed,
     catalog,
     tokens,
+    accessReplies,
   });
 };
 
