@@ -1,5 +1,17 @@
 <template>
 	<div class="flex flex-col gap-2">
+		<div
+			v-if="isDesktop"
+			class="flex flex-col items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+		>
+			<span>
+				Local workspaces aren't listed here. Open the local workspace, then
+				grant this persona in its own Personas → "On this device" panel.
+			</span>
+			<Button size="sm" variant="outline" class="shrink-0" @click="goToLocalPersonas">
+				On this device
+			</Button>
+		</div>
 		<p v-if="loading" class="text-xs text-muted-foreground">
 			Loading workspaces…
 		</p>
@@ -69,9 +81,11 @@
 		upsertWorkspaceGrant,
 	} from '@/actions/tmgr/personas';
 	import { type Workspace } from '@/actions/tmgr/workspaces';
+	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { DEFAULT_GRANT_PERMISSIONS, PERSONA_PERMISSIONS } from '@/utils/personas';
 	import {
 		computed,
@@ -84,7 +98,7 @@
 
 	export default defineComponent({
 		name: 'PersonaWorkspaceGrants',
-		components: { Switch },
+		components: { Button, Switch },
 		props: {
 			persona: { type: Object as PropType<Persona>, required: true },
 		},
@@ -103,6 +117,14 @@
 
 			const grantFor = (workspaceId: number): PersonaGrant | null =>
 				grantsByWorkspace[workspaceId] ?? null;
+
+			const isDesktop = isDesktopApp();
+
+			const goToLocalPersonas = () => {
+				document
+					.getElementById('local-personas-panel')
+					?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			};
 
 			const load = async () => {
 				loading.value = true;
@@ -190,6 +212,8 @@
 				toggle,
 				togglePermission,
 				PERSONA_PERMISSIONS,
+				isDesktop,
+				goToLocalPersonas,
 			};
 		},
 	});
