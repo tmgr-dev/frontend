@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.8.6 — 2026-09-28
+
+- Local workspaces update live when an agent or plugin writes through local access (REST or MCP): new comments and
+  reactions, status changes (the board card moves), title/description edits (with the "updated elsewhere" banner),
+  relations and agent work runs — no need to reopen the card.
+- Local workspaces: a category created without a code gets one from its name, like in the cloud.
+- Local access: editing someone else's comment returns `NOT_OWN`, deleting a missing comment returns 404;
+  `GET /api/local/health` uses `app_version`; the local access API doc matches 0.8.3+.
+
 ## 0.8.5 — 2026-09-28
 
 - File → "Check for Updates…" in the menu bar runs a manual update check with visible feedback
