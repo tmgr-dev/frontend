@@ -1,39 +1,40 @@
 <template>
-	<div
-		class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+	<SettingsSection
+		title="Personas"
+		description="AI personas with access to this workspace."
 	>
-		<h3 class="mb-1 text-xl font-semibold">Personas</h3>
-		<p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
-			AI personas with access to this workspace.
-		</p>
-
-		<div v-if="isCreator" class="mb-4 flex items-center gap-2">
-			<label class="text-sm font-medium" for="persona-policy">Policy</label>
-			<select
-				id="persona-policy"
-				v-model="policyDraft"
+		<div v-if="isCreator" class="mb-4 flex flex-col gap-1.5">
+			<Label for="persona-policy">Policy</Label>
+			<Select
+				:model-value="policyDraft"
 				:disabled="savingPolicy"
-				class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700"
-				@change="savePolicy"
+				@update:model-value="onPolicyChange"
 			>
-				<option value="allowed">Allowed</option>
-				<option value="read_only">Read only</option>
-				<option value="forbidden">Forbidden</option>
-			</select>
+				<SelectTrigger id="persona-policy" class="w-48">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="allowed">Allowed</SelectItem>
+					<SelectItem value="read_only">Read only</SelectItem>
+					<SelectItem value="forbidden">Forbidden</SelectItem>
+				</SelectContent>
+			</Select>
 		</div>
-		<p v-else-if="policy" class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+		<p v-else-if="policy" class="mb-4 text-sm text-ink-subtle">
 			Policy: {{ policyLabel }}
 		</p>
 
-		<div v-if="loading" class="text-sm text-gray-500">Loading personas…</div>
-		<div v-else-if="grants.length === 0" class="text-sm text-gray-500">
+		<div v-if="loading" class="text-sm text-muted-foreground">
+			Loading personas…
+		</div>
+		<div v-else-if="grants.length === 0" class="text-sm text-muted-foreground">
 			No personas have access to this workspace yet.
 		</div>
 		<div v-else class="flex flex-col gap-2">
 			<div
 				v-for="grant in grants"
 				:key="grant.persona.id"
-				class="flex items-center justify-between gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
+				class="flex items-center justify-between gap-3 rounded-md border border-border p-3"
 			>
 				<div class="flex items-center gap-2">
 					<PersonaAvatar
@@ -45,40 +46,38 @@
 					<div>
 						<p class="text-sm font-medium">
 							{{ grant.persona.name }}
-							<span class="text-xs font-normal text-gray-500">
+							<span class="text-xs font-normal text-muted-foreground">
 								persona of {{ grant.persona.owner.name }}
 							</span>
 						</p>
-						<p class="text-xs text-gray-500">
+						<p class="text-xs text-muted-foreground">
 							Permissions: {{ grant.permissions.join(', ') || 'none' }} ·
 							Effective: {{ grant.effective_permissions.join(', ') || 'none' }}
 						</p>
-						<p
-							v-if="grant.blocked"
-							class="text-xs font-medium text-red-600 dark:text-red-400"
-						>
+						<p v-if="grant.blocked" class="text-xs font-medium text-destructive">
 							Blocked
 						</p>
 						<p
 							v-if="grant.persona.skills?.length"
-							class="text-xs text-gray-500"
+							class="text-xs text-muted-foreground"
 						>
 							Skills: {{ grant.persona.skills.map((s) => s.title).join(', ') }}
 						</p>
 					</div>
 				</div>
-				<button
+				<Button
 					v-if="isCreator"
 					type="button"
+					variant="outline"
+					size="sm"
 					:disabled="!!blocking[grant.persona.id]"
-					class="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
 					@click="toggleBlock(grant)"
 				>
 					{{ grant.blocked ? 'Unblock' : 'Block' }}
-				</button>
+				</Button>
 			</div>
 		</div>
-	</div>
+	</SettingsSection>
 </template>
 
 <script lang="ts">
@@ -92,6 +91,16 @@
 		unblockWorkspacePersona,
 	} from '@/actions/tmgr/personas';
 	import PersonaAvatar from '@/components/general/PersonaAvatar.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { Button } from '@/components/ui/button';
+	import { Label } from '@/components/ui/label';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
 	import { toast } from '@/components/ui/toast';
 	import type { PersonaPolicy } from '@/utils/personas';
 	import { computed, defineComponent, onMounted, reactive, ref, watch } from 'vue';
@@ -104,7 +113,17 @@
 
 	export default defineComponent({
 		name: 'WorkspacePersonasSection',
-		components: { PersonaAvatar },
+		components: {
+			Button,
+			Label,
+			PersonaAvatar,
+			Select,
+			SelectContent,
+			SelectItem,
+			SelectTrigger,
+			SelectValue,
+			SettingsSection,
+		},
 		props: {
 			workspaceId: { type: Number, required: true },
 			isCreator: { type: Boolean, default: false },
@@ -130,6 +149,11 @@
 				} finally {
 					loading.value = false;
 				}
+			};
+
+			const onPolicyChange = (value: string) => {
+				policyDraft.value = value as PersonaPolicy;
+				savePolicy();
 			};
 
 			const savePolicy = async () => {
@@ -179,6 +203,7 @@
 				savingPolicy,
 				blocking,
 				savePolicy,
+				onPolicyChange,
 				toggleBlock,
 			};
 		},

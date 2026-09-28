@@ -29,9 +29,7 @@
 			<span class="text-foreground">{{ workspace.name }}</span>
 		</p>
 
-		<section
-			class="mb-6 flex flex-col gap-3 rounded-md border border-border p-4"
-		>
+		<SettingsSection class="mb-6 flex flex-col gap-3">
 			<label class="flex items-center justify-between gap-4">
 				<span>
 					<span class="block text-sm font-medium">Safe mode</span>
@@ -94,16 +92,14 @@
 				<li
 					v-for="(message, folder) in folderErrors"
 					:key="folder"
-					class="text-red-600 dark:text-red-400"
+					class="text-destructive"
 				>
 					{{ folder }}: {{ message }}
 				</li>
 			</ul>
-		</section>
+		</SettingsSection>
 
-		<section
-			class="mb-6 flex flex-col gap-2 rounded-md border border-border p-4"
-		>
+		<SettingsSection class="mb-6 flex flex-col gap-2">
 			<span class="text-sm font-medium">Install from GitHub</span>
 			<span class="text-xs text-muted-foreground">
 				Paste a plugin repository. The app reads its latest release and shows
@@ -124,7 +120,7 @@
 					{{ checking ? 'Checking…' : 'Check' }}
 				</Button>
 			</form>
-			<p v-if="installError" class="text-xs text-red-600 dark:text-red-400">
+			<p v-if="installError" class="text-xs text-destructive">
 				{{ installError }}
 			</p>
 			<ul
@@ -134,12 +130,12 @@
 				<li
 					v-for="(message, pluginId) in installedErrors"
 					:key="pluginId"
-					class="text-red-600 dark:text-red-400"
+					class="text-destructive"
 				>
 					{{ pluginId }}: {{ message }}
 				</li>
 			</ul>
-		</section>
+		</SettingsSection>
 
 		<Dialog :open="!!offer" @update:open="(open) => !open && (offer = null)">
 			<DialogContent v-if="offer" class="sm:max-w-[480px]">
@@ -179,7 +175,7 @@
 					</p>
 					<p
 						v-if="offer.pkg.manifest.network.allowedOrigins.length"
-						class="font-medium text-red-600 dark:text-red-400"
+						class="font-medium text-destructive"
 					>
 						It can connect to:
 						{{ offer.pkg.manifest.network.allowedOrigins.join(', ') }}
@@ -187,7 +183,7 @@
 					</p>
 					<p
 						v-if="offer.pkg.manifest.links.allowedDomains.length"
-						class="font-medium text-red-600 dark:text-red-400"
+						class="font-medium text-destructive"
 					>
 						It can open links to:
 						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
@@ -215,7 +211,7 @@
 								offer.changes.origins.length ||
 								offer.changes.domains.length)
 						"
-						class="font-medium text-red-600 dark:text-red-400"
+						class="font-medium text-destructive"
 					>
 						New in this version:
 						{{
@@ -262,7 +258,7 @@
 			<article
 				v-for="plugin in plugins"
 				:key="plugin.manifest.id"
-				class="flex flex-col gap-3 rounded-md border border-border p-4"
+				class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
 			>
 				<header class="flex items-start justify-between gap-4">
 					<div class="flex flex-col gap-1">
@@ -306,7 +302,7 @@
 							</button>
 							<button
 								type="button"
-								class="text-red-600 hover:underline dark:text-red-400"
+								class="text-destructive hover:underline"
 								@click="removing = plugin"
 							>
 								Remove
@@ -314,7 +310,7 @@
 						</p>
 						<p
 							v-if="plugin.error"
-							class="text-xs text-red-600 dark:text-red-400"
+							class="text-xs text-destructive"
 						>
 							{{ plugin.error }}
 						</p>
@@ -359,7 +355,7 @@
 
 				<div
 					v-if="plugin.manifest.network.allowedOrigins.length"
-					class="text-xs font-medium text-red-600 dark:text-red-400"
+					class="text-xs font-medium text-destructive"
 				>
 					Can connect to:
 					{{ plugin.manifest.network.allowedOrigins.join(', ') }} (this computer
@@ -478,6 +474,7 @@
 	import { Input } from '@/components/ui/input';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import {
 		Select,
 		SelectContent,
@@ -554,6 +551,7 @@
 			Button,
 			PageContainer,
 			PageHeader,
+			SettingsSection,
 			Dialog,
 			DialogContent,
 			DialogDescription,
@@ -831,11 +829,11 @@
 					status === 'running'
 						? 'text-emerald-600 dark:text-emerald-400'
 						: status === 'failed' || status === 'crashed' || status === 'blocked'
-						? 'text-red-600 dark:text-red-400'
+						? 'text-destructive'
 						: 'text-muted-foreground',
 				logLineClass: (level: PluginEntry['log'][number]['level']) =>
 					({
-						error: 'text-red-600 dark:text-red-400',
+						error: 'text-destructive',
 						warn: 'text-amber-600 dark:text-amber-400',
 						info: 'text-muted-foreground',
 					}[level]),

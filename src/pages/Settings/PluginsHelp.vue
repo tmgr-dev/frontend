@@ -225,7 +225,7 @@
 
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
-					<LifeBuoy class="h-5 w-5 text-red-600 dark:text-red-400" />
+					<LifeBuoy class="h-5 w-5 text-destructive" />
 					When a plugin gets in the way
 				</h4>
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">

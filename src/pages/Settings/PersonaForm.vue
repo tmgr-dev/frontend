@@ -8,7 +8,7 @@
 				placeholder="Reviewer"
 				@update:model-value="(v) => update('name', String(v))"
 			/>
-			<span v-if="fieldErrors.name" class="text-xs text-red-600 dark:text-red-400">
+			<span v-if="fieldErrors.name" class="text-xs text-destructive">
 				{{ fieldErrors.name.join(' ') }}
 			</span>
 		</label>
@@ -24,7 +24,7 @@
 			/>
 			<span
 				v-if="fieldErrors.description"
-				class="text-xs text-red-600 dark:text-red-400"
+				class="text-xs text-destructive"
 			>
 				{{ fieldErrors.description.join(' ') }}
 			</span>
@@ -43,7 +43,7 @@
 				:class="[
 					'text-xs',
 					promptOverLimit
-						? 'text-red-600 dark:text-red-400'
+						? 'text-destructive'
 						: 'text-muted-foreground',
 				]"
 			>
@@ -51,7 +51,7 @@
 			</span>
 			<span
 				v-if="fieldErrors.system_prompt"
-				class="text-xs text-red-600 dark:text-red-400"
+				class="text-xs text-destructive"
 			>
 				{{ fieldErrors.system_prompt.join(' ') }}
 			</span>
