@@ -1,5 +1,5 @@
 <template>
-	<div class="container max-w-5xl py-4">
+	<PageContainer width="wide">
 		<div v-if="!entry" class="text-sm text-muted-foreground">
 			This plugin is not installed.
 		</div>
@@ -36,10 +36,11 @@
 			:plugin-id="pluginId"
 		/>
 		<p v-else class="text-sm text-muted-foreground">Loading…</p>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
+	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PluginView from '@/components/plugins/PluginView.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -51,7 +52,7 @@
 
 	export default defineComponent({
 		name: 'PluginPage',
-		components: { Button, PluginView },
+		components: { Button, PageContainer, PluginView },
 		setup() {
 			const route = useRoute();
 			const pluginId = computed(() => String(route.params.pluginId));

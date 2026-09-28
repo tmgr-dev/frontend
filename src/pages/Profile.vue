@@ -1,5 +1,9 @@
 <template>
-	<div>
+	<component
+		:is="standalone ? 'PageContainer' : 'div'"
+		:width="standalone ? 'narrow' : undefined"
+	>
+		<PageHeader v-if="standalone" title="Profile" />
 		<div class="flex max-w-lg flex-col gap-3">
 			<div class="flex items-center gap-4">
 				<UserAvatar
@@ -75,8 +79,7 @@
 			<div class="mt-6 border-t pt-4">
 				<h4 class="mb-1 text-sm font-semibold">Agent connections</h4>
 				<p class="mb-2 text-xs text-ink-subtle">
-					Revoke every persona token, across all your personas and
-					workspaces.
+					Revoke every persona token, across all your personas and workspaces.
 				</p>
 				<button
 					type="button"
@@ -88,7 +91,7 @@
 				</button>
 			</div>
 		</div>
-	</div>
+	</component>
 </template>
 
 <script>
@@ -103,6 +106,8 @@
 	import Button from '@/components/general/Button.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
@@ -111,6 +116,14 @@
 			TextField,
 			Button,
 			UserAvatar,
+			PageContainer,
+			PageHeader,
+		},
+		props: {
+			standalone: {
+				type: Boolean,
+				default: true,
+			},
 		},
 		data: () => ({
 			user: {

@@ -1,5 +1,5 @@
 <template>
-	<BaseLayout>
+	<BaseLayout width="narrow">
 		<template #header>{{ h1 }}</template>
 
 		<template v-if="categories && categories.length > 0" #action>
@@ -12,7 +12,7 @@
 
 		<template #body>
 			<div
-				class="mx-auto mt-6 max-w-xl rounded-card border border-line bg-surface px-8 py-7 shadow-tmgr-sm"
+				class="rounded-card border border-line bg-surface p-4 shadow-tmgr-sm md:p-6"
 			>
 				<form class="w-full">
 					<div class="mb-5">

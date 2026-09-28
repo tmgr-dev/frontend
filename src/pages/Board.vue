@@ -10,12 +10,12 @@
 				<BoardPreview />
 			</template>
 
-			<BaseLayout no-copyright :body-container-class="''">
+			<BaseLayout no-copyright width="full">
 				<template #body>
 					<div class="flex min-h-0 flex-1 flex-col justify-center">
 						<div class="flex h-full min-h-0 w-full flex-col overflow-x-auto">
 							<div
-								class="min-h-[56px] flex-shrink-0 px-4 py-2 max-sm:min-h-0 xl-custom:hidden"
+								class="min-h-[56px] flex-shrink-0 px-4 py-2 max-sm:min-h-0 md:px-6 xl-custom:hidden"
 							>
 								<div
 									class="flex flex-wrap items-center gap-3 xl-custom:flex-nowrap"

@@ -21,6 +21,8 @@
 	import Combobox from '@/components/Combobox.vue';
 	import Switcher from '@/components/general/Switcher.vue';
 	import Loader from '@/components/loaders/Loader.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -497,13 +499,9 @@
 </script>
 
 <template>
-	<div>
-		<div class="container">
-			<header
-				class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
-			>
-				<h3 class="text-lg font-bold">Workspace Settings</h3>
-
+	<PageContainer width="narrow">
+		<PageHeader title="Workspace settings">
+			<template #actions>
 				<div class="flex flex-wrap items-center gap-2">
 					<Dialog v-model:open="isOpen">
 						<DialogTrigger as-child>
@@ -655,172 +653,172 @@
 						</AlertDialogContent>
 					</AlertDialog>
 				</div>
-			</header>
-			<AsyncContent
-				:pending="isLoading"
-				:loaded="initialLoaded"
-				:error="initialError"
-				:retry="loadWorkspaceSettings"
-				label="Loading workspace settings"
-			>
-				<div class="mt-6 max-w-lg">
-					<div v-for="(setting, index) in settings" :key="setting.id">
-						<label
-							:for="`setting-${setting.id}`"
-							class="mb-2 block text-sm font-bold text-gray-700"
-						>
-							{{ setting.name }}
-						</label>
+			</template>
+		</PageHeader>
+		<AsyncContent
+			:pending="isLoading"
+			:loaded="initialLoaded"
+			:error="initialError"
+			:retry="loadWorkspaceSettings"
+			label="Loading workspace settings"
+		>
+			<div class="mt-6 max-w-lg">
+				<div v-for="(setting, index) in settings" :key="setting.id">
+					<label
+						:for="`setting-${setting.id}`"
+						class="mb-2 block text-sm font-bold text-gray-700"
+					>
+						{{ setting.name }}
+					</label>
 
-						<div class="mb-4">
-							<template v-if="setting.component_type === 'select'">
-								<Combobox
-									:entities="setting.default_values"
-									v-model="settings[index].value"
-									:selected-placeholder="setting.description"
-									value-key="value"
-									label-key="value"
-								/>
-							</template>
-							<template v-else-if="setting.custom_value_available">
-								<Input
-									type="time"
-									v-if="setting.component_type === 'time_in_seconds'"
-									:model-value="convertToHHMM(settings[index].value)"
-									@input="
-								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
-							"
-									:placeholder="setting.description"
-								/>
-
-								<Input
-									v-else
-									v-model="settings[index].value"
-									:placeholder="setting.description"
-								/>
-							</template>
-
-							<Switcher
-								v-if="
-									setting.custom_value_available &&
-									setting.default_values &&
-									setting.default_values.length > 0
-								"
-								name="set_custom_value"
-								v-model="setting.show_custom_value_input"
-								placeholder="Set custom value"
+					<div class="mb-4">
+						<template v-if="setting.component_type === 'select'">
+							<Combobox
+								:entities="setting.default_values"
+								v-model="settings[index].value"
+								:selected-placeholder="setting.description"
+								value-key="value"
+								label-key="value"
 							/>
-						</div>
+						</template>
+						<template v-else-if="setting.custom_value_available">
+							<Input
+								type="time"
+								v-if="setting.component_type === 'time_in_seconds'"
+								:model-value="convertToHHMM(settings[index].value)"
+								@input="
+							(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
+						"
+								:placeholder="setting.description"
+							/>
+
+							<Input
+								v-else
+								v-model="settings[index].value"
+								:placeholder="setting.description"
+							/>
+						</template>
+
+						<Switcher
+							v-if="
+								setting.custom_value_available &&
+								setting.default_values &&
+								setting.default_values.length > 0
+							"
+							name="set_custom_value"
+							v-model="setting.show_custom_value_input"
+							placeholder="Set custom value"
+						/>
 					</div>
 				</div>
+			</div>
 
-				<footer class="text-left">
-					<Button
-						variant="default"
-						@click="updateSettings"
-						:disabled="savingSettings"
-						:aria-busy="savingSettings"
+			<footer class="text-left">
+				<Button
+					variant="default"
+					@click="updateSettings"
+					:disabled="savingSettings"
+					:aria-busy="savingSettings"
+				>
+					<SaveIcon /> Save
+				</Button>
+			</footer>
+
+			<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
+				<div class="mb-4 flex items-center justify-between">
+					<h4 class="text-md font-semibold">Workspace Members</h4>
+				</div>
+
+				<AsyncContent
+					:pending="loadingMembers"
+					:loaded="membersLoaded"
+					:error="membersError"
+					:retry="loadMembers"
+					label="Loading members"
+				>
+					<div
+						v-if="members.length === 0"
+						class="py-8 text-center text-gray-500"
 					>
-						<SaveIcon /> Save
-					</Button>
-				</footer>
-
-				<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
-					<div class="mb-4 flex items-center justify-between">
-						<h4 class="text-md font-semibold">Workspace Members</h4>
+						<p>No members found</p>
 					</div>
 
-					<AsyncContent
-						:pending="loadingMembers"
-						:loaded="membersLoaded"
-						:error="membersError"
-						:retry="loadMembers"
-						label="Loading members"
-					>
+					<div v-else class="space-y-3">
 						<div
-							v-if="members.length === 0"
-							class="py-8 text-center text-gray-500"
+							v-for="member in members"
+							:key="member.id"
+							class="flex items-center justify-between rounded-lg border p-3 dark:border-gray-700"
 						>
-							<p>No members found</p>
-						</div>
+							<div class="flex flex-1 items-center gap-3">
+								<Avatar class="h-10 w-10">
+									<AvatarFallback>
+										{{ getInitials(member.name) }}
+									</AvatarFallback>
+								</Avatar>
 
-						<div v-else class="space-y-3">
-							<div
-								v-for="member in members"
-								:key="member.id"
-								class="flex items-center justify-between rounded-lg border p-3 dark:border-gray-700"
-							>
-								<div class="flex flex-1 items-center gap-3">
-									<Avatar class="h-10 w-10">
-										<AvatarFallback>
-											{{ getInitials(member.name) }}
-										</AvatarFallback>
-									</Avatar>
-
-									<div class="flex-1">
-										<div class="flex items-center gap-2">
-											<p class="font-medium">{{ member.name }}</p>
-											<span
-												v-if="
-													member.id ===
-													workspaces.find((w) => w.id == activeWorkspace?.value)
-														?.user_id
-												"
-												class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-											>
-												Owner
-											</span>
-										</div>
+								<div class="flex-1">
+									<div class="flex items-center gap-2">
+										<p class="font-medium">{{ member.name }}</p>
+										<span
+											v-if="
+												member.id ===
+												workspaces.find((w) => w.id == activeWorkspace?.value)
+													?.user_id
+											"
+											class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+										>
+											Owner
+										</span>
 									</div>
 								</div>
-
-								<Button
-									v-if="canRemoveMember(member)"
-									@click="handleRemoveMember(member)"
-									variant="destructive"
-									size="sm"
-									:disabled="removingMemberId !== null"
-								>
-									<Loader
-										v-if="removingMemberId === member.id"
-										is-mini
-										class="mr-2"
-									/>
-									Remove
-								</Button>
 							</div>
-						</div>
-					</AsyncContent>
-				</div>
 
-				<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
-					<WorkspaceInvitationsList />
-				</div>
-
-				<AlertDialog v-model:open="showRemoveMemberDialog">
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>Remove Member</AlertDialogTitle>
-							<AlertDialogDescription>
-								Are you sure you want to remove
-								<strong>{{ memberToRemove?.name }}</strong> from this workspace?
-								This action cannot be undone.
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel @click="showRemoveMemberDialog = false"
-								>Cancel</AlertDialogCancel
+							<Button
+								v-if="canRemoveMember(member)"
+								@click="handleRemoveMember(member)"
+								variant="destructive"
+								size="sm"
+								:disabled="removingMemberId !== null"
 							>
-							<AlertDialogAction
-								@click="confirmRemoveMember"
-								class="bg-red-600 text-white hover:bg-red-700"
-							>
+								<Loader
+									v-if="removingMemberId === member.id"
+									is-mini
+									class="mr-2"
+								/>
 								Remove
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
-			</AsyncContent>
-		</div>
-	</div>
+							</Button>
+						</div>
+					</div>
+				</AsyncContent>
+			</div>
+
+			<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
+				<WorkspaceInvitationsList />
+			</div>
+
+			<AlertDialog v-model:open="showRemoveMemberDialog">
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Remove Member</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to remove
+							<strong>{{ memberToRemove?.name }}</strong> from this workspace?
+							This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel @click="showRemoveMemberDialog = false"
+							>Cancel</AlertDialogCancel
+						>
+						<AlertDialogAction
+							@click="confirmRemoveMember"
+							class="bg-red-600 text-white hover:bg-red-700"
+						>
+							Remove
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</AsyncContent>
+	</PageContainer>
 </template>

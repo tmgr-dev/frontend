@@ -9,7 +9,7 @@
 			<DailyRoutinesPreview />
 		</template>
 
-		<BaseLayout>
+		<BaseLayout :title="pageTitle">
 			<template #body>
 				<div
 					ref="rootRef"
@@ -17,7 +17,7 @@
 				>
 					<div
 						v-if="isLocalWorkspace"
-						class="flex flex-wrap items-center gap-2 border-b border-line px-2 pb-2 pt-3 md:px-6 md:pt-4"
+						class="flex flex-wrap items-center gap-2 border-b border-line pb-2 pt-3 md:pt-4"
 					>
 						<span class="text-sm font-semibold text-ink">Local routines</span>
 						<span
@@ -34,7 +34,7 @@
 
 					<!-- Top toolbar -->
 					<div
-						class="flex flex-col gap-3 border-b border-line px-2 pb-3 pt-3 md:px-6 md:pt-4"
+						class="flex flex-col gap-3 border-b border-line pb-3 pt-3 md:pt-4"
 					>
 						<!-- Row 1: Quick-add (full width on mobile; chips + import/export inline on desktop) -->
 						<div class="flex flex-wrap items-center gap-2.5">
@@ -618,6 +618,9 @@
 	);
 	// /routines is workspace-independent, so store.state.workspaces may be empty here.
 	const isLocalWorkspace = ref(false);
+	const pageTitle = computed(() =>
+		isLocalWorkspace.value ? 'Local routines' : 'Daily routines',
+	);
 	watch(
 		workspaceIdentity,
 		async (id) => {

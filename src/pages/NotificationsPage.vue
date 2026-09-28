@@ -1,30 +1,26 @@
 <template>
 	<div>
-		<BaseLayout>
+		<BaseLayout title="Notifications">
+			<template #header-actions>
+				<button
+					@click="handleGoToSettings"
+					class="settings-btn"
+					title="Notification Settings"
+				>
+					<Settings :size="20" />
+					<span>Settings</span>
+				</button>
+				<button
+					v-if="unreadCount > 0"
+					@click="handleMarkAllAsRead"
+					class="mark-all-btn"
+					:disabled="loading"
+				>
+					Mark all as read
+				</button>
+			</template>
 			<template #body>
-				<div class="notifications-page min-h-96">
-					<div class="page-header">
-						<h1 class="page-title">Notifications</h1>
-						<div class="header-actions">
-							<button
-								@click="handleGoToSettings"
-								class="settings-btn"
-								title="Notification Settings"
-							>
-								<Settings :size="20" />
-								<span>Settings</span>
-							</button>
-							<button
-								v-if="unreadCount > 0"
-								@click="handleMarkAllAsRead"
-								class="mark-all-btn"
-								:disabled="loading"
-							>
-								Mark all as read
-							</button>
-						</div>
-					</div>
-
+				<div class="min-h-96">
 					<AsyncContent
 						:pending="loading"
 						:loaded="loaded"
@@ -190,31 +186,6 @@
 </script>
 
 <style lang="scss" scoped>
-	.notifications-page {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 2rem;
-	}
-
-	.page-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 2rem;
-	}
-
-	.page-title {
-		font-size: 2rem;
-		font-weight: 700;
-		margin: 0;
-	}
-
-	.header-actions {
-		display: flex;
-		gap: 0.75rem;
-		align-items: center;
-	}
-
 	.settings-btn {
 		display: flex;
 		align-items: center;

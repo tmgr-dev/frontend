@@ -108,6 +108,9 @@
 
 	const status = computed(() => route.meta.status);
 	const isActiveList = computed(() => !status.value);
+	const pageTitle = computed(
+		() => (h1 as Record<string, string>)[route.name as string] || 'Task List',
+	);
 
 	function isArchivedTask(task: Task) {
 		return isArchivedTaskBySets(task, {
@@ -539,9 +542,9 @@
 </script>
 
 <template>
-	<BaseLayout>
+	<BaseLayout :title="pageTitle">
 		<template #action>
-			<div class="flex flex-col gap-2 px-2">
+			<div class="flex flex-col gap-2">
 				<div class="w-full py-2">
 					<WorkspaceUsers :users="workspaceUsers" :workspace-id="workspaceId" />
 				</div>
@@ -726,7 +729,7 @@
 		</template>
 
 		<template #body>
-			<div class="mt-4 min-h-96" :aria-busy="isLoading">
+			<div class="min-h-96" :aria-busy="isLoading">
 				<div
 					class="flex min-h-6 items-center justify-between text-sm text-ink-muted"
 					role="status"

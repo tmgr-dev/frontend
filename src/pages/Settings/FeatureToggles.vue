@@ -1,13 +1,10 @@
 // @ts-nocheck
 <template>
-	<div class="space-y-6 p-6">
-		<div>
-			<h2 class="text-2xl font-bold">Feature Settings</h2>
-			<p class="text-gray-600 dark:text-gray-400">
-				Control which features are available in your workspace and customize
-				your personal preferences
-			</p>
-		</div>
+	<PageContainer width="narrow">
+		<PageHeader
+			title="Feature Settings"
+			subtitle="Control which features are available in your workspace and customize your personal preferences"
+		/>
 
 		<AsyncContent
 			:pending="initialPending"
@@ -134,7 +131,7 @@
 				</div>
 			</div>
 		</AsyncContent>
-	</div>
+	</PageContainer>
 </template>
 
 <script setup>
@@ -143,6 +140,8 @@
 		getWorkspaceFeatureToggles,
 	} from '@/actions/tmgr/featureToggles';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 
 	import { useToast } from '@/components/ui/toast';
