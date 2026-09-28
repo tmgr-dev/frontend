@@ -13,13 +13,12 @@
 				<div class="text-sm font-medium">{{ action.label }}</div>
 				<div class="text-xs text-muted-foreground">{{ action.hint }}</div>
 			</div>
-			<button
-				type="button"
+			<Button
+				variant="outline"
+				size="sm"
 				:class="[
-					'min-w-[120px] rounded-md border px-3 py-1.5 font-mono text-sm dark:border-border',
-					recording === action.id
-						? 'border-primary text-primary'
-						: 'border-border',
+					'min-w-[120px] font-mono',
+					recording === action.id && 'border-primary text-primary',
 					!config[action.id].enabled && 'opacity-50',
 				]"
 				@click="startRecording(action.id)"
@@ -31,15 +30,15 @@
 						? 'Press keys…'
 						: describe(config[action.id].accelerator)
 				}}
-			</button>
-			<button
-				type="button"
-				class="text-muted-foreground hover:text-foreground"
+			</Button>
+			<Button
+				variant="ghost"
+				size="sm"
 				title="Reset to default"
 				@click="reset(action.id)"
 			>
 				<RotateCcw class="h-4 w-4" />
-			</button>
+			</Button>
 			<Switch
 				:checked="config[action.id].enabled"
 				@update:checked="(value) => setEnabled(action.id, value)"
@@ -60,6 +59,7 @@
 </template>
 
 <script>
+	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import {
 		DEFAULT_SHORTCUTS,
@@ -101,7 +101,7 @@
 
 	export default defineComponent({
 		name: 'DesktopShortcutsSettings',
-		components: { RotateCcw, Switch },
+		components: { RotateCcw, Switch, Button },
 		setup() {
 			const recording = ref(null);
 			const errors = reactive({});
