@@ -54,7 +54,10 @@ export const dispatchLocal = async (
 		return { status: route.status, data: wrapped };
 	} catch (error) {
 		if (error instanceof LocalHttpError) {
-			return { status: error.status, data: { message: error.message } };
+			return {
+				status: error.status,
+				data: error.code ? { message: error.message, code: error.code } : { message: error.message },
+			};
 		}
 		throw error;
 	}

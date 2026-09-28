@@ -54,6 +54,31 @@ export const PERSONA_WHITELIST: WhitelistEntry[] = [
 export const personaWhitelistFor = (method: string, pattern: string): WhitelistEntry | null =>
 	PERSONA_WHITELIST.find((entry) => entry.method === method.toUpperCase() && entry.pattern === pattern) ?? null;
 
+interface PersonaGrant {
+	permissions: string;
+	disabled_at: string | null;
+}
+
+/** Archived/owner/disabled checks shared by every persona-actor path, including ones outside the router (whoami). */
+export const checkPersonaIdentity = async (ctx: LocalContext): Promise<PersonaGrant> => {
+	const [persona] = await ctx.db.select<{ owner_user_id: number; archived_at: string | null }>(
+		`SELECT owner_user_id, archived_at FROM personas WHERE uuid = ?`,
+		[ctx.actor!.id],
+	);
+	if (!persona) throw new LocalHttpError(401, 'Persona is not known in this workspace', 'PERSONA_UNKNOWN');
+	if (persona.archived_at) throw new LocalHttpError(401, 'Persona is archived', 'PERSONA_ARCHIVED');
+	if (Number(persona.owner_user_id) !== Number(ctx.user.id)) {
+		throw new LocalHttpError(401, 'Persona belongs to a different account', 'OWNER_MISMATCH');
+	}
+	const [grant] = await ctx.db.select<PersonaGrant>(
+		`SELECT permissions, disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
+		[ctx.actor!.id],
+	);
+	if (!grant) throw new LocalHttpError(401, 'Persona is not enabled in this workspace', 'PERSONA_DISABLED');
+	if (grant.disabled_at) throw new LocalHttpError(401, 'Persona is disabled in this workspace', 'PERSONA_DISABLED');
+	return grant;
+};
+
 /** Checked before the whitelist, so an offline disable/archive always wins with 401 over a 403. */
 export const checkPersonaAccess = async (
 	ctx: LocalContext,
@@ -61,22 +86,11 @@ export const checkPersonaAccess = async (
 	pattern: string,
 ): Promise<void> => {
 	if (ctx.actor?.kind !== 'persona') return;
-	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
-		`SELECT archived_at FROM personas WHERE uuid = ?`,
-		[ctx.actor.id],
-	);
-	if (!persona) throw new LocalHttpError(401, 'Persona is not known in this workspace');
-	if (persona.archived_at) throw new LocalHttpError(401, 'Persona is archived');
-	const [grant] = await ctx.db.select<{ permissions: string; disabled_at: string | null }>(
-		`SELECT permissions, disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
-		[ctx.actor.id],
-	);
-	if (!grant) throw new LocalHttpError(401, 'Persona is not enabled in this workspace');
-	if (grant.disabled_at) throw new LocalHttpError(401, 'Persona is disabled in this workspace');
+	const grant = await checkPersonaIdentity(ctx);
 	const entry = personaWhitelistFor(method, pattern);
-	if (!entry) throw new LocalHttpError(403, 'This route is not available to personas');
+	if (!entry) throw new LocalHttpError(403, 'This route is not available to personas', 'ROUTE_NOT_ALLOWED');
 	const permissions: string[] = JSON.parse(grant.permissions || '[]');
 	if (!permissions.includes(entry.permission)) {
-		throw new LocalHttpError(403, `Persona is missing permission ${entry.permission}`);
+		throw new LocalHttpError(403, `Persona is missing permission ${entry.permission}`, 'PERMISSION_MISSING');
 	}
 };
