@@ -424,6 +424,8 @@
 		return currentWorkspace?.code;
 	};
 
+	const pageTitle = computed(() => (category.value ? category.value.title : 'Categories'));
+
 	watch(
 		category,
 		(newCategory) => {
@@ -485,7 +487,7 @@
 				<CategoriesPreview />
 			</template>
 
-			<BaseLayout>
+			<BaseLayout :title="pageTitle">
 				<template #action>
 					<div
 						class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
