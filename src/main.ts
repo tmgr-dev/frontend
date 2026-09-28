@@ -47,6 +47,7 @@ if (isDesktopApp()) {
 				invoke<boolean>('plugins_safe_mode').catch(() => false),
 			),
 		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
+		void import('@/local/localAccess').then(({ installLocalAccess }) => installLocalAccess(store));
 	}
 }
 

@@ -322,11 +322,14 @@ export const installDomainEvents = (
 	return instance.interceptors.response.use((response) => {
 		try {
 			const plugin = response.config.headers?.['X-TMGR-Plugin'];
+			// Never a header: the socket path must not let anything in the request choose its own actor.
+			const localAccessActor = (response.config as any).localAccessActor;
+			const actor = plugin ? `plugin:${plugin}` : localAccessActor ? `persona:${localAccessActor}` : undefined;
 			const sentIn = (response.config as any)[SENT_IN];
 			const workspaceId = () =>
 				sentIn === undefined ? currentWorkspaceId() : sentIn;
 			eventsForResponse(response, workspaceId).forEach((event) =>
-				bus.emit(plugin ? { ...event, actor: `plugin:${plugin}` } : event),
+				bus.emit(actor ? { ...event, actor } : event),
 			);
 		} catch (error) {
 			console.error(error);
