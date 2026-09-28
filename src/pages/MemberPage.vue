@@ -1,12 +1,10 @@
 <template>
-	<div class="mx-auto w-full max-w-6xl space-y-4 p-4">
-		<nav class="text-xs text-ink-subtle" aria-label="Breadcrumb">
-			<router-link :to="dashboardLink" class="hover:text-ink"
-				>Dashboard</router-link
-			>
-			<span> / </span>
-			<span class="text-ink">{{ stats?.name ?? 'Member' }}</span>
-		</nav>
+	<PageContainer width="wide">
+		<PageHeader
+			:title="stats?.name ?? 'Member'"
+			:back="dashboardLink"
+			back-label="Dashboard"
+		/>
 
 		<p
 			v-if="notFound"
@@ -67,7 +65,7 @@
 				/>
 			</AsyncContent>
 		</div>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
@@ -76,6 +74,8 @@
 	import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
 	import MemberHeader from '@/components/member/MemberHeader.vue';
 	import MemberTasksPanel from '@/components/member/MemberTasksPanel.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useMemberPage } from '@/composable/useMemberPage';
 	import store from '@/store';
@@ -94,7 +94,14 @@
 
 	export default defineComponent({
 		name: 'MemberPage',
-		components: { AsyncContent, ActivityFeed, MemberHeader, MemberTasksPanel },
+		components: {
+			AsyncContent,
+			ActivityFeed,
+			MemberHeader,
+			MemberTasksPanel,
+			PageContainer,
+			PageHeader,
+		},
 		setup() {
 			const route = useRoute();
 			const { currentWorkspaceId, currentWorkspaceCode } =

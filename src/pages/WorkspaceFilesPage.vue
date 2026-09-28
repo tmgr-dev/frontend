@@ -1,32 +1,33 @@
 <template>
-	<div class="workspace-files mx-auto w-full max-w-5xl px-4 py-6">
-		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-			<h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+	<PageContainer width="wide" class="workspace-files">
+		<PageHeader>
+			<template #title>
 				Files
-				<span v-if="total" class="font-normal text-gray-400"
+				<span v-if="total" class="font-normal text-ink-subtle"
 					>({{ total }})</span
 				>
-			</h1>
-
-			<div
-				class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
-			>
-				<button
-					v-for="option in filters"
-					:key="option.value"
-					type="button"
-					class="rounded-md px-3 py-1 text-sm transition-colors"
-					:class="
-						imagesOnly === option.value
-							? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-							: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-					"
-					@click="setFilter(option.value)"
+			</template>
+			<template #actions>
+				<div
+					class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
 				>
-					{{ option.label }}
-				</button>
-			</div>
-		</div>
+					<button
+						v-for="option in filters"
+						:key="option.value"
+						type="button"
+						class="rounded-md px-3 py-1 text-sm transition-colors"
+						:class="
+							imagesOnly === option.value
+								? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+								: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+						"
+						@click="setFilter(option.value)"
+					>
+						{{ option.label }}
+					</button>
+				</div>
+			</template>
+		</PageHeader>
 
 		<div v-if="loadError" role="alert" class="py-3">
 			Could not load files.
@@ -146,7 +147,7 @@
 			:urls="previews"
 			@close="galleryStartId = null"
 		/>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
@@ -159,6 +160,8 @@
 	} from '@/actions/tmgr/files';
 	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
 	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import store from '@/store';
 	import { formatFileSize, isImageMime } from '@/utils/attachments';
 	import { galleryImages } from '@/utils/galleryNavigation';
@@ -171,6 +174,8 @@
 		components: {
 			AttachmentGallery,
 			AttachmentsSkeleton,
+			PageContainer,
+			PageHeader,
 			Download,
 			FileIcon,
 			Loader2,
