@@ -3,6 +3,17 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.3 — 2026-09-29
+
+- One page layout everywhere: content column aligned left with the same paddings, a page header (title, subtitle,
+  actions) on every page; lists and dashboards are wide, settings and forms are narrow.
+- Settings, Profile, Feature settings and Statistics moved to the current design: section cards, labelled switches with
+  descriptions, design-system inputs, selects and buttons, dark mode throughout. `/settings` now opens Workspace
+  settings; password fields hide what you type.
+- Statistics: tiles and a table instead of raw text, no more NaN, "Last week" shows the week; a Statistics link in the
+  account menu at the bottom of the sidebar.
+- Fixes: no sideways scroll on the push notifications guide, Error404 readable in light theme, "Workspace Settings" typo.
+
 ## 0.9.2 — 2026-09-28
 
 - Plugins API 1.3: new page building blocks for plugins — `card` (solid background, border, accent stripe, padding,
