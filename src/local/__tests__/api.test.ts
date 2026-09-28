@@ -279,6 +279,15 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect((await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2' })).status).toBe(200);
 	});
 
+	it('derives a category code from its title when none is given, like the Java backend', async () => {
+		const first = await data('POST', 'project_categories', { title: 'Разработка' });
+		expect(first.code).toBe('RAZRABOTKA');
+		const second = await data('POST', 'project_categories', { title: 'Разработка' });
+		expect(second.code).toBe('RAZRABOTKA-1');
+		const withExplicitCode = await data('POST', 'project_categories', { title: 'Other', code: 'OTHER' });
+		expect(withExplicitCode.code).toBe('OTHER');
+	});
+
 	it('answers workspace odds and ends and leaves unknown routes unmatched', async () => {
 		expect(await data('GET', 'workspaces/-42/members')).toEqual([
 			expect.objectContaining({ id: 7, role: 'owner' }),

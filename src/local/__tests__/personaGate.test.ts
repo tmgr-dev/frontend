@@ -139,8 +139,15 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		});
 		const refused = await call('DELETE', `comments/${ownersComment!.data.data.id}`, undefined, persona);
 		expect(refused!.status).toBe(403);
+		expect(refused!.data.code).toBe('NOT_OWN');
 		const allowed = await call('DELETE', `comments/${own!.data.data.id}`, undefined, persona);
 		expect(allowed!.status).toBe(200);
+	});
+
+	it('returns 404, not 403 NOT_OWN, when a persona deletes a comment that does not exist', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
+		const res = await call('DELETE', 'comments/999999', undefined, persona);
+		expect(res!.status).toBe(404);
 	});
 
 	it('does not gate the human user actor at all', async () => {
@@ -162,6 +169,7 @@ describeSqlite('persona whitelist gate in the local router', () => {
 			persona,
 		);
 		expect(refused!.status).toBe(403);
+		expect(refused!.data.code).toBe('NOT_OWN');
 
 		const editedOwn = await call('PUT', `comments/${own!.data.data.id}`, { message: 'edited mine' }, persona);
 		expect(editedOwn!.status).toBe(200);
