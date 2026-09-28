@@ -3,6 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = void 0;
+const manifest_1 = require("./manifest.generated.js");
 const TONES = ['default', 'muted', 'success', 'warning', 'danger'];
 exports.COLORS = [
     'gray',
@@ -21,6 +22,27 @@ const MAX_COPYABLE_TEXT = 2000;
 const MAX_KEY_VALUE_ITEMS = 50;
 const MAX_BUTTON_ARGS_BYTES = 8 * 1024;
 const MAX_AT_LENGTH = 64;
+const MAX_CARD_DEPTH = 3;
+const MAX_MENU_ITEMS = 20;
+const MAX_LABEL_LENGTH = 200;
+const CURRENT_API_MINOR = Number(manifest_1.PLUGIN_API_VERSION.split('.')[1]);
+const GAPS = ['none', 'sm', 'md', 'lg'];
+const GRID_GAPS = ['sm', 'md', 'lg'];
+const ALIGNS = [
+    'start',
+    'center',
+    'end',
+    'stretch',
+];
+const JUSTIFIES = ['start', 'between', 'end'];
+const CARD_TONES = ['default', 'muted', 'raised'];
+const PADDINGS = ['sm', 'md', 'lg'];
+const BUTTON_VARIANTS = [
+    'default',
+    'primary',
+    'ghost',
+];
+const BUTTON_SIZES = ['sm', 'md'];
 exports.NO_LINKS = { allowedDomains: [], linksOpen: false };
 /** https only, and only a domain the plugin declared and has permission for. Shared by sanitizeTree and host.openLink. */
 const isLinkAllowed = (url, context) => {
@@ -37,18 +59,61 @@ const isLinkAllowed = (url, context) => {
 };
 exports.isLinkAllowed = isLinkAllowed;
 const pick = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+const pickOptional = (value, allowed) => allowed.includes(value) ? value : undefined;
 const text = (value) => typeof value === 'string'
     ? value.slice(0, MAX_TEXT)
     : typeof value === 'number' && Number.isFinite(value)
         ? String(value)
         : null;
+const parseCommandArgs = (value) => {
+    const command = typeof value?.command === 'string' ? value.command.slice(0, 120) : null;
+    if (!command)
+        return null;
+    let args;
+    try {
+        if (value.args !== undefined) {
+            const json = JSON.stringify(value.args);
+            if (json.length > MAX_BUTTON_ARGS_BYTES)
+                return null;
+            args = JSON.parse(json);
+        }
+    }
+    catch {
+        return null;
+    }
+    return { command, ...(args !== undefined ? { args } : {}) };
+};
+const findLabel = (nodes) => {
+    for (const node of nodes) {
+        const direct = node.type === 'heading' || node.type === 'text' || node.type === 'badge'
+            ? node.text
+            : node.type === 'stat'
+                ? node.label
+                : null;
+        if (direct)
+            return direct.slice(0, MAX_LABEL_LENGTH);
+        const childNodes = node.type === 'stack' || node.type === 'card' || node.type === 'grid'
+            ? node.children
+            : node.type === 'list'
+                ? node.items
+                : node.type === 'keyValue'
+                    ? node.items.map((item) => item.value)
+                    : node.type === 'table'
+                        ? node.rows.flatMap((row) => Object.values(row.cells))
+                        : [];
+        const found = findLabel(childNodes);
+        if (found)
+            return found;
+    }
+    return null;
+};
 /**
  * Plugin UI is data, never markup: only these components, only plain strings and numbers, bounded size.
  * Whatever does not fit is dropped rather than rendered.
  */
-const sanitizeTree = (raw, context = exports.NO_LINKS) => {
+const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MINOR) => {
     let budget = MAX_NODES;
-    const node = (value, depth) => {
+    const node = (value, depth, cardDepth) => {
         if (depth > MAX_DEPTH || budget-- <= 0)
             return null;
         const plain = text(value);
@@ -56,16 +121,107 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
             return { type: 'text', text: plain, tone: 'default' };
         if (!value || typeof value !== 'object')
             return null;
-        const children = (items) => (Array.isArray(items) ? items.slice(0, MAX_ITEMS) : [])
-            .map((child) => node(child, depth + 1))
+        const children = (items, childCardDepth) => (Array.isArray(items) ? items.slice(0, MAX_ITEMS) : [])
+            .map((child) => node(child, depth + 1, childCardDepth))
             .filter((child) => child !== null);
         switch (value.type) {
-            case 'stack':
-                return {
+            case 'stack': {
+                const base = {
                     type: 'stack',
                     direction: value.direction === 'row' ? 'row' : 'column',
-                    children: children(value.children),
+                    children: children(value.children, cardDepth),
                 };
+                if (apiMinor < 3)
+                    return base;
+                const gap = pickOptional(value.gap, GAPS);
+                const align = pickOptional(value.align, ALIGNS);
+                const justify = pickOptional(value.justify, JUSTIFIES);
+                const grow = value.grow === true ? true : undefined;
+                return {
+                    ...base,
+                    ...(gap !== undefined ? { gap } : {}),
+                    ...(align !== undefined ? { align } : {}),
+                    ...(justify !== undefined ? { justify } : {}),
+                    ...(grow !== undefined ? { grow } : {}),
+                };
+            }
+            case 'card': {
+                if (apiMinor < 3 || cardDepth >= MAX_CARD_DEPTH) {
+                    return {
+                        type: 'stack',
+                        direction: 'column',
+                        children: children(value.children, cardDepth),
+                    };
+                }
+                const kids = children(value.children, cardDepth + 1);
+                const tone = pick(value.tone, CARD_TONES, 'default');
+                const padding = pick(value.padding, PADDINGS, 'md');
+                const accent = value.accent === undefined ? undefined : pick(value.accent, exports.COLORS, 'gray');
+                const grow = value.grow === true ? true : undefined;
+                const onClick = parseCommandArgs(value.onClick);
+                const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
+                return {
+                    type: 'card',
+                    children: kids,
+                    tone,
+                    padding,
+                    ...(accent !== undefined ? { accent } : {}),
+                    ...(grow !== undefined ? { grow } : {}),
+                    ...(onClick ? { onClick } : {}),
+                    ...(label !== undefined ? { label } : {}),
+                };
+            }
+            case 'grid': {
+                if (apiMinor < 3) {
+                    return {
+                        type: 'stack',
+                        direction: 'row',
+                        children: children(value.children, cardDepth),
+                    };
+                }
+                const rawColumns = typeof value.columns === 'number' && Number.isFinite(value.columns)
+                    ? Math.round(value.columns)
+                    : 1;
+                const columns = Math.max(1, Math.min(6, rawColumns));
+                const rawMinWidth = typeof value.minWidth === 'number' && Number.isFinite(value.minWidth)
+                    ? value.minWidth
+                    : 200;
+                const minWidth = Math.max(160, Math.min(480, rawMinWidth));
+                const gap = pick(value.gap, GRID_GAPS, 'md');
+                return {
+                    type: 'grid',
+                    columns,
+                    minWidth,
+                    gap,
+                    children: children(value.children, cardDepth),
+                };
+            }
+            case 'menu': {
+                if (apiMinor < 3)
+                    return { type: 'stack', direction: 'column', children: [] };
+                const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_MENU_ITEMS) : [])
+                    // Items count against the node budget, like table rows, so nesting cannot multiply it.
+                    .filter(() => budget-- > 0)
+                    .map((item) => {
+                    const t = text(item?.text);
+                    const cmd = parseCommandArgs(item);
+                    if (t === null || cmd === null)
+                        return null;
+                    const confirmText = typeof item?.confirm === 'string' ? item.confirm.trim() : '';
+                    const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
+                    return { text: t, ...cmd, ...(confirm !== undefined ? { confirm } : {}) };
+                })
+                    .filter((item) => item !== null);
+                if (items.length === 0)
+                    return null;
+                const label = text(value.label)?.slice(0, 60);
+                return {
+                    type: 'menu',
+                    icon: 'more',
+                    items,
+                    ...(label !== undefined && label !== null ? { label } : {}),
+                };
+            }
             case 'heading': {
                 const t = text(value.text);
                 return t === null
@@ -84,25 +240,29 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
             }
             case 'badge': {
                 const t = text(value.text);
-                return t === null
-                    ? null
-                    : {
-                        type: 'badge',
-                        text: t.slice(0, 40),
-                        color: pick(value.color, exports.COLORS, 'gray'),
-                    };
+                if (t === null)
+                    return null;
+                const cmd = apiMinor >= 3 ? parseCommandArgs(value) : null;
+                return {
+                    type: 'badge',
+                    text: t.slice(0, 40),
+                    color: pick(value.color, exports.COLORS, 'gray'),
+                    ...(cmd ? cmd : {}),
+                };
             }
             case 'stat': {
                 const label = text(value.label);
                 const v = text(value.value);
-                return label === null || v === null
-                    ? null
-                    : {
-                        type: 'stat',
-                        label,
-                        value: v,
-                        tone: pick(value.tone, TONES, 'default'),
-                    };
+                if (label === null || v === null)
+                    return null;
+                const cmd = apiMinor >= 3 ? parseCommandArgs(value) : null;
+                return {
+                    type: 'stat',
+                    label,
+                    value: v,
+                    tone: pick(value.tone, TONES, 'default'),
+                    ...(cmd ? cmd : {}),
+                };
             }
             case 'progress':
                 return typeof value.value === 'number' && Number.isFinite(value.value)
@@ -113,7 +273,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
                     }
                     : null;
             case 'list':
-                return { type: 'list', items: children(value.items) };
+                return { type: 'list', items: children(value.items, cardDepth) };
             case 'table': {
                 const columns = (Array.isArray(value.columns) ? value.columns.slice(0, 12) : [])
                     .map((c) => ({ key: text(c?.key), title: text(c?.title) }))
@@ -124,7 +284,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
                     .map((row) => {
                     const cells = {};
                     for (const { key } of columns) {
-                        const cell = node(row?.cells?.[key], depth + 1);
+                        const cell = node(row?.cells?.[key], depth + 1, cardDepth);
                         if (cell)
                             cells[key] = cell;
                     }
@@ -136,31 +296,20 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
             }
             case 'button': {
                 const t = text(value.text);
-                const command = typeof value.command === 'string'
-                    ? value.command.slice(0, 120)
-                    : null;
-                if (t === null || !command)
+                const cmd = parseCommandArgs(value);
+                if (t === null || cmd === null)
                     return null;
-                let args;
-                try {
-                    if (value.args !== undefined) {
-                        const json = JSON.stringify(value.args);
-                        if (json.length > MAX_BUTTON_ARGS_BYTES)
-                            return null;
-                        args = JSON.parse(json);
-                    }
-                }
-                catch {
-                    return null;
-                }
                 const confirmText = typeof value.confirm === 'string' ? value.confirm.trim() : '';
                 const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
+                const variant = apiMinor >= 3 ? pickOptional(value.variant, BUTTON_VARIANTS) : undefined;
+                const size = apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
                 return {
                     type: 'button',
                     text: t,
-                    command,
-                    ...(args !== undefined ? { args } : {}),
+                    ...cmd,
                     ...(confirm !== undefined ? { confirm } : {}),
+                    ...(variant !== undefined ? { variant } : {}),
+                    ...(size !== undefined ? { size } : {}),
                 };
             }
             case 'taskLink': {
@@ -216,7 +365,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
                     .filter(() => budget-- > 0)
                     .map((item) => {
                     const key = text(item?.key)?.slice(0, 60) ?? null;
-                    const value_ = node(item?.value, depth + 1);
+                    const value_ = node(item?.value, depth + 1, cardDepth);
                     return key !== null && value_ !== null ? { key, value: value_ } : null;
                 })
                     .filter((item) => item !== null);
@@ -226,6 +375,6 @@ const sanitizeTree = (raw, context = exports.NO_LINKS) => {
                 return null;
         }
     };
-    return node(raw, 0);
+    return node(raw, 0, 0);
 };
 exports.sanitizeTree = sanitizeTree;

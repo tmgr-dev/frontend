@@ -630,9 +630,17 @@ const createTestHost = async (options = {}) => {
 		},
 		runCommand: (id, args) => sandbox.dispatch('command', id, args ?? null),
 		renderPage: async (id, props) =>
-			sanitizeTree(await sandbox.dispatch('page', id, props ?? null), linkContext),
+			sanitizeTree(
+				await sandbox.dispatch('page', id, props ?? null),
+				linkContext,
+				manifest.apiMinor,
+			),
 		renderSection: async (id, task) =>
-			sanitizeTree(await sandbox.dispatch('section', id, task ?? null), linkContext),
+			sanitizeTree(
+				await sandbox.dispatch('section', id, task ?? null),
+				linkContext,
+				manifest.apiMinor,
+			),
 		badges: (tasks) => computeBadges(sandbox, registered.badges, tasks),
 		fireAlarms: (atTime) => {
 			if (typeof atTime === 'number') currentTime = atTime;

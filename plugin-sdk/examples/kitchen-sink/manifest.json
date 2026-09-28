@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.2 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.2" },
+	"description": "Exercises every plugin API v1.3 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.3" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",
@@ -35,7 +35,8 @@
 			{ "id": "tmgr-dev.kitchen-sink.createSample", "title": "Create sample task" },
 			{ "id": "tmgr-dev.kitchen-sink.sayHi", "title": "Say hi (from a task section button)" },
 			{ "id": "tmgr-dev.kitchen-sink.ping", "title": "Ping Kitchen Sink", "deepLink": true },
-			{ "id": "tmgr-dev.kitchen-sink.captureNotes", "title": "Capture today's notes" }
+			{ "id": "tmgr-dev.kitchen-sink.captureNotes", "title": "Capture today's notes" },
+			{ "id": "tmgr-dev.kitchen-sink.cardClicked", "title": "Kitchen Sink card clicked (demo)" }
 		],
 		"views": [
 			{ "id": "view", "title": "Kitchen Sink view" },

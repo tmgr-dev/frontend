@@ -125,6 +125,105 @@ const captureNotes = async () => {
 
 tmgr.commands.register('tmgr-dev.kitchen-sink.captureNotes', captureNotes);
 
+tmgr.commands.register('tmgr-dev.kitchen-sink.cardClicked', async (args) => {
+	const via = args?.via ?? 'card';
+	console.info(`kitchen-sink: cardClicked via ${via} column=${args?.column} row=${args?.row ?? ''}`);
+	await tmgr.ui.notify(`Card clicked (${via})`, { title: 'Kitchen Sink' });
+});
+
+/** API 1.3 demo: 4 lanes, each an accented card with a nested-card list and a menu. */
+const KITCHEN_SINK_LANE_COLORS = ['blue', 'yellow', 'purple', 'green'];
+
+const kitchenSinkLane = (column) => ({
+	type: 'card',
+	tone: 'default',
+	padding: 'md',
+	accent: KITCHEN_SINK_LANE_COLORS[column],
+	children: [
+		{
+			type: 'stack',
+			direction: 'row',
+			justify: 'between',
+			align: 'center',
+			children: [
+				{ type: 'stack', direction: 'row', grow: true, children: [{ type: 'heading', text: `Lane ${column + 1}`, level: 3 }] },
+				{ type: 'badge', text: `${column + 1}`, color: KITCHEN_SINK_LANE_COLORS[column] },
+				{
+					type: 'menu',
+					label: 'More',
+					icon: 'more',
+					items: [
+						{ text: 'Say hi', command: 'tmgr-dev.kitchen-sink.sayHi', args: { taskId: null } },
+						{ text: 'Ping', command: 'tmgr-dev.kitchen-sink.ping' },
+						{
+							text: 'Card clicked',
+							command: 'tmgr-dev.kitchen-sink.cardClicked',
+							args: { column, via: 'menu' },
+							confirm: `Run cardClicked for lane ${column + 1}?`,
+						},
+					],
+				},
+			],
+		},
+		...[0, 1, 2].map((row) => ({
+			type: 'card',
+			tone: row === 0 ? 'raised' : 'muted',
+			padding: 'sm',
+			onClick: { command: 'tmgr-dev.kitchen-sink.cardClicked', args: { column, row, via: 'card' } },
+			children: [
+				{
+					type: 'stack',
+					direction: 'row',
+					align: 'center',
+					gap: 'sm',
+					children: [
+						{ type: 'text', text: `KS-${column * 3 + row + 1}`, tone: 'muted' },
+						{ type: 'stack', direction: 'row', grow: true, children: [{ type: 'text', text: `Task ${row + 1}`, tone: 'default' }] },
+						{ type: 'badge', text: 'HIGH', color: 'red' },
+						{
+							type: 'button',
+							text: 'Open',
+							command: 'tmgr-dev.kitchen-sink.cardClicked',
+							args: { column, row, via: 'button' },
+							variant: 'primary',
+							size: 'sm',
+						},
+					],
+				},
+			],
+		})),
+	],
+});
+
+const kitchenSinkGridDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'md',
+	children: [
+		{ type: 'heading', text: 'Card & grid demo (API 1.3)', level: 2 },
+		{
+			type: 'grid',
+			columns: 4,
+			minWidth: 180,
+			gap: 'md',
+			children: [0, 1, 2, 3].map(kitchenSinkLane),
+		},
+		{
+			type: 'stack',
+			direction: 'row',
+			gap: 'sm',
+			children: [0, 1, 2, 3].map((column) => ({
+				type: 'stat',
+				label: `Lane ${column + 1}`,
+				value: String(column * 3 + 3),
+				tone: 'default',
+				command: 'tmgr-dev.kitchen-sink.cardClicked',
+				args: { column, via: 'stat' },
+			})),
+		},
+	],
+});
+
 tmgr.ui.provideBadges(BADGE_ID, async (tasks) => {
 	const notes = await tmgr.taskData.getMany(tasks.map((t) => t.id), 'kitchenSink.note');
 	const result = {};
@@ -175,6 +274,7 @@ tmgr.ui.provideTaskSection('ks-section', async (task) => ({
 tmgr.ui.providePage('view', async (props) => ({
 	type: 'stack',
 	direction: 'column',
+	gap: 'md',
 	children: [
 		{ type: 'heading', text: 'Kitchen Sink view', level: 1 },
 		{
@@ -182,6 +282,7 @@ tmgr.ui.providePage('view', async (props) => ({
 			text: props?.task ? `Opened from a deep link for task ${props.task}` : 'Opened with no task param',
 			tone: 'muted',
 		},
+		kitchenSinkGridDemo(),
 	],
 }));
 

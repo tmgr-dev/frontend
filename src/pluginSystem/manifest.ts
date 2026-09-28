@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.2';
+export const PLUGIN_API_VERSION = '1.3';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -67,6 +67,8 @@ export interface PluginManifest {
 			properties: Record<string, SettingSchema>;
 		} | null;
 	};
+	/** The minor from engines.tmgr (e.g. '^1.2' → 2); gates which UiNode fields sanitizeTree emits. */
+	apiMinor: number;
 }
 
 export const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
@@ -111,13 +113,17 @@ const list = <T>(
 	return (value as unknown[]).map(parse);
 };
 
-/** Same major, and no newer minor than this app implements: a ^1.2 plugin would call methods 1.1 lacks. */
+const ENGINE_RANGE = /^\^?(\d+)\.(\d+)/;
+
+/** Same major, and no newer minor than this app implements: a ^1.3 plugin would call methods 1.2 lacks. */
 const engineSupported = (range: unknown) => {
-	const match =
-		typeof range === 'string' ? range.match(/^\^?(\d+)\.(\d+)/) : null;
+	const match = typeof range === 'string' ? range.match(ENGINE_RANGE) : null;
 	const [major, minor] = PLUGIN_API_VERSION.split('.').map(Number);
 	return !!match && Number(match[1]) === major && Number(match[2]) <= minor;
 };
+
+const engineMinor = (range: unknown): number =>
+	Number((range as string).match(ENGINE_RANGE)![2]);
 
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
@@ -217,6 +223,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 		},
 		links: { allowedDomains },
 		companion: parseCompanion(raw.companion),
+		apiMinor: engineMinor(raw.engines.tmgr),
 		contributes: {
 			boardCardBadges,
 			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

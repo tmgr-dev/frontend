@@ -106,3 +106,19 @@ it('routine.created is delivered to the plugin (API 1.2)', async () => {
 	expect(host.tmgr.log.some((l: any) => l.message.includes('routine.created 1'))).toBe(true);
 	host.dispose();
 });
+
+const containsNodeType = (node: any, type: string): boolean => {
+	if (!node || typeof node !== 'object') return false;
+	if (node.type === type) return true;
+	const lists = [node.children, node.items].filter(Array.isArray);
+	return lists.some((list) => list.some((child: any) => containsNodeType(child, type)));
+};
+
+it('the "Kitchen Sink view" page renders card, grid and menu nodes (API 1.3)', async () => {
+	const host = await startHost();
+	const tree = await host.renderPage('view', null);
+	expect(containsNodeType(tree, 'grid')).toBe(true);
+	expect(containsNodeType(tree, 'card')).toBe(true);
+	expect(containsNodeType(tree, 'menu')).toBe(true);
+	host.dispose();
+});

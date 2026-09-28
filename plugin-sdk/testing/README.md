@@ -24,6 +24,11 @@ See `index.d.ts` for the full `createTestHost` options and the returned host's s
 `tmgr.routines`/`tmgr.routineInstances` back `tmgr.routines.*` (local workspaces only); seed them with
 the `routines`/`routineInstances` options.
 
+`renderPage`/`renderSection` sanitize with the manifest's own `apiMinor` (parsed from `engines.tmgr`):
+a plugin declaring `^1.3` gets the API 1.3 `card`/`grid`/`menu` nodes and the new optional fields on
+`stack`/`button`/`stat`/`badge`; an older `engines.tmgr` gets those nodes downgraded to plain `stack`s,
+same as the real app.
+
 ## Why CommonJS
 
 This package is plain `require()`-able CommonJS, not ESM. A `node:test` file (an ESM `.mjs`, as in

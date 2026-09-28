@@ -3,7 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.2';
+exports.PLUGIN_API_VERSION = '1.3';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -56,12 +56,14 @@ const list = (value, field, parse) => {
         fail(`${field} must be a list`);
     return value.map(parse);
 };
-/** Same major, and no newer minor than this app implements: a ^1.2 plugin would call methods 1.1 lacks. */
+const ENGINE_RANGE = /^\^?(\d+)\.(\d+)/;
+/** Same major, and no newer minor than this app implements: a ^1.3 plugin would call methods 1.2 lacks. */
 const engineSupported = (range) => {
-    const match = typeof range === 'string' ? range.match(/^\^?(\d+)\.(\d+)/) : null;
+    const match = typeof range === 'string' ? range.match(ENGINE_RANGE) : null;
     const [major, minor] = exports.PLUGIN_API_VERSION.split('.').map(Number);
     return !!match && Number(match[1]) === major && Number(match[2]) <= minor;
 };
+const engineMinor = (range) => Number(range.match(ENGINE_RANGE)[2]);
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const parseDomain = (value) => typeof value === 'string' && DOMAIN.test(value)
     ? value
@@ -149,6 +151,7 @@ const parseManifest = (raw) => {
         },
         links: { allowedDomains },
         companion: parseCompanion(raw.companion),
+        apiMinor: engineMinor(raw.engines.tmgr),
         contributes: {
             boardCardBadges,
             statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

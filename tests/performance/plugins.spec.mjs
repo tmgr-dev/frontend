@@ -887,3 +887,127 @@ test("a shared workspace never replaces the member's own install of a plugin", a
   await expect(card.getByText('Off')).toBeVisible();
   expect(shell.installed.get('acme.net').tag).toBe('v0.9.0');
 });
+
+const uiNodes = {
+  folder: 'dev.uinodes',
+  manifest: JSON.stringify({
+    id: 'dev.uinodes',
+    name: 'UI nodes',
+    version: '1.0.0',
+    engines: { tmgr: '^1.3' },
+    permissions: ['notifications'],
+    contributes: {
+      commands: [
+        { id: 'dev.uinodes.card', title: 'Card clicked' },
+        { id: 'dev.uinodes.menu', title: 'Menu item' },
+        { id: 'dev.uinodes.stat', title: 'Stat clicked' },
+      ],
+      views: [{ id: 'view', title: 'UI nodes' }],
+    },
+  }),
+  code: `
+    tmgr.commands.register('dev.uinodes.card', async () => { await tmgr.ui.notify('card command ran'); });
+    tmgr.commands.register('dev.uinodes.menu', async () => { await tmgr.ui.notify('menu command ran'); });
+    tmgr.commands.register('dev.uinodes.stat', async () => { await tmgr.ui.notify('stat command ran'); });
+    tmgr.ui.providePage('view', async () => ({
+      type: 'stack',
+      direction: 'column',
+      gap: 'md',
+      children: [
+        {
+          type: 'grid',
+          columns: 4,
+          minWidth: 180,
+          gap: 'md',
+          children: [0, 1, 2, 3].map((i) => ({
+            type: 'card',
+            tone: 'default',
+            padding: 'md',
+            accent: 'blue',
+            onClick: { command: 'dev.uinodes.card', args: { i } },
+            children: [{ type: 'text', text: 'Lane ' + i, tone: 'default' }],
+          })),
+        },
+        {
+          type: 'menu',
+          label: 'Actions',
+          icon: 'more',
+          items: [
+            { text: 'No confirm', command: 'dev.uinodes.menu', args: {} },
+            { text: 'Confirm', command: 'dev.uinodes.menu', args: { confirmed: true }, confirm: 'Really?' },
+          ],
+        },
+        { type: 'stat', label: 'Total', value: '4', tone: 'default', command: 'dev.uinodes.stat' },
+      ],
+    }));
+  `,
+};
+
+test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, and the page stays clickable after a menu confirm', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('plugins.devMode', 'true'),
+  );
+  await desktopPage(page, {}, { devPlugins: [uiNodes] });
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+
+  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page
+    .locator('article', { hasText: 'UI nodes' })
+    .getByRole('switch')
+    .click();
+
+  await page.goto('/local-personal/plugins/dev.uinodes/view');
+  const card0 = page.getByRole('button').filter({ hasText: 'Lane 0' });
+  await expect(card0).toBeVisible();
+
+  const scrollInfo = await page.evaluate(() => ({
+    scrollWidth: document.scrollingElement.scrollWidth,
+    clientWidth: document.scrollingElement.clientWidth,
+  }));
+  expect(scrollInfo.scrollWidth).toBeLessThanOrEqual(scrollInfo.clientWidth);
+
+  const lightBg = await card0.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(lightBg).not.toBe('rgba(0, 0, 0, 0)');
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+  // Card background is `transition-colors`-animated; wait it out before reading the used value.
+  await page.waitForTimeout(300);
+  const darkBg = await card0.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkBg).not.toBe('rgba(0, 0, 0, 0)');
+  expect(darkBg).not.toBe(lightBg);
+  await page.evaluate(() => document.documentElement.classList.remove('dark'));
+
+  await card0.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('card command ran').first()).toBeVisible();
+
+  const menuTrigger = page.getByRole('button', { name: 'Actions' });
+  await menuTrigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('menuitem', { name: 'No confirm' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('menu command ran').first()).toBeVisible();
+
+  await menuTrigger.click();
+  await page.getByRole('menuitem', { name: 'Confirm', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('menu command ran').last()).toBeVisible();
+
+  // The page must stay clickable: a known radix-vue bug can leave `pointer-events: none`
+  // on <body> after a dialog opens from a dropdown menu item.
+  await card0.click();
+  await expect(page.getByText('card command ran').last()).toBeVisible();
+
+  await page.getByRole('button').filter({ hasText: 'Total' }).click();
+  await expect(page.getByText('stat command ran').first()).toBeVisible();
+});
