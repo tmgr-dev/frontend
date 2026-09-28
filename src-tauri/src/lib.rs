@@ -2,6 +2,7 @@ mod capture;
 mod downloads;
 mod embeds;
 mod idle;
+mod local_access;
 mod local_db;
 mod local_export;
 mod local_files;
@@ -154,7 +155,16 @@ pub fn run() {
       persona_llm::llm_config_set,
       persona_llm::llm_config_get,
       persona_llm::llm_chat,
-      persona_llm::llm_cancel
+      persona_llm::llm_cancel,
+      local_access::local_token_issue,
+      local_access::local_token_list,
+      local_access::local_token_revoke,
+      local_access::local_token_revoke_all,
+      local_access::local_token_copy,
+      local_access::local_access_status,
+      local_access::local_access_set_enabled,
+      local_access::local_access_ready,
+      local_access::local_access_reply
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {
@@ -258,6 +268,9 @@ pub fn run() {
       tray::setup(app.handle())?;
       idle::start(app.handle());
       plugin_tick::start(app.handle());
+      if let Err(error) = local_access::setup(app.handle()) {
+        log::error!("[local-access] failed to start: {error}");
+      }
       Ok(())
     })
     .build(tauri::generate_context!())

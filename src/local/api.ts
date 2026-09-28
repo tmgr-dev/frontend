@@ -196,7 +196,7 @@ const requireOwnRunningRun = async (ctx: LocalContext, id: number) => {
 	const sameActor = row.actor_kind === actor.kind && String(row.actor_id) === ownerIdOf(actor);
 	const sameNamespace = actor.kind !== 'plugin' || inPluginNamespace(row.agent, actor.id);
 	if (!sameActor || !sameNamespace) {
-		throw new LocalHttpError(403, 'Only the user the agent works for can change this run');
+		throw new LocalHttpError(403, 'Only the user the agent works for can change this run', 'NOT_OWN');
 	}
 	if (row.status !== 'running') throw new LocalHttpError(409, `Agent work run is already ${row.status}`);
 	return row;
@@ -626,7 +626,7 @@ export const createLocalApi = () => {
 					Number(params.id),
 				]);
 				if (!comment || comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
-					throw new LocalHttpError(403, 'A persona may only delete its own comments');
+					throw new LocalHttpError(403, 'A persona may only delete its own comments', 'NOT_OWN');
 				}
 			}
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);

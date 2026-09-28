@@ -1,0 +1,19 @@
+{
+	"name": "@tmgr/local-access",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Reference Node client and MCP bridge for the TMGR desktop local access socket.",
+	"main": "index.mjs",
+	"types": "index.d.ts",
+	"bin": {
+		"tmgr-local-mcp": "bin/tmgr-local-mcp.mjs",
+		"tmgr-local-measure": "bin/tmgr-local-measure.mjs"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"test": "node --test \"test/**/*.test.mjs\""
+	}
+}

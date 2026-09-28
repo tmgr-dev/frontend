@@ -43,6 +43,15 @@ const APP_COMMANDS: &[&str] = &[
   "llm_config_get",
   "llm_chat",
   "llm_cancel",
+  "local_token_issue",
+  "local_token_list",
+  "local_token_revoke",
+  "local_token_revoke_all",
+  "local_token_copy",
+  "local_access_status",
+  "local_access_set_enabled",
+  "local_access_ready",
+  "local_access_reply",
 ];
 
 fn main() {

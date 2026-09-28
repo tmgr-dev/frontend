@@ -34,8 +34,12 @@ minisign-verify = "0.2"
 url = "2"
 tauri-plugin-dialog = "2"
 base64 = "0.22"
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["sync", "time", "net", "rt", "io-util", "macros"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+getrandom = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
@@ -50,6 +54,9 @@ keyring = { version = "3.6", default-features = false, features = ["windows-nati
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"

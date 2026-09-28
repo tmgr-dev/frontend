@@ -115,7 +115,10 @@ export const dispatchLocal = async (
 					// Best effort: the response already carries the real refusal.
 				}
 			}
-			return { status: error.status, data: { message: error.message } };
+			return {
+				status: error.status,
+				data: error.code ? { message: error.message, code: error.code } : { message: error.message },
+			};
 		}
 		throw error;
 	}

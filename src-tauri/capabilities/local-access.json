@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local-access",
+  "description": "Local access socket and token management: main window only, never plugin windows.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-local-token-issue",
+    "allow-local-token-list",
+    "allow-local-token-revoke",
+    "allow-local-token-revoke-all",
+    "allow-local-token-copy",
+    "allow-local-access-status",
+    "allow-local-access-set-enabled",
+    "allow-local-access-ready",
+    "allow-local-access-reply"
+  ]
+}
