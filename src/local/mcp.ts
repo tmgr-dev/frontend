@@ -1,7 +1,7 @@
 import { dispatchLocal } from './dispatch';
 import { normalizePath, type LocalRouter } from './router';
 import type { LocalContext } from './types';
-import type { PersonaPermission } from './personaGate';
+import { checkPersonaIdentity, type PersonaPermission } from './personaGate';
 
 export interface McpDeps {
 	personaPrompt(uuid: string): Promise<{ system_prompt?: string | null; prompt_version?: number | null } | null>;
@@ -104,22 +104,6 @@ const personaGrantPermissions = async (ctx: LocalContext): Promise<PersonaPermis
 	);
 	if (!grant || grant.disabled_at) return [];
 	return JSON.parse(grant.permissions || '[]');
-};
-
-/** Same two checks as `checkPersonaAccess`, for the identity tools that never go through `dispatchLocal`. */
-const requirePersonaActive = async (ctx: LocalContext): Promise<void> => {
-	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
-		`SELECT archived_at FROM personas WHERE uuid = ?`,
-		[ctx.actor!.id],
-	);
-	if (!persona) throw new ToolError('Persona is not known in this workspace');
-	if (persona.archived_at) throw new ToolError('Persona is archived');
-	const [grant] = await ctx.db.select<{ disabled_at: string | null }>(
-		`SELECT disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
-		[ctx.actor!.id],
-	);
-	if (!grant) throw new ToolError('Persona is not enabled in this workspace');
-	if (grant.disabled_at) throw new ToolError('Persona is disabled in this workspace');
 };
 
 const personaRow = (ctx: LocalContext) =>
@@ -527,7 +511,7 @@ const handleInitialize = (params: any) => {
 /** personaGate (via `dispatchLocal`) decides permissions; this layer never re-implements it. */
 const handleToolsCall = async (params: any, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => {
 	try {
-		await requirePersonaActive(ctx);
+		await checkPersonaIdentity(ctx);
 		const tool = TOOLS_BY_NAME.get(params?.name);
 		if (!tool) return toolResultError('Tool not available to personas');
 		const result = await tool.handler(params?.arguments ?? {}, ctx, router, deps);

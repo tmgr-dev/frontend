@@ -170,10 +170,23 @@ describeSqlite('local access socket bridge handler', () => {
 		expect(JSON.parse(reply.body).code).toBe('OWNER_MISMATCH');
 	});
 
-	it('answers an unknown route with 501 NOT_AVAILABLE_LOCALLY', async () => {
-		const reply = await handleLocalAccessRequest(payload({ path: '/mcp' }), baseDeps());
-		expect(reply.status).toBe(501);
-		expect(JSON.parse(reply.body).code).toBe('NOT_AVAILABLE_LOCALLY');
+	it('answers POST /mcp tools/list for a persona', async () => {
+		const reply = await handleLocalAccessRequest(
+			payload({ method: 'POST', path: '/mcp', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }),
+			baseDeps(),
+		);
+		expect(reply.status).toBe(200);
+		const body = JSON.parse(reply.body);
+		expect(body.result.tools.map((t: any) => t.name)).toContain('whoami');
+	});
+
+	it('answers POST /mcp with 202 and an empty body for a notification', async () => {
+		const reply = await handleLocalAccessRequest(
+			payload({ method: 'POST', path: '/mcp', body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) }),
+			baseDeps(),
+		);
+		expect(reply.status).toBe(202);
+		expect(reply.body).toBe('');
 	});
 
 	it('answers an unlisted /api/local/* route with 404', async () => {
