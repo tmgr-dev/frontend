@@ -186,3 +186,22 @@ test('late connection callbacks from a logged out session cannot revive retries'
 	expect(jest.getTimerCount()).toBe(0);
 	expect(pusher.connectionState.value).toBe('connecting');
 });
+
+test('a local workspace keeps its handlers without a realtime channel and receives delivered events', () => {
+	const { api, instances } = loadPusher();
+	const pusher = api.usePusher();
+	const onTaskUpdated = jest.fn();
+	const other = jest.fn();
+	const id = pusher.subscribeToWorkspace(-3, { onTaskUpdated });
+	pusher.subscribeToWorkspace(-4, { onTaskUpdated: other });
+	expect(id).not.toBe('');
+	expect(instances[0].channels.has('App.Workspace.-3')).toBe(false);
+	api.deliverToWorkspace(-3, (h: any) => h.onTaskUpdated?.({ id: 1 }, 'updated'));
+	expect(onTaskUpdated).toHaveBeenCalledWith({ id: 1 }, 'updated');
+	expect(other).not.toHaveBeenCalled();
+	pusher.unsubscribeHandlerFromWorkspace(-3, id);
+	api.deliverToWorkspace(-3, (h: any) => h.onTaskUpdated?.({ id: 2 }, 'updated'));
+	expect(onTaskUpdated).toHaveBeenCalledTimes(1);
+	expect(pusher.getConnectionInfo().subscriptions).toEqual(['App.Workspace.-4']);
+	expect(instances[0].leave).not.toHaveBeenCalled();
+});

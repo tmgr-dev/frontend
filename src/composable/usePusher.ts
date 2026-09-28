@@ -80,6 +80,16 @@ export function getSharedEcho(): Echo | null {
 	return echoInstance;
 }
 
+/** Local workspaces have no socket: their own writes are handed to the same handlers the channel would call. */
+export function deliverToWorkspace(
+	workspaceId: number,
+	call: (handlers: EventHandlers) => void,
+): void {
+	subscriptions
+		.get(`App.Workspace.${workspaceId}`)
+		?.handlers.forEach((handlers) => call(handlers));
+}
+
 export function disconnectRealtime(): void {
 	if (echoInstance) usePusher().disconnect();
 	else cancelReconnect();
@@ -271,7 +281,18 @@ export function usePusher(): UsePusherReturn {
 	const subscribe = (channelName: string, events: EventHandlers): string => {
 		// Local (desktop, SQLite) workspaces have negative ids and no realtime channel.
 		if (/^App\.Workspace\.-\d+$/.test(channelName)) {
-			return '';
+			const subscriptionId = generateSubscriptionId();
+			const existing = subscriptions.get(channelName);
+			if (existing) {
+				existing.handlers.set(subscriptionId, events);
+			} else {
+				subscriptions.set(channelName, {
+					channel: null,
+					handlers: new Map([[subscriptionId, events]]),
+					isPrivate: true,
+				});
+			}
+			return subscriptionId;
 		}
 		if (!echoInstance) {
 			initializeEcho();
@@ -500,6 +521,11 @@ export function usePusher(): UsePusherReturn {
 		if (subscription) {
 			subscription.handlers.delete(subscriptionId);
 
+			if (subscription.handlers.size === 0 && !subscription.channel) {
+				subscriptions.delete(channelName);
+				return;
+			}
+
 			// If no more handlers, leave the channel entirely
 			if (subscription.handlers.size === 0 && echoInstance) {
 				try {
@@ -515,6 +541,11 @@ export function usePusher(): UsePusherReturn {
 	// Unsubscribe from a channel entirely (removes all handlers)
 	const unsubscribe = (channelName: string): void => {
 		const subscription = subscriptions.get(channelName);
+
+		if (subscription && !subscription.channel) {
+			subscriptions.delete(channelName);
+			return;
+		}
 
 		if (subscription && echoInstance) {
 			try {

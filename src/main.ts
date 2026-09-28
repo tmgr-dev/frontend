@@ -10,6 +10,8 @@ import {
 	isDesktopApp,
 } from '@/utils/desktop';
 import { installLocalWorkspaces } from '@/local/install';
+import { activeLocalWorkspace } from '@/local/runtime';
+import { requestCache } from '@/utils/requestCache';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
@@ -48,6 +50,18 @@ if (isDesktopApp()) {
 			),
 		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
 		void import('@/local/localAccess').then(({ installLocalAccess }) => installLocalAccess(store));
+		void Promise.all([
+			import('@/local/liveUpdates'),
+			import('@/composable/usePusher'),
+			import('@/actions/tmgr/tasks'),
+		]).then(([{ installLocalLiveUpdates }, { deliverToWorkspace }, { getTask }]) =>
+			installLocalLiveUpdates({
+				deliver: deliverToWorkspace,
+				fetchTask: async (workspaceId, taskId) =>
+					activeLocalWorkspace()?.id === workspaceId ? getTask(taskId) : null,
+				invalidate: (key) => requestCache.invalidate(key),
+			}),
+		);
 	}
 }
 
