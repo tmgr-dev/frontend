@@ -12,6 +12,17 @@
 			</p>
 		</header>
 
+		<div
+			v-if="pendingConnect"
+			class="flex items-start justify-between gap-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
+		>
+			<p class="text-amber-800 dark:text-amber-200">
+				The plugin <strong>{{ pendingConnect.pluginName }}</strong> asks to connect
+				its companion. Choose a persona below and press “Connect an agent”.
+			</p>
+			<Button size="sm" variant="outline" @click="cancelPendingConnect">Decline</Button>
+		</div>
+
 		<section
 			v-if="workspace"
 			class="flex flex-col gap-3 rounded-md border border-border p-4"
@@ -178,6 +189,8 @@
 			:open="!!connectPersona"
 			:persona="connectPersona"
 			:workspace="workspace"
+			:initial-label="pendingConnect?.label ?? ''"
+			:plugin-id="pendingConnect?.pluginId ?? null"
 			@update:open="(value: boolean) => { if (!value) connectPersona = null; }"
 			@issued="onIssued"
 		/>
@@ -209,6 +222,7 @@
 		type WorkspacePersonaRow,
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
+	import { localAccessConnect, resolveLocalAccessConnect } from '@/pluginSystem/state';
 	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -312,8 +326,14 @@
 				connectPersona.value = persona;
 			};
 
-			const onIssued = async () => {
-				connectPersona.value = null;
+			const pendingConnect = computed(() => localAccessConnect.current);
+
+			const cancelPendingConnect = () => resolveLocalAccessConnect({ status: 'cancelled' });
+
+			const onIssued = async (token: TokenInfo) => {
+				if (pendingConnect.value && token.pluginId === pendingConnect.value.pluginId) {
+					resolveLocalAccessConnect({ status: 'connected', tokenId: token.id, prefix: token.prefix });
+				}
 				await refreshTokens();
 			};
 
@@ -441,6 +461,8 @@
 				tokensFor,
 				openConnect,
 				onIssued,
+				pendingConnect,
+				cancelPendingConnect,
 				formatDate,
 				revokeToken,
 				revokeAllForPersona,

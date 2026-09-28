@@ -45,6 +45,7 @@ export const requestLocalAccessConnect = (
 	request: LocalAccessConnectRequest,
 ): Promise<LocalConnectionResult> =>
 	new Promise((resolve) => {
+		resolveConnect?.({ status: 'cancelled' });
 		resolveConnect = resolve;
 		localAccessConnect.current = request;
 	});

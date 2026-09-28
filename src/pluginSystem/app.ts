@@ -576,13 +576,18 @@ export const installPlugins = async (
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });
 		},
-		requestLocalConnection: (pluginId, opts) =>
-			requestLocalAccessConnect({
+		requestLocalConnection: (pluginId, opts) => {
+			const pending = requestLocalAccessConnect({
 				pluginId,
 				pluginName: pluginState.plugins[pluginId]?.manifest.name ?? pluginId,
 				label: opts.label,
 				permissions: opts.permissions,
-			}),
+			});
+			void import('@/router')
+				.then(({ default: router }) => router.push({ name: 'PersonaSettings' }))
+				.catch(() => undefined);
+			return pending;
+		},
 		revokePluginTokens: async (pluginId) => {
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('local_token_revoke_all', { pluginId }).catch(() => undefined);
