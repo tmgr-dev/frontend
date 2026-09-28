@@ -1,19 +1,11 @@
 <template>
-	<div class="container max-w-3xl py-4">
-		<router-link
-			to="/settings/plugins"
-			class="mb-4 inline-flex items-center gap-1 text-sm text-primary hover:underline"
-		>
-			<ArrowLeft class="h-4 w-4" /> Back to plugins
-		</router-link>
-
-		<header class="mb-6 flex flex-col gap-1">
-			<h3 class="text-lg font-bold">How plugins work</h3>
-			<p class="text-sm text-muted-foreground">
-				Plugins add badges, pages, task sections and commands to the TMGR
-				desktop app.
-			</p>
-		</header>
+	<PageContainer width="narrow">
+		<PageHeader
+			title="How plugins work"
+			subtitle="Plugins add badges, pages, task sections and commands to the TMGR desktop app."
+			back="/settings/plugins"
+			back-label="Back to plugins"
+		/>
 
 		<section class="mb-8" aria-label="At a glance">
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -317,13 +309,14 @@
 				</p>
 			</section>
 		</div>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import {
-		ArrowLeft,
 		ArrowRight,
 		BadgeCheck,
 		Check,
@@ -405,7 +398,8 @@
 	export default defineComponent({
 		name: 'PluginsHelp',
 		components: {
-			ArrowLeft,
+			PageContainer,
+			PageHeader,
 			ArrowRight,
 			Check,
 			CircleUser,

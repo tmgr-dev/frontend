@@ -1,5 +1,6 @@
 <template>
-	<div>
+	<component :is="standalone ? 'PageContainer' : 'div'" :width="standalone ? 'narrow' : undefined">
+		<PageHeader v-if="standalone" title="Profile" />
 		<div class="flex max-w-lg flex-col gap-3">
 			<div class="flex items-center gap-4">
 				<UserAvatar
@@ -88,7 +89,7 @@
 				</button>
 			</div>
 		</div>
-	</div>
+	</component>
 </template>
 
 <script>
@@ -103,6 +104,8 @@
 	import Button from '@/components/general/Button.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
 	export default {
@@ -111,6 +114,14 @@
 			TextField,
 			Button,
 			UserAvatar,
+			PageContainer,
+			PageHeader,
+		},
+		props: {
+			standalone: {
+				type: Boolean,
+				default: true,
+			},
 		},
 		data: () => ({
 			user: {

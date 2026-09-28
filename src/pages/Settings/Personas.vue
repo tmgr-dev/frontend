@@ -1,17 +1,18 @@
 <template>
-	<div class="container max-w-4xl py-4">
-		<header class="mb-4 flex flex-col gap-1">
-			<h3 class="text-lg font-bold">Personas</h3>
-			<p class="text-sm text-muted-foreground">
+	<PageContainer width="narrow">
+		<PageHeader title="Personas">
+			<template #subtitle>
 				A persona is an identity your AI agents act under: its own name,
 				avatar and system prompt, with its own permissions per workspace.
 				{{ activePersonas.length }}/{{ PERSONA_LIMIT }} used.
-			</p>
-			<label class="mt-1 flex w-fit items-center gap-2 text-sm">
-				<Switch :checked="showArchived" @update:checked="toggleShowArchived" />
-				Show archived
-			</label>
-		</header>
+			</template>
+			<template #actions>
+				<label class="flex w-fit items-center gap-2 text-sm">
+					<Switch :checked="showArchived" @update:checked="toggleShowArchived" />
+					Show archived
+				</label>
+			</template>
+		</PageHeader>
 
 		<section class="mb-6 flex flex-col gap-3 rounded-md border border-border p-4">
 			<h4 class="text-sm font-semibold">
@@ -125,7 +126,7 @@
 		</div>
 
 		<LocalPersonasPanel v-if="isDesktop" class="mt-6" />
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
@@ -141,6 +142,8 @@
 		uploadPersonaAvatar,
 	} from '@/actions/tmgr/personas';
 	import PersonaAvatar from '@/components/general/PersonaAvatar.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
@@ -165,6 +168,8 @@
 		components: {
 			Button,
 			Switch,
+			PageContainer,
+			PageHeader,
 			PersonaAvatar,
 			PersonaForm,
 			PersonaSkills,
