@@ -98,16 +98,107 @@
 						{{ perm }}
 					</label>
 				</div>
+
+				<div v-if="canConnect(persona)" class="flex flex-col gap-2 border-t border-border pt-2">
+					<div class="flex items-center justify-between">
+						<Button size="sm" variant="outline" @click="openConnect(persona)">
+							Connect an agent
+						</Button>
+						<Button
+							v-if="tokensFor(persona).some((t) => !t.revokedAt)"
+							size="sm"
+							variant="outline"
+							@click="revokeAllForPersona(persona)"
+						>
+							Revoke all
+						</Button>
+					</div>
+					<p v-if="!tokensFor(persona).length" class="text-xs text-muted-foreground">
+						No agent connections yet.
+					</p>
+					<div
+						v-for="token in tokensFor(persona)"
+						:key="token.id"
+						class="flex items-center justify-between gap-3 rounded border border-border p-2"
+					>
+						<div class="min-w-0">
+							<p class="flex items-center gap-2 truncate text-xs font-medium">
+								{{ token.label }}
+								<span
+									:class="[
+										'rounded px-1.5 py-0.5 text-2xs font-semibold uppercase',
+										token.revokedAt
+											? 'bg-muted text-muted-foreground'
+											: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+									]"
+								>
+									{{ token.revokedAt ? 'revoked' : 'active' }}
+								</span>
+								<span v-if="token.pluginId" class="text-muted-foreground">
+									via plugin {{ token.pluginId }}
+								</span>
+							</p>
+							<p class="truncate text-2xs text-muted-foreground">
+								{{ token.prefix }}… · created {{ formatDate(token.createdAt) }} · expires
+								{{ formatDate(token.expiresAt) }} · last used
+								{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : 'never' }}
+							</p>
+						</div>
+						<Button
+							v-if="!token.revokedAt"
+							variant="outline"
+							size="sm"
+							class="shrink-0"
+							@click="revokeToken(token)"
+						>
+							Revoke
+						</Button>
+					</div>
+				</div>
 			</div>
 		</section>
+
+		<section
+			v-if="workspace"
+			class="flex flex-col gap-3 rounded-md border border-border p-4"
+		>
+			<div class="flex items-center justify-between">
+				<h5 class="text-sm font-semibold">Local agent access</h5>
+				<Switch
+					:checked="accessStatus.enabled"
+					:disabled="accessToggling"
+					@update:checked="toggleAccess"
+				/>
+			</div>
+			<p class="text-xs text-muted-foreground">{{ accessStatusLine }}</p>
+		</section>
+
+		<LocalPersonaConnectDialog
+			v-if="connectPersona && workspace"
+			:open="!!connectPersona"
+			:persona="connectPersona"
+			:workspace="workspace"
+			@update:open="(value: boolean) => { if (!value) connectPersona = null; }"
+			@issued="onIssued"
+		/>
 	</div>
 </template>
 
 <script lang="ts">
 	import { listPersonas } from '@/actions/tmgr/personas';
+	import LocalPersonaConnectDialog from '@/components/local/LocalPersonaConnectDialog.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { Switch } from '@/components/ui/switch';
+	import {
+		getLocalAccessStatus,
+		listLocalTokens,
+		revokeAllLocalTokens,
+		revokeLocalToken,
+		setLocalAccessEnabled,
+		type LocalAccessStatus,
+		type TokenInfo,
+	} from '@/local/localTokens';
 	import { tauriPersonaCache } from '@/local/personaCache';
 	import { PERSONA_PERMISSIONS, type PersonaPermission } from '@/local/personaGate';
 	import {
@@ -140,7 +231,7 @@
 
 	export default defineComponent({
 		name: 'LocalPersonasPanel',
-		components: { Button, Input, Switch },
+		components: { Button, Input, LocalPersonaConnectDialog, Switch },
 		setup() {
 			const store = useStore();
 			const workspace = activeLocalWorkspace();
@@ -152,6 +243,17 @@
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
 			const llmStatus = reactive({ hasApiKey: false });
 			const savingLlm = ref(false);
+			const tokens = ref<TokenInfo[]>([]);
+			const connectPersona = ref<WorkspacePersonaRow | null>(null);
+			const accessStatus = reactive<LocalAccessStatus>({
+				enabled: false,
+				listening: false,
+				socketPath: null,
+				safeMode: false,
+				ready: false,
+				bridgeCommand: '',
+			});
+			const accessToggling = ref(false);
 
 			const currentUser = () => ({
 				id: Number(store.state.user?.id) || 0,
@@ -185,12 +287,67 @@
 				llmStatus.hasApiKey = config.has_api_key;
 			};
 
+			const refreshTokens = async () => {
+				if (!workspace) return;
+				tokens.value = await listLocalTokens(workspace.code);
+			};
+
+			const refreshAccessStatus = async () => {
+				Object.assign(accessStatus, await getLocalAccessStatus());
+			};
+
 			onMounted(async () => {
 				if (!workspace) return;
-				await Promise.all([refreshPersonas(), refreshLlmConfig()]);
+				await Promise.all([refreshPersonas(), refreshLlmConfig(), refreshTokens(), refreshAccessStatus()]);
 			});
 
 			const isEnabled = (persona: WorkspacePersonaRow) => !!persona.enabled_at && !persona.disabled_at;
+
+			const canConnect = (persona: WorkspacePersonaRow) => isEnabled(persona) && !persona.archived_at;
+
+			const tokensFor = (persona: WorkspacePersonaRow) =>
+				tokens.value.filter((t) => t.personaUuid === persona.uuid);
+
+			const openConnect = (persona: WorkspacePersonaRow) => {
+				connectPersona.value = persona;
+			};
+
+			const onIssued = async () => {
+				connectPersona.value = null;
+				await refreshTokens();
+			};
+
+			const formatDate = (date: string) => new Date(date).toLocaleDateString();
+
+			const revokeToken = async (token: TokenInfo) => {
+				if (!window.confirm(`Revoke the "${token.label}" connection?`)) return;
+				await revokeLocalToken(token.id);
+				await refreshTokens();
+			};
+
+			const revokeAllForPersona = async (persona: WorkspacePersonaRow) => {
+				if (!workspace) return;
+				if (!window.confirm('Revoke every agent connection for this persona?')) return;
+				await revokeAllLocalTokens({ personaUuid: persona.uuid, workspaceCode: workspace.code });
+				await refreshTokens();
+			};
+
+			const accessStatusLine = computed(() => {
+				if (accessStatus.safeMode) return 'safe mode — closed';
+				if (!accessStatus.enabled) return 'off';
+				if (accessStatus.listening && accessStatus.socketPath) return `listening at ${accessStatus.socketPath}`;
+				return 'off';
+			});
+
+			const toggleAccess = async (value: boolean) => {
+				accessToggling.value = true;
+				try {
+					await setLocalAccessEnabled(value);
+					await refreshAccessStatus();
+				} finally {
+					accessToggling.value = false;
+				}
+			};
 
 			const draftPermissions = (persona: WorkspacePersonaRow) => drafts[persona.uuid] ?? [];
 
@@ -275,6 +432,19 @@
 				sync,
 				saveLlmConfig,
 				removeApiKey,
+				tokens,
+				connectPersona,
+				accessStatus,
+				accessToggling,
+				accessStatusLine,
+				canConnect,
+				tokensFor,
+				openConnect,
+				onIssued,
+				formatDate,
+				revokeToken,
+				revokeAllForPersona,
+				toggleAccess,
 			};
 		},
 	});
