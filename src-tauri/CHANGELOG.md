@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.8.7 — 2026-09-28
+
+- Local workspaces: a comment an agent or plugin deletes disappears from the open task panel right away; the task list
+  page updates live too (covered by tests now).
+- Personas "On this device": the local LLM API key is never sent to a different host after you change the endpoint,
+  plain http to remote hosts is refused when a key is set (localhost/LAN still fine), and the key and persona cache
+  are kept per account and cleared on logout.
+- Personas: a hint in the Workspaces list shows where to connect a persona to a local workspace ("On this device").
+
 ## 0.8.6 — 2026-09-28
 
 - Local workspaces update live when an agent or plugin writes through local access (REST or MCP): new comments and
