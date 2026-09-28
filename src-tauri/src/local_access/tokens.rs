@@ -79,7 +79,7 @@ impl SecretStore for MemorySecrets {
   }
 }
 
-/// A day count (days since 1970-01-01) formatted the same way `local_workspaces::chrono_like_now` does.
+/// Unix seconds, formatted the same way `local_workspaces::chrono_like_now` does.
 pub fn epoch_to_iso(secs: i64) -> String {
   let days = secs.div_euclid(86_400);
   let rem = secs.rem_euclid(86_400);

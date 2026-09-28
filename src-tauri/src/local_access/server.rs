@@ -225,6 +225,11 @@ fn fallback_socket_path() -> PathBuf {
   std::env::temp_dir().join(format!("tmgr-{uid}")).join("local-access.sock")
 }
 
+fn file_ino(path: &Path) -> Option<u64> {
+  use std::os::unix::fs::MetadataExt;
+  std::fs::symlink_metadata(path).ok().map(|meta| meta.ino())
+}
+
 async fn prepare_socket_path(path: &Path) -> Result<(), String> {
   if path.exists() {
     match UnixStream::connect(path).await {
@@ -249,24 +254,21 @@ pub struct Server {
 }
 
 impl Server {
-  /// `next_id` is shared with the caller (not owned per-`Server`) so a restart never reissues an id
-  /// a still-in-flight request from the previous run might still resolve against.
+  /// `next_id` is shared with the caller so a restart never reissues an id a still-in-flight request
+  /// from the previous run might resolve against.
   pub fn new(deps: ServerDeps, next_id: Arc<AtomicU64>) -> Self {
     Self { deps: Arc::new(deps), limiter: Arc::new(RateLimiter::default()), next_id }
   }
 
-  /// Runs until `shutdown` carries `true`, then removes the socket file. Bind happens inside this
-  /// async call (never synchronously in `setup()`), since `UnixListener::bind` needs a running
-  /// reactor. Every connection watches the same signal, so the kill switch does not leave existing
-  /// keep-alive connections answering requests after the listener itself is gone. `bound`, if given,
-  /// carries the bind outcome so the caller only records "listening" once the socket truly is.
+  /// Binds and runs until `shutdown` carries `true`; `bound`, if given, carries the bind outcome so
+  /// the caller only records "listening" once the socket truly is.
   pub async fn serve(
     &self,
     socket_path: &Path,
     mut shutdown: watch::Receiver<bool>,
     bound: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
   ) -> Result<(), String> {
-    let listener = match prepare_socket_path(socket_path)
+    let (listener, bound_ino) = match prepare_socket_path(socket_path)
       .await
       .and_then(|_| UnixListener::bind(socket_path).map_err(|e| format!("bind {}: {e}", socket_path.display())))
       .and_then(|listener| chmod(socket_path, 0o600).map(|_| listener))
@@ -275,7 +277,7 @@ impl Server {
         if let Some(tx) = bound {
           let _ = tx.send(Ok(()));
         }
-        listener
+        (listener, file_ino(socket_path))
       }
       Err(error) => {
         if let Some(tx) = bound {
@@ -286,8 +288,8 @@ impl Server {
     };
     loop {
       tokio::select! {
-        _ = shutdown.changed() => {
-          if *shutdown.borrow() {
+        changed = shutdown.changed() => {
+          if changed.is_err() || *shutdown.borrow() {
             break;
           }
         }
@@ -309,8 +311,8 @@ impl Server {
             let mut conn = std::pin::pin!(conn);
             tokio::select! {
               result = conn.as_mut() => { let _ = result; }
-              _ = conn_shutdown.changed() => {
-                if *conn_shutdown.borrow() {
+              changed = conn_shutdown.changed() => {
+                if changed.is_err() || *conn_shutdown.borrow() {
                   conn.as_mut().graceful_shutdown();
                   let _ = conn.await;
                 }
@@ -320,7 +322,10 @@ impl Server {
         }
       }
     }
-    let _ = std::fs::remove_file(socket_path);
+    // Only unlink the inode this call itself bound: a fast off/on toggle may already have a newer instance's listener at this path.
+    if bound_ino.is_some() && file_ino(socket_path) == bound_ino {
+      let _ = std::fs::remove_file(socket_path);
+    }
     Ok(())
   }
 }
@@ -395,8 +400,6 @@ mod tests {
       )
       .unwrap();
     *secret_holder = Some(secret.clone());
-    // Echoes the whole `BridgeRequest` (not a hand-picked subset) so the test below can assert on
-    // the exact key set the bridge receives, proving nothing else rides along with it.
     let bridge: BridgeFn = Arc::new(|req: BridgeRequest| -> BoxFuture<BridgeReply> {
       Box::pin(async move { BridgeReply { status: 200, body: serde_json::to_string(&req).unwrap() } })
     });
@@ -491,8 +494,6 @@ mod tests {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"], "HUMAN_TOKEN");
 
-    // A valid token bridges through with the actor from the token and no headers forwarded: the
-    // bridge payload's key set is exactly the contract's `BridgeRequest` fields, nothing more.
     let mut sender = connect().await;
     let req = Request::builder()
       .method("GET")
@@ -579,7 +580,6 @@ mod tests {
     assert!(bound_b_rx.await.unwrap().is_err(), "a second instance must not bind over a live socket");
     let _ = handle_b.await;
 
-    // The first instance is still answering after the second instance's failed attempt.
     let stream = UnixStream::connect(&socket_path).await.unwrap();
     let io = TokioIo::new(stream);
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
@@ -605,5 +605,76 @@ mod tests {
     bound_c_rx.await.unwrap().expect("a fresh instance can bind once the path is free again");
     let _ = shutdown_c_tx.send(true);
     let _ = handle_c.await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn a_dropped_shutdown_sender_stops_the_loop_instead_of_spinning() {
+    let mut secret_holder = None;
+    let (deps, _) = test_deps(&mut secret_holder);
+    let socket_dir = std::env::temp_dir().join(format!("tmgr-it-dropped-sender-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&socket_dir);
+    let socket_path = socket_dir.join("sock");
+
+    let server = Server::new(deps, Arc::new(AtomicU64::new(0)));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let path = socket_path.clone();
+    let handle = tokio::spawn(async move { server.serve(&path, shutdown_rx, None).await });
+    for _ in 0..50 {
+      if socket_path.exists() || handle.is_finished() {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(socket_path.exists());
+
+    drop(shutdown_tx);
+    let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
+    assert!(result.is_ok(), "serve must exit once its shutdown sender is dropped, not spin forever");
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn an_externally_unlinked_socket_lets_a_new_instance_bind_and_the_old_one_wont_delete_it() {
+    let mut secret_holder_a = None;
+    let (deps_a, _) = test_deps(&mut secret_holder_a);
+    let socket_dir = std::env::temp_dir().join(format!("tmgr-it-external-unlink-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&socket_dir);
+    let socket_path = socket_dir.join("sock");
+
+    let server_a = Server::new(deps_a, Arc::new(AtomicU64::new(0)));
+    let (shutdown_a_tx, shutdown_a_rx) = watch::channel(false);
+    let (bound_a_tx, bound_a_rx) = tokio::sync::oneshot::channel();
+    let path_a = socket_path.clone();
+    let handle_a = tokio::spawn(async move { server_a.serve(&path_a, shutdown_a_rx, Some(bound_a_tx)).await });
+    bound_a_rx.await.unwrap().expect("first instance should bind");
+
+    // Simulates another process (or a stray cleanup) removing the file out from under a live server.
+    std::fs::remove_file(&socket_path).unwrap();
+
+    let mut secret_holder_b = None;
+    let (deps_b, _) = test_deps(&mut secret_holder_b);
+    let server_b = Server::new(deps_b, Arc::new(AtomicU64::new(0)));
+    let (shutdown_b_tx, shutdown_b_rx) = watch::channel(false);
+    let (bound_b_tx, bound_b_rx) = tokio::sync::oneshot::channel();
+    let path_b = socket_path.clone();
+    let handle_b = tokio::spawn(async move { server_b.serve(&path_b, shutdown_b_rx, Some(bound_b_tx)).await });
+    bound_b_rx.await.unwrap().expect("a fresh bind at the recreated path must succeed");
+
+    let _ = shutdown_a_tx.send(true);
+    let _ = handle_a.await;
+    assert!(socket_path.exists(), "A's shutdown must not delete B's socket file, since A no longer owns that inode");
+
+    let stream = UnixStream::connect(&socket_path).await.unwrap();
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
+    tokio::spawn(async move {
+      let _ = conn.await;
+    });
+    let req = Request::builder().method("GET").uri("/api/local/health").body(Empty::<Bytes>::new()).unwrap();
+    let res = send(&mut sender, req).await;
+    assert_eq!(res.status(), 200);
+    let _ = res.into_body().collect().await;
+
+    let _ = shutdown_b_tx.send(true);
+    let _ = handle_b.await;
   }
 }

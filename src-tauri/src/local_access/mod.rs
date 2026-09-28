@@ -19,8 +19,7 @@ use tokens::{chmod, IssueError, IssueParams, KeychainSecrets, TokenStore};
 const SETTINGS_FILE: &str = "settings.json";
 const SOCKET_PATH_FILE: &str = "socket-path";
 
-/// Plain data, so it compiles on every target even though only unix builds ever construct or send one:
-/// `LocalAccessState.pending` below needs the type regardless of platform.
+/// Defined here (not unix-only) since `LocalAccessState.pending` below needs the type on every target.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeRequest {
@@ -89,6 +88,7 @@ fn issue_error_message(err: IssueError) -> String {
 struct RunningServer {
   shutdown: watch::Sender<bool>,
   socket_path: PathBuf,
+  generation: u64,
 }
 
 /// Owns the token store and (on unix) the running socket server. One instance is `app.manage`d.
@@ -97,9 +97,10 @@ pub struct LocalAccessState {
   user_id: Arc<Mutex<Option<i64>>>,
   #[cfg_attr(not(unix), allow(dead_code))]
   pending: Arc<Mutex<HashMap<u64, oneshot::Sender<BridgeReply>>>>,
-  /// Shared across restarts so a bridge reply from a previous run can never resolve a new request.
   #[cfg_attr(not(unix), allow(dead_code))]
   next_id: Arc<std::sync::atomic::AtomicU64>,
+  #[cfg_attr(not(unix), allow(dead_code))]
+  generation: std::sync::atomic::AtomicU64,
   running: Mutex<Option<RunningServer>>,
 }
 
@@ -111,6 +112,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     user_id: Arc::new(Mutex::new(None)),
     pending: Arc::new(Mutex::new(HashMap::new())),
     next_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    generation: std::sync::atomic::AtomicU64::new(0),
     running: Mutex::new(None),
   };
   app.manage(state);
@@ -131,8 +133,8 @@ struct PendingGuard {
 
 #[cfg(unix)]
 impl Drop for PendingGuard {
-  /// A bridge call the server gave up on (15 s timeout) still has to free its slot, even though
-  /// nothing after the `.await` that owns it runs once this future is dropped.
+  /// Frees the slot even for a call the server gave up on (15 s timeout), since nothing after
+  /// the `.await` that owns it runs once this future is dropped.
   fn drop(&mut self) {
     if !self.done {
       if let Ok(mut pending) = self.pending.lock() {
@@ -213,6 +215,7 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
     app_version: app.package_info().version.to_string(),
     now_epoch: Arc::new(now_epoch),
   };
+  let generation = state.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
   let server = Server::new(deps, state.next_id.clone());
   let (shutdown_tx, shutdown_rx) = watch::channel(false);
   let (bound_tx, bound_rx) = oneshot::channel();
@@ -222,16 +225,17 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
       log::error!("[local-access] server stopped: {error}");
     }
   });
-  // Recorded before the bind is confirmed, so a second `ensure_started` racing with this one does
-  // not also try to bind; cleared below if the bind itself turns out to have failed.
-  *running = Some(RunningServer { shutdown: shutdown_tx, socket_path });
+  // Cleared below if the bind fails; guarded by generation so it can't take a later attempt's slot.
+  *running = Some(RunningServer { shutdown: shutdown_tx, socket_path, generation });
   drop(running);
   let app_for_bind_check = app.clone();
   tauri::async_runtime::spawn(async move {
     if let Ok(Err(error)) = bound_rx.await {
       log::error!("[local-access] failed to bind the local access socket: {error}");
       if let Ok(mut running) = app_for_bind_check.state::<LocalAccessState>().running.lock() {
-        running.take();
+        if running.as_ref().is_some_and(|r| r.generation == generation) {
+          running.take();
+        }
       }
     }
   });
@@ -244,11 +248,12 @@ fn ensure_started<R: Runtime>(_app: &AppHandle<R>, _state: &LocalAccessState) ->
   Ok(())
 }
 
+/// Only signals shutdown; `serve` unlinks the socket file itself, and only if it still owns the
+/// inode it bound, since this can race with a bind that has not resolved yet.
 fn stop(state: &LocalAccessState) -> Result<(), String> {
   let mut running = state.running.lock().map_err(|e| e.to_string())?;
   if let Some(running) = running.take() {
     let _ = running.shutdown.send(true);
-    let _ = fs::remove_file(&running.socket_path);
   }
   Ok(())
 }
