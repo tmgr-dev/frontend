@@ -74,6 +74,13 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		expect(res!.status).toBe(401);
 	});
 
+	it('returns 401 OWNER_MISMATCH when the persona belongs to a different account', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:read']);
+		await ctx.db.execute(`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`);
+		const res = await call('GET', `tasks/${taskId}`, undefined, persona);
+		expect(res!.status).toBe(401);
+	});
+
 	it('returns 403 for a route outside the whitelist even with full-looking permissions', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write']);
 		const res = await call('DELETE', `tasks/${taskId}`, undefined, persona);
