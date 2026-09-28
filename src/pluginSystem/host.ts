@@ -1223,6 +1223,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			return sanitizeTree(
 				await dispatch(pluginId, 'page', viewId, props),
 				linkContext(pluginId),
+				packages.get(pluginId)?.manifest.apiMinor,
 			);
 		},
 		async renderSection(
@@ -1233,6 +1234,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			return sanitizeTree(
 				await dispatch(pluginId, 'section', sectionId, task),
 				linkContext(pluginId),
+				packages.get(pluginId)?.manifest.apiMinor,
 			);
 		},
 		/** One call per provider for the whole batch of visible cards, merged in a fixed order and then by priority. */

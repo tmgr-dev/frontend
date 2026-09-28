@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.2). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.3). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -221,15 +221,77 @@ type TmgrEvent =
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
+/** Gap between a stack's children (API 1.3). */
+type TmgrGap = 'none' | 'sm' | 'md' | 'lg';
+
 /** The only things a plugin can draw. Unknown nodes are dropped by the host. */
 type TmgrNode =
 	| string
 	| number
-	| { type: 'stack'; direction?: 'row' | 'column'; children: TmgrNode[] }
+	| {
+			type: 'stack';
+			direction?: 'row' | 'column';
+			children: TmgrNode[];
+			/** API 1.3. Defaults to 'md'. */
+			gap?: TmgrGap;
+			/** API 1.3. Cross-axis alignment; defaults to stretch. */
+			align?: 'start' | 'center' | 'end' | 'stretch';
+			/** API 1.3. Main-axis distribution; defaults to start. */
+			justify?: 'start' | 'between' | 'end';
+			/** API 1.3. Lets this stack grow to fill the remaining space of its parent row. */
+			grow?: boolean;
+	  }
+	/** API 1.3. A solid card on the theme's surface tokens, with a border and rounded corners. Cards nest up to 3 deep; deeper ones render as a stack. */
+	| {
+			type: 'card';
+			children: TmgrNode[];
+			/** Defaults to 'default'. */
+			tone?: 'default' | 'muted' | 'raised';
+			/** Defaults to 'md'. */
+			padding?: 'sm' | 'md' | 'lg';
+			/** A 3px accent stripe in this color. */
+			accent?: TmgrColor;
+			/** Makes the whole card a clickable/focusable button; its aria-label is taken from its content. */
+			onClick?: { command: string; args?: unknown };
+			grow?: boolean;
+	  }
+	/** API 1.3. Equal-width columns: `repeat(columns, minmax(minWidth, 1fr))`. */
+	| {
+			type: 'grid';
+			/** Clamped to 1–6. */
+			columns: number;
+			/** Pixels, clamped to 160–480. Defaults to 200. */
+			minWidth?: number;
+			/** Defaults to 'md'. */
+			gap?: 'sm' | 'md' | 'lg';
+			children: TmgrNode[];
+	  }
+	/** API 1.3. A "⋯" dropdown of actions, each validated like a button. Dropped if it ends up with no valid items. */
+	| {
+			type: 'menu';
+			label?: string;
+			icon?: 'more';
+			items: { text: string; command: string; args?: unknown; confirm?: string }[];
+	  }
 	| { type: 'heading'; text: string; level?: 1 | 2 | 3 }
 	| { type: 'text'; text: string; tone?: TmgrTone }
-	| { type: 'badge'; text: string; color?: TmgrColor }
-	| { type: 'stat'; label: string; value: string | number; tone?: TmgrTone }
+	| {
+			type: 'badge';
+			text: string;
+			color?: TmgrColor;
+			/** API 1.3. */
+			command?: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'stat';
+			label: string;
+			value: string | number;
+			tone?: TmgrTone;
+			/** API 1.3. */
+			command?: string;
+			args?: unknown;
+	  }
 	| { type: 'progress'; value: number; color?: TmgrColor }
 	| { type: 'list'; items: TmgrNode[] }
 	| {
@@ -237,8 +299,19 @@ type TmgrNode =
 			columns: { key: string; title: string }[];
 			rows: { taskId?: number; cells: Record<string, TmgrNode> }[];
 	  }
-	/** confirm (≤200 chars) asks the user, naming your plugin, before the command runs. */
-	| { type: 'button'; text: string; command: string; args?: unknown; confirm?: string }
+	/**
+	 * confirm (≤200 chars) asks the user, naming your plugin, before the command runs.
+	 * variant and size (both API 1.3) style the button; both default to the plain look.
+	 */
+	| {
+			type: 'button';
+			text: string;
+			command: string;
+			args?: unknown;
+			confirm?: string;
+			variant?: 'default' | 'primary' | 'ghost';
+			size?: 'sm' | 'md';
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */

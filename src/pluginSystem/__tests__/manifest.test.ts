@@ -132,7 +132,7 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
-	[{ engines: { tmgr: '^1.3' } }, 'engines'],
+	[{ engines: { tmgr: '^1.4' } }, 'engines'],
 	[{ links: { allowedDomains: ['gitlab.com'] } }, 'links:open'],
 	[
 		{ permissions: ['links:open'], links: { allowedDomains: ['https://x.io'] } },
@@ -147,10 +147,17 @@ it.each([
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
 });
 
-it('accepts plugins written for 1.0, 1.1 and 1.2', () => {
+it('accepts plugins written for 1.0, 1.1, 1.2 and 1.3', () => {
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).id).toBe(valid.id);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).id).toBe(valid.id);
+});
+
+it('parses apiMinor from engines.tmgr', () => {
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).apiMinor).toBe(0);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).apiMinor).toBe(2);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).apiMinor).toBe(3);
 });
 
 it('accepts the routines permissions', () => {
