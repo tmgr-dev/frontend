@@ -6,7 +6,8 @@ import { checkPersonaIdentity } from './personaGate';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
 import { LocalHttpError, type LocalActor, type LocalContext, type LocalUser, type LocalWorkspace } from './types';
-import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import { domainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
+import { PLUGIN_EVENTS } from '@/pluginSystem/broker';
 
 export interface LocalAccessRequestPayload {
 	id: number;
@@ -189,6 +190,19 @@ export const handleLocalAccessRequest = async (
 			]);
 			return { status: 200, body: JSON.stringify(await whoamiBody(ctx, payload.tokenId, tokenInfo, promptVersion)) };
 		}
+		// Internal only: the socket refuses this path from the outside (see server.rs). The SSE
+		// handler reaches it through the same bridge, never through a real HTTP request.
+		if (normalized === 'local/_grant' && method === 'GET') {
+			const ctx = await buildCtx();
+			try {
+				const grant = await checkPersonaIdentity(ctx);
+				const permissions: string[] = JSON.parse(grant.permissions || '[]');
+				return { status: 200, body: JSON.stringify({ permissions }) };
+			} catch (error) {
+				if (error instanceof LocalHttpError) return errorReply(error.status, error.message, error.code ?? 'BAD_REQUEST');
+				throw error;
+			}
+		}
 		if (normalized.startsWith('local/')) {
 			return errorReply(404, 'Not found', 'NOT_FOUND');
 		}
@@ -219,11 +233,40 @@ export const handleLocalAccessRequest = async (
 	}
 };
 
+/** `reactionChanged` carries who reacted; a broadcast has no single viewer, so no companion gets that either. */
+const stripReactionDetails = (event: DomainEvent): DomainEvent => {
+	const reactions = (event as { reactions?: unknown }).reactions;
+	if (event.type !== 'comment.reactionChanged' || !Array.isArray(reactions)) return event;
+	return { ...event, reactions: reactions.map((r: any) => ({ emoji: r?.emoji, count: r?.count })) };
+};
+
+/** Forwards local-workspace domain events to Rust's SSE ring buffer; `timer.*` never reaches companions. */
+export const installLocalAccessEvents = (invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>) => {
+	return domainEvents.on((event) => {
+		if (event.type.startsWith('timer.')) return;
+		const permission = PLUGIN_EVENTS[event.type];
+		if (!permission) return;
+		if (event.workspaceId === null || event.workspaceId === undefined || event.workspaceId >= 0) return;
+		void (async () => {
+			const workspace = (await listLocalWorkspaces()).find((w) => w.id === event.workspaceId);
+			if (!workspace) return;
+			const { actor, ...rest } = stripReactionDetails(event) as DomainEvent & { actor?: string };
+			await invoke('local_access_event', {
+				workspaceCode: workspace.code,
+				permission,
+				event: { ...rest, actor: actor ?? 'user' },
+			});
+		})().catch((error: unknown) => console.error('[local-access] failed to push a domain event', error));
+	});
+};
+
 /** Wires the real bridge for the main window: called from `main.ts` only when it is the main window. */
 export const installLocalAccess = async (store: any): Promise<void> => {
 	const { invoke } = await import('@tauri-apps/api/core');
 	const { listen } = await import('@tauri-apps/api/event');
 	const { readPersonaCache } = await import('./personaCache');
+
+	installLocalAccessEvents(invoke);
 
 	const currentUser = (): LocalUser | null => {
 		const user = store.state.user;
