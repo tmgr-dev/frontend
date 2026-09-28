@@ -87,3 +87,49 @@ it('returns to ready when installation fails', async () => {
 	expect(relaunch).not.toHaveBeenCalled();
 	expect(updateState.value.status).toBe('ready');
 });
+
+describe('checkForUpdateManually', () => {
+	it('reports up to date and leaves the state idle', async () => {
+		check.mockResolvedValue(null);
+		const { checkForUpdateManually, updateState } = load();
+
+		const outcome = await checkForUpdateManually();
+
+		expect(outcome).toEqual({ kind: 'up-to-date' });
+		expect(updateState.value).toEqual({ status: 'idle', version: '' });
+	});
+
+	it('downloads a found update and reports it available', async () => {
+		const update = fakeUpdate('0.1.1');
+		check.mockResolvedValue(update);
+		const { checkForUpdateManually, updateState } = load();
+
+		const outcome = await checkForUpdateManually();
+
+		expect(update.download).toHaveBeenCalledTimes(1);
+		expect(outcome).toEqual({ kind: 'available', version: '0.1.1' });
+		expect(updateState.value).toEqual({ status: 'ready', version: '0.1.1' });
+	});
+
+	it('reports an error and resets the state on failure', async () => {
+		check.mockRejectedValue(new Error('offline'));
+		const { checkForUpdateManually, updateState } = load();
+
+		const outcome = await checkForUpdateManually();
+
+		expect(outcome).toEqual({ kind: 'error' });
+		expect(updateState.value).toEqual({ status: 'idle', version: '' });
+	});
+
+	it('reports the already-downloaded update without checking again', async () => {
+		const update = fakeUpdate('0.1.1');
+		check.mockResolvedValue(update);
+		const { checkForUpdate, checkForUpdateManually } = load();
+		await checkForUpdate();
+
+		const outcome = await checkForUpdateManually();
+
+		expect(check).toHaveBeenCalledTimes(1);
+		expect(outcome).toEqual({ kind: 'available', version: '0.1.1' });
+	});
+});
