@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.0 — 2026-09-28
+
+- Plugins API 1.2: plugins can read and write routines and notes in local workspaces (`routines:read`,
+  `routines:write`): list a period (recurring and one-off), create, rename, complete/skip, and convert a routine into a
+  task with its category key in one call; `routine.created/updated/deleted` events, including routines added with
+  Quick add (⌥Space). In shared (cloud) workspaces these calls answer `NOT_SUPPORTED` for now.
+- Plugins can no longer read or edit routines through `tasks:*`; routines need the new permissions.
+
 ## 0.8.7 — 2026-09-28
 
 - Local workspaces: a comment an agent or plugin deletes disappears from the open task panel right away; the task list
