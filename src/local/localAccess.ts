@@ -2,9 +2,10 @@ import axios from 'axios';
 import { createLocalApi } from './api';
 import { dispatchLocal } from './dispatch';
 import { respond } from './install';
+import { checkPersonaIdentity } from './personaGate';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
-import type { LocalActor, LocalContext, LocalUser, LocalWorkspace } from './types';
+import { LocalHttpError, type LocalActor, type LocalContext, type LocalUser, type LocalWorkspace } from './types';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 
 export interface LocalAccessRequestPayload {
@@ -176,6 +177,12 @@ export const handleLocalAccessRequest = async (
 
 		if (normalized === 'local/whoami' && method === 'GET') {
 			const ctx = await buildCtx();
+			try {
+				await checkPersonaIdentity(ctx);
+			} catch (error) {
+				if (error instanceof LocalHttpError) return errorReply(error.status, error.message, error.code ?? 'BAD_REQUEST');
+				throw error;
+			}
 			const [tokenInfo, promptVersion] = await Promise.all([
 				deps.tokenInfo(payload.tokenId),
 				deps.promptVersion(payload.personaUuid),

@@ -182,6 +182,20 @@ describeSqlite('local access socket bridge handler', () => {
 		expect(JSON.parse(reply.body).code).toBe('NOT_FOUND');
 	});
 
+	it('refuses whoami for a persona owned by a different account with 401 OWNER_MISMATCH', async () => {
+		await ctx.db.execute(`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`);
+		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		expect(reply.status).toBe(401);
+		expect(JSON.parse(reply.body).code).toBe('OWNER_MISMATCH');
+	});
+
+	it('refuses whoami for a disabled persona with 401 PERSONA_DISABLED', async () => {
+		await disableLocalPersona(ctx, 'p-1');
+		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		expect(reply.status).toBe(401);
+		expect(JSON.parse(reply.body).code).toBe('PERSONA_DISABLED');
+	});
+
 	it('answers GET /api/local/whoami', async () => {
 		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
 		expect(reply.status).toBe(200);

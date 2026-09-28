@@ -13,11 +13,33 @@ use tokio::sync::{oneshot, watch};
 pub use tokens::TokenInfo;
 
 #[cfg(unix)]
-use server::{BoxFuture, BridgeFn, BridgeReply, BridgeRequest, Server, ServerDeps};
+use server::{BoxFuture, BridgeFn, Server, ServerDeps};
 use tokens::{chmod, IssueError, IssueParams, KeychainSecrets, TokenStore};
 
 const SETTINGS_FILE: &str = "settings.json";
 const SOCKET_PATH_FILE: &str = "socket-path";
+
+/// Plain data, so it compiles on every target even though only unix builds ever construct or send one:
+/// `LocalAccessState.pending` below needs the type regardless of platform.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeRequest {
+  pub id: u64,
+  pub workspace_code: String,
+  pub workspace_id: i64,
+  pub persona_uuid: String,
+  pub persona_name: String,
+  pub token_id: String,
+  pub method: String,
+  pub path: String,
+  pub body: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BridgeReply {
+  pub status: u16,
+  pub body: String,
+}
 
 fn now_epoch() -> i64 {
   crate::tray::now_secs()
@@ -75,6 +97,9 @@ pub struct LocalAccessState {
   user_id: Arc<Mutex<Option<i64>>>,
   #[cfg_attr(not(unix), allow(dead_code))]
   pending: Arc<Mutex<HashMap<u64, oneshot::Sender<BridgeReply>>>>,
+  /// Shared across restarts so a bridge reply from a previous run can never resolve a new request.
+  #[cfg_attr(not(unix), allow(dead_code))]
+  next_id: Arc<std::sync::atomic::AtomicU64>,
   running: Mutex<Option<RunningServer>>,
 }
 
@@ -85,6 +110,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     token_store,
     user_id: Arc::new(Mutex::new(None)),
     pending: Arc::new(Mutex::new(HashMap::new())),
+    next_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     running: Mutex::new(None),
   };
   app.manage(state);
@@ -187,15 +213,28 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
     app_version: app.package_info().version.to_string(),
     now_epoch: Arc::new(now_epoch),
   };
-  let server = Server::new(deps);
+  let server = Server::new(deps, state.next_id.clone());
   let (shutdown_tx, shutdown_rx) = watch::channel(false);
+  let (bound_tx, bound_rx) = oneshot::channel();
   let socket_path_for_task = socket_path.clone();
   tauri::async_runtime::spawn(async move {
-    if let Err(error) = server.serve(&socket_path_for_task, shutdown_rx).await {
+    if let Err(error) = server.serve(&socket_path_for_task, shutdown_rx, Some(bound_tx)).await {
       log::error!("[local-access] server stopped: {error}");
     }
   });
+  // Recorded before the bind is confirmed, so a second `ensure_started` racing with this one does
+  // not also try to bind; cleared below if the bind itself turns out to have failed.
   *running = Some(RunningServer { shutdown: shutdown_tx, socket_path });
+  drop(running);
+  let app_for_bind_check = app.clone();
+  tauri::async_runtime::spawn(async move {
+    if let Ok(Err(error)) = bound_rx.await {
+      log::error!("[local-access] failed to bind the local access socket: {error}");
+      if let Ok(mut running) = app_for_bind_check.state::<LocalAccessState>().running.lock() {
+        running.take();
+      }
+    }
+  });
   Ok(())
 }
 
@@ -214,7 +253,6 @@ fn stop(state: &LocalAccessState) -> Result<(), String> {
   Ok(())
 }
 
-// ── Tauri commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn local_token_issue<R: Runtime>(

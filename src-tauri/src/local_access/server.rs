@@ -19,6 +19,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::watch;
 
 use super::tokens::{chmod, TokenStore};
+use super::{BridgeReply, BridgeRequest};
 
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
@@ -26,26 +27,6 @@ const BRIDGE_TIMEOUT: Duration = Duration::from_secs(15);
 const RATE_LIMIT_GET_PER_SEC: u32 = 50;
 const RATE_LIMIT_WRITE_PER_SEC: u32 = 10;
 const HEALTH_PATH: &str = "/api/local/health";
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BridgeRequest {
-  pub id: u64,
-  pub workspace_code: String,
-  pub workspace_id: i64,
-  pub persona_uuid: String,
-  pub persona_name: String,
-  pub token_id: String,
-  pub method: String,
-  pub path: String,
-  pub body: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct BridgeReply {
-  pub status: u16,
-  pub body: String,
-}
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -268,18 +249,41 @@ pub struct Server {
 }
 
 impl Server {
-  pub fn new(deps: ServerDeps) -> Self {
-    Self { deps: Arc::new(deps), limiter: Arc::new(RateLimiter::default()), next_id: Arc::new(AtomicU64::new(0)) }
+  /// `next_id` is shared with the caller (not owned per-`Server`) so a restart never reissues an id
+  /// a still-in-flight request from the previous run might still resolve against.
+  pub fn new(deps: ServerDeps, next_id: Arc<AtomicU64>) -> Self {
+    Self { deps: Arc::new(deps), limiter: Arc::new(RateLimiter::default()), next_id }
   }
 
   /// Runs until `shutdown` carries `true`, then removes the socket file. Bind happens inside this
   /// async call (never synchronously in `setup()`), since `UnixListener::bind` needs a running
   /// reactor. Every connection watches the same signal, so the kill switch does not leave existing
-  /// keep-alive connections answering requests after the listener itself is gone.
-  pub async fn serve(&self, socket_path: &Path, mut shutdown: watch::Receiver<bool>) -> Result<(), String> {
-    prepare_socket_path(socket_path).await?;
-    let listener = UnixListener::bind(socket_path).map_err(|e| format!("bind {}: {e}", socket_path.display()))?;
-    chmod(socket_path, 0o600).map_err(|e| format!("chmod {}: {e}", socket_path.display()))?;
+  /// keep-alive connections answering requests after the listener itself is gone. `bound`, if given,
+  /// carries the bind outcome so the caller only records "listening" once the socket truly is.
+  pub async fn serve(
+    &self,
+    socket_path: &Path,
+    mut shutdown: watch::Receiver<bool>,
+    bound: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
+  ) -> Result<(), String> {
+    let listener = match prepare_socket_path(socket_path)
+      .await
+      .and_then(|_| UnixListener::bind(socket_path).map_err(|e| format!("bind {}: {e}", socket_path.display())))
+      .and_then(|listener| chmod(socket_path, 0o600).map(|_| listener))
+    {
+      Ok(listener) => {
+        if let Some(tx) = bound {
+          let _ = tx.send(Ok(()));
+        }
+        listener
+      }
+      Err(error) => {
+        if let Some(tx) = bound {
+          let _ = tx.send(Err(error.clone()));
+        }
+        return Err(error);
+      }
+    };
     loop {
       tokio::select! {
         _ = shutdown.changed() => {
@@ -371,7 +375,9 @@ mod tests {
   }
 
   fn test_deps(secret_holder: &mut Option<String>) -> (ServerDeps, String) {
-    let dir = std::env::temp_dir().join(format!("tmgr-local-access-server-test-{}", std::process::id()));
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("tmgr-local-access-server-test-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let store = TokenStore::open(dir, Arc::new(MemorySecrets::new())).unwrap();
     let (info, secret) = store
@@ -389,15 +395,10 @@ mod tests {
       )
       .unwrap();
     *secret_holder = Some(secret.clone());
+    // Echoes the whole `BridgeRequest` (not a hand-picked subset) so the test below can assert on
+    // the exact key set the bridge receives, proving nothing else rides along with it.
     let bridge: BridgeFn = Arc::new(|req: BridgeRequest| -> BoxFuture<BridgeReply> {
-      Box::pin(async move {
-        let echoed = serde_json::json!({
-          "personaUuid": req.persona_uuid,
-          "method": req.method,
-          "path": req.path,
-        });
-        BridgeReply { status: 200, body: echoed.to_string() }
-      })
+      Box::pin(async move { BridgeReply { status: 200, body: serde_json::to_string(&req).unwrap() } })
     });
     let deps = ServerDeps {
       tokens: Arc::new(store),
@@ -426,12 +427,11 @@ mod tests {
     let _ = std::fs::remove_dir_all(&socket_dir);
     let socket_path = socket_dir.join("sock");
 
-    let server = Server::new(deps);
+    let server = Server::new(deps, Arc::new(AtomicU64::new(0)));
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let socket_path_clone = socket_path.clone();
-    let handle = tokio::spawn(async move { server.serve(&socket_path_clone, shutdown_rx).await });
+    let handle = tokio::spawn(async move { server.serve(&socket_path_clone, shutdown_rx, None).await });
 
-    // Give the listener a moment to bind.
     for _ in 0..50 {
       if socket_path.exists() || handle.is_finished() {
         break;
@@ -460,7 +460,6 @@ mod tests {
       }
     };
 
-    // No token → 401 TOKEN_MISSING.
     let mut sender = connect().await;
     let req = Request::builder().method("GET").uri("/api/tasks").body(Empty::<Bytes>::new()).unwrap();
     let res = send(&mut sender, req).await;
@@ -468,7 +467,6 @@ mod tests {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"], "TOKEN_MISSING");
 
-    // Cloud token prefix → 401 CLOUD_TOKEN.
     let mut sender = connect().await;
     let req = Request::builder()
       .method("GET")
@@ -481,7 +479,6 @@ mod tests {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"], "CLOUD_TOKEN");
 
-    // A human-token header next to it → 400 HUMAN_TOKEN, even with no persona token at all.
     let mut sender = connect().await;
     let req = Request::builder()
       .method("GET")
@@ -494,7 +491,8 @@ mod tests {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"], "HUMAN_TOKEN");
 
-    // A valid token bridges through with the actor from the token and no headers forwarded.
+    // A valid token bridges through with the actor from the token and no headers forwarded: the
+    // bridge payload's key set is exactly the contract's `BridgeRequest` fields, nothing more.
     let mut sender = connect().await;
     let req = Request::builder()
       .method("GET")
@@ -509,9 +507,14 @@ mod tests {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["personaUuid"], "persona-1");
     assert_eq!(json["path"], "/api/tasks?status_id=3");
+    let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+      keys,
+      vec!["body", "id", "method", "path", "personaName", "personaUuid", "tokenId", "workspaceCode", "workspaceId"]
+    );
     assert!(!json.to_string().contains("should-never-arrive"));
 
-    // 429 after 11 writes in the same second.
     let mut sender = connect().await;
     let mut statuses = Vec::new();
     for _ in 0..11 {
@@ -529,7 +532,6 @@ mod tests {
     assert_eq!(&statuses[..10], &[200u16; 10]);
     assert_eq!(statuses[10], 429);
 
-    // The kill switch closes connections that are already open, not just future ones.
     let mut persistent = connect().await;
     let req = Request::builder().method("GET").uri("/api/local/health").body(Empty::<Bytes>::new()).unwrap();
     let res = send(&mut persistent, req).await;
@@ -550,5 +552,58 @@ mod tests {
 
     let _ = handle.await;
     assert!(!socket_path.exists(), "socket file should be removed on shutdown");
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn a_second_instance_never_steals_a_live_socket_and_can_bind_after_the_first_shuts_down() {
+    let mut secret_holder = None;
+    let (deps_a, _) = test_deps(&mut secret_holder);
+    let socket_dir = std::env::temp_dir().join(format!("tmgr-it-second-instance-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&socket_dir);
+    let socket_path = socket_dir.join("sock");
+
+    let server_a = Server::new(deps_a, Arc::new(AtomicU64::new(0)));
+    let (shutdown_a_tx, shutdown_a_rx) = watch::channel(false);
+    let (bound_a_tx, bound_a_rx) = tokio::sync::oneshot::channel();
+    let path_a = socket_path.clone();
+    let handle_a = tokio::spawn(async move { server_a.serve(&path_a, shutdown_a_rx, Some(bound_a_tx)).await });
+    bound_a_rx.await.unwrap().expect("first instance should bind");
+
+    let mut secret_holder_b = None;
+    let (deps_b, _) = test_deps(&mut secret_holder_b);
+    let server_b = Server::new(deps_b, Arc::new(AtomicU64::new(0)));
+    let (_shutdown_b_tx, shutdown_b_rx) = watch::channel(false);
+    let (bound_b_tx, bound_b_rx) = tokio::sync::oneshot::channel();
+    let path_b = socket_path.clone();
+    let handle_b = tokio::spawn(async move { server_b.serve(&path_b, shutdown_b_rx, Some(bound_b_tx)).await });
+    assert!(bound_b_rx.await.unwrap().is_err(), "a second instance must not bind over a live socket");
+    let _ = handle_b.await;
+
+    // The first instance is still answering after the second instance's failed attempt.
+    let stream = UnixStream::connect(&socket_path).await.unwrap();
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
+    tokio::spawn(async move {
+      let _ = conn.await;
+    });
+    let req = Request::builder().method("GET").uri("/api/local/health").body(Empty::<Bytes>::new()).unwrap();
+    let res = send(&mut sender, req).await;
+    assert_eq!(res.status(), 200);
+    let _ = res.into_body().collect().await;
+
+    let _ = shutdown_a_tx.send(true);
+    let _ = handle_a.await;
+    assert!(!socket_path.exists());
+
+    let mut secret_holder_c = None;
+    let (deps_c, _) = test_deps(&mut secret_holder_c);
+    let server_c = Server::new(deps_c, Arc::new(AtomicU64::new(0)));
+    let (shutdown_c_tx, shutdown_c_rx) = watch::channel(false);
+    let (bound_c_tx, bound_c_rx) = tokio::sync::oneshot::channel();
+    let path_c = socket_path.clone();
+    let handle_c = tokio::spawn(async move { server_c.serve(&path_c, shutdown_c_rx, Some(bound_c_tx)).await });
+    bound_c_rx.await.unwrap().expect("a fresh instance can bind once the path is free again");
+    let _ = shutdown_c_tx.send(true);
+    let _ = handle_c.await;
   }
 }
