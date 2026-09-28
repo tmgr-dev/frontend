@@ -7,7 +7,6 @@ export interface McpDeps {
 	personaPrompt(uuid: string): Promise<{ system_prompt?: string | null; prompt_version?: number | null } | null>;
 }
 
-/** Signals a tool-level failure: turned into an MCP `{isError: true}` result, never a JSON-RPC error. */
 class ToolError extends Error {}
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -15,11 +14,16 @@ const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 
 const toCamelKey = (key: string): string => key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 
-/** Recursively maps snake_case keys to camelCase so tool results read like the cloud MCP's. */
-const camelizeDeep = (value: unknown): unknown => {
-	if (Array.isArray(value)) return value.map(camelizeDeep);
+/** Free-form user content (rich-text JSON, checkpoint lists): keys travel as the user wrote them. */
+const OPAQUE_KEYS = new Set(['description_json', 'checkpoints', 'settings']);
+
+const camelizeDeep = (value: unknown, opaque = false): unknown => {
+	if (opaque) return value;
+	if (Array.isArray(value)) return value.map((v) => camelizeDeep(v));
 	if (value && typeof value === 'object') {
-		return Object.fromEntries(Object.entries(value).map(([k, v]) => [toCamelKey(k), camelizeDeep(v)]));
+		return Object.fromEntries(
+			Object.entries(value).map(([k, v]) => [toCamelKey(k), camelizeDeep(v, OPAQUE_KEYS.has(k))]),
+		);
 	}
 	return value;
 };
@@ -37,7 +41,6 @@ const requireArg = (args: Record<string, any>, key: string): any => {
 	return args[key];
 };
 
-/** Runs one local REST call for a tool; a missing route and an error status both become a tool error. */
 const runRoute = async (
 	router: LocalRouter,
 	ctx: LocalContext,
@@ -72,12 +75,51 @@ const pageOf = async (
 	return { items: data, page: meta.current_page, perPage: meta.per_page, total: meta.total, hasMore: meta.current_page < meta.last_page };
 };
 
+const DEFAULT_PER_PAGE = 50;
+const MAX_PER_PAGE = 100;
+
+/** Cloud pagination (`McpPage.of`) for a local route that has none: slice the full array in memory. */
+const paginateInMemory = (all: any[], page?: number, perPage?: number) => {
+	const p = !page || page < 1 ? 1 : page;
+	const size = !perPage || perPage < 1 ? DEFAULT_PER_PAGE : Math.min(perPage, MAX_PER_PAGE);
+	const from = Math.min((p - 1) * size, all.length);
+	const to = Math.min(from + size, all.length);
+	return { items: all.slice(from, to), page: p, perPage: size, total: all.length, hasMore: to < all.length };
+};
+
+/** The local `tasks` route defaults `per_page` to 20; the cloud tools default to 50 (cap 100). */
+const perPageArg = (args: Record<string, any>): number =>
+	!args.perPage || args.perPage < 1 ? DEFAULT_PER_PAGE : Math.min(Number(args.perPage), MAX_PER_PAGE);
+
+/** Empty permissions (never the stored grant) once a persona is unknown, archived or disabled. */
 const personaGrantPermissions = async (ctx: LocalContext): Promise<PersonaPermission[]> => {
-	const [grant] = await ctx.db.select<{ permissions: string }>(
-		`SELECT permissions FROM workspace_personas WHERE persona_uuid = ?`,
+	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
+		`SELECT archived_at FROM personas WHERE uuid = ?`,
 		[ctx.actor!.id],
 	);
-	return grant ? JSON.parse(grant.permissions || '[]') : [];
+	if (!persona || persona.archived_at) return [];
+	const [grant] = await ctx.db.select<{ permissions: string; disabled_at: string | null }>(
+		`SELECT permissions, disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
+		[ctx.actor!.id],
+	);
+	if (!grant || grant.disabled_at) return [];
+	return JSON.parse(grant.permissions || '[]');
+};
+
+/** Same two checks as `checkPersonaAccess`, for the identity tools that never go through `dispatchLocal`. */
+const requirePersonaActive = async (ctx: LocalContext): Promise<void> => {
+	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
+		`SELECT archived_at FROM personas WHERE uuid = ?`,
+		[ctx.actor!.id],
+	);
+	if (!persona) throw new ToolError('Persona is not known in this workspace');
+	if (persona.archived_at) throw new ToolError('Persona is archived');
+	const [grant] = await ctx.db.select<{ disabled_at: string | null }>(
+		`SELECT disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
+		[ctx.actor!.id],
+	);
+	if (!grant) throw new ToolError('Persona is not enabled in this workspace');
+	if (grant.disabled_at) throw new ToolError('Persona is disabled in this workspace');
 };
 
 const personaRow = (ctx: LocalContext) =>
@@ -92,10 +134,10 @@ interface ToolDef {
 	name: string;
 	description: string;
 	inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
-	/** Undefined = always listed (identity tools and `tmgr_request`, which gates itself per call). */
 	permission?: PersonaPermission;
-	/** `tmgr_request` hands the raw REST envelope back as text instead of a camelized object. */
 	raw?: boolean;
+	/** `whoami`/`get_persona` mirror the cloud's own snake_case Map literally — never camelized. */
+	literal?: boolean;
 	handler: (args: Record<string, any>, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => Promise<any>;
 }
 
@@ -104,6 +146,7 @@ const TOOLS: ToolDef[] = [
 		name: 'whoami',
 		description: "Returns the authenticated user id and the acting persona's identity, owner, workspace and permissions",
 		inputSchema: { type: 'object', properties: {} },
+		literal: true,
 		async handler(_args, ctx, _router, deps) {
 			const persona = await personaRow(ctx);
 			const permissions = await personaGrantPermissions(ctx);
@@ -126,6 +169,7 @@ const TOOLS: ToolDef[] = [
 		name: 'get_persona',
 		description: "Returns the acting persona's system prompt, its version, and the skills index",
 		inputSchema: { type: 'object', properties: {} },
+		literal: true,
 		async handler(_args, ctx, _router, deps) {
 			const persona = await personaRow(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
@@ -182,7 +226,7 @@ const TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			const query = requireArg(args, 'query');
-			return pageOf(router, ctx, `tasks${qs({ search: query, page: args.page, per_page: args.perPage })}`);
+			return pageOf(router, ctx, `tasks${qs({ search: query, page: args.page, per_page: perPageArg(args) })}`);
 		},
 	},
 	{
@@ -205,7 +249,7 @@ const TOOLS: ToolDef[] = [
 			const filter = /^\d+$/.test(status)
 				? { status_id: status }
 				: { status_type: status === 'done' ? 'archived' : status };
-			return pageOf(router, ctx, `tasks${qs({ ...filter, page: args.page, per_page: args.perPage })}`);
+			return pageOf(router, ctx, `tasks${qs({ ...filter, page: args.page, per_page: perPageArg(args) })}`);
 		},
 	},
 	{
@@ -260,12 +304,16 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'list_comments',
-		description: 'List comments on a task by taskId',
+		description: 'List comments on a task by taskId. Paginated: page (default 1), perPage (default 50, max 100)',
 		permission: 'comments:read',
-		inputSchema: { type: 'object', properties: { taskId: { type: 'number' } }, required: ['taskId'] },
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' }, page: { type: 'number' }, perPage: { type: 'number' } },
+			required: ['taskId'],
+		},
 		async handler(args, ctx, router) {
-			const items = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/comments`);
-			return { items };
+			const all = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/comments`);
+			return paginateInMemory(all, args.page, args.perPage);
 		},
 	},
 	{
@@ -285,12 +333,26 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'list_task_files',
-		description: 'List the files attached to a task',
+		description: 'List the files attached to a task. Paginated: page (default 1), perPage (default 50, max 100)',
 		permission: 'files:attachments',
-		inputSchema: { type: 'object', properties: { taskId: { type: 'number' } }, required: ['taskId'] },
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' }, page: { type: 'number' }, perPage: { type: 'number' } },
+			required: ['taskId'],
+		},
 		async handler(args, ctx, router) {
-			const items = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/files`);
-			return { items };
+			const rows = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/files`);
+			// get_task_image isn't offered locally, so nothing is ever viewable via this MCP.
+			const items = rows.map((f: any) => ({
+				id: f.id,
+				taskId: f.task_id,
+				name: f.name,
+				mimeType: f.mime_type,
+				sizeBytes: f.size,
+				viewable: false,
+				createdAt: f.created_at,
+			}));
+			return paginateInMemory(items, args.page, args.perPage);
 		},
 	},
 	{
@@ -300,8 +362,7 @@ const TOOLS: ToolDef[] = [
 		inputSchema: { type: 'object', properties: { workspaceId: { type: 'number' } } },
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			const items = await runRoute(router, ctx, 'GET', 'workspaces/statuses');
-			return { items };
+			return runRoute(router, ctx, 'GET', 'workspaces/statuses');
 		},
 	},
 	{
@@ -404,17 +465,27 @@ const TOOLS: ToolDef[] = [
 			const res = await dispatchLocal(router, ctx, method, path, args.jsonBody ?? undefined);
 			if (!res) throw new ToolError(`No local route for ${method} ${withoutQuery}`);
 			if (res.status >= 400) throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
+			if (res.data instanceof Blob) throw new ToolError('tmgr_request cannot return binary content');
 			return JSON.stringify(res.data);
 		},
 	},
 ];
+
+/** Mirrors `AgentWorkMcpTools.parseCommits`: each entry is `"<sha> <subject>"`, split on the first run of whitespace. */
+const parseCommits = (commits: string[]): { sha: string; message: string | null }[] =>
+	commits
+		.filter((line) => typeof line === 'string' && line.trim())
+		.map((line) => {
+			const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(line.trim())!;
+			return { sha: match[1], message: match[2] ?? null };
+		});
 
 const agentWorkBody = (args: Record<string, any>, includeBranch: boolean): Record<string, any> => {
 	const body: Record<string, any> = {};
 	if (includeBranch && args.branch !== undefined) body.branch = args.branch;
 	if (args.summary !== undefined) body.summary = args.summary;
 	if (args.prUrl !== undefined) body.pr_url = args.prUrl;
-	if (args.commits !== undefined) body.commits = args.commits;
+	if (args.commits !== undefined) body.commits = parseCommits(args.commits);
 	if (args.testsPassed !== undefined || args.testsFailed !== undefined || args.testsCommand !== undefined) {
 		body.tests = { passed: args.testsPassed ?? null, failed: args.testsFailed ?? null, command: args.testsCommand ?? null };
 	}
@@ -428,8 +499,13 @@ const listedTools = async (ctx: LocalContext) => {
 	return TOOLS.filter((tool) => !tool.permission || permissions.includes(tool.permission));
 };
 
-const toolResultOk = (payload: any, raw?: boolean) => ({
-	content: [{ type: 'text', text: raw ? payload : JSON.stringify(camelizeDeep(payload)) }],
+const toolResultOk = (payload: any, tool: ToolDef) => ({
+	content: [
+		{
+			type: 'text',
+			text: tool.raw ? payload : tool.literal ? JSON.stringify(payload) : JSON.stringify(camelizeDeep(payload)),
+		},
+	],
 });
 
 const toolResultError = (message: string) => ({
@@ -448,38 +524,35 @@ const handleInitialize = (params: any) => {
 	};
 };
 
-/**
- * A tool outside the persona subset is refused right here with a fixed message; one inside the
- * subset but short on permission is still refused, but with `checkPersonaAccess`'s own message —
- * personaGate is the one place that decides permissions, this layer never re-implements it.
- */
+/** personaGate (via `dispatchLocal`) decides permissions; this layer never re-implements it. */
 const handleToolsCall = async (params: any, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => {
-	const tool = TOOLS_BY_NAME.get(params?.name);
-	if (!tool) return toolResultError('Tool not available to personas');
 	try {
+		await requirePersonaActive(ctx);
+		const tool = TOOLS_BY_NAME.get(params?.name);
+		if (!tool) return toolResultError('Tool not available to personas');
 		const result = await tool.handler(params?.arguments ?? {}, ctx, router, deps);
-		return toolResultOk(result, tool.raw);
+		return toolResultOk(result, tool);
 	} catch (error) {
 		if (error instanceof ToolError) return toolResultError(error.message);
 		return toolResultError(error instanceof Error ? error.message : String(error));
 	}
 };
 
-/** A message without `id` is a notification: it runs, but never gets a response entry. */
 const processMessage = async (
 	msg: any,
 	ctx: LocalContext,
 	router: LocalRouter,
 	deps: McpDeps,
 ): Promise<{ jsonrpc: '2.0'; id: any; result?: any; error?: { code: number; message: string } } | null> => {
-	const isNotification = !msg || typeof msg !== 'object' || !('id' in msg);
+	const isPlainObject = !!msg && typeof msg === 'object' && !Array.isArray(msg);
+	if (!isPlainObject || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
+		return { jsonrpc: '2.0', id: isPlainObject && 'id' in msg ? msg.id : null, error: { code: -32600, message: 'Invalid Request' } };
+	}
+	const isNotification = !('id' in msg);
 	const respond = (result: any) => (isNotification ? null : { jsonrpc: '2.0' as const, id: msg.id, result });
 	const respondError = (code: number, message: string) =>
 		isNotification ? null : { jsonrpc: '2.0' as const, id: msg.id, error: { code, message } };
 
-	if (!msg || typeof msg !== 'object' || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
-		return respondError(-32600, 'Invalid Request');
-	}
 	switch (msg.method) {
 		case 'initialize':
 			return respond(handleInitialize(msg.params));
@@ -513,6 +586,12 @@ export const handleMcpRequest = async (
 		return {
 			status: 400,
 			body: JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }),
+		};
+	}
+	if (Array.isArray(parsed) && parsed.length === 0) {
+		return {
+			status: 200,
+			body: JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } }),
 		};
 	}
 	const messages = Array.isArray(parsed) ? parsed : [parsed];

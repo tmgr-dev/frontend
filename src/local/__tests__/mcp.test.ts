@@ -1,7 +1,7 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { handleMcpRequest } from '../mcp';
-import { enableLocalPersona } from '../personas';
+import { disableLocalPersona, enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -144,25 +144,62 @@ describeSqlite('local MCP handler for personas', () => {
 		expect(result.content[0].text).toMatch(/local\/\*/);
 	});
 
-	it('answers whoami with the persona identity, owner, workspace permissions and cached prompt version', async () => {
+	it('answers whoami with the same snake_case shape as the cloud MCP, not camelized', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:read']);
 		const res = JSON.parse((await call('whoami')).body).result;
 		const whoami = JSON.parse(res.content[0].text);
 		expect(whoami).toEqual({
-			userId: 7,
+			user_id: 7,
 			persona: {
 				id: 'p-1',
 				name: 'Reviewer',
 				description: 'Reviews PRs',
 				owner: { id: 7, name: 'Yurij' },
-				promptVersion: 2,
+				prompt_version: 2,
 				workspace: { id: ctx.workspace.id, code: 'local-personal', permissions: ['tasks:read'] },
 				skills: [],
 			},
 		});
 	});
 
+	it('refuses every tool call, including identity ones, once the persona is disabled locally', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:read']);
+		await disableLocalPersona(ctx, 'p-1');
+		const res = JSON.parse((await call('get_persona')).body).result;
+		expect(res.isError).toBe(true);
+		expect(res.content[0].text).toBe('Persona is disabled in this workspace');
+
+		const listed = JSON.parse((await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body).result.tools;
+		expect(listed.map((t: any) => t.name)).not.toContain('get_task');
+	});
+
+	it('parses agent-work commits as "<sha> <subject>" pairs, like the cloud tool', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['agent_work:write', 'agent_work:read']);
+		const started = JSON.parse((await call('start_agent_work', { taskId, agent: 'claude-code' })).body);
+		const runId = JSON.parse(started.result.content[0].text).id;
+		await call('finish_agent_work', {
+			runId,
+			status: 'succeeded',
+			commits: ['abc123 fix the thing', 'def456'],
+		});
+		const overview = JSON.parse((await call('list_agent_work', { taskId })).body);
+		const runs = JSON.parse(overview.result.content[0].text).runs;
+		expect(runs[0].commits).toEqual([
+			{ sha: 'abc123', message: 'fix the thing' },
+			{ sha: 'def456', message: null },
+		]);
+	});
+
+	it('returns list_statuses as a plain array, matching the cloud tool', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['statuses:read']);
+		const res = JSON.parse((await call('list_statuses')).body).result;
+		const statuses = JSON.parse(res.content[0].text);
+		expect(Array.isArray(statuses)).toBe(true);
+		expect(statuses[0]).toHaveProperty('name');
+	});
+
 	it('answers get_persona_skill with a tool error since local workspaces have no skills yet', async () => {
+		await enableLocalPersona(ctx, 'p-1', []);
 		const res = JSON.parse((await call('get_persona_skill', { slug: 'anything' })).body).result;
 		expect(res.isError).toBe(true);
 		expect(res.content[0].text).toBe('No skills in local workspaces yet');
