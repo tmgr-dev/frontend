@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.8.5 — 2026-09-28
+
+- File → "Check for Updates…" in the menu bar runs a manual update check with visible feedback
+  (checking, up to date, update available with Install and restart, or an error), instead of waiting
+  for the silent periodic check.
+
 ## 0.8.4 — 2026-09-28
 
 - Fix: the Connect an agent dialog keeps the token, MCP config and buttons inside the dialog on wide windows

@@ -1,3 +1,4 @@
+mod app_menu;
 mod capture;
 mod downloads;
 mod embeds;
@@ -191,6 +192,8 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
+    .menu(|handle| app_menu::build(handle))
+    .on_menu_event(|app, event| app_menu::on_menu_event(app, event.id().as_ref()))
     .setup(|app| {
       app.handle().plugin(
         tauri_plugin_log::Builder::default()

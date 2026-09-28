@@ -95,7 +95,7 @@
 			v-if="update.status !== 'idle'"
 			type="button"
 			class="flex h-full items-center gap-1.5 px-3 font-medium text-primary hover:bg-muted"
-			:disabled="update.status === 'installing'"
+			:disabled="update.status === 'installing' || update.status === 'checking'"
 			title="Restart to install the update"
 			@click="installUpdate"
 		>
@@ -103,6 +103,8 @@
 			{{
 				update.status === 'installing'
 					? 'Updating…'
+					: update.status === 'checking'
+					? 'Checking for updates…'
 					: `Update to v${update.version}`
 			}}
 		</button>

@@ -37,6 +37,7 @@
 			:tasks="activeTasks"
 		/>
 		<DesktopDownloads v-if="isDesktop" />
+		<DesktopUpdateCheck v-if="isDesktop" />
 		<DesktopAuthLinks v-if="isDesktop && !$store.getters.isLoggedIn" />
 
 		<Transition name="fade">
@@ -73,6 +74,7 @@
 	import DesktopDownloads from '@/components/desktop/DesktopDownloads.vue';
 	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
 	import DesktopTray from '@/components/desktop/DesktopTray.vue';
+	import DesktopUpdateCheck from '@/components/desktop/DesktopUpdateCheck.vue';
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
@@ -109,6 +111,7 @@
 			DesktopDownloads,
 			DesktopHotkeys,
 			DesktopTray,
+			DesktopUpdateCheck,
 			Modal,
 			TaskSidePanel,
 			Alert,
