@@ -1,25 +1,19 @@
 <template>
 	<div>
-		<BaseLayout>
-			<template #header>
-				<div class="mt-10 w-full text-center">
-					<h1 class="mb-4 text-2xl font-bold">Workspace Invitation</h1>
-					<p v-if="workspaceName" class="text-lg">
-						You have been invited to join: "{{ workspaceName }}"
-					</p>
-					<p v-else class="text-gray-600">Loading invitation details...</p>
-				</div>
-			</template>
-
+		<BaseLayout
+			width="narrow"
+			title="Workspace Invitation"
+			:subtitle="invitationSubtitle"
+		>
 			<template #body>
-				<div class="mx-auto mt-8 max-w-md">
+				<div>
 					<!-- Loading State -->
-					<div v-if="loading" class="text-center">
-						<p class="text-gray-600">Loading...</p>
+					<div v-if="loading">
+						<p class="text-ink-muted">Loading invitation details...</p>
 					</div>
 
 					<!-- Error State -->
-					<div v-else-if="error" class="text-center">
+					<div v-else-if="error">
 						<p class="mb-4 text-red-600">{{ error }}</p>
 						<a
 							href="#"
@@ -32,7 +26,7 @@
 					</div>
 
 					<!-- Success State -->
-					<div v-else-if="accepted" class="text-center">
+					<div v-else-if="accepted">
 						<div class="mb-4 rounded-lg bg-green-100 p-4 text-green-800">
 							<p class="font-semibold">
 								You have successfully joined the workspace!
@@ -48,10 +42,10 @@
 					</div>
 
 					<!-- Accept State -->
-					<div v-else class="text-center">
+					<div v-else>
 						<button
 							@click="accept"
-							class="w-full rounded bg-blue-600 px-4 py-2 font-bold text-white outline-none transition hover:bg-blue-700 disabled:bg-blue-300"
+							class="rounded bg-blue-600 px-4 py-2 font-bold text-white outline-none transition hover:bg-blue-700 disabled:bg-blue-300"
 							type="button"
 							:disabled="loading"
 						>
@@ -89,6 +83,11 @@
 			workspaceInvitationToken() {
 				localStorage.setItem('workspace.invitation', this.$route.params.token);
 				return this.$route.params.token;
+			},
+			invitationSubtitle() {
+				return this.workspaceName
+					? `You have been invited to join: "${this.workspaceName}"`
+					: '';
 			},
 		},
 

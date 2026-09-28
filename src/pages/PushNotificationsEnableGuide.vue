@@ -1,14 +1,11 @@
 <template>
 	<div>
-		<BaseLayout>
-			<template #header>
-				How to enable or disable Push Notifications on Chrome, Firefox & Safari
-				Browser?
-			</template>
+		<BaseLayout
+			width="narrow"
+			title="How to enable or disable Push Notifications on Chrome, Firefox & Safari Browser?"
+		>
 			<template #body>
-				<div
-					class="block w-full text-tmgr-blue dark:text-tmgr-gray md:block md:flex md:w-auto md:flex-grow md:items-center"
-				>
+				<div class="space-y-4 text-ink">
 					<p>
 						<strong
 							>Do not want to receive a push notification from a website you
