@@ -1,5 +1,6 @@
 <template>
-	<div class="container max-w-5xl py-4">
+	<PageContainer width="wide">
+		<PageHeader :title="pageTitle" />
 		<div v-if="!entry" class="text-sm text-muted-foreground">
 			This plugin is not installed.
 		</div>
@@ -36,10 +37,12 @@
 			:plugin-id="pluginId"
 		/>
 		<p v-else class="text-sm text-muted-foreground">Loading…</p>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import PluginView from '@/components/plugins/PluginView.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -51,7 +54,7 @@
 
 	export default defineComponent({
 		name: 'PluginPage',
-		components: { Button, PluginView },
+		components: { Button, PageContainer, PageHeader, PluginView },
 		setup() {
 			const route = useRoute();
 			const pluginId = computed(() => String(route.params.pluginId));
@@ -139,7 +142,20 @@
 				{ immediate: true },
 			);
 
-			return { pluginId, viewId, entry, tree, error, view, openWindow };
+			const pageTitle = computed(
+				() => view.value?.title ?? entry.value?.manifest.name ?? 'Plugin',
+			);
+
+			return {
+				pluginId,
+				viewId,
+				entry,
+				tree,
+				error,
+				view,
+				openWindow,
+				pageTitle,
+			};
 		},
 	});
 </script>

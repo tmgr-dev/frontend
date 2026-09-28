@@ -1,13 +1,9 @@
 <template>
 	<div>
-		<BaseLayout>
-			<template #header> </template>
+		<BaseLayout title="Statistics">
 			<template #body>
-				<div
-					class="block w-full text-tmgr-blue dark:text-tmgr-gray md:block md:flex md:w-auto md:flex-grow md:items-center"
-				>
-					<h1 class="text-center text-4xl">Statistics</h1>
-					<p id="stats-table-description" class="mx-auto mb-5 px-2 text-center">
+				<div class="text-ink">
+					<p id="stats-table-description" class="mb-4 text-sm text-ink-subtle">
 						Simple statistics of service
 					</p>
 					<AsyncContent
@@ -17,7 +13,7 @@
 						:retry="loadStats"
 						label="Loading statistics"
 					>
-						<table aria-describedby="stats-table-description" class="mx-auto">
+						<table aria-describedby="stats-table-description">
 							<tbody>
 								<tr>
 									<th class="text-left text-xl">Users</th>
