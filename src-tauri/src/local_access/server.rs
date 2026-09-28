@@ -362,7 +362,7 @@ fn health_response(deps: &ServerDeps, headers: &HeaderMap) -> Response<ResponseB
   let mut body = serde_json::json!({
     "ok": true,
     "ready": ready,
-    "appVersion": deps.app_version,
+    "app_version": deps.app_version,
     "api": "local-1",
   });
   if let Some(secret) = headers.get("x-persona-token").and_then(|v| v.to_str().ok()) {
@@ -701,6 +701,17 @@ mod tests {
     req: Request<Empty<Bytes>>,
   ) -> Response<Incoming> {
     sender.send_request(req).await.unwrap()
+  }
+
+  #[tokio::test]
+  async fn health_response_uses_snake_case_app_version() {
+    let mut secret_holder = None;
+    let (deps, _token_id) = test_deps(&mut secret_holder);
+    let res = health_response(&deps, &HeaderMap::new());
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["app_version"], "0.0.0-test");
+    assert!(json.get("appVersion").is_none());
   }
 
   #[tokio::test(flavor = "multi_thread")]
