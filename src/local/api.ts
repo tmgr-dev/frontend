@@ -72,7 +72,32 @@ const agentWorkDuration = (row: any, ctx: LocalContext) => {
 	return Math.max(0, epoch(ctx) - Math.floor(new Date(row.started_at).getTime() / 1000));
 };
 
-const agentWorkJson = (row: any, ctx: LocalContext) => ({
+/** One `personas` query for a whole list, keyed by uuid, instead of one per row. */
+const personaNamesFor = async (ctx: LocalContext, rows: any[]): Promise<Map<string, string>> => {
+	const uuids = [...new Set(rows.filter((row) => row.actor_kind === 'persona').map((row) => row.actor_id))];
+	if (!uuids.length) return new Map();
+	const placeholders = uuids.map(() => '?').join(',');
+	const found = await ctx.db.select<{ uuid: string; name: string }>(
+		`SELECT uuid, name FROM personas WHERE uuid IN (${placeholders})`,
+		uuids,
+	);
+	return new Map(found.map((row) => [row.uuid, row.name]));
+};
+
+const agentWorkActor = (row: any, ctx: LocalContext, personaNames: Map<string, string>) => {
+	if (row.actor_kind === 'persona') {
+		return {
+			kind: 'persona',
+			id: row.actor_id,
+			name: personaNames.get(row.actor_id),
+			owner: { id: String(ctx.user.id), name: ctx.user.name },
+		};
+	}
+	if (row.actor_kind === 'plugin') return { kind: 'plugin', id: row.actor_id };
+	return { kind: 'user', id: row.actor_id, name: ctx.user.name };
+};
+
+const agentWorkJson = (row: any, ctx: LocalContext, personaNames: Map<string, string>) => ({
 	id: row.id,
 	task_id: row.task_id,
 	workspace_id: ctx.workspace.id,
@@ -90,6 +115,7 @@ const agentWorkJson = (row: any, ctx: LocalContext) => ({
 	commits: parseJson(row.commits, []),
 	tests: parseJson(row.tests, null),
 	version: row.version,
+	actor: agentWorkActor(row, ctx, personaNames),
 });
 
 const normalizeAgent = (value: unknown): string => {
@@ -231,6 +257,19 @@ const defaultStatusId = async (ctx: LocalContext) => {
 const numberOrNull = (value: any) =>
 	value === null || value === undefined || value === '' ? null : Number(value);
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A bare date ('2026-10-01') is kept as the UI sends it; anything with a time is normalised to ISO UTC. */
+const normalizeExpiredAt = (value: unknown): string | null => {
+	if (value === null || value === undefined) return null;
+	const trimmed = String(value).trim();
+	if (!trimmed) return null;
+	if (DATE_ONLY.test(trimmed)) return trimmed;
+	const ms = Date.parse(trimmed);
+	if (Number.isNaN(ms)) throw new LocalHttpError(422, 'expired_at must be an ISO date');
+	return new Date(ms).toISOString().replace(/\.000Z$/, 'Z');
+};
+
 /** Fields a create/PUT/PATCH may set; everything else in the body (category, user, …) is derived. */
 const writableTaskFields = (body: any) => {
 	const fields: Record<string, any> = {};
@@ -243,7 +282,7 @@ const writableTaskFields = (body: any) => {
 	if ('approximately_time' in body) fields.approximately_time = Number(body.approximately_time ?? 0) || 0;
 	if ('checkpoints' in body) fields.checkpoints = toJson(body.checkpoints ?? []);
 	if ('settings' in body && Array.isArray(body.settings)) fields.settings = toJson(body.settings);
-	if ('expired_at' in body) fields.expired_at = body.expired_at ?? null;
+	if ('expired_at' in body) fields.expired_at = normalizeExpiredAt(body.expired_at);
 	if ('common_time' in body && body.common_time !== undefined)
 		fields.common_time = Math.max(0, Number(body.common_time) || 0);
 	return fields;
@@ -566,6 +605,21 @@ export const createLocalApi = () => {
 			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [Number(result.lastInsertId)]);
 			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
+		.add('PUT', 'comments/:id(\\d+)', async ({ ctx, params, body }) => {
+			const id = Number(params.id);
+			const [comment] = await ctx.db.select<any>(`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`, [id]);
+			if (!comment) throw notFound('Comment');
+			if (ctx.actor?.kind === 'persona' && (comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id)) {
+				throw new LocalHttpError(403, 'A persona may only edit its own comments');
+			}
+			const message = String(body?.message ?? body?.content ?? '').trim();
+			if (!message) throw new LocalHttpError(422, 'message is required');
+			const now = iso(ctx);
+			await ctx.db.execute(`UPDATE comments SET message = ?, updated_at = ? WHERE id = ?`, [message, now, id]);
+			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [id]);
+			const reactions = (await reactionsFor(ctx, [id])).get(id) ?? [];
+			return { ...commentJson(row, ctx), reactions };
+		})
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
 			if (ctx.actor?.kind === 'persona') {
 				const [comment] = await ctx.db.select<any>(`SELECT author_kind, author_id FROM comments WHERE id = ?`, [
@@ -1047,8 +1101,9 @@ export const createLocalApi = () => {
 				(sum, row) => sum + Math.max(0, now - Math.floor(new Date(row.started_at).getTime() / 1000)),
 				0,
 			);
+			const personaNames = await personaNamesFor(ctx, rows);
 			return {
-				runs: rows.map((row) => agentWorkJson(row, ctx)),
+				runs: rows.map((row) => agentWorkJson(row, ctx, personaNames)),
 				totals: {
 					agent_seconds: Number(finished) + running,
 					human_seconds: Number(task.common_time ?? 0) + (task.start_time > 0 ? Math.max(0, now - task.start_time) : 0),
@@ -1085,7 +1140,7 @@ export const createLocalApi = () => {
 			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [
 				Number(result.lastInsertId),
 			]);
-			return agentWorkJson(row, ctx);
+			return agentWorkJson(row, ctx, await personaNamesFor(ctx, [row]));
 		}, 201)
 		.add('PATCH', 'agent-work/:id(\\d+)', async ({ ctx, params, body }) => {
 			const run = await requireOwnRunningRun(ctx, Number(params.id));
@@ -1094,7 +1149,7 @@ export const createLocalApi = () => {
 			values.push(iso(ctx));
 			await ctx.db.execute(`UPDATE agent_work_runs SET ${sets.join(', ')} WHERE id = ?`, [...values, run.id]);
 			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [run.id]);
-			return agentWorkJson(row, ctx);
+			return agentWorkJson(row, ctx, await personaNamesFor(ctx, [row]));
 		})
 		.add('POST', 'agent-work/:id(\\d+)/finish', async ({ ctx, params, body }) => {
 			const run = await requireOwnRunningRun(ctx, Number(params.id));
@@ -1108,7 +1163,7 @@ export const createLocalApi = () => {
 			values.push(status, end.toISOString(), durationSeconds, iso(ctx));
 			await ctx.db.execute(`UPDATE agent_work_runs SET ${sets.join(', ')} WHERE id = ?`, [...values, run.id]);
 			const [row] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE id = ?`, [run.id]);
-			return agentWorkJson(row, ctx);
+			return agentWorkJson(row, ctx, await personaNamesFor(ctx, [row]));
 		})
 		// ── workspace-level odds and ends ───────────────────────────────────────
 		.add('GET', 'workspaces/:wid/members', ({ ctx }) => [

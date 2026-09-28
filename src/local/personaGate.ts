@@ -31,6 +31,7 @@ export const PERSONA_WHITELIST: WhitelistEntry[] = [
 	{ method: 'PATCH', pattern: 'tasks/:id(\\d+)', permission: 'tasks:write' },
 	{ method: 'GET', pattern: 'tasks/:id(\\d+)/comments', permission: 'comments:read' },
 	{ method: 'POST', pattern: 'tasks/:id(\\d+)/comments', permission: 'comments:write' },
+	{ method: 'PUT', pattern: 'comments/:id(\\d+)', permission: 'comments:write' },
 	{ method: 'DELETE', pattern: 'comments/:id(\\d+)', permission: 'comments:write' },
 	{ method: 'POST', pattern: 'comments/:id(\\d+)/reactions/toggle', permission: 'comments:write' },
 	{ method: 'GET', pattern: 'tasks/:id(\\d+)/files', permission: 'files:attachments' },
@@ -38,6 +39,7 @@ export const PERSONA_WHITELIST: WhitelistEntry[] = [
 	{ method: 'GET', pattern: 'files/:id(\\d+)/content', permission: 'files:attachments' },
 	{ method: 'GET', pattern: 'workspaces/statuses', permission: 'statuses:read' },
 	{ method: 'GET', pattern: 'project_categories', permission: 'categories:read' },
+	{ method: 'GET', pattern: 'project_categories/:id(\\d+)', permission: 'categories:read' },
 	{ method: 'GET', pattern: 'task-relation-types', permission: 'relations:read' },
 	{ method: 'GET', pattern: 'tasks/:id(\\d+)/relations', permission: 'relations:read' },
 	{

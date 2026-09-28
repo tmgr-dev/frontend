@@ -236,6 +236,24 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		version: 8,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS activity_log (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				at TEXT NOT NULL,
+				actor_kind TEXT NOT NULL,
+				actor_id TEXT NOT NULL,
+				actor_name TEXT,
+				method TEXT NOT NULL,
+				route TEXT NOT NULL,
+				entity TEXT,
+				entity_id TEXT,
+				status INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_kind, actor_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
