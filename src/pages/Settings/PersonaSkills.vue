@@ -46,13 +46,13 @@
 				:class="[
 					'text-xs',
 					draftBytes > SKILL_BODY_MAX_BYTES
-						? 'text-red-600 dark:text-red-400'
+						? 'text-destructive'
 						: 'text-muted-foreground',
 				]"
 			>
 				{{ draftBytes }} / {{ SKILL_BODY_MAX_BYTES }} bytes
 			</span>
-			<ul v-if="draftErrors" class="text-xs text-red-600 dark:text-red-400">
+			<ul v-if="draftErrors" class="text-xs text-destructive">
 				<li v-for="(messages, field) in draftErrors" :key="field">
 					{{ field }}: {{ messages.join(' ') }}
 				</li>

@@ -28,7 +28,7 @@
 					<span class="text-sm font-medium">{{ ws.name }}</span>
 					<span
 						v-if="grantFor(ws.id)?.blocked"
-						class="ml-2 text-2xs text-red-600 dark:text-red-400"
+						class="ml-2 text-2xs text-destructive"
 					>
 						Blocked by workspace creator
 					</span>

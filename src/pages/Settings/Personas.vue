@@ -14,10 +14,10 @@
 			</template>
 		</PageHeader>
 
-		<section class="mb-6 flex flex-col gap-3 rounded-md border border-border p-4">
-			<h4 class="text-sm font-semibold">
-				{{ editingId ? 'Edit persona' : 'New persona' }}
-			</h4>
+		<SettingsSection
+			:title="editingId ? 'Edit persona' : 'New persona'"
+			class="mb-6"
+		>
 			<PersonaForm
 				:model-value="form"
 				:field-errors="formErrors"
@@ -28,9 +28,9 @@
 				@cancel="editingId ? cancelEdit() : null"
 				:show-cancel="!!editingId"
 			/>
-		</section>
+		</SettingsSection>
 
-		<p v-if="loadError" class="mb-4 text-sm text-red-600 dark:text-red-400">
+		<p v-if="loadError" class="mb-4 text-sm text-destructive">
 			{{ loadError }}
 		</p>
 
@@ -38,7 +38,7 @@
 			<article
 				v-for="persona in visiblePersonas"
 				:key="persona.id"
-				class="flex flex-col gap-3 rounded-md border border-border p-4"
+				class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
 			>
 				<header class="flex items-start justify-between gap-4">
 					<div class="flex items-start gap-3">
@@ -144,6 +144,7 @@
 	import PersonaAvatar from '@/components/general/PersonaAvatar.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
@@ -170,6 +171,7 @@
 			Switch,
 			PageContainer,
 			PageHeader,
+			SettingsSection,
 			PersonaAvatar,
 			PersonaForm,
 			PersonaSkills,
