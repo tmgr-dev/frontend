@@ -1,7 +1,7 @@
 import type { DispatchKind } from './sandbox';
 
 /** Host calls that wait for the user (a file dialog): that time does not count against deadlines. */
-export const USER_WAIT_METHODS = new Set(['files.pick']);
+export const USER_WAIT_METHODS = new Set(['files.pick', 'localAccess.requestConnection']);
 export const MAX_USER_WAIT_MS = 5 * 60_000;
 
 export interface WireError {

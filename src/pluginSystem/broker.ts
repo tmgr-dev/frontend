@@ -162,7 +162,18 @@ export interface BrokerDeps {
 		setTitle: (text: string | null) => void;
 		isTitleOwner: () => boolean;
 	};
+	/** Only offered when the manifest declares `companion` and the workspace is local. */
+	localAccess?: {
+		requestConnection: (opts: {
+			label?: string;
+			permissions?: string[];
+		}) => Promise<LocalConnectionResult>;
+	};
 }
+
+export type LocalConnectionResult =
+	| { status: 'connected'; tokenId: string; prefix: string }
+	| { status: 'cancelled' };
 
 export interface FetchRequest {
 	url: string;
@@ -272,6 +283,12 @@ const idArrayMax = (value: unknown, field: string, max: number): number[] => {
 };
 
 const idArray = (value: unknown, field: string): number[] => idArrayMax(value, field, 100);
+
+const stringArray = (value: unknown, field: string, max: number): string[] => {
+	if (!Array.isArray(value) || value.length > max)
+		invalid(`${field} must be an array of up to ${max} strings`);
+	return (value as unknown[]).map((v) => string(v, field, 60));
+};
 
 const statusPatch = (patch: unknown): Record<string, unknown> => {
 	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
@@ -512,6 +529,7 @@ export const createBroker = (deps: BrokerDeps) => {
 	const granted = new Set<Permission>(manifest.permissions);
 	const reads = bucket(50, 100, deps.now);
 	const writes = bucket(10, 20, deps.now);
+	let pendingConnection = false;
 
 	/** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
 	const stripRelations = (task: unknown): unknown => {
@@ -923,6 +941,40 @@ export const createBroker = (deps: BrokerDeps) => {
 		'alarms.list': {
 			permission: 'alarms',
 			run: () => needAlarms().list(),
+		},
+		'localAccess.requestConnection': {
+			run: async (p) => {
+				if (!manifest.companion) {
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						'this plugin has no companion section in its manifest',
+					);
+				}
+				if (deps.workspace.kind !== 'local') {
+					throw new PluginError(
+						'NOT_SUPPORTED',
+						'local access is only available in a local workspace',
+					);
+				}
+				if (!deps.localAccess) {
+					throw new PluginError('HOST_ERROR', 'local access is not available');
+				}
+				if (pendingConnection) {
+					throw new PluginError(
+						'RATE_LIMITED',
+						'a connection request is already pending',
+					);
+				}
+				const label = p.label == null ? undefined : string(p.label, 'label', 60);
+				const permissions =
+					p.permissions == null ? undefined : stringArray(p.permissions, 'permissions', 20);
+				pendingConnection = true;
+				try {
+					return await deps.localAccess.requestConnection({ label, permissions });
+				} finally {
+					pendingConnection = false;
+				}
+			},
 		},
 		'ui.setStatusBarItem': {
 			run: (p) => {

@@ -194,6 +194,22 @@
 						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
 					</p>
 					<p
+						v-if="offer.pkg.manifest.companion"
+						class="font-medium text-amber-600 dark:text-amber-400"
+					>
+						Works with an external program you install yourself
+						({{ offer.pkg.manifest.companion.description }}). It will write as
+						a persona you choose.
+						<a
+							v-if="offer.pkg.manifest.companion.homepage"
+							:href="offer.pkg.manifest.companion.homepage"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="underline"
+							>Learn more</a
+						>
+					</p>
+					<p
 						v-if="
 							offer.changes &&
 							(offer.changes.permissions.length ||
