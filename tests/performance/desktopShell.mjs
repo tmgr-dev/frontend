@@ -25,6 +25,9 @@ const fakeShell = async ({
   const replies = [];
   const closed = [];
   const files = new Map();
+  const tokens = new Map();
+  let tokenSeq = 0;
+  let accessEnabled = false;
   const db = (code) => {
     if (!dbs.has(code)) dbs.set(code, new DatabaseSync(':memory:'));
     return dbs.get(code);
@@ -123,6 +126,63 @@ const fakeShell = async ({
       case 'local_export_write':
         exports.push(args);
         return `/tmp/${args.code}/exports/${args.folder}`;
+      case 'local_token_issue': {
+        const id = `local-token-${++tokenSeq}`;
+        const now = Date.now();
+        const token = {
+          id,
+          prefix: `tmgrl_${id}`,
+          personaUuid: args.personaUuid,
+          personaName: args.personaName,
+          workspaceCode: args.workspaceCode,
+          workspaceId: -1000,
+          label: args.label,
+          createdAt: new Date(now).toISOString(),
+          expiresAt: new Date(
+            now + args.expiresInDays * 86400000,
+          ).toISOString(),
+          lastUsedAt: null,
+          revokedAt: null,
+          pluginId: args.pluginId ?? null,
+        };
+        tokens.set(id, token);
+        accessEnabled = true;
+        return token;
+      }
+      case 'local_token_list':
+        return [...tokens.values()].filter(
+          (t) => !args.workspaceCode || t.workspaceCode === args.workspaceCode,
+        );
+      case 'local_token_revoke': {
+        const token = tokens.get(args.id);
+        if (!token) return false;
+        token.revokedAt = new Date().toISOString();
+        return true;
+      }
+      case 'local_token_revoke_all': {
+        let count = 0;
+        for (const token of tokens.values()) {
+          if (token.revokedAt) continue;
+          if (args.personaUuid && token.personaUuid !== args.personaUuid) continue;
+          if (args.pluginId && token.pluginId !== args.pluginId) continue;
+          if (args.workspaceCode && token.workspaceCode !== args.workspaceCode) continue;
+          token.revokedAt = new Date().toISOString();
+          count++;
+        }
+        return count;
+      }
+      case 'local_access_status':
+        return {
+          enabled: accessEnabled,
+          listening: false,
+          socketPath: null,
+          safeMode: false,
+          ready: true,
+          bridgeCommand: '/tmp/tmgr-desktop',
+        };
+      case 'local_access_set_enabled':
+        accessEnabled = !!args.enabled;
+        return null;
       default:
         return null;
     }
@@ -139,6 +199,7 @@ const fakeShell = async ({
     closed,
     installed,
     catalog,
+    tokens,
   });
 };
 

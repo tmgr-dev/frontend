@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.8.4 — 2026-09-28
+
+- Fix: the Connect an agent dialog keeps the token, MCP config and buttons inside the dialog on wide windows
+  (local and cloud personas); the dialog is wider once a token is issued.
+
 ## 0.8.3 — 2026-09-28
 
 - MCP for local personas over the local access socket, plus the `TMGR mcp` stdio bridge for Claude Code and Codex
