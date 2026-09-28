@@ -53,6 +53,64 @@ const findAgentWork = (state, runId) => {
 	throw new Error(`agent work run ${runId} not found`);
 };
 
+const findRoutine = (state, id) => {
+	const routine = state.routines.find((r) => r.id === id);
+	if (!routine) throw new Error(`routine ${id} not found`);
+	return routine;
+};
+
+const toRoutine = (routine) => ({
+	id: routine.id,
+	title: routine.title,
+	description: routine.description,
+	scheduledDate: routine.scheduledDate,
+	scheduledTime: routine.scheduledTime,
+	createdAt: routine.createdAt,
+	updatedAt: routine.updatedAt,
+});
+
+const toRoutineInstance = (instance) => ({
+	id: instance.id,
+	routineId: instance.routineId,
+	date: instance.date,
+	time: instance.time,
+	status: instance.status,
+});
+
+const parseDate = (s) => {
+	const [y, m, d] = s.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d));
+};
+
+const formatDate = (date) => date.toISOString().slice(0, 10);
+
+const addOccurrence = (date, frequency) => {
+	const next = new Date(date.getTime());
+	if (frequency === 'DAILY') next.setUTCDate(next.getUTCDate() + 1);
+	else if (frequency === 'WEEKLY') next.setUTCDate(next.getUTCDate() + 7);
+	else if (frequency === 'MONTHLY') next.setUTCMonth(next.getUTCMonth() + 1);
+	else next.setUTCFullYear(next.getUTCFullYear() + 1);
+	return next;
+};
+
+/** Dates (YYYY-MM-DD) this routine occurs on within [from, to], inclusive. Bounded to avoid runaway loops. */
+const occurrencesInRange = (routine, from, to) => {
+	const start = parseDate(routine.scheduledDate);
+	const fromD = parseDate(from);
+	const toD = parseDate(to);
+	const frequency = routine.frequency && routine.frequency !== 'NONE' ? routine.frequency : null;
+	if (!frequency) {
+		return start >= fromD && start <= toD ? [formatDate(start)] : [];
+	}
+	const dates = [];
+	let cursor = start;
+	for (let guard = 0; cursor <= toD && guard < 1000; guard++) {
+		if (cursor >= fromD) dates.push(formatDate(cursor));
+		cursor = addOccurrence(cursor, frequency);
+	}
+	return dates;
+};
+
 /** Everything a plugin's main.js can reach through `tmgr`, backed by plain in-memory state. */
 const createMockApi = (state, clock) => ({
 	async listTasks(query) {
@@ -248,6 +306,129 @@ const createMockApi = (state, clock) => ({
 		Object.assign(findAgentWork(state, runId), patch);
 		return { ...findAgentWork(state, runId) };
 	},
+	async listRoutines(from, to) {
+		const todayStr = formatDate(new Date(clock()));
+		const entries = [];
+		for (const routine of state.routines) {
+			const dates = routine.scheduledDate
+				? occurrencesInRange(routine, from, to)
+				: todayStr >= from && todayStr <= to
+				? [todayStr]
+				: [];
+			const recurring = !!(routine.scheduledDate && routine.frequency && routine.frequency !== 'NONE');
+			for (const date of dates) {
+				const instance = state.routineInstances.find(
+					(i) => i.routineId === routine.id && i.date === date,
+				);
+				entries.push({
+					routineId: routine.id,
+					instanceId: instance ? instance.id : null,
+					title: routine.title,
+					description: routine.description,
+					date,
+					time: instance ? instance.time : routine.scheduledTime ?? null,
+					status: instance ? instance.status : 'PENDING',
+					completed: instance ? instance.status === 'COMPLETED' : false,
+					recurring,
+					frequency: recurring ? routine.frequency : null,
+					virtual: !instance,
+				});
+			}
+		}
+		entries.sort((a, b) => a.date.localeCompare(b.date) || a.routineId - b.routineId);
+		return entries;
+	},
+	async getRoutine(id) {
+		return toRoutine(findRoutine(state, id));
+	},
+	async listRoutineInstances(id) {
+		findRoutine(state, id);
+		return state.routineInstances
+			.filter((i) => i.routineId === id)
+			.sort((a, b) => a.date.localeCompare(b.date))
+			.map(toRoutineInstance);
+	},
+	async createRoutine(fields) {
+		const now = new Date(clock()).toISOString();
+		const routine = {
+			id: state.nextRoutineId++,
+			title: fields.title,
+			description: fields.description ?? null,
+			scheduledDate: fields.date ?? null,
+			scheduledTime: fields.date ? fields.time ?? null : null,
+			frequency: null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		state.routines.push(routine);
+		return toRoutine(routine);
+	},
+	async updateRoutine(id, patch) {
+		const routine = findRoutine(state, id);
+		if (patch.title !== undefined) routine.title = patch.title;
+		if (patch.description !== undefined) routine.description = patch.description;
+		routine.updatedAt = new Date(clock()).toISOString();
+		return toRoutine(routine);
+	},
+	async completeRoutine(id, date) {
+		const routine = findRoutine(state, id);
+		let instance = state.routineInstances.find((i) => i.routineId === id && i.date === date);
+		if (instance && instance.status === 'COMPLETED') return toRoutineInstance(instance);
+		if (instance) {
+			instance.status = 'COMPLETED';
+			return toRoutineInstance(instance);
+		}
+		instance = {
+			id: state.nextRoutineInstanceId++,
+			routineId: id,
+			date,
+			time: routine.scheduledTime,
+			status: 'COMPLETED',
+		};
+		state.routineInstances.push(instance);
+		return toRoutineInstance(instance);
+	},
+	async skipRoutine(id, date) {
+		const routine = findRoutine(state, id);
+		let instance = state.routineInstances.find((i) => i.routineId === id && i.date === date);
+		if (instance && instance.status === 'SKIPPED') return toRoutineInstance(instance);
+		if (instance) {
+			instance.status = 'SKIPPED';
+			return toRoutineInstance(instance);
+		}
+		instance = {
+			id: state.nextRoutineInstanceId++,
+			routineId: id,
+			date,
+			time: routine.scheduledTime,
+			status: 'SKIPPED',
+		};
+		state.routineInstances.push(instance);
+		return toRoutineInstance(instance);
+	},
+	async convertRoutine(id, options) {
+		const routine = findRoutine(state, id);
+		const opts = options ?? {};
+		const category =
+			opts.categoryId != null ? state.categories.find((c) => c.id === opts.categoryId) : null;
+		const task = {
+			id: state.nextTaskId++,
+			title: routine.title,
+			description: routine.description,
+			status_id: opts.statusId ?? null,
+			project_category_id: opts.categoryId ?? null,
+			priority: null,
+			approximately_time: 0,
+			common_time: 0,
+			start_time: 0,
+			expired_at: null,
+			category_tasks_sequence_id: category ? ++category.nextSequence : null,
+		};
+		state.tasks.push(task);
+		state.routines = state.routines.filter((r) => r.id !== id);
+		state.routineInstances = state.routineInstances.filter((i) => i.routineId !== id);
+		return toWireTask(state, task);
+	},
 });
 
 const computeBadges = async (sandbox, badgeIds, tasks) => {
@@ -297,6 +478,8 @@ const createTestHost = async (options = {}) => {
 		nextCategoryId: 1,
 		nextCommentId: 1,
 		nextAgentWorkId: 1,
+		nextRoutineId: 1,
+		nextRoutineInstanceId: 1,
 		tasks: [],
 		statuses: [],
 		categories: [],
@@ -305,6 +488,8 @@ const createTestHost = async (options = {}) => {
 		taskData: {},
 		storage: {},
 		agentWork: {},
+		routines: [],
+		routineInstances: [],
 		attachments: {},
 		files: {},
 		alarms: {},
@@ -333,6 +518,28 @@ const createTestHost = async (options = {}) => {
 			start_time: t.start_time ?? 0,
 			expired_at: t.expired_at ?? null,
 			category_tasks_sequence_id: t.category_tasks_sequence_id ?? null,
+		});
+	}
+	for (const r of options.routines ?? []) {
+		const now = new Date(currentTime).toISOString();
+		state.routines.push({
+			id: state.nextRoutineId++,
+			title: r.title,
+			description: r.description ?? null,
+			scheduledDate: r.scheduledDate ?? null,
+			scheduledTime: r.scheduledDate ? r.scheduledTime ?? null : null,
+			frequency: r.scheduledDate ? r.frequency ?? null : null,
+			createdAt: r.createdAt ?? now,
+			updatedAt: r.updatedAt ?? now,
+		});
+	}
+	for (const i of options.routineInstances ?? []) {
+		state.routineInstances.push({
+			id: state.nextRoutineInstanceId++,
+			routineId: i.routineId,
+			date: i.date,
+			time: i.time ?? null,
+			status: i.status ?? 'PENDING',
 		});
 	}
 

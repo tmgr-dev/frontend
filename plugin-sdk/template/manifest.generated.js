@@ -3,7 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.1';
+exports.PLUGIN_API_VERSION = '1.2';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -27,6 +27,8 @@ exports.PERMISSIONS = [
     'tray',
     'deeplinks',
     'links:open',
+    'routines:read',
+    'routines:write',
 ];
 exports.PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 exports.LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;

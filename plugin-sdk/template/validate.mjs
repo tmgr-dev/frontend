@@ -46,6 +46,14 @@ const CALL_PERMISSIONS = {
 	'tmgr.agentWork.start': 'agent_work:write',
 	'tmgr.agentWork.update': 'agent_work:write',
 	'tmgr.agentWork.finish': 'agent_work:write',
+	'tmgr.routines.list': 'routines:read',
+	'tmgr.routines.get': 'routines:read',
+	'tmgr.routines.instances': 'routines:read',
+	'tmgr.routines.create': 'routines:write',
+	'tmgr.routines.update': 'routines:write',
+	'tmgr.routines.complete': 'routines:write',
+	'tmgr.routines.skip': 'routines:write',
+	'tmgr.routines.convertToTask': 'routines:write',
 };
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -104,6 +112,9 @@ export const validate = (folder) => {
 	}
 	if (manifest.contributes.trayItems.length && !granted.has('tray')) {
 		warnings.push('declares contributes.trayItems but does not declare the "tray" permission');
+	}
+	if (code.includes('tmgr.routines.convertToTask') && !granted.has('tasks:write')) {
+		warnings.push('uses tmgr.routines.convertToTask but does not declare the "tasks:write" permission');
 	}
 
 	return { ok: true, errors, warnings, manifest };

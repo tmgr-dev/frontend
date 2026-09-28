@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.1). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.2). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -138,6 +138,48 @@ interface TmgrTaskRelation {
 	type: string;
 }
 
+type RoutineStatus = 'PENDING' | 'COMPLETED' | 'SKIPPED';
+
+/** One occurrence of a routine in a date range, from `tmgr.routines.list`. Local workspaces only. */
+interface RoutineEntry {
+	routineId: number;
+	/** null for a virtual occurrence (nothing completed/skipped yet) or an undated note. */
+	instanceId: number | null;
+	title: string;
+	description: string | null;
+	/** YYYY-MM-DD. An undated note (no scheduled date) always appears on today. */
+	date: string;
+	/** "HH:mm", or null. */
+	time: string | null;
+	status: RoutineStatus;
+	completed: boolean;
+	/** Whether this routine repeats (a frequency other than NONE). */
+	recurring: boolean;
+	/** DAILY | WEEKLY | MONTHLY | YEARLY | null. */
+	frequency: string | null;
+	/** True exactly when `instanceId` is null. */
+	virtual: boolean;
+}
+
+/** One routine row. Recurrence is per occurrence in `list` (`recurring`, `frequency`), not here. */
+interface Routine {
+	id: number;
+	title: string;
+	description: string | null;
+	scheduledDate: string | null;
+	scheduledTime: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+interface RoutineInstance {
+	id: number;
+	routineId: number;
+	date: string;
+	time: string | null;
+	status: RoutineStatus;
+}
+
 type TmgrEvent =
 	/** `changed` (task.updated only) names the fields the write's request body set. */
 	| { type: 'task.created' | 'task.updated'; workspaceId: number; taskId: number; task: TmgrTask; changed?: string[] }
@@ -163,7 +205,18 @@ type TmgrEvent =
 	/** No permission needed. Delivered once, right after this plugin starts, if it registered a handler by then. */
 	| { type: 'app.started' }
 	/** No permission needed. Delivered when the host activates a different workspace and this plugin starts there. */
-	| { type: 'workspace.switched'; from: number | null; to: number };
+	| { type: 'workspace.switched'; from: number | null; to: number }
+	/** Needs routines:read. Local workspaces only — never delivered in a shared workspace. */
+	| { type: 'routine.created'; workspaceId: number; routineId: number; routine: Routine }
+	| {
+			type: 'routine.updated';
+			workspaceId: number;
+			routineId: number;
+			routine?: Routine;
+			instance?: RoutineInstance;
+	  }
+	/** `taskId` is set when the routine was deleted by being converted into a task. */
+	| { type: 'routine.deleted'; workspaceId: number; routineId: number; taskId?: number };
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
@@ -421,6 +474,39 @@ declare const tmgr: {
 		setTrayTitle(text: string | null): Promise<void>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
+	};
+	/**
+	 * Daily routines and notes. Needs `engines.tmgr` `^1.2`. Local workspaces only: every call throws
+	 * NOT_SUPPORTED in a shared (cloud) workspace.
+	 */
+	routines: {
+		/** Needs routines:read. from/to are YYYY-MM-DD, from <= to, at most 92 days apart. */
+		list(range: { from: string; to: string }): Promise<RoutineEntry[]>;
+		/** Needs routines:read. */
+		get(id: number): Promise<Routine>;
+		/** Needs routines:read. */
+		instances(id: number): Promise<RoutineInstance[]>;
+		/**
+		 * Needs routines:write. `time` is only accepted together with `date`. No `date` makes an undated
+		 * note, which always shows up on today in `list`.
+		 */
+		create(fields: {
+			title: string;
+			description?: string | null;
+			date?: string;
+			time?: string | null;
+		}): Promise<Routine>;
+		/** Needs routines:write. At least one field. */
+		update(id: number, patch: { title?: string; description?: string | null }): Promise<Routine>;
+		/** Needs routines:write. Idempotent: completing an already-completed occurrence just returns it. `date` defaults to today. */
+		complete(id: number, options?: { date?: string }): Promise<RoutineInstance>;
+		/** Needs routines:write. Idempotent, like `complete`. */
+		skip(id: number, options?: { date?: string }): Promise<RoutineInstance>;
+		/**
+		 * Needs routines:write AND tasks:write (missing tasks:write rejects with PERMISSION_DENIED).
+		 * Creates a task from the routine (with a `key`, like `tasks.create`) and removes the routine.
+		 */
+		convertToTask(id: number, options?: { categoryId?: number; statusId?: number }): Promise<TmgrTask>;
 	};
 	/**
 	 * Only available when the manifest declares a `companion` section. Asks the workspace owner to

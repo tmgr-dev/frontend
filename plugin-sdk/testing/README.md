@@ -21,6 +21,8 @@ host.dispose();
 
 See `index.d.ts` for the full `createTestHost` options and the returned host's shape (`tmgr` state,
 `emit`, `runCommand`, `renderPage`, `renderSection`, `badges`, `fireAlarms`, `calls`, `dispose`).
+`tmgr.routines`/`tmgr.routineInstances` back `tmgr.routines.*` (local workspaces only); seed them with
+the `routines`/`routineInstances` options.
 
 ## Why CommonJS
 
