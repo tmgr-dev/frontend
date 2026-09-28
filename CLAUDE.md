@@ -67,6 +67,16 @@ PWA is configured in `vite.config.ts` with `NetworkFirst` for `/api/*` (5min TTL
 - **Workspace context** must be in URLs and API calls — pull `currentWorkspace.code` from the store rather than hardcoding.
 - The full style guide (`.cursorrules`) has extensive examples for Options API, Vuex modules, composables, and shadcn usage; consult it for boilerplate but treat the points above as the binding constraints.
 
+## Desktop releases
+
+- A desktop release is the tag `desktop-vX.Y.Z`; the version must match `src-tauri/tauri.conf.json`,
+  `src-tauri/Cargo.toml` and the `tmgr` entry in `src-tauri/Cargo.lock`.
+- **Every desktop release needs a changelog.** Before pushing the tag, add a `## X.Y.Z — YYYY-MM-DD` section to
+  `src-tauri/CHANGELOG.md` (newest on top): short user-facing bullets — what changed for the user, notable fixes, PR
+  numbers only where useful. The release workflow puts that section into the GitHub release and the in-app update
+  notes (`latest.json`) and fails if the section is missing.
+- Other sessions release too: check `git tag` for the next free version before bumping.
+
 ## Boilerplate tracking
 
 This project tracks `project-boilerplate-monorepo` via `.boilerplate.json`.
