@@ -1,8 +1,7 @@
 <template>
-	<div class="container max-w-4xl py-4">
-		<header class="mb-4 flex flex-col gap-1">
-			<h3 class="text-lg font-bold">Plugins</h3>
-			<p class="text-sm text-muted-foreground">
+	<PageContainer width="narrow">
+		<PageHeader title="Plugins">
+			<template #subtitle>
 				Plugins run in local workspaces, and in a shared workspace once its
 				creator turns them on for everyone. Each runs in its own sandbox with
 				only the permissions listed on its card.
@@ -11,24 +10,24 @@
 					class="text-primary hover:underline"
 					>How plugins work</router-link
 				>
-			</p>
-			<p v-if="!workspace" class="text-sm text-amber-600 dark:text-amber-400">
-				Open a workspace to turn plugins on or off for it.
-			</p>
-			<p v-else-if="workspace.kind === 'cloud'" class="text-sm text-muted-foreground">
-				Shared workspace:
-				<span class="text-foreground">{{ workspace.name }}</span>.
-				{{
-					isCreator
-						? 'You created it: a plugin you turn on here runs for every member.'
-						: 'Only its creator turns plugins on here; they run for every member.'
-				}}
-			</p>
-			<p v-else class="text-sm text-muted-foreground">
-				Current workspace:
-				<span class="text-foreground">{{ workspace.name }}</span>
-			</p>
-		</header>
+			</template>
+		</PageHeader>
+		<p v-if="!workspace" class="mb-6 text-sm text-amber-600 dark:text-amber-400">
+			Open a workspace to turn plugins on or off for it.
+		</p>
+		<p v-else-if="workspace.kind === 'cloud'" class="mb-6 text-sm text-muted-foreground">
+			Shared workspace:
+			<span class="text-foreground">{{ workspace.name }}</span>.
+			{{
+				isCreator
+					? 'You created it: a plugin you turn on here runs for every member.'
+					: 'Only its creator turns plugins on here; they run for every member.'
+			}}
+		</p>
+		<p v-else class="mb-6 text-sm text-muted-foreground">
+			Current workspace:
+			<span class="text-foreground">{{ workspace.name }}</span>
+		</p>
 
 		<section
 			class="mb-6 flex flex-col gap-3 rounded-md border border-border p-4"
@@ -463,7 +462,7 @@
 				</details>
 			</article>
 		</div>
-	</div>
+	</PageContainer>
 </template>
 
 <script lang="ts">
@@ -477,6 +476,8 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import {
 		Select,
 		SelectContent,
@@ -551,6 +552,8 @@
 		name: 'PluginsSettings',
 		components: {
 			Button,
+			PageContainer,
+			PageHeader,
 			Dialog,
 			DialogContent,
 			DialogDescription,
