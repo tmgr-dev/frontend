@@ -1,48 +1,59 @@
 <template>
-	<div class="flex flex-1 flex-col">
-		<header class="container relative">
-			<h1
-				v-if="$slots.header"
-				class="relative mt-6 pt-1 text-center text-2xl text-blue-800 dark:text-white md:mt-6 md:pt-0 md:text-left md:text-3xl"
-			>
+	<PageContainer :width="width">
+		<PageHeader
+			v-if="$slots.header || title"
+			:title="title"
+			:subtitle="subtitle"
+			:back="back"
+		>
+			<template v-if="$slots.header" #title>
 				<slot name="header" />
-			</h1>
+			</template>
+			<template v-if="$slots['header-actions']" #actions>
+				<slot name="header-actions" />
+			</template>
+		</PageHeader>
 
-			<slot name="action" />
-		</header>
+		<slot name="action" />
 
-		<div :class="bodyContainerClass">
+		<div>
 			<slot name="body" />
 		</div>
 
 		<slot name="footer" />
-	</div>
+	</PageContainer>
 </template>
 
 <script>
-	export default {
+	import { defineComponent } from 'vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
+
+	export default defineComponent({
 		name: 'BaseLayout',
+		components: { PageContainer, PageHeader },
 		props: {
 			noCopyright: {
 				type: Boolean,
 				required: false,
 				default: false,
 			},
-			bodyContainerClass: {
+			width: {
 				type: String,
-				required: false,
-				default: 'container',
+				default: 'wide',
+			},
+			title: {
+				type: String,
+				default: '',
+			},
+			subtitle: {
+				type: String,
+				default: '',
+			},
+			back: {
+				type: [String, Object],
+				default: null,
 			},
 		},
-		computed: {
-			copyright() {
-				const startYear = 2020;
-				const currentYear = new Date().getFullYear();
-
-				return startYear === currentYear
-					? currentYear
-					: `${startYear} - ${currentYear}`;
-			},
-		},
-	};
+	});
 </script>

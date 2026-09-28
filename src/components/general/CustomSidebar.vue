@@ -1003,6 +1003,7 @@
 					<div
 						data-tauri-drag-region
 						class="flex flex-1 items-center gap-2 px-4"
+						:class="{ 'md:px-6': !isDesktop }"
 					>
 						<div
 							v-if="isDesktop"
