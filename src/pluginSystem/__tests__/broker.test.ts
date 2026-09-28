@@ -876,3 +876,87 @@ describe('files', () => {
 		]);
 	});
 });
+
+describe('localAccess.requestConnection', () => {
+	const withCompanion = { ...manifest([]), companion: { description: 'A CLI' } };
+
+	it('refuses without a companion section in the manifest', async () => {
+		const { broker } = setup([], { manifest: manifest([]) });
+		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
+			'PERMISSION_DENIED',
+		);
+	});
+
+	it('refuses in a shared (cloud) workspace', async () => {
+		const { broker } = setup([], {
+			manifest: withCompanion,
+			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
+		});
+		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
+			'NOT_SUPPORTED',
+		);
+	});
+
+	it('fails with HOST_ERROR when the host offers no connect flow', async () => {
+		const { broker } = setup([], { manifest: withCompanion });
+		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
+			'HOST_ERROR',
+		);
+	});
+
+	it('resolves with only tokenId and prefix, forwarding label and permissions', async () => {
+		const requests: unknown[] = [];
+		const { broker } = setup([], {
+			manifest: withCompanion,
+			localAccess: {
+				requestConnection: async (opts) => {
+					requests.push(opts);
+					return { status: 'connected', tokenId: 'lt_abc', prefix: 'tmgrl_1234' };
+				},
+			},
+		});
+		const result = await broker.call('localAccess.requestConnection', {
+			label: 'My CLI',
+			permissions: ['tasks:read'],
+		});
+		expect(result).toEqual({
+			status: 'connected',
+			tokenId: 'lt_abc',
+			prefix: 'tmgrl_1234',
+		});
+		expect(requests).toEqual([{ label: 'My CLI', permissions: ['tasks:read'] }]);
+	});
+
+	it('allows a cancelled result through unchanged', async () => {
+		const { broker } = setup([], {
+			manifest: withCompanion,
+			localAccess: { requestConnection: async () => ({ status: 'cancelled' }) },
+		});
+		expect(await broker.call('localAccess.requestConnection', {})).toEqual({
+			status: 'cancelled',
+		});
+	});
+
+	it('rate limits to one pending request per plugin', async () => {
+		let release: (() => void) | null = null;
+		const pending = new Promise<void>((resolve) => (release = resolve));
+		const { broker } = setup([], {
+			manifest: withCompanion,
+			localAccess: {
+				requestConnection: async () => {
+					await pending;
+					return { status: 'cancelled' };
+				},
+			},
+		});
+		const first = broker.call('localAccess.requestConnection', {});
+		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
+			'RATE_LIMITED',
+		);
+		release!();
+		await first;
+		expect(await code(broker.call('localAccess.requestConnection', {}))).toBe(
+			'ok',
+		);
+	});
+});

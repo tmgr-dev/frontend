@@ -203,6 +203,35 @@ it('accepts network origins only on this computer', () => {
 	}
 });
 
+it('defaults companion to null and accepts a description with an optional homepage', () => {
+	expect(parseManifest(valid).companion).toBeNull();
+	expect(
+		parseManifest({ ...valid, companion: { description: 'A CLI you run locally' } })
+			.companion,
+	).toEqual({ description: 'A CLI you run locally' });
+	expect(
+		parseManifest({
+			...valid,
+			companion: { description: 'A CLI', homepage: 'https://example.com/cli' },
+		}).companion,
+	).toEqual({ description: 'A CLI', homepage: 'https://example.com/cli' });
+});
+
+it('rejects an invalid companion section', () => {
+	expect(() =>
+		parseManifest({ ...valid, companion: { description: '' } }),
+	).toThrow('companion');
+	expect(() =>
+		parseManifest({ ...valid, companion: { description: 'x'.repeat(201) } }),
+	).toThrow('companion');
+	expect(() =>
+		parseManifest({
+			...valid,
+			companion: { description: 'A CLI', homepage: 'http://example.com' },
+		}),
+	).toThrow('companion.homepage');
+});
+
 it('lets a view name an html page from its ui folder', () => {
 	const withUi = (ui: unknown) => ({
 		...valid,

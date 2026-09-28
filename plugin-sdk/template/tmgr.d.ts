@@ -422,4 +422,16 @@ declare const tmgr: {
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
 	};
+	/**
+	 * Only available when the manifest declares a `companion` section. Asks the workspace owner to
+	 * connect an external program you install yourself: it opens a dialog where they pick or create a
+	 * persona and issue it a token. The token itself is never given to the plugin, only its id and
+	 * prefix. Rejects with NOT_SUPPORTED in a shared (cloud) workspace, PERMISSION_DENIED without a
+	 * `companion` manifest section, and RATE_LIMITED while a request from this plugin is already pending.
+	 */
+	localAccess: {
+		requestConnection(opts?: { label?: string; permissions?: string[] }): Promise<
+			{ status: 'connected'; tokenId: string; prefix: string } | { status: 'cancelled' }
+		>;
+	};
 };

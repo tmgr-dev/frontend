@@ -64,6 +64,20 @@ const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}
 const parseDomain = (value) => typeof value === 'string' && DOMAIN.test(value)
     ? value
     : fail(`links domain ${String(value)} must be a host name like example.com`);
+const HTTPS_URL = /^https:\/\/.+/;
+const parseCompanion = (value) => {
+    if (value === undefined || value === null)
+        return null;
+    if (typeof value !== 'object')
+        fail('companion must be an object');
+    const v = value;
+    const description = text(v.description, 'companion.description', 200);
+    if (v.homepage === undefined)
+        return { description };
+    if (typeof v.homepage !== 'string' || !HTTPS_URL.test(v.homepage))
+        fail('companion.homepage must be an https URL');
+    return { description, homepage: v.homepage };
+};
 const parseSettings = (value) => {
     if (value === undefined || value === null)
         return null;
@@ -132,6 +146,7 @@ const parseManifest = (raw) => {
             ],
         },
         links: { allowedDomains },
+        companion: parseCompanion(raw.companion),
         contributes: {
             boardCardBadges,
             statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

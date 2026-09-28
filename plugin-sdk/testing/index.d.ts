@@ -48,6 +48,8 @@ export interface CreateTestHostOptions {
 	dnd?: { active: boolean; until: string | null } | (() => { active: boolean; until: string | null });
 	/** What `tmgr.files.pick()` resolves to. Defaults to `null` (the user cancelled). */
 	filesPick?: unknown;
+	/** What `tmgr.localAccess.requestConnection()` resolves to. Defaults to `{ status: 'cancelled' }`. */
+	localAccessConnect?: { status: 'connected'; tokenId: string; prefix: string } | { status: 'cancelled' };
 	/** Backs `tmgr.net.fetch`; omit to make network calls reject with PERMISSION_DENIED, as on a computer with no network access granted. */
 	fetch?: (request: {
 		url: string;

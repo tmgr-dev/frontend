@@ -394,6 +394,9 @@ const createTestHost = async (options = {}) => {
 			isTitleOwner: () => trayTitleOwner,
 		},
 		fetch: options.fetch,
+		localAccess: {
+			requestConnection: async () => options.localAccessConnect ?? { status: 'cancelled' },
+		},
 	});
 
 	const calls = [];

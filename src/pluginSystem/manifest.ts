@@ -46,6 +46,8 @@ export interface PluginManifest {
 	network: { allowedOrigins: string[] };
 	/** Hosts a `link` node may open in the system browser (https only); needs links:open. */
 	links: { allowedDomains: string[] };
+	/** Declares an external program the user installs themselves; enables tmgr.localAccess.requestConnection. */
+	companion: { description: string; homepage?: string } | null;
 	contributes: {
 		boardCardBadges: { id: string }[];
 		statusBarItems: { id: string }[];
@@ -121,6 +123,19 @@ const parseDomain = (value: unknown): string =>
 	typeof value === 'string' && DOMAIN.test(value)
 		? value
 		: fail(`links domain ${String(value)} must be a host name like example.com`);
+
+const HTTPS_URL = /^https:\/\/.+/;
+
+const parseCompanion = (value: unknown): PluginManifest['companion'] => {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== 'object') fail('companion must be an object');
+	const v = value as Record<string, unknown>;
+	const description = text(v.description, 'companion.description', 200);
+	if (v.homepage === undefined) return { description };
+	if (typeof v.homepage !== 'string' || !HTTPS_URL.test(v.homepage))
+		fail('companion.homepage must be an https URL');
+	return { description, homepage: v.homepage as string };
+};
 
 const parseSettings = (
 	value: any,
@@ -199,6 +214,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 			],
 		},
 		links: { allowedDomains },
+		companion: parseCompanion(raw.companion),
 		contributes: {
 			boardCardBadges,
 			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

@@ -4,7 +4,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.wireError = exports.MAX_USER_WAIT_MS = exports.USER_WAIT_METHODS = void 0;
 /** Host calls that wait for the user (a file dialog): that time does not count against deadlines. */
-exports.USER_WAIT_METHODS = new Set(['files.pick']);
+exports.USER_WAIT_METHODS = new Set(['files.pick', 'localAccess.requestConnection']);
 exports.MAX_USER_WAIT_MS = 5 * 60000;
 const wireError = (error) => ({
     code: typeof error?.code === 'string'

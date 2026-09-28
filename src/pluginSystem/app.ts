@@ -47,6 +47,7 @@ import {
 	installedPluginErrors,
 	pluginHost,
 	pluginState,
+	requestLocalAccessConnect,
 	setPluginHost,
 } from './state';
 import {
@@ -575,6 +576,22 @@ export const installPlugins = async (
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });
 		},
+		requestLocalConnection: (pluginId, opts) => {
+			const pending = requestLocalAccessConnect({
+				pluginId,
+				pluginName: pluginState.plugins[pluginId]?.manifest.name ?? pluginId,
+				label: opts.label,
+				permissions: opts.permissions,
+			});
+			void import('@/router')
+				.then(({ default: router }) => router.push({ name: 'PersonaSettings' }))
+				.catch(() => undefined);
+			return pending;
+		},
+		revokePluginTokens: async (pluginId) => {
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke('local_token_revoke_all', { pluginId }).catch(() => undefined);
+		},
 		// Not the app's own origin: the main window's on_new_window hook denies the popup and hands the
 		// URL to the system opener, the same way any other external link in the app already opens.
 		openExternal: (url) => {
@@ -750,6 +767,7 @@ export const uninstallPlugin = async (pluginId: string) => {
 	const entry = pluginState.plugins[pluginId];
 	const storageId = entry ? storageIdOf(entry) : pluginId;
 	await invoke('plugin_uninstall', { id: pluginId });
+	await invoke('local_token_revoke_all', { pluginId }).catch(() => undefined);
 	forgetPlugin(pluginId, storageId);
 	pluginHost()?.forget(pluginId);
 };

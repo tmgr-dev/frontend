@@ -128,6 +128,9 @@ exports.PRELUDE = `(() => {
 			clear: (name) => call('alarms.clear', { name }),
 			list: () => call('alarms.list'),
 		}),
+		localAccess: freeze({
+			requestConnection: (opts) => call('localAccess.requestConnection', opts || {}),
+		}),
 		events: freeze({ on: (type, fn) => register('event', type, fn) }),
 		commands: freeze({ register: (id, fn) => register('command', id, fn) }),
 		ui: freeze({

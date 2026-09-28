@@ -77,6 +77,11 @@ const idArrayMax = (value, field, max) => {
     return value.map((v) => id(v, field));
 };
 const idArray = (value, field) => idArrayMax(value, field, 100);
+const stringArray = (value, field, max) => {
+    if (!Array.isArray(value) || value.length > max)
+        invalid(`${field} must be an array of up to ${max} strings`);
+    return value.map((v) => string(v, field, 60));
+};
 const statusPatch = (patch) => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch))
         invalid('patch must be an object');
@@ -287,6 +292,7 @@ const createBroker = (deps) => {
     const granted = new Set(manifest.permissions);
     const reads = bucket(50, 100, deps.now);
     const writes = bucket(10, 20, deps.now);
+    let pendingConnection = false;
     /** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
     const stripRelations = (task) => {
         if (granted.has('relations:read') || !task || typeof task !== 'object')
@@ -661,6 +667,31 @@ const createBroker = (deps) => {
         'alarms.list': {
             permission: 'alarms',
             run: () => needAlarms().list(),
+        },
+        'localAccess.requestConnection': {
+            run: async (p) => {
+                if (!manifest.companion) {
+                    throw new PluginError('PERMISSION_DENIED', 'this plugin has no companion section in its manifest');
+                }
+                if (deps.workspace.kind !== 'local') {
+                    throw new PluginError('NOT_SUPPORTED', 'local access is only available in a local workspace');
+                }
+                if (!deps.localAccess) {
+                    throw new PluginError('HOST_ERROR', 'local access is not available');
+                }
+                if (pendingConnection) {
+                    throw new PluginError('RATE_LIMITED', 'a connection request is already pending');
+                }
+                const label = p.label == null ? undefined : string(p.label, 'label', 60);
+                const permissions = p.permissions == null ? undefined : stringArray(p.permissions, 'permissions', 20);
+                pendingConnection = true;
+                try {
+                    return await deps.localAccess.requestConnection({ label, permissions });
+                }
+                finally {
+                    pendingConnection = false;
+                }
+            },
         },
         'ui.setStatusBarItem': {
             run: (p) => {

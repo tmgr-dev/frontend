@@ -1616,3 +1616,50 @@ it("logs a plugin's broker refusals as warnings, collapsing identical repeats wi
 	expect(warnings[1].message).toBe('tasks.list: PERMISSION_DENIED tasks.list needs tasks:read');
 	host.dispose();
 });
+
+it('revokes local-access tokens when a plugin is disabled, not when it is enabled', async () => {
+	const revoked: string[] = [];
+	const { host } = setup([pkg('tmgr.a', '')], {}, {}, {}, {
+		revokePluginTokens: async (pluginId) => {
+			revoked.push(pluginId);
+		},
+	});
+	await host.load();
+	await host.activate(LOCAL);
+
+	await host.setEnabled('tmgr.a', true);
+	expect(revoked).toEqual([]);
+
+	await host.setEnabled('tmgr.a', false);
+	expect(revoked).toEqual(['tmgr.a']);
+	host.dispose();
+});
+
+it("wires tmgr.localAccess.requestConnection to the host's requestLocalConnection dep, with this plugin's id", async () => {
+	const calls: unknown[][] = [];
+	const companion: PluginPackage = {
+		manifest: parseManifest({
+			id: 'tmgr.comp',
+			name: 'Companion',
+			version: '1.0.0',
+			engines: { tmgr: '^1.0' },
+			companion: { description: 'A CLI' },
+			contributes: { commands: [{ id: 'tmgr.comp.go', title: 'Go' }] },
+		}),
+		code: `tmgr.commands.register('tmgr.comp.go', () => tmgr.localAccess.requestConnection({ label: 'CLI' }));`,
+		source: 'builtin',
+	};
+	const { host } = setup([companion], {}, {}, {}, {
+		requestLocalConnection: async (pluginId, opts) => {
+			calls.push([pluginId, opts]);
+			return { status: 'cancelled' };
+		},
+	});
+	await host.load();
+	await host.activate(LOCAL);
+
+	const result = await host.runCommand('tmgr.comp', 'tmgr.comp.go');
+	expect(result).toEqual({ status: 'cancelled' });
+	expect(calls).toEqual([['tmgr.comp', { label: 'CLI' }]]);
+	host.dispose();
+});

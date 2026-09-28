@@ -9,6 +9,7 @@ import {
 	type DataApi,
 	type FetchRequest,
 	type FetchResponse,
+	type LocalConnectionResult,
 	type NotifyPayload,
 	type PluginWorkspace,
 	type RegistrationKind,
@@ -190,6 +191,13 @@ export interface PluginHostDeps {
 	blocked?: (pluginId: string) => string | null;
 	/** Opens a link a `link` node was allowed to open; desktop only, so the web build has no-op links. */
 	openExternal?: (url: string) => void;
+	/** Asks the host to open the connect flow for tmgr.localAccess.requestConnection; undefined disables it. */
+	requestLocalConnection?: (
+		pluginId: string,
+		opts: { label?: string; permissions?: string[] },
+	) => Promise<LocalConnectionResult>;
+	/** Revokes this plugin's local-access tokens; called on disable and uninstall. */
+	revokePluginTokens?: (pluginId: string) => Promise<void>;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -634,6 +642,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			files: machine
 				? deps.files?.(pluginId, workspace, manifest.name)
 				: undefined,
+			localAccess: deps.requestLocalConnection
+				? { requestConnection: (opts) => deps.requestLocalConnection!(pluginId, opts) }
+				: undefined,
 			now,
 		});
 		const process = startPluginProcess(pkg.code, {
@@ -935,6 +946,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (!workspace || !pkg) return;
 			deps.enabled.set(pluginId, workspace.id, value);
 			stop(pluginId);
+			if (!value) void deps.revokePluginTokens?.(pluginId);
 			if (value && !state.safeMode && isEnabled(pluginId, workspace))
 				await start(pkg, workspace);
 		},
