@@ -12,6 +12,7 @@ const PAGES = [
   ['member', '/demo/team/1', 'wide'],
   ['routines', '/routines', 'wide'],
   ['settings', '/settings', 'narrow'],
+  ['settings-profile', '/settings?tab=profile', 'narrow'],
   ['settings-workspaces', '/settings/workspaces', 'narrow'],
   ['settings-features', '/settings/features', 'narrow'],
   ['settings-personas', '/settings/personas', 'narrow'],
@@ -98,3 +99,13 @@ for (const vp of VIEWPORTS) {
     });
   }
 }
+
+test('/settings without a tab opens the workspace settings page', async ({ page }) => {
+  await mockApp(page);
+  await mockExtras(page);
+  await page.goto('/settings');
+  await expect(page).toHaveURL(/\/settings\/workspaces$/);
+  await expect(page.locator('[data-page-header] h1').first()).toHaveText(
+    'Workspace settings',
+  );
+});

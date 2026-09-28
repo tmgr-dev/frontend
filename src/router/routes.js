@@ -411,6 +411,10 @@ const routes = [
 	{
 		path: '/settings',
 		component: () => import('@/pages/Settings.vue'),
+		beforeEnter: (to) =>
+			!to.query.tab || to.query.tab === 'workspace'
+				? { path: '/settings/workspaces', replace: true }
+				: true,
 		meta: {
 			title: 'Settings',
 			transitionName: 'fade-fast',

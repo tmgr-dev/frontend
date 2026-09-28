@@ -19,10 +19,11 @@
 		type WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import Combobox from '@/components/Combobox.vue';
-	import Switcher from '@/components/general/Switcher.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import SettingsRow from '@/components/layouts/SettingsRow.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -46,6 +47,8 @@
 		DialogTrigger,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
+	import { Switch } from '@/components/ui/switch';
 	import { Textarea } from '@/components/ui/textarea';
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
@@ -511,9 +514,7 @@
 							</Button>
 						</DialogTrigger>
 
-						<DialogContent
-							class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
-						>
+						<DialogContent class="sm:max-w-[425px]">
 							<DialogHeader>
 								<DialogTitle>Creating new workspace</DialogTitle>
 								<DialogDescription class="sr-only"
@@ -543,15 +544,13 @@
 						v-model:open="isOpenInvitation"
 					>
 						<DialogTrigger as-child>
-							<Button variant="default">
+							<Button variant="outline">
 								<UserPlus />
 								<span class="hidden lg:inline">Invite</span>
 							</Button>
 						</DialogTrigger>
 
-						<DialogContent
-							class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
-						>
+						<DialogContent class="sm:max-w-[425px]">
 							<DialogHeader>
 								<DialogTitle>Send invitation(s)</DialogTitle>
 								<DialogDescription class="sr-only"
@@ -566,7 +565,7 @@
 								:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
 							/>
 							<span
-								class="whitespace-pre text-red-500"
+								class="whitespace-pre text-xs text-destructive"
 								v-if="
 									!invitationEmailsValidationError.isValid &&
 									invitationEmails !== ''
@@ -598,7 +597,10 @@
 						"
 					>
 						<AlertDialogTrigger as-child>
-							<Button variant="destructive">
+							<Button
+								variant="outline"
+								class="text-destructive hover:text-destructive"
+							>
 								<Trash2Icon />
 								<span class="hidden lg:inline">Delete workspace</span>
 							</Button>
@@ -627,7 +629,10 @@
 						"
 					>
 						<AlertDialogTrigger as-child>
-							<Button variant="destructive">
+							<Button
+								variant="outline"
+								class="text-destructive hover:text-destructive"
+							>
 								<LogOutIcon />
 								<span class="hidden lg:inline">Exit from workspace</span>
 							</Button>
@@ -662,138 +667,139 @@
 			:retry="loadWorkspaceSettings"
 			label="Loading workspace settings"
 		>
-			<div class="mt-6 max-w-lg">
-				<div v-for="(setting, index) in settings" :key="setting.id">
-					<label
-						:for="`setting-${setting.id}`"
-						class="mb-2 block text-sm font-bold text-gray-700"
-					>
-						{{ setting.name }}
-					</label>
-
-					<div class="mb-4">
-						<template v-if="setting.component_type === 'select'">
-							<Combobox
-								:entities="setting.default_values"
-								v-model="settings[index].value"
-								:selected-placeholder="setting.description"
-								value-key="value"
-								label-key="value"
-							/>
-						</template>
-						<template v-else-if="setting.custom_value_available">
-							<Input
-								type="time"
-								v-if="setting.component_type === 'time_in_seconds'"
-								:model-value="convertToHHMM(settings[index].value)"
-								@input="
-							(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
-						"
-								:placeholder="setting.description"
-							/>
-
-							<Input
-								v-else
-								v-model="settings[index].value"
-								:placeholder="setting.description"
-							/>
-						</template>
-
-						<Switcher
-							v-if="
-								setting.custom_value_available &&
-								setting.default_values &&
-								setting.default_values.length > 0
-							"
-							name="set_custom_value"
-							v-model="setting.show_custom_value_input"
-							placeholder="Set custom value"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<footer class="text-left">
-				<Button
-					variant="default"
-					@click="updateSettings"
-					:disabled="savingSettings"
-					:aria-busy="savingSettings"
-				>
-					<SaveIcon /> Save
-				</Button>
-			</footer>
-
-			<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
-				<div class="mb-4 flex items-center justify-between">
-					<h4 class="text-md font-semibold">Workspace Members</h4>
-				</div>
-
-				<AsyncContent
-					:pending="loadingMembers"
-					:loaded="membersLoaded"
-					:error="membersError"
-					:retry="loadMembers"
-					label="Loading members"
-				>
-					<div
-						v-if="members.length === 0"
-						class="py-8 text-center text-gray-500"
-					>
-						<p>No members found</p>
-					</div>
-
-					<div v-else class="space-y-3">
+			<div class="flex flex-col gap-6">
+				<SettingsSection title="Preferences">
+					<div class="flex flex-col gap-4">
 						<div
-							v-for="member in members"
-							:key="member.id"
-							class="flex items-center justify-between rounded-lg border p-3 dark:border-gray-700"
+							v-for="(setting, index) in settings"
+							:key="setting.id"
+							class="flex flex-col gap-1.5"
 						>
-							<div class="flex flex-1 items-center gap-3">
-								<Avatar class="h-10 w-10">
-									<AvatarFallback>
-										{{ getInitials(member.name) }}
-									</AvatarFallback>
-								</Avatar>
+							<Label :for="`setting-${setting.id}`">{{ setting.name }}</Label>
 
-								<div class="flex-1">
-									<div class="flex items-center gap-2">
-										<p class="font-medium">{{ member.name }}</p>
-										<span
-											v-if="
-												member.id ===
-												workspaces.find((w) => w.id == activeWorkspace?.value)
-													?.user_id
-											"
-											class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-										>
-											Owner
-										</span>
-									</div>
-								</div>
-							</div>
-
-							<Button
-								v-if="canRemoveMember(member)"
-								@click="handleRemoveMember(member)"
-								variant="destructive"
-								size="sm"
-								:disabled="removingMemberId !== null"
-							>
-								<Loader
-									v-if="removingMemberId === member.id"
-									is-mini
-									class="mr-2"
+							<template v-if="setting.component_type === 'select'">
+								<Combobox
+									:entities="setting.default_values"
+									v-model="settings[index].value"
+									:selected-placeholder="setting.description"
+									value-key="value"
+									label-key="value"
 								/>
-								Remove
-							</Button>
+							</template>
+							<template v-else-if="setting.custom_value_available">
+								<Input
+									:id="`setting-${setting.id}`"
+									type="time"
+									v-if="setting.component_type === 'time_in_seconds'"
+									:model-value="convertToHHMM(settings[index].value)"
+									@input="
+								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
+							"
+									:placeholder="setting.description"
+								/>
+
+								<Input
+									:id="`setting-${setting.id}`"
+									v-else
+									v-model="settings[index].value"
+									:placeholder="setting.description"
+								/>
+							</template>
+
+							<SettingsRow
+								v-if="
+									setting.custom_value_available &&
+									setting.default_values &&
+									setting.default_values.length > 0
+								"
+								v-slot="{ labelId }"
+								label="Set custom value"
+							>
+								<Switch
+									:checked="setting.show_custom_value_input"
+									@update:checked="(v) => (setting.show_custom_value_input = v)"
+									:aria-labelledby="labelId"
+								/>
+							</SettingsRow>
 						</div>
 					</div>
-				</AsyncContent>
-			</div>
 
-			<div v-if="!isLocalActiveWorkspace" class="mt-8 border-t pt-6">
-				<WorkspaceInvitationsList />
+					<template #footer>
+						<Button
+							variant="default"
+							@click="updateSettings"
+							:disabled="savingSettings"
+							:aria-busy="savingSettings"
+						>
+							<SaveIcon /> Save
+						</Button>
+					</template>
+				</SettingsSection>
+
+				<SettingsSection v-if="!isLocalActiveWorkspace" title="Members">
+					<AsyncContent
+						:pending="loadingMembers"
+						:loaded="membersLoaded"
+						:error="membersError"
+						:retry="loadMembers"
+						label="Loading members"
+					>
+						<p v-if="members.length === 0" class="text-sm text-ink-subtle">
+							No members found
+						</p>
+
+						<div v-else class="space-y-3">
+							<div
+								v-for="member in members"
+								:key="member.id"
+								class="flex items-center justify-between rounded-lg border border-border p-3"
+							>
+								<div class="flex flex-1 items-center gap-3">
+									<Avatar class="h-10 w-10">
+										<AvatarFallback>
+											{{ getInitials(member.name) }}
+										</AvatarFallback>
+									</Avatar>
+
+									<div class="flex-1">
+										<div class="flex items-center gap-2">
+											<p class="font-medium text-ink">{{ member.name }}</p>
+											<span
+												v-if="
+													member.id ===
+													workspaces.find((w) => w.id == activeWorkspace?.value)
+														?.user_id
+												"
+												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+											>
+												Owner
+											</span>
+										</div>
+									</div>
+								</div>
+
+								<Button
+									v-if="canRemoveMember(member)"
+									@click="handleRemoveMember(member)"
+									variant="destructive"
+									size="sm"
+									:disabled="removingMemberId !== null"
+								>
+									<Loader
+										v-if="removingMemberId === member.id"
+										is-mini
+										class="mr-2"
+									/>
+									Remove
+								</Button>
+							</div>
+						</div>
+					</AsyncContent>
+				</SettingsSection>
+
+				<SettingsSection v-if="!isLocalActiveWorkspace" title="Invitations">
+					<WorkspaceInvitationsList />
+				</SettingsSection>
 			</div>
 
 			<AlertDialog v-model:open="showRemoveMemberDialog">
@@ -812,7 +818,7 @@
 						>
 						<AlertDialogAction
 							@click="confirmRemoveMember"
-							class="bg-red-600 text-white hover:bg-red-700"
+							class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
 						>
 							Remove
 						</AlertDialogAction>

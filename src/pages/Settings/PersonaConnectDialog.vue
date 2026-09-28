@@ -19,18 +19,23 @@
 				<form v-else class="flex flex-col gap-3" @submit.prevent="submit">
 					<label class="flex flex-col gap-1">
 						<span class="text-sm font-medium">Workspace</span>
-						<select
-							v-model.number="form.workspace_id"
-							class="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+						<Select
+							:model-value="String(form.workspace_id)"
+							@update:model-value="(v) => (form.workspace_id = Number(v))"
 						>
-							<option
-								v-for="ws in eligibleWorkspaces"
-								:key="ws.id"
-								:value="ws.id"
-							>
-								{{ ws.name }}
-							</option>
-						</select>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem
+									v-for="ws in eligibleWorkspaces"
+									:key="ws.id"
+									:value="String(ws.id)"
+								>
+									{{ ws.name }}
+								</SelectItem>
+							</SelectContent>
+						</Select>
 					</label>
 
 					<label class="flex flex-col gap-1">
@@ -43,7 +48,7 @@
 						/>
 						<span
 							v-if="fieldErrors.label"
-							class="text-xs text-red-600 dark:text-red-400"
+							class="text-xs text-destructive"
 						>
 							{{ fieldErrors.label.join(' ') }}
 						</span>
@@ -51,14 +56,23 @@
 
 					<label class="flex flex-col gap-1">
 						<span class="text-sm font-medium">Expires</span>
-						<select
-							v-model.number="form.expires_in_days"
-							class="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+						<Select
+							:model-value="String(form.expires_in_days)"
+							@update:model-value="(v) => (form.expires_in_days = Number(v))"
 						>
-							<option v-for="days in EXPIRY_OPTIONS" :key="days" :value="days">
-								{{ days }} days
-							</option>
-						</select>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem
+									v-for="days in EXPIRY_OPTIONS"
+									:key="days"
+									:value="String(days)"
+								>
+									{{ days }} days
+								</SelectItem>
+							</SelectContent>
+						</Select>
 					</label>
 
 					<p class="text-xs text-muted-foreground">
@@ -129,6 +143,13 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
 	import { toast } from '@/components/ui/toast';
 	import {
 		buildMcpUrl,
@@ -147,7 +168,20 @@
 
 	export default defineComponent({
 		name: 'PersonaConnectDialog',
-		components: { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input },
+		components: {
+			Button,
+			Dialog,
+			DialogContent,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
+			Input,
+			Select,
+			SelectContent,
+			SelectItem,
+			SelectTrigger,
+			SelectValue,
+		},
 		props: {
 			persona: { type: Object as PropType<Persona>, required: true },
 			open: { type: Boolean, default: false },
