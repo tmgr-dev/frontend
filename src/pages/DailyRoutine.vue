@@ -9,7 +9,7 @@
 			<DailyRoutinesPreview />
 		</template>
 
-		<BaseLayout title="Daily routines">
+		<BaseLayout :title="pageTitle">
 			<template #body>
 				<div
 					ref="rootRef"
@@ -618,6 +618,9 @@
 	);
 	// /routines is workspace-independent, so store.state.workspaces may be empty here.
 	const isLocalWorkspace = ref(false);
+	const pageTitle = computed(() =>
+		isLocalWorkspace.value ? 'Local routines' : 'Daily routines',
+	);
 	watch(
 		workspaceIdentity,
 		async (id) => {

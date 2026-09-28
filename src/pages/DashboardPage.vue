@@ -713,7 +713,7 @@
 
 			<BaseLayout :title="pageTitle">
 				<template #header-actions>
-					<div class="dashboard-header-actions flex items-center gap-2">
+					<div class="dashboard-header-actions flex flex-wrap items-center gap-2">
 						<!-- Connection Status Indicator -->
 						<div
 							v-if="showConnectionStatus || !isRealTimeActive"
@@ -1330,10 +1330,6 @@
 
 	/* Print Styles */
 	@media print {
-		.dashboard-container {
-			@apply max-w-none px-0;
-		}
-
 		:deep([data-page-width]) {
 			@apply max-w-none px-0;
 		}

@@ -1,5 +1,8 @@
 <template>
-	<component :is="standalone ? 'PageContainer' : 'div'" :width="standalone ? 'narrow' : undefined">
+	<component
+		:is="standalone ? 'PageContainer' : 'div'"
+		:width="standalone ? 'narrow' : undefined"
+	>
 		<PageHeader v-if="standalone" title="Profile" />
 		<div class="flex max-w-lg flex-col gap-3">
 			<div class="flex items-center gap-4">
@@ -76,8 +79,7 @@
 			<div class="mt-6 border-t pt-4">
 				<h4 class="mb-1 text-sm font-semibold">Agent connections</h4>
 				<p class="mb-2 text-xs text-ink-subtle">
-					Revoke every persona token, across all your personas and
-					workspaces.
+					Revoke every persona token, across all your personas and workspaces.
 				</p>
 				<button
 					type="button"

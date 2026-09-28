@@ -163,7 +163,7 @@
 							<h2 class="text-base font-semibold text-ink">Profile</h2>
 							<profile :standalone="false" />
 							<div class="mt-6 border-t pt-6">
-								<h3 class="mb-4 text-lg font-bold">Telegram Integration</h3>
+								<h3 class="mb-4 text-sm font-semibold text-ink">Telegram Integration</h3>
 								<div class="flex items-center gap-4">
 									<div
 										v-if="user.telegram_username"

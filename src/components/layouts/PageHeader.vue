@@ -12,7 +12,7 @@
 				<ChevronLeft class="h-4 w-4" />
 				{{ backLabel }}
 			</router-link>
-			<h1 class="text-xl font-semibold text-ink md:text-2xl">
+			<h1 class="break-words text-xl font-semibold text-ink md:text-2xl">
 				<slot name="title">{{ title }}</slot>
 			</h1>
 			<p
