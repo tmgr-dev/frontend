@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.2 — 2026-09-28
+
+- Plugins API 1.3: new page building blocks for plugins — `card` (solid background, border, accent stripe, padding,
+  optionally clickable with keyboard support), `grid` (1–6 equal columns, scrolls sideways when it doesn't fit),
+  `menu` (a "⋯" menu with actions), `stack` alignment options, `button` variants and sizes, and clickable `stat`/`badge`.
+  Older plugins render exactly as before.
+
 ## 0.9.1 — 2026-09-28
 
 - Fixed global shortcuts (⌥Space quick add, ⌥⇧T timer, ⌥⇧S screenshot, ⌥⇧C selection) going dead after the app
