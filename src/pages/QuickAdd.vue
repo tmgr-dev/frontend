@@ -220,7 +220,21 @@
 						});
 						await uploadTaskFile(task.id, screenshot.value);
 					} else {
-						await createDailyTask(fields);
+						const routine = await createDailyTask(fields);
+						const targetWorkspace = workspaces.value.find(
+							(ws) => ws.id === workspaceId.value,
+						);
+						if (targetWorkspace?.is_local) {
+							try {
+								const { emitTo } = await import('@tauri-apps/api/event');
+								await emitTo('main', 'quick-add://routine-created', {
+									workspaceId: workspaceId.value,
+									routine,
+								});
+							} catch (e) {
+								console.error('quick add: routine-created relay failed', e);
+							}
+						}
 					}
 					message.value = 'Added';
 					setTimeout(async () => {
