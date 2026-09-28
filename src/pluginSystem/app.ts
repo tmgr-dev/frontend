@@ -3,7 +3,7 @@ import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
-import { domainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
+import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import {
 	dndState,
 	expireDndIfNeeded,
@@ -154,17 +154,6 @@ const startDevPluginWatcher = (host: ReturnType<typeof createPluginHost>) => {
 };
 
 let devPluginWatcher: ReturnType<typeof startDevPluginWatcher> | null = null;
-
-/** Pure, so the `quick-add://routine-created` relay can be tested without Tauri: main window only. */
-export const routineCreatedEvent = (payload: {
-	workspaceId: number;
-	routine: Record<string, unknown>;
-}): DomainEvent | null => {
-	const routineId = Number((payload.routine as { id?: unknown })?.id);
-	return Number.isFinite(routineId)
-		? { type: 'routine.created', workspaceId: payload.workspaceId, routineId, routine: payload.routine }
-		: null;
-};
 
 const clients = new Map<number, AxiosInstance>();
 
@@ -641,12 +630,18 @@ export const installPlugins = async (
 	await listen<string>('tray://plugin-item', ({ payload }) =>
 		void followTrayClick(host, store, payload),
 	);
-	await listen<{ workspaceId: number; routine: Record<string, unknown> }>(
+	// The relay is only a hint: the routine is read back from that local workspace, never taken from the payload.
+	await listen<{ workspaceId?: unknown; routineId?: unknown }>(
 		'quick-add://routine-created',
-		({ payload }) => {
-			const event = routineCreatedEvent(payload);
-			if (event) domainEvents.emit(event);
-		},
+		({ payload }) =>
+			void (async () => {
+				const workspaceId = Number(payload?.workspaceId);
+				const routineId = Number(payload?.routineId);
+				if (!Number.isSafeInteger(workspaceId) || !Number.isSafeInteger(routineId)) return;
+				if (!(await localWorkspaceById(workspaceId))) return;
+				const { data } = await clientFor(workspaceId, store).get(`daily-routines/tasks/${routineId}`);
+				if (data?.data) domainEvents.emit({ type: 'routine.created', workspaceId, routineId, routine: data.data });
+			})().catch(() => undefined),
 	);
 	watch(
 		() =>

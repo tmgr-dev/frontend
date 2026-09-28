@@ -163,6 +163,35 @@ describeSqlite('routines through the local router via pinnedLocalClient/createDa
 		expect(await api.listRoutineInstances(created.id)).toHaveLength(1);
 	});
 
+	it('overlapping completes on a date with no instance create one COMPLETED instance', async () => {
+		const api = dataApi();
+		const created = await api.createRoutine({ title: 'Stretch', description: null, date: null, time: null });
+		const results = await Promise.all([
+			api.completeRoutine(created.id, '2026-10-07'),
+			api.completeRoutine(created.id, '2026-10-07'),
+		]);
+		expect(results.map((r) => r.status)).toEqual(['COMPLETED', 'COMPLETED']);
+		expect(await api.listRoutineInstances(created.id)).toEqual([
+			expect.objectContaining({ date: '2026-10-07', status: 'COMPLETED' }),
+		]);
+	});
+
+	it('skipping a completed date marks it SKIPPED', async () => {
+		const api = dataApi();
+		const created = await api.createRoutine({ title: 'Walk', description: null, date: null, time: null });
+		await api.completeRoutine(created.id, '2026-10-08');
+		expect((await api.skipRoutine(created.id, '2026-10-08')).status).toBe('SKIPPED');
+	});
+
+	it('refuses to convert into a status that does not exist and keeps the routine', async () => {
+		const api = dataApi();
+		const created = await api.createRoutine({ title: 'Keep me', description: null, date: null, time: null });
+		await expect(api.convertRoutine(created.id, { categoryId: null, statusId: 999_999 })).rejects.toMatchObject({
+			response: { status: 422 },
+		});
+		expect((await api.getRoutine(created.id)).title).toBe('Keep me');
+	});
+
 	it('converts a routine into a task with a category ticket key, and the routine is gone', async () => {
 		const api = dataApi();
 		const category = await api.createCategory({ title: 'Habits', code: 'HB' });

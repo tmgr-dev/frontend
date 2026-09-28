@@ -631,7 +631,9 @@ const createBroker = (deps) => {
             write: true,
             run: (p) => {
                 requireLocalWorkspace();
-                const patch = (p.patch ?? {});
+                if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch))
+                    invalid('patch must be an object');
+                const patch = p.patch;
                 const fields = {};
                 if ('title' in patch)
                     fields.title = string(patch.title, 'title', 500);

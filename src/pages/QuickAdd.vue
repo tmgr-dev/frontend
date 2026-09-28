@@ -228,8 +228,8 @@
 							try {
 								const { emitTo } = await import('@tauri-apps/api/event');
 								await emitTo('main', 'quick-add://routine-created', {
-									workspaceId: workspaceId.value,
-									routine,
+									workspaceId: routine?.workspace_id ?? workspaceId.value,
+									routineId: routine?.id,
 								});
 							} catch (e) {
 								console.error('quick add: routine-created relay failed', e);

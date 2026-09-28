@@ -298,7 +298,12 @@ export const convertRoutineToTask = async (ctx: LocalContext, row: any, body: an
 		]);
 		if (!rows.length) throw new LocalHttpError(422, 'The project category does not belong to the target workspace.');
 	}
-	const statusId = numberOrNull(body?.status_id) ?? (await defaultStatusId(ctx));
+	const requestedStatusId = numberOrNull(body?.status_id);
+	if (requestedStatusId) {
+		const rows = await ctx.db.select<any>(`SELECT id FROM statuses WHERE id = ?`, [requestedStatusId]);
+		if (!rows.length) throw new LocalHttpError(422, 'The status does not belong to the target workspace.');
+	}
+	const statusId = requestedStatusId ?? (await defaultStatusId(ctx));
 	const now = iso(ctx);
 	const result = await ctx.db.execute(
 		`INSERT INTO tasks (title, description, status_id, project_category_id, priority, approximately_time,

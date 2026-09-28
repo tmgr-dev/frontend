@@ -1033,6 +1033,7 @@ describe('routines', () => {
 			await code(writer.call('routines.create', { title: 'x', date: '2026-09-26', time: '9:00' })),
 		).toBe('INVALID_PARAMS');
 		expect(await code(writer.call('routines.update', { id: 4, patch: {} }))).toBe('INVALID_PARAMS');
+		expect(await code(writer.call('routines.update', { id: 4, patch: 'title' }))).toBe('INVALID_PARAMS');
 	});
 
 	it('refuses every routines.* call outside a local workspace, before touching the api', async () => {

@@ -75,6 +75,41 @@ export const createDataApi = (
 		if (cloud)
 			throw new PluginError('NOT_SUPPORTED', 'routines are not available in shared workspaces yet');
 	};
+	// Overlapping calls on one routine would each see no instance for the date and create two.
+	const routineQueues = new Map<number, Promise<unknown>>();
+	const routineSerial = <T>(id: number, run: () => Promise<T>): Promise<T> => {
+		const next = (routineQueues.get(id) ?? Promise.resolve()).then(run, run);
+		const settled = next.catch(() => undefined);
+		routineQueues.set(id, settled);
+		void settled.then(() => {
+			if (routineQueues.get(id) === settled) routineQueues.delete(id);
+		});
+		return next;
+	};
+	/** Never the toggling complete-on route: a set status is what makes repeating the call harmless. */
+	const setRoutineStatus = async (id: number, date: string, status: 'COMPLETED' | 'SKIPPED') => {
+		const instances = (unwrap(
+			await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+		) ?? []) as any[];
+		let instance = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
+		if (instance?.status === status) return toRoutineInstance(instance);
+		instance ??= unwrap(
+			await http.patch(
+				`daily-routines/tasks/${id}/instances/virtual`,
+				{ scheduled_date: date },
+				{ headers },
+			),
+		);
+		return toRoutineInstance(
+			unwrap(
+				await http.post(
+					`daily-routines/tasks/${id}/instances/${instance.id}/${status === 'COMPLETED' ? 'complete' : 'skip'}`,
+					undefined,
+					{ headers },
+				),
+			),
+		);
+	};
 	const storage = (key?: string) =>
 		`plugins/${encodeURIComponent(storageId)}/storage${
 			key === undefined ? '' : `/${encodeURIComponent(key)}`
@@ -394,66 +429,11 @@ export const createDataApi = (
 		},
 		completeRoutine: async (id, date) => {
 			routinesNotSupported();
-			const instances = (unwrap(
-				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
-			) ?? []) as any[];
-			const existing = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
-			if (existing) {
-				if (existing.status === 'COMPLETED') return toRoutineInstance(existing);
-				return toRoutineInstance(
-					unwrap(
-						await http.post(
-							`daily-routines/tasks/${id}/instances/${existing.id}/complete`,
-							undefined,
-							{ headers },
-						),
-					),
-				);
-			}
-			const completed = unwrap(
-				await http.post(`daily-routines/tasks/${id}/complete-on`, { date }, { headers }),
-			);
-			return toRoutineInstance({
-				id: completed.instance_id,
-				routine_id: id,
-				scheduled_for: `${date}T00:00:00`,
-				status: completed.status,
-			});
+			return routineSerial(id, () => setRoutineStatus(id, date, 'COMPLETED'));
 		},
 		skipRoutine: async (id, date) => {
 			routinesNotSupported();
-			const instances = (unwrap(
-				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
-			) ?? []) as any[];
-			const existing = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
-			if (existing) {
-				if (existing.status === 'SKIPPED') return toRoutineInstance(existing);
-				return toRoutineInstance(
-					unwrap(
-						await http.post(
-							`daily-routines/tasks/${id}/instances/${existing.id}/skip`,
-							undefined,
-							{ headers },
-						),
-					),
-				);
-			}
-			const created = unwrap(
-				await http.patch(
-					`daily-routines/tasks/${id}/instances/virtual`,
-					{ scheduled_date: date },
-					{ headers },
-				),
-			);
-			return toRoutineInstance(
-				unwrap(
-					await http.post(
-						`daily-routines/tasks/${id}/instances/${created.id}/skip`,
-						undefined,
-						{ headers },
-					),
-				),
-			);
+			return routineSerial(id, () => setRoutineStatus(id, date, 'SKIPPED'));
 		},
 		convertRoutine: async (id, { categoryId, statusId }) => {
 			routinesNotSupported();

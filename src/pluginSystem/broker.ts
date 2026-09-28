@@ -917,7 +917,9 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				requireLocalWorkspace();
-				const patch = (p.patch ?? {}) as Params;
+				if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch))
+					invalid('patch must be an object');
+				const patch = p.patch as Params;
 				const fields: Record<string, unknown> = {};
 				if ('title' in patch) fields.title = string(patch.title, 'title', 500);
 				if ('description' in patch) {

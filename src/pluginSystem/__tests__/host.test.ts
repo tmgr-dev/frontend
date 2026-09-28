@@ -194,6 +194,43 @@ it('delivers workspace events to subscribers, but not their own writes or other 
 	host.dispose();
 });
 
+it('delivers routine events normalized, and a converted task id only with tasks:read', async () => {
+	const stored: [string, string][] = [];
+	const { host, events } = setup(
+		[
+			pkg(
+				'tmgr.notes',
+				`tmgr.events.on('routine.created', (e) => tmgr.storage.set('created', e));
+				tmgr.events.on('routine.deleted', (e) => tmgr.storage.set('deleted', e));`,
+				['routines:read'],
+			),
+		],
+		{ storageSet: async (key: string, json: string) => void stored.push([key, json]) },
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	events.emit({
+		type: 'routine.created',
+		workspaceId: LOCAL.id,
+		routineId: 1_000_000_001,
+		routine: { id: 1_000_000_001, title: 'Note', description: null, user: { id: 7 }, settings: [], created_at: 'a', updated_at: 'b' },
+	});
+	events.emit({ type: 'routine.deleted', workspaceId: LOCAL.id, routineId: 1_000_000_001, taskId: 77 });
+	await flush();
+	const byKey = Object.fromEntries(stored.map(([key, json]) => [key, JSON.parse(json)]));
+	expect(byKey.created.routine).toEqual({
+		id: 1_000_000_001,
+		title: 'Note',
+		description: null,
+		scheduledDate: null,
+		scheduledTime: null,
+		createdAt: 'a',
+		updatedAt: 'b',
+	});
+	expect(byKey.deleted).toEqual({ type: 'routine.deleted', workspaceId: LOCAL.id, routineId: 1_000_000_001 });
+	host.dispose();
+});
+
 it('shows status bar items while the plugin runs and badges it provides', async () => {
 	const { host, state } = setup([
 		pkg(

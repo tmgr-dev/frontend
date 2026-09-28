@@ -190,7 +190,9 @@ export const eventsForResponse = (
 	}
 	if ((match = path.match(/^tasks\/(\d+)$/))) {
 		const taskId = Number(match[1]);
-		if (taskId > ROUTINE_ID_BASE && (method === 'put' || method === 'patch')) {
+		// Local workspace ids are negative; a cloud task id above the base is still a task.
+		const inLocalWorkspace = (workspaceOf(payload) ?? 0) < 0;
+		if (taskId > ROUTINE_ID_BASE && inLocalWorkspace && (method === 'put' || method === 'patch')) {
 			return [
 				{
 					type: 'routine.updated',

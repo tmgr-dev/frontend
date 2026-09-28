@@ -302,15 +302,23 @@ describe('eventsForResponse', () => {
 			id: 1_000_000_005,
 			title: 'Resize me',
 			scheduled_date: null,
+			workspace_id: -42,
 			created_at: 'a',
 			updated_at: 'b',
 		};
 		expect(
 			eventsForResponse(response('put', 'tasks/1000000005', routine, { approximately_time: 90 }), current),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, routine }]);
+		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
 		expect(
 			eventsForResponse(response('patch', 'tasks/1000000005', routine, { title: 'x' }), current),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, routine }]);
+		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
+	});
+
+	it('keeps a cloud task id above the routine range a task', () => {
+		const cloudTask = { id: 1_000_000_005, title: 'Big id', workspace_id: 5 };
+		expect(
+			eventsForResponse(response('patch', 'tasks/1000000005', cloudTask, { title: 'x' }), current).map((e) => e.type),
+		).toEqual(['task.updated']);
 	});
 
 	it('ignores reads and unrelated writes', () => {

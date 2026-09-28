@@ -910,6 +910,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			else delete payload.routine;
 			if (instance !== undefined) payload.instance = instance;
 			else delete payload.instance;
+			if (event.type === 'routine.deleted' && !permissions.includes('tasks:read')) delete payload.taskId;
 			void dispatch(pluginId, 'event', event.type, payload).catch(
 				() => undefined,
 			);
