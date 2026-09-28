@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.2 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.3 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -43,7 +43,10 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
 8. Visit `tmgr://plugin/tmgr-dev.kitchen-sink/command/ping` (e.g. paste it into a browser, or use
    whatever the OS's URL-open mechanism is) — a "Pinged via a tmgr:// deep link." notification appears.
 9. Visit `tmgr://plugin/tmgr-dev.kitchen-sink/view/view?task=42` — opens the declarative "Kitchen Sink
-   view" and shows "Opened from a deep link for task 42".
+   view" and shows "Opened from a deep link for task 42". Below that, a "Card & grid demo (API 1.3)"
+   section shows 4 accented lanes (blue/yellow/purple/green) as a horizontally-scrolling grid, each with
+   a heading row (badge + "More" menu, one item asks to confirm), 3 nested cards (whole card clickable),
+   and a row of clickable stats — all run `tmgr-dev.kitchen-sink.cardClicked`, which logs and notifies.
 10. Open "Kitchen Sink window" from the plugin's card — a separate window opens showing the task count,
     read through `window.tmgr`.
 11. Switch to a different workspace and back — the plugin's log (Settings → Plugins → its card → Log)

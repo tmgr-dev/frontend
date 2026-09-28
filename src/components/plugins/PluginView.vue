@@ -1,13 +1,5 @@
 <template>
-	<div
-		v-if="node.type === 'stack'"
-		:class="[
-			'flex gap-3',
-			node.direction === 'row'
-				? 'flex-row flex-wrap items-stretch'
-				: 'flex-col',
-		]"
-	>
+	<div v-if="node.type === 'stack'" :class="stackClasses(node)">
 		<PluginView
 			v-for="(child, index) in node.children"
 			:key="index"
@@ -15,6 +7,74 @@
 			:plugin-id="pluginId"
 		/>
 	</div>
+	<div
+		v-else-if="node.type === 'card'"
+		:class="cardOuterClasses(node)"
+		:role="node.onClick ? 'button' : undefined"
+		:tabindex="node.onClick ? 0 : undefined"
+		:aria-label="node.onClick ? node.label : undefined"
+		@click="handleCardClick"
+		@keydown="handleCardKeydown"
+	>
+		<div v-if="node.accent" :class="['h-[3px] w-full', barClass(node.accent)]" />
+		<div :class="cardInnerClasses(node)">
+			<PluginView
+				v-for="(child, index) in node.children"
+				:key="index"
+				:node="child"
+				:plugin-id="pluginId"
+			/>
+		</div>
+	</div>
+	<div v-else-if="node.type === 'grid'" class="w-full min-w-0 overflow-x-auto">
+		<div :class="gridInnerClasses(node)" :style="gridTemplateStyle(node)">
+			<PluginView
+				v-for="(child, index) in node.children"
+				:key="index"
+				:node="child"
+				:plugin-id="pluginId"
+			/>
+		</div>
+	</div>
+	<template v-else-if="node.type === 'menu'">
+		<DropdownMenu>
+			<DropdownMenuTrigger as-child>
+				<button
+					type="button"
+					class="inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+					:aria-label="node.label ?? 'More actions'"
+				>
+					<MoreHorizontal class="h-4 w-4" />
+					<span v-if="node.label" class="text-xs">{{ node.label }}</span>
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem
+					v-for="(item, index) in node.items"
+					:key="index"
+					@select="handleMenuSelect(item)"
+				>
+					{{ item.text }}
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+		<AlertDialog v-model:open="menuConfirmOpen">
+			<AlertDialogContent v-if="menuConfirmItem">
+				<AlertDialogHeader>
+					<AlertDialogTitle
+						>Plugin {{ pluginName }}: {{ menuConfirmItem.text }}</AlertDialogTitle
+					>
+					<AlertDialogDescription>{{
+						menuConfirmItem.confirm
+					}}</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction @click="runMenuConfirm">Continue</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	</template>
 	<component
 		:is="`h${node.level + 1}`"
 		v-else-if="node.type === 'heading'"
@@ -31,18 +91,30 @@
 	>
 		{{ node.text }}
 	</p>
-	<span
+	<component
+		:is="node.command ? 'button' : 'span'"
 		v-else-if="node.type === 'badge'"
+		:type="node.command ? 'button' : undefined"
 		:class="[
 			'inline-flex w-fit items-center rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
 			colorClass(node.color),
+			node.command &&
+				'cursor-pointer transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
 		]"
+		@click="node.command ? runNodeCommand(node) : undefined"
 	>
 		{{ node.text }}
-	</span>
-	<div
+	</component>
+	<component
+		:is="node.command ? 'button' : 'div'"
 		v-else-if="node.type === 'stat'"
-		class="min-w-[8rem] flex-1 rounded-md border border-border bg-card px-3 py-2"
+		:type="node.command ? 'button' : undefined"
+		:class="[
+			'block min-w-[8rem] flex-1 rounded-md border border-border bg-card px-3 py-2 text-left',
+			node.command &&
+				'cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+		]"
+		@click="node.command ? runNodeCommand(node) : undefined"
 	>
 		<div class="text-2xs uppercase tracking-wide text-muted-foreground">
 			{{ node.label }}
@@ -50,7 +122,7 @@
 		<div :class="['text-lg font-semibold tabular-nums', toneClass(node.tone)]">
 			{{ node.value }}
 		</div>
-	</div>
+	</component>
 	<div
 		v-else-if="node.type === 'progress'"
 		class="h-2 w-full overflow-hidden rounded-full bg-muted"
@@ -106,8 +178,8 @@
 	</div>
 	<AlertDialog v-else-if="node.type === 'button'" v-model:open="confirmOpen">
 		<Button
-			variant="outline"
-			size="sm"
+			:variant="buttonVariantProp(node.variant)"
+			:size="buttonSizeProp(node.size)"
 			class="w-fit"
 			:disabled="running"
 			@click="handleButtonClick"
@@ -204,14 +276,31 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import { usePluginTicker } from '@/composable/usePluginTicker';
 	import { formatDueTime, formatTimeAgo } from '@/pluginSystem/relativeTime';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
-	import type { Color, Tone, UiNode } from '@/pluginSystem/uiTree';
+	import type { Color, MenuItem, Tone, UiNode } from '@/pluginSystem/uiTree';
 	import store from '@/store';
-	import { Check, Copy } from 'lucide-vue-next';
-	import { computed, defineComponent, ref, type PropType } from 'vue';
+	import { Check, Copy, MoreHorizontal } from 'lucide-vue-next';
+	import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
+	import {
+		buttonSizeProp,
+		buttonVariantProp,
+		cardInnerClasses,
+		cardKeyActivates,
+		cardOuterClasses,
+		gridInnerClasses,
+		gridTemplateStyle,
+		isNestedInteractive,
+		stackClasses,
+	} from './pluginViewClasses';
 
 	const TONES: Record<Tone, string> = {
 		default: 'text-foreground',
@@ -255,6 +344,11 @@
 			Button,
 			Check,
 			Copy,
+			DropdownMenu,
+			DropdownMenuContent,
+			DropdownMenuItem,
+			DropdownMenuTrigger,
+			MoreHorizontal,
 		},
 		props: {
 			node: { type: Object as PropType<UiNode>, required: true },
@@ -263,18 +357,14 @@
 		setup(props) {
 			const running = ref(false);
 			const confirmOpen = ref(false);
-			const run = async () => {
-				if (props.node.type !== 'button') return;
-				confirmOpen.value = false;
+			const runCommand = async (command: string, rawArgs: unknown) => {
 				running.value = true;
 				try {
-					// node.args can be a reactive proxy by the time it reaches here (the tree lives in a
+					// args can be a reactive proxy by the time it reaches here (the tree lives in a
 					// reactive ref/record); postMessage to the plugin worker needs a plain, cloneable value.
 					const args =
-						props.node.args === undefined
-							? null
-							: JSON.parse(JSON.stringify(props.node.args));
-					await pluginHost()?.runCommand(props.pluginId, props.node.command, args);
+						rawArgs === undefined ? null : JSON.parse(JSON.stringify(rawArgs));
+					await pluginHost()?.runCommand(props.pluginId, command, args);
 				} catch (error) {
 					if (pluginState.plugins[props.pluginId]?.status === 'crashed') return;
 					toast({
@@ -286,10 +376,57 @@
 					running.value = false;
 				}
 			};
+			const run = () => {
+				if (props.node.type !== 'button') return;
+				confirmOpen.value = false;
+				void runCommand(props.node.command, props.node.args);
+			};
 			const handleButtonClick = () => {
 				if (props.node.type !== 'button') return;
 				if (props.node.confirm) confirmOpen.value = true;
 				else void run();
+			};
+			const runNodeCommand = (node: UiNode) => {
+				if ((node.type === 'badge' || node.type === 'stat') && node.command) {
+					void runCommand(node.command, node.args);
+				}
+			};
+			const handleCardClick = (event: MouseEvent) => {
+				if (props.node.type !== 'card' || !props.node.onClick) return;
+				if (
+					isNestedInteractive(
+						event.target as Element | null,
+						event.currentTarget as Element | null,
+					)
+				)
+					return;
+				void runCommand(props.node.onClick.command, props.node.onClick.args);
+			};
+			const handleCardKeydown = (event: KeyboardEvent) => {
+				if (props.node.type !== 'card' || !props.node.onClick) return;
+				if (event.target !== event.currentTarget) return;
+				if (event.key === ' ') event.preventDefault();
+				if (cardKeyActivates(event.key, true)) {
+					void runCommand(props.node.onClick.command, props.node.onClick.args);
+				}
+			};
+			const menuConfirmOpen = ref(false);
+			const menuConfirmItem = ref<MenuItem | null>(null);
+			const handleMenuSelect = (item: MenuItem) => {
+				if (item.confirm) {
+					void nextTick(() => {
+						menuConfirmItem.value = item;
+						menuConfirmOpen.value = true;
+					});
+				} else {
+					void runCommand(item.command, item.args);
+				}
+			};
+			const runMenuConfirm = () => {
+				const item = menuConfirmItem.value;
+				if (!item) return;
+				menuConfirmOpen.value = false;
+				void runCommand(item.command, item.args);
 			};
 			const openTask = () => {
 				if (props.node.type === 'taskLink') {
@@ -336,6 +473,13 @@
 				confirmOpen,
 				run,
 				handleButtonClick,
+				runNodeCommand,
+				handleCardClick,
+				handleCardKeydown,
+				menuConfirmOpen,
+				menuConfirmItem,
+				handleMenuSelect,
+				runMenuConfirm,
 				openTask,
 				openLinkNode,
 				copyText,
@@ -347,6 +491,13 @@
 				toneClass: (tone: Tone) => TONES[tone],
 				colorClass: (color: Color) => COLORS[color],
 				barClass: (color: Color) => BARS[color],
+				stackClasses,
+				cardOuterClasses,
+				cardInnerClasses,
+				gridInnerClasses,
+				gridTemplateStyle,
+				buttonVariantProp,
+				buttonSizeProp,
 			};
 		},
 	});
