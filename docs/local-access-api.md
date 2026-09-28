@@ -73,7 +73,7 @@ plus four local-only routes.
 
 | Route | Response |
 |---|---|
-| `GET /api/local/health` | no token needed: `{ok, ready, app_version, api: "local-1"}`. With a token, adds `{token: "valid"\|<error code>, workspace: {id, code, name}, persona: {id, name}}` |
+| `GET /api/local/health` | no token needed: `{ok, ready, app_version, api: "local-1"}`. With a token, adds `{token: "valid"\|<error code>, workspace: {id, code}, persona: {id, name}}` |
 | `GET /api/local/whoami` | `{user_id, persona: {id, name, description, owner, prompt_version, workspace: {id, code, permissions}, skills: [{slug, title, when, version}]}, token: {id, prefix, expires_at}}` |
 | `GET /api/local/events` | SSE — see below |
 | `POST /mcp` | MCP, streamable HTTP, stateless JSON responses (no SSE) |
@@ -210,20 +210,25 @@ becomes a JSON-RPC error response (`code: -32000`) instead of hanging the
 client, and is logged to stderr. Token resolution: `--token-id <id>` (reads
 Keychain on macOS) or `TMGR_LOCAL_TOKEN` env var.
 
-## Plugin → companion forwarding contract
+## Plugin → companion forwarding: an example, not a platform API
 
 The `tmgr.agent-board` plugin owns "my comments become a command to the
-agent"; it does not go through the socket. Design doc §6.2:
+agent"; it does not go through the socket, so this is **the board plugin's
+own contract with its companion process, not something this platform
+exposes or guarantees**. It is documented here only as a worked example of
+how a plugin can forward a hint to a local companion.
 
-- The plugin calls `tmgr.net.fetch('http://127.0.0.1:<port>/board/owner-comment', { method: 'POST', body })`.
-  Port is set by the owner in the board's setup wizard, default **`47821`**.
-  `net.fetch` only allows loopback HTTP.
+The board plugin calls `tmgr.net.fetch('http://127.0.0.1:<port>/v1/comment-created', { method: 'POST', headers: { Authorization: 'Bearer <token>' }, body })`.
+Port and token are set by the owner in the board's setup wizard.
+`net.fetch` only allows loopback HTTP.
+
 - The body is a **hint, not data**: `{v: 1, workspaceCode, taskId, commentId, createdAt}` — no comment text.
 - The companion must **not trust the hint**. It re-reads
   `GET /api/tasks/{taskId}/comments` over the socket and only accepts the
   comment if `author.kind === 'user'` and `id === commentId`. Anything on the
-  local machine can hit this port, but it cannot forge the comment's author —
-  that's asserted from data read back through the socket, not from the ping.
+  local machine that also knows the token can hit this port, but it cannot
+  forge the comment's author — that's asserted from data read back through
+  the socket, not from the ping.
 - Idempotency is by `commentId` (the companion's own cursor). The companion
   replies `202` or an error; on error the plugin retries via its alarm (up to
   10 attempts, starting at 1 minute) and queues in `tmgr.storage`.
