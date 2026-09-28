@@ -1,6 +1,6 @@
 <template>
 	<Dialog :open="open" @update:open="onOpenChange">
-		<DialogContent class="sm:max-w-[480px]">
+		<DialogContent :class="issuedToken ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'">
 			<DialogHeader>
 				<DialogTitle>Connect an agent</DialogTitle>
 			</DialogHeader>
@@ -65,7 +65,7 @@
 					{{ copiedToken ? 'Copied' : 'Copy token' }}
 				</Button>
 
-				<div class="flex flex-col gap-2">
+				<div class="flex min-w-0 flex-col gap-2">
 					<p class="text-sm font-medium">MCP config</p>
 
 					<p class="text-xs text-muted-foreground">Codex (<code>~/.codex/config.toml</code>)</p>
@@ -80,7 +80,7 @@
 						>{{ claudeSnippet }}</pre
 					>
 
-					<p class="text-xs text-muted-foreground">
+					<p class="break-words text-xs text-muted-foreground">
 						Other companions: read the token id from
 						<code>--token-id {{ issuedToken.id }}</code>, or point
 						<code>TMGR_LOCAL_TOKEN</code> at the secret.

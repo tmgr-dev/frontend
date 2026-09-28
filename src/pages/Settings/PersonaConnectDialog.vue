@@ -1,6 +1,6 @@
 <template>
 	<Dialog :open="open" @update:open="onOpenChange">
-		<DialogContent class="sm:max-w-[480px]">
+		<DialogContent :class="issuedSecret ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'">
 			<DialogHeader>
 				<DialogTitle>Connect an agent</DialogTitle>
 			</DialogHeader>
@@ -90,7 +90,7 @@
 					</Button>
 				</div>
 
-				<div class="flex flex-col gap-2">
+				<div class="flex min-w-0 flex-col gap-2">
 					<p class="text-sm">
 						Add it to your agent's <code>.mcp.json</code>:
 					</p>
