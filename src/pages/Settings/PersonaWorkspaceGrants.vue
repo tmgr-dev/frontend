@@ -50,6 +50,7 @@
 				>
 					<input
 						type="checkbox"
+						class="accent-primary"
 						:checked="grantFor(ws.id)?.permissions.includes(perm)"
 						:disabled="!!saving[ws.id]"
 						@change="

@@ -10,7 +10,7 @@ const DESCRIPTIONS: Record<string, string> = {
 	dashboard: 'See an overview of activity and progress across your workspace.',
 	daily_routines: 'Track recurring routines and notes separate from your tasks.',
 	'task.comments': 'Allow comments and discussion on tasks.',
-	'task.countdown': 'Show a live countdown for tasks with a deadline.',
+	'task.countdown': 'Track time spent on tasks with a start/stop timer.',
 	'task.files': 'Allow files to be attached to tasks.',
 	'task.relations': 'Allow tasks to be linked to related tasks.',
 	'task.checkpoints': 'Break tasks down into smaller checkpoints.',

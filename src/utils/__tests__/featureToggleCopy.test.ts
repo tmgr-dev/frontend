@@ -38,7 +38,7 @@ describe('featureDescription', () => {
 	});
 
 	it('falls back to the copy map for known keys', () => {
-		expect(featureDescription('task.countdown')).toMatch(/countdown/i);
+		expect(featureDescription('task.countdown')).toMatch(/timer/i);
 	});
 
 	it('returns an empty string for unknown keys', () => {
