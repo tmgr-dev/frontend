@@ -1,6 +1,5 @@
 <template>
 	<PageContainer width="wide">
-		<PageHeader :title="pageTitle" />
 		<div v-if="!entry" class="text-sm text-muted-foreground">
 			This plugin is not installed.
 		</div>
@@ -42,7 +41,6 @@
 
 <script lang="ts">
 	import PageContainer from '@/components/layouts/PageContainer.vue';
-	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import PluginView from '@/components/plugins/PluginView.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -54,7 +52,7 @@
 
 	export default defineComponent({
 		name: 'PluginPage',
-		components: { Button, PageContainer, PageHeader, PluginView },
+		components: { Button, PageContainer, PluginView },
 		setup() {
 			const route = useRoute();
 			const pluginId = computed(() => String(route.params.pluginId));
@@ -142,20 +140,7 @@
 				{ immediate: true },
 			);
 
-			const pageTitle = computed(
-				() => view.value?.title ?? entry.value?.manifest.name ?? 'Plugin',
-			);
-
-			return {
-				pluginId,
-				viewId,
-				entry,
-				tree,
-				error,
-				view,
-				openWindow,
-				pageTitle,
-			};
+			return { pluginId, viewId, entry, tree, error, view, openWindow };
 		},
 	});
 </script>
