@@ -22,7 +22,39 @@
 		</div>
 
 		<AttachmentsSkeleton v-if="loadingFiles && !files.length && !loadError" />
-		<div v-if="files.length > 0 || uploads.length > 0" class="mb-3 space-y-2">
+		<div
+			v-if="files.length > 0 || uploads.length > 0 || pendingFiles.length > 0"
+			class="mb-3 space-y-2"
+		>
+			<div
+				v-for="(file, index) in pendingFiles"
+				:key="`pending-${index}-${file.name}`"
+				class="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800"
+			>
+				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
+					<FileIcon :size="20" class="text-gray-500 dark:text-gray-400" />
+				</div>
+				<div class="min-w-0 flex-1">
+					<p
+						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
+					>
+						{{ file.name }}
+					</p>
+					<p class="text-xs text-gray-500 dark:text-gray-400">
+						{{ formatFileSize(file.size) }} · Will upload when the task is
+						created
+					</p>
+				</div>
+				<button
+					type="button"
+					@click="removePending(index)"
+					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+					title="Remove"
+				>
+					<X :size="16" />
+				</button>
+			</div>
+
 			<div
 				v-for="file in files"
 				:key="file.id"
@@ -131,15 +163,7 @@
 
 		<div
 			@click="handleAddFiles"
-			@dragover.prevent="handleDragOver"
-			@dragleave.prevent="handleDragLeave"
-			@drop.prevent="handleDrop"
-			:class="[
-				'cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors',
-				isDragOver
-					? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
-					: 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50',
-			]"
+			class="cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition-colors hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50"
 		>
 			<FileIcon
 				:size="32"
@@ -203,7 +227,12 @@
 		Paperclip,
 		X,
 	} from 'lucide-vue-next';
-	import { defineComponent, markRaw, type ComponentPublicInstance } from 'vue';
+	import {
+		defineComponent,
+		markRaw,
+		type ComponentPublicInstance,
+		type PropType,
+	} from 'vue';
 
 	interface PendingUpload {
 		id: number;
@@ -224,12 +253,16 @@
 			Paperclip,
 			X,
 		},
-		emits: ['changed'],
+		emits: ['changed', 'update:pendingFiles'],
 		props: {
 			taskId: {
 				type: Number,
 				required: false,
 				default: null,
+			},
+			pendingFiles: {
+				type: Array as PropType<File[]>,
+				default: () => [],
 			},
 		},
 		data() {
@@ -243,7 +276,6 @@
 				files: [] as TaskFile[],
 				uploads: [] as PendingUpload[],
 				previews: {} as Record<number, string>,
-				isDragOver: false,
 				busyFileId: null as number | null,
 				galleryStartId: null as number | null,
 				nextUploadId: 1,
@@ -266,6 +298,7 @@
 				this.loadError = false;
 				this.loadingFiles = true;
 				if (!this.taskId) {
+					this.loadingFiles = false;
 					return;
 				}
 				try {
@@ -329,24 +362,11 @@
 				this.uploadAll(Array.from(input.files ?? []));
 				input.value = '';
 			},
-			handleDragOver() {
-				this.isDragOver = true;
-			},
-			handleDragLeave(event: DragEvent) {
-				const target = event.currentTarget as Node;
-				if (!target.contains(event.relatedTarget as Node)) {
-					this.isDragOver = false;
-				}
-			},
-			handleDrop(event: DragEvent) {
-				this.isDragOver = false;
-				this.uploadAll(Array.from(event.dataTransfer?.files ?? []));
-			},
 			// TM-233: a screenshot in the clipboard becomes an attachment wherever the task has
 			// focus. A text paste carries no image, so typing into a field is unaffected; an editor
 			// that handles images itself calls preventDefault before this listener sees the event.
 			handlePaste(event: ClipboardEvent) {
-				if (!this.taskId || event.defaultPrevented) {
+				if (event.defaultPrevented) {
 					return;
 				}
 
@@ -367,7 +387,33 @@
 				);
 			},
 			uploadAll(selected: File[]) {
+				if (!this.taskId) {
+					this.queueAll(selected);
+					return;
+				}
 				selected.forEach((file) => this.upload(file));
+			},
+			queueAll(selected: File[]) {
+				const accepted = selected.filter((file) => {
+					const error = preflightError(file, {
+						anyType: hasActiveLocalWorkspace(),
+					});
+					if (error) {
+						this.uploads.push({
+							id: this.nextUploadId++,
+							name: file.name,
+							size: file.size,
+							error,
+						});
+					}
+					return !error;
+				});
+				if (accepted.length) {
+					this.$emit('update:pendingFiles', [
+						...this.pendingFiles,
+						...accepted,
+					]);
+				}
 			},
 			async upload(file: File) {
 				if (!this.taskId) {
@@ -396,6 +442,12 @@
 						(error as { response?: { data?: { max_bytes?: number } } })
 							?.response?.data?.max_bytes ?? this.maxBytes;
 				}
+			},
+			removePending(index: number) {
+				this.$emit(
+					'update:pendingFiles',
+					this.pendingFiles.filter((_, i) => i !== index),
+				);
 			},
 			dismissUpload(id: number) {
 				this.uploads = this.uploads.filter((upload) => upload.id !== id);
