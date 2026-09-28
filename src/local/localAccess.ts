@@ -217,7 +217,7 @@ export const handleLocalAccessRequest = async (
 				emitDomainEvents: true,
 			});
 			const result = await handleMcpRequest(router, ctx, payload.body ?? '', {
-				personaPrompt: (uuid) => readPersonaCache(uuid),
+				personaPrompt: (uuid) => readPersonaCache(uuid, ctx.user.id),
 			});
 			return { status: result.status, body: result.body };
 		}
@@ -300,7 +300,9 @@ export const installLocalAccess = async (store: any): Promise<void> => {
 			return found ? { prefix: found.prefix, expiresAt: found.expiresAt } : null;
 		},
 		promptVersion: async (uuid) => {
-			const cached = await readPersonaCache(uuid);
+			const userId = currentUser()?.id;
+			if (userId == null) return null;
+			const cached = await readPersonaCache(uuid, userId);
 			return cached?.prompt_version ?? null;
 		},
 	};

@@ -21,7 +21,7 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
 	);
 	return loaded.exports;
 }
-function fixture() {
+function fixture(extraDeps: Record<string, unknown> = {}) {
 	const getWorkspaces = jest.fn();
 	const cache = { clear: jest.fn(), setContext: jest.fn() };
 	const config = evaluate('../index.js', {
@@ -29,6 +29,7 @@ function fixture() {
 		'@/actions/tmgr/workspaces': { getWorkspaces },
 		'@/utils/requestCache': { requestCache: cache },
 		'@/composable/usePusher': { disconnectRealtime: jest.fn() },
+		...extraDeps,
 	}).default;
 	return { config, getWorkspaces };
 }
@@ -53,6 +54,42 @@ test('session identity advances on login/logout/user replacement but survives re
 	expect(state.sessionGeneration).toBe(4);
 	mutations.setUser(state, { id: 2, settings: [] });
 	expect(state.sessionGeneration).toBe(5);
+});
+
+test('logout clears persona LLM data on the desktop app, using the user id captured before the session is torn down', () => {
+	const clearPersonaLlmForLogout = jest.fn().mockResolvedValue(undefined);
+	const isDesktopApp = jest.fn().mockReturnValue(true);
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp },
+	});
+	const state = { user: { id: 42 }, token: { token: 'x' } };
+	config.actions.logout({ commit: jest.fn(), state });
+	expect(clearPersonaLlmForLogout).toHaveBeenCalledWith(42);
+});
+
+test('logout leaves persona LLM data alone outside the desktop app', () => {
+	const clearPersonaLlmForLogout = jest.fn();
+	const isDesktopApp = jest.fn().mockReturnValue(false);
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp },
+	});
+	const state = { user: { id: 42 }, token: { token: 'x' } };
+	config.actions.logout({ commit: jest.fn(), state });
+	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
+});
+
+test('logout does not throw when no user is signed in', () => {
+	const clearPersonaLlmForLogout = jest.fn();
+	const isDesktopApp = jest.fn().mockReturnValue(true);
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp },
+	});
+	const state = { user: null, token: null };
+	expect(() => config.actions.logout({ commit: jest.fn(), state })).not.toThrow();
+	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
 });
 
 test.each(['refresh', 'session'])(

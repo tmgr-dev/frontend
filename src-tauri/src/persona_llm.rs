@@ -17,6 +17,53 @@ const CONFIG_FILE: &str = "llm_config.json";
 struct LlmConfigFile {
   base_url: String,
   model: String,
+  /// The origin the saved Keychain key was issued for; the key is dropped, never carried over, once `base_url` moves to another origin.
+  #[serde(default)]
+  key_origin: Option<String>,
+}
+
+/// Scheme + lowercased host + port (default ports folded in), so a path-only edit to `base_url` is not an origin change.
+fn normalize_origin(input: &str) -> Result<String, String> {
+  let trimmed = input.trim();
+  if trimmed.is_empty() {
+    return Err("empty URL".into());
+  }
+  let url = Url::parse(trimmed).map_err(|e| e.to_string())?;
+  let scheme = url.scheme().to_ascii_lowercase();
+  let host = url.host_str().ok_or("URL has no host")?.to_ascii_lowercase();
+  let default_port = match scheme.as_str() {
+    "https" => 443,
+    "http" => 80,
+    _ => 0,
+  };
+  let port = url.port().unwrap_or(default_port);
+  Ok(format!("{scheme}://{host}:{port}"))
+}
+
+/// Whether the saved key should still exist after this `llm_config_set` call, before anything is written.
+fn key_will_exist(clear_api_key: bool, new_key_present: bool, origin_changed: bool, had_key: bool) -> bool {
+  if clear_api_key {
+    false
+  } else if new_key_present {
+    true
+  } else if origin_changed {
+    false
+  } else {
+    had_key
+  }
+}
+
+/// A key must never be saved for use over plaintext HTTP to a host outside the local network.
+fn refuses_plaintext_key(base_url: &str, key_will_exist: bool) -> Result<(), String> {
+  if !key_will_exist {
+    return Ok(());
+  }
+  let is_remote = matches!(classify_url(base_url), Ok(UrlKind::Remote));
+  let is_http = base_url.trim().to_ascii_lowercase().starts_with("http://");
+  if is_remote && is_http {
+    return Err("Refusing to save an API key for a remote endpoint over plain HTTP; use HTTPS.".into());
+  }
+  Ok(())
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -150,44 +197,75 @@ fn read_config<R: Runtime>(app: &AppHandle<R>) -> Result<LlmConfigFile, String> 
   serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
-fn keyring_entry() -> Result<keyring::Entry, String> {
+fn keyring_entry(user_id: i64) -> Result<keyring::Entry, String> {
+  keyring::Entry::new(SERVICE, &format!("{ACCOUNT}:{user_id}")).map_err(|e| e.to_string())
+}
+
+/// Predates per-user namespacing; only ever touched to clean it up on logout.
+fn legacy_keyring_entry() -> Result<keyring::Entry, String> {
   keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
 }
 
-/// `api_key: None`/blank leaves a previously saved key untouched; `clear_api_key: true` removes it.
+/// `api_key: None`/blank leaves a previously saved key untouched unless `base_url` moved to a new
+/// origin, in which case the key is dropped rather than carried over; `clear_api_key: true` always removes it.
 #[tauri::command]
 pub fn llm_config_set<R: Runtime>(
   app: AppHandle<R>,
+  user_id: i64,
   base_url: String,
   model: String,
   api_key: Option<String>,
   clear_api_key: bool,
 ) -> Result<(), String> {
-  let file = LlmConfigFile { base_url, model };
+  let previous = read_config(&app)?;
+  let new_origin = normalize_origin(&base_url).ok();
+  let origin_changed = new_origin != previous.key_origin;
+  let entry = keyring_entry(user_id)?;
+  let new_key = api_key.filter(|k| !k.is_empty());
+
+  let had_key = entry.get_password().is_ok();
+  let key_after = key_will_exist(clear_api_key, new_key.is_some(), origin_changed, had_key);
+  refuses_plaintext_key(&base_url, key_after)?;
+
+  let file = LlmConfigFile { base_url, model, key_origin: if key_after { new_origin } else { None } };
   std::fs::write(config_path(&app)?, serde_json::to_vec(&file).map_err(|e| e.to_string())?)
     .map_err(|e| e.to_string())?;
-  let entry = keyring_entry()?;
-  if clear_api_key {
+
+  if clear_api_key || (new_key.is_none() && origin_changed) {
     match entry.delete_credential() {
       Ok(()) | Err(keyring::Error::NoEntry) => {}
       Err(e) => return Err(e.to_string()),
     }
-  } else if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+  } else if let Some(key) = new_key {
     entry.set_password(&key).map_err(|e| e.to_string())?;
   }
   Ok(())
 }
 
 #[tauri::command]
-pub fn llm_config_get<R: Runtime>(app: AppHandle<R>) -> Result<LlmConfigOut, String> {
+pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, user_id: i64) -> Result<LlmConfigOut, String> {
   let file = read_config(&app)?;
-  let has_api_key = match keyring_entry()?.get_password() {
+  let has_api_key = match keyring_entry(user_id)?.get_password() {
     Ok(_) => true,
     Err(keyring::Error::NoEntry) => false,
     Err(e) => return Err(e.to_string()),
   };
   let is_local = classify_url(&file.base_url).map(|kind| kind == UrlKind::Local).unwrap_or(false);
   Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local })
+}
+
+/// Best-effort logout cleanup: this user's saved key, plus the pre-namespacing global key if one is still around.
+#[tauri::command]
+pub fn persona_llm_clear_for_user(user_id: i64) -> Result<(), String> {
+  match keyring_entry(user_id)?.delete_credential() {
+    Ok(()) | Err(keyring::Error::NoEntry) => {}
+    Err(e) => return Err(e.to_string()),
+  }
+  match legacy_keyring_entry()?.delete_credential() {
+    Ok(()) | Err(keyring::Error::NoEntry) => {}
+    Err(e) => return Err(e.to_string()),
+  }
+  Ok(())
 }
 
 static IN_FLIGHT: LazyLock<Mutex<HashMap<String, tokio::task::AbortHandle>>> =
@@ -254,6 +332,7 @@ async fn stream_chat<R: Runtime>(
 #[tauri::command]
 pub async fn llm_chat<R: Runtime>(
   app: AppHandle<R>,
+  user_id: i64,
   request_id: String,
   messages: Vec<Value>,
   tools: Option<Value>,
@@ -262,7 +341,7 @@ pub async fn llm_chat<R: Runtime>(
   if config.base_url.is_empty() {
     return Err("Set an LLM base URL first".into());
   }
-  let api_key = match keyring_entry()?.get_password() {
+  let api_key = match keyring_entry(user_id)?.get_password() {
     Ok(key) => Some(key),
     Err(keyring::Error::NoEntry) => None,
     Err(e) => return Err(e.to_string()),
@@ -330,6 +409,68 @@ mod tests {
   fn rejects_an_empty_or_unparseable_url() {
     assert!(classify_url("").is_err());
     assert!(classify_url("not a url").is_err());
+  }
+
+  #[test]
+  fn normalize_origin_folds_default_ports_and_ignores_path_and_case() {
+    assert_eq!(normalize_origin("https://API.example.com/v1").unwrap(), "https://api.example.com:443");
+    assert_eq!(normalize_origin("https://api.example.com:443/v1/chat").unwrap(), "https://api.example.com:443");
+    assert_eq!(normalize_origin("http://localhost:8000/v1").unwrap(), "http://localhost:8000");
+  }
+
+  #[test]
+  fn normalize_origin_treats_a_different_port_or_scheme_as_a_different_origin() {
+    assert_ne!(
+      normalize_origin("https://api.example.com").unwrap(),
+      normalize_origin("https://api.example.com:8443").unwrap(),
+    );
+    assert_ne!(
+      normalize_origin("https://api.example.com").unwrap(),
+      normalize_origin("http://api.example.com").unwrap(),
+    );
+  }
+
+  #[test]
+  fn normalize_origin_rejects_an_empty_or_unparseable_url() {
+    assert!(normalize_origin("").is_err());
+    assert!(normalize_origin("not a url").is_err());
+  }
+
+  #[test]
+  fn key_will_exist_matrix() {
+    // clear_api_key always wins.
+    assert!(!key_will_exist(true, true, true, true));
+    // a freshly supplied key always ends up saved.
+    assert!(key_will_exist(false, true, true, false));
+    assert!(key_will_exist(false, true, false, false));
+    // keeping a blank api_key drops the old key once the origin moved...
+    assert!(!key_will_exist(false, false, true, true));
+    // ...but keeps it when the origin did not change.
+    assert!(key_will_exist(false, false, false, true));
+    // nothing to keep if there was never a key.
+    assert!(!key_will_exist(false, false, false, false));
+  }
+
+  #[test]
+  fn refuses_a_key_over_plain_http_to_a_remote_host() {
+    let err = refuses_plaintext_key("http://api.openai.com/v1", true).unwrap_err();
+    assert!(err.contains("HTTPS"), "{err}");
+  }
+
+  #[test]
+  fn allows_plain_http_to_a_remote_host_when_no_key_will_be_saved() {
+    assert!(refuses_plaintext_key("http://api.openai.com/v1", false).is_ok());
+  }
+
+  #[test]
+  fn allows_a_key_over_plain_http_to_localhost_or_the_lan() {
+    assert!(refuses_plaintext_key("http://localhost:8000", true).is_ok());
+    assert!(refuses_plaintext_key("http://my-mac.local:8000", true).is_ok());
+  }
+
+  #[test]
+  fn allows_a_key_over_https_to_a_remote_host() {
+    assert!(refuses_plaintext_key("https://api.openai.com/v1", true).is_ok());
   }
 
   #[test]

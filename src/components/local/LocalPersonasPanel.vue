@@ -295,6 +295,7 @@
 			const refreshLlmConfig = async () => {
 				const config = await invoke<{ base_url: string; model: string; has_api_key: boolean; is_local: boolean }>(
 					'llm_config_get',
+					{ userId: currentUser().id },
 				);
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
@@ -407,6 +408,7 @@
 				savingLlm.value = true;
 				try {
 					await invoke('llm_config_set', {
+						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
 						model: llmForm.model,
 						apiKey: llmForm.apiKey || null,
@@ -423,6 +425,7 @@
 				savingLlm.value = true;
 				try {
 					await invoke('llm_config_set', {
+						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
 						model: llmForm.model,
 						apiKey: null,

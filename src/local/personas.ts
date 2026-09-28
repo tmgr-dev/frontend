@@ -15,7 +15,11 @@ export interface CloudPersona {
 
 /** Prompt/skills cache outside the workspace folder (Rust `persona_cache_put/get`, app data dir). */
 export interface PersonaCache {
-	put(uuid: string, data: { system_prompt?: string | null; prompt_version?: number | null }): Promise<void>;
+	put(
+		uuid: string,
+		data: { system_prompt?: string | null; prompt_version?: number | null },
+		userId: number,
+	): Promise<void>;
 }
 
 export interface PersonaRow {
@@ -77,10 +81,14 @@ export const syncPersonasSnapshot = async (
 		);
 		if (persona.system_prompt !== undefined) {
 			try {
-				await cache.put(persona.id, {
-					system_prompt: persona.system_prompt,
-					prompt_version: persona.prompt_version ?? null,
-				});
+				await cache.put(
+					persona.id,
+					{
+						system_prompt: persona.system_prompt,
+						prompt_version: persona.prompt_version ?? null,
+					},
+					ctx.user.id,
+				);
 			} catch {
 				/* the cache is best effort here too: the agent loop re-reads it before it acts */
 			}
