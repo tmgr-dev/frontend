@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.1 — 2026-09-28
+
+- Fixed global shortcuts (⌥Space quick add, ⌥⇧T timer, ⌥⇧S screenshot, ⌥⇧C selection) going dead after the app
+  window reloaded (for example after signing out and back in): they showed as taken, did nothing, and a new
+  shortcut could not be recorded in Settings → Shortcuts.
+
 ## 0.9.0 — 2026-09-28
 
 - Plugins API 1.2: plugins can read and write routines and notes in local workspaces (`routines:read`,

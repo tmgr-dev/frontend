@@ -7,6 +7,7 @@ import {
 	mergeShortcuts,
 	parseDeepLink,
 	pickQuickAddWorkspace,
+	registerShortcuts,
 	sanitizeDeepLinkParams,
 	splitQuickText,
 	validateAccelerator,
@@ -220,5 +221,89 @@ describe('pickQuickAddWorkspace', () => {
 	it('falls back to the first workspace', () => {
 		expect(pickQuickAddWorkspace(workspaces, null, null)).toBe(1);
 		expect(pickQuickAddWorkspace([], null, null)).toBeNull();
+	});
+});
+
+describe('registerShortcuts', () => {
+	type Handler = (event: { state: string }) => void;
+
+	const fakeGlobalShortcuts = () => {
+		const grabbed = new Map<string, Handler>();
+		return {
+			grabbed,
+			register: async (accelerator: string, handler: Handler) => {
+				if (grabbed.has(accelerator)) {
+					throw new Error(`RegisterEventHotKey failed for ${accelerator}`);
+				}
+				grabbed.set(accelerator, handler);
+			},
+			unregisterAll: async () => {
+				grabbed.clear();
+			},
+		};
+	};
+
+	it('registers every enabled shortcut and reports disabled ones as off', async () => {
+		const api = fakeGlobalShortcuts();
+		const config = {
+			...DEFAULT_SHORTCUTS,
+			selection: { accelerator: 'Alt+Shift+C', enabled: false },
+		};
+
+		const result = await registerShortcuts(api, config, () => {});
+
+		expect(result.status).toEqual({
+			quickAdd: 'ok',
+			timer: 'ok',
+			screenshot: 'ok',
+			selection: 'off',
+		});
+		expect(result.registered).toEqual(['Alt+Space', 'Alt+Shift+T', 'Alt+Shift+S']);
+	});
+
+	it('takes the shortcuts back after a page reload left them grabbed by the previous page', async () => {
+		const api = fakeGlobalShortcuts();
+		const previousPage: string[] = [];
+		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => previousPage.push(action));
+
+		const reloadedPage: string[] = [];
+		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) =>
+			reloadedPage.push(action),
+		);
+
+		expect(result.status).toEqual({
+			quickAdd: 'ok',
+			timer: 'ok',
+			screenshot: 'ok',
+			selection: 'ok',
+		});
+		api.grabbed.get('Alt+Space')?.({ state: 'Pressed' });
+		expect(reloadedPage).toEqual(['quickAdd']);
+		expect(previousPage).toEqual([]);
+	});
+
+	it('fires only on press, not on release', async () => {
+		const api = fakeGlobalShortcuts();
+		const fired: string[] = [];
+		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => fired.push(action));
+
+		api.grabbed.get('Alt+Shift+T')?.({ state: 'Released' });
+		api.grabbed.get('Alt+Shift+T')?.({ state: 'Pressed' });
+
+		expect(fired).toEqual(['timer']);
+	});
+
+	it('marks a shortcut another app holds as taken', async () => {
+		const api = fakeGlobalShortcuts();
+		const register = api.register;
+		api.register = async (accelerator, handler) => {
+			if (accelerator === 'Alt+Space') throw new Error('taken by another app');
+			return register(accelerator, handler);
+		};
+
+		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, () => {});
+
+		expect(result.status.quickAdd).toBe('taken');
+		expect(result.registered).not.toContain('Alt+Space');
 	});
 });

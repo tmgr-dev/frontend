@@ -247,6 +247,47 @@ export const saveShortcuts = (config: ShortcutConfig): void => {
 	}
 };
 
+export interface GlobalShortcutApi {
+	register(
+		accelerator: string,
+		handler: (event: { state: string }) => void,
+	): Promise<void>;
+	unregisterAll(): Promise<void>;
+}
+
+export const registerShortcuts = async (
+	api: GlobalShortcutApi,
+	config: ShortcutConfig,
+	onPressed: (action: ShortcutAction) => void,
+): Promise<{
+	registered: string[];
+	status: Record<ShortcutAction, ShortcutStatus>;
+}> => {
+	// Registrations outlive a page reload on the Rust side, still bound to the dead page's
+	// callbacks, and would make every register below fail as already taken.
+	await api.unregisterAll().catch(() => {});
+	const registered: string[] = [];
+	const status = {} as Record<ShortcutAction, ShortcutStatus>;
+	for (const action of SHORTCUT_ACTIONS) {
+		const { accelerator, enabled } = config[action];
+		if (!enabled) {
+			status[action] = 'off';
+			continue;
+		}
+		try {
+			await api.register(accelerator, (event) => {
+				if (event.state === 'Pressed') onPressed(action);
+			});
+			registered.push(accelerator);
+			status[action] = 'ok';
+		} catch (error) {
+			console.error(`shortcut ${accelerator} not registered`, error);
+			status[action] = 'taken';
+		}
+	}
+	return { registered, status };
+};
+
 const RECENT_URL_WINDOW_MS = 5000;
 
 /** `getCurrent()` and `onOpenUrl` may both deliver the same cold-start URL; skip the second delivery. */
