@@ -58,7 +58,7 @@
 	import {
 		createRecentUrlGuard,
 		parseDeepLink,
-		SHORTCUT_ACTIONS,
+		registerShortcuts,
 		shortcutConfig,
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
@@ -156,32 +156,13 @@
 
 			const register = async (config) => {
 				const shortcuts = await import('@tauri-apps/plugin-global-shortcut');
-				if (registered.length) {
-					await shortcuts.unregister(registered).catch(() => {});
-				}
-				registered = [];
-				const status = {};
-				for (const action of SHORTCUT_ACTIONS) {
-					const { accelerator, enabled } = config[action];
-					if (!enabled) {
-						status[action] = 'off';
-						continue;
-					}
-					try {
-						await shortcuts.register(accelerator, (event) => {
-							if (event.state !== 'Pressed') return;
-							Promise.resolve(handlers[action]()).catch((error) =>
-								console.error(`shortcut ${action} failed`, error),
-							);
-						});
-						registered.push(accelerator);
-						status[action] = 'ok';
-					} catch (error) {
-						console.error(`shortcut ${accelerator} not registered`, error);
-						status[action] = 'taken';
-					}
-				}
-				shortcutStatus.value = status;
+				const result = await registerShortcuts(shortcuts, config, (action) => {
+					Promise.resolve(handlers[action]()).catch((error) =>
+						console.error(`shortcut ${action} failed`, error),
+					);
+				});
+				registered = result.registered;
+				shortcutStatus.value = result.status;
 			};
 
 			/** Captured right when a link is accepted, before any await: the run and workspace it is good for. */
