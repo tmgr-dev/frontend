@@ -1,4 +1,5 @@
 import { LocalRouter } from './router';
+import { generateUniqueCategoryCode, sanitizeCategoryCode } from './categoryCode';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -610,7 +611,7 @@ export const createLocalApi = () => {
 			const [comment] = await ctx.db.select<any>(`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`, [id]);
 			if (!comment) throw notFound('Comment');
 			if (ctx.actor?.kind === 'persona' && (comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id)) {
-				throw new LocalHttpError(403, 'A persona may only edit its own comments');
+				throw new LocalHttpError(403, 'A persona may only edit its own comments', 'NOT_OWN');
 			}
 			const message = String(body?.message ?? body?.content ?? '').trim();
 			if (!message) throw new LocalHttpError(422, 'message is required');
@@ -625,7 +626,8 @@ export const createLocalApi = () => {
 				const [comment] = await ctx.db.select<any>(`SELECT author_kind, author_id FROM comments WHERE id = ?`, [
 					Number(params.id),
 				]);
-				if (!comment || comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
+				if (!comment) throw notFound('Comment');
+				if (comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
 					throw new LocalHttpError(403, 'A persona may only delete its own comments', 'NOT_OWN');
 				}
 			}
@@ -910,8 +912,18 @@ export const createLocalApi = () => {
 		.add('POST', 'project_categories', async ({ ctx, body }) => {
 			const title = String(body?.title ?? '').trim();
 			if (!title) throw new LocalHttpError(422, 'title is required');
-			const code = body?.code ? String(body.code).toUpperCase() : null;
-			if (code) await requireUniqueCategoryCode(ctx, code);
+			let code = body?.code ? String(body.code).toUpperCase() : null;
+			if (code) {
+				await requireUniqueCategoryCode(ctx, code);
+			} else {
+				const existing = await ctx.db.select<{ code: string | null }>(
+					`SELECT code FROM categories WHERE deleted_at IS NULL AND code IS NOT NULL`,
+				);
+				code = generateUniqueCategoryCode(
+					sanitizeCategoryCode(title),
+					existing.map((row) => row.code as string),
+				);
+			}
 			const now = iso(ctx);
 			const result = await ctx.db.execute(
 				`INSERT INTO categories (title, slug, code, parent_id, settings, created_at, updated_at)
