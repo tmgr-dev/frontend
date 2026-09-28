@@ -67,98 +67,6 @@
 							<ThemePicker />
 						</div>
 
-						<div
-							v-if="isWorkspaceSettings"
-							class="flex flex-col gap-3"
-						>
-							<h2 class="text-base font-semibold text-ink">Workspace Settings</h2>
-							<div>
-								<div
-									v-for="(setting, index) in availableSettings"
-									:key="setting.id"
-								>
-									<label
-										:for="`setting-${setting.id}`"
-										class="mb-2 block text-sm font-bold text-gray-700"
-									>
-										{{ setting.name }}
-									</label>
-
-									<div class="relative mb-4">
-										<template
-											v-if="setting.component_type === 'current_workspace'"
-										>
-											<current-workspace
-												v-model="settings[index].value"
-												@updateSettings="updateSettings"
-											/>
-										</template>
-										<template v-else-if="setting.component_type === 'select'">
-											<Select
-												v-model="settings[index].value"
-												:options="
-													setting.default_values.map((val) => ({
-														label:
-															setting.key === 'preferred_editor'
-																? editorOptionLabel(val.value)
-																: val.value,
-														value: val.value,
-													}))
-												"
-												:placeholder="setting.description"
-											/>
-											<p
-												v-if="setting.key === 'preferred_editor'"
-												class="mt-1.5 text-xs text-ink-subtle"
-											>
-												{{ EDITOR_SETTING_HELP }}
-											</p>
-										</template>
-										<template v-else-if="setting.custom_value_available">
-											<TimeField
-												v-if="setting.component_type === 'time_in_seconds'"
-												v-model="settings[index].value"
-												:placeholder="setting.description"
-											/>
-
-											<TextField
-												v-else
-												v-model="settings[index].value"
-												:placeholder="setting.description"
-											/>
-										</template>
-
-										<small v-if="!setting.show_custom_value_input">
-											{{ setting.description }}
-										</small>
-
-										<Switcher
-											v-if="
-												setting.custom_value_available &&
-												setting.default_values &&
-												setting.default_values.length > 0
-											"
-											name="set_custom_value"
-											v-model="setting.show_custom_value_input"
-											placeholder="Set custom value"
-										/>
-									</div>
-								</div>
-							</div>
-
-							<div class="text-left">
-								<button
-									class="mt-4 rounded bg-blue-500 px-8 py-2 font-bold text-white transition hover:bg-blue-600 focus:outline-none sm:mb-0"
-									type="button"
-									@click="updateSettings"
-									:disabled="savingSettings"
-									:aria-busy="savingSettings"
-								>
-									Save
-								</button>
-							</div>
-						</div>
-
 						<div v-if="isProfile" class="flex flex-col gap-3.5">
 							<h2 class="text-base font-semibold text-ink">Profile</h2>
 							<profile :standalone="false" />
@@ -452,15 +360,12 @@
 		updateUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
-	import CurrentWorkspace from '@/components/CurrentWorkspace.vue';
 	import Button from '@/components/general/Button.vue';
 	import Confirm from '@/components/general/Confirm.vue';
-	import Select from '@/components/general/Select.vue';
 	import Switcher from '@/components/general/Switcher.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
-	import TimeField from '@/components/general/TimeField.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
 	import {
 		BreadcrumbItem,
@@ -470,7 +375,6 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
 	import { isDesktopApp } from '@/utils/desktop';
-	import { EDITOR_SETTING_HELP, editorOptionLabel } from '@/utils/editorType';
 
 	export default {
 		name: 'Settings',
@@ -481,12 +385,9 @@
 			BreadcrumbLink,
 			Profile,
 			TextField,
-			TimeField,
 			Switcher,
-			Select,
 			Button,
 			Confirm,
-			CurrentWorkspace,
 			NotificationSettingsForm,
 			DesktopShortcutsSettings,
 			ThemePicker,
@@ -504,7 +405,6 @@
 			user: {},
 			confirm: null,
 			isNotification: false,
-			isWorkspaceSettings: true,
 			isProfile: false,
 			isDevice: false,
 			isTheme: false,
@@ -521,7 +421,6 @@
 			},
 		},
 		computed: {
-			EDITOR_SETTING_HELP: () => EDITOR_SETTING_HELP,
 			userSettings() {
 				return this.$store.state.userSettings || {};
 			},
@@ -601,7 +500,6 @@
 					this.initialPending = false;
 				}
 			},
-			editorOptionLabel,
 			async copyToken() {
 				if (!this.user.smart_device_token || !navigator?.clipboard) return;
 				try {
@@ -620,14 +518,17 @@
 			},
 
 			handleTabFromQuery() {
+				if (this.$route.name !== 'Settings') return;
 				const tab = this.$route.query.tab;
-				if (tab) {
+				if (!tab) {
+					this.openWorkspaceSettings();
+				} else {
 					switch (tab.toLowerCase()) {
 						case 'notification':
 							this.showNotificationSettings();
 							break;
 						case 'workspace':
-							this.showWorkspaceSettings();
+							this.openWorkspaceSettings();
 							break;
 						case 'profile':
 							this.showProfileSettings();
@@ -646,7 +547,6 @@
 			},
 
 			showNotificationSettings() {
-				this.isWorkspaceSettings = false;
 				this.isProfile = false;
 				this.isNotification = true;
 				this.isDevice = false;
@@ -655,19 +555,12 @@
 				this.updateQueryParam('notification');
 			},
 
-			showWorkspaceSettings() {
-				this.isNotification = false;
-				this.isWorkspaceSettings = true;
-				this.isProfile = false;
-				this.isDevice = false;
-				this.isTheme = false;
-				this.isDesktopSection = false;
-				this.updateQueryParam('workspace');
+			openWorkspaceSettings() {
+				this.$router.replace('/settings/workspaces').catch(() => {});
 			},
 
 			showProfileSettings() {
 				this.isNotification = false;
-				this.isWorkspaceSettings = false;
 				this.isProfile = true;
 				this.isDevice = false;
 				this.isTheme = false;
@@ -677,7 +570,6 @@
 
 			showDeviceSettings() {
 				this.isNotification = false;
-				this.isWorkspaceSettings = false;
 				this.isProfile = false;
 				this.isDevice = true;
 				this.isTheme = false;
@@ -687,7 +579,6 @@
 
 			showThemeSettings() {
 				this.isNotification = false;
-				this.isWorkspaceSettings = false;
 				this.isProfile = false;
 				this.isDevice = false;
 				this.isTheme = true;
@@ -697,7 +588,6 @@
 
 			showDesktopSettings() {
 				this.isNotification = false;
-				this.isWorkspaceSettings = false;
 				this.isProfile = false;
 				this.isDevice = false;
 				this.isTheme = false;

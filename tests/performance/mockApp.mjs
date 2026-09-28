@@ -81,8 +81,25 @@ export async function mockApp(
       ];
     else if (path.endsWith('feature-toggles'))
       data = path.startsWith('user')
-        ? { default_landing_page: { value: 'list' } }
-        : { board: { enabled: true } };
+        ? {
+            default_landing_page: {
+              key: 'default_landing_page',
+              name: 'Default Landing Page',
+              group: 'general',
+              type: 'select',
+              options: ['list', 'board', 'dashboard', 'daily_routines'],
+              value: 'list',
+            },
+          }
+        : {
+            board: {
+              key: 'board',
+              name: 'Board View',
+              group: 'pages',
+              type: 'boolean',
+              enabled: true,
+            },
+          };
     else if (path.endsWith('statuses'))
       data = [
         {
