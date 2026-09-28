@@ -312,7 +312,7 @@ export const convertRoutineToTask = async (ctx: LocalContext, row: any, body: an
 			statusId,
 			projectCategoryId,
 			row.priority ?? 'medium',
-			row.approximately_time,
+			row.approximately_time ?? 0,
 			projectCategoryId,
 			projectCategoryId,
 			now,

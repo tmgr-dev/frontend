@@ -343,6 +343,15 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		expect((await call('GET', `daily-routines/tasks/${routine.id}`)).status).toBe(404);
 	});
 
+	it('converts a routine that has no estimate', async () => {
+		const routine = await data('POST', 'daily-routines/tasks', { title: 'Stretch' });
+
+		const task = await data('POST', `daily-routines/tasks/${routine.id}/convert`, {
+			workspace_id: -42,
+		});
+		expect(task).toMatchObject({ title: 'Stretch', approximately_time: 0 });
+	});
+
 	it('routes PUT/PATCH tasks/:id for a routine id to the routine, honouring only title and approximately_time', async () => {
 		const routine = await data('POST', 'daily-routines/tasks', { title: 'Resize me' });
 		await call('PUT', `tasks/${routine.id}`, { approximately_time: 90, status_id: 999999 });
