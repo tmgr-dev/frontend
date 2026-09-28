@@ -77,6 +77,7 @@
 	import {
 		ArchiveIcon,
 		BadgeCheck,
+		BarChart3,
 		Bell,
 		Cable,
 		ChevronsUpDown,
@@ -953,6 +954,13 @@
 										>
 											<Plug />
 											Plugins
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/stats')"
+											class="cursor-pointer"
+										>
+											<BarChart3 />
+											Statistics
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings?tab=theme')"

@@ -1,20 +1,16 @@
 <template>
 	<div class="workspace-invitations-list">
-		<div class="mb-4 flex items-center justify-between">
-			<h4 class="text-md font-semibold">Workspace Invitations</h4>
-		</div>
-
 		<!-- Filter Tabs -->
-		<div class="mb-4 flex gap-2 border-b dark:border-gray-700">
+		<div class="mb-4 inline-flex gap-1 rounded-md bg-muted p-1">
 			<button
 				v-for="filter in filters"
 				:key="filter.value"
 				@click="currentFilter = filter.value"
 				:class="[
-					'border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+					'rounded-sm px-3 py-1.5 text-sm font-medium transition-colors',
 					currentFilter === filter.value
-						? 'border-blue-500 text-blue-600 dark:text-blue-400'
-						: 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
+						? 'bg-background text-ink shadow-sm'
+						: 'text-ink-subtle hover:text-ink',
 				]"
 			>
 				{{ filter.label }} ({{ getFilteredCount(filter.value) }})
@@ -23,17 +19,17 @@
 
 		<div v-if="loading" class="py-4 text-center">
 			<div class="spinner"></div>
-			<p class="mt-2 text-gray-600">Loading invitations...</p>
+			<p class="mt-2 text-ink-subtle">Loading invitations...</p>
 		</div>
 
-		<div v-else-if="error" class="py-4 text-center text-red-500">
+		<div v-else-if="error" class="py-4 text-center text-destructive">
 			<p>Error: {{ error }}</p>
 			<Button @click="loadInvitations" class="mt-2">Try again</Button>
 		</div>
 
 		<div
 			v-else-if="filteredInvitations.length === 0"
-			class="py-8 text-center text-gray-500"
+			class="py-8 text-center text-sm text-ink-subtle"
 		>
 			<p>No {{ currentFilter !== 'all' ? currentFilter : '' }} invitations</p>
 		</div>
@@ -43,51 +39,49 @@
 				v-for="invitation in filteredInvitations"
 				:key="invitation.id"
 				:class="[
-					'flex items-center justify-between rounded-lg border p-3 dark:border-gray-700',
-					invitation.is_accepted
-						? 'bg-gray-50 opacity-75 dark:bg-gray-800'
-						: '',
-					isExpired(invitation)
-						? 'bg-red-50 opacity-75 dark:bg-red-900/20'
-						: '',
+					'flex items-center justify-between rounded-lg border border-border p-3',
+					invitation.is_accepted ? 'bg-muted/50 opacity-75' : '',
+					isExpired(invitation) ? 'bg-destructive/10 opacity-75' : '',
 				]"
 			>
 				<div class="flex-1">
 					<div class="mb-1 flex items-center gap-2">
-						<p class="font-medium">
+						<p class="font-medium text-ink">
 							{{ invitation.email || 'General invitation' }}
 						</p>
 						<span
 							v-if="invitation.is_accepted"
-							class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-300"
+							class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
 						>
 							✓ Accepted
 						</span>
 						<span
 							v-else-if="isExpired(invitation)"
-							class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300"
+							class="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
 						>
 							✗ Expired
 						</span>
 						<span
 							v-else
-							class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+							class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
 						>
 							⏳ Pending
 						</span>
 					</div>
-					<p class="mb-1 text-sm text-gray-600 dark:text-gray-400">
+					<p class="mb-1 text-sm text-ink-subtle">
 						<span class="font-medium">Invited by:</span>
 						{{ invitation.user?.name || 'Unknown' }}
 					</p>
-					<p class="text-xs text-gray-500">
+					<p class="text-xs text-ink-subtle">
 						Token: {{ invitation.token.substring(0, 8) }}...
 					</p>
-					<p class="text-xs text-gray-400">
+					<p class="text-xs text-ink-subtle">
 						<span v-if="invitation.expired_at">
 							Expires: {{ formatDate(invitation.expired_at) }}
 						</span>
-						<span v-else class="text-green-500">No expiration</span>
+						<span v-else class="text-emerald-600 dark:text-emerald-400"
+							>No expiration</span
+						>
 					</p>
 				</div>
 

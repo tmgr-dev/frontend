@@ -14,7 +14,7 @@
 			</div>
 
 			<div v-else-if="error" class="py-8 text-center">
-				<p class="mb-4 text-red-500">{{ error }}</p>
+				<p class="mb-4 text-destructive">{{ error }}</p>
 				<Button @click="loadMembers" variant="outline">Retry</Button>
 			</div>
 
@@ -22,7 +22,7 @@
 				<div
 					v-for="member in members"
 					:key="member.id"
-					class="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+					class="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-muted/50"
 				>
 					<div class="flex flex-1 items-center gap-3">
 						<UserAvatar
@@ -34,18 +34,15 @@
 
 						<div class="flex-1">
 							<div class="flex items-center gap-2">
-								<p class="font-medium">{{ member.name }}</p>
+								<p class="font-medium text-ink">{{ member.name }}</p>
 								<span
 									v-if="member.id === ownerId"
-									class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
 								>
 									Owner
 								</span>
 							</div>
-							<p
-								v-if="member.email"
-								class="text-sm text-gray-600 dark:text-gray-400"
-							>
+							<p v-if="member.email" class="text-sm text-ink-subtle">
 								{{ member.email }}
 							</p>
 						</div>
@@ -67,7 +64,7 @@
 					</Button>
 				</div>
 
-				<div v-if="members.length === 0" class="py-8 text-center text-gray-500">
+				<div v-if="members.length === 0" class="py-8 text-center text-sm text-ink-subtle">
 					<p>No members found</p>
 				</div>
 			</div>
@@ -99,7 +96,7 @@
 				>
 				<AlertDialogAction
 					@click="confirmRemove"
-					class="bg-red-600 text-white hover:bg-red-700"
+					class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
 				>
 					Remove
 				</AlertDialogAction>
