@@ -142,6 +142,7 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		expect(refused!.data.code).toBe('NOT_OWN');
 		const allowed = await call('DELETE', `comments/${own!.data.data.id}`, undefined, persona);
 		expect(allowed!.status).toBe(200);
+		expect(allowed!.data.data.task_id).toBe(taskId);
 	});
 
 	it('returns 404, not 403 NOT_OWN, when a persona deletes a comment that does not exist', async () => {

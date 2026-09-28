@@ -622,17 +622,17 @@ export const createLocalApi = () => {
 			return { ...commentJson(row, ctx), reactions };
 		})
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
+			const [comment] = await ctx.db.select<any>(`SELECT task_id, author_kind, author_id FROM comments WHERE id = ?`, [
+				Number(params.id),
+			]);
 			if (ctx.actor?.kind === 'persona') {
-				const [comment] = await ctx.db.select<any>(`SELECT author_kind, author_id FROM comments WHERE id = ?`, [
-					Number(params.id),
-				]);
 				if (!comment) throw notFound('Comment');
 				if (comment.author_kind !== 'persona' || String(comment.author_id) !== ctx.actor.id) {
 					throw new LocalHttpError(403, 'A persona may only delete its own comments', 'NOT_OWN');
 				}
 			}
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
-			return { success: true };
+			return { success: true, task_id: comment?.task_id };
 		})
 		.add('POST', 'comments/:id(\\d+)/reactions/toggle', async ({ ctx, params, body }) => {
 			const emoji = String(body?.emoji ?? '');

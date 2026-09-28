@@ -16,7 +16,7 @@ const invoke = async <T>(command: string, args?: Record<string, unknown>): Promi
 };
 
 /** Tool-call argument chunks stream by index; only assembled into a call once the turn is `done`. */
-export const createLlmChat = (tools: unknown): { chat: ChatFn; cancel: () => Promise<void> } => {
+export const createLlmChat = (tools: unknown, userId: number): { chat: ChatFn; cancel: () => Promise<void> } => {
 	let activeRequestId: string | null = null;
 
 	const chat: ChatFn = async function* (messages: ChatMessage[]): AsyncIterable<ChatStreamEvent> {
@@ -31,7 +31,7 @@ export const createLlmChat = (tools: unknown): { chat: ChatFn; cancel: () => Pro
 			wake?.();
 		});
 		try {
-			await invoke('llm_chat', { requestId, messages, tools });
+			await invoke('llm_chat', { userId, requestId, messages, tools });
 			const toolBuffers = new Map<number, { id: string; name: string; arguments: string }>();
 			let done = false;
 			while (!done) {

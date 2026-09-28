@@ -1,10 +1,12 @@
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { disconnectRealtime } from '@/composable/usePusher';
+import { clearPersonaLlmForLogout } from '@/local/personaCache';
 import filterModule from '@/store/modules/boardFilters';
 import dailyRoutinesModule from '@/store/modules/dailyRoutines';
 import featureTogglesModule from '@/store/modules/featureToggles';
 import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
+import { isDesktopApp } from '@/utils/desktop';
 import { requestCache } from '@/utils/requestCache';
 import { createStore } from 'vuex';
 
@@ -312,12 +314,18 @@ const mutations = {
 };
 
 const actions = {
-	logout({ commit }) {
+	logout({ commit, state }) {
 		// TEMP diagnostics: who triggers logout on hard reload (remove once found)
 		console.warn('[auth] logout called', new Error().stack);
 		// Only the session dies: UI prefs (colorScheme, sidebarExpanded,
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
+		const userId = state.user?.id;
+		if (isDesktopApp() && userId != null) {
+			clearPersonaLlmForLogout(userId).catch((error) => {
+				console.error('[auth] failed to clear persona LLM data on logout', error);
+			});
+		}
 		disconnectRealtime();
 		commit('setToken', null);
 		commit('dailyRoutines/reset');

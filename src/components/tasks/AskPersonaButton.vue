@@ -88,10 +88,10 @@
 				error.value = null;
 				try {
 					const ctx = await localContext(workspace, currentUser());
-					const cached = await readPersonaCache(persona.uuid);
+					const cached = await readPersonaCache(persona.uuid, currentUser().id);
 					const systemPrompt = cached?.system_prompt || `You are ${persona.name}. ${persona.description ?? ''}`;
 					const grantedPermissions = persona.permissions ?? [];
-					const { chat, cancel } = createLlmChat([personaToolDefinition(grantedPermissions)]);
+					const { chat, cancel } = createLlmChat([personaToolDefinition(grantedPermissions)], currentUser().id);
 					cancelCurrent = cancel;
 					await askPersonaOnTask({
 						ctx,
