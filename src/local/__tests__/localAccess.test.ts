@@ -226,6 +226,21 @@ describeSqlite('local access socket bridge handler', () => {
 		expect(body.token).toMatchObject({ id: 'lt_test', prefix: 'tmgrl_abcd' });
 	});
 
+	it('answers GET /api/local/_grant with the persona permissions', async () => {
+		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/_grant' }), baseDeps());
+		expect(reply.status).toBe(200);
+		expect(JSON.parse(reply.body).permissions).toEqual(
+			expect.arrayContaining(['tasks:read', 'tasks:write', 'comments:write']),
+		);
+	});
+
+	it('refuses /api/local/_grant for a disabled persona with 401 PERSONA_DISABLED', async () => {
+		await disableLocalPersona(ctx, 'p-1');
+		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/_grant' }), baseDeps());
+		expect(reply.status).toBe(401);
+		expect(JSON.parse(reply.body).code).toBe('PERSONA_DISABLED');
+	});
+
 	it('falls through to 501 for a route the local router has never heard of', async () => {
 		const reply = await handleLocalAccessRequest(payload({ path: '/api/definitely-not-a-route' }), baseDeps());
 		expect(reply.status).toBe(501);

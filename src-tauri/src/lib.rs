@@ -170,7 +170,8 @@ pub fn run() {
       local_access::local_access_status,
       local_access::local_access_set_enabled,
       local_access::local_access_ready,
-      local_access::local_access_reply
+      local_access::local_access_reply,
+      local_access::local_access_event
     ])
     .on_window_event(|window, event| {
       if let WindowEvent::Focused(false) = event {
