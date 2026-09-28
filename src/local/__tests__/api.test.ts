@@ -616,6 +616,22 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(cleared.expired_at).toBeNull();
 	});
 
+	it('normalises expired_at: keeps a date-only string as is, normalises a time to ISO UTC, rejects garbage', async () => {
+		const dateOnly = await data('POST', 'tasks', { title: 'Date only', expired_at: '2026-10-01' });
+		expect(dateOnly.expired_at).toBe('2026-10-01');
+
+		const withOffset = await data('POST', 'tasks', {
+			title: 'With offset',
+			expired_at: '2026-10-01T15:00:00+03:00',
+		});
+		expect(withOffset.expired_at).toBe('2026-10-01T12:00:00Z');
+
+		const clearedByEmptyString = await data('PATCH', `tasks/${dateOnly.id}`, { expired_at: '' });
+		expect(clearedByEmptyString.expired_at).toBeNull();
+
+		expect((await call('PATCH', `tasks/${dateOnly.id}`, { expired_at: 'not a date' })).status).toBe(422);
+	});
+
 	it('archiving a task via a plain field update stops its running timer', async () => {
 		const statuses = await data('GET', 'workspaces/statuses');
 		const archived = statuses.find((s: any) => s.type === 'archived');
@@ -838,6 +854,52 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(
 			(await call('POST', `tasks/${task.id}/agent-work`, { agent: 'a'.repeat(64) })).status,
 		).toBe(201);
+	});
+
+	it('identifies the agent work actor: persona with its owner, plugin, and the human user', async () => {
+		const task = await data('POST', 'tasks', { title: 'Actors' });
+		await ctx.db.execute(
+			`INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
+			[clock.toISOString()],
+		);
+		const { enableLocalPersona } = await import('../personas');
+		await enableLocalPersona(ctx, 'p-1', ['agent_work:write']);
+		const personaActor = { kind: 'persona' as const, id: 'p-1', name: 'Reviewer' };
+
+		const personaResult = await dispatchLocal(
+			api,
+			{ ...ctx, actor: personaActor },
+			'POST',
+			`tasks/${task.id}/agent-work`,
+			{ agent: 'reviewer-bot' },
+		);
+		expect(personaResult!.data.data.actor).toEqual({
+			kind: 'persona',
+			id: 'p-1',
+			name: 'Reviewer',
+			owner: { id: '7', name: 'Yurij' },
+		});
+
+		const pluginRun = (await pluginApi().startAgentWork(task.id, {
+			agent: 'estimate',
+			model: null,
+			sessionId: null,
+			branch: null,
+		})) as any;
+		expect(pluginRun.actor).toEqual({ kind: 'plugin', id: 'tmgr.estimate' });
+
+		const userRun = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		expect(userRun.actor).toEqual({ kind: 'user', id: String(ctx.user.id), name: ctx.user.name });
+
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		const personaRunInList = overview.runs.find((r: any) => r.agent === 'reviewer-bot');
+		expect(personaRunInList.actor).toEqual({
+			kind: 'persona',
+			id: 'p-1',
+			name: 'Reviewer',
+			owner: { id: '7', name: 'Yurij' },
+		});
 	});
 
 	it('isolates agent-work ownership by storage id, not the bare plugin id, when a different repo reuses it', async () => {

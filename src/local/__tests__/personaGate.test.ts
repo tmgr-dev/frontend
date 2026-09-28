@@ -1,11 +1,32 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { enableLocalPersona } from '../personas';
+import { PERSONA_WHITELIST, personaWhitelistFor } from '../personaGate';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
+
+describe('PERSONA_WHITELIST', () => {
+	it('includes comment edits and category reads added for the contract gaps PR', () => {
+		expect(personaWhitelistFor('PUT', 'comments/:id(\\d+)')).toEqual({
+			method: 'PUT',
+			pattern: 'comments/:id(\\d+)',
+			permission: 'comments:write',
+		});
+		expect(personaWhitelistFor('GET', 'project_categories/:id(\\d+)')).toEqual({
+			method: 'GET',
+			pattern: 'project_categories/:id(\\d+)',
+			permission: 'categories:read',
+		});
+	});
+
+	it('has no duplicate method+pattern entries', () => {
+		const keys = PERSONA_WHITELIST.map((entry) => `${entry.method} ${entry.pattern}`);
+		expect(new Set(keys).size).toBe(keys.length);
+	});
+});
 
 describeSqlite('persona whitelist gate in the local router', () => {
 	let ctx: LocalContext;
@@ -118,5 +139,31 @@ describeSqlite('persona whitelist gate in the local router', () => {
 	it('does not gate the human user actor at all', async () => {
 		const res = await call('GET', `tasks/${taskId}`, undefined, undefined);
 		expect(res!.status).toBe(200);
+	});
+
+	it('lets a persona edit only its own comment, and lets the user edit a persona comment', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
+		const own = await call('POST', `tasks/${taskId}/comments`, { message: 'mine' }, persona);
+		const ownersComment = await dispatchLocal(api, ctx, 'POST', `tasks/${taskId}/comments`, {
+			message: 'the owner said this',
+		});
+
+		const refused = await call(
+			'PUT',
+			`comments/${ownersComment!.data.data.id}`,
+			{ message: 'edited' },
+			persona,
+		);
+		expect(refused!.status).toBe(403);
+
+		const editedOwn = await call('PUT', `comments/${own!.data.data.id}`, { message: 'edited mine' }, persona);
+		expect(editedOwn!.status).toBe(200);
+		expect(editedOwn!.data.data.message).toBe('edited mine');
+
+		const userEditsPersonaComment = await dispatchLocal(api, ctx, 'PUT', `comments/${own!.data.data.id}`, {
+			message: 'edited by the user',
+		});
+		expect(userEditsPersonaComment!.status).toBe(200);
+		expect(userEditsPersonaComment!.data.data.message).toBe('edited by the user');
 	});
 });
