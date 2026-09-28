@@ -711,7 +711,69 @@
 				<DashboardPreview />
 			</template>
 
-			<BaseLayout>
+			<BaseLayout :title="pageTitle">
+				<template #header-actions>
+					<div class="dashboard-header-actions flex items-center gap-2">
+						<!-- Connection Status Indicator -->
+						<div
+							v-if="showConnectionStatus || !isRealTimeActive"
+							class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide"
+							:class="
+								isRealTimeActive
+									? 'bg-status-done-bg text-status-done-fg'
+									: 'bg-status-fix-bg text-status-fix-fg'
+							"
+							role="status"
+							:aria-label="
+								isRealTimeActive
+									? 'Real-time updates active'
+									: 'Real-time updates inactive'
+							"
+						>
+							<WifiIcon
+								v-if="isRealTimeActive"
+								class="h-3 w-3"
+								aria-hidden="true"
+							/>
+							<SignalSlashIcon v-else class="h-3 w-3" aria-hidden="true" />
+							<span>
+								{{ isRealTimeActive ? 'Live' : 'Offline' }}
+							</span>
+						</div>
+
+						<!-- Dashboard Actions -->
+						<nav class="flex items-center gap-2" aria-label="Dashboard actions">
+							<Button
+								variant="outline"
+								size="sm"
+								@click="handleRefresh"
+								:disabled="isAnyLoading"
+								:aria-label="
+									isAnyLoading
+										? 'Refreshing dashboard data'
+										: 'Refresh dashboard data'
+								"
+								:aria-describedby="isAnyLoading ? 'refresh-status' : undefined"
+							>
+								<ArrowPathIcon
+									:class="['mr-2 h-4 w-4', isAnyLoading && 'animate-spin']"
+									aria-hidden="true"
+								/>
+								{{ isAnyLoading ? 'Refreshing...' : 'Refresh' }}
+							</Button>
+
+							<!-- Hidden status for screen readers -->
+							<span
+								v-if="isAnyLoading"
+								id="refresh-status"
+								class="sr-only"
+								aria-live="polite"
+							>
+								Dashboard is currently refreshing
+							</span>
+						</nav>
+					</div>
+				</template>
 				<template #body>
 					<ErrorBoundary
 						ref="errorBoundaryRef"
@@ -728,98 +790,12 @@
 							class="dashboard-container"
 							role="main"
 							aria-label="Dashboard"
-							aria-describedby="dashboard-title"
 						>
-							<!-- Dashboard Header -->
-							<header class="dashboard-header" role="banner">
-								<div class="flex items-center justify-between">
-									<div class="flex items-center gap-3">
-										<h1
-											class="text-2xl font-bold text-ink sm:text-3xl"
-											id="dashboard-title"
-										>
-											{{ pageTitle }}
-										</h1>
-
-										<!-- Connection Status Indicator -->
-										<div
-											v-if="showConnectionStatus || !isRealTimeActive"
-											class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide"
-											:class="
-												isRealTimeActive
-													? 'bg-status-done-bg text-status-done-fg'
-													: 'bg-status-fix-bg text-status-fix-fg'
-											"
-											role="status"
-											:aria-label="
-												isRealTimeActive
-													? 'Real-time updates active'
-													: 'Real-time updates inactive'
-											"
-										>
-											<WifiIcon
-												v-if="isRealTimeActive"
-												class="h-3 w-3"
-												aria-hidden="true"
-											/>
-											<SignalSlashIcon
-												v-else
-												class="h-3 w-3"
-												aria-hidden="true"
-											/>
-											<span>
-												{{ isRealTimeActive ? 'Live' : 'Offline' }}
-											</span>
-										</div>
-									</div>
-
-									<!-- Dashboard Actions -->
-									<nav
-										class="flex items-center gap-2"
-										aria-label="Dashboard actions"
-									>
-										<Button
-											variant="outline"
-											size="sm"
-											@click="handleRefresh"
-											:disabled="isAnyLoading"
-											:aria-label="
-												isAnyLoading
-													? 'Refreshing dashboard data'
-													: 'Refresh dashboard data'
-											"
-											:aria-describedby="
-												isAnyLoading ? 'refresh-status' : undefined
-											"
-										>
-											<ArrowPathIcon
-												:class="[
-													'mr-2 h-4 w-4',
-													isAnyLoading && 'animate-spin',
-												]"
-												aria-hidden="true"
-											/>
-											{{ isAnyLoading ? 'Refreshing...' : 'Refresh' }}
-										</Button>
-
-										<!-- Hidden status for screen readers -->
-										<span
-											v-if="isAnyLoading"
-											id="refresh-status"
-											class="sr-only"
-											aria-live="polite"
-										>
-											Dashboard is currently refreshing
-										</span>
-									</nav>
-								</div>
-
-								<!-- Keyboard shortcuts help -->
-								<div class="sr-only" aria-live="polite">
-									Keyboard shortcuts: Ctrl+R to refresh, Ctrl+1-5 to navigate
-									sections, Escape to clear errors
-								</div>
-							</header>
+							<!-- Keyboard shortcuts help -->
+							<div class="sr-only" aria-live="polite">
+								Keyboard shortcuts: Ctrl+R to refresh, Ctrl+1-5 to navigate
+								sections, Escape to clear errors
+							</div>
 
 							<!-- Error State -->
 							<div
@@ -1215,13 +1191,9 @@
 
 	/* Dashboard Layout */
 	.dashboard-container {
-		@apply mx-auto min-h-screen w-full max-w-7xl px-4 py-6;
+		@apply min-h-screen;
 		scrollbar-width: thin;
 		scrollbar-color: rgb(156 163 175) transparent;
-	}
-
-	.dashboard-header {
-		@apply mb-8 border-b border-line pb-4;
 	}
 
 	.dashboard-section {
@@ -1246,18 +1218,6 @@
 
 	/* Responsive Design */
 	@media (max-width: 768px) {
-		.dashboard-container {
-			@apply px-4;
-		}
-
-		.dashboard-header {
-			@apply mb-6;
-		}
-
-		.dashboard-header .flex {
-			@apply flex-col items-start gap-3;
-		}
-
 		.dashboard-section {
 			@apply mb-6;
 		}
@@ -1265,19 +1225,11 @@
 
 	@media (max-width: 640px) {
 		.dashboard-container {
-			@apply overflow-y-auto overflow-x-hidden px-2 py-2;
+			@apply overflow-y-auto overflow-x-hidden;
 		}
 
 		.dashboard-section {
 			@apply mb-4;
-		}
-
-		.dashboard-header {
-			@apply mb-4 pb-2;
-		}
-
-		.dashboard-header h1 {
-			@apply text-xl;
 		}
 
 		.heatmap-container {
@@ -1382,7 +1334,11 @@
 			@apply max-w-none px-0;
 		}
 
-		.dashboard-header button,
+		:deep([data-page-width]) {
+			@apply max-w-none px-0;
+		}
+
+		.dashboard-header-actions button,
 		.fixed {
 			display: none;
 		}
