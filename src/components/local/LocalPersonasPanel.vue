@@ -1,5 +1,5 @@
 <template>
-	<div class="flex flex-col gap-4 border-t border-border pt-6">
+	<div id="local-personas-panel" class="flex flex-col gap-4 border-t border-border pt-6">
 		<header class="flex flex-col gap-1">
 			<h4 class="text-sm font-semibold">On this device</h4>
 			<p class="text-sm text-muted-foreground">
