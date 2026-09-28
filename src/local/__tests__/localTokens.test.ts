@@ -1,3 +1,5 @@
+export {};
+
 const invoke = jest.fn();
 
 jest.mock('@tauri-apps/api/core', () => ({ invoke }));
