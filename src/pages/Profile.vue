@@ -72,13 +72,13 @@
 						</p>
 					</div>
 				</div>
-			</SettingsSection>
-
-			<SettingsSection
-				title="Password"
-				description="Leave blank to keep your current password."
-			>
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="mt-6 border-t border-border pt-6">
+					<h3 class="text-sm font-semibold text-ink">Change password</h3>
+					<p class="mt-1 text-sm text-ink-subtle">
+						Leave blank to keep your current password.
+					</p>
+				</div>
+				<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5">
 						<Label for="profile-password">New password</Label>
 						<Input

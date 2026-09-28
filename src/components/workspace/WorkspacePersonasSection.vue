@@ -10,7 +10,7 @@
 				:disabled="savingPolicy"
 				@update:model-value="onPolicyChange"
 			>
-				<SelectTrigger id="persona-policy" class="w-48">
+				<SelectTrigger id="persona-policy" class="w-full sm:w-48">
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
@@ -145,7 +145,7 @@
 					]);
 					grants.value = g;
 					policy.value = p;
-					if (p) policyDraft.value = p.policy;
+					if (p?.policy) policyDraft.value = p.policy;
 				} finally {
 					loading.value = false;
 				}
@@ -166,7 +166,7 @@
 					toast({ title: 'Persona policy updated' });
 				} catch {
 					toast({ title: 'Could not update policy', variant: 'destructive' });
-					if (policy.value) policyDraft.value = policy.value.policy;
+					if (policy.value?.policy) policyDraft.value = policy.value.policy;
 				} finally {
 					savingPolicy.value = false;
 				}

@@ -597,7 +597,10 @@
 						"
 					>
 						<AlertDialogTrigger as-child>
-							<Button variant="destructive">
+							<Button
+								variant="outline"
+								class="text-destructive hover:text-destructive"
+							>
 								<Trash2Icon />
 								<span class="hidden lg:inline">Delete workspace</span>
 							</Button>
@@ -626,7 +629,10 @@
 						"
 					>
 						<AlertDialogTrigger as-child>
-							<Button variant="destructive">
+							<Button
+								variant="outline"
+								class="text-destructive hover:text-destructive"
+							>
 								<LogOutIcon />
 								<span class="hidden lg:inline">Exit from workspace</span>
 							</Button>

@@ -10,7 +10,10 @@
 	>
 		<header
 			v-if="title || description || $slots.description || $slots.actions"
-			class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+			:class="[
+				'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between',
+				$slots.default && 'mb-4',
+			]"
 		>
 			<div class="min-w-0">
 				<h2
