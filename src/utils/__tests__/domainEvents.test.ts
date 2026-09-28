@@ -138,6 +138,12 @@ describe('eventsForResponse', () => {
 		]);
 		expect(
 			eventsForResponse(
+				response('delete', '/comments/3', { success: true, task_id: 7 }),
+				current,
+			),
+		).toEqual([{ type: 'comment.deleted', workspaceId: 5, commentId: 3, taskId: 7 }]);
+		expect(
+			eventsForResponse(
 				response('delete', '/comments/3', { success: true }),
 				current,
 			),

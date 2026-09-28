@@ -64,10 +64,10 @@ describe('installLocalLiveUpdates', () => {
 		const comment = { id: 11, task_id: 5, message: 'hi' };
 		bus.emit({ type: 'comment.created', workspaceId: -3, taskId: 5, comment, actor: 'persona:p-1' });
 		bus.emit({ type: 'comment.updated', workspaceId: -3, taskId: 5, comment, actor: 'persona:p-1' });
-		bus.emit({ type: 'comment.deleted', workspaceId: -3, commentId: 11, actor: 'persona:p-1' });
+		bus.emit({ type: 'comment.deleted', workspaceId: -3, commentId: 11, taskId: 5, actor: 'persona:p-1' });
 		expect(handlers.onCommentAdded).toHaveBeenCalledWith(comment);
 		expect(handlers.onCommentUpdated).toHaveBeenCalledWith(comment);
-		expect(handlers.onCommentDeleted).toHaveBeenCalledWith({ id: 11 });
+		expect(handlers.onCommentDeleted).toHaveBeenCalledWith({ id: 11, task_id: 5 });
 		expect(deps.invalidate).toHaveBeenCalledWith('comments-task-5');
 	});
 
@@ -104,7 +104,13 @@ describe('installLocalLiveUpdates', () => {
 	it('leaves writes made by the UI itself alone', () => {
 		bus.emit({ type: 'task.updated', workspaceId: -3, taskId: 5, task: { id: 5 } });
 		bus.emit({ type: 'comment.created', workspaceId: -3, taskId: 5, comment: { id: 1, task_id: 5 } });
+		bus.emit({ type: 'comment.deleted', workspaceId: -3, commentId: 11, taskId: 5 });
 		expect(deps.deliver).not.toHaveBeenCalled();
+	});
+
+	it('still delivers a comment.deleted event with no task_id (backward compatible with older emitters)', () => {
+		bus.emit({ type: 'comment.deleted', workspaceId: -3, commentId: 11, actor: 'persona:p-1' });
+		expect(handlers.onCommentDeleted).toHaveBeenCalledWith({ id: 11 });
 	});
 
 	it('leaves cloud workspaces to the realtime socket', () => {

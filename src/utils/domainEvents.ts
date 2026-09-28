@@ -32,7 +32,7 @@ export type DomainEvent = (
 			taskId: number;
 			comment: Entity;
 	  }
-	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number }
+	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number; taskId?: number }
 	| {
 			type: 'comment.reactionChanged';
 			workspaceId: number | null;
@@ -252,6 +252,7 @@ export const eventsForResponse = (
 					type: 'comment.deleted',
 					workspaceId: workspaceOf(),
 					commentId: Number(match[1]),
+					...(payload?.task_id != null ? { taskId: Number(payload.task_id) } : {}),
 				},
 			];
 		}

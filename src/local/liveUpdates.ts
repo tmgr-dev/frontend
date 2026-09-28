@@ -110,7 +110,7 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 				);
 				return;
 			case 'comment.deleted':
-				deps.deliver(workspaceId, (h) => h.onCommentDeleted?.({ id: event.commentId }));
+				deps.deliver(workspaceId, (h) => h.onCommentDeleted?.({ id: event.commentId, task_id: event.taskId }));
 				return;
 			case 'comment.reactionChanged':
 				if (event.taskId == null) return;

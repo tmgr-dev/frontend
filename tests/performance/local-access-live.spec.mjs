@@ -123,3 +123,158 @@ test('persona writes over the local socket update the open board and task panel 
   await expect(panel.getByText('Typed in the panel')).toHaveCount(1);
   await expect(panel.getByText('Reply from the companion')).toHaveCount(1);
 });
+
+test('a persona deleting a comment removes it live from the open task panel, and a UI-originated delete is not duplicated', async ({
+  page,
+}) => {
+  const shell = await desktopPage(page);
+  page.on('dialog', (dialog) => dialog.accept());
+  let requestId = 0;
+  const ask = async (method, path, body) => {
+    const id = ++requestId;
+    await page.evaluate(
+      (payload) => window.__emit('local-access://request', payload),
+      {
+        id,
+        workspaceCode: 'personal',
+        workspaceId: -1000,
+        personaUuid: 'p-1',
+        personaName: 'Companion',
+        tokenId: 'local-token-1',
+        method,
+        path,
+        body: body === undefined ? null : JSON.stringify(body),
+      },
+    );
+    await expect.poll(() => shell.accessReplies.some((r) => r.id === id)).toBe(true);
+    const reply = shell.accessReplies.find((r) => r.id === id);
+    expect(reply.status, reply.body).toBeLessThan(300);
+    return reply.body ? JSON.parse(reply.body) : null;
+  };
+
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+
+  const now = new Date().toISOString();
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+          VALUES ('p-1', 1, 'Test User', 'Companion', NULL, NULL, ?, NULL)`,
+    params: [now],
+  });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at) VALUES ('p-1', ?, ?, NULL)`,
+    params: [JSON.stringify(PERMISSIONS), now],
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window.__listeners['local-access://request'] ?? []).length))
+    .toBeGreaterThan(0);
+
+  const statuses = (await ask('GET', '/api/workspaces/statuses')).data;
+  const [backlog] = statuses;
+  const task = (await ask('POST', '/api/tasks', { title: 'Task with comments', status_id: backlog.id })).data;
+  const personaComment = (
+    await ask('POST', `/api/tasks/${task.id}/comments`, { message: 'From the persona' })
+  ).data;
+
+  await page.goto('/local-personal/board');
+  const column = (status) => page.locator(`.board-card-draggable[data-column-id='${status.id}']`);
+  await column(backlog).getByText('Task with comments').first().click();
+  const panel = page.getByRole('dialog').last();
+  await expect(panel.getByText('From the persona')).toBeVisible();
+
+  await ask('DELETE', `/api/comments/${personaComment.id}`);
+  await expect(panel.getByText('From the persona')).toHaveCount(0);
+
+  await panel.getByPlaceholder('Write a comment…').first().fill('Typed in the panel');
+  await panel.getByPlaceholder('Write a comment…').first().press('Enter');
+  await expect(panel.getByText('Typed in the panel')).toHaveCount(1);
+
+  await panel.locator('.group', { hasText: 'Typed in the panel' }).getByRole('button').first().click();
+  await expect(panel.getByText('Typed in the panel')).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await expect(panel.getByText('Typed in the panel')).toHaveCount(0);
+});
+
+test('persona writes over the local socket update the task list page live', async ({ page }) => {
+  const shell = await desktopPage(page);
+  let requestId = 0;
+  const ask = async (method, path, body) => {
+    const id = ++requestId;
+    await page.evaluate(
+      (payload) => window.__emit('local-access://request', payload),
+      {
+        id,
+        workspaceCode: 'personal',
+        workspaceId: -1000,
+        personaUuid: 'p-1',
+        personaName: 'Companion',
+        tokenId: 'local-token-1',
+        method,
+        path,
+        body: body === undefined ? null : JSON.stringify(body),
+      },
+    );
+    await expect.poll(() => shell.accessReplies.some((r) => r.id === id)).toBe(true);
+    const reply = shell.accessReplies.find((r) => r.id === id);
+    expect(reply.status, reply.body).toBeLessThan(300);
+    return reply.body ? JSON.parse(reply.body) : null;
+  };
+
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+
+  const now = new Date().toISOString();
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+          VALUES ('p-1', 1, 'Test User', 'Companion', NULL, NULL, ?, NULL)`,
+    params: [now],
+  });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at) VALUES ('p-1', ?, ?, NULL)`,
+    params: [JSON.stringify(PERMISSIONS), now],
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window.__listeners['local-access://request'] ?? []).length))
+    .toBeGreaterThan(0);
+
+  const statuses = (await ask('GET', '/api/workspaces/statuses')).data;
+  const [backlog, , , archived] = statuses;
+
+  await page.goto('/local-personal/list');
+  const row = (task) => page.locator(`[data-task-id="${task.id}"]`);
+
+  const task = (await ask('POST', '/api/tasks', { title: 'Listed by persona', status_id: backlog.id })).data;
+  await expect(row(task)).toContainText('Listed by persona');
+
+  await ask('PATCH', `/api/tasks/${task.id}`, { title: 'Renamed in the list' });
+  await expect(row(task)).toContainText('Renamed in the list');
+
+  // An archived-type status is filtered out of the default (active) list: the row must be evicted live.
+  await ask('PATCH', `/api/tasks/${task.id}`, { status_id: archived.id });
+  await expect(row(task)).toHaveCount(0);
+
+  await ask('PATCH', `/api/tasks/${task.id}`, { status_id: backlog.id });
+  await expect(row(task)).toBeVisible();
+
+  // A task created directly into an archived-type status must never be inserted into the active list either.
+  const filteredOut = (
+    await ask('POST', '/api/tasks', { title: 'Created already archived', status_id: archived.id })
+  ).data;
+  await page.waitForTimeout(300);
+  await expect(row(filteredOut)).toHaveCount(0);
+
+  // Personas cannot delete tasks (no DELETE route in the local-access whitelist), so "delete" here
+  // is covered by the eviction case above: a live update that moves a task out of view removes its row.
+});
