@@ -3,7 +3,7 @@ import {
 	overlayCurrentWorkspace,
 	readWorkspaceId,
 	resolveWorkspaceId,
-	rewriteCurrentWorkspaceEntry,
+	withoutCurrentWorkspaceEntry,
 	shouldAttachWorkspaceHeader,
 	writeWorkspaceId,
 } from '@/utils/workspaceContext';
@@ -152,33 +152,32 @@ describe('overlayCurrentWorkspace', () => {
 	});
 });
 
-describe('rewriteCurrentWorkspaceEntry', () => {
+describe('withoutCurrentWorkspaceEntry', () => {
 	const payload = [
 		{ id: 5, value: 9 },
 		{ id: 6, value: 'dark' },
 	];
 
-	test('rewrites the current_workspace entry to the account default', () => {
-		expect(rewriteCurrentWorkspaceEntry(payload, 5, 1)).toEqual([
-			{ id: 5, value: 1 },
+	test('drops the current_workspace entry', () => {
+		expect(withoutCurrentWorkspaceEntry(payload, 5)).toEqual([
 			{ id: 6, value: 'dark' },
 		]);
 	});
 
 	test('leaves the payload untouched when the caller explicitly sets the default', () => {
-		expect(rewriteCurrentWorkspaceEntry(payload, 5, 1, true)).toBe(payload);
+		expect(withoutCurrentWorkspaceEntry(payload, 5, true)).toBe(payload);
 	});
 
 	test('is a no-op when the setting id is unknown or the payload is not an array', () => {
-		expect(rewriteCurrentWorkspaceEntry(payload, null, 1)).toBe(payload);
-		expect(rewriteCurrentWorkspaceEntry({ settings: [] }, 5, 1)).toEqual({
+		expect(withoutCurrentWorkspaceEntry(payload, null)).toBe(payload);
+		expect(withoutCurrentWorkspaceEntry({ settings: [] }, 5)).toEqual({
 			settings: [],
 		});
 	});
 
 	test('leaves a negative (local workspace) target untouched, even without the explicit flag', () => {
 		const localSwitch = [{ id: 5, value: -3 }];
-		expect(rewriteCurrentWorkspaceEntry(localSwitch, 5, 1)).toEqual([
+		expect(withoutCurrentWorkspaceEntry(localSwitch, 5)).toEqual([
 			{ id: 5, value: -3 },
 		]);
 	});

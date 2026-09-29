@@ -61,8 +61,6 @@ export const cloudPluginClient = ({
 		}
 		const renew = Boolean((config as { _renewed?: boolean })._renewed);
 		config.headers.set('Authorization', `Bearer ${await token(renew)}`);
-		// Pinned to this client's own workspace, never the app tab's — that is the point of a
-		// dedicated client (see the module comment).
 		config.headers.set('X-Workspace-Id', String(workspaceId));
 		return config;
 	});

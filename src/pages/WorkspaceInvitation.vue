@@ -117,8 +117,6 @@
 				this.$store.dispatch('logout');
 			},
 			async goToWorkspace() {
-				// The membership is new: the store's workspace list must include it before the
-				// local switch below, or the id won't resolve to anything.
 				requestCache.invalidate('workspaces');
 				const workspaces = await getWorkspaces();
 				this.$store.commit('setWorkspaces', workspaces);

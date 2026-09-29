@@ -25,13 +25,12 @@ beforeEach(() => {
 	($axios.put as jest.Mock).mockResolvedValue({ data: { data: {} } });
 });
 
-test('rewrites current_workspace back to the account default by default', async () => {
+test('drops current_workspace from an ordinary settings save', async () => {
 	await updateUserSettingsV2([
 		{ id: 5, value: 2 },
 		{ id: 6, value: 'dark' },
 	]);
 	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [
-		{ id: 5, value: 1 },
 		{ id: 6, value: 'dark' },
 	]);
 });

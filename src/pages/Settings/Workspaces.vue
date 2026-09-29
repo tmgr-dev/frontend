@@ -340,7 +340,6 @@
 			const updatedUser = await updateUserSettingsV2(payload, {
 				setDefaultWorkspace: true,
 			});
-			// Re-applies this tab's own overlay on top, so the tab itself never moves.
 			store.commit('setUser', updatedUser);
 			toaster.toast({
 				variant: 'default',
@@ -372,7 +371,6 @@
 				class: 'bg-green-500 border-0 text-white',
 			});
 
-			// The server no longer moves the account default here: switch this tab locally.
 			workspaces.value = await getWorkspaces();
 			await store.dispatch('loadWorkspaces');
 			const workspace = workspaces.value.find((w) => w.id === created.id);

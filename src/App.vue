@@ -437,8 +437,7 @@
 						// For workspace-independent pages, don't change the URL at all
 
 						if (workspace.is_local) {
-							// Desktop-only path: local/install.ts's settingsAdapter activates the
-							// local workspace and keeps the server's own current_workspace untouched.
+							// local/install.ts activates it and keeps the server default untouched.
 							const updatedSettings = settings.map((setting) => ({
 								id: setting.id,
 								value:
@@ -452,7 +451,6 @@
 							await syncActiveLocalWorkspace(workspace.id);
 						}
 
-						// This tab's workspace changes locally; nothing is sent to the server.
 						this.$store.commit('updateUserWorkspaceSetting', {
 							workspaceId: workspace.id,
 						});
@@ -531,9 +529,6 @@
 			// hardLogout() yanks the router away from OAuth callback pages
 			// mid-exchange (mobile lost that race on every social login).
 			if (store.state.user?.id) {
-				// Workspaces (and this tab's URL-resolved workspace) must be known before any
-				// workspace-scoped request goes out, or it leaves without X-Workspace-Id and the
-				// server answers with the default workspace's data instead of this tab's.
 				if (!store.state.workspaces || !store.state.workspaces.length) {
 					await this.loadWorkspaces();
 				}

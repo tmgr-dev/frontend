@@ -1609,8 +1609,6 @@
 					this.userData = user;
 					this.workspacesData = workspaces;
 					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
-					// The store, not `user`: getUser() already committed it overlaid with this
-					// tab's workspace, while `user` may still hold the raw server response.
 					const setting = this.$store.state.user?.settings?.find(
 						(setting) => setting.key === 'current_workspace',
 					);

@@ -58,11 +58,7 @@ export const isKnownWorkspaceId = (
 	Array.isArray(workspaces) &&
 	workspaces.some((w) => Number(w.id) === Number(id));
 
-/**
- * The tab's workspace, in priority order: the URL, this tab's own prior choice, the browser's last
- * choice, then the account default. A candidate the workspace list doesn't recognise is skipped —
- * unless the list hasn't loaded yet, when it can't be checked and is trusted provisionally.
- */
+/** URL > this tab > last used > account default; unknown ids are skipped once the list is loaded. */
 export const resolveWorkspaceId = ({
 	urlWorkspaceId = null,
 	sessionWorkspaceId = null,
@@ -91,7 +87,6 @@ export const resolveWorkspaceId = ({
 	return null;
 };
 
-/** Only a positive, currently-known cloud workspace id may travel as a header; local ids never leave the device. */
 export const shouldAttachWorkspaceHeader = (
 	workspaceId: number | null | undefined,
 	workspaces: WorkspaceLike[] | undefined,
@@ -102,10 +97,6 @@ export const shouldAttachWorkspaceHeader = (
 	workspaces.length > 0 &&
 	isKnownWorkspaceId(workspaceId, workspaces);
 
-/**
- * The user's settings with current_workspace pinned to `workspaceId`, so every reader that still
- * finds it by key (instead of a dedicated getter) sees the tab's choice.
- */
 export const overlayCurrentWorkspace = (
 	settings: SettingEntry[] | undefined,
 	workspaceId: number | null,
@@ -121,23 +112,16 @@ export const overlayCurrentWorkspace = (
 	return next;
 };
 
-/**
- * A settings PUT payload with current_workspace rewritten back to the account default, unless the
- * caller explicitly means to change that default (`allowDefaultChange`). A negative (local
- * workspace) target is left alone either way: only the desktop local-switch path ever sends one,
- * and the axios adapter that receives it already keeps it off the real network.
- */
-export const rewriteCurrentWorkspaceEntry = (
+/** Drops a cloud current_workspace entry from a settings PUT so an ordinary save never moves the account default. */
+export const withoutCurrentWorkspaceEntry = (
 	payload: unknown,
 	currentWorkspaceSettingId: number | string | null | undefined,
-	defaultWorkspaceId: number | null,
 	allowDefaultChange = false,
 ): unknown => {
 	if (allowDefaultChange) return payload;
 	if (!Array.isArray(payload) || currentWorkspaceSettingId == null) return payload;
-	return payload.map((entry: SettingEntry) => {
-		if (entry?.id !== currentWorkspaceSettingId) return entry;
-		if (Number(entry.value) < 0) return entry;
-		return { ...entry, value: defaultWorkspaceId };
-	});
+	return payload.filter(
+		(entry: SettingEntry) =>
+			entry?.id !== currentWorkspaceSettingId || Number(entry.value) < 0,
+	);
 };

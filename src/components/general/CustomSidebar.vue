@@ -197,11 +197,7 @@
 	});
 	async function loadSidebar() {
 		if (!store.getters.isLoggedIn) return;
-		// This can run before the router guard's own resolution finishes (the sidebar mounts
-		// once at app boot, not per-navigation) — without this, getTopCategories() below can
-		// fire before state.workspaces is known and go out with no X-Workspace-Id header.
-		// Swallow: the batch below re-calls getUser() and records a failure into sidebarError
-		// the same way it always did; an unhandled rejection here would escape onBeforeMount.
+		// Mounts before the router guard resolves the tab's workspace; the batch below reports getUser failures.
 		if (!store.state.user?.id) await getUser().catch(() => {});
 		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
 		const request = ++sidebarRequest;
@@ -244,8 +240,6 @@
 			}),
 		]);
 		if (!current()) return;
-		// store.state.user, not the local `user` ref: getUser() already committed it, overlaid
-		// with this tab's workspace, while the ref above still holds the raw server response.
 		const id = store.state.user?.settings?.find(
 			(s) => s.key === 'current_workspace',
 		)?.value;
@@ -359,8 +353,7 @@
 			}
 
 			if (workspace.is_local) {
-				// Desktop-only path: local/install.ts's settingsAdapter activates the local
-				// workspace and keeps the server's own current_workspace untouched.
+				// local/install.ts activates it and keeps the server default untouched.
 				const settingsWithUpdatedWorkspace = user.value?.settings.map(
 					(setting) => ({
 						id: setting.id,
@@ -378,7 +371,6 @@
 				await syncActiveLocalWorkspace(workspace.id);
 			}
 
-			// This tab's workspace changes locally; nothing is sent to the server.
 			store.commit('updateUserWorkspaceSetting', {
 				workspaceId: workspace.id,
 			});

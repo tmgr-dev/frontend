@@ -124,17 +124,12 @@ router.beforeEach(async (to, from, next) => {
 				return next(`/${store.state.workspaces[0].code}/${finalLanding}`);
 			}
 		} else if (to.params.workspace_code) {
-			// The URL is this tab's source of truth. Resolve it into the store before next()
-			// so every workspace-scoped request the target page fires carries the right
-			// X-Workspace-Id — otherwise the earliest ones race ahead of the resolution and
-			// land on the account default instead.
+			// Resolve before next() so the page's first requests already carry X-Workspace-Id.
 			if (!store.state.user?.id) {
 				try {
 					await getUser();
 				} catch (e) {
-					// A genuine 401 is already handled by the axios interceptor (refresh, or a
-					// hard logout to Login); anything else here (a timeout, a transient 5xx, an
-					// offline desktop boot) must not drop a deep link — let the page retry.
+					// 401 is handled by the axios interceptor; other failures must not drop a deep link.
 				}
 			}
 			if (!store.state.workspaces || store.state.workspaces.length === 0) {
@@ -152,9 +147,6 @@ router.beforeEach(async (to, from, next) => {
 				store.commit('updateUserWorkspaceSetting', {
 					workspaceId: workspaceFromUrl.id,
 				});
-				// Desktop: Back/Forward, a typed URL, or a cross-workspace link must move the
-				// local-workspace runtime too, not only the store — it drives which requests
-				// local/install.ts answers from SQLite vs. the server.
 				await syncActiveLocalWorkspace(workspaceFromUrl.id);
 			}
 		}

@@ -81,10 +81,8 @@ const state = {
 	workspaceStatusesById: {},
 	workspaces: [],
 	workspacesById: {},
-	// The account's real current_workspace setting (server truth), never a per-tab override.
 	defaultWorkspaceId: null,
-	// This tab's chosen workspace (URL / sessionStorage / localStorage); overlaid onto
-	// userSettingsMap['current_workspace'] so every existing reader sees it for free.
+	// Overlaid onto userSettingsMap['current_workspace'] so existing readers see the tab's workspace.
 	clientWorkspaceId: null,
 	userSettingsMap: {},
 	userSettings: {
@@ -147,8 +145,7 @@ const mutations = {
 			state.workspacesById = workspaces;
 		}
 
-		// The list wasn't loaded yet when setUser first resolved the tab's workspace, so a
-		// stale/foreign id trusted provisionally back then must be re-checked now.
+		// setUser may have trusted a stored id before the list loaded.
 		if (
 			state.clientWorkspaceId != null &&
 			!isKnownWorkspaceId(state.clientWorkspaceId, state.workspaces)
@@ -212,9 +209,7 @@ const mutations = {
 			requestCache.clear();
 			if (state.dailyRoutines)
 				dailyRoutinesModule.mutations.reset(state.dailyRoutines);
-			// A token swap via the cross-tab storage listener skips the logout action (see
-			// main.ts), so this tab's prior account's workspace choice must not leak to the
-			// next one signed in here.
+			// A cross-tab token swap skips the logout action.
 			state.defaultWorkspaceId = null;
 			state.clientWorkspaceId = null;
 		}
@@ -241,9 +236,7 @@ const mutations = {
 				};
 			});
 
-			// The account default is never negative — install.ts's own desktop overlay can hand
-			// this mutation a local workspace's id while one is active, and that must not
-			// corrupt the known default (state.clientWorkspaceId already tracks it separately).
+			// Negative = desktop local workspace overlaid by local/install.ts, never the default.
 			const rawWorkspaceSetting = nextUser.settings.find(
 				(setting) => setting?.key === 'current_workspace',
 			);
@@ -377,9 +370,6 @@ const mutations = {
 	rerenderApp(state) {
 		state.appRerenderKey++;
 	},
-	// The single local-switch mechanism: this tab's workspace changes, nothing is sent to the
-	// server. Callers that already PUT a genuine account-default change (the "Default workspace"
-	// setting) go through setUser instead, which re-derives everything from the server response.
 	updateUserWorkspaceSetting(state, { workspaceId }) {
 		state.clientWorkspaceId = workspaceId != null ? Number(workspaceId) : null;
 		rememberClientWorkspaceId(state.clientWorkspaceId);
