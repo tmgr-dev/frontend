@@ -43,7 +43,10 @@ test('a password change defaults to signing out other sessions and sends the sto
 });
 
 test('the flag follows the option', async () => {
-	await updateUser({ ...base, password: 'secret-1' }, { logoutOtherSessions: false });
+	await updateUser(
+		{ ...base, password: 'secret-1' },
+		{ logoutOtherSessions: false },
+	);
 	expect(sent().logout_other_sessions).toBe(false);
 });
 

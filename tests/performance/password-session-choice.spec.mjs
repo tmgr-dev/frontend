@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
-test('password reset asks whether to sign out all devices', async ({ page }) => {
+test('password reset asks whether to sign out all devices', async ({
+  page,
+}) => {
   const posts = [];
   await page.route('**/api/password/reset/**', (route) => {
     posts.push(route.request().postDataJSON());
