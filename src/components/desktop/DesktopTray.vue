@@ -38,6 +38,7 @@
 	import router from '@/router';
 	import store from '@/store';
 	import { isDndActive, setDnd } from '@/utils/dnd';
+	import { openTaskInWorkspace } from '@/utils/openTaskInWorkspace';
 	import {
 		buildTrayState,
 		formatAway,
@@ -189,13 +190,9 @@
 			onMounted(async () => {
 				const { listen } = await import('@tauri-apps/api/event');
 				unlisteners.push(
-					await listen('tray://open', ({ payload }) => {
-						// The panel loads tasks of the open workspace; another workspace's task only
-						// brings the window forward.
-						if (payload.workspaceId === store.getters.currentWorkspaceId) {
-							store.commit('setCurrentTaskIdForModal', payload.taskId);
-						}
-					}),
+					await listen('tray://open', ({ payload }) =>
+						openTaskInWorkspace(payload, store, router),
+					),
 					await listen('tray://shortcuts', () =>
 						router.push('/settings?tab=desktop'),
 					),
