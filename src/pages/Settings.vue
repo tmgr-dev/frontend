@@ -70,7 +70,7 @@
 						</SettingsSection>
 
 						<div v-if="isProfile" class="flex flex-col gap-6">
-							<profile :standalone="false" />
+							<profile :standalone="false" @password-changed="onPasswordChanged" />
 
 							<SettingsSection title="Telegram">
 								<div
@@ -565,6 +565,14 @@
 					.catch(() => {});
 			},
 
+			onPasswordChanged() {
+				this.user = {
+					...this.user,
+					has_smart_device_token: false,
+					smart_device_token: null,
+				};
+				this.freshToken = null;
+			},
 			async generateSmartDeviceToken() {
 				this.showConfirm(
 					'Generate New Token',
