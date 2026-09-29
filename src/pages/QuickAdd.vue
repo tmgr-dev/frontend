@@ -88,7 +88,10 @@
 	import { getStatusesOfWorkspace } from '@/actions/tmgr/statuses';
 	import { createTask } from '@/actions/tmgr/tasks';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
-	import { activeLocalWorkspace } from '@/local/runtime';
+	import {
+		activeLocalWorkspace,
+		followActiveLocalWorkspace,
+	} from '@/local/runtime';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
@@ -109,6 +112,20 @@
 			return Number(localStorage.getItem(WORKSPACE_KEY)) || null;
 		} catch {
 			return null;
+		}
+	};
+
+	const reportFailure = async (e) => {
+		const config = e?.config;
+		const status = e?.response?.status;
+		const detail = e?.response?.data?.message || e?.message || String(e);
+		try {
+			const log = await import('@tauri-apps/plugin-log');
+			await log.warn(
+				`[quick-add] failed ${config?.method?.toUpperCase() ?? ''} ${config?.url ?? ''} status=${status ?? '-'}: ${detail}`,
+			);
+		} catch {
+			/* logging must never break quick add */
 		}
 	};
 
@@ -159,6 +176,7 @@
 				const payload = await invoke('take_quick_add');
 				if (payload === null || payload === undefined) return;
 				reset();
+				followActiveLocalWorkspace();
 				try {
 					const loaded = await getWorkspaces();
 					// A local workspace other than the active one would 409 on submit
@@ -203,6 +221,10 @@
 				saving.value = true;
 				error.value = false;
 				message.value = 'Adding…';
+				const targetWorkspace = workspaces.value.find(
+					(ws) => ws.id === workspaceId.value,
+				);
+				followActiveLocalWorkspace(Boolean(targetWorkspace?.is_local));
 				try {
 					const fields = {
 						title: title.value.trim(),
@@ -221,9 +243,6 @@
 						await uploadTaskFile(task.id, screenshot.value);
 					} else {
 						const routine = await createDailyTask(fields);
-						const targetWorkspace = workspaces.value.find(
-							(ws) => ws.id === workspaceId.value,
-						);
 						if (targetWorkspace?.is_local) {
 							try {
 								const { emitTo } = await import('@tauri-apps/api/event');
@@ -243,8 +262,10 @@
 					}, 500);
 				} catch (e) {
 					console.error('quick add failed', e);
+					void reportFailure(e);
 					error.value = true;
-					message.value = 'Could not add the task. Try again.';
+					message.value =
+						e?.response?.data?.message || 'Could not add the task. Try again.';
 				} finally {
 					saving.value = false;
 				}

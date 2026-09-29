@@ -57,6 +57,11 @@ export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 	}
 };
 
+/** This window only, never persisted: follow the local workspace the app has open, or none so calls go to the cloud. */
+export const followActiveLocalWorkspace = (follow = true) => {
+	activeCode = follow ? readActive() : null;
+};
+
 export const localWorkspaceById = async (id: number) =>
 	(await listLocalWorkspaces()).find((w) => w.id === id) ?? null;
 
