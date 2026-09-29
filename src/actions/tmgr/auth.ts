@@ -109,7 +109,11 @@ export const resetPassword = async (payload: { email: string }) => {
 
 export const setNewPassword = async (
 	token: string,
-	payload: { password: string; password_confirmation: string },
+	payload: {
+		password: string;
+		password_confirmation: string;
+		logout_all_sessions: boolean;
+	},
 ) => {
 	return await $axios.post(`password/reset/${token}`, payload);
 };
