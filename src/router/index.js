@@ -132,7 +132,9 @@ router.beforeEach(async (to, from, next) => {
 				try {
 					await getUser();
 				} catch (e) {
-					return next({ name: 'Login' });
+					// A genuine 401 is already handled by the axios interceptor (refresh, or a
+					// hard logout to Login); anything else here (a timeout, a transient 5xx, an
+					// offline desktop boot) must not drop a deep link — let the page retry.
 				}
 			}
 			if (!store.state.workspaces || store.state.workspaces.length === 0) {

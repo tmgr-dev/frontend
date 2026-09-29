@@ -173,6 +173,10 @@ const mutations = {
 					return acc;
 				}, {});
 			}
+			requestCache.setContext(
+				`${state.user?.id || 'guest'}:${state.clientWorkspaceId ?? ''}`,
+			);
+			invalidateWorkspaceScopedCache();
 		}
 	},
 	updateSingleTask(state, task) {

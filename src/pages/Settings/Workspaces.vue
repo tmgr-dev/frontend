@@ -325,7 +325,12 @@
 	}
 
 	async function saveDefaultWorkspace() {
-		if (savingDefaultWorkspace.value || !activeWorkspace.value) return;
+		if (
+			savingDefaultWorkspace.value ||
+			!activeWorkspace.value ||
+			defaultWorkspaceSelection.value == null
+		)
+			return;
 		savingDefaultWorkspace.value = true;
 		try {
 			const payload = [
@@ -796,7 +801,9 @@
 						<Button
 							variant="default"
 							@click="saveDefaultWorkspace"
-							:disabled="savingDefaultWorkspace"
+							:disabled="
+								savingDefaultWorkspace || defaultWorkspaceSelection == null
+							"
 							:aria-busy="savingDefaultWorkspace"
 						>
 							<SaveIcon /> Set as default

@@ -200,7 +200,9 @@
 		// This can run before the router guard's own resolution finishes (the sidebar mounts
 		// once at app boot, not per-navigation) — without this, getTopCategories() below can
 		// fire before state.workspaces is known and go out with no X-Workspace-Id header.
-		if (!store.state.user?.id) await getUser();
+		// Swallow: the batch below re-calls getUser() and records a failure into sidebarError
+		// the same way it always did; an unhandled rejection here would escape onBeforeMount.
+		if (!store.state.user?.id) await getUser().catch(() => {});
 		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
 		const request = ++sidebarRequest;
 		const context =

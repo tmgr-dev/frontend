@@ -155,14 +155,17 @@ describe('setWorkspaces: re-validates a provisionally trusted client id', () => 
 	test('falls back to the default when the stored id is not in the loaded list', () => {
 		const sessionStorage = memoryStorage();
 		sessionStorage.setItem('tmgr:tabWorkspaceId', '99');
-		const { config } = fixture({}, { sessionStorage });
+		const { config, cache } = fixture({}, { sessionStorage });
 		const { state, mutations } = config;
 		mutations.setUser(state, userWith());
 		expect(state.clientWorkspaceId).toBe(99);
+		cache.setContext.mockClear();
 		mutations.setWorkspaces(state, [{ id: 1 }, { id: 2 }]);
 		expect(state.clientWorkspaceId).toBe(1);
 		expect(state.userSettingsMap['current_workspace'].value).toBe(1);
 		expect(sessionStorage.getItem('tmgr:tabWorkspaceId')).toBe('1');
+		expect(cache.setContext).toHaveBeenLastCalledWith('1:1');
+		expect(cache.invalidate).toHaveBeenCalled();
 	});
 
 	test('keeps a client id already present in the list', () => {
