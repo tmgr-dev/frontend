@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.8 — 2026-09-29
+
+- Changing your password in Profile now revokes your smart-device, persona (agent) and notification tokens, the same as a
+  password reset. Profile says so after the save, the Smart Device section shows no token, and the password fields are
+  cleared so a later save doesn't send the password again. You stay signed in.
+
 ## 0.9.7 — 2026-09-29
 
 - Clicking the running timer in the status bar or the running task in the tray menu opens the task again when it lives
