@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.7 — 2026-09-29
+
+- Clicking the running timer in the status bar or the running task in the tray menu opens the task again when it lives
+  in another workspace (for example a cloud task while a local workspace is open): the window switches to the task's
+  workspace and opens it.
+
 ## 0.9.6 — 2026-09-29
 
 - Quick Add saves into the workspace picked in its header again. While a local workspace was open in the main window,
