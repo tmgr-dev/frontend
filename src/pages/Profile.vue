@@ -179,6 +179,7 @@
 				default: true,
 			},
 		},
+		emits: ['password-changed'],
 		data: () => ({
 			user: {
 				name: null,
