@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.4 — 2026-09-29
+
+- The API token in Settings is shown only once, right after you generate it; afterwards it stays hidden (generate a
+  new one if you lost it). Tokens are now stored hashed on the server; existing devices keep working.
+- When a session ends because it could not be refreshed, the sign-in page says so instead of logging you out silently.
+
 ## 0.9.3 — 2026-09-29
 
 - One page layout everywhere: content column aligned left with the same paddings, a page header (title, subtitle,
