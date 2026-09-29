@@ -51,6 +51,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Separator } from '@/components/ui/separator';
+	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { requestCache } from '@/utils/requestCache';
 	import {
 		Sidebar,
@@ -366,10 +367,8 @@
 					settingsWithUpdatedWorkspace,
 				);
 				store.commit('setUser', updatedUser);
-			} else if (isDesktopApp()) {
-				const { hasActiveLocalWorkspace, setActiveLocalWorkspace } =
-					await import('@/local/runtime');
-				if (hasActiveLocalWorkspace()) setActiveLocalWorkspace(null);
+			} else {
+				await syncActiveLocalWorkspace(workspace.id);
 			}
 
 			// This tab's workspace changes locally; nothing is sent to the server.

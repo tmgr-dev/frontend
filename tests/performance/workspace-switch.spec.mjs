@@ -128,6 +128,29 @@ test('switching workspace on the board keeps the app rendering', async ({
   ).toEqual([]);
 });
 
+// The sidebar's "top categories" shortcut (project_categories/children) isn't workspace-scoped
+// by header — it's excluded here deliberately, not by omission.
+const isWorkspaceScopedPath = (path) =>
+  path === 'workspaces/statuses' ||
+  path === 'project_categories' ||
+  /^workspaces\/\d+\/members$/.test(path) ||
+  /^tasks\/status\//.test(path);
+
+function trackRequests(page) {
+  const requests = [];
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (!url.pathname.includes('/api/')) return;
+    requests.push({
+      path: url.pathname.replace(/^.*\/api\//, ''),
+      method: req.method(),
+      // Raw, no fallback: a missing header must show up as missing, not as workspace 1.
+      workspaceId: req.headers()['x-workspace-id'] ?? null,
+    });
+  });
+  return requests;
+}
+
 test('two tabs on different workspaces do not affect each other', async ({
   browser,
 }) => {
@@ -144,45 +167,44 @@ test('two tabs on different workspaces do not affect each other', async ({
   await pageA.goto('/demo/board');
   await expect(pageA.getByText('Task 11 in ws 1').first()).toBeVisible();
 
-  await pageB.goto('/other/board');
-  await expect(pageB.getByText('Task 31 in ws 2').first()).toBeVisible();
+  await pageB.goto('/demo/board');
+  await expect(pageB.getByText('Task 11 in ws 1').first()).toBeVisible();
 
-  // A's tab is untouched by B's navigation (same localStorage, independent sessionStorage).
+  // Switch only B, through the real sidebar UI — same localStorage as A, independent
+  // sessionStorage. A must not move, and the switch itself must never PUT.
+  const requestsB = trackRequests(pageB);
+  await pageB.getByTitle('Switch workspace').first().click();
+  await pageB.getByRole('menuitem', { name: /Other/ }).first().click();
+  await expect(pageB).toHaveURL(/\/other\/board/);
+  await expect(pageB.getByText('Task 31 in ws 2').first()).toBeVisible();
+  expect(
+    requestsB.some((r) => r.path === 'v2/user/settings' && r.method === 'PUT'),
+  ).toBe(false);
+
   await expect(pageA.getByText('Task 11 in ws 1').first()).toBeVisible();
   await expect(pageA).toHaveURL(/\/demo\/board/);
 
-  const requestsA = [];
-  pageA.on('request', (req) => {
-    const url = new URL(req.url());
-    if (url.pathname.includes('/api/')) {
-      requestsA.push({
-        path: url.pathname.replace(/^.*\/api\//, ''),
-        workspaceId: Number(req.headers()['x-workspace-id']) || 1,
-      });
-    }
-  });
+  // Reload each tab: every workspace-scoped request carries exactly that tab's id.
+  const requestsA = trackRequests(pageA);
   await pageA.reload();
   await expect(pageA.getByText('Task 11 in ws 1').first()).toBeVisible();
-  expect(
-    requestsA.some((r) => r.path.endsWith('statuses') && r.workspaceId === 1),
-  ).toBe(true);
-  expect(requestsA.every((r) => r.workspaceId !== 2)).toBe(true);
+  const scopedA = requestsA.filter((r) => isWorkspaceScopedPath(r.path));
+  expect(scopedA.length).toBeGreaterThan(0);
+  expect(scopedA.every((r) => r.workspaceId === '1')).toBe(true);
 
-  const requestsB = [];
-  pageB.on('request', (req) => {
-    const url = new URL(req.url());
-    if (url.pathname.includes('/api/')) {
-      requestsB.push({
-        path: url.pathname.replace(/^.*\/api\//, ''),
-        workspaceId: Number(req.headers()['x-workspace-id']) || 1,
-      });
-    }
-  });
+  requestsB.length = 0;
   await pageB.reload();
   await expect(pageB.getByText('Task 31 in ws 2').first()).toBeVisible();
-  expect(
-    requestsB.some((r) => r.path.endsWith('statuses') && r.workspaceId === 2),
-  ).toBe(true);
+  const scopedB = requestsB.filter((r) => isWorkspaceScopedPath(r.path));
+  expect(scopedB.length).toBeGreaterThan(0);
+  expect(scopedB.every((r) => r.workspaceId === '2')).toBe(true);
+
+  // B's switch wrote localStorage's "last used" to 2, shared with A — but A's own
+  // sessionStorage (set when it first loaded /demo) still outranks it.
+  await pageA.goto('/');
+  await expect(pageA).toHaveURL(/\/demo\//);
+  await pageB.goto('/');
+  await expect(pageB).toHaveURL(/\/other\//);
 
   await context.close();
 });

@@ -86,6 +86,7 @@
 	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
+	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -447,10 +448,8 @@
 							}));
 							const updatedUser = await updateUserSettingsV2(updatedSettings);
 							this.$store.commit('setUser', updatedUser);
-						} else if (isDesktopApp()) {
-							const { hasActiveLocalWorkspace, setActiveLocalWorkspace } =
-								await import('@/local/runtime');
-							if (hasActiveLocalWorkspace()) setActiveLocalWorkspace(null);
+						} else {
+							await syncActiveLocalWorkspace(workspace.id);
 						}
 
 						// This tab's workspace changes locally; nothing is sent to the server.
@@ -545,6 +544,7 @@
 					this.$store.commit('updateUserWorkspaceSetting', {
 						workspaceId: workspaceFromUrl.id,
 					});
+					await syncActiveLocalWorkspace(workspaceFromUrl.id);
 				}
 				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}

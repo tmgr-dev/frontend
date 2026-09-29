@@ -1,6 +1,7 @@
 import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
@@ -149,6 +150,10 @@ router.beforeEach(async (to, from, next) => {
 				store.commit('updateUserWorkspaceSetting', {
 					workspaceId: workspaceFromUrl.id,
 				});
+				// Desktop: Back/Forward, a typed URL, or a cross-workspace link must move the
+				// local-workspace runtime too, not only the store — it drives which requests
+				// local/install.ts answers from SQLite vs. the server.
+				await syncActiveLocalWorkspace(workspaceFromUrl.id);
 			}
 		}
 
