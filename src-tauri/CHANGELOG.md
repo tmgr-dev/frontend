@@ -7,6 +7,8 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 - In a local workspace, account settings reach the server again: creating agent-notification tokens, persona tokens,
   the smart-device token, Telegram linking and avatar upload no longer fail with "Could not create token".
+- Changing the password in Profile now revokes the device, persona and agent-notification tokens (as a password reset
+  already did) and says so; the current session stays signed in.
 
 ## 0.9.7 — 2026-09-29
 
