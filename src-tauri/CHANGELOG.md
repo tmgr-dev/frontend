@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.6 — 2026-09-29
+
+- Quick Add saves into the workspace picked in its header again. While a local workspace was open in the main window,
+  adding to a cloud workspace failed with "Could not add the task"; Quick Add now also follows workspace switches made
+  after it was first opened.
+- When Quick Add cannot save, it shows the reason and writes it to the app log.
+
 ## 0.9.5 — 2026-09-29
 
 - Each window keeps its own current workspace: switching in one window, tab or on your phone no longer moves the others,
