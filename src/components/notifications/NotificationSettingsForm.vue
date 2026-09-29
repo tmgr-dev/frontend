@@ -105,6 +105,28 @@
 				</div>
 			</SettingsSection>
 
+			<SettingsSection
+				title="Agents"
+				description="Push notifications sent by Claude Code, Codex, or other AI agents working on your tasks"
+			>
+				<div class="flex flex-col divide-y divide-border rounded-md border border-border">
+					<div class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink">
+						Push to the mobile app
+						<Switch
+							:checked="formData.agent_push_enabled"
+							@update:checked="(v) => (formData.agent_push_enabled = v)"
+						/>
+					</div>
+					<div class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink">
+						Telegram
+						<Switch
+							:checked="formData.agent_telegram_enabled"
+							@update:checked="(v) => (formData.agent_telegram_enabled = v)"
+						/>
+					</div>
+				</div>
+			</SettingsSection>
+
 			<div class="flex justify-end">
 				<span v-if="saving" class="text-xs text-ink-subtle">Saving…</span>
 				<span v-else class="text-xs text-status-done">Saved</span>
@@ -147,6 +169,8 @@
 				telegram_types: [],
 				email_enabled: true,
 				email_types: [],
+				agent_push_enabled: true,
+				agent_telegram_enabled: false,
 			});
 
 			const availableTypes = ref([]);
@@ -197,6 +221,10 @@
 					formData.telegram_types = response.settings.telegram_types || [];
 					formData.email_enabled = response.settings.email_enabled;
 					formData.email_types = response.settings.email_types || [];
+					formData.agent_push_enabled =
+						response.settings.agent_push_enabled ?? true;
+					formData.agent_telegram_enabled =
+						response.settings.agent_telegram_enabled ?? false;
 
 					availableTypes.value = response.available_types;
 				} catch (err) {
@@ -277,6 +305,8 @@
 						email_enabled: formData.email_enabled,
 						email_types:
 							formData.email_types.length > 0 ? formData.email_types : null,
+						agent_push_enabled: formData.agent_push_enabled,
+						agent_telegram_enabled: formData.agent_telegram_enabled,
 					});
 				} catch (err) {
 					console.error('Error saving notification settings:', err);
