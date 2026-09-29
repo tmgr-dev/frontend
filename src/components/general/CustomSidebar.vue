@@ -98,6 +98,7 @@
 		Plus,
 		Settings2,
 		Sliders,
+		Smartphone,
 		Sparkles,
 		SquareKanban,
 		UserPlus,
@@ -946,6 +947,13 @@
 										>
 											<VenetianMask />
 											Personas
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/settings/agent-notifications')"
+											class="cursor-pointer"
+										>
+											<Smartphone />
+											Agent notifications
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="isDesktop"

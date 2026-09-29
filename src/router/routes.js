@@ -449,6 +449,16 @@ const routes = [
 		name: 'PersonaSettings',
 	},
 	{
+		path: '/settings/agent-notifications',
+		component: () => import('@/pages/Settings/AgentNotifications.vue'),
+		meta: {
+			title: 'Agent notifications',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'AgentNotificationSettings',
+	},
+	{
 		path: '/settings/plugins',
 		component: () => import('@/pages/Settings/Plugins.vue'),
 		meta: { title: 'Plugins', transitionName: 'fade-fast', navbarHidden: true },
