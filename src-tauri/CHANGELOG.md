@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.10 — 2026-09-30
+
+- After an update, the app shows what changed: a "What's new" window lists the notes of every release since the version
+  you last used, newest first. It appears once per update.
+- To read the notes again, click the version number in the bottom-right corner of the status bar.
+
 ## 0.9.9 — 2026-09-30
 
 - Password reset and "Change password" in Profile now ask whether to sign out of other devices (checked by default).
