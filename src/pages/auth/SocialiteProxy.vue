@@ -21,6 +21,7 @@
 	import {
 		loginApple,
 		loginGithub,
+		LoginGithubRequest,
 		loginGoogle,
 		LoginGoogleRequest,
 		LoginRequest,
@@ -38,6 +39,7 @@
 		desktopTxFromState,
 		relayReturnHash,
 	} from '@/utils/desktopAuth';
+	import { takeOAuthBinding } from '@/utils/oauthBinding';
 	import { AxiosError } from 'axios';
 	import { ref } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -130,8 +132,10 @@
 			isLoading.value = true;
 			switch (platform) {
 				case 'github':
-					const githubPayload: LoginWithCodeRequest = {
+					const githubPayload: LoginGithubRequest = {
 						code: route.query?.code as string,
+						state: route.query?.state as string,
+						binding: takeOAuthBinding('github'),
 					};
 					await loginGithub(githubPayload);
 					break;
@@ -148,6 +152,8 @@
 						ail: route.query?.ail as string,
 						authuser: parseInt(route.query?.authuser as string),
 						prompt: route.query?.prompt as string,
+						state: route.query?.state as string,
+						binding: takeOAuthBinding('google'),
 					};
 					await loginGoogle(googlePayload);
 					break;
