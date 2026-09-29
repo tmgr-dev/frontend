@@ -49,6 +49,10 @@
 			<Separator class="flex-1" />
 		</div>
 
+		<p v-if="message" role="status" class="mb-4 text-sm text-muted-foreground">
+			{{ message }}
+		</p>
+
 		<form class="space-y-4" @submit.prevent="login">
 			<div class="space-y-2">
 				<Label for="email" class="text-foreground">E-mail</Label>
@@ -120,6 +124,7 @@
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
 	import { createOAuthBinding } from '@/utils/oauthBinding';
+	import { consumeSessionExpired } from '@/utils/sessionExpiry';
 	import { AxiosError } from 'axios';
 	import { onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
@@ -214,6 +219,9 @@
 
 	onMounted(() => {
 		setDocumentTitle('Login');
+		if (consumeSessionExpired()) {
+			message.value = 'Your session has expired. Please sign in again.';
+		}
 		if (document.getElementById('telegram-login-widget-container')) {
 			const script = document.createElement('script');
 			script.async = true;
