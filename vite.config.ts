@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { pwaWorkbox } from './config/pwaWorkbox';
+import { pwaWorkbox } from './pwa/pwaWorkbox';
 
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
