@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.8 — 2026-09-29
+
+- In a local workspace, account settings reach the server again: creating agent-notification tokens, persona tokens,
+  the smart-device token, Telegram linking and avatar upload no longer fail with "Could not create token".
+
 ## 0.9.7 — 2026-09-29
 
 - Clicking the running timer in the status bar or the running task in the tray menu opens the task again when it lives

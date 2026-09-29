@@ -19,9 +19,22 @@ describe('classify', () => {
 			'v2/user/settings',
 			'personas',
 			'personas/abc-123',
+			'notify-tokens',
+			'notify-tokens/7',
+			'persona-tokens',
+			'persona-tokens/3',
+			'smart-device/token/generate',
+			'smart-device/token/revoke',
+			'telegram/link/generate',
+			'telegram/unlink',
+			'user/store-avatar',
+			'password/reset',
+			'stats',
 		]) {
 			expect(classify('GET', url, true)).toBe('server');
 		}
+		expect(classify('POST', '/notify-tokens', true)).toBe('server');
+		expect(classify('DELETE', '/notify-tokens/7', true)).toBe('server');
 		expect(classify('GET', 'user', true)).toBe('server:user');
 	});
 
