@@ -1,4 +1,5 @@
 import store from '@/store';
+import { markSessionExpired } from '@/utils/sessionExpiry';
 import {
 	isSocialCallbackPath,
 	shouldReplayWithCurrentToken,
@@ -72,6 +73,9 @@ const hardLogout = async () => {
 	// mid-exchange — SocialiteProxy handles its own failure path.
 	if (isSocialCallbackPath(window.location.pathname)) {
 		return;
+	}
+	if (store.state.token) {
+		markSessionExpired();
 	}
 	await store.dispatch('logout');
 	const { default: router } = await import('@/router');
