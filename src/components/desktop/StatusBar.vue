@@ -140,9 +140,11 @@
 	} from '@/components/ui/dropdown-menu';
 	import { usePusher } from '@/composable/usePusher';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
+	import router from '@/router';
 	import store from '@/store';
 	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
+	import { openTaskInWorkspace } from '@/utils/openTaskInWorkspace';
 	import {
 		Bell,
 		BellOff,
@@ -240,12 +242,12 @@
 				title: computed(() => store.state.metaTitle || ''),
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
 				toggleAi: () => store.commit('toggleAiPanel'),
-				openTask: (task) => {
-					const workspaceId = task.workspace_id;
-					if (workspaceId == null || workspaceId === store.getters.currentWorkspaceId) {
-						store.commit('setCurrentTaskIdForModal', task.id);
-					}
-				},
+				openTask: (task) =>
+					openTaskInWorkspace(
+						{ taskId: task.id, workspaceId: task.workspace_id },
+						store,
+						router,
+					),
 				runningTask,
 				runningElapsed,
 				connectionState,
