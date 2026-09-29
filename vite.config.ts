@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { pwaWorkbox } from './config/pwaWorkbox';
 
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -64,17 +65,7 @@ export default defineConfig({
 					},
 				],
 			},
-			workbox: {
-				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-				globIgnores: [
-					'**/assets/**/{exo-2,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
-				],
-				importScripts: [
-					'clear-private-api-cache.js',
-					'https://js.pusher.com/beams/service-worker.js',
-				],
-				runtimeCaching: [{ urlPattern: /\/api\/.*/i, handler: 'NetworkOnly' }],
-			},
+			workbox: pwaWorkbox,
 		}),
 	],
 	resolve: {
