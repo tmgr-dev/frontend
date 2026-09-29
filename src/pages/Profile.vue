@@ -77,6 +77,13 @@
 					<p class="mt-1 text-sm text-ink-subtle">
 						Leave blank to keep your current password.
 					</p>
+					<p
+						v-if="tokensRevoked"
+						class="mt-2 text-sm text-ink-subtle"
+						data-testid="tokens-revoked-notice"
+					>
+						{{ tokensRevokedNotice }}
+					</p>
 				</div>
 				<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5">
@@ -172,6 +179,7 @@
 				default: true,
 			},
 		},
+		emits: ['password-changed'],
 		data: () => ({
 			user: {
 				name: null,
@@ -183,6 +191,7 @@
 			avatarError: null,
 			revokingAllTokens: false,
 			saving: false,
+			tokensRevoked: false,
 			// Bumped after an upload so the avatar re-reads its link instead of the cached one.
 			avatarKey: 0,
 		}),
@@ -190,6 +199,10 @@
 			setDocumentTitle('Profile');
 			// @todo try to get from store this data first
 			this.user = await getUser(); // inside we put response to store. @todo think how to reorganize it or don't care
+		},
+		computed: {
+			tokensRevokedNotice: () =>
+				'Device, agent and notification tokens were revoked — generate new ones.',
 		},
 		methods: {
 			async onAvatarPicked(event) {
@@ -236,12 +249,24 @@
 			},
 			async saveUser() {
 				this.saving = true;
+				const passwordChanged = !!this.user.password;
 				try {
 					const updated = await updateUser(this.user);
 					if (updated && typeof updated === 'object')
 						this.user = { ...this.user, ...updated };
+					this.user.password = null;
+					this.user.password_confirmation = null;
 					this.errors = {};
-					toast({ title: 'Saved', description: 'User data saved' });
+					if (passwordChanged) {
+						this.tokensRevoked = true;
+						this.$emit('password-changed');
+						toast({
+							title: 'Password changed',
+							description: this.tokensRevokedNotice,
+						});
+					} else {
+						toast({ title: 'Saved', description: 'User data saved' });
+					}
 				} catch (error) {
 					this.errors = error.response?.data?.errors ?? {};
 				} finally {
