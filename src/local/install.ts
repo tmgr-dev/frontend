@@ -175,8 +175,9 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		const payload = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
 		const user = hooks.currentUser();
 		const target = requestedWorkspace(payload, user);
+		// A plain settings save (theme, preferences, the explicit "Default workspace" pick) —
+		// never a switch now, so it must not evict an active local workspace.
 		if (target === null || target >= 0) {
-			if (target !== null) setActiveLocalWorkspace(null);
 			return network(config);
 		}
 		const workspace = await localWorkspaceById(target);

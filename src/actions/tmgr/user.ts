@@ -3,6 +3,7 @@ import $axios from '@/plugins/axios';
 import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
 import requestCache from '@/utils/requestCache';
+import { rewriteCurrentWorkspaceEntry } from '@/utils/workspaceContext';
 
 export { pickThemeFromSettings };
 
@@ -84,10 +85,25 @@ export const getUserSettingsV2 = async (): Promise<Setting[]> => {
 	return data;
 };
 
-export const updateUserSettingsV2 = async (payload: UserSettings) => {
+export interface UpdateUserSettingsOptions {
+	/** True only for the explicit "Default workspace" save; every other caller is a local
+	 *  workspace switch and must never move the account default. */
+	setDefaultWorkspace?: boolean;
+}
+
+export const updateUserSettingsV2 = async (
+	payload: UserSettings,
+	options?: UpdateUserSettingsOptions,
+) => {
+	const rewritten = rewriteCurrentWorkspaceEntry(
+		payload,
+		store.getters.userSettingByKey('current_workspace')?.id,
+		store.getters.defaultWorkspaceId,
+		options?.setDefaultWorkspace,
+	);
 	const {
 		data: { data },
-	} = await $axios.put('v2/user/settings', payload);
+	} = await $axios.put('v2/user/settings', rewritten);
 
 	return data;
 };

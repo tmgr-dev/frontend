@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
+import * as workspaceContext from '@/utils/workspaceContext';
 
 const deferred = () => {
 	let resolve!: (value: any) => void;
@@ -28,6 +29,7 @@ function fixture(extraDeps: Record<string, unknown> = {}) {
 		vuex: { createStore: (options: any) => options },
 		'@/actions/tmgr/workspaces': { getWorkspaces },
 		'@/utils/requestCache': { requestCache: cache },
+		'@/utils/workspaceContext': workspaceContext,
 		'@/composable/usePusher': { disconnectRealtime: jest.fn() },
 		...extraDeps,
 	}).default;

@@ -59,12 +59,14 @@
 </template>
 
 <script>
-	import { getUser, updateUserSettingsV2 } from '@/actions/tmgr/user';
+	import { getUser } from '@/actions/tmgr/user';
 	import {
 		acceptWorkspaceInvitation,
+		getWorkspaces,
 		workspaceInvitationInfo,
 	} from '@/actions/tmgr/workspaces';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { requestCache } from '@/utils/requestCache';
 
 	export default {
 		name: 'WorkspaceInvitation',
@@ -115,19 +117,14 @@
 				this.$store.dispatch('logout');
 			},
 			async goToWorkspace() {
-				const settingsWithUpdatedWorkspace = this.user.settings.map(
-					(setting) => {
-						if (setting.key === 'current_workspace') {
-							setting.value = this.workspaceId;
-						}
-						return {
-							id: setting.id,
-							value: setting.value,
-						};
-					},
-				);
-
-				await updateUserSettingsV2(settingsWithUpdatedWorkspace);
+				// The membership is new: the store's workspace list must include it before the
+				// local switch below, or the id won't resolve to anything.
+				requestCache.invalidate('workspaces');
+				const workspaces = await getWorkspaces();
+				this.$store.commit('setWorkspaces', workspaces);
+				this.$store.commit('updateUserWorkspaceSetting', {
+					workspaceId: this.workspaceId,
+				});
 
 				setTimeout(() => {
 					this.$store.commit('rerenderApp');

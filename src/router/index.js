@@ -122,6 +122,34 @@ router.beforeEach(async (to, from, next) => {
 			if (store.state.workspaces?.[0]?.code) {
 				return next(`/${store.state.workspaces[0].code}/${finalLanding}`);
 			}
+		} else if (to.params.workspace_code) {
+			// The URL is this tab's source of truth. Resolve it into the store before next()
+			// so every workspace-scoped request the target page fires carries the right
+			// X-Workspace-Id — otherwise the earliest ones race ahead of the resolution and
+			// land on the account default instead.
+			if (!store.state.user?.id) {
+				try {
+					await getUser();
+				} catch (e) {
+					return next({ name: 'Login' });
+				}
+			}
+			if (!store.state.workspaces || store.state.workspaces.length === 0) {
+				try {
+					const workspaces = await getWorkspaces();
+					store.commit('setWorkspaces', workspaces);
+				} catch (e) {
+					// continue: the page itself will retry loading workspaces
+				}
+			}
+			const workspaceFromUrl = store.state.workspaces?.find(
+				(w) => w.code === to.params.workspace_code,
+			);
+			if (workspaceFromUrl) {
+				store.commit('updateUserWorkspaceSetting', {
+					workspaceId: workspaceFromUrl.id,
+				});
+			}
 		}
 
 		return next();

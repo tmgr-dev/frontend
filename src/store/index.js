@@ -8,7 +8,38 @@ import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
 import { isDesktopApp } from '@/utils/desktop';
 import { requestCache } from '@/utils/requestCache';
+import {
+	isKnownWorkspaceId,
+	overlayCurrentWorkspace,
+	readWorkspaceId,
+	resolveWorkspaceId,
+	WORKSPACE_LOCAL_KEY,
+	WORKSPACE_SESSION_KEY,
+	writeWorkspaceId,
+} from '@/utils/workspaceContext';
 import { createStore } from 'vuex';
+
+const sessionStorageSafe = () => {
+	try {
+		return sessionStorage;
+	} catch {
+		return null;
+	}
+};
+const localStorageSafe = () => {
+	try {
+		return localStorage;
+	} catch {
+		return null;
+	}
+};
+
+const rememberClientWorkspaceId = (workspaceId) => {
+	writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, workspaceId);
+	if (workspaceId != null) {
+		writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, workspaceId);
+	}
+};
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -50,6 +81,11 @@ const state = {
 	workspaceStatusesById: {},
 	workspaces: [],
 	workspacesById: {},
+	// The account's real current_workspace setting (server truth), never a per-tab override.
+	defaultWorkspaceId: null,
+	// This tab's chosen workspace (URL / sessionStorage / localStorage); overlaid onto
+	// userSettingsMap['current_workspace'] so every existing reader sees it for free.
+	clientWorkspaceId: null,
 	userSettingsMap: {},
 	userSettings: {
 		showTooltips: true,
@@ -70,6 +106,7 @@ const getters = {
 	currentWorkspaceId: (state) => {
 		return state.userSettingsMap['current_workspace']?.value || null;
 	},
+	defaultWorkspaceId: (state) => state.defaultWorkspaceId,
 	currentWorkspace: (state, getters) => {
 		const workspaceId = getters.currentWorkspaceId;
 		return workspaceId ? state.workspacesById[workspaceId] : null;
@@ -108,6 +145,34 @@ const mutations = {
 		} else {
 			state.workspaces = Object.values(workspaces);
 			state.workspacesById = workspaces;
+		}
+
+		// The list wasn't loaded yet when setUser first resolved the tab's workspace, so a
+		// stale/foreign id trusted provisionally back then must be re-checked now.
+		if (
+			state.clientWorkspaceId != null &&
+			!isKnownWorkspaceId(state.clientWorkspaceId, state.workspaces)
+		) {
+			state.clientWorkspaceId = resolveWorkspaceId({
+				sessionWorkspaceId: readWorkspaceId(
+					sessionStorageSafe(),
+					WORKSPACE_SESSION_KEY,
+				),
+				lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+				defaultWorkspaceId: state.defaultWorkspaceId,
+				workspaces: state.workspaces,
+			});
+			rememberClientWorkspaceId(state.clientWorkspaceId);
+			if (Array.isArray(state.user?.settings)) {
+				state.user.settings = overlayCurrentWorkspace(
+					state.user.settings,
+					state.clientWorkspaceId ?? state.defaultWorkspaceId,
+				);
+				state.userSettingsMap = state.user.settings.reduce((acc, setting) => {
+					if (setting?.key) acc[setting.key] = setting;
+					return acc;
+				}, {});
+			}
 		}
 	},
 	updateSingleTask(state, task) {
@@ -166,6 +231,35 @@ const mutations = {
 					...setting,
 				};
 			});
+
+			// The account default is never negative — install.ts's own desktop overlay can hand
+			// this mutation a local workspace's id while one is active, and that must not
+			// corrupt the known default (state.clientWorkspaceId already tracks it separately).
+			const rawWorkspaceSetting = nextUser.settings.find(
+				(setting) => setting?.key === 'current_workspace',
+			);
+			const rawWorkspaceId =
+				rawWorkspaceSetting?.value != null ? Number(rawWorkspaceSetting.value) : null;
+			if (rawWorkspaceId != null && rawWorkspaceId >= 0) {
+				state.defaultWorkspaceId = rawWorkspaceId;
+			}
+
+			if (state.clientWorkspaceId == null) {
+				state.clientWorkspaceId = resolveWorkspaceId({
+					sessionWorkspaceId: readWorkspaceId(
+						sessionStorageSafe(),
+						WORKSPACE_SESSION_KEY,
+					),
+					lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+					defaultWorkspaceId: state.defaultWorkspaceId,
+					workspaces: state.workspaces,
+				});
+			}
+
+			nextUser.settings = overlayCurrentWorkspace(
+				nextUser.settings,
+				state.clientWorkspaceId ?? state.defaultWorkspaceId,
+			);
 		}
 
 		state.user = nextUser;
@@ -274,7 +368,12 @@ const mutations = {
 	rerenderApp(state) {
 		state.appRerenderKey++;
 	},
+	// The single local-switch mechanism: this tab's workspace changes, nothing is sent to the
+	// server. Callers that already PUT a genuine account-default change (the "Default workspace"
+	// setting) go through setUser instead, which re-derives everything from the server response.
 	updateUserWorkspaceSetting(state, { workspaceId }) {
+		state.clientWorkspaceId = workspaceId != null ? Number(workspaceId) : null;
+		rememberClientWorkspaceId(state.clientWorkspaceId);
 		requestCache.setContext(
 			`${state.user?.id || 'guest'}:${workspaceId || ''}`,
 		);
@@ -337,6 +436,10 @@ const actions = {
 		localStorage.removeItem('theme');
 		localStorage.removeItem('colorScheme');
 		commit('setThemeToSystem');
+		writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, null);
+		writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, null);
+		state.defaultWorkspaceId = null;
+		state.clientWorkspaceId = null;
 		requestCache.clear();
 	},
 

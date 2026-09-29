@@ -435,33 +435,25 @@
 						}
 						// For workspace-independent pages, don't change the URL at all
 
-						// Prepare updated settings
-						const updatedSettings = settings.map((setting) => {
-							if (setting.key === 'current_workspace') {
-								return {
-									id: setting.id,
-									value: workspace.id,
-								};
-							}
-							return {
+						if (workspace.is_local) {
+							// Desktop-only path: local/install.ts's settingsAdapter activates the
+							// local workspace and keeps the server's own current_workspace untouched.
+							const updatedSettings = settings.map((setting) => ({
 								id: setting.id,
-								value: setting.value,
-							};
-						});
+								value:
+									setting.key === 'current_workspace'
+										? workspace.id
+										: setting.value,
+							}));
+							const updatedUser = await updateUserSettingsV2(updatedSettings);
+							this.$store.commit('setUser', updatedUser);
+						} else if (isDesktopApp()) {
+							const { hasActiveLocalWorkspace, setActiveLocalWorkspace } =
+								await import('@/local/runtime');
+							if (hasActiveLocalWorkspace()) setActiveLocalWorkspace(null);
+						}
 
-						// Update user settings in the backend
-						await updateUserSettingsV2(updatedSettings);
-
-						// Create a new user object with updated settings to ensure reactivity
-						const updatedUser = {
-							...this.$store.state.user,
-							settings: updatedSettings,
-						};
-
-						// Update store without reloading the page
-						this.$store.commit('setUser', updatedUser);
-
-						// Also update the workspace setting directly for components watching that specifically
+						// This tab's workspace changes locally; nothing is sent to the server.
 						this.$store.commit('updateUserWorkspaceSetting', {
 							workspaceId: workspace.id,
 						});
@@ -540,11 +532,21 @@
 			// hardLogout() yanks the router away from OAuth callback pages
 			// mid-exchange (mobile lost that race on every social login).
 			if (store.state.user?.id) {
-				await Promise.all([
-					getUserSettings(),
-					getWorkspaceStatuses(),
-					this.$store.dispatch('loadWorkspaces'),
-				]);
+				// Workspaces (and this tab's URL-resolved workspace) must be known before any
+				// workspace-scoped request goes out, or it leaves without X-Workspace-Id and the
+				// server answers with the default workspace's data instead of this tab's.
+				if (!store.state.workspaces || !store.state.workspaces.length) {
+					await this.loadWorkspaces();
+				}
+				const workspaceFromUrl = store.state.workspaces.find(
+					(workspace) => workspace.code === this.$route.params.workspace_code,
+				);
+				if (workspaceFromUrl) {
+					this.$store.commit('updateUserWorkspaceSetting', {
+						workspaceId: workspaceFromUrl.id,
+					});
+				}
+				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
 
 			this.$router.beforeEach((to, from, next) => {

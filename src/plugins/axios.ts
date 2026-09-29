@@ -7,6 +7,7 @@ import {
 } from '@/utils/sessionGuards';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
+import { shouldAttachWorkspaceHeader } from '@/utils/workspaceContext';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -87,6 +88,16 @@ $axios.interceptors.request.use(
 		const token = store.state.token?.token;
 		if (token && config.headers) {
 			config.headers.Authorization = `Bearer ${token}`;
+		}
+		const workspaceId = store.getters.currentWorkspaceId;
+		if (
+			config.headers &&
+			shouldAttachWorkspaceHeader(
+				workspaceId != null ? Number(workspaceId) : null,
+				store.state.workspaces,
+			)
+		) {
+			config.headers['X-Workspace-Id'] = String(workspaceId);
 		}
 		return config;
 	},

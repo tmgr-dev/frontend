@@ -110,6 +110,11 @@
 
 		return foundWorkspace?.user_id === store.state.user.id;
 	});
+	const defaultWorkspaceSelection = ref<number | null>(null);
+	const savingDefaultWorkspace = ref(false);
+	const cloudWorkspaceOptions = computed(() =>
+		workspaces.value.filter((workspace) => !workspace.is_local),
+	);
 	const isLoading = ref(true);
 	const savingSettings = ref(false);
 	const initialLoaded = ref(false),
@@ -187,10 +192,10 @@
 			isOpenInvitation.value = route.query.hasOwnProperty('invite');
 			isLoading.value = false;
 			workspaces.value = loadedWorkspaces;
-			console.log(store.state.user.settings);
 			activeWorkspace.value = store.state.user.settings.find(
 				(settingInStore) => settingInStore.key === 'current_workspace',
 			);
+			defaultWorkspaceSelection.value = store.state.defaultWorkspaceId;
 
 			const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
 				const settingFromStoreWithValue = store.state.user.settings.find(
@@ -319,11 +324,41 @@
 		}
 	}
 
+	async function saveDefaultWorkspace() {
+		if (savingDefaultWorkspace.value || !activeWorkspace.value) return;
+		savingDefaultWorkspace.value = true;
+		try {
+			const payload = [
+				...settings.value,
+				{ ...activeWorkspace.value, value: defaultWorkspaceSelection.value },
+			];
+			const updatedUser = await updateUserSettingsV2(payload, {
+				setDefaultWorkspace: true,
+			});
+			// Re-applies this tab's own overlay on top, so the tab itself never moves.
+			store.commit('setUser', updatedUser);
+			toaster.toast({
+				variant: 'default',
+				title: 'Default workspace saved',
+				action: CircleCheckBigIcon,
+				class: 'bg-green-500 border-0 text-white',
+			});
+		} catch (e) {
+			console.error(e);
+			toaster.toast({
+				title: 'Could not save the default workspace',
+				variant: 'destructive',
+			});
+		} finally {
+			savingDefaultWorkspace.value = false;
+		}
+	}
+
 	async function createWorkspace() {
 		if (newWorkspace.value.name.trim() === '') return;
 
 		try {
-			await createWorkspaceAction(newWorkspace.value);
+			const created = await createWorkspaceAction(newWorkspace.value);
 			newWorkspace.value.name = '';
 			closeDialog();
 			toaster.toast({
@@ -332,9 +367,16 @@
 				class: 'bg-green-500 border-0 text-white',
 			});
 
-			setTimeout(() => {
-				window.location.reload();
-			}, 100);
+			// The server no longer moves the account default here: switch this tab locally.
+			workspaces.value = await getWorkspaces();
+			await store.dispatch('loadWorkspaces');
+			const workspace = workspaces.value.find((w) => w.id === created.id);
+			if (workspace) {
+				store.commit('updateUserWorkspaceSetting', { workspaceId: workspace.id });
+				activeWorkspace.value = store.state.user.settings.find(
+					(settingInStore) => settingInStore.key === 'current_workspace',
+				);
+			}
 		} catch (e) {
 			console.error(e);
 		}
@@ -732,6 +774,32 @@
 							:aria-busy="savingSettings"
 						>
 							<SaveIcon /> Save
+						</Button>
+					</template>
+				</SettingsSection>
+
+				<SettingsSection title="Default workspace">
+					<SettingsRow
+						label="Default workspace"
+						description="Used by Telegram, MCP, smart devices, and when you open TMGR on a new device."
+					>
+						<Combobox
+							:entities="cloudWorkspaceOptions"
+							v-model="defaultWorkspaceSelection"
+							selected-placeholder="Choose a workspace"
+							value-key="id"
+							label-key="name"
+						/>
+					</SettingsRow>
+
+					<template #footer>
+						<Button
+							variant="default"
+							@click="saveDefaultWorkspace"
+							:disabled="savingDefaultWorkspace"
+							:aria-busy="savingDefaultWorkspace"
+						>
+							<SaveIcon /> Set as default
 						</Button>
 					</template>
 				</SettingsSection>

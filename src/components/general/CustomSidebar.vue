@@ -236,7 +236,9 @@
 			}),
 		]);
 		if (!current()) return;
-		const id = user.value?.settings?.find(
+		// store.state.user, not the local `user` ref: getUser() already committed it, overlaid
+		// with this tab's workspace, while the ref above still holds the raw server response.
+		const id = store.state.user?.settings?.find(
 			(s) => s.key === 'current_workspace',
 		)?.value;
 		activeWorkspace.value = workspaces.value.find(
@@ -348,29 +350,29 @@
 				}
 			}
 
-			// Prepare settings update for backend
-			const settingsWithUpdatedWorkspace = user.value?.settings.map(
-				(setting) => {
-					if (setting.key === 'current_workspace') {
-						setting.value = workspace.id;
-					}
-
-					return {
+			if (workspace.is_local) {
+				// Desktop-only path: local/install.ts's settingsAdapter activates the local
+				// workspace and keeps the server's own current_workspace untouched.
+				const settingsWithUpdatedWorkspace = user.value?.settings.map(
+					(setting) => ({
 						id: setting.id,
-						value: setting.value,
-					};
-				},
-			);
+						value:
+							setting.key === 'current_workspace'
+								? workspace.id
+								: setting.value,
+					}),
+				);
+				const updatedUser = await updateUserSettingsV2(
+					settingsWithUpdatedWorkspace,
+				);
+				store.commit('setUser', updatedUser);
+			} else if (isDesktopApp()) {
+				const { hasActiveLocalWorkspace, setActiveLocalWorkspace } =
+					await import('@/local/runtime');
+				if (hasActiveLocalWorkspace()) setActiveLocalWorkspace(null);
+			}
 
-			// Update settings in backend
-			const updatedUser = await updateUserSettingsV2(
-				settingsWithUpdatedWorkspace,
-			);
-
-			// Update store without a page reload, preserving full setting metadata.
-			store.commit('setUser', updatedUser);
-
-			// Update the workspace setting directly
+			// This tab's workspace changes locally; nothing is sent to the server.
 			store.commit('updateUserWorkspaceSetting', {
 				workspaceId: workspace.id,
 			});
