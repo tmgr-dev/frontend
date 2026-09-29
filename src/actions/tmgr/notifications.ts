@@ -39,6 +39,8 @@ export interface NotificationSettings {
 	web_types: string[] | null;
 	email_enabled: boolean;
 	email_types: string[] | null;
+	agent_push_enabled?: boolean;
+	agent_telegram_enabled?: boolean;
 	created_at: string;
 	updated_at: string;
 }
@@ -55,6 +57,8 @@ export interface UpdateNotificationSettingsPayload {
 	web_types?: string[];
 	email_enabled?: boolean;
 	email_types?: string[];
+	agent_push_enabled?: boolean;
+	agent_telegram_enabled?: boolean;
 }
 
 export const getNotifications = async (
