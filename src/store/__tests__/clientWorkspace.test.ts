@@ -114,6 +114,23 @@ describe('setUser: per-tab workspace overlay', () => {
 		expect(state.userSettingsMap['current_workspace'].value).toBe(1);
 	});
 
+	test('a different user id (a cross-tab token swap that skips logout) resets the tab workspace', () => {
+		const sessionStorage = memoryStorage();
+		sessionStorage.setItem('tmgr:tabWorkspaceId', '1');
+		const { config } = fixture({}, { sessionStorage });
+		const { state, mutations } = config;
+		mutations.setUser(state, userWith());
+		expect(state.clientWorkspaceId).toBe(1);
+
+		sessionStorage.setItem('tmgr:tabWorkspaceId', '9');
+		mutations.setUser(state, {
+			id: 2,
+			settings: [{ id: 5, key: 'current_workspace', value: 9 }],
+		});
+		expect(state.clientWorkspaceId).toBe(9);
+		expect(state.defaultWorkspaceId).toBe(9);
+	});
+
 	test('a negative (local) current_workspace value never becomes the default or an unresolved client id', () => {
 		const { config } = fixture();
 		const { state, mutations } = config;

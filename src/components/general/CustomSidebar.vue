@@ -197,6 +197,11 @@
 	});
 	async function loadSidebar() {
 		if (!store.getters.isLoggedIn) return;
+		// This can run before the router guard's own resolution finishes (the sidebar mounts
+		// once at app boot, not per-navigation) — without this, getTopCategories() below can
+		// fire before state.workspaces is known and go out with no X-Workspace-Id header.
+		if (!store.state.user?.id) await getUser();
+		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
 		const request = ++sidebarRequest;
 		const context =
 			String(store.state.user?.id) +

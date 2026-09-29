@@ -208,6 +208,11 @@ const mutations = {
 			requestCache.clear();
 			if (state.dailyRoutines)
 				dailyRoutinesModule.mutations.reset(state.dailyRoutines);
+			// A token swap via the cross-tab storage listener skips the logout action (see
+			// main.ts), so this tab's prior account's workspace choice must not leak to the
+			// next one signed in here.
+			state.defaultWorkspaceId = null;
+			state.clientWorkspaceId = null;
 		}
 		const previousWorkspaceId =
 			state.userSettingsMap['current_workspace']?.value || null;

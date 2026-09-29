@@ -128,11 +128,10 @@ test('switching workspace on the board keeps the app rendering', async ({
   ).toEqual([]);
 });
 
-// The sidebar's "top categories" shortcut (project_categories/children) isn't workspace-scoped
-// by header — it's excluded here deliberately, not by omission.
 const isWorkspaceScopedPath = (path) =>
   path === 'workspaces/statuses' ||
   path === 'project_categories' ||
+  /^project_categories\/children\/?$/.test(path) ||
   /^workspaces\/\d+\/members$/.test(path) ||
   /^tasks\/status\//.test(path);
 
