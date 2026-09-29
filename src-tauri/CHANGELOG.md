@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.5 — 2026-09-29
+
+- Each window keeps its own current workspace: switching in one window, tab or on your phone no longer moves the others,
+  and a reload keeps the window where it was. New windows open on the workspace you used last.
+- Settings → Workspaces has a "Default workspace" picker. It is used by Telegram, MCP, smart devices and when you sign
+  in on a new device; switching workspaces no longer changes it.
+
 ## 0.9.4 — 2026-09-29
 
 - The API token in Settings is shown only once, right after you generate it; afterwards it stays hidden (generate a
