@@ -1,6 +1,6 @@
+import * as workspaceContext from '@/utils/workspaceContext';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
-import * as workspaceContext from '@/utils/workspaceContext';
 
 const memoryStorage = () => {
 	const map = new Map<string, string>();
@@ -42,7 +42,12 @@ function fixture(
 	storages: { localStorage?: any; sessionStorage?: any } = {},
 ) {
 	const getWorkspaces = jest.fn();
-	const cache = { clear: jest.fn(), setContext: jest.fn(), invalidate: jest.fn(), clearInFlight: jest.fn() };
+	const cache = {
+		clear: jest.fn(),
+		setContext: jest.fn(),
+		invalidate: jest.fn(),
+		clearInFlight: jest.fn(),
+	};
 	const config = evaluate(
 		'../index.js',
 		{
@@ -60,10 +65,7 @@ function fixture(
 
 const userWith = (settingsExtra: any[] = []) => ({
 	id: 1,
-	settings: [
-		{ id: 5, key: 'current_workspace', value: 1 },
-		...settingsExtra,
-	],
+	settings: [{ id: 5, key: 'current_workspace', value: 1 }, ...settingsExtra],
 });
 
 describe('setUser: per-tab workspace overlay', () => {
@@ -146,7 +148,9 @@ describe('setUser: per-tab workspace overlay', () => {
 		const { config } = fixture();
 		const { state, mutations } = config;
 		mutations.setUser(state, userWith());
-		const setting = state.user.settings.find((s: any) => s.key === 'current_workspace');
+		const setting = state.user.settings.find(
+			(s: any) => s.key === 'current_workspace',
+		);
 		expect(setting.value).toBe(1);
 	});
 });

@@ -119,7 +119,8 @@ export const withoutCurrentWorkspaceEntry = (
 	allowDefaultChange = false,
 ): unknown => {
 	if (allowDefaultChange) return payload;
-	if (!Array.isArray(payload) || currentWorkspaceSettingId == null) return payload;
+	if (!Array.isArray(payload) || currentWorkspaceSettingId == null)
+		return payload;
 	return payload.filter(
 		(entry: SettingEntry) =>
 			entry?.id !== currentWorkspaceSettingId || Number(entry.value) < 0,

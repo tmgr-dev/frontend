@@ -3,8 +3,8 @@ import {
 	overlayCurrentWorkspace,
 	readWorkspaceId,
 	resolveWorkspaceId,
-	withoutCurrentWorkspaceEntry,
 	shouldAttachWorkspaceHeader,
+	withoutCurrentWorkspaceEntry,
 	writeWorkspaceId,
 } from '@/utils/workspaceContext';
 
@@ -82,10 +82,18 @@ describe('resolveWorkspaceId', () => {
 
 	test('falls back to sessionStorage, then localStorage, then the server default', () => {
 		expect(
-			resolveWorkspaceId({ sessionWorkspaceId: 2, defaultWorkspaceId: 1, workspaces }),
+			resolveWorkspaceId({
+				sessionWorkspaceId: 2,
+				defaultWorkspaceId: 1,
+				workspaces,
+			}),
 		).toBe(2);
 		expect(
-			resolveWorkspaceId({ lastWorkspaceId: 2, defaultWorkspaceId: 1, workspaces }),
+			resolveWorkspaceId({
+				lastWorkspaceId: 2,
+				defaultWorkspaceId: 1,
+				workspaces,
+			}),
 		).toBe(2);
 		expect(resolveWorkspaceId({ defaultWorkspaceId: 1, workspaces })).toBe(1);
 	});
@@ -101,9 +109,9 @@ describe('resolveWorkspaceId', () => {
 	});
 
 	test('trusts a candidate provisionally when the workspace list has not loaded yet', () => {
-		expect(
-			resolveWorkspaceId({ sessionWorkspaceId: 99, workspaces: [] }),
-		).toBe(99);
+		expect(resolveWorkspaceId({ sessionWorkspaceId: 99, workspaces: [] })).toBe(
+			99,
+		);
 	});
 
 	test('returns null when nothing resolves', () => {
