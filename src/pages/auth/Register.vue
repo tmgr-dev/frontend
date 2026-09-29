@@ -150,6 +150,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
+	import { createOAuthBinding } from '@/utils/oauthBinding';
 	import { AxiosError } from 'axios';
 	import { onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
@@ -230,6 +231,13 @@
 	async function loginWithSocialite(platform: DesktopAuthProvider) {
 		if (isDesktop) return startDesktopSocialLogin(platform);
 		if (platform === 'telegram') return;
+		if (platform === 'github' || platform === 'google') {
+			const binding = createOAuthBinding(platform);
+			document.location.href = `${
+				import.meta.env.VITE_API_BASE_URL
+			}auth/login/${platform}?binding=${encodeURIComponent(binding)}`;
+			return;
+		}
 		document.location.href = `${
 			import.meta.env.VITE_API_BASE_URL
 		}auth/login/${platform}`;

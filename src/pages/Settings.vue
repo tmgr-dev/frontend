@@ -101,15 +101,27 @@
 									<Label for="smart-device-token">API token</Label>
 									<div class="flex flex-wrap items-center gap-2">
 										<Input
+											v-if="tokenState === 'fresh'"
 											id="smart-device-token"
 											:type="showToken ? 'text' : 'password'"
-											:model-value="user.smart_device_token"
+											:model-value="freshToken"
 											class="min-w-[220px] flex-1"
-											placeholder="Token needs to be generated"
 											readonly
 										/>
+										<Input
+											v-else
+											id="smart-device-token"
+											class="min-w-[220px] flex-1"
+											:placeholder="
+												tokenState === 'hidden'
+													? 'Token is set (hidden). Generate a new one if you lost it.'
+													: 'Token needs to be generated'
+											"
+											readonly
+											:disabled="tokenState === 'hidden'"
+										/>
 										<Button
-											v-if="user.smart_device_token"
+											v-if="tokenState === 'fresh'"
 											variant="outline"
 											size="sm"
 											@click="copyToken"
@@ -119,7 +131,7 @@
 											{{ tokenCopied ? 'Copied' : 'Copy' }}
 										</Button>
 										<Button
-											v-if="user.smart_device_token"
+											v-if="tokenState === 'fresh'"
 											variant="outline"
 											size="sm"
 											@click="showToken = !showToken"
@@ -129,20 +141,23 @@
 											{{ showToken ? 'Hide' : 'Show' }}
 										</Button>
 									</div>
-									<p v-if="user.smart_device_token" class="text-xs text-ink-subtle">
+									<p v-if="tokenState === 'fresh'" class="text-xs text-ink-subtle">
+										Copy it now — it won't be shown again.
+									</p>
+									<p v-if="hasSmartDeviceToken" class="text-xs text-ink-subtle">
 										Created: {{ formatDate(user.smart_device_token_created_at) }}
 									</p>
 								</div>
 								<template #footer>
 									<Button @click="generateSmartDeviceToken">
 										{{
-											user.smart_device_token
+											hasSmartDeviceToken
 												? 'Generate new token'
 												: 'Generate token'
 										}}
 									</Button>
 									<Button
-										v-if="user.smart_device_token"
+										v-if="hasSmartDeviceToken"
 										variant="destructive"
 										@click="revokeSmartDeviceToken"
 									>
@@ -298,6 +313,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
 	import { isDesktopApp } from '@/utils/desktop';
+	import { hasSmartDeviceToken, smartDeviceTokenState } from '@/utils/smartDeviceToken';
 	import { Check, Copy, Eye, EyeOff } from 'lucide-vue-next';
 
 	export default {
@@ -344,6 +360,7 @@
 			telegramLink: null,
 			showToken: false,
 			tokenCopied: false,
+			freshToken: null,
 		}),
 		watch: {
 			'$route.query': {
@@ -359,6 +376,12 @@
 				if (this.isTheme) return 'Theme';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
 				return 'Settings';
+			},
+			hasSmartDeviceToken() {
+				return hasSmartDeviceToken(this.user);
+			},
+			tokenState() {
+				return smartDeviceTokenState(this.user, this.freshToken);
 			},
 			userSettings() {
 				return this.$store.state.userSettings || {};
@@ -440,9 +463,9 @@
 				}
 			},
 			async copyToken() {
-				if (!this.user.smart_device_token || !navigator?.clipboard) return;
+				if (!this.freshToken || !navigator?.clipboard) return;
 				try {
-					await navigator.clipboard.writeText(this.user.smart_device_token);
+					await navigator.clipboard.writeText(this.freshToken);
 					this.tokenCopied = true;
 					setTimeout(() => {
 						this.tokenCopied = false;
@@ -545,12 +568,14 @@
 			async generateSmartDeviceToken() {
 				this.showConfirm(
 					'Generate New Token',
-					this.user.smart_device_token
+					this.hasSmartDeviceToken
 						? 'Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.'
 						: 'Generate a new token for your smart devices?',
 					async () => {
 						try {
 							const response = await generateSmartDeviceToken();
+							this.freshToken = response?.data?.token ?? null;
+							this.showToken = false;
 							this.user = await getUser();
 							this.confirm = null;
 							this.showAlert('Token generated successfully');
@@ -569,6 +594,7 @@
 					async () => {
 						try {
 							await revokeSmartDeviceToken();
+							this.freshToken = null;
 							this.user = await getUser();
 							this.confirm = null;
 							this.showAlert('Token revoked successfully');
