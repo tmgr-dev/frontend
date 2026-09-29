@@ -107,7 +107,7 @@
 
 			<SettingsSection
 				title="Agents"
-				description="Push notifications sent by Claude Code, Codex, or other AI agents working on your tasks"
+				description="Notifications Claude Code, Codex or other AI agents send you with a notify token"
 			>
 				<div class="flex flex-col divide-y divide-border rounded-md border border-border">
 					<div class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink">

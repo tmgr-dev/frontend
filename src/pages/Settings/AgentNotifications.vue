@@ -92,7 +92,7 @@
 				<p>Configure your agent with:</p>
 				<pre
 					class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs text-ink"
-					>TMGR_URL=https://tmgr.dev
+					>TMGR_URL={{ apiUrl }}
 TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 				>
 				<p>
@@ -134,6 +134,7 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 			const creating = ref(false);
 			const issuedToken = ref<IssuedNotifyToken | null>(null);
 			const copied = ref(false);
+			const apiUrl = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/, '');
 
 			const load = async () => {
 				loading.value = true;
@@ -205,6 +206,7 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 				copyToken,
 				revoke,
 				formatDate,
+				apiUrl,
 			};
 		},
 	});
