@@ -3,6 +3,7 @@ import $axios from '@/plugins/axios';
 import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
 import requestCache from '@/utils/requestCache';
+import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
 import { withoutCurrentWorkspaceEntry } from '@/utils/workspaceContext';
 
 export { pickThemeFromSettings };
@@ -41,10 +42,29 @@ export const getUser = async () => {
 	return data;
 };
 
-export const updateUser = async (payload: User) => {
+const readRefreshToken = (): string | undefined => {
+	try {
+		const stored = parseStoredToken(localStorage.getItem(TOKEN_STORAGE_KEY));
+		return (stored ?? store.state.token)?.refresh_token;
+	} catch {
+		return store.state.token?.refresh_token;
+	}
+};
+
+export const updateUser = async (
+	payload: User & { password?: string | null },
+	options: { logoutOtherSessions?: boolean } = {},
+) => {
+	const body: Record<string, unknown> = { ...payload };
+	if (payload.password) {
+		body.logout_other_sessions = options.logoutOtherSessions ?? true;
+		const refreshToken = readRefreshToken();
+		if (refreshToken) body.current_refresh_token = refreshToken;
+	}
+
 	const {
 		data: { data },
-	} = await $axios.put('user', payload);
+	} = await $axios.put('user', body);
 
 	return data;
 };

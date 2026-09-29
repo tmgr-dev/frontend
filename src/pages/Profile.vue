@@ -116,6 +116,25 @@
 						</p>
 					</div>
 				</div>
+				<label
+					for="profile-logout-other-sessions"
+					class="mt-4 flex items-start gap-2 text-sm text-ink"
+				>
+					<input
+						id="profile-logout-other-sessions"
+						v-model="logoutOtherSessions"
+						type="checkbox"
+						class="mt-0.5 accent-primary"
+						data-testid="logout-other-sessions"
+					/>
+					<span>
+						Sign out of other devices
+						<span class="block text-xs text-ink-subtle">
+							Recommended if you think someone else had access to your account.
+							This device stays signed in.
+						</span>
+					</span>
+				</label>
 				<template #footer>
 					<Button :disabled="saving" @click="saveUser">
 						{{ saving ? 'Saving…' : 'Save' }}
@@ -191,6 +210,7 @@
 			avatarError: null,
 			revokingAllTokens: false,
 			saving: false,
+			logoutOtherSessions: true,
 			tokensRevoked: false,
 			// Bumped after an upload so the avatar re-reads its link instead of the cached one.
 			avatarKey: 0,
@@ -251,7 +271,9 @@
 				this.saving = true;
 				const passwordChanged = !!this.user.password;
 				try {
-					const updated = await updateUser(this.user);
+					const updated = await updateUser(this.user, {
+						logoutOtherSessions: this.logoutOtherSessions,
+					});
 					if (updated && typeof updated === 'object')
 						this.user = { ...this.user, ...updated };
 					this.user.password = null;

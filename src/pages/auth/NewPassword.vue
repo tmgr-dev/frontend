@@ -61,6 +61,24 @@
 					{{ (errors as any).password_confirmation[0] }}
 				</p>
 			</div>
+			<label
+				for="logout_all_sessions"
+				class="flex items-start gap-2 text-sm text-foreground"
+			>
+				<input
+					v-model="form.logout_all_sessions"
+					id="logout_all_sessions"
+					type="checkbox"
+					class="mt-0.5 accent-primary"
+					data-testid="logout-all-sessions"
+				/>
+				<span>
+					Sign out of all devices
+					<span class="block text-xs text-muted-foreground">
+						Recommended if you think someone else had access to your account.
+					</span>
+				</span>
+			</label>
 			<Button
 				type="submit"
 				:disabled="isLoading"
@@ -110,6 +128,7 @@
 	const form = ref({
 		password: '',
 		password_confirmation: '',
+		logout_all_sessions: true,
 	});
 	const message = ref('');
 	const errors = ref({});
