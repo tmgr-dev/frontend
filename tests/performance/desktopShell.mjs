@@ -5,6 +5,7 @@ const fakeShell = async ({
   devPlugins = [],
   localHttp = () => ({ status: 404, headers: [], body: '' }),
   releases = {},
+  appVersion = '0.9.8',
 } = {}) => {
   const { createHash } = await import('node:crypto');
   const installed = new Map();
@@ -35,6 +36,8 @@ const fakeShell = async ({
   };
   const handler = async (command, args = {}) => {
     switch (command) {
+      case 'plugin:app|version':
+        return appVersion;
       case 'local_workspaces_list':
         return workspaces;
       case 'local_workspace_create': {
@@ -215,6 +218,12 @@ export const desktopPage = async (
   shellOptions = {},
 ) => {
   const shell = await fakeShell(shellOptions);
+  const { appVersion = '0.9.8', lastSeenVersion = appVersion } = shellOptions;
+  await page.addInitScript((seed) => {
+    if (sessionStorage.getItem('fixture.whatsNewSeeded')) return;
+    sessionStorage.setItem('fixture.whatsNewSeeded', '1');
+    if (seed) localStorage.setItem('desktop.whatsNew.lastSeenVersion', seed);
+  }, lastSeenVersion);
   await page.exposeFunction('__shellInvoke', (command, args) =>
     shell(command, args),
   );

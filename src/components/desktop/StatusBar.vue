@@ -109,9 +109,15 @@
 			}}
 		</button>
 
-		<div v-if="version" class="flex h-full items-center px-3">
+		<button
+			v-if="version"
+			type="button"
+			class="flex h-full items-center px-3 hover:bg-muted hover:text-foreground"
+			title="What's new"
+			@click="openWhatsNew"
+		>
 			v{{ version }}
-		</div>
+		</button>
 
 		<div class="flex h-full items-center gap-0.5 px-1.5">
 			<button
@@ -145,6 +151,7 @@
 	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
 	import { openTaskInWorkspace } from '@/utils/openTaskInWorkspace';
+	import { openWhatsNew } from '@/utils/whatsNewState';
 	import {
 		Bell,
 		BellOff,
@@ -256,6 +263,7 @@
 				version,
 				update: updateState,
 				installUpdate,
+				openWhatsNew,
 				pluginItems: computed(() => Object.values(pluginState.statusBar)),
 				runPluginCommand: (item) =>
 					pluginHost()

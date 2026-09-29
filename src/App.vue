@@ -57,6 +57,7 @@
 		</Transition>
 	</div>
 
+	<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
 	<Toaster />
 	</template>
 </template>
@@ -75,6 +76,7 @@
 	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
 	import DesktopTray from '@/components/desktop/DesktopTray.vue';
 	import DesktopUpdateCheck from '@/components/desktop/DesktopUpdateCheck.vue';
+	import DesktopWhatsNew from '@/components/desktop/DesktopWhatsNew.vue';
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
@@ -113,6 +115,7 @@
 			DesktopHotkeys,
 			DesktopTray,
 			DesktopUpdateCheck,
+			DesktopWhatsNew,
 			Modal,
 			TaskSidePanel,
 			Alert,
@@ -151,6 +154,7 @@
 				routeViewKey,
 				isDesktop: isDesktopApp(),
 				isQuickAddWindow: desktopWindowLabel() === 'quick-add',
+				isMainWindow: desktopWindowLabel() === 'main',
 			};
 		},
 		data() {
