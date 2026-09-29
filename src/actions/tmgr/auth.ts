@@ -27,11 +27,18 @@ export interface LoginWithCodeRequest {
 	code: string;
 }
 
+export interface LoginGithubRequest extends LoginWithCodeRequest {
+	state?: string;
+	binding?: string;
+}
+
 export interface LoginGoogleRequest extends LoginWithCodeRequest {
 	scope: string;
 	ail: string;
 	authuser: number;
 	prompt: string;
+	state?: string;
+	binding?: string;
 }
 
 const setAxiosHeaderBearerToken = ({
@@ -55,7 +62,7 @@ export const login = (payload: LoginRequest): Promise<void> => {
 		.then(setAxiosHeaderBearerToken);
 };
 
-export const loginGithub = (payload: LoginWithCodeRequest): Promise<void> => {
+export const loginGithub = (payload: LoginGithubRequest): Promise<void> => {
 	return $axios
 		.post(`auth/login/github/redirect`, payload)
 		.then(setAxiosHeaderBearerToken);
