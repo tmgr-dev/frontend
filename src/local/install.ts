@@ -176,7 +176,6 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		const user = hooks.currentUser();
 		const target = requestedWorkspace(payload, user);
 		if (target === null || target >= 0) {
-			if (target !== null) setActiveLocalWorkspace(null);
 			return network(config);
 		}
 		const workspace = await localWorkspaceById(target);

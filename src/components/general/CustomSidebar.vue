@@ -51,6 +51,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Separator } from '@/components/ui/separator';
+	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { requestCache } from '@/utils/requestCache';
 	import {
 		Sidebar,
@@ -197,6 +198,9 @@
 	});
 	async function loadSidebar() {
 		if (!store.getters.isLoggedIn) return;
+		// Mounts before the router guard resolves the tab's workspace; the batch below reports getUser failures.
+		if (!store.state.user?.id) await getUser().catch(() => {});
+		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
 		const request = ++sidebarRequest;
 		const context =
 			String(store.state.user?.id) +
@@ -237,7 +241,7 @@
 			}),
 		]);
 		if (!current()) return;
-		const id = user.value?.settings?.find(
+		const id = store.state.user?.settings?.find(
 			(s) => s.key === 'current_workspace',
 		)?.value;
 		activeWorkspace.value = workspaces.value.find(
@@ -349,29 +353,25 @@
 				}
 			}
 
-			// Prepare settings update for backend
-			const settingsWithUpdatedWorkspace = user.value?.settings.map(
-				(setting) => {
-					if (setting.key === 'current_workspace') {
-						setting.value = workspace.id;
-					}
-
-					return {
+			if (workspace.is_local) {
+				// local/install.ts activates it and keeps the server default untouched.
+				const settingsWithUpdatedWorkspace = user.value?.settings.map(
+					(setting) => ({
 						id: setting.id,
-						value: setting.value,
-					};
-				},
-			);
+						value:
+							setting.key === 'current_workspace'
+								? workspace.id
+								: setting.value,
+					}),
+				);
+				const updatedUser = await updateUserSettingsV2(
+					settingsWithUpdatedWorkspace,
+				);
+				store.commit('setUser', updatedUser);
+			} else {
+				await syncActiveLocalWorkspace(workspace.id);
+			}
 
-			// Update settings in backend
-			const updatedUser = await updateUserSettingsV2(
-				settingsWithUpdatedWorkspace,
-			);
-
-			// Update store without a page reload, preserving full setting metadata.
-			store.commit('setUser', updatedUser);
-
-			// Update the workspace setting directly
 			store.commit('updateUserWorkspaceSetting', {
 				workspaceId: workspace.id,
 			});

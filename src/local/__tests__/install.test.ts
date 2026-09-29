@@ -167,12 +167,15 @@ describeSqlite('installLocalWorkspaces', () => {
 		expect(data.data.name).toBe('Yurij');
 	});
 
-	it('switching back to a cloud workspace leaves local mode', async () => {
+	it('a settings save naming a cloud value does not evict the active local workspace', async () => {
+		// Switching workspace never PUTs now (per-client override); the app itself deactivates
+		// the local workspace directly when it switches away, so the adapter must not do it too
+		// on an ordinary preference save that happens to report a cloud id.
 		active = LOCAL;
 		user = { ...user, settings: [{ id: 5, key: 'current_workspace', value: -42 }] };
 		await client.put('v2/user/settings', [{ id: 5, value: 56 }]);
 
-		expect(active).toBeNull();
+		expect(active).toEqual(LOCAL);
 		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
 	});
 

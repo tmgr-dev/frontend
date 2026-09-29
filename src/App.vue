@@ -86,6 +86,7 @@
 	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
+	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -435,33 +436,21 @@
 						}
 						// For workspace-independent pages, don't change the URL at all
 
-						// Prepare updated settings
-						const updatedSettings = settings.map((setting) => {
-							if (setting.key === 'current_workspace') {
-								return {
-									id: setting.id,
-									value: workspace.id,
-								};
-							}
-							return {
+						if (workspace.is_local) {
+							// local/install.ts activates it and keeps the server default untouched.
+							const updatedSettings = settings.map((setting) => ({
 								id: setting.id,
-								value: setting.value,
-							};
-						});
+								value:
+									setting.key === 'current_workspace'
+										? workspace.id
+										: setting.value,
+							}));
+							const updatedUser = await updateUserSettingsV2(updatedSettings);
+							this.$store.commit('setUser', updatedUser);
+						} else {
+							await syncActiveLocalWorkspace(workspace.id);
+						}
 
-						// Update user settings in the backend
-						await updateUserSettingsV2(updatedSettings);
-
-						// Create a new user object with updated settings to ensure reactivity
-						const updatedUser = {
-							...this.$store.state.user,
-							settings: updatedSettings,
-						};
-
-						// Update store without reloading the page
-						this.$store.commit('setUser', updatedUser);
-
-						// Also update the workspace setting directly for components watching that specifically
 						this.$store.commit('updateUserWorkspaceSetting', {
 							workspaceId: workspace.id,
 						});
@@ -540,11 +529,19 @@
 			// hardLogout() yanks the router away from OAuth callback pages
 			// mid-exchange (mobile lost that race on every social login).
 			if (store.state.user?.id) {
-				await Promise.all([
-					getUserSettings(),
-					getWorkspaceStatuses(),
-					this.$store.dispatch('loadWorkspaces'),
-				]);
+				if (!store.state.workspaces || !store.state.workspaces.length) {
+					await this.loadWorkspaces();
+				}
+				const workspaceFromUrl = store.state.workspaces.find(
+					(workspace) => workspace.code === this.$route.params.workspace_code,
+				);
+				if (workspaceFromUrl) {
+					this.$store.commit('updateUserWorkspaceSetting', {
+						workspaceId: workspaceFromUrl.id,
+					});
+					await syncActiveLocalWorkspace(workspaceFromUrl.id);
+				}
+				await Promise.all([getUserSettings(), getWorkspaceStatuses()]);
 			}
 
 			this.$router.beforeEach((to, from, next) => {

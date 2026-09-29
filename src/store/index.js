@@ -8,7 +8,38 @@ import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
 import { isDesktopApp } from '@/utils/desktop';
 import { requestCache } from '@/utils/requestCache';
+import {
+	isKnownWorkspaceId,
+	overlayCurrentWorkspace,
+	readWorkspaceId,
+	resolveWorkspaceId,
+	WORKSPACE_LOCAL_KEY,
+	WORKSPACE_SESSION_KEY,
+	writeWorkspaceId,
+} from '@/utils/workspaceContext';
 import { createStore } from 'vuex';
+
+const sessionStorageSafe = () => {
+	try {
+		return sessionStorage;
+	} catch {
+		return null;
+	}
+};
+const localStorageSafe = () => {
+	try {
+		return localStorage;
+	} catch {
+		return null;
+	}
+};
+
+const rememberClientWorkspaceId = (workspaceId) => {
+	writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, workspaceId);
+	if (workspaceId != null) {
+		writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, workspaceId);
+	}
+};
 
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
@@ -50,6 +81,9 @@ const state = {
 	workspaceStatusesById: {},
 	workspaces: [],
 	workspacesById: {},
+	defaultWorkspaceId: null,
+	// Overlaid onto userSettingsMap['current_workspace'] so existing readers see the tab's workspace.
+	clientWorkspaceId: null,
 	userSettingsMap: {},
 	userSettings: {
 		showTooltips: true,
@@ -70,6 +104,7 @@ const getters = {
 	currentWorkspaceId: (state) => {
 		return state.userSettingsMap['current_workspace']?.value || null;
 	},
+	defaultWorkspaceId: (state) => state.defaultWorkspaceId,
 	currentWorkspace: (state, getters) => {
 		const workspaceId = getters.currentWorkspaceId;
 		return workspaceId ? state.workspacesById[workspaceId] : null;
@@ -109,6 +144,37 @@ const mutations = {
 			state.workspaces = Object.values(workspaces);
 			state.workspacesById = workspaces;
 		}
+
+		// setUser may have trusted a stored id before the list loaded.
+		if (
+			state.clientWorkspaceId != null &&
+			!isKnownWorkspaceId(state.clientWorkspaceId, state.workspaces)
+		) {
+			state.clientWorkspaceId = resolveWorkspaceId({
+				sessionWorkspaceId: readWorkspaceId(
+					sessionStorageSafe(),
+					WORKSPACE_SESSION_KEY,
+				),
+				lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+				defaultWorkspaceId: state.defaultWorkspaceId,
+				workspaces: state.workspaces,
+			});
+			rememberClientWorkspaceId(state.clientWorkspaceId);
+			if (Array.isArray(state.user?.settings)) {
+				state.user.settings = overlayCurrentWorkspace(
+					state.user.settings,
+					state.clientWorkspaceId ?? state.defaultWorkspaceId,
+				);
+				state.userSettingsMap = state.user.settings.reduce((acc, setting) => {
+					if (setting?.key) acc[setting.key] = setting;
+					return acc;
+				}, {});
+			}
+			requestCache.setContext(
+				`${state.user?.id || 'guest'}:${state.clientWorkspaceId ?? ''}`,
+			);
+			invalidateWorkspaceScopedCache();
+		}
 	},
 	updateSingleTask(state, task) {
 		state.updatedTaskData = task;
@@ -143,6 +209,9 @@ const mutations = {
 			requestCache.clear();
 			if (state.dailyRoutines)
 				dailyRoutinesModule.mutations.reset(state.dailyRoutines);
+			// A cross-tab token swap skips the logout action.
+			state.defaultWorkspaceId = null;
+			state.clientWorkspaceId = null;
 		}
 		const previousWorkspaceId =
 			state.userSettingsMap['current_workspace']?.value || null;
@@ -166,6 +235,33 @@ const mutations = {
 					...setting,
 				};
 			});
+
+			// Negative = desktop local workspace overlaid by local/install.ts, never the default.
+			const rawWorkspaceSetting = nextUser.settings.find(
+				(setting) => setting?.key === 'current_workspace',
+			);
+			const rawWorkspaceId =
+				rawWorkspaceSetting?.value != null ? Number(rawWorkspaceSetting.value) : null;
+			if (rawWorkspaceId != null && rawWorkspaceId >= 0) {
+				state.defaultWorkspaceId = rawWorkspaceId;
+			}
+
+			if (state.clientWorkspaceId == null) {
+				state.clientWorkspaceId = resolveWorkspaceId({
+					sessionWorkspaceId: readWorkspaceId(
+						sessionStorageSafe(),
+						WORKSPACE_SESSION_KEY,
+					),
+					lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+					defaultWorkspaceId: state.defaultWorkspaceId,
+					workspaces: state.workspaces,
+				});
+			}
+
+			nextUser.settings = overlayCurrentWorkspace(
+				nextUser.settings,
+				state.clientWorkspaceId ?? state.defaultWorkspaceId,
+			);
 		}
 
 		state.user = nextUser;
@@ -275,6 +371,8 @@ const mutations = {
 		state.appRerenderKey++;
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
+		state.clientWorkspaceId = workspaceId != null ? Number(workspaceId) : null;
+		rememberClientWorkspaceId(state.clientWorkspaceId);
 		requestCache.setContext(
 			`${state.user?.id || 'guest'}:${workspaceId || ''}`,
 		);
@@ -337,6 +435,10 @@ const actions = {
 		localStorage.removeItem('theme');
 		localStorage.removeItem('colorScheme');
 		commit('setThemeToSystem');
+		writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, null);
+		writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, null);
+		state.defaultWorkspaceId = null;
+		state.clientWorkspaceId = null;
 		requestCache.clear();
 	},
 

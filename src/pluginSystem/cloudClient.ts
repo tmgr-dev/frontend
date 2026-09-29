@@ -61,6 +61,7 @@ export const cloudPluginClient = ({
 		}
 		const renew = Boolean((config as { _renewed?: boolean })._renewed);
 		config.headers.set('Authorization', `Bearer ${await token(renew)}`);
+		config.headers.set('X-Workspace-Id', String(workspaceId));
 		return config;
 	});
 

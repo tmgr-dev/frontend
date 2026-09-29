@@ -1609,7 +1609,7 @@
 					this.userData = user;
 					this.workspacesData = workspaces;
 					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
-					const setting = user.settings?.find(
+					const setting = this.$store.state.user?.settings?.find(
 						(setting) => setting.key === 'current_workspace',
 					);
 					this.workspaceId = Number(setting?.value) || 0;

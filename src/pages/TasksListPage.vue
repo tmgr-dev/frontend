@@ -232,9 +232,9 @@
 			}
 
 			// Same as the board: the guard has the user by now, so do not ask again (TM-218).
-			const user = store.state.user?.id ? store.state.user : await getUser();
+			if (!store.state.user?.id) await getUser();
 			if (disposed) return;
-			const workspaceSetting = user.settings?.find(
+			const workspaceSetting = store.state.user?.settings?.find(
 				(setting) => setting.key === 'current_workspace',
 			);
 			if (workspaceSetting) {

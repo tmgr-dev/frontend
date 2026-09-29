@@ -1,6 +1,7 @@
 import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
@@ -121,6 +122,32 @@ router.beforeEach(async (to, from, next) => {
 			// fallback: first workspace to landing page
 			if (store.state.workspaces?.[0]?.code) {
 				return next(`/${store.state.workspaces[0].code}/${finalLanding}`);
+			}
+		} else if (to.params.workspace_code) {
+			// Resolve before next() so the page's first requests already carry X-Workspace-Id.
+			if (!store.state.user?.id) {
+				try {
+					await getUser();
+				} catch (e) {
+					// 401 is handled by the axios interceptor; other failures must not drop a deep link.
+				}
+			}
+			if (!store.state.workspaces || store.state.workspaces.length === 0) {
+				try {
+					const workspaces = await getWorkspaces();
+					store.commit('setWorkspaces', workspaces);
+				} catch (e) {
+					// continue: the page itself will retry loading workspaces
+				}
+			}
+			const workspaceFromUrl = store.state.workspaces?.find(
+				(w) => w.code === to.params.workspace_code,
+			);
+			if (workspaceFromUrl) {
+				store.commit('updateUserWorkspaceSetting', {
+					workspaceId: workspaceFromUrl.id,
+				});
+				await syncActiveLocalWorkspace(workspaceFromUrl.id);
 			}
 		}
 

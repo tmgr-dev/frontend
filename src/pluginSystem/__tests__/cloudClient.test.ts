@@ -32,6 +32,7 @@ it('sends only the plugin token and names the workspace on lists and creates', a
 	expect(seen.map((c) => c.headers.Authorization)).toEqual(
 		Array(4).fill('Bearer plugin-1'),
 	);
+	expect(seen.map((c) => c.headers['X-Workspace-Id'])).toEqual(Array(4).fill('56'));
 	expect(seen[0].params).toEqual({ page: 1, workspace_id: 56 });
 	expect(seen[1].params).toEqual({ workspace_id: 56 });
 	expect(JSON.parse(seen[2].data)).toEqual({ title: 'x', workspace_id: 56 });
