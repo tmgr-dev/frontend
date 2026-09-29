@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.9 — 2026-09-30
+
+- Password reset and "Change password" in Profile now ask whether to sign out of other devices (checked by default).
+  On a reset, unchecking keeps your existing sessions; in Profile, checking signs out every other session while this
+  one stays signed in.
+
 ## 0.9.8 — 2026-09-29
 
 - In a local workspace, account settings reach the server again: creating agent-notification tokens, persona tokens,
