@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.15 — 2026-09-30
+
+- Clicking a task in the tray menu or in the running timer at the bottom of the window now brings up the task's own
+  window if it is open, instead of opening the task a second time in the main window. Without its own window the task
+  opens in the main window as before.
+
 ## 0.9.14 — 2026-09-30
 
 - The bottom of a task is more compact: open, created/edited time, Save and Delete now sit in one row under the
