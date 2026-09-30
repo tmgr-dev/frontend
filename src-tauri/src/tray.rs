@@ -296,7 +296,7 @@ fn refresh<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
   if let Some(task_id) = id.strip_prefix("open:") {
-    show_main(app);
+    // JS shows the main window only when the task has no window of its own.
     let _ = app.emit("tray://open", task_ref(task_id));
     return;
   }

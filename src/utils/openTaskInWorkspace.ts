@@ -1,3 +1,5 @@
+import { focusTaskWindow } from './taskWindow';
+
 interface WorkspaceRef {
 	id: number | string;
 	code: string;
@@ -13,11 +15,13 @@ interface Navigator {
 	push: (location: string) => unknown;
 }
 
+interface TaskRef {
+	taskId: number | string;
+	workspaceId?: number | string | null;
+}
+
 export const openTaskInWorkspace = async (
-	{
-		taskId,
-		workspaceId,
-	}: { taskId: number | string; workspaceId?: number | string | null },
+	{ taskId, workspaceId }: TaskRef,
 	store: WorkspaceStore,
 	router: Navigator,
 ): Promise<void> => {
@@ -36,4 +40,22 @@ export const openTaskInWorkspace = async (
 
 	await router.push(`/${workspace.code}/list`);
 	store.commit('setCurrentTaskIdForModal', taskId);
+};
+
+export const openTaskPreferringWindow = async (
+	ref: TaskRef,
+	store: WorkspaceStore,
+	router: Navigator,
+	showMain?: () => unknown,
+	focusWindow: (taskId: number, workspaceCode: string) => Promise<boolean> = focusTaskWindow,
+): Promise<void> => {
+	const workspaceId = ref.workspaceId ?? store.getters.currentWorkspaceId;
+	const code = store.state.workspaces?.find(
+		(w) => Number(w.id) === Number(workspaceId),
+	)?.code;
+	if (code && (await focusWindow(Number(ref.taskId), code).catch(() => false))) {
+		return;
+	}
+	await showMain?.();
+	await openTaskInWorkspace(ref, store, router);
 };

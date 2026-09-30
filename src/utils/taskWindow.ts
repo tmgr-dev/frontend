@@ -48,6 +48,14 @@ export const openTaskWindow = async (target: TaskWindowTarget): Promise<void> =>
 	await invoke('open_task_window', { ...target });
 };
 
+export const focusTaskWindow = async (
+	taskId: number,
+	workspaceCode: string,
+): Promise<boolean> => {
+	const { invoke } = await import('@tauri-apps/api/core');
+	return invoke<boolean>('focus_task_window', { taskId, workspaceCode });
+};
+
 export const setTaskWindowTitle = async (title: string): Promise<void> => {
 	try {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');

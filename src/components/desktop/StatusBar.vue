@@ -150,7 +150,7 @@
 	import store from '@/store';
 	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
-	import { openTaskInWorkspace } from '@/utils/openTaskInWorkspace';
+	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import { openWhatsNew } from '@/utils/whatsNewState';
 	import {
 		Bell,
@@ -250,7 +250,7 @@
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
 				toggleAi: () => store.commit('toggleAiPanel'),
 				openTask: (task) =>
-					openTaskInWorkspace(
+					openTaskPreferringWindow(
 						{ taskId: task.id, workspaceId: task.workspace_id },
 						store,
 						router,

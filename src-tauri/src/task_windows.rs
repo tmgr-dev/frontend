@@ -11,6 +11,24 @@ fn task_window_label(workspace_code: &str, task_id: u64) -> Result<String, Strin
   Ok(format!("task-{workspace_code}-{task_id}"))
 }
 
+fn focus_existing<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<tauri::WebviewWindow<R>> {
+  let window = app.get_webview_window(label)?;
+  let _ = window.unminimize();
+  let _ = window.show();
+  let _ = window.set_focus();
+  Some(window)
+}
+
+#[tauri::command]
+pub fn focus_task_window<R: Runtime>(
+  app: AppHandle<R>,
+  task_id: u64,
+  workspace_code: String,
+) -> Result<bool, String> {
+  let label = task_window_label(&workspace_code, task_id)?;
+  Ok(focus_existing(&app, &label).is_some())
+}
+
 #[tauri::command]
 pub async fn open_task_window<R: Runtime>(
   app: AppHandle<R>,
@@ -21,10 +39,7 @@ pub async fn open_task_window<R: Runtime>(
   let label = task_window_label(&workspace_code, task_id)?;
   let title = title.as_deref().map(str::trim).filter(|t| !t.is_empty());
 
-  if let Some(window) = app.get_webview_window(&label) {
-    let _ = window.unminimize();
-    let _ = window.show();
-    let _ = window.set_focus();
+  if let Some(window) = focus_existing(&app, &label) {
     if let Some(title) = title {
       let _ = window.set_title(title);
     }
