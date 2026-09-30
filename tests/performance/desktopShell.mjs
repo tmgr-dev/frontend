@@ -25,6 +25,8 @@ const fakeShell = async ({
   const windows = [];
   const replies = [];
   const closed = [];
+  const taskWindows = [];
+  const titles = [];
   const files = new Map();
   const tokens = new Map();
   const accessReplies = [];
@@ -116,6 +118,12 @@ const fakeShell = async ({
       case 'plugin_windows_close':
         closed.push(args.pluginId);
         return null;
+      case 'open_task_window':
+        taskWindows.push(args);
+        return null;
+      case 'plugin:window|set_title':
+        titles.push(args.value);
+        return null;
       case 'plugin_pick_file':
         picks.push(args.title);
         return { name: 'picked.txt', size: 2, base64: 'aGk=' };
@@ -204,6 +212,8 @@ const fakeShell = async ({
     windows,
     replies,
     closed,
+    taskWindows,
+    titles,
     installed,
     catalog,
     tokens,
@@ -218,7 +228,11 @@ export const desktopPage = async (
   shellOptions = {},
 ) => {
   const shell = await fakeShell(shellOptions);
-  const { appVersion = '0.9.8', lastSeenVersion = appVersion } = shellOptions;
+  const {
+    appVersion = '0.9.8',
+    lastSeenVersion = appVersion,
+    windowLabel = 'main',
+  } = shellOptions;
   await page.addInitScript((seed) => {
     if (sessionStorage.getItem('fixture.whatsNewSeeded')) return;
     sessionStorage.setItem('fixture.whatsNewSeeded', '1');
@@ -227,9 +241,9 @@ export const desktopPage = async (
   await page.exposeFunction('__shellInvoke', (command, args) =>
     shell(command, args),
   );
-  await page.addInitScript(() => {
+  await page.addInitScript((label) => {
     window.__TAURI_INTERNALS__ = {
-      metadata: { currentWindow: { label: 'main' } },
+      metadata: { currentWindow: { label } },
       invoke: (command, args, options) => {
         if (command === 'plugin:event|listen') {
           (window.__listeners[args.event] ??= []).push(args.handler);
@@ -256,7 +270,7 @@ export const desktopPage = async (
       (window.__listeners[event] ?? []).forEach((id) =>
         window[`__callback${id}`]?.({ event, id, payload }),
       );
-  });
+  }, windowLabel);
   await mockApp(page, mockOptions);
   const stored = shell.files;
   await page.route('**/__tmgrfile/**', async (route) => {

@@ -1,5 +1,10 @@
 <template>
 	<router-view v-if="isQuickAddWindow" />
+	<template v-else-if="isTaskWindow">
+		<alert ref="alert" />
+		<router-view />
+		<Toaster />
+	</template>
 	<template v-else>
 	<alert ref="alert" />
 
@@ -89,6 +94,7 @@
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
+	import { isTaskWindowLabel } from '@/utils/taskWindow';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -143,17 +149,21 @@
 				});
 			}
 
-			watch(
-				() => store.getters.isLoggedIn,
-				(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
-				{ immediate: true },
-			);
-			onBeforeUnmount(stopRoutineScheduler);
+			const isTaskWindow = isTaskWindowLabel(desktopWindowLabel());
+			if (!isTaskWindow) {
+				watch(
+					() => store.getters.isLoggedIn,
+					(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
+					{ immediate: true },
+				);
+				onBeforeUnmount(stopRoutineScheduler);
+			}
 
 			return {
 				routeViewKey,
 				isDesktop: isDesktopApp(),
 				isQuickAddWindow: desktopWindowLabel() === 'quick-add',
+				isTaskWindow,
 				isMainWindow: desktopWindowLabel() === 'main',
 			};
 		},
@@ -216,6 +226,7 @@
 			},
 			'$route.params.workspace_code': {
 				async handler(workspaceCode) {
+					if (this.isTaskWindow) return;
 					if (workspaceCode && this.$store.getters.isLoggedIn) {
 						// If URL has workspace code, check if it matches current workspace
 						const workspaces = this.$store.state.workspaces;
@@ -581,7 +592,7 @@
 				next();
 			});
 
-			if (!this.$store.state.user?.id || this.isQuickAddWindow) {
+			if (!this.$store.state.user?.id || this.isQuickAddWindow || this.isTaskWindow) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
@@ -606,7 +617,9 @@
 			if (this.$store.getters.isLoggedIn) {
 				this.ensureWorkspacesLoaded();
 			}
-			window.addEventListener('keydown', this.handleWorkspaceHotkeys);
+			if (!this.isTaskWindow) {
+				window.addEventListener('keydown', this.handleWorkspaceHotkeys);
+			}
 		},
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.handleWorkspaceHotkeys);

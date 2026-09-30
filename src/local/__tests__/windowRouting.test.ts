@@ -87,3 +87,34 @@ describe('a window opened while the app has a local workspace open', () => {
 		expect(runtime.activeLocalWorkspace()).toEqual(LOCAL);
 	});
 });
+
+describe('a task window', () => {
+	const asWindow = (label: string) => {
+		(globalThis as any).window = { __TAURI_INTERNALS__: { metadata: { currentWindow: { label } } } };
+	};
+	afterEach(() => {
+		delete (globalThis as any).window;
+	});
+
+	it('keeps its local workspace in memory without overwriting the choice shared with other windows', async () => {
+		storage.clear();
+		storage.set('local.activeWorkspace', 'main-project');
+		asWindow('task-current-project-9');
+		const { runtime } = openWindow();
+		await runtime.listLocalWorkspaces();
+
+		runtime.setActiveLocalWorkspace(LOCAL);
+		expect(runtime.activeLocalWorkspace()).toEqual(LOCAL);
+		expect(storage.get('local.activeWorkspace')).toBe('main-project');
+	});
+
+	it('is the only kind of window that skips persisting', async () => {
+		storage.clear();
+		asWindow('main');
+		const { runtime } = openWindow();
+		await runtime.listLocalWorkspaces();
+
+		runtime.setActiveLocalWorkspace(LOCAL);
+		expect(storage.get('local.activeWorkspace')).toBe(LOCAL.code);
+	});
+});

@@ -9,6 +9,8 @@ import {
 	installAutoHideScrollbars,
 	isDesktopApp,
 } from '@/utils/desktop';
+import { isTaskWindowLabel } from '@/utils/taskWindow';
+import { applyRelayedEvent, installWindowEventRelay } from '@/utils/windowEventRelay';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
 import { requestCache } from '@/utils/requestCache';
@@ -41,8 +43,10 @@ if (isDesktopApp()) {
 		const id = Number(store.getters.currentWorkspaceId);
 		return Number.isFinite(id) && id !== 0 ? id : null;
 	});
-	if (desktopWindowLabel() === 'main') startUpdateChecks();
-	if (desktopWindowLabel() === 'main') {
+	const isMainWindow = desktopWindowLabel() === 'main';
+	const isTaskWindow = isTaskWindowLabel(desktopWindowLabel());
+	if (isMainWindow) startUpdateChecks();
+	if (isMainWindow) {
 		void Promise.all([
 			import('@/pluginSystem/app'),
 			import('@tauri-apps/api/core').then(({ invoke }) =>
@@ -50,6 +54,24 @@ if (isDesktopApp()) {
 			),
 		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
 		void import('@/local/localAccess').then(({ installLocalAccess }) => installLocalAccess(store));
+		void import('@/utils/taskWindowBridge').then(({ installTaskWindowHost }) =>
+			installTaskWindowHost(router, store),
+		);
+	}
+	if (isMainWindow || isTaskWindow) {
+		const label = desktopWindowLabel() as string;
+		void import('@tauri-apps/api/event').then(({ emit, listen }) =>
+			installWindowEventRelay(domainEvents, {
+				label,
+				emit,
+				listen,
+				onRelayed: (event) =>
+					applyRelayedEvent(event, {
+						invalidate: (key) => requestCache.invalidate(key),
+						reloadActiveTasks: () => store.commit('incrementReloadActiveTasksKey'),
+					}),
+			}),
+		);
 		void Promise.all([
 			import('@/local/liveUpdates'),
 			import('@/composable/usePusher'),

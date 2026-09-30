@@ -87,6 +87,16 @@
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { applyTimerState } from '@/utils/timerSync';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
+	import { isDesktopApp } from '@/utils/desktop';
+	import {
+		openTaskWindow,
+		setTaskWindowTitle,
+		taskWindowTarget,
+	} from '@/utils/taskWindow';
+	import {
+		sendToMainWindow,
+		TASK_WINDOW_CREATE_TASK,
+	} from '@/utils/taskWindowBridge';
 	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
 	import {
 		DocumentPlusIcon,
@@ -185,6 +195,7 @@
 		isModal: boolean;
 		statusId?: number;
 		modalProjectCategoryId?: number;
+		detached?: boolean;
 	}
 
 	const props = defineProps<Props>();
@@ -641,7 +652,7 @@
 
 			// Load task data if we have a task ID
 			if (taskId.value) {
-				if (props.isModal) {
+				if (props.isModal && !props.detached) {
 					// Update URL if in modal
 					const currentWorkspaceId = store.state.user?.settings?.find(
 						(setting: Record<string, any>) =>
@@ -961,7 +972,14 @@
 	};
 
 	const handleOpenLinkedTask = (linkedTaskId: number) => {
-		if (props.isModal) {
+		if (props.detached) {
+			const target = taskWindowTarget(
+				{ id: linkedTaskId },
+				store.state.workspaces,
+				store.getters.currentWorkspace,
+			);
+			if (target) void openTaskWindow(target);
+		} else if (props.isModal) {
 			store.state.currentTaskIdForModal = linkedTaskId;
 		} else {
 			router.push(
@@ -1065,7 +1083,7 @@
 		const workspaceCode = store.getters.currentWorkspace?.code;
 		integrationHint.value = null;
 		if (!categoryId || !workspaceCode) return;
-		if (props.isModal) {
+		if (props.isModal && !props.detached) {
 			store.commit('closeTaskModal');
 		}
 		router.push({
@@ -1626,6 +1644,21 @@
 		},
 	});
 
+	const openInSeparateWindow = async () => {
+		const target = taskWindowTarget(
+			{ ...form.value, id: taskId.value || form.value.id },
+			store.state.workspaces,
+			store.getters.currentWorkspace,
+		);
+		if (!target) return;
+		try {
+			await openTaskWindow(target);
+			emit('close');
+		} catch (e) {
+			console.error('Failed to open the task window:', e);
+		}
+	};
+
 	const generateTaskUrlForAdvancedForm = () => {
 		if (!taskId.value && !form.value.id) return '/';
 
@@ -1743,7 +1776,7 @@
 				}
 
 				const currentWorkspace = store.getters['user/getCurrentWorkspace'];
-				if (currentWorkspace) {
+				if (currentWorkspace && !props.detached) {
 					const url = generateTaskUrl(newTaskId, currentWorkspace, null);
 					if (url && url !== '/') {
 						history.replaceState({}, '', url);
@@ -1773,6 +1806,9 @@
 		(newTitle: string) => {
 			if (!props.isModal && newTitle) {
 				setDocumentTitle(newTitle);
+			}
+			if (props.detached && newTitle?.trim()) {
+				void setTaskWindowTitle(newTitle.trim());
 			}
 		},
 		{ immediate: true },
@@ -1807,15 +1843,23 @@
 			checkpoints: uncheckedCheckpoints,
 		};
 
+		// Store the new task data in localStorage to be used when new task form opens
+		localStorage.setItem('newTaskWithCheckpoints', JSON.stringify(newTaskData));
+
+		if (props.detached) {
+			void sendToMainWindow(TASK_WINDOW_CREATE_TASK, {
+				statusId: form.value.status_id,
+				projectCategoryId: form.value.project_category_id,
+			});
+			return;
+		}
+
 		// Create a new task with this data
 		store.commit('setShowCreatingTaskModal', form.value.status_id);
 		store.commit('createTaskInProjectCategoryId', {
 			projectCategoryId: form.value.project_category_id,
 			statusId: form.value.status_id,
 		});
-
-		// Store the new task data in localStorage to be used when new task form opens
-		localStorage.setItem('newTaskWithCheckpoints', JSON.stringify(newTaskData));
 
 		// Close current task modal if we're in modal mode
 		if (props.isModal) {
@@ -2487,8 +2531,17 @@
 					</div>
 
 					<div class="flex flex-wrap justify-end gap-2 text-center">
+						<button
+							v-if="isModal && !detached && isDesktopApp() && (taskId || form.id)"
+							type="button"
+							title="Open in a separate window"
+							class="mr-auto inline-flex items-center justify-center rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
+							@click="openInSeparateWindow"
+						>
+							<ArrowTopRightOnSquareIcon class="size-5" />
+						</button>
 						<a
-							v-if="isModal && (taskId || form.id)"
+							v-else-if="isModal && !detached && (taskId || form.id)"
 							:href="generateTaskUrlForAdvancedForm()"
 							title="Open advanced form"
 							class="mr-auto inline-flex items-center justify-center rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
