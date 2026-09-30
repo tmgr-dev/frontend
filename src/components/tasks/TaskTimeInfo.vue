@@ -2,7 +2,7 @@
 	<span
 		v-if="formattedCreatedAtTime"
 		class="flex items-center gap-1"
-		:title="'Created: ' + formattedCreatedAtTime"
+		:title="'Created: ' + exactTime(createdAt)"
 	>
 		<ClockPlus class="size-2.5" />
 		{{ formattedCreatedAtTime }}
@@ -14,7 +14,7 @@
 			formattedUpdatedAtTime !== formattedCreatedAtTime
 		"
 		class="flex items-center gap-1"
-		:title="'Edited: ' + formattedUpdatedAtTime"
+		:title="'Edited: ' + exactTime(updatedAt)"
 	>
 		<FilePenLine class="size-2.5" />
 		{{ formattedUpdatedAtTime }}
@@ -49,4 +49,10 @@
 	const formattedUpdatedAtTime = computed(() =>
 		formatRelativeTime(props.updatedAt),
 	);
+	const exactTime = (value?: string) => {
+		const date = value ? new Date(value) : null;
+		return date && !Number.isNaN(date.getTime())
+			? date.toLocaleString()
+			: formatRelativeTime(value);
+	};
 </script>

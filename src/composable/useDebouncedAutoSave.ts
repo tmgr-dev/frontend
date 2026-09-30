@@ -28,8 +28,10 @@ export function useDebouncedAutoSave<T>({
 	() => void,
 	(force?: boolean) => Promise<void>,
 	(snapshot: T) => Promise<void>,
+	Ref<boolean>,
 ] {
 	const isSaving = ref(false);
+	const hasPending = ref(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let pending: T | undefined;
 	let running: Promise<void> | undefined;
@@ -44,6 +46,7 @@ export function useDebouncedAutoSave<T>({
 		clearTimeout(timer);
 		timer = undefined;
 		pending = undefined;
+		hasPending.value = false;
 	};
 	const drain = (): Promise<void> => {
 		clearTimeout(timer);
@@ -63,6 +66,7 @@ export function useDebouncedAutoSave<T>({
 			.finally(() => {
 				running = undefined;
 				isSaving.value = false;
+				hasPending.value = pending !== undefined;
 			});
 		return running.then(() => {
 			if (pending !== undefined) {
@@ -87,6 +91,7 @@ export function useDebouncedAutoSave<T>({
 			}
 			if (enabled && !enabled()) return;
 			pending = snapshot();
+			hasPending.value = true;
 			onDirty?.(pending);
 			clearTimeout(timer);
 			if (!running)
@@ -107,8 +112,10 @@ export function useDebouncedAutoSave<T>({
 		flush,
 		(value: T) => {
 			pending = JSON.parse(JSON.stringify(value));
+			hasPending.value = true;
 			onDirty?.(pending as T);
 			return drain();
 		},
+		hasPending,
 	];
 }
