@@ -15,6 +15,7 @@ import {
 	gridInnerClasses,
 	gridTemplateStyle,
 	isNestedInteractive,
+	statClasses,
 	type InteractiveLike,
 } from '../pluginViewClasses';
 
@@ -215,5 +216,22 @@ describe('isNestedInteractive', () => {
 
 	it('is false when target/card are missing', () => {
 		expect(isNestedInteractive(null, null)).toBe(false);
+	});
+});
+
+describe('statClasses', () => {
+	it('lays a clickable stat out exactly like a plain one, with an automatic height', () => {
+		const plain = statClasses(false);
+		const clickable = statClasses(true);
+		expect(clickable).toEqual(expect.arrayContaining(plain));
+		expect(plain).toContain('h-auto');
+		expect(clickable).toContain('h-auto');
+		expect(clickable.filter((name) => /^h-\d/.test(name))).toEqual([]);
+	});
+
+	it('only adds interaction styles when clickable', () => {
+		expect(statClasses(false)).not.toContain('cursor-pointer');
+		expect(statClasses(true)).toContain('cursor-pointer');
+		expect(statClasses(true)).toContain('hover:bg-accent');
 	});
 });
