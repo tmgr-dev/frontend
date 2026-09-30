@@ -23,6 +23,7 @@ const APP_COMMANDS: &[&str] = &[
   "plugin_notify",
   "hide_quick_add",
   "open_quick_add",
+  "open_task_window",
   "take_quick_add",
   "tray_update",
   "dnd_update",
