@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.14 — 2026-09-30
+
+- The bottom of a task is more compact: open, created/edited time, Save and Delete now sit in one row under the
+  comment box. Save lights up while there are unsaved changes; hover a time to see the exact date.
+- The ✨ button in the comment box is now an "AI reply" switch. Turn it on and Enter or send asks the AI instead of
+  posting a plain comment. The choice is remembered for your account in every task, window and device.
+
 ## 0.9.13 — 2026-09-30
 
 - Fixed: a task opened in its own window was missing files, checkpoints, the timer, relations and assignees. The window
