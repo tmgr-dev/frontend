@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.13 — 2026-09-30
+
+- Fixed: a task opened in its own window was missing files, checkpoints, the timer, relations and assignees. The window
+  now shows everything the task card shows.
+
 ## 0.9.12 — 2026-09-30
 
 - A task can have its own window. In the task card, the open button in the bottom-left corner now opens the task in a
