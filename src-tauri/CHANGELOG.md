@@ -3,6 +3,16 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.12 — 2026-09-30
+
+- A task can have its own window. In the task card, the open button in the bottom-left corner now opens the task in a
+  separate window and closes the card. Everything from the card is there: description, status, timer, comments,
+  files, checkpoints and agent work. The window stays open while you move around the app, can go to another screen,
+  and is named after the task. You can open several tasks at once; opening the same task again brings its window to
+  the front.
+- Changes made in a task window show up in the main window and the other way round, in local workspaces too.
+- Links in a task window to settings or other pages open in the main window; a linked task opens in its own window.
+
 ## 0.9.11 — 2026-09-30
 
 - Plugins API 1.4: sidebar badges. A plugin can show a counter on its item in the sidebar, for example
