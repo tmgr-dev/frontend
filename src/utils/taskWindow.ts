@@ -51,7 +51,7 @@ export const openTaskWindow = async (target: TaskWindowTarget): Promise<void> =>
 export const setTaskWindowTitle = async (title: string): Promise<void> => {
 	try {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');
-		await getCurrentWindow().setTitle(title);
+		await getCurrentWindow().setTitle(title.replace(/\s+/g, ' '));
 	} catch {
 		/* the native title is cosmetic */
 	}
