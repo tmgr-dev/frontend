@@ -1656,6 +1656,11 @@
 			emit('close');
 		} catch (e) {
 			console.error('Failed to open the task window:', e);
+			toast({
+				title: 'Could not open the task window',
+				description: String(e),
+				variant: 'destructive',
+			});
 		}
 	};
 

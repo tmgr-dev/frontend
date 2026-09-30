@@ -86,4 +86,26 @@ describe('applyRelayedEvent', () => {
 		const { invalidate } = run({ type: 'routine.deleted', workspaceId: 1, routineId: 2 });
 		expect(invalidate).not.toHaveBeenCalled();
 	});
+
+	it('hands timer events to the timer delivery, and only them', () => {
+		const deliverTimer = jest.fn();
+		const timer: DomainEvent = {
+			type: 'timer.stopped',
+			workspaceId: -2,
+			taskId: 4,
+			task: { id: 4 },
+		};
+		applyRelayedEvent(timer, {
+			invalidate: jest.fn(),
+			reloadActiveTasks: jest.fn(),
+			deliverTimer,
+		});
+		applyRelayedEvent(event, {
+			invalidate: jest.fn(),
+			reloadActiveTasks: jest.fn(),
+			deliverTimer,
+		});
+		expect(deliverTimer).toHaveBeenCalledTimes(1);
+		expect(deliverTimer).toHaveBeenCalledWith(timer);
+	});
 });

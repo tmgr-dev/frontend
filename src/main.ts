@@ -69,6 +69,18 @@ if (isDesktopApp()) {
 					applyRelayedEvent(event, {
 						invalidate: (key) => requestCache.invalidate(key),
 						reloadActiveTasks: () => store.commit('incrementReloadActiveTasksKey'),
+						deliverTimer: (timer) => {
+							const userId = store.state.user?.id;
+							if (!userId || timer.workspaceId == null || timer.workspaceId >= 0) return;
+							if (activeLocalWorkspace()?.id !== timer.workspaceId) return;
+							void import('@/composable/usePusher').then(({ deliverToUser }) =>
+								deliverToUser(userId, (h) =>
+									timer.type === 'timer.started'
+										? h.onTaskCountdownStarted?.(timer.task)
+										: h.onTaskCountdownStopped?.(timer.task),
+								),
+							);
+						},
 					}),
 			}),
 		);

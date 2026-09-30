@@ -56,11 +56,14 @@ export const installWindowEventRelay = (
 interface RelayedEffects {
 	invalidate: (key: string | RegExp) => void;
 	reloadActiveTasks: () => void;
+	deliverTimer?: (
+		event: Extract<DomainEvent, { type: 'timer.started' | 'timer.stopped' }>,
+	) => void;
 }
 
 export const applyRelayedEvent = (
 	event: DomainEvent,
-	{ invalidate, reloadActiveTasks }: RelayedEffects,
+	{ invalidate, reloadActiveTasks, deliverTimer }: RelayedEffects,
 ) => {
 	if (event.type.startsWith('comment.')) {
 		const taskId = (event as { taskId?: number }).taskId;
@@ -72,5 +75,8 @@ export const applyRelayedEvent = (
 	invalidate(`task-${taskId}`);
 	invalidate(/^tasks-status-/);
 	if (event.type === 'task.relationChanged') invalidate(`task-${event.otherTaskId}`);
-	if (event.type === 'timer.started' || event.type === 'timer.stopped') reloadActiveTasks();
+	if (event.type === 'timer.started' || event.type === 'timer.stopped') {
+		reloadActiveTasks();
+		deliverTimer?.(event);
+	}
 };
