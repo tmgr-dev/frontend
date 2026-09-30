@@ -184,6 +184,7 @@ pub fn run() {
       tray::tray_update,
       tray::dnd_update,
       task_windows::open_task_window,
+      task_windows::focus_task_window,
       quick_add::open_quick_add,
       quick_add::take_quick_add,
       quick_add::hide_quick_add,

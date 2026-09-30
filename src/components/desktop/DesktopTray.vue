@@ -38,7 +38,7 @@
 	import router from '@/router';
 	import store from '@/store';
 	import { isDndActive, setDnd } from '@/utils/dnd';
-	import { openTaskInWorkspace } from '@/utils/openTaskInWorkspace';
+	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		buildTrayState,
 		formatAway,
@@ -73,6 +73,7 @@
 	const showWindow = async () => {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');
 		const win = getCurrentWindow();
+		await win.unminimize();
 		await win.show();
 		await win.setFocus();
 	};
@@ -191,7 +192,7 @@
 				const { listen } = await import('@tauri-apps/api/event');
 				unlisteners.push(
 					await listen('tray://open', ({ payload }) =>
-						openTaskInWorkspace(payload, store, router),
+						openTaskPreferringWindow(payload, store, router, showWindow),
 					),
 					await listen('tray://shortcuts', () =>
 						router.push('/settings?tab=desktop'),

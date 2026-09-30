@@ -1,4 +1,4 @@
-import { openTaskInWorkspace } from '../openTaskInWorkspace';
+import { openTaskInWorkspace, openTaskPreferringWindow } from '../openTaskInWorkspace';
 
 const workspaces = [
 	{ id: 1, code: 'cloud' },
@@ -79,6 +79,111 @@ describe('openTaskInWorkspace', () => {
 		).resolves.toBeUndefined();
 
 		expect(router.push).not.toHaveBeenCalled();
+		expect(store.commit).not.toHaveBeenCalled();
+	});
+});
+
+describe('openTaskPreferringWindow', () => {
+	const setup = (currentWorkspaceId: number, windowOpen: boolean | Error) => ({
+		store: makeStore(currentWorkspaceId),
+		router: { push: jest.fn() },
+		showMain: jest.fn(),
+		focusWindow: jest.fn(() =>
+			windowOpen instanceof Error
+				? Promise.reject(windowOpen)
+				: Promise.resolve(windowOpen),
+		),
+	});
+
+	it('focuses an open task window and leaves the main window alone', async () => {
+		const { store, router, showMain, focusWindow } = setup(-2, true);
+
+		await openTaskPreferringWindow(
+			{ taskId: 7, workspaceId: 1 },
+			store,
+			router,
+			showMain,
+			focusWindow,
+		);
+
+		expect(focusWindow).toHaveBeenCalledWith(7, 'cloud');
+		expect(showMain).not.toHaveBeenCalled();
+		expect(router.push).not.toHaveBeenCalled();
+		expect(store.commit).not.toHaveBeenCalled();
+	});
+
+	it('looks up the window of a local workspace task by its code', async () => {
+		const { store, router, showMain, focusWindow } = setup(1, true);
+
+		await openTaskPreferringWindow(
+			{ taskId: '3', workspaceId: -2 },
+			store,
+			router,
+			showMain,
+			focusWindow,
+		);
+
+		expect(focusWindow).toHaveBeenCalledWith(3, 'local');
+		expect(store.commit).not.toHaveBeenCalled();
+	});
+
+	it('uses the current workspace code when the task has no workspace', async () => {
+		const { store, router, showMain, focusWindow } = setup(-2, true);
+
+		await openTaskPreferringWindow(
+			{ taskId: 7, workspaceId: null },
+			store,
+			router,
+			showMain,
+			focusWindow,
+		);
+
+		expect(focusWindow).toHaveBeenCalledWith(7, 'local');
+	});
+
+	it('shows the main window and opens the task there when no task window is open', async () => {
+		const { store, router, showMain, focusWindow } = setup(-2, false);
+
+		await openTaskPreferringWindow(
+			{ taskId: 7, workspaceId: 1 },
+			store,
+			router,
+			showMain,
+			focusWindow,
+		);
+
+		expect(showMain).toHaveBeenCalled();
+		expect(router.push).toHaveBeenCalledWith('/cloud/list');
+		expect(store.commit).toHaveBeenCalledWith('setCurrentTaskIdForModal', 7);
+	});
+
+	it('falls back to the main window when focusing fails', async () => {
+		const { store, router, focusWindow } = setup(1, new Error('no tauri'));
+
+		await openTaskPreferringWindow(
+			{ taskId: 7, workspaceId: 1 },
+			store,
+			router,
+			undefined,
+			focusWindow,
+		);
+
+		expect(store.commit).toHaveBeenCalledWith('setCurrentTaskIdForModal', 7);
+	});
+
+	it('skips the window lookup for an unknown workspace and keeps the old behaviour', async () => {
+		const { store, router, showMain, focusWindow } = setup(1, true);
+
+		await openTaskPreferringWindow(
+			{ taskId: 7, workspaceId: 99 },
+			store,
+			router,
+			showMain,
+			focusWindow,
+		);
+
+		expect(focusWindow).not.toHaveBeenCalled();
+		expect(showMain).toHaveBeenCalled();
 		expect(store.commit).not.toHaveBeenCalled();
 	});
 });

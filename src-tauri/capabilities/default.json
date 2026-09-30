@@ -52,6 +52,7 @@
     "allow-hide-quick-add",
     "allow-open-quick-add",
     "allow-open-task-window",
+    "allow-focus-task-window",
     "allow-take-quick-add",
     "allow-tray-update",
     "allow-dnd-update",
