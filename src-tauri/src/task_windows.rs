@@ -12,7 +12,7 @@ fn task_window_label(workspace_code: &str, task_id: u64) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub fn open_task_window<R: Runtime>(
+pub async fn open_task_window<R: Runtime>(
   app: AppHandle<R>,
   task_id: u64,
   workspace_code: String,
