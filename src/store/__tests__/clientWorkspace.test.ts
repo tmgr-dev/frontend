@@ -56,6 +56,7 @@ function fixture(
 			'@/utils/requestCache': { requestCache: cache },
 			'@/utils/workspaceContext': workspaceContext,
 			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
+			'@/utils/taskWindow': { isInTaskWindow: () => false },
 			...extraDeps,
 		},
 		storages,
@@ -228,5 +229,22 @@ describe('logout: clears the tab and the remembered workspace', () => {
 		expect(state.clientWorkspaceId).toBeNull();
 		expect(sessionStorage.getItem('tmgr:tabWorkspaceId')).toBeNull();
 		expect(localStorage.getItem('tmgr:lastWorkspaceId')).toBeNull();
+	});
+});
+
+describe('updateUserWorkspaceSetting in a task window', () => {
+	test('keeps the switch to this window and does not remember it for the others', () => {
+		const sessionStorage = memoryStorage();
+		const localStorage = memoryStorage();
+		const { config } = fixture(
+			{ '@/utils/taskWindow': { isInTaskWindow: () => true } },
+			{ sessionStorage, localStorage },
+		);
+		const { state, mutations } = config;
+		mutations.setUser(state, userWith());
+		mutations.updateUserWorkspaceSetting(state, { workspaceId: 2 });
+		expect(state.clientWorkspaceId).toBe(2);
+		expect(sessionStorage.getItem(workspaceContext.WORKSPACE_SESSION_KEY)).toBe('2');
+		expect(localStorage.getItem(workspaceContext.WORKSPACE_LOCAL_KEY)).not.toBe('2');
 	});
 });

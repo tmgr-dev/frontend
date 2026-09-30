@@ -18,6 +18,12 @@ interface WorkspaceLike {
 export const isTaskWindowLabel = (label: string | null): boolean =>
 	typeof label === 'string' && label.startsWith('task-');
 
+export const isInTaskWindow = (): boolean =>
+	isTaskWindowLabel(
+		(globalThis as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ??
+			null,
+	);
+
 export const taskWindowTarget = (
 	task: TaskLike | null | undefined,
 	workspaces: WorkspaceLike[] | null | undefined,

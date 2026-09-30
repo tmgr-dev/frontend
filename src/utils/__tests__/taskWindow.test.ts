@@ -1,4 +1,4 @@
-import { isTaskWindowLabel, taskWindowTarget } from '../taskWindow';
+import { isInTaskWindow, isTaskWindowLabel, taskWindowTarget } from '../taskWindow';
 
 describe('isTaskWindowLabel', () => {
 	it('matches only task windows', () => {
@@ -37,5 +37,23 @@ describe('taskWindowTarget', () => {
 		expect(taskWindowTarget({ title: 'x' }, workspaces, current)).toBeNull();
 		expect(taskWindowTarget({ id: 5 }, [], null)).toBeNull();
 		expect(taskWindowTarget(null, workspaces, current)).toBeNull();
+	});
+});
+
+describe('isInTaskWindow', () => {
+	afterEach(() => {
+		delete (globalThis as any).__TAURI_INTERNALS__;
+	});
+
+	test('is true only inside a task window webview', () => {
+		expect(isInTaskWindow()).toBe(false);
+		(globalThis as any).__TAURI_INTERNALS__ = {
+			metadata: { currentWindow: { label: 'main' } },
+		};
+		expect(isInTaskWindow()).toBe(false);
+		(globalThis as any).__TAURI_INTERNALS__ = {
+			metadata: { currentWindow: { label: 'task-demo-1' } },
+		};
+		expect(isInTaskWindow()).toBe(true);
 	});
 });
