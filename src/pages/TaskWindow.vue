@@ -20,10 +20,15 @@
 </template>
 
 <script lang="ts">
+	import {
+		getUserFeatureToggles,
+		getWorkspaceFeatureToggles,
+	} from '@/actions/tmgr/featureToggles';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import NewForm from '@/pages/NewForm.vue';
 	import store from '@/store';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
+	import { bootstrapTaskWindow } from '@/utils/taskWindowBootstrap';
 	import { installTaskWindowNavigationGuard } from '@/utils/taskWindowBridge';
 	import { defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -57,21 +62,22 @@
 			);
 
 			const open = async () => {
-				const taskId = Number(route.params.id);
 				try {
-					if (!store.state.workspaces?.length) {
-						store.commit('setWorkspaces', await getWorkspaces());
-					}
-					const workspace = ((store.state.workspaces || []) as any[]).find(
-						(w) => w.code === route.params.workspace_code,
+					const workspace = await bootstrapTaskWindow(
+						store,
+						{
+							getWorkspaces,
+							syncActiveLocalWorkspace,
+							getUserFeatureToggles,
+							getWorkspaceFeatureToggles,
+						},
+						String(route.params.workspace_code),
+						Number(route.params.id),
 					);
-					if (!workspace || !Number.isFinite(taskId) || taskId <= 0) {
+					if (!workspace) {
 						error.value = 'This task could not be found.';
 						return;
 					}
-					await syncActiveLocalWorkspace(workspace.id);
-					store.commit('updateUserWorkspaceSetting', { workspaceId: workspace.id });
-					store.commit('setCurrentTaskIdForModal', taskId);
 					ready.value = true;
 				} catch (e) {
 					console.error('Error opening task window:', e);

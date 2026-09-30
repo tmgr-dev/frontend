@@ -52,3 +52,54 @@ test('a task window shows only the task form and names itself after the task', a
   await expect.poll(() => shell.titles).toContain('Original task');
   expect(new URL(page.url()).pathname).toBe('/demo/task-window/1');
 });
+
+const WORKSPACE_FEATURES = [
+  'task.files',
+  'task.checkpoints',
+  'task.countdown',
+  'task.relations',
+  'task.assignees',
+  'task.comments',
+];
+
+const enableTaskFeatures = (page) =>
+  page.route(/\/api\/workspaces\/\d+\/feature-toggles/, (route) =>
+    route.fulfill({
+      json: {
+        data: Object.fromEntries(
+          WORKSPACE_FEATURES.map((key) => [
+            key,
+            { key, name: key, group: 'task', type: 'boolean', enabled: true },
+          ]),
+        ),
+      },
+    }),
+  );
+
+const expectTaskSections = async (form) => {
+  await expect(form.getByPlaceholder('Task name')).toHaveValue('Original task');
+  await expect(form.getByText('Add files')).toBeVisible();
+  await expect(form.getByText('Checkpoints', { exact: true })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Add entry' })).toBeVisible();
+};
+
+test('a task window shows the same workspace sections as the modal', async ({
+  browser,
+}) => {
+  const main = await browser.newPage();
+  await desktopPage(main);
+  await enableTaskFeatures(main);
+  await main.goto('/demo/list');
+  await main.locator('[data-task-id="1"]').first().click();
+  await expectTaskSections(main.locator('.new-form-container'));
+
+  const detached = await browser.newPage();
+  await desktopPage(
+    detached,
+    {},
+    { windowLabel: 'task-demo-1', lastSeenVersion: null },
+  );
+  await enableTaskFeatures(detached);
+  await detached.goto('/demo/task-window/1');
+  await expectTaskSections(detached.locator('.new-form-container'));
+});
