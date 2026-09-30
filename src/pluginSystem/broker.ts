@@ -126,6 +126,14 @@ export interface TrayItemSpec {
 	}[];
 }
 
+export type ViewBadgeTone = 'default' | 'info' | 'warning' | 'danger';
+
+export interface ViewBadgeSpec {
+	count: number | null;
+	text: string | null;
+	tone: ViewBadgeTone;
+}
+
 export interface NotifyPayload {
 	message: string;
 	title: string | null;
@@ -154,6 +162,7 @@ export interface BrokerDeps {
 	settings: () => Record<string, unknown>;
 	notify: (payload: NotifyPayload) => void;
 	setStatusBarItem: (id: string, item: StatusBarItem | null) => void;
+	setViewBadge: (viewId: string, badge: ViewBadgeSpec | null) => void;
 	refresh: (kind: 'badges' | 'page' | 'section', id: string) => void;
 	register: (kind: RegistrationKind, id: string) => void;
 	log: (level: 'info' | 'warn' | 'error', message: string) => void;
@@ -249,6 +258,54 @@ const string = (
 	(allowEmpty || value.trim() !== '')
 		? value
 		: invalid(`${field} must be a string of at most ${max} characters`);
+
+const TRAY_TEXT_MAX = 60;
+const TRAY_RAW_MAX = 1000;
+
+const graphemes = (value: string): string[] =>
+	typeof Intl !== 'undefined' && 'Segmenter' in Intl
+		? Array.from(
+				new (Intl as any).Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+				(part: any) => part.segment as string,
+		  )
+		: [...value];
+
+/** At most `max` graphemes: a longer text keeps `max - 1` of them and a trailing "…". */
+export const truncateGraphemes = (value: string, max = TRAY_TEXT_MAX): string => {
+	const parts = graphemes(value);
+	return parts.length <= max ? value : `${parts.slice(0, max - 1).join('')}…`;
+};
+
+const trayText = (value: unknown, field: string): string =>
+	truncateGraphemes(string(value, field, TRAY_RAW_MAX));
+
+const VIEW_BADGE_TONES: ViewBadgeTone[] = ['default', 'info', 'warning', 'danger'];
+const VIEW_BADGE_TEXT_MAX = 4;
+
+const viewBadge = (value: unknown): ViewBadgeSpec | null => {
+	if (value === null) return null;
+	if (!value || typeof value !== 'object' || Array.isArray(value))
+		return invalid('badge must be an object or null');
+	const b = value as Params;
+	const hasCount = b.count !== undefined;
+	const hasText = b.text !== undefined;
+	if (hasCount === hasText) invalid('badge needs exactly one of count and text');
+	if (b.tone !== undefined && !VIEW_BADGE_TONES.includes(b.tone as ViewBadgeTone))
+		invalid(`tone must be one of ${VIEW_BADGE_TONES.join(', ')}`);
+	const tone = (b.tone as ViewBadgeTone | undefined) ?? 'default';
+	if (hasCount) {
+		if (!Number.isSafeInteger(b.count) || (b.count as number) < 0)
+			invalid('count must be a non-negative integer');
+		return b.count === 0 ? null : { count: b.count as number, text: null, tone };
+	}
+	if (
+		typeof b.text !== 'string' ||
+		b.text.length === 0 ||
+		b.text.length > VIEW_BADGE_TEXT_MAX
+	)
+		invalid(`text must be 1 to ${VIEW_BADGE_TEXT_MAX} characters`);
+	return { count: null, text: b.text as string, tone };
+};
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
@@ -1156,11 +1213,11 @@ export const createBroker = (deps: BrokerDeps) => {
 				mustDeclare(declared.trayItem, itemId);
 				const tray = needTray();
 				if (p.items === null) return tray.setItem(itemId, null);
-				const title = string(p.title, 'title', 60);
+				const title = trayText(p.title, 'title');
 				if (!Array.isArray(p.items) || p.items.length > TRAY_ITEM_LIMIT)
 					invalid(`items must be a list of at most ${TRAY_ITEM_LIMIT}`);
 				const items = (p.items as Params[]).map((raw) => {
-					const itemTitle = string(raw?.title, 'items.title', 60);
+					const itemTitle = trayText(raw?.title, 'items.title');
 					const taskId = optionalId(raw?.taskId, 'items.taskId');
 					const command =
 						raw?.command == null ? null : string(raw.command, 'items.command', 120);
@@ -1195,6 +1252,14 @@ export const createBroker = (deps: BrokerDeps) => {
 				if ([...trimmed].length > TRAY_TITLE_MAX)
 					invalid(`text must be at most ${TRAY_TITLE_MAX} characters`);
 				return tray.setTitle(trimmed);
+			},
+		},
+		'ui.setViewBadge': {
+			permission: 'views:badge',
+			run: (p) => {
+				if (typeof p.viewId !== 'string' || !declared.page.has(p.viewId))
+					invalid('viewId must be a view declared by this plugin');
+				deps.setViewBadge(p.viewId as string, viewBadge(p.badge));
 			},
 		},
 		'ui.refresh': {

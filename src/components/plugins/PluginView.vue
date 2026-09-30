@@ -105,16 +105,11 @@
 	>
 		{{ node.text }}
 	</component>
-	<component
-		:is="node.command ? 'button' : 'div'"
-		v-else-if="node.type === 'stat'"
-		:type="node.command ? 'button' : undefined"
-		:class="[
-			'block min-w-[8rem] flex-1 rounded-md border border-border bg-card px-3 py-2 text-left',
-			node.command &&
-				'cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-		]"
-		@click="node.command ? runNodeCommand(node) : undefined"
+	<button
+		v-else-if="node.type === 'stat' && node.command"
+		type="button"
+		:class="statClasses(true)"
+		@click="runNodeCommand(node)"
 	>
 		<div class="text-2xs uppercase tracking-wide text-muted-foreground">
 			{{ node.label }}
@@ -122,7 +117,15 @@
 		<div :class="['text-lg font-semibold tabular-nums', toneClass(node.tone)]">
 			{{ node.value }}
 		</div>
-	</component>
+	</button>
+	<div v-else-if="node.type === 'stat'" :class="statClasses(false)">
+		<div class="text-2xs uppercase tracking-wide text-muted-foreground">
+			{{ node.label }}
+		</div>
+		<div :class="['text-lg font-semibold tabular-nums', toneClass(node.tone)]">
+			{{ node.value }}
+		</div>
+	</div>
 	<div
 		v-else-if="node.type === 'progress'"
 		class="h-2 w-full overflow-hidden rounded-full bg-muted"
@@ -300,6 +303,7 @@
 		gridTemplateStyle,
 		isNestedInteractive,
 		stackClasses,
+		statClasses,
 	} from './pluginViewClasses';
 
 	const TONES: Record<Tone, string> = {
@@ -492,6 +496,7 @@
 				colorClass: (color: Color) => COLORS[color],
 				barClass: (color: Color) => BARS[color],
 				stackClasses,
+				statClasses,
 				cardOuterClasses,
 				cardInnerClasses,
 				gridInnerClasses,

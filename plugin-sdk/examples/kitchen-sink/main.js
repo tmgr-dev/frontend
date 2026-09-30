@@ -43,6 +43,7 @@ const refreshTray = async () => {
 		// Only the plugin picked in Settings -> "Menu bar text" may set it; not an error worth surfacing.
 		console.warn(`tray title not set: ${error.message}`);
 	}
+	await tmgr.ui.setViewBadge('view', { count: items.length, tone: items.length > 3 ? 'warning' : 'info' });
 	await tmgr.ui.refresh('badges', BADGE_ID);
 };
 

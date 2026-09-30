@@ -60,7 +60,11 @@ export const reachesThisComputer = (manifest: PluginManifest) =>
 	manifest.permissions.some((p) => MACHINE_PERMISSIONS.has(p));
 
 /** Local-only permissions the server's EnablePluginRequest does not know and rejects with 400. */
-const CLOUD_UNSUPPORTED_PERMISSIONS = new Set(['routines:read', 'routines:write']);
+const CLOUD_UNSUPPORTED_PERMISSIONS = new Set([
+	'routines:read',
+	'routines:write',
+	'views:badge',
+]);
 
 const cloudPermissionsOf = (manifest: PluginManifest) =>
 	manifest.permissions.filter((p) => !CLOUD_UNSUPPORTED_PERMISSIONS.has(p));

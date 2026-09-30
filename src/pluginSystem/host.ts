@@ -14,6 +14,7 @@ import {
 	type PluginWorkspace,
 	type RegistrationKind,
 	type TrayItemSpec,
+	type ViewBadgeSpec,
 } from './broker';
 import { taskKey } from './dataApi';
 import type { PluginManifest } from './manifest';
@@ -121,6 +122,14 @@ export interface TrayItemEntry {
 	items: TrayMenuItem[];
 }
 
+export interface ViewBadgeEntry {
+	pluginId: string;
+	viewId: string;
+	count: number | null;
+	text: string | null;
+	tone: 'default' | 'info' | 'warning' | 'danger';
+}
+
 export interface PluginHostState {
 	workspace: PluginWorkspace | null;
 	safeMode: boolean;
@@ -129,6 +138,8 @@ export interface PluginHostState {
 	trayItems: Record<string, TrayItemEntry>;
 	/** Set by the one plugin chosen in Settings for the menu bar text; null when none is chosen or set. */
 	trayTitle: string | null;
+	/** Keyed `${pluginId}:${viewId}`; memory only, cleared when the plugin stops. */
+	viewBadges: Record<string, ViewBadgeEntry>;
 	/** Bumped when plugins start or stop: every badge, page and section is asked again. */
 	revision: number;
 	/** Per plugin, bumped (throttled) when that plugin asks for its UI to be drawn again. */
@@ -399,6 +410,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	};
 
 	const REFUSAL_THROTTLE_MS = 5_000;
+	const VIEW_BADGE_WINDOW_MS = 1_000;
 	const brokerRefusals = new Map<
 		string,
 		{ message: string; count: number; at: number; line: PluginLogLine }
@@ -419,6 +431,24 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const line = log(pluginId, 'warn', message);
 		if (line) brokerRefusals.set(pluginId, { message, count: 1, at: now(), line });
 	};
+
+	/** A refused tray item is logged and answered with null: it must not reject the handler that is rendering a page. */
+	const callBroker = (
+		pluginId: string,
+		broker: ReturnType<typeof createBroker>,
+		method: string,
+		params: unknown,
+	) =>
+		broker.call(method, params).catch((error) => {
+			logBrokerRefusal(pluginId, method, error);
+			if (
+				method === 'ui.setTrayItem' &&
+				error instanceof PluginError &&
+				(error.code === 'INVALID_PARAMS' || error.code === 'PERMISSION_DENIED')
+			)
+				return null;
+			throw error;
+		});
 
 	const settingsOf = (pluginId: string) => {
 		const schema =
@@ -448,6 +478,57 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		for (const key of Object.keys(state.statusBar)) {
 			if (state.statusBar[key].pluginId === pluginId)
 				delete state.statusBar[key];
+		}
+	};
+
+	const badgeTimers = new Map<
+		string,
+		{ at: number; timer: ReturnType<typeof setTimeout> | null; pending: ViewBadgeSpec | null }
+	>();
+
+	const applyViewBadge = (
+		key: string,
+		pluginId: string,
+		viewId: string,
+		badge: ViewBadgeSpec | null,
+	) => {
+		if (badge) state.viewBadges[key] = { pluginId, viewId, ...badge };
+		else delete state.viewBadges[key];
+	};
+
+	const setViewBadge = (
+		pluginId: string,
+		generation: string,
+		viewId: string,
+		badge: ViewBadgeSpec | null,
+	) => {
+		const key = `${pluginId}:${viewId}`;
+		const slot = badgeTimers.get(key);
+		if (!slot || now() - slot.at >= VIEW_BADGE_WINDOW_MS) {
+			if (slot?.timer) clearTimeout(slot.timer);
+			badgeTimers.set(key, { at: now(), timer: null, pending: null });
+			return applyViewBadge(key, pluginId, viewId, badge);
+		}
+		slot.pending = badge;
+		if (slot.timer) return;
+		slot.timer = setTimeout(() => {
+			if (badgeTimers.get(key) !== slot || running.get(pluginId)?.generation !== generation)
+				return;
+			slot.timer = null;
+			slot.at = now();
+			applyViewBadge(key, pluginId, viewId, slot.pending);
+			slot.pending = null;
+		}, VIEW_BADGE_WINDOW_MS - (now() - slot.at));
+	};
+
+	const clearViewBadgesOf = (pluginId: string) => {
+		for (const [key, slot] of badgeTimers) {
+			if (!key.startsWith(`${pluginId}:`)) continue;
+			if (slot.timer) clearTimeout(slot.timer);
+			badgeTimers.delete(key);
+		}
+		for (const key of Object.keys(state.viewBadges)) {
+			if (state.viewBadges[key].pluginId === pluginId) delete state.viewBadges[key];
 		}
 	};
 
@@ -525,6 +606,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		running.get(pluginId)?.process.stop();
 		running.delete(pluginId);
 		clearStatusBar(pluginId);
+		clearViewBadgesOf(pluginId);
 		clearTrayItemsOf(pluginId);
 		const pkg = packages.get(pluginId);
 		clearTrayTitleOf(pkg ? storageIdOf(pkg) : pluginId);
@@ -632,6 +714,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					};
 				} else delete state.statusBar[key];
 			},
+			setViewBadge: (viewId, badge) => setViewBadge(pluginId, generation, viewId, badge),
 			refresh: () => bump(pluginId),
 			register: (kind, id) => {
 				if (registered[kind].has(id)) return;
@@ -650,11 +733,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		});
 		const process = startPluginProcess(pkg.code, {
 			endpoint: deps.createEndpoint(),
-			call: (method, params) =>
-				broker.call(method, params).catch((error) => {
-					logBrokerRefusal(pluginId, method, error);
-					throw error;
-				}),
+			call: (method, params) => callBroker(pluginId, broker, method, params),
 			onCrash: (reason) => {
 				fault(pluginId, reason);
 				// The Worker is gone; a dead plugin must not keep looking alive.
@@ -1210,10 +1289,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				plugin.broker.admit(true);
 				return dispatch(pluginId, 'command', String(p.id), p.args ?? null);
 			}
-			return plugin.broker.call(method, params).catch((error) => {
-				logBrokerRefusal(pluginId, method, error);
-				throw error;
-			});
+			return callBroker(pluginId, plugin.broker, method, params);
 		},
 		async renderPage(
 			pluginId: string,

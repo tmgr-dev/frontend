@@ -65,6 +65,14 @@ it('badges returns an array of normalized badges per task', async () => {
 	host.dispose();
 });
 
+it('sets a counter badge on its view while active tasks exist (API 1.4)', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	expect(host.tmgr.viewBadges.view).toEqual({ count: expect.any(Number), text: null, tone: 'info' });
+	host.dispose();
+});
+
 it('the alarm fires and refreshes the tray item', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

@@ -106,6 +106,35 @@ export const cardOuterClasses = (node: {
 	return classes;
 };
 
+export const statClasses = (clickable: boolean): string[] => {
+	const classes = [
+		'block',
+		'h-auto',
+		'min-w-[8rem]',
+		'flex-1',
+		'rounded-md',
+		'border',
+		'border-border',
+		'bg-card',
+		'px-3',
+		'py-2',
+		'text-left',
+	];
+	if (clickable) {
+		classes.push(
+			'cursor-pointer',
+			'transition-colors',
+			'hover:bg-accent',
+			'hover:text-accent-foreground',
+			'focus-visible:outline-none',
+			'focus-visible:ring-2',
+			'focus-visible:ring-ring',
+			'focus-visible:ring-offset-2',
+		);
+	}
+	return classes;
+};
+
 export const cardInnerClasses = (node: { padding: CardPadding }): string[] => [
 	'flex',
 	'flex-col',

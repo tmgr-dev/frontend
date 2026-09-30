@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.11 — 2026-09-30
+
+- Plugins API 1.4: sidebar badges. A plugin can show a counter on its item in the sidebar, for example
+  "Telegram 12" in red when something is overdue; in the collapsed sidebar it is a dot on the icon. It needs the new
+  "show counters on its sidebar items" permission and disappears when the plugin is turned off.
+- A clickable number tile on a plugin page no longer cuts off its value.
+- Long plugin menu bar items with emoji are shortened with "…" instead of failing, and a menu bar error no longer
+  breaks the plugin's page.
+
 ## 0.9.10 — 2026-09-30
 
 - After an update, the app shows what changed: a "What's new" window lists the notes of every release since the version

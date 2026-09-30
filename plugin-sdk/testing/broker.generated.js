@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createBroker = exports.PLUGIN_EVENTS = exports.PluginError = void 0;
+exports.createBroker = exports.truncateGraphemes = exports.PLUGIN_EVENTS = exports.PluginError = void 0;
 class PluginError extends Error {
     constructor(code, message) {
         super(message);
@@ -42,6 +42,44 @@ const string = (value, field, max, allowEmpty = false) => typeof value === 'stri
     (allowEmpty || value.trim() !== '')
     ? value
     : invalid(`${field} must be a string of at most ${max} characters`);
+const TRAY_TEXT_MAX = 60;
+const TRAY_RAW_MAX = 1000;
+const graphemes = (value) => typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value), (part) => part.segment)
+    : [...value];
+/** At most `max` graphemes: a longer text keeps `max - 1` of them and a trailing "…". */
+const truncateGraphemes = (value, max = TRAY_TEXT_MAX) => {
+    const parts = graphemes(value);
+    return parts.length <= max ? value : `${parts.slice(0, max - 1).join('')}…`;
+};
+exports.truncateGraphemes = truncateGraphemes;
+const trayText = (value, field) => (0, exports.truncateGraphemes)(string(value, field, TRAY_RAW_MAX));
+const VIEW_BADGE_TONES = ['default', 'info', 'warning', 'danger'];
+const VIEW_BADGE_TEXT_MAX = 4;
+const viewBadge = (value) => {
+    if (value === null)
+        return null;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return invalid('badge must be an object or null');
+    const b = value;
+    const hasCount = b.count !== undefined;
+    const hasText = b.text !== undefined;
+    if (hasCount === hasText)
+        invalid('badge needs exactly one of count and text');
+    if (b.tone !== undefined && !VIEW_BADGE_TONES.includes(b.tone))
+        invalid(`tone must be one of ${VIEW_BADGE_TONES.join(', ')}`);
+    const tone = b.tone ?? 'default';
+    if (hasCount) {
+        if (!Number.isSafeInteger(b.count) || b.count < 0)
+            invalid('count must be a non-negative integer');
+        return b.count === 0 ? null : { count: b.count, text: null, tone };
+    }
+    if (typeof b.text !== 'string' ||
+        b.text.length === 0 ||
+        b.text.length > VIEW_BADGE_TEXT_MAX)
+        invalid(`text must be 1 to ${VIEW_BADGE_TEXT_MAX} characters`);
+    return { count: null, text: b.text, tone };
+};
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 /** Any offset is accepted, but stored/compared as UTC like Java's Instant ("…T12:00:00Z"). */
@@ -848,11 +886,11 @@ const createBroker = (deps) => {
                 const tray = needTray();
                 if (p.items === null)
                     return tray.setItem(itemId, null);
-                const title = string(p.title, 'title', 60);
+                const title = trayText(p.title, 'title');
                 if (!Array.isArray(p.items) || p.items.length > TRAY_ITEM_LIMIT)
                     invalid(`items must be a list of at most ${TRAY_ITEM_LIMIT}`);
                 const items = p.items.map((raw) => {
-                    const itemTitle = string(raw?.title, 'items.title', 60);
+                    const itemTitle = trayText(raw?.title, 'items.title');
                     const taskId = optionalId(raw?.taskId, 'items.taskId');
                     const command = raw?.command == null ? null : string(raw.command, 'items.command', 120);
                     if (command)
@@ -887,6 +925,14 @@ const createBroker = (deps) => {
                 if ([...trimmed].length > TRAY_TITLE_MAX)
                     invalid(`text must be at most ${TRAY_TITLE_MAX} characters`);
                 return tray.setTitle(trimmed);
+            },
+        },
+        'ui.setViewBadge': {
+            permission: 'views:badge',
+            run: (p) => {
+                if (typeof p.viewId !== 'string' || !declared.page.has(p.viewId))
+                    invalid('viewId must be a view declared by this plugin');
+                deps.setViewBadge(p.viewId, viewBadge(p.badge));
             },
         },
         'ui.refresh': {

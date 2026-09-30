@@ -42,6 +42,7 @@ const CALL_PERMISSIONS = {
 	'tmgr.alarms.list': 'alarms',
 	'tmgr.ui.setTrayItem': 'tray',
 	'tmgr.ui.setTrayTitle': 'tray',
+	'tmgr.ui.setViewBadge': 'views:badge',
 	'tmgr.agentWork.list': 'agent_work:read',
 	'tmgr.agentWork.start': 'agent_work:write',
 	'tmgr.agentWork.update': 'agent_work:write',

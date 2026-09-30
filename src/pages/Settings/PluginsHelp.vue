@@ -307,6 +307,12 @@
 					API 1.2: plugins can read and write Daily Routines (notes and
 					routines), on this device only — not yet in shared workspaces.
 				</p>
+				<p class="text-muted-foreground">
+					API 1.4: a plugin can show a counter on its own sidebar item. It needs
+					the views:badge permission, shown when you install or update, and no
+					extra consent. Long menu bar titles are shortened with "…" instead of
+					being refused.
+				</p>
 			</section>
 		</div>
 	</PageContainer>

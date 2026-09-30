@@ -3,7 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.3';
+exports.PLUGIN_API_VERSION = '1.4';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -29,6 +29,7 @@ exports.PERMISSIONS = [
     'links:open',
     'routines:read',
     'routines:write',
+    'views:badge',
 ];
 exports.PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 exports.LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -136,6 +137,9 @@ const parseManifest = (raw) => {
     ];
     if (allowedDomains.length && !permissions.includes('links:open'))
         fail('links.allowedDomains needs the links:open permission');
+    const apiMinor = engineMinor(raw.engines.tmgr);
+    if (permissions.includes('views:badge') && apiMinor < 4)
+        fail('views:badge needs engines.tmgr ^1.4');
     return {
         id,
         name: text(raw.name, 'name', 80),
@@ -151,7 +155,7 @@ const parseManifest = (raw) => {
         },
         links: { allowedDomains },
         companion: parseCompanion(raw.companion),
-        apiMinor: engineMinor(raw.engines.tmgr),
+        apiMinor,
         contributes: {
             boardCardBadges,
             statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

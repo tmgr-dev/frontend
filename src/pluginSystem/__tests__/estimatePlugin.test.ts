@@ -88,6 +88,7 @@ const run = async () => {
 		notify: () => undefined,
 		setStatusBarItem: (id, item) => statusBar.push([id, item]),
 		refresh: () => undefined,
+		setViewBadge: () => undefined,
 		register: () => undefined,
 		log: () => undefined,
 		now: () => 0,

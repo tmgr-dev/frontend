@@ -12,7 +12,7 @@ const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 		id: 'tmgr.test',
 		name: 'Test',
 		version: '1.0.0',
-		engines: { tmgr: '^1.0' },
+		engines: { tmgr: '^1.4' },
 		permissions,
 		contributes: {
 			boardCardBadges: [{ id: 'overrun' }],
@@ -111,6 +111,7 @@ const setup = (
 		notify: (payload) => notified.push(payload.message),
 		setStatusBarItem: (id, item) => statusBar.push([id, item]),
 		refresh: () => undefined,
+		setViewBadge: () => undefined,
 		register: (kind, id) => registered.push([kind, id]),
 		log: () => undefined,
 		now: () => clock,
@@ -713,6 +714,83 @@ describe('agent work', () => {
 	});
 });
 
+describe('setViewBadge', () => {
+	const badges = () => {
+		const calls: unknown[][] = [];
+		return { calls, setViewBadge: (id: string, badge: unknown) => void calls.push([id, badge]) };
+	};
+	const call = (broker: ReturnType<typeof setup>['broker'], viewId: unknown, badge: unknown) =>
+		broker.call('ui.setViewBadge', { viewId, badge });
+
+	it('needs the views:badge permission', async () => {
+		const { calls, setViewBadge } = badges();
+		const { broker } = setup([], { setViewBadge });
+		expect(await code(call(broker, 'report', { count: 1 }))).toBe('PERMISSION_DENIED');
+		expect(calls).toEqual([]);
+	});
+
+	it('takes only views this plugin declares, answering INVALID_PARAMS for any other', async () => {
+		const { calls, setViewBadge } = badges();
+		const { broker } = setup(['views:badge'], { setViewBadge });
+		for (const viewId of ['other', 'tmgr.other:report', '', 5, null, undefined])
+			expect(await code(call(broker, viewId, { count: 1 }))).toBe('INVALID_PARAMS');
+		expect(calls).toEqual([]);
+	});
+
+	it('sets a count or a text, defaulting the tone', async () => {
+		const { calls, setViewBadge } = badges();
+		const { broker } = setup(['views:badge'], { setViewBadge });
+		expect(await call(broker, 'report', { count: 12 })).toBeNull();
+		await call(broker, 'report', { text: 'new', tone: 'danger' });
+		await call(broker, 'report', { count: 1e6, tone: 'warning' });
+		await call(broker, 'report', { text: '😀😀', tone: 'info' });
+		expect(calls).toEqual([
+			['report', { count: 12, text: null, tone: 'default' }],
+			['report', { count: null, text: 'new', tone: 'danger' }],
+			['report', { count: 1e6, text: null, tone: 'warning' }],
+			['report', { count: null, text: '😀😀', tone: 'info' }],
+		]);
+	});
+
+	it('clears on null and on a count of 0', async () => {
+		const { calls, setViewBadge } = badges();
+		const { broker } = setup(['views:badge'], { setViewBadge });
+		await call(broker, 'report', null);
+		await call(broker, 'report', { count: 0, tone: 'danger' });
+		expect(calls).toEqual([
+			['report', null],
+			['report', null],
+		]);
+	});
+
+	it.each([
+		['both count and text', { count: 1, text: 'a' }],
+		['neither count nor text', {}],
+		['only a tone', { tone: 'info' }],
+		['a negative count', { count: -1 }],
+		['a fractional count', { count: 1.5 }],
+		['an unsafe count', { count: 2 ** 53 }],
+		['NaN', { count: NaN }],
+		['a numeric string count', { count: '3' }],
+		['a null count', { count: null }],
+		['an empty text', { text: '' }],
+		['a text of 5 units', { text: 'abcde' }],
+		['a 3-emoji text (6 units)', { text: '😀😀😀' }],
+		['a numeric text', { text: 4 }],
+		['an unknown tone', { count: 1, tone: 'green' }],
+		['a non-string tone', { count: 1, tone: 3 }],
+		['an array', [1]],
+		['a string', 'x'],
+		['a number', 3],
+		['undefined', undefined],
+	])('refuses %s with INVALID_PARAMS', async (_, badge) => {
+		const { calls, setViewBadge } = badges();
+		const { broker } = setup(['views:badge'], { setViewBadge });
+		expect(await code(call(broker, 'report', badge))).toBe('INVALID_PARAMS');
+		expect(calls).toEqual([]);
+	});
+});
+
 describe('tray', () => {
 	const tray = () => {
 		const items: unknown[] = [];
@@ -779,6 +857,36 @@ describe('tray', () => {
 		expect(
 			await code(noTray.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] })),
 		).toBe('PERMISSION_DENIED');
+	});
+
+	it('accepts emoji-heavy titles and shortens them to 60 graphemes with an ellipsis', async () => {
+		const { tray: deps, items } = tray();
+		const { broker } = setup(['tray'], { tray: deps });
+		const long = '😀'.repeat(45);
+		await broker.call('ui.setTrayItem', {
+			id: 'menu',
+			title: long,
+			items: [{ title: `${'a'.repeat(59)}b` }, { title: `${'👨‍👩‍👧'.repeat(61)}` }],
+		});
+		const [, spec] = items[0] as [string, any];
+		expect(spec.title).toBe(long);
+		expect(spec.items[0].title).toBe(`${'a'.repeat(59)}b`);
+		expect(spec.items[1].title).toBe(`${'👨‍👩‍👧'.repeat(59)}…`);
+		await broker.call('ui.setTrayItem', {
+			id: 'menu',
+			title: '😀'.repeat(70),
+			items: [],
+		});
+		expect((items[1] as [string, any])[1].title).toBe(`${'😀'.repeat(59)}…`);
+	});
+
+	it('still refuses empty, non-string and absurdly long titles', async () => {
+		const { tray: deps } = tray();
+		const { broker } = setup(['tray'], { tray: deps });
+		for (const title of ['', '  ', 5, null, 'x'.repeat(1001)])
+			expect(await code(broker.call('ui.setTrayItem', { id: 'menu', title, items: [] }))).toBe(
+				'INVALID_PARAMS',
+			);
 	});
 
 	it('lets only the chosen plugin set the menu bar title, within the length and shape limits', async () => {
