@@ -22,7 +22,9 @@ const withAiReplySetting = async (page, value) => {
   const saved = [];
   const asked = [];
   const posted = [];
-  await page.route('**/api/user', (route) => route.fulfill({ json: { data: user } }));
+  await page.route('**/api/user', (route) =>
+    route.fulfill({ json: { data: user } }),
+  );
   await page.route('**/api/v2/user/settings', async (route) => {
     const payload = route.request().postDataJSON();
     saved.push(payload);
@@ -37,13 +39,16 @@ const withAiReplySetting = async (page, value) => {
     await route.fulfill({ json: { data: {} } });
   });
   await page.route('**/api/tasks/1/comments', async (route) => {
-    if (route.request().method() === 'POST') posted.push(route.request().postDataJSON());
+    if (route.request().method() === 'POST')
+      posted.push(route.request().postDataJSON());
     await route.fulfill({ json: { data: [] } });
   });
   return { saved, asked, posted };
 };
 
-test('the modal footer keeps every action in one compact row', async ({ page }) => {
+test('the modal footer keeps every action in one compact row', async ({
+  page,
+}) => {
   await mockApp(page);
   const form = await openTask(page);
   const footer = form.locator('footer');
@@ -51,19 +56,27 @@ test('the modal footer keeps every action in one compact row', async ({ page }) 
     await expect(footer.getByLabel(name)).toBeVisible();
   const row = footer.getByLabel('Save').locator('xpath=../..');
   await expect(row.getByLabel('Open advanced form')).toBeVisible();
-  expect((await footer.getByLabel('Save').boundingBox()).height).toBeLessThanOrEqual(32);
+  expect(
+    (await footer.getByLabel('Save').boundingBox()).height,
+  ).toBeLessThanOrEqual(32);
   expect((await footer.boundingBox()).height).toBeLessThan(96);
 });
 
-test('the footer fits a phone screen without horizontal scroll', async ({ page }) => {
+test('the footer fits a phone screen without horizontal scroll', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApp(page);
   const form = await openTask(page);
   await expect(form.locator('footer').getByLabel('Delete')).toBeInViewport();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
 });
 
-test('AI reply is a remembered toggle that routes Enter to the AI', async ({ page }) => {
+test('AI reply is a remembered toggle that routes Enter to the AI', async ({
+  page,
+}) => {
   await mockApp(page);
   const calls = await withAiReplySetting(page, '0');
   const form = await openTask(page);
@@ -71,28 +84,35 @@ test('AI reply is a remembered toggle that routes Enter to the AI', async ({ pag
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
   await toggle.click();
-  await expect(form.getByRole('button', { name: 'AI reply: on' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(
+    form.getByRole('button', { name: 'AI reply: on' }),
+  ).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => calls.saved.length).toBe(1);
   expect(calls.saved[0]).toContainEqual({ id: 20, value: '1' });
 
   const input = form.getByPlaceholder('Write a comment…');
   await input.fill('Why is this slow?');
   await input.press('Enter');
-  await expect.poll(() => calls.asked).toEqual([{ question: 'Why is this slow?' }]);
+  await expect
+    .poll(() => calls.asked)
+    .toEqual([{ question: 'Why is this slow?' }]);
   expect(calls.posted).toEqual([]);
 });
 
-test('a stored AI reply setting is applied when a task opens', async ({ page }) => {
+test('a stored AI reply setting is applied when a task opens', async ({
+  page,
+}) => {
   await mockApp(page);
   const calls = await withAiReplySetting(page, '1');
   const form = await openTask(page);
-  await expect(form.getByRole('button', { name: 'AI reply: on' })).toBeVisible();
+  await expect(
+    form.getByRole('button', { name: 'AI reply: on' }),
+  ).toBeVisible();
 
   await form.getByRole('button', { name: 'AI reply: on' }).click();
-  await expect(form.getByRole('button', { name: 'AI reply: off' })).toBeVisible();
+  await expect(
+    form.getByRole('button', { name: 'AI reply: off' }),
+  ).toBeVisible();
   const input = form.getByPlaceholder('Write a comment…');
   await input.fill('Plain note');
   await input.press('Enter');
