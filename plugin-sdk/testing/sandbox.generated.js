@@ -152,6 +152,7 @@ exports.PRELUDE = `(() => {
 			setTrayItem: (id, item) =>
 				call('ui.setTrayItem', item === null ? { id, items: null } : Object.assign({}, item, { id })),
 			setTrayTitle: (text) => call('ui.setTrayTitle', { text }),
+			setViewBadge: (viewId, badge) => call('ui.setViewBadge', { viewId, badge }),
 			notify: (message, options) => call('ui.notify', Object.assign({ message }, options || {})),
 			dnd: () => call('ui.dnd'),
 			refresh: (kind, id) => call('ui.refresh', { kind, id }),

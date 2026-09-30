@@ -497,6 +497,7 @@ const createTestHost = async (options = {}) => {
 		statusBar: {},
 		trayItems: {},
 		trayTitle: null,
+		viewBadges: {},
 		log: [],
 	};
 	for (const s of options.statuses ?? []) {
@@ -566,6 +567,10 @@ const createTestHost = async (options = {}) => {
 		setStatusBarItem: (id, item) => {
 			if (item) state.statusBar[id] = item;
 			else delete state.statusBar[id];
+		},
+		setViewBadge: (viewId, badge) => {
+			if (badge) state.viewBadges[viewId] = { count: badge.count, text: badge.text, tone: badge.tone };
+			else delete state.viewBadges[viewId];
 		},
 		refresh: () => undefined,
 		register: (kind, id) => registered[kind]?.add(id),

@@ -10,6 +10,7 @@ export const pluginState = reactive<PluginHostState>({
 	statusBar: {},
 	trayItems: {},
 	trayTitle: null,
+	viewBadges: {},
 	revision: 0,
 	revisions: {},
 });

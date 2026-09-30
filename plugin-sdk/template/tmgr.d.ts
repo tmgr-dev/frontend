@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.3). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.4). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -528,7 +528,8 @@ declare const tmgr: {
 		dnd(): Promise<{ active: boolean; until: string | null }>;
 		/**
 		 * Needs tray. id must be declared in contributes.trayItems (at most 5 per plugin). title and each
-		 * item's title are at most 60 characters; at most 10 items; each item's args at most 4 KB of JSON.
+		 * item's title are non-empty; longer than 60 characters (graphemes, so an emoji counts as one) they
+		 * are shortened with a trailing "…" (input over 1000 UTF-16 units is refused); at most 10 items; each item's args at most 4 KB of JSON.
 		 * Rust shows the section as a submenu after the app's own tray items; clicking an item opens the
 		 * task or runs the command, under the same rules as ui.notify. null removes the section.
 		 */
@@ -545,6 +546,21 @@ declare const tmgr: {
 		 * free of control characters. null clears it. Cleared automatically when this plugin stops.
 		 */
 		setTrayTitle(text: string | null): Promise<void>;
+		/**
+		 * API 1.4, needs `engines.tmgr` `^1.4` and views:badge (no user consent). Shows a counter on this
+		 * plugin's own sidebar item for a view declared in contributes.views; null clears it.
+		 * Give exactly one of `count` (safe integer >= 0; 0 clears; drawn as "99+" above 99) or `text`
+		 * (1 to 4 UTF-16 units, e.g. "!" or "new"). `tone` defaults to 'default'.
+		 * A viewId this plugin did not declare, both/neither of count and text, or any other bad value
+		 * rejects with INVALID_PARAMS; a missing permission rejects with PERMISSION_DENIED.
+		 * At most one applied change per view per second: calls inside that window are held and the last one
+		 * wins, no error. The badge is cleared when the plugin stops, is disabled or removed, or crashes, and
+		 * is not restored on app restart: set it again on 'app.started'. Works in shared workspaces too.
+		 */
+		setViewBadge(
+			viewId: string,
+			badge: { count?: number; text?: string; tone?: 'default' | 'info' | 'warning' | 'danger' } | null,
+		): Promise<void>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
 	};

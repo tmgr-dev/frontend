@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.3 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.4 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -38,7 +38,10 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
    - The board's quick filters gain a **"Touched by Kitchen Sink"** filter (from `contributes.boardFilters`),
      which matches tasks with the KS badge.
 6. The menu bar (status bar) shows an item like "N KS tasks"; clicking it re-runs "Create sample task".
-7. In the app tray/menu bar icon, a "Kitchen Sink" section lists the same tasks (see "Manual-only checks"
+7. The "Kitchen Sink view" item in the sidebar's Plugins section shows a counter with the number of active
+   sample tasks (API 1.4 `setViewBadge`); it is set again on every tray refresh and cleared when the plugin
+   is turned off.
+8. In the app tray/menu bar icon, a "Kitchen Sink" section lists the same tasks (see "Manual-only checks"
    for the parts of tray behaviour Jest cannot see).
 8. Visit `tmgr://plugin/tmgr-dev.kitchen-sink/command/ping` (e.g. paste it into a browser, or use
    whatever the OS's URL-open mechanism is) — a "Pinged via a tmgr:// deep link." notification appears.

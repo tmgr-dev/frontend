@@ -29,6 +29,12 @@ a plugin declaring `^1.3` gets the API 1.3 `card`/`grid`/`menu` nodes and the ne
 `stack`/`button`/`stat`/`badge`; an older `engines.tmgr` gets those nodes downgraded to plain `stack`s,
 same as the real app.
 
+`tmgr.viewBadges[viewId]` holds what `tmgr.ui.setViewBadge` set (`{ count, text, tone }`, exactly one of
+`count`/`text` non-null). The test host applies it immediately: the app coalesces calls to one per second
+per view, the test host does not. Validation and errors are the app's own. One difference: the app answers
+a refused `setTrayItem` (bad params, tray not allowed here) with a log line instead of a rejection so a page
+render is never broken by it; the test host rejects, so you see the mistake.
+
 ## Why CommonJS
 
 This package is plain `require()`-able CommonJS, not ESM. A `node:test` file (an ESM `.mjs`, as in

@@ -109,6 +109,8 @@ export interface TestHostState {
 	statusBar: Record<string, Record<string, unknown>>;
 	trayItems: Record<string, Record<string, unknown>>;
 	trayTitle: string | null;
+	/** Badges set with `tmgr.ui.setViewBadge`, by view id. Applied immediately (no 1 s coalescing); a null or 0 badge removes the key. */
+	viewBadges: Record<string, { count: number | null; text: string | null; tone: 'default' | 'info' | 'warning' | 'danger' }>;
 	log: { at: number; level: 'info' | 'warn' | 'error'; message: string }[];
 }
 

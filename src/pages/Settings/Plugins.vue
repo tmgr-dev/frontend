@@ -543,6 +543,7 @@
 		'links:open': 'open web links in your browser',
 		'routines:read': 'read your notes and routines (local workspaces only)',
 		'routines:write': 'add, rename, complete and convert your notes and routines (local workspaces only)',
+		'views:badge': 'show counters on its sidebar items',
 	};
 
 	export default defineComponent({

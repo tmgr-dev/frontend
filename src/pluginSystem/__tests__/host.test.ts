@@ -79,6 +79,7 @@ const setup = (
 		statusBar: {},
 		trayItems: {},
 		trayTitle: null,
+		viewBadges: {},
 		revision: 0,
 		revisions: {},
 	};
@@ -1451,6 +1452,223 @@ describe('tray', () => {
 		expect(state.trayTitle).toBe('again');
 		await host.setEnabled('tmgr.tray', false);
 		expect(state.trayTitle).toBeNull();
+		host.dispose();
+	});
+});
+
+describe('view badges', () => {
+	const badgePkg = (code = ''): PluginPackage => ({
+		manifest: parseManifest({
+			id: 'tmgr.badge',
+			name: 'tmgr.badge',
+			version: '1.0.0',
+			engines: { tmgr: '^1.4' },
+			permissions: ['views:badge'],
+			contributes: {
+				views: [{ id: 'inbox', title: 'Inbox' }],
+				commands: [{ id: 'tmgr.badge.set', title: 'Set' }, { id: 'tmgr.badge.spin', title: 'Spin' }],
+			},
+		}),
+		code: `tmgr.commands.register('tmgr.badge.set', (badge) => tmgr.ui.setViewBadge('inbox', badge));
+			tmgr.commands.register('tmgr.badge.spin', () => { while (true) {} });
+			${code}`,
+		source: 'builtin',
+	});
+	const KEY = 'tmgr.badge:inbox';
+	const start = async (extra: Parameters<typeof setup>[4] = {}, code = '') => {
+		const ctx = setup([badgePkg(code)], {}, {}, {}, extra);
+		await ctx.host.load();
+		await ctx.host.activate(LOCAL);
+		return ctx;
+	};
+	const set = (host: ReturnType<typeof setup>['host'], badge: unknown) =>
+		host.runCommand('tmgr.badge', 'tmgr.badge.set', badge);
+
+	afterEach(() => jest.useRealTimers());
+
+	const fakeTimers = () =>
+		jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+
+	it('applies the first call at once and lets the last of a burst win when the 1 s window ends', async () => {
+		fakeTimers();
+		const { host, state } = await start();
+		await set(host, { count: 1 });
+		expect(state.viewBadges[KEY]).toEqual({
+			pluginId: 'tmgr.badge',
+			viewId: 'inbox',
+			count: 1,
+			text: null,
+			tone: 'default',
+		});
+		await set(host, { count: 2 });
+		await set(host, { text: 'new', tone: 'danger' });
+		await set(host, { count: 7, tone: 'info' });
+		expect(state.viewBadges[KEY].count).toBe(1);
+		expect(jest.getTimerCount()).toBe(1);
+		jest.advanceTimersByTime(999);
+		expect(state.viewBadges[KEY].count).toBe(1);
+		jest.advanceTimersByTime(1);
+		expect(state.viewBadges[KEY]).toMatchObject({ count: 7, text: null, tone: 'info' });
+		host.dispose();
+	});
+
+	it('holds a clear inside the window too, and applies a call after a quiet second at once', async () => {
+		fakeTimers();
+		const { host, state } = await start();
+		await set(host, { count: 3 });
+		await set(host, null);
+		expect(state.viewBadges[KEY]).toBeDefined();
+		jest.advanceTimersByTime(1000);
+		expect(state.viewBadges[KEY]).toBeUndefined();
+		jest.advanceTimersByTime(1000);
+		await set(host, { count: 4 });
+		expect(state.viewBadges[KEY].count).toBe(4);
+		host.dispose();
+	});
+
+	it('never writes from a timer that outlived its run, and stop drops the timer', async () => {
+		fakeTimers();
+		const { host, state } = await start();
+		await set(host, { count: 1 });
+		await set(host, { count: 2 });
+		expect(jest.getTimerCount()).toBe(1);
+		await host.setEnabled('tmgr.badge', false);
+		expect(state.viewBadges).toEqual({});
+		expect(jest.getTimerCount()).toBe(0);
+		jest.advanceTimersByTime(5000);
+		expect(state.viewBadges).toEqual({});
+		host.dispose();
+	});
+
+	it('a restart does not carry the badge or its held update over', async () => {
+		fakeTimers();
+		const { host, state } = await start();
+		await set(host, { count: 1 });
+		await set(host, { count: 2 });
+		await host.restart('tmgr.badge');
+		expect(state.viewBadges).toEqual({});
+		jest.advanceTimersByTime(2000);
+		expect(state.viewBadges).toEqual({});
+		host.dispose();
+	});
+
+	it('is cleared when the plugin is disabled, uninstalled or crashes', async () => {
+		const disabled = await start();
+		await set(disabled.host, { count: 1 });
+		expect(disabled.state.viewBadges[KEY]).toBeDefined();
+		await disabled.host.setEnabled('tmgr.badge', false);
+		expect(disabled.state.viewBadges).toEqual({});
+		disabled.host.dispose();
+
+		const removed = await start();
+		await set(removed.host, { text: '!' });
+		removed.host.forget('tmgr.badge');
+		expect(removed.state.viewBadges).toEqual({});
+		removed.host.dispose();
+
+		const crashed = await start();
+		await set(crashed.host, { count: 5 });
+		for (let i = 0; i < 3; i++) {
+			while (crashed.state.plugins['tmgr.badge'].status === 'starting') await flush();
+			if (crashed.state.plugins['tmgr.badge'].status === 'crashed') break;
+			await crashed.host.runCommand('tmgr.badge', 'tmgr.badge.spin').catch(() => undefined);
+		}
+		expect(crashed.state.plugins['tmgr.badge'].status).toBe('crashed');
+		expect(crashed.state.viewBadges).toEqual({});
+		crashed.host.dispose();
+	});
+
+	it('works without machine consent, which only gates the tray, files and fetch', async () => {
+		const { host, state } = await start({ machineAllowed: () => false });
+		await set(host, { count: 9, tone: 'warning' });
+		expect(state.viewBadges[KEY]).toMatchObject({ count: 9, tone: 'warning' });
+		host.dispose();
+	});
+});
+
+describe('setTrayItem during a page render', () => {
+	const renderPlugin = (call: string) =>
+		pkg(
+			'tmgr.render',
+			`tmgr.ui.providePage('main', async () => {
+				${call}
+				return { type: 'heading', text: 'ok', level: 2 };
+			});`,
+			['tray'],
+			{ views: [{ id: 'main', title: 'Main' }], trayItems: [{ id: 'menu' }] },
+		);
+	const EMOJI = '😀'.repeat(45);
+	const item = `{ title: '${EMOJI}', items: [{ title: '${EMOJI}' }] }`;
+	const cases: [string, string, Record<string, unknown>][] = [
+		['awaited, long emoji title', `await tmgr.ui.setTrayItem('menu', ${item});`, {}],
+		['not awaited, long emoji title', `tmgr.ui.setTrayItem('menu', ${item});`, {}],
+		[
+			'awaited, tray not allowed',
+			`await tmgr.ui.setTrayItem('menu', ${item});`,
+			{ machineAllowed: () => false },
+		],
+		[
+			'not awaited, tray not allowed',
+			`tmgr.ui.setTrayItem('menu', ${item});`,
+			{ machineAllowed: () => false },
+		],
+	];
+	it.each(cases)('%s', async (_, call, extra) => {
+		const { host } = setup([renderPlugin(call)], {}, {}, {}, extra);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		expect(await host.renderPage('tmgr.render', 'main')).toEqual({
+			type: 'heading',
+			text: 'ok',
+			level: 2,
+		});
+		host.dispose();
+	});
+
+	it('shortens emoji titles to 60 graphemes instead of refusing them', async () => {
+		const long = '😀'.repeat(70);
+		const { host, state } = setup([
+			renderPlugin(`await tmgr.ui.setTrayItem('menu', { title: '${long}', items: [{ title: '${long}' }] });`),
+		]);
+		await host.load();
+		await host.activate(LOCAL);
+		await host.renderPage('tmgr.render', 'main');
+		const entry = state.trayItems['tmgr.render:menu'];
+		expect(entry.title).toBe(`${'😀'.repeat(59)}…`);
+		expect(entry.items[0].title).toBe(`${'😀'.repeat(59)}…`);
+		host.dispose();
+	});
+
+	it('logs the refusal for the plugin author instead of rejecting the handler', async () => {
+		const { host, state } = setup(
+			[renderPlugin(`await tmgr.ui.setTrayItem('menu', ${item});`)],
+			{},
+			{},
+			{},
+			{ machineAllowed: () => false },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await host.renderPage('tmgr.render', 'main');
+		expect(state.plugins['tmgr.render'].log.map((l) => l.message)).toEqual(
+			expect.arrayContaining([expect.stringContaining('ui.setTrayItem: PERMISSION_DENIED')]),
+		);
+		host.dispose();
+	});
+
+	it('still rejects setTrayItem for an undeclared id, which is a plugin bug and not an environment', async () => {
+		const { host } = setup([
+			pkg(
+				'tmgr.render',
+				`tmgr.commands.register('tmgr.render.go', () => tmgr.ui.setTrayItem('nope', { title: 'x', items: [] }).catch((e) => e.name));`,
+				['tray'],
+				{ commands: [{ id: 'tmgr.render.go', title: 'Go' }], trayItems: [{ id: 'menu' }] },
+			),
+		]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runCommand('tmgr.render', 'tmgr.render.go')).toBe('NOT_DECLARED');
 		host.dispose();
 	});
 });

@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.3';
+export const PLUGIN_API_VERSION = '1.4';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -25,6 +25,7 @@ export const PERMISSIONS = [
 	'links:open',
 	'routines:read',
 	'routines:write',
+	'views:badge',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -201,6 +202,9 @@ export const parseManifest = (raw: any): PluginManifest => {
 	];
 	if (allowedDomains.length && !permissions.includes('links:open'))
 		fail('links.allowedDomains needs the links:open permission');
+	const apiMinor = engineMinor(raw.engines.tmgr);
+	if (permissions.includes('views:badge') && apiMinor < 4)
+		fail('views:badge needs engines.tmgr ^1.4');
 	return {
 		id,
 		name: text(raw.name, 'name', 80),
@@ -223,7 +227,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 		},
 		links: { allowedDomains },
 		companion: parseCompanion(raw.companion),
-		apiMinor: engineMinor(raw.engines.tmgr),
+		apiMinor,
 		contributes: {
 			boardCardBadges,
 			statusBarItems: list(c.statusBarItems, 'statusBarItems', (item) => ({

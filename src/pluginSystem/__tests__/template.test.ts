@@ -53,6 +53,7 @@ it('the plugin template builds into a bundle the app accepts and runs', async ()
 		notify: () => undefined,
 		setStatusBarItem: (id, item) => statusBar.push([id, item?.text]),
 		refresh: () => undefined,
+		setViewBadge: () => undefined,
 		register: () => undefined,
 		log: () => undefined,
 		now: () => 0,

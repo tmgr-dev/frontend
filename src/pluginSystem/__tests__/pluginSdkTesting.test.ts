@@ -67,3 +67,63 @@ it('renderPage downgrades the same page to stacks for an engines ^1.2 plugin', a
 	]);
 	host.dispose();
 });
+
+const badgeManifest = (permissions: string[], engines = '^1.4') => ({
+	id: 'tmgr-dev.badge-test',
+	name: 'Badge Test',
+	version: '1.0.0',
+	publisher: 'tmgr-dev',
+	engines: { tmgr: engines },
+	main: 'main.js',
+	permissions,
+	contributes: {
+		views: [{ id: 'inbox', title: 'Inbox' }],
+		commands: [{ id: 'tmgr-dev.badge-test.set', title: 'Set' }],
+	},
+});
+
+const badgeCode = `
+tmgr.commands.register('tmgr-dev.badge-test.set', (args) =>
+	tmgr.ui.setViewBadge(args.viewId, args.badge).then(() => 'ok', (e) => e.name));
+`;
+
+describe('setViewBadge in the test host', () => {
+	const set = (host: any, viewId: unknown, badge: unknown) =>
+		host.runCommand('tmgr-dev.badge-test.set', { viewId, badge });
+
+	it('exposes tmgr.viewBadges[viewId] at once, and null or a 0 count removes it', async () => {
+		const host = await createTestHost({ manifest: badgeManifest(['views:badge']), code: badgeCode, quickjs });
+		expect(await set(host, 'inbox', { count: 12, tone: 'danger' })).toBe('ok');
+		expect(host.tmgr.viewBadges.inbox).toEqual({ count: 12, text: null, tone: 'danger' });
+		expect(await set(host, 'inbox', { text: 'new' })).toBe('ok');
+		expect(host.tmgr.viewBadges.inbox).toEqual({ count: null, text: 'new', tone: 'default' });
+		await set(host, 'inbox', { count: 0 });
+		expect(host.tmgr.viewBadges).toEqual({});
+		await set(host, 'inbox', { count: 2 });
+		await set(host, 'inbox', null);
+		expect(host.tmgr.viewBadges).toEqual({});
+		host.dispose();
+	});
+
+	it('answers with the same errors as the app', async () => {
+		const host = await createTestHost({ manifest: badgeManifest(['views:badge']), code: badgeCode, quickjs });
+		expect(await set(host, 'other', { count: 1 })).toBe('INVALID_PARAMS');
+		expect(await set(host, 'inbox', { count: 1, text: 'a' })).toBe('INVALID_PARAMS');
+		expect(await set(host, 'inbox', { text: 'abcde' })).toBe('INVALID_PARAMS');
+		expect(await set(host, 'inbox', { count: -1 })).toBe('INVALID_PARAMS');
+		expect(host.tmgr.viewBadges).toEqual({});
+		host.dispose();
+	});
+
+	it('needs the views:badge permission', async () => {
+		const host = await createTestHost({ manifest: badgeManifest([]), code: badgeCode, quickjs });
+		expect(await set(host, 'inbox', { count: 1 })).toBe('PERMISSION_DENIED');
+		host.dispose();
+	});
+
+	it('refuses to load a ^1.3 manifest declaring views:badge', async () => {
+		await expect(
+			createTestHost({ manifest: badgeManifest(['views:badge'], '^1.3'), code: badgeCode, quickjs }),
+		).rejects.toThrow('views:badge needs engines.tmgr ^1.4');
+	});
+});
