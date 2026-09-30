@@ -62,6 +62,7 @@
 		SidebarHeader,
 		SidebarInset,
 		SidebarMenu,
+		SidebarMenuBadge,
 		SidebarMenuButton,
 		SidebarMenuItem,
 		SidebarProvider,
@@ -75,6 +76,12 @@
 	import store from '@/store';
 	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { pluginState } from '@/pluginSystem/state';
+	import {
+		BADGE_DOT_CLASS,
+		BADGE_TONE_CLASS,
+		viewBadgeAriaLabel,
+		viewBadgeLabel,
+	} from './sidebarViewBadge';
 	import {
 		ArchiveIcon,
 		BadgeCheck,
@@ -131,6 +138,7 @@
 				plugin.manifest.contributes.views.map((view) => ({
 					key: `${plugin.manifest.id}/${view.id}`,
 					title: view.title,
+					badge: pluginState.viewBadges[`${plugin.manifest.id}:${view.id}`],
 				})),
 			),
 	);
@@ -840,14 +848,40 @@
 						<SidebarGroupLabel>Plugins</SidebarGroupLabel>
 						<SidebarMenu>
 							<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
-								<SidebarMenuButton as-child>
+								<SidebarMenuButton
+									as-child
+									:class="page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'"
+								>
 									<router-link
 										:to="`/${activeWorkspace.code}/plugins/${page.key}`"
+										:aria-label="viewBadgeAriaLabel(page.title, page.badge)"
 									>
-										<Plug />
+										<span class="relative flex shrink-0">
+											<Plug />
+											<span
+												v-if="page.badge"
+												aria-hidden="true"
+												data-testid="plugin-view-badge-dot"
+												:class="[
+													'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
+													BADGE_DOT_CLASS[page.badge.tone],
+												]"
+											/>
+										</span>
 										<span>{{ page.title }}</span>
 									</router-link>
 								</SidebarMenuButton>
+								<SidebarMenuBadge
+									v-if="page.badge"
+									aria-hidden="true"
+									data-testid="plugin-view-badge"
+									:class="[
+										'rounded-full px-1.5 text-2xs font-semibold',
+										BADGE_TONE_CLASS[page.badge.tone],
+									]"
+								>
+									{{ viewBadgeLabel(page.badge) }}
+								</SidebarMenuBadge>
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>

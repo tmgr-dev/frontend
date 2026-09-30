@@ -121,6 +121,14 @@ export interface TrayItemEntry {
 	items: TrayMenuItem[];
 }
 
+export interface ViewBadgeEntry {
+	pluginId: string;
+	viewId: string;
+	count: number | null;
+	text: string | null;
+	tone: 'default' | 'info' | 'warning' | 'danger';
+}
+
 export interface PluginHostState {
 	workspace: PluginWorkspace | null;
 	safeMode: boolean;
@@ -129,6 +137,7 @@ export interface PluginHostState {
 	trayItems: Record<string, TrayItemEntry>;
 	/** Set by the one plugin chosen in Settings for the menu bar text; null when none is chosen or set. */
 	trayTitle: string | null;
+	viewBadges: Record<string, ViewBadgeEntry>;
 	/** Bumped when plugins start or stop: every badge, page and section is asked again. */
 	revision: number;
 	/** Per plugin, bumped (throttled) when that plugin asks for its UI to be drawn again. */
