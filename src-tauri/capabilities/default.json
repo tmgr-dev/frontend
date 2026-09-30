@@ -4,7 +4,8 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "quick-add"
+    "quick-add",
+    "task-*"
   ],
   "permissions": [
     "core:default",
@@ -27,6 +28,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "core:window:allow-set-size",
+    "core:window:allow-set-title",
     "allow-capture-screenshot",
     "allow-capture-selection",
     "allow-take-capture",
@@ -49,6 +51,7 @@
     "allow-plugin-notify",
     "allow-hide-quick-add",
     "allow-open-quick-add",
+    "allow-open-task-window",
     "allow-take-quick-add",
     "allow-tray-update",
     "allow-dnd-update",

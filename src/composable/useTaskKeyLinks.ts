@@ -2,6 +2,11 @@ import { getCategories } from '@/actions/tmgr/categories';
 import { getTasks } from '@/actions/tmgr/tasks';
 import store from '@/store';
 import { pickTaskByKey, taskKeyPrefixes } from '@/utils/taskKeys';
+import {
+	isInTaskWindow,
+	openTaskWindow,
+	taskWindowTarget,
+} from '@/utils/taskWindow';
 import { ref } from 'vue';
 
 const prefixes = ref<string[]>([]);
@@ -49,6 +54,16 @@ export const openTaskByKey = async (key: string): Promise<boolean> => {
 		const task = pickTaskByKey(response?.data || [], key);
 		if (!task) {
 			return false;
+		}
+		if (isInTaskWindow()) {
+			const target = taskWindowTarget(
+				task,
+				store.state.workspaces,
+				store.getters.currentWorkspace,
+			);
+			if (!target) return false;
+			await openTaskWindow(target);
+			return true;
 		}
 		store.commit('setCurrentTaskIdForModal', task.id);
 		return true;

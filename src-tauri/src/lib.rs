@@ -21,12 +21,13 @@ mod plugin_selftest;
 mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
+mod task_windows;
 mod tray;
 
 use std::path::{Path, PathBuf};
 
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{Manager, RunEvent, Url, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Runtime, Url, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
 use tauri_plugin_opener::OpenerExt;
 
@@ -66,6 +67,65 @@ fn unique_download_path(dir: PathBuf, suggested: &Path, url: &Url) -> PathBuf {
     .map(|i| dir.join(format!("{stem} ({i}){ext}")))
     .find(|p| !p.exists())
     .unwrap()
+}
+
+fn home_url<R: Runtime>(app: &AppHandle<R>) -> Url {
+  if cfg!(debug_assertions) {
+    app.config().build.dev_url.clone().unwrap_or_else(|| "tauri://localhost".parse().unwrap())
+  } else if cfg!(windows) {
+    "http://tauri.localhost".parse().unwrap()
+  } else {
+    "tauri://localhost".parse().unwrap()
+  }
+}
+
+pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
+  builder: WebviewWindowBuilder<'a, R, AppHandle<R>>,
+  app: &AppHandle<R>,
+) -> WebviewWindowBuilder<'a, R, AppHandle<R>> {
+  let nav_handle = app.clone();
+  let popup_handle = app.clone();
+  let download_handle = app.clone();
+  let home = home_url(app);
+  builder
+    .on_navigation(move |url| {
+      if is_app_url(url) || embeds::is_embed_url(url) {
+        return true;
+      }
+      if is_external_url(url) {
+        let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
+      }
+      false
+    })
+    // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
+    // ever lands on one, bring the app back.
+    .on_page_load(move |window, payload| {
+      if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
+        log::warn!("[nav] {} left the app for {}; returning", window.label(), payload.url().host_str().unwrap_or(""));
+        let _ = window.navigate(home.clone());
+      }
+    })
+    .on_new_window(move |url, _features| {
+      if is_external_url(&url) {
+        let _ = popup_handle.opener().open_url(url.as_str(), None::<&str>);
+      }
+      NewWindowResponse::Deny
+    })
+    .on_download(move |_webview, event| {
+      match event {
+        DownloadEvent::Requested { url, destination } => {
+          if let Ok(dir) = download_handle.path().download_dir() {
+            *destination = unique_download_path(dir, destination, &url);
+          }
+          downloads::remember(&download_handle, url.as_str(), destination);
+        }
+        DownloadEvent::Finished { url, path, success } => {
+          downloads::finished(&download_handle, url.as_str(), path, success);
+        }
+        _ => {}
+      }
+      true
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -123,6 +183,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       tray::tray_update,
       tray::dnd_update,
+      task_windows::open_task_window,
       quick_add::open_quick_add,
       quick_add::take_quick_add,
       quick_add::hide_quick_add,
@@ -217,57 +278,11 @@ pub fn run() {
         .find(|w| w.label == "main")
         .expect("main window config")
         .clone();
-      let nav_handle = app.handle().clone();
-      let popup_handle = app.handle().clone();
-      let download_handle = app.handle().clone();
-      let home: Url = if cfg!(debug_assertions) {
-        app.config().build.dev_url.clone().unwrap_or_else(|| "tauri://localhost".parse().unwrap())
-      } else if cfg!(windows) {
-        "http://tauri.localhost".parse().unwrap()
-      } else {
-        "tauri://localhost".parse().unwrap()
-      };
-
-      let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
-        .on_navigation(move |url| {
-          if is_app_url(url) || embeds::is_embed_url(url) {
-            return true;
-          }
-          if is_external_url(url) {
-            let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
-          }
-          false
-        })
-        // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
-        // ever lands on one, bring the app back.
-        .on_page_load(move |window, payload| {
-          if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
-            log::warn!("[nav] main window left the app for {}; returning", payload.url().host_str().unwrap_or(""));
-            let _ = window.navigate(home.clone());
-          }
-        })
-        .on_new_window(move |url, _features| {
-          if is_external_url(&url) {
-            let _ = popup_handle.opener().open_url(url.as_str(), None::<&str>);
-          }
-          NewWindowResponse::Deny
-        })
-        .on_download(move |_webview, event| {
-          match event {
-            DownloadEvent::Requested { url, destination } => {
-              if let Ok(dir) = download_handle.path().download_dir() {
-                *destination = unique_download_path(dir, destination, &url);
-              }
-              downloads::remember(&download_handle, url.as_str(), destination);
-            }
-            DownloadEvent::Finished { url, path, success } => {
-              downloads::finished(&download_handle, url.as_str(), path, success);
-            }
-            _ => {}
-          }
-          true
-        })
-        .build()?;
+      let window = with_app_webview_handlers(
+        WebviewWindowBuilder::from_config(app.handle(), &config)?,
+        app.handle(),
+      )
+      .build()?;
 
       #[cfg(target_os = "macos")]
       hide_traffic_lights(&window);

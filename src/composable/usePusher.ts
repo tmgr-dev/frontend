@@ -90,6 +90,15 @@ export function deliverToWorkspace(
 		?.handlers.forEach((handlers) => call(handlers));
 }
 
+export function deliverToUser(
+	userId: number,
+	call: (handlers: EventHandlers) => void,
+): void {
+	subscriptions
+		.get(`App.User.${userId}`)
+		?.handlers.forEach((handlers) => call(handlers));
+}
+
 export function disconnectRealtime(): void {
 	if (echoInstance) usePusher().disconnect();
 	else cancelReconnect();

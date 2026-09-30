@@ -570,6 +570,12 @@ const routes = [
 		name: 'WorkspaceBoard',
 	},
 	{
+		path: '/:workspace_code/task-window/:id',
+		component: () => import('@/pages/TaskWindow.vue'),
+		meta: { navbarHidden: true },
+		name: 'TaskWindow',
+	},
+	{
 		path: '/:workspace_code/:category_code',
 		component: ProjectCategoryList,
 		meta: {

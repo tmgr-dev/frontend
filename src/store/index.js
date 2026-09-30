@@ -8,6 +8,7 @@ import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
 import { isDesktopApp } from '@/utils/desktop';
 import { requestCache } from '@/utils/requestCache';
+import { isInTaskWindow } from '@/utils/taskWindow';
 import {
 	isKnownWorkspaceId,
 	overlayCurrentWorkspace,
@@ -36,7 +37,7 @@ const localStorageSafe = () => {
 
 const rememberClientWorkspaceId = (workspaceId) => {
 	writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, workspaceId);
-	if (workspaceId != null) {
+	if (workspaceId != null && !isInTaskWindow()) {
 		writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, workspaceId);
 	}
 };
