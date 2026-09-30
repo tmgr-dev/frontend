@@ -104,3 +104,32 @@ it('serializes manual flush behind an in-flight save and preserves snapshots', a
 		{ id: 1, title: 'second' },
 	]);
 });
+
+it('reports pending changes until the queued save finishes', async () => {
+	const form = ref({ id: 1, title: 'A' });
+	let release!: () => void;
+	const [, cancel, , , hasPending] = useDebouncedAutoSave({
+		formRef: form,
+		fieldsToWatch: ['title'],
+		onSave: () =>
+			new Promise<void>((resolve) => {
+				release = resolve;
+			}),
+		delay: 100,
+	});
+	expect(hasPending.value).toBe(false);
+	form.value.title = 'B';
+	await flush();
+	expect(hasPending.value).toBe(true);
+	jest.advanceTimersByTime(100);
+	await flush();
+	expect(hasPending.value).toBe(true);
+	release();
+	await flush();
+	await flush();
+	expect(hasPending.value).toBe(false);
+	form.value.title = 'C';
+	await flush();
+	cancel();
+	expect(hasPending.value).toBe(false);
+});

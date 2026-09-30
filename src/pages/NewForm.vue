@@ -5,6 +5,10 @@
 		createComment,
 	} from '@/actions/tmgr/comments';
 	import {
+		isCommentAiReplyOn,
+		setCommentAiReply,
+	} from '@/actions/tmgr/commentAiReply';
+	import {
 		getCursorAgents,
 		getCursorStatus,
 		sendFollowUp,
@@ -47,6 +51,7 @@
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
 		DialogContent,
@@ -1601,6 +1606,7 @@
 	const cancelPendingAutoSave = autosaveResult[1];
 	const flushAutoSave = autosaveResult[2];
 	const enqueueTaskSnapshot = autosaveResult[3];
+	const hasUnsavedChanges = autosaveResult[4];
 	onBeforeUnmount(() => {
 		const editor = blockEditorRef.value;
 		if (form.value.id && editor) {
@@ -1928,6 +1934,19 @@
 			isSendingComment.value = false;
 		}
 	};
+
+	const commentAiReply = computed(
+		() => !isLocalWorkspaceTask.value && isCommentAiReplyOn(),
+	);
+
+	const toggleCommentAiReply = () => {
+		setCommentAiReply(!isCommentAiReplyOn()).catch((error) =>
+			console.error('Failed to save the AI reply setting:', error),
+		);
+	};
+
+	const submitComment = () =>
+		commentAiReply.value ? askAIComment() : sendComment();
 
 	const handleCommentEsc = () => {
 		if (!newComment.value.trim()) {
@@ -2471,7 +2490,7 @@
 				<!-- FOOTER - Fixed at bottom -->
 				<footer
 					ref="footer"
-					class="shrink-0 border-t border-line bg-surface px-6 py-3"
+					class="shrink-0 border-t border-line bg-surface px-6 py-2"
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
@@ -2496,7 +2515,7 @@
 					</div>
 					<div
 						v-if="isModal && form.id"
-						class="mb-5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
+						class="mb-1.5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
 						@mousedown.stop
 					>
 						<input
@@ -2504,7 +2523,7 @@
 							v-model="newComment"
 							placeholder="Write a comment…"
 							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
-							@keydown.enter.prevent="sendComment"
+							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
 						/>
 
@@ -2518,116 +2537,130 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							:disabled="!newComment?.trim() || isSendingComment"
-							@click="askAIComment"
-							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-							title="Ask AI"
+							v-if="!isLocalWorkspaceTask"
+							type="button"
+							:aria-pressed="commentAiReply"
+							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:aria-label="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:class="[
+								'flex h-7 w-7 items-center justify-center rounded-pill transition',
+								commentAiReply
+									? 'bg-brand-bg text-brand ring-1 ring-brand'
+									: 'text-ink-subtle hover:bg-surface-hover hover:text-ink',
+							]"
+							@click="toggleCommentAiReply"
 						>
 							<Sparkles class="h-4 w-4" />
 						</button>
 						<button
 							:disabled="!newComment?.trim() || isSendingComment"
-							@click="sendComment"
+							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-							title="Send comment (Enter)"
+							:title="commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'"
 						>
 							<Send class="h-3.5 w-3.5" />
 						</button>
 					</div>
 
-					<div class="flex flex-wrap justify-end gap-2 text-center">
-						<button
-							v-if="isModal && !detached && isDesktopApp() && (taskId || form.id)"
-							type="button"
-							title="Open in a separate window"
-							class="mr-auto inline-flex items-center justify-center rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
-							@click="openInSeparateWindow"
-						>
-							<ArrowTopRightOnSquareIcon class="size-5" />
-						</button>
-						<a
-							v-else-if="isModal && !detached && (taskId || form.id)"
-							:href="generateTaskUrlForAdvancedForm()"
-							title="Open advanced form"
-							class="mr-auto inline-flex items-center justify-center rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
-						>
-							<ArrowTopRightOnSquareIcon class="size-5" />
-						</a>
-
-						<span class="relative inline-flex rounded-md shadow-sm">
-							<button
-								v-if="taskId || form.id"
-								@click="saveTask()"
-								class="relative inline-flex items-center justify-center gap-1.5 rounded-md bg-status-done px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 focus:outline-none"
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+							<Button
+								v-if="isModal && !detached && isDesktopApp() && (taskId || form.id)"
 								type="button"
-								title="Save"
+								variant="ghost"
+								size="icon"
+								title="Open in a separate window"
+								aria-label="Open in a separate window"
+								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+								@click="openInSeparateWindow"
 							>
-								<svg
-									v-if="isAutoSaving || isLoading"
-									class="size-6 animate-spin text-white"
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
+								<ArrowTopRightOnSquareIcon />
+							</Button>
+							<Button
+								v-else-if="isModal && !detached && (taskId || form.id)"
+								as="a"
+								variant="ghost"
+								size="icon"
+								:href="generateTaskUrlForAdvancedForm()"
+								title="Open advanced form"
+								aria-label="Open advanced form"
+								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+							>
+								<ArrowTopRightOnSquareIcon />
+							</Button>
+
+							<div
+								v-if="taskId || form.id"
+								class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-faint"
+							>
+								<TaskTimeInfo
+									:created-at="form.created_at"
+									:updated-at="form.updated_at"
+								/>
+							</div>
+
+							<div class="ml-auto flex items-center gap-1">
+								<Button
+									v-if="!taskId && !form.id"
+									type="button"
+									size="sm"
+									title="Create"
+									class="h-8 bg-brand text-white hover:bg-brand-hover"
+									@click="createTask"
 								>
-									<circle
-										class="opacity-25"
-										cx="12"
-										cy="12"
-										r="10"
-										stroke="currentColor"
-										stroke-width="4"
+									<DocumentPlusIcon />
+									Create
+								</Button>
+
+								<Button
+									v-if="taskId || form.id"
+									type="button"
+									variant="ghost"
+									size="icon"
+									title="Save"
+									aria-label="Save"
+									:aria-busy="isAutoSaving || isLoading"
+									:data-unsaved="hasUnsavedChanges || undefined"
+									:class="
+										hasUnsavedChanges
+											? 'h-8 w-8 bg-brand text-white hover:bg-brand-hover hover:text-white'
+											: 'h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink'
+									"
+									@click="saveTask()"
+								>
+									<Loader2
+										v-if="isAutoSaving || isLoading"
+										class="animate-spin"
 									/>
-									<path
-										class="opacity-75"
-										fill="currentColor"
-										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-									/>
-								</svg>
+									<Save v-else />
+								</Button>
 
-								<Save v-else class="size-5" />
-							</button>
-						</span>
+								<Button
+									v-if="isLocalWorkspaceTask && (taskId || form.id)"
+									type="button"
+									variant="ghost"
+									size="icon"
+									title="Export to Markdown"
+									aria-label="Export to Markdown"
+									class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+									@click="exportTaskToMarkdown"
+								>
+									<ArrowDownTrayIcon />
+								</Button>
 
-						<button
-							v-if="!taskId && !form.id"
-							@click="createTask"
-							class="inline-flex items-center justify-center gap-1.5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover focus:outline-none"
-							type="button"
-							title="Create"
-						>
-							<DocumentPlusIcon class="size-5" />
-							Create
-						</button>
-
-						<button
-							v-if="isLocalWorkspaceTask && (taskId || form.id)"
-							type="button"
-							title="Export to Markdown"
-							class="inline-flex items-center justify-center rounded-md border border-line px-3 py-2 text-ink-subtle outline-none transition hover:bg-surface-hover hover:text-ink dark:border-line"
-							@click="exportTaskToMarkdown"
-						>
-							<ArrowDownTrayIcon class="size-5" />
-						</button>
-
-						<button
-							v-if="taskId || form.id"
-							@click="deleteCurrentTask"
-							title="Delete"
-							class="inline-flex items-center justify-center rounded-md bg-status-fix px-3 py-2 text-white outline-none transition hover:opacity-90"
-						>
-							<TrashIcon class="size-5" />
-						</button>
-					</div>
-
-					<div
-						v-if="taskId || form.id"
-						class="mt-2 flex flex-wrap gap-x-2 text-[11px] text-ink-faint"
-					>
-						<TaskTimeInfo
-							:created-at="form.created_at"
-							:updated-at="form.updated_at"
-						/>
-					</div>
+								<Button
+									v-if="taskId || form.id"
+									type="button"
+									variant="ghost"
+									size="icon"
+									title="Delete"
+									aria-label="Delete"
+									class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
+									@click="deleteCurrentTask"
+								>
+									<TrashIcon />
+								</Button>
+							</div>
+						</div>
 				</footer>
 			</div>
 			<!-- End Form Panel -->
@@ -2685,7 +2718,7 @@
 							v-model="newComment"
 							placeholder="Write a comment…"
 							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
-							@keydown.enter.prevent="sendComment"
+							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
 						/>
 						<button
@@ -2698,18 +2731,26 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							:disabled="!newComment?.trim() || isSendingComment"
-							@click="askAIComment"
-							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-							title="Ask AI"
+							v-if="!isLocalWorkspaceTask"
+							type="button"
+							:aria-pressed="commentAiReply"
+							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:aria-label="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:class="[
+								'flex h-7 w-7 items-center justify-center rounded-pill transition',
+								commentAiReply
+									? 'bg-brand-bg text-brand ring-1 ring-brand'
+									: 'text-ink-subtle hover:bg-surface-hover hover:text-ink',
+							]"
+							@click="toggleCommentAiReply"
 						>
 							<Sparkles class="h-4 w-4" />
 						</button>
 						<button
 							:disabled="!newComment?.trim() || isSendingComment"
-							@click="sendComment"
+							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-							title="Send comment (Enter)"
+							:title="commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'"
 						>
 							<Send class="h-3.5 w-3.5" />
 						</button>
