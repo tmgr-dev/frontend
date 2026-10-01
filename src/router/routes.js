@@ -576,6 +576,38 @@ const routes = [
 		name: 'TaskWindow',
 	},
 	{
+		path: '/:workspace_code/pages',
+		component: () => import('@/pages/PagesLayout.vue'),
+		meta: {
+			title: 'Pages',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+			pages: true,
+		},
+		children: [
+			{
+				path: '',
+				component: () => import('@/pages/PagesIndex.vue'),
+				name: 'WorkspacePages',
+			},
+			{
+				path: '_/trash',
+				component: () => import('@/pages/PagesTrash.vue'),
+				name: 'WorkspacePagesTrash',
+			},
+			{
+				path: ':slug',
+				component: () => import('@/pages/PageView.vue'),
+				name: 'WorkspacePage',
+			},
+			{
+				path: ':slug/versions',
+				component: () => import('@/pages/PageVersions.vue'),
+				name: 'WorkspacePageVersions',
+			},
+		],
+	},
+	{
 		path: '/:workspace_code/:category_code',
 		component: ProjectCategoryList,
 		meta: {
