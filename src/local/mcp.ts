@@ -119,6 +119,8 @@ interface ToolDef {
 	description: string;
 	inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
 	permission?: PersonaPermission;
+	/** `user` tools are for the account owner's own token; a persona never sees or runs them. */
+	audience?: 'user';
 	raw?: boolean;
 	/** `whoami`/`get_persona` mirror the cloud's own snake_case Map literally — never camelized. */
 	literal?: boolean;
@@ -431,6 +433,59 @@ const TOOLS: ToolDef[] = [
 		},
 	},
 	{
+		name: 'list_my_queue',
+		description: "List the tasks assigned to you (the acting persona), ordered by status then position. Optional statusType (default|active|completed|hidden|archived), statusId, limit (default 50, max 100)",
+		permission: 'tasks:read',
+		inputSchema: {
+			type: 'object',
+			properties: { statusType: { type: 'string' }, statusId: { type: 'number' }, limit: { type: 'number' } },
+		},
+		async handler(args, ctx, router) {
+			const filter: Record<string, unknown> = { persona: ctx.actor!.id, sort: 'queue', per_page: perPageArg({ perPage: args.limit }) };
+			if (args.statusId !== undefined && args.statusId !== null) filter.status_id = args.statusId;
+			else if (args.statusType) filter.status_type = args.statusType === 'done' ? 'archived' : args.statusType;
+			return pageOf(router, ctx, `tasks${qs(filter)}`);
+		},
+	},
+	{
+		name: 'list_assignable_personas',
+		description: 'List the personas that can be assigned to tasks in this workspace',
+		audience: 'user',
+		inputSchema: { type: 'object', properties: { workspaceId: { type: 'number' } } },
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			return runRoute(router, ctx, 'GET', `workspaces/${ctx.workspace.id}/assignable-personas`);
+		},
+	},
+	{
+		name: 'assign_persona',
+		description: 'Put a task into a persona queue. persona is its uuid or exact name among the assignable personas',
+		audience: 'user',
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' }, persona: { type: 'string' } },
+			required: ['taskId', 'persona'],
+		},
+		async handler(args, ctx, router) {
+			const persona = encodeURIComponent(String(requireArg(args, 'persona')));
+			return runRoute(router, ctx, 'POST', `tasks/${requireArg(args, 'taskId')}/personas/${persona}`);
+		},
+	},
+	{
+		name: 'unassign_persona',
+		description: 'Remove a persona from a task. persona is its uuid or exact name',
+		audience: 'user',
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' }, persona: { type: 'string' } },
+			required: ['taskId', 'persona'],
+		},
+		async handler(args, ctx, router) {
+			const persona = encodeURIComponent(String(requireArg(args, 'persona')));
+			return runRoute(router, ctx, 'DELETE', `tasks/${requireArg(args, 'taskId')}/personas/${persona}`);
+		},
+	},
+	{
 		name: 'tmgr_request',
 		description: 'Make an HTTP request to the local tmgr REST API. method: GET|POST|PATCH|DELETE. path: e.g. /api/tasks/1. jsonBody: optional JSON string',
 		raw: true,
@@ -478,9 +533,14 @@ const agentWorkBody = (args: Record<string, any>, includeBranch: boolean): Recor
 
 const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
+const isPersonaCtx = (ctx: LocalContext) => ctx.actor?.kind === 'persona';
+
 const listedTools = async (ctx: LocalContext) => {
+	if (!isPersonaCtx(ctx)) return TOOLS.filter((tool) => tool.audience === 'user');
 	const permissions = await personaGrantPermissions(ctx);
-	return TOOLS.filter((tool) => !tool.permission || permissions.includes(tool.permission));
+	return TOOLS.filter(
+		(tool) => tool.audience !== 'user' && (!tool.permission || permissions.includes(tool.permission)),
+	);
 };
 
 const toolResultOk = (payload: any, tool: ToolDef) => ({
@@ -511,9 +571,12 @@ const handleInitialize = (params: any) => {
 /** personaGate (via `dispatchLocal`) decides permissions; this layer never re-implements it. */
 const handleToolsCall = async (params: any, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => {
 	try {
-		await checkPersonaIdentity(ctx);
+		const persona = isPersonaCtx(ctx);
+		if (persona) await checkPersonaIdentity(ctx);
 		const tool = TOOLS_BY_NAME.get(params?.name);
-		if (!tool) return toolResultError('Tool not available to personas');
+		if (!tool || (persona ? tool.audience === 'user' : tool.audience !== 'user')) {
+			return toolResultError('Tool not available to personas');
+		}
 		const result = await tool.handler(params?.arguments ?? {}, ctx, router, deps);
 		return toolResultOk(result, tool);
 	} catch (error) {
