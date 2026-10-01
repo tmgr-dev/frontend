@@ -3,6 +3,16 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.18 — 2026-10-01
+
+- Pages get types: «Человек» (person) and «Встреча» (meeting) pages with editable properties — aliases, company,
+  role and last contact for people; date, participants and related tasks for meetings. A person page lists the open
+  tasks that mention it under «Обещания», kept up to date automatically.
+- Select text on a page and choose «Сделать задачей» to turn it into a task; the text becomes a link to the new task.
+- Attach files to pages and paste or drop images straight into the page.
+- Tasks show the pages that mention them and chips for the people mentioned.
+- Follow a page to get notified about changes; new notification types for created, changed and mentioning pages.
+
 ## 0.9.17 — 2026-10-01
 
 - New: assign tasks to personas. The assignee picker lists personas under the members — your own personas enabled in
