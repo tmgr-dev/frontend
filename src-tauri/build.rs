@@ -6,6 +6,7 @@ const APP_COMMANDS: &[&str] = &[
   "take_capture",
   "reveal_download",
   "local_db_backup",
+  "local_db_batch",
   "local_db_execute",
   "local_db_select",
   "local_export_write",

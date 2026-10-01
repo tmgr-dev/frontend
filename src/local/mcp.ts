@@ -15,7 +15,7 @@ const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 const toCamelKey = (key: string): string => key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 /** Free-form user content (rich-text JSON, checkpoint lists): keys travel as the user wrote them. */
-const OPAQUE_KEYS = new Set(['description_json', 'checkpoints', 'settings']);
+const OPAQUE_KEYS = new Set(['description_json', 'checkpoints', 'settings', 'properties']);
 
 const camelizeDeep = (value: unknown, opaque = false): unknown => {
 	if (opaque) return value;
@@ -126,6 +126,213 @@ interface ToolDef {
 	literal?: boolean;
 	handler: (args: Record<string, any>, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => Promise<any>;
 }
+
+
+/** Page failures read like the cloud tool's: the message plus status and error code, a conflict names the current version. */
+const pageRoute = async (router: LocalRouter, ctx: LocalContext, method: string, path: string, body?: unknown) => {
+	const res = await dispatchLocal(router, ctx, method, path, body);
+	if (!res) throw new ToolError(`No local route for ${method} ${path}`);
+	if (res.status >= 400) {
+		const error = res.data?.error ?? res.data?.code;
+		if (res.status === 409 && res.data?.data?.version != null) {
+			throw new ToolError(
+				`Page version conflict (409 page_conflict): the page is now at version ${res.data.data.version}. Re-read it with pages_get, merge your change into the current body and retry with that version; never overwrite.`,
+			);
+		}
+		throw new ToolError(`${res.data?.message ?? 'Request failed'} (${res.status}${error ? ` ${error}` : ''})`);
+	}
+	return res.data?.data;
+};
+
+const pageItems = (items: any[]) => ({ items, total: items.length });
+
+const WORKSPACE_ARG = "Workspace id; omit for the account's default workspace (a persona always works in its token's workspace)";
+const workspaceProp = { type: 'number', description: WORKSPACE_ARG };
+const pageBody = (args: Record<string, any>, keys: Record<string, string>) => {
+	const body: Record<string, any> = {};
+	for (const [arg, field] of Object.entries(keys)) if (args[arg] !== undefined && args[arg] !== null) body[field] = args[arg];
+	return body;
+};
+const pageRef = (args: Record<string, any>) => encodeURIComponent(String(requireArg(args, 'id')));
+
+const PAGES_TOOLS: ToolDef[] = [
+	{
+		name: 'workspace_context',
+		description:
+			'Bodies of all context pages of the workspace as one markdown document (each page under a `# title` heading, pinned first). It is the shared memory of the project: how we work, architecture, notes from earlier agent sessions. AGENT RULES: call workspace_context and pages_for_task before working on a task. In a context page you may write ONLY the section «Заметки агентов» (section id `agent-notes`): use pages_append without a heading, or pages_set_section with sectionId agent-notes.',
+		permission: 'pages:read',
+		raw: true,
+		inputSchema: { type: 'object', properties: { workspaceId: workspaceProp } },
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			return (await pageRoute(router, ctx, 'GET', 'workspaces/context')).markdown;
+		},
+	},
+	{
+		name: 'pages_for_task',
+		description:
+			'Pages that mention a task (backlinks of the task). AGENT RULES: call this and workspace_context before working on a task, and read the pages it returns with pages_get',
+		permission: 'pages:read',
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number', description: 'Task id' }, workspaceId: workspaceProp },
+			required: ['taskId'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			return pageItems(await pageRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/pages`));
+		},
+	},
+	{
+		name: 'pages_search',
+		description:
+			'Full-text search over page titles and bodies of a workspace. Returns id, slug, title, type and a snippet; never pages of other workspaces or deleted pages',
+		permission: 'pages:read',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', description: 'Search words' },
+				type: { type: 'string', description: 'Page type filter: plain, context, person or meeting' },
+				limit: { type: 'number', description: 'Max hits (default 20, max 50)' },
+				workspaceId: workspaceProp,
+			},
+			required: ['query'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			const hits = await pageRoute(
+				router,
+				ctx,
+				'GET',
+				`pages/search${qs({ q: requireArg(args, 'query'), type: args.type, limit: args.limit })}`,
+			);
+			return pageItems(hits);
+		},
+	},
+	{
+		name: 'pages_tree',
+		description:
+			'All pages of a workspace as a flat list with parentId and position (a tree without bodies). Use pages_get for the body',
+		permission: 'pages:read',
+		inputSchema: { type: 'object', properties: { workspaceId: workspaceProp } },
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			return pageItems(await pageRoute(router, ctx, 'GET', 'pages/tree'));
+		},
+	},
+	{
+		name: 'pages_get',
+		description:
+			'A page by numeric id or slug: body (markdown), properties, version, sections with their owners, backlinks. Remember its `version`: pages_update needs it',
+		permission: 'pages:read',
+		inputSchema: {
+			type: 'object',
+			properties: { id: { type: 'string', description: 'Page id or slug' }, workspaceId: workspaceProp },
+			required: ['id'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			return pageRoute(router, ctx, 'GET', `pages/${pageRef(args)}`);
+		},
+	},
+	{
+		name: 'pages_create',
+		description:
+			"Create a page. type is plain (default), context (people only), person or meeting. Body defaults to the type's template. Returns the page with its id and slug",
+		permission: 'pages:write',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				title: { type: 'string', description: 'Page title' },
+				type: { type: 'string', description: 'plain (default), context, person or meeting' },
+				parentId: { type: 'number', description: 'Parent page id' },
+				body: { type: 'string', description: 'Markdown body' },
+				properties: { type: 'object', description: 'Properties object' },
+				workspaceId: workspaceProp,
+			},
+			required: ['title'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			requireArg(args, 'title');
+			const body = pageBody(args, { title: 'title', type: 'type', parentId: 'parent_id', body: 'body', properties: 'properties' });
+			return pageRoute(router, ctx, 'POST', 'pages', body);
+		},
+	},
+	{
+		name: 'pages_update',
+		description:
+			"Replace the title, body or properties of a page. AGENT RULES: pass the `version` from the LATEST pages_get of this page. On a version conflict the tool fails and states the current version: re-read the page with pages_get, merge your change into the new body and retry; never overwrite someone else's edit. summary is one line about what changed. For adding text prefer pages_append: it needs no version. In context pages agents may change only the section «Заметки агентов»",
+		permission: 'pages:write',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				id: { type: 'string', description: 'Page id or slug' },
+				version: { type: 'number', description: 'Version from the latest pages_get' },
+				body: { type: 'string', description: 'Whole new markdown body' },
+				title: { type: 'string', description: 'New title' },
+				properties: { type: 'object', description: 'New properties object' },
+				summary: { type: 'string', description: 'One line: what changed' },
+				workspaceId: workspaceProp,
+			},
+			required: ['id', 'version'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			requireArg(args, 'version');
+			const body = pageBody(args, { version: 'version', body: 'body', title: 'title', properties: 'properties', summary: 'summary' });
+			return pageRoute(router, ctx, 'PATCH', `pages/${pageRef(args)}`, body);
+		},
+	},
+	{
+		name: 'pages_append',
+		description:
+			"Append markdown to the end of a page, or under a heading, without a version (safe against concurrent edits). AGENT RULES: a session summary longer than a few lines goes here into the task's page, a meeting page or a context page instead of a new comment. On a context page without a heading it lands in the section «Заметки агентов» (`agent-notes`), the only place agents may write there. summary is one line about what changed",
+		permission: 'pages:write',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				id: { type: 'string', description: 'Page id or slug' },
+				markdown: { type: 'string', description: 'Markdown to append' },
+				heading: { type: 'string', description: 'Append under this existing heading (text without #)' },
+				createHeading: { type: 'boolean', description: 'Create the heading at the end when it does not exist' },
+				summary: { type: 'string', description: 'One line: what changed' },
+				workspaceId: workspaceProp,
+			},
+			required: ['id', 'markdown'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			requireArg(args, 'markdown');
+			const body = pageBody(args, { markdown: 'markdown', heading: 'heading', createHeading: 'create_heading', summary: 'summary' });
+			return pageRoute(router, ctx, 'POST', `pages/${pageRef(args)}/append`, body);
+		},
+	},
+	{
+		name: 'pages_set_section',
+		description:
+			"Replace the content of one managed section of a page (sections are the pages' `sections` list from pages_get). Fails with 403 when the section is not yours: on context pages agents may write only sectionId `agent-notes` («Заметки агентов»). summary is one line about what changed",
+		permission: 'pages:write',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				id: { type: 'string', description: 'Page id or slug' },
+				sectionId: { type: 'string', description: 'Section id, e.g. agent-notes' },
+				markdown: { type: 'string', description: 'New markdown content of the section' },
+				summary: { type: 'string', description: 'One line: what changed' },
+				workspaceId: workspaceProp,
+			},
+			required: ['id', 'sectionId', 'markdown'],
+		},
+		async handler(args, ctx, router) {
+			ensureTokenWorkspace(args, ctx);
+			const sectionId = encodeURIComponent(String(requireArg(args, 'sectionId')));
+			if (typeof args.markdown !== 'string') throw new ToolError('markdown is required');
+			const body = pageBody(args, { markdown: 'markdown', summary: 'summary' });
+			return pageRoute(router, ctx, 'PUT', `pages/${pageRef(args)}/sections/${sectionId}`, body);
+		},
+	},
+];
 
 const TOOLS: ToolDef[] = [
 	{
@@ -530,6 +737,8 @@ const agentWorkBody = (args: Record<string, any>, includeBranch: boolean): Recor
 	}
 	return body;
 };
+
+TOOLS.push(...PAGES_TOOLS);
 
 const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
 

@@ -1,5 +1,6 @@
 import { desktopWindowLabel } from '@/utils/desktop';
 import { isTaskWindowLabel } from '@/utils/taskWindow';
+import { ensureContextPage } from './pages/service';
 import { migrate } from './schema';
 import type { LocalActor, LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
 
@@ -13,6 +14,7 @@ const invoke = async <T>(command: string, args?: Record<string, unknown>): Promi
 let workspaces: LocalWorkspace[] = [];
 let listed: Promise<LocalWorkspace[]> | null = null;
 const databases = new Map<string, Promise<LocalDb>>();
+const contextSeeded = new Set<string>();
 
 const readActive = (): string | null => {
 	try {
@@ -75,6 +77,11 @@ const openDatabase = async (workspace: LocalWorkspace): Promise<LocalDb> => {
 			invoke('local_db_select', { code: workspace.code, sql, params }),
 		execute: (sql, params = []) =>
 			invoke('local_db_execute', { code: workspace.code, sql, params }),
+		batch: (statements) =>
+			invoke('local_db_batch', {
+				code: workspace.code,
+				statements: statements.map((s) => ({ sql: s.sql, params: s.params ?? [], expectChanges: !!s.expectChanges })),
+			}),
 	};
 	const version = await migrate(db, new Date().toISOString(), async () => {
 		await invoke('local_db_backup', { code: workspace.code });
@@ -112,7 +119,15 @@ export const localContext = async (
 		databases.set(workspace.code, db);
 		db.catch(() => databases.delete(workspace.code));
 	}
-	return { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace), actor };
+	const ctx: LocalContext = { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace), actor };
+	if (user.id > 0 && !contextSeeded.has(workspace.code)) {
+		contextSeeded.add(workspace.code);
+		await ensureContextPage({ ...ctx, actor: undefined }).catch((error) => {
+			contextSeeded.delete(workspace.code);
+			console.error('Failed to create the workspace context page', error);
+		});
+	}
+	return ctx;
 };
 
 /** Stores an attachment of the active local workspace over IPC (WKWebView drops fetch bodies to custom schemes). */

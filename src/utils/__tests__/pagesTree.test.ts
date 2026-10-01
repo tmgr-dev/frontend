@@ -148,9 +148,10 @@ describe('pagesAvailable', () => {
 		expect(pagesAvailable({ id: 1 }, false)).toBe(false);
 		expect(pagesAvailable({ id: 1 }, true)).toBe(true);
 	});
-	it('is disabled for local workspaces even when the toggle is on', () => {
-		expect(pagesAvailable({ id: 1, is_local: true }, true)).toBe(false);
-		expect(pagesAvailable({ id: -3 }, true)).toBe(false);
+	it('follows the toggle for local workspaces too', () => {
+		expect(pagesAvailable({ id: 1, is_local: true }, true)).toBe(true);
+		expect(pagesAvailable({ id: -3 }, true)).toBe(true);
+		expect(pagesAvailable({ id: -3 }, false)).toBe(false);
 	});
 	it('is disabled without a workspace', () => {
 		expect(pagesAvailable(null, true)).toBe(false);

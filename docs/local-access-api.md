@@ -108,6 +108,25 @@ Permission names are the same vocabulary the cloud persona gate uses.
 | POST | `tasks/:id/agent-work` | `agent_work:write` |
 | PATCH | `agent-work/:id` | `agent_work:write` |
 | POST | `agent-work/:id/finish` | `agent_work:write` |
+| GET | `workspaces/context` | `pages:read` |
+| GET | `pages`, `pages/tree`, `pages/search` | `pages:read` |
+| GET | `pages/:id` (id or slug), `pages/:id/backlinks`, `pages/:id/versions`, `pages/:id/versions/:version`, `pages/:id/files` | `pages:read` |
+| GET | `tasks/:id/pages` | `pages:read` |
+| POST | `pages` | `pages:write` |
+| PATCH | `pages/:id` | `pages:write` |
+| POST | `pages/:id/append` | `pages:write` |
+| PUT | `pages/:id/sections/:sectionId` | `pages:write` |
+| POST | `pages/:id/files` | `pages:write` |
+
+Pages follow the cloud contract (`{data}` envelope, version-guarded `PATCH`,
+`409 {error: "page_conflict", data: <current page>}`, `413`, `422` with an
+`error` code and, for properties, `errors`). Page errors carry the cloud's
+`error` field next to `message` and `code`. A persona writes as itself: it can
+write a section whose owner is `agents` or `persona:<its uuid>`, on a context
+page only the `agents` one, and it can never write section markers or touch
+`system` sections. Moving, pinning, deleting, restoring, the trash and
+`task-from-selection` are left to people (`403 ROUTE_NOT_ALLOWED`). Page
+bodies and attachments of a local workspace never leave the machine.
 
 A persona can never delete a task (archive it via status instead), never
 lists other personas' work, and never crosses into a different workspace than
@@ -158,6 +177,10 @@ tries).
     `comments:read`, `task.*` needs `tasks:read`, `task.relationChanged` needs
     `relations:read`. `timer.*` is never sent to a persona. Permissions are
     re-checked on every event.
+  - `page.created`, `page.updated`, `page.deleted`, `page.restored` and
+    `page.moved` need `pages:read` and carry the cloud realtime payload under
+    `page`: `{id, slug, title, type, parent_id, version, updated_by, summary,
+    linked_task_ids}`.
   - Disabling or archiving the persona closes the stream with a `revoked`
     event.
 - Buffer: a ring of 1000 events or 10 minutes per workspace, held in the main
