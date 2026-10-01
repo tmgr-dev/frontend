@@ -22,6 +22,8 @@ const TITLES: Record<string, string> = {
 	task_restored: 'Restored a task',
 	task_status_changed: 'Moved a task',
 	task_assigned: 'Assigned a task',
+	task_persona_assigned: 'Assigned a task to a persona',
+	task_persona_unassigned: 'Unassigned a task from a persona',
 	task_timer_started: 'Started a timer',
 	task_timer_stopped: 'Stopped a timer',
 	comment_created: 'Wrote a comment',
@@ -51,6 +53,11 @@ export function activityTitle(activity: ActivityLike): string {
 	if (given) return given;
 
 	const type = text(activity.type);
+	const persona = text(activity.metadata?.persona_name);
+	if (persona && type === 'task_persona_assigned')
+		return `Assigned a task to ${persona}`;
+	if (persona && type === 'task_persona_unassigned')
+		return `Unassigned a task from ${persona}`;
 	return TITLES[type] || fromType(type) || 'Activity';
 }
 

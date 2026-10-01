@@ -124,6 +124,8 @@
 			task_restored: ArrowUturnLeftIcon,
 			task_status_changed: ArrowPathIcon,
 			task_assigned: UserPlusIcon,
+			task_persona_assigned: UserPlusIcon,
+			task_persona_unassigned: UserMinusIcon,
 			task_timer_started: PlayIcon,
 			task_timer_stopped: StopIcon,
 			comment_created: ChatBubbleLeftIcon,
@@ -172,6 +174,10 @@
 				'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
 			task_assigned:
 				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+			task_persona_assigned:
+				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+			task_persona_unassigned:
+				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
 			task_timer_started:
 				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
 			task_timer_stopped:

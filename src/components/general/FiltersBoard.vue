@@ -42,6 +42,16 @@
 				/>
 			</div>
 
+			<div v-if="showPersonaFilter" class="w-full">
+				<Select
+					placeholder="Select persona"
+					:options="mobilePersonaOptions"
+					v-model="selectedPersona"
+					label-key="name"
+					value-key="id"
+				/>
+			</div>
+
 			<button
 				v-if="hasActiveFilters"
 				type="button"
@@ -148,6 +158,27 @@
 						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 					/>
 				</div>
+
+				<!-- Persona select -->
+				<div v-if="showPersonaFilter" class="relative">
+					<select
+						v-model="selectedPersona"
+						data-testid="persona-filter"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong"
+					>
+						<option value="">All personas</option>
+						<option
+							v-for="option in personaFilterOptions"
+							:key="option.id"
+							:value="option.id"
+						>
+							{{ option.name }}
+						</option>
+					</select>
+					<ChevronDownIcon
+						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+					/>
+				</div>
 			</PopoverPanel>
 		</Popover>
 
@@ -220,6 +251,7 @@
 		MagnifyingGlassIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/24/outline';
+	import { MY_PERSONAS_FILTER } from '@/utils/boardLoading';
 	import { computed, nextTick, ref } from 'vue';
 
 	export interface UserOption {
@@ -237,6 +269,7 @@
 	interface Props {
 		workspaceUsers: UserOption[];
 		chosenUser?: object | null;
+		personaOptions?: Array<{ id: string; name: string }>;
 		activeDraggable?: boolean;
 		categories: CategoryOption[];
 		isMobileModal?: boolean;
@@ -249,8 +282,11 @@
 		selectedCategory: number;
 		searchText: string | null;
 		selectedUser: number;
+		selectedPersona: string;
 	}
-	const props = defineProps<Props>();
+	const props = withDefaults(defineProps<Props>(), {
+		personaOptions: () => [],
+	});
 
 	const emit = defineEmits([
 		'update:chosenUser',
@@ -292,8 +328,21 @@
 		},
 	});
 
+	const selectedPersona = computed({
+		get: () =>
+			(store.state as unknown as { filter: State }).filter.selectedPersona,
+		set: (value) => {
+			store.commit('updateSelectedPersona', value ?? '');
+		},
+	});
+
 	const hasActiveFilters = computed(() => {
-		return !!(searchText.value || selectedCategory.value || selectedUser.value);
+		return !!(
+			searchText.value ||
+			selectedCategory.value ||
+			selectedUser.value ||
+			selectedPersona.value
+		);
 	});
 
 	const categoryOptions = computed(() =>
@@ -307,6 +356,7 @@
 		searchText.value = '';
 		selectedCategory.value = 0;
 		selectedUser.value = 0;
+		selectedPersona.value = '';
 	};
 	const loadTasks = () => emit('loadTasks');
 
@@ -333,10 +383,29 @@
 			isUserFeatureEnabled('board.user_filter') &&
 			props.workspaceUsers.length >= 2,
 	);
+	const showPersonaFilter = computed(
+		() =>
+			isUserFeatureEnabled('board.user_filter') &&
+			props.personaOptions.length > 0,
+	);
+	const personaFilterOptions = computed(() => [
+		{ id: MY_PERSONAS_FILTER, name: "My personas' queue" },
+		...props.personaOptions,
+	]);
+	const mobilePersonaOptions = computed(() => [
+		{ id: '', name: 'All personas' },
+		...personaFilterOptions.value,
+	]);
 	const hasSelectFilters = computed(
-		() => showCategoryFilter.value || showUserFilter.value,
+		() =>
+			showCategoryFilter.value ||
+			showUserFilter.value ||
+			showPersonaFilter.value,
 	);
 	const activeSelectCount = computed(
-		() => (selectedCategory.value ? 1 : 0) + (selectedUser.value ? 1 : 0),
+		() =>
+			(selectedCategory.value ? 1 : 0) +
+			(selectedUser.value ? 1 : 0) +
+			(selectedPersona.value ? 1 : 0),
 	);
 </script>

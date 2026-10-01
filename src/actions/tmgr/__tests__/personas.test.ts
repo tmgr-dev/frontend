@@ -11,6 +11,7 @@ import {
 	createPersona,
 	deletePersonaSkill,
 	forgetPersonaAvatar,
+	getAssignablePersonas,
 	getPersonaPolicy,
 	getPersonaSkill,
 	issuePersonaToken,
@@ -333,5 +334,42 @@ describe('persona policy', () => {
 			policy: 'read_only',
 		});
 		expect(requestCache.has('ws-5-persona-policy')).toBe(false);
+	});
+});
+
+describe('getAssignablePersonas', () => {
+	it('GETs the workspace endpoint and caches per workspace', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [PERSONA] } });
+		const result = await getAssignablePersonas(5);
+		await getAssignablePersonas(5);
+		expect(axios.get).toHaveBeenCalledTimes(1);
+		expect(axios.get).toHaveBeenCalledWith('/workspaces/5/assignable-personas');
+		expect(result).toEqual([PERSONA]);
+	});
+
+	it.each([
+		['creating a persona', () => createPersona({ name: 'X', workspace_id: 5 })],
+		['upserting a grant', () => upsertWorkspaceGrant(5, 'uuid-1', [])],
+		['removing a grant', () => removeWorkspaceGrant(5, 'uuid-1')],
+		['blocking', () => blockWorkspacePersona(5, 'uuid-1')],
+		['changing the policy', () => setPersonaPolicy(5, 'allowed')],
+	])('is invalidated by %s', async (_name, mutate) => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [PERSONA] } });
+		await getAssignablePersonas(5);
+		expect(requestCache.has('personas-assignable-ws-5')).toBe(true);
+		(axios.post as jest.Mock).mockResolvedValue({ data: { data: PERSONA } });
+		(axios.put as jest.Mock).mockResolvedValue({ data: { data: GRANT } });
+		(axios.delete as jest.Mock).mockResolvedValue({ data: { data: GRANT } });
+		await mutate();
+		expect(requestCache.has('personas-assignable-ws-5')).toBe(false);
+	});
+
+	it('sends workspace_id when creating a workspace persona', async () => {
+		(axios.post as jest.Mock).mockResolvedValue({ data: { data: PERSONA } });
+		await createPersona({ name: 'Shared', workspace_id: 5 });
+		expect(axios.post).toHaveBeenCalledWith('/personas', {
+			name: 'Shared',
+			workspace_id: 5,
+		});
 	});
 });

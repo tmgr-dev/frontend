@@ -3,6 +3,7 @@ const filterModule = {
 		selectedCategory: 0,
 		searchText: null,
 		selectedUser: 0,
+		selectedPersona: '',
 	}),
 	mutations: {
 		updateSelectedCategory(state, data) {
@@ -13,6 +14,9 @@ const filterModule = {
 		},
 		updateSelectedUser(state, data) {
 			state.selectedUser = data;
+		},
+		updateSelectedPersona(state, data) {
+			state.selectedPersona = data;
 		},
 	},
 };
