@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::types::{Value, ValueRef};
-use rusqlite::{params_from_iter, Connection};
-use serde::Serialize;
+use rusqlite::{params_from_iter, Connection, Transaction, TransactionBehavior};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value as Json};
 use tauri::{AppHandle, Runtime, State};
 
@@ -94,6 +94,45 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Json]) -> Result<ExecuteR
   Ok(ExecuteResult { rows_affected, last_insert_id: conn.last_insert_rowid() })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchStatement {
+  sql: String,
+  #[serde(default)]
+  params: Vec<Json>,
+  /// A statement that must change a row (a version guard): changing none rolls the whole batch back.
+  #[serde(default)]
+  expect_changes: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchResult {
+  results: Vec<ExecuteResult>,
+  failed_at: Option<usize>,
+}
+
+/// Runs the statements as one transaction while the caller holds the connection, so no other window's
+/// statement can land inside it and a closing window cannot leave it open.
+pub fn batch(conn: &Connection, statements: &[BatchStatement]) -> Result<BatchResult, String> {
+  for statement in statements {
+    check_statement(&statement.sql)?;
+  }
+  let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+  let mut results = Vec::with_capacity(statements.len());
+  for (index, statement) in statements.iter().enumerate() {
+    let result = execute(&tx, &statement.sql, &statement.params)?;
+    let missed = statement.expect_changes && result.rows_affected == 0;
+    results.push(result);
+    if missed {
+      tx.rollback().map_err(|e| e.to_string())?;
+      return Ok(BatchResult { results: Vec::new(), failed_at: Some(index) });
+    }
+  }
+  tx.commit().map_err(|e| e.to_string())?;
+  Ok(BatchResult { results, failed_at: None })
+}
+
 fn connection<R: Runtime>(app: &AppHandle<R>, dbs: &LocalDbs, code: &str) -> Result<Arc<Mutex<Connection>>, String> {
   if let Some((path, conn)) = dbs.0.lock().map_err(|e| e.to_string())?.get(code) {
     // A stat per query instead of a folder scan; a removed folder falls through to a fresh lookup.
@@ -146,6 +185,16 @@ pub async fn local_db_execute<R: Runtime>(
   params: Vec<Json>,
 ) -> Result<ExecuteResult, String> {
   with_connection(app, &dbs, code, move |conn| execute(conn, &sql, &params)).await
+}
+
+#[tauri::command]
+pub async fn local_db_batch<R: Runtime>(
+  app: AppHandle<R>,
+  dbs: State<'_, LocalDbs>,
+  code: String,
+  statements: Vec<BatchStatement>,
+) -> Result<BatchResult, String> {
+  with_connection(app, &dbs, code, move |conn| batch(conn, &statements)).await
 }
 
 /// Consistent snapshot of the workspace database before a schema migration (VACUUM INTO also
@@ -229,6 +278,78 @@ mod tests {
     execute(&conn, "UPDATE pages SET body = ? WHERE id = 1", &[json!("другой текст")]).unwrap();
     assert!(select(&conn, "SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?", &[json!("\"привет\"*")]).unwrap().is_empty());
     assert_eq!(select(&conn, "SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?", &[json!("\"текст\"*")]).unwrap().len(), 1);
+  }
+
+  fn statement(sql: &str, params: Vec<Json>, expect_changes: bool) -> BatchStatement {
+    BatchStatement { sql: sql.to_string(), params, expect_changes }
+  }
+
+  fn rows(conn: &Connection) -> i64 {
+    select(conn, "SELECT COUNT(*) AS n FROM t", &[]).unwrap()[0]["n"].as_i64().unwrap()
+  }
+
+  #[test]
+  fn batch_commits_every_statement_together() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER NOT NULL)", &[]).unwrap();
+    let out = batch(
+      &conn,
+      &[
+        statement("INSERT INTO t (v) VALUES (?)", vec![json!(1)], false),
+        statement("UPDATE t SET v = v + 1 WHERE id = ? AND v = ?", vec![json!(1), json!(1)], true),
+      ],
+    )
+    .unwrap();
+    assert_eq!(out.failed_at, None);
+    assert_eq!(out.results.len(), 2);
+    assert_eq!(select(&conn, "SELECT v FROM t", &[]).unwrap()[0]["v"], json!(2));
+  }
+
+  #[test]
+  fn batch_rolls_back_everything_when_a_guarded_statement_changes_nothing() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER NOT NULL)", &[]).unwrap();
+    let out = batch(
+      &conn,
+      &[
+        statement("INSERT INTO t (v) VALUES (?)", vec![json!(1)], false),
+        statement("UPDATE t SET v = 9 WHERE v = ?", vec![json!(42)], true),
+        statement("INSERT INTO t (v) VALUES (?)", vec![json!(3)], false),
+      ],
+    )
+    .unwrap();
+    assert_eq!(out.failed_at, Some(1));
+    assert_eq!(rows(&conn), 0);
+  }
+
+  #[test]
+  fn batch_rolls_back_on_an_error_and_leaves_the_connection_usable() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER NOT NULL UNIQUE)", &[]).unwrap();
+    let failed = batch(
+      &conn,
+      &[
+        statement("INSERT INTO t (v) VALUES (?)", vec![json!(1)], false),
+        statement("INSERT INTO t (v) VALUES (?)", vec![json!(1)], false),
+      ],
+    );
+    assert!(failed.is_err());
+    assert_eq!(rows(&conn), 0);
+    assert!(batch(&conn, &[statement("INSERT INTO t (v) VALUES (?)", vec![json!(1)], false)]).is_ok());
+    assert_eq!(rows(&conn), 1);
+  }
+
+  #[test]
+  fn batch_refuses_forbidden_or_chained_statements_before_running_any() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)", &[]).unwrap();
+    assert!(batch(
+      &conn,
+      &[statement("INSERT INTO t (v) VALUES (1)", vec![], false), statement("PRAGMA writable_schema = on", vec![], false)]
+    )
+    .is_err());
+    assert!(batch(&conn, &[statement("INSERT INTO t (v) VALUES (1); DROP TABLE t", vec![], false)]).is_err());
+    assert_eq!(rows(&conn), 0);
   }
 
   #[test]

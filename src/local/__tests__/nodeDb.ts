@@ -21,7 +21,34 @@ export const memoryDb = (): LocalDb => {
 		},
 		async execute(sql, params = []) {
 			const result = db.prepare(sql).run(...params);
-			return { rowsAffected: Number(result.changes), lastInsertId: Number(result.lastInsertRowid) };
+			return {
+				rowsAffected: Number(result.changes),
+				lastInsertId: Number(result.lastInsertRowid),
+			};
+		},
+		async batch(statements) {
+			const results: { rowsAffected: number; lastInsertId?: number }[] = [];
+			db.exec('BEGIN IMMEDIATE');
+			try {
+				for (const [index, statement] of statements.entries()) {
+					const result = db
+						.prepare(statement.sql)
+						.run(...(statement.params ?? []));
+					results.push({
+						rowsAffected: Number(result.changes),
+						lastInsertId: Number(result.lastInsertRowid),
+					});
+					if (statement.expectChanges && !result.changes) {
+						db.exec('ROLLBACK');
+						return { results: [], failedAt: index };
+					}
+				}
+				db.exec('COMMIT');
+				return { results, failedAt: null };
+			} catch (error) {
+				db.exec('ROLLBACK');
+				throw error;
+			}
 		},
 	};
 };

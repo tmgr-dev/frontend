@@ -77,6 +77,11 @@ const openDatabase = async (workspace: LocalWorkspace): Promise<LocalDb> => {
 			invoke('local_db_select', { code: workspace.code, sql, params }),
 		execute: (sql, params = []) =>
 			invoke('local_db_execute', { code: workspace.code, sql, params }),
+		batch: (statements) =>
+			invoke('local_db_batch', {
+				code: workspace.code,
+				statements: statements.map((s) => ({ sql: s.sql, params: s.params ?? [], expectChanges: !!s.expectChanges })),
+			}),
 	};
 	const version = await migrate(db, new Date().toISOString(), async () => {
 		await invoke('local_db_backup', { code: workspace.code });

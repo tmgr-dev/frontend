@@ -197,6 +197,7 @@ pub fn run() {
       local_db::local_db_select,
       local_db::local_db_execute,
       local_db::local_db_backup,
+      local_db::local_db_batch,
       local_files::local_file_write,
       downloads::reveal_download,
       plugin_dev::plugins_dev_list,

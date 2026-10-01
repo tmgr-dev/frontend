@@ -1,5 +1,18 @@
 export type SqlValue = string | number | null;
 
+export interface BatchStatement {
+	sql: string;
+	params?: SqlValue[];
+	/** A statement that must change a row (a version guard): changing none rolls the whole batch back. */
+	expectChanges?: boolean;
+}
+
+export interface BatchResult {
+	results: { rowsAffected: number; lastInsertId?: number }[];
+	/** Index of the guarded statement that changed nothing; the batch was rolled back. */
+	failedAt: number | null;
+}
+
 /** SQL access the local API needs: Rust commands in the app, node:sqlite in tests. */
 export interface LocalDb {
 	select<T = Record<string, any>>(sql: string, params?: SqlValue[]): Promise<T[]>;
@@ -7,6 +20,8 @@ export interface LocalDb {
 		sql: string,
 		params?: SqlValue[],
 	): Promise<{ rowsAffected: number; lastInsertId?: number }>;
+	/** All statements in one transaction that no other window can interleave with; an error rolls it back. */
+	batch(statements: BatchStatement[]): Promise<BatchResult>;
 }
 
 export interface LocalWorkspace {

@@ -16,11 +16,12 @@ pub const GENERATION: &str = "isolation-selftest";
 const KEY: &str = "selftest.probe/page";
 const ARG: &str = "--plugin-isolation-selftest";
 
-const APP_COMMANDS: [&str; 14] = [
+const APP_COMMANDS: [&str; 15] = [
   "plugin_install",
   "plugin_uninstall",
   "plugin_github_release",
   "local_db_execute",
+  "local_db_batch",
   "local_export_write",
   "plugin_pick_file",
   "plugin_window_reply",
@@ -57,6 +58,7 @@ fn probe(port: u16) -> String {
     plugin_uninstall: {{ id: 'tmgr.estimate' }},
     plugin_github_release: {{ repo: 'evil/plugin' }},
     local_db_execute: {{ code: 'x', sql: 'DELETE FROM tasks', params: [] }},
+    local_db_batch: {{ code: 'x', statements: [{{ sql: 'DELETE FROM tasks', params: [] }}] }},
     local_export_write: {{ code: 'x', folder: 'x', files: [] }},
     plugin_pick_file: {{ title: 'x' }},
     plugin_window_reply: {{ callId: 1, ok: true, value: null }},
