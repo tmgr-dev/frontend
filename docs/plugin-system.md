@@ -16,7 +16,7 @@ Plugins read and write the workspace's pages. Types are in `plugin-sdk/template/
 | `tmgr.pages.create({ title, type?, parentId?, body?, properties? })` | Creates a page authored by the plugin. | `pages:write` | Body at most 1 MB. Writes are rate limited like `tmgr.tasks.*`. |
 | `tmgr.pages.update(id, { version, title?, body?, properties?, summary? })` | Changes a page. `version` is required. | `pages:write` | A stale `version` rejects with `page_conflict`, see below. |
 | `tmgr.pages.append(id, { markdown, heading?, createHeading?, summary? })` | Adds markdown at the end of the page, or of the `##` section named `heading` (created when `createHeading` is set). No `version` needed. | `pages:write` | |
-| `tmgr.pages.setSection(id, sectionId, markdown, { summary? })` | Replaces the text of a managed section the plugin owns. | `pages:sections` | Only sections whose owner is `plugin:<this plugin's id>`. |
+| `tmgr.pages.setSection(id, sectionId, markdown, { summary?, heading? })` | Replaces the text of a managed section the plugin owns, or creates it at the end of the page when it does not exist. | `pages:sections` | Only sections whose owner is `plugin:<this plugin's id>`. |
 | `tmgr.pageData.get/set/delete/getMany` | Per-page JSON storage of the plugin, like `taskData`. | `pages:read` | Value at most 64 KB, key at most 200 characters, `getMany` up to 500 page ids. Own quota of 5 MB / 1000 keys. Local workspaces only. |
 
 Rules:
@@ -24,17 +24,27 @@ Rules:
 - `engines.tmgr` must be `^1.5` for any `pages:*` permission; an older `engines.tmgr` is refused at load time.
 - Writes are made as the plugin: the author's kind is `plugin`, and a managed section it owns carries the
   owner `plugin:<plugin id>`. A plugin cannot name another author.
-- `setSection` checks the page's `sections` first and refuses (`PERMISSION_DENIED`) any section not owned by
-  this plugin; the app's page code enforces the same rule on its side. A section owned by `agents` (any
-  persona or plugin may write it) is written with `append`, and a section owned by `system` or by someone else
-  is never writable by a plugin. Other sections of the page stay byte-identical when a plugin edits the body.
+- `pages:write` and `pages:sections` also need `pages:read` in the manifest; a manifest without it is refused.
+- Section ownership is keyed by the manifest `id`: a section is the plugin's when its owner is
+  `plugin:<manifest id>`. A plugin shipped under another id (or a fork that changes the id) does not own the
+  sections of the original.
+- `setSection` checks the page's `sections` first and refuses (`PERMISSION_DENIED`) an existing section not
+  owned by this plugin; the app's page code enforces the same rule on its side. A section owned by `agents`
+  belongs to personas only (a plugin cannot write it, and cannot append heading-less to a context page), and a
+  section owned by `system` or by someone else is never writable by a plugin. Other sections of the page stay
+  byte-identical when a plugin edits the body.
+- When the section does not exist, `setSection` creates it at the end of the page, owned by the plugin and
+  titled `heading` (default: the section id). The id must match `[a-z0-9][a-z0-9-]{0,63}` (`invalid_section_id`),
+  the heading is one line of at most 200 characters (`invalid_heading`), and a context page refuses new
+  sections.
 - Plugins cannot declare page types. Use the core types (`plain`, `context`, `person`, `meeting`) and your own
   managed sections.
 - A `409` on `update` rejects with an error whose `name` is `page_conflict` and whose `current` is the page as
   it is now. Re-read the data you need from `error.current`, merge, and call `update` again with
   `error.current.version`.
-- In shared (cloud) workspaces the permissions are not sent to the server when a workspace pins the plugin,
-  so plugins cannot reach pages there yet. `pageData` is local-only, like `taskData`.
+- In shared (cloud) workspaces the `pages:*` permissions are sent to the server when a workspace pins the
+  plugin, and the server applies the same rules (backend release prod-java-0.0.128 or later). `pageData` is
+  local-only, like `taskData`.
 - `pageData` of a page is removed when the page is permanently deleted, not when it goes to the trash.
 
 ### Page events
@@ -44,8 +54,7 @@ payload is `{ type, workspaceId, pageId, slug, title, parentId, version, author:
 `page.deleted` carries only `{ type, workspaceId, pageId }`.
 
 - `changedSections` lists the managed sections whose text changed in this write. In local workspaces the app
-  compares with the last body it saw for the page; the first event for a page lists all of its sections, and a
-  section write names its section. Events from shared workspaces arrive over realtime without a body and always
+  reports the sections whose text differs between the stored version and the new one. Events from shared workspaces arrive over realtime without a body and always
   report `[]`.
 - A plugin does not receive the events of its own writes; other plugins and the user's writes are delivered.
 

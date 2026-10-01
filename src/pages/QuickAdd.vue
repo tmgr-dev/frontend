@@ -169,9 +169,9 @@
 		splitQuickText,
 	} from '@/utils/desktopShortcuts';
 	import {
-		composeAppendMarkdown,
 		filterPageOptions,
 		flattenPages,
+		appendToLoadedPage,
 		listPageSections,
 		pickRememberedPage,
 		readLastPage,
@@ -244,6 +244,7 @@
 			const sections = ref([]);
 			const pageTextInput = ref(null);
 			let pagesRequest = 0;
+			let pagesWorkspace = null;
 			let sectionsRequest = 0;
 
 			const visiblePageOptions = computed(() =>
@@ -266,6 +267,7 @@
 				const request = ++pagesRequest;
 				pageId.value = null;
 				pageOptions.value = [];
+				pagesWorkspace = null;
 				if (!ws) return;
 				pagesLoading.value = true;
 				try {
@@ -273,6 +275,7 @@
 					const options = flattenPages(await getPagesTree(false));
 					if (request !== pagesRequest) return;
 					pageOptions.value = options;
+					pagesWorkspace = { id: ws.id, code: ws.code };
 					pageId.value = pickRememberedPage(options, readLastPage(ws.id));
 				} catch (e) {
 					if (request !== pagesRequest) return;
@@ -402,23 +405,16 @@
 				message.value = 'Adding…';
 				const ws = selectedWorkspace();
 				try {
+					if (!pagesWorkspace || pagesWorkspace.id !== ws?.id) {
+						throw new Error('The page list belongs to another workspace');
+					}
 					useWorkspaceForPages(ws);
-					const fileId = screenshot.value
-						? (await uploadPageFile(pageId.value, screenshot.value)).id
-						: null;
-					const updated = await appendToPage(pageId.value, {
-						markdown: composeAppendMarkdown(pageText.value, fileId),
-						heading: section.value || undefined,
-					});
-					void relayPageAppended({
-						workspace_code: ws.code,
-						page: {
-							id: updated.id,
-							slug: updated.slug,
-							title: updated.title,
-							version: updated.version,
-						},
-					}).catch((e) => console.error('quick add: page-appended relay failed', e));
+					await appendToLoadedPage(
+						pagesWorkspace,
+						pageId.value,
+						{ text: pageText.value, section: section.value, screenshot: screenshot.value },
+						{ uploadPageFile, appendToPage, relayPageAppended },
+					);
 					writeLastPage(ws.id, pageId.value);
 					message.value = 'Added';
 					setTimeout(async () => {

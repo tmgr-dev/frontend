@@ -943,7 +943,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		if (!workspace || event.workspaceId !== workspace.id) return;
 		if (event.type.startsWith('routine.') && workspace.kind !== 'local') return;
 		if (event.type.startsWith('page.')) {
-			const payload = mapPageEvent(event as Parameters<typeof mapPageEvent>[0]);
+			const payload =
+				event.type === 'page.deleted'
+					? { type: event.type, workspaceId: event.workspaceId, pageId: event.pageId }
+					: mapPageEvent(event as Parameters<typeof mapPageEvent>[0]);
 			for (const [pluginId, plugin] of running) {
 				if (
 					!plugin.registered.event.has(event.type) ||

@@ -169,7 +169,7 @@ const createMockPages = (state, clock, PluginError, pluginId) => {
 				const page = find(id);
 				return touch(page, { body: appendMarkdown(page.body, fields) });
 			},
-			async pagesSetSection(id, sectionId, markdown) {
+			async pagesSetSection(id, sectionId, markdown, _summary, heading) {
 				const page = find(id);
 				let found = false;
 				const body = page.body.replace(
@@ -182,7 +182,22 @@ const createMockPages = (state, clock, PluginError, pluginId) => {
 						return `${open}\n${markdown.trim()}\n${close}`;
 					},
 				);
-				if (!found) throw new PluginError('HOST_ERROR', 'section not found');
+				if (!found) {
+					if (page.type === 'context')
+						throw new PluginError('PERMISSION_DENIED', 'section_forbidden');
+					if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(sectionId))
+						throw new PluginError('INVALID_PARAMS', 'invalid_section_id');
+					const title = String(heading || sectionId).trim();
+					if (
+						title.length > 200 ||
+						/[\r\n]/.test(title) ||
+						title.includes('<!--')
+					)
+						throw new PluginError('INVALID_PARAMS', 'invalid_heading');
+					const head = page.body.replace(/\s+$/, '');
+					const block = `<!-- tmgr:section id="${sectionId}" owner="plugin:${pluginId}" -->\n## ${title}\n\n${markdown.trim()}\n<!-- /tmgr:section -->\n`;
+					return touch(page, { body: head ? `${head}\n\n${block}` : block });
+				}
 				return touch(page, { body });
 			},
 			async pageDataGet(pageId, key) {

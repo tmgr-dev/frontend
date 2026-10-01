@@ -1231,9 +1231,11 @@ describe('pages (API 1.5)', () => {
 		expect(await code(read.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'x' }))).toBe(
 			'PERMISSION_DENIED',
 		);
-		const write = setup(['pages:write']).broker;
-		expect(await code(write.call('pages.search', { q: 'x' }))).toBe('PERMISSION_DENIED');
+		const write = setup(['pages:read', 'pages:write']).broker;
 		expect(await code(write.call('pages.append', { id: 5, markdown: 'line' }))).toBe('ok');
+		expect(await code(write.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'x' }))).toBe(
+			'PERMISSION_DENIED',
+		);
 		expect(await code(setup([]).broker.call('pageData.get', { pageId: 5, key: 'k' }))).toBe('PERMISSION_DENIED');
 	});
 
@@ -1266,9 +1268,9 @@ describe('pages (API 1.5)', () => {
 	});
 
 	it('lets setSection write only into sections owned by this plugin', async () => {
-		const { broker, api } = setup(['pages:sections']);
+		const { broker, api } = setup(['pages:read', 'pages:sections']);
 		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'ok' }))).toBe('ok');
-		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'mine', 'ok', undefined]);
+		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'mine', 'ok', undefined, undefined]);
 		const before = api.calls.length;
 		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'theirs', markdown: 'x' }))).toBe(
 			'PERMISSION_DENIED',
@@ -1276,13 +1278,21 @@ describe('pages (API 1.5)', () => {
 		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'shared', markdown: 'x' }))).toBe(
 			'PERMISSION_DENIED',
 		);
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'nope', markdown: 'x' }))).toBe(
-			'INVALID_PARAMS',
-		);
 		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'a b', markdown: 'x' }))).toBe(
 			'INVALID_PARAMS',
 		);
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'x', markdown: 'x', heading: 'h'.repeat(201) }))).toBe(
+			'INVALID_PARAMS',
+		);
 		expect(api.calls.slice(before).filter((c) => c[0] === 'pagesSetSection')).toEqual([]);
+	});
+
+	it('lets setSection create a section the page does not have yet, with an optional heading', async () => {
+		const { broker, api } = setup(['pages:read', 'pages:sections']);
+		expect(
+			await code(broker.call('pages.setSection', { id: 5, sectionId: 'nope', markdown: 'x', heading: 'Notes' })),
+		).toBe('ok');
+		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'nope', 'x', undefined, 'Notes']);
 	});
 
 	it('stores per-page data as JSON with a 200-character key and a 64 KB value', async () => {

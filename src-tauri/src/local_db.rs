@@ -24,6 +24,11 @@ pub struct ExecuteResult {
 /// Statements the local API never needs and that could reach outside the workspace file
 /// (ATTACH a path, VACUUM INTO a path, pragmas that change safety settings).
 pub fn check_statement(sql: &str) -> Result<(), String> {
+  if let Some(first) = first_keyword(sql) {
+    if ["BEGIN", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE"].contains(&first.as_str()) {
+      return Err(format!("{first} is not allowed: transactions are managed by local_db_batch"));
+    }
+  }
   let upper = sql.to_ascii_uppercase();
   let words: Vec<&str> = upper
     .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
@@ -35,6 +40,23 @@ pub fn check_statement(sql: &str) -> Result<(), String> {
     }
   }
   Ok(())
+}
+
+/// The leading keyword of a statement, after whitespace and SQL comments (trigger bodies contain BEGIN/END later on).
+fn first_keyword(sql: &str) -> Option<String> {
+  let mut rest = sql;
+  loop {
+    rest = rest.trim_start();
+    if let Some(after) = rest.strip_prefix("--") {
+      rest = after.split_once('\n').map_or("", |(_, tail)| tail);
+    } else if let Some(after) = rest.strip_prefix("/*") {
+      rest = after.split_once("*/").map_or("", |(_, tail)| tail);
+    } else {
+      break;
+    }
+  }
+  let word: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+  if word.is_empty() { None } else { Some(word.to_ascii_uppercase()) }
 }
 
 fn to_sql(value: &Json) -> Value {
@@ -118,10 +140,16 @@ pub fn batch(conn: &Connection, statements: &[BatchStatement]) -> Result<BatchRe
   for statement in statements {
     check_statement(&statement.sql)?;
   }
+  if !conn.is_autocommit() {
+    return Err("the connection is already inside a transaction".to_string());
+  }
   let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
   let mut results = Vec::with_capacity(statements.len());
   for (index, statement) in statements.iter().enumerate() {
     let result = execute(&tx, &statement.sql, &statement.params)?;
+    if tx.is_autocommit() {
+      return Err("the transaction ended before the batch did".to_string());
+    }
     let missed = statement.expect_changes && result.rows_affected == 0;
     results.push(result);
     if missed {
@@ -231,6 +259,37 @@ mod tests {
     assert!(check_statement("pragma writable_schema = on").is_err());
     assert!(check_statement("SELECT load_extension('x')").is_err());
     assert!(check_statement("SELECT * FROM tasks WHERE title = 'attachment'").is_ok());
+  }
+
+  #[test]
+  fn transaction_control_statements_are_refused_by_their_first_keyword() {
+    for sql in [
+      "BEGIN",
+      "begin immediate",
+      "COMMIT",
+      "END TRANSACTION",
+      "ROLLBACK TO x",
+      "SAVEPOINT x",
+      "RELEASE x",
+      "  \n\tcommit",
+      "/* x */ COMMIT",
+      "-- c\nBEGIN",
+      "/* a */ -- b\n /* c */ ROLLBACK",
+    ] {
+      assert!(check_statement(sql).is_err(), "{sql}");
+    }
+    assert!(check_statement("SELECT 'BEGIN', 'COMMIT' FROM t WHERE x = 'END'").is_ok());
+    assert!(check_statement("INSERT INTO t (v) VALUES ('rollback')").is_ok());
+    assert!(check_statement("CREATE TRIGGER x AFTER INSERT ON t BEGIN SELECT 1; END").is_ok());
+    assert!(check_statement("-- note\nSELECT 1").is_ok());
+  }
+
+  #[test]
+  fn batch_refuses_a_connection_that_is_already_in_a_transaction() {
+    let conn = open(":memory:").unwrap();
+    conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY); BEGIN").unwrap();
+    let out = batch(&conn, &[statement("INSERT INTO t DEFAULT VALUES", vec![], false)]);
+    assert!(out.is_err());
   }
 
   #[test]

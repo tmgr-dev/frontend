@@ -351,11 +351,15 @@ export const createDataApi = (
 			pageCall(http.patch(`pages/${id}`, fields, { headers })),
 		pagesAppend: (id, fields) =>
 			pageCall(http.post(`pages/${id}/append`, fields, { headers })),
-		pagesSetSection: (id, sectionId, markdown, summary) =>
+		pagesSetSection: (id, sectionId, markdown, summary, heading) =>
 			pageCall(
 				http.put(
 					`pages/${id}/sections/${encodeURIComponent(sectionId)}`,
-					{ markdown, ...(summary !== undefined ? { summary } : {}) },
+					{
+						markdown,
+						...(summary !== undefined ? { summary } : {}),
+						...(heading !== undefined ? { heading } : {}),
+					},
 					{ headers },
 				),
 			),

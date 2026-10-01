@@ -66,8 +66,8 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
     with one more timestamp line per click. The command also makes a deliberately stale `pages.update` and
     logs `kitchen-sink: page is at version V` from the `page_conflict` error's `current`. Per-page data
     (`pageData`) counts the clicks. Pages written by the plugin show it as the author; other plugins'
-    `page.updated` listeners get `changedSections: ["kitchen-sink"]`. Shared workspaces refuse plugin page
-    writes for now.
+    `page.updated` listeners get `changedSections: ["kitchen-sink"]`. The plugin creates its own section on the
+    first click with `setSection` and its `heading` option.
 
 ## Manual-only checks
 

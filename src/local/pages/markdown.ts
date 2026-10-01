@@ -431,14 +431,14 @@ const markerKeys = (body: string): string[] =>
 export const findSection = (body: string, sectionId: string): Section | null =>
 	sections(body).find((s) => s.id === sectionId) ?? null;
 
-/** A persona or plugin may write the shared `agents` owner or its own section; on a context page only `agents`. */
+/** A persona may write the shared `agents` owner or its own section, a plugin only its own; on a context page only personas, only `agents`. */
 export const writableBy = (
 	owner: string,
 	actorKind: string,
 	actorRef: string,
 	contextPage: boolean,
 ): boolean => {
-	if (owner === AGENTS_OWNER) return true;
+	if (owner === AGENTS_OWNER) return actorKind === 'persona';
 	return !contextPage && owner === `${actorKind}:${actorRef}`;
 };
 
@@ -577,8 +577,11 @@ export const nonHumanViolation = (
 	contextPage: boolean,
 	actorKind: string,
 	actorRef: string,
+	newSectionId: string | null = null,
 ): string | null => {
 	const oldKeys = markerKeys(oldBody);
+	if (newSectionId !== null)
+		oldKeys.push(`${newSectionId}\u0000${actorKind}:${actorRef}`);
 	const newKeys = markerKeys(newBody);
 	if (
 		oldKeys.length !== newKeys.length ||
@@ -622,6 +625,43 @@ export const nonHumanViolation = (
 		return 'A context page may only be changed inside its agent sections';
 	}
 	return null;
+};
+
+export const SYSTEM_OWNER = 'system';
+
+/** Why a write by anyone but the server may not stand: it changes or removes a section the server owns. */
+export const systemSectionViolation = (
+	oldBody: string,
+	newBody: string,
+): string | null => {
+	const afterById = new Map<string, Section>();
+	for (const s of sections(newBody))
+		if (!afterById.has(s.id)) afterById.set(s.id, s);
+	for (const s of sections(oldBody)) {
+		if (s.owner !== SYSTEM_OWNER) continue;
+		const now = afterById.get(s.id);
+		if (
+			!now ||
+			oldBody.substring(s.start, s.end) !==
+				newBody.substring(now.start, now.end)
+		)
+			return `Section '${s.id}' is managed by the system`;
+	}
+	return null;
+};
+
+export const SECTION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+export const appendNewSection = (
+	body: string,
+	sectionId: string,
+	owner: string,
+	heading: string,
+	markdown: string,
+): string => {
+	const block = `<!-- tmgr:section id="${sectionId}" owner="${owner}" -->\n## ${heading}\n\n${markdown.trim()}\n${SECTION_CLOSE}\n`;
+	const head = rstrip(body);
+	return head === '' ? block : `${head}\n\n${block}`;
 };
 
 export const PLAIN = 'plain';

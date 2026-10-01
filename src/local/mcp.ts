@@ -180,7 +180,9 @@ const PAGES_TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			return pageItems(await pageRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/pages`));
+			const taskId = Number(requireArg(args, 'taskId'));
+			if (!Number.isSafeInteger(taskId) || taskId <= 0) throw new ToolError('taskId must be a positive integer');
+			return pageItems(await pageRoute(router, ctx, 'GET', `tasks/${taskId}/pages`));
 		},
 	},
 	{

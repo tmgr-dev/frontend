@@ -213,6 +213,9 @@ export const parseManifest = (raw: any): PluginManifest => {
 	for (const permission of PAGE_PERMISSIONS)
 		if (permissions.includes(permission) && apiMinor < 5)
 			fail(`${permission} needs engines.tmgr ^1.5`);
+	for (const permission of ['pages:write', 'pages:sections'] as const)
+		if (permissions.includes(permission) && !permissions.includes('pages:read'))
+			fail(`${permission} needs pages:read`);
 	return {
 		id,
 		name: text(raw.name, 'name', 80),

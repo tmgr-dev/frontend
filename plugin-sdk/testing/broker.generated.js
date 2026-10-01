@@ -693,13 +693,12 @@ const createBroker = (deps) => {
                     : invalid('sectionId must be a section id');
                 const markdown = pageBody(p.markdown, 'markdown');
                 const summary = p.summary == null ? undefined : pageSummary(p.summary);
+                const heading = p.heading == null ? undefined : string(p.heading, 'heading', 200);
                 const page = await api.pagesGet(pageId);
                 const section = (page?.sections ?? []).find((s) => s.id === sectionId);
-                if (!section)
-                    throw new PluginError('INVALID_PARAMS', `page ${pageId} has no section ${sectionId}`);
-                if (section.owner !== `plugin:${manifest.id}`)
+                if (section && section.owner !== `plugin:${manifest.id}`)
                     throw new PluginError('PERMISSION_DENIED', `section ${sectionId} is not owned by plugin:${manifest.id}`);
-                return api.pagesSetSection(pageId, sectionId, markdown, summary);
+                return api.pagesSetSection(pageId, sectionId, markdown, summary, heading);
             },
         },
         'pageData.get': {

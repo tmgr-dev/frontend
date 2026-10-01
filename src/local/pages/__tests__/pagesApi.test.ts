@@ -679,14 +679,49 @@ describeSqlite('local pages API on SQLite', () => {
 
 		it('lets a human write any section and keeps the section heading', async () => {
 			const page = await create('Doc', { body: managed('persona:p-1') });
-			const out = await data('PUT', `pages/${page.id}/sections/sys`, {
+			const out = await data('PUT', `pages/${page.id}/sections/mine`, {
 				markdown: '- item',
 				summary: 'hand edit',
 			});
 			expect(out.body).toContain(
-				'## Promises\n\n- item\n<!-- /tmgr:section -->',
+				'## Insights\n\n- item\n<!-- /tmgr:section -->',
 			);
 			expect(out.version).toBe(2);
+		});
+
+		it('refuses every non-system actor, humans included, a change to a system section', async () => {
+			const page = await create('Doc', { body: managed('persona:p-1') });
+			const sysBody = managed('persona:p-1');
+			const attempts: [string, string, unknown, LocalActor | undefined][] = [
+				['PUT', `pages/${page.id}/sections/sys`, { markdown: 'x' }, undefined],
+				[
+					'PATCH',
+					`pages/${page.id}`,
+					{
+						version: 1,
+						body: sysBody.replace('## Promises', '## Promises\n\nhand'),
+					},
+					undefined,
+				],
+				[
+					'PATCH',
+					`pages/${page.id}`,
+					{ version: 1, body: 'intro only' },
+					undefined,
+				],
+			];
+			for (const [method, url, body, actor] of attempts) {
+				const res = await call(method, url, body, actor);
+				expect([res.status, res.data.error]).toEqual([
+					403,
+					'section_forbidden',
+				]);
+			}
+			const ok = await call('PATCH', `pages/${page.id}`, {
+				version: 1,
+				body: sysBody.replace('intro', 'outro'),
+			});
+			expect(ok.status).toBe(200);
 		});
 
 		it('lets the owning persona write its section but not another persona or system', async () => {
@@ -718,14 +753,8 @@ describeSqlite('local pages API on SQLite', () => {
 				).status,
 			).toBe(403);
 			expect(
-				(
-					await call(
-						'PUT',
-						`pages/${page.id}/sections/zzz`,
-						{ markdown: 'x' },
-						persona,
-					)
-				).status,
+				(await call('PUT', `pages/${page.id}/sections/zzz`, { markdown: 'x' }))
+					.status,
 			).toBe(404);
 		});
 
@@ -752,6 +781,97 @@ describeSqlite('local pages API on SQLite', () => {
 					)
 				).status,
 			).toBe(403);
+		});
+
+		it('keeps agents sections to personas: a plugin may not write them, nor append heading-less to a context page', async () => {
+			const page = await create('Doc', { body: managed('agents') });
+			const res = await call(
+				'PUT',
+				`pages/${page.id}/sections/mine`,
+				{ markdown: 'x' },
+				plugin,
+			);
+			expect([res.status, res.data.error]).toEqual([403, 'section_forbidden']);
+			expect(
+				(
+					await call(
+						'PUT',
+						`pages/${page.id}/sections/mine`,
+						{ markdown: 'ok' },
+						persona,
+					)
+				).status,
+			).toBe(200);
+			const context = await create('Контекст', { type: 'context' });
+			const appended = await call(
+				'POST',
+				`pages/${context.id}/append`,
+				{ markdown: 'note' },
+				plugin,
+			);
+			expect([appended.status, appended.data.error]).toEqual([
+				403,
+				'section_forbidden',
+			]);
+		});
+
+		it('lets a persona or plugin create its own section at the end of a page', async () => {
+			const page = await create('Doc', { body: 'intro' });
+			const byPersona = await data(
+				'PUT',
+				`pages/${page.id}/sections/p-notes`,
+				{ markdown: ' fresh ', heading: 'Notes' },
+				persona,
+			);
+			expect(byPersona.body).toBe(
+				'intro\n\n<!-- tmgr:section id="p-notes" owner="persona:p-1" -->\n## Notes\n\nfresh\n<!-- /tmgr:section -->\n',
+			);
+			expect(byPersona.sections).toContainEqual({
+				id: 'p-notes',
+				owner: 'persona:p-1',
+				heading: 'Notes',
+			});
+			const byPlugin = await data(
+				'PUT',
+				`pages/${page.id}/sections/dossier`,
+				{ markdown: 'plug' },
+				plugin,
+			);
+			expect(byPlugin.body).toContain(
+				'<!-- tmgr:section id="dossier" owner="plugin:tmgr.people" -->\n## dossier\n\nplug\n<!-- /tmgr:section -->\n',
+			);
+			const again = await data(
+				'PUT',
+				`pages/${page.id}/sections/dossier`,
+				{ markdown: 'plug 2' },
+				plugin,
+			);
+			expect(again.body).toContain('plug 2');
+			expect(again.body.match(/id="dossier"/g)).toHaveLength(1);
+		});
+
+		it('validates a new section and refuses it for humans and context pages', async () => {
+			const page = await create('Doc', { body: 'intro' });
+			const put = (id: string, body: unknown, actor?: LocalActor) =>
+				call('PUT', `pages/${page.id}/sections/${id}`, body, actor);
+			const bad = await put('Bad_Id', { markdown: 'x' }, persona);
+			expect([bad.status, bad.data.error]).toEqual([422, 'invalid_section_id']);
+			for (const heading of ['a\nb', 'x'.repeat(201), 'a <!-- b']) {
+				const res = await put('ok', { markdown: 'x', heading }, plugin);
+				expect([res.status, res.data.error]).toEqual([422, 'invalid_heading']);
+			}
+			expect((await put('ok', { markdown: 'x' })).status).toBe(404);
+			const context = await create('Контекст', { type: 'context' });
+			const refused = await call(
+				'PUT',
+				`pages/${context.id}/sections/mine`,
+				{ markdown: 'x' },
+				persona,
+			);
+			expect([refused.status, refused.data.error]).toEqual([
+				403,
+				'section_forbidden',
+			]);
 		});
 
 		it('allows only agents sections on a context page', async () => {
@@ -1203,6 +1323,31 @@ describeSqlite('local pages API on SQLite', () => {
 			expect(
 				(await call('POST', `pages/${page.id}/files`, {})).data.error,
 			).toBe('invalid_file');
+		});
+
+		it('lets only people attach a file by path, with plain names and keys', async () => {
+			const page = await create('Doc');
+			for (const actor of [persona, plugin]) {
+				const res = await call(
+					'POST',
+					`pages/${page.id}/files`,
+					{ file_name: 'a.png', file_path: 'abc-1/a.png' },
+					actor,
+				);
+				expect(res.status).toBe(403);
+			}
+			const post = (file_name: string, file_path: string) =>
+				call('POST', `pages/${page.id}/files`, { file_name, file_path });
+			for (const [name, key] of [
+				['..', 'abc-1/a.png'],
+				['a/../b.png', 'abc-1/a.png'],
+				['a\\b.png', 'abc-1/a.png'],
+				['x'.repeat(256), 'abc-1/a.png'],
+			])
+				expect((await post(name, key)).data.error).toBe('invalid_file');
+			for (const key of ['abc-1/..', 'abc-1/a..b', '../a', 'a/b/c'])
+				expect((await post('a.png', key)).data.error).toBe('invalid_file_path');
+			expect((await post('x'.repeat(255), 'abc-1/ok.png')).status).toBe(201);
 		});
 
 		it('binds an existing page file by id and refuses a task file', async () => {

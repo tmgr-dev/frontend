@@ -233,6 +233,8 @@ describeSqlite('pages MCP tools for local personas', () => {
 			title: 'Plan',
 			body: `for [t](tmgr://task/${task.id})`,
 		});
+		for (const taskId of ['1/../../x', 1.5, -2, 'abc'])
+			expect((await call('pages_for_task', { taskId })).isError).toBe(true);
 		const found = await json('pages_for_task', { taskId: task.id });
 		expect(found).toMatchObject({
 			total: 1,

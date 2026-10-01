@@ -2,6 +2,7 @@ import { parseJson } from '../serialize';
 import {
 	LocalHttpError,
 	type BatchStatement,
+	type LocalActor,
 	type LocalContext,
 	type SqlValue,
 } from '../types';
@@ -30,6 +31,9 @@ import {
 	findSection,
 	isKnownType,
 	nonHumanViolation,
+	appendNewSection,
+	SECTION_ID,
+	systemSectionViolation,
 	replaceSection,
 	sections,
 	structureError,
@@ -72,19 +76,29 @@ const CONTEXT_SEEDED = 'pages_context_seeded';
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
 
-type ActorKind = 'user' | 'persona' | 'plugin';
+type ActorKind = 'user' | 'persona' | 'plugin' | 'system';
 
 const actorKind = (ctx: LocalContext): ActorKind =>
 	!ctx.actor || ctx.actor.kind === 'user'
 		? 'user'
 		: ctx.actor.kind === 'persona'
 		? 'persona'
+		: ctx.actor.kind === 'system'
+		? 'system'
 		: 'plugin';
 
 const actorRef = (ctx: LocalContext): string =>
 	actorKind(ctx) === 'user' ? String(ctx.user.id) : ctx.actor!.id;
 
 const isHuman = (ctx: LocalContext) => actorKind(ctx) === 'user';
+
+const isSystem = (ctx: LocalContext) => actorKind(ctx) === 'system';
+
+const SYSTEM_ACTOR: LocalActor = {
+	kind: 'system',
+	id: 'system',
+	name: 'System',
+};
 
 const humanOnly = (ctx: LocalContext) => {
 	if (!isHuman(ctx))
@@ -567,7 +581,11 @@ const requireWritable = (
 	newTitle: string,
 	oldProps: string,
 	newProps: string,
+	newSectionId: string | null = null,
 ) => {
+	if (isSystem(ctx)) return;
+	const managed = systemSectionViolation(oldBody, newBody);
+	if (managed) throw forbidden('section_forbidden', managed);
 	if (isHuman(ctx)) return;
 	if (contextPage && (oldTitle !== newTitle || !sameJson(oldProps, newProps))) {
 		throw forbidden(
@@ -581,6 +599,7 @@ const requireWritable = (
 		contextPage,
 		actorKind(ctx),
 		actorRef(ctx),
+		newSectionId,
 	);
 	if (why) throw forbidden('section_forbidden', why);
 };
@@ -593,6 +612,7 @@ interface Change {
 	properties: string;
 	summary: string | null;
 	forceVersion?: boolean;
+	newSectionId?: string;
 }
 
 interface Written {
@@ -703,6 +723,7 @@ const write = async (
 				change.title,
 				row.properties,
 				change.properties,
+				change.newSectionId ?? null,
 			);
 			if (bodyChanged) requireWellFormed(change.body);
 			const finalBody = bodyChanged
@@ -1037,7 +1058,10 @@ const appended = (ctx: LocalContext, row: PageRow, req: any): string => {
 		);
 	}
 	if (!isHuman(ctx) && row.type === CONTEXT) {
-		const agents = sections(row.body).find((s) => s.owner === AGENTS_OWNER);
+		const agents =
+			actorKind(ctx) === 'persona'
+				? sections(row.body).find((s) => s.owner === AGENTS_OWNER)
+				: undefined;
 		if (!agents)
 			throw forbidden(
 				'section_forbidden',
@@ -1079,6 +1103,53 @@ export const appendToPage = async (
 	});
 };
 
+const newSection = (
+	ctx: LocalContext,
+	row: PageRow,
+	sectionId: string,
+	req: any,
+): Change => {
+	if (row.type === CONTEXT)
+		throw forbidden(
+			'section_forbidden',
+			'A context page has no room for new agent sections',
+		);
+	if (!SECTION_ID.test(sectionId))
+		throw unprocessable(
+			'invalid_section_id',
+			'Section id must match [a-z0-9][a-z0-9-]{0,63}',
+		);
+	const heading =
+		typeof req.heading === 'string' && req.heading.trim()
+			? req.heading.trim()
+			: sectionId;
+	if (
+		(req.heading !== undefined &&
+			req.heading !== null &&
+			typeof req.heading !== 'string') ||
+		heading.length > 200 ||
+		/[\r\n]/.test(heading) ||
+		heading.includes('<!--')
+	)
+		throw unprocessable(
+			'invalid_heading',
+			'Heading must be one line of at most 200 characters',
+		);
+	return {
+		title: row.title,
+		body: appendNewSection(
+			row.body,
+			sectionId,
+			`${actorKind(ctx)}:${actorRef(ctx)}`,
+			heading,
+			req.markdown,
+		),
+		properties: row.properties,
+		summary: cleanSummary(req.summary),
+		newSectionId: sectionId,
+	};
+};
+
 export const setPageSection = async (
 	ctx: LocalContext,
 	ref: string,
@@ -1097,8 +1168,14 @@ export const setPageSection = async (
 		page.id,
 		(row) => {
 			const section = findSection(row.body, sectionId);
-			if (!section)
-				throw notFound('section_not_found', `Section '${sectionId}' not found`);
+			if (!section) {
+				if (isHuman(ctx))
+					throw notFound(
+						'section_not_found',
+						`Section '${sectionId}' not found`,
+					);
+				return newSection(ctx, row, sectionId, req);
+			}
 			if (
 				!isHuman(ctx) &&
 				!writableBy(
@@ -1144,7 +1221,7 @@ export const restorePageVersion = async (
 	});
 };
 
-/** The system «Обещания» section of a person page, rewritten as the human who caused it. */
+/** The system «Обещания» section of a person page, rewritten by the system on behalf of the human who caused it. */
 export const refreshManagedSection = async (
 	ctx: LocalContext,
 	pageId: number,
@@ -1152,10 +1229,10 @@ export const refreshManagedSection = async (
 	markdown: string,
 	summary: string,
 ): Promise<void> => {
-	const asUser: LocalContext = { ...ctx, actor: undefined };
+	const asSystem: LocalContext = { ...ctx, actor: SYSTEM_ACTOR };
 	try {
 		await write(
-			asUser,
+			asSystem,
 			pageId,
 			(row) => {
 				const section = findSection(row.body, sectionId);
@@ -1370,6 +1447,7 @@ export const restorePage = async (ctx: LocalContext, ref: string) => {
 
 // ───────────────────────────────────────────────────────────── files
 
+const MAX_FILE_NAME = 255;
 const FILE_KEY = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 export const pageFiles = async (ctx: LocalContext, ref: string) => {
@@ -1415,10 +1493,14 @@ export const attachPageFile = async (
 		]);
 		return fileJson({ ...file, page_id: page.id }, ctx);
 	}
+	humanOnly(ctx);
 	if (typeof req.file_name !== 'string' || !req.file_name.trim()) {
 		throw unprocessable('invalid_file', 'file_name is required');
 	}
-	if (!FILE_KEY.test(req.file_path))
+	const name = req.file_name.trim();
+	if (name.length > MAX_FILE_NAME || /[\\/]/.test(name) || name.includes('..'))
+		throw unprocessable('invalid_file', 'file_name is not a plain file name');
+	if (!FILE_KEY.test(req.file_path) || req.file_path.includes('..'))
 		throw unprocessable('invalid_file_path', 'Unknown file');
 	const [existing] = await ctx.db.select<any>(
 		`SELECT * FROM files WHERE file_path = ?`,
@@ -1436,7 +1518,7 @@ export const attachPageFile = async (
 		`INSERT INTO files (task_id, page_id, name, file_path, mime_type, size, created_at) VALUES (NULL, ?, ?, ?, ?, ?, ?)`,
 		[
 			page.id,
-			req.file_name.trim(),
+			name,
 			req.file_path,
 			req.mime_type ?? null,
 			Number(req.size_bytes ?? 0),

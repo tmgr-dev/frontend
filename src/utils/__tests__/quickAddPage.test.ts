@@ -1,5 +1,7 @@
+import { crossesWorkspaces } from '@/local/classify';
 import type { PageSummary } from '@/actions/tmgr/pages';
 import {
+	appendToLoadedPage,
 	composeAppendMarkdown,
 	filterPageOptions,
 	flattenPages,
@@ -33,6 +35,24 @@ describe('listPageSections', () => {
 
 	it('is empty for an empty body', () => {
 		expect(listPageSections('')).toEqual([]);
+	});
+
+	it('leaves out headings inside system sections', () => {
+		const body =
+			'## Кратко\n\n<!-- tmgr:section id="promises" owner="system" -->\n## Обещания\n- a\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id="n" owner="agents" -->\n## Notes\n<!-- /tmgr:section -->\n\n## Хронология\n';
+		expect(listPageSections(body)).toEqual(['Кратко', 'Notes', 'Хронология']);
+	});
+
+	it('stays linear on a 1 MB adversarial heading line', () => {
+		for (const body of [
+			`##${' '.repeat(1_000_000)}x y`,
+			`## ${'a #'.repeat(350_000)}`,
+			`##\t${'# '.repeat(500_000)}\u0001`,
+		]) {
+			const started = performance.now();
+			listPageSections(body);
+			expect(performance.now() - started).toBeLessThan(200);
+		}
 	});
 });
 
@@ -96,5 +116,45 @@ describe('last page storage', () => {
 		expect(readLastPage(5)).toBeNull();
 		expect(() => writeLastPage(5, 1)).not.toThrow();
 		delete (globalThis as any).localStorage;
+	});
+});
+
+describe('appendToLoadedPage', () => {
+	const deps = () => ({
+		uploadPageFile: jest.fn(async () => ({ id: 9 })),
+		appendToPage: jest.fn(async () => ({ id: 4, slug: 'doc', title: 'Doc', version: 3 })),
+		relayPageAppended: jest.fn(async () => undefined),
+	});
+
+	it('sends the workspace the page list came from with the upload, the append and the relay', async () => {
+		const d = deps();
+		const file = new File(['x'], 'shot.png');
+		await appendToLoadedPage({ id: -3, code: 'local-a' }, 4, { text: 'note', section: 'Log', screenshot: file }, d);
+		expect(d.uploadPageFile).toHaveBeenCalledWith(4, file, -3);
+		expect(d.appendToPage).toHaveBeenCalledWith(4, {
+			markdown: '![](tmgr://file/9)\n\nnote',
+			heading: 'Log',
+			workspace_id: -3,
+		});
+		expect(d.relayPageAppended).toHaveBeenCalledWith({
+			workspace_code: 'local-a',
+			page: { id: 4, slug: 'doc', title: 'Doc', version: 3 },
+		});
+	});
+
+	it('makes the append fail closed when the active workspace is no longer the loaded one', async () => {
+		const d = deps();
+		await appendToLoadedPage({ id: -3, code: 'local-a' }, 4, { text: 'note', section: '', screenshot: null }, d);
+		const body = (d.appendToPage.mock.calls[0] as any[])[1];
+		expect(crossesWorkspaces('local', body, undefined, -3)).toBe(false);
+		expect(crossesWorkspaces('local', body, undefined, -9)).toBe(true);
+		expect(crossesWorkspaces('server', body, undefined, null)).toBe(true);
+	});
+
+	it('appends text only without an upload', async () => {
+		const d = deps();
+		await appendToLoadedPage({ id: 7, code: 'w' }, 4, { text: 'note', section: '', screenshot: null }, d);
+		expect(d.uploadPageFile).not.toHaveBeenCalled();
+		expect(d.appendToPage).toHaveBeenCalledWith(4, { markdown: 'note', heading: undefined, workspace_id: 7 });
 	});
 });

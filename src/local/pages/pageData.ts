@@ -1,5 +1,5 @@
 import type { LocalRouter } from '../router';
-import { LocalHttpError, type LocalContext, type LocalDb } from '../types';
+import { LocalHttpError, type LocalContext } from '../types';
 
 const QUOTA_BYTES = 5 * 1024 * 1024;
 const MAX_KEYS = 1000;
@@ -8,17 +8,6 @@ const MAX_PAGE_IDS = 500;
 
 const byteLength = (value: string): number =>
 	new TextEncoder().encode(value).byteLength;
-
-/** Plugin data of permanently deleted pages; soft-deleted (trashed) pages keep theirs so a restore loses nothing. */
-export const deletePluginPageData = async (db: LocalDb, pageIds: number[]) => {
-	if (!pageIds.length) return;
-	await db.execute(
-		`DELETE FROM plugin_page_data WHERE page_id IN (${pageIds
-			.map(() => '?')
-			.join(',')})`,
-		pageIds,
-	);
-};
 
 const requireOwnPlugin = (ctx: LocalContext, pluginId: string) => {
 	if (

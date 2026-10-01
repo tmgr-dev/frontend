@@ -130,10 +130,6 @@ const PAGE_TITLE = 'Kitchen Sink notes';
 const PAGE_BODY = [
 	'# Kitchen Sink notes',
 	'',
-	'<!-- tmgr:section id="kitchen-sink" owner="plugin:tmgr-dev.kitchen-sink" -->',
-	'Nothing here yet.',
-	'<!-- /tmgr:section -->',
-	'',
 	'## Log',
 	'',
 ].join('\n');
@@ -148,7 +144,7 @@ const writePage = async () => {
 	page = await tmgr.pages.append(page.id, { markdown: `- written at ${new Date().toISOString()}`, heading: 'Log', createHeading: true });
 	const runs = ((await tmgr.pageData.get(page.id, 'kitchenSink.runs')) ?? 0) + 1;
 	await tmgr.pageData.set(page.id, 'kitchenSink.runs', runs);
-	page = await tmgr.pages.setSection(page.id, 'kitchen-sink', `Written ${runs} time(s) by Kitchen Sink.`);
+	page = await tmgr.pages.setSection(page.id, 'kitchen-sink', `Written ${runs} time(s) by Kitchen Sink.`, { heading: 'Kitchen Sink' });
 	try {
 		await tmgr.pages.update(page.id, { version: page.version - 1, title: PAGE_TITLE });
 	} catch (error) {

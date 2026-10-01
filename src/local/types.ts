@@ -49,7 +49,7 @@ export interface LocalFiles {
 
 /** Who caused a write: the app's own human user, or a plugin acting through its pinned client. */
 export interface LocalActor {
-	kind: 'user' | 'plugin' | 'persona' | 'companion' | 'agent';
+	kind: 'user' | 'plugin' | 'persona' | 'companion' | 'agent' | 'system';
 	id: string;
 	name: string;
 	/** Set from the plugin's storage id header: distinguishes repos that reuse the same plugin id. */

@@ -136,6 +136,8 @@ it.each([
 	[{ permissions: ['pages:read'], engines: { tmgr: '^1.4' } }, 'pages:read needs engines.tmgr ^1.5'],
 	[{ permissions: ['pages:write'], engines: { tmgr: '^1.4' } }, 'pages:write needs engines.tmgr ^1.5'],
 	[{ permissions: ['pages:sections'], engines: { tmgr: '^1.0' } }, 'pages:sections needs engines.tmgr ^1.5'],
+	[{ permissions: ['pages:write'], engines: { tmgr: '^1.5' } }, 'pages:write needs pages:read'],
+	[{ permissions: ['pages:sections', 'tasks:read'], engines: { tmgr: '^1.5' } }, 'pages:sections needs pages:read'],
 	[{ permissions: ['views:badge'], engines: { tmgr: '^1.3' } }, 'views:badge needs engines.tmgr ^1.4'],
 	[{ links: { allowedDomains: ['gitlab.com'] } }, 'links:open'],
 	[

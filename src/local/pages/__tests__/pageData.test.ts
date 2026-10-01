@@ -3,7 +3,6 @@ import { createLocalApi } from '../../api';
 import { dispatchLocal } from '../../dispatch';
 import { migrate } from '../../schema';
 import type { LocalActor, LocalContext } from '../../types';
-import { deletePluginPageData } from '../pageData';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
@@ -148,7 +147,7 @@ describeSqlite('plugin page data on SQLite', () => {
 		).toBe(404);
 	});
 
-	it('caps a plugin at 1000 keys and removes data with deletePluginPageData', async () => {
+	it('caps a plugin at 1000 keys', async () => {
 		const a = plugin('acme.dossier');
 		await ctx.db.execute(
 			`INSERT INTO plugin_page_data (plugin_id, page_id, key, value, updated_at)
@@ -165,9 +164,5 @@ describeSqlite('plugin page data on SQLite', () => {
 				)
 			).status,
 		).toBe(413);
-		await deletePluginPageData(ctx.db, [1]);
-		expect(
-			(await ctx.db.select(`SELECT COUNT(*) AS c FROM plugin_page_data`))[0].c,
-		).toBe(0);
 	});
 });

@@ -389,6 +389,7 @@ describe('pages (API 1.5)', () => {
 		await api.pagesUpdate(5, { version: 2, title: 'N' });
 		await api.pagesAppend(5, { markdown: 'm', create_heading: true });
 		await api.pagesSetSection(5, 'notes', 'text', 'why');
+		await api.pagesSetSection(5, 'fresh', 'text', undefined, 'Fresh');
 		expect(seen).toEqual([
 			'GET pages/search {"q":"saha","type":"person","limit":5} acme.dossier',
 			'GET pages/tree acme.dossier',
@@ -397,6 +398,7 @@ describe('pages (API 1.5)', () => {
 			'PATCH pages/5 acme.dossier {"version":2,"title":"N"}',
 			'POST pages/5/append acme.dossier {"markdown":"m","create_heading":true}',
 			'PUT pages/5/sections/notes acme.dossier {"markdown":"text","summary":"why"}',
+			'PUT pages/5/sections/fresh acme.dossier {"markdown":"text","heading":"Fresh"}',
 		]);
 	});
 

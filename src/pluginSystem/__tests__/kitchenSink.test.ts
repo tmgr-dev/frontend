@@ -120,7 +120,7 @@ it('"Write a Kitchen Sink page" creates the page, owns its section and survives 
 	const page: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);
 	expect(page.body).toContain('Written 1 time(s) by Kitchen Sink.');
 	expect(page.body).toMatch(/## Log\n[\s\S]*- written at /);
-	expect(page.sections).toEqual([{ id: 'kitchen-sink', owner: 'plugin:tmgr-dev.kitchen-sink', heading: null }]);
+	expect(page.sections).toEqual([{ id: 'kitchen-sink', owner: 'plugin:tmgr-dev.kitchen-sink', heading: 'Kitchen Sink' }]);
 	expect(host.tmgr.pageData[`${page.id}:kitchenSink.runs`]).toBe('1');
 	expect(host.tmgr.log.some((l: any) => l.message.includes('page is at version'))).toBe(true);
 	const again: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);

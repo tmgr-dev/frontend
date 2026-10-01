@@ -36,7 +36,7 @@ interface TmgrPageSummary {
 	updated_at: string;
 }
 
-/** `owner` is `system`, `agents` (any persona or plugin), `persona:<uuid>`, `plugin:<id>` or `user:<id>`. */
+/** `owner` is `system`, `agents` (any persona), `persona:<uuid>`, `plugin:<id>` or `user:<id>`. */
 interface TmgrPageSection {
 	id: string;
 	owner: string;
@@ -509,9 +509,12 @@ declare const tmgr: {
 		append(id: number, fields: { markdown: string; heading?: string; createHeading?: boolean; summary?: string }): Promise<TmgrPage>;
 		/**
 		 * Needs pages:sections. Replaces the text of a managed section whose owner is `plugin:<this plugin's id>`;
-		 * any other section rejects with PERMISSION_DENIED. Sections owned by `agents` take `append` instead.
+		 * any other existing section rejects with PERMISSION_DENIED (sections owned by `agents` are for personas).
+		 * A section that does not exist is created at the end of the page, owned by this plugin, under a `##`
+		 * heading (`heading`, default the section id; one line, at most 200 characters). The id must match
+		 * `[a-z0-9][a-z0-9-]{0,63}`. A context page refuses new sections.
 		 */
-		setSection(id: number, sectionId: string, markdown: string, opts?: { summary?: string }): Promise<TmgrPage>;
+		setSection(id: number, sectionId: string, markdown: string, opts?: { summary?: string; heading?: string }): Promise<TmgrPage>;
 	};
 	/**
 	 * API 1.5, needs pages:read. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per

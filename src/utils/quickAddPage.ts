@@ -1,8 +1,7 @@
 import type { PageSummary } from '@/actions/tmgr/pages';
+import { headings, sections, SYSTEM_OWNER } from '@/local/pages/markdown';
 import { buildPagesTree, type PageNode } from '@/utils/pagesTree';
 
-const HEADING = /^##\s+(.+?)\s*#*\s*$/;
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const LAST_PAGE_KEY = 'desktop.quickAdd.page.';
 
 export interface PageOption {
@@ -12,27 +11,20 @@ export interface PageOption {
 }
 
 export const listPageSections = (body: string): string[] => {
+	const text = body || '';
+	const managed = sections(text).filter((s) => s.owner === SYSTEM_OWNER);
 	const seen = new Set<string>();
-	const sections: string[] = [];
-	let fence: string | null = null;
-	for (const line of (body || '').split(/\r?\n/)) {
-		const fenceMatch = FENCE.exec(line);
-		if (fenceMatch) {
-			const mark = fenceMatch[1][0];
-			if (fence === null) fence = mark;
-			else if (fence === mark) fence = null;
+	const found: string[] = [];
+	for (const heading of headings(text)) {
+		if (heading.level !== 2 || !heading.text) continue;
+		if (managed.some((s) => heading.start >= s.start && heading.start < s.end))
 			continue;
-		}
-		if (fence !== null) continue;
-		const match = HEADING.exec(line);
-		const text = match?.[1].trim();
-		if (!text) continue;
-		const key = text.toLowerCase();
+		const key = heading.text.toLowerCase();
 		if (seen.has(key)) continue;
 		seen.add(key);
-		sections.push(text);
+		found.push(heading.text);
 	}
-	return sections;
+	return found;
 };
 
 export const composeAppendMarkdown = (
@@ -89,4 +81,54 @@ export const writeLastPage = (workspaceId: number, pageId: number): void => {
 	} catch {
 		/* storage unavailable: the page is not remembered */
 	}
+};
+
+export interface PageTarget {
+	id: number;
+	code: string;
+}
+
+interface AppendDeps {
+	uploadPageFile: (
+		pageId: number,
+		file: File,
+		workspaceId?: number,
+	) => Promise<{ id: number }>;
+	appendToPage: (
+		pageId: number,
+		payload: { markdown: string; heading?: string; workspace_id?: number },
+	) => Promise<{ id: number; slug: string; title: string; version: number }>;
+	relayPageAppended: (payload: {
+		workspace_code: string;
+		page: { id: number; slug: string; title: string; version: number };
+	}) => Promise<void>;
+}
+
+/** Everything goes to the workspace the page list was loaded from, so a switch mid-way fails closed instead of writing elsewhere. */
+export const appendToLoadedPage = async (
+	workspace: PageTarget,
+	pageId: number,
+	input: { text: string; section: string; screenshot: File | null },
+	deps: AppendDeps,
+) => {
+	const fileId = input.screenshot
+		? (await deps.uploadPageFile(pageId, input.screenshot, workspace.id)).id
+		: null;
+	const updated = await deps.appendToPage(pageId, {
+		markdown: composeAppendMarkdown(input.text, fileId),
+		heading: input.section || undefined,
+		workspace_id: workspace.id,
+	});
+	void deps
+		.relayPageAppended({
+			workspace_code: workspace.code,
+			page: {
+				id: updated.id,
+				slug: updated.slug,
+				title: updated.title,
+				version: updated.version,
+			},
+		})
+		.catch((e) => console.error('quick add: page-appended relay failed', e));
+	return updated;
 };
