@@ -5,6 +5,9 @@ interface HttpErrorLike {
 	};
 }
 
+const GOOGLE_LINK_NOTICE =
+	'We emailed you a confirmation link. Open it while signed in to your tmgr.dev account (password or another sign-in method), confirm, then sign in with Google again.';
+
 const DISMISS_KEY = 'email.verify.banner.dismissed';
 const RETURN_KEY = 'auth.return.to';
 
@@ -30,10 +33,7 @@ export const googleLinkConfirmationMessage = (
 	if (status !== 409 || code !== 'email_link_confirmation_required') {
 		return null;
 	}
-	return (
-		message ||
-		'We emailed you a link to confirm linking your Google account. Open it, then sign in with Google again.'
-	);
+	return GOOGLE_LINK_NOTICE;
 };
 
 export const errorMessageFrom = (error: unknown, fallback: string): string => {
@@ -85,4 +85,11 @@ export const takeReturnPath = (): string | null => {
 	} catch {
 		return null;
 	}
+};
+
+export const withoutTokenQuery = (
+	query: Record<string, unknown>,
+): Record<string, unknown> => {
+	const { token: _token, ...rest } = query;
+	return rest;
 };

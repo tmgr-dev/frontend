@@ -3,7 +3,10 @@ import {
 	googleLinkConfirmationMessage,
 	isSafeReturnPath,
 	retryAfterLabel,
+	saveReturnPath,
 	shouldShowVerifyBanner,
+	takeReturnPath,
+	withoutTokenQuery,
 } from '../emailVerification';
 
 const httpError = (status: number, data: Record<string, unknown>) => ({
@@ -23,23 +26,16 @@ describe('shouldShowVerifyBanner', () => {
 });
 
 describe('googleLinkConfirmationMessage', () => {
-	it('returns the server message for 409 email_link_confirmation_required', () => {
-		expect(
-			googleLinkConfirmationMessage(
-				httpError(409, {
-					error: 'email_link_confirmation_required',
-					message: 'Check your inbox',
-				}),
-			),
-		).toBe('Check your inbox');
-	});
-
-	it('uses a fallback text when the message is missing', () => {
-		expect(
-			googleLinkConfirmationMessage(
-				httpError(409, { error: 'email_link_confirmation_required' }),
-			),
-		).toMatch(/confirm/i);
+	it('returns the signed-in guidance for 409 email_link_confirmation_required', () => {
+		const message = googleLinkConfirmationMessage(
+			httpError(409, {
+				error: 'email_link_confirmation_required',
+				message: 'Check your inbox',
+			}),
+		);
+		expect(message).toContain('We emailed you a confirmation link.');
+		expect(message).toContain('while signed in');
+		expect(message).toContain('sign in with Google again');
 	});
 
 	it('ignores other errors', () => {
@@ -48,6 +44,32 @@ describe('googleLinkConfirmationMessage', () => {
 		).toBeNull();
 		expect(googleLinkConfirmationMessage(httpError(500, {}))).toBeNull();
 		expect(googleLinkConfirmationMessage(new Error('x'))).toBeNull();
+	});
+});
+
+describe('withoutTokenQuery', () => {
+	it('drops only the token', () => {
+		expect(withoutTokenQuery({ token: 'a', x: '1' })).toEqual({ x: '1' });
+		expect(withoutTokenQuery({ token: 'a' })).toEqual({});
+	});
+});
+
+describe('return path storage', () => {
+	const store: Record<string, string> = {};
+	beforeEach(() => {
+		for (const k of Object.keys(store)) delete store[k];
+		(global as any).sessionStorage = {
+			getItem: (k: string) => (k in store ? store[k] : null),
+			setItem: (k: string, v: string) => (store[k] = v),
+			removeItem: (k: string) => delete store[k],
+		};
+	});
+	afterEach(() => delete (global as any).sessionStorage);
+
+	it('keeps the token in the saved path and clears it after use', () => {
+		saveReturnPath('/auth/link-confirm?token=abc');
+		expect(takeReturnPath()).toBe('/auth/link-confirm?token=abc');
+		expect(takeReturnPath()).toBeNull();
 	});
 });
 

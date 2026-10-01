@@ -93,12 +93,17 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { createVerifyEmail } from '@/composable/useEmailVerification';
 	import store from '@/store';
-	import { retryAfterLabel, saveReturnPath } from '@/utils/emailVerification';
+	import {
+		retryAfterLabel,
+		saveReturnPath,
+		withoutTokenQuery,
+	} from '@/utils/emailVerification';
 	import { computed, onMounted } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	const route = useRoute();
 	const router = useRouter();
+	const token = String(route.query.token ?? '');
 
 	const machine = createVerifyEmail({
 		verify: verifyEmail,
@@ -120,7 +125,7 @@
 	const title = computed(() => titles[verify.state.value]);
 
 	async function signOut() {
-		saveReturnPath(route.fullPath);
+		saveReturnPath(`${route.path}?token=${encodeURIComponent(token)}`);
 		try {
 			await logout();
 		} catch {}
@@ -130,6 +135,7 @@
 
 	onMounted(() => {
 		setDocumentTitle('Confirm email');
-		verify.run(String(route.query.token ?? ''));
+		router.replace({ query: withoutTokenQuery(route.query) });
+		verify.run(token);
 	});
 </script>

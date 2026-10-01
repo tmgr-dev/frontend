@@ -136,7 +136,14 @@ describe('resend controller', () => {
 });
 
 describe('social link confirm', () => {
-	it('links on success and exposes the provider', async () => {
+	it('waits for explicit confirmation before calling the API', () => {
+		const confirm = jest.fn();
+		const m = createLinkConfirm({ confirm });
+		expect(m.state.value).toBe('ready');
+		expect(confirm).not.toHaveBeenCalled();
+	});
+
+	it('links on confirm and exposes the provider', async () => {
 		const confirm = jest
 			.fn()
 			.mockResolvedValue({ status: 'linked', provider: 'google' });
@@ -150,11 +157,12 @@ describe('social link confirm', () => {
 	});
 
 	it.each([
-		['expired_token', 'expired'],
-		['invalid_token', 'invalid'],
-	])('maps %s to %s', async (error, expected) => {
+		[422, 'expired_token', 'expired'],
+		[422, 'invalid_token', 'invalid'],
+		[403, 'wrong_account', 'wrong_account'],
+	])('maps %s %s to %s', async (status, error, expected) => {
 		const m = createLinkConfirm({
-			confirm: jest.fn().mockRejectedValue(httpError(422, { error })),
+			confirm: jest.fn().mockRejectedValue(httpError(status, { error })),
 		});
 		await m.run('t');
 		expect(m.state.value).toBe(expected);

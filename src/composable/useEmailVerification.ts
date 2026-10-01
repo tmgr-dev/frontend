@@ -19,10 +19,12 @@ export type VerifyState =
 	| 'error';
 
 export type LinkConfirmState =
+	| 'ready'
 	| 'confirming'
 	| 'linked'
 	| 'expired'
 	| 'invalid'
+	| 'wrong_account'
 	| 'error';
 
 export const createResendController = (deps: {
@@ -100,7 +102,7 @@ export const createVerifyEmail = (deps: {
 export const createLinkConfirm = (deps: {
 	confirm: (token: string) => Promise<{ status: string; provider?: string }>;
 }) => {
-	const state = ref<LinkConfirmState>('confirming');
+	const state = ref<LinkConfirmState>('ready');
 	const provider = ref('');
 
 	const run = async (token: string) => {
@@ -115,7 +117,9 @@ export const createLinkConfirm = (deps: {
 			state.value = 'linked';
 		} catch (error) {
 			const { status, code } = httpErrorInfo(error);
-			if (status === 422 && code === 'expired_token') {
+			if (status === 403 && code === 'wrong_account') {
+				state.value = 'wrong_account';
+			} else if (status === 422 && code === 'expired_token') {
 				state.value = 'expired';
 			} else if (status === 422 && code === 'invalid_token') {
 				state.value = 'invalid';

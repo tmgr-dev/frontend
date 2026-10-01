@@ -143,8 +143,7 @@ const routes = [
 		component: () => import('@/pages/auth/LinkConfirm.vue'),
 		name: 'LinkConfirm',
 		meta: {
-			allowedGuests: true,
-			notOnlyForLoggedUsers: true,
+			returnAfterLogin: true,
 			transitionName: 'fade-fast',
 		},
 	},
