@@ -363,6 +363,8 @@
 	.page-editor .milkdown {
 		--crepe-color-background: transparent;
 		--crepe-color-selected: var(--selection-bg);
+		--crepe-font-title: inherit;
+		--crepe-font-default: inherit;
 		background: transparent;
 	}
 

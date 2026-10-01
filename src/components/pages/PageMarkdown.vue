@@ -150,10 +150,10 @@
 		max-width: 100%;
 		border-radius: 0.375rem;
 	}
-	:global(.dark) .page-markdown :deep(a:not(.tmgr-chip)) {
+	.dark .page-markdown :deep(a:not(.tmgr-chip)) {
 		color: rgb(147 197 253);
 	}
-	:global(.dark) .page-markdown :deep(a.tmgr-chip) {
+	.dark .page-markdown :deep(a.tmgr-chip) {
 		background: rgb(96 165 250 / 0.18);
 		color: rgb(147 197 253);
 	}
