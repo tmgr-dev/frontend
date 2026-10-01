@@ -1,4 +1,4 @@
-import { isDetachedWindowLabel } from '../taskWindow';
+import { isDetachedWindowLabel, isInSecondaryWindow } from '../taskWindow';
 import {
 	focusPageWindow,
 	isInPageWindow,
@@ -41,6 +41,23 @@ describe('window labels', () => {
 		(globalThis as any).__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'page-a-1' } } };
 		expect(isInPageWindow()).toBe(true);
 		delete (globalThis as any).__TAURI_INTERNALS__;
+	});
+});
+
+describe('isInSecondaryWindow', () => {
+	const inWindow = (label: string | null) => {
+		(globalThis as any).__TAURI_INTERNALS__ = { metadata: { currentWindow: { label } } };
+		const result = isInSecondaryWindow();
+		delete (globalThis as any).__TAURI_INTERNALS__;
+		return result;
+	};
+
+	it('is true for task, page and quick add windows, false for main', () => {
+		expect(inWindow('task-a-1')).toBe(true);
+		expect(inWindow('page-a-1')).toBe(true);
+		expect(inWindow('quick-add')).toBe(true);
+		expect(inWindow('main')).toBe(false);
+		expect(isInSecondaryWindow()).toBe(false);
 	});
 });
 

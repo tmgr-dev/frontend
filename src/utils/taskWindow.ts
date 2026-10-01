@@ -29,6 +29,11 @@ export const isInDetachedWindow = (): boolean =>
 			null,
 	);
 
+export const isInSecondaryWindow = (): boolean =>
+	isInDetachedWindow() ||
+	(globalThis as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ===
+		'quick-add';
+
 export const isInTaskWindow = (): boolean =>
 	isTaskWindowLabel(
 		(globalThis as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ??

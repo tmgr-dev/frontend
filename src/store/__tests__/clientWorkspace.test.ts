@@ -56,7 +56,7 @@ function fixture(
 			'@/utils/requestCache': { requestCache: cache },
 			'@/utils/workspaceContext': workspaceContext,
 			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
-			'@/utils/taskWindow': { isInTaskWindow: () => false },
+			'@/utils/taskWindow': { isInSecondaryWindow: () => false },
 			...extraDeps,
 		},
 		storages,
@@ -232,12 +232,12 @@ describe('logout: clears the tab and the remembered workspace', () => {
 	});
 });
 
-describe('updateUserWorkspaceSetting in a task window', () => {
+describe('updateUserWorkspaceSetting in a task, page or quick add window', () => {
 	test('keeps the switch to this window and does not remember it for the others', () => {
 		const sessionStorage = memoryStorage();
 		const localStorage = memoryStorage();
 		const { config } = fixture(
-			{ '@/utils/taskWindow': { isInTaskWindow: () => true } },
+			{ '@/utils/taskWindow': { isInSecondaryWindow: () => true } },
 			{ sessionStorage, localStorage },
 		);
 		const { state, mutations } = config;
