@@ -123,6 +123,7 @@
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
+	import { takeReturnPath } from '@/utils/emailVerification';
 	import { createOAuthBinding } from '@/utils/oauthBinding';
 	import { consumeSessionExpired } from '@/utils/sessionExpiry';
 	import { AxiosError } from 'axios';
@@ -153,6 +154,7 @@
 			isLoading.value = true;
 			await loginAction(form.value);
 			await getUser();
+			const returnPath = takeReturnPath();
 
 			if (localStorage.getItem('workspace.invitation')) {
 				const token = localStorage.getItem('workspace.invitation');
@@ -162,6 +164,8 @@
 						token,
 					},
 				});
+			} else if (returnPath) {
+				await router.push(returnPath);
 			} else {
 				if (store.state.user) {
 					await Promise.all([

@@ -51,6 +51,7 @@
 	import { Switch } from '@/components/ui/switch';
 	import { Textarea } from '@/components/ui/textarea';
 	import { useToast } from '@/components/ui/toast';
+	import { errorMessageFrom } from '@/utils/emailVerification';
 	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
 	import { dialogState } from '@/composable/dialog.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -405,10 +406,22 @@
 		}
 
 		const workspaceId = activeWorkspace.value.value;
-		await createWorkspaceInvitationAction(
-			typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId,
-			{ emails },
-		);
+		try {
+			await createWorkspaceInvitationAction(
+				typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId,
+				{ emails },
+			);
+		} catch (error) {
+			toaster.toast({
+				title: 'Error',
+				description: errorMessageFrom(
+					error,
+					'Failed to send invitations. Please try again.',
+				),
+				variant: 'destructive',
+			});
+			return;
+		}
 		isOpenInvitation.value = false;
 		invitationEmails.value = '';
 	}
