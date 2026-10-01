@@ -1,5 +1,5 @@
 import { desktopWindowLabel } from '@/utils/desktop';
-import { isTaskWindowLabel } from '@/utils/taskWindow';
+import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { migrate } from './schema';
 import type { LocalActor, LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
 
@@ -51,7 +51,7 @@ export const hasActiveLocalWorkspace = (): boolean => activeCode !== null;
 
 export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 	activeCode = workspace?.code ?? null;
-	if (isTaskWindowLabel(desktopWindowLabel())) return;
+	if (isDetachedWindowLabel(desktopWindowLabel())) return;
 	try {
 		if (activeCode) localStorage.setItem(ACTIVE_KEY, activeCode);
 		else localStorage.removeItem(ACTIVE_KEY);

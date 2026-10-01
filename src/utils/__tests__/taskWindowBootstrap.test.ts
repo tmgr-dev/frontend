@@ -1,4 +1,4 @@
-import { bootstrapTaskWindow } from '../taskWindowBootstrap';
+import { bootstrapTaskWindow, bootstrapWindowWorkspace } from '../taskWindowBootstrap';
 
 const workspaces = [
 	{ id: 56, code: 'tmgrdev' },
@@ -62,5 +62,26 @@ describe('bootstrapTaskWindow', () => {
 		expect(await bootstrapTaskWindow(store, deps, 'nope', 1)).toBeNull();
 		expect(await bootstrapTaskWindow(store, deps, 'tmgrdev', 0)).toBeNull();
 		expect(commits.some(([m]) => m === 'setCurrentTaskIdForModal')).toBe(false);
+	});
+});
+
+describe('bootstrapWindowWorkspace', () => {
+	it('syncs the workspace, then loads user and workspace feature toggles (pages gate)', async () => {
+		const { store, deps, calls, commits } = setup();
+		deps.getWorkspaceFeatureToggles.mockImplementation(async (id: number) => {
+			calls.push(`toggles:${id}`);
+			return { pages: { enabled: true } } as any;
+		});
+		const workspace = await bootstrapWindowWorkspace(store, deps, 'current-project');
+		expect(workspace?.id).toBe(-7);
+		expect(commits).toContainEqual(['featureToggles/setWorkspaceToggles', { pages: { enabled: true } }]);
+		expect(calls.indexOf('sync:-7')).toBeLessThan(calls.indexOf('toggles:-7'));
+		expect(commits.some(([m]) => m === 'setCurrentTaskIdForModal')).toBe(false);
+	});
+
+	it('returns null for an unknown workspace without touching toggles', async () => {
+		const { store, deps } = setup();
+		expect(await bootstrapWindowWorkspace(store, deps, 'nope')).toBeNull();
+		expect(deps.getWorkspaceFeatureToggles).not.toHaveBeenCalled();
 	});
 });

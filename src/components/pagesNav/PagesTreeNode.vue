@@ -57,6 +57,10 @@
 							</DropdownMenuItem>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
+					<DropdownMenuItem v-if="isDesktop" @select="openInWindow">
+						<ExternalLink class="mr-2 h-4 w-4" />
+						<span>Открыть в окне</span>
+					</DropdownMenuItem>
 					<DropdownMenuItem @select="ctx.requestRename(node)">
 						<Pencil class="mr-2 h-4 w-4" />
 						<span>Переименовать</span>
@@ -108,6 +112,8 @@
 		DropdownMenuSubTrigger,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import { isDesktopApp } from '@/utils/desktop';
+	import { openPageWindow, pageWindowTarget } from '@/utils/pageWindow';
 	import {
 		PAGE_CREATE_OPTIONS,
 		pageUrl,
@@ -115,6 +121,7 @@
 	} from '@/utils/pagesTree';
 	import {
 		ChevronRight,
+		ExternalLink,
 		FilePlus,
 		MoreHorizontal,
 		Pencil,
@@ -140,6 +147,7 @@
 			DropdownMenuSubTrigger,
 			DropdownMenuTrigger,
 			Draggable,
+			ExternalLink,
 			FilePlus,
 			MoreHorizontal,
 			Pencil,
@@ -157,8 +165,15 @@
 			const isActive = computed(() => route.params.slug === props.node.slug);
 			const url = computed(() => pageUrl(ctx.workspaceCode.value, props.node.slug));
 
+			const openInWindow = () => {
+				const target = pageWindowTarget(props.node, ctx.workspaceCode.value);
+				if (target) void openPageWindow(target).catch(() => undefined);
+			};
+
 			return {
 				ctx,
+				isDesktop: isDesktopApp(),
+				openInWindow,
 				isExpanded,
 				isActive,
 				url,

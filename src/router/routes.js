@@ -576,6 +576,12 @@ const routes = [
 		name: 'TaskWindow',
 	},
 	{
+		path: '/:workspace_code/page-window/:slug',
+		component: () => import('@/pages/PageWindow.vue'),
+		meta: { navbarHidden: true },
+		name: 'PageWindow',
+	},
+	{
 		path: '/:workspace_code/pages',
 		component: () => import('@/pages/PagesLayout.vue'),
 		meta: {
