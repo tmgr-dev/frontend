@@ -771,6 +771,7 @@
 	import {
 		createTask,
 		getSortedTasksByStatus,
+		refreshAssignedTask,
 		updateStatusOfTasks,
 		updateTaskOrders,
 		updateTaskStatus,
@@ -1634,6 +1635,12 @@
 									} else {
 										this.updateSingleTaskInBoard(task);
 									}
+								},
+								onTaskAssignmentChanged: ({ task_id }) => {
+									const onBoard = this.columns.some((column) =>
+										column.tasks.some((t) => t.id === task_id),
+									);
+									if (onBoard) void refreshAssignedTask(task_id).catch(() => {});
 								},
 								onCommentAdded: (comment) => {
 									for (const column of this.columns) {

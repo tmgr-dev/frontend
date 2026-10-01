@@ -130,6 +130,12 @@ export const getTask = async (
 	);
 };
 
+export const refreshAssignedTask = async (taskId: number) => {
+	const task = await getTask(taskId, false);
+	store.commit('updateSingleTask', task);
+	return task;
+};
+
 export const createTask = async (task: Task) => {
 	const {
 		data: { data },

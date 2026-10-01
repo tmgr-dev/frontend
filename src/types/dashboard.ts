@@ -733,6 +733,14 @@ export interface DashboardEvent {
 	timestamp: string;
 }
 
+export interface TaskAssignmentEvent {
+	type: 'assigned' | 'unassigned';
+	task_id: number;
+	workspace_id: number;
+	user_ids?: number[];
+	personas?: Array<{ uuid: string; name: string; owner_user_id: number }>;
+}
+
 export interface EventHandlers {
 	onActivityCreated?: (activity: Activity) => void;
 	onDashboardUpdated?: (statistics: Partial<DashboardStatistics>) => void;
@@ -742,6 +750,7 @@ export interface EventHandlers {
 		updatedByUserId?: number,
 		sourceInstanceId?: string,
 	) => void;
+	onTaskAssignmentChanged?: (event: TaskAssignmentEvent) => void;
 	onMemberStatusChanged?: (member: TeamMemberStatus) => void;
 	onNotificationCreated?: (data: any) => void;
 	onCommentAdded?: (comment: any) => void;
