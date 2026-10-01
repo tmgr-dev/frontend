@@ -544,6 +544,9 @@
 		'routines:read': 'read your notes and routines (local workspaces only)',
 		'routines:write': 'add, rename, complete and convert your notes and routines (local workspaces only)',
 		'views:badge': 'show counters on its sidebar items',
+		'pages:read': 'read your pages and their per-page data',
+		'pages:write': 'create pages and change their text',
+		'pages:sections': 'write into its own managed sections of pages',
 	};
 
 	export default defineComponent({

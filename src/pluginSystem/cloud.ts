@@ -64,6 +64,9 @@ const CLOUD_UNSUPPORTED_PERMISSIONS = new Set([
 	'routines:read',
 	'routines:write',
 	'views:badge',
+	'pages:read',
+	'pages:write',
+	'pages:sections',
 ]);
 
 const cloudPermissionsOf = (manifest: PluginManifest) =>
