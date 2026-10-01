@@ -59,21 +59,27 @@
 
 			<span class="flex-1"></span>
 
+			<PersonaAssigneeChips
+				v-if="isFeatureEnabled('task.assignees')"
+				:personas="personaAssignees"
+				:size="22"
+			/>
+
 			<Popover
 				v-if="isFeatureEnabled('task.assignees')"
 				v-model:open="showAssigneePopover"
 			>
 				<PopoverTrigger as-child>
 					<button
-						v-show="task.assignees?.length || isHovered || showAssigneePopover"
+						v-show="visibleAssignees.length || isHovered || showAssigneePopover"
 						class="group/assignee flex items-center justify-center rounded-pill text-ink-subtle transition-colors hover:text-ink"
 						@click.stop
 						:title="
-							task.assignees?.length ? 'Change assignee' : 'Assign someone'
+							visibleAssignees.length ? 'Change assignee' : 'Assign someone'
 						"
 					>
 						<UserPlus
-							v-if="showAssigneePopover || !task.assignees?.length"
+							v-if="showAssigneePopover || !visibleAssignees.length"
 							class="h-[22px] w-[22px] rounded-pill bg-surface-sunken p-1"
 						/>
 						<template v-else>
@@ -82,7 +88,7 @@
 							/>
 							<AssigneeUsers
 								class="group-hover/assignee:hidden"
-								:assignees="task.assignees"
+								:assignees="visibleAssignees"
 								:show-assignee-controls="false"
 								avatarsClass="h-[22px] w-[22px]"
 							/>
@@ -116,6 +122,11 @@
 									{{ member.name }}
 								</CommandItem>
 							</CommandGroup>
+							<AssigneePersonaGroup
+								:personas="assignablePersonas"
+								:selected-ids="personaAssigneeUuids"
+								@toggle="togglePersona"
+							/>
 						</CommandList>
 					</Command>
 				</PopoverContent>
@@ -252,11 +263,18 @@
 		updateTaskPartially,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
+	import {
+		assignPersonaToTask,
+		unassignPersonaFromTask,
+	} from '@/actions/tmgr/tasks';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
+	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import Loader from '@/components/loaders/Loader.vue';
@@ -286,6 +304,12 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
 	import { formatBoardDate } from '@/utils/boardDate';
+	import {
+		assigneeWritePayload,
+		personaAssigneeIds,
+		personaAssigneesOf,
+		visibleHumanAssignees,
+	} from '@/utils/personas';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		ArchiveIcon,
@@ -323,6 +347,8 @@
 			Siren,
 			AssigneeUsers,
 			AssigneeAvatar,
+			AssigneePersonaGroup,
+			PersonaAssigneeChips,
 			CategoryBadge,
 			Badge,
 			AppTooltip,
@@ -380,11 +406,21 @@
 				isHovered: false,
 				showAssigneePopover: false,
 				workspaceMembers: [],
+				assignablePersonas: [],
 				timerStatusConfirm: null,
 				showSettings: false,
 			};
 		},
 		computed: {
+			visibleAssignees() {
+				return visibleHumanAssignees(this.task);
+			},
+			personaAssignees() {
+				return personaAssigneesOf(this.task);
+			},
+			personaAssigneeUuids() {
+				return personaAssigneeIds(this.task);
+			},
 			pluginBadgeClass() {
 				return (color) =>
 					({
@@ -522,6 +558,7 @@
 			showAssigneePopover(newVal) {
 				if (newVal) {
 					this.loadWorkspaceMembers();
+					this.loadAssignablePersonas();
 				}
 			},
 		},
@@ -545,10 +582,45 @@
 					console.error('Failed to load workspace members:', e);
 				}
 			},
+			async loadAssignablePersonas() {
+				const workspaceId =
+					this.currentWorkspaceId ||
+					this.$store.state.user?.settings?.find(
+						(s) => s.key === 'current_workspace',
+					)?.value;
+				if (!workspaceId) return;
+				try {
+					this.assignablePersonas = await getAssignablePersonas(
+						Number(workspaceId),
+					);
+				} catch (e) {
+					console.error('Failed to load assignable personas:', e);
+				}
+			},
+			applyAssignees(data) {
+				if (!data) return;
+				if (data.assignees) this.task.assignees = data.assignees;
+				if (data.persona_assignees)
+					this.task.persona_assignees = data.persona_assignees;
+			},
+			async togglePersona(persona) {
+				try {
+					const data = this.personaAssigneeUuids.includes(persona.id)
+						? await unassignPersonaFromTask(this.task.id, persona.id)
+						: await assignPersonaToTask(this.task.id, persona.id);
+					this.applyAssignees(data);
+				} catch (e) {
+					console.error('Failed to update persona assignees:', e);
+				}
+			},
+			isImpliedOwner(memberId) {
+				return this.personaAssignees.some((p) => p.owner.id === memberId);
+			},
 			isAssigned(memberId) {
 				return this.task.assignees?.some((a) => a.id === memberId) || false;
 			},
 			async toggleAssignee(memberId) {
+				if (this.isImpliedOwner(memberId)) return;
 				const currentAssigneeIds = this.task.assignees?.map((a) => a.id) || [];
 				let newAssigneeIds;
 
@@ -559,9 +631,14 @@
 				}
 
 				try {
-					await updateTaskPartially(this.task.id, {
-						assignees: newAssigneeIds,
-					});
+					const updated = await updateTaskPartially(
+						this.task.id,
+						assigneeWritePayload(this.task, newAssigneeIds),
+					);
+					if (updated?.assignees) {
+						this.applyAssignees(updated);
+						return;
+					}
 					const member = this.workspaceMembers.find((m) => m.id === memberId);
 					if (currentAssigneeIds.includes(memberId)) {
 						this.task.assignees = this.task.assignees.filter(

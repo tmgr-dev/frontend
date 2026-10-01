@@ -297,7 +297,7 @@ export interface PersonaAssignee {
 }
 
 interface AssigneeBearing {
-	assignees?: Array<{ id: number }> | number[] | null;
+	assignees?: any[] | null;
 	persona_assignees?: PersonaAssignee[] | string[] | null;
 }
 
