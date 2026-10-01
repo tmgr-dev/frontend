@@ -159,7 +159,7 @@ const PAGES_TOOLS: ToolDef[] = [
 	{
 		name: 'workspace_context',
 		description:
-			'Bodies of all context pages of the workspace as one markdown document (each page under a `# title` heading, pinned first). It is the shared memory of the project: how we work, architecture, notes from earlier agent sessions. AGENT RULES: call workspace_context and pages_for_task before working on a task. In a context page you may write ONLY the section «Заметки агентов» (section id `agent-notes`): use pages_append without a heading, or pages_set_section with sectionId agent-notes.',
+			'Bodies of all context pages of the workspace as one markdown document (each page under a `# title` heading, pinned first). It is the shared memory of the project: how we work, architecture, notes from earlier agent sessions. AGENT RULES: call workspace_context and pages_for_task before working on a task. In a context page you may write ONLY the section "Agent notes" (section id `agent-notes`): use pages_append without a heading, or pages_set_section with sectionId agent-notes.',
 		permission: 'pages:read',
 		raw: true,
 		inputSchema: { type: 'object', properties: { workspaceId: workspaceProp } },
@@ -264,7 +264,7 @@ const PAGES_TOOLS: ToolDef[] = [
 	{
 		name: 'pages_update',
 		description:
-			"Replace the title, body or properties of a page. AGENT RULES: pass the `version` from the LATEST pages_get of this page. On a version conflict the tool fails and states the current version: re-read the page with pages_get, merge your change into the new body and retry; never overwrite someone else's edit. summary is one line about what changed. For adding text prefer pages_append: it needs no version. In context pages agents may change only the section «Заметки агентов»",
+			"Replace the title, body or properties of a page. AGENT RULES: pass the `version` from the LATEST pages_get of this page. On a version conflict the tool fails and states the current version: re-read the page with pages_get, merge your change into the new body and retry; never overwrite someone else's edit. summary is one line about what changed. For adding text prefer pages_append: it needs no version. In context pages agents may change only the section 'Agent notes'",
 		permission: 'pages:write',
 		inputSchema: {
 			type: 'object',
@@ -289,7 +289,7 @@ const PAGES_TOOLS: ToolDef[] = [
 	{
 		name: 'pages_append',
 		description:
-			"Append markdown to the end of a page, or under a heading, without a version (safe against concurrent edits). AGENT RULES: a session summary longer than a few lines goes here into the task's page, a meeting page or a context page instead of a new comment. On a context page without a heading it lands in the section «Заметки агентов» (`agent-notes`), the only place agents may write there. summary is one line about what changed",
+			"Append markdown to the end of a page, or under a heading, without a version (safe against concurrent edits). AGENT RULES: a session summary longer than a few lines goes here into the task's page, a meeting page or a context page instead of a new comment. On a context page without a heading it lands in the section 'Agent notes' (`agent-notes`), the only place agents may write there. summary is one line about what changed",
 		permission: 'pages:write',
 		inputSchema: {
 			type: 'object',
@@ -313,7 +313,7 @@ const PAGES_TOOLS: ToolDef[] = [
 	{
 		name: 'pages_set_section',
 		description:
-			"Replace the content of one managed section of a page (sections are the pages' `sections` list from pages_get). Fails with 403 when the section is not yours: on context pages agents may write only sectionId `agent-notes` («Заметки агентов»). summary is one line about what changed",
+			"Replace the content of one managed section of a page (sections are the pages' `sections` list from pages_get). Fails with 403 when the section is not yours: on context pages agents may write only sectionId `agent-notes` ('Agent notes'). summary is one line about what changed",
 		permission: 'pages:write',
 		inputSchema: {
 			type: 'object',

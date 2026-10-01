@@ -5,7 +5,7 @@ import { refreshManagedSection, taskKeyOf } from './service';
 const PAGE_LINK = /tmgr:\\?\/\\?\/page\\?\/(\d+)/g;
 const KEY_PREFIX = /^\s*[A-Za-z][A-Za-z0-9]*-\d+\s*:\s*/;
 const MAX_PAGES_PER_TASK = 100;
-const PROMISES_SUMMARY = 'Обещания обновлены';
+const PROMISES_SUMMARY = 'Promises updated';
 
 const mentionedIds = (texts: (string | null | undefined)[]): number[] => {
 	const ids = new Set<number>();
@@ -29,7 +29,7 @@ const promiseLine = (row: any): string => {
 		.replace(/</g, '&lt;')
 		.trim();
 	let line = `- [${key}](tmgr://task/${row.id}) — ${title}`;
-	if (row.expired_at) line += ` · до ${String(row.expired_at).slice(0, 10)}`;
+	if (row.expired_at) line += ` · due ${String(row.expired_at).slice(0, 10)}`;
 	if (row.status_name && String(row.status_name).trim())
 		line += ` · ${String(row.status_name).trim()}`;
 	return line;

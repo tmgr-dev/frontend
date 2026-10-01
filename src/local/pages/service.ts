@@ -1221,7 +1221,7 @@ export const restorePageVersion = async (
 	});
 };
 
-/** The system «Обещания» section of a person page, rewritten by the system on behalf of the human who caused it. */
+/** The system "Promises" section of a person page, rewritten by the system on behalf of the human who caused it. */
 export const refreshManagedSection = async (
 	ctx: LocalContext,
 	pageId: number,
@@ -1594,7 +1594,7 @@ export const taskFromSelection = async (
 		 VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?), ?, ?)`,
 		[
 			taskTitleOf(text),
-			`${text.trim()}\n\nИз страницы: [${page.title}](tmgr://page/${page.id})`,
+			`${text.trim()}\n\nFrom page: [${page.title}](tmgr://page/${page.id})`,
 			statusId,
 			categoryId,
 			categoryId,
@@ -1615,7 +1615,7 @@ export const taskFromSelection = async (
 			page.id,
 			text,
 			`[${key}](tmgr://task/${taskId})`,
-			`Создана задача ${key}`,
+			`Created task ${key}`,
 		);
 	} catch (error) {
 		await ctx.db.execute(

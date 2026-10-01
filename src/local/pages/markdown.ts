@@ -1,3 +1,4 @@
+import { headingsMatch } from '../../utils/pages/headingAliases';
 export const MAX_BODY_BYTES = 1_048_576;
 export const MAX_TASK_KEYS = 50;
 export const AGENTS_OWNER = 'agents';
@@ -507,10 +508,10 @@ export const appendUnderHeading = (
 	heading: string,
 	markdown: string,
 ): string | null => {
-	const wanted = normalizeHeading(heading).toLowerCase();
+	const wanted = normalizeHeading(heading);
 	const all = headings(body);
 	const targetIdx = all.findIndex(
-		(h) => h.level === 2 && h.text.toLowerCase() === wanted,
+		(h) => h.level === 2 && headingsMatch(h.text, wanted),
 	);
 	if (targetIdx < 0) return null;
 	const target = all[targetIdx];
@@ -669,43 +670,43 @@ export const CONTEXT = 'context';
 export const PERSON = 'person';
 export const MEETING = 'meeting';
 export const PROMISES_SECTION = 'promises';
-export const CHRONICLE_HEADING = 'Хронология';
-export const CONTEXT_TITLE = 'Контекст воркспейса';
+export const CHRONICLE_HEADING = 'Timeline';
+export const CONTEXT_TITLE = 'Workspace context';
 
-const CONTEXT_BODY = `## Как мы работаем
+const CONTEXT_BODY = `## How we work
 
-## Архитектура
+## Architecture
 
 <!-- tmgr:section id="agent-notes" owner="agents" -->
-## Заметки агентов
+## Agent notes
 <!-- /tmgr:section -->
 `;
 
-const MEETING_BODY = `## Повестка
+const MEETING_BODY = `## Agenda
 
-## Итоги
+## Outcomes
 
-## Решения
+## Decisions
 
-## Действия
+## Action items
 `;
 
-const PERSON_HEAD = `## Кратко
+const PERSON_HEAD = `## Summary
 
 <!-- tmgr:section id="promises" owner="system" -->
-## Обещания
+## Promises
 <!-- /tmgr:section -->
 
-## Хронология
+## Timeline
 
-## Что я знаю
+## What I know
 
 `;
 
 export const isKnownType = (type: string): boolean =>
 	type === PLAIN || type === CONTEXT || type === PERSON || type === MEETING;
 
-/** For a person, `analystPersonaUuid` (when set) owns the «Инсайты» section. */
+/** For a person, `analystPersonaUuid` (when set) owns the "Insights" section. */
 export const templateBody = (
 	type: string,
 	analystPersonaUuid?: string | null,
@@ -715,8 +716,8 @@ export const templateBody = (
 	if (type === PERSON) {
 		const uuid = analystPersonaUuid?.trim();
 		const insights = uuid
-			? `<!-- tmgr:section id="insights" owner="persona:${uuid}" -->\n## Инсайты\n<!-- /tmgr:section -->\n`
-			: '## Инсайты\n';
+			? `<!-- tmgr:section id="insights" owner="persona:${uuid}" -->\n## Insights\n<!-- /tmgr:section -->\n`
+			: '## Insights\n';
 		return PERSON_HEAD + insights;
 	}
 	return '';
