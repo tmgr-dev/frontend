@@ -10,14 +10,19 @@ const upTo = async (db: LocalDb, version: number) => {
 	for (const migration of MIGRATIONS.filter((m) => m.version <= version)) {
 		for (const statement of migration.statements) await db.execute(statement);
 	}
-	await db.execute(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)`, [String(version)]);
+	await db.execute(
+		`INSERT INTO meta (key, value) VALUES ('schema_version', ?)`,
+		[String(version)],
+	);
 };
 
 describeSqlite('pages schema (migration 10)', () => {
 	it('creates the pages tables, the FTS index and its triggers', async () => {
 		const db = memoryDb();
 		expect(await migrate(db, now)).toBe(LATEST_SCHEMA);
-		const names = (await db.select<any>(`SELECT name FROM sqlite_master`)).map((row) => row.name);
+		const names = (await db.select<any>(`SELECT name FROM sqlite_master`)).map(
+			(row) => row.name,
+		);
 		expect(names).toEqual(
 			expect.arrayContaining([
 				'pages',
@@ -43,16 +48,23 @@ describeSqlite('pages schema (migration 10)', () => {
 				[title, title.toLowerCase(), body, now, now],
 			);
 		const hits = async (term: string) =>
-			(await db.select<any>(`SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?`, [`"${term}"*`])).map(
-				(row) => Number(row.rowid),
-			);
+			(
+				await db.select<any>(
+					`SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?`,
+					[`"${term}"*`],
+				)
+			).map((row) => Number(row.rowid));
 		const { lastInsertId } = await insert('Alpha', 'first body with Привет');
 		expect(await hits('prive')).toEqual([]);
 		expect(await hits('привет')).toEqual([lastInsertId as number]);
-		await db.execute(`UPDATE pages SET body = 'second text' WHERE id = ?`, [lastInsertId as number]);
+		await db.execute(`UPDATE pages SET body = 'second text' WHERE id = ?`, [
+			lastInsertId as number,
+		]);
 		expect(await hits('привет')).toEqual([]);
 		expect(await hits('second')).toEqual([lastInsertId as number]);
-		await db.execute(`DELETE FROM pages WHERE id = ?`, [lastInsertId as number]);
+		await db.execute(`DELETE FROM pages WHERE id = ?`, [
+			lastInsertId as number,
+		]);
 		expect(await hits('second')).toEqual([]);
 	});
 
@@ -68,14 +80,20 @@ describeSqlite('pages schema (migration 10)', () => {
 			[now],
 		);
 		expect(await migrate(db, now)).toBe(LATEST_SCHEMA);
-		const rows = await db.select<any>(`SELECT id, task_id, page_id, name, file_path FROM files`);
-		expect(rows).toEqual([{ id: 1, task_id: 1, page_id: null, name: 'a.png', file_path: 'k/a.png' }]);
-
-		await db.execute(`UPDATE meta SET value = '8' WHERE key = 'schema_version'`);
-		expect(await migrate(db, now)).toBe(LATEST_SCHEMA);
-		expect(await db.select<any>(`SELECT task_id, file_path FROM files`)).toEqual([
-			{ task_id: 1, file_path: 'k/a.png' },
+		const rows = await db.select<any>(
+			`SELECT id, task_id, page_id, name, file_path FROM files`,
+		);
+		expect(rows).toEqual([
+			{ id: 1, task_id: 1, page_id: null, name: 'a.png', file_path: 'k/a.png' },
 		]);
+
+		await db.execute(
+			`UPDATE meta SET value = '8' WHERE key = 'schema_version'`,
+		);
+		expect(await migrate(db, now)).toBe(LATEST_SCHEMA);
+		expect(
+			await db.select<any>(`SELECT task_id, file_path FROM files`),
+		).toEqual([{ task_id: 1, file_path: 'k/a.png' }]);
 		const next = await db.execute(
 			`INSERT INTO files (task_id, name, file_path, created_at) VALUES (NULL, 'p', 'k/p.png', ?)`,
 			[now],

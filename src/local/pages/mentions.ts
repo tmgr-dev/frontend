@@ -30,7 +30,8 @@ const promiseLine = (row: any): string => {
 		.trim();
 	let line = `- [${key}](tmgr://task/${row.id}) — ${title}`;
 	if (row.expired_at) line += ` · до ${String(row.expired_at).slice(0, 10)}`;
-	if (row.status_name && String(row.status_name).trim()) line += ` · ${String(row.status_name).trim()}`;
+	if (row.status_name && String(row.status_name).trim())
+		line += ` · ${String(row.status_name).trim()}`;
 	return line;
 };
 
@@ -45,11 +46,20 @@ const rebuildPromises = async (ctx: LocalContext, pageId: number) => {
 		 ORDER BY t.expired_at IS NULL, t.expired_at, t.id`,
 		[pageId],
 	);
-	await refreshManagedSection(ctx, pageId, PROMISES_SECTION, rows.map(promiseLine).join('\n'), PROMISES_SUMMARY);
+	await refreshManagedSection(
+		ctx,
+		pageId,
+		PROMISES_SECTION,
+		rows.map(promiseLine).join('\n'),
+		PROMISES_SUMMARY,
+	);
 };
 
 /** Re-reads a task and its comments, updates task_page_mentions and rebuilds the promises of the person pages it touches. */
-export const syncTaskMentions = async (ctx: LocalContext, taskId: number): Promise<void> => {
+export const syncTaskMentions = async (
+	ctx: LocalContext,
+	taskId: number,
+): Promise<void> => {
 	try {
 		const [task] = await ctx.db.select<any>(
 			`SELECT description, description_json, deleted_at FROM tasks WHERE id = ?`,
@@ -57,7 +67,10 @@ export const syncTaskMentions = async (ctx: LocalContext, taskId: number): Promi
 		);
 		if (!task) return;
 		const stored = (
-			await ctx.db.select<{ page_id: number }>(`SELECT page_id FROM task_page_mentions WHERE task_id = ?`, [taskId])
+			await ctx.db.select<{ page_id: number }>(
+				`SELECT page_id FROM task_page_mentions WHERE task_id = ?`,
+				[taskId],
+			)
 		).map((r) => r.page_id);
 		let wanted: number[] = [];
 		if (task.deleted_at === null) {
@@ -65,11 +78,17 @@ export const syncTaskMentions = async (ctx: LocalContext, taskId: number): Promi
 				`SELECT message FROM comments WHERE task_id = ? AND deleted_at IS NULL`,
 				[taskId],
 			);
-			const candidates = mentionedIds([task.description, task.description_json, ...comments.map((c) => c.message)]);
+			const candidates = mentionedIds([
+				task.description,
+				task.description_json,
+				...comments.map((c) => c.message),
+			]);
 			if (candidates.length) {
 				wanted = (
 					await ctx.db.select<{ id: number }>(
-						`SELECT id FROM pages WHERE deleted_at IS NULL AND id IN (${marks(candidates)})`,
+						`SELECT id FROM pages WHERE deleted_at IS NULL AND id IN (${marks(
+							candidates,
+						)})`,
 						candidates,
 					)
 				).map((r) => r.id);
@@ -77,14 +96,22 @@ export const syncTaskMentions = async (ctx: LocalContext, taskId: number): Promi
 		}
 		if (!stored.length && !wanted.length) return;
 		for (const id of stored.filter((id) => !wanted.includes(id))) {
-			await ctx.db.execute(`DELETE FROM task_page_mentions WHERE task_id = ? AND page_id = ?`, [taskId, id]);
+			await ctx.db.execute(
+				`DELETE FROM task_page_mentions WHERE task_id = ? AND page_id = ?`,
+				[taskId, id],
+			);
 		}
 		for (const id of wanted.filter((id) => !stored.includes(id))) {
-			await ctx.db.execute(`INSERT OR IGNORE INTO task_page_mentions (task_id, page_id) VALUES (?, ?)`, [taskId, id]);
+			await ctx.db.execute(
+				`INSERT OR IGNORE INTO task_page_mentions (task_id, page_id) VALUES (?, ?)`,
+				[taskId, id],
+			);
 		}
 		const affected = [...new Set([...stored, ...wanted])];
 		const people = await ctx.db.select<{ id: number }>(
-			`SELECT id FROM pages WHERE deleted_at IS NULL AND type = 'person' AND id IN (${marks(affected)})`,
+			`SELECT id FROM pages WHERE deleted_at IS NULL AND type = 'person' AND id IN (${marks(
+				affected,
+			)})`,
 			affected,
 		);
 		for (const person of people) await rebuildPromises(ctx, person.id);

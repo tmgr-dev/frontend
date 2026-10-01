@@ -29,16 +29,21 @@ describe('links and task keys', () => {
 		const body =
 			'Fix TM-212 and AB-1.\n\n`TM-300`\n\n```\nTM-301\n```\n\n[TM-302](tmgr://task/9) [see TM-303](https://x.dev/TM-304) https://x.dev/TM-305 <https://x.dev/TM-306> tm-307 XTM-308x';
 		expect(md.taskKeyCandidates(body)).toEqual(['TM-212', 'AB-1']);
-		expect(md.taskKeyCandidates('AB-12 then TM-3, AB-12 again, TM-3.')).toEqual(['AB-12', 'TM-3']);
+		expect(md.taskKeyCandidates('AB-12 then TM-3, AB-12 again, TM-3.')).toEqual(
+			['AB-12', 'TM-3'],
+		);
 	});
 
 	it('autolinks only resolved keys outside protected text, idempotently', () => {
-		const body = 'Fix TM-212 and TM-999.\n\n`TM-212`\n\n[TM-212 done](tmgr://task/1)\n\n```\nTM-212\n```\n';
+		const body =
+			'Fix TM-212 and TM-999.\n\n`TM-212`\n\n[TM-212 done](tmgr://task/1)\n\n```\nTM-212\n```\n';
 		const linked = md.autolinkTaskKeys(body, new Map([['TM-212', 456]]));
 		expect(linked).toBe(
 			'Fix [TM-212](tmgr://task/456) and TM-999.\n\n`TM-212`\n\n[TM-212 done](tmgr://task/1)\n\n```\nTM-212\n```\n',
 		);
-		expect(md.autolinkTaskKeys(linked, new Map([['TM-212', 456]]))).toBe(linked);
+		expect(md.autolinkTaskKeys(linked, new Map([['TM-212', 456]]))).toBe(
+			linked,
+		);
 	});
 });
 
@@ -46,68 +51,138 @@ describe('sections', () => {
 	it('parses owner and heading', () => {
 		const found = md.sections(CONTEXT);
 		expect(found).toHaveLength(1);
-		expect([found[0].id, found[0].owner, found[0].heading]).toEqual(['agent-notes', 'agents', 'Заметки агентов']);
+		expect([found[0].id, found[0].owner, found[0].heading]).toEqual([
+			'agent-notes',
+			'agents',
+			'Заметки агентов',
+		]);
 	});
 
 	it('ignores markers inside fences and unclosed sections', () => {
-		expect(md.sections('```\n<!-- tmgr:section id="x" owner="agents" -->\n<!-- /tmgr:section -->\n```\n')).toEqual([]);
-		expect(md.sections('<!-- tmgr:section id="x" owner="agents" -->\n## H\n')).toEqual([]);
+		expect(
+			md.sections(
+				'```\n<!-- tmgr:section id="x" owner="agents" -->\n<!-- /tmgr:section -->\n```\n',
+			),
+		).toEqual([]);
+		expect(
+			md.sections('<!-- tmgr:section id="x" owner="agents" -->\n## H\n'),
+		).toEqual([]);
 	});
 
 	it('flags duplicate, nested, unbalanced and stray markers', () => {
 		expect(md.structureError(CONTEXT)).toBeNull();
-		expect(md.structureError(`${OPEN_S}\nx\n${CLOSE}\n${OPEN_SYS}\ny\n${CLOSE}\n`)).toContain('more than once');
-		expect(md.structureError(`${OPEN_S}\n${OPEN_SYS}\n${CLOSE}`)).not.toBeNull();
+		expect(
+			md.structureError(`${OPEN_S}\nx\n${CLOSE}\n${OPEN_SYS}\ny\n${CLOSE}\n`),
+		).toContain('more than once');
+		expect(
+			md.structureError(`${OPEN_S}\n${OPEN_SYS}\n${CLOSE}`),
+		).not.toBeNull();
 		expect(md.structureError(`${OPEN_S}\nx\n`)).not.toBeNull();
 		expect(md.structureError(`x\n${CLOSE}\n`)).not.toBeNull();
 		expect(md.structureError(`\`\`\`\n${OPEN_S}\n\`\`\`\n`)).toBeNull();
 	});
 
 	it('detects section markers in agent text', () => {
-		expect(md.containsSectionMarker('plain <!-- a comment --> text')).toBe(false);
+		expect(md.containsSectionMarker('plain <!-- a comment --> text')).toBe(
+			false,
+		);
 		expect(md.containsSectionMarker(`x ${CLOSE}`)).toBe(true);
-		expect(md.containsSectionMarker('<!--tmgr:section id="a" owner="agents"-->')).toBe(true);
+		expect(
+			md.containsSectionMarker('<!--tmgr:section id="a" owner="agents"-->'),
+		).toBe(true);
 	});
 });
 
 describe('append', () => {
 	it('adds a paragraph, handles empty bodies and keeps lists together', () => {
-		expect(md.appendToEnd('# Title\n\ntext\n', 'new line')).toBe('# Title\n\ntext\n\nnew line\n');
+		expect(md.appendToEnd('# Title\n\ntext\n', 'new line')).toBe(
+			'# Title\n\ntext\n\nnew line\n',
+		);
 		expect(md.appendToEnd('', 'hello')).toBe('hello\n');
-		expect(md.appendToEnd('## Log\n\n- one\n', '- two')).toBe('## Log\n\n- one\n- two\n');
+		expect(md.appendToEnd('## Log\n\n- one\n', '- two')).toBe(
+			'## Log\n\n- one\n- two\n',
+		);
 	});
 
 	it('appends under a heading before the next same-level heading', () => {
-		expect(md.appendUnderHeading('## Хронология\n\n- one\n\n## Что я знаю\n\nfacts\n', 'хронология', '- two')).toBe(
-			'## Хронология\n\n- one\n- two\n\n## Что я знаю\n\nfacts\n',
+		expect(
+			md.appendUnderHeading(
+				'## Хронология\n\n- one\n\n## Что я знаю\n\nfacts\n',
+				'хронология',
+				'- two',
+			),
+		).toBe('## Хронология\n\n- one\n- two\n\n## Что я знаю\n\nfacts\n');
+		expect(
+			md.appendUnderHeading(
+				'## A\n\ntext\n\n### Sub\n\nsub text\n\n## B\n',
+				'A',
+				'tail',
+			),
+		).toBe('## A\n\ntext\n\n### Sub\n\nsub text\n\ntail\n\n## B\n');
+		expect(md.appendUnderHeading('## Notes\n', '## NOTES ', 'x')).toBe(
+			'## Notes\n\nx\n',
 		);
-		expect(md.appendUnderHeading('## A\n\ntext\n\n### Sub\n\nsub text\n\n## B\n', 'A', 'tail')).toBe(
-			'## A\n\ntext\n\n### Sub\n\nsub text\n\ntail\n\n## B\n',
-		);
-		expect(md.appendUnderHeading('## Notes\n', '## NOTES ', 'x')).toBe('## Notes\n\nx\n');
 	});
 
 	it('matches level two only and skips fenced headings', () => {
-		expect(md.appendUnderHeading('# Notes\n\n### Notes\n', 'Notes', 'x')).toBeNull();
-		expect(md.appendUnderHeading('```\n## Notes\n```\n', 'Notes', 'x')).toBeNull();
+		expect(
+			md.appendUnderHeading('# Notes\n\n### Notes\n', 'Notes', 'x'),
+		).toBeNull();
+		expect(
+			md.appendUnderHeading('```\n## Notes\n```\n', 'Notes', 'x'),
+		).toBeNull();
 	});
 
 	it('stops at section markers', () => {
-		expect(md.appendUnderHeading(CONTEXT, 'Заметки агентов', '- item')!.endsWith('## Заметки агентов\n\n- item\n<!-- /tmgr:section -->\n')).toBe(true);
+		expect(
+			md
+				.appendUnderHeading(CONTEXT, 'Заметки агентов', '- item')!
+				.endsWith('## Заметки агентов\n\n- item\n<!-- /tmgr:section -->\n'),
+		).toBe(true);
 		const body = `## A\n\ntext\n\n${OPEN_SYS}\n## S\n${CLOSE}\n`;
-		expect(md.appendUnderHeading(body, 'A', 'more')!.startsWith('## A\n\ntext\n\nmore\n\n<!-- tmgr:section id="s"')).toBe(true);
+		expect(
+			md
+				.appendUnderHeading(body, 'A', 'more')!
+				.startsWith('## A\n\ntext\n\nmore\n\n<!-- tmgr:section id="s"'),
+		).toBe(true);
 	});
 
 	it('creates a heading at the end and appends inside a section', () => {
-		expect(md.appendNewHeading('# T\n\ntext\n', 'Хронология', '- one')).toBe('# T\n\ntext\n\n## Хронология\n\n- one\n');
-		expect(md.appendInSection(CONTEXT, section(CONTEXT, 'agent-notes'), 'note').endsWith('## Заметки агентов\n\nnote\n<!-- /tmgr:section -->\n')).toBe(true);
+		expect(md.appendNewHeading('# T\n\ntext\n', 'Хронология', '- one')).toBe(
+			'# T\n\ntext\n\n## Хронология\n\n- one\n',
+		);
+		expect(
+			md
+				.appendInSection(CONTEXT, section(CONTEXT, 'agent-notes'), 'note')
+				.endsWith('## Заметки агентов\n\nnote\n<!-- /tmgr:section -->\n'),
+		).toBe(true);
 	});
 
 	it('replaces a section keeping its heading unless the text brings one', () => {
-		const out = md.replaceSection(CONTEXT, section(CONTEXT, 'agent-notes'), 'fresh insight');
-		expect(out.startsWith('## Как мы работаем\n\n## Архитектура\n\n')).toBe(true);
-		expect(out.endsWith('<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Заметки агентов\n\nfresh insight\n<!-- /tmgr:section -->\n')).toBe(true);
-		expect(md.replaceSection(CONTEXT, section(CONTEXT, 'agent-notes'), '## Итоги\n\nx').endsWith('owner="agents" -->\n## Итоги\n\nx\n<!-- /tmgr:section -->\n')).toBe(true);
+		const out = md.replaceSection(
+			CONTEXT,
+			section(CONTEXT, 'agent-notes'),
+			'fresh insight',
+		);
+		expect(out.startsWith('## Как мы работаем\n\n## Архитектура\n\n')).toBe(
+			true,
+		);
+		expect(
+			out.endsWith(
+				'<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Заметки агентов\n\nfresh insight\n<!-- /tmgr:section -->\n',
+			),
+		).toBe(true);
+		expect(
+			md
+				.replaceSection(
+					CONTEXT,
+					section(CONTEXT, 'agent-notes'),
+					'## Итоги\n\nx',
+				)
+				.endsWith(
+					'owner="agents" -->\n## Итоги\n\nx\n<!-- /tmgr:section -->\n',
+				),
+		).toBe(true);
 	});
 
 	it('counts utf-8 bytes against the limit', () => {
@@ -119,19 +194,40 @@ describe('append', () => {
 
 describe('non-human writes', () => {
 	const MANAGED = `intro\n\n<!-- tmgr:section id="insights" owner="persona:p-1" -->\n## Инсайты\n\nold\n${CLOSE}\n\n<!-- tmgr:section id="promises" owner="system" -->\n## Обещания\n${CLOSE}\n`;
-	const violation = (a: string, b: string, ctx: boolean, kind: string, ref: string) =>
-		md.nonHumanViolation(a, b, ctx, kind, ref);
+	const violation = (
+		a: string,
+		b: string,
+		ctx: boolean,
+		kind: string,
+		ref: string,
+	) => md.nonHumanViolation(a, b, ctx, kind, ref);
 
 	it('lets a persona edit the agents section of a context page only', () => {
-		const edited = md.appendInSection(CONTEXT, section(CONTEXT, 'agent-notes'), 'note');
+		const edited = md.appendInSection(
+			CONTEXT,
+			section(CONTEXT, 'agent-notes'),
+			'note',
+		);
 		expect(violation(CONTEXT, edited, true, 'persona', 'u-1')).toBeNull();
-		expect(violation(CONTEXT, CONTEXT.replace('## Архитектура', '## Архитектура\n\nhijack'), true, 'persona', 'u-1')).not.toBeNull();
+		expect(
+			violation(
+				CONTEXT,
+				CONTEXT.replace('## Архитектура', '## Архитектура\n\nhijack'),
+				true,
+				'persona',
+				'u-1',
+			),
+		).not.toBeNull();
 		expect(violation('a\n', 'a\nb\n', false, 'persona', 'u-1')).toBeNull();
 	});
 
 	it('lets a persona edit its own section but not another persona or system', () => {
 		const own = md.replaceSection(MANAGED, section(MANAGED, 'insights'), 'new');
-		const sys = md.replaceSection(MANAGED, section(MANAGED, 'promises'), 'hack');
+		const sys = md.replaceSection(
+			MANAGED,
+			section(MANAGED, 'promises'),
+			'hack',
+		);
 		expect(violation(MANAGED, own, false, 'persona', 'p-1')).toBeNull();
 		expect(violation(MANAGED, own, false, 'persona', 'p-2')).not.toBeNull();
 		expect(violation(MANAGED, sys, false, 'persona', 'p-1')).not.toBeNull();
@@ -139,8 +235,18 @@ describe('non-human writes', () => {
 	});
 
 	it('refuses dropping, reassigning, creating foreign or forging sections', () => {
-		expect(violation(MANAGED, 'intro\n', false, 'persona', 'p-1')).not.toBeNull();
-		expect(violation(MANAGED, MANAGED.replace('persona:p-1', 'agents'), false, 'persona', 'p-1')).not.toBeNull();
+		expect(
+			violation(MANAGED, 'intro\n', false, 'persona', 'p-1'),
+		).not.toBeNull();
+		expect(
+			violation(
+				MANAGED,
+				MANAGED.replace('persona:p-1', 'agents'),
+				false,
+				'persona',
+				'p-1',
+			),
+		).not.toBeNull();
 		const added = `${MANAGED}\n<!-- tmgr:section id="x" owner="system" -->\n## X\n${CLOSE}\n`;
 		expect(violation(MANAGED, added, false, 'persona', 'p-1')).not.toBeNull();
 		const before = `intro\n\n${OPEN_S}\n## S\n\nold\n${CLOSE}\n`;
