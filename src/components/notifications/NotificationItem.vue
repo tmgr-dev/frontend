@@ -72,6 +72,7 @@
 					task_updated: Edit,
 					task_status_changed: CheckCircle,
 					task_assigned: UserPlus,
+					task_persona_assigned: UserPlus,
 					task_deleted: Trash2,
 					task_restored: CheckCircle,
 					task_completed: CheckCircle,

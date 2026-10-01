@@ -17,6 +17,9 @@
 				<SelectItem value="task_deleted">Task Deleted</SelectItem>
 				<SelectItem value="task_status_changed">Status Changed</SelectItem>
 				<SelectItem value="task_assigned">Task Assigned</SelectItem>
+				<SelectItem value="task_persona_assigned">
+					Persona Assigned
+				</SelectItem>
 				<SelectItem value="task_timer_started">Timer Started</SelectItem>
 				<SelectItem value="task_timer_stopped">Timer Stopped</SelectItem>
 				<SelectSeparator />

@@ -15,6 +15,8 @@ export enum ActivityType {
 	TASK_RESTORED = 'task_restored',
 	TASK_STATUS_CHANGED = 'task_status_changed',
 	TASK_ASSIGNED = 'task_assigned',
+	TASK_PERSONA_ASSIGNED = 'task_persona_assigned',
+	TASK_PERSONA_UNASSIGNED = 'task_persona_unassigned',
 	TASK_TIMER_STARTED = 'task_timer_started',
 	TASK_TIMER_STOPPED = 'task_timer_stopped',
 

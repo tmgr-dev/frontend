@@ -55,6 +55,25 @@ describe('eventsForResponse', () => {
 		).toEqual([{ type: 'task.deleted', workspaceId: 5, taskId: 7 }]);
 	});
 
+	it('reports persona assignment writes as a task update', () => {
+		for (const method of ['post', 'delete']) {
+			expect(
+				eventsForResponse(
+					response(method, 'tasks/7/personas/uuid-1', task),
+					current,
+				),
+			).toEqual([
+				{
+					type: 'task.updated',
+					workspaceId: -42,
+					taskId: 7,
+					task,
+					changed: ['persona_assignees'],
+				},
+			]);
+		}
+	});
+
 	it('adds a status change when the status moves', () => {
 		expect(
 			eventsForResponse(
