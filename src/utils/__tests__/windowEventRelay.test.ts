@@ -1,4 +1,5 @@
 import { createDomainEvents, type DomainEvent } from '../domainEvents';
+import { installLocalLiveUpdates } from '@/local/liveUpdates';
 import { applyRelayedEvent, installWindowEventRelay } from '../windowEventRelay';
 
 const event: DomainEvent = { type: 'task.deleted', workspaceId: -2, taskId: 4 };
@@ -107,5 +108,64 @@ describe('applyRelayedEvent', () => {
 		});
 		expect(deliverTimer).toHaveBeenCalledTimes(1);
 		expect(deliverTimer).toHaveBeenCalledWith(timer);
+	});
+});
+
+describe('page events across windows', () => {
+	const pageEvent = (actor?: string): DomainEvent => ({
+		type: 'page.updated',
+		workspaceId: -2,
+		pageId: 4,
+		page: { id: 4, slug: 'doc', version: 3 },
+		...(actor ? { actor } : {}),
+	});
+
+	const windows = () => {
+		const listeners = new Map<string, (message: { payload: any }) => void>();
+		const open = (label: string) => {
+			const bus = createDomainEvents();
+			installWindowEventRelay(bus, {
+				label,
+				emit: async (channel, payload) => {
+					for (const [other, deliver] of listeners)
+						if (other !== label) deliver({ payload });
+				},
+				listen: async (_channel, handler) => {
+					listeners.set(label, handler);
+					return () => {};
+				},
+			});
+			const onPageEvent = jest.fn();
+			const deps = {
+				deliver: jest.fn((workspaceId: number, call: (h: any) => void) => {
+					if (workspaceId === -2) call({ onPageEvent });
+				}),
+				fetchTask: jest.fn(),
+				invalidate: jest.fn(),
+			};
+			installLocalLiveUpdates(deps, bus);
+			return { bus, onPageEvent, deps };
+		};
+		return { main: open('main'), pageWindow: open('page-doc-1') };
+	};
+
+	it('refreshes an open page window when the main window writes a page for a socket persona', async () => {
+		const { main, pageWindow } = windows();
+		await Promise.resolve();
+		main.bus.emit(pageEvent('persona:p-1'));
+		expect(pageWindow.onPageEvent).toHaveBeenCalledTimes(1);
+		expect(pageWindow.onPageEvent).toHaveBeenCalledWith('page.updated', {
+			page: { id: 4, slug: 'doc', version: 3 },
+		});
+		expect(pageWindow.deps.invalidate).toHaveBeenCalledWith(/^pages-/);
+	});
+
+	it('refreshes it for a write from the main window UI too, and the main window for a page window write', async () => {
+		const { main, pageWindow } = windows();
+		await Promise.resolve();
+		main.bus.emit(pageEvent());
+		expect(pageWindow.onPageEvent).toHaveBeenCalledTimes(1);
+		pageWindow.bus.emit(pageEvent());
+		expect(main.onPageEvent).toHaveBeenCalledTimes(1);
 	});
 });

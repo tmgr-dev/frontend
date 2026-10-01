@@ -36,6 +36,7 @@
 		getWorkspaceFeatureToggles,
 	} from '@/actions/tmgr/featureToggles';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import { usePagesRealtime } from '@/composable/usePagesRealtime';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import PagesPreview from '@/components/previews/PagesPreview.vue';
 	import PageView from '@/pages/PageView.vue';
@@ -44,7 +45,7 @@
 	import { bootstrapWindowWorkspace } from '@/utils/taskWindowBootstrap';
 	import { installTaskWindowNavigationGuard } from '@/utils/taskWindowBridge';
 	import { FileText } from 'lucide-vue-next';
-	import { defineComponent, onBeforeUnmount, ref, watch } from 'vue';
+	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	export default defineComponent({
@@ -102,6 +103,12 @@
 				}
 			};
 			void open();
+
+			const workspaceId = computed(() => {
+				const id = Number(store.getters.currentWorkspaceId);
+				return Number.isFinite(id) && id !== 0 ? id : null;
+			});
+			usePagesRealtime(workspaceId, ready, () => undefined);
 
 			return { ready, error, closeWindow, FileText };
 		},
