@@ -704,7 +704,7 @@
 				ownVersions.clear();
 				ownVersions.add(next.version);
 				setDocumentTitle(next.title);
-				following.value = !!next.following;
+				if (next.following !== undefined) following.value = !!next.following;
 				applying = false;
 				void loadVersions();
 				void loadFiles();

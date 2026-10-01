@@ -6,7 +6,7 @@ import { presignUpload, putToStorage } from './files';
 export type PageType = 'plain' | 'context' | 'person' | 'meeting';
 
 export interface PageAuthor {
-	kind: 'user' | 'persona' | 'plugin';
+	kind: 'user' | 'persona' | 'plugin' | 'system';
 	id: string | number | null;
 	name: string | null;
 	owner?: { id: string | number | null; name: string | null };

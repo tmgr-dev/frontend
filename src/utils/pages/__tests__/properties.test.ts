@@ -99,6 +99,17 @@ describe('parsePropertyErrors', () => {
 		).toEqual({ date: 'bad date' });
 	});
 
+	it('normalizes bracket indexes to dotted paths', () => {
+		expect(
+			parsePropertyErrors(
+				response({
+					error: 'invalid_properties',
+					errors: { 'aliases[0].source': 'bad' },
+				}),
+			),
+		).toEqual({ 'aliases.0.source': 'bad' });
+	});
+
 	it('falls back to a generic message and ignores other errors', () => {
 		expect(
 			parsePropertyErrors(response({ error: 'invalid_properties' })),

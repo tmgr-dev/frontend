@@ -17,7 +17,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 	file_deleted: 'File deleted',
 	member_joined: 'Member joined',
 	member_left: 'Member left workspace',
-	page_created: 'Страница создана',
+	page_created: 'Новая страница',
 	page_updated: 'Страница изменена',
 	page_mentioned: 'Вас упомянули на странице',
 };

@@ -7,7 +7,7 @@ import {
 
 describe('notificationTypeLabel', () => {
 	it('labels page types in both spellings', () => {
-		expect(notificationTypeLabel('page.created')).toBe('Страница создана');
+		expect(notificationTypeLabel('page.created')).toBe('Новая страница');
 		expect(notificationTypeLabel('page_updated')).toBe('Страница изменена');
 		expect(notificationTypeLabel('page.mentioned')).toBe(
 			'Вас упомянули на странице',

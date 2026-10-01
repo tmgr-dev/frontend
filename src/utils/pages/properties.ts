@@ -135,6 +135,9 @@ const messageOf = (value: unknown): string => {
 	return '';
 };
 
+const normalizeField = (field: string): string =>
+	field.replace(/^properties\./, '').replace(/\[(\d+)\]/g, '.$1');
+
 export const parsePropertyErrors = (error: any): PropertyErrors | null => {
 	const response = error?.response;
 	if (response?.status !== 422) return null;
@@ -144,16 +147,13 @@ export const parsePropertyErrors = (error: any): PropertyErrors | null => {
 	const result: PropertyErrors = {};
 	if (Array.isArray(source)) {
 		for (const item of source) {
-			const field = String(item?.field ?? item?.path ?? '').replace(
-				/^properties\./,
-				'',
-			);
+			const field = normalizeField(String(item?.field ?? item?.path ?? ''));
 			const message = messageOf(item);
 			if (field) result[field] = message || 'Некорректное значение';
 		}
 	} else if (source && typeof source === 'object') {
 		for (const [field, value] of Object.entries(source)) {
-			result[field.replace(/^properties\./, '')] =
+			result[normalizeField(field)] =
 				messageOf(value) || 'Некорректное значение';
 		}
 	}
