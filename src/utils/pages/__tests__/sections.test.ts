@@ -3,6 +3,8 @@ import {
 	joinSegments,
 	padSegments,
 	parseOwner,
+	replaceSectionInner,
+	sectionInner,
 	splitBody,
 	type Segment,
 } from '../sections';
@@ -168,5 +170,27 @@ describe('parseOwner', () => {
 		['weird', { kind: 'unknown', ref: null }],
 	])('%s', (owner, expected) => {
 		expect(parseOwner(owner)).toEqual(expected);
+	});
+});
+
+describe('replaceSectionInner / sectionInner', () => {
+	it('replaces only the named section content', () => {
+		const next = replaceSectionInner(
+			CONTEXT,
+			'agent-notes',
+			'## Заметки агентов\n- new\n',
+		);
+		expect(next).toBe(
+			CONTEXT.replace('## Заметки агентов\n', '## Заметки агентов\n- new\n'),
+		);
+	});
+
+	it('leaves the body alone for an unknown section', () => {
+		expect(replaceSectionInner(CONTEXT, 'nope', 'x')).toBe(CONTEXT);
+	});
+
+	it('reads the inner text of a section', () => {
+		expect(sectionInner(CONTEXT, 'agent-notes')).toBe('## Заметки агентов\n');
+		expect(sectionInner(CONTEXT, 'nope')).toBeNull();
 	});
 });

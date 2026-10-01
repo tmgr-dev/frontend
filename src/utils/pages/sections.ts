@@ -140,3 +140,24 @@ export const parseOwner = (
 	if (match) return { kind: match[1] as OwnerKind, ref: match[2] };
 	return { kind: 'unknown', ref: null };
 };
+
+export const replaceSectionInner = (
+	body: string,
+	id: string,
+	inner: string,
+): string =>
+	joinSegments(
+		splitBody(body).map((segment) =>
+			segment.kind === 'section' && segment.id === id
+				? { ...segment, inner, heading: headingOf(inner) }
+				: segment,
+		),
+	);
+
+export const sectionInner = (body: string, id: string): string | null => {
+	const found = splitBody(body).find(
+		(segment): segment is SectionSegment =>
+			segment.kind === 'section' && segment.id === id,
+	);
+	return found ? found.inner : null;
+};
