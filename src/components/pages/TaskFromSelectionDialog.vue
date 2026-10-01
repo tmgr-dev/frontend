@@ -2,9 +2,9 @@
 	<Dialog :open="true" @update:open="onOpen">
 		<DialogContent class="max-w-md" data-testid="task-from-selection-dialog">
 			<DialogHeader>
-				<DialogTitle>Сделать задачей</DialogTitle>
+				<DialogTitle>Make a task</DialogTitle>
 				<DialogDescription>
-					Текст на странице будет заменён ссылкой на задачу.
+					The text on the page will be replaced with a link to the task.
 				</DialogDescription>
 			</DialogHeader>
 
@@ -16,7 +16,7 @@
 
 			<div class="space-y-3 text-sm">
 				<label class="block">
-					<span class="mb-1 block text-xs text-ink-subtle">Категория</span>
+					<span class="mb-1 block text-xs text-ink-subtle">Category</span>
 					<select
 						v-model="categoryId"
 						class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
@@ -29,14 +29,14 @@
 				</label>
 				<label class="block">
 					<span class="mb-1 block text-xs text-ink-subtle"
-						>Статус (необязательно)</span
+						>Status (optional)</span
 					>
 					<select
 						v-model="statusId"
 						class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
 						data-testid="selection-status"
 					>
-						<option :value="null">По умолчанию</option>
+						<option :value="null">Default</option>
 						<option v-for="s in statuses" :key="s.id" :value="s.id">
 							{{ s.name }}
 						</option>
@@ -53,14 +53,14 @@
 
 			<DialogFooter class="gap-2 sm:gap-2">
 				<Button variant="outline" :disabled="busy" @click="$emit('cancel')">
-					Отмена
+					Cancel
 				</Button>
 				<Button
 					:disabled="busy || categoryId === null"
 					data-testid="selection-submit"
 					@click="submit"
 				>
-					Создать задачу
+					Create task
 				</Button>
 			</DialogFooter>
 		</DialogContent>

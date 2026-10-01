@@ -5,7 +5,7 @@
 		data-testid="task-link-chips"
 	>
 		<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
-			>Ссылки</span
+			>Links</span
 		>
 		<button
 			v-for="ref in refs"
@@ -56,7 +56,7 @@
 
 			const label = (ref: TaskLinkRef) =>
 				directory.titleFor(ref.kind, ref.id) ??
-				(ref.kind === 'task' ? `#${ref.id}` : `Страница ${ref.id}`);
+				(ref.kind === 'task' ? `#${ref.id}` : `Page ${ref.id}`);
 
 			const open = (ref: TaskLinkRef) => {
 				const path = routeForTmgr(

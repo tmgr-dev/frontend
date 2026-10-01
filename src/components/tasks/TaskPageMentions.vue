@@ -3,7 +3,7 @@
 		<h3
 			class="mb-1.5 text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 		>
-			Упоминается на страницах
+			Mentioned on pages
 		</h3>
 		<div class="flex flex-wrap gap-1.5">
 			<router-link

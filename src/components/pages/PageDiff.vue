@@ -24,7 +24,7 @@
 			v-if="!ops.length"
 			class="px-2 py-3 text-center text-gray-500 dark:text-gray-400"
 		>
-			Пусто
+			Empty
 		</div>
 	</div>
 </template>

@@ -41,11 +41,11 @@ export const taskFromSelectionError = (error: any): string => {
 		error?.response?.status === 422 &&
 		data?.error === 'selection_not_found'
 	) {
-		return 'Выделенный текст не найден на странице. Обновите страницу и повторите.';
+		return 'The selected text was not found on the page. Refresh the page and try again.';
 	}
 	if (error?.name === 'PageConflictError') {
-		return 'Страница изменилась. Обновите её и повторите.';
+		return 'The page has changed. Refresh it and try again.';
 	}
-	if (error?.response?.status === 403) return 'Нет доступа к категории.';
-	return 'Не удалось создать задачу.';
+	if (error?.response?.status === 403) return 'No access to the category.';
+	return 'Failed to create task.';
 };

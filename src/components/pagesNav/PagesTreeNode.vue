@@ -12,7 +12,7 @@
 			<button
 				type="button"
 				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink dark:text-gray-400 dark:hover:text-gray-200"
-				:aria-label="isExpanded ? 'Свернуть' : 'Развернуть'"
+				:aria-label="isExpanded ? 'Collapse' : 'Expand'"
 				@click.stop="ctx.toggle(node.id)"
 			>
 				<ChevronRight
@@ -36,7 +36,7 @@
 					<button
 						type="button"
 						class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-subtle opacity-0 hover:bg-black/5 hover:text-ink focus-visible:opacity-100 group-hover/page:opacity-100 data-[state=open]:opacity-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
-						aria-label="Действия со страницей"
+						aria-label="Page actions"
 					>
 						<MoreHorizontal class="h-4 w-4" />
 					</button>
@@ -45,7 +45,7 @@
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger>
 							<FilePlus class="mr-2 h-4 w-4" />
-							<span>Создать вложенную</span>
+							<span>Add subpage</span>
 						</DropdownMenuSubTrigger>
 						<DropdownMenuSubContent>
 							<DropdownMenuItem
@@ -59,15 +59,15 @@
 					</DropdownMenuSub>
 					<DropdownMenuItem v-if="isDesktop" @select="openInWindow">
 						<ExternalLink class="mr-2 h-4 w-4" />
-						<span>Открыть в окне</span>
+						<span>Open in window</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @select="ctx.requestRename(node)">
 						<Pencil class="mr-2 h-4 w-4" />
-						<span>Переименовать</span>
+						<span>Rename</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @select="ctx.togglePin(node)">
 						<component :is="node.pinned ? PinOff : Pin" class="mr-2 h-4 w-4" />
-						<span>{{ node.pinned ? 'Открепить' : 'Закрепить' }}</span>
+						<span>{{ node.pinned ? 'Unpin' : 'Pin' }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
@@ -75,7 +75,7 @@
 						@select="ctx.requestDelete(node)"
 					>
 						<Trash2 class="mr-2 h-4 w-4" />
-						<span>Удалить</span>
+						<span>Delete</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>

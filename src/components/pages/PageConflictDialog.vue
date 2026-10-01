@@ -5,16 +5,16 @@
 			data-testid="page-conflict-dialog"
 		>
 			<DialogHeader>
-				<DialogTitle>Страница изменена в другом месте</DialogTitle>
+				<DialogTitle>Page changed elsewhere</DialogTitle>
 				<DialogDescription>
-					Пока вы редактировали, появилась версия {{ theirs.version }}.
-					Выберите, какую оставить.
+					Version {{ theirs.version }} appeared while you were editing.
+					Choose which to keep.
 				</DialogDescription>
 			</DialogHeader>
 
 			<div v-if="comparing" class="grid gap-3 md:grid-cols-2">
 				<div>
-					<h3 class="mb-1 text-sm font-semibold">Их версия</h3>
+					<h3 class="mb-1 text-sm font-semibold">Their version</h3>
 					<pre
 						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 bg-gray-50 p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
 						data-testid="conflict-theirs"
@@ -22,7 +22,7 @@
 					>
 				</div>
 				<div>
-					<h3 class="mb-1 text-sm font-semibold">Ваш черновик</h3>
+					<h3 class="mb-1 text-sm font-semibold">Your draft</h3>
 					<pre
 						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 bg-gray-50 p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
 						data-testid="conflict-mine"
@@ -30,13 +30,13 @@
 					>
 				</div>
 				<div class="md:col-span-2">
-					<h3 class="mb-1 text-sm font-semibold">Разница</h3>
+					<h3 class="mb-1 text-sm font-semibold">Difference</h3>
 					<PageDiff :before="theirs.body" :after="draftBody" />
 				</div>
 			</div>
 			<p v-else class="text-sm text-gray-600 dark:text-gray-300">
-				Взять их — загрузить версию {{ theirs.version }} и отбросить черновик.
-				Оставить мой — сохранить ваш текст поверх версии {{ theirs.version }}.
+				Take theirs — load version {{ theirs.version }} and discard your draft.
+				Keep mine — save your text over version {{ theirs.version }}.
 			</p>
 
 			<DialogFooter class="gap-2 sm:gap-2">
@@ -45,20 +45,20 @@
 					data-testid="conflict-both"
 					@click="$emit('choose', 'both')"
 				>
-					Показать обе
+					Show both
 				</Button>
 				<Button
 					variant="outline"
 					data-testid="conflict-theirs-btn"
 					@click="$emit('choose', 'theirs')"
 				>
-					Взять их
+					Take theirs
 				</Button>
 				<Button
 					data-testid="conflict-mine-btn"
 					@click="$emit('choose', 'mine')"
 				>
-					Оставить мой
+					Keep mine
 				</Button>
 			</DialogFooter>
 		</DialogContent>

@@ -1,13 +1,13 @@
 <template>
 	<PageContainer>
-		<PageHeader title="Страницы">
+		<PageHeader title="Pages">
 			<template #actions>
 				<router-link
 					:to="`/${workspaceCode}/pages/_/trash`"
 					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
 					<Trash2 class="h-4 w-4" />
-					Корзина
+					Trash
 				</router-link>
 				<button
 					type="button"
@@ -15,14 +15,14 @@
 					@click="create()"
 				>
 					<Plus class="h-4 w-4" />
-					Создать страницу
+					Create page
 				</button>
 			</template>
 		</PageHeader>
 
-		<p v-if="!loaded" class="text-sm text-ink-subtle">Загрузка…</p>
+		<p v-if="!loaded" class="text-sm text-ink-subtle">Loading…</p>
 		<p v-else-if="failed" class="text-sm text-destructive">
-			Не удалось загрузить страницы
+			Failed to load pages
 		</p>
 		<div
 			v-else-if="!pages.length"
@@ -30,22 +30,22 @@
 		>
 			<FileText class="h-12 w-12 text-gray-400 dark:text-gray-500" />
 			<p class="text-xl font-bold text-gray-700 dark:text-gray-300">
-				Страниц пока нет
+				No pages yet
 			</p>
 			<p class="text-sm text-gray-500 dark:text-gray-400">
-				Создайте первую страницу для заметок и документации.
+				Create your first page for notes and documentation.
 			</p>
 			<button
 				type="button"
 				class="mt-2 inline-flex h-10 items-center rounded-md bg-tmgr-blue px-6 text-sm font-semibold text-white hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
 				@click="create()"
 			>
-				Создать страницу
+				Create page
 			</button>
 		</div>
 		<div v-else class="space-y-8">
 			<section v-if="pinned.length">
-				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Закреплённые</h2>
+				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Pinned</h2>
 				<ul class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
 					<li v-for="page in pinned" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />
@@ -53,7 +53,7 @@
 				</ul>
 			</section>
 			<section v-if="roots.length">
-				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Корневые страницы</h2>
+				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Root pages</h2>
 				<ul class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
 					<li v-for="page in roots" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />

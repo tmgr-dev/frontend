@@ -11,7 +11,7 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-author"
 			>
-				<span class="text-xs">Автор</span>
+				<span class="text-xs">Author</span>
 				<AuthorBadge :author="author" :size="18" />
 			</span>
 			<span
@@ -19,7 +19,7 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-updated-by"
 			>
-				<span class="text-xs">Изменил</span>
+				<span class="text-xs">Edited by</span>
 				<AuthorBadge :author="updatedBy" :size="18" />
 				<span class="text-xs">{{ updatedAt }}</span>
 			</span>
@@ -61,8 +61,8 @@
 					<ChipPicker
 						v-else-if="def.kind === 'user'"
 						single
-						add-label="Выбрать"
-						placeholder="Имя участника"
+						add-label="Select"
+						placeholder="Member name"
 						:chips="userChips"
 						:search="searchMembers"
 						@add="set(def.key, Number($event))"
@@ -71,8 +71,8 @@
 					/>
 					<ChipPicker
 						v-else-if="def.kind === 'participants'"
-						add-label="Участник"
-						placeholder="Человек или участник"
+						add-label="Member"
+						placeholder="Person or member"
 						:chips="participantChips"
 						:search="searchParticipants"
 						@add="set(def.key, [...(valueOf(def.key) ?? []), $event])"
@@ -86,8 +86,8 @@
 					/>
 					<ChipPicker
 						v-else-if="def.kind === 'tasks'"
-						add-label="Задача"
-						placeholder="Поиск задачи"
+						add-label="Task"
+						placeholder="Search tasks"
 						:chips="taskChips"
 						:search="searchTasks"
 						@add="set(def.key, [...(valueOf(def.key) ?? []), Number($event)])"
@@ -230,7 +230,7 @@
 				(await props.directory.searchPeople(query)).map((item) => ({
 					key: `tmgr://${item.kind}/${item.id}`,
 					label: item.title,
-					hint: item.kind === 'page' ? 'человек' : 'участник',
+					hint: item.kind === 'page' ? 'person' : 'member',
 				}));
 			const searchMembers = async (query: string) =>
 				(await props.directory.searchMembers(query)).map((item) => ({

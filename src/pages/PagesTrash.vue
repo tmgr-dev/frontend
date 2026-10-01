@@ -1,16 +1,16 @@
 <template>
 	<PageContainer>
 		<PageHeader
-			title="Корзина страниц"
+			title="Pages trash"
 			:back="`/${workspaceCode}/pages`"
-			back-label="Страницы"
+			back-label="Pages"
 		/>
-		<p v-if="!loaded" class="text-sm text-ink-subtle">Загрузка…</p>
+		<p v-if="!loaded" class="text-sm text-ink-subtle">Loading…</p>
 		<p v-else-if="failed" class="text-sm text-destructive">
-			Не удалось загрузить корзину
+			Failed to load trash
 		</p>
 		<p v-else-if="!pages.length" class="text-sm text-ink-subtle">
-			Корзина пуста.
+			Trash is empty.
 		</p>
 		<ul
 			v-else
@@ -25,7 +25,7 @@
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm font-medium text-ink">{{ page.title }}</p>
 					<p class="text-xs text-ink-subtle">
-						Удалена {{ formatDeleted(page.deleted_at) }}
+						Deleted {{ formatDeleted(page.deleted_at) }}
 					</p>
 				</div>
 				<button
@@ -35,7 +35,7 @@
 					@click="restore(page)"
 				>
 					<Undo2 class="h-4 w-4" />
-					Восстановить
+					Restore
 				</button>
 			</li>
 		</ul>
@@ -92,7 +92,7 @@
 					router.push(pageUrl(workspaceCode.value, restored.slug));
 				} catch {
 					toaster.toast({
-						title: 'Не удалось восстановить страницу',
+						title: 'Failed to restore page',
 						variant: 'destructive',
 					});
 				} finally {

@@ -18,29 +18,29 @@ export interface PropertyDef {
 
 export const PROPERTY_DEFS: Partial<Record<PageType, PropertyDef[]>> = {
 	person: [
-		{ key: 'user_id', label: 'Участник', kind: 'user' },
-		{ key: 'network', label: 'Связь', kind: 'enum', options: NETWORK_OPTIONS },
-		{ key: 'company', label: 'Компания', kind: 'string' },
-		{ key: 'role', label: 'Роль', kind: 'string' },
-		{ key: 'aliases', label: 'Псевдонимы', kind: 'aliases' },
+		{ key: 'user_id', label: 'Member', kind: 'user' },
+		{ key: 'network', label: 'Relationship', kind: 'enum', options: NETWORK_OPTIONS },
+		{ key: 'company', label: 'Company', kind: 'string' },
+		{ key: 'role', label: 'Role', kind: 'string' },
+		{ key: 'aliases', label: 'Aliases', kind: 'aliases' },
 		{
 			key: 'last_contact_at',
-			label: 'Последний контакт',
+			label: 'Last contact',
 			kind: 'readonlyDate',
 		},
 	],
 	meeting: [
-		{ key: 'date', label: 'Дата', kind: 'date' },
-		{ key: 'participants', label: 'Участники', kind: 'participants' },
-		{ key: 'related_tasks', label: 'Задачи', kind: 'tasks' },
+		{ key: 'date', label: 'Date', kind: 'date' },
+		{ key: 'participants', label: 'Participants', kind: 'participants' },
+		{ key: 'related_tasks', label: 'Tasks', kind: 'tasks' },
 	],
 };
 
 export const TYPE_LABELS: Record<PageType, string> = {
-	plain: 'Страница',
-	context: 'Контекст',
-	person: 'Человек',
-	meeting: 'Встреча',
+	plain: 'Plain page',
+	context: 'Context',
+	person: 'Person',
+	meeting: 'Meeting',
 };
 
 export const propertyDefsFor = (type: PageType): PropertyDef[] =>

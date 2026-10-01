@@ -6,7 +6,7 @@
 			<h2
 				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 			>
-				Оглавление
+				Contents
 			</h2>
 			<ul class="space-y-1">
 				<li v-for="entry in toc" :key="`${entry.text}-${entry.occurrence}`">
@@ -25,7 +25,7 @@
 			<h2
 				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 			>
-				Обратные ссылки
+				Backlinks
 			</h2>
 			<ul v-if="backlinks.length" class="space-y-1">
 				<li v-for="link in backlinks" :key="link.id">
@@ -37,7 +37,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-gray-400 dark:text-gray-500">Нет</p>
+			<p v-else class="text-gray-400 dark:text-gray-500">None</p>
 		</section>
 
 		<section data-testid="page-recent-versions">
@@ -45,13 +45,13 @@
 				<h2
 					class="text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 				>
-					Версии
+					Versions
 				</h2>
 				<router-link
 					:to="`/${workspaceCode}/pages/${slug}/versions`"
 					class="text-xs text-blue-600 hover:underline dark:text-blue-400"
 				>
-					Все
+					All
 				</router-link>
 			</div>
 			<ul v-if="versions.length" class="space-y-2">
@@ -81,7 +81,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-gray-400 dark:text-gray-500">Нет</p>
+			<p v-else class="text-gray-400 dark:text-gray-500">None</p>
 		</section>
 
 		<section data-testid="page-files-slot">

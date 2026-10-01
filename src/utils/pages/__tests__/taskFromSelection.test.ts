@@ -61,10 +61,10 @@ describe('taskFromSelectionError', () => {
 			taskFromSelectionError({
 				response: { status: 422, data: { error: 'selection_not_found' } },
 			}),
-		).toContain('не найден');
+		).toContain('not found');
 		expect(taskFromSelectionError({ name: 'PageConflictError' })).toContain(
-			'изменилась',
+			'changed',
 		);
-		expect(taskFromSelectionError({})).toBe('Не удалось создать задачу.');
+		expect(taskFromSelectionError({})).toBe('Failed to create task.');
 	});
 });

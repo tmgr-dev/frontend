@@ -113,7 +113,7 @@ describe('parsePropertyErrors', () => {
 	it('falls back to a generic message and ignores other errors', () => {
 		expect(
 			parsePropertyErrors(response({ error: 'invalid_properties' })),
-		).toEqual({ _: 'Некорректные свойства' });
+		).toEqual({ _: 'Invalid properties' });
 		expect(parsePropertyErrors(response({ error: 'x' }))).toBeNull();
 		expect(parsePropertyErrors(response({}, 500))).toBeNull();
 		expect(parsePropertyErrors(null)).toBeNull();

@@ -9,13 +9,13 @@ export interface PageCreateOption {
 	label: string;
 }
 
-export const DEFAULT_PAGE_TITLE = 'Без названия';
+export const DEFAULT_PAGE_TITLE = 'Untitled';
 
 export const PAGE_CREATE_OPTIONS: PageCreateOption[] = [
-	{ type: 'plain', label: 'Обычная страница' },
-	{ type: 'context', label: 'Контекст' },
-	{ type: 'person', label: 'Человек' },
-	{ type: 'meeting', label: 'Встреча' },
+	{ type: 'plain', label: 'Plain page' },
+	{ type: 'context', label: 'Context' },
+	{ type: 'person', label: 'Person' },
+	{ type: 'meeting', label: 'Meeting' },
 ];
 
 const compareSiblings = (a: PageSummary, b: PageSummary): number => {

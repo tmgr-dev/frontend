@@ -1,7 +1,7 @@
 <template>
 	<PageContainer width="wide">
 		<div v-if="loading && !page" class="py-16 text-center text-ink-subtle">
-			Загрузка...
+			Loading...
 		</div>
 		<div
 			v-else-if="loadError"
@@ -12,17 +12,17 @@
 			<p class="text-ink">
 				{{
 					loadError === 'not_found'
-						? 'Страница не найдена'
+						? 'Page not found'
 						: loadError === 'forbidden'
-						? 'Страницы отключены или нет доступа'
-						: 'Не удалось загрузить страницу'
+						? 'Pages are disabled or you have no access'
+						: 'Failed to load page'
 				}}
 			</p>
 			<button
 				class="mt-2 text-blue-600 underline dark:text-blue-400"
 				@click="load"
 			>
-				Повторить
+				Retry
 			</button>
 		</div>
 
@@ -33,13 +33,13 @@
 				role="status"
 				data-testid="page-update-banner"
 			>
-				<span>Страница изменена, версия {{ updateBanner }}</span>
+				<span>Page changed, version {{ updateBanner }}</span>
 				<button
 					type="button"
 					class="rounded-md bg-amber-600 px-3 py-1 text-white hover:bg-amber-700"
 					@click="refresh"
 				>
-					Обновить
+					Refresh
 				</button>
 			</div>
 
@@ -48,13 +48,13 @@
 				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
 				role="alert"
 			>
-				<span>Не сохранено: конфликт версий</span>
+				<span>Not saved: version conflict</span>
 				<button
 					type="button"
 					class="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700"
 					@click="conflictOpen = true"
 				>
-					Разрешить
+					Resolve
 				</button>
 			</div>
 
@@ -64,7 +64,7 @@
 						v-model="form.title"
 						type="text"
 						class="w-full min-w-0 border-0 bg-transparent p-0 text-xl font-semibold text-ink placeholder-gray-400 focus:outline-none focus:ring-0 md:text-2xl"
-						placeholder="Без названия"
+						placeholder="Untitled"
 						maxlength="255"
 						data-testid="page-title-input"
 						@blur="normalizeTitle"
@@ -85,7 +85,7 @@
 						class="text-xs text-red-600 underline dark:text-red-400"
 						@click="retrySave"
 					>
-						Повторить
+						Retry
 					</button>
 					<button
 						type="button"
@@ -96,7 +96,7 @@
 						@click="toggleFollow"
 					>
 						<component :is="following ? BellOff : Bell" class="h-4 w-4" />
-						{{ following ? 'Не следить' : 'Следить' }}
+						{{ following ? 'Unfollow' : 'Follow' }}
 					</button>
 					<button
 						v-if="canOpenInWindow"
@@ -106,14 +106,14 @@
 						@click="openInWindow"
 					>
 						<ExternalLink class="h-4 w-4" />
-						Открыть в окне
+						Open in window
 					</button>
 					<router-link
 						:to="`/${workspaceCode}/pages/${page.slug}/versions`"
 						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
 					>
 						<History class="h-4 w-4" />
-						История
+						History
 					</router-link>
 				</template>
 			</PageHeader>
@@ -144,7 +144,7 @@
 							:model-value="segment.text"
 							:directory="directory"
 							:upload-file="uploadImage"
-							placeholder="Начните писать... @ — ссылка, [[ — страница"
+							placeholder="Start writing... @ for a link, [[ for a page"
 							@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
 							@upload-error="onUploadError"
 							@navigate="onNavigate"
@@ -196,7 +196,7 @@
 					@mousedown.prevent
 					@click="openTaskDialog(selection.text, false)"
 				>
-					Сделать задачей
+					Make a task
 				</button>
 			</Teleport>
 
@@ -398,7 +398,7 @@
 				} catch {
 					following.value = !next;
 					toaster.toast({
-						title: 'Не удалось изменить подписку',
+						title: 'Failed to change subscription',
 						variant: 'destructive',
 					});
 				} finally {
@@ -426,7 +426,7 @@
 			};
 
 			const onUploadError = (file: File) => {
-				uploadError.value = `Не удалось загрузить ${file.name}`;
+				uploadError.value = `Failed to upload ${file.name}`;
 			};
 
 			const uploadFiles = async (list: File[]) => {
@@ -448,7 +448,7 @@
 					window.open(url, '_blank', 'noopener');
 					setTimeout(() => URL.revokeObjectURL(url), 60000);
 				} catch {
-					uploadError.value = `Не удалось открыть ${file.name}`;
+					uploadError.value = `Failed to open ${file.name}`;
 				}
 			};
 
@@ -526,7 +526,7 @@
 				const dialog = taskDialog.value;
 				if (!dialog || !page.value || taskBusy.value) return;
 				if (conflict.value) {
-					taskError.value = 'Сначала разрешите конфликт версий.';
+					taskError.value = 'Resolve the version conflict first.';
 					return;
 				}
 				taskBusy.value = true;
@@ -534,7 +534,7 @@
 				try {
 					await flush();
 					if (!page.value || conflict.value) {
-						taskError.value = 'Сначала разрешите конфликт версий.';
+						taskError.value = 'Resolve the version conflict first.';
 						return;
 					}
 					const text = dialog.source
@@ -560,12 +560,12 @@
 					taskDialog.value = null;
 					const label = taskKeyLabel(result.task);
 					toaster.toast({
-						title: 'Задача создана',
+						title: 'Task created',
 						description: `${label} ${result.task.title}`,
 						action: h(
 							ToastAction,
 							{
-								altText: 'Открыть задачу',
+								altText: 'Open task',
 								onClick: () =>
 									void router.push(
 										`/${workspaceCode.value}/tasks/${result.task.id}`,
@@ -679,11 +679,11 @@
 				});
 
 			const saveStatus = computed(() => {
-				if (saveError.value) return 'Не удалось сохранить';
-				if (conflict.value) return 'Конфликт версий';
-				if (isSaving.value) return 'Сохранение...';
-				if (hasPending.value) return 'Есть несохранённые изменения';
-				return page.value ? `Сохранено, версия ${page.value.version}` : '';
+				if (saveError.value) return 'Failed to save';
+				if (conflict.value) return 'Version conflict';
+				if (isSaving.value) return 'Saving...';
+				if (hasPending.value) return 'Unsaved changes';
+				return page.value ? `Saved, version ${page.value.version}` : '';
 			});
 
 			const retrySave = () => {

@@ -20,7 +20,7 @@
 			<input
 				type="text"
 				:value="alias.native_id"
-				placeholder="Идентификатор"
+				placeholder="Identifier"
 				class="w-36 rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
 				:class="fieldClass(index, 'native_id')"
 				@change="
@@ -30,7 +30,7 @@
 			<input
 				type="text"
 				:value="alias.display"
-				placeholder="Как подписан"
+				placeholder="Display name"
 				class="w-36 rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
 				:class="fieldClass(index, 'display')"
 				@change="
@@ -40,7 +40,7 @@
 			<button
 				type="button"
 				class="rounded p-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-				aria-label="Удалить псевдоним"
+				aria-label="Remove alias"
 				@click="remove(index)"
 			>
 				<X class="h-3.5 w-3.5" />
@@ -53,7 +53,7 @@
 			@click="add"
 		>
 			<Plus class="h-3 w-3" />
-			Добавить псевдоним
+			Add alias
 		</button>
 	</div>
 </template>
