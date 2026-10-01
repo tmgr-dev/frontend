@@ -12,6 +12,7 @@ import {
 	isReadPermission,
 	matchesAuthorFilter,
 	parseSkillFrontMatter,
+	PERSONA_PERMISSIONS,
 	PERSONA_TOKEN_ENV_VAR,
 	resolveAuthor,
 	validatePersonaName,
@@ -34,6 +35,22 @@ describe('DEFAULT_GRANT_PERMISSIONS', () => {
 				'agent_work:write',
 			].sort(),
 		);
+	});
+});
+
+describe('pages permissions', () => {
+	it('are listed, never part of the default grant', () => {
+		expect(PERSONA_PERMISSIONS).toEqual(
+			expect.arrayContaining(['pages:read', 'pages:write']),
+		);
+		expect(DEFAULT_GRANT_PERMISSIONS).not.toContain('pages:read');
+		expect(DEFAULT_GRANT_PERMISSIONS).not.toContain('pages:write');
+	});
+
+	it('pages:read survives a read_only policy, pages:write does not', () => {
+		expect(
+			effectivePermissions(['pages:read', 'pages:write'], 'read_only', false),
+		).toEqual(['pages:read']);
 	});
 });
 

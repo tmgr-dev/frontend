@@ -229,3 +229,23 @@ test('task.assigned and task.unassigned reach onTaskAssignmentChanged with their
 		type: 'unassigned',
 	});
 });
+
+test('page events on the workspace channel reach onPageEvent with their type', () => {
+	const { api, instances } = loadPusher();
+	const pusher = api.usePusher();
+	const onPageEvent = jest.fn();
+	pusher.subscribeToWorkspace(7, { onPageEvent });
+	const channel = instances[0].channels.get('App.Workspace.7');
+	const payload = { page: { id: 3, slug: 'plan', version: 4 } };
+	for (const type of [
+		'page.created',
+		'page.updated',
+		'page.deleted',
+		'page.restored',
+		'page.moved',
+	]) {
+		channel.callbacks[`.${type}`](payload);
+		expect(onPageEvent).toHaveBeenLastCalledWith(type, payload);
+	}
+	expect(onPageEvent).toHaveBeenCalledTimes(5);
+});

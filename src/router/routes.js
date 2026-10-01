@@ -129,6 +129,24 @@ const routes = [
 			transitionName: 'fade-fast',
 		},
 	},
+	{
+		path: '/email/verify',
+		component: () => import('@/pages/auth/VerifyEmail.vue'),
+		name: 'VerifyEmail',
+		meta: {
+			returnAfterLogin: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
+		path: '/auth/link-confirm',
+		component: () => import('@/pages/auth/LinkConfirm.vue'),
+		name: 'LinkConfirm',
+		meta: {
+			returnAfterLogin: true,
+			transitionName: 'fade-fast',
+		},
+	},
 	// Legacy routes - keep for backward compatibility
 	{
 		path: '/',
@@ -574,6 +592,38 @@ const routes = [
 		component: () => import('@/pages/TaskWindow.vue'),
 		meta: { navbarHidden: true },
 		name: 'TaskWindow',
+	},
+	{
+		path: '/:workspace_code/pages',
+		component: () => import('@/pages/PagesLayout.vue'),
+		meta: {
+			title: 'Pages',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+			pages: true,
+		},
+		children: [
+			{
+				path: '',
+				component: () => import('@/pages/PagesIndex.vue'),
+				name: 'WorkspacePages',
+			},
+			{
+				path: '_/trash',
+				component: () => import('@/pages/PagesTrash.vue'),
+				name: 'WorkspacePagesTrash',
+			},
+			{
+				path: ':slug',
+				component: () => import('@/pages/PageView.vue'),
+				name: 'WorkspacePage',
+			},
+			{
+				path: ':slug/versions',
+				component: () => import('@/pages/PageVersions.vue'),
+				name: 'WorkspacePageVersions',
+			},
+		],
 	},
 	{
 		path: '/:workspace_code/:category_code',

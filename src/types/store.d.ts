@@ -42,6 +42,7 @@ export interface UserSettings {
 
 export interface RootState {
 	metaTitle: string;
+	pagesEvent: { type: string; page: any; seq: number } | null;
 	token: string | null;
 	user: User | Record<string, never>;
 	colorScheme: string;

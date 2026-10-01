@@ -743,6 +743,27 @@ export interface TaskAssignmentEvent {
 	personas?: Array<{ uuid: string; name: string; owner_user_id: number }>;
 }
 
+export type PageEventType =
+	| 'page.created'
+	| 'page.updated'
+	| 'page.deleted'
+	| 'page.restored'
+	| 'page.moved';
+
+export interface PageEventPayload {
+	page: {
+		id: number;
+		slug: string;
+		title: string;
+		type: string;
+		parent_id: number | null;
+		version: number;
+		updated_by: any;
+		summary: string | null;
+		linked_task_ids: number[];
+	};
+}
+
 export interface EventHandlers {
 	onActivityCreated?: (activity: Activity) => void;
 	onDashboardUpdated?: (statistics: Partial<DashboardStatistics>) => void;
@@ -764,6 +785,7 @@ export interface EventHandlers {
 	onAgentWorkChanged?: (run: AgentWorkRun) => void;
 	onAgentStep?: (e: AgentStepEvent) => void;
 	onAgentReply?: (e: AgentReplyEvent) => void;
+	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;
 	onError?: (error: ActionError) => void;
 	onReconnect?: () => void;
 }

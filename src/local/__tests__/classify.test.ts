@@ -1,4 +1,6 @@
+import { createLocalApi } from '../api';
 import { classify, crossesWorkspaces } from '../classify';
+import { dispatchLocal } from '../dispatch';
 
 describe('classify', () => {
 	it('sends everything to the server outside a local workspace, except the workspace list and switch', () => {
@@ -118,5 +120,35 @@ describe('crossesWorkspaces', () => {
 		expect(crossesWorkspaces('local', { workspace_id: -7 }, undefined, -42)).toBe(true);
 		expect(crossesWorkspaces('local', { workspace_id: -42 }, undefined, -42)).toBe(false);
 		expect(crossesWorkspaces('local', { title: 'no workspace' }, undefined, -42)).toBe(false);
+	});
+});
+
+describe('classify pages endpoints', () => {
+	it('goes to the server outside a local workspace', () => {
+		expect(classify('GET', 'pages/tree', false)).toBe('server');
+		expect(classify('GET', 'tasks/5/pages', false)).toBe('server');
+	});
+
+	it('never reaches the server from a local workspace', () => {
+		for (const url of ['pages', 'pages/tree', 'pages/search', 'pages/12/versions', 'tasks/5/pages']) {
+			expect(classify('GET', url, true)).toBe('local');
+		}
+		expect(classify('POST', 'pages', true)).toBe('local');
+	});
+});
+
+describe('pages endpoints in the local API', () => {
+	const api = createLocalApi();
+
+	it('have no local route, so the adapter answers 501 instead of reaching the server', async () => {
+		for (const [method, url] of [
+			['GET', 'pages/tree'],
+			['POST', 'pages'],
+			['GET', 'pages/12'],
+			['GET', 'pages/search'],
+			['GET', 'tasks/5/pages'],
+		]) {
+			await expect(dispatchLocal(api, {} as any, method, url)).resolves.toBeNull();
+		}
 	});
 });

@@ -100,6 +100,7 @@
 	import { Textarea } from '@/components/ui/textarea';
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceMembersModal from '@/components/workspace/WorkspaceMembersModal.vue';
+	import { errorMessageFrom } from '@/utils/emailVerification';
 	import { validateEmailString, ValidationResult } from '@/utils/emails';
 	import { computed, ref } from 'vue';
 
@@ -155,7 +156,10 @@
 			console.error('Failed to send invitations:', error);
 			toaster.toast({
 				title: 'Error',
-				description: 'Failed to send invitations. Please try again.',
+				description: errorMessageFrom(
+					error,
+					'Failed to send invitations. Please try again.',
+				),
 				variant: 'destructive',
 			});
 		} finally {

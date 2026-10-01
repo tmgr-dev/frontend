@@ -12,6 +12,8 @@ export const PERSONA_PERMISSIONS = [
 	'relations:write',
 	'agent_work:read',
 	'agent_work:write',
+	'pages:read',
+	'pages:write',
 ] as const;
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
@@ -25,13 +27,16 @@ const READ_PERMISSIONS: ReadonlySet<string> = new Set<PersonaPermission>([
 	'files:attachments',
 	'relations:read',
 	'agent_work:read',
+	'pages:read',
 ]);
 
 export const isReadPermission = (permission: string): boolean =>
 	READ_PERMISSIONS.has(permission);
 
 export const DEFAULT_GRANT_PERMISSIONS: PersonaPermission[] = [
-	...(Array.from(READ_PERMISSIONS) as PersonaPermission[]),
+	...(Array.from(READ_PERMISSIONS) as PersonaPermission[]).filter(
+		(permission) => permission !== 'pages:read',
+	),
 	'comments:write',
 	'agent_work:write',
 ];

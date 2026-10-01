@@ -95,6 +95,7 @@ const state = {
 	updatedTaskData: null,
 	updatedTaskKey: 0,
 	aiPanelOpen: false,
+	pagesEvent: null,
 };
 
 const getters = {
@@ -370,6 +371,9 @@ const mutations = {
 	},
 	rerenderApp(state) {
 		state.appRerenderKey++;
+	},
+	pagesEvent(state, { type, page }) {
+		state.pagesEvent = { type, page, seq: (state.pagesEvent?.seq ?? 0) + 1 };
 	},
 	updateUserWorkspaceSetting(state, { workspaceId }) {
 		state.clientWorkspaceId = workspaceId != null ? Number(workspaceId) : null;

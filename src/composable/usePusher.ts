@@ -7,6 +7,8 @@ import type {
 	DashboardStatistics,
 	EventHandlers,
 	TaskAssignmentEvent,
+	PageEventPayload,
+	PageEventType,
 	TeamMemberStatus,
 	UsePusherReturn,
 } from '@/types/dashboard';
@@ -17,6 +19,14 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import type { Ref } from 'vue';
 import { ref } from 'vue';
+
+const PAGE_EVENT_TYPES: PageEventType[] = [
+	'page.created',
+	'page.updated',
+	'page.deleted',
+	'page.restored',
+	'page.moved',
+];
 
 // Connection state type
 type ConnectionState =
@@ -471,6 +481,15 @@ export function usePusher(): UsePusherReturn {
 				if (sub) {
 					sub.handlers.forEach((h) => h.onNotificationCreated?.(data));
 				}
+			});
+
+			PAGE_EVENT_TYPES.forEach((type) => {
+				channel.listen(`.${type}`, (data: PageEventPayload) => {
+					const sub = subscriptions.get(channelName);
+					if (sub) {
+						sub.handlers.forEach((h) => h.onPageEvent?.(type, data));
+					}
+				});
 			});
 
 			channel.listen('.agent.step', (data: AgentStepEvent) => {

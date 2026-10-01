@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TMGR",
-  "version": "0.9.15",
+  "version": "0.9.16",
   "identifier": "dev.tmgr.desktop",
   "build": {
     "frontendDist": "../dist",
