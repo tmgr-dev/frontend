@@ -42,12 +42,14 @@
 <script lang="ts">
 	import { fileDisplayUrl, releaseFileDisplayUrl } from '@/actions/tmgr/files';
 	import store from '@/store';
+	import { imageFilesOf } from '@/utils/pages/files';
 	import { extractTmgrRefs, parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { Crepe } from '@milkdown/crepe';
 	import '@milkdown/crepe/theme/common/style.css';
 	import darkTheme from '@milkdown/crepe/theme/frame-dark.css?inline';
 	import lightTheme from '@milkdown/crepe/theme/frame.css?inline';
 	import { imageSchema, linkAttr } from '@milkdown/kit/preset/commonmark';
+	import { uploadConfig } from '@milkdown/kit/plugin/upload';
 	import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 	import { $prose, $view } from '@milkdown/kit/utils';
 	import {
@@ -96,8 +98,12 @@
 			modelValue: { type: String, default: '' },
 			directory: { type: Object as PropType<TmgrDirectory>, required: true },
 			placeholder: { type: String, default: '' },
+			uploadFile: {
+				type: Function as PropType<(file: File) => Promise<number>>,
+				default: undefined,
+			},
 		},
-		emits: ['change', 'navigate'],
+		emits: ['change', 'navigate', 'upload-error'],
 		setup(props, { emit }) {
 			const rootRef = ref<HTMLElement | null>(null);
 			const mountRef = ref<HTMLElement | null>(null);
@@ -315,6 +321,27 @@
 				});
 				crepe.editor
 					.config((ctx) => {
+						ctx.update(uploadConfig.key, (prev) => ({
+							...prev,
+							uploader: async (list, schema) => {
+								const upload = props.uploadFile;
+								if (!upload) return [];
+								const nodes = [];
+								for (const file of imageFilesOf(list)) {
+									try {
+										const id = await upload(file);
+										const node = schema.nodes.image.createAndFill({
+											src: `tmgr://file/${id}`,
+											alt: file.name,
+										});
+										if (node) nodes.push(node);
+									} catch {
+										emit('upload-error', file);
+									}
+								}
+								return nodes;
+							},
+						}));
 						ctx.set(linkAttr.key, (mark) => {
 							const href = String(mark.attrs.href ?? '');
 							const parsed = parseTmgrUrl(href);

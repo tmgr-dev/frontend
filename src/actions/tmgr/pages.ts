@@ -1,11 +1,12 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
+import { presignUpload, putToStorage } from './files';
 
 export type PageType = 'plain' | 'context' | 'person' | 'meeting';
 
 export interface PageAuthor {
-	kind: 'user' | 'persona' | 'plugin';
+	kind: 'user' | 'persona' | 'plugin' | 'system';
 	id: string | number | null;
 	name: string | null;
 	owner?: { id: string | number | null; name: string | null };
@@ -30,10 +31,52 @@ export interface PageSection {
 	heading: string | null;
 }
 
+export type PersonaNetwork = 'operational' | 'personal' | 'strategic';
+
+export type AliasSource =
+	| 'telegram'
+	| 'rocketchat'
+	| 'slack'
+	| 'github'
+	| 'email'
+	| 'other';
+
+export interface PersonAlias {
+	source: AliasSource;
+	native_id: string;
+	display: string;
+}
+
+export interface PersonProperties {
+	user_id: number | null;
+	aliases: PersonAlias[];
+	network: PersonaNetwork | null;
+	company: string | null;
+	role: string | null;
+	last_contact_at: string | null;
+}
+
+export interface MeetingProperties {
+	date: string | null;
+	participants: string[];
+	related_tasks: number[];
+}
+
+export interface PageFile {
+	id: number;
+	name: string;
+	original_name?: string | null;
+	mime_type: string | null;
+	size: number | null;
+	created_at: string;
+}
+
 export interface Page extends PageSummary {
 	workspace_id: number;
 	body: string;
 	properties: Record<string, any>;
+	files?: PageFile[];
+	following?: boolean;
 	version: number;
 	author: PageAuthor;
 	updated_by: PageAuthor;
@@ -85,6 +128,18 @@ export interface AppendPagePayload {
 	heading?: string;
 	create_heading?: boolean;
 	summary?: string;
+}
+
+export interface TaskFromSelectionPayload {
+	text: string;
+	category_id: number;
+	status_id?: number | null;
+	version: number;
+}
+
+export interface TaskFromSelectionResult {
+	task: { id: number; title: string; key?: string | null; url?: string };
+	page: Page;
 }
 
 export class PageConflictError extends Error {
@@ -230,3 +285,61 @@ export const searchPages = async (
 
 export const getTaskPages = async (taskId: number): Promise<PageSummary[]> =>
 	unwrap($axios.get(`tasks/${taskId}/pages`));
+
+export const getPageFiles = async (
+	idOrSlug: number | string,
+): Promise<PageFile[]> =>
+	unwrap($axios.get(`pages/${encodeURIComponent(idOrSlug)}/files`));
+
+export const attachPageFile = async (
+	pageId: number,
+	fileId: number,
+): Promise<PageFile> => {
+	const file = await unwrap<PageFile>(
+		$axios.post(`pages/${pageId}/files`, { file_id: fileId }),
+	);
+	invalidatePages();
+	return file;
+};
+
+export const attachPageUpload = async (
+	pageId: number,
+	file: File,
+	target: { key: string; content_type: string },
+): Promise<PageFile> => {
+	const created = await unwrap<PageFile>(
+		$axios.post(`pages/${pageId}/files`, {
+			file_name: file.name,
+			file_path: target.key,
+			mime_type: target.content_type,
+			size_bytes: file.size,
+		}),
+	);
+	invalidatePages();
+	return created;
+};
+
+export const taskFromSelection = async (
+	pageId: number,
+	payload: TaskFromSelectionPayload,
+): Promise<TaskFromSelectionResult> =>
+	mutate($axios.post(`pages/${pageId}/task-from-selection`, payload));
+
+export const followPage = async (pageId: number): Promise<void> => {
+	await $axios.post(`pages/${pageId}/follow`);
+	invalidatePages();
+};
+
+export const unfollowPage = async (pageId: number): Promise<void> => {
+	await $axios.delete(`pages/${pageId}/follow`);
+	invalidatePages();
+};
+
+export const uploadPageFile = async (
+	pageId: number,
+	file: File,
+): Promise<PageFile> => {
+	const target = await presignUpload(file);
+	await putToStorage(target, file);
+	return attachPageUpload(pageId, file, target);
+};

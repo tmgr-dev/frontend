@@ -87,6 +87,17 @@
 					>
 						Повторить
 					</button>
+					<button
+						type="button"
+						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+						:disabled="followBusy"
+						:aria-pressed="following"
+						data-testid="page-follow"
+						@click="toggleFollow"
+					>
+						<component :is="following ? BellOff : Bell" class="h-4 w-4" />
+						{{ following ? 'Не следить' : 'Следить' }}
+					</button>
 					<router-link
 						:to="`/${workspaceCode}/pages/${page.slug}/versions`"
 						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -97,10 +108,23 @@
 				</template>
 			</PageHeader>
 
-			<PageProperties :page="page" @update="onPropertiesUpdate" />
+			<PageProperties
+				:page="page"
+				:properties="form.properties"
+				:directory="directory"
+				:errors="propertyErrors"
+				@update="onPropertiesUpdate"
+				@navigate="onNavigate"
+			/>
 
 			<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-				<div ref="contentRef" class="min-w-0" data-testid="page-content">
+				<div
+					ref="contentRef"
+					class="min-w-0"
+					data-testid="page-content"
+					@mouseup="scheduleSelectionRead"
+					@keyup="scheduleSelectionRead"
+				>
 					<template
 						v-for="(segment, index) in segments"
 						:key="`${editorKey}-${index}`"
@@ -109,8 +133,10 @@
 							v-if="segment.kind === 'free'"
 							:model-value="segment.text"
 							:directory="directory"
+							:upload-file="uploadImage"
 							placeholder="Начните писать... @ — ссылка, [[ — страница"
 							@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
+							@upload-error="onUploadError"
 							@navigate="onNavigate"
 						/>
 						<PageSection
@@ -131,8 +157,47 @@
 					:workspace-code="workspaceCode"
 					:slug="page.slug"
 					@toc="scrollToHeading"
-				/>
+				>
+					<template #files>
+						<PageFilesPanel
+							:files="files"
+							:uploading="uploading"
+							:error="uploadError"
+							@upload="uploadFiles"
+							@open="openFile"
+						/>
+					</template>
+					<template #actions>
+						<PageActionLines
+							:lines="actionLines"
+							@convert="openTaskDialog($event, true)"
+						/>
+					</template>
+				</PageSidePanel>
 			</div>
+
+			<Teleport to="body">
+				<button
+					v-if="selection && !taskDialog"
+					type="button"
+					class="fixed z-50 inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+					:style="{ left: `${selection.x}px`, top: `${selection.y}px` }"
+					data-testid="selection-to-task"
+					@mousedown.prevent
+					@click="openTaskDialog(selection.text, false)"
+				>
+					Сделать задачей
+				</button>
+			</Teleport>
+
+			<TaskFromSelectionDialog
+				v-if="taskDialog"
+				:text="taskDialog.text"
+				:busy="taskBusy"
+				:error="taskError"
+				@submit="submitTask"
+				@cancel="closeTaskDialog"
+			/>
 
 			<PageConflictDialog
 				v-if="conflict && conflictOpen"
@@ -147,23 +212,34 @@
 </template>
 
 <script lang="ts">
+	import { fetchFileObjectUrl } from '@/actions/tmgr/files';
 	import {
+		followPage,
 		getPage,
+		getPageFiles,
 		getPageVersions,
 		type Page,
 		PageConflictError,
+		type PageFile,
 		type PageVersion,
 		setPageSection,
+		taskFromSelection,
+		unfollowPage,
 		updatePage,
+		uploadPageFile,
 	} from '@/actions/tmgr/pages';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import PageActionLines from '@/components/pages/PageActionLines.vue';
 	import PageConflictDialog from '@/components/pages/PageConflictDialog.vue';
 	import PageEditor from '@/components/pages/PageEditor.vue';
+	import PageFilesPanel from '@/components/pages/PageFilesPanel.vue';
 	import PageProperties from '@/components/pages/PageProperties.vue';
 	import PageSection from '@/components/pages/PageSection.vue';
 	import PageSidePanel from '@/components/pages/PageSidePanel.vue';
+	import TaskFromSelectionDialog from '@/components/pages/TaskFromSelectionDialog.vue';
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
+	import { ToastAction, useToast } from '@/components/ui/toast';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
@@ -174,6 +250,11 @@
 		type PageDraft,
 		resolveConflict,
 	} from '@/utils/pages/conflict';
+	import {
+		parsePropertyErrors,
+		type PropertyErrors,
+		validateProperties,
+	} from '@/utils/pages/properties';
 	import {
 		type PageUpdatedEvent,
 		shouldShowUpdateBanner,
@@ -187,13 +268,23 @@
 		type Segment,
 		splitBody,
 	} from '@/utils/pages/sections';
+	import {
+		findSelectionInSource,
+		meetingActionLines,
+	} from '@/utils/pages/selection';
+	import {
+		rememberCategory,
+		taskFromSelectionError,
+		taskKeyLabel,
+	} from '@/utils/pages/taskFromSelection';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import { History } from 'lucide-vue-next';
+	import { Bell, BellOff, History } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
+		h,
 		onBeforeUnmount,
 		onMounted,
 		ref,
@@ -207,13 +298,16 @@
 		name: 'PageView',
 		components: {
 			History,
+			PageActionLines,
 			PageConflictDialog,
 			PageContainer,
 			PageEditor,
+			PageFilesPanel,
 			PageHeader,
 			PageProperties,
 			PageSection,
 			PageSidePanel,
+			TaskFromSelectionDialog,
 		},
 		setup() {
 			const route = useRoute();
@@ -242,7 +336,9 @@
 			const updateBanner = ref<number | null>(null);
 			const saveError = ref(false);
 			const sectionSaving = ref(false);
+			const serverPropertyErrors = ref<PropertyErrors>({});
 			const ownVersions = new Set<number>();
+			let blockedProperties: string | null = null;
 			let applying = false;
 			let chain: Promise<unknown> = Promise.resolve();
 			let loadSeq = 0;
@@ -251,6 +347,219 @@
 				const next = chain.then(task, task);
 				chain = next.catch(() => undefined);
 				return next;
+			};
+
+			const clientPropertyErrors = computed<PropertyErrors>(() =>
+				page.value
+					? validateProperties(page.value.type, form.value.properties)
+					: {},
+			);
+			const propertyErrors = computed<PropertyErrors>(() => ({
+				...serverPropertyErrors.value,
+				...clientPropertyErrors.value,
+			}));
+
+			const toaster = useToast();
+			const following = ref(false);
+			const followBusy = ref(false);
+			const files = ref<PageFile[]>([]);
+			const uploading = ref(false);
+			const uploadError = ref('');
+
+			const toggleFollow = async () => {
+				if (!page.value || followBusy.value) return;
+				const id = page.value.id;
+				const next = !following.value;
+				followBusy.value = true;
+				following.value = next;
+				try {
+					if (next) await followPage(id);
+					else await unfollowPage(id);
+				} catch {
+					following.value = !next;
+					toaster.toast({
+						title: 'Не удалось изменить подписку',
+						variant: 'destructive',
+					});
+				} finally {
+					followBusy.value = false;
+				}
+			};
+
+			async function loadFiles() {
+				if (!page.value) return;
+				const id = page.value.id;
+				files.value = page.value.files ?? files.value;
+				try {
+					const list = await getPageFiles(id);
+					if (page.value?.id === id) files.value = list;
+				} catch {
+					return;
+				}
+			}
+
+			const uploadImage = async (file: File): Promise<number> => {
+				if (!page.value) throw new Error('no page');
+				const created = await uploadPageFile(page.value.id, file);
+				files.value = [...files.value, created];
+				return created.id;
+			};
+
+			const onUploadError = (file: File) => {
+				uploadError.value = `Не удалось загрузить ${file.name}`;
+			};
+
+			const uploadFiles = async (list: File[]) => {
+				uploading.value = true;
+				uploadError.value = '';
+				for (const file of list) {
+					try {
+						await uploadImage(file);
+					} catch {
+						onUploadError(file);
+					}
+				}
+				uploading.value = false;
+			};
+
+			const openFile = async (file: PageFile) => {
+				try {
+					const url = await fetchFileObjectUrl(file.id);
+					window.open(url, '_blank', 'noopener');
+					setTimeout(() => URL.revokeObjectURL(url), 60000);
+				} catch {
+					uploadError.value = `Не удалось открыть ${file.name}`;
+				}
+			};
+
+			const selection = ref<{ text: string; x: number; y: number } | null>(
+				null,
+			);
+			const taskDialog = ref<{ text: string; source: boolean } | null>(null);
+			const taskBusy = ref(false);
+			const taskError = ref('');
+			let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+
+			const actionLines = computed(() =>
+				page.value?.type === 'meeting'
+					? meetingActionLines(form.value.body)
+					: [],
+			);
+
+			const readSelection = () => {
+				const root = contentRef.value;
+				const current = window.getSelection();
+				if (!root || !current || current.isCollapsed || !current.rangeCount) {
+					selection.value = null;
+					return;
+				}
+				const range = current.getRangeAt(0);
+				const anchor = range.commonAncestorContainer;
+				const element = (
+					anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement
+				) as HTMLElement | null;
+				const text = current.toString().trim();
+				if (
+					!text ||
+					!element ||
+					!root.contains(element) ||
+					element.closest('[data-read-only="true"]')
+				) {
+					selection.value = null;
+					return;
+				}
+				const rect = range.getBoundingClientRect();
+				selection.value = {
+					text,
+					x: Math.max(8, Math.min(rect.right, window.innerWidth - 160)),
+					y: Math.min(rect.bottom + 6, window.innerHeight - 40),
+				};
+			};
+
+			const scheduleSelectionRead = () => {
+				clearTimeout(selectionTimer);
+				selectionTimer = setTimeout(readSelection, 0);
+			};
+
+			const onSelectionChange = () => {
+				if (selection.value && window.getSelection()?.isCollapsed) {
+					selection.value = null;
+				}
+			};
+
+			const openTaskDialog = (text: string, source: boolean) => {
+				taskError.value = '';
+				taskDialog.value = { text, source };
+				selection.value = null;
+			};
+
+			const closeTaskDialog = () => {
+				if (taskBusy.value) return;
+				taskDialog.value = null;
+				taskError.value = '';
+			};
+
+			const submitTask = async (payload: {
+				category_id: number;
+				status_id: number | null;
+			}) => {
+				const dialog = taskDialog.value;
+				if (!dialog || !page.value || taskBusy.value) return;
+				if (conflict.value) {
+					taskError.value = 'Сначала разрешите конфликт версий.';
+					return;
+				}
+				taskBusy.value = true;
+				taskError.value = '';
+				try {
+					await flush();
+					if (!page.value || conflict.value) {
+						taskError.value = 'Сначала разрешите конфликт версий.';
+						return;
+					}
+					const text = dialog.source
+						? dialog.text
+						: findSelectionInSource(form.value.body, dialog.text)?.text;
+					if (!text) {
+						taskError.value = taskFromSelectionError({
+							response: { status: 422, data: { error: 'selection_not_found' } },
+						});
+						return;
+					}
+					const pageId = page.value.id;
+					const result = await runExclusive(() =>
+						taskFromSelection(pageId, {
+							text,
+							category_id: payload.category_id,
+							...(payload.status_id ? { status_id: payload.status_id } : {}),
+							version: page.value!.version,
+						}),
+					);
+					rememberCategory(payload.category_id);
+					adopt(result.page);
+					taskDialog.value = null;
+					const label = taskKeyLabel(result.task);
+					toaster.toast({
+						title: 'Задача создана',
+						description: `${label} ${result.task.title}`,
+						action: h(
+							ToastAction,
+							{
+								altText: 'Открыть задачу',
+								onClick: () =>
+									void router.push(
+										`/${workspaceCode.value}/tasks/${result.task.id}`,
+									),
+							},
+							() => label,
+						),
+					});
+				} catch (error) {
+					if (error instanceof PageConflictError) onConflict(error.current);
+					taskError.value = taskFromSelectionError(error);
+				} finally {
+					taskBusy.value = false;
+				}
 			};
 
 			const toc = computed<TocEntry[]>(() => extractToc(form.value.body));
@@ -282,6 +591,13 @@
 				runExclusive(async () => {
 					if (!page.value || conflict.value) return;
 					const fields = changedFields(snapshot, savedState.value);
+					if (
+						fields.properties &&
+						(Object.keys(clientPropertyErrors.value).length ||
+							JSON.stringify(fields.properties) === blockedProperties)
+					) {
+						delete fields.properties;
+					}
 					if (!Object.keys(fields).length) return;
 					try {
 						const updated = await updatePage(page.value.id, {
@@ -289,11 +605,39 @@
 							...fields,
 						});
 						savedState.value = clone({ ...savedState.value, ...fields });
+						if (fields.properties) {
+							serverPropertyErrors.value = {};
+							blockedProperties = null;
+						}
 						saveError.value = false;
 						mergeSaved(updated);
 					} catch (error) {
+						const invalid = fields.properties
+							? parsePropertyErrors(error)
+							: null;
 						if (error instanceof PageConflictError) {
 							onConflict(error.current);
+						} else if (invalid) {
+							serverPropertyErrors.value = invalid;
+							blockedProperties = JSON.stringify(fields.properties);
+							saveError.value = false;
+							const { properties: _blocked, ...rest } = fields;
+							if (Object.keys(rest).length) {
+								try {
+									const updated = await updatePage(page.value.id, {
+										version: page.value.version,
+										...rest,
+									});
+									savedState.value = clone({ ...savedState.value, ...rest });
+									mergeSaved(updated);
+								} catch (retryError) {
+									if (retryError instanceof PageConflictError) {
+										onConflict(retryError.current);
+									} else {
+										saveError.value = true;
+									}
+								}
+							}
 						} else {
 							saveError.value = true;
 						}
@@ -355,11 +699,15 @@
 				comparing.value = false;
 				updateBanner.value = null;
 				saveError.value = false;
+				serverPropertyErrors.value = {};
+				blockedProperties = null;
 				ownVersions.clear();
 				ownVersions.add(next.version);
 				setDocumentTitle(next.title);
+				if (next.following !== undefined) following.value = !!next.following;
 				applying = false;
 				void loadVersions();
+				void loadFiles();
 			};
 
 			async function load() {
@@ -420,6 +768,7 @@
 			};
 
 			const onPropertiesUpdate = (properties: Record<string, any>) => {
+				serverPropertyErrors.value = {};
 				form.value.properties = properties;
 			};
 
@@ -578,10 +927,13 @@
 			onMounted(() => {
 				void load();
 				window.addEventListener('keydown', onKeydown);
+				document.addEventListener('selectionchange', onSelectionChange);
 			});
 
 			onBeforeUnmount(() => {
 				window.removeEventListener('keydown', onKeydown);
+				document.removeEventListener('selectionchange', onSelectionChange);
+				clearTimeout(selectionTimer);
 			});
 
 			watch(slug, (next, previous) => {
@@ -614,6 +966,28 @@
 				retrySave,
 				normalizeTitle,
 				onFreeChange,
+				propertyErrors,
+				selection,
+				following,
+				followBusy,
+				toggleFollow,
+				Bell,
+				BellOff,
+				files,
+				uploading,
+				uploadError,
+				uploadImage,
+				onUploadError,
+				uploadFiles,
+				openFile,
+				taskDialog,
+				taskBusy,
+				taskError,
+				actionLines,
+				scheduleSelectionRead,
+				openTaskDialog,
+				closeTaskDialog,
+				submitTask,
 				onPropertiesUpdate,
 				onSectionSave,
 				onConflictChoose,

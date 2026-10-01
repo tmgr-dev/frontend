@@ -168,3 +168,22 @@ export const workspaceInvitationInfo = async (token: string) => {
 
 	return data;
 };
+
+export const getWorkspaceSettings = async (
+	workspaceId: number,
+): Promise<unknown> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/workspaces/${workspaceId}/settings`);
+	return data;
+};
+
+export const setWorkspaceSetting = async (
+	workspaceId: number,
+	key: string,
+	value: string | null,
+): Promise<void> => {
+	await $axios.put(`/workspaces/${workspaceId}/settings`, {
+		settings: { [key]: value },
+	});
+};

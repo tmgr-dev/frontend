@@ -14,6 +14,8 @@ export const DEFAULT_PAGE_TITLE = 'Без названия';
 export const PAGE_CREATE_OPTIONS: PageCreateOption[] = [
 	{ type: 'plain', label: 'Обычная страница' },
 	{ type: 'context', label: 'Контекст' },
+	{ type: 'person', label: 'Человек' },
+	{ type: 'meeting', label: 'Встреча' },
 ];
 
 const compareSiblings = (a: PageSummary, b: PageSummary): number => {
@@ -90,7 +92,11 @@ export const ancestorIds = (pages: PageSummary[], id: number): number[] => {
 	const byId = new Map(pages.map((page) => [page.id, page]));
 	const result: number[] = [];
 	let current = byId.get(id);
-	while (current && current.parent_id !== null && !result.includes(current.parent_id)) {
+	while (
+		current &&
+		current.parent_id !== null &&
+		!result.includes(current.parent_id)
+	) {
 		result.push(current.parent_id);
 		current = byId.get(current.parent_id);
 	}

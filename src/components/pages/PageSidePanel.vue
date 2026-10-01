@@ -1,5 +1,7 @@
 <template>
 	<aside class="space-y-6 text-sm" data-testid="page-side-panel">
+		<slot name="actions" />
+
 		<section v-if="toc.length" data-testid="page-toc">
 			<h2
 				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"

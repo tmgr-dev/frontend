@@ -187,7 +187,68 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 		return groups.flat();
 	};
 
-	return { titles, ensure, titleFor, pathFor, searchMentions };
+	const searchPeople = async (query: string): Promise<MentionItem[]> => {
+		const pages = loadPages()
+			.then((tree) =>
+				tree
+					.filter(
+						(page) => page.type === 'person' && includes(page.title, query),
+					)
+					.slice(0, 8)
+					.map(
+						(page): MentionItem => ({
+							kind: 'page',
+							id: String(page.id),
+							title: page.title,
+						}),
+					),
+			)
+			.catch(() => [] as MentionItem[]);
+		const members = searchMembers(query);
+		return (await Promise.all([pages, members])).flat();
+	};
+
+	const searchMembers = (query: string): Promise<MentionItem[]> =>
+		loadMembers()
+			.then((list) =>
+				list
+					.filter((member) => includes(member.name, query))
+					.slice(0, 8)
+					.map(
+						(member): MentionItem => ({
+							kind: 'user',
+							id: String(member.id),
+							title: member.name,
+						}),
+					),
+			)
+			.catch(() => [] as MentionItem[]);
+
+	const searchTaskItems = (query: string): Promise<MentionItem[]> =>
+		query.length < 2
+			? Promise.resolve([])
+			: searchTasks(query, 8)
+					.then((found) =>
+						found.map(
+							(task): MentionItem => ({
+								kind: 'task',
+								id: String(task.id),
+								title: task.title,
+							}),
+						),
+					)
+					.catch(() => [] as MentionItem[]);
+
+	return {
+		titles,
+		ensure,
+		titleFor,
+		pathFor,
+		searchMentions,
+		searchPeople,
+		searchMembers,
+		searchTaskItems,
+	};
 };
 
 export type TmgrDirectory = ReturnType<typeof useTmgrDirectory>;

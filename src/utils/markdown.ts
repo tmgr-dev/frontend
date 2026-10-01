@@ -1,4 +1,5 @@
 import { Marked, type Token, type Tokens } from 'marked';
+import { parseTmgrUrl } from './pages/tmgrLinks';
 
 export interface MarkdownOptions {
 	/** Key prefixes used by this workspace's categories, e.g. ["TM", "TMBE"]. */
@@ -46,6 +47,11 @@ const linkRenderer = {
 	link({ href, title, tokens }: Tokens.Link): string {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const text = unwrapTaskKeys((this as any).parser.parseInline(tokens));
+		if (parseTmgrUrl(href)) {
+			return `<a href="#" class="tmgr-chip" data-tmgr="${escapeAttribute(
+				href.trim(),
+			)}">${text}</a>`;
+		}
 		const titleAttr = title ? ` title="${escapeAttribute(title)}"` : '';
 		return `<a href="${safeHref(
 			href,

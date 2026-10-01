@@ -60,6 +60,12 @@
 					:is-creator="isWorkspaceOwner"
 				/>
 
+				<PagesAnalystSetting
+					v-if="currentWorkspaceId && pagesEnabled"
+					:workspace-id="Number(currentWorkspaceId)"
+					:is-owner="isWorkspaceOwner"
+				/>
+
 				<div
 					v-if="!isWorkspaceOwner && currentWorkspace"
 					class="rounded-md border border-border bg-muted/50 p-4 text-sm text-ink-subtle"
@@ -126,6 +132,7 @@
 	} from '@/components/ui/select';
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
+	import PagesAnalystSetting from '@/components/workspace/PagesAnalystSetting.vue';
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import {
@@ -158,6 +165,7 @@
 			SettingsRow,
 			SettingsSection,
 			Switch,
+			PagesAnalystSetting,
 			WorkspacePersonasSection,
 		},
 		setup() {
@@ -169,6 +177,9 @@
 			);
 			const userToggles = computed(
 				() => store.state.featureToggles.userToggles,
+			);
+			const pagesEnabled = computed(
+				() => !!workspaceToggles.value?.pages?.enabled,
 			);
 			const landingOptions = computed(() => {
 				const options = ['list'];
@@ -385,6 +396,7 @@
 				savingToggles,
 				updateWorkspaceToggle,
 				updateUserToggle,
+				pagesEnabled,
 			};
 		},
 	});

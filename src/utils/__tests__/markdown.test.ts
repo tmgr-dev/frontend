@@ -24,6 +24,21 @@ describe('markdownToHtml', () => {
 		expect(html).toContain('rel="noopener noreferrer"');
 	});
 
+	it('renders tmgr links as in-app chips instead of new-tab links', () => {
+		const html = markdownToHtml(
+			'see [Ann](tmgr://page/12) and [TM-3](tmgr://task/3)',
+		);
+		expect(html).toContain(
+			'class="tmgr-chip" data-tmgr="tmgr://page/12">Ann</a>',
+		);
+		expect(html).toContain('data-tmgr="tmgr://task/3">TM-3</a>');
+		expect(html).not.toContain('target="_blank"');
+	});
+
+	it('does not turn unknown tmgr shapes into chips', () => {
+		expect(markdownToHtml('[x](tmgr://nope/1)')).not.toContain('tmgr-chip');
+	});
+
 	it('returns nothing for empty input', () => {
 		expect(markdownToHtml('')).toBe('');
 		expect(markdownToHtml(null as unknown as string)).toBe('');
