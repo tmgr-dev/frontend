@@ -107,7 +107,13 @@
 			/>
 
 			<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-				<div ref="contentRef" class="min-w-0" data-testid="page-content">
+				<div
+					ref="contentRef"
+					class="min-w-0"
+					data-testid="page-content"
+					@mouseup="scheduleSelectionRead"
+					@keyup="scheduleSelectionRead"
+				>
 					<template
 						v-for="(segment, index) in segments"
 						:key="`${editorKey}-${index}`"
@@ -138,8 +144,38 @@
 					:workspace-code="workspaceCode"
 					:slug="page.slug"
 					@toc="scrollToHeading"
-				/>
+				>
+					<template #actions>
+						<PageActionLines
+							:lines="actionLines"
+							@convert="openTaskDialog($event, true)"
+						/>
+					</template>
+				</PageSidePanel>
 			</div>
+
+			<Teleport to="body">
+				<button
+					v-if="selection && !taskDialog"
+					type="button"
+					class="fixed z-50 inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+					:style="{ left: `${selection.x}px`, top: `${selection.y}px` }"
+					data-testid="selection-to-task"
+					@mousedown.prevent
+					@click="openTaskDialog(selection.text, false)"
+				>
+					Сделать задачей
+				</button>
+			</Teleport>
+
+			<TaskFromSelectionDialog
+				v-if="taskDialog"
+				:text="taskDialog.text"
+				:busy="taskBusy"
+				:error="taskError"
+				@submit="submitTask"
+				@cancel="closeTaskDialog"
+			/>
 
 			<PageConflictDialog
 				v-if="conflict && conflictOpen"
@@ -161,16 +197,20 @@
 		PageConflictError,
 		type PageVersion,
 		setPageSection,
+		taskFromSelection,
 		updatePage,
 	} from '@/actions/tmgr/pages';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import PageActionLines from '@/components/pages/PageActionLines.vue';
 	import PageConflictDialog from '@/components/pages/PageConflictDialog.vue';
 	import PageEditor from '@/components/pages/PageEditor.vue';
 	import PageProperties from '@/components/pages/PageProperties.vue';
 	import PageSection from '@/components/pages/PageSection.vue';
 	import PageSidePanel from '@/components/pages/PageSidePanel.vue';
+	import TaskFromSelectionDialog from '@/components/pages/TaskFromSelectionDialog.vue';
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
+	import { ToastAction, useToast } from '@/components/ui/toast';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
@@ -199,6 +239,15 @@
 		type Segment,
 		splitBody,
 	} from '@/utils/pages/sections';
+	import {
+		findSelectionInSource,
+		meetingActionLines,
+	} from '@/utils/pages/selection';
+	import {
+		rememberCategory,
+		taskFromSelectionError,
+		taskKeyLabel,
+	} from '@/utils/pages/taskFromSelection';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
@@ -206,6 +255,7 @@
 	import {
 		computed,
 		defineComponent,
+		h,
 		onBeforeUnmount,
 		onMounted,
 		ref,
@@ -219,6 +269,7 @@
 		name: 'PageView',
 		components: {
 			History,
+			PageActionLines,
 			PageConflictDialog,
 			PageContainer,
 			PageEditor,
@@ -226,6 +277,7 @@
 			PageProperties,
 			PageSection,
 			PageSidePanel,
+			TaskFromSelectionDialog,
 		},
 		setup() {
 			const route = useRoute();
@@ -276,6 +328,137 @@
 				...serverPropertyErrors.value,
 				...clientPropertyErrors.value,
 			}));
+
+			const toaster = useToast();
+			const selection = ref<{ text: string; x: number; y: number } | null>(
+				null,
+			);
+			const taskDialog = ref<{ text: string; source: boolean } | null>(null);
+			const taskBusy = ref(false);
+			const taskError = ref('');
+			let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+
+			const actionLines = computed(() =>
+				page.value?.type === 'meeting'
+					? meetingActionLines(form.value.body)
+					: [],
+			);
+
+			const readSelection = () => {
+				const root = contentRef.value;
+				const current = window.getSelection();
+				if (!root || !current || current.isCollapsed || !current.rangeCount) {
+					selection.value = null;
+					return;
+				}
+				const range = current.getRangeAt(0);
+				const anchor = range.commonAncestorContainer;
+				const element = (
+					anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement
+				) as HTMLElement | null;
+				const text = current.toString().trim();
+				if (
+					!text ||
+					!element ||
+					!root.contains(element) ||
+					element.closest('[data-read-only="true"]')
+				) {
+					selection.value = null;
+					return;
+				}
+				const rect = range.getBoundingClientRect();
+				selection.value = {
+					text,
+					x: Math.max(8, Math.min(rect.right, window.innerWidth - 160)),
+					y: Math.min(rect.bottom + 6, window.innerHeight - 40),
+				};
+			};
+
+			const scheduleSelectionRead = () => {
+				clearTimeout(selectionTimer);
+				selectionTimer = setTimeout(readSelection, 0);
+			};
+
+			const onSelectionChange = () => {
+				if (selection.value && window.getSelection()?.isCollapsed) {
+					selection.value = null;
+				}
+			};
+
+			const openTaskDialog = (text: string, source: boolean) => {
+				taskError.value = '';
+				taskDialog.value = { text, source };
+				selection.value = null;
+			};
+
+			const closeTaskDialog = () => {
+				if (taskBusy.value) return;
+				taskDialog.value = null;
+				taskError.value = '';
+			};
+
+			const submitTask = async (payload: {
+				category_id: number;
+				status_id: number | null;
+			}) => {
+				const dialog = taskDialog.value;
+				if (!dialog || !page.value || taskBusy.value) return;
+				if (conflict.value) {
+					taskError.value = 'Сначала разрешите конфликт версий.';
+					return;
+				}
+				taskBusy.value = true;
+				taskError.value = '';
+				try {
+					await flush();
+					if (!page.value || conflict.value) {
+						taskError.value = 'Сначала разрешите конфликт версий.';
+						return;
+					}
+					const text = dialog.source
+						? dialog.text
+						: findSelectionInSource(form.value.body, dialog.text)?.text;
+					if (!text) {
+						taskError.value = taskFromSelectionError({
+							response: { status: 422, data: { error: 'selection_not_found' } },
+						});
+						return;
+					}
+					const pageId = page.value.id;
+					const result = await runExclusive(() =>
+						taskFromSelection(pageId, {
+							text,
+							category_id: payload.category_id,
+							...(payload.status_id ? { status_id: payload.status_id } : {}),
+							version: page.value!.version,
+						}),
+					);
+					rememberCategory(payload.category_id);
+					adopt(result.page);
+					taskDialog.value = null;
+					const label = taskKeyLabel(result.task);
+					toaster.toast({
+						title: 'Задача создана',
+						description: `${label} ${result.task.title}`,
+						action: h(
+							ToastAction,
+							{
+								altText: 'Открыть задачу',
+								onClick: () =>
+									void router.push(
+										`/${workspaceCode.value}/tasks/${result.task.id}`,
+									),
+							},
+							() => label,
+						),
+					});
+				} catch (error) {
+					if (error instanceof PageConflictError) onConflict(error.current);
+					taskError.value = taskFromSelectionError(error);
+				} finally {
+					taskBusy.value = false;
+				}
+			};
 
 			const toc = computed<TocEntry[]>(() => extractToc(form.value.body));
 
@@ -640,10 +823,13 @@
 			onMounted(() => {
 				void load();
 				window.addEventListener('keydown', onKeydown);
+				document.addEventListener('selectionchange', onSelectionChange);
 			});
 
 			onBeforeUnmount(() => {
 				window.removeEventListener('keydown', onKeydown);
+				document.removeEventListener('selectionchange', onSelectionChange);
+				clearTimeout(selectionTimer);
 			});
 
 			watch(slug, (next, previous) => {
@@ -677,6 +863,15 @@
 				normalizeTitle,
 				onFreeChange,
 				propertyErrors,
+				selection,
+				taskDialog,
+				taskBusy,
+				taskError,
+				actionLines,
+				scheduleSelectionRead,
+				openTaskDialog,
+				closeTaskDialog,
+				submitTask,
 				onPropertiesUpdate,
 				onSectionSave,
 				onConflictChoose,
