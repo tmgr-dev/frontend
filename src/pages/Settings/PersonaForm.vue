@@ -1,5 +1,37 @@
 <template>
 	<form class="flex flex-col gap-3" @submit.prevent="$emit('submit')">
+		<fieldset v-if="showScope" class="flex flex-col gap-1.5">
+			<legend class="mb-1 text-sm font-medium">Who can assign it</legend>
+			<label class="flex items-center gap-2 text-sm">
+				<input
+					type="radio"
+					name="persona-scope"
+					value="account"
+					class="accent-primary"
+					:checked="modelValue.scope === 'account'"
+					@change="update('scope', 'account')"
+				/>
+				Only me
+				<span class="text-xs text-muted-foreground">
+					assignable in workspaces you grant it to
+				</span>
+			</label>
+			<label class="flex items-center gap-2 text-sm">
+				<input
+					type="radio"
+					name="persona-scope"
+					value="workspace"
+					class="accent-primary"
+					:checked="modelValue.scope === 'workspace'"
+					@change="update('scope', 'workspace')"
+				/>
+				This workspace{{ workspaceName ? ` (${workspaceName})` : '' }}
+				<span class="text-xs text-muted-foreground">
+					every member can assign tasks to it; only you edit it
+				</span>
+			</label>
+		</fieldset>
+
 		<label class="flex flex-col gap-1">
 			<span class="text-sm font-medium">Name</span>
 			<Input
@@ -85,6 +117,7 @@
 		name: string;
 		description: string;
 		system_prompt: string;
+		scope: 'account' | 'workspace';
 	}
 
 	export default defineComponent({
@@ -99,6 +132,8 @@
 			saving: { type: Boolean, default: false },
 			submitLabel: { type: String, default: 'Save' },
 			showCancel: { type: Boolean, default: false },
+			showScope: { type: Boolean, default: false },
+			workspaceName: { type: String, default: '' },
 		},
 		emits: ['update:modelValue', 'submit', 'cancel'],
 		setup(props, { emit }) {
