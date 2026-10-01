@@ -29,7 +29,7 @@ export const shouldShowVerifyBanner = (
 export const googleLinkConfirmationMessage = (
 	error: unknown,
 ): string | null => {
-	const { status, code, message } = httpErrorInfo(error);
+	const { status, code } = httpErrorInfo(error);
 	if (status !== 409 || code !== 'email_link_confirmation_required') {
 		return null;
 	}
