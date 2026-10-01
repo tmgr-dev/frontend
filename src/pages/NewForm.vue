@@ -49,6 +49,9 @@
 	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
+	import TaskLinkChips from '@/components/tasks/TaskLinkChips.vue';
+	import TaskPageMentions from '@/components/tasks/TaskPageMentions.vue';
+	import TaskPersonChips from '@/components/tasks/TaskPersonChips.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import { Button } from '@/components/ui/button';
@@ -69,6 +72,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { pagesAvailable } from '@/utils/pagesTree';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { usePusher } from '@/composable/usePusher';
 	import store from '@/store';
@@ -224,6 +228,9 @@
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const { isFeatureEnabled } = useFeatureToggles();
+	const pagesVisible = computed(() =>
+		pagesAvailable(store.getters.currentWorkspace, isFeatureEnabled('pages')),
+	);
 
 	const {
 		subscribeToWorkspace,
@@ -2169,6 +2176,11 @@
 						</div>
 					</div>
 
+					<TaskPersonChips
+						v-if="form.id && pagesVisible"
+						:people="form.mentioned_people || []"
+					/>
+
 					<!-- Hero TIMER block -->
 					<TimeCounter
 						v-if="form.id && isFeatureEnabled('task.countdown')"
@@ -2389,6 +2401,11 @@
 						/>
 					</div>
 
+					<TaskLinkChips
+						v-if="form.id"
+						:sources="[form.description, form.description_json]"
+					/>
+
 					<div class="flex flex-col gap-0.5 text-2xs text-ink-subtle">
 						<div class="flex items-center gap-1">
 							<span>Editor: {{ EDITOR_LABELS[editorType] }}</span>
@@ -2476,6 +2493,11 @@
 							@open-task="handleOpenLinkedTask"
 						/>
 					</div>
+
+					<TaskPageMentions
+						v-if="form.id && pagesVisible"
+						:task-id="Number(form.id)"
+					/>
 
 					<!-- Comments (modal: inline at bottom of main; page: in right rail) -->
 					<TaskComments

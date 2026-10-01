@@ -44,6 +44,7 @@ export interface Task {
 	scheduled_time?: { hours: number; minutes: number } | null;
 	recurrence?: Record<string, any> | null;
 	relationTypeWithTask?: any[];
+	mentioned_people?: { page_id: number; slug: string; title: string }[];
 }
 
 interface LinkResponse {

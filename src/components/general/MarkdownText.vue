@@ -11,9 +11,13 @@
 		openTaskByKey,
 		useTaskKeyPrefixes,
 	} from '@/composable/useTaskKeyLinks';
+	import store from '@/store';
 	import { markdownToHtml } from '@/utils/markdown';
+	import { routeForTmgr } from '@/utils/pages/taskLinks';
+	import { parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import sanitizeHtml from '@/utils/sanitizeHtml';
 	import { defineComponent } from 'vue';
+	import { useRouter } from 'vue-router';
 
 	export default defineComponent({
 		name: 'MarkdownText',
@@ -28,7 +32,7 @@
 			},
 		},
 		setup() {
-			return { taskKeyPrefixes: useTaskKeyPrefixes() };
+			return { taskKeyPrefixes: useTaskKeyPrefixes(), router: useRouter() };
 		},
 		computed: {
 			html() {
@@ -45,6 +49,16 @@
 			// The markdown is injected as HTML, so the keys inside it are reached
 			// by delegation rather than by a listener per link.
 			onClick(event) {
+				const chip = event.target?.closest?.('a[data-tmgr]');
+				if (chip) {
+					event.preventDefault();
+					const parsed = parseTmgrUrl(chip.getAttribute('data-tmgr') || '');
+					const path =
+						parsed &&
+						routeForTmgr(parsed, store.getters.currentWorkspace?.code || '');
+					if (path) this.router.push(path);
+					return;
+				}
 				const target = event.target?.closest?.('[data-task-key]');
 				if (!target) {
 					return;
@@ -168,6 +182,16 @@
 		color: var(--brand-color);
 		text-decoration: underline;
 		text-underline-offset: 2px;
+	}
+	.markdown-text :deep(a.tmgr-chip) {
+		border-radius: 9999px;
+		background: var(--brand-bg-color);
+		padding: 0.05rem 0.5rem;
+		color: var(--brand-fg-color);
+		text-decoration: none;
+	}
+	.markdown-text :deep(a.tmgr-chip:hover) {
+		text-decoration: underline;
 	}
 	.markdown-text :deep(img) {
 		margin-top: 0.35rem;
