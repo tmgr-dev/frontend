@@ -132,7 +132,10 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
-	[{ engines: { tmgr: '^1.5' } }, 'engines'],
+	[{ engines: { tmgr: '^1.6' } }, 'engines'],
+	[{ permissions: ['pages:read'], engines: { tmgr: '^1.4' } }, 'pages:read needs engines.tmgr ^1.5'],
+	[{ permissions: ['pages:write'], engines: { tmgr: '^1.4' } }, 'pages:write needs engines.tmgr ^1.5'],
+	[{ permissions: ['pages:sections'], engines: { tmgr: '^1.0' } }, 'pages:sections needs engines.tmgr ^1.5'],
 	[{ permissions: ['views:badge'], engines: { tmgr: '^1.3' } }, 'views:badge needs engines.tmgr ^1.4'],
 	[{ links: { allowedDomains: ['gitlab.com'] } }, 'links:open'],
 	[
@@ -148,12 +151,23 @@ it.each([
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
 });
 
-it('accepts plugins written for 1.0, 1.1, 1.2, 1.3 and 1.4', () => {
+it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4 and 1.5', () => {
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.4' } }).id).toBe(valid.id);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.5' } }).id).toBe(valid.id);
+});
+
+it('accepts the pages permissions for ^1.5', () => {
+	expect(
+		parseManifest({
+			...valid,
+			engines: { tmgr: '^1.5' },
+			permissions: ['pages:read', 'pages:write', 'pages:sections'],
+		}).permissions,
+	).toEqual(['pages:read', 'pages:write', 'pages:sections']);
 });
 
 it('accepts views:badge for ^1.4', () => {

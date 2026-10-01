@@ -1413,6 +1413,25 @@ describeSqlite('local pages API on SQLite', () => {
 			]);
 		});
 
+		it('publishes each write once, with the page id and the sections that changed', async () => {
+			const body =
+				'## A\n\n<!-- tmgr:section id="notes" owner="agents" -->\nold\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id="other" owner="agents" -->\nkeep\n<!-- /tmgr:section -->\n';
+			const page = await create('Doc', { body });
+			events.length = 0;
+			await data(
+				'PUT',
+				`pages/${page.id}/sections/notes`,
+				{ markdown: 'new' },
+				persona,
+			);
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({
+				type: 'page.updated',
+				pageId: page.id,
+				changedSections: ['notes'],
+			});
+		});
+
 		it('publishes nothing when a write changes nothing or fails', async () => {
 			const page = await create('Doc', { body: 'same' });
 			events.length = 0;

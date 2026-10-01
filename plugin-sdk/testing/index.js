@@ -5,7 +5,8 @@
 // validation and UI sanitising behave exactly like the app). Backed by an in-memory mock of the app's
 // data instead of the real API.
 const fs = require('node:fs');
-const { createBroker } = require('./broker.generated.js');
+const { createBroker, PluginError } = require('./broker.generated.js');
+const { createMockPages } = require('./pages.js');
 const { parseManifest } = require('./manifest.generated.js');
 const { createSandbox } = require('./sandbox.generated.js');
 const { sanitizeTree, COLORS } = require('./uiTree.generated.js');
@@ -486,6 +487,9 @@ const createTestHost = async (options = {}) => {
 		comments: {},
 		relations: {},
 		taskData: {},
+		pages: [],
+		pageData: {},
+		nextPageId: 1,
 		storage: {},
 		agentWork: {},
 		routines: [],
@@ -521,6 +525,8 @@ const createTestHost = async (options = {}) => {
 			category_tasks_sequence_id: t.category_tasks_sequence_id ?? null,
 		});
 	}
+	const mockPages = createMockPages(state, clock, PluginError, manifest.id);
+	for (const p of options.pages ?? []) mockPages.seed(p);
 	for (const r of options.routines ?? []) {
 		const now = new Date(currentTime).toISOString();
 		state.routines.push({
@@ -561,7 +567,7 @@ const createTestHost = async (options = {}) => {
 		manifest,
 		workspace,
 		currentWorkspaceId: () => workspace.id,
-		api: createMockApi(state, clock),
+		api: { ...createMockApi(state, clock), ...mockPages.api },
 		settings: () => ({ ...(options.settings ?? {}) }),
 		notify: (payload) => state.notifications.push({ ...payload }),
 		setStatusBarItem: (id, item) => {

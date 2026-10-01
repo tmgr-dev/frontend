@@ -4,9 +4,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createBroker = exports.truncateGraphemes = exports.PLUGIN_EVENTS = exports.PluginError = void 0;
 class PluginError extends Error {
-    constructor(code, message) {
+    constructor(code, message, 
+    /** For `page_conflict`: the page as it is now, handed to the plugin as `error.current`. */
+    data) {
         super(message);
         this.code = code;
+        this.data = data;
     }
 }
 exports.PluginError = PluginError;
@@ -26,6 +29,11 @@ exports.PLUGIN_EVENTS = {
     'routine.created': 'routines:read',
     'routine.updated': 'routines:read',
     'routine.deleted': 'routines:read',
+    'page.created': 'pages:read',
+    'page.updated': 'pages:read',
+    'page.deleted': 'pages:read',
+    'page.restored': 'pages:read',
+    'page.moved': 'pages:read',
     alarm: 'alarms',
     'app.started': null,
     'workspace.switched': null,
@@ -207,6 +215,35 @@ const agentWorkProgress = (patch, includeBranch) => {
     return out;
 };
 const taskDataKey = (value) => string(value, 'key', 200);
+const PAGE_TYPES = ['plain', 'context', 'person', 'meeting'];
+const MAX_PAGE_BYTES = 1048576;
+const SECTION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const pageRef = (value) => typeof value === 'string' ? string(value, 'idOrSlug', 200) : id(value, 'idOrSlug');
+const pageBody = (value, field) => {
+    const text = string(value, field, MAX_PAGE_BYTES, true);
+    return byteLength(text) <= MAX_PAGE_BYTES ? text : invalid(`${field} is larger than 1 MB`);
+};
+const pageProperties = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        invalid('properties must be an object');
+    return value;
+};
+const pageType = (value) => PAGE_TYPES.includes(value)
+    ? value
+    : invalid(`type must be one of ${PAGE_TYPES.join(', ')}`);
+const pageSummary = (value) => string(value, 'summary', 255, true);
+const pagePatch = (p) => {
+    const out = {};
+    if (p.title !== undefined)
+        out.title = string(p.title, 'title', 255);
+    if (p.body !== undefined)
+        out.body = pageBody(p.body, 'body');
+    if (p.properties !== undefined)
+        out.properties = pageProperties(p.properties);
+    if (p.summary != null)
+        out.summary = pageSummary(p.summary);
+    return out;
+};
 const RELATION_TYPES = [
     'blocks',
     'is blocked by',
@@ -579,6 +616,122 @@ const createBroker = (deps) => {
                 const result = {};
                 for (const [taskId, json] of Object.entries(raw ?? {})) {
                     result[taskId] = typeof json === 'string' ? JSON.parse(json) : null;
+                }
+                return result;
+            },
+        },
+        'pages.search': {
+            permission: 'pages:read',
+            run: (p) => {
+                const opts = {};
+                if (p.type != null)
+                    opts.type = pageType(p.type);
+                if (p.limit != null)
+                    opts.limit = Math.min(50, id(p.limit, 'limit'));
+                return api.pagesSearch(string(p.q, 'q', 200), opts);
+            },
+        },
+        'pages.tree': {
+            permission: 'pages:read',
+            run: () => api.pagesTree(),
+        },
+        'pages.get': {
+            permission: 'pages:read',
+            run: (p) => api.pagesGet(pageRef(p.idOrSlug)),
+        },
+        'pages.create': {
+            permission: 'pages:write',
+            write: true,
+            run: (p) => {
+                const fields = { title: string(p.title, 'title', 255) };
+                if (p.type != null)
+                    fields.type = pageType(p.type);
+                if (p.parentId != null)
+                    fields.parent_id = id(p.parentId, 'parentId');
+                if (p.body !== undefined)
+                    fields.body = pageBody(p.body, 'body');
+                if (p.properties !== undefined)
+                    fields.properties = pageProperties(p.properties);
+                return api.pagesCreate(fields);
+            },
+        },
+        'pages.update': {
+            permission: 'pages:write',
+            write: true,
+            run: (p) => {
+                const pageId = id(p.id);
+                const version = id(p.version, 'version');
+                return api.pagesUpdate(pageId, { version, ...pagePatch(p) });
+            },
+        },
+        'pages.append': {
+            permission: 'pages:write',
+            write: true,
+            run: (p) => {
+                const fields = {
+                    markdown: pageBody(p.markdown, 'markdown'),
+                };
+                if (p.heading != null)
+                    fields.heading = string(p.heading, 'heading', 255);
+                if (p.createHeading != null) {
+                    if (typeof p.createHeading !== 'boolean')
+                        invalid('createHeading must be a boolean');
+                    fields.create_heading = p.createHeading;
+                }
+                if (p.summary != null)
+                    fields.summary = pageSummary(p.summary);
+                return api.pagesAppend(id(p.id), fields);
+            },
+        },
+        'pages.setSection': {
+            permission: 'pages:sections',
+            write: true,
+            run: async (p) => {
+                const pageId = id(p.id);
+                const sectionId = typeof p.sectionId === 'string' && SECTION_ID.test(p.sectionId)
+                    ? p.sectionId
+                    : invalid('sectionId must be a section id');
+                const markdown = pageBody(p.markdown, 'markdown');
+                const summary = p.summary == null ? undefined : pageSummary(p.summary);
+                const page = await api.pagesGet(pageId);
+                const section = (page?.sections ?? []).find((s) => s.id === sectionId);
+                if (!section)
+                    throw new PluginError('INVALID_PARAMS', `page ${pageId} has no section ${sectionId}`);
+                if (section.owner !== `plugin:${manifest.id}`)
+                    throw new PluginError('PERMISSION_DENIED', `section ${sectionId} is not owned by plugin:${manifest.id}`);
+                return api.pagesSetSection(pageId, sectionId, markdown, summary);
+            },
+        },
+        'pageData.get': {
+            permission: 'pages:read',
+            run: async (p) => {
+                const json = await api.pageDataGet(id(p.pageId, 'pageId'), taskDataKey(p.key));
+                return typeof json === 'string' ? JSON.parse(json) : null;
+            },
+        },
+        'pageData.set': {
+            permission: 'pages:read',
+            write: true,
+            run: (p) => {
+                const json = JSON.stringify(p.value ?? null);
+                if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES)
+                    invalid('value is larger than 64 KB');
+                return api.pageDataSet(id(p.pageId, 'pageId'), taskDataKey(p.key), json);
+            },
+        },
+        'pageData.delete': {
+            permission: 'pages:read',
+            write: true,
+            run: (p) => api.pageDataDelete(id(p.pageId, 'pageId'), taskDataKey(p.key)),
+        },
+        'pageData.getMany': {
+            permission: 'pages:read',
+            run: async (p) => {
+                const pageIds = idArrayMax(p.pageIds, 'pageIds', 500);
+                const raw = (await api.pageDataGetMany(pageIds, taskDataKey(p.key)));
+                const result = {};
+                for (const [pageId, json] of Object.entries(raw ?? {})) {
+                    result[pageId] = typeof json === 'string' ? JSON.parse(json) : null;
                 }
                 return result;
             },

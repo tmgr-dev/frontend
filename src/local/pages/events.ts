@@ -23,12 +23,14 @@ export const emitPageEvent = (
 	summary: string | null,
 	linkedTaskIds: number[],
 	actorOverride?: string,
+	changedSections?: string[],
 ) => {
 	try {
 		const actor = actorLabel(ctx) ?? actorOverride;
 		domainEvents.emit({
 			type,
 			workspaceId: ctx.workspace.id,
+			pageId: row.id,
 			page: {
 				id: row.id,
 				slug: row.slug,
@@ -45,6 +47,7 @@ export const emitPageEvent = (
 				summary,
 				linked_task_ids: linkedTaskIds,
 			},
+			...(changedSections ? { changedSections } : {}),
 			...(actor ? { actor } : {}),
 		});
 	} catch (error) {

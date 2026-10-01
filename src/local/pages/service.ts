@@ -600,7 +600,20 @@ interface Written {
 	linked: number[];
 	changed: boolean;
 	summary: string | null;
+	changedSections?: string[];
 }
+
+const changedSectionIds = (before: string, after: string): string[] => {
+	const inner = (body: string) =>
+		new Map(
+			sections(body).map((s) => [s.id, body.slice(s.innerStart, s.innerEnd).trim()]),
+		);
+	const was = inner(before);
+	const now = inner(after);
+	return [...new Set([...was.keys(), ...now.keys()])].filter(
+		(id) => was.get(id) !== now.get(id),
+	);
+};
 
 const persist = async (
 	ctx: LocalContext,
@@ -663,6 +676,7 @@ const persist = async (
 		linked: links.tasks,
 		changed: true,
 		summary: change.summary,
+		changedSections: changedSectionIds(row.body, finalBody),
 	};
 };
 
@@ -720,6 +734,7 @@ const write = async (
 			written.summary,
 			written.linked,
 			eventActor,
+			written.changedSections,
 		);
 	return assemble(ctx, written.row);
 };

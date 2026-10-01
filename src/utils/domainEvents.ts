@@ -60,7 +60,10 @@ export type DomainEvent = (
 	| {
 			type: 'page.created' | 'page.updated' | 'page.deleted' | 'page.restored' | 'page.moved';
 			workspaceId: number | null;
+			pageId: number;
 			page: Entity;
+			/** Set by the local pages service; cloud realtime events carry none, so the plugin host works it out when it can. */
+			changedSections?: string[];
 	  }
 ) & { actor?: string };
 

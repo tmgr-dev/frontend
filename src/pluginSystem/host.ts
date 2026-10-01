@@ -17,6 +17,7 @@ import {
 	type ViewBadgeSpec,
 } from './broker';
 import { taskKey } from './dataApi';
+import { createPageEventMapper } from './pageEvents';
 import type { PluginManifest } from './manifest';
 import { toRoutine, toRoutineInstance } from './routines';
 import {
@@ -935,10 +936,25 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 	};
 
+	const mapPageEvent = createPageEventMapper();
+
 	const unsubscribe = deps.subscribe((event) => {
 		const workspace = state.workspace;
 		if (!workspace || event.workspaceId !== workspace.id) return;
 		if (event.type.startsWith('routine.') && workspace.kind !== 'local') return;
+		if (event.type.startsWith('page.')) {
+			const payload = mapPageEvent(event as Parameters<typeof mapPageEvent>[0]);
+			for (const [pluginId, plugin] of running) {
+				if (
+					!plugin.registered.event.has(event.type) ||
+					event.actor === `plugin:${pluginId}` ||
+					!packages.get(pluginId)?.manifest.permissions.includes('pages:read')
+				)
+					continue;
+				void dispatch(pluginId, 'event', event.type, payload).catch(() => undefined);
+			}
+			return;
+		}
 		const { actor: _actor, ...basePayload } = event as DomainEvent & {
 			task?: unknown;
 			reactions?: unknown;

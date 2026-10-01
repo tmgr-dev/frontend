@@ -252,7 +252,7 @@ describe('page events on the local access stream', () => {
 			'page.restored',
 			'page.moved',
 		] as const) {
-			domainEvents.emit({ type, workspaceId: -3, page, actor: 'persona:p-1' });
+			domainEvents.emit({ type, workspaceId: -3, pageId: 4, page, actor: 'persona:p-1' });
 		}
 		await flush();
 		expect(invoke).toHaveBeenCalledTimes(5);
@@ -271,11 +271,13 @@ describe('page events on the local access stream', () => {
 		domainEvents.emit({
 			type: 'page.updated',
 			workspaceId: -3,
+			pageId: 1,
 			page: { id: 1 },
 		});
 		domainEvents.emit({
 			type: 'page.updated',
 			workspaceId: 12,
+			pageId: 1,
 			page: { id: 1 },
 		});
 		await flush();
@@ -311,19 +313,22 @@ describe('page events and the open UI', () => {
 		bus.emit({
 			type: 'page.updated',
 			workspaceId: -3,
+			pageId: 4,
 			page,
 			actor: 'persona:p-1',
 		});
 		bus.emit({
 			type: 'page.created',
 			workspaceId: -3,
+			pageId: 4,
 			page,
 			actor: 'plugin:x',
 		});
-		bus.emit({ type: 'page.updated', workspaceId: -3, page });
+		bus.emit({ type: 'page.updated', workspaceId: -3, pageId: 4, page });
 		bus.emit({
 			type: 'page.updated',
 			workspaceId: 5,
+			pageId: 4,
 			page,
 			actor: 'persona:p-1',
 		});

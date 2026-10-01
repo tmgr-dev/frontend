@@ -59,3 +59,11 @@ it('drops routines:read/routines:write/views:badge from the permissions pinned f
 		}),
 	).toMatchObject({ permissions: ['tasks:read'] });
 });
+
+it('sends pages:read/pages:write/pages:sections to the server, which now accepts them for plugin actors', () => {
+	const withPages = manifest({ engines: { tmgr: '^1.5' }, permissions: ['tasks:read', 'pages:read', 'pages:write', 'pages:sections'] });
+	const entry = { manifest: withPages, status: 'stopped' as const, error: null, log: [] };
+	expect(pinOf({ ...entry, source: 'builtin' })).toMatchObject({
+		permissions: ['tasks:read', 'pages:read', 'pages:write', 'pages:sections'],
+	});
+});

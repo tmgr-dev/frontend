@@ -249,9 +249,6 @@ export const handleLocalAccessRequest = async (
 	}
 };
 
-/** Page events are not plugin events yet (Plugin API 1.5), so their stream permission is the persona one. */
-const PAGE_EVENT_PERMISSION = 'pages:read';
-
 /** `reactionChanged` carries who reacted; a broadcast has no single viewer, so no companion gets that either. */
 const stripReactionDetails = (event: DomainEvent): DomainEvent => {
 	const reactions = (event as { reactions?: unknown }).reactions;
@@ -263,7 +260,7 @@ const stripReactionDetails = (event: DomainEvent): DomainEvent => {
 export const installLocalAccessEvents = (invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>) => {
 	return domainEvents.on((event) => {
 		if (event.type.startsWith('timer.') || event.type.startsWith('routine.')) return;
-		const permission = event.type.startsWith('page.') ? PAGE_EVENT_PERMISSION : PLUGIN_EVENTS[event.type];
+		const permission = PLUGIN_EVENTS[event.type];
 		if (!permission) return;
 		if (event.workspaceId === null || event.workspaceId === undefined || event.workspaceId >= 0) return;
 		void (async () => {
