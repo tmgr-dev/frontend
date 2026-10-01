@@ -24,7 +24,10 @@
 	} from '@/actions/tmgr/workspaces.ts';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import GlobalSearch from '@/components/general/GlobalSearch.vue';
+	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
+	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import {
 		Breadcrumb,
@@ -74,6 +77,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import store from '@/store';
+	import { pagesAvailable } from '@/utils/pagesTree';
 	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
 	import { pluginState } from '@/pluginSystem/state';
 	import {
@@ -131,6 +135,9 @@
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
+	const pagesEnabled = computed(() =>
+		pagesAvailable(activeWorkspace.value, isFeatureEnabled('pages')),
+	);
 	const pluginPages = computed(() =>
 		Object.values(pluginState.plugins)
 			.filter((plugin) => plugin.status === 'running')
@@ -815,6 +822,12 @@
 						</AsyncContent>
 					</SidebarGroup>
 
+					<SidebarPagesSection
+						v-if="pagesEnabled && activeWorkspace?.code"
+						:workspace-id="Number(activeWorkspace.id)"
+						:workspace-code="activeWorkspace.code"
+					/>
+
 					<SidebarGroup>
 						<SidebarGroupLabel>More</SidebarGroupLabel>
 
@@ -1041,6 +1054,7 @@
 			<SidebarInset
 				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
 			>
+				<EmailVerifyBanner />
 				<header
 					v-if="store.getters.isLoggedIn"
 					data-tauri-drag-region
@@ -1064,6 +1078,11 @@
 						</div>
 						<SidebarTrigger class="-ml-1" />
 						<AddTaskModalTrigger class="-ml-1" />
+						<GlobalSearch
+							v-if="activeWorkspace?.code"
+							:workspace-code="activeWorkspace.code"
+							:pages-enabled="pagesEnabled"
+						/>
 
 						<Separator orientation="vertical" class="mr-2 h-4" />
 

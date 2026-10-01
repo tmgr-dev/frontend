@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.16 — 2026-10-01
+
+- New: Pages («Страницы») in cloud workspaces — markdown documents next to your tasks, with a page tree in the
+  sidebar, version history with diff and restore, `@` and `[[` links to tasks, pages, categories and people, search
+  across tasks and pages, and a shared context page that AI agents read and add notes to. New workspaces have Pages
+  on; in existing workspaces the owner turns it on in workspace feature settings. Local workspaces get Pages in a
+  later release.
+
 ## 0.9.15 — 2026-09-30
 
 - Clicking a task in the tray menu or in the running timer at the bottom of the window now brings up the task's own

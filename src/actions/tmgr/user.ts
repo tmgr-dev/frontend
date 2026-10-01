@@ -14,6 +14,8 @@ export interface User {
 	email: string;
 	role: number;
 	name: string;
+	email_verified?: boolean;
+	email_verified_at?: string | null;
 	settings: FormSetting[];
 }
 
