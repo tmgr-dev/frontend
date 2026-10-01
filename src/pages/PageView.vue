@@ -97,7 +97,14 @@
 				</template>
 			</PageHeader>
 
-			<PageProperties :page="page" @update="onPropertiesUpdate" />
+			<PageProperties
+				:page="page"
+				:properties="form.properties"
+				:directory="directory"
+				:errors="propertyErrors"
+				@update="onPropertiesUpdate"
+				@navigate="onNavigate"
+			/>
 
 			<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
 				<div ref="contentRef" class="min-w-0" data-testid="page-content">
@@ -175,6 +182,11 @@
 		resolveConflict,
 	} from '@/utils/pages/conflict';
 	import {
+		parsePropertyErrors,
+		type PropertyErrors,
+		validateProperties,
+	} from '@/utils/pages/properties';
+	import {
 		type PageUpdatedEvent,
 		shouldShowUpdateBanner,
 	} from '@/utils/pages/realtime';
@@ -242,7 +254,9 @@
 			const updateBanner = ref<number | null>(null);
 			const saveError = ref(false);
 			const sectionSaving = ref(false);
+			const serverPropertyErrors = ref<PropertyErrors>({});
 			const ownVersions = new Set<number>();
+			let blockedProperties: string | null = null;
 			let applying = false;
 			let chain: Promise<unknown> = Promise.resolve();
 			let loadSeq = 0;
@@ -252,6 +266,16 @@
 				chain = next.catch(() => undefined);
 				return next;
 			};
+
+			const clientPropertyErrors = computed<PropertyErrors>(() =>
+				page.value
+					? validateProperties(page.value.type, form.value.properties)
+					: {},
+			);
+			const propertyErrors = computed<PropertyErrors>(() => ({
+				...serverPropertyErrors.value,
+				...clientPropertyErrors.value,
+			}));
 
 			const toc = computed<TocEntry[]>(() => extractToc(form.value.body));
 
@@ -282,6 +306,13 @@
 				runExclusive(async () => {
 					if (!page.value || conflict.value) return;
 					const fields = changedFields(snapshot, savedState.value);
+					if (
+						fields.properties &&
+						(Object.keys(clientPropertyErrors.value).length ||
+							JSON.stringify(fields.properties) === blockedProperties)
+					) {
+						delete fields.properties;
+					}
 					if (!Object.keys(fields).length) return;
 					try {
 						const updated = await updatePage(page.value.id, {
@@ -289,11 +320,39 @@
 							...fields,
 						});
 						savedState.value = clone({ ...savedState.value, ...fields });
+						if (fields.properties) {
+							serverPropertyErrors.value = {};
+							blockedProperties = null;
+						}
 						saveError.value = false;
 						mergeSaved(updated);
 					} catch (error) {
+						const invalid = fields.properties
+							? parsePropertyErrors(error)
+							: null;
 						if (error instanceof PageConflictError) {
 							onConflict(error.current);
+						} else if (invalid) {
+							serverPropertyErrors.value = invalid;
+							blockedProperties = JSON.stringify(fields.properties);
+							saveError.value = false;
+							const { properties: _blocked, ...rest } = fields;
+							if (Object.keys(rest).length) {
+								try {
+									const updated = await updatePage(page.value.id, {
+										version: page.value.version,
+										...rest,
+									});
+									savedState.value = clone({ ...savedState.value, ...rest });
+									mergeSaved(updated);
+								} catch (retryError) {
+									if (retryError instanceof PageConflictError) {
+										onConflict(retryError.current);
+									} else {
+										saveError.value = true;
+									}
+								}
+							}
 						} else {
 							saveError.value = true;
 						}
@@ -355,6 +414,8 @@
 				comparing.value = false;
 				updateBanner.value = null;
 				saveError.value = false;
+				serverPropertyErrors.value = {};
+				blockedProperties = null;
 				ownVersions.clear();
 				ownVersions.add(next.version);
 				setDocumentTitle(next.title);
@@ -420,6 +481,7 @@
 			};
 
 			const onPropertiesUpdate = (properties: Record<string, any>) => {
+				serverPropertyErrors.value = {};
 				form.value.properties = properties;
 			};
 
@@ -614,6 +676,7 @@
 				retrySave,
 				normalizeTitle,
 				onFreeChange,
+				propertyErrors,
 				onPropertiesUpdate,
 				onSectionSave,
 				onConflictChoose,

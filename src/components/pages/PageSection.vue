@@ -3,6 +3,7 @@
 		class="my-3 -ml-3 rounded-lg border-l-4 border-violet-500 bg-violet-50 p-3 dark:bg-violet-900/20"
 		:data-section-id="section.id"
 		data-testid="managed-section"
+		:data-read-only="readOnly ? 'true' : undefined"
 	>
 		<header class="mb-2 flex items-center justify-between gap-2">
 			<span class="inline-flex min-w-0 items-center gap-1.5">
@@ -25,7 +26,7 @@
 				>
 			</span>
 			<button
-				v-if="!editing"
+				v-if="!editing && !readOnly"
 				type="button"
 				class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-violet-700 hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-900/40"
 				@click="startEdit"
@@ -97,6 +98,9 @@
 				),
 			);
 			const label = computed(() => ownerLabel(props.section.owner));
+			const readOnly = computed(
+				() => parseOwner(props.section.owner).kind === 'system',
+			);
 			const ownerIcon = computed(() => {
 				const { kind } = parseOwner(props.section.owner);
 				if (kind === 'system') return Cog;
@@ -130,7 +134,16 @@
 				});
 			};
 
-			return { editing, draft, author, label, ownerIcon, startEdit, save };
+			return {
+				editing,
+				draft,
+				author,
+				label,
+				readOnly,
+				ownerIcon,
+				startEdit,
+				save,
+			};
 		},
 	});
 </script>
