@@ -132,6 +132,7 @@ export const describeAccelerator = (accelerator: string): string =>
 export type DeepLink =
 	| AuthCallback
 	| { type: 'task'; taskId: number }
+	| { type: 'page'; workspaceCode: string; slug: string }
 	| { type: 'view'; pluginId: string; viewId: string; params: Record<string, string> }
 	| { type: 'command'; pluginId: string; commandId: string; params: Record<string, string> };
 
@@ -174,12 +175,19 @@ const parseParams = (search: string): Record<string, string> | null => {
 const PLUGIN_LINK =
 	/^tmgr:\/\/plugin\/([^/?#]+)\/(view|command)\/([^/?#]+)(\?[^#]*)?$/;
 
+const PAGE_LINK = /^tmgr:\/\/page\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,120})\/?$/;
+
 export const parseDeepLink = (url: string): DeepLink | null => {
 	const trimmed = url.trim();
 	const auth = parseAuthCallback(trimmed);
 	if (auth) return auth;
 	const taskMatch = /^tmgr:\/\/task\/(\d+)\/?$/.exec(trimmed);
 	if (taskMatch) return { type: 'task', taskId: Number(taskMatch[1]) };
+
+	const pageMatch = PAGE_LINK.exec(trimmed);
+	if (pageMatch) {
+		return { type: 'page', workspaceCode: pageMatch[1], slug: pageMatch[2] };
+	}
 
 	const match = PLUGIN_LINK.exec(trimmed);
 	if (!match) return null;

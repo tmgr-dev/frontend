@@ -53,9 +53,10 @@ export const installTaskWindowNavigationGuard = (
 		) => () => void;
 	},
 	send: (path: string) => unknown = (path) => sendToMainWindow(TASK_WINDOW_NAVIGATE, { path }),
+	allowedRouteName = 'TaskWindow',
 ) =>
 	router.beforeEach((to) => {
-		if (to.name === 'TaskWindow') return;
+		if (to.name === allowedRouteName) return;
 		void send(to.fullPath);
 		return false;
 	});

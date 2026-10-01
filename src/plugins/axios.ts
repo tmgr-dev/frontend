@@ -8,7 +8,7 @@ import {
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
 import { desktopWindowLabel } from '@/utils/desktop';
-import { isTaskWindowLabel } from '@/utils/taskWindow';
+import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { shouldAttachWorkspaceHeader } from '@/utils/workspaceContext';
 import axios from 'axios';
 
@@ -77,7 +77,7 @@ const hardLogout = async () => {
 	if (isSocialCallbackPath(window.location.pathname)) {
 		return;
 	}
-	if (isTaskWindowLabel(desktopWindowLabel())) {
+	if (isDetachedWindowLabel(desktopWindowLabel())) {
 		const { getCurrentWindow } = await import('@tauri-apps/api/window');
 		await getCurrentWindow().close();
 		return;
