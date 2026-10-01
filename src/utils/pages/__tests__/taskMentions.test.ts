@@ -21,8 +21,8 @@ describe('shouldReloadTaskPages', () => {
 			false,
 		);
 		expect(shouldReloadTaskPages(null, 5)).toBe(false);
-		expect(
-			shouldReloadTaskPages({ type: 'page.updated', page: {} }, 5),
-		).toBe(false);
+		expect(shouldReloadTaskPages({ type: 'page.updated', page: {} }, 5)).toBe(
+			false,
+		);
 	});
 });
