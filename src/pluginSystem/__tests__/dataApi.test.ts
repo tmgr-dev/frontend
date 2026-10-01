@@ -368,3 +368,71 @@ it('namespaces agent work as bare plugin identity when no agent label is given',
 		'POST tasks/4/agent-work acme.board {"agent":"plugin:acme.board","model":null,"session_id":null,"branch":null}',
 	);
 });
+
+describe('pages (API 1.5)', () => {
+	const failing = (status: number, data: unknown) =>
+		axios.create({
+			adapter: async (config) => {
+				const error: any = new Error(`status ${status}`);
+				error.response = { status, data, config };
+				throw error;
+			},
+		});
+
+	it('maps page calls to the pages REST API as the plugin', async () => {
+		const { http, seen } = recording(() => ({ data: { id: 5 } }));
+		const api = createDataApi(http, 'acme.dossier');
+		await api.pagesSearch('saha', { type: 'person', limit: 5 });
+		await api.pagesTree();
+		await api.pagesGet('saha');
+		await api.pagesCreate({ title: 'T', parent_id: 1 });
+		await api.pagesUpdate(5, { version: 2, title: 'N' });
+		await api.pagesAppend(5, { markdown: 'm', create_heading: true });
+		await api.pagesSetSection(5, 'notes', 'text', 'why');
+		await api.pagesSetSection(5, 'fresh', 'text', undefined, 'Fresh');
+		expect(seen).toEqual([
+			'GET pages/search {"q":"saha","type":"person","limit":5} acme.dossier',
+			'GET pages/tree acme.dossier',
+			'GET pages/saha acme.dossier',
+			'POST pages acme.dossier {"title":"T","parent_id":1}',
+			'PATCH pages/5 acme.dossier {"version":2,"title":"N"}',
+			'POST pages/5/append acme.dossier {"markdown":"m","create_heading":true}',
+			'PUT pages/5/sections/notes acme.dossier {"markdown":"text","summary":"why"}',
+			'PUT pages/5/sections/fresh acme.dossier {"markdown":"text","heading":"Fresh"}',
+		]);
+	});
+
+	it('turns a 409 page_conflict into a typed error carrying the current page', async () => {
+		const api = createDataApi(failing(409, { error: 'page_conflict', data: { id: 5, version: 9 } }), 'acme.dossier');
+		await expect(api.pagesUpdate(5, { version: 1 })).rejects.toMatchObject({
+			code: 'page_conflict',
+			data: { id: 5, version: 9 },
+		});
+	});
+
+	it('maps section_forbidden to PERMISSION_DENIED and a too large page to INVALID_PARAMS', async () => {
+		await expect(
+			createDataApi(failing(403, { error: 'section_forbidden', message: 'not yours' }), 'a.b').pagesSetSection(1, 's', 'x'),
+		).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+		await expect(
+			createDataApi(failing(413, { error: 'page_too_large' }), 'a.b').pagesAppend(1, { markdown: 'x' }),
+		).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+	});
+
+	it('stores per-page data under the plugin storage id, and refuses it in shared workspaces', async () => {
+		const { http, seen } = recording((_m, url) => (url.includes('/data/') ? { data: { value: '1' } } : { data: {} }));
+		const api = createDataApi(http, 'acme.dossier', 'acme.dossier@repo');
+		expect(await api.pageDataGet(5, 'seen')).toBe('1');
+		await api.pageDataSet(5, 'seen', '2');
+		await api.pageDataDelete(5, 'seen');
+		await api.pageDataGetMany([5, 6], 'seen');
+		expect(seen).toEqual([
+			'GET plugins/acme.dossier%40repo/pages/5/data/seen acme.dossier',
+			'PUT plugins/acme.dossier%40repo/pages/5/data/seen acme.dossier {"value":"2"}',
+			'DELETE plugins/acme.dossier%40repo/pages/5/data/seen acme.dossier',
+			'POST plugins/acme.dossier%40repo/page-data/query acme.dossier {"page_ids":[5,6],"key":"seen"}',
+		]);
+		const shared = createDataApi(http, 'acme.dossier', 'acme.dossier', 'x', true, 3);
+		await expect(shared.pageDataGet(5, 'seen')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
+	});
+});

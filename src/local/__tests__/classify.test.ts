@@ -1,6 +1,5 @@
 import { createLocalApi } from '../api';
 import { classify, crossesWorkspaces } from '../classify';
-import { dispatchLocal } from '../dispatch';
 
 describe('classify', () => {
 	it('sends everything to the server outside a local workspace, except the workspace list and switch', () => {
@@ -130,25 +129,61 @@ describe('classify pages endpoints', () => {
 	});
 
 	it('never reaches the server from a local workspace', () => {
-		for (const url of ['pages', 'pages/tree', 'pages/search', 'pages/12/versions', 'tasks/5/pages']) {
+		for (const url of ['pages', 'pages/tree', 'pages/trash', 'pages/search', 'pages/12/versions', 'pages/12/files', 'tasks/5/pages', 'workspaces/context']) {
 			expect(classify('GET', url, true)).toBe('local');
 		}
-		expect(classify('POST', 'pages', true)).toBe('local');
+		for (const [method, url] of [
+			['POST', 'pages'],
+			['PATCH', 'pages/12'],
+			['DELETE', 'pages/12'],
+			['POST', 'pages/12/append'],
+			['PUT', 'pages/12/sections/agent-notes'],
+			['POST', 'pages/12/move'],
+			['POST', 'pages/12/files'],
+			['POST', 'pages/12/task-from-selection'],
+			['POST', 'pages/12/follow'],
+			['POST', 'pages/12/versions/2/restore'],
+		]) {
+			expect(classify(method, url, true)).toBe('local');
+		}
+	});
+
+	it('keeps a page write that names another workspace from reaching the server', () => {
+		expect(crossesWorkspaces('local', { workspace_id: 3 }, undefined, -1)).toBe(true);
 	});
 });
 
 describe('pages endpoints in the local API', () => {
 	const api = createLocalApi();
 
-	it('have no local route, so the adapter answers 501 instead of reaching the server', async () => {
+	it('are all answered by local routes, so nothing falls through to the server', () => {
 		for (const [method, url] of [
+			['GET', 'pages'],
 			['GET', 'pages/tree'],
+			['GET', 'pages/trash'],
+			['GET', 'pages/search'],
 			['POST', 'pages'],
 			['GET', 'pages/12'],
-			['GET', 'pages/search'],
+			['PATCH', 'pages/12'],
+			['DELETE', 'pages/12'],
+			['POST', 'pages/12/append'],
+			['PUT', 'pages/12/sections/s'],
+			['POST', 'pages/12/move'],
+			['POST', 'pages/12/pin'],
+			['POST', 'pages/12/unpin'],
+			['POST', 'pages/12/restore'],
+			['GET', 'pages/12/versions'],
+			['GET', 'pages/12/versions/3'],
+			['POST', 'pages/12/versions/3/restore'],
+			['GET', 'pages/12/backlinks'],
+			['GET', 'pages/12/files'],
+			['POST', 'pages/12/files'],
+			['POST', 'pages/12/task-from-selection'],
+			['POST', 'pages/12/follow'],
+			['DELETE', 'pages/12/follow'],
 			['GET', 'tasks/5/pages'],
 		]) {
-			await expect(dispatchLocal(api, {} as any, method, url)).resolves.toBeNull();
+			expect(api.match(method, url)).not.toBeNull();
 		}
 	});
 });

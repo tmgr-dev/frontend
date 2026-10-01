@@ -98,6 +98,16 @@
 						<component :is="following ? BellOff : Bell" class="h-4 w-4" />
 						{{ following ? 'Не следить' : 'Следить' }}
 					</button>
+					<button
+						v-if="canOpenInWindow"
+						type="button"
+						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+						data-testid="page-open-window"
+						@click="openInWindow"
+					>
+						<ExternalLink class="h-4 w-4" />
+						Открыть в окне
+					</button>
 					<router-link
 						:to="`/${workspaceCode}/pages/${page.slug}/versions`"
 						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -279,8 +289,15 @@
 	} from '@/utils/pages/taskFromSelection';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
+	import { isDesktopApp } from '@/utils/desktop';
+	import {
+		isInPageWindow,
+		openPageWindow,
+		pageWindowTarget,
+		setPageWindowTitle,
+	} from '@/utils/pageWindow';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import { Bell, BellOff, History } from 'lucide-vue-next';
+	import { Bell, BellOff, ExternalLink, History } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -297,6 +314,7 @@
 	export default defineComponent({
 		name: 'PageView',
 		components: {
+			ExternalLink,
 			History,
 			PageActionLines,
 			PageConflictDialog,
@@ -315,6 +333,8 @@
 			const workspaceCode = computed(() => String(route.params.workspace_code));
 			const slug = computed(() => String(route.params.slug));
 			const directory = useTmgrDirectory(() => workspaceCode.value);
+			const inPageWindow = isInPageWindow();
+			const canOpenInWindow = isDesktopApp() && !inPageWindow;
 
 			const page = ref<Page | null>(null);
 			const loading = ref(false);
@@ -577,6 +597,7 @@
 					sections: updated.sections ?? page.value.sections,
 					backlinks: updated.backlinks ?? page.value.backlinks,
 				};
+				if (inPageWindow) void setPageWindowTitle(updated.title);
 				void loadVersions();
 			};
 
@@ -705,6 +726,7 @@
 				ownVersions.add(next.version);
 				setDocumentTitle(next.title);
 				if (next.following !== undefined) following.value = !!next.following;
+				if (inPageWindow) void setPageWindowTitle(next.title);
 				applying = false;
 				void loadVersions();
 				void loadFiles();
@@ -889,6 +911,13 @@
 				if (target) void router.push(target);
 			};
 
+			const openInWindow = async () => {
+				if (!page.value) return;
+				await flush();
+				const target = pageWindowTarget(page.value, workspaceCode.value);
+				if (target) await openPageWindow(target).catch(() => undefined);
+			};
+
 			const scrollToHeading = (entry: TocEntry) => {
 				const headings = Array.from(
 					contentRef.value?.querySelectorAll('h2') ?? [],
@@ -993,6 +1022,8 @@
 				onConflictChoose,
 				onNavigate,
 				scrollToHeading,
+				canOpenInWindow,
+				openInWindow,
 			};
 		},
 	});

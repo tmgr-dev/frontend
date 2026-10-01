@@ -313,6 +313,12 @@
 					extra consent. Long menu bar titles are shortened with "…" instead of
 					being refused.
 				</p>
+				<p class="text-muted-foreground">
+					API 1.5: plugins can work with pages. pages:read reads and searches
+					them, pages:write creates, edits and appends, and pages:sections lets
+					a plugin write only into its own managed sections. Each is shown when
+					you install or update. Plugins cannot add page types.
+				</p>
 			</section>
 		</div>
 	</PageContainer>

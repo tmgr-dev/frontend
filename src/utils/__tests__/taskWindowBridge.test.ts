@@ -21,3 +21,15 @@ describe('installTaskWindowNavigationGuard', () => {
 		expect(send).toHaveBeenCalledWith('/settings');
 	});
 });
+
+describe('installTaskWindowNavigationGuard for page windows', () => {
+	it('lets only the named route through', () => {
+		let guard!: (to: { name?: unknown; fullPath: string }) => boolean | void;
+		const router = { beforeEach: (g: typeof guard) => ((guard = g), () => {}) };
+		const send = jest.fn();
+		installTaskWindowNavigationGuard(router, send, 'PageWindow');
+		expect(guard({ name: 'PageWindow', fullPath: '/a/page-window/x' })).toBeUndefined();
+		expect(guard({ name: 'TaskWindow', fullPath: '/a/task-window/1' })).toBe(false);
+		expect(send).toHaveBeenCalledWith('/a/task-window/1');
+	});
+});

@@ -35,6 +35,12 @@ per view, the test host does not. Validation and errors are the app's own. One d
 a refused `setTrayItem` (bad params, tray not allowed here) with a log line instead of a rejection so a page
 render is never broken by it; the test host rejects, so you see the mistake.
 
+`tmgr.pages`/`tmgr.pageData` (API 1.5) are backed by an in-memory page store: seed it with the `pages`
+option and read it back from `host.tmgr.pages` / `host.tmgr.pageData`. It keeps versions and answers a
+stale `pages.update` with the `page_conflict` error (`error.current` is the page as it is now), refuses
+`setSection` on existing sections not owned by `plugin:<your id>` (a missing section is created), and appends by `##` heading. It is a model of
+the server's rules, not the server: search is a plain substring match.
+
 ## Why CommonJS
 
 This package is plain `require()`-able CommonJS, not ESM. A `node:test` file (an ESM `.mjs`, as in

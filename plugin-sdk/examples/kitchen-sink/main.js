@@ -126,6 +126,43 @@ const captureNotes = async () => {
 
 tmgr.commands.register('tmgr-dev.kitchen-sink.captureNotes', captureNotes);
 
+const PAGE_TITLE = 'Kitchen Sink notes';
+const PAGE_BODY = [
+	'# Kitchen Sink notes',
+	'',
+	'## Log',
+	'',
+].join('\n');
+
+/** API 1.5: finds or creates a page, appends to its Log, rewrites its own managed section, keeps per-page data. */
+const writePage = async () => {
+	const hits = await tmgr.pages.search(PAGE_TITLE, { limit: 5 });
+	const hit = hits.find((h) => h.title === PAGE_TITLE);
+	let page = hit
+		? await tmgr.pages.get(hit.id)
+		: await tmgr.pages.create({ title: PAGE_TITLE, body: PAGE_BODY, properties: {} });
+	page = await tmgr.pages.append(page.id, { markdown: `- written at ${new Date().toISOString()}`, heading: 'Log', createHeading: true });
+	const runs = ((await tmgr.pageData.get(page.id, 'kitchenSink.runs')) ?? 0) + 1;
+	await tmgr.pageData.set(page.id, 'kitchenSink.runs', runs);
+	page = await tmgr.pages.setSection(page.id, 'kitchen-sink', `Written ${runs} time(s) by Kitchen Sink.`, { heading: 'Kitchen Sink' });
+	try {
+		await tmgr.pages.update(page.id, { version: page.version - 1, title: PAGE_TITLE });
+	} catch (error) {
+		if (error.name !== 'page_conflict') throw error;
+		console.info(`kitchen-sink: page is at version ${error.current.version}`);
+	}
+	await tmgr.ui.notify(`Page "${page.title}" updated (version ${page.version}).`, { title: 'Kitchen Sink' });
+	return page;
+};
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.writePage', writePage);
+
+tmgr.events
+	.on('page.updated', async (payload) => {
+		console.info(`kitchen-sink: page.updated ${payload.pageId} sections=${payload.changedSections.join(',')}`);
+	})
+	.catch((error) => console.warn(`page.updated listener not registered: ${error.message}`));
+
 tmgr.commands.register('tmgr-dev.kitchen-sink.cardClicked', async (args) => {
 	const via = args?.via ?? 'card';
 	console.info(`kitchen-sink: cardClicked via ${via} column=${args?.column} row=${args?.row ?? ''}`);

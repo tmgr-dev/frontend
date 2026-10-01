@@ -9,6 +9,9 @@ import {
 	withPersonaAssignees,
 } from './personaAssignees';
 import { generateUniqueCategoryCode, sanitizeCategoryCode } from './categoryCode';
+import { addPageRoutes } from './pages/routes';
+import { mentionedPeople, syncTaskMentions } from './pages/mentions';
+import { addPageDataRoutes } from './pages/pageData';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -65,7 +68,11 @@ const loadTask = async (ctx: LocalContext, id: number) => {
 	const rows = await ctx.db.select(`${TASK_SELECT} WHERE t.id = ? AND t.deleted_at IS NULL`, [id]);
 	if (!rows.length) throw notFound('Task');
 	const [task] = await withPersonaAssignees(ctx, [taskJson(rows[0], ctx)]);
-	return { ...task, relationTypeWithTask: await taskRelationsFor(ctx, id) };
+	return {
+		...task,
+		relationTypeWithTask: await taskRelationsFor(ctx, id),
+		mentioned_people: await mentionedPeople(ctx, id),
+	};
 };
 
 const requireActiveTask = async (ctx: LocalContext, id: number) => {
@@ -330,6 +337,7 @@ const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, 
 		[...values, id],
 	);
 	if (!result.rowsAffected) throw notFound('Task');
+	await syncTaskMentions(ctx, id);
 	return loadTask(ctx, id);
 };
 
@@ -496,6 +504,7 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	'task.assignees': false,
 	'task.files': true,
 	'task.relations': true,
+	pages: true,
 };
 
 export const createLocalApi = () => {
@@ -562,6 +571,7 @@ export const createLocalApi = () => {
 			);
 			const id = Number(result.lastInsertId);
 			if (personaIds !== null) await setTaskPersonas(ctx, id, personaIds);
+			await syncTaskMentions(ctx, id);
 			return loadTask(ctx, id);
 		}, 201)
 		.add('GET', 'tasks', (req) => listTasks(req, [], [], taskSortOrder(req), 'tasks'))
@@ -609,6 +619,7 @@ export const createLocalApi = () => {
 				`DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE task_id = ?)`,
 				[id],
 			);
+			await syncTaskMentions(ctx, id);
 			return { success: true };
 		})
 		.add('POST', 'tasks/:id(\\d+)/countdown', async ({ ctx, params }) => {
@@ -656,6 +667,7 @@ export const createLocalApi = () => {
 				[Number(params.id), message, actor.kind, actor.id, actor.name, now, now],
 			);
 			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [Number(result.lastInsertId)]);
+			await syncTaskMentions(ctx, Number(params.id));
 			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
 		.add('PUT', 'comments/:id(\\d+)', async ({ ctx, params, body }) => {
@@ -670,6 +682,7 @@ export const createLocalApi = () => {
 			const now = iso(ctx);
 			await ctx.db.execute(`UPDATE comments SET message = ?, updated_at = ? WHERE id = ?`, [message, now, id]);
 			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [id]);
+			await syncTaskMentions(ctx, comment.task_id);
 			const reactions = (await reactionsFor(ctx, [id])).get(id) ?? [];
 			return { ...commentJson(row, ctx), reactions };
 		})
@@ -684,6 +697,7 @@ export const createLocalApi = () => {
 				}
 			}
 			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
+			if (comment?.task_id != null) await syncTaskMentions(ctx, comment.task_id);
 			return { success: true, task_id: comment?.task_id };
 		})
 		.add('POST', 'comments/:id(\\d+)/reactions/toggle', async ({ ctx, params, body }) => {
@@ -1239,6 +1253,8 @@ export const createLocalApi = () => {
 			),
 		);
 	addRoutineRoutes(router);
+	addPageRoutes(router);
+	addPageDataRoutes(router);
 	return router;
 };
 

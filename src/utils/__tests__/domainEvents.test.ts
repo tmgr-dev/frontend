@@ -484,3 +484,18 @@ it('attributes an event to the workspace that was current when the request was s
 
 	expect(seen.map((e) => e.workspaceId)).toEqual([56]);
 });
+
+describe('page events', () => {
+	const page = { id: 4, workspace_id: -42, title: 'Saha', body: 'x', version: 2 };
+
+	it('never derives page events from write responses: the pages service and realtime emit them once', () => {
+		for (const workspace of [-42, 5]) {
+			const current = () => workspace;
+			expect(eventsForResponse(response('post', 'pages', page), current)).toEqual([]);
+			expect(eventsForResponse(response('patch', 'pages/4', page, { version: 1 }), current)).toEqual([]);
+			expect(eventsForResponse(response('post', 'pages/4/append', page, { markdown: 'a' }), current)).toEqual([]);
+			expect(eventsForResponse(response('put', 'pages/4/sections/notes', page, { markdown: 'a' }), current)).toEqual([]);
+			expect(eventsForResponse(response('delete', 'pages/4', { deleted: 4 }), current)).toEqual([]);
+		}
+	});
+});

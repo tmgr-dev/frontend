@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.4 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.5 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -59,6 +59,15 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
     naming it, the note gone from Daily Routines, and the log showing
     `kitchen-sink: routine.created …` for the note's creation. Routines are local-workspace only: the
     command does nothing useful in a shared workspace (`routines.*` rejects with `NOT_SUPPORTED`).
+
+13. Click **"Write a Kitchen Sink page"** (API 1.5, needs `pages:read`, `pages:write` and `pages:sections`).
+    Expect a page **"Kitchen Sink notes"** with a managed section labelled as owned by this plugin
+    (`plugin:tmgr-dev.kitchen-sink`) that reads "Written N time(s) by Kitchen Sink.", and a **Log** heading
+    with one more timestamp line per click. The command also makes a deliberately stale `pages.update` and
+    logs `kitchen-sink: page is at version V` from the `page_conflict` error's `current`. Per-page data
+    (`pageData`) counts the clicks. Pages written by the plugin show it as the author; other plugins'
+    `page.updated` listeners get `changedSections: ["kitchen-sink"]`. The plugin creates its own section on the
+    first click with `setSection` and its `heading` option.
 
 ## Manual-only checks
 

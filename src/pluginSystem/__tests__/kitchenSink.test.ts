@@ -115,6 +115,41 @@ it('routine.created is delivered to the plugin (API 1.2)', async () => {
 	host.dispose();
 });
 
+it('"Write a Kitchen Sink page" creates the page, owns its section and survives a stale update (API 1.5)', async () => {
+	const host = await startHost();
+	const page: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);
+	expect(page.body).toContain('Written 1 time(s) by Kitchen Sink.');
+	expect(page.body).toMatch(/## Log\n[\s\S]*- written at /);
+	expect(page.sections).toEqual([{ id: 'kitchen-sink', owner: 'plugin:tmgr-dev.kitchen-sink', heading: 'Kitchen Sink' }]);
+	expect(host.tmgr.pageData[`${page.id}:kitchenSink.runs`]).toBe('1');
+	expect(host.tmgr.log.some((l: any) => l.message.includes('page is at version'))).toBe(true);
+	const again: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);
+	expect(again.id).toBe(page.id);
+	expect(host.tmgr.pages).toHaveLength(1);
+	expect(again.body).toContain('Written 2 time(s) by Kitchen Sink.');
+	host.dispose();
+});
+
+it('refuses to write into a section another plugin owns', async () => {
+	const host = await startHost({
+		pages: [
+			{
+				title: 'Kitchen Sink notes',
+				body: '<!-- tmgr:section id="kitchen-sink" owner="plugin:acme.other" -->\nx\n<!-- /tmgr:section -->\n\n## Log\n',
+			},
+		],
+	});
+	await expect(host.runCommand('tmgr-dev.kitchen-sink.writePage', null)).rejects.toThrow('PERMISSION_DENIED');
+	host.dispose();
+});
+
+it('page.updated is delivered to the plugin (API 1.5)', async () => {
+	const host = await startHost();
+	await host.emit({ type: 'page.updated', pageId: 3, changedSections: ['kitchen-sink'] });
+	expect(host.tmgr.log.some((l: any) => l.message.includes('page.updated 3 sections=kitchen-sink'))).toBe(true);
+	host.dispose();
+});
+
 const containsNodeType = (node: any, type: string): boolean => {
 	if (!node || typeof node !== 'object') return false;
 	if (node.type === type) return true;

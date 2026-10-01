@@ -70,6 +70,27 @@ export const createDataApi = (
 				`${what} is not available in shared workspaces yet`,
 			);
 	};
+	/** 409 page_conflict carries the current page; 403 section_forbidden and 413 get their own wording. */
+	const pageCall = async <T>(request: Promise<{ data: any }>): Promise<T> => {
+		try {
+			return unwrap(await request) as T;
+		} catch (error: any) {
+			const response = error?.response;
+			if (response?.status === 409 && response.data?.error === 'page_conflict')
+				throw new PluginError('page_conflict', 'page was changed', response.data.data);
+			if (response?.status === 403 && response.data?.error === 'section_forbidden')
+				throw new PluginError(
+					'PERMISSION_DENIED',
+					String(response.data?.message ?? 'section_forbidden'),
+				);
+			if (response?.status === 413)
+				throw new PluginError('INVALID_PARAMS', 'page is larger than 1 MB');
+			if (response?.status === 404) throw new PluginError('HOST_ERROR', 'page not found');
+			throw error;
+		}
+	};
+	const pageDataPath = (pageId: number, key: string) =>
+		`plugins/${encodeURIComponent(storageId)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
 	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
 	const routinesNotSupported = () => {
 		if (cloud)
@@ -315,6 +336,54 @@ export const createDataApi = (
 					await http.post(
 						`plugins/${encodeURIComponent(storageId)}/task-data/query`,
 						{ task_ids: taskIds, key },
+						{ headers },
+					),
+				) ?? {}
+			);
+		},
+		pagesSearch: (q, opts) =>
+			pageCall(http.get('pages/search', { params: { q, ...opts }, headers })),
+		pagesTree: () => pageCall(http.get('pages/tree', { headers })),
+		pagesGet: (idOrSlug) =>
+			pageCall(http.get(`pages/${encodeURIComponent(idOrSlug)}`, { headers })),
+		pagesCreate: (fields) => pageCall(http.post('pages', fields, { headers })),
+		pagesUpdate: (id, fields) =>
+			pageCall(http.patch(`pages/${id}`, fields, { headers })),
+		pagesAppend: (id, fields) =>
+			pageCall(http.post(`pages/${id}/append`, fields, { headers })),
+		pagesSetSection: (id, sectionId, markdown, summary, heading) =>
+			pageCall(
+				http.put(
+					`pages/${id}/sections/${encodeURIComponent(sectionId)}`,
+					{
+						markdown,
+						...(summary !== undefined ? { summary } : {}),
+						...(heading !== undefined ? { heading } : {}),
+					},
+					{ headers },
+				),
+			),
+		pageDataGet: async (pageId, key) => {
+			notInSharedWorkspaces('per-page plugin data');
+			return (
+				unwrap(await http.get(pageDataPath(pageId, key), { headers }))?.value ?? null
+			);
+		},
+		pageDataSet: async (pageId, key, json) => {
+			notInSharedWorkspaces('per-page plugin data');
+			void (await http.put(pageDataPath(pageId, key), { value: json }, { headers }));
+		},
+		pageDataDelete: async (pageId, key) => {
+			notInSharedWorkspaces('per-page plugin data');
+			void (await http.delete(pageDataPath(pageId, key), { headers }));
+		},
+		pageDataGetMany: async (pageIds, key) => {
+			notInSharedWorkspaces('per-page plugin data');
+			return (
+				unwrap(
+					await http.post(
+						`plugins/${encodeURIComponent(storageId)}/page-data/query`,
+						{ page_ids: pageIds, key },
 						{ headers },
 					),
 				) ?? {}

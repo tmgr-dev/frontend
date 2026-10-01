@@ -37,13 +37,17 @@ export const getTaskFiles = async (taskId: number): Promise<TaskFile[]> => {
 	return data;
 };
 
-export const presignUpload = async (file: File): Promise<PresignedUpload> => {
+export const presignUpload = async (
+	file: File,
+	workspaceId?: number,
+): Promise<PresignedUpload> => {
 	const {
 		data: { data },
 	} = await $axios.post('/files/presign-upload', {
 		file_name: file.name,
 		content_type: file.type,
 		size_bytes: file.size,
+		...(workspaceId !== undefined ? { workspace_id: workspaceId } : {}),
 	});
 
 	return data;
@@ -100,6 +104,36 @@ export const uploadTaskFile = async (
 	await putToStorage(target, file);
 
 	return attachFile(taskId, file, target);
+};
+
+export const attachFileToPage = async (
+	pageId: number,
+	file: File,
+	target: PresignedUpload,
+	workspaceId?: number,
+): Promise<{ id: number }> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/pages/${pageId}/files`, {
+		file_name: file.name,
+		file_path: target.key,
+		mime_type: target.content_type,
+		size_bytes: file.size,
+		...(workspaceId !== undefined ? { workspace_id: workspaceId } : {}),
+	});
+
+	return data;
+};
+
+export const uploadPageFile = async (
+	pageId: number,
+	file: File,
+	workspaceId?: number,
+): Promise<{ id: number }> => {
+	const target = await presignUpload(file, workspaceId);
+	await putToStorage(target, file);
+
+	return attachFileToPage(pageId, file, target, workspaceId);
 };
 
 export const detachFile = async (fileId: number): Promise<void> => {

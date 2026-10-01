@@ -21,6 +21,7 @@ mod plugin_selftest;
 mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
+mod page_windows;
 mod task_windows;
 mod tray;
 
@@ -185,6 +186,8 @@ pub fn run() {
       tray::dnd_update,
       task_windows::open_task_window,
       task_windows::focus_task_window,
+      page_windows::open_page_window,
+      page_windows::focus_page_window,
       quick_add::open_quick_add,
       quick_add::take_quick_add,
       quick_add::hide_quick_add,
@@ -197,6 +200,7 @@ pub fn run() {
       local_db::local_db_select,
       local_db::local_db_execute,
       local_db::local_db_backup,
+      local_db::local_db_batch,
       local_files::local_file_write,
       downloads::reveal_download,
       plugin_dev::plugins_dev_list,

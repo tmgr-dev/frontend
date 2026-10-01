@@ -17,11 +17,10 @@ export interface TaskWindowBootstrapDeps {
 	) => Promise<Record<string, unknown>>;
 }
 
-export const bootstrapTaskWindow = async (
+export const bootstrapWindowWorkspace = async (
 	store: BootstrapStore,
 	deps: TaskWindowBootstrapDeps,
 	workspaceCode: string,
-	taskId: number,
 ): Promise<Workspace | null> => {
 	if (!store.state.workspaces?.length) {
 		store.commit('setWorkspaces', await deps.getWorkspaces());
@@ -29,7 +28,7 @@ export const bootstrapTaskWindow = async (
 	const workspace = (store.state.workspaces || []).find(
 		(w) => w.code === workspaceCode,
 	);
-	if (!workspace || !Number.isFinite(taskId) || taskId <= 0) return null;
+	if (!workspace) return null;
 	await deps.syncActiveLocalWorkspace(workspace.id);
 	store.commit('updateUserWorkspaceSetting', { workspaceId: workspace.id });
 	const [userToggles, workspaceToggles] = await Promise.all([
@@ -38,6 +37,18 @@ export const bootstrapTaskWindow = async (
 	]);
 	store.commit('featureToggles/setUserToggles', userToggles);
 	store.commit('featureToggles/setWorkspaceToggles', workspaceToggles);
+	return workspace;
+};
+
+export const bootstrapTaskWindow = async (
+	store: BootstrapStore,
+	deps: TaskWindowBootstrapDeps,
+	workspaceCode: string,
+	taskId: number,
+): Promise<Workspace | null> => {
+	if (!Number.isFinite(taskId) || taskId <= 0) return null;
+	const workspace = await bootstrapWindowWorkspace(store, deps, workspaceCode);
+	if (!workspace) return null;
 	store.commit('setCurrentTaskIdForModal', taskId);
 	return workspace;
 };

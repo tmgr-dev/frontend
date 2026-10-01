@@ -13,6 +13,8 @@ export const PERSONA_PERMISSIONS = [
 	'relations:write',
 	'agent_work:read',
 	'agent_work:write',
+	'pages:read',
+	'pages:write',
 ] as const;
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
@@ -51,6 +53,21 @@ export const PERSONA_WHITELIST: WhitelistEntry[] = [
 	{ method: 'POST', pattern: 'tasks/:id(\\d+)/agent-work', permission: 'agent_work:write' },
 	{ method: 'PATCH', pattern: 'agent-work/:id(\\d+)', permission: 'agent_work:write' },
 	{ method: 'POST', pattern: 'agent-work/:id(\\d+)/finish', permission: 'agent_work:write' },
+	{ method: 'GET', pattern: 'workspaces/context', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/tree', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/search', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/:id', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/:id/backlinks', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/:id/versions', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/:id/versions/:version(\\d+)', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'pages/:id/files', permission: 'pages:read' },
+	{ method: 'GET', pattern: 'tasks/:id(\\d+)/pages', permission: 'pages:read' },
+	{ method: 'POST', pattern: 'pages', permission: 'pages:write' },
+	{ method: 'PATCH', pattern: 'pages/:id', permission: 'pages:write' },
+	{ method: 'POST', pattern: 'pages/:id/append', permission: 'pages:write' },
+	{ method: 'PUT', pattern: 'pages/:id/sections/:sectionId', permission: 'pages:write' },
+	{ method: 'POST', pattern: 'pages/:id/files', permission: 'pages:write' },
 ];
 
 export const personaWhitelistFor = (method: string, pattern: string): WhitelistEntry | null =>

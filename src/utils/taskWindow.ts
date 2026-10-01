@@ -1,3 +1,5 @@
+import { isPageWindowLabel } from './pageWindow';
+
 export interface TaskWindowTarget {
 	taskId: number;
 	workspaceCode: string;
@@ -17,6 +19,20 @@ interface WorkspaceLike {
 
 export const isTaskWindowLabel = (label: string | null): boolean =>
 	typeof label === 'string' && label.startsWith('task-');
+
+export const isDetachedWindowLabel = (label: string | null): boolean =>
+	isTaskWindowLabel(label) || isPageWindowLabel(label);
+
+export const isInDetachedWindow = (): boolean =>
+	isDetachedWindowLabel(
+		(globalThis as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ??
+			null,
+	);
+
+export const isInSecondaryWindow = (): boolean =>
+	isInDetachedWindow() ||
+	(globalThis as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ===
+		'quick-add';
 
 export const isInTaskWindow = (): boolean =>
 	isTaskWindowLabel(

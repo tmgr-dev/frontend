@@ -84,6 +84,35 @@ it('describes an accelerator with macOS symbols', () => {
 	expect(describeAccelerator('Command+Control+Space')).toBe('⌘⌃Space');
 });
 
+describe('parseDeepLink pages', () => {
+	it('parses workspace and slug', () => {
+		expect(parseDeepLink('tmgr://page/work/ivan-petrov-a1b2')).toEqual({
+			type: 'page',
+			workspaceCode: 'work',
+			slug: 'ivan-petrov-a1b2',
+		});
+		expect(parseDeepLink(' tmgr://page/my_ws-1/kontekst/ ')).toEqual({
+			type: 'page',
+			workspaceCode: 'my_ws-1',
+			slug: 'kontekst',
+		});
+	});
+
+	it('does not take the numeric storage form of a markdown link for a deep link', () => {
+		expect(parseDeepLink('tmgr://page/123')).toBeNull();
+		expect(parseDeepLink('tmgr://page/123/')).toBeNull();
+	});
+
+	it('rejects malformed links', () => {
+		expect(parseDeepLink('tmgr://page/')).toBeNull();
+		expect(parseDeepLink('tmgr://page//slug')).toBeNull();
+		expect(parseDeepLink('tmgr://page/work/a/b')).toBeNull();
+		expect(parseDeepLink('tmgr://page/work/a%2Fb')).toBeNull();
+		expect(parseDeepLink('tmgr://page/work/a?x=1')).toBeNull();
+		expect(parseDeepLink('tmgr://page/work/..')).toBeNull();
+	});
+});
+
 describe('parseDeepLink', () => {
 	it('recognises the social sign-in callback', () => {
 		const code = 'c'.repeat(43);

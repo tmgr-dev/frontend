@@ -128,6 +128,7 @@ export interface AppendPagePayload {
 	heading?: string;
 	create_heading?: boolean;
 	summary?: string;
+	workspace_id?: number;
 }
 
 export interface TaskFromSelectionPayload {

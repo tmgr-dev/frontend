@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "quick-add",
-    "task-*"
+    "task-*",
+    "page-*"
   ],
   "permissions": [
     "core:default",
@@ -34,6 +35,7 @@
     "allow-take-capture",
     "allow-reveal-download",
     "allow-local-db-backup",
+    "allow-local-db-batch",
     "allow-local-db-execute",
     "allow-local-db-select",
     "allow-local-export-write",
@@ -53,6 +55,8 @@
     "allow-open-quick-add",
     "allow-open-task-window",
     "allow-focus-task-window",
+    "allow-open-page-window",
+    "allow-focus-page-window",
     "allow-take-quick-add",
     "allow-tray-update",
     "allow-dnd-update",

@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.4';
+export const PLUGIN_API_VERSION = '1.5';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -26,7 +26,12 @@ export const PERMISSIONS = [
 	'routines:read',
 	'routines:write',
 	'views:badge',
+	'pages:read',
+	'pages:write',
+	'pages:sections',
 ] as const;
+
+const PAGE_PERMISSIONS = ['pages:read', 'pages:write', 'pages:sections'] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -205,6 +210,12 @@ export const parseManifest = (raw: any): PluginManifest => {
 	const apiMinor = engineMinor(raw.engines.tmgr);
 	if (permissions.includes('views:badge') && apiMinor < 4)
 		fail('views:badge needs engines.tmgr ^1.4');
+	for (const permission of PAGE_PERMISSIONS)
+		if (permissions.includes(permission) && apiMinor < 5)
+			fail(`${permission} needs engines.tmgr ^1.5`);
+	for (const permission of ['pages:write', 'pages:sections'] as const)
+		if (permissions.includes(permission) && !permissions.includes('pages:read'))
+			fail(`${permission} needs pages:read`);
 	return {
 		id,
 		name: text(raw.name, 'name', 80),

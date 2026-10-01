@@ -1,6 +1,6 @@
 <template>
 	<router-view v-if="isQuickAddWindow" />
-	<template v-else-if="isTaskWindow">
+	<template v-else-if="isDetachedWindow">
 		<alert ref="alert" />
 		<router-view />
 		<Toaster />
@@ -94,7 +94,7 @@
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-	import { isTaskWindowLabel } from '@/utils/taskWindow';
+	import { isDetachedWindowLabel } from '@/utils/taskWindow';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -149,8 +149,8 @@
 				});
 			}
 
-			const isTaskWindow = isTaskWindowLabel(desktopWindowLabel());
-			if (!isTaskWindow) {
+			const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
+			if (!isDetachedWindow) {
 				watch(
 					() => store.getters.isLoggedIn,
 					(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
@@ -163,7 +163,7 @@
 				routeViewKey,
 				isDesktop: isDesktopApp(),
 				isQuickAddWindow: desktopWindowLabel() === 'quick-add',
-				isTaskWindow,
+				isDetachedWindow,
 				isMainWindow: desktopWindowLabel() === 'main',
 			};
 		},
@@ -226,7 +226,7 @@
 			},
 			'$route.params.workspace_code': {
 				async handler(workspaceCode) {
-					if (this.isTaskWindow) return;
+					if (this.isDetachedWindow) return;
 					if (workspaceCode && this.$store.getters.isLoggedIn) {
 						// If URL has workspace code, check if it matches current workspace
 						const workspaces = this.$store.state.workspaces;
@@ -592,7 +592,7 @@
 				next();
 			});
 
-			if (!this.$store.state.user?.id || this.isQuickAddWindow || this.isTaskWindow) {
+			if (!this.$store.state.user?.id || this.isQuickAddWindow || this.isDetachedWindow) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
@@ -617,7 +617,7 @@
 			if (this.$store.getters.isLoggedIn) {
 				this.ensureWorkspacesLoaded();
 			}
-			if (!this.isTaskWindow) {
+			if (!this.isDetachedWindow) {
 				window.addEventListener('keydown', this.handleWorkspaceHotkeys);
 			}
 		},
