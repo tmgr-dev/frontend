@@ -75,6 +75,8 @@ export class LocalHttpError extends Error {
 		public status: number,
 		message: string,
 		public code?: string,
+		/** Sent as the response body instead of `{message, code}`. */
+		public body?: Record<string, unknown>,
 	) {
 		super(message);
 	}

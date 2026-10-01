@@ -48,11 +48,11 @@ describeSqlite('pages schema (migration 9)', () => {
 			);
 		const { lastInsertId } = await insert('Alpha', 'first body with Привет');
 		expect(await hits('prive')).toEqual([]);
-		expect(await hits('привет')).toEqual([lastInsertId]);
-		await db.execute(`UPDATE pages SET body = 'second text' WHERE id = ?`, [lastInsertId]);
+		expect(await hits('привет')).toEqual([lastInsertId as number]);
+		await db.execute(`UPDATE pages SET body = 'second text' WHERE id = ?`, [lastInsertId as number]);
 		expect(await hits('привет')).toEqual([]);
-		expect(await hits('second')).toEqual([lastInsertId]);
-		await db.execute(`DELETE FROM pages WHERE id = ?`, [lastInsertId]);
+		expect(await hits('second')).toEqual([lastInsertId as number]);
+		await db.execute(`DELETE FROM pages WHERE id = ?`, [lastInsertId as number]);
 		expect(await hits('second')).toEqual([]);
 	});
 

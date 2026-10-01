@@ -57,6 +57,11 @@ export type DomainEvent = (
 			instance?: Entity;
 	  }
 	| { type: 'routine.deleted'; workspaceId: number | null; routineId: number; taskId?: number }
+	| {
+			type: 'page.created' | 'page.updated' | 'page.deleted' | 'page.restored' | 'page.moved';
+			workspaceId: number | null;
+			page: Entity;
+	  }
 ) & { actor?: string };
 
 export type DomainEventHandler = (event: DomainEvent) => void;

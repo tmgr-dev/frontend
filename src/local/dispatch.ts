@@ -117,7 +117,8 @@ export const dispatchLocal = async (
 			}
 			return {
 				status: error.status,
-				data: error.code ? { message: error.message, code: error.code } : { message: error.message },
+				data:
+					error.body ?? (error.code ? { message: error.message, code: error.code } : { message: error.message }),
 			};
 		}
 		throw error;
