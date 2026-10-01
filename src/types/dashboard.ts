@@ -15,6 +15,8 @@ export enum ActivityType {
 	TASK_RESTORED = 'task_restored',
 	TASK_STATUS_CHANGED = 'task_status_changed',
 	TASK_ASSIGNED = 'task_assigned',
+	TASK_PERSONA_ASSIGNED = 'task_persona_assigned',
+	TASK_PERSONA_UNASSIGNED = 'task_persona_unassigned',
 	TASK_TIMER_STARTED = 'task_timer_started',
 	TASK_TIMER_STOPPED = 'task_timer_stopped',
 
@@ -733,6 +735,14 @@ export interface DashboardEvent {
 	timestamp: string;
 }
 
+export interface TaskAssignmentEvent {
+	type: 'assigned' | 'unassigned';
+	task_id: number;
+	workspace_id: number;
+	user_ids?: number[];
+	personas?: Array<{ uuid: string; name: string; owner_user_id: number }>;
+}
+
 export type PageEventType =
 	| 'page.created'
 	| 'page.updated'
@@ -763,6 +773,7 @@ export interface EventHandlers {
 		updatedByUserId?: number,
 		sourceInstanceId?: string,
 	) => void;
+	onTaskAssignmentChanged?: (event: TaskAssignmentEvent) => void;
 	onMemberStatusChanged?: (member: TeamMemberStatus) => void;
 	onNotificationCreated?: (data: any) => void;
 	onCommentAdded?: (comment: any) => void;

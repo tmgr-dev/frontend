@@ -27,6 +27,7 @@
 	import GlobalSearch from '@/components/general/GlobalSearch.vue';
 	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
+	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import {
 		Breadcrumb,
@@ -1053,6 +1054,7 @@
 			<SidebarInset
 				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
 			>
+				<EmailVerifyBanner />
 				<header
 					v-if="store.getters.isLoggedIn"
 					data-tauri-drag-region

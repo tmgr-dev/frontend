@@ -4,6 +4,7 @@
 		getTasks,
 		getTasksByStatus,
 		PaginationMeta,
+		refreshAssignedTask,
 		Task,
 	} from '@/actions/tmgr/tasks';
 	import { getUser } from '@/actions/tmgr/user';
@@ -248,6 +249,11 @@
 							removeTaskFromList_(task);
 						} else {
 							updateSingleTaskInList(task);
+						}
+					},
+					onTaskAssignmentChanged: ({ task_id }) => {
+						if (tasks.value.some((t) => t.id === task_id)) {
+							void refreshAssignedTask(task_id).catch(() => {});
 						}
 					},
 					onCommentAdded: (comment) => {

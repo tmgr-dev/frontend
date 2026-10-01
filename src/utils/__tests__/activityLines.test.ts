@@ -58,3 +58,35 @@ describe('activitySubject', () => {
 		expect(activitySubject({})).toBe('');
 	});
 });
+
+describe('persona assignment activities', () => {
+	const meta = { persona_name: 'Reviewer', task_title: 'Ship it' };
+
+	it('names the persona when the API sent no title', () => {
+		expect(
+			activityTitle({ type: 'task_persona_assigned', metadata: meta }),
+		).toBe('Assigned a task to Reviewer');
+		expect(
+			activityTitle({ type: 'task_persona_unassigned', metadata: meta }),
+		).toBe('Unassigned a task from Reviewer');
+	});
+
+	it('keeps a title the API sent and falls back without metadata', () => {
+		expect(
+			activityTitle({
+				type: 'task_persona_assigned',
+				title: 'Ann assigned it',
+				metadata: meta,
+			}),
+		).toBe('Ann assigned it');
+		expect(activityTitle({ type: 'task_persona_assigned' })).toBe(
+			'Assigned a task to a persona',
+		);
+	});
+
+	it('takes the subject from the task title in metadata', () => {
+		expect(
+			activitySubject({ type: 'task_persona_assigned', metadata: meta }),
+		).toBe('Ship it');
+	});
+});

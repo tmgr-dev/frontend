@@ -27,6 +27,12 @@
 				<div>
 					<span class="text-sm font-medium">{{ ws.name }}</span>
 					<span
+						v-if="persona.workspace_id === ws.id"
+						class="ml-2 text-2xs text-muted-foreground"
+					>
+						Home workspace · archive the persona to remove access
+					</span>
+					<span
 						v-if="grantFor(ws.id)?.blocked"
 						class="ml-2 text-2xs text-destructive"
 					>
@@ -35,7 +41,11 @@
 				</div>
 				<Switch
 					:checked="!!grantFor(ws.id) && !grantFor(ws.id)?.blocked"
-					:disabled="!!grantFor(ws.id)?.blocked || !!saving[ws.id]"
+					:disabled="
+						!!grantFor(ws.id)?.blocked ||
+						!!saving[ws.id] ||
+						persona.workspace_id === ws.id
+					"
 					@update:checked="(v) => toggle(ws.id, v)"
 				/>
 			</div>
@@ -112,7 +122,9 @@
 
 			const workspaces = computed(() =>
 				((store.state.workspaces as Workspace[]) || []).filter(
-					(w) => !w.is_local,
+					(w) =>
+						!w.is_local &&
+						(!props.persona.workspace_id || w.id === props.persona.workspace_id),
 				),
 			);
 

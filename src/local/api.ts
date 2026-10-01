@@ -1,4 +1,13 @@
 import { LocalRouter } from './router';
+import {
+	assignablePersonas,
+	assignPersona,
+	personaFilterClauses,
+	requireHumanActor,
+	setTaskPersonas,
+	unassignPersona,
+	withPersonaAssignees,
+} from './personaAssignees';
 import { generateUniqueCategoryCode, sanitizeCategoryCode } from './categoryCode';
 import { addPageRoutes } from './pages/routes';
 import { mentionedPeople, syncTaskMentions } from './pages/mentions';
@@ -57,8 +66,9 @@ const taskRelationsFor = async (ctx: LocalContext, taskId: number) => {
 const loadTask = async (ctx: LocalContext, id: number) => {
 	const rows = await ctx.db.select(`${TASK_SELECT} WHERE t.id = ? AND t.deleted_at IS NULL`, [id]);
 	if (!rows.length) throw notFound('Task');
+	const [task] = await withPersonaAssignees(ctx, [taskJson(rows[0], ctx)]);
 	return {
-		...taskJson(rows[0], ctx),
+		...task,
 		relationTypeWithTask: await taskRelationsFor(ctx, id),
 		mentioned_people: await mentionedPeople(ctx, id),
 	};
@@ -330,6 +340,21 @@ const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, 
 	return loadTask(ctx, id);
 };
 
+const updateTaskWithPersonas = async (
+	ctx: LocalContext,
+	id: number,
+	fields: Record<string, any>,
+	personaIds: unknown,
+) => {
+	if (personaIds !== null) {
+		requireHumanActor(ctx);
+		await loadTask(ctx, id);
+		await setTaskPersonas(ctx, id, personaIds);
+	}
+	if (!Object.keys(fields).length && personaIds !== null) return loadTask(ctx, id);
+	return updateTask(ctx, id, fields);
+};
+
 const stopTimer = async (ctx: LocalContext, id: number) => {
 	const now = epoch(ctx);
 	await ctx.db.execute(
@@ -347,6 +372,7 @@ const searchClause = (req: LocalRequest, params: any[]) => {
 		clauses.push(`(LOWER(t.title) LIKE ? OR LOWER(COALESCE(t.description, '')) LIKE ?)`);
 		params.push(`%${search}%`, `%${search}%`);
 	}
+	clauses.push(...personaFilterClauses(req.query, req.ctx, params));
 	const category = req.query.get('project_category_id');
 	if (category) {
 		clauses.push(`t.project_category_id = ?`);
@@ -388,6 +414,8 @@ const searchClause = (req: LocalRequest, params: any[]) => {
 const taskSortOrder = (req: LocalRequest): string => {
 	const sort = req.query.get('sort');
 	const direction = req.query.get('direction') === 'desc' ? 'DESC' : 'ASC';
+	if (sort === 'queue')
+		return `s.sort_order IS NULL, s.sort_order ASC, t.sort_order IS NULL, t.sort_order ASC, t.id ASC`;
 	if (sort === 'due') return `t.expired_at IS NULL, julianday(t.expired_at) ${direction}, t.id DESC`;
 	if (sort === 'updated') return `t.updated_at ${direction}, t.id DESC`;
 	if (sort === 'created') return `t.created_at ${direction}, t.id DESC`;
@@ -418,7 +446,7 @@ const listTasks = async (
 	);
 	const total = Number(n);
 	return paginate(
-		rows.map((row) => taskJson(row, ctx)),
+		await withPersonaAssignees(ctx, rows.map((row) => taskJson(row, ctx))),
 		total,
 		page,
 		all ? Math.max(1, total) : perPage,
@@ -488,7 +516,13 @@ export const createLocalApi = () => {
 			const rows = await ctx.db.select(
 				`${TASK_SELECT} WHERE t.deleted_at IS NULL AND t.start_time > 0 ORDER BY t.start_time DESC`,
 			);
-			return paginate(rows.map((row) => taskJson(row, ctx)), rows.length, 1, Math.max(1, rows.length), '/api/tasks/runned');
+			return paginate(
+				await withPersonaAssignees(ctx, rows.map((row) => taskJson(row, ctx))),
+				rows.length,
+				1,
+				Math.max(1, rows.length),
+				'/api/tasks/runned',
+			);
 		})
 		.add('GET', 'tasks/indexes', async ({ ctx, query }) => {
 			const [{ n }] = await ctx.db.select<{ n: number }>(
@@ -518,6 +552,8 @@ export const createLocalApi = () => {
 			return [];
 		})
 		.add('POST', 'tasks', async ({ ctx, body }) => {
+			const personaIds = body?.persona_assignees ?? null;
+			if (personaIds !== null) requireHumanActor(ctx);
 			const fields = personaWritableFields(ctx, body);
 			if (!fields.title) throw new LocalHttpError(422, 'title is required');
 			fields.status_id = fields.status_id ?? (await defaultStatusId(ctx));
@@ -532,24 +568,39 @@ export const createLocalApi = () => {
 					END, ?, ?`,
 				[...keys.map((k) => fields[k]), fields.project_category_id ?? null, fields.project_category_id ?? null, now, now],
 			);
-			await syncTaskMentions(ctx, Number(result.lastInsertId));
-			return loadTask(ctx, Number(result.lastInsertId));
+			const id = Number(result.lastInsertId);
+			if (personaIds !== null) await setTaskPersonas(ctx, id, personaIds);
+			await syncTaskMentions(ctx, id);
+			return loadTask(ctx, id);
 		}, 201)
 		.add('GET', 'tasks', (req) => listTasks(req, [], [], taskSortOrder(req), 'tasks'))
 		.add('GET', 'tasks/settings', () => [])
 		.add('GET', 'tasks/:id(\\d+)', ({ ctx, params }) => loadTask(ctx, Number(params.id)))
-		.add('PUT', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
+		.add('PUT', 'tasks/:id(\\d+)', async ({ ctx, params, body }) => {
 			const id = Number(params.id);
-			return isRoutineId(id)
-				? updateRoutineTaskFields(ctx, id, body ?? {})
-				: updateTask(ctx, id, writableTaskFields(body ?? {}));
+			if (isRoutineId(id)) return updateRoutineTaskFields(ctx, id, body ?? {});
+			return updateTaskWithPersonas(ctx, id, writableTaskFields(body ?? {}), body?.persona_assignees ?? null);
 		})
-		.add('PATCH', 'tasks/:id(\\d+)', ({ ctx, params, body }) => {
+		.add('PATCH', 'tasks/:id(\\d+)', async ({ ctx, params, body }) => {
 			const id = Number(params.id);
-			return isRoutineId(id)
-				? updateRoutineTaskFields(ctx, id, body ?? {})
-				: updateTask(ctx, id, personaWritableFields(ctx, body));
+			if (isRoutineId(id)) return updateRoutineTaskFields(ctx, id, body ?? {});
+			return updateTaskWithPersonas(ctx, id, personaWritableFields(ctx, body), body?.persona_assignees ?? null);
 		})
+		.add('POST', 'tasks/:id(\\d+)/personas/:uuid', async ({ ctx, params }) => {
+			requireHumanActor(ctx);
+			const id = Number(params.id);
+			await loadTask(ctx, id);
+			await assignPersona(ctx, id, params.uuid);
+			return loadTask(ctx, id);
+		})
+		.add('DELETE', 'tasks/:id(\\d+)/personas/:uuid', async ({ ctx, params }) => {
+			requireHumanActor(ctx);
+			const id = Number(params.id);
+			await loadTask(ctx, id);
+			await unassignPersona(ctx, id, params.uuid);
+			return loadTask(ctx, id);
+		})
+		.add('GET', 'workspaces/:wid/assignable-personas', ({ ctx }) => assignablePersonas(ctx))
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);
 			await stopTimer(ctx, id);
@@ -561,6 +612,7 @@ export const createLocalApi = () => {
 			// Soft-deleted, so the ON DELETE CASCADE on task_id never fires: clean these up explicitly.
 			await ctx.db.execute(`DELETE FROM plugin_task_data WHERE task_id = ?`, [id]);
 			await ctx.db.execute(`DELETE FROM agent_work_runs WHERE task_id = ?`, [id]);
+			await ctx.db.execute(`DELETE FROM task_persona_assignees WHERE task_id = ?`, [id]);
 			await ctx.db.execute(`DELETE FROM task_relations WHERE task_id = ? OR related_task_id = ?`, [id, id]);
 			await ctx.db.execute(
 				`DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE task_id = ?)`,

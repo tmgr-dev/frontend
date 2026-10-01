@@ -18,7 +18,9 @@
 		getTaskGitActivity,
 	} from '@/actions/tmgr/github';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
+		assignPersonaToTask,
 		createTask as createTaskAction,
 		deleteTask,
 		getTask,
@@ -27,6 +29,7 @@
 		stopTaskTimeCounter,
 		Task,
 		updateTask,
+		unassignPersonaFromTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import {
@@ -34,6 +37,7 @@
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
+	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
@@ -89,6 +93,11 @@
 	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
 	import { focusField } from '@/utils/focusTarget';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import {
+		personaAssigneeIds,
+		personaAssigneesOf,
+		type PersonaAssignee,
+	} from '@/utils/personas';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { applyTimerState } from '@/utils/timerSync';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
@@ -325,6 +334,13 @@
 	const statuses = ref<Status[]>();
 	const categories = ref<Category[]>([]);
 	const workspaceMembers = ref<WorkspaceMember[]>([]);
+	const assignablePersonas = ref<PersonaAssignee[]>([]);
+	const personaAssignees = ref<PersonaAssignee[]>([]);
+	const memberAvatars = computed(() =>
+		Object.fromEntries(
+			workspaceMembers.value.map((m) => [m.id, !!m.has_avatar]),
+		),
+	);
 	const isLoading = ref(false);
 	const checkpointUpdateKey = ref(0);
 	const isCheckpointsExpanded = ref(false);
@@ -627,9 +643,13 @@
 				getStatuses(),
 				getCategories(),
 				workspaceId ? getWorkspaceMembers(Number(workspaceId)) : [],
+				workspaceId
+					? getAssignablePersonas(Number(workspaceId)).catch(() => [])
+					: [],
 			])
-				.then(([loadedStatuses, loadedCategories, loadedWorkspaceMembers]) => {
+				.then(([loadedStatuses, loadedCategories, loadedWorkspaceMembers, loadedAssignablePersonas]) => {
 					if (formDisposed) return;
+					assignablePersonas.value = loadedAssignablePersonas;
 
 					statuses.value = loadedStatuses;
 					categories.value = loadedCategories;
@@ -750,6 +770,7 @@
 				} else {
 					assignees.value = [];
 				}
+				personaAssignees.value = personaAssigneesOf(form.value);
 
 				taskReady.value = true;
 				void Promise.allSettled([
@@ -846,6 +867,9 @@
 				} else if (action === 'deleted') {
 					emit('close');
 				}
+			},
+			onTaskAssignmentChanged: ({ task_id }) => {
+				void refreshAssignments(task_id);
 			},
 			onCommentAdded: (comment) => {
 				if (comment.task_id === taskId.value) {
@@ -1343,6 +1367,9 @@
 		suppressAutoSavingForOnce.value = true;
 		// Ensure assignees is properly typed as Record<string, any>[] | number[]
 		form.value.assignees = assignees.value;
+		if (!taskId.value && !form.value.id) {
+			form.value.persona_assignees = personaAssignees.value.map((p) => p.id);
+		}
 
 		suppressAutoSavingForOnce.value = true;
 
@@ -1418,7 +1445,16 @@
 		} catch {
 			/* Saving still works if browser storage is unavailable. */
 		}
-		const saved = await updateTask(snapshot.id, snapshot, instanceId);
+		const saved = await updateTask(
+			snapshot.id,
+			snapshot.persona_assignees === undefined
+				? snapshot
+				: {
+						...snapshot,
+						persona_assignees: personaAssigneeIds(snapshot),
+				  },
+			instanceId,
+		);
 		try {
 			if (sessionStorage.getItem(key) === serialized)
 				sessionStorage.removeItem(key);
@@ -1709,6 +1745,54 @@
 		});
 	};
 
+	const applyAssignments = (data: Partial<Task> | null | undefined) => {
+		if (!data?.assignees) return;
+		suppressAutoSavingForOnce.value = true;
+		form.value = {
+			...form.value,
+			assignees: data.assignees,
+			persona_assignees: data.persona_assignees ?? [],
+		};
+		assignees.value = (data.assignees as Array<{ id: number } | number>).map(
+			(a) => (typeof a === 'object' ? a.id : a),
+		);
+		personaAssignees.value = personaAssigneesOf(data);
+		store.commit('updateSingleTask', form.value);
+	};
+
+	const togglePersona = async (persona: PersonaAssignee) => {
+		const selected = personaAssignees.value.some((p) => p.id === persona.id);
+		const id = taskId.value || form.value.id;
+		if (!id) {
+			personaAssignees.value = selected
+				? personaAssignees.value.filter((p) => p.id !== persona.id)
+				: [...personaAssignees.value, persona];
+			return;
+		}
+		try {
+			applyAssignments(
+				selected
+					? await unassignPersonaFromTask(id, persona.id)
+					: await assignPersonaToTask(id, persona.id),
+			);
+		} catch (e) {
+			console.error('Failed to update persona assignees:', e);
+			toast({
+				title: 'Could not update persona assignees',
+				variant: 'destructive',
+			});
+		}
+	};
+
+	const refreshAssignments = async (changedTaskId: number) => {
+		if (!form.value.id || Number(changedTaskId) !== form.value.id) return;
+		try {
+			applyAssignments(await getTask(form.value.id, false));
+		} catch {
+			/* The next full load picks the assignment up. */
+		}
+	};
+
 	const isAssignedToMe = computed(() => {
 		if (!currentUserId.value) return false;
 		return assignees.value.includes(currentUserId.value);
@@ -1785,6 +1869,7 @@
 				} else {
 					assignees.value = [];
 				}
+				personaAssignees.value = personaAssigneesOf(form.value);
 
 				const currentWorkspace = store.getters['user/getCurrentWorkspace'];
 				if (currentWorkspace && !props.detached) {
@@ -2206,6 +2291,14 @@
 							<AssigneesCombobox
 								:assignees="workspaceMembers"
 								v-model="assignees as any"
+								:assignable-personas="assignablePersonas"
+								:selected-personas="personaAssignees"
+								@toggle-persona="togglePersona"
+							/>
+							<PersonaAssigneeChips
+								:personas="personaAssignees"
+								:size="24"
+								:member-avatars="memberAvatars"
 							/>
 							<button
 								v-if="!isAssignedToMe"

@@ -1,4 +1,11 @@
+import {
+	hasMyPersonaAssignee,
+	hasPersonaAssignee,
+	type PersonaAssignee,
+} from './personas';
 import { createRequestSequence } from './requestSequence';
+
+export const MY_PERSONAS_FILTER = 'mine';
 
 export function createBoardLoader<T>(
 	fetch: () => Promise<T>,
@@ -47,6 +54,7 @@ export function filterBoardTasks<
 		description?: string | null;
 		project_category_id?: number | string;
 		assignees?: Array<{ id: number }>;
+		persona_assignees?: PersonaAssignee[];
 	},
 >(
 	tasks: T[],
@@ -54,6 +62,8 @@ export function filterBoardTasks<
 		searchText?: string | null;
 		selectedUser?: number;
 		selectedCategory?: number;
+		selectedPersona?: string;
+		myUserId?: number | null;
 	},
 ) {
 	const search = (filter.searchText || '').toLowerCase();
@@ -66,6 +76,10 @@ export function filterBoardTasks<
 				task.assignees?.some(
 					(user) => Number(user.id) === Number(filter.selectedUser),
 				)) &&
+			(!filter.selectedPersona ||
+				(filter.selectedPersona === MY_PERSONAS_FILTER
+					? hasMyPersonaAssignee(task, filter.myUserId)
+					: hasPersonaAssignee(task, filter.selectedPersona))) &&
 			(!filter.selectedCategory ||
 				Number(task.project_category_id) === Number(filter.selectedCategory)),
 	);

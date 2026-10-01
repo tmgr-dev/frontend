@@ -13,7 +13,7 @@ const upTo = async (db: LocalDb, version: number) => {
 	await db.execute(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)`, [String(version)]);
 };
 
-describeSqlite('pages schema (migration 9)', () => {
+describeSqlite('pages schema (migration 10)', () => {
 	it('creates the pages tables, the FTS index and its triggers', async () => {
 		const db = memoryDb();
 		expect(await migrate(db, now)).toBe(LATEST_SCHEMA);

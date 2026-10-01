@@ -1,6 +1,6 @@
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
-import type { PersonaPolicy } from '@/utils/personas';
+import type { PersonaAssignee, PersonaPolicy } from '@/utils/personas';
 
 export interface PersonaOwnerRef {
 	id: number;
@@ -18,6 +18,9 @@ export interface Persona {
 	created_at: string;
 	updated_at: string;
 	owner: PersonaOwnerRef;
+	workspace_id?: number | null;
+	scope?: 'account' | 'workspace';
+	can_edit?: boolean;
 }
 
 export interface PersonaSkillTitle {
@@ -32,6 +35,7 @@ export interface PersonaGrantSummary {
 	avatar_url: string | null;
 	archived: boolean;
 	owner: PersonaOwnerRef;
+	workspace_id?: number | null;
 	skills?: PersonaSkillTitle[];
 }
 
@@ -66,6 +70,7 @@ export interface PersonaInput {
 	name: string;
 	description?: string;
 	system_prompt?: string;
+	workspace_id?: number;
 }
 
 export interface PersonaToken {
@@ -98,6 +103,10 @@ const workspaceGrantsKey = (workspaceId: number) =>
 	`ws-${workspaceId}-persona-grants`;
 const workspacePolicyKey = (workspaceId: number) =>
 	`ws-${workspaceId}-persona-policy`;
+const assignableKey = (workspaceId: number) =>
+	`personas-assignable-ws-${workspaceId}`;
+const invalidateAssignable = (workspaceId: number) =>
+	requestCache.invalidate(assignableKey(workspaceId));
 
 export const listPersonas = async (
 	includeArchived = false,
@@ -320,6 +329,7 @@ export const upsertWorkspaceGrant = async (
 		{ permissions },
 	);
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
+	invalidateAssignable(workspaceId);
 	return data;
 };
 
@@ -329,6 +339,7 @@ export const removeWorkspaceGrant = async (
 ): Promise<void> => {
 	await $axios.delete(`/workspaces/${workspaceId}/personas/${personaUuid}`);
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
+	invalidateAssignable(workspaceId);
 };
 
 export const blockWorkspacePersona = async (
@@ -341,6 +352,7 @@ export const blockWorkspacePersona = async (
 		`/workspaces/${workspaceId}/personas/${personaUuid}/block`,
 	);
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
+	invalidateAssignable(workspaceId);
 	return data;
 };
 
@@ -354,6 +366,7 @@ export const unblockWorkspacePersona = async (
 		`/workspaces/${workspaceId}/personas/${personaUuid}/block`,
 	);
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
+	invalidateAssignable(workspaceId);
 	return data;
 };
 
@@ -382,5 +395,21 @@ export const setPersonaPolicy = async (
 		policy,
 	});
 	requestCache.invalidate(workspacePolicyKey(workspaceId));
+	invalidateAssignable(workspaceId);
 	return data;
 };
+
+export const getAssignablePersonas = async (
+	workspaceId: number,
+	useCache = true,
+): Promise<PersonaAssignee[]> =>
+	requestCache.getOrFetch(
+		assignableKey(workspaceId),
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/workspaces/${workspaceId}/assignable-personas`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
