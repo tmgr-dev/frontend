@@ -42,6 +42,7 @@
 <script lang="ts">
 	import { fileDisplayUrl, releaseFileDisplayUrl } from '@/actions/tmgr/files';
 	import store from '@/store';
+	import { imageFilesOf } from '@/utils/pages/files';
 	import { extractTmgrRefs, parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { Crepe } from '@milkdown/crepe';
 	import '@milkdown/crepe/theme/common/style.css';
@@ -96,8 +97,12 @@
 			modelValue: { type: String, default: '' },
 			directory: { type: Object as PropType<TmgrDirectory>, required: true },
 			placeholder: { type: String, default: '' },
+			uploadFile: {
+				type: Function as PropType<(file: File) => Promise<number>>,
+				default: undefined,
+			},
 		},
-		emits: ['change', 'navigate'],
+		emits: ['change', 'navigate', 'upload-error'],
 		setup(props, { emit }) {
 			const rootRef = ref<HTMLElement | null>(null);
 			const mountRef = ref<HTMLElement | null>(null);
@@ -230,6 +235,56 @@
 					}),
 			);
 
+			const insertImages = async (view: any, files: File[], at: number) => {
+				const upload = props.uploadFile;
+				if (!upload) return;
+				let position = at;
+				for (const file of files) {
+					try {
+						const id = await upload(file);
+						const node = view.state.schema.nodes.image.create({
+							src: `tmgr://file/${id}`,
+							alt: file.name,
+						});
+						const target = Math.min(position, view.state.doc.content.size);
+						view.dispatch(view.state.tr.insert(target, node));
+						position = target + node.nodeSize;
+					} catch {
+						emit('upload-error', file);
+					}
+				}
+			};
+
+			const uploadPlugin = $prose(
+				() =>
+					new Plugin({
+						key: new PluginKey('tmgr-image-upload'),
+						props: {
+							handlePaste(view, event) {
+								if (!props.uploadFile) return false;
+								const files = imageFilesOf(event.clipboardData?.files);
+								if (!files.length) return false;
+								event.preventDefault();
+								void insertImages(view, files, view.state.selection.from);
+								return true;
+							},
+							handleDrop(view, event) {
+								if (!props.uploadFile) return false;
+								const files = imageFilesOf(event.dataTransfer?.files);
+								if (!files.length) return false;
+								event.preventDefault();
+								const at =
+									view.posAtCoords({
+										left: event.clientX,
+										top: event.clientY,
+									})?.pos ?? view.state.selection.from;
+								void insertImages(view, files, at);
+								return true;
+							},
+						},
+					}),
+			);
+
 			const imageView = $view(imageSchema.node, () => (node) => {
 				const img = document.createElement('img');
 				img.draggable = true;
@@ -332,6 +387,7 @@
 						});
 					})
 					.use(mentionPlugin)
+					.use(uploadPlugin)
 					.use(imageView);
 				crepe.on((listener) => {
 					listener.markdownUpdated((_ctx, markdown) => {

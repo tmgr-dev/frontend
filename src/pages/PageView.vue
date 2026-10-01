@@ -122,8 +122,10 @@
 							v-if="segment.kind === 'free'"
 							:model-value="segment.text"
 							:directory="directory"
+							:upload-file="uploadImage"
 							placeholder="Начните писать... @ — ссылка, [[ — страница"
 							@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
+							@upload-error="onUploadError"
 							@navigate="onNavigate"
 						/>
 						<PageSection
@@ -145,6 +147,15 @@
 					:slug="page.slug"
 					@toc="scrollToHeading"
 				>
+					<template #files>
+						<PageFilesPanel
+							:files="files"
+							:uploading="uploading"
+							:error="uploadError"
+							@upload="uploadFiles"
+							@open="openFile"
+						/>
+					</template>
 					<template #actions>
 						<PageActionLines
 							:lines="actionLines"
@@ -190,21 +201,26 @@
 </template>
 
 <script lang="ts">
+	import { fetchFileObjectUrl } from '@/actions/tmgr/files';
 	import {
 		getPage,
+		getPageFiles,
 		getPageVersions,
 		type Page,
 		PageConflictError,
+		type PageFile,
 		type PageVersion,
 		setPageSection,
 		taskFromSelection,
 		updatePage,
+		uploadPageFile,
 	} from '@/actions/tmgr/pages';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import PageActionLines from '@/components/pages/PageActionLines.vue';
 	import PageConflictDialog from '@/components/pages/PageConflictDialog.vue';
 	import PageEditor from '@/components/pages/PageEditor.vue';
+	import PageFilesPanel from '@/components/pages/PageFilesPanel.vue';
 	import PageProperties from '@/components/pages/PageProperties.vue';
 	import PageSection from '@/components/pages/PageSection.vue';
 	import PageSidePanel from '@/components/pages/PageSidePanel.vue';
@@ -273,6 +289,7 @@
 			PageConflictDialog,
 			PageContainer,
 			PageEditor,
+			PageFilesPanel,
 			PageHeader,
 			PageProperties,
 			PageSection,
@@ -330,6 +347,56 @@
 			}));
 
 			const toaster = useToast();
+			const files = ref<PageFile[]>([]);
+			const uploading = ref(false);
+			const uploadError = ref('');
+
+			async function loadFiles() {
+				if (!page.value) return;
+				const id = page.value.id;
+				files.value = page.value.files ?? files.value;
+				try {
+					const list = await getPageFiles(id);
+					if (page.value?.id === id) files.value = list;
+				} catch {
+					return;
+				}
+			}
+
+			const uploadImage = async (file: File): Promise<number> => {
+				if (!page.value) throw new Error('no page');
+				const created = await uploadPageFile(page.value.id, file);
+				files.value = [...files.value, created];
+				return created.id;
+			};
+
+			const onUploadError = (file: File) => {
+				uploadError.value = `Не удалось загрузить ${file.name}`;
+			};
+
+			const uploadFiles = async (list: File[]) => {
+				uploading.value = true;
+				uploadError.value = '';
+				for (const file of list) {
+					try {
+						await uploadImage(file);
+					} catch {
+						onUploadError(file);
+					}
+				}
+				uploading.value = false;
+			};
+
+			const openFile = async (file: PageFile) => {
+				try {
+					const url = await fetchFileObjectUrl(file.id);
+					window.open(url, '_blank', 'noopener');
+					setTimeout(() => URL.revokeObjectURL(url), 60000);
+				} catch {
+					uploadError.value = `Не удалось открыть ${file.name}`;
+				}
+			};
+
 			const selection = ref<{ text: string; x: number; y: number } | null>(
 				null,
 			);
@@ -604,6 +671,7 @@
 				setDocumentTitle(next.title);
 				applying = false;
 				void loadVersions();
+				void loadFiles();
 			};
 
 			async function load() {
@@ -864,6 +932,13 @@
 				onFreeChange,
 				propertyErrors,
 				selection,
+				files,
+				uploading,
+				uploadError,
+				uploadImage,
+				onUploadError,
+				uploadFiles,
+				openFile,
 				taskDialog,
 				taskBusy,
 				taskError,

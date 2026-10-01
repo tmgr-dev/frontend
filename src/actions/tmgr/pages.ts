@@ -1,6 +1,7 @@
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
+import { presignUpload, putToStorage } from './files';
 
 export type PageType = 'plain' | 'context' | 'person' | 'meeting';
 
@@ -332,4 +333,13 @@ export const followPage = async (pageId: number): Promise<void> => {
 export const unfollowPage = async (pageId: number): Promise<void> => {
 	await $axios.delete(`pages/${pageId}/follow`);
 	invalidatePages();
+};
+
+export const uploadPageFile = async (
+	pageId: number,
+	file: File,
+): Promise<PageFile> => {
+	const target = await presignUpload(file);
+	await putToStorage(target, file);
+	return attachPageUpload(pageId, file, target);
 };
