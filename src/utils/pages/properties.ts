@@ -7,9 +7,9 @@ import type {
 export type PropertyErrors = Record<string, string>;
 
 export const NETWORK_OPTIONS: { value: PersonaNetwork; label: string }[] = [
-	{ value: 'operational', label: 'Операционная' },
-	{ value: 'personal', label: 'Личная' },
-	{ value: 'strategic', label: 'Стратегическая' },
+	{ value: 'operational', label: 'Operational' },
+	{ value: 'personal', label: 'Personal' },
+	{ value: 'strategic', label: 'Strategic' },
 ];
 
 export const ALIAS_SOURCES: { value: AliasSource; label: string }[] = [
@@ -17,8 +17,8 @@ export const ALIAS_SOURCES: { value: AliasSource; label: string }[] = [
 	{ value: 'rocketchat', label: 'Rocket.Chat' },
 	{ value: 'slack', label: 'Slack' },
 	{ value: 'github', label: 'GitHub' },
-	{ value: 'email', label: 'Почта' },
-	{ value: 'other', label: 'Другое' },
+	{ value: 'email', label: 'Email' },
+	{ value: 'other', label: 'Other' },
 ];
 
 export const networkLabel = (value: string | null | undefined): string =>
@@ -49,29 +49,29 @@ const validatePerson = (props: Record<string, any>): PropertyErrors => {
 	const errors: PropertyErrors = {};
 	const { user_id: userId, aliases, network, company, role } = props;
 	if (userId !== null && userId !== undefined && !isId(userId)) {
-		errors.user_id = 'Некорректный участник';
+		errors.user_id = 'Invalid member';
 	}
 	if (aliases !== undefined && aliases !== null) {
 		if (!Array.isArray(aliases)) {
-			errors.aliases = 'Должен быть список';
+			errors.aliases = 'Must be a list';
 		} else {
 			const sources = ALIAS_SOURCES.map((option) => option.value);
 			aliases.forEach((alias, index) => {
 				if (!sources.includes(alias?.source)) {
-					errors[`aliases.${index}.source`] = 'Выберите источник';
+					errors[`aliases.${index}.source`] = 'Choose a source';
 				}
 				if (
 					typeof alias?.native_id !== 'string' ||
 					!alias.native_id.trim() ||
 					alias.native_id.length > MAX_TEXT
 				) {
-					errors[`aliases.${index}.native_id`] = 'Укажите идентификатор';
+					errors[`aliases.${index}.native_id`] = 'Enter an identifier';
 				}
 				if (
 					typeof alias?.display !== 'string' ||
 					alias.display.length > MAX_TEXT
 				) {
-					errors[`aliases.${index}.display`] = 'Слишком длинное имя';
+					errors[`aliases.${index}.display`] = 'Name is too long';
 				}
 			});
 		}
@@ -81,10 +81,10 @@ const validatePerson = (props: Record<string, any>): PropertyErrors => {
 		network !== undefined &&
 		!NETWORK_OPTIONS.some((option) => option.value === network)
 	) {
-		errors.network = 'Выберите тип связи';
+		errors.network = 'Choose a relationship type';
 	}
-	if (!isNullableText(company)) errors.company = 'Не больше 255 символов';
-	if (!isNullableText(role)) errors.role = 'Не больше 255 символов';
+	if (!isNullableText(company)) errors.company = 'At most 255 characters';
+	if (!isNullableText(role)) errors.role = 'At most 255 characters';
 	return errors;
 };
 
@@ -92,18 +92,18 @@ const validateMeeting = (props: Record<string, any>): PropertyErrors => {
 	const errors: PropertyErrors = {};
 	const { date, participants, related_tasks: relatedTasks } = props;
 	if (date !== null && date !== undefined && !isDate(date)) {
-		errors.date = 'Дата в формате ГГГГ-ММ-ДД';
+		errors.date = 'Date in YYYY-MM-DD format';
 	}
 	if (participants !== undefined && participants !== null) {
 		if (!Array.isArray(participants)) {
-			errors.participants = 'Должен быть список';
+			errors.participants = 'Must be a list';
 		} else if (!participants.every((item) => PARTICIPANT.test(item))) {
-			errors.participants = 'Некорректный участник';
+			errors.participants = 'Invalid member';
 		}
 	}
 	if (relatedTasks !== undefined && relatedTasks !== null) {
 		if (!Array.isArray(relatedTasks) || !relatedTasks.every(isId)) {
-			errors.related_tasks = 'Некорректная задача';
+			errors.related_tasks = 'Invalid task';
 		}
 	}
 	return errors;
@@ -149,16 +149,16 @@ export const parsePropertyErrors = (error: any): PropertyErrors | null => {
 		for (const item of source) {
 			const field = normalizeField(String(item?.field ?? item?.path ?? ''));
 			const message = messageOf(item);
-			if (field) result[field] = message || 'Некорректное значение';
+			if (field) result[field] = message || 'Invalid value';
 		}
 	} else if (source && typeof source === 'object') {
 		for (const [field, value] of Object.entries(source)) {
 			result[normalizeField(field)] =
-				messageOf(value) || 'Некорректное значение';
+				messageOf(value) || 'Invalid value';
 		}
 	}
 	if (!Object.keys(result).length) {
-		result._ = messageOf(data.message) || 'Некорректные свойства';
+		result._ = messageOf(data.message) || 'Invalid properties';
 	}
 	return result;
 };

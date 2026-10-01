@@ -37,7 +37,7 @@ describe('pageHitUrl', () => {
 
 describe('pageTypeLabel', () => {
 	it('labels known types and passes unknown ones through', () => {
-		expect(pageTypeLabel('context')).toBe('Контекст');
+		expect(pageTypeLabel('context')).toBe('Context');
 		expect(pageTypeLabel('x')).toBe('x');
 	});
 });

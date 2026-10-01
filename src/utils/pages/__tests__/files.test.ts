@@ -5,9 +5,9 @@ const file = (name: string, type: string) => ({ name, type } as File);
 describe('page file helpers', () => {
 	it('formats sizes', () => {
 		expect(formatFileSize(null)).toBe('');
-		expect(formatFileSize(512)).toBe('512 Б');
-		expect(formatFileSize(2048)).toBe('2 КБ');
-		expect(formatFileSize(3 * 1024 * 1024)).toBe('3.0 МБ');
+		expect(formatFileSize(512)).toBe('512 B');
+		expect(formatFileSize(2048)).toBe('2 KB');
+		expect(formatFileSize(3 * 1024 * 1024)).toBe('3.0 MB');
 	});
 
 	it('keeps only images', () => {

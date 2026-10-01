@@ -32,7 +32,7 @@
 				@click="startEdit"
 			>
 				<Pencil class="h-3.5 w-3.5" />
-				Править
+				Edit
 			</button>
 		</header>
 
@@ -50,7 +50,7 @@
 					:disabled="saving"
 					@click="editing = false"
 				>
-					Отмена
+					Cancel
 				</button>
 				<button
 					type="button"
@@ -58,7 +58,7 @@
 					:disabled="saving"
 					@click="save"
 				>
-					Сохранить
+					Save
 				</button>
 			</div>
 		</div>

@@ -179,20 +179,20 @@ describeSqlite('local pages API on SQLite', () => {
 
 	describe('page types', () => {
 		it('creates a context page from the template, pinned, with the agent section', async () => {
-			const page = await create('Контекст', { type: 'context' });
+			const page = await create('Context', { type: 'context' });
 			expect(page.pinned).toBe(true);
 			expect(page.sections).toEqual([
-				{ id: 'agent-notes', owner: 'agents', heading: 'Заметки агентов' },
+				{ id: 'agent-notes', owner: 'agents', heading: 'Agent notes' },
 			]);
-			expect(page.body).toContain('## Как мы работаем');
+			expect(page.body).toContain('## How we work');
 		});
 
 		it('creates person and meeting pages from their templates', async () => {
 			const person = await create('Иван', { type: 'person' });
 			expect(person.sections).toEqual([
-				{ id: 'promises', owner: 'system', heading: 'Обещания' },
+				{ id: 'promises', owner: 'system', heading: 'Promises' },
 			]);
-			expect(person.body).toContain('## Хронология');
+			expect(person.body).toContain('## Timeline');
 			expect(person.properties).toEqual({
 				user_id: null,
 				aliases: [],
@@ -202,7 +202,7 @@ describeSqlite('local pages API on SQLite', () => {
 				last_contact_at: null,
 			});
 			const meeting = await create('Sync', { type: 'meeting' });
-			expect(meeting.body).toContain('## Повестка');
+			expect(meeting.body).toContain('## Agenda');
 			expect(meeting.properties).toEqual({
 				date: null,
 				participants: [],
@@ -287,8 +287,8 @@ describeSqlite('local pages API on SQLite', () => {
 			expect(saved).toEqual({ 'pages.analyst_persona_id': 'p-1' });
 			const after = await create('Анна', { type: 'person' });
 			expect(after.sections).toEqual([
-				{ id: 'promises', owner: 'system', heading: 'Обещания' },
-				{ id: 'insights', owner: 'persona:p-1', heading: 'Инсайты' },
+				{ id: 'promises', owner: 'system', heading: 'Promises' },
+				{ id: 'insights', owner: 'persona:p-1', heading: 'Insights' },
 			]);
 			expect(
 				(await data('GET', `pages/${before.id}`)).sections.map(
@@ -385,7 +385,7 @@ describeSqlite('local pages API on SQLite', () => {
 			const pages = await data('GET', 'pages');
 			expect(pages).toHaveLength(1);
 			expect([pages[0].title, pages[0].type, pages[0].pinned]).toEqual([
-				'Контекст воркспейса',
+				'Workspace context',
 				'context',
 				true,
 			]);
@@ -616,18 +616,28 @@ describeSqlite('local pages API on SQLite', () => {
 			]);
 		});
 
-		it('bumps last_contact_at when a person page gets a Хронология entry', async () => {
+		it('bumps last_contact_at when a person page gets a Timeline entry', async () => {
+			const person = await create('Иван', { type: 'person' });
+			const out = await data('POST', `pages/${person.id}/append`, {
+				markdown: '- звонили',
+				heading: 'Timeline',
+			});
+			expect(out.properties.last_contact_at).toBe('2026-10-01');
+			expect(out.body).toContain('## Timeline\n\n- звонили');
+		});
+
+		it('bumps last_contact_at for the Russian chronicle heading alias', async () => {
 			const person = await create('Иван', { type: 'person' });
 			const out = await data('POST', `pages/${person.id}/append`, {
 				markdown: '- звонили',
 				heading: 'Хронология',
 			});
 			expect(out.properties.last_contact_at).toBe('2026-10-01');
-			expect(out.body).toContain('## Хронология\n\n- звонили');
+			expect(out.body).toContain('## Timeline\n\n- звонили');
 		});
 
 		it('lets a persona append to the agent section of a context page, but not elsewhere', async () => {
-			const context = await create('Контекст', { type: 'context' });
+			const context = await create('Context', { type: 'context' });
 			const out = await data(
 				'POST',
 				`pages/${context.id}/append`,
@@ -635,13 +645,13 @@ describeSqlite('local pages API on SQLite', () => {
 				persona,
 			);
 			expect(out.body).toContain(
-				'## Заметки агентов\n\nsession summary\n<!-- /tmgr:section -->',
+				'## Agent notes\n\nsession summary\n<!-- /tmgr:section -->',
 			);
 			expect(out.updated_by).toMatchObject({ kind: 'persona', id: 'p-1' });
 			const outside = await call(
 				'POST',
 				`pages/${context.id}/append`,
-				{ markdown: 'x', heading: 'Архитектура' },
+				{ markdown: 'x', heading: 'Architecture' },
 				persona,
 			);
 			expect([outside.status, outside.data.error]).toEqual([
@@ -802,7 +812,7 @@ describeSqlite('local pages API on SQLite', () => {
 					)
 				).status,
 			).toBe(200);
-			const context = await create('Контекст', { type: 'context' });
+			const context = await create('Context', { type: 'context' });
 			const appended = await call(
 				'POST',
 				`pages/${context.id}/append`,
@@ -861,7 +871,7 @@ describeSqlite('local pages API on SQLite', () => {
 				expect([res.status, res.data.error]).toEqual([422, 'invalid_heading']);
 			}
 			expect((await put('ok', { markdown: 'x' })).status).toBe(404);
-			const context = await create('Контекст', { type: 'context' });
+			const context = await create('Context', { type: 'context' });
 			const refused = await call(
 				'PUT',
 				`pages/${context.id}/sections/mine`,
@@ -875,7 +885,7 @@ describeSqlite('local pages API on SQLite', () => {
 		});
 
 		it('allows only agents sections on a context page', async () => {
-			const context = await create('Контекст', { type: 'context' });
+			const context = await create('Context', { type: 'context' });
 			const ok = await data(
 				'PUT',
 				`pages/${context.id}/sections/agent-notes`,
@@ -898,7 +908,7 @@ describeSqlite('local pages API on SQLite', () => {
 				`pages/${context.id}`,
 				{
 					version: ok.version,
-					body: ok.body.replace('## Архитектура', '## Архитектура\n\nhijack'),
+					body: ok.body.replace('## Architecture', '## Architecture\n\nhijack'),
 				},
 				persona,
 			);
@@ -1128,7 +1138,7 @@ describeSqlite('local pages API on SQLite', () => {
 			});
 			let page = await data('GET', `pages/${person.id}`);
 			expect(page.body).toContain(
-				`- [T${open.id}](tmgr://task/${open.id}) — Send the report · до 2026-10-05`,
+				`- [T${open.id}](tmgr://task/${open.id}) — Send the report · due 2026-10-05`,
 			);
 			expect(page.version).toBe(2);
 			expect(
@@ -1375,7 +1385,7 @@ describeSqlite('local pages API on SQLite', () => {
 				code: 'TM',
 			});
 			const page = await create('Meeting', {
-				body: '## Действия\n\nCall the vendor\nCall the vendor\n',
+				body: '## Action items\n\nCall the vendor\nCall the vendor\n',
 			});
 			const res = await call('POST', `pages/${page.id}/task-from-selection`, {
 				text: 'Call the vendor',
@@ -1389,10 +1399,10 @@ describeSqlite('local pages API on SQLite', () => {
 				key: `TM-${task.category_tasks_sequence_id}`,
 			});
 			expect(task.description).toContain(
-				`Из страницы: [Meeting](tmgr://page/${page.id})`,
+				`From page: [Meeting](tmgr://page/${page.id})`,
 			);
 			expect(updated.body).toBe(
-				`## Действия\n\n[${task.key}](tmgr://task/${task.id})\nCall the vendor\n`,
+				`## Action items\n\n[${task.key}](tmgr://task/${task.id})\nCall the vendor\n`,
 			);
 			expect(updated.version).toBe(2);
 			expect(
@@ -1462,10 +1472,10 @@ describeSqlite('local pages API on SQLite', () => {
 		});
 
 		it('joins all context pages into the workspace context document', async () => {
-			await create('Контекст', { type: 'context' });
+			await create('Context', { type: 'context' });
 			const { markdown } = await data('GET', 'workspaces/context');
-			expect(markdown).toContain('# Контекст');
-			expect(markdown).toContain('## Как мы работаем');
+			expect(markdown).toContain('# Context');
+			expect(markdown).toContain('## How we work');
 		});
 	});
 

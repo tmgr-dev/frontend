@@ -9,12 +9,12 @@ import {
 	type Segment,
 } from '../sections';
 
-const CONTEXT = `## Как мы работаем
+const CONTEXT = `## How we work
 
-## Архитектура
+## Architecture
 
 <!-- tmgr:section id="agent-notes" owner="agents" -->
-## Заметки агентов
+## Agent notes
 <!-- /tmgr:section -->
 `;
 
@@ -37,8 +37,8 @@ describe('splitBody', () => {
 		const section = segments[1] as Extract<Segment, { kind: 'section' }>;
 		expect(section.id).toBe('agent-notes');
 		expect(section.owner).toBe('agents');
-		expect(section.inner).toBe('## Заметки агентов\n');
-		expect(section.heading).toBe('Заметки агентов');
+		expect(section.inner).toBe('## Agent notes\n');
+		expect(section.heading).toBe('Agent notes');
 	});
 
 	it('treats an unclosed marker as free text', () => {
@@ -127,9 +127,9 @@ describe('padSegments', () => {
 describe('applyFreeEdit', () => {
 	it('keeps the marker on its own line after the edited text', () => {
 		const padded = padSegments(splitBody(CONTEXT));
-		const edited = applyFreeEdit(padded, 0, '## Как мы работаем\n\nновое');
+		const edited = applyFreeEdit(padded, 0, '## How we work\n\nnew text');
 		const joined = joinSegments(edited);
-		expect(joined).toContain('новое\n\n<!-- tmgr:section id="agent-notes"');
+		expect(joined).toContain('new text\n\n<!-- tmgr:section id="agent-notes"');
 		expect(joined.endsWith('<!-- /tmgr:section -->\n')).toBe(true);
 	});
 
@@ -178,10 +178,10 @@ describe('replaceSectionInner / sectionInner', () => {
 		const next = replaceSectionInner(
 			CONTEXT,
 			'agent-notes',
-			'## Заметки агентов\n- new\n',
+			'## Agent notes\n- new\n',
 		);
 		expect(next).toBe(
-			CONTEXT.replace('## Заметки агентов\n', '## Заметки агентов\n- new\n'),
+			CONTEXT.replace('## Agent notes\n', '## Agent notes\n- new\n'),
 		);
 	});
 
@@ -190,7 +190,7 @@ describe('replaceSectionInner / sectionInner', () => {
 	});
 
 	it('reads the inner text of a section', () => {
-		expect(sectionInner(CONTEXT, 'agent-notes')).toBe('## Заметки агентов\n');
+		expect(sectionInner(CONTEXT, 'agent-notes')).toBe('## Agent notes\n');
 		expect(sectionInner(CONTEXT, 'nope')).toBeNull();
 	});
 });

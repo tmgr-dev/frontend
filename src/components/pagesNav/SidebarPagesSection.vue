@@ -1,12 +1,12 @@
 <template>
 	<SidebarGroup class="group-data-[collapsible=icon]:hidden">
-		<SidebarGroupLabel>Страницы</SidebarGroupLabel>
+		<SidebarGroupLabel>Pages</SidebarGroupLabel>
 		<div class="absolute right-3 top-3.5 flex items-center gap-0.5">
 			<button
 				type="button"
 				class="flex h-5 w-5 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-				title="Новая страница"
-				aria-label="Новая страница"
+				title="New page"
+				aria-label="New page"
 				@click="createRoot('plain')"
 			>
 				<Plus class="h-4 w-4" />
@@ -16,8 +16,8 @@
 					<button
 						type="button"
 						class="flex h-5 w-4 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-						title="Тип страницы"
-						aria-label="Выбрать тип страницы"
+						title="Page type"
+						aria-label="Choose page type"
 					>
 						<ChevronDown class="h-3.5 w-3.5" />
 					</button>
@@ -35,13 +35,13 @@
 		</div>
 
 		<div v-if="!loaded" class="px-2 py-1 text-xs text-sidebar-foreground/60">
-			Загрузка…
+			Loading…
 		</div>
 		<div
 			v-else-if="failed && !pages.length"
 			class="px-2 py-1 text-xs text-destructive"
 		>
-			Не удалось загрузить страницы
+			Failed to load pages
 		</div>
 		<Draggable
 			v-else
@@ -65,20 +65,20 @@
 			:to="`/${workspaceCode}/pages`"
 			class="mt-1 block rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 		>
-			Все страницы
+			All pages
 		</router-link>
 		<router-link
 			:to="`/${workspaceCode}/pages/_/trash`"
 			class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 		>
 			<Trash2 class="h-3 w-3" />
-			Корзина
+			Trash
 		</router-link>
 
 		<Dialog :open="!!renaming" @update:open="(open) => !open && (renaming = null)">
 			<DialogContent class="max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Переименовать страницу</DialogTitle>
+					<DialogTitle>Rename page</DialogTitle>
 				</DialogHeader>
 				<form class="flex flex-col gap-3" @submit.prevent="confirmRename">
 					<input
@@ -86,7 +86,7 @@
 						data-selectable
 						maxlength="255"
 						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:border-input dark:bg-background"
-						placeholder="Название"
+						placeholder="Title"
 					/>
 					<DialogFooter>
 						<button
@@ -94,7 +94,7 @@
 							class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 							:disabled="!renameTitle.trim()"
 						>
-							Сохранить
+							Save
 						</button>
 					</DialogFooter>
 				</form>
@@ -103,20 +103,20 @@
 
 		<Confirm
 			v-if="deleting"
-			title="Удалить страницу"
+			title="Delete page"
 			body=""
 			@on-ok="confirmDelete"
 			@on-cancel="deleting = null"
 		>
 			<template #body>
 				<p class="mt-1 text-tmgr-blue dark:text-gray-300">
-					«{{ deleting.title }}» и все вложенные страницы будут перемещены в
+					"{{ deleting.title }}" and all its subpages will be moved to
 					<router-link
 						:to="`/${workspaceCode}/pages/_/trash`"
 						class="underline"
 						@click="deleting = null"
-						>корзину</router-link
-					>. Их можно восстановить оттуда.
+						>trash</router-link
+					>. You can restore them from there.
 				</p>
 			</template>
 		</Confirm>
@@ -194,7 +194,7 @@
 			const tree = usePagesTree(
 				computed(() => workspaceId.value),
 				computed(() => true),
-				() => actions.fail('Не удалось переместить страницу'),
+				() => actions.fail('Failed to move page'),
 			);
 
 			const renaming = ref<PageSummary | null>(null);

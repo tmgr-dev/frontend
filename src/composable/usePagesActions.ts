@@ -37,7 +37,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			open(page);
 			return page;
 		} catch {
-			fail('Не удалось создать страницу');
+			fail('Failed to create page');
 			return null;
 		}
 	};
@@ -50,7 +50,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await updatePage(page.id, { version: current.version, title: next });
 			return true;
 		} catch {
-			fail('Не удалось переименовать страницу');
+			fail('Failed to rename page');
 			return false;
 		}
 	};
@@ -60,7 +60,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await (page.pinned ? unpinPage(page.id) : pinPage(page.id));
 			return true;
 		} catch {
-			fail('Не удалось изменить закрепление');
+			fail('Failed to change pin');
 			return false;
 		}
 	};
@@ -70,7 +70,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await deletePage(page.id);
 			return true;
 		} catch {
-			fail('Не удалось удалить страницу');
+			fail('Failed to delete page');
 			return false;
 		}
 	};

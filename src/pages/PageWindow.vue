@@ -18,8 +18,8 @@
 		<FeatureGate
 			v-else
 			feature-key="pages"
-			title="Страницы"
-			description="Заметки, контекст воркспейса и документация в дереве страниц, которые редактируют и люди, и агенты."
+			title="Pages"
+			description="Notes, workspace context and documentation in a page tree that people and agents both edit."
 			:icon="FileText"
 		>
 			<template #preview>

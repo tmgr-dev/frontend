@@ -1,3 +1,5 @@
+import { headingsMatch } from './headingAliases';
+
 interface Projected {
 	plain: string;
 	map: number[];
@@ -169,7 +171,7 @@ const TASK_LINK = /\[[^\]]*\]\(tmgr:\/\/task\/\d+\)/g;
 
 export const meetingActionLines = (
 	body: string,
-	heading = 'Действия',
+	heading = 'Action items',
 ): ActionLine[] => {
 	const lines = body.split(/\r?\n/);
 	const result: ActionLine[] = [];
@@ -184,7 +186,7 @@ export const meetingActionLines = (
 				if (found[1].length <= level) level = 0;
 				else return;
 			}
-			if (!level && found[2].trim().toLowerCase() === heading.toLowerCase()) {
+			if (!level && headingsMatch(found[2], heading)) {
 				level = found[1].length;
 			}
 			return;

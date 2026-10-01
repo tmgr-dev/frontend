@@ -53,10 +53,10 @@ describe('findSelectionInSource', () => {
 
 describe('meetingActionLines', () => {
 	const body = [
-		'## Повестка',
+		'## Agenda',
 		'- topic',
 		'',
-		'## Действия',
+		'## Action items',
 		'- Send report',
 		'- [ ] Call Ann',
 		'1. Book room',
@@ -64,7 +64,7 @@ describe('meetingActionLines', () => {
 		'- ',
 		'### Sub',
 		'- nested heading item',
-		'## Итоги',
+		'## Outcomes',
 		'- not an action',
 	].join('\n');
 
@@ -77,12 +77,18 @@ describe('meetingActionLines', () => {
 		]);
 	});
 
+	it('matches the Russian heading alias', () => {
+		expect(
+			meetingActionLines('## Действия\n- Send report').map((line) => line.text),
+		).toEqual(['Send report']);
+	});
+
 	it('reports zero-based line numbers', () => {
 		expect(meetingActionLines(body)[0].line).toBe(4);
 	});
 
 	it('ignores headings inside code fences and missing headings', () => {
-		expect(meetingActionLines('```\n## Действия\n- x\n```')).toEqual([]);
+		expect(meetingActionLines('```\n## Action items\n- x\n```')).toEqual([]);
 		expect(meetingActionLines('no headings')).toEqual([]);
 	});
 });

@@ -54,7 +54,7 @@ describe('sections', () => {
 		expect([found[0].id, found[0].owner, found[0].heading]).toEqual([
 			'agent-notes',
 			'agents',
-			'Заметки агентов',
+			'Agent notes',
 		]);
 	});
 
@@ -107,11 +107,11 @@ describe('append', () => {
 	it('appends under a heading before the next same-level heading', () => {
 		expect(
 			md.appendUnderHeading(
-				'## Хронология\n\n- one\n\n## Что я знаю\n\nfacts\n',
-				'хронология',
+				'## Timeline\n\n- one\n\n## What I know\n\nfacts\n',
+				'timeline',
 				'- two',
 			),
-		).toBe('## Хронология\n\n- one\n- two\n\n## Что я знаю\n\nfacts\n');
+		).toBe('## Timeline\n\n- one\n- two\n\n## What I know\n\nfacts\n');
 		expect(
 			md.appendUnderHeading(
 				'## A\n\ntext\n\n### Sub\n\nsub text\n\n## B\n',
@@ -136,8 +136,8 @@ describe('append', () => {
 	it('stops at section markers', () => {
 		expect(
 			md
-				.appendUnderHeading(CONTEXT, 'Заметки агентов', '- item')!
-				.endsWith('## Заметки агентов\n\n- item\n<!-- /tmgr:section -->\n'),
+				.appendUnderHeading(CONTEXT, 'Agent notes', '- item')!
+				.endsWith('## Agent notes\n\n- item\n<!-- /tmgr:section -->\n'),
 		).toBe(true);
 		const body = `## A\n\ntext\n\n${OPEN_SYS}\n## S\n${CLOSE}\n`;
 		expect(
@@ -147,14 +147,23 @@ describe('append', () => {
 		).toBe(true);
 	});
 
+	it('matches heading aliases in both directions', () => {
+		expect(
+			md.appendUnderHeading('## Хронология\n\n- one\n', 'Timeline', '- two'),
+		).toBe('## Хронология\n\n- one\n- two\n');
+		expect(
+			md.appendUnderHeading('## Timeline\n\n- one\n', 'хронология', '- two'),
+		).toBe('## Timeline\n\n- one\n- two\n');
+	});
+
 	it('creates a heading at the end and appends inside a section', () => {
-		expect(md.appendNewHeading('# T\n\ntext\n', 'Хронология', '- one')).toBe(
-			'# T\n\ntext\n\n## Хронология\n\n- one\n',
+		expect(md.appendNewHeading('# T\n\ntext\n', 'Timeline', '- one')).toBe(
+			'# T\n\ntext\n\n## Timeline\n\n- one\n',
 		);
 		expect(
 			md
 				.appendInSection(CONTEXT, section(CONTEXT, 'agent-notes'), 'note')
-				.endsWith('## Заметки агентов\n\nnote\n<!-- /tmgr:section -->\n'),
+				.endsWith('## Agent notes\n\nnote\n<!-- /tmgr:section -->\n'),
 		).toBe(true);
 	});
 
@@ -164,12 +173,12 @@ describe('append', () => {
 			section(CONTEXT, 'agent-notes'),
 			'fresh insight',
 		);
-		expect(out.startsWith('## Как мы работаем\n\n## Архитектура\n\n')).toBe(
+		expect(out.startsWith('## How we work\n\n## Architecture\n\n')).toBe(
 			true,
 		);
 		expect(
 			out.endsWith(
-				'<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Заметки агентов\n\nfresh insight\n<!-- /tmgr:section -->\n',
+				'<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Agent notes\n\nfresh insight\n<!-- /tmgr:section -->\n',
 			),
 		).toBe(true);
 		expect(
@@ -177,10 +186,10 @@ describe('append', () => {
 				.replaceSection(
 					CONTEXT,
 					section(CONTEXT, 'agent-notes'),
-					'## Итоги\n\nx',
+					'## Outcomes\n\nx',
 				)
 				.endsWith(
-					'owner="agents" -->\n## Итоги\n\nx\n<!-- /tmgr:section -->\n',
+					'owner="agents" -->\n## Outcomes\n\nx\n<!-- /tmgr:section -->\n',
 				),
 		).toBe(true);
 	});
@@ -193,7 +202,7 @@ describe('append', () => {
 });
 
 describe('non-human writes', () => {
-	const MANAGED = `intro\n\n<!-- tmgr:section id="insights" owner="persona:p-1" -->\n## Инсайты\n\nold\n${CLOSE}\n\n<!-- tmgr:section id="promises" owner="system" -->\n## Обещания\n${CLOSE}\n`;
+	const MANAGED = `intro\n\n<!-- tmgr:section id="insights" owner="persona:p-1" -->\n## Insights\n\nold\n${CLOSE}\n\n<!-- tmgr:section id="promises" owner="system" -->\n## Promises\n${CLOSE}\n`;
 	const violation = (
 		a: string,
 		b: string,
@@ -212,7 +221,7 @@ describe('non-human writes', () => {
 		expect(
 			violation(
 				CONTEXT,
-				CONTEXT.replace('## Архитектура', '## Архитектура\n\nhijack'),
+				CONTEXT.replace('## Architecture', '## Architecture\n\nhijack'),
 				true,
 				'persona',
 				'u-1',

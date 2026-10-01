@@ -1,3 +1,4 @@
+import { headingsMatch } from '../../utils/pages/headingAliases';
 import { CHRONICLE_HEADING, MEETING, PERSON } from './markdown';
 
 export const LAST_CONTACT_AT = 'last_contact_at';
@@ -216,5 +217,5 @@ export const isChronicleHeading = (
 ): boolean => {
 	let h = (heading ?? '').trim();
 	while (h.startsWith('#')) h = h.substring(1);
-	return h.trim().toLowerCase() === CHRONICLE_HEADING.toLowerCase();
+	return headingsMatch(h, CHRONICLE_HEADING);
 };

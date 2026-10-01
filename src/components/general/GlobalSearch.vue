@@ -3,8 +3,8 @@
 		<button
 			type="button"
 			class="-ml-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-accent hover:text-accent-foreground"
-			aria-label="Поиск"
-			title="Поиск"
+			aria-label="Search"
+			title="Search"
 			@click="open = true"
 		>
 			<Search class="h-4 w-4" />
@@ -12,7 +12,7 @@
 		<Dialog v-model:open="open">
 			<DialogContent class="max-w-xl gap-3 p-4">
 				<DialogHeader>
-					<DialogTitle>Поиск</DialogTitle>
+					<DialogTitle>Search</DialogTitle>
 				</DialogHeader>
 				<div class="flex gap-1" role="tablist">
 					<button
@@ -39,28 +39,28 @@
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:border-input dark:bg-background"
 					:placeholder="
 						activeTab === 'pages'
-							? 'Название или текст страницы'
-							: 'Название задачи'
+							? 'Page title or text'
+							: 'Task title'
 					"
 				/>
 				<div class="max-h-80 overflow-y-auto">
 					<p v-if="!canRun" class="px-1 py-2 text-sm text-muted-foreground">
-						Введите минимум {{ minLength }} символа.
+						Enter at least {{ minLength }} characters.
 					</p>
 					<p
 						v-else-if="loading"
 						class="px-1 py-2 text-sm text-muted-foreground"
 					>
-						Ищем…
+						Searching…
 					</p>
 					<p v-else-if="error" class="px-1 py-2 text-sm text-destructive">
-						Не удалось выполнить поиск
+						Search failed
 					</p>
 					<p
 						v-else-if="!taskHits.length && !pageHits.length"
 						class="px-1 py-2 text-sm text-muted-foreground"
 					>
-						Ничего не найдено
+						Nothing found
 					</p>
 					<ul v-else-if="activeTab === 'pages'" class="divide-y divide-border">
 						<li v-for="hit in pageHits" :key="hit.id">

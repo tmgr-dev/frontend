@@ -43,7 +43,7 @@ describe('ownerAuthorRef', () => {
 	});
 
 	it('falls back for an unknown persona', () => {
-		expect(ownerAuthorRef('persona:9', names)?.name).toBe('Персона');
+		expect(ownerAuthorRef('persona:9', names)?.name).toBe('Persona');
 	});
 
 	it('maps a plugin owner', () => {
@@ -62,7 +62,7 @@ describe('ownerAuthorRef', () => {
 
 describe('ownerLabel', () => {
 	it('labels system and agents', () => {
-		expect(ownerLabel('system')).toBe('Система');
-		expect(ownerLabel('agents')).toBe('Агенты');
+		expect(ownerLabel('system')).toBe('System');
+		expect(ownerLabel('agents')).toBe('Agents');
 	});
 });

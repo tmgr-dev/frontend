@@ -3,7 +3,7 @@
 		<h2
 			class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 		>
-			Действия
+			Action items
 		</h2>
 		<ul class="space-y-1">
 			<li
@@ -20,7 +20,7 @@
 					data-testid="action-to-task"
 					@click="$emit('convert', line.text)"
 				>
-					→ задача
+					→ task
 				</button>
 			</li>
 		</ul>

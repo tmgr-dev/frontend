@@ -16,7 +16,7 @@
 			<button
 				type="button"
 				class="rounded-full p-0.5 hover:bg-blue-200 dark:hover:bg-blue-800"
-				aria-label="Убрать"
+				aria-label="Remove"
 				@click="$emit('remove', chip.key)"
 			>
 				<X class="h-3 w-3" />
@@ -97,8 +97,8 @@
 				required: true,
 			},
 			single: { type: Boolean, default: false },
-			addLabel: { type: String, default: 'Добавить' },
-			placeholder: { type: String, default: 'Поиск' },
+			addLabel: { type: String, default: 'Add' },
+			placeholder: { type: String, default: 'Search' },
 		},
 		emits: ['add', 'remove', 'open'],
 		setup(props, { emit }) {

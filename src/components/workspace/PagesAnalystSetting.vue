@@ -1,12 +1,12 @@
 <template>
 	<SettingsSection
-		title="Страницы"
-		description="Персона-аналитик ведёт управляемую секцию «Инсайты» на страницах людей."
+		title="Pages"
+		description="The analyst persona maintains the managed 'Insights' section on person pages."
 	>
 		<SettingsRow
 			v-slot="{ labelId }"
-			label="Персона-аналитик для страниц"
-			description="Не меняет уже созданные страницы."
+			label="Analyst persona for pages"
+			description="Does not change pages that already exist."
 		>
 			<Select
 				:model-value="selected ?? NONE"
@@ -21,7 +21,7 @@
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem :value="NONE">Не выбрана</SelectItem>
+					<SelectItem :value="NONE">Not selected</SelectItem>
 					<SelectItem
 						v-for="option in options"
 						:key="option.value"
@@ -114,7 +114,7 @@
 					);
 				} catch {
 					selected.value = previous;
-					error.value = 'Не удалось сохранить настройку';
+					error.value = 'Failed to save the setting';
 				} finally {
 					saving.value = false;
 				}

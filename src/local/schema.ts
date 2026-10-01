@@ -5,6 +5,19 @@ export interface Migration {
 	statements: string[];
 }
 
+const PAGE_HEADING_RENAMES: [string, string][] = [
+	['Обещания', 'Promises'],
+	['Заметки агентов', 'Agent notes'],
+	['Инсайты', 'Insights'],
+];
+
+const renameManagedHeadings = (target: string): string =>
+	PAGE_HEADING_RENAMES.reduce(
+		(expr, [from, to]) =>
+			`replace(${expr}, '" -->\n## ${from}\n', '" -->\n## ${to}\n')`,
+		target,
+	);
+
 export const MIGRATIONS: Migration[] = [
 	{
 		version: 1,
@@ -370,6 +383,16 @@ export const MIGRATIONS: Migration[] = [
 				PRIMARY KEY (plugin_id, page_id, key)
 			)`,
 			`CREATE INDEX IF NOT EXISTS plugin_page_data_plugin_key_idx ON plugin_page_data (plugin_id, key)`,
+		],
+	},
+	{
+		version: 12,
+		statements: [
+			`UPDATE pages SET body = ${renameManagedHeadings('body')} WHERE body LIKE '%" -->' || char(10) || '## %'`,
+			`UPDATE page_versions SET body = ${renameManagedHeadings('body')}
+				WHERE body LIKE '%" -->' || char(10) || '## %'
+				AND version = (SELECT p.version FROM pages p WHERE p.id = page_versions.page_id)`,
+			`UPDATE pages SET title = 'Workspace context' WHERE type = 'context' AND title = 'Контекст воркспейса'`,
 		],
 	},
 ];

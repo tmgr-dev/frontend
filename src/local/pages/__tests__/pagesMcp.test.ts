@@ -120,7 +120,7 @@ describeSqlite('pages MCP tools for local personas', () => {
 		expect(byName.pages_update.description).toContain(
 			'never overwrite someone else',
 		);
-		expect(byName.pages_append.description).toContain('«Заметки агентов»');
+		expect(byName.pages_append.description).toContain("'Agent notes'");
 		expect(byName.pages_update.inputSchema.required).toEqual(['id', 'version']);
 	});
 
@@ -184,14 +184,14 @@ describeSqlite('pages MCP tools for local personas', () => {
 	});
 
 	it('appends, writes the agent section of a context page and refuses other sections', async () => {
-		const context = await humanPage({ title: 'Контекст', type: 'context' });
+		const context = await humanPage({ title: 'Context', type: 'context' });
 		const appended = await json('pages_append', {
 			id: context.id,
 			markdown: 'did the thing',
 			summary: 'session',
 		});
 		expect(appended.body).toContain(
-			'## Заметки агентов\n\ndid the thing\n<!-- /tmgr:section -->',
+			'## Agent notes\n\ndid the thing\n<!-- /tmgr:section -->',
 		);
 		const set = await json('pages_set_section', {
 			id: context.slug,
@@ -199,7 +199,7 @@ describeSqlite('pages MCP tools for local personas', () => {
 			markdown: 'fresh',
 		});
 		expect(set.sections).toEqual([
-			{ id: 'agent-notes', owner: 'agents', heading: 'Заметки агентов' },
+			{ id: 'agent-notes', owner: 'agents', heading: 'Agent notes' },
 		]);
 		const person = await humanPage({ title: 'Ivan', type: 'person' });
 		const forbidden = await call('pages_set_section', {
@@ -218,10 +218,10 @@ describeSqlite('pages MCP tools for local personas', () => {
 	});
 
 	it('returns the workspace context as markdown and the pages mentioning a task', async () => {
-		await humanPage({ title: 'Контекст', type: 'context' });
+		await humanPage({ title: 'Context', type: 'context' });
 		const text = await ok('workspace_context');
-		expect(text.startsWith('# Контекст\n\n*Page `kontekst`')).toBe(true);
-		expect(text).toContain('## Как мы работаем');
+		expect(text.startsWith('# Context\n\n*Page `context`')).toBe(true);
+		expect(text).toContain('## How we work');
 		const task = (await dispatchLocal(
 			router,
 			{ ...ctx, actor: undefined },

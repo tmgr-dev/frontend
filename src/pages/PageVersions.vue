@@ -1,23 +1,23 @@
 <template>
 	<PageContainer width="wide">
 		<div v-if="loading" class="py-16 text-center text-ink-subtle">
-			Загрузка...
+			Loading...
 		</div>
 		<div v-else-if="loadError" role="alert" class="py-16 text-center">
-			<p class="text-ink">Не удалось загрузить историю</p>
+			<p class="text-ink">Failed to load history</p>
 			<button
 				class="mt-2 text-blue-600 underline dark:text-blue-400"
 				@click="load"
 			>
-				Повторить
+				Retry
 			</button>
 		</div>
 
 		<template v-else-if="page">
 			<PageHeader
-				:title="`История: ${page.title}`"
+				:title="`History: ${page.title}`"
 				:back="`/${workspaceCode}/pages/${page.slug}`"
-				back-label="К странице"
+				back-label="Back to page"
 			/>
 
 			<div class="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -41,7 +41,7 @@
 								<span
 									v-if="version.version === page.version"
 									class="rounded bg-green-100 px-1.5 text-2xs text-green-800 dark:bg-green-900/40 dark:text-green-300"
-									>текущая</span
+									>current</span
 								>
 							</span>
 							<span class="mt-1 block">
@@ -61,9 +61,9 @@
 				</ul>
 
 				<div class="min-w-0">
-					<div v-if="!selected" class="text-ink-subtle">Выберите версию</div>
+					<div v-if="!selected" class="text-ink-subtle">Select a version</div>
 					<div v-else-if="snapshotLoading" class="text-ink-subtle">
-						Загрузка...
+						Loading...
 					</div>
 					<template v-else-if="snapshot">
 						<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -93,7 +93,7 @@
 								@click="confirmOpen = true"
 							>
 								<RotateCcw class="h-4 w-4" />
-								Восстановить
+								Restore
 							</Button>
 						</div>
 
@@ -121,16 +121,16 @@
 				<AlertDialogContent data-testid="restore-confirm">
 					<AlertDialogHeader>
 						<AlertDialogTitle
-							>Восстановить версию {{ selected }}?</AlertDialogTitle
+							>Restore version {{ selected }}?</AlertDialogTitle
 						>
 						<AlertDialogDescription>
-							Будет создана новая версия страницы с содержимым версии
-							{{ selected }}. Текущий текст останется в истории.
+							A new page version will be created with the content of version
+							{{ selected }}. The current text stays in history.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel>Отмена</AlertDialogCancel>
-						<AlertDialogAction @click="restore">Восстановить</AlertDialogAction>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction @click="restore">Restore</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
@@ -215,9 +215,9 @@
 			let snapshotSeq = 0;
 
 			const modes: { value: Mode; label: string }[] = [
-				{ value: 'snapshot', label: 'Снимок' },
-				{ value: 'current', label: 'Изменения с этой версии' },
-				{ value: 'previous', label: 'Что изменила версия' },
+				{ value: 'snapshot', label: 'Snapshot' },
+				{ value: 'current', label: 'Changes since this version' },
+				{ value: 'previous', label: 'What this version changed' },
 			];
 
 			const diffBefore = computed(() =>

@@ -31,9 +31,9 @@ describe('extractToc', () => {
 	it('includes headings inside managed sections', () => {
 		expect(
 			extractToc(
-				'<!-- tmgr:section id="x" owner="agents" -->\n## Заметки агентов\n<!-- /tmgr:section -->\n',
+				'<!-- tmgr:section id="x" owner="agents" -->\n## Agent notes\n<!-- /tmgr:section -->\n',
 			),
-		).toEqual([{ text: 'Заметки агентов', occurrence: 0 }]);
+		).toEqual([{ text: 'Agent notes', occurrence: 0 }]);
 	});
 
 	it('requires a space after the hashes', () => {

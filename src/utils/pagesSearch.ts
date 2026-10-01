@@ -4,8 +4,8 @@ import { pageUrl } from '@/utils/pagesTree';
 export type SearchTab = 'tasks' | 'pages';
 
 export const SEARCH_TABS: { key: SearchTab; label: string }[] = [
-	{ key: 'tasks', label: 'Задачи' },
-	{ key: 'pages', label: 'Страницы' },
+	{ key: 'tasks', label: 'Tasks' },
+	{ key: 'pages', label: 'Pages' },
 ];
 
 export const MIN_SEARCH_LENGTH = 2;
@@ -30,10 +30,10 @@ export const pageHitUrl = (
 ): string => pageUrl(workspaceCode, hit.slug);
 
 export const PAGE_TYPE_LABELS: Record<string, string> = {
-	plain: 'Страница',
-	context: 'Контекст',
-	person: 'Человек',
-	meeting: 'Встреча',
+	plain: 'Plain page',
+	context: 'Context',
+	person: 'Person',
+	meeting: 'Meeting',
 };
 
 export const pageTypeLabel = (type: string): string =>

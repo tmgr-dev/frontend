@@ -12,7 +12,7 @@
 	>
 		<div class="mb-2 flex items-center justify-between">
 			<h2 class="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-				Файлы
+				Files
 			</h2>
 			<button
 				type="button"
@@ -21,7 +21,7 @@
 				data-testid="page-files-upload"
 				@click="pick"
 			>
-				{{ uploading ? 'Загрузка...' : 'Загрузить' }}
+				{{ uploading ? 'Uploading...' : 'Upload' }}
 			</button>
 			<input
 				ref="inputRef"
@@ -46,7 +46,7 @@
 				}}</span>
 			</li>
 		</ul>
-		<p v-else class="text-gray-400 dark:text-gray-500">Нет</p>
+		<p v-else class="text-gray-400 dark:text-gray-500">None</p>
 		<p
 			v-if="error"
 			class="mt-1 text-xs text-red-600 dark:text-red-400"

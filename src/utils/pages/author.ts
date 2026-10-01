@@ -27,7 +27,7 @@ export const ownerAuthorRef = (
 		return {
 			kind: 'persona',
 			id: parsed.ref,
-			name: nameFor('persona', parsed.ref) ?? 'Персона',
+			name: nameFor('persona', parsed.ref) ?? 'Persona',
 		};
 	}
 	if (parsed.kind === 'plugin' && parsed.ref) {
@@ -37,7 +37,7 @@ export const ownerAuthorRef = (
 		return {
 			kind: 'user',
 			id: parsed.ref,
-			name: nameFor('user', parsed.ref) ?? 'Участник',
+			name: nameFor('user', parsed.ref) ?? 'Member',
 		};
 	}
 	return null;
@@ -45,7 +45,7 @@ export const ownerAuthorRef = (
 
 export const ownerLabel = (owner: string): string => {
 	const { kind } = parseOwner(owner);
-	if (kind === 'system') return 'Система';
-	if (kind === 'agents') return 'Агенты';
+	if (kind === 'system') return 'System';
+	if (kind === 'agents') return 'Agents';
 	return owner;
 };
