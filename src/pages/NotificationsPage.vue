@@ -67,6 +67,8 @@
 	import NotificationItem from '@/components/notifications/NotificationItem.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useNotifications } from '@/composable/useNotifications';
+	import store from '@/store';
+	import { notificationTarget } from '@/utils/notificationTypes';
 	import { Bell, Settings } from 'lucide-vue-next';
 	import { defineComponent, onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
@@ -110,21 +112,11 @@
 						await markNotificationAsRead(notification.id);
 					}
 
-					if (notification.link) {
-						let link = notification.link;
-
-						// If link is a full URL, extract the path
-						if (link.startsWith('http://') || link.startsWith('https://')) {
-							try {
-								const url = new URL(link);
-								link = url.pathname;
-							} catch (e) {
-								console.error('Error parsing notification link:', e);
-							}
-						}
-
-						router.push(link);
-					}
+					const target = notificationTarget(
+						notification,
+						store.getters.currentWorkspace?.code ?? '',
+					);
+					if (target) router.push(target);
 				} catch (err) {
 					console.error('Error handling notification click:', err);
 				}

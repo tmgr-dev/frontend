@@ -151,6 +151,7 @@
 		ref,
 		watch,
 	} from 'vue';
+	import { notificationTypeLabel } from '@/utils/notificationTypes';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
@@ -176,30 +177,9 @@
 			const availableTypes = ref([]);
 
 			const notificationTypeGroups = computed(() => {
-				const typeLabels = {
-					task_created: 'Task created',
-					task_updated: 'Task updated',
-					task_status_changed: 'Task status changed',
-					task_assigned: 'Task assigned',
-					task_deleted: 'Task deleted',
-					task_restored: 'Task restored',
-					task_completed: 'Task completed',
-					comment_created: 'New comment',
-					comment_updated: 'Comment updated',
-					comment_deleted: 'Comment deleted',
-					category_created: 'Category created',
-					category_updated: 'Category updated',
-					category_deleted: 'Category deleted',
-					category_restored: 'Category restored',
-					file_uploaded: 'File uploaded',
-					file_deleted: 'File deleted',
-					member_joined: 'Member joined',
-					member_left: 'Member left workspace',
-				};
-
 				return availableTypes.value.map((type) => ({
 					id: type,
-					label: typeLabels[type] || type,
+					label: notificationTypeLabel(type),
 				}));
 			});
 

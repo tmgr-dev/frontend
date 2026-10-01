@@ -87,6 +87,17 @@
 					>
 						Повторить
 					</button>
+					<button
+						type="button"
+						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+						:disabled="followBusy"
+						:aria-pressed="following"
+						data-testid="page-follow"
+						@click="toggleFollow"
+					>
+						<component :is="following ? BellOff : Bell" class="h-4 w-4" />
+						{{ following ? 'Не следить' : 'Следить' }}
+					</button>
 					<router-link
 						:to="`/${workspaceCode}/pages/${page.slug}/versions`"
 						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -203,6 +214,7 @@
 <script lang="ts">
 	import { fetchFileObjectUrl } from '@/actions/tmgr/files';
 	import {
+		followPage,
 		getPage,
 		getPageFiles,
 		getPageVersions,
@@ -212,6 +224,7 @@
 		type PageVersion,
 		setPageSection,
 		taskFromSelection,
+		unfollowPage,
 		updatePage,
 		uploadPageFile,
 	} from '@/actions/tmgr/pages';
@@ -267,7 +280,7 @@
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import { History } from 'lucide-vue-next';
+	import { Bell, BellOff, History } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -347,9 +360,31 @@
 			}));
 
 			const toaster = useToast();
+			const following = ref(false);
+			const followBusy = ref(false);
 			const files = ref<PageFile[]>([]);
 			const uploading = ref(false);
 			const uploadError = ref('');
+
+			const toggleFollow = async () => {
+				if (!page.value || followBusy.value) return;
+				const id = page.value.id;
+				const next = !following.value;
+				followBusy.value = true;
+				following.value = next;
+				try {
+					if (next) await followPage(id);
+					else await unfollowPage(id);
+				} catch {
+					following.value = !next;
+					toaster.toast({
+						title: 'Не удалось изменить подписку',
+						variant: 'destructive',
+					});
+				} finally {
+					followBusy.value = false;
+				}
+			};
 
 			async function loadFiles() {
 				if (!page.value) return;
@@ -669,6 +704,7 @@
 				ownVersions.clear();
 				ownVersions.add(next.version);
 				setDocumentTitle(next.title);
+				following.value = !!next.following;
 				applying = false;
 				void loadVersions();
 				void loadFiles();
@@ -932,6 +968,11 @@
 				onFreeChange,
 				propertyErrors,
 				selection,
+				following,
+				followBusy,
+				toggleFollow,
+				Bell,
+				BellOff,
 				files,
 				uploading,
 				uploadError,

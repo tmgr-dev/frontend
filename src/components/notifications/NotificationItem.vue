@@ -27,6 +27,7 @@
 </template>
 
 <script>
+	import { normalizeNotificationType } from '@/utils/notificationTypes';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		AlertCircle,
@@ -65,7 +66,7 @@
 		emits: ['click', 'delete'],
 		setup(props) {
 			const icon = computed(() => {
-				const type = props.notification.type;
+				const type = normalizeNotificationType(props.notification.type);
 
 				const iconMap = {
 					task_created: FileText,
@@ -86,6 +87,9 @@
 					file_deleted: Trash2,
 					member_joined: UserPlus,
 					member_left: UserMinus,
+					page_created: FileText,
+					page_updated: Edit,
+					page_mentioned: MessageCircle,
 				};
 
 				return iconMap[type] || AlertCircle;
