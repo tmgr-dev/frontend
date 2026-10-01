@@ -286,3 +286,70 @@ export const matchesAuthorFilter = (
 			return true;
 	}
 };
+
+export interface PersonaAssignee {
+	id: string;
+	name: string;
+	description?: string | null;
+	avatar_url: string | null;
+	owner: { id: number; name: string; has_avatar?: boolean };
+	workspace_id: number | null;
+}
+
+interface AssigneeBearing {
+	assignees?: Array<{ id: number }> | number[] | null;
+	persona_assignees?: PersonaAssignee[] | string[] | null;
+}
+
+const humanId = (assignee: { id: number } | number): number =>
+	typeof assignee === 'number' ? assignee : assignee.id;
+
+const personaId = (persona: PersonaAssignee | string): string =>
+	typeof persona === 'string' ? persona : persona.id;
+
+export const personaAssigneesOf = (task: AssigneeBearing): PersonaAssignee[] =>
+	((task.persona_assignees ?? []) as Array<PersonaAssignee | string>).filter(
+		(p): p is PersonaAssignee => typeof p !== 'string',
+	);
+
+/** The owner of an assigned persona is implied by it; the UI shows only the persona. */
+export const visibleHumanAssignees = <T extends { id: number }>(task: {
+	assignees?: T[] | null;
+	persona_assignees?: PersonaAssignee[] | string[] | null;
+}): T[] => {
+	const hidden = new Set(personaAssigneesOf(task).map((p) => p.owner.id));
+	return (task.assignees ?? []).filter((a) => !hidden.has(a.id));
+};
+
+export const personaAssigneeIds = (task: AssigneeBearing): string[] =>
+	((task.persona_assignees ?? []) as Array<PersonaAssignee | string>).map(
+		personaId,
+	);
+
+/** Hidden implied owners must stay in `assignees`, and both fields travel together (the server cascades otherwise). */
+export const assigneeWritePayload = (
+	task: AssigneeBearing,
+	humanIds: number[] = ((task.assignees ?? []) as Array<{ id: number } | number>).map(
+		humanId,
+	),
+): { assignees: number[]; persona_assignees: string[] } => ({
+	assignees: humanIds,
+	persona_assignees: personaAssigneeIds(task),
+});
+
+export const hasPersonaAssignee = (
+	task: AssigneeBearing,
+	uuid: string,
+): boolean => personaAssigneeIds(task).includes(uuid);
+
+export const hasMyPersonaAssignee = (
+	task: AssigneeBearing,
+	myUserId: number | null | undefined,
+): boolean =>
+	myUserId != null &&
+	personaAssigneesOf(task).some((p) => p.owner.id === myUserId);
+
+export type PersonaScope = 'account' | 'workspace';
+
+export const personaScopeLabel = (workspaceId: number | null | undefined) =>
+	workspaceId ? 'Workspace' : 'Only me';
