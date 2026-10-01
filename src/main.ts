@@ -54,6 +54,9 @@ if (isDesktopApp()) {
 			),
 		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
 		void import('@/local/localAccess').then(({ installLocalAccess }) => installLocalAccess(store));
+		void import('@/utils/quickAddPageRelay').then(({ installQuickAddPageHost }) =>
+			installQuickAddPageHost(store),
+		);
 		void import('@/utils/taskWindowBridge').then(({ installTaskWindowHost }) =>
 			installTaskWindowHost(router, store),
 		);

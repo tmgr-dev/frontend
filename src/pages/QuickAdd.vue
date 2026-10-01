@@ -162,6 +162,7 @@
 		followActiveLocalWorkspace,
 	} from '@/local/runtime';
 	import store from '@/store';
+	import { relayPageAppended } from '@/utils/quickAddPageRelay';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
@@ -405,10 +406,19 @@
 					const fileId = screenshot.value
 						? (await uploadPageFile(pageId.value, screenshot.value)).id
 						: null;
-					await appendToPage(pageId.value, {
+					const updated = await appendToPage(pageId.value, {
 						markdown: composeAppendMarkdown(pageText.value, fileId),
 						heading: section.value || undefined,
 					});
+					void relayPageAppended({
+						workspace_code: ws.code,
+						page: {
+							id: updated.id,
+							slug: updated.slug,
+							title: updated.title,
+							version: updated.version,
+						},
+					}).catch((e) => console.error('quick add: page-appended relay failed', e));
 					writeLastPage(ws.id, pageId.value);
 					message.value = 'Added';
 					setTimeout(async () => {
