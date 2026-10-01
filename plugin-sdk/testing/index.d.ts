@@ -49,6 +49,19 @@ export interface TestRoutineInstance {
 	status?: 'PENDING' | 'COMPLETED' | 'SKIPPED';
 }
 
+export interface TestPage {
+	title: string;
+	/** Defaults to a slug made from the title. */
+	slug?: string;
+	type?: 'plain' | 'context' | 'person' | 'meeting';
+	parent_id?: number | null;
+	/** Markdown; managed sections are `<!-- tmgr:section id="x" owner="plugin:your.id" -->` ... `<!-- /tmgr:section -->`. */
+	body?: string;
+	properties?: Record<string, unknown>;
+	author_kind?: 'user' | 'persona' | 'plugin';
+	author_id?: string;
+}
+
 export interface CreateTestHostOptions {
 	/** The plugin's manifest.json, as a plain object (validated with the app's own `parseManifest`). */
 	manifest: Record<string, unknown>;
@@ -59,6 +72,8 @@ export interface CreateTestHostOptions {
 	tasks?: TestTask[];
 	statuses?: TestStatus[];
 	categories?: TestCategory[];
+	/** Backs `tmgr.pages.*` (API 1.5): versions, `page_conflict`, managed sections and append by heading. */
+	pages?: TestPage[];
 	/** Local workspaces only, like `tmgr.routines.*` itself. */
 	routines?: TestRoutine[];
 	routineInstances?: TestRoutineInstance[];
@@ -98,6 +113,9 @@ export interface TestHostState {
 	categories: Record<string, unknown>[];
 	comments: Record<number, Record<string, unknown>[]>;
 	taskData: Record<string, string>;
+	pages: Record<string, unknown>[];
+	/** `tmgr.pageData`, keyed `<pageId>:<key>`, values as JSON text. */
+	pageData: Record<string, string>;
 	storage: Record<string, string>;
 	agentWork: Record<number, Record<string, unknown>[]>;
 	routines: Record<string, unknown>[];

@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.4). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.5). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -13,7 +13,63 @@ type PluginErrorCode =
 	| 'RATE_LIMITED'
 	/** The call exists but this workspace cannot do it yet (e.g. a shared workspace on an older server). */
 	| 'NOT_SUPPORTED'
-	| 'HOST_ERROR';
+	| 'HOST_ERROR'
+	/** `pages.update` with a stale `version`; the error's `current` is the page as it is now. */
+	| 'page_conflict';
+
+type TmgrPageType = 'plain' | 'context' | 'person' | 'meeting';
+
+interface TmgrPageAuthor {
+	kind: 'user' | 'persona' | 'plugin';
+	id: string | number | null;
+	name: string | null;
+}
+
+interface TmgrPageSummary {
+	id: number;
+	title: string;
+	slug: string;
+	type: TmgrPageType;
+	parent_id: number | null;
+	position: number;
+	pinned: boolean;
+	updated_at: string;
+}
+
+/** `owner` is `system`, `agents` (any persona or plugin), `persona:<uuid>`, `plugin:<id>` or `user:<id>`. */
+interface TmgrPageSection {
+	id: string;
+	owner: string;
+	heading: string | null;
+}
+
+interface TmgrPage extends TmgrPageSummary {
+	workspace_id: number;
+	/** Markdown, up to 1 MB. Managed sections sit between `<!-- tmgr:section id="x" owner="y" -->` markers. */
+	body: string;
+	properties: Record<string, unknown>;
+	/** Grows by one on every write; `pages.update` needs the version you read. */
+	version: number;
+	author: TmgrPageAuthor;
+	updated_by: TmgrPageAuthor;
+	created_at: string;
+	backlinks: TmgrPageSummary[];
+	sections: TmgrPageSection[];
+}
+
+interface TmgrPageSearchHit {
+	id: number;
+	slug: string;
+	title: string;
+	type: TmgrPageType;
+	snippet: string;
+	updated_at: string;
+}
+
+interface TmgrPageConflictError extends Error {
+	name: 'page_conflict';
+	current: TmgrPage;
+}
 
 interface TmgrTask {
 	id: number;
@@ -206,6 +262,12 @@ type TmgrEvent =
 	| { type: 'app.started' }
 	/** No permission needed. Delivered when the host activates a different workspace and this plugin starts there. */
 	| { type: 'workspace.switched'; from: number | null; to: number }
+	/**
+	 * API 1.5, needs pages:read. `changedSections` lists the managed sections whose text changed in this write;
+	 * it is empty for events from shared workspaces, which carry no body. Your own writes are not delivered back.
+	 */
+	| { type: 'page.created' | 'page.updated' | 'page.restored' | 'page.moved'; workspaceId: number; pageId: number; slug: string | null; title: string | null; parentId: number | null; version: number | null; author: { kind: 'user' | 'persona' | 'plugin'; id: string | number | null } | null; changedSections: string[] }
+	| { type: 'page.deleted'; workspaceId: number; pageId: number }
 	/** Needs routines:read. Local workspaces only — never delivered in a shared workspace. */
 	| { type: 'routine.created'; workspaceId: number; routineId: number; routine: Routine }
 	| {
@@ -415,6 +477,52 @@ declare const tmgr: {
 		delete(taskId: number, key: string): Promise<void>;
 		/** Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
 		getMany<T = unknown>(taskIds: number[], key: string): Promise<Record<number, T | null>>;
+	};
+	/**
+	 * API 1.5, needs `engines.tmgr` `^1.5`. Pages of the workspace the plugin runs in; writes are made as
+	 * this plugin (author kind "plugin"). Shared workspaces do not accept plugin writes to pages yet.
+	 */
+	pages: {
+		/** Needs pages:read. `limit` is at most 50. */
+		search(q: string, opts?: { type?: TmgrPageType; limit?: number }): Promise<TmgrPageSearchHit[]>;
+		/** Needs pages:read. Every live page without bodies. */
+		tree(): Promise<TmgrPageSummary[]>;
+		/** Needs pages:read. By id or slug. */
+		get(idOrSlug: number | string): Promise<TmgrPage>;
+		/** Needs pages:write. */
+		create(fields: {
+			title: string;
+			type?: TmgrPageType;
+			parentId?: number | null;
+			body?: string;
+			properties?: Record<string, unknown>;
+		}): Promise<TmgrPage>;
+		/** Needs pages:write. Rejects with a `page_conflict` error (see TmgrPageConflictError) when `version` is stale. */
+		update(
+			id: number,
+			fields: { version: number; title?: string; body?: string; properties?: Record<string, unknown>; summary?: string },
+		): Promise<TmgrPage>;
+		/**
+		 * Needs pages:write. Adds markdown at the end of the page, or at the end of the `##` section named
+		 * `heading` (created when `createHeading` is set). No version needed.
+		 */
+		append(id: number, fields: { markdown: string; heading?: string; createHeading?: boolean; summary?: string }): Promise<TmgrPage>;
+		/**
+		 * Needs pages:sections. Replaces the text of a managed section whose owner is `plugin:<this plugin's id>`;
+		 * any other section rejects with PERMISSION_DENIED. Sections owned by `agents` take `append` instead.
+		 */
+		setSection(id: number, sectionId: string, markdown: string, opts?: { summary?: string }): Promise<TmgrPage>;
+	};
+	/**
+	 * API 1.5, needs pages:read. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
+	 * plugin. Local workspaces only. Removed when the page is permanently deleted.
+	 */
+	pageData: {
+		get<T = unknown>(pageId: number, key: string): Promise<T | null>;
+		set(pageId: number, key: string, value: unknown): Promise<void>;
+		delete(pageId: number, key: string): Promise<void>;
+		/** Up to 500 page ids in one call. */
+		getMany<T = unknown>(pageIds: number[], key: string): Promise<Record<number, T | null>>;
 	};
 	agentWork: {
 		/** Needs agent_work:read. Newest first, with agent time next to time tracked on the task timer. */

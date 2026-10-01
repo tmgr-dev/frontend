@@ -3,7 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.4';
+exports.PLUGIN_API_VERSION = '1.5';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -30,7 +30,11 @@ exports.PERMISSIONS = [
     'routines:read',
     'routines:write',
     'views:badge',
+    'pages:read',
+    'pages:write',
+    'pages:sections',
 ];
+const PAGE_PERMISSIONS = ['pages:read', 'pages:write', 'pages:sections'];
 exports.PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 exports.LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
 const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):([1-9]\d{0,4})\/?$/;
@@ -140,6 +144,9 @@ const parseManifest = (raw) => {
     const apiMinor = engineMinor(raw.engines.tmgr);
     if (permissions.includes('views:badge') && apiMinor < 4)
         fail('views:badge needs engines.tmgr ^1.4');
+    for (const permission of PAGE_PERMISSIONS)
+        if (permissions.includes(permission) && apiMinor < 5)
+            fail(`${permission} needs engines.tmgr ^1.5`);
     return {
         id,
         name: text(raw.name, 'name', 80),

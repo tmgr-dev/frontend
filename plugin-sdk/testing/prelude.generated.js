@@ -8,7 +8,13 @@ export const PRELUDE = `(() => {
 	const call = (method, params) => {
 		const json = JSON.stringify(params === undefined ? null : params);
 		if (json.length > ${MAX_CALL_BYTES}) return Promise.reject(new RangeError('call arguments are larger than 1 MB'));
-		return host(method, json).then((result) => JSON.parse(result));
+		return host(method, json).then((result) => JSON.parse(result), (error) => {
+			if (error && typeof error.currentJson === 'string') {
+				error.current = JSON.parse(error.currentJson);
+				delete error.currentJson;
+			}
+			throw error;
+		});
 	};
 	const register = (kind, id, fn) => {
 		if (typeof fn !== 'function') throw new TypeError(kind + ' handler must be a function');
@@ -71,6 +77,22 @@ export const PRELUDE = `(() => {
 			set: (key, value) => call('storage.set', { key, value }),
 			delete: (key) => call('storage.delete', { key }),
 			keys: () => call('storage.keys'),
+		}),
+		pages: freeze({
+			search: (q, opts) => call('pages.search', Object.assign({ q }, opts || {})),
+			tree: () => call('pages.tree'),
+			get: (idOrSlug) => call('pages.get', { idOrSlug }),
+			create: (fields) => call('pages.create', fields),
+			update: (id, fields) => call('pages.update', Object.assign({ id }, fields)),
+			append: (id, fields) => call('pages.append', Object.assign({ id }, fields)),
+			setSection: (id, sectionId, markdown, opts) =>
+				call('pages.setSection', Object.assign({ id, sectionId, markdown }, opts || {})),
+		}),
+		pageData: freeze({
+			get: (pageId, key) => call('pageData.get', { pageId, key }),
+			set: (pageId, key, value) => call('pageData.set', { pageId, key, value }),
+			delete: (pageId, key) => call('pageData.delete', { pageId, key }),
+			getMany: (pageIds, key) => call('pageData.getMany', { pageIds, key }),
 		}),
 		taskData: freeze({
 			get: (taskId, key) => call('taskData.get', { taskId, key }),
