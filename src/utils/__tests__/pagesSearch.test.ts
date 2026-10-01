@@ -1,6 +1,7 @@
 import {
 	availableSearchTabs,
 	canSearch,
+	cleanSnippet,
 	pageHitUrl,
 	pageTypeLabel,
 	resolveSearchTab,
@@ -38,5 +39,20 @@ describe('pageTypeLabel', () => {
 	it('labels known types and passes unknown ones through', () => {
 		expect(pageTypeLabel('context')).toBe('Контекст');
 		expect(pageTypeLabel('x')).toBe('x');
+	});
+});
+
+describe('cleanSnippet', () => {
+	it('keeps link text and drops the tmgr href', () => {
+		expect(cleanSnippet('see [TMGR-1](tmgr://task/305) now')).toBe(
+			'see TMGR-1 now',
+		);
+	});
+	it('drops images, section markers and heading hashes', () => {
+		expect(
+			cleanSnippet(
+				'## Notes <!-- tmgr:section id="a" owner="agents" --> ![x](tmgr://file/1) end',
+			),
+		).toBe('Notes end');
 	});
 });

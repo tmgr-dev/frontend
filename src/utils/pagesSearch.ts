@@ -38,3 +38,12 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
 
 export const pageTypeLabel = (type: string): string =>
 	PAGE_TYPE_LABELS[type] ?? type;
+
+export const cleanSnippet = (snippet: string): string =>
+	snippet
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+		.replace(/#{1,6}\s+/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();

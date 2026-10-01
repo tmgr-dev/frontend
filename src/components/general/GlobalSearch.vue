@@ -38,14 +38,19 @@
 					autofocus
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:border-input dark:bg-background"
 					:placeholder="
-						activeTab === 'pages' ? 'Название или текст страницы' : 'Название задачи'
+						activeTab === 'pages'
+							? 'Название или текст страницы'
+							: 'Название задачи'
 					"
 				/>
 				<div class="max-h-80 overflow-y-auto">
 					<p v-if="!canRun" class="px-1 py-2 text-sm text-muted-foreground">
 						Введите минимум {{ minLength }} символа.
 					</p>
-					<p v-else-if="loading" class="px-1 py-2 text-sm text-muted-foreground">
+					<p
+						v-else-if="loading"
+						class="px-1 py-2 text-sm text-muted-foreground"
+					>
 						Ищем…
 					</p>
 					<p v-else-if="error" class="px-1 py-2 text-sm text-destructive">
@@ -77,7 +82,7 @@
 									v-if="hit.snippet"
 									class="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
 								>
-									{{ hit.snippet }}
+									{{ cleanSnippet(hit.snippet) }}
 								</p>
 								<p class="mt-0.5 text-2xs text-muted-foreground">
 									{{ formatDate(hit.updated_at) }}
@@ -114,6 +119,7 @@
 	import {
 		availableSearchTabs,
 		canSearch,
+		cleanSnippet,
 		MIN_SEARCH_LENGTH,
 		normalizeQuery,
 		pageHitUrl,
@@ -219,6 +225,7 @@
 				pageHits,
 				minLength: MIN_SEARCH_LENGTH,
 				pageHitUrl,
+				cleanSnippet,
 				pageTypeLabel,
 				taskUrl,
 				formatDate,
