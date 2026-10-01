@@ -326,10 +326,10 @@ export const taskFromSelection = async (
 
 export const followPage = async (pageId: number): Promise<void> => {
 	await $axios.post(`pages/${pageId}/follow`);
-	requestCache.invalidate(pageKey(pageId));
+	invalidatePages();
 };
 
 export const unfollowPage = async (pageId: number): Promise<void> => {
 	await $axios.delete(`pages/${pageId}/follow`);
-	requestCache.invalidate(pageKey(pageId));
+	invalidatePages();
 };
