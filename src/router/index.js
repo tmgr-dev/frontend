@@ -2,7 +2,6 @@ import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-import { isLocalWorkspace } from '@/utils/pagesTree';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
@@ -149,12 +148,6 @@ router.beforeEach(async (to, from, next) => {
 					workspaceId: workspaceFromUrl.id,
 				});
 				await syncActiveLocalWorkspace(workspaceFromUrl.id);
-				if (
-					to.matched.some((record) => record.meta.pages) &&
-					isLocalWorkspace(workspaceFromUrl)
-				) {
-					return next(`/${workspaceFromUrl.code}/list`);
-				}
 			}
 		}
 

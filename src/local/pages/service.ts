@@ -592,10 +592,11 @@ export const createPage = async (ctx: LocalContext, req: any) => {
 
 /** Creates the pinned context page the first time a local workspace is opened; never again, so it can be deleted. */
 export const ensureContextPage = async (ctx: LocalContext): Promise<void> => {
-	const [seeded] = await ctx.db.select(`SELECT 1 FROM meta WHERE key = ?`, [CONTEXT_SEEDED]);
-	if (seeded) return;
-	const [existing] = await ctx.db.select(`SELECT 1 FROM pages WHERE type = 'context' LIMIT 1`);
-	if (!existing) {
+	const claimed = await ctx.db.execute(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, '1')`, [CONTEXT_SEEDED]);
+	if (!claimed.rowsAffected) return;
+	try {
+		const [existing] = await ctx.db.select(`SELECT 1 FROM pages WHERE type = 'context' LIMIT 1`);
+		if (existing) return;
 		await insertPage(ctx, {
 			title: CONTEXT_TITLE,
 			type: CONTEXT,
@@ -605,8 +606,10 @@ export const ensureContextPage = async (ctx: LocalContext): Promise<void> => {
 			pinned: true,
 			fromTemplate: true,
 		});
+	} catch (error) {
+		await ctx.db.execute(`DELETE FROM meta WHERE key = ?`, [CONTEXT_SEEDED]);
+		throw error;
 	}
-	await ctx.db.execute(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, '1')`, [CONTEXT_SEEDED]);
 };
 
 // ───────────────────────────────────────────────────────────── update / append / sections

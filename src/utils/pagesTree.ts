@@ -126,15 +126,10 @@ export const saveExpanded = (
 	}
 };
 
-export const isLocalWorkspace = (
-	workspace?: { id?: number | string; is_local?: boolean } | null,
-): boolean =>
-	!!workspace && (workspace.is_local === true || Number(workspace.id) < 0);
-
 export const pagesAvailable = (
 	workspace: { id?: number | string; is_local?: boolean } | null | undefined,
 	toggleEnabled: boolean,
-): boolean => !!workspace && !isLocalWorkspace(workspace) && toggleEnabled;
+): boolean => !!workspace && toggleEnabled;
 
 export const pageUrl = (workspaceCode: string, slug: string): string =>
 	`/${workspaceCode}/pages/${encodeURIComponent(slug)}`;

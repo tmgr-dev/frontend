@@ -178,6 +178,17 @@ describeSqlite('local pages API on SQLite', () => {
 			expect(plain.author).toMatchObject({ kind: 'persona', id: 'p-1', name: 'Analyst', owner: { id: '7', name: 'Yurij' } });
 		});
 
+		it('does not duplicate the context page when opened twice at once or when one already exists', async () => {
+			await Promise.all([ensureContextPage(ctx), ensureContextPage(ctx)]);
+			expect(await data('GET', 'pages')).toHaveLength(1);
+			const other = memoryDb();
+			const second: LocalContext = { ...ctx, db: other };
+			await migrate(other, clock.toISOString());
+			await dispatchLocal(api, second, 'POST', 'pages', { title: 'Mine', type: 'context' });
+			await ensureContextPage(second);
+			expect((await dispatchLocal(api, second, 'GET', 'pages'))!.data.data).toHaveLength(1);
+		});
+
 		it('creates the context page once when a workspace is first opened and never again', async () => {
 			await ensureContextPage(ctx);
 			const pages = await data('GET', 'pages');
