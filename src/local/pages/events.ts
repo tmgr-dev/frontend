@@ -15,9 +15,10 @@ export const emitPageEvent = (
 	row: PageRow,
 	summary: string | null,
 	linkedTaskIds: number[],
+	actorOverride?: string,
 ) => {
 	try {
-		const actor = actorLabel(ctx);
+		const actor = actorLabel(ctx) ?? actorOverride;
 		domainEvents.emit({
 			type,
 			workspaceId: ctx.workspace.id,

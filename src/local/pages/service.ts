@@ -58,7 +58,7 @@ const iso = (ctx: LocalContext) => ctx.now().toISOString();
 type ActorKind = 'user' | 'persona' | 'plugin';
 
 const actorKind = (ctx: LocalContext): ActorKind =>
-	ctx.actor?.kind === 'persona' ? 'persona' : ctx.actor?.kind === 'plugin' ? 'plugin' : 'user';
+	!ctx.actor || ctx.actor.kind === 'user' ? 'user' : ctx.actor.kind === 'persona' ? 'persona' : 'plugin';
 
 const actorRef = (ctx: LocalContext): string => (actorKind(ctx) === 'user' ? String(ctx.user.id) : ctx.actor!.id);
 
@@ -461,6 +461,7 @@ const write = async (
 	pageId: number,
 	plan: (row: PageRow) => Promise<Change> | Change,
 	eventType: PageEventType = 'page.updated',
+	eventActor?: string,
 ) => {
 	const written = await exclusive(ctx.db, async (): Promise<Written> => {
 		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -494,7 +495,7 @@ const write = async (
 		if (!current) throw pageNotFound();
 		throw conflict(await assemble(ctx, current));
 	});
-	if (written.changed) emitPageEvent(ctx, eventType, written.row, written.summary, written.linked);
+	if (written.changed) emitPageEvent(ctx, eventType, written.row, written.summary, written.linked, eventActor);
 	return assemble(ctx, written.row);
 };
 
@@ -723,11 +724,17 @@ export const refreshManagedSection = async (
 ): Promise<void> => {
 	const asUser: LocalContext = { ...ctx, actor: undefined };
 	try {
-		await write(asUser, pageId, (row) => {
-			const section = findSection(row.body, sectionId);
-			const body = section ? replaceSection(row.body, section, markdown) : row.body;
-			return { title: row.title, body, properties: row.properties, summary };
-		});
+		await write(
+			asUser,
+			pageId,
+			(row) => {
+				const section = findSection(row.body, sectionId);
+				const body = section ? replaceSection(row.body, section, markdown) : row.body;
+				return { title: row.title, body, properties: row.properties, summary };
+			},
+			'page.updated',
+			'system',
+		);
 	} catch (error) {
 		if (!(error instanceof LocalHttpError)) throw error;
 	}

@@ -674,6 +674,13 @@ describeSqlite('local pages API on SQLite', () => {
 			expect((updated[1] as any).page.linked_task_ids).toEqual([]);
 		});
 
+		it('tags the promises rebuild of a person page with the system actor so an open page refreshes', async () => {
+			const person = await create('Иван', { type: 'person' });
+			events.length = 0;
+			await data('POST', 'tasks', { title: 'Report', description: `for [x](tmgr://page/${person.id})` });
+			expect(events.map((e: any) => [e.type, e.actor, e.page.id])).toEqual([['page.updated', 'system', person.id]]);
+		});
+
 		it('publishes nothing when a write changes nothing or fails', async () => {
 			const page = await create('Doc', { body: 'same' });
 			events.length = 0;
