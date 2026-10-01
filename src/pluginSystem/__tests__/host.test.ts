@@ -49,12 +49,13 @@ const pkg = (
 	permissions: any[] = [],
 	contributes: any = {},
 	source: 'builtin' | 'folder' = 'builtin',
+	engines = '^1.0',
 ): PluginPackage => ({
 	manifest: parseManifest({
 		id,
 		name: id,
 		version: '1.0.0',
-		engines: { tmgr: '^1.0' },
+		engines: { tmgr: engines },
 		permissions,
 		contributes,
 	}),
@@ -1916,5 +1917,62 @@ it("wires tmgr.localAccess.requestConnection to the host's requestLocalConnectio
 	const result = await host.runCommand('tmgr.comp', 'tmgr.comp.go');
 	expect(result).toEqual({ status: 'cancelled' });
 	expect(calls).toEqual([['tmgr.comp', { label: 'CLI' }]]);
+	host.dispose();
+});
+
+it('delivers page events with changed sections to pages:read plugins, never back to the writer', async () => {
+	const stored: [string, string][] = [];
+	const { host, events } = setup(
+		[
+			pkg('tmgr.dossier', `tmgr.events.on('page.updated', (e) => tmgr.storage.set('seen', e));`, ['pages:read'], {}, 'builtin', '^1.5'),
+			pkg('tmgr.blind', `tmgr.events.on('page.updated', () => tmgr.storage.set('blind', 1)).catch(() => {});`, [], {}, 'builtin', '^1.5'),
+		],
+		{ storageSet: async (key: string, json: string) => void stored.push([key, json]) },
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	const section = (id: string, text: string) =>
+		`<!-- tmgr:section id="${id}" owner="agents" -->\n${text}\n<!-- /tmgr:section -->`;
+	const page = (body: string, version: number) => ({
+		slug: 'saha',
+		title: 'Saha',
+		parent_id: null,
+		version,
+		body,
+		updated_by: { kind: 'user', id: 7, name: 'Me' },
+	});
+	const bodyV1 = `${section('a', 'one')}\n\n${section('b', 'two')}`;
+	events.emit({ type: 'page.created', workspaceId: LOCAL.id, pageId: 4, page: page(bodyV1, 1) });
+	events.emit({
+		type: 'page.updated',
+		workspaceId: LOCAL.id,
+		pageId: 4,
+		page: page(`${section('a', 'one')}\n\n${section('b', 'changed')}`, 2),
+	});
+	events.emit({
+		type: 'page.updated',
+		workspaceId: LOCAL.id,
+		pageId: 4,
+		page: page(bodyV1, 3),
+		actor: 'plugin:tmgr.dossier',
+	});
+	events.emit({ type: 'page.updated', workspaceId: 56, pageId: 9, page: page('', 1) });
+	await flush();
+	expect(stored.map(([key, json]) => [key, JSON.parse(json)])).toEqual([
+		[
+			'seen',
+			{
+				type: 'page.updated',
+				workspaceId: LOCAL.id,
+				pageId: 4,
+				slug: 'saha',
+				title: 'Saha',
+				parentId: null,
+				version: 2,
+				author: { kind: 'user', id: 7 },
+				changedSections: ['b'],
+			},
+		],
+	]);
 	host.dispose();
 });

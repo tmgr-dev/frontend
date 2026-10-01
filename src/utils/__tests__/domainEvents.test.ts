@@ -465,3 +465,39 @@ it('attributes an event to the workspace that was current when the request was s
 
 	expect(seen.map((e) => e.workspaceId)).toEqual([56]);
 });
+
+describe('page events', () => {
+	const page = { id: 4, workspace_id: -42, title: 'Saha', body: 'x', version: 2 };
+
+	it('reports local page writes with the page, and a section write with its section', () => {
+		const current = () => -42;
+		expect(eventsForResponse(response('post', 'pages', page), current)).toEqual([
+			{ type: 'page.created', workspaceId: -42, pageId: 4, page },
+		]);
+		expect(eventsForResponse(response('patch', 'pages/4', page, { version: 1 }), current)).toEqual([
+			{ type: 'page.updated', workspaceId: -42, pageId: 4, page },
+		]);
+		expect(eventsForResponse(response('post', 'pages/4/append', page, { markdown: 'a' }), current)[0].type).toBe(
+			'page.updated',
+		);
+		expect(eventsForResponse(response('put', 'pages/4/sections/notes', page, { markdown: 'a' }), current)).toEqual([
+			{ type: 'page.updated', workspaceId: -42, pageId: 4, page, changedSections: ['notes'] },
+		]);
+		expect(eventsForResponse(response('post', 'pages/4/restore', page), current)[0].type).toBe('page.restored');
+		expect(eventsForResponse(response('post', 'pages/4/move', page, { parent_id: 1 }), current)[0].type).toBe(
+			'page.moved',
+		);
+		expect(eventsForResponse(response('post', 'pages/4/versions/1/restore', page), current)[0].type).toBe(
+			'page.updated',
+		);
+		expect(eventsForResponse(response('delete', 'pages/4', { deleted: 4 }), current)).toEqual([
+			{ type: 'page.deleted', workspaceId: -42, pageId: 4 },
+		]);
+	});
+
+	it('leaves shared workspaces to realtime, so a cloud write is never reported twice', () => {
+		const cloud = { ...page, workspace_id: 5 };
+		expect(eventsForResponse(response('patch', 'pages/4', cloud, { version: 1 }), () => 5)).toEqual([]);
+		expect(eventsForResponse(response('delete', 'pages/4', { deleted: 4 }), () => 5)).toEqual([]);
+	});
+});

@@ -1,4 +1,5 @@
 import { ToastAction, toast } from '@/components/ui/toast';
+import { usePusher } from '@/composable/usePusher';
 import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
@@ -717,6 +718,36 @@ export const installPlugins = async (
 			} finally {
 				if (current === sequence) resolvePluginsReady();
 			}
+		},
+		{ immediate: true },
+	);
+	let pageSubscription: { workspaceId: number; id: string } | null = null;
+	watch(
+		() => pluginState.workspace,
+		(workspace) => {
+			if (pageSubscription)
+				usePusher().unsubscribeHandlerFromWorkspace(
+					pageSubscription.workspaceId,
+					pageSubscription.id,
+				);
+			pageSubscription = null;
+			if (workspace?.kind !== 'cloud') return;
+			pageSubscription = {
+				workspaceId: workspace.id,
+				id: usePusher().subscribeToWorkspace(workspace.id, {
+					onPageEvent: (type, { page }) => {
+						const actor =
+							page?.updated_by?.kind === 'plugin'
+								? `plugin:${page.updated_by.id}`
+								: undefined;
+						domainEvents.emit(
+							type === 'page.deleted'
+								? { type, workspaceId: workspace.id, pageId: page.id, actor }
+								: { type, workspaceId: workspace.id, pageId: page.id, page, actor },
+						);
+					},
+				}),
+			};
 		},
 		{ immediate: true },
 	);

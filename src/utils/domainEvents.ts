@@ -57,6 +57,15 @@ export type DomainEvent = (
 			instance?: Entity;
 	  }
 	| { type: 'routine.deleted'; workspaceId: number | null; routineId: number; taskId?: number }
+	| {
+			type: 'page.created' | 'page.updated' | 'page.restored' | 'page.moved';
+			workspaceId: number | null;
+			pageId: number;
+			page: Entity;
+			/** Set when the request itself names the section (PUT sections/:id); otherwise the host works it out. */
+			changedSections?: string[];
+	  }
+	| { type: 'page.deleted'; workspaceId: number | null; pageId: number }
 ) & { actor?: string };
 
 export type DomainEventHandler = (event: DomainEvent) => void;
@@ -148,6 +157,18 @@ const isRoutineShaped = (entity?: Entity): boolean =>
 /** An `instanceJson` payload or a raw `routine_instances` row. */
 const isInstanceShaped = (entity?: Entity): boolean =>
 	!!entity && typeof entity === 'object' && 'scheduled_for' in entity && 'task_id' in entity;
+
+/** Cloud page events come from realtime, not from the writer's own response, so only local workspaces emit here. */
+const localPageEvent = (
+	type: 'page.created' | 'page.updated' | 'page.restored' | 'page.moved',
+	pageId: number,
+	page: Entity,
+	workspaceId: number | null,
+	changedSections?: string[],
+): DomainEvent[] =>
+	workspaceId !== null && workspaceId < 0
+		? [{ type, workspaceId, pageId, page, ...(changedSections ? { changedSections } : {}) }]
+		: [];
 
 /** The domain events a successful API write stands for. Pure: reads nothing but its arguments. */
 export const eventsForResponse = (
@@ -430,6 +451,30 @@ export const eventsForResponse = (
 			{ type: 'routine.deleted', workspaceId: workspaceOf(payload), routineId, taskId },
 			{ type: 'task.created', workspaceId: workspaceOf(payload), taskId, task: payload },
 		];
+	}
+	if (path === 'pages' && method === 'post' && payload?.id) {
+		return localPageEvent('page.created', Number(payload.id), payload, workspaceOf(payload));
+	}
+	if ((match = path.match(/^pages\/(\d+)$/))) {
+		const pageId = Number(match[1]);
+		if (method === 'delete')
+			return workspaceOf() !== null && workspaceOf()! < 0
+				? [{ type: 'page.deleted', workspaceId: workspaceOf(), pageId }]
+				: [];
+		if (method === 'patch' && payload)
+			return localPageEvent('page.updated', pageId, payload, workspaceOf(payload));
+	}
+	if ((match = path.match(/^pages\/(\d+)\/(append|restore|move)$/)) && method === 'post' && payload) {
+		const type = match[2] === 'append' ? 'page.updated' : match[2] === 'restore' ? 'page.restored' : 'page.moved';
+		return localPageEvent(type, Number(match[1]), payload, workspaceOf(payload));
+	}
+	if ((match = path.match(/^pages\/(\d+)\/versions\/\d+\/restore$/)) && method === 'post' && payload) {
+		return localPageEvent('page.updated', Number(match[1]), payload, workspaceOf(payload));
+	}
+	if ((match = path.match(/^pages\/(\d+)\/sections\/([^/]+)$/)) && method === 'put' && payload) {
+		return localPageEvent('page.updated', Number(match[1]), payload, workspaceOf(payload), [
+			decodeURIComponent(match[2]),
+		]);
 	}
 	return [];
 };
