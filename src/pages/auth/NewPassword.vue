@@ -76,6 +76,7 @@
 					Sign out of all devices
 					<span class="block text-xs text-muted-foreground">
 						Recommended if you think someone else had access to your account.
+						If your email address isn't confirmed yet, every device is signed out anyway.
 					</span>
 				</span>
 			</label>
