@@ -1,5 +1,6 @@
 import { LocalRouter } from './router';
 import { generateUniqueCategoryCode, sanitizeCategoryCode } from './categoryCode';
+import { addPageDataRoutes } from './pages/pageData';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -1187,6 +1188,7 @@ export const createLocalApi = () => {
 			),
 		);
 	addRoutineRoutes(router);
+	addPageDataRoutes(router);
 	return router;
 };
 

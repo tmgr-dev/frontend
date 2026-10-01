@@ -254,6 +254,20 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_kind, actor_id)`,
 		],
 	},
+	{
+		version: 10,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS plugin_page_data (
+				plugin_id TEXT NOT NULL,
+				page_id INTEGER NOT NULL,
+				key TEXT NOT NULL,
+				value TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (plugin_id, page_id, key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS plugin_page_data_plugin_key_idx ON plugin_page_data (plugin_id, key)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
