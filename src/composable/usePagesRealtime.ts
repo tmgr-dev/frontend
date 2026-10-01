@@ -2,6 +2,7 @@ import { invalidatePages } from '@/actions/tmgr/pages';
 import { usePusher } from '@/composable/usePusher';
 import store from '@/store';
 import type { PageEventPayload, PageEventType } from '@/types/dashboard';
+import type { RootState } from '@/types/store';
 import { onBeforeUnmount, watch, type Ref } from 'vue';
 
 const REFRESH_DEBOUNCE_MS = 150;
@@ -36,12 +37,18 @@ export function usePagesRealtime(
 			onPageEvent: (type: PageEventType, payload: PageEventPayload) => {
 				invalidatePages();
 				store.commit('pagesEvent', { type, page: payload.page });
-				scheduleRefresh();
 			},
 			onReconnect: scheduleRefresh,
 		});
 		subscribedTo = id;
 	};
+
+	watch(
+		() => (store.state as RootState).pagesEvent?.seq,
+		() => {
+			if (subscribedTo !== null) scheduleRefresh();
+		},
+	);
 
 	watch(
 		[workspaceId, enabled],

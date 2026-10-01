@@ -1,4 +1,5 @@
 import $axios from '@/plugins/axios';
+import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
 
 export type PageType = 'plain' | 'context' | 'person' | 'meeting';
@@ -118,11 +119,13 @@ const rethrowConflict = (error: any): never => {
 
 const mutate = async <T>(request: Promise<any>): Promise<T> => {
 	try {
-		return await unwrap<T>(request);
-	} catch (error) {
-		return rethrowConflict(error);
-	} finally {
+		const result = await unwrap<T>(request);
 		invalidatePages();
+		store.commit('pagesEvent', { type: 'page.local', page: null });
+		return result;
+	} catch (error) {
+		invalidatePages();
+		return rethrowConflict(error);
 	}
 };
 
