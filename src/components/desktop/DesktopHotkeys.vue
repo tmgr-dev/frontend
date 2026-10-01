@@ -49,6 +49,8 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { getPage } from '@/actions/tmgr/pages';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import { pluginsReady } from '@/pluginSystem/app';
 	import { storageIdOf } from '@/pluginSystem/host';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
@@ -63,6 +65,8 @@
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
 	import { loadRecent } from '@/utils/desktopTray';
+	import { openPageLink } from '@/utils/openPageLink';
+	import { focusPageWindow } from '@/utils/pageWindow';
 	import {
 		computed,
 		defineComponent,
@@ -271,6 +275,23 @@
 				if (link.type === 'task') {
 					await showMainWindow();
 					store.commit('setCurrentTaskIdForModal', link.taskId);
+					return;
+				}
+				if (link.type === 'page') {
+					const opened = await openPageLink(link, {
+						loadWorkspaces: async () => {
+							if (!store.state.workspaces?.length) {
+								store.commit('setWorkspaces', await getWorkspaces());
+							}
+							return store.state.workspaces || [];
+						},
+						currentWorkspaceId: () => store.getters.currentWorkspaceId,
+						resolvePageId: async (slug) => (await getPage(slug)).id,
+						focusPageWindow,
+						showMain: showMainWindow,
+						navigate: (path) => router.push(path),
+					}).catch(() => false);
+					if (!opened) cantOpenLink();
 					return;
 				}
 				const ready = await Promise.race([
