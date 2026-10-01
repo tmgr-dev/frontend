@@ -325,7 +325,9 @@
 							return {
 								'data-tmgr': href,
 								class: `tmgr-chip tmgr-chip-${parsed.kind}`,
-								...(title ? { title } : {}),
+								...(title
+									? { 'data-current-title': title, 'aria-label': title }
+									: {}),
 							};
 						});
 					})
@@ -387,6 +389,29 @@
 	.dark .page-editor a.tmgr-chip {
 		background: rgb(96 165 250 / 0.18);
 		color: rgb(147 197 253);
+	}
+
+	.page-editor a.tmgr-chip {
+		position: relative;
+	}
+
+	.page-editor a.tmgr-chip[data-current-title]:hover::after {
+		content: attr(data-current-title);
+		position: absolute;
+		left: 0;
+		top: 100%;
+		z-index: 20;
+		margin-top: 2px;
+		max-width: 20rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		border-radius: 0.375rem;
+		background: rgb(31 41 55);
+		padding: 0.15rem 0.5rem;
+		font-size: 0.75rem;
+		color: white;
+		pointer-events: none;
 	}
 
 	.page-editor img {
