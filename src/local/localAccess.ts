@@ -235,7 +235,11 @@ export const handleLocalAccessRequest = async (
 			if (axios.isAxiosError(error) && error.response) {
 				const data = error.response.data as { message?: string; code?: string } | undefined;
 				const code = data?.code ?? defaultCodeFor(error.response.status);
-				return { status: error.response.status, body: JSON.stringify({ message: data?.message ?? 'Error', code }) };
+				const extra = data && typeof data === 'object' ? data : {};
+				return {
+					status: error.response.status,
+					body: JSON.stringify({ ...extra, message: data?.message ?? 'Error', code }),
+				};
 			}
 			throw error;
 		}
@@ -244,6 +248,9 @@ export const handleLocalAccessRequest = async (
 		return { status: 500, body: JSON.stringify({ message: 'Internal error', code: 'INTERNAL' }) };
 	}
 };
+
+/** Page events are not plugin events yet (Plugin API 1.5), so their stream permission is the persona one. */
+const PAGE_EVENT_PERMISSION = 'pages:read';
 
 /** `reactionChanged` carries who reacted; a broadcast has no single viewer, so no companion gets that either. */
 const stripReactionDetails = (event: DomainEvent): DomainEvent => {
@@ -256,7 +263,7 @@ const stripReactionDetails = (event: DomainEvent): DomainEvent => {
 export const installLocalAccessEvents = (invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>) => {
 	return domainEvents.on((event) => {
 		if (event.type.startsWith('timer.') || event.type.startsWith('routine.')) return;
-		const permission = PLUGIN_EVENTS[event.type];
+		const permission = event.type.startsWith('page.') ? PAGE_EVENT_PERMISSION : PLUGIN_EVENTS[event.type];
 		if (!permission) return;
 		if (event.workspaceId === null || event.workspaceId === undefined || event.workspaceId >= 0) return;
 		void (async () => {

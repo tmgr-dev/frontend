@@ -1,5 +1,5 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
-import type { EventHandlers } from '@/types/dashboard';
+import type { EventHandlers, PageEventPayload } from '@/types/dashboard';
 import { domainEvents, eventsForResponse, type DomainEvent } from '@/utils/domainEvents';
 import type { LocalRouter } from './router';
 import { LocalRaw } from './types';
@@ -125,6 +125,16 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 			case 'task.relationChanged':
 				refetchTask(workspaceId, event.taskId);
 				refetchTask(workspaceId, event.otherTaskId);
+				return;
+			case 'page.created':
+			case 'page.updated':
+			case 'page.deleted':
+			case 'page.restored':
+			case 'page.moved':
+				deps.invalidate(/^pages-/);
+				deps.deliver(workspaceId, (h) =>
+					h.onPageEvent?.(event.type, { page: event.page as PageEventPayload['page'] }),
+				);
 				return;
 		}
 	};
