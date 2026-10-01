@@ -87,9 +87,9 @@ export const takeReturnPath = (): string | null => {
 	}
 };
 
-export const withoutTokenQuery = (
-	query: Record<string, unknown>,
-): Record<string, unknown> => {
+export const withoutTokenQuery = <T extends Record<string, unknown>>(
+	query: T,
+): Omit<T, 'token'> => {
 	const { token: _token, ...rest } = query;
 	return rest;
 };
