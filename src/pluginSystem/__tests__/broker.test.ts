@@ -12,7 +12,7 @@ const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 		id: 'tmgr.test',
 		name: 'Test',
 		version: '1.0.0',
-		engines: { tmgr: '^1.4' },
+		engines: { tmgr: '^1.5' },
 		permissions,
 		contributes: {
 			boardCardBadges: [{ id: 'overrun' }],
@@ -76,6 +76,27 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		taskDataSet: record('taskDataSet'),
 		taskDataDelete: record('taskDataDelete'),
 		taskDataGetMany: record('taskDataGetMany'),
+		pagesSearch: record('pagesSearch'),
+		pagesTree: record('pagesTree'),
+		pagesGet: async (...args: unknown[]) => {
+			calls.push(['pagesGet', ...args]);
+			return {
+				id: 5,
+				sections: [
+					{ id: 'mine', owner: 'plugin:tmgr.test', heading: 'Mine' },
+					{ id: 'theirs', owner: 'plugin:tmgr.other', heading: null },
+					{ id: 'shared', owner: 'agents', heading: null },
+				],
+			};
+		},
+		pagesCreate: record('pagesCreate'),
+		pagesUpdate: record('pagesUpdate'),
+		pagesAppend: record('pagesAppend'),
+		pagesSetSection: record('pagesSetSection'),
+		pageDataGet: record('pageDataGet'),
+		pageDataSet: record('pageDataSet'),
+		pageDataDelete: record('pageDataDelete'),
+		pageDataGetMany: async () => ({ 5: '{"a":1}', 6: '2' }),
 		listAgentWork: record('listAgentWork'),
 		startAgentWork: record('startAgentWork'),
 		updateAgentWork: record('updateAgentWork'),
@@ -1197,5 +1218,93 @@ describe('routines', () => {
 		});
 		await broker.call('tasks.get', { id: 1_000_000_005 });
 		expect(api.calls).toEqual([['getTask', 1_000_000_005]]);
+	});
+});
+
+describe('pages (API 1.5)', () => {
+	it('gates reads, writes and sections by their own permission', async () => {
+		const read = setup(['pages:read']).broker;
+		expect(await code(read.call('pages.search', { q: 'x' }))).toBe('ok');
+		expect(await code(read.call('pages.tree', {}))).toBe('ok');
+		expect(await code(read.call('pages.get', { idOrSlug: 'saha' }))).toBe('ok');
+		expect(await code(read.call('pages.create', { title: 'T' }))).toBe('PERMISSION_DENIED');
+		expect(await code(read.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'x' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		const write = setup(['pages:write']).broker;
+		expect(await code(write.call('pages.search', { q: 'x' }))).toBe('PERMISSION_DENIED');
+		expect(await code(write.call('pages.append', { id: 5, markdown: 'line' }))).toBe('ok');
+		expect(await code(setup([]).broker.call('pageData.get', { pageId: 5, key: 'k' }))).toBe('PERMISSION_DENIED');
+	});
+
+	it('validates and maps the parameters', async () => {
+		const { broker, api } = setup(['pages:read', 'pages:write']);
+		await broker.call('pages.create', {
+			title: 'Saha',
+			type: 'person',
+			parentId: 3,
+			body: 'hi',
+			properties: { role: 'cto' },
+		});
+		await broker.call('pages.update', { id: 5, version: 2, title: 'N', summary: 's' });
+		await broker.call('pages.append', { id: 5, markdown: 'm', heading: 'Log', createHeading: true });
+		await broker.call('pages.search', { q: 'x', type: 'person', limit: 500 });
+		expect(api.calls).toEqual([
+			['pagesCreate', { title: 'Saha', type: 'person', parent_id: 3, body: 'hi', properties: { role: 'cto' } }],
+			['pagesUpdate', 5, { version: 2, title: 'N', summary: 's' }],
+			['pagesAppend', 5, { markdown: 'm', heading: 'Log', create_heading: true }],
+			['pagesSearch', 'x', { type: 'person', limit: 50 }],
+		]);
+		expect(await code(broker.call('pages.update', { id: 5, title: 'x' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.create', { title: '' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.create', { title: 'x', type: 'weird' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.get', { idOrSlug: 0 }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.append', { id: 5, markdown: 'x'.repeat(1_048_577) }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('pages.create', { title: 'x', properties: [] }))).toBe('INVALID_PARAMS');
+	});
+
+	it('lets setSection write only into sections owned by this plugin', async () => {
+		const { broker, api } = setup(['pages:sections']);
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'ok' }))).toBe('ok');
+		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'mine', 'ok', undefined]);
+		const before = api.calls.length;
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'theirs', markdown: 'x' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'shared', markdown: 'x' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'nope', markdown: 'x' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'a b', markdown: 'x' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(api.calls.slice(before).filter((c) => c[0] === 'pagesSetSection')).toEqual([]);
+	});
+
+	it('stores per-page data as JSON with a 200-character key and a 64 KB value', async () => {
+		const { broker, api } = setup(['pages:read']);
+		await broker.call('pageData.set', { pageId: 5, key: 'seen', value: { n: 1 } });
+		expect(api.calls[api.calls.length - 1]).toEqual(['pageDataSet', 5, 'seen', '{"n":1}']);
+		expect(await code(broker.call('pageData.set', { pageId: 5, key: 'k'.repeat(201), value: 1 }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('pageData.set', { pageId: 5, key: 'k', value: 'x'.repeat(70_000) }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await broker.call('pageData.getMany', { pageIds: [5, 6], key: 'k' })).toEqual({ 5: { a: 1 }, 6: 2 });
+		expect(await code(broker.call('pageData.getMany', { pageIds: [], key: 'k' }))).toBe('INVALID_PARAMS');
+	});
+
+	it('subscribes to page events only with pages:read', async () => {
+		expect(await code(setup(['pages:read']).broker.call('register', { kind: 'event', id: 'page.updated' }))).toBe(
+			'ok',
+		);
+		expect(await code(setup(['tasks:read']).broker.call('register', { kind: 'event', id: 'page.updated' }))).toBe(
+			'PERMISSION_DENIED',
+		);
 	});
 });
