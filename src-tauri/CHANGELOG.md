@@ -3,6 +3,17 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.17 — 2026-10-01
+
+- New: assign tasks to personas. The assignee picker lists personas under the members — your own personas enabled in
+  the workspace and the workspace's shared personas — and a task can have several. An assigned task waits in the
+  persona's queue; an agent connected with the persona's token picks it up with the `list_my_queue` MCP tool. Cards,
+  lists and the task window show the persona's avatar; click it to see whose persona it is. The board can be filtered
+  by persona and by "My personas' queue".
+- New: workspace personas. In Settings → Personas choose "This workspace" to create a persona every member of the
+  workspace can assign tasks to; only you can edit it, and it is not visible in other workspaces.
+- Local workspaces support persona assignment too, and local AI personas can list their queue over the local MCP.
+
 ## 0.9.16 — 2026-10-01
 
 - New: Pages («Страницы») in cloud workspaces — markdown documents next to your tasks, with a page tree in the
