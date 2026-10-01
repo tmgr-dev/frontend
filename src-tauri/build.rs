@@ -25,6 +25,8 @@ const APP_COMMANDS: &[&str] = &[
   "open_quick_add",
   "open_task_window",
   "focus_task_window",
+  "open_page_window",
+  "focus_page_window",
   "take_quick_add",
   "tray_update",
   "dnd_update",
