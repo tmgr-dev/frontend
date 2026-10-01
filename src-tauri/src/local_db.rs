@@ -197,6 +197,41 @@ mod tests {
   }
 
   #[test]
+  fn fts5_virtual_table_and_sync_triggers_run_as_single_statements() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE pages (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)", &[]).unwrap();
+    execute(
+      &conn,
+      "CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(title, body, content='pages', content_rowid='id')",
+      &[],
+    )
+    .unwrap();
+    execute(
+      &conn,
+      "CREATE TRIGGER IF NOT EXISTS pages_fts_ai AFTER INSERT ON pages BEGIN
+        INSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+      END",
+      &[],
+    )
+    .unwrap();
+    execute(
+      &conn,
+      "CREATE TRIGGER IF NOT EXISTS pages_fts_au AFTER UPDATE OF title, body ON pages BEGIN
+        INSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+        INSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+      END",
+      &[],
+    )
+    .unwrap();
+    execute(&conn, "INSERT INTO pages (title, body) VALUES (?, ?)", &[json!("Заметки"), json!("Привет мир")]).unwrap();
+    let found = select(&conn, "SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?", &[json!("\"привет\"*")]).unwrap();
+    assert_eq!(found.len(), 1);
+    execute(&conn, "UPDATE pages SET body = ? WHERE id = 1", &[json!("другой текст")]).unwrap();
+    assert!(select(&conn, "SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?", &[json!("\"привет\"*")]).unwrap().is_empty());
+    assert_eq!(select(&conn, "SELECT rowid FROM pages_fts WHERE pages_fts MATCH ?", &[json!("\"текст\"*")]).unwrap().len(), 1);
+  }
+
+  #[test]
   fn several_statements_in_one_call_are_rejected() {
     let conn = open(":memory:").unwrap();
     execute(&conn, "CREATE TABLE t (id INTEGER)", &[]).unwrap();

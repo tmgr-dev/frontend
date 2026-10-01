@@ -537,7 +537,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		const tables = (await fresh.select<any>(`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(
 			(t: any) => t.name,
 		);
-		expect(tables).toEqual(expect.arrayContaining(['plugin_task_data', 'agent_work_runs']));
+		expect(tables).toEqual(
+			expect.arrayContaining(['plugin_task_data', 'agent_work_runs', 'pages', 'page_versions', 'page_links', 'task_page_mentions']),
+		);
 
 		await fresh.execute(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
 		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);

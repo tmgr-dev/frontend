@@ -254,6 +254,97 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_kind, actor_id)`,
 		],
 	},
+	{
+		version: 9,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS pages (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				parent_id INTEGER REFERENCES pages(id) ON DELETE SET NULL,
+				title TEXT NOT NULL,
+				slug TEXT NOT NULL UNIQUE,
+				type TEXT NOT NULL DEFAULT 'plain',
+				body TEXT NOT NULL DEFAULT '',
+				properties TEXT NOT NULL DEFAULT '{}',
+				version INTEGER NOT NULL DEFAULT 1,
+				author_id INTEGER NOT NULL,
+				author_kind TEXT NOT NULL,
+				author_ref TEXT NOT NULL,
+				updated_by_id INTEGER NOT NULL,
+				updated_by_kind TEXT NOT NULL,
+				updated_by_ref TEXT NOT NULL,
+				position INTEGER NOT NULL DEFAULT 0,
+				pinned INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				deleted_at TEXT
+			)`,
+			`CREATE INDEX IF NOT EXISTS pages_parent_idx ON pages (parent_id)`,
+			`CREATE TABLE IF NOT EXISTS page_versions (
+				page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+				version INTEGER NOT NULL,
+				title TEXT NOT NULL,
+				body TEXT NOT NULL,
+				properties TEXT NOT NULL DEFAULT '{}',
+				author_id INTEGER NOT NULL,
+				author_kind TEXT NOT NULL,
+				author_ref TEXT NOT NULL,
+				summary TEXT,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (page_id, version)
+			)`,
+			`CREATE TABLE IF NOT EXISTS page_links (
+				page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+				target_kind TEXT NOT NULL,
+				target_id INTEGER NOT NULL,
+				UNIQUE (page_id, target_kind, target_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS page_links_target_idx ON page_links (target_kind, target_id)`,
+			`CREATE TABLE IF NOT EXISTS task_page_mentions (
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+				PRIMARY KEY (task_id, page_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS task_page_mentions_page_idx ON task_page_mentions (page_id)`,
+			`CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(title, body, content='pages', content_rowid='id')`,
+			`CREATE TRIGGER IF NOT EXISTS pages_fts_ai AFTER INSERT ON pages BEGIN
+				INSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS pages_fts_ad AFTER DELETE ON pages BEGIN
+				INSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS pages_fts_au AFTER UPDATE OF title, body ON pages BEGIN
+				INSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+				INSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+			END`,
+			// files.task_id loses NOT NULL, which needs a table rebuild; ordered so a cut-short run can repeat.
+			`CREATE TABLE IF NOT EXISTS files (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+				page_id INTEGER REFERENCES pages(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				file_path TEXT NOT NULL UNIQUE,
+				mime_type TEXT,
+				size INTEGER,
+				created_at TEXT NOT NULL
+			)`,
+			`CREATE TABLE IF NOT EXISTS files_v9 (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+				page_id INTEGER REFERENCES pages(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				file_path TEXT NOT NULL UNIQUE,
+				mime_type TEXT,
+				size INTEGER,
+				created_at TEXT NOT NULL
+			)`,
+			`INSERT OR IGNORE INTO files_v9 (id, task_id, name, file_path, mime_type, size, created_at)
+				SELECT id, task_id, name, file_path, mime_type, size, created_at FROM files`,
+			`DROP TABLE IF EXISTS files`,
+			`ALTER TABLE files_v9 RENAME TO files`,
+			`CREATE INDEX IF NOT EXISTS files_task_idx ON files (task_id)`,
+			`CREATE INDEX IF NOT EXISTS files_page_idx ON files (page_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
