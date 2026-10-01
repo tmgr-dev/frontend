@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.20 — 2026-10-01
+
+- Pages now speak English like the rest of the app: sidebar, dialogs, properties, version history, trash, search and
+  notifications. New person pages use Summary, Promises, Timeline, What I know and Insights; meeting pages use
+  Agenda, Outcomes, Decisions and Action items; the workspace context page is called "Workspace context".
+- Existing pages keep your text. Section headings managed by the app (Promises, Insights, Agent notes) and an
+  unchanged context page title are renamed to English; older Russian headings you wrote keep working for appending
+  and for "Make a task" on meeting action items.
+
 ## 0.9.19 — 2026-10-01
 
 - Pages now work in local workspaces too: the page tree, editor, versions, links, search and person and meeting pages
