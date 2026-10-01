@@ -3,6 +3,18 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.19 — 2026-10-01
+
+- Pages now work in local workspaces too: the page tree, editor, versions, links, search and person and meeting pages
+  live in the workspace folder on this computer, work offline and never reach the server.
+- Open a page in its own window from the page header or the sidebar menu. Links like `tmgr://page/<workspace>/<page>`
+  open the page in the app.
+- Quick Add has a new «В страницу» mode: pick a page and a section, then add text or a screenshot to it.
+- Tools connected through local access can read and write pages (pages tools and the workspace context), and see
+  page changes live.
+- Plugins: Plugin API 1.5 lets plugins read pages, write to them and keep their own sections on a page, with new
+  permissions you confirm at install. Existing plugins keep working unchanged.
+
 ## 0.9.18 — 2026-10-01
 
 - Pages get types: «Человек» (person) and «Встреча» (meeting) pages with editable properties — aliases, company,
