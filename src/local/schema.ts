@@ -254,6 +254,19 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_kind, actor_id)`,
 		],
 	},
+	{
+		version: 9,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS task_persona_assignees (
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				persona_uuid TEXT NOT NULL REFERENCES personas(uuid),
+				owner_implied INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (task_id, persona_uuid)
+			)`,
+			`CREATE INDEX IF NOT EXISTS task_persona_assignees_persona_idx ON task_persona_assignees (persona_uuid)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
