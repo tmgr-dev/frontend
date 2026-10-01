@@ -1,5 +1,6 @@
 import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
+import type { PersonaAssignee } from '@/utils/personas';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import objectToQueryString from '@/utils/objectToQueryString';
@@ -10,6 +11,7 @@ export interface Task {
 	id: number | undefined;
 	approximately_time: number;
 	assignees: Record<string, any>[] | number[];
+	persona_assignees?: PersonaAssignee[] | string[];
 	category:
 		| number
 		| {
@@ -127,6 +129,12 @@ export const getTask = async (
 		},
 		{ ttl: 60000, cache: useCache },
 	);
+};
+
+export const refreshAssignedTask = async (taskId: number) => {
+	const task = await getTask(taskId, false);
+	store.commit('updateSingleTask', task);
+	return task;
 };
 
 export const createTask = async (task: Task) => {
@@ -313,6 +321,28 @@ export const deleteTaskAssignee = async (taskId: number, userId: number) => {
 	requestCache.invalidate(`task-${taskId}`);
 
 	return data.assignees;
+};
+
+export const assignPersonaToTask = async (taskId: number, uuid: string) => {
+	const {
+		data: { data },
+	} = await $axios.post(`tasks/${taskId}/personas/${uuid}`);
+
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
+
+	return data;
+};
+
+export const unassignPersonaFromTask = async (taskId: number, uuid: string) => {
+	const {
+		data: { data },
+	} = await $axios.delete(`tasks/${taskId}/personas/${uuid}`);
+
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
+
+	return data;
 };
 
 /** `workspaceId` pins the call to that workspace (the desktop tray lists cloud and local timers together). */

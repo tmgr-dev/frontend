@@ -39,6 +39,7 @@
 		desktopTxFromState,
 		relayReturnHash,
 	} from '@/utils/desktopAuth';
+	import { googleLinkConfirmationMessage, takeReturnPath } from '@/utils/emailVerification';
 	import { takeOAuthBinding } from '@/utils/oauthBinding';
 	import { AxiosError } from 'axios';
 	import { ref } from 'vue';
@@ -168,6 +169,13 @@
 			}
 			await getUser();
 
+			const returnPath = takeReturnPath();
+			if (returnPath) {
+				await router.push(returnPath);
+				store.commit('rerenderApp');
+				return;
+			}
+
 			if (store.state.user) {
 				await Promise.all([
 					getUserSettings(),
@@ -196,7 +204,10 @@
 
 			store.commit('rerenderApp');
 		} catch (error: unknown) {
-			if (error instanceof AxiosError) {
+			const linkConfirmation = googleLinkConfirmationMessage(error);
+			if (linkConfirmation) {
+				message.value = linkConfirmation;
+			} else if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
 
 				message.value = `Something went wrong: ${error.response?.data?.message}... After 3 seconds you will redirected to the login page.`;

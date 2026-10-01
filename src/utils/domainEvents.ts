@@ -231,6 +231,12 @@ export const eventsForResponse = (
 		];
 	}
 	if (
+		(match = path.match(/^tasks\/(\d+)\/personas\/[^/]+$/)) &&
+		(method === 'post' || method === 'delete')
+	) {
+		return withTask('task.updated', Number(match[1]), ['persona_assignees']);
+	}
+	if (
 		(match = path.match(/^tasks\/(\d+)\/comments$/)) &&
 		method === 'post' &&
 		payload

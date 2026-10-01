@@ -1,6 +1,7 @@
 import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { saveReturnPath } from '@/utils/emailVerification';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 import { isLocalWorkspace } from '@/utils/pagesTree';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -37,6 +38,9 @@ router.beforeEach(async (to, from, next) => {
 
 	if (to.matched.some((record) => !record.meta.allowedGuests)) {
 		if (!store.getters.isLoggedIn) {
+			if (to.matched.some((record) => record.meta.returnAfterLogin)) {
+				saveReturnPath(to.fullPath);
+			}
 			return next({ name: 'Login' });
 		}
 

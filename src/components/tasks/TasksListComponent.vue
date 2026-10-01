@@ -101,11 +101,15 @@
 								class="group/assignee absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 								@click.stop
 								:title="
-									task.assignees?.length ? 'Change assignee' : 'Assign someone'
+									visibleAssignees(task).length
+										? 'Change assignee'
+										: 'Assign someone'
 								"
 							>
 								<UserPlus
-									v-if="assigneePopoverOpen[task.id] || !task.assignees?.length"
+									v-if="
+										assigneePopoverOpen[task.id] || !visibleAssignees(task).length
+									"
 									class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
 								/>
 								<template v-else>
@@ -114,7 +118,7 @@
 									/>
 									<AssigneeUsers
 										class="group-hover/assignee:hidden"
-										:assignees="task.assignees"
+										:assignees="visibleAssignees(task)"
 										avatarsClass="h-6 w-6"
 										:show-assignee-controls="false"
 									/>
@@ -150,6 +154,11 @@
 											{{ member.name }}
 										</CommandItem>
 									</CommandGroup>
+									<AssigneePersonaGroup
+										:personas="assignablePersonas"
+										:selected-ids="personaIdsOf(task)"
+										@toggle="(persona) => togglePersona(task, persona)"
+									/>
 								</CommandList>
 							</Command>
 						</PopoverContent>
@@ -281,7 +290,16 @@
 								:overtime="taskOvertimes[task.id]"
 							/>
 
-							<span class="ml-auto flex items-center gap-1.5 text-ink-subtle">
+							<PersonaAssigneeChips
+								v-if="isFeatureEnabled('task.assignees')"
+								class="ml-auto"
+								:personas="personaAssigneesOf(task)"
+								:size="20"
+							/>
+							<span
+								class="flex items-center gap-1.5 text-ink-subtle"
+								:class="personaAssigneesOf(task).length ? '' : 'ml-auto'"
+							>
 								<span>{{ taskStatusNames[task.id] }}</span>
 								<span
 									class="inline-block h-2 w-2 rounded-full"
@@ -402,12 +420,19 @@
 		updateTaskPartially,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
+	import {
+		assignPersonaToTask,
+		unassignPersonaFromTask,
+	} from '@/actions/tmgr/tasks';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
+	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import Button from '@/components/general/Button.vue';
 	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
@@ -453,6 +478,13 @@
 		shouldIgnoreNavigationTarget,
 	} from '@/utils/listKeyboardNavigation';
 	import { liveTaskTime } from '@/utils/liveTaskTime';
+	import {
+		assigneeWritePayload,
+		personaAssigneeIds,
+		personaAssigneesOf,
+		type PersonaAssignee,
+		visibleHumanAssignees,
+	} from '@/utils/personas';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		AlarmClock,
@@ -481,6 +513,8 @@
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
 			AssigneeUsers,
+			AssigneePersonaGroup,
+			PersonaAssigneeChips,
 			AppTooltip,
 			Popover,
 			PopoverContent,
@@ -589,6 +623,7 @@
 				handler(newVal) {
 					if (Object.values(newVal).some((v) => v)) {
 						this.loadWorkspaceMembers();
+						this.loadAssignablePersonas();
 					}
 				},
 			},
@@ -621,6 +656,7 @@
 				hoveredTaskId: null as number | null,
 				assigneePopoverOpen: {} as Record<number, boolean>,
 				workspaceMembers: [] as WorkspaceMember[],
+				assignablePersonas: [] as PersonaAssignee[],
 				focusedIndex: -1,
 				focusedTaskId: null as number | null,
 			};
@@ -771,10 +807,50 @@
 				const status = this.statuses.find((s: any) => s.id === task.status_id);
 				return status?.name || '';
 			},
+			visibleAssignees(task: Task): any[] {
+				return visibleHumanAssignees(task as any);
+			},
+			personaAssigneesOf(task: Task) {
+				return personaAssigneesOf(task);
+			},
+			personaIdsOf(task: Task) {
+				return personaAssigneeIds(task);
+			},
+			async loadAssignablePersonas() {
+				const workspaceId = this.$store.state.user?.settings?.find(
+					(s: any) => s.key === 'current_workspace',
+				)?.value;
+				if (!workspaceId) return;
+				try {
+					this.assignablePersonas = await getAssignablePersonas(
+						Number(workspaceId),
+					);
+				} catch (e) {
+					console.error('Failed to load assignable personas:', e);
+				}
+			},
+			applyAssignees(task: Task, data: any) {
+				if (!data) return;
+				if (data.assignees) task.assignees = data.assignees;
+				if (data.persona_assignees)
+					task.persona_assignees = data.persona_assignees;
+			},
+			async togglePersona(task: Task, persona: PersonaAssignee) {
+				try {
+					const data = personaAssigneeIds(task).includes(persona.id)
+						? await unassignPersonaFromTask(task.id!, persona.id)
+						: await assignPersonaToTask(task.id!, persona.id);
+					this.applyAssignees(task, data);
+				} catch (e) {
+					console.error('Failed to update persona assignees:', e);
+				}
+			},
 			isAssignedTo(task: Task, memberId: number) {
 				return task.assignees?.some((a: any) => a.id === memberId) || false;
 			},
 			async toggleAssignee(task: Task, memberId: number) {
+				if (personaAssigneesOf(task).some((p) => p.owner.id === memberId))
+					return;
 				const currentAssigneeIds = task.assignees?.map((a: any) => a.id) || [];
 				let newAssigneeIds: number[];
 
@@ -787,9 +863,14 @@
 				}
 
 				try {
-					await updateTaskPartially(task.id!, {
-						assignees: newAssigneeIds,
-					} as any);
+					const updated = await updateTaskPartially(
+						task.id!,
+						assigneeWritePayload(task, newAssigneeIds) as any,
+					);
+					if (updated?.assignees) {
+						this.applyAssignees(task, updated);
+						return;
+					}
 					const member = this.workspaceMembers.find(
 						(m: WorkspaceMember) => m.id === memberId,
 					);

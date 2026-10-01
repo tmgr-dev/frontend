@@ -6,6 +6,7 @@ import type {
 	Activity,
 	DashboardStatistics,
 	EventHandlers,
+	TaskAssignmentEvent,
 	PageEventPayload,
 	PageEventType,
 	TeamMemberStatus,
@@ -392,6 +393,20 @@ export function usePusher(): UsePusherReturn {
 					}
 				},
 			);
+
+			(['assigned', 'unassigned'] as const).forEach((type) => {
+				channel.listen(
+					`.task.${type}`,
+					(data: Omit<TaskAssignmentEvent, 'type'>) => {
+						const sub = subscriptions.get(channelName);
+						if (sub) {
+							sub.handlers.forEach((h) =>
+								h.onTaskAssignmentChanged?.({ ...data, type }),
+							);
+						}
+					},
+				);
+			});
 
 			// TM-224: the API broadcasts these on the user's own channel when a timer starts or stops,
 			// so the same user's other tabs can follow a timer they did not start themselves.

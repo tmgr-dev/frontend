@@ -206,6 +206,30 @@ test('a local workspace keeps its handlers without a realtime channel and receiv
 	expect(instances[0].leave).not.toHaveBeenCalled();
 });
 
+test('task.assigned and task.unassigned reach onTaskAssignmentChanged with their type', () => {
+	const { api, instances } = loadPusher();
+	const pusher = api.usePusher();
+	const onTaskAssignmentChanged = jest.fn();
+	pusher.subscribeToWorkspace(7, { onTaskAssignmentChanged });
+	const channel = instances[0].channels.get('App.Workspace.7');
+	const payload = {
+		task_id: 4,
+		workspace_id: 7,
+		user_ids: [1],
+		personas: [{ uuid: 'p1', name: 'Reviewer', owner_user_id: 1 }],
+	};
+	channel.callbacks['.task.assigned'](payload);
+	channel.callbacks['.task.unassigned'](payload);
+	expect(onTaskAssignmentChanged).toHaveBeenNthCalledWith(1, {
+		...payload,
+		type: 'assigned',
+	});
+	expect(onTaskAssignmentChanged).toHaveBeenNthCalledWith(2, {
+		...payload,
+		type: 'unassigned',
+	});
+});
+
 test('page events on the workspace channel reach onPageEvent with their type', () => {
 	const { api, instances } = loadPusher();
 	const pusher = api.usePusher();

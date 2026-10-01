@@ -129,6 +129,24 @@ const routes = [
 			transitionName: 'fade-fast',
 		},
 	},
+	{
+		path: '/email/verify',
+		component: () => import('@/pages/auth/VerifyEmail.vue'),
+		name: 'VerifyEmail',
+		meta: {
+			returnAfterLogin: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
+		path: '/auth/link-confirm',
+		component: () => import('@/pages/auth/LinkConfirm.vue'),
+		name: 'LinkConfirm',
+		meta: {
+			returnAfterLogin: true,
+			transitionName: 'fade-fast',
+		},
+	},
 	// Legacy routes - keep for backward compatibility
 	{
 		path: '/',

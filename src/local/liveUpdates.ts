@@ -2,6 +2,7 @@ import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type { EventHandlers } from '@/types/dashboard';
 import { domainEvents, eventsForResponse, type DomainEvent } from '@/utils/domainEvents';
 import type { LocalRouter } from './router';
+import { onTaskAssignment } from './personaAssignees';
 import { LocalRaw } from './types';
 
 type AgentWorkListener = (workspaceId: number, run: AgentWorkRun) => void;
@@ -137,8 +138,13 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 	const onRun: AgentWorkListener = (workspaceId, run) =>
 		deps.deliver(workspaceId, (h) => h.onAgentWorkChanged?.(run));
 	agentWorkListeners.add(onRun);
+	const offAssignment = onTaskAssignment((report) => {
+		if (report.actor === 'user') return;
+		refetchTask(report.payload.workspace_id, report.payload.task_id);
+	});
 	return () => {
 		offBus();
+		offAssignment();
 		agentWorkListeners.delete(onRun);
 	};
 };
