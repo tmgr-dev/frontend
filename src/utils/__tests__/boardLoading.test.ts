@@ -1,4 +1,8 @@
-import { createBoardLoader, filterBoardTasks } from '../boardLoading';
+import {
+	createBoardLoader,
+	filterBoardTasks,
+	MY_PERSONAS_FILTER,
+} from '../boardLoading';
 
 const flush = async () => {
 	await Promise.resolve();
@@ -80,5 +84,29 @@ describe('board loading', () => {
 			}),
 		).toEqual([tasks[0]]);
 		expect(filterBoardTasks(tasks, { searchText: 'missing' })).toEqual([]);
+	});
+	it('filters by a persona uuid and by "my personas" queue', () => {
+		const persona = (id: string, ownerId: number) => ({
+			id,
+			name: id,
+			avatar_url: null,
+			owner: { id: ownerId, name: 'Owner' },
+			workspace_id: null,
+		});
+		const tasks = [
+			{ title: 'A', persona_assignees: [persona('p1', 1)] },
+			{ title: 'B', persona_assignees: [persona('p2', 9)] },
+			{ title: 'C' },
+		];
+		expect(filterBoardTasks(tasks, { selectedPersona: 'p2' })).toEqual([
+			tasks[1],
+		]);
+		expect(
+			filterBoardTasks(tasks, {
+				selectedPersona: MY_PERSONAS_FILTER,
+				myUserId: 1,
+			}),
+		).toEqual([tasks[0]]);
+		expect(filterBoardTasks(tasks, { selectedPersona: '' })).toEqual(tasks);
 	});
 });

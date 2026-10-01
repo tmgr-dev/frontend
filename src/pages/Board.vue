@@ -66,6 +66,7 @@
 										<FiltersBoard
 											v-if="workspaceUsers.length"
 											:workspaceUsers="workspaceUsers"
+											:persona-options="assignablePersonas"
 											:categories="categories"
 											:chosen-user.sync="chosenUser"
 											@update:chosenUser="handleChosenUserUpdate"
@@ -133,6 +134,7 @@
 													<FiltersBoard
 														v-if="workspaceUsers.length"
 														:workspaceUsers="workspaceUsers"
+														:persona-options="assignablePersonas"
 														:categories="categories"
 														:chosen-user.sync="chosenUser"
 														@update:chosenUser="handleChosenUserUpdate"
@@ -763,6 +765,7 @@
 	import Draggable from 'vuedraggable';
 
 	import { getCategories } from '@/actions/tmgr/categories';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		createStatus,
 		deleteStatus,
@@ -801,7 +804,11 @@
 	import { createCardBadgeFeed } from '@/pluginSystem/cardBadges';
 	import { pluginState } from '@/pluginSystem/state';
 	import { markRaw } from 'vue';
-	import { createBoardLoader, filterBoardTasks } from '@/utils/boardLoading';
+	import {
+		createBoardLoader,
+		filterBoardTasks,
+		MY_PERSONAS_FILTER,
+	} from '@/utils/boardLoading';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import { createRequestSequence } from '@/utils/requestSequence';
@@ -861,6 +868,7 @@
 			workspacesData: [],
 			workspaceId: 0,
 			workspaceUsers: [],
+			assignablePersonas: [],
 			categories: [],
 			chosenUser: null,
 			chosenCategory: null,
@@ -1535,7 +1543,10 @@
 			},
 			async fetchBoardTasks() {
 				const columns = this.columns;
-				const filter = { ...this.$store.state.filter };
+				const filter = {
+					...this.$store.state.filter,
+					myUserId: this.$store.state.user?.id,
+				};
 				const tasks = await Promise.all(
 					columns.map((column) =>
 						getSortedTasksByStatus(column.status.id, {
@@ -1556,6 +1567,14 @@
 				);
 				this.$store.commit('updateSelectedUser', Number(query.user) || 0);
 				this.$store.commit(
+					'updateSelectedPersona',
+					query.my_personas === '1'
+						? MY_PERSONAS_FILTER
+						: typeof query.persona === 'string'
+						? query.persona
+						: '',
+				);
+				this.$store.commit(
 					'updateSelectedCategory',
 					Number(query.category) || 0,
 				);
@@ -1565,9 +1584,14 @@
 				const query = { ...this.$route.query };
 				delete query.search;
 				delete query.user;
+				delete query.persona;
+				delete query.my_personas;
 				delete query.category;
 				if (filter.searchText) query.search = filter.searchText;
 				if (filter.selectedUser) query.user = String(filter.selectedUser);
+				if (filter.selectedPersona === MY_PERSONAS_FILTER)
+					query.my_personas = '1';
+				else if (filter.selectedPersona) query.persona = filter.selectedPersona;
 				if (filter.selectedCategory)
 					query.category = String(filter.selectedCategory);
 				if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
@@ -1618,6 +1642,10 @@
 						const users = await getWorkspaceMembers(this.workspaceId);
 						if (this.boardDisposed) return;
 						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
+						this.assignablePersonas = await getAssignablePersonas(
+							this.workspaceId,
+						).catch(() => []);
+						if (this.boardDisposed) return;
 					}
 					await this.loadColumns();
 					if (this.boardDisposed) return;
