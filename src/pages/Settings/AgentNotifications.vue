@@ -101,6 +101,8 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 				</p>
 			</div>
 		</SettingsSection>
+
+		<AlarmPhoneSection class="mt-6" />
 	</PageContainer>
 </template>
 
@@ -115,6 +117,7 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
@@ -123,7 +126,14 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 
 	export default defineComponent({
 		name: 'AgentNotificationsSettings',
-		components: { PageContainer, PageHeader, SettingsSection, Button, Input },
+		components: {
+			PageContainer,
+			PageHeader,
+			SettingsSection,
+			AlarmPhoneSection,
+			Button,
+			Input,
+		},
 		setup() {
 			setDocumentTitle('Agent notifications');
 
