@@ -174,7 +174,11 @@
 					calledOnce.value = true;
 					toast({ title: 'Calling now. Answer and press 1 to verify.' });
 				} catch (error) {
-					fail(error);
+					if (alarmPhoneFailure(error) === 'unconfigured') {
+						toast({ title: 'Calls are not configured on this server', variant: 'destructive' });
+					} else {
+						fail(error);
+					}
 				} finally {
 					busy.value = false;
 				}
