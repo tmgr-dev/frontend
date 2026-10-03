@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.21 — 2026-10-04
+
+- Settings → Agent notifications has a new Alarm phone section for urgent alarms. Add your number, confirm it with
+  the SMS code, and when an agent raises an alarm that nobody acknowledges in the app, TMGR calls you; press 1 to
+  acknowledge. The number is stored encrypted and only its masked form is ever shown.
+
 ## 0.9.20 — 2026-10-01
 
 - Pages now speak English like the rest of the app: sidebar, dialogs, properties, version history, trash, search and
