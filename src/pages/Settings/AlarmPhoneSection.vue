@@ -12,7 +12,7 @@
 		<div v-else class="flex flex-col gap-3">
 			<p class="text-sm text-muted-foreground">
 				Used only for critical alarms when push is not acknowledged. Stored
-				encrypted. Answer the test call and press 1 to verify.
+				encrypted. We'll text you a code to verify it.
 			</p>
 
 			<div
@@ -33,17 +33,14 @@
 					</span>
 				</div>
 				<div class="flex flex-wrap gap-2">
-					<Button variant="outline" size="sm" :disabled="busy" @click="testCall">
-						Test call
-					</Button>
 					<Button
-						v-if="calledOnce"
+						v-if="state.phone.verified"
 						variant="outline"
 						size="sm"
 						:disabled="busy"
-						@click="load"
+						@click="testCall"
 					>
-						Refresh
+						Test call
 					</Button>
 					<Button variant="outline" size="sm" :disabled="busy" @click="startEdit">
 						Change
@@ -54,7 +51,39 @@
 				</div>
 			</div>
 
-			<form v-else class="flex flex-col gap-3" @submit.prevent="submit">
+			<form
+				v-if="state.kind === 'set' && !state.phone.verified && !editing"
+				class="flex flex-col gap-3"
+				@submit.prevent="verify"
+			>
+				<label class="flex flex-col gap-1">
+					<span class="text-sm font-medium">Verification code</span>
+					<Input
+						:model-value="code"
+						inputmode="numeric"
+						autocomplete="one-time-code"
+						maxlength="10"
+						placeholder="123456"
+						@update:model-value="(v) => (code = String(v).replace(/\D/g, ''))"
+					/>
+				</label>
+				<p v-if="codeError" class="text-xs text-destructive">
+					{{ codeError }}
+				</p>
+				<div class="flex gap-2">
+					<Button type="submit" :disabled="busy || !codeValid">Verify</Button>
+					<Button
+						type="button"
+						variant="outline"
+						:disabled="busy || cooldown > 0"
+						@click="resend"
+					>
+						{{ cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code' }}
+					</Button>
+				</div>
+			</form>
+
+			<form v-else-if="state.kind !== 'set' || editing" class="flex flex-col gap-3" @submit.prevent="submit">
 				<label class="flex flex-col gap-1">
 					<span class="text-sm font-medium">Phone number (E.164)</span>
 					<Input
@@ -87,26 +116,42 @@
 
 <script lang="ts">
 	import {
-		alarmPhoneFailure,
+		alarmPhoneError,
 		fetchAlarmPhone,
+		isValidAlarmCode,
 		isValidAlarmPhone,
 		removeAlarmPhone,
+		resendAlarmCode,
 		saveAlarmPhone,
 		startAlarmTestCall,
-		type AlarmPhoneFailure,
+		verifyAlarmPhone,
+		type AlarmPhoneError,
 		type AlarmPhoneState,
 	} from '@/actions/tmgr/alarmPhone';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 
-	const MESSAGES: Record<AlarmPhoneFailure, string> = {
-		unconfigured: 'Alarm phone is not configured on this server',
-		invalid: 'Invalid phone number',
-		rate_limited: 'Too many test calls, try again later',
-		failed: 'Something went wrong',
+	const COOLDOWN_SECONDS = 60;
+	const RESET_MESSAGE = 'Too many wrong codes. Enter the number again.';
+
+	const messageFor = (error: AlarmPhoneError): string => {
+		switch (error.kind) {
+			case 'unconfigured':
+				return 'Alarm phone is not configured on this server';
+			case 'invalid':
+				return 'Invalid phone number';
+			case 'rate_limited':
+				return 'Too many attempts, try again later';
+			case 'reset':
+				return RESET_MESSAGE;
+			case 'conflict':
+				return 'Nothing to do for this number right now';
+			default:
+				return 'Something went wrong';
+		}
 	};
 
 	export default defineComponent({
@@ -118,14 +163,50 @@
 			const loadError = ref<string | null>(null);
 			const busy = ref(false);
 			const editing = ref(false);
-			const calledOnce = ref(false);
 			const phone = ref('');
+			const code = ref('');
+			const codeError = ref<string | null>(null);
+			const cooldown = ref(0);
 			const valid = computed(() => isValidAlarmPhone(phone.value));
+			const codeValid = computed(() => isValidAlarmCode(code.value));
+			let timer: ReturnType<typeof setInterval> | null = null;
+
+			const stopTimer = () => {
+				if (timer) clearInterval(timer);
+				timer = null;
+			};
+
+			const startCooldown = (seconds = COOLDOWN_SECONDS) => {
+				stopTimer();
+				cooldown.value = seconds;
+				if (seconds <= 0) return;
+				timer = setInterval(() => {
+					cooldown.value -= 1;
+					if (cooldown.value <= 0) stopTimer();
+				}, 1000);
+			};
+
+			const clearToEmpty = () => {
+				state.value = { kind: 'unset' };
+				editing.value = false;
+				phone.value = '';
+				code.value = '';
+				codeError.value = null;
+				stopTimer();
+				cooldown.value = 0;
+			};
 
 			const fail = (error: unknown) => {
-				const failure = alarmPhoneFailure(error);
-				if (failure === 'unconfigured') state.value = { kind: 'unconfigured' };
-				else toast({ title: MESSAGES[failure], variant: 'destructive' });
+				const detail = alarmPhoneError(error);
+				if (detail.kind === 'unconfigured') {
+					state.value = { kind: 'unconfigured' };
+					return;
+				}
+				if (detail.kind === 'reset') clearToEmpty();
+				if (detail.kind === 'rate_limited') {
+					startCooldown(detail.retryAfter ?? COOLDOWN_SECONDS);
+				}
+				toast({ title: messageFor(detail), variant: 'destructive' });
 			};
 
 			const load = async () => {
@@ -156,10 +237,56 @@
 				busy.value = true;
 				try {
 					const saved = await saveAlarmPhone(phone.value);
-					state.value = { kind: 'set', phone: saved };
+					state.value = {
+						kind: 'set',
+						phone: { masked: saved.masked, verified: saved.verified },
+					};
 					phone.value = '';
+					code.value = '';
+					codeError.value = null;
 					editing.value = false;
-					calledOnce.value = false;
+					if (saved.codeSent) startCooldown();
+				} catch (error) {
+					fail(error);
+				} finally {
+					busy.value = false;
+				}
+			};
+
+			const verify = async () => {
+				if (!codeValid.value) return;
+				busy.value = true;
+				codeError.value = null;
+				try {
+					const verified = await verifyAlarmPhone(code.value);
+					state.value = {
+						kind: 'set',
+						phone: { masked: verified.masked, verified: true },
+					};
+					code.value = '';
+					stopTimer();
+					cooldown.value = 0;
+				} catch (error) {
+					const detail = alarmPhoneError(error);
+					if (detail.kind === 'wrong_code') {
+						codeError.value =
+							detail.attemptsLeft === undefined
+								? 'Wrong code.'
+								: `Wrong code. Attempts left: ${detail.attemptsLeft}.`;
+					} else {
+						fail(error);
+					}
+				} finally {
+					busy.value = false;
+				}
+			};
+
+			const resend = async () => {
+				busy.value = true;
+				codeError.value = null;
+				try {
+					await resendAlarmCode();
+					startCooldown();
 				} catch (error) {
 					fail(error);
 				} finally {
@@ -171,11 +298,13 @@
 				busy.value = true;
 				try {
 					await startAlarmTestCall();
-					calledOnce.value = true;
-					toast({ title: 'Calling now. Answer and press 1 to verify.' });
+					toast({ title: 'Calling now.' });
 				} catch (error) {
-					if (alarmPhoneFailure(error) === 'unconfigured') {
+					const detail = alarmPhoneError(error);
+					if (detail.kind === 'unconfigured') {
 						toast({ title: 'Calls are not configured on this server', variant: 'destructive' });
+					} else if (detail.kind === 'conflict') {
+						toast({ title: 'Verify the number first', variant: 'destructive' });
 					} else {
 						fail(error);
 					}
@@ -189,9 +318,7 @@
 				busy.value = true;
 				try {
 					await removeAlarmPhone();
-					state.value = { kind: 'unset' };
-					calledOnce.value = false;
-					editing.value = false;
+					clearToEmpty();
 				} catch (error) {
 					fail(error);
 				} finally {
@@ -200,6 +327,7 @@
 			};
 
 			onMounted(load);
+			onBeforeUnmount(stopTimer);
 
 			return {
 				state,
@@ -207,13 +335,17 @@
 				loadError,
 				busy,
 				editing,
-				calledOnce,
 				phone,
+				code,
+				codeError,
+				cooldown,
 				valid,
-				load,
+				codeValid,
 				startEdit,
 				cancelEdit,
 				submit,
+				verify,
+				resend,
 				testCall,
 				remove,
 			};

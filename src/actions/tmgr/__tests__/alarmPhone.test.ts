@@ -5,15 +5,20 @@ jest.mock('@/plugins/axios', () => ({
 
 import axios from '@/plugins/axios';
 import {
-	alarmPhoneFailure,
+	alarmPhoneError,
 	fetchAlarmPhone,
+	isValidAlarmCode,
 	isValidAlarmPhone,
+	resendAlarmCode,
 	removeAlarmPhone,
 	saveAlarmPhone,
 	startAlarmTestCall,
+	verifyAlarmPhone,
 } from '../alarmPhone';
 
-const http = (status: number) => ({ response: { status } });
+const http = (status: number, data?: unknown, headers?: unknown) => ({
+	response: { status, data, headers },
+});
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -59,13 +64,14 @@ describe('fetchAlarmPhone', () => {
 });
 
 describe('mutations', () => {
-	it('saves a trimmed number and returns only the masked form', async () => {
+	it('saves a trimmed number and returns the masked form with codeSent', async () => {
 		(axios.put as jest.Mock).mockResolvedValue({
-			data: { data: { masked: '+1 ••• ••• 123', verified: false } },
+			data: { data: { masked: '+1 ••• ••• 123', verified: false, codeSent: true } },
 		});
 		expect(await saveAlarmPhone(' +15550100123 ')).toEqual({
 			masked: '+1 ••• ••• 123',
 			verified: false,
+			codeSent: true,
 		});
 		expect(axios.put).toHaveBeenCalledWith('/user/alarm-phone', { phone: '+15550100123' });
 	});
@@ -80,12 +86,77 @@ describe('mutations', () => {
 	});
 });
 
-describe('alarmPhoneFailure', () => {
+describe('verification', () => {
+	it('sends a trimmed code and unwraps the verified phone', async () => {
+		(axios.post as jest.Mock).mockResolvedValue({
+			data: { data: { masked: '+1 ••• ••• 123', verified: true } },
+		});
+		expect(await verifyAlarmPhone(' 123456 ')).toEqual({
+			masked: '+1 ••• ••• 123',
+			verified: true,
+		});
+		expect(axios.post).toHaveBeenCalledWith('/user/alarm-phone/verify', { code: '123456' });
+	});
+
+	it('resends the code', async () => {
+		(axios.post as jest.Mock).mockResolvedValue({});
+		await resendAlarmCode();
+		expect(axios.post).toHaveBeenCalledWith('/user/alarm-phone/resend');
+	});
+
+	it('validates 4-10 digit codes', () => {
+		expect(isValidAlarmCode('1234')).toBe(true);
+		expect(isValidAlarmCode('1234567890')).toBe(true);
+		for (const value of ['', '123', '12345678901', '12a456']) {
+			expect(isValidAlarmCode(value)).toBe(false);
+		}
+	});
+});
+
+describe('alarmPhoneError', () => {
 	it('classifies HTTP statuses', () => {
-		expect(alarmPhoneFailure(http(503))).toBe('unconfigured');
-		expect(alarmPhoneFailure(http(400))).toBe('invalid');
-		expect(alarmPhoneFailure(http(429))).toBe('rate_limited');
-		expect(alarmPhoneFailure(http(500))).toBe('failed');
-		expect(alarmPhoneFailure(new Error('network'))).toBe('failed');
+		expect(alarmPhoneError(http(503))).toEqual({ kind: 'unconfigured' });
+		expect(alarmPhoneError(http(400))).toEqual({ kind: 'invalid' });
+		expect(alarmPhoneError(http(409))).toEqual({ kind: 'conflict' });
+		expect(alarmPhoneError(http(500))).toEqual({ kind: 'failed' });
+		expect(alarmPhoneError(new Error('network'))).toEqual({ kind: 'failed' });
+	});
+
+	it('reads attemptsLeft from data.attemptsLeft or attemptsLeft on 422', () => {
+		expect(alarmPhoneError(http(422, { data: { attemptsLeft: 2 } }))).toEqual({
+			kind: 'wrong_code',
+			attemptsLeft: 2,
+		});
+		expect(alarmPhoneError(http(422, { attemptsLeft: 0 }))).toEqual({
+			kind: 'wrong_code',
+			attemptsLeft: 0,
+		});
+		expect(alarmPhoneError(http(422, {}))).toEqual({
+			kind: 'wrong_code',
+			attemptsLeft: undefined,
+		});
+	});
+
+	it('maps 410 and 422 with reset to reset', () => {
+		expect(alarmPhoneError(http(410))).toEqual({ kind: 'reset' });
+		expect(alarmPhoneError(http(422, { reset: true }))).toEqual({ kind: 'reset' });
+		expect(alarmPhoneError(http(422, { data: { reset: true } }))).toEqual({ kind: 'reset' });
+	});
+
+	it('parses Retry-After on 429 from plain and AxiosHeaders-like headers', () => {
+		expect(alarmPhoneError(http(429, undefined, { 'retry-after': '42' }))).toEqual({
+			kind: 'rate_limited',
+			retryAfter: 42,
+		});
+		const headers = { get: (n: string) => (n === 'retry-after' ? '30' : undefined) };
+		expect(alarmPhoneError(http(429, undefined, headers))).toEqual({
+			kind: 'rate_limited',
+			retryAfter: 30,
+		});
+		expect(alarmPhoneError(http(429))).toEqual({ kind: 'rate_limited', retryAfter: undefined });
+		expect(alarmPhoneError(http(429, undefined, { 'retry-after': 'soon' }))).toEqual({
+			kind: 'rate_limited',
+			retryAfter: undefined,
+		});
 	});
 });
