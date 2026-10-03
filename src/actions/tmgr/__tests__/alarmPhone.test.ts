@@ -6,6 +6,7 @@ jest.mock('@/plugins/axios', () => ({
 import axios from '@/plugins/axios';
 import {
 	alarmPhoneError,
+	formatRetryAfter,
 	fetchAlarmPhone,
 	isValidAlarmCode,
 	isValidAlarmPhone,
@@ -55,6 +56,11 @@ describe('fetchAlarmPhone', () => {
 	it('maps 503 to the not-configured state', async () => {
 		(axios.get as jest.Mock).mockRejectedValue(http(503));
 		expect(await fetchAlarmPhone()).toEqual({ kind: 'unconfigured' });
+	});
+
+	it('maps GET 409 to the unreadable state', async () => {
+		(axios.get as jest.Mock).mockRejectedValue(http(409, { error: 'phone_unreadable' }));
+		expect(await fetchAlarmPhone()).toEqual({ kind: 'unreadable' });
 	});
 
 	it('rethrows other errors', async () => {
@@ -116,7 +122,7 @@ describe('verification', () => {
 describe('alarmPhoneError', () => {
 	it('classifies HTTP statuses', () => {
 		expect(alarmPhoneError(http(503))).toEqual({ kind: 'unconfigured' });
-		expect(alarmPhoneError(http(400))).toEqual({ kind: 'invalid' });
+		expect(alarmPhoneError(http(400))).toEqual({ kind: 'invalid', message: undefined });
 		expect(alarmPhoneError(http(409))).toEqual({ kind: 'conflict' });
 		expect(alarmPhoneError(http(500))).toEqual({ kind: 'failed' });
 		expect(alarmPhoneError(new Error('network'))).toEqual({ kind: 'failed' });
@@ -135,6 +141,18 @@ describe('alarmPhoneError', () => {
 			kind: 'wrong_code',
 			attemptsLeft: undefined,
 		});
+	});
+
+	it('maps 502 to a failed call', () => {
+		expect(alarmPhoneError(http(502))).toEqual({ kind: 'call_failed' });
+	});
+
+	it('carries the server message on 400 when present', () => {
+		expect(alarmPhoneError(http(400, { message: 'Country not allowed' }))).toEqual({
+			kind: 'invalid',
+			message: 'Country not allowed',
+		});
+		expect(alarmPhoneError(http(400, {}))).toEqual({ kind: 'invalid', message: undefined });
 	});
 
 	it('maps 410 and 422 with reset to reset', () => {
@@ -158,5 +176,15 @@ describe('alarmPhoneError', () => {
 			kind: 'rate_limited',
 			retryAfter: undefined,
 		});
+	});
+});
+
+describe('formatRetryAfter', () => {
+	it('formats long waits as hours and minutes', () => {
+		expect(formatRetryAfter(3600)).toBe('1h 0m');
+		expect(formatRetryAfter(3900)).toBe('1h 5m');
+		expect(formatRetryAfter(86400)).toBe('24h 0m');
+		expect(formatRetryAfter(3601)).toBe('1h 1m');
+		expect(formatRetryAfter(120)).toBe('2m');
 	});
 });

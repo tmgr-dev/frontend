@@ -9,6 +9,16 @@
 		<p v-else-if="loadError" class="text-sm text-destructive">
 			{{ loadError }}
 		</p>
+		<div v-else-if="state.kind === 'unreadable'" class="flex flex-col gap-3">
+			<p class="text-sm text-destructive">
+				The stored number can't be read. Remove it and enter it again.
+			</p>
+			<div>
+				<Button variant="outline" size="sm" :disabled="busy" @click="remove">
+					Remove
+				</Button>
+			</div>
+		</div>
 		<div v-else class="flex flex-col gap-3">
 			<p class="text-sm text-muted-foreground">
 				Used only for critical alarms when push is not acknowledged. Stored
@@ -75,12 +85,15 @@
 					<Button
 						type="button"
 						variant="outline"
-						:disabled="busy || cooldown > 0"
+						:disabled="busy || cooldown > 0 || !!lockout"
 						@click="resend"
 					>
 						{{ cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code' }}
 					</Button>
 				</div>
+				<p v-if="lockout" class="text-xs text-muted-foreground">
+					Try again in {{ lockout }}
+				</p>
 			</form>
 
 			<form v-else-if="state.kind !== 'set' || editing" class="flex flex-col gap-3" @submit.prevent="submit">
@@ -118,6 +131,7 @@
 	import {
 		alarmPhoneError,
 		fetchAlarmPhone,
+		formatRetryAfter,
 		isValidAlarmCode,
 		isValidAlarmPhone,
 		removeAlarmPhone,
@@ -139,12 +153,16 @@
 
 	const messageFor = (error: AlarmPhoneError): string => {
 		switch (error.kind) {
+			case 'call_failed':
+				return 'Could not place the call';
 			case 'unconfigured':
 				return 'Alarm phone is not configured on this server';
 			case 'invalid':
-				return 'Invalid phone number';
+				return error.message ?? 'Invalid phone number';
 			case 'rate_limited':
-				return 'Too many attempts, try again later';
+				return error.retryAfter && error.retryAfter > COOLDOWN_SECONDS
+					? `Try again in ${formatRetryAfter(error.retryAfter)}`
+					: 'Too many attempts, try again later';
 			case 'reset':
 				return RESET_MESSAGE;
 			case 'conflict':
@@ -169,11 +187,23 @@
 			const cooldown = ref(0);
 			const valid = computed(() => isValidAlarmPhone(phone.value));
 			const codeValid = computed(() => isValidAlarmCode(code.value));
+			const lockout = ref('');
 			let timer: ReturnType<typeof setInterval> | null = null;
+			let lockoutTimer: ReturnType<typeof setTimeout> | null = null;
 
 			const stopTimer = () => {
 				if (timer) clearInterval(timer);
 				timer = null;
+				if (lockoutTimer) clearTimeout(lockoutTimer);
+				lockoutTimer = null;
+				lockout.value = '';
+			};
+
+			const startLockout = (seconds: number) => {
+				stopTimer();
+				cooldown.value = 0;
+				lockout.value = formatRetryAfter(seconds);
+				lockoutTimer = setTimeout(stopTimer, seconds * 1000);
 			};
 
 			const startCooldown = (seconds = COOLDOWN_SECONDS) => {
@@ -204,9 +234,21 @@
 				}
 				if (detail.kind === 'reset') clearToEmpty();
 				if (detail.kind === 'rate_limited') {
-					startCooldown(detail.retryAfter ?? COOLDOWN_SECONDS);
+					if (detail.retryAfter && detail.retryAfter > COOLDOWN_SECONDS) {
+						startLockout(detail.retryAfter);
+					} else {
+						startCooldown(detail.retryAfter ?? COOLDOWN_SECONDS);
+					}
 				}
 				toast({ title: messageFor(detail), variant: 'destructive' });
+			};
+
+			const reload = async () => {
+				try {
+					state.value = await fetchAlarmPhone();
+				} catch {
+					return;
+				}
 			};
 
 			const load = async () => {
@@ -248,6 +290,7 @@
 					if (saved.codeSent) startCooldown();
 				} catch (error) {
 					fail(error);
+					if (alarmPhoneError(error).kind !== 'invalid') await reload();
 				} finally {
 					busy.value = false;
 				}
@@ -268,7 +311,10 @@
 					cooldown.value = 0;
 				} catch (error) {
 					const detail = alarmPhoneError(error);
-					if (detail.kind === 'wrong_code') {
+					if (detail.kind === 'conflict') {
+						await reload();
+						toast({ title: 'This number changed, please re-check', variant: 'destructive' });
+					} else if (detail.kind === 'wrong_code') {
 						codeError.value =
 							detail.attemptsLeft === undefined
 								? 'Wrong code.'
@@ -339,6 +385,7 @@
 				code,
 				codeError,
 				cooldown,
+				lockout,
 				valid,
 				codeValid,
 				startEdit,

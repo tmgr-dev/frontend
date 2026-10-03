@@ -8,7 +8,8 @@ export interface AlarmPhone {
 export type AlarmPhoneState =
 	| { kind: 'unset' }
 	| { kind: 'set'; phone: AlarmPhone }
-	| { kind: 'unconfigured' };
+	| { kind: 'unconfigured' }
+	| { kind: 'unreadable' };
 
 export interface AlarmPhoneSaved extends AlarmPhone {
 	codeSent?: boolean;
@@ -21,12 +22,14 @@ export type AlarmPhoneFailure =
 	| 'wrong_code'
 	| 'reset'
 	| 'conflict'
+	| 'call_failed'
 	| 'failed';
 
 export interface AlarmPhoneError {
 	kind: AlarmPhoneFailure;
 	attemptsLeft?: number;
 	retryAfter?: number;
+	message?: string;
 }
 
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -54,8 +57,15 @@ export const alarmPhoneError = (error: unknown): AlarmPhoneError => {
 	switch (response?.status) {
 		case 503:
 			return { kind: 'unconfigured' };
-		case 400:
-			return { kind: 'invalid' };
+		case 400: {
+			const message = body?.message ?? body?.data?.message;
+			return {
+				kind: 'invalid',
+				message: typeof message === 'string' && message ? message : undefined,
+			};
+		}
+		case 502:
+			return { kind: 'call_failed' };
 		case 409:
 			return { kind: 'conflict' };
 		case 410:
@@ -89,6 +99,7 @@ export const fetchAlarmPhone = async (): Promise<AlarmPhoneState> => {
 		const status = (error as any)?.response?.status;
 		if (status === 404) return { kind: 'unset' };
 		if (status === 503) return { kind: 'unconfigured' };
+		if (status === 409) return { kind: 'unreadable' };
 		throw error;
 	}
 };
@@ -120,4 +131,11 @@ export const startAlarmTestCall = async (): Promise<void> => {
 
 export const removeAlarmPhone = async (): Promise<void> => {
 	await $axios.delete('/user/alarm-phone');
+};
+
+export const formatRetryAfter = (seconds: number): string => {
+	const totalMinutes = Math.ceil(seconds / 60);
+	const hours = Math.floor(totalMinutes / 60);
+	const minutes = totalMinutes % 60;
+	return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 };
