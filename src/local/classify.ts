@@ -16,6 +16,7 @@ const ACCOUNT = [
 	/^user\/settings$/,
 	/^user\/feature-toggles$/,
 	/^user\/avatar/,
+	/^user\/alarm-phone(\/|$)/,
 	/^notifications(\/|$)/,
 	/^notification-settings(\/|$)/,
 	/^broadcasting\/auth$/,

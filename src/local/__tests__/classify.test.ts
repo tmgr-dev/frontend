@@ -22,6 +22,8 @@ describe('classify', () => {
 			'personas/abc-123',
 			'notify-tokens',
 			'notify-tokens/7',
+			'user/alarm-phone',
+			'user/alarm-phone/test-call',
 			'persona-tokens',
 			'persona-tokens/3',
 			'smart-device/token/generate',
