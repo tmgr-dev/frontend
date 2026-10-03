@@ -5,6 +5,8 @@ jest.mock('@/plugins/axios', () => ({
 
 import axios from '@/plugins/axios';
 import {
+	alarmCallerNumber,
+	downloadAlarmContact,
 	alarmPhoneError,
 	formatRetryAfter,
 	fetchAlarmPhone,
@@ -186,5 +188,57 @@ describe('formatRetryAfter', () => {
 		expect(formatRetryAfter(86400)).toBe('24h 0m');
 		expect(formatRetryAfter(3601)).toBe('1h 1m');
 		expect(formatRetryAfter(120)).toBe('2m');
+	});
+});
+
+describe('fetchAlarmPhone callerNumber', () => {
+	it('passes callerNumber through', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({
+			data: { data: { masked: '+1 ••• ••• 199', verified: true, callerNumber: '+1 555 010 0199' } },
+		});
+		expect(await fetchAlarmPhone()).toEqual({
+			kind: 'set',
+			phone: { masked: '+1 ••• ••• 199', verified: true, callerNumber: '+1 555 010 0199' },
+		});
+	});
+});
+
+describe('alarmCallerNumber', () => {
+	const set = (verified: boolean, callerNumber: string | null) => ({
+		kind: 'set' as const,
+		phone: { masked: 'm', verified, callerNumber },
+	});
+
+	it('returns the number only for a verified phone with a caller number', () => {
+		expect(alarmCallerNumber(set(true, '+1 555 010 0199'))).toBe('+1 555 010 0199');
+		expect(alarmCallerNumber(set(false, '+1 555 010 0199'))).toBeNull();
+		expect(alarmCallerNumber(set(true, null))).toBeNull();
+		expect(alarmCallerNumber({ kind: 'unset' })).toBeNull();
+	});
+});
+
+describe('downloadAlarmContact', () => {
+	it('requests the vcf as a blob and downloads it via a temporary link', async () => {
+		const blob = new Blob(['BEGIN:VCARD'], { type: 'text/vcard' });
+		(axios.get as jest.Mock).mockResolvedValue({ data: blob });
+		const create = jest.fn(() => 'blob:fake');
+		const revoke = jest.fn();
+		Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke });
+		const link: any = { click: jest.fn(), remove: jest.fn() };
+		const append = jest.fn();
+		(global as any).document = {
+			createElement: jest.fn(() => link),
+			body: { appendChild: append },
+		};
+
+		await downloadAlarmContact();
+
+		expect(axios.get).toHaveBeenCalledWith('/user/alarm-phone/caller.vcf', { responseType: 'blob' });
+		expect(create).toHaveBeenCalledWith(blob);
+		expect(link.download).toBe('tmgr-alarm.vcf');
+		expect(link.href).toBe('blob:fake');
+		expect(link.click).toHaveBeenCalled();
+		expect(revoke).toHaveBeenCalledWith('blob:fake');
+		delete (global as any).document;
 	});
 });

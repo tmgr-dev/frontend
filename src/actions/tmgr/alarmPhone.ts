@@ -3,6 +3,7 @@ import $axios from '@/plugins/axios';
 export interface AlarmPhone {
 	masked: string;
 	verified: boolean;
+	callerNumber?: string | null;
 }
 
 export type AlarmPhoneState =
@@ -102,6 +103,27 @@ export const fetchAlarmPhone = async (): Promise<AlarmPhoneState> => {
 		if (status === 409) return { kind: 'unreadable' };
 		throw error;
 	}
+};
+
+export const alarmCallerNumber = (state: AlarmPhoneState): string | null =>
+	state.kind === 'set' && state.phone.verified && state.phone.callerNumber
+		? state.phone.callerNumber
+		: null;
+
+export const downloadAlarmContact = async (): Promise<void> => {
+	const { data } = await $axios.get('/user/alarm-phone/caller.vcf', {
+		responseType: 'blob',
+	});
+	const url = URL.createObjectURL(
+		data instanceof Blob ? data : new Blob([data], { type: 'text/vcard' }),
+	);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = 'tmgr-alarm.vcf';
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	URL.revokeObjectURL(url);
 };
 
 export const saveAlarmPhone = async (phone: string): Promise<AlarmPhoneSaved> => {

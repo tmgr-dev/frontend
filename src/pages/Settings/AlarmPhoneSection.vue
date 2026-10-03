@@ -61,6 +61,33 @@
 				</div>
 			</div>
 
+			<div
+				v-if="callerNumber && !editing"
+				class="flex flex-col gap-2 rounded border border-border bg-muted/40 p-3"
+			>
+				<p class="text-sm">
+					Alarms call you from
+					<span class="font-mono font-medium">{{ callerNumber }}</span>
+				</p>
+				<div class="flex flex-wrap gap-2">
+					<Button variant="outline" size="sm" @click="copyCaller">Copy</Button>
+					<Button variant="outline" size="sm" :disabled="busy" @click="addContact">
+						Add to contacts
+					</Button>
+				</div>
+				<ul class="list-disc pl-5 text-xs text-muted-foreground">
+					<li>Add it to Favorites.</li>
+					<li>
+						iPhone: in Focus → Do Not Disturb and Sleep, allow calls from
+						Favorites and turn on Repeated Calls.
+					</li>
+					<li>
+						Android: star the contact and allow starred contacts in Do Not
+						Disturb.
+					</li>
+				</ul>
+			</div>
+
 			<form
 				v-if="state.kind === 'set' && !state.phone.verified && !editing"
 				class="flex flex-col gap-3"
@@ -129,7 +156,9 @@
 
 <script lang="ts">
 	import {
+		alarmCallerNumber,
 		alarmPhoneError,
+		downloadAlarmContact,
 		fetchAlarmPhone,
 		formatRetryAfter,
 		isValidAlarmCode,
@@ -186,6 +215,7 @@
 			const codeError = ref<string | null>(null);
 			const cooldown = ref(0);
 			const valid = computed(() => isValidAlarmPhone(phone.value));
+			const callerNumber = computed(() => alarmCallerNumber(state.value));
 			const codeValid = computed(() => isValidAlarmCode(code.value));
 			const lockout = ref('');
 			let timer: ReturnType<typeof setInterval> | null = null;
@@ -309,6 +339,7 @@
 					code.value = '';
 					stopTimer();
 					cooldown.value = 0;
+					await reload();
 				} catch (error) {
 					const detail = alarmPhoneError(error);
 					if (detail.kind === 'conflict') {
@@ -359,6 +390,27 @@
 				}
 			};
 
+			const copyCaller = async () => {
+				if (!callerNumber.value) return;
+				try {
+					await navigator.clipboard.writeText(callerNumber.value);
+					toast({ title: 'Copied' });
+				} catch {
+					toast({ title: 'Could not copy', variant: 'destructive' });
+				}
+			};
+
+			const addContact = async () => {
+				busy.value = true;
+				try {
+					await downloadAlarmContact();
+				} catch {
+					toast({ title: 'Could not download the contact', variant: 'destructive' });
+				} finally {
+					busy.value = false;
+				}
+			};
+
 			const remove = async () => {
 				if (!window.confirm('Remove the alarm phone?')) return;
 				busy.value = true;
@@ -388,6 +440,9 @@
 				lockout,
 				valid,
 				codeValid,
+				callerNumber,
+				copyCaller,
+				addContact,
 				startEdit,
 				cancelEdit,
 				submit,
