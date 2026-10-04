@@ -40,7 +40,7 @@
 						class="flex-shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
 						:title="formattedDate"
 					>
-						{{ activity.timestamp_human }}
+						{{ time }}
 					</time>
 				</div>
 
@@ -73,7 +73,11 @@
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { Activity } from '@/types/dashboard';
 	import { cn } from '@/utils';
-	import { activitySubject, activityTitle } from '@/utils/activityLines';
+	import {
+		activitySubject,
+		activityTime,
+		activityTitle,
+	} from '@/utils/activityLines';
 	import {
 		ArrowPathIcon,
 		ArrowsPointingOutIcon,
@@ -110,6 +114,7 @@
 	// showed as a blank line next to a timestamp.
 	const title = computed(() => activityTitle(props.activity));
 	const subject = computed(() => activitySubject(props.activity));
+	const time = computed(() => activityTime(props.activity));
 
 	const formattedDate = computed(() => {
 		return new Date(props.activity.created_at).toLocaleString();
@@ -253,7 +258,7 @@
 	});
 
 	const accessibilityLabel = computed(() => {
-		return `${props.activity.user.name} ${props.activity.description} ${props.activity.timestamp_human}`;
+		return `${props.activity.user.name} ${title.value} ${subject.value} ${time.value}`.trim();
 	});
 
 	const handleClick = () => {

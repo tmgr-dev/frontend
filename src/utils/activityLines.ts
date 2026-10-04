@@ -5,13 +5,17 @@
  * add rather than leaving an empty element behind.
  */
 
+import { formatDistance } from 'date-fns';
+
 export interface ActivityLike {
 	type?: string | null;
 	title?: string | null;
 	subject_name?: string | null;
 	subject_type?: string | null;
 	subject_id?: number | null;
-	metadata?: Record<string, unknown> | null;
+	metadata?: Record<string, unknown> | string | null;
+	timestamp_human?: string | null;
+	created_at?: string | null;
 }
 
 const TITLES: Record<string, string> = {
@@ -37,6 +41,21 @@ const TITLES: Record<string, string> = {
 	member_joined: 'Joined the workspace',
 	member_left: 'Left the workspace',
 	routine_completed: 'Completed a routine',
+	agent_work_started: 'Started agent work',
+	agent_work_updated: 'Updated agent work',
+	agent_work_finished: 'Finished agent work',
+};
+
+const metadataOf = (activity: ActivityLike): Record<string, unknown> => {
+	const raw = activity.metadata;
+	if (raw && typeof raw === 'object') return raw;
+	if (typeof raw !== 'string' || !raw) return {};
+	try {
+		const parsed = JSON.parse(raw);
+		return parsed && typeof parsed === 'object' ? parsed : {};
+	} catch {
+		return {};
+	}
 };
 
 const text = (value: unknown): string =>
@@ -53,7 +72,7 @@ export function activityTitle(activity: ActivityLike): string {
 	if (given) return given;
 
 	const type = text(activity.type);
-	const persona = text(activity.metadata?.persona_name);
+	const persona = text(metadataOf(activity).persona_name);
 	if (persona && type === 'task_persona_assigned')
 		return `Assigned a task to ${persona}`;
 	if (persona && type === 'task_persona_unassigned')
@@ -65,9 +84,23 @@ export function activitySubject(activity: ActivityLike): string {
 	const given = text(activity.subject_name);
 	if (given) return given;
 
-	const fromMetadata = text(activity.metadata?.task_title);
+	const fromMetadata = text(metadataOf(activity).task_title);
 	if (fromMetadata) return fromMetadata;
 
 	const type = text(activity.subject_type).split('\\').pop() ?? '';
 	return type && activity.subject_id ? `${type} #${activity.subject_id}` : '';
+}
+
+export function activityTime(
+	activity: ActivityLike,
+	now: number = Date.now(),
+): string {
+	const given = text(activity.timestamp_human);
+	if (given) return given;
+	const created = text(activity.created_at);
+	const at = created ? Date.parse(created) : NaN;
+	if (Number.isNaN(at)) return '';
+	return formatDistance(at, now, { addSuffix: true })
+		.replace('less than a minute ago', 'just now')
+		.replace(/^about /, '');
 }

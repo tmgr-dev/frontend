@@ -9,7 +9,7 @@
 		</div>
 
 		<div class="notification-content">
-			<div class="notification-title">{{ notification.title }}</div>
+			<div class="notification-title">{{ title }}</div>
 			<div v-if="notification.message" class="notification-message">
 				{{ notification.message }}
 			</div>
@@ -27,7 +27,10 @@
 </template>
 
 <script>
-	import { normalizeNotificationType } from '@/utils/notificationTypes';
+	import {
+		normalizeNotificationType,
+		notificationTitle,
+	} from '@/utils/notificationTypes';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		AlertCircle,
@@ -96,6 +99,8 @@
 				return iconMap[type] || AlertCircle;
 			});
 
+			const title = computed(() => notificationTitle(props.notification));
+
 			const formattedTime = computed(() => {
 				try {
 					return formatDistanceToNow(new Date(props.notification.created_at), {
@@ -108,6 +113,7 @@
 
 			return {
 				icon,
+				title,
 				formattedTime,
 			};
 		},

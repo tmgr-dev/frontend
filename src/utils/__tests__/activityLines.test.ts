@@ -1,4 +1,8 @@
-import { activitySubject, activityTitle } from '../activityLines';
+import {
+	activitySubject,
+	activityTime,
+	activityTitle,
+} from '../activityLines';
 
 describe('activityTitle', () => {
 	it('keeps the title the API sent', () => {
@@ -88,5 +92,47 @@ describe('persona assignment activities', () => {
 		expect(
 			activitySubject({ type: 'task_persona_assigned', metadata: meta }),
 		).toBe('Ship it');
+	});
+});
+
+describe('string metadata', () => {
+	it('reads the task title out of metadata the API sent as a JSON string', () => {
+		expect(
+			activitySubject({
+				type: 'task_created',
+				metadata: '{"task_title":"TM-407 Fix"}',
+			}),
+		).toBe('TM-407 Fix');
+	});
+
+	it('reads the persona name out of string metadata', () => {
+		expect(
+			activityTitle({
+				type: 'task_persona_assigned',
+				metadata: '{"persona_name":"Ada"}',
+			}),
+		).toBe('Assigned a task to Ada');
+	});
+
+	it('survives broken metadata', () => {
+		expect(activitySubject({ type: 'task_created', metadata: '{oops' })).toBe(
+			'',
+		);
+	});
+});
+
+describe('activityTime', () => {
+	it('keeps the time text the API sent', () => {
+		expect(activityTime({ timestamp_human: '5 minutes ago' })).toBe(
+			'5 minutes ago',
+		);
+	});
+
+	it('computes it from created_at when the API sent none', () => {
+		const now = Date.parse('2026-10-04T12:00:00Z');
+		expect(
+			activityTime({ created_at: '2026-10-04T11:55:00Z' }, now),
+		).toBe('5 minutes ago');
+		expect(activityTime({}, now)).toBe('');
 	});
 });

@@ -17,6 +17,13 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 	file_deleted: 'File deleted',
 	member_joined: 'Member joined',
 	member_left: 'Member left workspace',
+	member_removed: 'Member removed',
+	task_persona_assigned: 'Task assigned to a persona',
+	task_persona_unassigned: 'Task unassigned from a persona',
+	comment_reaction_toggled: 'Comment reaction',
+	agent_work_started: 'Agent work started',
+	agent_work_updated: 'Agent work updated',
+	agent_work_finished: 'Agent work finished',
 	page_created: 'New page',
 	page_updated: 'Page updated',
 	page_mentioned: 'You were mentioned on a page',
@@ -25,8 +32,25 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 export const normalizeNotificationType = (type: string): string =>
 	(type || '').replace(/\./g, '_');
 
+const humanizeType = (type: string): string => {
+	const words = normalizeNotificationType(type)
+		.replace(/[_-]+/g, ' ')
+		.trim();
+	return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
+};
+
 export const notificationTypeLabel = (type: string): string =>
-	NOTIFICATION_TYPE_LABELS[normalizeNotificationType(type)] ?? type;
+	NOTIFICATION_TYPE_LABELS[normalizeNotificationType(type)] ??
+	(humanizeType(type) || type);
+
+export const notificationTitle = (notification: {
+	type?: string;
+	title?: string | null;
+}): string => {
+	const title = (notification.title ?? '').trim();
+	if (title && title !== notification.type) return title;
+	return notificationTypeLabel(notification.type ?? '') || 'Notification';
+};
 
 export const isPageNotification = (type: string): boolean =>
 	normalizeNotificationType(type).startsWith('page_');

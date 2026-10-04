@@ -2,6 +2,7 @@ import {
 	isPageNotification,
 	normalizeNotificationType,
 	notificationTarget,
+	notificationTitle,
 	notificationTypeLabel,
 } from '../notificationTypes';
 
@@ -16,7 +17,17 @@ describe('notificationTypeLabel', () => {
 
 	it('keeps existing labels and falls back to the raw type', () => {
 		expect(notificationTypeLabel('task_created')).toBe('Task created');
-		expect(notificationTypeLabel('weird.type')).toBe('weird.type');
+		expect(notificationTypeLabel('weird.type')).toBe('Weird type');
+	});
+
+	it('labels agent work and member removal instead of showing the key', () => {
+		expect(notificationTypeLabel('member_removed')).toBe('Member removed');
+		expect(notificationTypeLabel('agent_work_started')).toBe(
+			'Agent work started',
+		);
+		expect(notificationTypeLabel('agent_work_updated')).toBe(
+			'Agent work updated',
+		);
 	});
 
 	it('normalizes dots', () => {
@@ -56,5 +67,28 @@ describe('notificationTarget', () => {
 		expect(
 			notificationTarget({ type: 'page.created', data: {} }, 'ws'),
 		).toBeNull();
+	});
+});
+
+describe('notificationTitle', () => {
+	it('keeps a title the server wrote', () => {
+		expect(
+			notificationTitle({
+				type: 'task_created',
+				title: 'Yurij created a task «A»',
+			}),
+		).toBe('Yurij created a task «A»');
+	});
+
+	it('replaces a raw key or empty title with a readable label', () => {
+		expect(
+			notificationTitle({ type: 'task_created', title: 'task_created' }),
+		).toBe('Task created');
+		expect(notificationTitle({ type: 'page.created', title: '' })).toBe(
+			'New page',
+		);
+		expect(
+			notificationTitle({ type: 'agent_work_started', title: null }),
+		).toBe('Agent work started');
 	});
 });
