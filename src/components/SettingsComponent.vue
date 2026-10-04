@@ -173,6 +173,13 @@
 				value: setting.value,
 			}));
 			await updateTaskSettings(props.form.id, payload);
+			props.form.settings = settings.value.map((setting) => ({
+				id: setting.id,
+				name: setting.name,
+				key: setting.key,
+				description: setting.description,
+				value: setting.value,
+			})) as Task['settings'];
 		} catch (e) {
 			console.error('Failed to save settings:', e);
 		}

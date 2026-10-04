@@ -5,6 +5,7 @@
 	import { useNowMs } from '@/composable/useNowMs';
 	import { ExtendedTime, Time } from '@/types';
 	import { liveTaskTime } from '@/utils/liveTaskTime';
+	import { isTaskOverEstimate, taskEstimateSeconds } from '@/utils/overtime';
 	import {
 		convertToHHMM,
 		prepareClockNumber,
@@ -36,11 +37,9 @@
 
 	const approximatelyEndTime = computed<ExtendedTime>(() => {
 		const date = new Date();
-		const secondsLeft =
-			date.getSeconds() + (task.approximately_time - task.common_time);
-		date.setSeconds(
-			date.getSeconds() + (task.approximately_time - task.common_time),
-		);
+		const estimate = taskEstimateSeconds(task);
+		const secondsLeft = date.getSeconds() + (estimate - task.common_time);
+		date.setSeconds(date.getSeconds() + (estimate - task.common_time));
 		return {
 			hours: prepareClockNumber(date.getHours()),
 			minutes: prepareClockNumber(date.getMinutes()),
@@ -48,9 +47,7 @@
 		};
 	});
 
-	const isTimeOver = computed(
-		() => (task.approximately_time || 3600) - task.common_time < 0,
-	);
+	const isTimeOver = computed(() => isTaskOverEstimate(task));
 
 	const toggleTimer = () => emit('toggle');
 
@@ -62,7 +59,7 @@
 
 		setDocumentTitle(`${timer.hours}:${timer.minutes}:${timer.seconds}`);
 
-		if (!task.approximately_time || !task.start_time || isTimeOver.value) {
+		if (!taskEstimateSeconds(task) || !task.start_time || isTimeOver.value) {
 			return;
 		}
 
@@ -80,6 +77,7 @@
 			props.form.start_time,
 			props.form.common_time,
 			props.form.approximately_time,
+			props.form.settings,
 			props.form.start_time ? now.value : 0,
 		],
 		() => {

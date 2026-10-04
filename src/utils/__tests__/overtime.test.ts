@@ -1,4 +1,5 @@
 import {
+	isTaskOverEstimate,
 	pageOvertimeSeconds,
 	taskEstimateSeconds,
 	taskOvertimeSeconds,
@@ -49,5 +50,29 @@ describe('overtime', () => {
 		expect(totalOvertimeSeconds({ total_overtime_seconds: '' }, [over])).toBe(
 			3600,
 		);
+	});
+
+	describe('isTaskOverEstimate', () => {
+		it('is false with no estimate, however long it was tracked', () => {
+			expect(
+				isTaskOverEstimate({ common_time: 4207, approximately_time: 0 }),
+			).toBe(false);
+			expect(isTaskOverEstimate({ common_time: 4207 })).toBe(false);
+		});
+
+		it('uses the task setting when the own estimate is 0', () => {
+			const task = {
+				common_time: 4207,
+				approximately_time: 0,
+				settings: [{ key: 'approximately_time', value: '28800' }],
+			};
+			expect(isTaskOverEstimate(task)).toBe(false);
+			expect(isTaskOverEstimate({ ...task, common_time: 29000 })).toBe(true);
+		});
+
+		it('compares against the own estimate', () => {
+			expect(isTaskOverEstimate(over)).toBe(true);
+			expect(isTaskOverEstimate(under)).toBe(false);
+		});
 	});
 });

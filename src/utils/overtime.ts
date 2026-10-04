@@ -38,6 +38,11 @@ export const taskOvertimeSeconds = (task: EstimatedTask): number => {
 	return Math.max(0, (task.common_time || 0) - estimate);
 };
 
+export const isTaskOverEstimate = (task: EstimatedTask): boolean => {
+	const estimate = taskEstimateSeconds(task);
+	return estimate > 0 && (task.common_time || 0) > estimate;
+};
+
 /** Sum over the tasks at hand (one page). */
 export const pageOvertimeSeconds = (tasks: EstimatedTask[]): number =>
 	tasks.reduce((sum, task) => sum + taskOvertimeSeconds(task), 0);
