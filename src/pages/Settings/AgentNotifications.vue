@@ -121,7 +121,7 @@
 		<AlarmPhoneSection id="alarm-phone" class="mt-6" />
 
 		<Dialog :open="dialogOpen && !!issuedToken" @update:open="(v) => (dialogOpen = v)">
-			<DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[680px]">
+			<DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[680px] [&>*]:min-w-0">
 				<DialogHeader>
 					<DialogTitle>Connect your agent</DialogTitle>
 				</DialogHeader>
