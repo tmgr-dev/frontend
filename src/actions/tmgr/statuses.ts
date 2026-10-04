@@ -56,6 +56,8 @@ export const createStatus = async (workspaceId: number, payload: Status) => {
 	} = await $axios.post(`/workspaces/${workspaceId}/statuses`, payload);
 
 	requestCache.invalidate('statuses');
+
+	requestCache.invalidate(/^statuses-workspace-/);
 	requestCache.invalidate('workspace-statuses');
 
 	return data;
@@ -67,6 +69,8 @@ export const updateStatus = async (statusId: number, payload: Status) => {
 	} = await $axios.put(`/statuses/${statusId}`, payload);
 
 	requestCache.invalidate('statuses');
+
+	requestCache.invalidate(/^statuses-workspace-/);
 	requestCache.invalidate('workspace-statuses');
 
 	return data;
@@ -76,5 +80,7 @@ export const deleteStatus = async (statusId: number) => {
 	await $axios.delete(`/statuses/${statusId}`);
 
 	requestCache.invalidate('statuses');
+
+	requestCache.invalidate(/^statuses-workspace-/);
 	requestCache.invalidate('workspace-statuses');
 };

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-	import { Category, getCategories } from '@/actions/tmgr/categories';
+	import {
+		Category,
+		getCategories,
+		getCategoriesOfWorkspace,
+	} from '@/actions/tmgr/categories';
 	import {
 		createAskingHelpComment,
 		createComment,
@@ -17,7 +21,13 @@
 		getCategoryGitHubStatus,
 		getTaskGitActivity,
 	} from '@/actions/tmgr/github';
-	import { getStatuses, Status } from '@/actions/tmgr/statuses';
+	import {
+		getStatuses,
+		getStatusesOfWorkspace,
+		Status,
+	} from '@/actions/tmgr/statuses';
+	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
+	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		assignPersonaToTask,
@@ -313,6 +323,22 @@
 		console.log('[NewForm] No meaningful changes detected');
 		return false;
 	};
+
+	const handleRemoteTaskUpdate = (task: any) => {
+		if (
+			'relationTypeWithTask' in task &&
+			JSON.stringify(task.relationTypeWithTask) !==
+				JSON.stringify(form.value.relationTypeWithTask)
+		) {
+			suppressAutoSavingForOnce.value = true;
+			form.value.relationTypeWithTask = task.relationTypeWithTask;
+		}
+		if (hasTaskMeaningfulChanges(form.value, task)) {
+			hasExternalUpdate.value = true;
+			externalUpdateData.value = task;
+		}
+	};
+	const taskVersionGuard = createTaskVersionGuard(handleRemoteTaskUpdate);
 
 	const form = ref<Task>({
 		title: '',
@@ -660,42 +686,57 @@
 				}
 			}
 
-			// Load all required data in parallel
-			void Promise.all([
-				getStatuses(),
-				getCategories(),
-				workspaceId ? getWorkspaceMembers(Number(workspaceId)) : [],
-				workspaceId
-					? getAssignablePersonas(Number(workspaceId)).catch(() => [])
-					: [],
-			])
-				.then(([loadedStatuses, loadedCategories, loadedWorkspaceMembers, loadedAssignablePersonas]) => {
-					if (formDisposed) return;
-					assignablePersonas.value = loadedAssignablePersonas;
+			const loadReferenceData = (taskWorkspaceId: number | null) =>
+				loadTaskFormReferenceData(
+					{
+						taskWorkspaceId,
+						currentWorkspaceId: workspaceId ? Number(workspaceId) : null,
+					},
+					{
+						getStatuses,
+						getStatusesOfWorkspace,
+						getCategories,
+						getCategoriesOfWorkspace,
+						getWorkspaceMembers,
+						getAssignablePersonas,
+					},
+				)
+					.then(
+						({
+							statuses: loadedStatuses,
+							categories: loadedCategories,
+							members: loadedWorkspaceMembers,
+							personas: loadedAssignablePersonas,
+						}) => {
+							if (formDisposed) return;
+							assignablePersonas.value = loadedAssignablePersonas;
 
-					statuses.value = loadedStatuses;
-					categories.value = loadedCategories;
-					workspaceMembers.value = loadedWorkspaceMembers;
+							statuses.value = loadedStatuses;
+							categories.value = loadedCategories;
+							workspaceMembers.value = loadedWorkspaceMembers;
 
-					// Default new tasks to the Backlog (type 'default') status, falling back
-					// to an active one — never Archived, which the API can return first.
-					if (
-						!taskId.value &&
-						!form.value.status_id &&
-						statuses.value?.length > 0
-					) {
-						form.value.status_id =
-							pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
-					}
+							// Default new tasks to the Backlog (type 'default') status, falling back
+							// to an active one — never Archived, which the API can return first.
+							if (
+								!taskId.value &&
+								!form.value.status_id &&
+								statuses.value?.length > 0
+							) {
+								form.value.status_id =
+									pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
+							}
 
-					// Title defaults only apply to a new task. Metadata must not hold an existing task behind it.
-					if (!taskId.value) void updateTaskTitle();
-				})
-				.catch(() => {
-					if (!formDisposed)
-						saveError.value =
-							'Some task options could not load. Reload to retry.';
-				});
+							// Title defaults only apply to a new task. Metadata must not hold an existing task behind it.
+							if (!taskId.value) void updateTaskTitle();
+						},
+					)
+					.catch(() => {
+						if (!formDisposed)
+							saveError.value =
+								'Some task options could not load. Reload to retry.';
+					});
+
+			if (!taskId.value) void loadReferenceData(null);
 
 			// Load task data if we have a task ID
 			if (taskId.value) {
@@ -748,6 +789,10 @@
 				}
 
 				form.value = taskData;
+				taskVersionGuard.recordKnown(taskData);
+				void loadReferenceData(
+					taskData.workspace_id ? Number(taskData.workspace_id) : null,
+				);
 
 				// Initialize checkpoints array if not present
 				if (!form.value.checkpoints) {
@@ -864,28 +909,7 @@
 				if (sourceInstanceId === instanceId) return;
 
 				if (action === 'updated') {
-					if (
-						'relationTypeWithTask' in task &&
-						JSON.stringify(task.relationTypeWithTask) !==
-							JSON.stringify(form.value.relationTypeWithTask)
-					) {
-						suppressAutoSavingForOnce.value = true;
-						form.value.relationTypeWithTask = task.relationTypeWithTask;
-					}
-					const hasMeaningfulChanges = hasTaskMeaningfulChanges(
-						form.value,
-						task,
-					);
-					console.log('[NewForm] hasMeaningfulChanges:', hasMeaningfulChanges, {
-						currentDescription: form.value.description?.substring?.(0, 50),
-						incomingDescription: task.description?.substring?.(0, 50),
-						currentTitle: form.value.title,
-						incomingTitle: task.title,
-					});
-					if (hasMeaningfulChanges) {
-						hasExternalUpdate.value = true;
-						externalUpdateData.value = task;
-					}
+					taskVersionGuard.receive(task);
 				} else if (action === 'deleted') {
 					emit('close');
 				}
@@ -996,6 +1020,7 @@
 
 	const applyExternalUpdate = () => {
 		if (externalUpdateData.value) {
+			taskVersionGuard.recordKnown(externalUpdateData.value);
 			Object.assign(form.value, externalUpdateData.value);
 			hasExternalUpdate.value = false;
 			externalUpdateData.value = null;
@@ -1015,6 +1040,7 @@
 			const taskData = await getTask(id);
 			if (formDisposed || taskId.value !== id) return;
 			form.value = taskData;
+			taskVersionGuard.recordKnown(taskData);
 			taskReady.value = true;
 			taskLoadError.value = false;
 		} catch (e: any) {
@@ -1355,7 +1381,9 @@
 		if (taskId.value) {
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(taskId.value);
+				form.value = await taskVersionGuard.track(() =>
+					stopTaskTimeCounter(taskId.value as number),
+				);
 			}
 
 			try {
@@ -1468,15 +1496,17 @@
 		} catch {
 			/* Saving still works if browser storage is unavailable. */
 		}
-		const saved = await updateTask(
-			snapshot.id,
-			snapshot.persona_assignees === undefined
-				? snapshot
-				: {
-						...snapshot,
-						persona_assignees: personaAssigneeIds(snapshot),
-				  },
-			instanceId,
+		const saved = await taskVersionGuard.track(() =>
+			updateTask(
+				snapshot.id as number,
+				snapshot.persona_assignees === undefined
+					? snapshot
+					: {
+							...snapshot,
+							persona_assignees: personaAssigneeIds(snapshot),
+					  },
+				instanceId,
+			),
 		);
 		try {
 			if (sessionStorage.getItem(key) === serialized)
@@ -1508,7 +1538,9 @@
 			const id = taskId.value || (form.value.id as number);
 			if (form.value.start_time) {
 				suppressAutoSavingForOnce.value = true;
-				form.value = await stopTaskTimeCounter(id);
+				form.value = await taskVersionGuard.track(() =>
+					stopTaskTimeCounter(id),
+				);
 			}
 
 			cancelPendingAutoSave();
@@ -1542,7 +1574,9 @@
 			try {
 				suppressAutoSavingForOnce.value = true;
 				const id = taskId.value || (form.value.id as number);
-				form.value = await stopTaskTimeCounter(id);
+				form.value = await taskVersionGuard.track(() =>
+					stopTaskTimeCounter(id),
+				);
 				store.commit('updateSingleTask', form.value);
 			} catch (e) {
 				console.error(e);
@@ -1556,7 +1590,9 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			const id = taskId.value || (form.value.id as number);
-			form.value = await startTaskTimeCounter(id);
+			form.value = await taskVersionGuard.track(() =>
+				startTaskTimeCounter(id),
+			);
 			store.commit('updateSingleTask', form.value);
 		} catch (e) {
 			console.error(e);
@@ -1592,7 +1628,9 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			const id = backlogStatusChangeConfirm.value.taskId;
-			await updateTaskStatus(id, activeStatus.id);
+			await taskVersionGuard.track(() =>
+				updateTaskStatus(id, activeStatus.id),
+			);
 			form.value.status_id = activeStatus.id;
 			store.commit('updateSingleTask', form.value);
 		} catch (e) {

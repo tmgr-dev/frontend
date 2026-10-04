@@ -60,6 +60,22 @@ export const getCategories = async (
 	);
 };
 
+export const getCategoriesOfWorkspace = async (
+	workspaceId: number,
+): Promise<Category[]> =>
+	requestCache.getOrFetch<Category[]>(
+		`categories-workspace-${workspaceId}`,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('project_categories?all', {
+				params: { workspace_id: workspaceId },
+			});
+			return data;
+		},
+		{ ttl: 300000 },
+	);
+
 export const getTopCategories = async (): Promise<Category[]> => {
 	const {
 		data: { data },
@@ -103,6 +119,8 @@ export const createCategory = async (payload: Category) => {
 
 	requestCache.invalidate('categories');
 
+	requestCache.invalidate(/^categories-workspace-/);
+
 	return data;
 };
 
@@ -112,6 +130,8 @@ export const updateCategory = async (categoryId: number, payload: Category) => {
 	} = await $axios.put(`project_categories/${categoryId}`, payload);
 
 	requestCache.invalidate('categories');
+
+	requestCache.invalidate(/^categories-workspace-/);
 
 	return data;
 };
@@ -123,6 +143,8 @@ export const deleteCategory = async (categoryId: number) => {
 
 	requestCache.invalidate('categories');
 
+	requestCache.invalidate(/^categories-workspace-/);
+
 	return data.deleted_at;
 };
 
@@ -132,6 +154,8 @@ export const restoreCategory = async (categoryId: number) => {
 	} = await $axios.post(`project_categories/${categoryId}/restore`);
 
 	requestCache.invalidate('categories');
+
+	requestCache.invalidate(/^categories-workspace-/);
 
 	return data.deleted_at;
 };
@@ -147,6 +171,8 @@ export const changeCategoryWorkspace = async (
 	);
 
 	requestCache.invalidate('categories');
+
+	requestCache.invalidate(/^categories-workspace-/);
 
 	return data;
 };
