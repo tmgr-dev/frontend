@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.24 — 2026-10-04
+
+- Plugins can add their own items to the task "…" menu: on board cards, in the task list, on the task page and in a
+  task opened in its own window. Plugin items sit in their own group; with more than four they fold into one Plugins
+  submenu. A plugin needs the new "add items to the task … menu" permission, shown when you install or update it.
+- Plugin API 1.6 for plugin authors: `contributes.menus["task/card"]` with up to three items per plugin, each running
+  one of the plugin's commands with the task id.
+
 ## 0.9.23 — 2026-10-04
 
 - Settings → Agent notifications now walks you through connecting an agent: after Create token you get ready-to-paste
