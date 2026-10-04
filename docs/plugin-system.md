@@ -58,6 +58,47 @@ payload is `{ type, workspaceId, pageId, slug, title, parentId, version, author:
   report `[]`.
 - A plugin does not receive the events of its own writes; other plugins and the user's writes are delivered.
 
+## Task menu items (API 1.6)
+
+A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
+
+```json
+{
+	"engines": { "tmgr": "^1.6" },
+	"permissions": ["menus:task", "comments:write"],
+	"contributes": {
+		"commands": [{ "id": "acme.notes.comment", "title": "Add a comment" }],
+		"menus": { "task/card": [{ "command": "acme.notes.comment", "title": "Add a comment" }] }
+	}
+}
+```
+
+```js
+tmgr.commands.register('acme.notes.comment', async (args) => {
+	await tmgr.comments.add(args.taskId, 'Added from the task menu');
+});
+```
+
+Rules:
+
+- Needs the `menus:task` permission and `engines.tmgr` `^1.6`; an older `engines.tmgr` with `menus:task` is
+  refused at load time. The permission is shown to the user when the plugin is installed or updated.
+- `"task/card"` is the only location; any other key under `contributes.menus` is refused.
+- At most 3 items per plugin. `title` is at most 40 characters. `command` must be a command declared in
+  `contributes.commands`. Any item without `menus:task` in the manifest is refused.
+- For a plugin with `engines.tmgr` older than `^1.6` the `menus` key is ignored, so existing plugins load as
+  before.
+- The command runs with `{ taskId, workspaceId }` (`workspaceId` is `null` when unknown), through the same
+  path as any other command. The app refuses a command that is not an item of the plugin and a `taskId` that
+  is not a positive integer.
+- The items show on board cards, in the task list and on the task page and window, as a separate group of
+  the "…" menu. With more than 4 plugin items in total the group becomes one "Plugins" submenu.
+- Items are hidden while the plugin is not running (stopped, crashed, disabled) and until it has registered
+  the command, so register it at start.
+- An error thrown by the command shows the usual plugin error toast.
+- In the test host, `taskMenuItems()` lists the items the app would show and `clickTaskMenu(command, taskId)`
+  clicks one, refusing what the app refuses.
+
 ## Background and attention
 
 | Call | What it does | Permission | Limits |
@@ -159,3 +200,17 @@ To use pages:
 
 Plugins cannot declare their own page types in 1.5: pages render on the web and on mobile too, where a plugin
 does not run.
+
+## Migrating from 1.5 to 1.6
+
+Nothing changes for existing plugins: `^1.0` to `^1.5` keep working.
+
+To add task menu items:
+
+1. Set `"engines": { "tmgr": "^1.6" }` and add `"menus:task"` to `permissions`.
+2. Declare the command in `contributes.commands` and list it under `contributes.menus["task/card"]` with a
+   `title`.
+3. Register the command with `tmgr.commands.register` and read `args.taskId` (and `args.workspaceId`).
+4. Update `tmgr.d.ts` from the SDK template for `TaskMenuCommandArgs`.
+5. Copy `plugin-sdk/testing` again to get `taskMenuItems()` and `clickTaskMenu()` and the new manifest
+   validation.
