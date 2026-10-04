@@ -1,17 +1,20 @@
-import { computed } from 'vue';
 import { useToast } from '@/components/ui/toast/use-toast';
+import { pluginHost, pluginState } from '@/pluginSystem/state';
+import {
+	needsTaskMenuSubmenu,
+	type TaskMenuItem,
+} from '@/pluginSystem/taskMenu';
 import { currentTaskMenuItems } from '@/pluginSystem/taskMenuItems';
 import { detachedTaskMenuClient } from '@/pluginSystem/taskMenuRelay';
-import { pluginHost, pluginState } from '@/pluginSystem/state';
-import { needsTaskMenuSubmenu, type TaskMenuItem } from '@/pluginSystem/taskMenu';
 import { isInDetachedWindow } from '@/utils/taskWindow';
+import { computed } from 'vue';
 
 export const usePluginTaskMenu = () => {
 	const { toast } = useToast();
 
 	const items = computed<TaskMenuItem[]>(() =>
 		isInDetachedWindow()
-			? (detachedTaskMenuClient()?.items.value ?? [])
+			? detachedTaskMenuClient()?.items.value ?? []
 			: currentTaskMenuItems(),
 	);
 	const useSubmenu = computed(() => needsTaskMenuSubmenu(items.value));
@@ -23,7 +26,11 @@ export const usePluginTaskMenu = () => {
 				if (!client) throw new Error('The plugin menu is not available');
 				await client.run(item, taskId);
 			} else {
-				await pluginHost()?.runTaskMenuCommand(item.pluginId, item.command, taskId);
+				await pluginHost()?.runTaskMenuCommand(
+					item.pluginId,
+					item.command,
+					taskId,
+				);
 			}
 		} catch (error) {
 			if (pluginState.plugins[item.pluginId]?.status === 'crashed') return;

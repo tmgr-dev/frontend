@@ -38,7 +38,11 @@ const plugin = (id, name, titles) => ({
 });
 
 const sender = plugin('dev.sender', 'Sender', ['Send to chat', 'Copy link']);
-const extra = plugin('dev.extra', 'Extra', ['Extra one', 'Extra two', 'Extra three']);
+const extra = plugin('dev.extra', 'Extra', [
+  'Extra one',
+  'Extra two',
+  'Extra three',
+]);
 
 const setup = async (page, devPlugins, enable) => {
   await page.addInitScript(() =>
@@ -80,7 +84,9 @@ test('plugin items show in the board card, list and task page menus and run with
   await setup(page, [sender], ['Sender']);
 
   await page.goto('/local-personal/board');
-  const card = page.locator('[data-task-id]', { hasText: 'Second task' }).first();
+  const card = page
+    .locator('[data-task-id]', { hasText: 'Second task' })
+    .first();
   await card.getByRole('button', { name: 'Task actions' }).click();
   await expect(items(page)).toHaveText([/Send to chat/, /Copy link/]);
   await expect(page.getByTestId('plugin-task-menu-separator')).toHaveCount(1);
@@ -124,10 +130,14 @@ test('plugin items show in the board card, list and task page menus and run with
   await expect(page.getByText('dev.sender c0 2').first()).toBeVisible();
 });
 
-test('more than four items collapse into a Plugins submenu', async ({ page }) => {
+test('more than four items collapse into a Plugins submenu', async ({
+  page,
+}) => {
   await setup(page, [sender, extra], ['Sender', 'Extra']);
   await page.goto('/local-personal/board');
-  const card = page.locator('[data-task-id]', { hasText: 'First task' }).first();
+  const card = page
+    .locator('[data-task-id]', { hasText: 'First task' })
+    .first();
   await card.getByRole('button', { name: 'Task actions' }).click();
   const trigger = page.getByTestId('plugin-task-menu-submenu');
   await expect(trigger).toBeVisible();
@@ -144,7 +154,9 @@ test('a stopped plugin and a user without plugins see no plugin group', async ({
 }) => {
   await setup(page, [sender], []);
   await page.goto('/local-personal/board');
-  const card = page.locator('[data-task-id]', { hasText: 'First task' }).first();
+  const card = page
+    .locator('[data-task-id]', { hasText: 'First task' })
+    .first();
   await card.getByRole('button', { name: 'Task actions' }).click();
   await expect(page.getByRole('menuitem', { name: /Archive/ })).toBeVisible();
   await expect(items(page)).toHaveCount(0);
@@ -152,20 +164,30 @@ test('a stopped plugin and a user without plugins see no plugin group', async ({
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/tasks/1');
   await expect(page.getByPlaceholder('Task name')).toHaveValue('First task');
-  await expect(page.getByRole('button', { name: 'Task actions' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Task actions' })).toHaveCount(
+    0,
+  );
 });
 
 test('the detached task window shows the items the main window sends and relays a run', async ({
   page,
 }) => {
-  await desktopPage(page, {}, { windowLabel: 'task-demo-1', lastSeenVersion: null });
+  await desktopPage(
+    page,
+    {},
+    { windowLabel: 'task-demo-1', lastSeenVersion: null },
+  );
   await page.goto('/demo/task-window/1');
   await expect(page.getByPlaceholder('Task name')).toHaveValue('Original task');
-  await expect(page.getByRole('button', { name: 'Task actions' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Task actions' })).toHaveCount(
+    0,
+  );
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window.__emitted ?? []).filter((e) => e.event === 'plugin-task-menu://request'),
+        (window.__emitted ?? []).filter(
+          (e) => e.event === 'plugin-task-menu://request',
+        ),
       ),
     )
     .toEqual([
@@ -178,7 +200,12 @@ test('the detached task window shows the items the main window sends and relays 
   await page.evaluate(() =>
     window.__emit('plugin-task-menu://items', {
       items: [
-        { pluginId: 'dev.sender', pluginName: 'Sender', command: 'dev.sender.c0', title: 'Send to chat' },
+        {
+          pluginId: 'dev.sender',
+          pluginName: 'Sender',
+          command: 'dev.sender.c0',
+          title: 'Send to chat',
+        },
       ],
     }),
   );
@@ -202,9 +229,16 @@ test('the detached task window shows the items the main window sends and relays 
   });
   await page.evaluate(
     (requestId) =>
-      window.__emit('plugin-task-menu://result', { requestId, error: 'The plugin is busy' }),
+      window.__emit('plugin-task-menu://result', {
+        requestId,
+        error: 'The plugin is busy',
+      }),
     run.payload.requestId,
   );
-  await expect(page.getByText('The plugin command failed', { exact: true })).toBeVisible();
-  await expect(page.getByText('The plugin is busy', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('The plugin command failed', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('The plugin is busy', { exact: true }),
+  ).toBeVisible();
 });

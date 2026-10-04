@@ -1,8 +1,8 @@
+import { pluginState, setPluginHost } from '@/pluginSystem/state';
+import type { TaskMenuItem } from '@/pluginSystem/taskMenu';
+import { currentTaskMenuItems } from '@/pluginSystem/taskMenuItems';
 import { nextTick, watch } from 'vue';
 import { usePluginTaskMenu } from '../usePluginTaskMenu';
-import { pluginState, setPluginHost } from '@/pluginSystem/state';
-import { currentTaskMenuItems } from '@/pluginSystem/taskMenuItems';
-import type { TaskMenuItem } from '@/pluginSystem/taskMenu';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast/use-toast', () => ({
@@ -16,8 +16,10 @@ const item = (pluginId: string, command: string): TaskMenuItem => ({
 	title: command,
 });
 
-const fakeHost = (items: () => TaskMenuItem[], runTaskMenuCommand = jest.fn()) =>
-	({ taskMenuItems: items, runTaskMenuCommand }) as any;
+const fakeHost = (
+	items: () => TaskMenuItem[],
+	runTaskMenuCommand = jest.fn(),
+) => ({ taskMenuItems: items, runTaskMenuCommand } as any);
 
 const resetState = () => {
 	setPluginHost(null);
@@ -60,7 +62,9 @@ describe('usePluginTaskMenu', () => {
 			fakeHost(() => ['1', '2', '3', '4', '5'].map((c) => item('a', c))),
 		);
 		expect(usePluginTaskMenu().useSubmenu.value).toBe(true);
-		setPluginHost(fakeHost(() => ['1', '2', '3', '4'].map((c) => item('a', c))));
+		setPluginHost(
+			fakeHost(() => ['1', '2', '3', '4'].map((c) => item('a', c))),
+		);
 		pluginState.revision++;
 		expect(usePluginTaskMenu().useSubmenu.value).toBe(false);
 	});
@@ -74,7 +78,9 @@ describe('usePluginTaskMenu', () => {
 	});
 
 	it('toasts the error message when the command fails', async () => {
-		setPluginHost(fakeHost(() => [], jest.fn().mockRejectedValue(new Error('boom'))));
+		setPluginHost(
+			fakeHost(() => [], jest.fn().mockRejectedValue(new Error('boom'))),
+		);
 		await usePluginTaskMenu().run(item('dev.a', 'x'), 1);
 		expect(mockToast).toHaveBeenCalledWith({
 			title: 'The plugin command failed',
@@ -85,7 +91,9 @@ describe('usePluginTaskMenu', () => {
 
 	it('stays silent when the plugin crashed', async () => {
 		pluginState.plugins = { 'dev.a': { status: 'crashed' } } as any;
-		setPluginHost(fakeHost(() => [], jest.fn().mockRejectedValue(new Error('boom'))));
+		setPluginHost(
+			fakeHost(() => [], jest.fn().mockRejectedValue(new Error('boom'))),
+		);
 		await usePluginTaskMenu().run(item('dev.a', 'x'), 1);
 		expect(mockToast).not.toHaveBeenCalled();
 	});
@@ -97,7 +105,10 @@ describe('currentTaskMenuItems', () => {
 		setPluginHost(fakeHost(() => current));
 		pluginState.plugins = { a: { status: 'running' } } as any;
 		const seen: number[] = [];
-		watch(() => currentTaskMenuItems().length, (n) => seen.push(n));
+		watch(
+			() => currentTaskMenuItems().length,
+			(n) => seen.push(n),
+		);
 		current = [];
 		pluginState.plugins.a.status = 'stopped';
 		await nextTick();

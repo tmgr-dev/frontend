@@ -30,14 +30,26 @@ const entry = (
 ) => ({
 	manifest: manifest(id, commands),
 	running: options.running ?? true,
-	registered: new Set(options.registered ?? commands.map((name) => `${id}.${name}`)),
+	registered: new Set(
+		options.registered ?? commands.map((name) => `${id}.${name}`),
+	),
 });
 
 describe('resolveTaskMenuItems', () => {
 	it('lists items of a running plugin in manifest order', () => {
 		expect(resolveTaskMenuItems([entry('acme.a', ['one', 'two'])])).toEqual([
-			{ pluginId: 'acme.a', pluginName: 'ACME.A', command: 'acme.a.one', title: 'Title one' },
-			{ pluginId: 'acme.a', pluginName: 'ACME.A', command: 'acme.a.two', title: 'Title two' },
+			{
+				pluginId: 'acme.a',
+				pluginName: 'ACME.A',
+				command: 'acme.a.one',
+				title: 'Title one',
+			},
+			{
+				pluginId: 'acme.a',
+				pluginName: 'ACME.A',
+				command: 'acme.a.two',
+				title: 'Title two',
+			},
 		]);
 	});
 

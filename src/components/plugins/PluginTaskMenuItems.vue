@@ -18,7 +18,10 @@
 
 <template>
 	<template v-if="items.length">
-		<DropdownMenuSeparator v-if="separator" data-testid="plugin-task-menu-separator" />
+		<DropdownMenuSeparator
+			v-if="separator"
+			data-testid="plugin-task-menu-separator"
+		/>
 		<DropdownMenuSub v-if="useSubmenu">
 			<DropdownMenuSubTrigger data-testid="plugin-task-menu-submenu">
 				<Puzzle class="mr-2 h-4 w-4" />
@@ -33,7 +36,9 @@
 					@click="run(item, taskId)"
 				>
 					<span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
-					<span class="shrink-0 text-2xs text-ink-faint">{{ item.pluginName }}</span>
+					<span class="shrink-0 text-2xs text-ink-faint">{{
+						item.pluginName
+					}}</span>
 				</DropdownMenuItem>
 			</DropdownMenuSubContent>
 		</DropdownMenuSub>
@@ -47,7 +52,9 @@
 			>
 				<Puzzle class="mr-2 h-4 w-4 shrink-0" />
 				<span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
-				<span class="shrink-0 text-2xs text-ink-faint">{{ item.pluginName }}</span>
+				<span class="shrink-0 text-2xs text-ink-faint">{{
+					item.pluginName
+				}}</span>
 			</DropdownMenuItem>
 		</template>
 	</template>

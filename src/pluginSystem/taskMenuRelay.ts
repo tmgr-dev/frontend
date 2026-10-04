@@ -55,10 +55,14 @@ export const parseTaskMenuItems = (payload: unknown): TaskMenuItem[] | null => {
 	return items;
 };
 
-export const parseTaskMenuRequest = (payload: unknown): { label: string } | null =>
+export const parseTaskMenuRequest = (
+	payload: unknown,
+): { label: string } | null =>
 	isRecord(payload) && isText(payload.label) ? { label: payload.label } : null;
 
-export const parseTaskMenuRun = (payload: unknown): TaskMenuRunRequest | null => {
+export const parseTaskMenuRun = (
+	payload: unknown,
+): TaskMenuRunRequest | null => {
 	if (
 		!isRecord(payload) ||
 		!isText(payload.requestId) ||
@@ -79,7 +83,9 @@ export const parseTaskMenuRun = (payload: unknown): TaskMenuRunRequest | null =>
 	};
 };
 
-export const parseTaskMenuResult = (payload: unknown): TaskMenuRunResult | null => {
+export const parseTaskMenuResult = (
+	payload: unknown,
+): TaskMenuRunResult | null => {
 	if (!isRecord(payload)) return null;
 	const { requestId, error } = payload;
 	if (!isText(requestId)) return null;
@@ -98,7 +104,11 @@ export interface TaskMenuRelayHostDeps {
 }
 
 /** Main-window side: answers snapshot requests and run requests from detached windows. */
-export const createTaskMenuRelayHost = ({ send, getItems, run }: TaskMenuRelayHostDeps) => ({
+export const createTaskMenuRelayHost = ({
+	send,
+	getItems,
+	run,
+}: TaskMenuRelayHostDeps) => ({
 	broadcast: () => send(null, TASK_MENU_ITEMS, { items: getItems() }),
 	onRequest: (payload: unknown) => {
 		const request = parseTaskMenuRequest(payload);
@@ -113,7 +123,10 @@ export const createTaskMenuRelayHost = ({ send, getItems, run }: TaskMenuRelayHo
 		} catch (cause) {
 			error = errorMessage(cause);
 		}
-		await send(request.label, TASK_MENU_RESULT, { requestId: request.requestId, error });
+		await send(request.label, TASK_MENU_RESULT, {
+			requestId: request.requestId,
+			error,
+		});
 	},
 });
 
@@ -129,7 +142,8 @@ export const createTaskMenuRelayClient = ({
 	label,
 	send,
 	timeoutMs = TASK_MENU_RUN_TIMEOUT_MS,
-	nextId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+	nextId = () =>
+		`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
 }: TaskMenuRelayClientDeps) => {
 	const items = ref<TaskMenuItem[]>([]);
 	const pending = new Map<string, (result: TaskMenuRunResult) => void>();
@@ -194,7 +208,11 @@ export const installTaskMenuRelayHost = async (
 ) => {
 	const { listen } = await import('@tauri-apps/api/event');
 	const host = createTaskMenuRelayHost({ send: tauriSend, getItems, run });
-	await listen(TASK_MENU_REQUEST, ({ payload }) => void Promise.resolve(host.onRequest(payload)).catch(() => {}));
+	await listen(
+		TASK_MENU_REQUEST,
+		({ payload }) =>
+			void Promise.resolve(host.onRequest(payload)).catch(() => {}),
+	);
 	await listen(TASK_MENU_RUN, ({ payload }) => void host.onRun(payload));
 	watchItems(() => void Promise.resolve(host.broadcast()).catch(() => {}));
 };
