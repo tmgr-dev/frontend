@@ -1,10 +1,13 @@
 <template>
 	<div
+		data-tauri-drag-region
 		class="flex items-center gap-1.5 whitespace-nowrap rounded-pill bg-surface-hover px-2.5 py-1 text-xs text-ink-subtle"
 		:title="breakdown"
 	>
-		<span class="material-icons text-sm leading-none">checklist</span>
-		<span>{{ label }}</span>
+		<span data-tauri-drag-region class="material-icons text-sm leading-none"
+			>checklist</span
+		>
+		<span data-tauri-drag-region>{{ label }}</span>
 	</div>
 </template>
 

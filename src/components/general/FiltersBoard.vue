@@ -76,7 +76,11 @@
 	</div>
 
 	<!-- Desktop pill-style filters (header layout) -->
-	<div v-else class="flex min-w-0 items-center gap-2">
+	<div
+		v-else
+		data-tauri-drag-region
+		class="flex min-w-0 items-center gap-2"
+	>
 		<!-- Search -->
 		<div
 			v-if="isUserFeatureEnabled('board.search_input')"

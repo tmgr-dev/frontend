@@ -1,5 +1,5 @@
 <template>
-	<div v-if="isDesktop" class="flex items-center gap-1">
+	<div v-if="isDesktop" data-tauri-drag-region class="flex items-center gap-1">
 		<button
 			v-for="control in controls"
 			:key="control.action"

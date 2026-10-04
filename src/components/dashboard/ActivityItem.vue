@@ -17,7 +17,7 @@
 			<!-- Activity Content -->
 			<div class="min-w-0 flex-1">
 				<div class="flex items-start justify-between gap-3">
-					<div class="flex-1">
+					<div class="min-w-0 flex-1 break-words">
 						<!-- Activity Title (Action) -->
 						<h3
 							class="text-sm font-semibold leading-tight text-gray-900 dark:text-white"
@@ -58,7 +58,7 @@
 							:has-avatar="activity.user.has_avatar ?? false"
 							:size="20"
 						/>
-						<span class="text-xs text-gray-600 dark:text-gray-400">
+						<span class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-400">
 							by {{ activity.user.name }}
 						</span>
 					</template>

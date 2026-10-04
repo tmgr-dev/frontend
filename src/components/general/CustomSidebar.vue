@@ -1084,7 +1084,11 @@
 							:pages-enabled="pagesEnabled"
 						/>
 
-						<Separator orientation="vertical" class="mr-2 h-4" />
+						<Separator
+							data-tauri-drag-region
+							orientation="vertical"
+							class="mr-2 h-4"
+						/>
 
 						<span
 							v-if="isDesktop"
@@ -1119,9 +1123,10 @@
 
 						<div
 							id="page-header-actions"
+							data-tauri-drag-region
 							class="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2"
 						></div>
-						<div class="flex items-center gap-2">
+						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
 								v-if="!isDesktop"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"

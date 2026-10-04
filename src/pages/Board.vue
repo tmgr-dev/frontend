@@ -53,7 +53,10 @@
 									to="#page-header-actions"
 									:disabled="!headerSlotReady"
 								>
-									<div class="hidden items-center gap-3 xl-custom:flex">
+									<div
+										data-tauri-drag-region
+										class="hidden items-center gap-3 xl-custom:flex"
+									>
 										<WorkspaceUsers
 											:users="workspaceUsersWithoutAll"
 											:workspace-id="workspaceId"
@@ -62,7 +65,10 @@
 											v-if="tasksLoaded"
 											:summary="sprintSummary"
 										/>
-										<div class="h-5 w-px shrink-0 bg-line"></div>
+										<div
+											data-tauri-drag-region
+											class="h-5 w-px shrink-0 bg-line"
+										></div>
 										<FiltersBoard
 											v-if="workspaceUsers.length"
 											:workspaceUsers="workspaceUsers"
