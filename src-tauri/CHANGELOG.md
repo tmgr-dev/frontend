@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.22 — 2026-10-04
+
+- Alarm phone shows the number alarms call you from, with Copy and Add to contacts, plus tips to let it through
+  Do Not Disturb and Sleep (Favorites and Repeated Calls).
+- Alarm calls ring longer and repeat until you acknowledge them; a voicemail pickup no longer counts as answered.
+
 ## 0.9.21 — 2026-10-04
 
 - Settings → Agent notifications has a new Alarm phone section for urgent alarms. Add your number, confirm it with
