@@ -341,7 +341,13 @@
 			externalUpdateData.value = task;
 		}
 	};
-	const taskVersionGuard = createTaskVersionGuard(handleRemoteTaskUpdate);
+	const taskVersionGuard = createTaskVersionGuard(
+		handleRemoteTaskUpdate,
+		(known, incoming) =>
+			!hasTaskMeaningfulChanges({ ...incoming, ...known }, incoming),
+	);
+	let loadTaskReferenceData: ((taskWorkspaceId: number | null) => unknown) | null =
+		null;
 
 	const form = ref<Task>({
 		title: '',
@@ -739,6 +745,7 @@
 								'Some task options could not load. Reload to retry.';
 					});
 
+			loadTaskReferenceData = loadReferenceData;
 			if (!taskId.value) void loadReferenceData(null);
 
 			// Load task data if we have a task ID
@@ -1045,6 +1052,10 @@
 			if (formDisposed || taskId.value !== id) return;
 			form.value = taskData;
 			taskVersionGuard.recordKnown(taskData);
+			if (!statuses.value?.length)
+				void loadTaskReferenceData?.(
+					taskData.workspace_id ? Number(taskData.workspace_id) : null,
+				);
 			taskReady.value = true;
 			taskLoadError.value = false;
 		} catch (e: any) {

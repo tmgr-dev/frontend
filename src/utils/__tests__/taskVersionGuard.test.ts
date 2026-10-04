@@ -1,6 +1,11 @@
 import { createTaskVersionGuard } from '../taskVersionGuard';
 
-const task = (updated_at: string) => ({ id: 1, updated_at });
+const task = (updated_at: string, title = 'A') => ({
+	id: 1,
+	updated_at,
+	title,
+});
+const sameTitle = (a: any, b: any) => a.title === b.title;
 
 describe('createTaskVersionGuard', () => {
 	it('ignores the echo of a version already known from an own response', async () => {
@@ -54,5 +59,21 @@ describe('createTaskVersionGuard', () => {
 		const notify = jest.fn();
 		createTaskVersionGuard(notify).receive({ id: 1 });
 		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	it('notifies for a different change that shares the known second', async () => {
+		const notify = jest.fn();
+		const guard = createTaskVersionGuard(notify, sameTitle);
+		await guard.track(async () => task('2026-10-04T10:00:05Z', 'Mine'));
+		guard.receive(task('2026-10-04T10:00:05Z', 'Theirs'));
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	it('ignores an equal-second echo whose content matches the own response', async () => {
+		const notify = jest.fn();
+		const guard = createTaskVersionGuard(notify, sameTitle);
+		await guard.track(async () => task('2026-10-04T10:00:05Z', 'Mine'));
+		guard.receive(task('2026-10-04T10:00:05Z', 'Mine'));
+		expect(notify).not.toHaveBeenCalled();
 	});
 });

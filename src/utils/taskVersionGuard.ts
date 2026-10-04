@@ -7,18 +7,29 @@ const versionOf = (task: Versioned): number => {
 	return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export const createTaskVersionGuard = (notify: (task: any) => void) => {
+export const createTaskVersionGuard = (
+	notify: (task: any) => void,
+	isSame: (known: any, incoming: any) => boolean = () => true,
+) => {
 	let known = 0;
+	let knownTask: any = null;
 	let pending = 0;
 	let deferred: any[] = [];
 
 	const recordKnown = (task: Versioned) => {
-		known = Math.max(known, versionOf(task));
+		const version = versionOf(task);
+		if (version && version >= known) {
+			known = version;
+			knownTask = task;
+		}
 	};
 
+	// updated_at has one-second precision, so an equal version is only an echo when its content matches too.
 	const evaluate = (task: any) => {
 		const version = versionOf(task);
-		if (version && version <= known) return;
+		if (version && version < known) return;
+		if (version && version === known && knownTask && isSame(knownTask, task))
+			return;
 		notify(task);
 	};
 
