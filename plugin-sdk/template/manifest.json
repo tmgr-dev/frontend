@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"publisher": "yourname",
 	"description": "Shows how many tasks are in progress.",
-	"engines": { "tmgr": "^1.0" },
+	"engines": { "tmgr": "^1.6" },
 	"main": "main.js",
 	"permissions": ["tasks:read", "statuses:read"],
 	"contributes": {

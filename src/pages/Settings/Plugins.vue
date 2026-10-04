@@ -547,6 +547,7 @@
 		'pages:read': 'read your pages and their per-page data',
 		'pages:write': 'create pages and change their text',
 		'pages:sections': 'write into its own managed sections of pages',
+		'menus:task': 'add items to the task … menu',
 	};
 
 	export default defineComponent({

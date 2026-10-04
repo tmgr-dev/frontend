@@ -24,3 +24,30 @@
 Plugins run in the TMGR desktop app, in a sandbox: no DOM, no network except the `http://localhost`
 origins you declare, and only the permissions listed in the manifest. They run in local workspaces, and in
 a shared workspace once its creator turns them on for everyone.
+
+## Task menu items (API 1.6)
+
+A plugin can add up to 3 items to the task "…" menu (board card, task list, task page). It needs
+`"engines": { "tmgr": "^1.6" }` and the `menus:task` permission. Each item names a command declared in
+`contributes.commands`; the title is at most 40 characters:
+
+```json
+{
+	"permissions": ["menus:task", "comments:write"],
+	"contributes": {
+		"commands": [{ "id": "yourname.hello.comment", "title": "Add a comment" }],
+		"menus": { "task/card": [{ "command": "yourname.hello.comment", "title": "Add a comment" }] }
+	}
+}
+```
+
+The command's handler receives `{ taskId, workspaceId }` (`TaskMenuCommandArgs` in `tmgr.d.ts`):
+
+```js
+tmgr.commands.register('yourname.hello.comment', async (args) => {
+	await tmgr.comments.add(args.taskId, 'Hello from the task menu');
+});
+```
+
+The item is shown only while the plugin is running. Test it with `taskMenuItems()` and
+`clickTaskMenu(command, taskId)` from `plugin-sdk/testing`.
