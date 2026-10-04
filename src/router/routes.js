@@ -532,6 +532,18 @@ const routes = [
 		},
 		name: 'PushNotificationsEnableGuide',
 	},
+	{
+		path: '/docs/agents',
+		component: () => import('@/pages/AgentsGuide.vue'),
+		meta: {
+			title: 'AI agents setup',
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		},
+		name: 'AgentsGuide',
+	},
 
 	// New URL structure routes
 	// CHANGES: Added keepAlive meta for cached views
