@@ -7,6 +7,7 @@
 		DropdownMenuSubTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { usePluginTaskMenu } from '@/composable/usePluginTaskMenu';
+	import { Puzzle } from 'lucide-vue-next';
 
 	withDefaults(defineProps<{ taskId: number; separator?: boolean }>(), {
 		separator: true,
@@ -20,7 +21,8 @@
 		<DropdownMenuSeparator v-if="separator" data-testid="plugin-task-menu-separator" />
 		<DropdownMenuSub v-if="useSubmenu">
 			<DropdownMenuSubTrigger data-testid="plugin-task-menu-submenu">
-				Plugins
+				<Puzzle class="mr-2 h-4 w-4" />
+				<span>Plugins</span>
 			</DropdownMenuSubTrigger>
 			<DropdownMenuSubContent class="w-56">
 				<DropdownMenuItem
@@ -43,6 +45,7 @@
 				:title="item.pluginName"
 				@click="run(item, taskId)"
 			>
+				<Puzzle class="mr-2 h-4 w-4 shrink-0" />
 				<span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
 				<span class="shrink-0 text-2xs text-ink-faint">{{ item.pluginName }}</span>
 			</DropdownMenuItem>
