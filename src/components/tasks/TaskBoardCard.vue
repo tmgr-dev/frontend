@@ -253,6 +253,13 @@
 			@onCancel="timerStatusConfirm = null"
 			@onOk="confirmTimerStatusSwitch"
 		/>
+		<Confirm
+			v-if="showDeleteConfirm"
+			title="Delete task"
+			:body="`Are you sure you want to delete &quot;${task.title}&quot;?`"
+			@onCancel="showDeleteConfirm = false"
+			@onOk="confirmDelete"
+		/>
 	</div>
 </template>
 
@@ -411,6 +418,7 @@
 				workspaceMembers: [],
 				assignablePersonas: [],
 				timerStatusConfirm: null,
+				showDeleteConfirm: false,
 				showSettings: false,
 			};
 		},
@@ -815,11 +823,11 @@
 					alert('Failed to archive task. Please try again.');
 				}
 			},
-			async handleDelete() {
-				if (!confirm(`Are you sure you want to delete "${this.task.title}"?`)) {
-					return;
-				}
-
+			handleDelete() {
+				this.showDeleteConfirm = true;
+			},
+			async confirmDelete() {
+				this.showDeleteConfirm = false;
 				try {
 					await deleteTask(this.task.id);
 					this.$emit('task-deleted', this.task);
