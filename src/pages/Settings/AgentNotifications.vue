@@ -9,6 +9,8 @@
 			</template>
 		</PageHeader>
 
+		<AiAgentsOverview class="mb-6" />
+
 		<SettingsSection title="New token" class="mb-6">
 			<form class="flex flex-col gap-3" @submit.prevent="submitCreate">
 				<label class="flex flex-col gap-1">
@@ -183,6 +185,7 @@
 	} from '@/actions/tmgr/notifyTokens';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
 	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
@@ -210,6 +213,7 @@
 		components: {
 			PageContainer,
 			PageHeader,
+			AiAgentsOverview,
 			SettingsSection,
 			AlarmPhoneSection,
 			AgentConnectTabs,

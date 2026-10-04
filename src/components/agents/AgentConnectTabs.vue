@@ -80,7 +80,7 @@
 			</template>
 		</div>
 
-		<p class="text-xs text-ink-subtle">
+		<p v-if="route.name !== 'AgentsGuide'" class="text-xs text-ink-subtle">
 			Needs Node 22+. Full guide:
 			<router-link to="/docs/agents" class="text-primary hover:underline">
 				Agent setup guide
@@ -96,6 +96,7 @@
 		resolveNotifyApiUrl,
 	} from '@/utils/agentConnectSnippets';
 	import { computed, ref } from 'vue';
+	import { useRoute } from 'vue-router';
 
 	const props = defineProps<{
 		token?: string | null;
@@ -107,6 +108,8 @@
 		{ id: 'others', label: 'Cursor & others' },
 		{ id: 'hooks', label: 'Hooks (optional)' },
 	] as const;
+
+	const route = useRoute();
 
 	const active = ref<(typeof tabs)[number]['id']>('claude');
 
