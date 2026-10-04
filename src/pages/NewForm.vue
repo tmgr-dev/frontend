@@ -324,7 +324,7 @@
 		return false;
 	};
 
-	const handleRemoteTaskUpdate = (task: any) => {
+	const syncRemoteRelations = (task: any) => {
 		if (
 			'relationTypeWithTask' in task &&
 			JSON.stringify(task.relationTypeWithTask) !==
@@ -333,6 +333,9 @@
 			suppressAutoSavingForOnce.value = true;
 			form.value.relationTypeWithTask = task.relationTypeWithTask;
 		}
+	};
+
+	const handleRemoteTaskUpdate = (task: any) => {
 		if (hasTaskMeaningfulChanges(form.value, task)) {
 			hasExternalUpdate.value = true;
 			externalUpdateData.value = task;
@@ -909,6 +912,7 @@
 				if (sourceInstanceId === instanceId) return;
 
 				if (action === 'updated') {
+					syncRemoteRelations(task);
 					taskVersionGuard.receive(task);
 				} else if (action === 'deleted') {
 					emit('close');
