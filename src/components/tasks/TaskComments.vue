@@ -100,15 +100,25 @@
 	const loadComments = async () => {
 		if (!props.taskId) return;
 
-		isLoading.value = true;
+		isLoading.value = comments.value.length === 0;
 		try {
 			const data = (await getComments(
 				props.taskId,
 			)) as unknown as ChatComment[];
-			comments.value = data.map((comment) => ({
-				...comment,
-				reactions: normalizeReactions(comment.reactions, currentUser.value?.id),
-			}));
+			const known = new Map(comments.value.map((c) => [c.id, c]));
+			comments.value = data.map((comment) => {
+				const next = {
+					...comment,
+					reactions: normalizeReactions(
+						comment.reactions,
+						currentUser.value?.id,
+					),
+				};
+				const previous = known.get(next.id);
+				return previous && JSON.stringify(previous) === JSON.stringify(next)
+					? previous
+					: next;
+			});
 			emit('update:count', comments.value.length);
 		} catch (error) {
 			console.error('Failed to load comments:', error);
@@ -201,6 +211,7 @@
 	watch(
 		() => props.taskId,
 		() => {
+			comments.value = [];
 			loadComments();
 		},
 	);
@@ -270,6 +281,7 @@
 			<div
 				v-for="comment in filteredComments"
 				:key="comment.id"
+				:data-comment-id="comment.id"
 				:class="[
 					'group flex gap-3',
 					comment.cursor_agent_id

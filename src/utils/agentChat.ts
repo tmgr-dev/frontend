@@ -25,11 +25,17 @@ export const applyConversation = (
 	messages: AgentMessage[],
 ): AgentChatState => {
 	const pending = messages.find((m) => m.status === 'pending');
+	const known = new Map(s.messages.map((m) => [m.id, m]));
 
 	return {
 		conversationId: conversation.id,
 		workspaceId: conversation.workspace_id,
-		messages,
+		messages: messages.map((m) => {
+			const previous = known.get(m.id);
+			return previous && JSON.stringify(previous) === JSON.stringify(m)
+				? previous
+				: m;
+		}),
 		pendingId: pending ? pending.id : null,
 	};
 };

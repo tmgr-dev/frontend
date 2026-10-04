@@ -408,17 +408,15 @@
 															>
 																<template #item="{ element: task }">
 																	<ViewportTaskCard
-																		v-show="taskMatchesBoardFilters(task)"
 																		:enabled="column.tasks.length > 100"
 																		:task="task"
 																		:statuses="statuses"
-																		class="my-5"
+																		:class="[
+																			'my-5',
+																			{ hidden: !taskMatchesBoardFilters(task) },
+																		]"
 																		:data-task-id="task.id"
-																		@move-to-top="handleMoveToTop(task, column)"
-																		@move-to-bottom="
-																			handleMoveToBottom(task, column)
-																		"
-																		@task-deleted="removeTaskFromBoard(task.id)"
+																		v-bind="cardHandlers(task)"
 																		@task-archived="updateSingleTaskInBoard"
 																	/>
 																</template>
@@ -907,6 +905,7 @@
 			],
 			columns: [],
 			pluginBadgeFeed: markRaw(createCardBadgeFeed()),
+			cardHandlerCache: markRaw(new WeakMap()),
 			boardFilterToggles: {},
 			activeDraggable: false,
 			color: {
@@ -1333,6 +1332,22 @@
 				await updateTaskOrders({
 					tasks: orders,
 				});
+			},
+			cardHandlers(task) {
+				let handlers = this.cardHandlerCache.get(task);
+				if (!handlers) {
+					const columnOf = () =>
+						this.columns.find((column) =>
+							column.tasks.some((t) => t.id === task.id),
+						);
+					handlers = {
+						onMoveToTop: () => this.handleMoveToTop(task, columnOf()),
+						onMoveToBottom: () => this.handleMoveToBottom(task, columnOf()),
+						onTaskDeleted: () => this.removeTaskFromBoard(task.id),
+					};
+					this.cardHandlerCache.set(task, handlers);
+				}
+				return handlers;
 			},
 			async handleMoveToTop(task, column) {
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);

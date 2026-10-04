@@ -39,6 +39,29 @@ describe('applyConversation', () => {
 		expect(s.messages).toHaveLength(1);
 		expect(s.pendingId).toBeNull();
 	});
+	it('keeps the identity of messages that did not change on a reload', () => {
+		const message = (id: number, content: string) => ({
+			id,
+			role: 'user' as const,
+			content,
+			status: 'done' as const,
+			steps: [],
+			created_at: '',
+		});
+		const first = applyConversation(createAgentChatState(), CONV, [
+			message(1, 'one'),
+			message(2, 'two'),
+		]);
+		const next = applyConversation(first, CONV, [
+			message(1, 'one'),
+			message(2, 'two edited'),
+			message(3, 'three'),
+		]);
+		expect(next.messages[0]).toBe(first.messages[0]);
+		expect(next.messages[1]).not.toBe(first.messages[1]);
+		expect(next.messages[1].content).toBe('two edited');
+		expect(next.messages).toHaveLength(3);
+	});
 	it('marks a still-pending assistant message from history as pending', () => {
 		const s = applyConversation(createAgentChatState(), CONV, [
 			{
