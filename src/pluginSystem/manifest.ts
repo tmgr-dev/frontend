@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.5';
+export const PLUGIN_API_VERSION = '1.6';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -29,6 +29,7 @@ export const PERMISSIONS = [
 	'pages:read',
 	'pages:write',
 	'pages:sections',
+	'menus:task',
 ] as const;
 
 const PAGE_PERMISSIONS = ['pages:read', 'pages:write', 'pages:sections'] as const;
@@ -41,6 +42,14 @@ export interface SettingSchema {
 	description?: string;
 	default?: number | string | boolean;
 }
+
+export interface TaskMenuContribution {
+	command: string;
+	title: string;
+}
+
+export const TASK_MENU_LOCATION = 'task/card';
+export const TASK_MENU_MAX_ITEMS = 3;
 
 export interface PluginManifest {
 	id: string;
@@ -68,6 +77,8 @@ export interface PluginManifest {
 		taskPanelSections: { id: string; title: string }[];
 		/** Extra board quick-filters, each keyed to a badge (and optionally its `key`) from this plugin's own boardCardBadges. */
 		boardFilters: { id: string; title: string; badge: string; key?: string }[];
+		/** Items in the task "…" menu, each running one of this plugin's commands with `{ taskId }`; needs menus:task. */
+		menus: { 'task/card': TaskMenuContribution[] };
 		settings: {
 			type: 'object';
 			properties: Record<string, SettingSchema>;
@@ -177,6 +188,35 @@ const parseSettings = (
 	return { type: 'object', properties };
 };
 
+const parseMenus = (
+	value: unknown,
+	commands: { id: string }[],
+	permissions: Permission[],
+): PluginManifest['contributes']['menus'] => {
+	if (value === undefined) return { [TASK_MENU_LOCATION]: [] };
+	if (!value || typeof value !== 'object' || Array.isArray(value))
+		fail('contributes.menus must be an object');
+	const locations = Object.keys(value as object);
+	const unknown = locations.find((location) => location !== TASK_MENU_LOCATION);
+	if (unknown) fail(`contributes.menus location "${unknown}" is not supported`);
+	const declared = new Set(commands.map((command) => command.id));
+	const items = list(
+		(value as Record<string, unknown>)[TASK_MENU_LOCATION],
+		`menus.${TASK_MENU_LOCATION}`,
+		(item) => {
+			const command = text(item?.command, 'menus.command', 120);
+			if (!declared.has(command))
+				fail(`menus command "${command}" is not a declared commands id`);
+			return { command, title: text(item?.title, 'menus.title', 40) };
+		},
+	);
+	if (items.length > TASK_MENU_MAX_ITEMS)
+		fail(`contributes.menus["${TASK_MENU_LOCATION}"] must have at most ${TASK_MENU_MAX_ITEMS} entries`);
+	if (items.length && !permissions.includes('menus:task'))
+		fail('contributes.menus needs the menus:task permission');
+	return { [TASK_MENU_LOCATION]: items };
+};
+
 /** Validates a manifest from any source (built-in or a folder) before anything of the plugin runs. */
 export const parseManifest = (raw: any): PluginManifest => {
 	if (!raw || typeof raw !== 'object') fail('not an object');
@@ -213,9 +253,27 @@ export const parseManifest = (raw: any): PluginManifest => {
 	for (const permission of PAGE_PERMISSIONS)
 		if (permissions.includes(permission) && apiMinor < 5)
 			fail(`${permission} needs engines.tmgr ^1.5`);
+	if (permissions.includes('menus:task') && apiMinor < 6)
+		fail('menus:task needs engines.tmgr ^1.6');
 	for (const permission of ['pages:write', 'pages:sections'] as const)
 		if (permissions.includes(permission) && !permissions.includes('pages:read'))
 			fail(`${permission} needs pages:read`);
+	const commands = list(c.commands, 'commands', (item) => {
+		const commandId = text(item?.id, 'commands.id', 120);
+		if (!commandId.startsWith(`${id}.`))
+			fail(`command ${commandId} must start with ${id}.`);
+		if (item?.deepLink !== undefined && typeof item.deepLink !== 'boolean')
+			fail(`commands.deepLink must be a boolean`);
+		const deepLink = item?.deepLink === true;
+		if (deepLink && !LOCAL_ID.test(commandId.slice(id.length + 1)))
+			fail(`command ${commandId} needs a plain local id to be linkable`);
+		return {
+			id: commandId,
+			title: text(item?.title, 'commands.title', 80),
+			...(deepLink ? { deepLink: true as const } : {}),
+		};
+	});
+	const menus = parseMenus(apiMinor < 6 ? undefined : c.menus, commands, permissions);
 	return {
 		id,
 		name: text(raw.name, 'name', 80),
@@ -251,21 +309,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 				if (items.length > 5) fail('contributes.trayItems must have at most 5 entries');
 				return items;
 			})(),
-			commands: list(c.commands, 'commands', (item) => {
-				const commandId = text(item?.id, 'commands.id', 120);
-				if (!commandId.startsWith(`${id}.`))
-					fail(`command ${commandId} must start with ${id}.`);
-				if (item?.deepLink !== undefined && typeof item.deepLink !== 'boolean')
-					fail(`commands.deepLink must be a boolean`);
-				const deepLink = item?.deepLink === true;
-				if (deepLink && !LOCAL_ID.test(commandId.slice(id.length + 1)))
-					fail(`command ${commandId} needs a plain local id to be linkable`);
-				return {
-					id: commandId,
-					title: text(item?.title, 'commands.title', 80),
-					...(deepLink ? { deepLink: true as const } : {}),
-				};
-			}),
+			commands,
 			views: list(c.views, 'views', (item) => {
 				const view = {
 					id: localId(item, 'views'),
@@ -300,6 +344,7 @@ export const parseManifest = (raw: any): PluginManifest => {
 					key,
 				};
 			}),
+			menus,
 			settings: parseSettings(c.settings),
 		},
 	};

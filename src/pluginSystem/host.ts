@@ -18,7 +18,8 @@ import {
 } from './broker';
 import { taskKey } from './dataApi';
 import { createPageEventMapper } from './pageEvents';
-import type { PluginManifest } from './manifest';
+import { TASK_MENU_LOCATION, type PluginManifest } from './manifest';
+import { resolveTaskMenuItems } from './taskMenu';
 import { toRoutine, toRoutineInstance } from './routines';
 import {
 	startPluginProcess,
@@ -1118,6 +1119,37 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					)
 					.map((c) => ({ pluginId, ...c })),
 			);
+		},
+		taskMenuItems() {
+			return resolveTaskMenuItems(
+				[...packages.values()].map(({ manifest }) => ({
+					manifest,
+					running:
+						running.has(manifest.id) &&
+						state.plugins[manifest.id]?.status === 'running',
+					registered: running.get(manifest.id)?.registered.command ?? new Set(),
+				})),
+			);
+		},
+		/** A click on a plugin's task menu item: runs that item's command with `{ taskId, workspaceId }`. */
+		async runTaskMenuCommand(pluginId: string, commandId: string, taskId: number) {
+			const pkg = packages.get(pluginId);
+			const offered =
+				!!pkg &&
+				pkg.manifest.permissions.includes('menus:task') &&
+				pkg.manifest.contributes.menus[TASK_MENU_LOCATION].some(
+					(item) => item.command === commandId,
+				);
+			if (!offered || !Number.isSafeInteger(taskId) || taskId <= 0) {
+				throw new PluginError(
+					'NOT_DECLARED',
+					`${commandId} is not a task menu item of ${pluginId}`,
+				);
+			}
+			return host.runCommand(pluginId, commandId, {
+				taskId,
+				workspaceId: state.workspace?.id ?? null,
+			});
 		},
 		async runCommand(
 			pluginId: string,
