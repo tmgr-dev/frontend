@@ -722,6 +722,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (registered[kind].has(id)) return;
 				registered[kind].add(id);
 				if (kind !== 'event' && kind !== 'command') bump(pluginId);
+				else if (
+					kind === 'command' &&
+					manifest.contributes.menus[TASK_MENU_LOCATION].some((item) => item.command === id)
+				)
+					bump(pluginId);
 			},
 			log: (level, message) => log(pluginId, level, message),
 			fetch: machine ? deps.fetch : undefined,
