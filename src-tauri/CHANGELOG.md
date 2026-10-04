@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.23 — 2026-10-04
+
+- Settings → Agent notifications now walks you through connecting an agent: after Create token you get ready-to-paste
+  setup for Claude Code, Codex, Cursor and hooks with the token filled in, plus a Send test notification button.
+- A new "AI agents" card explains the two TMGR MCP servers: tmgr for tasks and time, tmgr-notify for notifications
+  and alarms. The full setup guide is at tmgr.dev/docs/agents.
+
 ## 0.9.22 — 2026-10-04
 
 - Alarm phone shows the number alarms call you from, with Copy and Add to contacts, plus tips to let it through
