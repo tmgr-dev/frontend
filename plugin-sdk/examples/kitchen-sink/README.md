@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.5 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.6 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -68,6 +68,11 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
     (`pageData`) counts the clicks. Pages written by the plugin show it as the author; other plugins'
     `page.updated` listeners get `changedSections: ["kitchen-sink"]`. The plugin creates its own section on the
     first click with `setSection` and its `heading` option.
+
+14. Open the "…" menu of a task (board card, task list or task page). Expect a separate group with
+    **"Add a Kitchen Sink comment"** and **"Show task id"** (API 1.6, needs `menus:task`). The first adds a
+    comment to that task; the second shows a notification with the task's id and title. Disable the plugin:
+    the items disappear.
 
 ## Manual-only checks
 

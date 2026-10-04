@@ -169,6 +169,16 @@ tmgr.commands.register('tmgr-dev.kitchen-sink.cardClicked', async (args) => {
 	await tmgr.ui.notify(`Card clicked (${via})`, { title: 'Kitchen Sink' });
 });
 
+/** API 1.6: task "…" menu items; the app passes `{ taskId, workspaceId }`. */
+tmgr.commands.register('tmgr-dev.kitchen-sink.commentOnTask', async (args) => {
+	await tmgr.comments.add(args.taskId, 'Commented from the task menu by the Kitchen Sink plugin.');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.notifyTask', async (args) => {
+	const task = await tmgr.tasks.get(args.taskId);
+	await tmgr.ui.notify(`Task #${task.id}: ${task.title}`, { title: 'Kitchen Sink', taskId: task.id });
+});
+
 /** API 1.3 demo: 4 lanes, each an accented card with a nested-card list and a menu. */
 const KITCHEN_SINK_LANE_COLORS = ['blue', 'yellow', 'purple', 'green'];
 

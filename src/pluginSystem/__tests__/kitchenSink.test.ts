@@ -165,3 +165,25 @@ it('the "Kitchen Sink view" page renders card, grid and menu nodes (API 1.3)', a
 	expect(containsNodeType(tree, 'menu')).toBe(true);
 	host.dispose();
 });
+
+it('offers two task menu items and both work on a task (API 1.6)', async () => {
+	const host = await startHost();
+	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
+	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	expect(host.taskMenuItems().map((item: any) => item.title)).toEqual([
+		'Add a Kitchen Sink comment',
+		'Show task id',
+	]);
+	const before = host.tmgr.comments[task.id].length;
+	await host.clickTaskMenu('tmgr-dev.kitchen-sink.commentOnTask', task.id);
+	expect(host.tmgr.comments[task.id]).toHaveLength(before + 1);
+	await host.clickTaskMenu('tmgr-dev.kitchen-sink.notifyTask', task.id);
+	expect(host.tmgr.notifications.at(-1)).toMatchObject({
+		message: expect.stringContaining(task.title),
+		taskId: task.id,
+	});
+	await expect(
+		host.clickTaskMenu('tmgr-dev.kitchen-sink.setup', task.id),
+	).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+	host.dispose();
+});

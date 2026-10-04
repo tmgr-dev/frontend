@@ -127,3 +127,64 @@ describe('setViewBadge in the test host', () => {
 		).rejects.toThrow('views:badge needs engines.tmgr ^1.4');
 	});
 });
+
+describe('task menu in the test host (API 1.6)', () => {
+	const menuManifest = (permissions: string[], engines = '^1.6') => ({
+		id: 'tmgr-dev.menu-test',
+		name: 'Menu Test',
+		version: '1.0.0',
+		publisher: 'tmgr-dev',
+		engines: { tmgr: engines },
+		main: 'main.js',
+		permissions,
+		contributes: {
+			commands: [
+				{ id: 'tmgr-dev.menu-test.show', title: 'Show' },
+				{ id: 'tmgr-dev.menu-test.ghost', title: 'Ghost' },
+				{ id: 'tmgr-dev.menu-test.other', title: 'Other' },
+			],
+			menus: {
+				'task/card': [
+					{ command: 'tmgr-dev.menu-test.show', title: 'Show it' },
+					{ command: 'tmgr-dev.menu-test.ghost', title: 'Never registered' },
+				],
+			},
+		},
+	});
+	const menuCode = `
+tmgr.commands.register('tmgr-dev.menu-test.show', (args) => args);
+tmgr.commands.register('tmgr-dev.menu-test.other', (args) => args);
+`;
+
+	it('lists the registered items and clicks with { taskId, workspaceId }', async () => {
+		const host = await createTestHost({ manifest: menuManifest(['menus:task']), code: menuCode, quickjs });
+		expect(host.taskMenuItems()).toEqual([{ command: 'tmgr-dev.menu-test.show', title: 'Show it' }]);
+		expect(await host.clickTaskMenu('tmgr-dev.menu-test.show', 12)).toEqual({ taskId: 12, workspaceId: -1 });
+		host.dispose();
+	});
+
+	it('refuses what the app refuses', async () => {
+		const host = await createTestHost({ manifest: menuManifest(['menus:task']), code: menuCode, quickjs });
+		for (const [command, taskId] of [
+			['tmgr-dev.menu-test.other', 1],
+			['tmgr-dev.menu-test.ghost', 1],
+			['tmgr-dev.menu-test.show', 0],
+			['tmgr-dev.menu-test.show', 1.5],
+		] as const)
+			await expect(host.clickTaskMenu(command, taskId)).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		host.dispose();
+	});
+
+	it('shows nothing for a ^1.5 plugin that declares menus', async () => {
+		const host = await createTestHost({ manifest: menuManifest([], '^1.5'), code: menuCode, quickjs });
+		expect(host.taskMenuItems()).toEqual([]);
+		await expect(host.clickTaskMenu('tmgr-dev.menu-test.show', 1)).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		host.dispose();
+	});
+
+	it('refuses to load menus without the permission', async () => {
+		await expect(
+			createTestHost({ manifest: menuManifest([]), code: menuCode, quickjs }),
+		).rejects.toThrow('menus:task');
+	});
+});
