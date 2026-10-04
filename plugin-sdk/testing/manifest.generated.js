@@ -2,8 +2,8 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.5';
+exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
+exports.PLUGIN_API_VERSION = '1.6';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -33,8 +33,11 @@ exports.PERMISSIONS = [
     'pages:read',
     'pages:write',
     'pages:sections',
+    'menus:task',
 ];
 const PAGE_PERMISSIONS = ['pages:read', 'pages:write', 'pages:sections'];
+exports.TASK_MENU_LOCATION = 'task/card';
+exports.TASK_MENU_MAX_ITEMS = 3;
 exports.PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 exports.LOCAL_ID = /^[a-z0-9][a-z0-9-]*$/;
 const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):([1-9]\d{0,4})\/?$/;
@@ -112,6 +115,28 @@ const parseSettings = (value) => {
     }
     return { type: 'object', properties };
 };
+const parseMenus = (value, commands, permissions) => {
+    if (value === undefined)
+        return { [exports.TASK_MENU_LOCATION]: [] };
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        fail('contributes.menus must be an object');
+    const locations = Object.keys(value);
+    const unknown = locations.find((location) => location !== exports.TASK_MENU_LOCATION);
+    if (unknown)
+        fail(`contributes.menus location "${unknown}" is not supported`);
+    const declared = new Set(commands.map((command) => command.id));
+    const items = list(value[exports.TASK_MENU_LOCATION], `menus.${exports.TASK_MENU_LOCATION}`, (item) => {
+        const command = text(item?.command, 'menus.command', 120);
+        if (!declared.has(command))
+            fail(`menus command "${command}" is not a declared commands id`);
+        return { command, title: text(item?.title, 'menus.title', 40) };
+    });
+    if (items.length > exports.TASK_MENU_MAX_ITEMS)
+        fail(`contributes.menus["${exports.TASK_MENU_LOCATION}"] must have at most ${exports.TASK_MENU_MAX_ITEMS} entries`);
+    if (items.length && !permissions.includes('menus:task'))
+        fail('contributes.menus needs the menus:task permission');
+    return { [exports.TASK_MENU_LOCATION]: items };
+};
 /** Validates a manifest from any source (built-in or a folder) before anything of the plugin runs. */
 const parseManifest = (raw) => {
     if (!raw || typeof raw !== 'object')
@@ -147,9 +172,27 @@ const parseManifest = (raw) => {
     for (const permission of PAGE_PERMISSIONS)
         if (permissions.includes(permission) && apiMinor < 5)
             fail(`${permission} needs engines.tmgr ^1.5`);
+    if (permissions.includes('menus:task') && apiMinor < 6)
+        fail('menus:task needs engines.tmgr ^1.6');
     for (const permission of ['pages:write', 'pages:sections'])
         if (permissions.includes(permission) && !permissions.includes('pages:read'))
             fail(`${permission} needs pages:read`);
+    const commands = list(c.commands, 'commands', (item) => {
+        const commandId = text(item?.id, 'commands.id', 120);
+        if (!commandId.startsWith(`${id}.`))
+            fail(`command ${commandId} must start with ${id}.`);
+        if (item?.deepLink !== undefined && typeof item.deepLink !== 'boolean')
+            fail(`commands.deepLink must be a boolean`);
+        const deepLink = item?.deepLink === true;
+        if (deepLink && !exports.LOCAL_ID.test(commandId.slice(id.length + 1)))
+            fail(`command ${commandId} needs a plain local id to be linkable`);
+        return {
+            id: commandId,
+            title: text(item?.title, 'commands.title', 80),
+            ...(deepLink ? { deepLink: true } : {}),
+        };
+    });
+    const menus = parseMenus(apiMinor < 6 ? undefined : c.menus, commands, permissions);
     return {
         id,
         name: text(raw.name, 'name', 80),
@@ -179,21 +222,7 @@ const parseManifest = (raw) => {
                     fail('contributes.trayItems must have at most 5 entries');
                 return items;
             })(),
-            commands: list(c.commands, 'commands', (item) => {
-                const commandId = text(item?.id, 'commands.id', 120);
-                if (!commandId.startsWith(`${id}.`))
-                    fail(`command ${commandId} must start with ${id}.`);
-                if (item?.deepLink !== undefined && typeof item.deepLink !== 'boolean')
-                    fail(`commands.deepLink must be a boolean`);
-                const deepLink = item?.deepLink === true;
-                if (deepLink && !exports.LOCAL_ID.test(commandId.slice(id.length + 1)))
-                    fail(`command ${commandId} needs a plain local id to be linkable`);
-                return {
-                    id: commandId,
-                    title: text(item?.title, 'commands.title', 80),
-                    ...(deepLink ? { deepLink: true } : {}),
-                };
-            }),
+            commands,
             views: list(c.views, 'views', (item) => {
                 const view = {
                     id: localId(item, 'views'),
@@ -224,6 +253,7 @@ const parseManifest = (raw) => {
                     key,
                 };
             }),
+            menus,
             settings: parseSettings(c.settings),
         },
     };

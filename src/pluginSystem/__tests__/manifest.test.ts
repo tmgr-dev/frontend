@@ -45,6 +45,7 @@ it('accepts a complete manifest and fills defaults', () => {
 		views: [],
 		taskPanelSections: [],
 		boardFilters: [],
+		menus: { 'task/card': [] },
 		settings: null,
 	});
 });
@@ -132,7 +133,8 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
-	[{ engines: { tmgr: '^1.6' } }, 'engines'],
+	[{ engines: { tmgr: '^1.7' } }, 'engines'],
+	[{ permissions: ['menus:task'], engines: { tmgr: '^1.5' } }, 'menus:task needs engines.tmgr ^1.6'],
 	[{ permissions: ['pages:read'], engines: { tmgr: '^1.4' } }, 'pages:read needs engines.tmgr ^1.5'],
 	[{ permissions: ['pages:write'], engines: { tmgr: '^1.4' } }, 'pages:write needs engines.tmgr ^1.5'],
 	[{ permissions: ['pages:sections'], engines: { tmgr: '^1.0' } }, 'pages:sections needs engines.tmgr ^1.5'],
@@ -153,13 +155,14 @@ it.each([
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
 });
 
-it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4 and 1.5', () => {
+it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 and 1.6', () => {
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.4' } }).id).toBe(valid.id);
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.5' } }).id).toBe(valid.id);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.6' } }).id).toBe(valid.id);
 });
 
 it('accepts the pages permissions for ^1.5', () => {
@@ -204,9 +207,9 @@ it('ignores contribution kinds it does not know', () => {
 	expect(
 		parseManifest({
 			...valid,
-			contributes: { ...valid.contributes, menus: [{}] },
+			contributes: { ...valid.contributes, toolbars: [{}] },
 		}).contributes,
-	).not.toHaveProperty('menus');
+	).not.toHaveProperty('toolbars');
 });
 
 it('accepts network origins only on this computer', () => {
@@ -287,4 +290,107 @@ it('lets a view name an html page from its ui folder', () => {
 	]) {
 		expect(() => parseManifest(withUi(bad))).toThrow('ui');
 	}
+});
+
+describe('contributes.menus', () => {
+	const menuManifest = (menus: unknown, patch: object = {}) => ({
+		...valid,
+		engines: { tmgr: '^1.6' },
+		permissions: ['tasks:read', 'menus:task'],
+		contributes: {
+			...valid.contributes,
+			commands: [
+				{ id: 'tmgr.estimate.a', title: 'A' },
+				{ id: 'tmgr.estimate.b', title: 'B' },
+				{ id: 'tmgr.estimate.c', title: 'C' },
+				{ id: 'tmgr.estimate.d', title: 'D' },
+			],
+			menus,
+		},
+		...patch,
+	});
+	const item = (letter: string, title = letter.toUpperCase()) => ({
+		command: `tmgr.estimate.${letter}`,
+		title,
+	});
+
+	it('accepts task/card items with menus:task on ^1.6', () => {
+		expect(
+			parseManifest(menuManifest({ 'task/card': [item('a'), item('b')] }))
+				.contributes.menus,
+		).toEqual({ 'task/card': [item('a'), item('b')] });
+	});
+
+	it('accepts menus:task alone and empty menus', () => {
+		expect(parseManifest(menuManifest(undefined)).contributes.menus).toEqual({
+			'task/card': [],
+		});
+		expect(parseManifest(menuManifest({})).contributes.menus).toEqual({
+			'task/card': [],
+		});
+	});
+
+	it('needs a declared command', () => {
+		expect(() =>
+			parseManifest(
+				menuManifest({
+					'task/card': [{ command: 'tmgr.estimate.zzz', title: 'Z' }],
+				}),
+			),
+		).toThrow('not a declared commands id');
+	});
+
+	it('allows at most 3 items', () => {
+		expect(
+			parseManifest(
+				menuManifest({ 'task/card': [item('a'), item('b'), item('c')] }),
+			).contributes.menus['task/card'],
+		).toHaveLength(3);
+		expect(() =>
+			parseManifest(
+				menuManifest({
+					'task/card': [item('a'), item('b'), item('c'), item('d')],
+				}),
+			),
+		).toThrow('at most 3');
+	});
+
+	it('limits the title to 40 characters', () => {
+		expect(
+			parseManifest(menuManifest({ 'task/card': [item('a', 'x'.repeat(40))] }))
+				.contributes.menus['task/card'][0].title,
+		).toHaveLength(40);
+		expect(() =>
+			parseManifest(menuManifest({ 'task/card': [item('a', 'x'.repeat(41))] })),
+		).toThrow('menus.title');
+	});
+
+	it('needs the menus:task permission for any item', () => {
+		expect(() =>
+			parseManifest(
+				menuManifest({ 'task/card': [item('a')] }, { permissions: ['tasks:read'] }),
+			),
+		).toThrow('menus:task');
+	});
+
+	it('refuses a location it does not know', () => {
+		expect(() =>
+			parseManifest(menuManifest({ 'task/card': [], 'board/top': [item('a')] })),
+		).toThrow('"board/top" is not supported');
+	});
+
+	it('refuses menus that are not an object', () => {
+		expect(() => parseManifest(menuManifest([item('a')]))).toThrow('menus');
+	});
+
+	it('ignores menus of a plugin written for ^1.5', () => {
+		expect(
+			parseManifest(
+				menuManifest(
+					{ 'task/card': [item('a')], 'board/top': [item('b')] },
+					{ engines: { tmgr: '^1.5' }, permissions: ['tasks:read'] },
+				),
+			).contributes.menus,
+		).toEqual({ 'task/card': [] });
+	});
 });

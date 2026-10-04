@@ -20,7 +20,7 @@ host.dispose();
 ```
 
 See `index.d.ts` for the full `createTestHost` options and the returned host's shape (`tmgr` state,
-`emit`, `runCommand`, `renderPage`, `renderSection`, `badges`, `fireAlarms`, `calls`, `dispose`).
+`emit`, `runCommand`, `taskMenuItems`, `clickTaskMenu`, `renderPage`, `renderSection`, `badges`, `fireAlarms`, `calls`, `dispose`).
 `tmgr.routines`/`tmgr.routineInstances` back `tmgr.routines.*` (local workspaces only); seed them with
 the `routines`/`routineInstances` options.
 
@@ -40,6 +40,11 @@ option and read it back from `host.tmgr.pages` / `host.tmgr.pageData`. It keeps 
 stale `pages.update` with the `page_conflict` error (`error.current` is the page as it is now), refuses
 `setSection` on existing sections not owned by `plugin:<your id>` (a missing section is created), and appends by `##` heading. It is a model of
 the server's rules, not the server: search is a plain substring match.
+
+`taskMenuItems()` lists the task "…" menu items the app would show (API 1.6): declared in
+`contributes.menus["task/card"]`, `menus:task` granted and the command registered. `clickTaskMenu(command,
+taskId)` refuses like the app does (`NOT_DECLARED` for a command that is not one of those items or a
+`taskId` that is not a positive integer), then runs the command with `{ taskId, workspaceId }`.
 
 ## Why CommonJS
 

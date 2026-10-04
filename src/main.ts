@@ -28,7 +28,7 @@ import '@fontsource/exo-2/600.css';
 import '@fontsource/exo-2/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
-import { createApp } from 'vue';
+import { createApp, watch } from 'vue';
 import App from './App.vue';
 
 if (isDesktopApp()) {
@@ -59,6 +59,38 @@ if (isDesktopApp()) {
 		);
 		void import('@/utils/taskWindowBridge').then(({ installTaskWindowHost }) =>
 			installTaskWindowHost(router, store),
+		);
+		void Promise.all([
+			import('@/pluginSystem/taskMenuRelay'),
+			import('@/pluginSystem/taskMenuItems'),
+			import('@/pluginSystem/state'),
+		]).then(([relay, menu, state]) =>
+			relay.installTaskMenuRelayHost(
+				menu.currentTaskMenuItems,
+				() => state.pluginState.workspace?.id ?? null,
+				async (pluginId, command, taskId, workspaceId) => {
+					const host = state.pluginHost();
+					if (!host) throw new Error('Plugins are not ready');
+					await host.runTaskMenuCommand(pluginId, command, taskId, workspaceId);
+				},
+				(onChange) =>
+					watch(
+						() =>
+							JSON.stringify([
+								state.pluginState.workspace?.id ?? null,
+								menu.currentTaskMenuItems(),
+							]),
+						onChange,
+					),
+			),
+		);
+	}
+	if (isDetachedWindow) {
+		void import('@/pluginSystem/taskMenuRelay').then(({ installTaskMenuRelayClient }) =>
+			installTaskMenuRelayClient(desktopWindowLabel() as string, () => {
+				const id = Number(store.getters.currentWorkspaceId);
+				return Number.isSafeInteger(id) && id > 0 ? id : null;
+			}),
 		);
 	}
 	if (isMainWindow || isDetachedWindow) {

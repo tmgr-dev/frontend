@@ -150,6 +150,10 @@ export interface TestHost {
 	/** Dispatches an event to every handler the plugin registered for `event.type`. */
 	emit(event: { type: string; [key: string]: unknown }): Promise<unknown>;
 	runCommand(id: string, args?: unknown): Promise<unknown>;
+	/** The task "…" menu items the app would show for this plugin (API 1.6): declared in `contributes.menus["task/card"]`, `menus:task` granted and the command registered. */
+	taskMenuItems(): { command: string; title: string }[];
+	/** Clicks a task menu item like the app does: refuses a command that is not one of `taskMenuItems()` or a `taskId` that is not a positive integer (`NOT_DECLARED`), then runs the command with `{ taskId, workspaceId }`. */
+	clickTaskMenu(command: string, taskId: number): Promise<unknown>;
 	/** Renders a declarative page, sanitised the same way the app sanitises it. */
 	renderPage(id: string, props?: unknown): Promise<unknown>;
 	/** Renders a declarative task panel section, sanitised the same way the app sanitises it. */

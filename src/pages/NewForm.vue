@@ -41,6 +41,13 @@
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
+	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
+	import { usePluginTaskMenu } from '@/composable/usePluginTaskMenu';
 	import TimeCounter from '@/components/TimeCounter.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -132,7 +139,15 @@
 		UserIcon,
 	} from '@heroicons/vue/24/outline';
 	import { useMagicKeys } from '@vueuse/core';
-	import { Bot, Loader2, Save, Send, Sparkles, Upload } from 'lucide-vue-next';
+	import {
+		Bot,
+		Loader2,
+		MoreVertical,
+		Save,
+		Send,
+		Sparkles,
+		Upload,
+	} from 'lucide-vue-next';
 	import { uploadTaskFile } from '@/actions/tmgr/files';
 	import { useToast } from '@/components/ui/toast/use-toast';
 	import { createFileDragDepth, isFileDrag } from '@/utils/fileDrag';
@@ -1191,6 +1206,7 @@
 		null,
 	);
 	const { toast } = useToast();
+	const { items: pluginTaskMenuItems } = usePluginTaskMenu();
 
 	const isUploadingPendingFiles = ref(false);
 
@@ -2183,6 +2199,21 @@
 						>
 							<Bot class="h-3.5 w-3.5" />
 						</button>
+
+						<DropdownMenu v-if="form.id && pluginTaskMenuItems.length">
+							<DropdownMenuTrigger as-child>
+								<button
+									type="button"
+									class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+									aria-label="Task actions"
+								>
+									<MoreVertical class="size-4" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" class="w-56">
+								<PluginTaskMenuItems :task-id="form.id" :separator="false" />
+							</DropdownMenuContent>
+						</DropdownMenu>
 
 						<SettingsComponent :form="form" />
 

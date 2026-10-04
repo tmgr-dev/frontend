@@ -1976,3 +1976,135 @@ it('delivers page events with changed sections to pages:read plugins, never back
 	]);
 	host.dispose();
 });
+
+describe('task menu items', () => {
+	const menuPkg = (code: string, permissions: any[] = ['menus:task']) =>
+		pkg(
+			'tmgr.menu',
+			code,
+			permissions,
+			{
+				commands: [
+					{ id: 'tmgr.menu.show', title: 'Show' },
+					{ id: 'tmgr.menu.other', title: 'Other' },
+				],
+				menus: { 'task/card': [{ command: 'tmgr.menu.show', title: 'Show it' }] },
+			},
+			'builtin',
+			'^1.6',
+		);
+	const code = `tmgr.commands.register('tmgr.menu.show', (args) => args);
+		tmgr.commands.register('tmgr.menu.other', (args) => args);`;
+
+	it('lists items once the plugin runs and registered the command', async () => {
+		const { host } = setup([menuPkg(code)]);
+		await host.load();
+		expect(host.taskMenuItems()).toEqual([]);
+		await host.activate(LOCAL);
+		expect(host.taskMenuItems()).toEqual([
+			{
+				pluginId: 'tmgr.menu',
+				pluginName: 'tmgr.menu',
+				command: 'tmgr.menu.show',
+				title: 'Show it',
+			},
+		]);
+		host.dispose();
+	});
+
+	it('lists nothing when the command is not registered or the plugin is disabled', async () => {
+		const { host } = setup([menuPkg(`tmgr.commands.register('tmgr.menu.other', () => 1);`)]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.taskMenuItems()).toEqual([]);
+		host.dispose();
+		const second = setup([menuPkg(code)]);
+		await second.host.load();
+		await second.host.activate(LOCAL);
+		await second.host.setEnabled('tmgr.menu', false);
+		expect(second.host.taskMenuItems()).toEqual([]);
+		second.host.dispose();
+	});
+
+	it('runs the command with the task id and the workspace id', async () => {
+		const { host } = setup([menuPkg(code)]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(await host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 42)).toEqual({
+			taskId: 42,
+			workspaceId: LOCAL.id,
+		});
+		host.dispose();
+	});
+
+	it('refuses a command that is not a menu item and a bad task id', async () => {
+		const { host } = setup([menuPkg(code)]);
+		await host.load();
+		await host.activate(LOCAL);
+		await expect(
+			host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.other', 1),
+		).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		await expect(
+			host.runTaskMenuCommand('tmgr.nobody', 'tmgr.menu.show', 1),
+		).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		for (const bad of [0, -1, 1.5, NaN, Infinity]) {
+			await expect(
+				host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', bad),
+			).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		}
+		host.dispose();
+	});
+
+	it('refuses a task from another workspace than the plugins run in', async () => {
+		const { host } = setup([menuPkg(code)]);
+		await host.load();
+		await host.activate(LOCAL);
+		await expect(
+			host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 1, LOCAL.id + 1),
+		).rejects.toMatchObject({ code: 'WORKSPACE_CHANGED' });
+		expect(
+			await host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 1, LOCAL.id),
+		).toEqual({ taskId: 1, workspaceId: LOCAL.id });
+		host.dispose();
+	});
+
+	it('refuses a menu item of a plugin without menus:task', async () => {
+		const { host } = setup([
+			pkg(
+				'tmgr.menu',
+				code,
+				[],
+				{
+					commands: [{ id: 'tmgr.menu.show', title: 'Show' }],
+					menus: { 'task/card': [{ command: 'tmgr.menu.show', title: 'x' }] },
+				},
+				'builtin',
+				'^1.5',
+			),
+		]);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.taskMenuItems()).toEqual([]);
+		await expect(
+			host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 1),
+		).rejects.toMatchObject({ code: 'NOT_DECLARED' });
+		host.dispose();
+	});
+
+	it('bumps the plugin revision when a menu command registers, not for other commands', async () => {
+		const withMenu = setup([menuPkg(code)]);
+		await withMenu.host.load();
+		await withMenu.host.activate(LOCAL);
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		expect(withMenu.state.revisions['tmgr.menu']).toBeGreaterThan(0);
+		withMenu.host.dispose();
+		const without = setup([
+			menuPkg(`tmgr.commands.register('tmgr.menu.other', () => 1);`),
+		]);
+		await without.host.load();
+		await without.host.activate(LOCAL);
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		expect(without.state.revisions['tmgr.menu']).toBeUndefined();
+		without.host.dispose();
+	});
+});

@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.5 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.5" },
+	"description": "Exercises every plugin API v1.6 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.6" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",
@@ -27,7 +27,8 @@
 		"views:badge",
 		"pages:read",
 		"pages:write",
-		"pages:sections"
+		"pages:sections",
+		"menus:task"
 	],
 	"links": { "allowedDomains": ["example.com"] },
 	"contributes": {
@@ -41,8 +42,16 @@
 			{ "id": "tmgr-dev.kitchen-sink.ping", "title": "Ping Kitchen Sink", "deepLink": true },
 			{ "id": "tmgr-dev.kitchen-sink.captureNotes", "title": "Capture today's notes" },
 			{ "id": "tmgr-dev.kitchen-sink.writePage", "title": "Write a Kitchen Sink page" },
-			{ "id": "tmgr-dev.kitchen-sink.cardClicked", "title": "Kitchen Sink card clicked (demo)" }
+			{ "id": "tmgr-dev.kitchen-sink.cardClicked", "title": "Kitchen Sink card clicked (demo)" },
+			{ "id": "tmgr-dev.kitchen-sink.commentOnTask", "title": "Add a Kitchen Sink comment" },
+			{ "id": "tmgr-dev.kitchen-sink.notifyTask", "title": "Show task id" }
 		],
+		"menus": {
+			"task/card": [
+				{ "command": "tmgr-dev.kitchen-sink.commentOnTask", "title": "Add a Kitchen Sink comment" },
+				{ "command": "tmgr-dev.kitchen-sink.notifyTask", "title": "Show task id" }
+			]
+		},
 		"views": [
 			{ "id": "view", "title": "Kitchen Sink view" },
 			{ "id": "window", "title": "Kitchen Sink window", "ui": "ui/page.html" }

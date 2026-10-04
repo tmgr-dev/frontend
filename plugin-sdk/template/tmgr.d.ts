@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.5). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.6). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -91,6 +91,15 @@ interface TmgrTask {
 	/** ISO 8601 date-time, or null when no deadline is set. */
 	expired_at: string | null;
 	[field: string]: unknown;
+}
+
+/**
+ * API 1.6: what a command listed in `contributes.menus["task/card"]` receives as `args` when the user picks
+ * it in a task's "…" menu. `workspaceId` is the workspace the task is open in (null when unknown).
+ */
+interface TaskMenuCommandArgs {
+	taskId: number;
+	workspaceId: number | null;
 }
 
 interface TmgrTaskFields {
@@ -575,6 +584,11 @@ declare const tmgr: {
 	 * The command id must be declared in contributes.commands and start with the plugin id. A command with
 	 * `"deepLink": true` in its manifest entry can also be run from `tmgr://plugin/<id>/command/<local id>`
 	 * links; needs the deeplinks permission, and the user confirms the first time per command and version.
+	 * API 1.6, needs `engines.tmgr` `^1.6` and menus:task: a command can also be listed as an item of the
+	 * task "…" menu with `"contributes": { "menus": { "task/card": [{ "command": "<id>", "title": "..." }] } }`
+	 * (at most 3 items, title at most 40 characters, the command must be declared in contributes.commands).
+	 * Its handler then receives a TaskMenuCommandArgs: `tmgr.commands.register(id, (args) => { const { taskId } = args as TaskMenuCommandArgs; ... })`.
+	 * The item is shown only while the plugin runs and has registered the command.
 	 */
 	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
 	/** Needs the alarms permission. Host-scheduled: fires even if the plugin was not running when it was due, coalesced into one event. */

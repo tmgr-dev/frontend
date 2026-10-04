@@ -319,6 +319,13 @@
 					a plugin write only into its own managed sections. Each is shown when
 					you install or update. Plugins cannot add page types.
 				</p>
+				<p class="text-muted-foreground">
+					API 1.6: a plugin can add up to 3 items to the task … menu, on board
+					cards, in the task list and on the task page. It needs menus:task,
+					which is shown when you install or update. The items appear in their
+					own group while the plugin is running; with more than 4 plugin items
+					in total they move into one Plugins submenu.
+				</p>
 			</section>
 		</div>
 	</PageContainer>

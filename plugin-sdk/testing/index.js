@@ -617,6 +617,11 @@ const createTestHost = async (options = {}) => {
 		},
 	});
 
+	const menuItems = () =>
+		manifest.permissions.includes('menus:task')
+			? manifest.contributes.menus['task/card']
+			: [];
+
 	const calls = [];
 	const sandbox = createSandbox({
 		quickjs,
@@ -640,6 +645,20 @@ const createTestHost = async (options = {}) => {
 			return sandbox.dispatch('event', type, payload);
 		},
 		runCommand: (id, args) => sandbox.dispatch('command', id, args ?? null),
+		taskMenuItems: () =>
+			menuItems()
+				.filter((item) => registered.command.has(item.command))
+				.map((item) => ({ command: item.command, title: item.title })),
+		clickTaskMenu: async (command, taskId) => {
+			if (
+				!menuItems().some((item) => item.command === command) ||
+				!registered.command.has(command) ||
+				!Number.isSafeInteger(taskId) ||
+				taskId <= 0
+			)
+				throw new PluginError('NOT_DECLARED', `${command} is not a task menu item of ${manifest.id}`);
+			return sandbox.dispatch('command', command, { taskId, workspaceId: workspace.id });
+		},
 		renderPage: async (id, props) =>
 			sanitizeTree(
 				await sandbox.dispatch('page', id, props ?? null),

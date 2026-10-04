@@ -249,6 +249,8 @@ export const desktopPage = async (
           (window.__listeners[args.event] ??= []).push(args.handler);
           return Promise.resolve(args.handler);
         }
+        if (command === 'plugin:event|emit' || command === 'plugin:event|emit_to')
+          (window.__emitted ??= []).push({ command, ...args });
         if (command.startsWith('plugin:event|')) return Promise.resolve(null);
         return window.__shellInvoke(
           command,
