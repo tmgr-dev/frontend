@@ -1137,7 +1137,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			);
 		},
 		/** A click on a plugin's task menu item: runs that item's command with `{ taskId, workspaceId }`. */
-		async runTaskMenuCommand(pluginId: string, commandId: string, taskId: number) {
+		async runTaskMenuCommand(
+			pluginId: string,
+			commandId: string,
+			taskId: number,
+			workspaceId?: number | null,
+		) {
 			const pkg = packages.get(pluginId);
 			const offered =
 				!!pkg &&
@@ -1149,6 +1154,12 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				throw new PluginError(
 					'NOT_DECLARED',
 					`${commandId} is not a task menu item of ${pluginId}`,
+				);
+			}
+			if (workspaceId != null && workspaceId !== state.workspace?.id) {
+				throw new PluginError(
+					'WORKSPACE_CHANGED',
+					'This task is in another workspace than the one plugins run in',
 				);
 			}
 			return host.runCommand(pluginId, commandId, {

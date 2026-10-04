@@ -67,18 +67,30 @@ if (isDesktopApp()) {
 		]).then(([relay, menu, state]) =>
 			relay.installTaskMenuRelayHost(
 				menu.currentTaskMenuItems,
-				async (pluginId, command, taskId) => {
+				() => state.pluginState.workspace?.id ?? null,
+				async (pluginId, command, taskId, workspaceId) => {
 					const host = state.pluginHost();
 					if (!host) throw new Error('Plugins are not ready');
-					await host.runTaskMenuCommand(pluginId, command, taskId);
+					await host.runTaskMenuCommand(pluginId, command, taskId, workspaceId);
 				},
-				(onChange) => watch(() => JSON.stringify(menu.currentTaskMenuItems()), onChange),
+				(onChange) =>
+					watch(
+						() =>
+							JSON.stringify([
+								state.pluginState.workspace?.id ?? null,
+								menu.currentTaskMenuItems(),
+							]),
+						onChange,
+					),
 			),
 		);
 	}
 	if (isDetachedWindow) {
 		void import('@/pluginSystem/taskMenuRelay').then(({ installTaskMenuRelayClient }) =>
-			installTaskMenuRelayClient(desktopWindowLabel() as string),
+			installTaskMenuRelayClient(desktopWindowLabel() as string, () => {
+				const id = Number(store.getters.currentWorkspaceId);
+				return Number.isSafeInteger(id) && id > 0 ? id : null;
+			}),
 		);
 	}
 	if (isMainWindow || isDetachedWindow) {

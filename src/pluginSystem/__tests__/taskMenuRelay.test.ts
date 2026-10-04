@@ -4,6 +4,7 @@ import {
 	TASK_MENU_REQUEST,
 	TASK_MENU_RESULT,
 	TASK_MENU_RUN,
+	TASK_MENU_RUN_TIMEOUT_MS,
 	createTaskMenuRelayClient,
 	createTaskMenuRelayHost,
 	parseTaskMenuItems,
@@ -21,6 +22,8 @@ const wire = (
 	items: TaskMenuItem[],
 	run = jest.fn().mockResolvedValue(undefined),
 	timeoutMs = 50,
+	windowWorkspace = 5,
+	mainWorkspace: number | null = 5,
 ) => {
 	let host!: ReturnType<typeof createTaskMenuRelayHost>;
 	let client!: ReturnType<typeof createTaskMenuRelayClient>;
@@ -32,10 +35,16 @@ const wire = (
 		if (channel === TASK_MENU_ITEMS) client.onItems(payload);
 		if (channel === TASK_MENU_RESULT) client.onResult(payload);
 	};
-	host = createTaskMenuRelayHost({ send: deliver, getItems: () => items, run });
+	host = createTaskMenuRelayHost({
+		send: deliver,
+		getItems: () => items,
+		getWorkspaceId: () => mainWorkspace,
+		run,
+	});
 	client = createTaskMenuRelayClient({
 		label: 'task-7',
 		send: deliver,
+		workspaceId: () => windowWorkspace,
 		timeoutMs,
 		nextId: (() => {
 			let n = 0;
@@ -61,10 +70,13 @@ describe('payload parsing', () => {
 			pluginId: 'p',
 			command: 'c',
 			taskId: 3,
+			workspaceId: 5,
 		};
 		expect(parseTaskMenuRun(ok)).toEqual(ok);
 		for (const taskId of [0, -1, 1.5, '3', null, NaN])
 			expect(parseTaskMenuRun({ ...ok, taskId })).toBeNull();
+		for (const workspaceId of [0, undefined, '5', null])
+			expect(parseTaskMenuRun({ ...ok, workspaceId })).toBeNull();
 		expect(parseTaskMenuRun({ ...ok, pluginId: undefined })).toBeNull();
 		expect(parseTaskMenuRun([])).toBeNull();
 	});
@@ -90,6 +102,7 @@ describe('relay round trip', () => {
 	it('stays hidden when the main window never answers', async () => {
 		const client = createTaskMenuRelayClient({
 			label: 'task-7',
+			workspaceId: () => 5,
 			send: () => undefined,
 		});
 		await client.requestSnapshot();
@@ -113,7 +126,7 @@ describe('relay round trip', () => {
 	it('runs a command in the main window and resolves on a null error', async () => {
 		const { client, run, log } = wire([item]);
 		await client.run(item, 9);
-		expect(run).toHaveBeenCalledWith('dev.a', 'dev.a.go', 9);
+		expect(run).toHaveBeenCalledWith('dev.a', 'dev.a.go', 9, 5);
 		expect(log[0]).toEqual({
 			target: 'main',
 			channel: TASK_MENU_RUN,
@@ -123,6 +136,7 @@ describe('relay round trip', () => {
 				pluginId: 'dev.a',
 				command: 'dev.a.go',
 				taskId: 9,
+				workspaceId: 5,
 			},
 		});
 		expect(log[1]).toEqual({
@@ -143,6 +157,7 @@ describe('relay round trip', () => {
 	it('ignores a result with another request id and times out', async () => {
 		const client = createTaskMenuRelayClient({
 			label: 'task-7',
+			workspaceId: () => 5,
 			send: () => undefined,
 			timeoutMs: 20,
 		});
@@ -159,6 +174,7 @@ describe('relay round trip', () => {
 			pluginId: 'p',
 			command: 'c',
 			taskId: -4,
+			workspaceId: 5,
 		});
 		expect(run).not.toHaveBeenCalled();
 		expect(log).toHaveLength(0);
@@ -167,8 +183,36 @@ describe('relay round trip', () => {
 	it('rejects when sending fails', async () => {
 		const client = createTaskMenuRelayClient({
 			label: 'task-7',
+			workspaceId: () => 5,
 			send: () => Promise.reject(new Error('no bridge')),
 		});
 		await expect(client.run(item, 1)).rejects.toThrow('no bridge');
+	});
+
+	it('hides items snapshotted for another workspace than the window shows', async () => {
+		const { client } = wire([item], undefined, 50, 6, 5);
+		await client.requestSnapshot();
+		expect(client.items.value).toEqual([]);
+	});
+
+	it('hides items when the main window runs plugins in no workspace', async () => {
+		const { client } = wire([item], undefined, 50, 5, null);
+		await client.requestSnapshot();
+		expect(client.items.value).toEqual([]);
+	});
+
+	it('refuses to run when the window has no workspace', async () => {
+		const send = jest.fn();
+		const client = createTaskMenuRelayClient({
+			label: 'task-7',
+			workspaceId: () => null,
+			send,
+		});
+		await expect(client.run(item, 1)).rejects.toThrow('not available');
+		expect(send).not.toHaveBeenCalled();
+	});
+
+	it('waits longer than a plugin may wait on the user', () => {
+		expect(TASK_MENU_RUN_TIMEOUT_MS).toBeGreaterThan(5 * 60_000);
 	});
 });

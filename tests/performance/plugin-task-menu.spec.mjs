@@ -197,17 +197,24 @@ test('the detached task window shows the items the main window sends and relays 
       }),
     ]);
 
-  await page.evaluate(() =>
-    window.__emit('plugin-task-menu://items', {
-      items: [
-        {
-          pluginId: 'dev.sender',
-          pluginName: 'Sender',
-          command: 'dev.sender.c0',
-          title: 'Send to chat',
-        },
-      ],
-    }),
+  const workspaceId = await page.evaluate(async () => {
+    const { default: store } = await import('/src/store/index.js');
+    return Number(store.getters.currentWorkspaceId);
+  });
+  await page.evaluate(
+    (workspaceId) =>
+      window.__emit('plugin-task-menu://items', {
+        workspaceId,
+        items: [
+          {
+            pluginId: 'dev.sender',
+            pluginName: 'Sender',
+            command: 'dev.sender.c0',
+            title: 'Send to chat',
+          },
+        ],
+      }),
+    workspaceId,
   );
   await page.getByRole('button', { name: 'Task actions' }).click();
   await expect(items(page)).toHaveText([/Send to chat/]);
@@ -226,6 +233,7 @@ test('the detached task window shows the items the main window sends and relays 
     pluginId: 'dev.sender',
     command: 'dev.sender.c0',
     taskId: 1,
+    workspaceId,
   });
   await page.evaluate(
     (requestId) =>

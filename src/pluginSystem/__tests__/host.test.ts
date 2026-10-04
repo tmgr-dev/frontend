@@ -2055,6 +2055,19 @@ describe('task menu items', () => {
 		host.dispose();
 	});
 
+	it('refuses a task from another workspace than the plugins run in', async () => {
+		const { host } = setup([menuPkg(code)]);
+		await host.load();
+		await host.activate(LOCAL);
+		await expect(
+			host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 1, LOCAL.id + 1),
+		).rejects.toMatchObject({ code: 'WORKSPACE_CHANGED' });
+		expect(
+			await host.runTaskMenuCommand('tmgr.menu', 'tmgr.menu.show', 1, LOCAL.id),
+		).toEqual({ taskId: 1, workspaceId: LOCAL.id });
+		host.dispose();
+	});
+
 	it('refuses a menu item of a plugin without menus:task', async () => {
 		const { host } = setup([
 			pkg(
