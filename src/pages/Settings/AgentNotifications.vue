@@ -4,9 +4,12 @@
 			<template #subtitle>
 				Get a push notification on your phone when Claude Code, Codex or
 				another AI agent needs you — the recipient is always you, the token
-				owner, and a token works across every workspace you're in.
+				owner, and a token works across every workspace you're in. Create a
+				token, then connect Claude Code, Codex or Cursor in one step.
 			</template>
 		</PageHeader>
+
+		<AiAgentsOverview class="mb-6" />
 
 		<SettingsSection title="New token" class="mb-6">
 			<form class="flex flex-col gap-3" @submit.prevent="submitCreate">
@@ -40,9 +43,14 @@
 						{{ copied ? 'Copied' : 'Copy' }}
 					</Button>
 				</div>
-				<Button type="button" size="sm" class="w-fit" @click="issuedToken = null">
-					Done
-				</Button>
+				<div class="flex items-center gap-2">
+					<Button type="button" size="sm" @click="dialogOpen = true">
+						Show setup
+					</Button>
+					<Button type="button" variant="outline" size="sm" @click="dismissToken">
+						Done
+					</Button>
+				</div>
 			</div>
 		</SettingsSection>
 
@@ -87,22 +95,81 @@
 			</div>
 		</SettingsSection>
 
-		<SettingsSection title="Setup" class="mt-6">
-			<div class="flex flex-col gap-2 text-sm text-muted-foreground">
-				<p>Configure your agent with:</p>
-				<pre
-					class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs text-ink"
-					>TMGR_URL={{ apiUrl }}
-TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
-				>
+		<SettingsSection title="How to connect" class="mt-6">
+			<div class="flex flex-col gap-3 text-sm text-muted-foreground">
 				<p>
-					See <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">tools/tmgr-notify</code>
-					in the backend repo for the notify CLI and its README.
+					Already have a token? Use these snippets and replace
+					<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">&lt;your token&gt;</code>
+					with it.
+				</p>
+				<Collapsible v-model:open="snippetsOpen" class="flex flex-col gap-3">
+					<CollapsibleTrigger as-child>
+						<Button type="button" variant="outline" size="sm" class="w-fit">
+							{{ snippetsOpen ? 'Hide snippets' : 'Show snippets' }}
+						</Button>
+					</CollapsibleTrigger>
+					<CollapsibleContent>
+						<AgentConnectTabs />
+					</CollapsibleContent>
+				</Collapsible>
+				<p>
+					<router-link to="/docs/agents" class="text-primary hover:underline">
+						Full setup guide
+					</router-link>
 				</p>
 			</div>
 		</SettingsSection>
 
-		<AlarmPhoneSection class="mt-6" />
+		<AlarmPhoneSection id="alarm-phone" class="mt-6" />
+
+		<Dialog :open="dialogOpen && !!issuedToken" @update:open="(v) => (dialogOpen = v)">
+			<DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[680px] [&>*]:min-w-0">
+				<DialogHeader>
+					<DialogTitle>Connect your agent</DialogTitle>
+				</DialogHeader>
+				<template v-if="issuedToken">
+					<div class="flex min-w-0 flex-col gap-2">
+						<p class="text-sm font-medium text-amber-600 dark:text-amber-400">
+							Copy this token now — you won't see it again.
+						</p>
+						<CodeSnippet :code="issuedToken.token" label="Notify token" />
+					</div>
+
+					<AgentConnectTabs :token="issuedToken.token" />
+
+					<div class="flex flex-col gap-2 border-t border-border pt-4">
+						<div class="flex flex-wrap items-center gap-3">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								:disabled="testing"
+								@click="sendTest"
+							>
+								{{ testing ? 'Sending…' : 'Send test notification' }}
+							</Button>
+							<p v-if="testMessage" class="text-sm" role="status">
+								{{ testMessage }}
+							</p>
+						</div>
+						<p class="text-sm text-muted-foreground">
+							Want a phone call for incidents?
+							<button
+								type="button"
+								class="text-primary hover:underline"
+								@click="goToAlarmPhone"
+							>
+								Set up an alarm phone
+							</button>
+							below.
+						</p>
+					</div>
+				</template>
+				<DialogFooter>
+					<Button type="button" @click="dismissToken">Done</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	</PageContainer>
 </template>
 
@@ -111,27 +178,55 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 		createNotifyToken,
 		listNotifyTokens,
 		revokeNotifyToken,
+		sendTestNotification,
 		type IssuedNotifyToken,
+		type TestNotificationResult,
 		type NotifyToken,
 	} from '@/actions/tmgr/notifyTokens';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
+	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
 	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
 	import { Button } from '@/components/ui/button';
+	import {
+		Collapsible,
+		CollapsibleContent,
+		CollapsibleTrigger,
+	} from '@/components/ui/collapsible';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, nextTick, onMounted, ref } from 'vue';
 
 	export default defineComponent({
 		name: 'AgentNotificationsSettings',
 		components: {
 			PageContainer,
 			PageHeader,
+			AiAgentsOverview,
 			SettingsSection,
 			AlarmPhoneSection,
+			AgentConnectTabs,
+			CodeSnippet,
 			Button,
+			Collapsible,
+			CollapsibleContent,
+			CollapsibleTrigger,
+			Dialog,
+			DialogContent,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
 			Input,
 		},
 		setup() {
@@ -144,7 +239,10 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 			const creating = ref(false);
 			const issuedToken = ref<IssuedNotifyToken | null>(null);
 			const copied = ref(false);
-			const apiUrl = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/, '');
+			const dialogOpen = ref(false);
+			const snippetsOpen = ref(false);
+			const testing = ref(false);
+			const testResult = ref<TestNotificationResult | null>(null);
 
 			const load = async () => {
 				loading.value = true;
@@ -166,12 +264,65 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 					);
 					label.value = '';
 					copied.value = false;
+					testResult.value = null;
+					testing.value = false;
+					dialogOpen.value = true;
 					await load();
 				} catch {
 					toast({ title: 'Could not create token', variant: 'destructive' });
 				} finally {
 					creating.value = false;
 				}
+			};
+
+			const dismissToken = () => {
+				dialogOpen.value = false;
+				issuedToken.value = null;
+				testResult.value = null;
+				testing.value = false;
+			};
+
+			const sendTest = async () => {
+				if (!issuedToken.value || testing.value) return;
+				const token = issuedToken.value.token;
+				testing.value = true;
+				testResult.value = null;
+				const result = await sendTestNotification(
+					token,
+					import.meta.env.VITE_API_BASE_URL,
+				);
+				if (issuedToken.value?.token !== token) return;
+				testResult.value = result;
+				testing.value = false;
+			};
+
+			const testMessage = computed(() => {
+				const result = testResult.value;
+				if (!result) return '';
+				switch (result.kind) {
+					case 'sent':
+						return `Sent — check your phone. (via ${result.channels.join(', ')})`;
+					case 'no_channels':
+						return 'Nothing was delivered: install the TMGR mobile app and allow notifications, or link Telegram in Profile.';
+					case 'deduplicated':
+						return 'Already sent a moment ago.';
+					case 'rate_limited':
+						return result.retryAfter
+							? `Too many notifications — try again in ${result.retryAfter} s.`
+							: 'Too many notifications — try again shortly.';
+					case 'unauthorized':
+						return 'This token was rejected. Create a new one.';
+					default:
+						return 'Could not reach TMGR.';
+				}
+			});
+
+			const goToAlarmPhone = async () => {
+				dialogOpen.value = false;
+				await nextTick();
+				document
+					.getElementById('alarm-phone')
+					?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			};
 
 			const copyToken = async () => {
@@ -216,7 +367,13 @@ TMGR_NOTIFY_TOKEN=&lt;paste a token from above&gt;</pre
 				copyToken,
 				revoke,
 				formatDate,
-				apiUrl,
+				dialogOpen,
+				snippetsOpen,
+				testing,
+				testMessage,
+				dismissToken,
+				sendTest,
+				goToAlarmPhone,
 			};
 		},
 	});

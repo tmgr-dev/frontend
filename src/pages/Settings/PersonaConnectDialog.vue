@@ -108,10 +108,7 @@
 					<p class="text-sm">
 						Add it to your agent's <code>.mcp.json</code>:
 					</p>
-					<pre
-						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
-						>{{ snippet }}</pre
-					>
+					<CodeSnippet :code="snippet" label="MCP config" />
 					<p class="text-xs text-muted-foreground">
 						Put the token itself in an environment variable or a gitignored
 						secret file — never commit it.
@@ -134,6 +131,7 @@
 		type PersonaToken,
 	} from '@/actions/tmgr/personas';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -169,6 +167,7 @@
 	export default defineComponent({
 		name: 'PersonaConnectDialog',
 		components: {
+			CodeSnippet,
 			Button,
 			Dialog,
 			DialogContent,

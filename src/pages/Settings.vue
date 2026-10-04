@@ -222,6 +222,15 @@
 										`X-Smart-Device-Token`, so Claude.ai custom connectors that
 										require OAuth discovery are not supported by this setup.
 									</p>
+									<p>
+										This MCP works with your tasks and time. For phone
+										notifications and alarms from agents, connect tmgr-notify in
+										<router-link
+											to="/settings/agent-notifications"
+											class="text-primary hover:underline"
+											>Agent notifications</router-link
+										>.
+									</p>
 								</div>
 							</SettingsSection>
 
