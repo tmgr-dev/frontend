@@ -254,6 +254,13 @@
 			@onOk="confirmTimerStatusSwitch"
 		/>
 		<Confirm
+			v-if="showArchiveConfirm"
+			title="Archive task"
+			:body="`Are you sure you want to archive &quot;${task.title}&quot;?`"
+			@onCancel="showArchiveConfirm = false"
+			@onOk="confirmArchive"
+		/>
+		<Confirm
 			v-if="showDeleteConfirm"
 			title="Delete task"
 			:body="`Are you sure you want to delete &quot;${task.title}&quot;?`"
@@ -418,6 +425,7 @@
 				workspaceMembers: [],
 				assignablePersonas: [],
 				timerStatusConfirm: null,
+				showArchiveConfirm: false,
 				showDeleteConfirm: false,
 				showSettings: false,
 			};
@@ -791,13 +799,11 @@
 			handleMoveToBottom() {
 				this.$emit('move-to-bottom', this.task);
 			},
-			async handleArchive() {
-				if (
-					!confirm(`Are you sure you want to archive "${this.task.title}"?`)
-				) {
-					return;
-				}
-
+			handleArchive() {
+				this.showArchiveConfirm = true;
+			},
+			async confirmArchive() {
+				this.showArchiveConfirm = false;
 				try {
 					const archiveStatus = this.statuses.find(
 						(s) => s.type === 'archived',
