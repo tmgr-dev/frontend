@@ -265,6 +265,7 @@
 					label.value = '';
 					copied.value = false;
 					testResult.value = null;
+					testing.value = false;
 					dialogOpen.value = true;
 					await load();
 				} catch {
@@ -278,16 +279,20 @@
 				dialogOpen.value = false;
 				issuedToken.value = null;
 				testResult.value = null;
+				testing.value = false;
 			};
 
 			const sendTest = async () => {
 				if (!issuedToken.value || testing.value) return;
+				const token = issuedToken.value.token;
 				testing.value = true;
 				testResult.value = null;
-				testResult.value = await sendTestNotification(
-					issuedToken.value.token,
+				const result = await sendTestNotification(
+					token,
 					import.meta.env.VITE_API_BASE_URL,
 				);
+				if (issuedToken.value?.token !== token) return;
+				testResult.value = result;
 				testing.value = false;
 			};
 

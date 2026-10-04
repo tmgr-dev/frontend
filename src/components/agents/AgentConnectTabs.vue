@@ -13,7 +13,6 @@
 				role="tab"
 				:aria-selected="active === tab.id"
 				:aria-controls="`agent-panel-${tab.id}`"
-				:tabindex="active === tab.id ? 0 : -1"
 				class="rounded px-3 py-1 text-sm font-medium transition-colors"
 				:class="
 					active === tab.id
