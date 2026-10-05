@@ -58,132 +58,138 @@
 				</button>
 			</div>
 
-			<PageHeader>
-				<template #title>
-					<input
-						v-model="form.title"
-						type="text"
-						class="w-full min-w-0 border-0 bg-transparent p-0 text-xl font-semibold text-ink placeholder-gray-400 focus:outline-none focus:ring-0 md:text-2xl"
-						placeholder="Untitled"
-						maxlength="255"
-						data-testid="page-title-input"
-						@blur="normalizeTitle"
-						@keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-					/>
-				</template>
-				<template #actions>
-					<span
-						class="text-xs text-ink-subtle"
-						data-testid="page-save-status"
-						role="status"
-					>
-						{{ saveStatus }}
-					</span>
-					<button
-						v-if="saveError"
-						type="button"
-						class="text-xs text-red-600 underline dark:text-red-400"
-						@click="retrySave"
-					>
-						Retry
-					</button>
-					<button
-						type="button"
-						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-						:disabled="followBusy"
-						:aria-pressed="following"
-						data-testid="page-follow"
-						@click="toggleFollow"
-					>
-						<component :is="following ? BellOff : Bell" class="h-4 w-4" />
-						{{ following ? 'Unfollow' : 'Follow' }}
-					</button>
-					<button
-						v-if="canOpenInWindow"
-						type="button"
-						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-						data-testid="page-open-window"
-						@click="openInWindow"
-					>
-						<ExternalLink class="h-4 w-4" />
-						Open in window
-					</button>
-					<router-link
-						:to="`/${workspaceCode}/pages/${page.slug}/versions`"
-						class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-					>
-						<History class="h-4 w-4" />
-						History
-					</router-link>
-				</template>
-			</PageHeader>
-
-			<PageProperties
-				:page="page"
-				:properties="form.properties"
-				:directory="directory"
-				:errors="propertyErrors"
-				@update="onPropertiesUpdate"
-				@navigate="onNavigate"
-			/>
-
-			<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-				<div
-					ref="contentRef"
-					class="min-w-0"
-					data-testid="page-content"
-					@mouseup="scheduleSelectionRead"
-					@keyup="scheduleSelectionRead"
-				>
-					<template
-						v-for="(segment, index) in segments"
-						:key="`${editorKey}-${index}`"
-					>
-						<PageEditor
-							v-if="segment.kind === 'free'"
-							:model-value="segment.text"
-							:directory="directory"
-							:upload-file="uploadImage"
-							placeholder="Start writing... @ for a link, [[ for a page"
-							@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
-							@upload-error="onUploadError"
-							@navigate="onNavigate"
-						/>
-						<PageSection
-							v-else
-							:section="segment"
-							:directory="directory"
-							:saving="sectionSaving"
-							@save="onSectionSave"
-							@navigate="onNavigate"
-						/>
-					</template>
-				</div>
-
-				<PageSidePanel
-					:toc="toc"
-					:backlinks="page.backlinks || []"
-					:versions="versions"
-					:workspace-code="workspaceCode"
-					:slug="page.slug"
-					@toc="scrollToHeading"
-				>
-					<template #files>
-						<PageFilesPanel
-							:files="files"
-							:uploading="uploading"
-							:error="uploadError"
-							@upload="uploadFiles"
-							@open="openFile"
+			<div
+				class="rounded-card border border-line bg-surface p-4 shadow-tmgr-xs md:p-6"
+			>
+				<PageHeader class="[&>div:first-child]:flex-1">
+					<template #title>
+						<input
+							v-model="form.title"
+							type="text"
+							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-xl font-semibold text-ink placeholder-gray-400 focus:outline-none focus:ring-0 md:text-2xl"
+							placeholder="Untitled"
+							:title="form.title"
+							maxlength="255"
+							data-testid="page-title-input"
+							@blur="normalizeTitle"
+							@keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
 						/>
 					</template>
 					<template #actions>
-						<PageActionLines
-							:lines="actionLines"
-							@convert="openTaskDialog($event, true)"
-						/>
+						<span
+							class="text-xs text-ink-subtle"
+							data-testid="page-save-status"
+							role="status"
+						>
+							{{ saveStatus }}
+						</span>
+						<button
+							v-if="saveError"
+							type="button"
+							class="text-xs text-red-600 underline dark:text-red-400"
+							@click="retrySave"
+						>
+							Retry
+						</button>
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+							:disabled="followBusy"
+							:aria-pressed="following"
+							data-testid="page-follow"
+							@click="toggleFollow"
+						>
+							<component :is="following ? BellOff : Bell" class="h-4 w-4" />
+							{{ following ? 'Unfollow' : 'Follow' }}
+						</button>
+						<button
+							v-if="canOpenInWindow"
+							type="button"
+							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+							data-testid="page-open-window"
+							@click="openInWindow"
+						>
+							<ExternalLink class="h-4 w-4" />
+							Open in window
+						</button>
+						<router-link
+							:to="`/${workspaceCode}/pages/${page.slug}/versions`"
+							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+						>
+							<History class="h-4 w-4" />
+							History
+						</router-link>
 					</template>
-				</PageSidePanel>
+				</PageHeader>
+
+				<PageProperties
+					:page="page"
+					:properties="form.properties"
+					:directory="directory"
+					:errors="propertyErrors"
+					@update="onPropertiesUpdate"
+					@navigate="onNavigate"
+				/>
+
+				<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+					<div
+						ref="contentRef"
+						class="min-w-0"
+						data-testid="page-content"
+						@mouseup="scheduleSelectionRead"
+						@keyup="scheduleSelectionRead"
+					>
+						<template
+							v-for="(segment, index) in segments"
+							:key="`${editorKey}-${index}`"
+						>
+							<PageEditor
+								v-if="segment.kind === 'free'"
+								:model-value="segment.text"
+								:directory="directory"
+								:upload-file="uploadImage"
+								placeholder="Start writing... @ for a link, [[ for a page"
+								@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
+								@upload-error="onUploadError"
+								@navigate="onNavigate"
+							/>
+							<PageSection
+								v-else
+								:section="segment"
+								:directory="directory"
+								:saving="sectionSaving"
+								@save="onSectionSave"
+								@navigate="onNavigate"
+							/>
+						</template>
+					</div>
+
+					<PageSidePanel
+						class="border-t border-line pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+						:toc="toc"
+						:backlinks="page.backlinks || []"
+						:versions="versions"
+						:workspace-code="workspaceCode"
+						:slug="page.slug"
+						@toc="scrollToHeading"
+					>
+						<template #files>
+							<PageFilesPanel
+								:files="files"
+								:uploading="uploading"
+								:error="uploadError"
+								@upload="uploadFiles"
+								@open="openFile"
+							/>
+						</template>
+						<template #actions>
+							<PageActionLines
+								:lines="actionLines"
+								@convert="openTaskDialog($event, true)"
+							/>
+						</template>
+					</PageSidePanel>
+				</div>
 			</div>
 
 			<Teleport to="body">

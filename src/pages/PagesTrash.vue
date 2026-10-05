@@ -14,7 +14,7 @@
 		</p>
 		<ul
 			v-else
-			class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+			class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 		>
 			<li
 				v-for="page in pages"
