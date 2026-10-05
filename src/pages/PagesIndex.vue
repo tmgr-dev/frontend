@@ -46,7 +46,7 @@
 		<div v-else class="space-y-8">
 			<section v-if="pinned.length">
 				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Pinned</h2>
-				<ul class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
 					<li v-for="page in pinned" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />
 					</li>
@@ -54,7 +54,7 @@
 			</section>
 			<section v-if="roots.length">
 				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Root pages</h2>
-				<ul class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
 					<li v-for="page in roots" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />
 					</li>
