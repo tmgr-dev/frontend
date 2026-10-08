@@ -184,6 +184,9 @@
 		() => import('@/components/BlockMdEditor.vue'),
 	);
 	const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'));
+	const EntityGraphSection = defineAsyncComponent(
+		() => import('@/components/graph/EntityGraphSection.vue'),
+	);
 
 	// Helper to get preferred editor with local storage as primary source
 	const getPreferredEditorWithFallback = (): EditorType => {
@@ -2694,6 +2697,13 @@
 					<TaskPageMentions
 						v-if="form.id && pagesVisible"
 						:task-id="Number(form.id)"
+					/>
+
+					<EntityGraphSection
+						v-if="
+							form.id && (isFeatureEnabled('task.relations') || pagesVisible)
+						"
+						:entity="`task:${form.id}`"
 					/>
 
 					<!-- Comments (modal: inline at bottom of main; page: in right rail) -->
