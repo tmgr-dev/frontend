@@ -1,5 +1,6 @@
 import $axios from '@/plugins/axios';
 import type {
+	GraphMap,
 	GraphOrphans,
 	GraphPath,
 	GraphRanking,
@@ -8,9 +9,11 @@ import type {
 import { requestCache } from '@/utils/requestCache';
 import {
 	buildListParams,
+	buildMapParams,
 	buildPathParams,
 	buildRelatedParams,
 	type GraphListParams,
+	type GraphMapParams,
 	type GraphPathParams,
 	type GraphRelatedParams,
 } from './graphParams';
@@ -42,3 +45,6 @@ export const getGraphHubs = (p: GraphListParams): Promise<GraphRanking> =>
 
 export const getGraphOrphans = (p: GraphListParams): Promise<GraphOrphans> =>
 	cached<GraphOrphans>('orphans', buildListParams(p));
+
+export const getGraphMap = (p: GraphMapParams): Promise<GraphMap> =>
+	cached<GraphMap>('map', buildMapParams(p));
