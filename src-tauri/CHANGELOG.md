@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.27 — 2026-10-09
+
+- Tasks and pages have a Graph section: see what a task or page is connected to — related tasks, pages that mention
+  it, people and personas, agent runs — as an interactive map. Expand it, pick a node to see why it's connected,
+  open it or re-center the graph on it, and switch between 1 and 2 steps away.
+- Works in local workspaces too; their graph is built on this computer and never leaves it.
+
 ## 0.9.26 — 2026-10-08
 
 - Pages can be exported as Markdown: one page as a `.md` file (page "…" menu → Export as Markdown), a page with its
