@@ -3,6 +3,16 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.26 — 2026-10-08
+
+- Pages can be exported as Markdown: one page as a `.md` file (page "…" menu → Export as Markdown), a page with its
+  subpages or all pages as a `.zip` with a folder tree, attachments in `assets/` and links between the pages kept
+  as relative links. (#377)
+- Markdown can be imported into Pages: `.md` files, images or a `.zip` (Obsidian vault, Notion export, a docs folder)
+  through Pages → Import, "Import Markdown here…" on a page, or by dropping files onto the page tree. A preview shows
+  the pages to create, warnings and what to do when a title already exists; links and images are reconnected. Works
+  in local workspaces too, without sending anything to the server.
+
 ## 0.9.25 — 2026-10-08
 
 - A timer you stop on another device (the phone, the watch, Siri, Control Center, a notification) now stops here
