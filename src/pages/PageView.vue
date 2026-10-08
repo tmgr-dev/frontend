@@ -119,6 +119,41 @@
 							<History class="h-4 w-4" />
 							History
 						</router-link>
+						<DropdownMenu>
+							<DropdownMenuTrigger as-child>
+								<button
+									type="button"
+									class="inline-flex items-center rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+									aria-label="More actions"
+									data-testid="page-more-menu"
+								>
+									<MoreHorizontal class="h-4 w-4" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" class="w-56">
+								<DropdownMenuItem
+									data-testid="page-export-md"
+									@select="io.exportPage(page.id)"
+								>
+									<Download class="mr-2 h-4 w-4" />
+									<span>Export as Markdown</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									data-testid="page-export-subtree"
+									@select="io.exportSubtree(page.id)"
+								>
+									<Download class="mr-2 h-4 w-4" />
+									<span>Export with subpages</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									data-testid="page-import-here"
+									@select="io.openImport({ id: page.id, title: page.title })"
+								>
+									<Upload class="mr-2 h-4 w-4" />
+									<span>Import Markdown here…</span>
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</template>
 				</PageHeader>
 
@@ -255,7 +290,14 @@
 	import PageSidePanel from '@/components/pages/PageSidePanel.vue';
 	import TaskFromSelectionDialog from '@/components/pages/TaskFromSelectionDialog.vue';
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { usePagesMarkdownIo } from '@/composable/usePagesMarkdownIo';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
@@ -303,7 +345,15 @@
 		setPageWindowTitle,
 	} from '@/utils/pageWindow';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import { Bell, BellOff, ExternalLink, History } from 'lucide-vue-next';
+	import {
+		Bell,
+		BellOff,
+		Download,
+		ExternalLink,
+		History,
+		MoreHorizontal,
+		Upload,
+	} from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -320,8 +370,15 @@
 	export default defineComponent({
 		name: 'PageView',
 		components: {
+			Download,
+			DropdownMenu,
+			DropdownMenuContent,
+			DropdownMenuItem,
+			DropdownMenuTrigger,
 			ExternalLink,
 			History,
+			MoreHorizontal,
+			Upload,
 			PageActionLines,
 			PageConflictDialog,
 			PageContainer,
@@ -339,6 +396,7 @@
 			const workspaceCode = computed(() => String(route.params.workspace_code));
 			const slug = computed(() => String(route.params.slug));
 			const directory = useTmgrDirectory(() => workspaceCode.value);
+			const io = usePagesMarkdownIo(() => workspaceCode.value);
 			const inPageWindow = isInPageWindow();
 			const canOpenInWindow = isDesktopApp() && !inPageWindow;
 
@@ -979,6 +1037,7 @@
 
 			return {
 				workspaceCode,
+				io,
 				directory,
 				page,
 				loading,

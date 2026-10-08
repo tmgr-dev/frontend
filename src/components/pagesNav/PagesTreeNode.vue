@@ -2,12 +2,14 @@
 	<div>
 		<div
 			class="group/page flex items-center gap-0.5 rounded-md pr-1 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-			:class="
+			:class="[
 				isActive
 					? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-					: ''
-			"
+					: '',
+				zone.dragging.value ? 'ring-2 ring-blue-500' : '',
+			]"
 			:data-page-id="node.id"
+			v-on="zone.handlers"
 		>
 			<button
 				type="button"
@@ -69,6 +71,20 @@
 						<component :is="node.pinned ? PinOff : Pin" class="mr-2 h-4 w-4" />
 						<span>{{ node.pinned ? 'Unpin' : 'Pin' }}</span>
 					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="page-export-subtree"
+						@select="ctx.exportSubtree(node)"
+					>
+						<Download class="mr-2 h-4 w-4" />
+						<span>Export with subpages</span>
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="page-import-here"
+						@select="ctx.importInto(node)"
+					>
+						<Upload class="mr-2 h-4 w-4" />
+						<span>Import Markdown here…</span>
+					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						class="text-destructive focus:text-destructive"
@@ -112,6 +128,7 @@
 		DropdownMenuSubTrigger,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { openPageWindow, pageWindowTarget } from '@/utils/pageWindow';
 	import {
@@ -121,6 +138,7 @@
 	} from '@/utils/pagesTree';
 	import {
 		ChevronRight,
+		Download,
 		ExternalLink,
 		FilePlus,
 		MoreHorizontal,
@@ -128,6 +146,7 @@
 		Pin,
 		PinOff,
 		Trash2,
+		Upload,
 	} from 'lucide-vue-next';
 	import { computed, defineComponent, inject, type PropType } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -146,6 +165,7 @@
 			DropdownMenuSubContent,
 			DropdownMenuSubTrigger,
 			DropdownMenuTrigger,
+			Download,
 			Draggable,
 			ExternalLink,
 			FilePlus,
@@ -154,6 +174,7 @@
 			Pin,
 			PinOff,
 			Trash2,
+			Upload,
 		},
 		props: {
 			node: { type: Object as PropType<PageNode>, required: true },
@@ -163,6 +184,7 @@
 			const route = useRoute();
 			const isExpanded = computed(() => ctx.expanded.value.has(props.node.id));
 			const isActive = computed(() => route.params.slug === props.node.slug);
+			const zone = useFileDrop((files) => ctx.importInto(props.node, files));
 			const url = computed(() => pageUrl(ctx.workspaceCode.value, props.node.slug));
 
 			const openInWindow = () => {
@@ -172,6 +194,7 @@
 
 			return {
 				ctx,
+				zone,
 				isDesktop: isDesktopApp(),
 				openInWindow,
 				isExpanded,

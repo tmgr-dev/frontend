@@ -57,6 +57,7 @@
 		"date-fns": "^3.0.0",
 		"dompurify": "^3.4.15",
 		"editorjs-drag-drop": "^1.1.16",
+		"fflate": "0.8.2",
 		"lucide-vue-next": "^0.563.0",
 		"marked": "^18.0.12",
 		"md-editor-v3": "^4.17.4",
@@ -68,7 +69,8 @@
 		"vue-content-loader": "^2.0.1",
 		"vue-router": "^4.1.6",
 		"vuedraggable": "^4.1.0",
-		"vuex": "^4.1.0"
+		"vuex": "^4.1.0",
+		"yaml": "2.9.0"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.63.0",
