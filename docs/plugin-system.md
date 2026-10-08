@@ -43,7 +43,7 @@ Rules:
   it is now. Re-read the data you need from `error.current`, merge, and call `update` again with
   `error.current.version`.
 - In shared (cloud) workspaces the `pages:*` permissions are sent to the server when a workspace pins the
-  plugin, and the server applies the same rules (backend release prod-java-0.0.128 or later). `pageData` is
+  plugin, and the server applies the same rules (on a backend that supports pages for plugins). `pageData` is
   local-only, like `taskData`.
 - `pageData` of a page is removed when the page is permanently deleted, not when it goes to the trash.
 

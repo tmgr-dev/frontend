@@ -1,6 +1,6 @@
 # TMGR desktop local access socket
 
-TM-298. The TMGR desktop app opens a unix socket so a local agent (Claude
+The TMGR desktop app opens a unix socket so a local agent (Claude
 Code, Codex, a hand-written companion) can act as a connected **persona**:
 same REST shape as the cloud API, plus a small local-only surface (health,
 whoami, an event stream, and an MCP endpoint). There is no TCP, no CORS, no
@@ -39,7 +39,7 @@ A client should therefore resolve the socket path in this order:
 2. the contents of `<app data dir>/local-access/socket-path`, if that file exists
 3. the default path above
 
-Windows (named pipe) is out of scope for this stage.
+The socket is available on macOS and Linux only; Windows (named pipe) is not supported. In safe mode the socket stays closed.
 
 ## Issuing a token
 
@@ -80,9 +80,7 @@ plus four local-only routes.
 
 ### Persona REST whitelist
 
-Copied from `src/local/personaGate.ts`'s `PERSONA_WHITELIST`, plus two routes
-added by a companion PR (`PUT comments/{id}`, `GET project_categories/{id}`).
-Permission names are the same vocabulary the cloud persona gate uses.
+Mirrors `PERSONA_WHITELIST` in `src/local/personaGate.ts`. Permission names are the same vocabulary the cloud persona gate uses.
 
 | Method | Route | Permission |
 |---|---|---|
@@ -141,7 +139,7 @@ Every error body is `{"message": "...", "code": "..."}`.
 |---|---|---|
 | 400 | `BAD_REQUEST` | malformed request |
 | 400 | `HUMAN_TOKEN` | a human token header is present alongside the persona token |
-| 413 | `TOO_LARGE` | request body over 1 MB |
+| 413 | `TOO_LARGE` | request body over 1 MB (responses are capped at 5 MB) |
 | 401 | `TOKEN_MISSING` | no `X-Persona-Token` |
 | 401 | `CLOUD_TOKEN` | token has the `tmgrp_` (cloud) prefix |
 | 401 | `TOKEN_INVALID` | bad format or unknown hash |
@@ -154,7 +152,7 @@ Every error body is `{"message": "...", "code": "..."}`.
 | 403 | `NOT_OWN` | acting on another actor's comment/agent-work |
 | 403 | `WORKSPACE_MISMATCH` / `WORKSPACE_NOT_LOCAL` | token's workspace doesn't match, or isn't a local workspace |
 | 404 / 409 / 422 | `NOT_FOUND` / `CONFLICT` / `UNPROCESSABLE` | as in the router; `409 WORKSPACE_GONE` when the local workspace folder was removed |
-| 429 | `RATE_LIMITED` | over 50 GET/s or 10 non-GET/s for this token — response carries `Retry-After: 1` |
+| 429 | `RATE_LIMITED` | over 50 GET/s or 10 non-GET/s for this token, or more than 4 concurrent event streams per token — response carries `Retry-After: 1` |
 | 501 | `NOT_AVAILABLE_LOCALLY` | route doesn't exist in the local router (never falls through to the network) |
 | 503 | `APP_NOT_READY` | window still loading, no user logged in, or local access disabled — carries `Retry-After: 2` |
 | 504 | `TIMEOUT` | main window didn't answer within 15s |
