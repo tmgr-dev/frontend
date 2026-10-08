@@ -1,5 +1,6 @@
 import type { Page } from '@/actions/tmgr/pages';
 import type { ImportApi, ImportUpload } from '../importRun';
+import { WorkspaceChangedError } from '../types';
 
 export interface FakeApi extends ImportApi {
 	pages: Map<number, Page>;
@@ -9,6 +10,9 @@ export interface FakeApi extends ImportApi {
 	failUpload: (name: string) => boolean;
 	conflictOnce: Set<number>;
 	rejectProperties: boolean;
+	updateFailures: number;
+	abortAfter: number | null;
+	calls: number;
 }
 
 const slugOf = (title: string): string =>
@@ -39,6 +43,12 @@ export const seedPage = (
 };
 
 export const createFakeApi = (): FakeApi => {
+	const tick = () => {
+		api.calls += 1;
+		if (api.abortAfter !== null && api.calls > api.abortAfter) {
+			throw new WorkspaceChangedError('import');
+		}
+	};
 	const api: FakeApi = {
 		pages: new Map(),
 		uploads: [],
@@ -47,7 +57,11 @@ export const createFakeApi = (): FakeApi => {
 		failUpload: () => false,
 		conflictOnce: new Set(),
 		rejectProperties: false,
+		updateFailures: 0,
+		abortAfter: null,
+		calls: 0,
 		async createPage(payload) {
+			tick();
 			if (api.failCreate(payload.title)) {
 				throw { response: { status: 500, data: { message: 'boom' } } };
 			}
@@ -63,9 +77,15 @@ export const createFakeApi = (): FakeApi => {
 			return { ...page };
 		},
 		async getPage(id) {
+			tick();
 			return { ...(api.pages.get(id) as Page) };
 		},
 		async updatePage(id, payload) {
+			tick();
+			if (api.updateFailures > 0) {
+				api.updateFailures -= 1;
+				throw { response: { status: 500, data: { message: 'down' } } };
+			}
 			const page = api.pages.get(id) as Page;
 			if (api.conflictOnce.delete(id)) {
 				page.version += 1;
@@ -87,6 +107,7 @@ export const createFakeApi = (): FakeApi => {
 			return { ...page };
 		},
 		async uploadFile(pageId, file) {
+			tick();
 			if (api.failUpload(file.name)) throw new Error('upload failed');
 			const fileId = 100 + api.uploads.length + 1;
 			api.uploads.push({ pageId, fileId, file });

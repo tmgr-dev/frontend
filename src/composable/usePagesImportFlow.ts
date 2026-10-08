@@ -16,10 +16,12 @@ export interface PlannedRow {
 	skipped: boolean;
 }
 
-export function usePagesImportFlow(target: () => {
-	parentId: number | null;
-	workspaceCode: string;
-}) {
+export function usePagesImportFlow(
+	target: () => {
+		parentId: number | null;
+		workspaceCode: string;
+	},
+) {
 	const step = ref<ImportStep>('pick');
 	const error = ref<string | null>(null);
 	const plan = ref<ImportPlan | null>(null);
@@ -62,6 +64,15 @@ export function usePagesImportFlow(target: () => {
 		() => rows.value.filter((row) => row.skipped).length,
 	);
 	const importCount = computed(() => rows.value.length - skippedCount.value);
+
+	const incompleteMessage = computed(() => {
+		const titles = result.value?.incomplete ?? [];
+		if (!titles.length) return null;
+		const many = titles.length > 1;
+		return `${titles.length} ${
+			many ? 'pages were' : 'page was'
+		} created without ${many ? 'their' : 'its'} content: ${titles.join(', ')}`;
+	});
 
 	const messageOf = (cause: unknown) =>
 		cause instanceof Error && cause.message ? cause.message : 'Import failed';
@@ -107,6 +118,7 @@ export function usePagesImportFlow(target: () => {
 			result.value = {
 				created: [],
 				skipped: [],
+				incomplete: [],
 				warnings: [],
 				error: messageOf(cause),
 			};
@@ -122,6 +134,7 @@ export function usePagesImportFlow(target: () => {
 		policy,
 		progress,
 		result,
+		incompleteMessage,
 		hasConflicts,
 		rows,
 		conflictCount,

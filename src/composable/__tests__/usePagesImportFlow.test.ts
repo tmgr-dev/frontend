@@ -73,7 +73,13 @@ describe('usePagesImportFlow', () => {
 		);
 		mockApi.runImport.mockImplementation(async (_plan, options) => {
 			options.onProgress({ done: 1, total: 2, current: 'a' });
-			return { created: [], skipped: [], warnings: [], error: null };
+			return {
+				created: [],
+				skipped: [],
+				incomplete: [],
+				warnings: [],
+				error: null,
+			};
 		});
 		const flow = usePagesImportFlow(target);
 		await flow.start([file]);
@@ -96,6 +102,7 @@ describe('usePagesImportFlow', () => {
 		mockApi.runImport.mockResolvedValue({
 			created: [],
 			skipped: [],
+			incomplete: [],
 			warnings: [],
 			error: null,
 		});
@@ -130,5 +137,35 @@ describe('usePagesImportFlow', () => {
 		await flow.submit();
 		expect(flow.step.value).toBe('done');
 		expect(flow.result.value?.error).toBe('boom');
+	});
+
+	it('flags pages created without their content', async () => {
+		mockApi.planImport.mockResolvedValue(planOf([page('a', null)]));
+		const flow = usePagesImportFlow(target);
+		await flow.start([file]);
+		expect(flow.incompleteMessage.value).toBeNull();
+		mockApi.runImport.mockResolvedValue({
+			created: [],
+			skipped: [],
+			incomplete: ['A', 'B'],
+			warnings: [],
+			error: null,
+		});
+		await flow.submit();
+		expect(flow.incompleteMessage.value).toBe(
+			'2 pages were created without their content: A, B',
+		);
+		mockApi.runImport.mockResolvedValue({
+			created: [],
+			skipped: [],
+			incomplete: ['A'],
+			warnings: [],
+			error: null,
+		});
+		flow.step.value = 'preview';
+		await flow.submit();
+		expect(flow.incompleteMessage.value).toBe(
+			'1 page was created without its content: A',
+		);
 	});
 });

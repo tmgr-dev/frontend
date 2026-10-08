@@ -183,6 +183,14 @@
 					Created {{ created.length }}
 					{{ created.length === 1 ? 'page' : 'pages' }}.
 				</p>
+				<p
+					v-if="flow.incompleteMessage.value"
+					class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+					role="alert"
+					data-testid="pages-import-incomplete"
+				>
+					{{ flow.incompleteMessage.value }}
+				</p>
 				<p v-if="skipped.length" class="text-sm text-ink-subtle">
 					Skipped {{ skipped.length }}.
 				</p>

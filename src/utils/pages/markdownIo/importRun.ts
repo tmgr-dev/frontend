@@ -7,8 +7,10 @@ import { parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 import { buildLinkIndex, resolveLink, type LinkIndex } from './importPlan';
 import {
 	isTmgrTarget,
+	normalizeReference,
 	rewriteMarkdownLinks,
 	splitTargetFragment,
+	type LinkToken,
 } from './links';
 import { baseName, extName } from './paths';
 import type {
@@ -92,6 +94,10 @@ const applyPolicy = async (
 	const existing = new Set(
 		(await api.listChildTitles(options.parentId)).map(normalize),
 	);
+	const used = new Set(existing);
+	for (const page of plan.pages) {
+		if (page.parentKey === null) used.add(normalize(page.title));
+	}
 	const dropped = new Set<string>();
 	const skipped: string[] = [];
 	const titles = new Map<string, string>();
@@ -110,11 +116,11 @@ const applyPolicy = async (
 		} else if (options.policy === 'rename') {
 			let index = 2;
 			let title = `${page.title} (${index})`;
-			while (existing.has(normalize(title))) {
+			while (used.has(normalize(title))) {
 				index += 1;
 				title = `${page.title} (${index})`;
 			}
-			existing.add(normalize(title));
+			used.add(normalize(title));
 			titles.set(page.key, title);
 		}
 	}
@@ -186,6 +192,59 @@ const finalProperties = (
 	return props;
 };
 
+const handleTmgr = (
+	run: Run,
+	page: PlannedPage,
+	sameWorkspace: boolean,
+	token: LinkToken,
+	neutralized: { count: number },
+): string | null | undefined => {
+	const target = token.target.trim();
+	if (!isTmgrTarget(target)) return undefined;
+	const parsed = parseTmgrUrl(splitTargetFragment(target).base);
+	if (parsed?.form === 'storage' && parsed.kind === 'page') {
+		const mapped = mappedPageId(run, page, Number(parsed.id));
+		if (mapped !== undefined) return token.build(`tmgr://page/${mapped}`);
+	}
+	if (sameWorkspace) return null;
+	neutralized.count += 1;
+	return token.kind === 'definition' || token.kind === 'autolink'
+		? ''
+		: token.plain;
+};
+
+const deadReferences = (
+	run: Run,
+	page: PlannedPage,
+	sameWorkspace: boolean,
+): Set<string> => {
+	const dead = new Set<string>();
+	if (!page.body.includes(']:')) return dead;
+	rewriteMarkdownLinks(page.body, (token) => {
+		if (token.kind !== 'definition') return null;
+		const outcome = handleTmgr(run, page, sameWorkspace, token, { count: 0 });
+		if (outcome === '') dead.add(normalizeReference(token.label));
+		return null;
+	});
+	return dead;
+};
+
+const neutralizeBody = (
+	run: Run,
+	page: PlannedPage,
+	sameWorkspace: boolean,
+): string => {
+	const counter = { count: 0 };
+	return rewriteMarkdownLinks(
+		page.body,
+		(token) =>
+			token.kind === 'reference'
+				? token.plain
+				: handleTmgr(run, page, sameWorkspace, token, counter),
+		{ references: deadReferences(run, page, sameWorkspace) },
+	);
+};
+
 const plainLink = (label: string, url: string): string =>
 	`[${label.replace(/([[\]])/g, '\\$1')}](${url})`;
 
@@ -222,44 +281,50 @@ const rewriteBody = async (
 		}
 	}
 
-	const rewritten = rewriteMarkdownLinks(page.body, (token) => {
-		const target = token.target.trim();
-		if (isTmgrTarget(target)) {
-			const parsed = parseTmgrUrl(splitTargetFragment(target).base);
-			if (parsed?.form === 'storage' && parsed.kind === 'page') {
-				const mapped = mappedPageId(run, page, Number(parsed.id));
-				if (mapped !== undefined) return token.build(`tmgr://page/${mapped}`);
+	const dead = deadReferences(run, page, sameWorkspace);
+	const rewritten = rewriteMarkdownLinks(
+		page.body,
+		(token) => {
+			if (token.kind === 'reference') {
+				neutralized.count += 1;
+				return token.plain;
 			}
-			if (sameWorkspace) return null;
-			neutralized.count += 1;
-			return token.kind === 'definition' ? '' : token.label;
-		}
-		const resolved = resolveLink(index, page.path, token);
-		const wiki = token.kind === 'wikilink' || token.kind === 'embed';
-		if (resolved.type === 'page') {
-			const id = run.idByKey.get(resolved.key);
-			if (id === undefined) return null;
-			const url = `tmgr://page/${id}`;
-			if (!wiki) return token.build(url);
-			return plainLink(token.label || token.target.split('#')[0], url);
-		}
-		if (resolved.type === 'file') {
-			const id = uploaded.get(resolved.path);
-			if (id === null || id === undefined) return null;
-			const url = `tmgr://file/${id}`;
-			if (!wiki) return token.build(url);
-			const name = baseName(resolved.path);
-			if (token.kind === 'embed' && resolved.image) {
-				const alt = /^\d+(x\d+)?$/.test(token.label) ? '' : token.label;
-				return `!${plainLink(alt, url)}`;
+			const tmgr = handleTmgr(run, page, sameWorkspace, token, neutralized);
+			if (tmgr !== undefined) return tmgr;
+			const resolved = resolveLink(index, page.path, token);
+			const wiki = token.kind === 'wikilink' || token.kind === 'embed';
+			if (resolved.type === 'page') {
+				const id = run.idByKey.get(resolved.key);
+				if (id === undefined) {
+					run.warnings.push({
+						path: page.path,
+						message: `Link target was not imported: ${token.target}`,
+					});
+					return null;
+				}
+				const url = `tmgr://page/${id}`;
+				if (!wiki) return token.build(url);
+				return plainLink(token.label || token.target.split('#')[0], url);
 			}
-			return plainLink(
-				token.kind === 'embed' ? name : token.label || name,
-				url,
-			);
-		}
-		return null;
-	});
+			if (resolved.type === 'file') {
+				const id = uploaded.get(resolved.path);
+				if (id === null || id === undefined) return null;
+				const url = `tmgr://file/${id}`;
+				if (!wiki) return token.build(url);
+				const name = baseName(resolved.path);
+				if (token.kind === 'embed' && resolved.image) {
+					const alt = /^\d+(x\d+)?$/.test(token.label) ? '' : token.label;
+					return `!${plainLink(alt, url)}`;
+				}
+				return plainLink(
+					token.kind === 'embed' ? name : token.label || name,
+					url,
+				);
+			}
+			return null;
+		},
+		{ references: dead },
+	);
 
 	if (neutralized.count) {
 		run.warnings.push({
@@ -286,6 +351,9 @@ const updateWithFreshVersion = async (
 	}
 };
 
+const isAborted = (failure: unknown): boolean =>
+	(failure as any)?.name === 'WorkspaceChangedError';
+
 export const runImportWith = async (
 	api: ImportApi,
 	plan: ImportPlan,
@@ -293,7 +361,10 @@ export const runImportWith = async (
 ): Promise<ImportResult> => {
 	const created: CreatedPage[] = [];
 	const warnings: IoWarning[] = [];
+	const emptied = new Map<string, PlannedPage>();
+	const finalized = new Set<string>();
 	let error: string | null = null;
+	let aborted = false;
 	let skipped: string[] = [];
 	try {
 		const applied = await applyPolicy(plan, options, api);
@@ -313,6 +384,9 @@ export const runImportWith = async (
 			options.onProgress?.({ done, total, current });
 		const firstBody = new Map<string, string>();
 		const firstProps = new Map<string, Props | null>();
+		const sameWorkspaceAs = (page: PlannedPage): boolean =>
+			!options.workspaceCode.startsWith('local-') &&
+			page.sourceWorkspace === options.workspaceCode;
 
 		progress('');
 		for (const page of pages) {
@@ -345,7 +419,10 @@ export const runImportWith = async (
 					result = await api.createPage(payload);
 				}
 			} catch (failure) {
-				error = `Could not create "${page.title}": ${messageOf(failure)}`;
+				aborted = isAborted(failure);
+				error = aborted
+					? messageOf(failure)
+					: `Could not create "${page.title}": ${messageOf(failure)}`;
 				break;
 			}
 			created.push({
@@ -357,6 +434,7 @@ export const runImportWith = async (
 			run.idByKey.set(page.key, result.id);
 			firstBody.set(page.key, body);
 			firstProps.set(page.key, payload.properties ?? null);
+			if (body !== page.body) emptied.set(page.key, page);
 			if (page.sourceId !== null) {
 				run.idBySource.set(
 					`${page.sourceWorkspace ?? ''}:${page.sourceId}`,
@@ -371,13 +449,15 @@ export const runImportWith = async (
 			progress(page.title);
 		}
 
-		if (!error) {
+		if (!aborted) {
 			const index = buildLinkIndex(pages, plan.files);
-			for (const page of pages.filter(needsSecondPass)) {
+			for (const page of pages.filter(
+				(item) => run.idByKey.has(item.key) && needsSecondPass(item),
+			)) {
 				const id = run.idByKey.get(page.key) as number;
+				const sameWorkspace = sameWorkspaceAs(page);
 				progress(page.title);
 				try {
-					const sameWorkspace = page.sourceWorkspace === options.workspaceCode;
 					const body = await rewriteBody(run, page, id, index, sameWorkspace);
 					const dropped = { count: 0 };
 					const props = finalProperties(run, page, sameWorkspace, dropped);
@@ -413,11 +493,33 @@ export const runImportWith = async (
 							}
 						}
 					}
+					finalized.add(page.key);
 				} catch (failure) {
+					if (isAborted(failure)) {
+						aborted = true;
+						error = messageOf(failure);
+						break;
+					}
 					warnings.push({
 						path: page.path,
 						message: `Could not finish links and files: ${messageOf(failure)}`,
 					});
+					if (emptied.has(page.key)) {
+						try {
+							await updateWithFreshVersion(api, id, {
+								body: neutralizeBody(run, page, sameWorkspace),
+							});
+							finalized.add(page.key);
+						} catch (fallback) {
+							if (isAborted(fallback)) {
+								aborted = true;
+								error = messageOf(fallback);
+								break;
+							}
+						}
+					} else {
+						finalized.add(page.key);
+					}
 				}
 				done += 1;
 				progress(page.title);
@@ -428,5 +530,8 @@ export const runImportWith = async (
 	} finally {
 		api.finish?.();
 	}
-	return { created, skipped, warnings, error };
+	const incomplete = created
+		.filter((item) => emptied.has(item.key) && !finalized.has(item.key))
+		.map((item) => item.title);
+	return { created, skipped, incomplete, warnings, error };
 };

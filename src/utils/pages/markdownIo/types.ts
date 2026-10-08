@@ -69,6 +69,7 @@ export interface CreatedPage {
 export interface ImportResult {
 	created: CreatedPage[];
 	skipped: string[];
+	incomplete: string[];
 	warnings: IoWarning[];
 	error: string | null;
 }
@@ -77,4 +78,11 @@ export interface ExportResult {
 	fileName: string;
 	blob: Blob;
 	warnings: IoWarning[];
+}
+
+export class WorkspaceChangedError extends Error {
+	constructor(operation: 'import' | 'export') {
+		super(`The workspace changed during ${operation}`);
+		this.name = 'WorkspaceChangedError';
+	}
 }

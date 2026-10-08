@@ -237,6 +237,139 @@ describe('runImportWith', () => {
 		});
 	});
 
+	describe('foreign reference neutralization', () => {
+		it('neutralizes autolinks, nested image labels and reference definitions with their uses', async () => {
+			const api = createFakeApi();
+			const result = await run(api, [
+				file(
+					'p.md',
+					[
+						'a <tmgr://task/1> b',
+						'[![x](tmgr://file/9)](tmgr://task/123)',
+						'[text][r] and [r] and [r][]',
+						'',
+						'[r]: tmgr://task/3',
+					].join('\n'),
+				),
+			]);
+			expect(bodyOf(api, 'p')).toBe(
+				['a  b', 'x', 'text and r and r', '', ''].join('\n'),
+			);
+			expect(result.warnings.some((w) => /tmgr:\/\//.test(w.message))).toBe(
+				true,
+			);
+		});
+
+		it('escapes literal brackets of a neutralized label', async () => {
+			const api = createFakeApi();
+			await run(api, [file('p.md', '[x [b]](tmgr://task/1)(x.md)')]);
+			expect(bodyOf(api, 'p')).toBe('x \\[b\\](x.md)');
+		});
+
+		it('keeps an inner mapped image inside a neutralized link label', async () => {
+			const api = createFakeApi();
+			await run(api, [
+				file('p.md', '[![x](pic.png)](tmgr://task/1)'),
+				file('pic.png', new Uint8Array([1])),
+			]);
+			expect(bodyOf(api, 'p')).toMatch(/^!\[x\]\(tmgr:\/\/file\/\d+\)$/);
+		});
+
+		it('never treats a local- workspace code as the same workspace', async () => {
+			const api = createFakeApi();
+			const plan = buildImportPlan(
+				[
+					file(
+						'p.md',
+						'---\ntitle: P\ntmgr:\n  workspace: local-1\n  id: 5\n---\n[t](tmgr://task/1)',
+					),
+				],
+				{ existingTitles: [] },
+			);
+			await runImportWith(api, plan, {
+				parentId: null,
+				policy: 'rename',
+				workspaceCode: 'local-1',
+			});
+			expect(bodyOf(api, 'P')).toBe('t');
+		});
+	});
+
+	describe('failures', () => {
+		const withLinks = [
+			file('A.md', 'see [b](A/B.md) and [t](tmgr://task/1)'),
+			file('A/B.md', 'x'),
+		];
+
+		it('still finishes the bodies of created pages when a later create fails', async () => {
+			const api = createFakeApi();
+			api.failCreate = (title) => title === 'B';
+			const result = await run(api, withLinks);
+			expect(result.error).toMatch(/Could not create "B"/);
+			expect(bodyOf(api, 'A')).toBe('see [b](A/B.md) and t');
+			expect(result.incomplete).toEqual([]);
+			expect(result.warnings.some((w) => /not imported/.test(w.message))).toBe(
+				true,
+			);
+		});
+
+		it('falls back to a neutralized original body when pass 2 fails', async () => {
+			const api = createFakeApi();
+			api.updateFailures = 1;
+			const result = await run(api, [
+				file('A.md', 'see [b](B.md) [t](tmgr://task/1)'),
+			]);
+			expect(result.error).toBeNull();
+			expect(result.incomplete).toEqual([]);
+			expect(bodyOf(api, 'A')).toBe('see [b](B.md) t');
+			expect(
+				result.warnings.some((w) => /Could not finish/.test(w.message)),
+			).toBe(true);
+		});
+
+		it('reports a page whose content could not be saved as incomplete', async () => {
+			const api = createFakeApi();
+			api.updateFailures = 5;
+			const result = await run(api, [file('A.md', '[t](tmgr://task/1)')]);
+			expect(result.incomplete).toEqual(['A']);
+			expect(bodyOf(api, 'A')).toBe('');
+		});
+
+		it('stops with an error and no pass 2 when the workspace changes', async () => {
+			const api = createFakeApi();
+			api.abortAfter = 1;
+			const result = await run(api, [
+				file('A.md', '[t](tmgr://task/1)'),
+				file('B.md', '[t](tmgr://task/1)'),
+			]);
+			expect(result.error).toBe('The workspace changed during import');
+			expect(result.created).toHaveLength(1);
+			expect(api.updates).toEqual([]);
+			expect(result.incomplete).toEqual(['A']);
+		});
+
+		it('stops during pass 2 when the workspace changes', async () => {
+			const api = createFakeApi();
+			api.abortAfter = 2;
+			const result = await run(api, [
+				file('A.md', '[t](tmgr://task/1)'),
+				file('B.md', '[t](tmgr://task/2)'),
+			]);
+			expect(result.error).toBe('The workspace changed during import');
+			expect(result.incomplete.sort()).toEqual(['A', 'B']);
+		});
+	});
+
+	it('does not rename a root to a title another imported root already has', async () => {
+		const api = createFakeApi();
+		seedPage(api, 'A');
+		const result = await run(api, [file('A.md', 'x'), file('A (2).md', 'y')]);
+		expect(result.created.map((c) => c.title).sort()).toEqual([
+			'A (2)',
+			'A (3)',
+		]);
+	});
+
 	describe('properties', () => {
 		const meeting = (ws: string) =>
 			`---\ntitle: M\ntype: meeting\nproperties:\n  date: '2026-10-08'\n  participants:\n    - tmgr://page/10\n    - tmgr://user/5\n  related_tasks: [3]\ntmgr:\n  workspace: ${ws}\n  id: 20\n---\nnotes`;
