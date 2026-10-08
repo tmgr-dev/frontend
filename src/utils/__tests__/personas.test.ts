@@ -292,6 +292,13 @@ describe('isMachineAuthored', () => {
 		).toBe(true);
 	});
 
+	it('is true for Ask AI replies stored under the AI system user', () => {
+		expect(isMachineAuthored({ user: { email: 'ai@tmgr.dev' } })).toBe(true);
+		expect(isMachineAuthored({ user: { email: 'ann@example.com' } })).toBe(
+			false,
+		);
+	});
+
 	it('is false for people, including the missing-author fallback', () => {
 		expect(isMachineAuthored({ author: USER_AUTHOR })).toBe(false);
 		expect(isMachineAuthored({})).toBe(false);
