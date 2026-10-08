@@ -50,7 +50,14 @@ const runRoute = async (
 ): Promise<any> => {
 	const res = await dispatchLocal(router, ctx, method, path, body);
 	if (!res) throw new ToolError(`No local route for ${method} ${path}`);
-	if (res.status >= 400) throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
+	if (res.status >= 400) {
+		if (res.data?.error === 'feature_disabled' && res.data?.feature === 'agent_work') {
+			throw new ToolError(
+				`Agent work is disabled in workspace ${ctx.workspace.code} — skip agent-work reporting`,
+			);
+		}
+		throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
+	}
 	return res.data?.data;
 };
 

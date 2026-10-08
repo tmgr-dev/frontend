@@ -81,10 +81,11 @@ export const runPersonaAgent = async ({
 	const started = await dispatchLocal(router, personaCtx, 'POST', `tasks/${taskId}/agent-work`, {
 		agent: 'local-llm',
 	});
-	if (!started || started.status >= 400) {
+	const agentWorkOff = started?.status === 403 && started.data?.error === 'feature_disabled';
+	if (!agentWorkOff && (!started || started.status >= 400)) {
 		throw new Error(`Could not start a local agent-work run: ${started?.data?.message ?? 'no route'}`);
 	}
-	const runId = started.data.data.id;
+	const runId = agentWorkOff ? null : started!.data.data.id;
 
 	const messages: ChatMessage[] = [
 		{ role: 'system', content: systemPrompt },
@@ -131,10 +132,12 @@ export const runPersonaAgent = async ({
 		status = 'failed';
 		throw error;
 	} finally {
-		await dispatchLocal(router, personaCtx, 'POST', `agent-work/${runId}/finish`, {
-			status,
-			summary: finalText.slice(0, 2000),
-		});
+		if (runId !== null) {
+			await dispatchLocal(router, personaCtx, 'POST', `agent-work/${runId}/finish`, {
+				status,
+				summary: finalText.slice(0, 2000),
+			});
+		}
 	}
 	return { text: finalText, toolCalls };
 };

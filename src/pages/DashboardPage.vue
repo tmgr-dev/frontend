@@ -21,6 +21,7 @@
 	import { useDashboard } from '@/composable/useDashboard';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useErrorHandler } from '@/composable/useErrorHandler';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNetworkStatus } from '@/composable/useNetworkStatus';
 	import { usePusher } from '@/composable/usePusher';
 
@@ -252,7 +253,14 @@
 		return isPusherConnected.value && !isOffline.value;
 	});
 
-	const displayedActivities = feedActivities;
+	const { isFeatureEnabled } = useFeatureToggles();
+	const displayedActivities = computed(() =>
+		isFeatureEnabled('agent_work')
+			? feedActivities.value
+			: feedActivities.value.filter(
+					(activity) => !String(activity.type ?? '').startsWith('agent_work'),
+				),
+	);
 	const activityLoading = feedLoading;
 	const activityLoadingMore = feedLoadingMore;
 	const loadDashboard = () =>

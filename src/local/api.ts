@@ -515,6 +515,26 @@ const graphEnabled = async (ctx: LocalContext): Promise<boolean> => {
 	return row?.value === '1';
 };
 
+const AGENT_WORK_FEATURE = 'feature.agent_work';
+
+const agentWorkEnabled = async (ctx: LocalContext): Promise<boolean> => {
+	const [row] = await ctx.db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [AGENT_WORK_FEATURE]);
+	return row?.value !== '0';
+};
+
+const requireAgentWork = async (ctx: LocalContext) => {
+	if (!(await agentWorkEnabled(ctx))) {
+		const message = 'Agent work is disabled in this workspace';
+		throw new LocalHttpError(403, message, 'feature_disabled', {
+			message,
+			error: 'feature_disabled',
+			feature: 'agent_work',
+		});
+	}
+};
+
+const FEATURE_TOGGLE_NAMES: Record<string, string> = { agent_work: 'Agent work' };
+
 export const createLocalApi = () => {
 	const router = new LocalRouter()
 		// ── tasks ───────────────────────────────────────────────────────────────
@@ -1168,6 +1188,7 @@ export const createLocalApi = () => {
 		})
 		// ── agent work ──────────────────────────────────────────────────────────
 		.add('GET', 'tasks/:id(\\d+)/agent-work', async ({ ctx, params }) => {
+			await requireAgentWork(ctx);
 			const task = await requireActiveTask(ctx, Number(params.id));
 			const rows = await ctx.db.select<any>(
 				`SELECT * FROM agent_work_runs WHERE task_id = ? ORDER BY started_at DESC, id DESC LIMIT 50`,
@@ -1198,6 +1219,7 @@ export const createLocalApi = () => {
 			};
 		})
 		.add('POST', 'tasks/:id(\\d+)/agent-work', async ({ ctx, params, body }) => {
+			await requireAgentWork(ctx);
 			const taskId = Number(params.id);
 			// A plugin's DataApi already sends "plugin:<pluginId>[/<agent>]"; this just stores it as given.
 			const agent = normalizeAgent(body?.agent);
@@ -1229,6 +1251,7 @@ export const createLocalApi = () => {
 			return agentWorkJson(row, ctx, await personaNamesFor(ctx, [row]));
 		}, 201)
 		.add('PATCH', 'agent-work/:id(\\d+)', async ({ ctx, params, body }) => {
+			await requireAgentWork(ctx);
 			const run = await requireOwnRunningRun(ctx, Number(params.id));
 			const { sets, values } = progressAssignments(body, true);
 			sets.push('version = version + 1', 'updated_at = ?');
@@ -1238,6 +1261,7 @@ export const createLocalApi = () => {
 			return agentWorkJson(row, ctx, await personaNamesFor(ctx, [row]));
 		})
 		.add('POST', 'agent-work/:id(\\d+)/finish', async ({ ctx, params, body }) => {
+			await requireAgentWork(ctx);
 			const run = await requireOwnRunningRun(ctx, Number(params.id));
 			const status = finishedStatus(body?.status);
 			const { sets, values } = progressAssignments(body, false);
@@ -1257,19 +1281,25 @@ export const createLocalApi = () => {
 		])
 		.add('GET', 'workspaces/:wid/feature-toggles', async ({ ctx }) =>
 			Object.fromEntries(
-				Object.entries({ ...FEATURE_TOGGLES, graph: await graphEnabled(ctx) }).map(([key, enabled]) => [
-					key,
-					{ key, name: key, group: 'local', enabled },
-				]),
+				Object.entries({
+					...FEATURE_TOGGLES,
+					graph: await graphEnabled(ctx),
+					agent_work: await agentWorkEnabled(ctx),
+				}).map(([key, enabled]) => [key, { key, name: FEATURE_TOGGLE_NAMES[key] ?? key, group: 'local', enabled }]),
 			),
 		)
 		.add('PUT', 'workspaces/:wid/feature-toggles', async ({ ctx, body }) => {
-			const graph = body?.features?.graph;
-			if (typeof graph === 'boolean') {
-				await ctx.db.execute(
-					`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-					[GRAPH_FEATURE, graph ? '1' : '0'],
-				);
+			for (const [key, meta] of [
+				['graph', GRAPH_FEATURE],
+				['agent_work', AGENT_WORK_FEATURE],
+			]) {
+				const value = body?.features?.[key];
+				if (typeof value === 'boolean') {
+					await ctx.db.execute(
+						`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+						[meta, value ? '1' : '0'],
+					);
+				}
 			}
 			return {};
 		});
