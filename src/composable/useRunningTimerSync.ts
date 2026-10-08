@@ -13,15 +13,13 @@ export function useRunningTimerSync({
 	onEvent,
 	onResync,
 }: RunningTimerSyncOptions): void {
-	const { subscribeToUser, unsubscribeHandler, connectionState, reconnect } =
-		usePusher();
 	let channelName: string | null = null;
 	let subscriptionId = '';
 	let lastResync = -Infinity;
 
 	const unsubscribe = (): void => {
 		if (channelName && subscriptionId) {
-			unsubscribeHandler(channelName, subscriptionId);
+			usePusher().unsubscribeHandler(channelName, subscriptionId);
 		}
 		channelName = null;
 		subscriptionId = '';
@@ -33,7 +31,7 @@ export function useRunningTimerSync({
 			unsubscribe();
 			if (!userId) return;
 			channelName = `App.User.${userId}`;
-			subscriptionId = subscribeToUser(userId, {
+			subscriptionId = usePusher().subscribeToUser(userId, {
 				onTaskCountdownStarted: (task) => onEvent?.(task),
 				onTaskCountdownStopped: (task) => onEvent?.(task),
 				onReconnect: onResync,
@@ -43,10 +41,16 @@ export function useRunningTimerSync({
 	);
 
 	const wake = (): void => {
+		if (!store.state.user?.id) return;
 		const now = Date.now();
 		if (now - lastResync < WAKE_THROTTLE_MS) return;
 		lastResync = now;
-		if (connectionState.value !== 'connected') reconnect();
+		const { connectionState, reconnect } = usePusher();
+		if (
+			connectionState.value !== 'connected' &&
+			connectionState.value !== 'connecting'
+		)
+			reconnect();
 		onResync();
 	};
 

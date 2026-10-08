@@ -3,6 +3,7 @@ import { useRunningTimerSync } from '../useRunningTimerSync';
 
 const state = reactive<{ user: { id: number } | null }>({ user: { id: 7 } });
 const connectionState = ref('connected');
+const usePusherMock = jest.fn();
 const subscribe = jest.fn();
 const unsubscribe = jest.fn();
 const reconnect = jest.fn();
@@ -17,12 +18,15 @@ jest.mock('@/store', () => ({
 	},
 }));
 jest.mock('../usePusher', () => ({
-	usePusher: () => ({
-		subscribeToUser: subscribe,
-		unsubscribeHandler: unsubscribe,
-		connectionState,
-		reconnect,
-	}),
+	usePusher: () => {
+		usePusherMock();
+		return {
+			subscribeToUser: subscribe,
+			unsubscribeHandler: unsubscribe,
+			connectionState,
+			reconnect,
+		};
+	},
 }));
 
 const win = new EventTarget();
@@ -108,4 +112,23 @@ test('user switch resubscribes and disposal unsubscribes and removes window list
 		win.dispatchEvent(new Event('focus'));
 		expect(onResync).not.toHaveBeenCalled();
 	});
+});
+
+test('without a logged-in user nothing touches the socket and wake events are ignored', () => {
+	state.user = null;
+	const { onResync, scope } = mount();
+	win.dispatchEvent(new Event('focus'));
+	expect(usePusherMock).not.toHaveBeenCalled();
+	expect(subscribe).not.toHaveBeenCalled();
+	expect(onResync).not.toHaveBeenCalled();
+	expect(reconnect).not.toHaveBeenCalled();
+	scope.stop();
+});
+
+test('wake does not abort a connect that is already in progress', () => {
+	const { scope } = mount();
+	connectionState.value = 'connecting';
+	win.dispatchEvent(new Event('focus'));
+	expect(reconnect).not.toHaveBeenCalled();
+	scope.stop();
 });
