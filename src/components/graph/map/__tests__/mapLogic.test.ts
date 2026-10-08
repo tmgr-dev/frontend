@@ -204,19 +204,28 @@ describe('cluster placement', () => {
 		}
 	});
 
+	it('bounds the placement work for very many clusters', () => {
+		const counts = Array.from({ length: 1000 }, (_, i) => 1 + (i % 40));
+		const started = Date.now();
+		const places = placeClusters(counts);
+		expect(places).toHaveLength(1000);
+		expect(Date.now() - started).toBeLessThan(400);
+	});
+
 	it('handles one and zero clusters', () => {
 		expect(placeClusters([])).toEqual([]);
 		const [only] = placeClusters([10]);
 		expect(Math.hypot(only.x, only.y)).toBeLessThan(1);
 	});
 
-	it('builds a layout payload with centres, links and an outer ring', () => {
+	it('builds a layout payload with cluster sizes and links', () => {
 		const prepared = prepareMap(map, range);
 		const init = buildLayoutInit(prepared, true);
 		expect(init.count).toBe(prepared.nodes.length);
 		expect(init.links).toHaveLength(prepared.edges.length * 2);
-		expect(init.centers).toHaveLength(prepared.clusters.length * 2);
-		expect(init.ring).toBeGreaterThan(Math.max(...init.clusterRadius));
+		expect(Array.from(init.clusterCounts)).toEqual(
+			prepared.clusters.map((c) => c.count),
+		);
 	});
 });
 

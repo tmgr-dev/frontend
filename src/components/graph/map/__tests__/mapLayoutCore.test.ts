@@ -1,4 +1,5 @@
 import { MapLayoutCore, type LayoutInit } from '../mapLayoutCore';
+import { orphanRingRadius, placeClusters } from '../mapPlacement';
 
 const build = (perCluster: number, group = true): LayoutInit => {
 	const clusters = 3;
@@ -22,9 +23,7 @@ const build = (perCluster: number, group = true): LayoutInit => {
 		orphan: new Uint8Array(count),
 		links: Int32Array.from(links),
 		cross: Uint8Array.from(cross),
-		centers: Float32Array.from([-300, 0, 300, 0, 0, 400]),
-		clusterRadius: Float32Array.from([120, 120, 120]),
-		ring: 600,
+		clusterCounts: Int32Array.from([perCluster, perCluster, perCluster]),
 		seed: new Float32Array(count).fill(0.25),
 		group,
 	};
@@ -33,16 +32,17 @@ const build = (perCluster: number, group = true): LayoutInit => {
 describe('MapLayoutCore', () => {
 	it('settles, keeps every node finite and pulls nodes to their cluster', () => {
 		const init = build(30);
+		const places = placeClusters(Array.from(init.clusterCounts));
 		const pos = new MapLayoutCore(init).settle();
 		expect(pos).toHaveLength(init.count * 2);
 		expect(pos.every(Number.isFinite)).toBe(true);
 		for (let i = 0; i < init.count; i++) {
 			const c = init.cluster[i];
 			const d = Math.hypot(
-				pos[i * 2] - init.centers[c * 2],
-				pos[i * 2 + 1] - init.centers[c * 2 + 1],
+				pos[i * 2] - places[c].x,
+				pos[i * 2 + 1] - places[c].y,
 			);
-			expect(d).toBeLessThan(init.clusterRadius[c] * 1.4);
+			expect(d).toBeLessThan(places[c].r * 1.4);
 		}
 	});
 
@@ -65,7 +65,9 @@ describe('MapLayoutCore', () => {
 		const init = build(10);
 		init.orphan[5] = 1;
 		const pos = new MapLayoutCore(init).settle();
-		expect(Math.hypot(pos[10], pos[11])).toBeGreaterThan(init.ring * 0.6);
+		expect(Math.hypot(pos[10], pos[11])).toBeGreaterThan(
+			orphanRingRadius(placeClusters(Array.from(init.clusterCounts))) * 0.6,
+		);
 	});
 
 	it('lays out differently when grouping is off', () => {

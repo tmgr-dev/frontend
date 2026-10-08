@@ -52,12 +52,18 @@
 			const { version } = useDocumentTheme();
 			let engine: MapEngine | null = null;
 
-			const label = computed(
-				() =>
-					`Map of ${
-						props.prepared?.nodes.length ?? 0
-					} tasks and pages grouped by category`,
-			);
+			const label = computed(() => {
+				const p = props.prepared;
+				if (!p) return 'Map of tasks and pages grouped by category';
+				const names = p.clusters.map((c) => c.title).join(', ');
+				const bottleneck =
+					p.bottleneck >= 0
+						? ` Bottleneck: ${
+								p.nodes[p.bottleneck].key ?? p.labels[p.bottleneck]
+						  } blocks ${p.bottleneckBlocks}.`
+						: '';
+				return `Map of ${p.nodes.length} tasks and pages in ${p.clusters.length} clusters: ${names}.${bottleneck} Use the search box to move around the map by keyboard.`;
+			});
 
 			const load = () => {
 				if (!engine || !props.prepared) return;

@@ -84,6 +84,7 @@ export class MapEngine {
 	private want = new Float32Array(0);
 	private geo: ClusterGeo[] = [];
 	private intra: Int32Array[] = [];
+	private members: Int32Array[] = [];
 	private bridges: BridgeGroup[] = [];
 	private view: Transform = { k: 1, x: 0, y: 0 };
 	private fitK = 1;
@@ -174,6 +175,9 @@ export class MapEngine {
 			}
 		}
 		this.intra = perCluster.map((l) => Int32Array.from(l));
+		const byCluster: number[][] = prepared.clusters.map(() => []);
+		for (let i = 0; i < this.count; i++) byCluster[prepared.cluster[i]].push(i);
+		this.members = byCluster.map((l) => Int32Array.from(l));
 		this.bridges = [...pairs.entries()]
 			.map(([key, list]) => {
 				const [a, b] = key.split(':').map(Number);
@@ -773,8 +777,10 @@ export class MapEngine {
 			for (let pass = 0; pass < (dimmed ? 2 : 1); pass++) {
 				ctx.beginPath();
 				let any = false;
-				for (let i = 0; i < this.count; i++) {
-					if (d.cluster[i] !== ci || d.orphan[i] || emphasised(i)) continue;
+				const list = this.members[ci];
+				for (let n = 0; n < list.length; n++) {
+					const i = list[n];
+					if (d.orphan[i] || emphasised(i)) continue;
 					if (al[i] < 0.99 || !inView(i)) continue;
 					if (dimmed && (fn![i] === 1) !== (pass === 1)) continue;
 					const r = rpx(i);

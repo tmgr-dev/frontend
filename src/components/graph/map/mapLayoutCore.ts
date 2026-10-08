@@ -7,6 +7,7 @@ import {
 	type SimulationLinkDatum,
 	type SimulationNodeDatum,
 } from 'd3-force';
+import { orphanRingRadius, placeClusters } from './mapPlacement';
 
 export interface LayoutInit {
 	count: number;
@@ -15,9 +16,7 @@ export interface LayoutInit {
 	orphan: Uint8Array;
 	links: Int32Array;
 	cross: Uint8Array;
-	centers: Float32Array;
-	clusterRadius: Float32Array;
-	ring: number;
+	clusterCounts: Int32Array;
 	seed: Float32Array;
 	group: boolean;
 }
@@ -47,28 +46,41 @@ export class MapLayoutCore {
 	private pull: number;
 	private ticks = 0;
 
+	private centers: Float32Array;
+	private clusterRadius: Float32Array;
+	private ring: number;
+
 	constructor(private init: LayoutInit) {
+		const places = placeClusters(Array.from(init.clusterCounts));
+		this.centers = new Float32Array(places.length * 2);
+		this.clusterRadius = new Float32Array(places.length);
+		places.forEach((p, i) => {
+			this.centers[i * 2] = p.x;
+			this.centers[i * 2 + 1] = p.y;
+			this.clusterRadius[i] = p.r;
+		});
+		this.ring = orphanRingRadius(places);
 		this.pull = init.group ? GROUP_PULL : LOOSE_PULL;
 		const perCluster = new Map<number, number>();
 		this.nodes = Array.from({ length: init.count }, (_, i) => {
 			const c = init.cluster[i];
 			if (init.orphan[i]) {
 				const a = init.seed[i] * Math.PI * 2;
-				const d = init.ring * (0.9 + (0.2 * ((i * 7919) % 100)) / 100);
+				const d = this.ring * (0.9 + (0.2 * ((i * 7919) % 100)) / 100);
 				return { i, x: Math.cos(a) * d, y: Math.sin(a) * d };
 			}
 			const slot = perCluster.get(c) ?? 0;
 			perCluster.set(c, slot + 1);
-			const r = init.clusterRadius[c] * 0.8 * Math.sqrt((slot + 0.5) / 40);
+			const r = this.clusterRadius[c] * 0.8 * Math.sqrt((slot + 0.5) / 40);
 			const a = slot * GOLDEN;
 			return {
 				i,
 				x:
-					init.centers[c * 2] +
-					Math.cos(a) * Math.min(r, init.clusterRadius[c]),
+					this.centers[c * 2] +
+					Math.cos(a) * Math.min(r, this.clusterRadius[c]),
 				y:
-					init.centers[c * 2 + 1] +
-					Math.sin(a) * Math.min(r, init.clusterRadius[c]),
+					this.centers[c * 2 + 1] +
+					Math.sin(a) * Math.min(r, this.clusterRadius[c]),
 			};
 		});
 		const links: LayoutLink[] = [];
@@ -121,19 +133,19 @@ export class MapLayoutCore {
 				const y = node.y ?? 0;
 				if (init.orphan[i]) {
 					const d = Math.hypot(x, y) || 1;
-					const pushR = (init.ring - d) * 0.06 * alpha;
+					const pushR = (this.ring - d) * 0.06 * alpha;
 					node.vx = (node.vx ?? 0) + (x / d) * pushR * 4;
 					node.vy = (node.vy ?? 0) + (y / d) * pushR * 4;
 					continue;
 				}
 				const c = init.cluster[i];
-				const cx = init.centers[c * 2];
-				const cy = init.centers[c * 2 + 1];
+				const cx = this.centers[c * 2];
+				const cy = this.centers[c * 2 + 1];
 				node.vx = (node.vx ?? 0) + (cx - x) * k;
 				node.vy = (node.vy ?? 0) + (cy - y) * k;
 				if (this.pull === GROUP_PULL) {
 					const dist = Math.hypot(x - cx, y - cy);
-					const limit = init.clusterRadius[c] * 0.85;
+					const limit = this.clusterRadius[c] * 0.85;
 					if (dist > limit) {
 						const over = ((dist - limit) / dist) * 1.5 * alpha;
 						node.vx = (node.vx ?? 0) - (x - cx) * over;

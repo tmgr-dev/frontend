@@ -27,6 +27,7 @@ export const createMapLayout = (
 	let core: MapLayoutCore | null = null;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let generation = 0;
+	let requested = 0;
 
 	const loop = (token: number) => {
 		if (!core || token !== generation) return;
@@ -41,7 +42,9 @@ export const createMapLayout = (
 	};
 
 	if (worker) {
-		worker.onmessage = (e: MessageEvent<LayoutStep>) => onStep(e.data);
+		worker.onmessage = (e: MessageEvent<LayoutStep & { gen: number }>) => {
+			if (e.data.gen === requested) onStep(e.data);
+		};
 		worker.onerror = () => {
 			worker?.terminate();
 			worker = null;
@@ -53,12 +56,13 @@ export const createMapLayout = (
 	return {
 		start(init) {
 			lastInit = init;
-			if (worker) worker.postMessage({ type: 'init', init });
+			if (worker) worker.postMessage({ type: 'init', gen: ++requested, init });
 			else local(init);
 		},
 		setGroup(group) {
 			if (lastInit) lastInit = { ...lastInit, group };
-			if (worker) worker.postMessage({ type: 'group', group });
+			if (worker)
+				worker.postMessage({ type: 'group', gen: ++requested, group });
 			else if (core) {
 				core.setGroup(group);
 				loop(++generation);

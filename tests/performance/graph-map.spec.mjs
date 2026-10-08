@@ -93,6 +93,30 @@ test.describe('Workspace map', () => {
     await shot(page, 'map-search-dark');
   });
 
+  test('search results are keyboard operable', async ({ page }) => {
+    await setupMap(page, map);
+    await openMap(page);
+    const search = page.getByTestId('map-search');
+    await search.fill('overview');
+    const list = page.getByTestId('map-results');
+    await expect(list.getByRole('option').first()).toBeVisible();
+    await search.press('ArrowDown');
+    await search.press('ArrowDown');
+    await expect(list.getByRole('option').nth(1)).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await search.press('Escape');
+    await expect(list).toHaveCount(0);
+    await search.press('ArrowDown');
+    await search.press('Enter');
+    await expect(page.getByTestId('graph-overlay')).toBeVisible();
+    await expect(page.getByTestId('map-canvas')).toHaveAttribute(
+      'aria-label',
+      /clusters: .*Bottleneck: TM-416 blocks 4/,
+    );
+  });
+
   test('the timeline hides newer items and the range buttons refetch', async ({
     page,
   }) => {

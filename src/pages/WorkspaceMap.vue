@@ -19,27 +19,62 @@
 						</h1>
 					</div>
 					<div class="flex flex-wrap items-center gap-2">
-						<label
-							class="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink-muted"
-						>
-							<Search class="h-4 w-4 shrink-0" />
-							<input
-								v-model="query"
-								type="text"
-								placeholder="task, page, person"
-								aria-label="Search the map"
-								class="w-36 bg-transparent text-ink outline-none placeholder:text-ink-subtle"
-								data-testid="map-search"
-								@keydown.enter.prevent="jumpToFirst"
-								@keydown.esc="query = ''"
-							/>
-							<span
-								v-if="matches"
-								class="shrink-0 text-xs tabular-nums"
-								data-testid="map-match-count"
-								>{{ matches.length }}</span
+						<div class="relative">
+							<label
+								class="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink-muted"
 							>
-						</label>
+								<Search class="h-4 w-4 shrink-0" />
+								<input
+									v-model="query"
+									type="text"
+									placeholder="task, page, person"
+									aria-label="Search the map"
+									role="combobox"
+									aria-autocomplete="list"
+									aria-controls="map-results"
+									:aria-expanded="resultsVisible"
+									:aria-activedescendant="
+										active >= 0 ? `map-result-${active}` : undefined
+									"
+									class="w-36 bg-transparent text-ink outline-none placeholder:text-ink-subtle"
+									data-testid="map-search"
+									@focus="listOpen = true"
+									@blur="listOpen = false"
+									@input="onSearchInput"
+									@keydown="onSearchKey"
+								/>
+								<span
+									v-if="matches"
+									class="shrink-0 text-xs tabular-nums"
+									data-testid="map-match-count"
+									>{{ matches.length }}</span
+								>
+							</label>
+							<ul
+								v-if="resultsVisible"
+								id="map-results"
+								role="listbox"
+								aria-label="Search results"
+								class="absolute left-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-line bg-surface-base py-1 shadow-lg"
+								data-testid="map-results"
+							>
+								<li
+									v-for="(r, n) in results"
+									:id="`map-result-${n}`"
+									:key="r.id"
+									role="option"
+									:aria-selected="n === active"
+									class="flex cursor-pointer items-baseline justify-between gap-3 px-3 py-1.5 text-sm"
+									:class="n === active ? 'bg-surface-hover' : ''"
+									@mousedown.prevent="openResult(n)"
+								>
+									<span class="truncate">{{ r.label }}</span>
+									<span class="shrink-0 text-xs text-ink-muted">{{
+										r.cluster
+									}}</span>
+								</li>
+							</ul>
+						</div>
 						<div
 							class="flex rounded-xl border border-line bg-surface p-0.5"
 							role="group"
@@ -404,6 +439,52 @@
 				showOrphans.value = true;
 				focusIds(ids);
 			};
+			const listOpen = ref(false);
+			const active = ref(-1);
+			const results = computed(() => {
+				const p = prepared.value;
+				if (!p || !matches.value) return [];
+				return matches.value.slice(0, 8).map((i) => ({
+					index: i,
+					id: p.nodes[i].id,
+					label: p.labels[i],
+					cluster: p.clusters[p.cluster[i]].title,
+				}));
+			});
+			const resultsVisible = computed(
+				() => listOpen.value && results.value.length > 0,
+			);
+			const onSearchInput = () => {
+				listOpen.value = true;
+				active.value = -1;
+			};
+			const openResult = (n: number) => {
+				const r = results.value[n];
+				if (!r) return;
+				listOpen.value = false;
+				canvas.value?.focusIndices([r.index]);
+				openEntity(r.id);
+			};
+			const onSearchKey = (e: KeyboardEvent) => {
+				const count = results.value.length;
+				if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+					if (!count) return;
+					e.preventDefault();
+					listOpen.value = true;
+					const step = e.key === 'ArrowDown' ? 1 : -1;
+					active.value = (active.value + step + count) % count;
+					canvas.value?.focusIndices([results.value[active.value].index]);
+				} else if (e.key === 'Enter') {
+					e.preventDefault();
+					if (active.value >= 0) openResult(active.value);
+					else jumpToFirst();
+				} else if (e.key === 'Escape') {
+					if (resultsVisible.value) {
+						listOpen.value = false;
+						active.value = -1;
+					} else query.value = '';
+				}
+			};
 			const jumpToFirst = () => {
 				const first = matches.value?.[0];
 				if (first !== undefined) canvas.value?.focusIndices([first]);
@@ -473,6 +554,13 @@
 				focusIds,
 				focusOrphans,
 				jumpToFirst,
+				listOpen,
+				active,
+				results,
+				resultsVisible,
+				onSearchInput,
+				onSearchKey,
+				openResult,
 				openEntity,
 			};
 		},
