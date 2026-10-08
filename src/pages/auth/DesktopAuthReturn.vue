@@ -16,6 +16,10 @@
 		buildDesktopCallbackUrl,
 		parseRelayFragment,
 	} from '@/utils/desktopAuth';
+	import {
+		linkConfirmationNotice,
+		linkConfirmationProvider,
+	} from '@/utils/emailVerification';
 	import { computed, defineComponent, onMounted } from 'vue';
 	import { useRoute } from 'vue-router';
 
@@ -33,7 +37,12 @@
 			);
 			const subtitle = computed(() => {
 				if (!result) return 'This sign-in link is not valid. Start again in TMGR.';
-				if ('error' in result) return 'Return to TMGR and try again.';
+				if ('error' in result) {
+					const provider = linkConfirmationProvider(result.error);
+					return provider
+						? linkConfirmationNotice(provider)
+						: 'Return to TMGR and try again.';
+				}
 				return 'Return to TMGR to continue. You can close this tab.';
 			});
 

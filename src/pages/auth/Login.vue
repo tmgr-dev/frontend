@@ -123,13 +123,18 @@
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
-	import { takeReturnPath } from '@/utils/emailVerification';
+	import {
+		linkConfirmationNotice,
+		linkConfirmationProvider,
+		takeReturnPath,
+	} from '@/utils/emailVerification';
 	import { createOAuthBinding } from '@/utils/oauthBinding';
 	import { consumeSessionExpired } from '@/utils/sessionExpiry';
 	import { AxiosError } from 'axios';
 	import { onMounted, ref } from 'vue';
-	import { useRouter } from 'vue-router';
+	import { useRoute, useRouter } from 'vue-router';
 
+	const route = useRoute();
 	const router = useRouter();
 	const isDesktop = isDesktopApp();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
@@ -225,6 +230,14 @@
 		setDocumentTitle('Login');
 		if (consumeSessionExpired()) {
 			message.value = 'Your session has expired. Please sign in again.';
+		}
+		const linkProvider = linkConfirmationProvider(route.query.error);
+		if (linkProvider) {
+			message.value = linkConfirmationNotice(linkProvider);
+		}
+		if ('error' in route.query) {
+			const { error: _error, ...query } = route.query;
+			router.replace({ query });
 		}
 		if (document.getElementById('telegram-login-widget-container')) {
 			const script = document.createElement('script');

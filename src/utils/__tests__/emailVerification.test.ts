@@ -1,7 +1,9 @@
 import {
 	errorMessageFrom,
-	googleLinkConfirmationMessage,
 	isSafeReturnPath,
+	linkConfirmationMessage,
+	linkConfirmationNotice,
+	linkConfirmationProvider,
 	retryAfterLabel,
 	saveReturnPath,
 	shouldShowVerifyBanner,
@@ -25,25 +27,68 @@ describe('shouldShowVerifyBanner', () => {
 	});
 });
 
-describe('googleLinkConfirmationMessage', () => {
+describe('linkConfirmationMessage', () => {
 	it('returns the signed-in guidance for 409 email_link_confirmation_required', () => {
-		const message = googleLinkConfirmationMessage(
+		const message = linkConfirmationMessage(
 			httpError(409, {
 				error: 'email_link_confirmation_required',
 				message: 'Check your inbox',
 			}),
+			'google',
 		);
 		expect(message).toContain('We emailed you a confirmation link.');
 		expect(message).toContain('while signed in');
 		expect(message).toContain('sign in with Google again');
+		expect(message).toContain('Forgot password');
+	});
+
+	it('names the provider', () => {
+		const error = httpError(409, { error: 'email_link_confirmation_required' });
+		expect(linkConfirmationMessage(error, 'github')).toContain(
+			'sign in with GitHub again',
+		);
+		expect(linkConfirmationMessage(error, 'apple')).toContain(
+			'sign in with Apple again',
+		);
 	});
 
 	it('ignores other errors', () => {
 		expect(
-			googleLinkConfirmationMessage(httpError(409, { error: 'x' })),
+			linkConfirmationMessage(httpError(409, { error: 'x' }), 'github'),
 		).toBeNull();
-		expect(googleLinkConfirmationMessage(httpError(500, {}))).toBeNull();
-		expect(googleLinkConfirmationMessage(new Error('x'))).toBeNull();
+		expect(linkConfirmationMessage(httpError(500, {}), 'github')).toBeNull();
+		expect(linkConfirmationMessage(new Error('x'), 'github')).toBeNull();
+	});
+});
+
+describe('linkConfirmationProvider', () => {
+	it.each(['google', 'github', 'apple'] as const)('maps %s', (provider) => {
+		expect(linkConfirmationProvider(`${provider}_link_confirmation`)).toBe(
+			provider,
+		);
+	});
+
+	it.each([
+		'telegram_link_confirmation',
+		'google',
+		'github',
+		'link_confirmation',
+		'github_link_confirmation_x',
+		'x_github_link_confirmation',
+		'',
+		null,
+		undefined,
+		['github_link_confirmation'],
+	])('returns null for %p', (code) => {
+		expect(linkConfirmationProvider(code as never)).toBeNull();
+	});
+});
+
+describe('linkConfirmationNotice', () => {
+	it('uses the provider label', () => {
+		expect(linkConfirmationNotice('github')).toContain(
+			'sign in with GitHub again',
+		);
 	});
 });
 

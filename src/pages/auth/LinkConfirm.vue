@@ -13,7 +13,7 @@
 					confirm.state.value === 'confirming'
 				"
 			>
-				<p>Link this Google account to your tmgr.dev account?</p>
+				<p>Link this sign-in method to your tmgr.dev account?</p>
 				<Button
 					class="h-10 w-full"
 					:disabled="confirm.state.value === 'confirming'"
@@ -29,13 +29,15 @@
 			</template>
 			<template v-else>
 				<p v-if="confirm.state.value === 'linked'">
-					Google account linked. Sign in with Google next time.
+					Account linked. Sign in with {{ providerLabel }} next time.
 				</p>
 				<p v-else-if="confirm.state.value === 'expired'">
-					This link has expired. Sign in with Google again to get a new one.
+					This link has expired. Sign in with your provider again to get a new
+					one.
 				</p>
 				<p v-else-if="confirm.state.value === 'invalid'">
-					This link is not valid. Sign in with Google again to get a new one.
+					This link is not valid. Sign in with your provider again to get a new
+					one.
 				</p>
 				<p v-else-if="confirm.state.value === 'wrong_account'">
 					This link is for a different account — sign out and sign in with the
@@ -79,7 +81,7 @@
 	const confirm = createLinkConfirm({ confirm: confirmSocialLink });
 
 	const titles = {
-		ready: 'Link Google account',
+		ready: 'Link account',
 		confirming: 'Linking account',
 		linked: 'Account linked',
 		expired: 'Link expired',
@@ -88,6 +90,14 @@
 		error: 'Something went wrong',
 	};
 	const title = computed(() => titles[confirm.state.value]);
+	const providerLabels: Record<string, string> = {
+		google: 'Google',
+		github: 'GitHub',
+		apple: 'Apple',
+	};
+	const providerLabel = computed(
+		() => providerLabels[confirm.provider.value] ?? 'that provider',
+	);
 
 	async function signOut() {
 		saveReturnPath(`${route.path}?token=${encodeURIComponent(token)}`);

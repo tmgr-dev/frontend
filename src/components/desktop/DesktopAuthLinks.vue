@@ -19,6 +19,10 @@
 		takePendingDesktopAuth,
 	} from '@/utils/desktopAuth';
 	import { createRecentUrlGuard } from '@/utils/desktopShortcuts';
+	import {
+		linkConfirmationNotice,
+		linkConfirmationProvider,
+	} from '@/utils/emailVerification';
 	import { defineComponent, onBeforeUnmount, onMounted } from 'vue';
 	import { useRouter } from 'vue-router';
 
@@ -45,7 +49,12 @@
 					// Uncorrelated (no state): report it, but keep the attempt redeemable.
 					if (!hasPendingDesktopAuth()) return;
 					await showMainWindow();
-					failDesktopSocialLogin('Sign-in was not completed. Please try again.');
+					const provider = linkConfirmationProvider(link.error);
+					failDesktopSocialLogin(
+						provider
+							? linkConfirmationNotice(provider)
+							: 'Sign-in was not completed. Please try again.',
+					);
 					return;
 				}
 				const pending = takePendingDesktopAuth(link.state);

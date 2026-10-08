@@ -39,7 +39,7 @@
 		desktopTxFromState,
 		relayReturnHash,
 	} from '@/utils/desktopAuth';
-	import { googleLinkConfirmationMessage, takeReturnPath } from '@/utils/emailVerification';
+	import { linkConfirmationMessage, takeReturnPath } from '@/utils/emailVerification';
 	import { takeOAuthBinding } from '@/utils/oauthBinding';
 	import { AxiosError } from 'axios';
 	import { ref } from 'vue';
@@ -204,7 +204,10 @@
 
 			store.commit('rerenderApp');
 		} catch (error: unknown) {
-			const linkConfirmation = googleLinkConfirmationMessage(error);
+			const linkConfirmation = linkConfirmationMessage(
+				error,
+				String(route.params.platform),
+			);
 			if (linkConfirmation) {
 				message.value = linkConfirmation;
 			} else if (error instanceof AxiosError) {
