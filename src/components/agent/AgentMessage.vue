@@ -48,7 +48,7 @@
 			v-else
 			class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
-			<MarkdownText :content="props.message.content" />
+			<MarkdownText :content="props.message.content" untrusted />
 			<details
 				v-if="props.message.steps.length"
 				class="mt-1 text-xs text-ink-subtle"

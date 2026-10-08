@@ -20,7 +20,11 @@
 		type ReactionSummary,
 		toggleReaction,
 	} from '@/utils/commentReactions';
-	import { type AuthorFilter, matchesAuthorFilter } from '@/utils/personas';
+	import {
+		type AuthorFilter,
+		isMachineAuthored,
+		matchesAuthorFilter,
+	} from '@/utils/personas';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		Bot,
@@ -372,7 +376,10 @@
 						</div>
 					</div>
 
-					<MarkdownText :content="comment.message" />
+					<MarkdownText
+						:content="comment.message"
+						:untrusted="isMachineAuthored(comment)"
+					/>
 
 					<div class="mt-1.5 flex flex-wrap items-center gap-1">
 						<button

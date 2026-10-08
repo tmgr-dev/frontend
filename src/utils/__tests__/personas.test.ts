@@ -9,6 +9,7 @@ import {
 	effectivePermissions,
 	EXPIRY_OPTIONS,
 	extractFieldErrors,
+	isMachineAuthored,
 	isReadPermission,
 	matchesAuthorFilter,
 	parseSkillFrontMatter,
@@ -280,6 +281,23 @@ describe('authorKindOf', () => {
 
 	it('defaults to user when neither is present', () => {
 		expect(authorKindOf({})).toBe('user');
+	});
+});
+
+describe('isMachineAuthored', () => {
+	it('is true for persona authors and cursor assistant messages', () => {
+		expect(isMachineAuthored({ author: PERSONA_AUTHOR })).toBe(true);
+		expect(
+			isMachineAuthored({ cursor_message_type: 'assistant_message' }),
+		).toBe(true);
+	});
+
+	it('is false for people, including the missing-author fallback', () => {
+		expect(isMachineAuthored({ author: USER_AUTHOR })).toBe(false);
+		expect(isMachineAuthored({})).toBe(false);
+		expect(isMachineAuthored({ cursor_message_type: 'user_message' })).toBe(
+			false,
+		);
 	});
 });
 

@@ -19,6 +19,14 @@
 	import { defineComponent } from 'vue';
 	import { useRouter } from 'vue-router';
 
+	const apiOrigins = () => {
+		try {
+			return [new URL(import.meta.env.VITE_API_BASE_URL).origin];
+		} catch {
+			return [];
+		}
+	};
+
 	export default defineComponent({
 		name: 'MarkdownText',
 		props: {
@@ -29,6 +37,10 @@
 			linkTaskKeys: {
 				type: Boolean,
 				default: true,
+			},
+			untrusted: {
+				type: Boolean,
+				default: false,
 			},
 		},
 		setup() {
@@ -42,6 +54,9 @@
 					markdownToHtml(this.content || '', {
 						taskKeyPrefixes: this.linkTaskKeys ? this.taskKeyPrefixes : [],
 					}),
+					this.untrusted
+						? { remoteMedia: false, trustedOrigins: apiOrigins() }
+						: {},
 				);
 			},
 		},
