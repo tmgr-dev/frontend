@@ -1,6 +1,7 @@
 import type { LocalRouter } from '../router';
 import { LocalHttpError } from '../types';
 import type { Group } from './data';
+import { map } from './map';
 import {
 	ALL_GROUPS,
 	hubs,
@@ -59,4 +60,15 @@ export const addGraphRoutes = (router: LocalRouter, options: GraphOptions) =>
 		)
 		.add('GET', 'graph/orphans', ({ ctx, query }) =>
 			orphans(ctx, { limit: intOf(query.get('limit')) }, options),
+		)
+		.add('GET', 'graph/map', ({ ctx, query }) =>
+			map(
+				ctx,
+				{
+					from: query.get('from') ?? undefined,
+					to: query.get('to') ?? undefined,
+					limit: intOf(query.get('limit')),
+				},
+				options,
+			),
 		);

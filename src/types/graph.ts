@@ -62,3 +62,30 @@ export interface GraphOrphans {
 	nodes: GraphNode[];
 	total: number;
 }
+
+export interface GraphMapCategory {
+	id: number | null;
+	title: string;
+	code: string | null;
+	count: number;
+}
+
+export interface GraphBridge {
+	from_category_id: number | null;
+	to_category_id: number | null;
+	edges: number;
+}
+
+export interface GraphMap {
+	nodes: GraphNode[];
+	edges: GraphEdge[];
+	categories: GraphMapCategory[];
+	insights: {
+		hubs: GraphRankItem[];
+		bottlenecks: GraphRankItem[];
+		bridges: GraphBridge[];
+		orphans: { total: number; ids: string[] };
+	};
+	truncated: boolean;
+	total: number;
+}
