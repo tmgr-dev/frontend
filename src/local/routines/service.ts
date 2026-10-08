@@ -250,6 +250,7 @@ export const updateRoutine = async (ctx: LocalContext, row: any, body: any) => {
 	}
 	if (body?.unscheduled === true) {
 		await ctx.db.execute(`DELETE FROM routine_instances WHERE routine_id = ? AND status = 'PENDING'`, [row.id]);
+		await ctx.db.execute(`UPDATE routines SET scheduled_date = NULL, scheduled_time = NULL WHERE id = ?`, [row.id]);
 	} else if (body?.scheduled_date) {
 		const date = normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
 		await upsertInstanceForDate(ctx, row.id, date, resolveTimeInput(body?.scheduled_time));
@@ -373,7 +374,20 @@ export const completeForDate = async (ctx: LocalContext, routineId: number, date
 			`SELECT frequency FROM routine_patterns WHERE routine_id = ? AND frequency IS NOT NULL AND frequency NOT IN ('', 'NONE')`,
 			[routineId],
 		);
-		if (!pattern && Number(n) === 1 && String(row.scheduled_for).slice(11, 19) === '00:00:00') {
+		const [routine] = await ctx.db.select<any>(`SELECT created_at FROM routines WHERE id = ?`, [routineId]);
+		const gapMs = (x: any, y: any) => Math.abs(Date.parse(x) - Date.parse(y));
+		const createdByCompletion = gapMs(row.created_at, row.completed_at) <= 60_000;
+		const createdWithRoutine =
+			!!routine &&
+			gapMs(row.created_at, routine.created_at) <= 60_000 &&
+			Math.abs(Date.parse(`${date}T00:00:00Z`) - Date.parse(`${String(routine.created_at).slice(0, 10)}T00:00:00Z`)) <=
+				86_400_000;
+		if (
+			!pattern &&
+			Number(n) === 1 &&
+			String(row.scheduled_for).slice(11, 19) === '00:00:00' &&
+			(createdByCompletion || createdWithRoutine)
+		) {
 			await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [row.id]);
 			return { ...row, id: null, status: 'PENDING', completed_at: null, skipped_at: null, updated_at: now };
 		}

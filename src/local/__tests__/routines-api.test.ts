@@ -142,6 +142,28 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
 	});
 
+	it('un-completing a dated no-time routine created earlier keeps it as a pending instance', async () => {
+		const routine = await data('POST', 'daily-routines/tasks/quick', { title: 'Next week', date: '2026-10-01' });
+		clock = new Date('2026-09-26T12:00:00');
+		await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-10-01' });
+		const off = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-10-01' });
+		expect(off).toMatchObject({ completed: false, status: 'PENDING' });
+		expect(off.instance_id).not.toBeNull();
+		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toHaveLength(1);
+	});
+
+	it('clears the routine own date and time when made unscheduled', async () => {
+		const routine = await data('POST', 'daily-routines/tasks', { title: 'Plain' });
+		await ctx.db.execute(`UPDATE routines SET scheduled_date = '2026-09-20', scheduled_time = '09:00:00' WHERE id = ?`, [
+			routine.id,
+		]);
+		await data('PUT', `daily-routines/tasks/${routine.id}`, { unscheduled: true });
+		const [row] = await ctx.db.select<any>(`SELECT scheduled_date, scheduled_time FROM routines WHERE id = ?`, [
+			routine.id,
+		]);
+		expect(row).toEqual({ scheduled_date: null, scheduled_time: null });
+	});
+
 	it('lists only active (non-archived, non-deleted) routines newest first', async () => {
 		const a = await data('POST', 'daily-routines/tasks', { title: 'A' });
 		const b = await data('POST', 'daily-routines/tasks', { title: 'B' });
