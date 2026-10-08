@@ -219,4 +219,31 @@ describe('website relay helpers', () => {
 		expect(parseRelayFragment('#code=x&state=y')).toBeNull();
 		expect(parseRelayFragment('#error=javascript:alert(1)')).toBeNull();
 	});
+
+	it.each(['google', 'github', 'apple'])(
+		'relays the %s link-confirmation error',
+		(provider) => {
+			const error = `${provider}_link_confirmation`;
+			expect(parseRelayFragment(`#error=${error}`)).toEqual({ error });
+			expect(
+				parseAuthCallback(`tmgr://auth/callback?error=${error}`),
+			).toEqual({ type: 'auth', error });
+			expect(buildDesktopCallbackUrl({ error })).toBe(
+				`tmgr://auth/callback?error=${error}`,
+			);
+		},
+	);
+
+	it.each([
+		'evil_link_confirmation',
+		'github_link_confirmation_',
+		'github_link_confirmation%0a',
+		'github_link',
+		'_link_confirmation',
+		'GitHub_link_confirmation',
+		'github_link_confirmation<script>',
+	])('rejects %s', (error) => {
+		expect(parseRelayFragment(`#error=${error}`)).toBeNull();
+		expect(parseAuthCallback(`tmgr://auth/callback?error=${error}`)).toBeNull();
+	});
 });

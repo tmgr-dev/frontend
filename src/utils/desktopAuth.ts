@@ -22,7 +22,7 @@ const CALLBACK_PREFIX = 'tmgr://auth/callback';
 const DESKTOP_STATE = /^desktop\.([A-Za-z0-9_-]{43})$/;
 const CODE = /^[A-Za-z0-9_-]{43}$/;
 const STATE = /^[A-Za-z0-9_-]{16,128}$/;
-const ERROR = /^[a-z]{1,20}$/;
+const ERROR = /^(google|github|apple|telegram)(_link_confirmation)?$/;
 
 const base64Url = (bytes: Uint8Array): string =>
 	btoa(String.fromCharCode(...bytes))

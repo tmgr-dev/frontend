@@ -5,8 +5,15 @@ interface HttpErrorLike {
 	};
 }
 
-const GOOGLE_LINK_NOTICE =
-	'We emailed you a confirmation link. Open it while signed in to your tmgr.dev account (password or another sign-in method), confirm, then sign in with Google again.';
+export type LinkProvider = 'google' | 'github' | 'apple';
+
+const LINK_PROVIDER_LABELS: Record<LinkProvider, string> = {
+	google: 'Google',
+	github: 'GitHub',
+	apple: 'Apple',
+};
+
+const LINK_CONFIRMATION_CODE = /^(google|github|apple)_link_confirmation$/;
 
 const DISMISS_KEY = 'email.verify.banner.dismissed';
 const RETURN_KEY = 'auth.return.to';
@@ -26,14 +33,25 @@ export const shouldShowVerifyBanner = (
 	dismissed: boolean,
 ): boolean => user?.email_verified === false && !dismissed;
 
-export const googleLinkConfirmationMessage = (
+export const linkConfirmationNotice = (provider: string): string => {
+	const label = LINK_PROVIDER_LABELS[provider as LinkProvider] ?? 'your provider';
+	return `We emailed you a confirmation link. Open it while signed in to your tmgr.dev account (password or another sign-in method), confirm, then sign in with ${label} again. Can't sign in? Use “Forgot password” to get into your account first.`;
+};
+
+export const linkConfirmationProvider = (code: unknown): LinkProvider | null =>
+	typeof code === 'string'
+		? ((LINK_CONFIRMATION_CODE.exec(code)?.[1] as LinkProvider) ?? null)
+		: null;
+
+export const linkConfirmationMessage = (
 	error: unknown,
+	provider: string,
 ): string | null => {
 	const { status, code } = httpErrorInfo(error);
 	if (status !== 409 || code !== 'email_link_confirmation_required') {
 		return null;
 	}
-	return GOOGLE_LINK_NOTICE;
+	return linkConfirmationNotice(provider);
 };
 
 export const errorMessageFrom = (error: unknown, fallback: string): string => {
