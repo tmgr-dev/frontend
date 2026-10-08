@@ -6,6 +6,7 @@
  */
 
 export interface TimerState {
+	workspace_id?: number | null;
 	start_time?: number | null;
 	common_time?: number | null;
 	[key: string]: unknown;
@@ -34,6 +35,12 @@ export function applyTimerState(
 	incoming: (TimerState & { id?: number | null }) | null | undefined,
 ): boolean {
 	if (!incoming || !form.id || Number(incoming.id) !== Number(form.id))
+		return false;
+	if (
+		asNumber(form.workspace_id) !== null &&
+		asNumber(incoming.workspace_id) !== null &&
+		asNumber(form.workspace_id) !== asNumber(incoming.workspace_id)
+	)
 		return false;
 	if (!timerStateDiffers(form, incoming)) return false;
 

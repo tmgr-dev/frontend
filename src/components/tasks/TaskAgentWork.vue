@@ -229,7 +229,12 @@
 				timerUserId = userId || null;
 				if (!userId) return;
 				const reloadIfThisTask = (task) => {
-					if (task?.id === props.taskId) load();
+					if (task?.id !== props.taskId) return;
+					const sameWorkspace =
+						task.workspace_id == null ||
+						props.workspaceId == null ||
+						Number(task.workspace_id) === Number(props.workspaceId);
+					if (sameWorkspace) load();
 				};
 				timerSubscription = subscribeToUser(userId, {
 					onTaskCountdownStarted: reloadIfThisTask,

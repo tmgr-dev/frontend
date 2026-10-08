@@ -71,6 +71,46 @@ describe('applyTimerState', () => {
 		expect(form.common_time).toBe(300);
 	});
 
+
+	it('ignores a same-id task from another workspace', () => {
+		const form = { id: 5, workspace_id: 2, start_time: null, common_time: 0 };
+
+		expect(
+			applyTimerState(form, {
+				id: 5,
+				workspace_id: -1,
+				start_time: 1757700000,
+				common_time: 0,
+			}),
+		).toBe(false);
+		expect(form.start_time).toBeNull();
+	});
+
+	it('accepts a same-id task from the same workspace, compared as numbers', () => {
+		const form = { id: 5, workspace_id: 2, start_time: null, common_time: 0 };
+
+		expect(
+			applyTimerState(form, {
+				id: 5,
+				workspace_id: '2' as unknown as number,
+				start_time: 1757700000,
+				common_time: 0,
+			}),
+		).toBe(true);
+	});
+
+	it('accepts the task when either side has no workspace_id', () => {
+		const form = { id: 5, start_time: null, common_time: 0 };
+
+		expect(
+			applyTimerState(form, {
+				id: 5,
+				workspace_id: 2,
+				start_time: 1757700000,
+				common_time: 0,
+			}),
+		).toBe(true);
+	});
 	it('ignores an event about another task', () => {
 		const form = { id: 5, start_time: null, common_time: 120 };
 

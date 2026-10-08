@@ -1,4 +1,3 @@
-import { hasActiveLocalWorkspace } from '@/local/runtime';
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
 import type {
@@ -293,7 +292,7 @@ export function usePusher(): UsePusherReturn {
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;
 
-			reconnect();
+			restartConnection();
 		}, delay);
 	};
 
@@ -411,8 +410,6 @@ export function usePusher(): UsePusherReturn {
 			// TM-224: the API broadcasts these on the user's own channel when a timer starts or stops,
 			// so the same user's other tabs can follow a timer they did not start themselves.
 			channel.listen('.task-countdown-started', (data: { task: any }) => {
-				// Cloud timer events would land on the local task with the same id.
-				if (hasActiveLocalWorkspace()) return;
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onTaskCountdownStarted?.(data.task));
@@ -420,8 +417,6 @@ export function usePusher(): UsePusherReturn {
 			});
 
 			channel.listen('.task-countdown-stopped', (data: { task: any }) => {
-				// Cloud timer events would land on the local task with the same id.
-				if (hasActiveLocalWorkspace()) return;
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onTaskCountdownStopped?.(data.task));
@@ -615,13 +610,18 @@ export function usePusher(): UsePusherReturn {
 
 	// Keep Echo channels and ownership IDs intact. Pusher reauthorizes existing
 	// channels on connect, using the current token through customHandler.
-	const reconnect = (): void => {
+	const restartConnection = (): void => {
 		cancelReconnect();
 		if (!echoInstance) return;
 		isConnected.value = false;
 		connectionState.value = 'reconnecting';
 		echoInstance.disconnect();
 		(echoInstance as any).connector.pusher.connect();
+	};
+
+	const reconnect = (): void => {
+		reconnectConfig.currentAttempt = 0;
+		restartConnection();
 	};
 
 	// Disconnect from Pusher

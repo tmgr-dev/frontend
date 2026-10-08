@@ -94,6 +94,7 @@
 	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
+	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import { isDetachedWindowLabel } from '@/utils/taskWindow';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
@@ -150,6 +151,14 @@
 			}
 
 			const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
+			if (!isDetachedWindow && desktopWindowLabel() !== 'quick-add') {
+				const reloadActiveTasks = () =>
+					store.commit('incrementReloadActiveTasksKey');
+				useRunningTimerSync({
+					onEvent: reloadActiveTasks,
+					onResync: reloadActiveTasks,
+				});
+			}
 			if (!isDetachedWindow) {
 				watch(
 					() => store.getters.isLoggedIn,

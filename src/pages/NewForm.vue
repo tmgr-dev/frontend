@@ -96,6 +96,7 @@
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { usePusher } from '@/composable/usePusher';
+	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import store from '@/store';
 	import { EditorType } from '@/types';
 	import type { AgentStep } from '@/types/agent';
@@ -120,6 +121,7 @@
 		type PersonaAssignee,
 	} from '@/utils/personas';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
+	import { requestCache } from '@/utils/requestCache';
 	import { applyTimerState } from '@/utils/timerSync';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -964,6 +966,26 @@
 		{ immediate: true },
 	);
 
+	const resyncTimer = async () => {
+		const id = form.value.id;
+		if (!id) return;
+		try {
+			applyTimerState(form.value, (await getTask(id, false)) as any);
+		} catch (error) {
+			console.error('Failed to resync task timer:', error);
+		}
+	};
+
+	useRunningTimerSync({
+		onEvent: (task) => {
+			if (form.value.id && Number(task?.id) === Number(form.value.id)) {
+				requestCache.invalidate(`task-${form.value.id}`);
+			}
+			applyTimerState(form.value, task);
+		},
+		onResync: resyncTimer,
+	});
+
 	watch(
 		() => form.value.id,
 		() => {
@@ -984,8 +1006,6 @@
 			if (!userId) return;
 			subscribedUserId.value = userId;
 			userPusherSubscriptionId.value = subscribeToUser(userId, {
-				onTaskCountdownStarted: (task) => applyTimerState(form.value, task),
-				onTaskCountdownStopped: (task) => applyTimerState(form.value, task),
 				onAgentStep: (e) => {
 					if (
 						isForThisTask(e) &&

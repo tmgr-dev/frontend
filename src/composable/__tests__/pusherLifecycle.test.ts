@@ -3,7 +3,7 @@ import path from 'path';
 import ts from 'typescript';
 
 // Compile the real Vite module with only its build-time environment replaced.
-function loadPusher() {
+function loadPusher(localWorkspaceActive = false) {
 	const instances: any[] = [];
 	class Echo {
 		listeners: Record<string, Function> = {};
@@ -66,6 +66,8 @@ function loadPusher() {
 				? Echo
 				: name === 'pusher-js'
 				? {}
+				: name === '@/local/runtime'
+				? { hasActiveLocalWorkspace: () => localWorkspaceActive }
 				: name === '@/utils/pusherChannelAuthorizer'
 				? require('../../utils/pusherChannelAuthorizer')
 				: require(name),
@@ -248,4 +250,32 @@ test('page events on the workspace channel reach onPageEvent with their type', (
 		expect(onPageEvent).toHaveBeenLastCalledWith(type, payload);
 	}
 	expect(onPageEvent).toHaveBeenCalledTimes(5);
+});
+
+test('countdown events reach user handlers while a local workspace is active', () => {
+	const { api, instances } = loadPusher(true);
+	const pusher = api.usePusher();
+	const started = jest.fn();
+	const stopped = jest.fn();
+	pusher.subscribeToUser(3, {
+		onTaskCountdownStarted: started,
+		onTaskCountdownStopped: stopped,
+	});
+	const channel = instances[0].channels.get('App.User.3');
+	channel.callbacks['.task-countdown-started']({ task: { id: 1 } });
+	channel.callbacks['.task-countdown-stopped']({ task: { id: 1 } });
+	expect(started).toHaveBeenCalledWith({ id: 1 });
+	expect(stopped).toHaveBeenCalledWith({ id: 1 });
+});
+
+test('manual reconnect after the retry budget is spent starts a fresh budget', () => {
+	const { api, instances } = loadPusher();
+	const pusher = api.usePusher();
+	for (let i = 0; i < 5; i++) {
+		instances[0].listeners.error({});
+		jest.runOnlyPendingTimers();
+	}
+	expect(pusher.getConnectionInfo().reconnectAttempts).toBe(5);
+	pusher.reconnect();
+	expect(pusher.getConnectionInfo().reconnectAttempts).toBe(0);
 });

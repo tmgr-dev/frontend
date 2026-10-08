@@ -168,9 +168,6 @@
 				subscribedUserId = userId || null;
 				if (!userId) return;
 				userSubscription = pusher.subscribeToUser(userId, {
-					onTaskCountdownStarted: reloadActiveTasks,
-					onTaskCountdownStopped: reloadActiveTasks,
-					onReconnect: reloadActiveTasks,
 					onNotificationCreated: (data) => {
 						const n = data?.notification;
 						if (n) notify(n.title || 'TMGR', n.message || '');
