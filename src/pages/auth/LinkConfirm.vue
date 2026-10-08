@@ -32,10 +32,12 @@
 					Account linked. Sign in with {{ providerLabel }} next time.
 				</p>
 				<p v-else-if="confirm.state.value === 'expired'">
-					This link has expired. Sign in with your provider again to get a new one.
+					This link has expired. Sign in with your provider again to get a new
+					one.
 				</p>
 				<p v-else-if="confirm.state.value === 'invalid'">
-					This link is not valid. Sign in with your provider again to get a new one.
+					This link is not valid. Sign in with your provider again to get a new
+					one.
 				</p>
 				<p v-else-if="confirm.state.value === 'wrong_account'">
 					This link is for a different account — sign out and sign in with the

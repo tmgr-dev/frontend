@@ -34,13 +34,14 @@ export const shouldShowVerifyBanner = (
 ): boolean => user?.email_verified === false && !dismissed;
 
 export const linkConfirmationNotice = (provider: string): string => {
-	const label = LINK_PROVIDER_LABELS[provider as LinkProvider] ?? 'your provider';
+	const label =
+		LINK_PROVIDER_LABELS[provider as LinkProvider] ?? 'your provider';
 	return `We emailed you a confirmation link. Open it while signed in to your tmgr.dev account (password or another sign-in method), confirm, then sign in with ${label} again. Can't sign in? Use “Forgot password” to get into your account first.`;
 };
 
 export const linkConfirmationProvider = (code: unknown): LinkProvider | null =>
 	typeof code === 'string'
-		? ((LINK_CONFIRMATION_CODE.exec(code)?.[1] as LinkProvider) ?? null)
+		? (LINK_CONFIRMATION_CODE.exec(code)?.[1] as LinkProvider) ?? null
 		: null;
 
 export const linkConfirmationMessage = (
