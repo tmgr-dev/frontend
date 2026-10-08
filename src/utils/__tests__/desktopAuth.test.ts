@@ -236,6 +236,7 @@ describe('website relay helpers', () => {
 
 	it.each([
 		'evil_link_confirmation',
+		'telegram_link_confirmation',
 		'github_link_confirmation_',
 		'github_link_confirmation%0a',
 		'github_link',
