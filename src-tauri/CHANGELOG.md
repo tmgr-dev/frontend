@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.29 — 2026-10-09
+
+- Agent work is now a workspace feature, on by default: the workspace owner can turn it off in Settings → Features →
+  Agent work. When it is off, tasks have no Agent work section, agent activity is hidden from the dashboard and AI
+  agents are told to skip reporting their work. Existing runs are kept and come back when it is turned on again.
+  Works in local workspaces too.
+
 ## 0.9.28 — 2026-10-09
 
 - New workspace Map (sidebar → More → Map): the whole workspace as clusters, one per category, with the tasks and
