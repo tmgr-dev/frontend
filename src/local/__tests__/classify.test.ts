@@ -108,6 +108,15 @@ describe('classify', () => {
 	});
 });
 
+describe('classify graph endpoints', () => {
+	it('goes to the server outside a local workspace and stays local inside one', () => {
+		expect(classify('GET', 'graph/related?entity=task:1', false)).toBe('server');
+		for (const url of ['graph/related?entity=task:1', 'graph/path', 'graph/hubs', 'graph/orphans']) {
+			expect(classify('GET', url, true)).toBe('local');
+		}
+	});
+});
+
 describe('crossesWorkspaces', () => {
 	it('refuses sending a local task to the server', () => {
 		expect(crossesWorkspaces('server', { title: 'x', workspace_id: -42 }, undefined, null)).toBe(true);

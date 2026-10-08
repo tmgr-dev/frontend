@@ -12,6 +12,7 @@ import { generateUniqueCategoryCode, sanitizeCategoryCode } from './categoryCode
 import { addPageRoutes } from './pages/routes';
 import { mentionedPeople, syncTaskMentions } from './pages/mentions';
 import { addPageDataRoutes } from './pages/pageData';
+import { addGraphRoutes } from './graph/routes';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -1255,6 +1256,7 @@ export const createLocalApi = () => {
 	addRoutineRoutes(router);
 	addPageRoutes(router);
 	addPageDataRoutes(router);
+	addGraphRoutes(router, { pagesEnabled: FEATURE_TOGGLES.pages });
 	return router;
 };
 
