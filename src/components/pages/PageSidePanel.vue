@@ -84,6 +84,11 @@
 			<p v-else class="text-gray-400 dark:text-gray-500">None</p>
 		</section>
 
+		<EntityGraphSection
+			:entity="`page:${slug}`"
+			heading-class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+		/>
+
 		<section data-testid="page-files-slot">
 			<slot name="files" />
 		</section>
@@ -99,11 +104,16 @@
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import type { TocEntry } from '@/utils/pages/toc';
-	import { defineComponent, type PropType } from 'vue';
+	import { defineAsyncComponent, defineComponent, type PropType } from 'vue';
 
 	export default defineComponent({
 		name: 'PageSidePanel',
-		components: { AuthorBadge },
+		components: {
+			AuthorBadge,
+			EntityGraphSection: defineAsyncComponent(
+				() => import('@/components/graph/EntityGraphSection.vue'),
+			),
+		},
 		props: {
 			toc: { type: Array as PropType<TocEntry[]>, default: () => [] },
 			backlinks: { type: Array as PropType<PageSummary[]>, default: () => [] },
