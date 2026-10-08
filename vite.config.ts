@@ -164,6 +164,11 @@ export default defineConfig({
 						),
 						vendorGroup('vendor-markdown', ['md-editor-v3'], 20),
 						vendorGroup(
+							'vendor-graph',
+							['d3-force', 'd3-quadtree', 'd3-dispatch', 'd3-timer'],
+							15,
+						),
+						vendorGroup(
 							'vendor-pusher',
 							['pusher-js', 'laravel-echo'],
 							10,
