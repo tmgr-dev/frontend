@@ -355,7 +355,7 @@ const pageCenter = {
   meta: { slug: 'ann-lee', page_type: 'person' },
 };
 
-const setup = async (page) => {
+const setup = async (page, { graph = true } = {}) => {
   await mockApp(page);
   const requests = [];
   await page.route('**/api/**/feature-toggles', (route) => {
@@ -379,7 +379,11 @@ const setup = async (page) => {
                 value: 'list',
               },
             }
-          : { board: toggle('board'), pages: toggle('pages') },
+          : {
+              board: toggle('board'),
+              pages: toggle('pages'),
+              ...(graph ? { graph: toggle('graph') } : {}),
+            },
       },
     });
   });
@@ -503,6 +507,20 @@ const selectNode = async (page, overlay, text) => {
 test.describe('Graph neighbourhood view', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1400, height: 900 });
+  });
+
+  test('the task modal has no graph section while the graph feature is off', async ({
+    page,
+  }) => {
+    await setup(page, { graph: false });
+    await page.goto('/demo/list');
+    await page.locator('[data-task-id="1"]').first().click();
+    const form = page.locator('.new-form-container');
+    await expect(form.getByPlaceholder('Task name')).toHaveValue(
+      'Original task',
+    );
+    await page.waitForTimeout(800);
+    await expect(form.getByTestId('entity-graph')).toHaveCount(0);
   });
 
   test('task modal renders the mini graph only after it scrolls into view', async ({

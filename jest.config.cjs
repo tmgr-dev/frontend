@@ -15,7 +15,10 @@ module.exports = {
   // the rest of the sources instead of being skipped as a node_modules file.
   // plugin-sdk/testing is already plain CommonJS (see plugin-sdk/testing/sync-prelude.mjs)
   // and needs no further transform.
-  transformIgnorePatterns: ['/node_modules/(?!marked/)', '/plugin-sdk/testing/'],
+  transformIgnorePatterns: [
+    '/node_modules/(?!(marked|d3-force|d3-quadtree|d3-dispatch|d3-timer)/)',
+    '/plugin-sdk/testing/',
+  ],
   transform: {
     '^.+\\.m?js$': [
       'ts-jest',

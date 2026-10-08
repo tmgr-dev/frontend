@@ -508,6 +508,13 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	pages: true,
 };
 
+const GRAPH_FEATURE = 'feature.graph';
+
+const graphEnabled = async (ctx: LocalContext): Promise<boolean> => {
+	const [row] = await ctx.db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [GRAPH_FEATURE]);
+	return row?.value === '1';
+};
+
 export const createLocalApi = () => {
 	const router = new LocalRouter()
 		// ── tasks ───────────────────────────────────────────────────────────────
@@ -1248,15 +1255,28 @@ export const createLocalApi = () => {
 		.add('GET', 'workspaces/:wid/members', ({ ctx }) => [
 			{ id: ctx.user.id, name: ctx.user.name, email: ctx.user.email, role: 'owner', has_avatar: false },
 		])
-		.add('GET', 'workspaces/:wid/feature-toggles', () =>
+		.add('GET', 'workspaces/:wid/feature-toggles', async ({ ctx }) =>
 			Object.fromEntries(
-				Object.entries(FEATURE_TOGGLES).map(([key, enabled]) => [key, { key, name: key, group: 'local', enabled }]),
+				Object.entries({ ...FEATURE_TOGGLES, graph: await graphEnabled(ctx) }).map(([key, enabled]) => [
+					key,
+					{ key, name: key, group: 'local', enabled },
+				]),
 			),
-		);
+		)
+		.add('PUT', 'workspaces/:wid/feature-toggles', async ({ ctx, body }) => {
+			const graph = body?.features?.graph;
+			if (typeof graph === 'boolean') {
+				await ctx.db.execute(
+					`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+					[GRAPH_FEATURE, graph ? '1' : '0'],
+				);
+			}
+			return {};
+		});
 	addRoutineRoutes(router);
 	addPageRoutes(router);
 	addPageDataRoutes(router);
-	addGraphRoutes(router, { pagesEnabled: FEATURE_TOGGLES.pages });
+	addGraphRoutes(router, { pagesEnabled: FEATURE_TOGGLES.pages }, graphEnabled);
 	return router;
 };
 

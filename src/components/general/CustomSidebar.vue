@@ -115,6 +115,7 @@
 		SquareKanban,
 		UserPlus,
 		VenetianMask,
+		Waypoints,
 	} from 'lucide-vue-next';
 	import {
 		computed,
@@ -837,6 +838,16 @@
 									<router-link :to="`/${activeWorkspace.code}/files`">
 										<PaperclipIcon />
 										<span>Files</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
+							>
+								<SidebarMenuButton as-child>
+									<router-link :to="`/${activeWorkspace.code}/map`">
+										<Waypoints />
+										<span>Map</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>

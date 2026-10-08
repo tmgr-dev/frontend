@@ -26,6 +26,13 @@ export interface GraphListParams {
 	limit?: number;
 }
 
+export interface GraphMapParams {
+	workspace_id: number | string;
+	from?: string | null;
+	to?: string | null;
+	limit?: number;
+}
+
 const compact = (
 	params: Record<string, unknown>,
 ): Record<string, string | number> => {
@@ -56,3 +63,11 @@ export const buildPathParams = (p: GraphPathParams) =>
 
 export const buildListParams = (p: GraphListParams) =>
 	compact({ workspace_id: p.workspace_id, limit: p.limit });
+
+export const buildMapParams = (p: GraphMapParams) =>
+	compact({
+		workspace_id: p.workspace_id,
+		from: p.from,
+		to: p.to,
+		limit: p.limit,
+	});

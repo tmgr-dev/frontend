@@ -2701,7 +2701,9 @@
 
 					<EntityGraphSection
 						v-if="
-							form.id && (isFeatureEnabled('task.relations') || pagesVisible)
+							form.id &&
+							isFeatureEnabled('graph') &&
+							(isFeatureEnabled('task.relations') || pagesVisible)
 						"
 						:entity="`task:${form.id}`"
 					/>

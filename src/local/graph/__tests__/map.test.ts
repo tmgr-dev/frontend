@@ -103,6 +103,9 @@ describeSqlite('local graph map on SQLite', () => {
 			},
 		};
 		await migrate(ctx.db, '2026-10-01T10:00:00.000Z');
+		await ctx.db.execute(
+			`INSERT INTO meta (key, value) VALUES ('feature.graph', '1')`,
+		);
 	});
 
 	it('returns nodes with degree weight, meta, edges and categories', async () => {

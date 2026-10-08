@@ -8,6 +8,8 @@ const DESCRIPTIONS: Record<string, string> = {
 	categories: 'Group tasks into categories to organize your workspace.',
 	board: 'Switch to a kanban board view for tracking task status.',
 	pages: 'Keep notes, context and documentation in a tree of pages that people and agents can edit.',
+	graph:
+		'See how tasks, pages, people and agent runs connect: a Graph section on tasks and pages, and the workspace Map.',
 	dashboard: 'See an overview of activity and progress across your workspace.',
 	daily_routines: 'Track recurring routines and notes separate from your tasks.',
 	'task.comments': 'Allow comments and discussion on tasks.',

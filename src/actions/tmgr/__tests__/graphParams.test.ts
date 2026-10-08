@@ -1,5 +1,6 @@
 import {
 	buildListParams,
+	buildMapParams,
 	buildPathParams,
 	buildRelatedParams,
 } from '../graphParams';
@@ -29,6 +30,25 @@ describe('graph params', () => {
 		expect(buildListParams({ workspace_id: 5, limit: 10 })).toEqual({
 			workspace_id: 5,
 			limit: 10,
+		});
+	});
+
+	it('builds map params and drops an open range', () => {
+		expect(
+			buildMapParams({
+				workspace_id: 5,
+				from: '2026-09-08',
+				to: '2026-10-08',
+				limit: 3000,
+			}),
+		).toEqual({
+			workspace_id: 5,
+			from: '2026-09-08',
+			to: '2026-10-08',
+			limit: 3000,
+		});
+		expect(buildMapParams({ workspace_id: 5, from: null, to: '' })).toEqual({
+			workspace_id: 5,
 		});
 	});
 });

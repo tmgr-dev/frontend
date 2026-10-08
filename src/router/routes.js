@@ -600,6 +600,16 @@ const routes = [
 		name: 'WorkspaceBoard',
 	},
 	{
+		path: '/:workspace_code/map',
+		component: () => import('@/pages/WorkspaceMap.vue'),
+		meta: {
+			title: 'Map',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceMap',
+	},
+	{
 		path: '/:workspace_code/task-window/:id',
 		component: () => import('@/pages/TaskWindow.vue'),
 		meta: { navbarHidden: true },
