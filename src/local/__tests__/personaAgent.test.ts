@@ -40,6 +40,18 @@ describeSqlite('local persona agent loop', () => {
 		taskId = created!.data.data.id;
 	});
 
+	it('still answers when agent work is turned off, without recording a run', async () => {
+		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', { features: { agent_work: false } });
+		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+			yield { type: 'text', delta: 'Fine.' };
+		};
+		const result = await runPersonaAgent({ ctx, router, persona, taskId, systemPrompt: 'Be careful.', grantedPermissions: ['tasks:read'], chat });
+		expect(result.text).toBe('Fine.');
+		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', { features: { agent_work: true } });
+		const overview = await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/agent-work`);
+		expect(overview!.data.data.runs).toEqual([]);
+	});
+
 	it('calls one tool, then answers with text, and records the run for the persona', async () => {
 		let calls = 0;
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {

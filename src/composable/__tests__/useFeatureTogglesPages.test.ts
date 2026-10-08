@@ -26,3 +26,21 @@ describe('pages workspace feature toggle', () => {
 		expect(isFeatureEnabled('pages')).toBe(true);
 	});
 });
+
+describe('agent_work workspace feature toggle', () => {
+	beforeEach(() => {
+		mockGetters['featureToggles/isUserFeatureEnabled'] = () => true;
+		mockGetters['featureToggles/isLoaded'] = true;
+	});
+
+	it('is enabled when the workspace toggle is on', () => {
+		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = (key: string) =>
+			key === 'agent_work';
+		expect(useFeatureToggles().isFeatureEnabled('agent_work')).toBe(true);
+	});
+
+	it('is disabled when the workspace toggle is off', () => {
+		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = () => false;
+		expect(useFeatureToggles().isFeatureEnabled('agent_work')).toBe(false);
+	});
+});

@@ -298,6 +298,55 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/nonexistent-route')).toBeNull();
 	});
 
+	it('keeps workspace feature toggles as persisted overrides, agent work on by default', async () => {
+		const defaults = await data('GET', 'workspaces/-42/feature-toggles');
+		expect(defaults.agent_work).toEqual(
+			expect.objectContaining({ key: 'agent_work', name: 'Agent work', enabled: true }),
+		);
+		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: false } });
+		const updated = await data('GET', 'workspaces/-42/feature-toggles');
+		expect(updated.agent_work.enabled).toBe(false);
+		expect(updated.board.enabled).toBe(true);
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { dashboard: true, board: false, pages: false },
+		});
+		const ignored = await data('GET', 'workspaces/-42/feature-toggles');
+		expect(ignored.dashboard.enabled).toBe(false);
+		expect(ignored.board.enabled).toBe(true);
+		expect(ignored.pages.enabled).toBe(true);
+		expect(ignored.agent_work.enabled).toBe(false);
+		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: true, unknown: false } });
+		const restored = await data('GET', 'workspaces/-42/feature-toggles');
+		expect(restored.agent_work.enabled).toBe(true);
+		expect(restored.unknown).toBeUndefined();
+	});
+
+	it('refuses agent work with the cloud 403 body while the toggle is off and shows the runs again when it is on', async () => {
+		const task = await data('POST', 'tasks', { title: 'Agent task' });
+		const run = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: false } });
+
+		const body = {
+			message: 'Agent work is disabled in this workspace',
+			error: 'feature_disabled',
+			feature: 'agent_work',
+		};
+		for (const [method, url, payload] of [
+			['GET', `tasks/${task.id}/agent-work`, undefined],
+			['POST', `tasks/${task.id}/agent-work`, { agent: 'codex' }],
+			['PATCH', `agent-work/${run.id}`, { summary: 'x' }],
+			['POST', `agent-work/${run.id}/finish`, { status: 'succeeded' }],
+		] as const) {
+			const res = await call(method, url, payload);
+			expect(res.status).toBe(403);
+			expect(res.data).toEqual(body);
+		}
+
+		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: true } });
+		const overview = await data('GET', `tasks/${task.id}/agent-work`);
+		expect(overview.runs).toEqual([expect.objectContaining({ id: run.id, status: 'running' })]);
+	});
+
 	it('gives a task the next ticket number of the category it moves to', async () => {
 		const a = await data('POST', 'project_categories', { title: 'A', code: 'a' });
 		const b = await data('POST', 'project_categories', { title: 'B', code: 'b' });

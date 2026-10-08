@@ -190,6 +190,25 @@ describeSqlite('local MCP handler for personas', () => {
 		]);
 	});
 
+	it('answers agent-work tools with the skip-reporting error while the toggle is off', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['agent_work:write', 'agent_work:read']);
+		await dispatchLocal(router, { ...ctx, actor: undefined }, 'PUT', 'workspaces/-1/feature-toggles', {
+			features: { agent_work: false },
+		});
+		for (const [name, args] of [
+			['start_agent_work', { taskId, agent: 'claude-code' }],
+			['update_agent_work', { runId: 1, summary: 'x' }],
+			['finish_agent_work', { runId: 1, status: 'succeeded' }],
+			['list_agent_work', { taskId }],
+		] as const) {
+			const result = JSON.parse((await call(name, args)).body).result;
+			expect(result.isError).toBe(true);
+			expect(result.content[0].text).toBe(
+				'Agent work is disabled in workspace local-personal — skip agent-work reporting',
+			);
+		}
+	});
+
 	it('returns list_statuses as a plain array, matching the cloud tool', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['statuses:read']);
 		const res = JSON.parse((await call('list_statuses')).body).result;

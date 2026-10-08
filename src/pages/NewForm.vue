@@ -2668,7 +2668,7 @@
 					</section>
 
 					<TaskAgentWork
-						v-if="taskId || form.id"
+						v-if="(taskId || form.id) && isFeatureEnabled('agent_work')"
 						:task-id="Number(taskId || form.id)"
 						:workspace-id="form.workspace_id"
 					/>
