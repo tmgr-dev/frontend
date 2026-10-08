@@ -269,6 +269,16 @@ interface AuthorBearing {
 export const authorKindOf = (item: AuthorBearing): string =>
 	(item.author ?? item.actor)?.kind ?? 'user';
 
+export const isMachineAuthored = (
+	item: AuthorBearing & {
+		cursor_message_type?: string | null;
+		user?: { email?: string | null } | null;
+	},
+): boolean =>
+	authorKindOf(item) !== 'user' ||
+	item.cursor_message_type === 'assistant_message' ||
+	item.user?.email === 'ai@tmgr.dev';
+
 export const matchesAuthorFilter = (
 	item: AuthorBearing,
 	filter: AuthorFilter | { persona: string },
