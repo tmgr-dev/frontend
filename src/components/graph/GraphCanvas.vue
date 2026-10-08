@@ -30,6 +30,7 @@
 			},
 			selectedId: { type: String as PropType<string | null>, default: null },
 			compact: { type: Boolean, default: false },
+			topInset: { type: Number, default: 0 },
 			wheelZoom: {
 				type: String as PropType<'always' | 'modifier'>,
 				default: 'always',
@@ -64,6 +65,7 @@
 						onHover: (id) => emit('hover', id),
 					},
 				);
+				engine.setTopInset(props.topInset);
 				if (props.result) engine.setData(props.result);
 				engine.setSelected(props.selectedId);
 			});
@@ -82,6 +84,10 @@
 			watch(
 				() => props.selectedId,
 				(id) => engine?.setSelected(id),
+			);
+			watch(
+				() => props.topInset,
+				(px) => engine?.setTopInset(px),
 			);
 			watch(version, () => engine?.refreshTheme());
 

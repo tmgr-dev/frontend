@@ -5,6 +5,7 @@ import {
 	filterGraph,
 	fitTransform,
 	includeFor,
+	isExpandable,
 	layoutShape,
 	linkDistance,
 	neighbourhood,
@@ -197,5 +198,14 @@ describe('theme resolution', () => {
 			true,
 		);
 		expect(theme.ink).toBe('#123456');
+	});
+});
+
+describe('expandable types', () => {
+	it('only tasks and pages can be re-centred', () => {
+		expect(isExpandable('task')).toBe(true);
+		expect(isExpandable('page')).toBe(true);
+		for (const type of ['user', 'persona', 'agent_run', 'comment'] as const)
+			expect(isExpandable(type)).toBe(false);
 	});
 });

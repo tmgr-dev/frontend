@@ -13,6 +13,7 @@
 			:result="shown"
 			:selected-id="selectedId"
 			:compact="mode === 'mini'"
+			:top-inset="inset"
 			:wheel-zoom="mode === 'mini' ? 'modifier' : 'always'"
 			@select="$emit('select', $event)"
 			@center="$emit('center', $event)"
@@ -20,6 +21,7 @@
 
 		<div
 			v-if="!narrow"
+			ref="legendEl"
 			class="pointer-events-none absolute left-3 top-3 flex max-w-[78%] flex-wrap gap-1.5 text-ink-muted"
 			:class="mode === 'mini' ? 'text-2xs' : 'text-xs'"
 			data-testid="graph-legend"
@@ -128,6 +130,7 @@
 	import {
 		computed,
 		defineComponent,
+		nextTick,
 		onBeforeUnmount,
 		onMounted,
 		ref,
@@ -171,11 +174,20 @@
 			} | null>(null);
 			const root = ref<HTMLElement | null>(null);
 			const narrow = ref(false);
+			const legendEl = ref<HTMLElement | null>(null);
+			const inset = ref(0);
+			const measure = () => {
+				inset.value =
+					narrow.value || !legendEl.value
+						? 0
+						: legendEl.value.offsetHeight + 20;
+			};
 			let observer: ResizeObserver | null = null;
 			onMounted(() => {
 				if (!root.value || typeof ResizeObserver === 'undefined') return;
 				observer = new ResizeObserver(([entry]) => {
 					narrow.value = entry.contentRect.width < 330;
+					nextTick(measure);
 				});
 				observer.observe(root.value);
 			});
@@ -212,6 +224,8 @@
 					: `Showing the closest ${closest}`;
 			});
 
+			watch([legend, narrow], () => nextTick(measure));
+
 			watch(shown, (value) => {
 				if (value) emit('loaded', value);
 			});
@@ -237,6 +251,8 @@
 				canvas,
 				root,
 				narrow,
+				legendEl,
+				inset,
 				shown,
 				empty,
 				legend,

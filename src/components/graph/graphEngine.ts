@@ -18,6 +18,7 @@ import {
 	edgeBend,
 	edgeColorType,
 	fitTransform,
+	isExpandable,
 	layoutShape,
 	linkDistance,
 	neighbourhood,
@@ -119,6 +120,7 @@ export class GraphEngine {
 	private pinch: { dist: number } | null = null;
 	private destroyed = false;
 	private ringNodes: SimNode[] = [];
+	private topInset = 0;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -259,6 +261,7 @@ export class GraphEngine {
 			for (const n of this.nodes) n.a = n.ta;
 			for (const l of this.links) l.ea = l.tea;
 			this.nodes = this.nodes.filter((n) => !n.leaving);
+			this.byId = new Map(this.nodes.map((n) => [n.id, n]));
 			this.snapView();
 		}
 		this.applyEmphasis();
@@ -349,13 +352,21 @@ export class GraphEngine {
 			this.options.compact ? 44 : 70,
 			Math.min(this.width, this.height) * 0.12,
 		);
-		return fitTransform(
+		const inset = Math.min(this.topInset, this.height * 0.4);
+		const fit = fitTransform(
 			{ minX, minY, maxX, maxY },
 			this.width,
-			this.height,
+			this.height - inset,
 			pad,
 			this.options.compact ? 1.1 : 1.25,
 		);
+		return { ...fit, y: fit.y + inset };
+	}
+
+	setTopInset(px: number) {
+		if (px === this.topInset) return;
+		this.topInset = px;
+		if (this.autoFit) this.wake();
 	}
 
 	private snapView() {
@@ -763,6 +774,20 @@ export class GraphEngine {
 	private drawLabels() {
 		const { ctx, theme, view } = this;
 		const placed: LabelRect[] = [];
+		const obstacles = this.nodes
+			.filter((n) => n.a * n.dim > 0.12)
+			.map((n) => {
+				const r = n.r * view.k + 2;
+				return {
+					id: n.id,
+					rect: {
+						x: this.sx(n.x ?? 0) - r,
+						y: this.sy(n.y ?? 0) - r,
+						w: r * 2,
+						h: r * 2,
+					},
+				};
+			});
 		const family = theme.fontFamily;
 		const order = [...this.nodes]
 			.filter((n) => n.a * n.dim > 0.12)
@@ -817,14 +842,16 @@ export class GraphEngine {
 			let chosen: LabelRect | null = null;
 			for (const [rx, ry] of candidates) {
 				const rect = { x: rx, y: ry, w: w + pad * 2, h: h + pad };
-				if (!overlaps(rect, placed)) {
+				if (
+					!overlaps(rect, placed) &&
+					!obstacles.some((o) => o.id !== n.id && overlaps(rect, [o.rect]))
+				) {
 					chosen = rect;
 					break;
 				}
 			}
 			if (!chosen) {
-				if (hop === 2 && !hot) continue;
-				if (hop === 1 && !hot && placed.length > 6) continue;
+				if (hop !== 0 && !hot) continue;
 				const [rx, ry] = candidates[0];
 				chosen = { x: rx, y: ry, w: w + pad * 2, h: h + pad };
 			}
@@ -959,8 +986,8 @@ export class GraphEngine {
 		this.pointers.set(e.pointerId, p);
 		if (this.pointers.size === 2) {
 			const [a, b] = [...this.pointers.values()];
+			this.finishDrag();
 			this.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y) };
-			this.down = null;
 			return;
 		}
 		this.down = { x: p.x, y: p.y, node: this.hit(p.x, p.y), moved: false };
@@ -1014,23 +1041,25 @@ export class GraphEngine {
 			return;
 		}
 		const down = this.down;
-		this.down = null;
 		if (!down) return;
 		if (!down.moved) {
+			this.down = null;
 			this.handlers.onSelect(down.node?.id ?? null);
-		} else if (down.node) {
-			if (down.node.data.hop !== 0) {
-				down.node.fx = null;
-				down.node.fy = null;
-			} else {
-				down.node.fx = 0;
-				down.node.fy = 0;
-			}
-			this.sim.alphaTarget(0);
-		}
+		} else this.finishDrag();
 		this.canvas.style.cursor = this.hoverId ? 'pointer' : 'grab';
 		this.wake();
 	};
+
+	private finishDrag() {
+		const down = this.down;
+		this.down = null;
+		if (!down?.moved || !down.node) return;
+		const pin = down.node.data.hop === 0 ? 0 : null;
+		down.node.fx = pin;
+		down.node.fy = pin;
+		this.sim.alphaTarget(0);
+		this.wake();
+	}
 
 	private onPointerLeave = () => {
 		if (!this.down) this.setHover(null);
@@ -1039,7 +1068,8 @@ export class GraphEngine {
 	private onDblClick = (e: MouseEvent) => {
 		const p = this.local(e);
 		const node = this.hit(p.x, p.y);
-		if (node && node.data.hop !== 0) this.handlers.onCenter(node.id);
+		if (node && node.data.hop !== 0 && isExpandable(node.data.type))
+			this.handlers.onCenter(node.id);
 	};
 
 	private onWheel = (e: WheelEvent) => {

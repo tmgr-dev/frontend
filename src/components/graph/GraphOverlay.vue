@@ -191,6 +191,7 @@
 	import {
 		ALL_GROUP_KEYS,
 		GRAPH_GROUPS,
+		isExpandable,
 		whyFor,
 		type GraphGroupKey,
 	} from './graphLogic';
@@ -261,7 +262,9 @@
 			});
 
 			const centerOn = (id: string) => {
-				if (id === entity.value) return;
+				const target = nodeById(id);
+				if (id === entity.value || (target && !isExpandable(target.type)))
+					return;
 				trail.value.push(entity.value);
 				entity.value = id;
 				selectedId.value = null;
@@ -282,12 +285,16 @@
 				const s = selected.value;
 				if (!s) return;
 				const code = store.getters.currentWorkspace?.code ?? '';
-				if (s.type === 'task') router.push(`/${code}/tasks/${s.ref_id}`);
-				else if (s.type === 'page')
+				const inModal = store.state.currentTaskIdForModal != null;
+				if (s.type === 'task') {
+					if (inModal) store.commit('setCurrentTaskIdForModal', s.ref_id);
+					else router.push(`/${code}/tasks/${s.ref_id}`);
+				} else if (s.type === 'page') {
+					if (inModal) store.commit('closeTaskModal');
 					router.push(pageUrl(code, String(s.meta?.slug ?? s.ref_id)));
+				}
 				emit('close');
 			};
-
 			const onEscape = (e: KeyboardEvent) => {
 				if (e.key !== 'Escape') return;
 				e.preventDefault();

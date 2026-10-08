@@ -39,6 +39,9 @@ export const TYPE_STYLES: Record<GraphNodeType, GraphTypeStyle> = {
 	},
 };
 
+export const isExpandable = (type: GraphNodeType): boolean =>
+	type === 'task' || type === 'page';
+
 export const LEGEND_TYPES: GraphNodeType[] = [
 	'task',
 	'page',
