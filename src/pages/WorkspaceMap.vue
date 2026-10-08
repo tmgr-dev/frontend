@@ -2,6 +2,7 @@
 	<BaseLayout no-copyright width="full">
 		<template #body>
 			<div
+				v-if="enabled"
 				class="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4 pt-4 md:px-6 md:pt-6"
 				data-testid="workspace-map"
 			>
@@ -263,7 +264,7 @@
 				</div>
 			</div>
 			<GraphOverlay
-				v-if="overlayEntity"
+				v-if="enabled && overlayEntity"
 				:entity="overlayEntity"
 				@close="overlayEntity = null"
 			/>
@@ -292,6 +293,7 @@
 		type RangeKey,
 	} from '@/components/graph/map/mapLogic';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { ChevronUp, Maximize2, Minus, Plus, Search } from 'lucide-vue-next';
 	import {
 		computed,
@@ -303,6 +305,7 @@
 		shallowRef,
 		watch,
 	} from 'vue';
+	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	const MAP_LIMIT = 3000;
@@ -323,6 +326,11 @@
 		},
 		setup() {
 			const store = useStore();
+			const router = useRouter();
+			const { isFeatureEnabled, isLoaded } = useFeatureToggles();
+			const enabled = computed(
+				() => isLoaded.value && isFeatureEnabled('graph'),
+			);
 			const canvas = ref<{
 				fit: () => void;
 				zoomBy: (factor: number) => void;
@@ -392,7 +400,7 @@
 
 			const load = async () => {
 				const id = workspace.value?.id;
-				if (!id) return;
+				if (!id || !enabled.value) return;
 				const current = ++seq;
 				stopPlay();
 				state.value = 'loading';
@@ -508,6 +516,14 @@
 			];
 
 			watch(range, load);
+			watch(enabled, (on) => (on ? load() : undefined));
+			watch(
+				[isLoaded, enabled],
+				([loaded, on]) => {
+					if (loaded && !on) router.replace('/');
+				},
+				{ immediate: true },
+			);
 			watch(() => workspace.value?.id, load);
 
 			onMounted(() => {
@@ -548,6 +564,7 @@
 				narrow,
 				sheetOpen,
 				workspaceCode,
+				enabled,
 				controls,
 				togglePlay,
 				load,

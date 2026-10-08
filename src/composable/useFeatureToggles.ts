@@ -6,6 +6,7 @@ const WORKSPACE_FEATURE_KEYS = [
 	'board',
 	'dashboard',
 	'pages',
+	'graph',
 	'daily_routines',
 	'task.comments',
 	'task.countdown',

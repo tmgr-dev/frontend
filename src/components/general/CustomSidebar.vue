@@ -841,7 +841,9 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
-							<SidebarMenuItem v-if="activeWorkspace?.code">
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
+							>
 								<SidebarMenuButton as-child>
 									<router-link :to="`/${activeWorkspace.code}/map`">
 										<Waypoints />

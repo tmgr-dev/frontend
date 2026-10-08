@@ -131,6 +131,9 @@ describeSqlite('local graph on SQLite', () => {
 			},
 		};
 		await migrate(ctx.db, clock.toISOString());
+		await ctx.db.execute(
+			`INSERT INTO meta (key, value) VALUES ('feature.graph', '1')`,
+		);
 	});
 
 	it('routes graph requests of a local workspace to the local adapter', () => {
@@ -694,6 +697,45 @@ describeSqlite('local graph on SQLite', () => {
 			name: 'P',
 		});
 		expect([401, 403]).toContain(res.status);
+	});
+
+	describe('graph feature toggle', () => {
+		const off = async () => {
+			await ctx.db.execute(`DELETE FROM meta WHERE key = 'feature.graph'`);
+		};
+		const toggles = async () =>
+			(await dispatchLocal(api, ctx, 'GET', 'workspaces/-1/feature-toggles'))!
+				.data.data;
+
+		it('is off until switched on and answers 403 feature_disabled meanwhile', async () => {
+			await off();
+			expect((await toggles()).graph.enabled).toBe(false);
+			for (const url of [
+				'graph/related?entity=task:1',
+				'graph/map',
+				'graph/hubs',
+				'graph/orphans',
+				'graph/path?from=task:1&to=task:2',
+			]) {
+				const res = await dispatchLocal(api, ctx, 'GET', url);
+				expect(res!.status).toBe(403);
+				expect(res!.data.code).toBe('feature_disabled');
+			}
+		});
+
+		it('can be switched on and off through the feature toggles route', async () => {
+			await off();
+			const put = (enabled: boolean) =>
+				dispatchLocal(api, ctx, 'PUT', 'workspaces/-1/feature-toggles', {
+					features: { graph: enabled },
+				});
+			await put(true);
+			expect((await toggles()).graph.enabled).toBe(true);
+			const res = await dispatchLocal(api, ctx, 'GET', 'graph/map');
+			expect(res!.status).toBe(200);
+			await put(false);
+			expect((await toggles()).graph.enabled).toBe(false);
+		});
 	});
 });
 

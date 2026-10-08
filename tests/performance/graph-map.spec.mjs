@@ -93,6 +93,27 @@ test.describe('Workspace map', () => {
     await shot(page, 'map-search-dark');
   });
 
+  test('with the graph feature off the Map entry is gone and the page redirects', async ({
+    page,
+  }) => {
+    await setupMap(page, map, {}, { graph: false });
+    await page.goto('/demo/list');
+    await expect(page.getByRole('link', { name: 'Archive' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Map' })).toHaveCount(0);
+    await page.goto('/demo/map');
+    await expect(page).not.toHaveURL(/\/map$/);
+    await expect(page.getByTestId('workspace-map')).toHaveCount(0);
+  });
+
+  test('with the graph feature on the Map entry opens the page', async ({
+    page,
+  }) => {
+    await setupMap(page, map);
+    await page.goto('/demo/list');
+    await page.getByRole('link', { name: 'Map' }).click();
+    await expect(page).toHaveURL(/\/demo\/map$/);
+  });
+
   test('search results are keyboard operable', async ({ page }) => {
     await setupMap(page, map);
     await openMap(page);

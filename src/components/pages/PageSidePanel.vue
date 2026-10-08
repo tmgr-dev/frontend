@@ -85,6 +85,7 @@
 		</section>
 
 		<EntityGraphSection
+			v-if="graphEnabled"
 			:entity="`page:${slug}`"
 			heading-class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 		/>
@@ -102,9 +103,15 @@
 		PageVersion,
 	} from '@/actions/tmgr/pages';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import type { TocEntry } from '@/utils/pages/toc';
-	import { defineAsyncComponent, defineComponent, type PropType } from 'vue';
+	import {
+		computed,
+		defineAsyncComponent,
+		defineComponent,
+		type PropType,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'PageSidePanel',
@@ -125,7 +132,9 @@
 		setup() {
 			const authorOf = (author: PageAuthor) => toAuthorRef(author);
 			const formatDate = (value: string) => new Date(value).toLocaleString();
-			return { authorOf, formatDate };
+			const { isFeatureEnabled } = useFeatureToggles();
+			const graphEnabled = computed(() => isFeatureEnabled('graph'));
+			return { authorOf, formatDate, graphEnabled };
 		},
 	});
 </script>

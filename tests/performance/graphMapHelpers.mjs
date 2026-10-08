@@ -1,7 +1,12 @@
 import { filterByRange } from './graphMapFixture.mjs';
 import { mockApp } from './mockApp.mjs';
 
-export const setupMap = async (page, map, patch = {}) => {
+export const setupMap = async (
+  page,
+  map,
+  patch = {},
+  { graph = true } = {},
+) => {
   await mockApp(page);
   const requests = [];
   await page.route('**/api/graph/map**', (route) => {
@@ -51,6 +56,16 @@ export const setupMap = async (page, map, patch = {}) => {
                 type: 'select',
                 options: ['list'],
                 value: 'list',
+              },
+            }
+          : graph
+          ? {
+              graph: {
+                key: 'graph',
+                name: 'graph',
+                group: 'graph',
+                type: 'boolean',
+                enabled: true,
               },
             }
           : {},
