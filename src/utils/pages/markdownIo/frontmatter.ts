@@ -17,10 +17,29 @@ export interface ParsedFrontmatter {
 
 const KNOWN_KEYS = ['title', 'type', 'properties', 'tmgr'];
 const OPENING = /^﻿?---[ \t]*\r?\n/;
+const MAX_BLOCK = 64 * 1024;
+const MAX_DEPTH = 32;
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const CLOSING = /^(?:---|\.\.\.)[ \t]*$/;
 
 const isObject = (value: unknown): value is Record<string, any> =>
 	!!value && typeof value === 'object' && !Array.isArray(value);
+
+const clean = (value: unknown, depth = 0): any => {
+	if (Array.isArray(value)) {
+		return depth >= MAX_DEPTH
+			? []
+			: value.map((item) => clean(item, depth + 1));
+	}
+	if (!value || typeof value !== 'object') return value;
+	const out: Record<string, any> = {};
+	if (depth >= MAX_DEPTH) return out;
+	for (const key of Object.keys(value)) {
+		if (UNSAFE_KEYS.has(key)) continue;
+		out[key] = clean((value as Record<string, any>)[key], depth + 1);
+	}
+	return out;
+};
 
 const splitBlock = (text: string): { yaml: string; body: string } | null => {
 	const opening = OPENING.exec(text);
@@ -53,6 +72,14 @@ const none = (text: string, warning: string | null): ParsedFrontmatter => ({
 export const parseFrontmatter = (text: string): ParsedFrontmatter => {
 	const block = splitBlock(text);
 	if (!block) return none(text, null);
+	if (block.yaml.length > MAX_BLOCK) {
+		return {
+			frontmatter: null,
+			body: block.body,
+			ignoredKeys: [],
+			warning: 'Frontmatter too large, ignored',
+		};
+	}
 	let data: unknown;
 	try {
 		data = parse(block.yaml, { schema: 'core', maxAliasCount: 20 });
@@ -77,7 +104,8 @@ export const parseFrontmatter = (text: string): ParsedFrontmatter => {
 		frontmatter.title = String(data.title);
 	}
 	if (typeof data.type === 'string') frontmatter.type = data.type.trim();
-	if (isObject(data.properties)) frontmatter.properties = data.properties;
+	if (isObject(data.properties))
+		frontmatter.properties = clean(data.properties);
 	if (isObject(data.tmgr)) {
 		const { workspace, id } = data.tmgr;
 		frontmatter.tmgr = {};

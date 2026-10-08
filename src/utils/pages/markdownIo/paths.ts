@@ -1,5 +1,6 @@
 const FORBIDDEN_NAME_CHARS = /[/\\:*?"<>|\u0000-\u001f\u007f]/g;
 const MAX_NAME_LENGTH = 100;
+const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i;
 
 export const safeEntryPath = (raw: string): string | null => {
 	if (!raw || raw.includes('\u0000')) return null;
@@ -22,13 +23,14 @@ export const isHiddenPath = (path: string): boolean =>
 
 export const sanitizeFileName = (name: string): string => {
 	const cleaned = name
+		.normalize('NFC')
 		.replace(FORBIDDEN_NAME_CHARS, '-')
 		.trim()
 		.replace(/^\.+/, (dots) => '-'.repeat(dots.length))
 		.replace(/[. ]+$/, '')
 		.slice(0, MAX_NAME_LENGTH)
 		.trim();
-	return cleaned || 'Untitled';
+	return (cleaned || 'Untitled').replace(RESERVED_NAME, '$&-');
 };
 
 export const uniqueName = (base: string, taken: Set<string>): string => {

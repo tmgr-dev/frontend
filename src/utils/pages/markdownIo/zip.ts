@@ -22,16 +22,20 @@ export const writeZip = (files: VirtualFile[]): Uint8Array => {
 	return zipSync(entries);
 };
 
+export interface ReadBudget {
+	entries: number;
+	bytes: number;
+}
+
 export const readZip = (
 	bytes: Uint8Array,
 	limits: ImportLimits = IMPORT_LIMITS,
-	entryBudget: number = limits.maxEntries,
+	budget: ReadBudget = { entries: 0, bytes: 0 },
 ): ReadFilesResult => {
 	const files: VirtualFile[] = [];
 	const warnings: IoWarning[] = [];
-	let entries = 0;
-	let total = 0;
 	let failure: string | null = null;
+	let seen = 0;
 
 	const unzip = new Unzip();
 	unzip.register(UnzipInflate);
@@ -41,13 +45,14 @@ export const readZip = (
 			entry.terminate();
 			return;
 		}
-		if (entry.name.endsWith('/')) return;
-		entries += 1;
-		if (entries > entryBudget) {
+		budget.entries += 1;
+		if (budget.entries > limits.maxEntries) {
 			failure = `The archive has more than ${limits.maxEntries} files`;
 			entry.terminate();
 			return;
 		}
+		if (entry.name.endsWith('/')) return;
+		seen += 1;
 		const path = safeEntryPath(entry.name);
 		const skip = path === null || isHiddenPath(path);
 		if (path === null) {
@@ -64,8 +69,8 @@ export const readZip = (
 				if (error && !failure) failure = 'The archive is damaged';
 				return;
 			}
-			total += chunk.length;
-			if (total > limits.maxTotalBytes) {
+			budget.bytes += chunk.length;
+			if (budget.bytes > limits.maxTotalBytes) {
 				failure = `The archive unpacks to more than ${Math.round(
 					limits.maxTotalBytes / 1024 / 1024,
 				)} MB`;
@@ -108,7 +113,7 @@ export const readZip = (
 	} catch {
 		failure = 'The archive could not be read';
 	}
-	if (!failure && entries === 0) failure = 'The archive has no readable files';
+	if (!failure && seen === 0) failure = 'The archive has no readable files';
 	if (failure) {
 		return { files: [], warnings: [{ path: null, message: failure }] };
 	}
@@ -134,6 +139,7 @@ export const readVirtualFiles = (
 ): ReadFilesResult => {
 	const files: VirtualFile[] = [];
 	const warnings: IoWarning[] = [];
+	const budget: ReadBudget = { entries: 0, bytes: 0 };
 	const input = inputs.reduce((sum, item) => sum + item.bytes.length, 0);
 	if (input > limits.maxInputBytes) {
 		return {
@@ -148,14 +154,23 @@ export const readVirtualFiles = (
 			],
 		};
 	}
+	const seen = new Map<string, string>();
+	const add = (file: VirtualFile) => {
+		const key = file.path.toLowerCase();
+		if (seen.has(key)) {
+			warnings.push({
+				path: file.path,
+				message: `Skipped: the path differs only by case from ${seen.get(key)}`,
+			});
+			return;
+		}
+		seen.set(key, file.path);
+		files.push(file);
+	};
 	for (const item of inputs) {
 		if (looksLikeZip(item)) {
-			const result = readZip(
-				item.bytes,
-				limits,
-				limits.maxEntries - files.length,
-			);
-			files.push(...result.files);
+			const result = readZip(item.bytes, limits, budget);
+			result.files.forEach(add);
 			warnings.push(
 				...result.warnings.map((warning) => ({
 					...warning,
@@ -165,6 +180,19 @@ export const readVirtualFiles = (
 				})),
 			);
 			continue;
+		}
+		budget.entries += 1;
+		budget.bytes += item.bytes.length;
+		if (budget.entries > limits.maxEntries) {
+			return {
+				files: [],
+				warnings: [
+					{
+						path: null,
+						message: `More than ${limits.maxEntries} files were selected`,
+					},
+				],
+			};
 		}
 		const path = safeEntryPath(item.name);
 		if (path === null) {
@@ -184,18 +212,45 @@ export const readVirtualFiles = (
 			});
 			continue;
 		}
-		files.push({ path, bytes: item.bytes });
-	}
-	if (files.length > limits.maxEntries) {
-		return {
-			files: [],
-			warnings: [
-				{
-					path: null,
-					message: `More than ${limits.maxEntries} files were selected`,
-				},
-			],
-		};
+		add({ path, bytes: item.bytes });
 	}
 	return { files, warnings };
+};
+
+export interface RawFile {
+	name: string;
+	size: number;
+	webkitRelativePath?: string;
+	arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+export const readRawFiles = async (
+	files: RawFile[],
+	limits: ImportLimits = IMPORT_LIMITS,
+): Promise<ReadFilesResult> => {
+	if (files.length > limits.maxEntries) {
+		throw new Error(`More than ${limits.maxEntries} files were selected`);
+	}
+	if (files.reduce((sum, file) => sum + file.size, 0) > limits.maxInputBytes) {
+		throw new Error(
+			`The selected files are larger than ${Math.round(
+				limits.maxInputBytes / 1024 / 1024,
+			)} MB`,
+		);
+	}
+	const inputs: RawInput[] = [];
+	const warnings: IoWarning[] = [];
+	for (const file of files) {
+		const name = file.webkitRelativePath || file.name;
+		try {
+			inputs.push({ name, bytes: new Uint8Array(await file.arrayBuffer()) });
+		} catch {
+			warnings.push({
+				path: name,
+				message: 'Skipped: the file could not be read',
+			});
+		}
+	}
+	const result = readVirtualFiles(inputs, limits);
+	return { files: result.files, warnings: [...warnings, ...result.warnings] };
 };

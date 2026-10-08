@@ -27,7 +27,7 @@ import type {
 	ReadFilesResult,
 	VirtualFile,
 } from './types';
-import { readVirtualFiles } from './zip';
+import { readRawFiles } from './zip';
 
 const currentWorkspaceCode = (): string =>
 	(store.getters.currentWorkspace?.code as string | undefined) ?? '';
@@ -102,17 +102,8 @@ export const exportWorkspace = async (
 		}),
 	);
 
-export const readImportFiles = async (
-	files: File[],
-): Promise<ReadFilesResult> =>
-	readVirtualFiles(
-		await Promise.all(
-			files.map(async (file) => ({
-				name: file.webkitRelativePath || file.name,
-				bytes: new Uint8Array(await file.arrayBuffer()),
-			})),
-		),
-	);
+export const readImportFiles = (files: File[]): Promise<ReadFilesResult> =>
+	readRawFiles(files);
 
 const childTitles = async (parentId: number | null): Promise<string[]> =>
 	(await getPagesTree(false))

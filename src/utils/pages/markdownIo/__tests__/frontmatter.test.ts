@@ -89,4 +89,38 @@ describe('frontmatter', () => {
 			parsed.frontmatter === null || parsed.frontmatter.title === 'A',
 		).toBe(true);
 	});
+
+	it('ignores a frontmatter block larger than 64 KB and strips it', () => {
+		const huge = `---\ntitle: T\nnote: ${'x'.repeat(70 * 1024)}\n---\nBody\n`;
+		const parsed = parseFrontmatter(huge);
+		expect(parsed.frontmatter).toBeNull();
+		expect(parsed.body).toBe('Body\n');
+		expect(parsed.warning).toBe('Frontmatter too large, ignored');
+	});
+
+	it('rejects an alias expansion bomb', () => {
+		const lines = ['a0: &a0 [x, x, x, x, x, x, x, x, x, x]'];
+		for (let i = 1; i < 12; i += 1) {
+			const refs = Array(10)
+				.fill(`*a${i - 1}`)
+				.join(', ');
+			lines.push(`a${i}: &a${i} [${refs}]`);
+		}
+		const parsed = parseFrontmatter(`---\n${lines.join('\n')}\n---\nBody`);
+		expect(parsed.frontmatter).toBeNull();
+		expect(parsed.warning).toMatch(/not valid YAML/);
+	});
+
+	it('does not let prototype keys through', () => {
+		const parsed = parseFrontmatter(
+			'---\ntitle: T\ntype: person\nproperties:\n  __proto__:\n    polluted: true\n  constructor:\n    prototype:\n      polluted: true\n  nested:\n    __proto__: {polluted: true}\n    keep: 1\n  ok: 1\n---\n',
+		);
+		const props = parsed.frontmatter?.properties as Record<string, any>;
+		expect(Object.keys(props)).toEqual(['nested', 'ok']);
+		expect(Object.keys(props.nested)).toEqual(['keep']);
+		expect(Object.getPrototypeOf(props)).toBe(Object.prototype);
+		expect(({} as any).polluted).toBeUndefined();
+		expect(props.polluted).toBeUndefined();
+		expect(JSON.stringify(props)).toBe('{"nested":{"keep":1},"ok":1}');
+	});
 });

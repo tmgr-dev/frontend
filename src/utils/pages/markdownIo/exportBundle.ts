@@ -84,7 +84,7 @@ const flatten = (
 	dir: string,
 	paths: Map<number, string>,
 ): void => {
-	const taken = new Set<string>();
+	const taken = new Set<string>(dir === '' ? ['assets'] : []);
 	for (const node of nodes) {
 		const name = uniqueName(sanitizeFileName(node.summary.title), taken);
 		paths.set(node.summary.id, `${dir}${name}.md`);
@@ -95,7 +95,13 @@ const flatten = (
 const fileRefs = (body: string): number[] => {
 	const ids: number[] = [];
 	for (const token of collectLinks(body)) {
-		if (token.kind !== 'link' && token.kind !== 'image') continue;
+		if (
+			token.kind !== 'link' &&
+			token.kind !== 'image' &&
+			token.kind !== 'definition'
+		) {
+			continue;
+		}
 		const parsed = parseTmgrUrl(splitTargetFragment(token.target).base);
 		if (parsed?.form === 'storage' && parsed.kind === 'file') {
 			ids.push(Number(parsed.id));
@@ -116,9 +122,20 @@ export const buildExportBundle = async (options: {
 	flatten(roots, '', pagePaths);
 
 	const ids = [...pagePaths.keys()];
-	const pages = await mapLimit(ids, FETCH_CONCURRENCY, (id) =>
-		provider.getPage(id),
-	);
+	const loaded = await mapLimit(ids, FETCH_CONCURRENCY, async (id) => {
+		try {
+			return await provider.getPage(id);
+		} catch (error) {
+			if ((error as any)?.name === 'WorkspaceChangedError') throw error;
+			warnings.push({
+				path: pagePaths.get(id) ?? null,
+				message: 'The page could not be loaded and was skipped',
+			});
+			pagePaths.delete(id);
+			return null;
+		}
+	});
+	const pages = loaded.filter((page): page is Page => page !== null);
 
 	const pageSlugPaths = new Map<string, string>();
 	const fileNames = new Map<number, string>();
