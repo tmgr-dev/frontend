@@ -125,10 +125,13 @@ test('without a logged-in user nothing touches the socket and wake events are ig
 	scope.stop();
 });
 
-test('wake does not abort a connect that is already in progress', () => {
-	const { scope } = mount();
-	connectionState.value = 'connecting';
-	win.dispatchEvent(new Event('focus'));
-	expect(reconnect).not.toHaveBeenCalled();
-	scope.stop();
-});
+test.each(['connecting', 'reconnecting'])(
+	'wake does not restart a socket that is already %s',
+	(state) => {
+		const { scope } = mount();
+		connectionState.value = state;
+		win.dispatchEvent(new Event('focus'));
+		expect(reconnect).not.toHaveBeenCalled();
+		scope.stop();
+	},
+);

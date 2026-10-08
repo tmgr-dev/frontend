@@ -47,8 +47,8 @@ export function useRunningTimerSync({
 		lastResync = now;
 		const { connectionState, reconnect } = usePusher();
 		if (
-			connectionState.value !== 'connected' &&
-			connectionState.value !== 'connecting'
+			connectionState.value === 'disconnected' ||
+			connectionState.value === 'error'
 		)
 			reconnect();
 		onResync();
