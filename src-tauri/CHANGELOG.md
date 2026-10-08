@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.28 — 2026-10-09
+
+- New workspace Map (sidebar → More → Map): the whole workspace as clusters, one per category, with the tasks and
+  pages that tie the most together, the task that blocks the most open work, the links between areas and the items
+  nothing links to. Search, pick a time range or replay how the map grew, click a cluster to zoom in and a dot to
+  open its neighbourhood.
+- Graph is now a workspace feature, off by default: the workspace owner turns it on in Settings → Features → Graph.
+  It controls the Graph section on tasks and pages and the Map, in local workspaces too.
+
 ## 0.9.27 — 2026-10-09
 
 - Tasks and pages have a Graph section: see what a task or page is connected to — related tasks, pages that mention
