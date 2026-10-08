@@ -44,6 +44,7 @@ export interface GraphPath {
 	to: string;
 	nodes: GraphNode[];
 	edges: GraphEdge[];
+	exhausted: boolean;
 }
 
 export interface GraphRankItem {

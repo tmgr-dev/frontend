@@ -499,6 +499,7 @@ describeSqlite('local graph on SQLite', () => {
 			to: `task:${lone}`,
 			nodes: [],
 			edges: [],
+			exhausted: false,
 		});
 		const self = await ok(`graph/path?from=task:${a}&to=task:${a}`);
 		expect(ids(self.nodes)).toEqual([`task:${a}`]);
@@ -584,6 +585,105 @@ describeSqlite('local graph on SQLite', () => {
 		expect(ids(out.nodes)).toEqual([`task:${a}`]);
 		const hubs = await ok('graph/hubs');
 		expect(hubs.hubs).toEqual([]);
+	});
+
+	it('fetches page-derived edges for a page center whatever the include filter', async () => {
+		const t = await task('T');
+		const p = await page('P');
+		const other = await page('Other');
+		await link(p, 'task', t);
+		await link(p, 'page', other);
+		const out = await ok(`graph/related?entity=page:${p}&include=tasks`);
+		expect(ids(out.nodes)).toEqual([`page:${p}`, `task:${t}`]);
+		expect(out.edges.map((e: any) => e.type)).toEqual(['linked_page']);
+	});
+
+	it('applies the hop-2 cap to the merged candidates of a parent', async () => {
+		const a = await task('A');
+		const b = await task('B');
+		await relate(a, b, 'relates to');
+		const fresh = await task('Fresh');
+		await relate(b, fresh, 'relates to');
+		await run(
+			`UPDATE tasks SET updated_at = '2031-01-01T00:00:00.000Z' WHERE id = ?`,
+			[fresh],
+		);
+		for (let i = 0; i < 11; i++) {
+			const t = await task(`Old${i}`);
+			await relate(b, t, 'relates to');
+			await run(
+				`UPDATE tasks SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`,
+				[t],
+			);
+		}
+		const pages: number[] = [];
+		for (let i = 0; i < 12; i++) {
+			const pg = await page(`P${i}`);
+			await link(pg, 'task', b);
+			await run(
+				`UPDATE pages SET updated_at = '2025-01-01T00:00:00.000Z' WHERE id = ?`,
+				[pg],
+			);
+			pages.push(pg);
+		}
+		const out = await ok(`graph/related?entity=task:${a}`);
+		const hop2 = out.nodes.filter((n: any) => n.hop === 2);
+		expect(hop2).toHaveLength(12);
+		expect(hop2.filter((n: any) => n.type === 'page')).toHaveLength(11);
+		expect(ids(hop2)).toContain(`task:${fresh}`);
+	});
+
+	it('clamps path max_depth to 4', async () => {
+		const chain: number[] = [];
+		for (let i = 0; i < 6; i++) chain.push(await task(`C${i}`));
+		for (let i = 0; i < 5; i++)
+			await relate(chain[i], chain[i + 1], 'relates to');
+		const far = await ok(
+			`graph/path?from=task:${chain[0]}&to=task:${chain[5]}&max_depth=9`,
+		);
+		expect(far.nodes).toEqual([]);
+		const near = await ok(
+			`graph/path?from=task:${chain[0]}&to=task:${chain[4]}&max_depth=9`,
+		);
+		expect(near.nodes).toHaveLength(5);
+	});
+
+	it('flags exhausted when the visited budget runs out before the target', async () => {
+		const hub = await task('Hub');
+		const lone = await task('Lone');
+		for (let i = 0; i < 3100; i++) {
+			const t = await task(`N${i}`);
+			await relate(hub, t, 'relates to');
+		}
+		const out = await ok(`graph/path?from=task:${hub}&to=task:${lone}`);
+		expect(out.nodes).toEqual([]);
+		expect(out.exhausted).toBe(true);
+	});
+
+	it('keeps at most 5 comments per task and counts the rest in caps_hit.comment', async () => {
+		const a = await task('A');
+		for (let i = 0; i < 8; i++)
+			await run(
+				`INSERT INTO comments (task_id, message, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+				[a, `c${i}`, stamp(), stamp()],
+			);
+		const out = await ok(`graph/related?entity=task:${a}&include=comments`);
+		expect(out.nodes.filter((n: any) => n.type === 'comment')).toHaveLength(5);
+		expect(out.caps_hit).toEqual({ comment: 3 });
+		expect(out.truncated).toBe(true);
+	});
+
+	it('counts only open dependants as bottleneck blocks', async () => {
+		const done = await status('Done', 'completed');
+		const active = await status('Doing', 'active');
+		const blocker = await task('Blocker');
+		const x = await task('X', { status: done });
+		const y = await task('Y', { status: active });
+		await relate(blocker, x, 'blocks');
+		await relate(blocker, y, 'blocks');
+		const out = await ok('graph/hubs');
+		expect(out.bottlenecks).toHaveLength(1);
+		expect(out.bottlenecks[0]).toMatchObject({ blocks: 1, degree: 2 });
 	});
 
 	it('closes the graph to personas by default', async () => {

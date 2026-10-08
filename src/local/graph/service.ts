@@ -23,6 +23,9 @@ import {
 export const DEFAULT_LIMIT = 120;
 export const MAX_LIMIT = 500;
 const PER_TYPE_CAP = 24;
+const COMMENT_CAP = 5;
+const PATH_VISIT_BUDGET = 3000;
+const CLOSED = new Set(['completed', 'archived']);
 const HOP2_PER_PARENT_CAP = 12;
 const CENTER_WEIGHT = 5;
 const EXPANDING = new Set(['task', 'page']);
@@ -83,8 +86,12 @@ const rank = (
 	(a.updated < b.updated ? 1 : a.updated > b.updated ? -1 : 0) ||
 	(a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-const wantOf = (groups: Set<Group>, pagesEnabled: boolean): Want => ({
-	pages: pagesEnabled && groups.has('pages'),
+const wantOf = (
+	groups: Set<Group>,
+	pagesEnabled: boolean,
+	pageCenter = false,
+): Want => ({
+	pages: pagesEnabled && (pageCenter || groups.has('pages')),
 	people: groups.has('people'),
 	personas: groups.has('personas'),
 	comments: groups.has('comments'),
@@ -197,7 +204,7 @@ export const related = async (
 		id === center ||
 		((kindOf(id) !== 'page' || options.pagesEnabled) &&
 			groups.has(GROUP_OF[kindOf(id)]));
-	const want = wantOf(groups, options.pagesEnabled);
+	const want = wantOf(groups, options.pagesEnabled, kindOf(center) === 'page');
 
 	const nodes = new Map<string, GraphNode>();
 	const centerNode = { ...resolver.get(center)!.node, weight: CENTER_WEIGHT };
@@ -277,8 +284,13 @@ export const related = async (
 		};
 
 		let kept = groupBy(cands, (c) => `${c.parent}|${c.edge.type}`).flatMap(
-			(list) => takeNew(list, PER_TYPE_CAP),
+			(list) =>
+				takeNew(
+					list,
+					list[0].edge.type === 'on_task' ? COMMENT_CAP : PER_TYPE_CAP,
+				),
 		);
+		kept.sort(order);
 		if (hop >= 2)
 			kept = groupBy(kept, (c) => c.parent).flatMap((list) =>
 				takeNew(list, HOP2_PER_PARENT_CAP),
@@ -344,7 +356,7 @@ export const path = async (
 	input: { from: string; to: string; max_depth?: number },
 	options: GraphOptions,
 ): Promise<GraphPath> => {
-	const maxDepth = Math.min(6, Math.max(1, Math.floor(input.max_depth ?? 4)));
+	const maxDepth = Math.min(4, Math.max(1, Math.floor(input.max_depth ?? 4)));
 	const from = await resolveEntity(ctx, input.from, options);
 	const to = await resolveEntity(ctx, input.to, options);
 	const resolver = new Resolver(ctx, options.pagesEnabled);
@@ -354,6 +366,7 @@ export const path = async (
 	const parent = new Map<string, { prev: string; edge: GraphEdge } | null>();
 	parent.set(from, null);
 	let frontier = [from];
+	let exhausted = false;
 	for (
 		let hop = 1;
 		hop <= maxDepth && frontier.length && !parent.has(to);
@@ -389,8 +402,16 @@ export const path = async (
 		const nextFrontier = [...found.keys()].sort();
 		nextFrontier.forEach((id) => parent.set(id, found.get(id)!));
 		frontier = nextFrontier;
+		if (
+			!parent.has(to) &&
+			parent.size >= PATH_VISIT_BUDGET &&
+			frontier.length
+		) {
+			exhausted = true;
+			break;
+		}
 	}
-	if (!parent.has(to)) return { from, to, nodes: [], edges: [] };
+	if (!parent.has(to)) return { from, to, nodes: [], edges: [], exhausted };
 
 	const chain: string[] = [];
 	const edges: GraphEdge[] = [];
@@ -409,7 +430,7 @@ export const path = async (
 			rel: hop === 0 ? null : edges[hop - 1].label,
 		}),
 	);
-	return { from, to, nodes, edges };
+	return { from, to, nodes, edges, exhausted: false };
 };
 
 interface Graphed {
@@ -453,8 +474,11 @@ export const hubs = async (
 			(dependants.get(blocker) ?? new Set()).add(blocked),
 		);
 	for (const e of edges) {
-		if (e.type === 'blocks') add(e.from, e.to);
-		else if (e.type === 'depends_on') add(e.to, e.from);
+		const [blocker, blocked] =
+			e.type === 'blocks' ? [e.from, e.to] : [e.to, e.from];
+		if (e.type !== 'blocks' && e.type !== 'depends_on') continue;
+		const statusType = resolver.get(blocked)?.node.status?.type;
+		if (!statusType || !CLOSED.has(statusType)) add(blocker, blocked);
 	}
 	const item = (id: string): GraphRankItem => {
 		const info = resolver.get(id)!;
