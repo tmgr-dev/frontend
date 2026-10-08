@@ -3,6 +3,16 @@
 	<template v-else-if="isDetachedWindow">
 		<alert ref="alert" />
 		<router-view />
+		<PagesImportDialog
+			v-if="pagesImport.open"
+			:key="pagesImport.key"
+			:open="pagesImport.open"
+			:files="pagesImport.files"
+			:parent-id="pagesImport.parentId"
+			:parent-title="pagesImport.parentTitle"
+			:workspace-code="pagesImport.workspaceCode"
+			@update:open="closePagesImport"
+		/>
 		<Toaster />
 	</template>
 	<template v-else>
@@ -63,6 +73,16 @@
 	</div>
 
 	<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
+	<PagesImportDialog
+		v-if="pagesImport.open"
+		:key="pagesImport.key"
+		:open="pagesImport.open"
+		:files="pagesImport.files"
+		:parent-id="pagesImport.parentId"
+		:parent-title="pagesImport.parentTitle"
+		:workspace-code="pagesImport.workspaceCode"
+		@update:open="closePagesImport"
+	/>
 	<Toaster />
 	</template>
 </template>
@@ -89,6 +109,10 @@
 	import Modal from '@/components/Modal.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import { Toaster } from '@/components/ui/toast';
+	import {
+		closePagesImport,
+		pagesImportRequest,
+	} from '@/composable/usePagesMarkdownIo';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
 	import store from '@/store';
@@ -107,12 +131,16 @@
 		watch,
 	} from 'vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
+	const PagesImportDialog = defineAsyncComponent(
+		() => import('@/components/pages/PagesImportDialog.vue'),
+	);
 
 	const DEFAULT_TRANSITION = 'fade';
 
 	export default defineComponent({
 		name: 'App',
 		components: {
+			PagesImportDialog,
 			Toaster,
 			CustomSidebar,
 			NewForm,
@@ -170,6 +198,8 @@
 
 			return {
 				routeViewKey,
+				pagesImport: pagesImportRequest,
+				closePagesImport,
 				isDesktop: isDesktopApp(),
 				isQuickAddWindow: desktopWindowLabel() === 'quick-add',
 				isDetachedWindow,

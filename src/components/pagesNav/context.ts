@@ -9,6 +9,8 @@ export interface PagesTreeContext {
 	requestRename: (page: PageSummary) => void;
 	requestDelete: (page: PageSummary) => void;
 	togglePin: (page: PageSummary) => void;
+	exportSubtree: (page: PageSummary) => void;
+	importInto: (page: PageSummary, files?: File[]) => void;
 	onChange: (
 		parentId: number | null,
 		event: {

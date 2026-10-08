@@ -1,5 +1,10 @@
 <template>
-	<SidebarGroup class="group-data-[collapsible=icon]:hidden">
+	<SidebarGroup
+		class="group-data-[collapsible=icon]:hidden"
+		:class="zone.dragging.value ? 'rounded-md ring-2 ring-blue-500' : ''"
+		data-testid="pages-sidebar-section"
+		v-on="zone.handlers"
+	>
 		<SidebarGroupLabel>Pages</SidebarGroupLabel>
 		<div class="absolute right-3 top-3.5 flex items-center gap-0.5">
 			<button
@@ -29,6 +34,14 @@
 						@select="createRoot(option.type)"
 					>
 						{{ option.label }}
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						data-testid="pages-sidebar-import"
+						@select="io.openImport(null)"
+					>
+						<Upload class="mr-2 h-4 w-4" />
+						<span>Import Markdown…</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
@@ -137,16 +150,21 @@
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
+		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { SidebarGroup, SidebarGroupLabel } from '@/components/ui/sidebar';
 	import { usePagesActions } from '@/composable/usePagesActions';
+	import {
+		useFileDrop,
+		usePagesMarkdownIo,
+	} from '@/composable/usePagesMarkdownIo';
 	import { usePagesTree } from '@/composable/usePagesTree';
 	import {
 		descendantIds,
 		PAGE_CREATE_OPTIONS,
 	} from '@/utils/pagesTree';
-	import { ChevronDown, Plus, Trash2 } from 'lucide-vue-next';
+	import { ChevronDown, Plus, Trash2, Upload } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -174,12 +192,14 @@
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuItem,
+			DropdownMenuSeparator,
 			DropdownMenuTrigger,
 			PagesTreeNode,
 			Plus,
 			SidebarGroup,
 			SidebarGroupLabel,
 			Trash2,
+			Upload,
 		},
 		props: {
 			workspaceId: { type: Number, required: true },
@@ -191,6 +211,8 @@
 			const workspaceId = toRef(props, 'workspaceId');
 			const workspaceCode = toRef(props, 'workspaceCode');
 			const actions = usePagesActions(() => props.workspaceCode);
+			const io = usePagesMarkdownIo(() => props.workspaceCode);
+			const zone = useFileDrop((files) => io.openImport(null, files));
 			const tree = usePagesTree(
 				computed(() => workspaceId.value),
 				computed(() => true),
@@ -262,6 +284,8 @@
 				requestDelete: (page) => (deleting.value = page),
 				togglePin,
 				onChange,
+				exportSubtree: (page) => void io.exportSubtree(page.id),
+				importInto: (page, files) => io.openImport(page, files),
 			});
 
 			return {
@@ -272,6 +296,8 @@
 				renaming,
 				renameTitle,
 				deleting,
+				io,
+				zone,
 				createRoot,
 				confirmRename,
 				confirmDelete,

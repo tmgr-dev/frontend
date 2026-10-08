@@ -1,5 +1,9 @@
 <template>
-	<PageContainer>
+	<PageContainer
+		:class="zone.dragging.value ? 'rounded-card ring-2 ring-blue-500' : ''"
+		data-testid="pages-index"
+		v-on="zone.handlers"
+	>
 		<PageHeader title="Pages">
 			<template #actions>
 				<router-link
@@ -9,6 +13,25 @@
 					<Trash2 class="h-4 w-4" />
 					Trash
 				</router-link>
+				<button
+					type="button"
+					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
+					data-testid="pages-import"
+					@click="io.openImport(null)"
+				>
+					<Upload class="h-4 w-4" />
+					Import
+				</button>
+				<button
+					type="button"
+					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-50"
+					:disabled="io.busy.value"
+					data-testid="pages-export-all"
+					@click="io.exportWorkspace()"
+				>
+					<Download class="h-4 w-4" />
+					Export all
+				</button>
 				<button
 					type="button"
 					class="inline-flex h-9 items-center gap-2 rounded-md bg-tmgr-blue px-4 text-sm font-medium text-white hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
@@ -70,20 +93,35 @@
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import PageRow from '@/components/pagesNav/PageRow.vue';
 	import { usePagesActions } from '@/composable/usePagesActions';
+	import {
+		useFileDrop,
+		usePagesMarkdownIo,
+	} from '@/composable/usePagesMarkdownIo';
 	import { childrenOf } from '@/utils/pagesTree';
-	import { FileText, Plus, Trash2 } from 'lucide-vue-next';
+	import { Download, FileText, Plus, Trash2, Upload } from 'lucide-vue-next';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
 		name: 'PagesIndex',
-		components: { FileText, PageContainer, PageHeader, PageRow, Plus, Trash2 },
+		components: {
+			Download,
+			FileText,
+			PageContainer,
+			PageHeader,
+			PageRow,
+			Plus,
+			Trash2,
+			Upload,
+		},
 		setup() {
 			const route = useRoute();
 			const store = useStore();
 			const workspaceCode = computed(() => String(route.params.workspace_code));
 			const actions = usePagesActions(() => workspaceCode.value);
+			const io = usePagesMarkdownIo(() => workspaceCode.value);
+			const zone = useFileDrop((files) => io.openImport(null, files));
 			const pages = ref<PageSummary[]>([]);
 			const loaded = ref(false);
 			const failed = ref(false);
@@ -114,6 +152,8 @@
 
 			return {
 				workspaceCode,
+				io,
+				zone,
 				pages,
 				loaded,
 				failed,
