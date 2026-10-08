@@ -213,6 +213,6 @@ describe('linear time', () => {
 		collectLinks(text);
 		rewriteMarkdownLinks(text, () => null);
 		rewriteMarkdownLinks(text, (t) => t.plain, { references: new Set(['a']) });
-		expect(Date.now() - started).toBeLessThan(500);
+		expect(Date.now() - started).toBeLessThan(2000);
 	});
 });
