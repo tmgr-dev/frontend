@@ -40,7 +40,7 @@ test.describe('Workspace map', () => {
       'tie the most items together',
     );
     await expect(insights.getByTestId('insight-bridges')).toContainText(
-      'connects',
+      'connect',
     );
     await expect(insights.getByTestId('insight-orphans')).toContainText(
       `${map.insights.orphans.total} items`,
@@ -66,10 +66,7 @@ test.describe('Workspace map', () => {
     const before = await debugInfo(canvas);
     const target = before.clusters.find((c) => c.title === 'Desktop');
     const box = await canvas.boundingBox();
-    await page.mouse.click(
-      box.x + target.x + target.r * 0.55,
-      box.y + target.y,
-    );
+    await page.mouse.click(box.x + target.x, box.y + target.top);
     await page.waitForTimeout(1100);
     const after = await debugInfo(canvas);
     expect(after.k).toBeGreaterThan(before.k * 1.4);

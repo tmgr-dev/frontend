@@ -133,9 +133,9 @@ export class MapLayoutCore {
 				node.vy = (node.vy ?? 0) + (cy - y) * k;
 				if (this.pull === GROUP_PULL) {
 					const dist = Math.hypot(x - cx, y - cy);
-					const limit = init.clusterRadius[c] * 0.95;
+					const limit = init.clusterRadius[c] * 0.85;
 					if (dist > limit) {
-						const over = ((dist - limit) / dist) * 0.5 * alpha * 2;
+						const over = ((dist - limit) / dist) * 1.5 * alpha;
 						node.vx = (node.vx ?? 0) - (x - cx) * over;
 						node.vy = (node.vy ?? 0) - (y - cy) * over;
 					}

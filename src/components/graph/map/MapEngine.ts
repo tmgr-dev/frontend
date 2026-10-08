@@ -31,6 +31,7 @@ interface ClusterGeo {
 	x: number;
 	y: number;
 	r: number;
+	top: number;
 	visible: number;
 }
 
@@ -186,7 +187,13 @@ export class MapEngine {
 			})
 			.sort((x, y) => y.edges.length - x.edges.length);
 		this.bridges.slice(0, 10).forEach((g) => (g.top = true));
-		this.geo = prepared.clusters.map(() => ({ x: 0, y: 0, r: 0, visible: 0 }));
+		this.geo = prepared.clusters.map(() => ({
+			x: 0,
+			y: 0,
+			r: 0,
+			top: 0,
+			visible: 0,
+		}));
 		this.applyWanted();
 		this.layoutStart = performance.now();
 		this.layoutRunning = true;
@@ -392,13 +399,12 @@ export class MapEngine {
 					minY = Math.min(minY, y);
 					maxY = Math.max(maxY, y);
 				}
-				const pad = 40;
 				const t = this.boundsTransform(
 					[
-						[minX - pad, minY - pad],
-						[maxX + pad, maxY + pad],
+						[minX, minY],
+						[maxX, maxY],
 					],
-					28,
+					Math.max(24, Math.min(this.width, this.height) * 0.08),
 					1.4,
 				);
 				this.fitK = t.k;
@@ -550,22 +556,22 @@ export class MapEngine {
 
 	private computeGeo() {
 		const d = this.data!;
-		const acc = d.clusters.map(() => ({ x: 0, y: 0, n: 0 }));
+		const acc = d.clusters.map(() => ({ x: 0, y: 0, n: 0, top: Infinity }));
 		for (let i = 0; i < this.count; i++) {
 			if (d.orphan[i] || this.alpha[i] < 0.5) continue;
 			const a = acc[d.cluster[i]];
 			a.x += this.sx[i];
 			a.y += this.sy[i];
 			a.n++;
+			if (this.sy[i] < a.top) a.top = this.sy[i];
 		}
-		const sq = d.clusters.map(() => 0);
+		const far = d.clusters.map(() => 0);
 		for (let i = 0; i < this.count; i++) {
 			if (d.orphan[i] || this.alpha[i] < 0.5) continue;
 			const c = d.cluster[i];
 			const a = acc[c];
-			const dx = this.sx[i] - a.x / a.n;
-			const dy = this.sy[i] - a.y / a.n;
-			sq[c] += dx * dx + dy * dy;
+			const dist = Math.hypot(this.sx[i] - a.x / a.n, this.sy[i] - a.y / a.n);
+			if (dist > far[c]) far[c] = dist;
 		}
 		acc.forEach((a, c) => {
 			const g = this.geo[c];
@@ -573,7 +579,8 @@ export class MapEngine {
 			if (!a.n) return;
 			g.x = a.x / a.n;
 			g.y = a.y / a.n;
-			g.r = Math.sqrt(sq[c] / a.n) * 2.05 + 30 * Math.sqrt(this.view.k) + 10;
+			g.r = far[c] * 1.08 + 16;
+			g.top = a.top - 12;
 		});
 	}
 
@@ -612,14 +619,15 @@ export class MapEngine {
 		d.clusters.forEach((c, ci) => {
 			const g = this.geo[ci];
 			if (!g.visible) return;
-			const grad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.r);
+			const hz = g.r * 1.3;
+			const grad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, hz);
 			const strength = (dark ? 0.17 : 0.2) * (dimmed ? 0.5 : 1);
 			const f = 0.35 + 0.65 * (g.visible / Math.max(1, c.count));
 			grad.addColorStop(0, rgba(colors[ci], strength * f));
 			grad.addColorStop(0.6, rgba(colors[ci], strength * f * 0.45));
 			grad.addColorStop(1, rgba(colors[ci], 0));
 			ctx.fillStyle = grad;
-			ctx.fillRect(g.x - g.r, g.y - g.r, g.r * 2, g.r * 2);
+			ctx.fillRect(g.x - hz, g.y - hz, hz * 2, hz * 2);
 		});
 
 		const thin = d.edges.length > 2500 && this.view.k < this.fitK * 1.6;
@@ -874,6 +882,7 @@ export class MapEngine {
 				x: this.geo[i].x,
 				y: this.geo[i].y,
 				r: this.geo[i].r,
+				top: this.geo[i].top,
 			})),
 			hubs: d.clusters.filter((c) => c.hub >= 0).map((c) => spot(c.hub)),
 			bottleneck: d.bottleneck >= 0 ? spot(d.bottleneck) : null,
@@ -1037,8 +1046,7 @@ export class MapEngine {
 		this.geo.forEach((g, ci) => {
 			if (!g.visible) return;
 			const score = Math.hypot(px - g.x, py - g.y) / g.r;
-			const onLabel =
-				Math.abs(px - g.x) < 70 && Math.abs(py - (g.y - g.r * 0.96)) < 14;
+			const onLabel = Math.abs(px - g.x) < 70 && Math.abs(py - g.top) < 14;
 			if ((score <= 1 || onLabel) && score < bestScore) {
 				bestScore = score;
 				best = ci;

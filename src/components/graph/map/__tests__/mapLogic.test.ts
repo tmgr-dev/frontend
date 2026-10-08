@@ -70,7 +70,7 @@ const nodes = [
 	task(5, 'TM-423', 4, 'Agents'),
 	page(6, 'Pages index'),
 	page(7, 'Lonely page'),
-	task(8, 'TM-430', 2, 'Desktop'),
+	task(8, 'TM-430', null, null),
 ];
 const edges = [
 	edge('task:1', 'task:2', 'blocks'),
@@ -91,7 +91,7 @@ const map: GraphMap = {
 	categories: [
 		{ id: 2, title: 'Desktop', code: 'TM', count: 3 },
 		{ id: 4, title: 'Agents & personas', code: 'TM', count: 3 },
-		{ id: null, title: 'Pages & docs', code: null, count: 2 },
+		{ id: null, title: 'Uncategorized', code: null, count: 1 },
 	],
 	insights: {
 		hubs: [rank(nodes[0], 4, 4), rank(nodes[5], 1, 0)],
@@ -225,6 +225,7 @@ describe('prepareMap', () => {
 	it('groups pages into their own cluster and orders clusters by size', () => {
 		const titles = prepared.clusters.map((c) => c.title);
 		expect(titles).toContain('Pages & docs');
+		expect(titles).toContain('Uncategorized');
 		expect(titles).toContain('Desktop');
 		expect(prepared.clusters.find((c) => c.isPages)!.color).toBe('#f0a646');
 		const counts = prepared.clusters.map((c) => c.count);
@@ -258,7 +259,7 @@ describe('insights', () => {
 			'TM-416 Title 1 and Pages index tie the most items together',
 		);
 		expect(insights.bridges!.text).toBe(
-			'Agents & personas connects Desktop and Pages & docs',
+			'Agents & personas connect Desktop and Uncategorized',
 		);
 	});
 

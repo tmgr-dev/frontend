@@ -227,7 +227,7 @@ export const prepareMap = (
 
 	const titles = new Map<string, string>();
 	for (const c of map.categories ?? []) {
-		titles.set(c.id == null ? PAGES_CLUSTER : `c${c.id}`, c.title);
+		titles.set(c.id == null ? NONE_CLUSTER : `c${c.id}`, c.title);
 	}
 	const tally = new Map<string, number>();
 	const keys = kept.map(clusterKeyOf);
@@ -243,7 +243,7 @@ export const prepareMap = (
 			key === PAGES_CLUSTER
 				? PAGES_TITLE
 				: key === NONE_CLUSTER
-				? NONE_TITLE
+				? titles.get(key) ?? NONE_TITLE
 				: titles.get(key) ?? sample.category ?? 'Category';
 		return {
 			key,
@@ -375,7 +375,7 @@ export const placeClusters = (counts: number[]): ClusterPlacement[] => {
 		const d = n === 1 ? 0 : mean * 1.35 * Math.sqrt(i + 0.6);
 		return { x: Math.cos(i * golden) * d, y: Math.sin(i * golden) * d, r };
 	});
-	const gap = 36;
+	const gap = 70;
 	for (let pass = 0; pass < 120; pass++) {
 		let moved = false;
 		for (let i = 0; i < n; i++) {
@@ -524,10 +524,7 @@ export const bridgePairs = (
 	};
 	const resolve = (categoryId: number | null) => {
 		if (categoryId == null) {
-			const pages = prepared.clusters.findIndex((c) => c.isPages);
-			return pages >= 0
-				? pages
-				: prepared.clusters.findIndex((c) => c.key === NONE_CLUSTER);
+			return prepared.clusters.findIndex((c) => c.key === NONE_CLUSTER);
 		}
 		return prepared.clusters.findIndex((c) => c.categoryId === categoryId);
 	};
@@ -625,7 +622,7 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 			}
 		}
 		bridges = {
-			text: `${clusters[connector].title} connects ${listJoin(
+			text: `${clusters[connector].title} connect ${listJoin(
 				partners.map((p) => clusters[p].title),
 			)}`,
 			ids: [...ids],

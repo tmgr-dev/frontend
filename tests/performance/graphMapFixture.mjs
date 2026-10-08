@@ -209,7 +209,7 @@ export function buildGraphMap({
   for (const e of edges) {
     const a = catOf.get(e.from);
     const b = catOf.get(e.to);
-    if (a === b) continue;
+    if (a === b || a === null || b === null) continue;
     const key = `${a}|${b}`;
     pairs.set(key, (pairs.get(key) ?? 0) + 1);
   }
@@ -236,7 +236,6 @@ export function buildGraphMap({
         code: c.code,
         count: byCluster.get(`c${c.id}`).length,
       })),
-      { id: null, title: 'Pages & docs', code: null, count: pages },
     ],
     insights: {
       hubs,
