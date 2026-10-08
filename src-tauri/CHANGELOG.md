@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.25 — 2026-10-08
+
+- A timer you stop on another device (the phone, the watch, Siri, Control Center, a notification) now stops here
+  too: the status bar, the tray, the open task and Active tasks update within seconds, including when a local
+  workspace is open.
+- After the laptop wakes up or the window comes back into focus, the app re-checks which timers are running instead
+  of showing a timer that was stopped while it was asleep.
+
 ## 0.9.24 — 2026-10-04
 
 - Plugins can add their own items to the task "…" menu: on board cards, in the task list, on the task page and in a
