@@ -44,6 +44,7 @@ export interface ImportPlan {
 	pages: PlannedPage[];
 	files: Record<string, VirtualFile>;
 	warnings: IoWarning[];
+	workspaceId?: number | null;
 }
 
 export interface ImportOptions {

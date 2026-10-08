@@ -3,6 +3,7 @@ import {
 	isFileDrag,
 	openPagesImport,
 	pagesImportRequest,
+	trackInternalDrags,
 	useFileDrop,
 } from '../usePagesMarkdownIo';
 
@@ -14,6 +15,26 @@ const dragEvent = (types: string[], files: File[] = []) => ({
 	dataTransfer: { types, files, dropEffect: 'none' },
 	preventDefault: jest.fn(),
 	stopPropagation: jest.fn(),
+});
+
+describe('drags that start inside the document', () => {
+	it('are not treated as file drags until they end', () => {
+		jest.useFakeTimers();
+		const target = new EventTarget();
+		trackInternalDrags(target);
+		const files = dragEvent(['Files']) as any;
+		expect(isFileDrag(files)).toBe(true);
+		target.dispatchEvent(new Event('dragstart'));
+		expect(isFileDrag(files)).toBe(false);
+		target.dispatchEvent(new Event('dragend'));
+		expect(isFileDrag(files)).toBe(true);
+		target.dispatchEvent(new Event('dragstart'));
+		target.dispatchEvent(new Event('drop'));
+		expect(isFileDrag(files)).toBe(false);
+		jest.runAllTimers();
+		expect(isFileDrag(files)).toBe(true);
+		jest.useRealTimers();
+	});
 });
 
 describe('file drop handling', () => {

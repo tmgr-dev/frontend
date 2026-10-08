@@ -99,6 +99,7 @@ $axios.interceptors.request.use(
 		const workspaceId = store.getters.currentWorkspaceId;
 		if (
 			config.headers &&
+			config.headers['X-Workspace-Id'] == null &&
 			shouldAttachWorkspaceHeader(
 				workspaceId != null ? Number(workspaceId) : null,
 				store.state.workspaces,

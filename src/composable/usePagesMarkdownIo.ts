@@ -37,7 +37,27 @@ export const closePagesImport = () => {
 	pagesImportRequest.open = false;
 };
 
+let internalDrag = false;
+
+export const trackInternalDrags = (target: EventTarget) => {
+	const clear = () => {
+		internalDrag = false;
+	};
+	target.addEventListener(
+		'dragstart',
+		() => {
+			internalDrag = true;
+		},
+		true,
+	);
+	target.addEventListener('dragend', clear, true);
+	target.addEventListener('drop', () => setTimeout(clear, 0), true);
+};
+
+if (typeof document !== 'undefined') trackInternalDrags(document);
+
 export const isFileDrag = (event: { dataTransfer?: DataTransfer | null }) =>
+	!internalDrag &&
 	Array.from(event.dataTransfer?.types ?? []).includes('Files');
 
 export function useFileDrop(onFiles: (files: File[]) => void) {
