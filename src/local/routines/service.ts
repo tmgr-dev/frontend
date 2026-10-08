@@ -213,8 +213,12 @@ export const quickCreateRoutine = async (ctx: LocalContext, body: any) => {
 	const title = String(body?.title ?? '').trim();
 	if (!title) throw new LocalHttpError(422, 'title is required');
 	const routineId = await insertRoutineRow(ctx, { title, priority: 'medium', settings: '[]' });
-	const date = normalizeDateField(body?.scheduled_date ?? body?.date) ?? localDate(ctx.now());
+	const today = localDate(ctx.now());
+	const requestedDate = normalizeDateField(body?.scheduled_date ?? body?.date);
+	const date = requestedDate ?? today;
 	const time = resolveTimeInput(body?.scheduled_time ?? body?.time);
+	const undated = !time && (!requestedDate || (date >= addDays(today, -1) && date <= addDays(today, 1)));
+	if (undated) return loadRoutineRow(ctx, routineId);
 	await upsertInstanceForDate(ctx, routineId, date, time);
 	return loadRoutineRow(ctx, routineId);
 };
@@ -244,7 +248,9 @@ export const updateRoutine = async (ctx: LocalContext, row: any, body: any) => {
 		const pattern = normalizeRecurrence(body?.recurrence);
 		if (pattern) await savePattern(ctx, row.id, pattern);
 	}
-	if (body?.scheduled_date) {
+	if (body?.unscheduled === true) {
+		await ctx.db.execute(`DELETE FROM routine_instances WHERE routine_id = ? AND status = 'PENDING'`, [row.id]);
+	} else if (body?.scheduled_date) {
 		const date = normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
 		await upsertInstanceForDate(ctx, row.id, date, resolveTimeInput(body?.scheduled_time));
 	}
@@ -358,6 +364,20 @@ export const completeForDate = async (ctx: LocalContext, routineId: number, date
 		[row] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [Number(result.lastInsertId)]);
 	}
 	const wasCompleted = row.status === 'COMPLETED';
+	if (wasCompleted) {
+		const [{ n }] = await ctx.db.select<{ n: number }>(
+			`SELECT COUNT(*) AS n FROM routine_instances WHERE routine_id = ?`,
+			[routineId],
+		);
+		const [pattern] = await ctx.db.select<any>(
+			`SELECT frequency FROM routine_patterns WHERE routine_id = ? AND frequency IS NOT NULL AND frequency NOT IN ('', 'NONE')`,
+			[routineId],
+		);
+		if (!pattern && Number(n) === 1 && String(row.scheduled_for).slice(11, 19) === '00:00:00') {
+			await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [row.id]);
+			return { ...row, id: null, status: 'PENDING', completed_at: null, skipped_at: null, updated_at: now };
+		}
+	}
 	const status = wasCompleted ? 'PENDING' : 'COMPLETED';
 	await ctx.db.execute(
 		`UPDATE routine_instances SET status = ?, completed_at = ?, skipped_at = NULL, updated_at = ? WHERE id = ?`,

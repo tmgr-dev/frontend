@@ -497,6 +497,7 @@
 			timeH: payload.timeH,
 			timeM: payload.timeM,
 			allDay: payload.allDay,
+			unscheduled: payload.unscheduled,
 		});
 	});
 	setEditHandler((entry) => {
@@ -828,9 +829,7 @@
 			// (day-view resize writes here too); the pattern's duration_min is legacy.
 			payload.approximately_time = draft.durationMin;
 		} else if (isUnscheduled) {
-			// Date is needed to locate the instance; null time clears it server-side.
-			payload.scheduled_date = draft.scheduledDate || todayIso.value;
-			payload.scheduled_time = null;
+			payload.unscheduled = true;
 		} else {
 			payload.scheduled_date = draft.scheduledDate || todayIso.value;
 			payload.scheduled_time = { hours: draft.timeH, minutes: draft.timeM };
@@ -868,6 +867,7 @@
 		timeH?: number;
 		timeM?: number;
 		allDay?: boolean;
+		unscheduled?: boolean;
 	}) {
 		await store.dispatch('dailyRoutines/moveRoutine', payload);
 		await reload();

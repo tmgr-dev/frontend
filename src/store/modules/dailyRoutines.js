@@ -156,7 +156,7 @@ const dailyRoutinesModule = {
 					completed: result.completed,
 					instance_id: result.instance_id,
 					status: result.status,
-					virtual: false,
+					virtual: result.instance_id == null,
 				},
 			});
 		},
@@ -173,7 +173,7 @@ const dailyRoutinesModule = {
 		},
 		async moveRoutine(
 			{ dispatch, state, rootState },
-			{ entry, date, timeH, timeM, allDay },
+			{ entry, date, timeH, timeM, allDay, unscheduled },
 		) {
 			const isRecurring = entry.frequency && entry.frequency !== 'NONE';
 			if (allDay && isRecurring) {
@@ -206,7 +206,9 @@ const dailyRoutinesModule = {
 					routine_category:
 						entry.routine_category?.id ?? entry.routine_category ?? 'none',
 				};
-				if (allDay) {
+				if (allDay && unscheduled) {
+					payload.unscheduled = true;
+				} else if (allDay) {
 					payload.scheduled_date = date;
 					payload.scheduled_time = null;
 				} else if (timeH != null) {

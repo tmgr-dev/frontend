@@ -10,6 +10,7 @@ export type DropPayload = {
 	timeH?: number;
 	timeM?: number;
 	allDay?: boolean;
+	unscheduled?: boolean;
 };
 
 type DragState = {
@@ -70,7 +71,7 @@ function moveGhost(x: number, y: number) {
 	state.ghostEl.style.top = `${y - 16}px`;
 }
 
-function pickDropTarget(
+export function pickDropTarget(
 	x: number,
 	y: number,
 ): { el: HTMLElement; payload: DropPayload } | null {
@@ -83,7 +84,13 @@ function pickDropTarget(
 		const date = target.dataset.drDate;
 		if (!date) continue;
 		const kind = target.dataset.drKind;
-		if (kind === 'unscheduled' || kind === 'all-day') {
+		if (kind === 'unscheduled') {
+			return {
+				el: target,
+				payload: { date, allDay: true, unscheduled: true },
+			};
+		}
+		if (kind === 'all-day') {
 			return { el: target, payload: { date, allDay: true } };
 		}
 		if (kind === 'hour-grid') {

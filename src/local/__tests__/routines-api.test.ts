@@ -79,11 +79,16 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		expect(instances[0].scheduled_for).toBe('2026-09-26T09:30:00Z');
 	});
 
-	it('quick-creates a routine scheduled today when no date is given', async () => {
+	it('quick-creates an undated routine without an instance when no time is given', async () => {
 		const created = await data('POST', 'daily-routines/tasks/quick', { title: 'Quick one' });
-		const instances = await data('GET', `daily-routines/tasks/${created.id}/instances`);
-		expect(instances[0].scheduled_date).toBe('2026-09-26');
-		expect(instances[0].scheduled_time).toBe('00:00:00');
+		expect(await data('GET', `daily-routines/tasks/${created.id}/instances`)).toEqual([]);
+
+		const nearDate = await data('POST', 'daily-routines/tasks/quick', { title: 'Near', date: '2026-09-27' });
+		expect(await data('GET', `daily-routines/tasks/${nearDate.id}/instances`)).toEqual([]);
+
+		const farDate = await data('POST', 'daily-routines/tasks/quick', { title: 'Far', date: '2026-10-05' });
+		const farInstances = await data('GET', `daily-routines/tasks/${farDate.id}/instances`);
+		expect(farInstances[0].scheduled_for).toBe('2026-10-05T00:00:00Z');
 
 		const withTime = await data('POST', 'daily-routines/tasks/quick', {
 			title: 'Timed',
@@ -92,6 +97,49 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		});
 		const timedInstances = await data('GET', `daily-routines/tasks/${withTime.id}/instances`);
 		expect(timedInstances[0].scheduled_for).toBe('2026-10-01T08:15:00Z');
+
+		const timedToday = await data('POST', 'daily-routines/tasks/quick', { title: 'Today 9', time: '09:00' });
+		expect(await data('GET', `daily-routines/tasks/${timedToday.id}/instances`)).toHaveLength(1);
+	});
+
+	it('expands an undated quick-added routine on today only', async () => {
+		const created = await data('POST', 'daily-routines/tasks/quick', { title: 'Someday' });
+		const titles = async (from: string, to: string) =>
+			(await data('GET', `daily-routines/expand?from=${from}&to=${to}`)).map((e: any) => e.title);
+		expect(await titles('2026-09-26', '2026-09-26')).toContain('Someday');
+		expect(await titles('2026-09-25', '2026-09-25')).not.toContain('Someday');
+		expect(created.id).toBeGreaterThan(ROUTINE_ID_BASE);
+	});
+
+	it('makes a routine undated via unscheduled:true, keeping completed instances', async () => {
+		const routine = await data('POST', 'daily-routines/tasks', { title: 'Dated' });
+		await data('PUT', `daily-routines/tasks/${routine.id}`, {
+			scheduled_date: '2026-09-30',
+			scheduled_time: { hours: 9, minutes: 0 },
+		});
+		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toHaveLength(1);
+		await data('PUT', `daily-routines/tasks/${routine.id}`, {
+			title: 'Dated',
+			unscheduled: true,
+			scheduled_date: '2026-10-09',
+		});
+		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
+
+		const done = await data('POST', 'daily-routines/tasks', { title: 'Done' });
+		await data('PUT', `daily-routines/tasks/${done.id}`, { scheduled_date: '2026-09-30' });
+		await data('POST', `daily-routines/tasks/${done.id}/complete-on`, { date: '2026-09-30' });
+		await data('PUT', `daily-routines/tasks/${done.id}`, { unscheduled: true });
+		expect(await data('GET', `daily-routines/tasks/${done.id}/instances`)).toHaveLength(1);
+	});
+
+	it('un-completing an undated routine deletes its only midnight instance', async () => {
+		const routine = await data('POST', 'daily-routines/tasks/quick', { title: 'Undated' });
+		const on = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-09-26' });
+		expect(on.completed).toBe(true);
+		expect(on.instance_id).not.toBeNull();
+		const off = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-09-26' });
+		expect(off).toMatchObject({ instance_id: null, completed: false, status: 'PENDING' });
+		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
 	});
 
 	it('lists only active (non-archived, non-deleted) routines newest first', async () => {
