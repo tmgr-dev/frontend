@@ -23,13 +23,8 @@
 					/>
 					<span class="min-w-0">
 						<span class="block text-sm font-medium text-ink">{{
-							preset.name
+							preset.description || preset.name
 						}}</span>
-						<span
-							v-if="preset.description"
-							class="block text-xs text-ink-subtle"
-							>{{ preset.description }}</span
-						>
 					</span>
 				</label>
 				<label :class="optionClass(CUSTOM_CHOICE)">

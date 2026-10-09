@@ -827,7 +827,7 @@
 				const workspaceId = this.$store.state.user?.settings?.find(
 					(s: any) => s.key === 'current_workspace',
 				)?.value;
-				if (!workspaceId) return;
+				if (!workspaceId || !this.isFeatureEnabled('personas')) return;
 				try {
 					this.assignablePersonas = await getAssignablePersonas(
 						Number(workspaceId),

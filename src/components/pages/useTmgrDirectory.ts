@@ -58,7 +58,8 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 
 	const loadPersonas = async () => {
 		const id = workspaceId();
-		if (!id) return [];
+		if (!id || !store.getters['featureToggles/isFeatureEnabled']('personas'))
+			return [];
 		const grants = await listWorkspacePersonas(id);
 		for (const grant of grants) {
 			titles[key('persona', grant.persona.id)] = grant.persona.name;

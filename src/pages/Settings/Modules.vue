@@ -175,7 +175,11 @@
 				/>
 
 				<PagesAnalystSetting
-					v-if="currentWorkspaceId && isFeatureEnabled('pages')"
+					v-if="
+						currentWorkspaceId &&
+						isFeatureEnabled('pages') &&
+						isFeatureEnabled('personas')
+					"
 					:workspace-id="Number(currentWorkspaceId)"
 					:is-owner="isOwner"
 				/>
@@ -245,7 +249,7 @@
 		() =>
 			store.state.user?.settings?.find(
 				(s: any) => s.key === 'current_workspace',
-			)?.value,
+			)?.value as string | number,
 	);
 	const currentWorkspace = computed(() =>
 		store.state.workspaces?.find((w: any) => w.id == currentWorkspaceId.value),
@@ -262,7 +266,7 @@
 		payload.value ? buildModulesView(payload.value, isOwner.value) : null,
 	);
 	const coreRows = computed(() =>
-		(payload.value?.modules ?? [])
+		(payload.value?.canHide ? payload.value.modules : [])
 			.filter((m) => m.core && m.scope !== 'user')
 			.map((m) => ({
 				key: m.key,
@@ -272,7 +276,9 @@
 			})),
 	);
 
-	const userToggles = computed(() => store.state.featureToggles.userToggles);
+	const userToggles = computed(
+		() => (store.state as any).featureToggles.userToggles,
+	);
 	const landingOptions = computed(() => {
 		const options = ['list'];
 		if (isFeatureEnabled('board')) options.push('board');

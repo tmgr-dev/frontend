@@ -253,6 +253,15 @@ describe('buildModulesView', () => {
 		expect(view.packs[0].rows.every((r) => r.canHide)).toBe(true);
 	});
 
+	it('offers no hide control when the server cannot store hides', () => {
+		const payload = parseModulesPayload(raw);
+		payload.canHide = false;
+		const view = buildModulesView(payload, true);
+		expect(view.packs.flatMap((p) => p.rows).some((r) => r.canHide)).toBe(
+			false,
+		);
+	});
+
 	it('keeps user-scoped rows switchable by everyone without a hide control', () => {
 		const view = buildModulesView(parseModulesPayload(raw), false);
 		expect(
@@ -272,7 +281,7 @@ describe('gateCopy', () => {
 	it('links the owner to the Modules screen', () => {
 		expect(gateCopy(true)).toEqual({
 			kind: 'link',
-			text: 'Enable this module',
+			text: 'Enable this feature',
 			to: '/settings/modules',
 		});
 	});
@@ -429,6 +438,7 @@ describe('payloadFromLegacy', () => {
 		expect(payload.modules.map((m) => m.key)).toEqual(['pages', 'task.files']);
 		expect(payload.packs.map((p) => p.name)).toEqual(['Pages', 'Tasks']);
 		expect(payload.canManage).toBe(true);
+		expect(payload.canHide).toBe(false);
 		const grouped = groupModules(payload);
 		expect(grouped.packs[1]).toMatchObject({
 			key: 'task',

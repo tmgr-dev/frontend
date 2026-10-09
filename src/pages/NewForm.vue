@@ -719,7 +719,10 @@
 						getCategories,
 						getCategoriesOfWorkspace,
 						getWorkspaceMembers,
-						getAssignablePersonas,
+						getAssignablePersonas: (id: number) =>
+							isFeatureEnabled('personas')
+								? getAssignablePersonas(id)
+								: Promise.resolve([]),
 					},
 				)
 					.then(
@@ -1113,7 +1116,7 @@
 	};
 
 	const loadGitActivity = async () => {
-		if (!form.value.id) {
+		if (!form.value.id || !isFeatureEnabled('github')) {
 			console.log('[Git Activity] No task ID, skipping');
 			return;
 		}
@@ -1135,7 +1138,7 @@
 	};
 
 	const loadCursorAgents = async () => {
-		if (!form.value.id) return;
+		if (!form.value.id || !isFeatureEnabled('cursor')) return;
 		try {
 			const id = form.value.id;
 			const result = await getCursorAgents(id);
@@ -1152,9 +1155,12 @@
 		categoryGitHubLoaded.value = false;
 		categoryCursorLoaded.value = false;
 		if (!categoryId) return;
+		const moduleOff = () => Promise.reject(new Error('module is off'));
 		const [github, cursor] = await Promise.allSettled([
-			getCategoryGitHubStatus(categoryId),
-			getCursorStatus(categoryId),
+			isFeatureEnabled('github')
+				? getCategoryGitHubStatus(categoryId)
+				: moduleOff(),
+			isFeatureEnabled('cursor') ? getCursorStatus(categoryId) : moduleOff(),
 		]);
 		// Ignore stale responses if the category changed while this load was in flight.
 		if (form.value.project_category_id !== categoryId) return;

@@ -32,6 +32,7 @@ export interface ModulePreset {
 export interface ModulesPayload {
 	configured: boolean;
 	canManage: boolean;
+	canHide: boolean;
 	enforcement: string;
 	packs: ModulePack[];
 	presets: ModulePreset[];
@@ -54,6 +55,7 @@ export const parseModulesPayload = (raw: any): ModulesPayload => {
 	return {
 		configured: body.configured !== false,
 		canManage: body.can_manage === true,
+		canHide: true,
 		enforcement: body.enforcement || 'report',
 		packs: Array.isArray(body.packs) ? body.packs : [],
 		presets: Array.isArray(body.presets) ? body.presets : [],
@@ -75,13 +77,19 @@ export const isEntryVisible = (entry?: ModuleEntry | null): boolean => {
 
 const cacheKey = (workspaceId: unknown) => `tmgr:modules:${workspaceId}`;
 
+let lastRaw: string | null = null;
+let lastParsed: ModulesMap | null = null;
+
 export const readModulesCache = (workspaceId: unknown): ModulesMap | null => {
 	if (workspaceId == null || workspaceId === '') return null;
 	try {
-		const parsed = JSON.parse(
-			localStorage.getItem(cacheKey(workspaceId)) || 'null',
-		);
-		return parsed && typeof parsed === 'object' ? parsed : null;
+		const raw = localStorage.getItem(cacheKey(workspaceId));
+		if (raw === null) return null;
+		if (raw === lastRaw) return lastParsed;
+		const parsed = JSON.parse(raw);
+		lastRaw = raw;
+		lastParsed = parsed && typeof parsed === 'object' ? parsed : null;
+		return lastParsed;
 	} catch {
 		return null;
 	}
@@ -196,7 +204,7 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 			hidden: entry.hidden === true,
 			scope: user ? 'user' : 'workspace',
 			canToggle: user || isOwner,
-			canHide: !user,
+			canHide: !user && payload.canHide,
 			askOwner: !user && !isOwner && !enabled,
 		};
 	};
@@ -224,7 +232,7 @@ export const gateCopy = (isOwner: boolean, hiddenByMe = false) => {
 	return isOwner
 		? ({
 				kind: 'link',
-				text: 'Enable this module',
+				text: 'Enable this feature',
 				to: '/settings/modules',
 		  } as const)
 		: ({ kind: 'ask', text: 'Ask the owner to turn this on' } as const);
@@ -283,6 +291,7 @@ export const payloadFromLegacy = (
 	return {
 		configured: true,
 		canManage,
+		canHide: false,
 		enforcement: 'report',
 		packs: packKeys.map((key) => ({ key, name: humanizeGroupName(key) })),
 		presets: [],

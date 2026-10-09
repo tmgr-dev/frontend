@@ -1663,9 +1663,11 @@
 						const users = await getWorkspaceMembers(this.workspaceId);
 						if (this.boardDisposed) return;
 						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
-						this.assignablePersonas = await getAssignablePersonas(
-							this.workspaceId,
-						).catch(() => []);
+						this.assignablePersonas = this.$store.getters[
+							'featureToggles/isFeatureEnabled'
+						]('personas')
+							? await getAssignablePersonas(this.workspaceId).catch(() => [])
+							: [];
 						if (this.boardDisposed) return;
 					}
 					await this.loadColumns();
