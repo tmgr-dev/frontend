@@ -155,6 +155,7 @@
 										</CommandItem>
 									</CommandGroup>
 									<AssigneePersonaGroup
+										v-if="isFeatureEnabled('personas')"
 										:personas="assignablePersonas"
 										:selected-ids="personaIdsOf(task)"
 										@toggle="(persona) => togglePersona(task, persona)"
@@ -292,7 +293,10 @@
 							/>
 
 							<PersonaAssigneeChips
-								v-if="isFeatureEnabled('task.assignees')"
+								v-if="
+									isFeatureEnabled('task.assignees') &&
+									isFeatureEnabled('personas')
+								"
 								class="ml-auto"
 								:personas="personaAssigneesOf(task)"
 								:size="20"

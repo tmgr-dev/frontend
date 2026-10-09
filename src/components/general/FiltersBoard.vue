@@ -389,6 +389,7 @@
 	);
 	const showPersonaFilter = computed(
 		() =>
+			isFeatureEnabled('personas') &&
 			isUserFeatureEnabled('board.user_filter') &&
 			props.personaOptions.length > 0,
 	);

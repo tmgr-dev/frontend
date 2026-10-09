@@ -72,7 +72,7 @@
 						<div v-if="isProfile" class="flex flex-col gap-6">
 							<profile :standalone="false" @password-changed="onPasswordChanged" />
 
-							<SettingsSection title="Telegram">
+							<SettingsSection v-if="telegramEnabled" title="Telegram">
 								<div
 									v-if="user.telegram_username"
 									class="flex flex-wrap items-center gap-3"
@@ -96,7 +96,7 @@
 						</div>
 
 						<div v-if="isDevice" class="flex flex-col gap-6">
-							<SettingsSection title="API token">
+							<SettingsSection v-if="mcpEnabled" title="API token">
 								<div class="flex max-w-xl flex-col gap-1.5">
 									<Label for="smart-device-token">API token</Label>
 									<div class="flex flex-wrap items-center gap-2">
@@ -166,7 +166,7 @@
 								</template>
 							</SettingsSection>
 
-							<SettingsSection title="How to use">
+							<SettingsSection v-if="mcpEnabled" title="How to use">
 								<div class="flex flex-col gap-2 text-sm text-ink-subtle">
 									<p>1. Generate a token using the button above</p>
 									<p>
@@ -185,7 +185,7 @@
 								</div>
 							</SettingsSection>
 
-							<SettingsSection title="MCP setup">
+							<SettingsSection v-if="mcpEnabled" title="MCP setup">
 								<div class="flex flex-col gap-3 text-sm text-ink-subtle">
 									<p>
 										TMGR MCP uses the smart device token as a custom header.
@@ -378,6 +378,14 @@
 			},
 		},
 		computed: {
+			telegramEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'telegram',
+				);
+			},
+			mcpEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled']('mcp');
+			},
 			pageTitle() {
 				if (this.isProfile) return 'Profile';
 				if (this.isDevice) return 'Smart devices';

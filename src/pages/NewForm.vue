@@ -540,11 +540,18 @@
 	};
 
 	const hasActiveAgent = computed(() => {
-		return cursorAgents.value.some((a: any) => a.status === 'RUNNING');
+		return (
+			isFeatureEnabled('cursor') &&
+			cursorAgents.value.some((a: any) => a.status === 'RUNNING')
+		);
 	});
 
 	const canRunWithCursor = computed(() => {
-		return form.value.id && currentCategoryCode.value;
+		return (
+			isFeatureEnabled('cursor') &&
+			form.value.id &&
+			currentCategoryCode.value
+		);
 	});
 
 	const autoResizeTitle = () => {
@@ -2120,7 +2127,10 @@
 	};
 
 	const commentAiReply = computed(
-		() => !isLocalWorkspaceTask.value && isCommentAiReplyOn(),
+		() =>
+			!isLocalWorkspaceTask.value &&
+			isFeatureEnabled('ai.assistant') &&
+			isCommentAiReplyOn(),
 	);
 
 	const toggleCommentAiReply = () => {
@@ -2251,7 +2261,7 @@
 
 					<div class="flex items-center gap-2">
 						<button
-							v-if="form.id"
+							v-if="form.id && isFeatureEnabled('pomodoro')"
 							type="button"
 							@click="togglePomodoro"
 							:disabled="pomodoroBusy"
@@ -2385,7 +2395,7 @@
 
 					<!-- Pomodoro block (per-task, opt-in) -->
 					<PomodoroBlock
-						v-if="form.id"
+						v-if="form.id && isFeatureEnabled('pomodoro')"
 						ref="pomodoroBlockRef"
 						:task-id="form.id"
 						:main-timer-running="mainTimerRunning"
@@ -2410,11 +2420,14 @@
 							<AssigneesCombobox
 								:assignees="workspaceMembers"
 								v-model="assignees as any"
-								:assignable-personas="assignablePersonas"
+								:assignable-personas="
+									isFeatureEnabled('personas') ? assignablePersonas : []
+								"
 								:selected-personas="personaAssignees"
 								@toggle-persona="togglePersona"
 							/>
 							<PersonaAssigneeChips
+								v-if="isFeatureEnabled('personas')"
 								:personas="personaAssignees"
 								:size="24"
 								:member-avatars="memberAvatars"
@@ -2493,7 +2506,7 @@
 							</div>
 						</template>
 
-						<template v-if="form.id">
+						<template v-if="form.id && isFeatureEnabled('github')">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<CodeBracketIcon class="h-3.5 w-3.5" />
 								<span>Git activity</span>
@@ -2725,7 +2738,12 @@
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
-						v-if="isModal && form.id && isLocalWorkspaceTask"
+						v-if="
+							isFeatureEnabled('personas') &&
+							isModal &&
+							form.id &&
+							isLocalWorkspaceTask
+						"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>
@@ -2768,7 +2786,7 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							v-if="!isLocalWorkspaceTask"
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
 							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
@@ -2923,7 +2941,9 @@
 					@mousedown.stop
 				>
 					<AskPersonaButton
-						v-if="form.id && isLocalWorkspaceTask"
+						v-if="
+							isFeatureEnabled('personas') && form.id && isLocalWorkspaceTask
+						"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>
@@ -2962,7 +2982,7 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							v-if="!isLocalWorkspaceTask"
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
 							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"

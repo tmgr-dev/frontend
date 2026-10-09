@@ -121,6 +121,7 @@
 
 		<div class="flex h-full items-center gap-0.5 px-1.5">
 			<button
+				v-if="aiEnabled"
 				type="button"
 				title="Ask AI"
 				:class="[
@@ -131,7 +132,7 @@
 			>
 				<Sparkles class="h-3.5 w-3.5" />
 			</button>
-			<ActiveCursorAgents />
+			<ActiveCursorAgents v-if="cursorEnabled" />
 		</div>
 	</footer>
 </template>
@@ -248,6 +249,12 @@
 				workspace: computed(() => store.getters.currentWorkspace),
 				title: computed(() => store.state.metaTitle || ''),
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
+				aiEnabled: computed(() =>
+					store.getters['featureToggles/isFeatureEnabled']('ai.assistant'),
+				),
+				cursorEnabled: computed(() =>
+					store.getters['featureToggles/isFeatureEnabled']('cursor'),
+				),
 				toggleAi: () => store.commit('toggleAiPanel'),
 				openTask: (task) =>
 					openTaskPreferringWindow(

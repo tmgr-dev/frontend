@@ -19,7 +19,10 @@
 
 				<slot></slot>
 
-				<export-settings-panel @update:settings="exportSettings = $event" />
+				<export-settings-panel
+					v-if="exportsEnabled"
+					@update:settings="exportSettings = $event"
+				/>
 
 				<div class="mt-4 flex items-center gap-2">
 					<select
@@ -74,6 +77,13 @@
 		components: {
 			Modal,
 			ExportSettingsPanel,
+		},
+		computed: {
+			exportsEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'exports',
+				);
+			},
 		},
 		data() {
 			return {

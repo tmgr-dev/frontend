@@ -40,7 +40,10 @@
 				</div>
 			</SettingsSection>
 
-			<SettingsSection title="Telegram notifications">
+			<SettingsSection
+				v-if="isFeatureEnabled('telegram')"
+				title="Telegram notifications"
+			>
 				<template #description>
 					<span v-if="!hasTelegram">
 						Connect your Telegram account in profile settings to receive
@@ -106,6 +109,7 @@
 			</SettingsSection>
 
 			<SettingsSection
+				v-if="isFeatureEnabled('alerts')"
 				title="Agents"
 				description="Notifications Claude Code, Codex or other AI agents send you with a notify token"
 			>
@@ -322,6 +326,8 @@
 				formData,
 				notificationTypeGroups,
 				hasTelegram,
+				isFeatureEnabled: (key) =>
+					store.getters['featureToggles/isFeatureEnabled'](key),
 				loadSettings,
 				onWebEnabledChange,
 				onTelegramEnabledChange,

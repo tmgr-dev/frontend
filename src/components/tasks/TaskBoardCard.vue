@@ -60,7 +60,9 @@
 			<span class="flex-1"></span>
 
 			<PersonaAssigneeChips
-				v-if="isFeatureEnabled('task.assignees')"
+				v-if="
+					isFeatureEnabled('task.assignees') && isFeatureEnabled('personas')
+				"
 				:personas="personaAssignees"
 				:size="22"
 			/>
@@ -123,6 +125,7 @@
 								</CommandItem>
 							</CommandGroup>
 							<AssigneePersonaGroup
+								v-if="isFeatureEnabled('personas')"
 								:personas="assignablePersonas"
 								:selected-ids="personaAssigneeUuids"
 								@toggle="togglePersona"

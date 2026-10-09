@@ -131,7 +131,7 @@
 					</div>
 
 					<CategoryGitHubSettings
-						v-if="!isCreate && form.id"
+						v-if="!isCreate && form.id && githubEnabled"
 						:category-id="form.id"
 						:is-create="isCreate"
 						@connected="onGitHubConnected"
@@ -141,7 +141,7 @@
 					/>
 
 					<CategoryCursorSettings
-						v-if="!isCreate && form.id"
+						v-if="!isCreate && form.id && cursorEnabled"
 						:category-id="form.id"
 						:is-create="isCreate"
 						@cursor-configured="onCursorConfigured"
@@ -243,6 +243,12 @@
 			},
 		},
 		computed: {
+			githubEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled']('github');
+			},
+			cursorEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled']('cursor');
+			},
 			isCreate() {
 				return !this.$route.params.id && !this.form.id;
 			},
