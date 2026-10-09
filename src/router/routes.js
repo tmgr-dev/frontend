@@ -1,3 +1,4 @@
+import { gatedPage } from '@/router/moduleGate';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
@@ -451,24 +452,32 @@ const routes = [
 		name: 'WorkspaceSettings',
 	},
 	{
-		path: '/settings/features',
-		component: () => import('@/pages/Settings/FeatureToggles.vue'),
+		path: '/settings/modules',
+		component: () => import('@/pages/Settings/Modules.vue'),
 		meta: {
-			title: 'Feature Settings',
+			title: 'Modules',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
-		name: 'FeatureSettings',
+		name: 'ModuleSettings',
+	},
+	{
+		path: '/settings/features',
+		redirect: '/settings/modules',
 	},
 	{
 		path: '/settings/personas',
-		component: () => import('@/pages/Settings/Personas.vue'),
+		component: gatedPage('personas', 'Personas', () =>
+			import('@/pages/Settings/Personas.vue'),
+		),
 		meta: { title: 'Personas', transitionName: 'fade-fast', navbarHidden: true },
 		name: 'PersonaSettings',
 	},
 	{
 		path: '/settings/agent-notifications',
-		component: () => import('@/pages/Settings/AgentNotifications.vue'),
+		component: gatedPage('alerts', 'Agent notifications', () =>
+			import('@/pages/Settings/AgentNotifications.vue'),
+		),
 		meta: {
 			title: 'Agent notifications',
 			transitionName: 'fade-fast',

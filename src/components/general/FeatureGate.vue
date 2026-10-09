@@ -1,16 +1,7 @@
 <template>
 	<div class="relative">
-		<!-- Loading state: show nothing until feature toggles are loaded -->
-		<template v-if="!isTogglesLoaded">
-			<div class="flex min-h-96 items-center justify-center">
-				<div
-					class="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600 dark:border-blue-400"
-				></div>
-			</div>
-		</template>
-
 		<!-- Feature enabled: show actual content -->
-		<template v-else-if="isEnabled">
+		<template v-if="isEnabled">
 			<slot />
 		</template>
 
@@ -53,51 +44,16 @@
 							{{ description }}
 						</p>
 
-						<!-- Toggle switch -->
-						<div class="flex items-center justify-center gap-3">
-							<span class="text-sm text-gray-500 dark:text-gray-400"
-								>Enable this feature</span
-							>
-							<label class="relative inline-flex cursor-pointer items-center">
-								<input
-									type="checkbox"
-									:checked="false"
-									@change="enableFeature"
-									class="peer sr-only"
-								/>
-								<div
-									class="peer h-7 w-14 rounded-full bg-gray-200 after:absolute after:left-[4px] after:top-[4px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-700 dark:peer-focus:ring-blue-800"
-								></div>
-							</label>
-						</div>
-
-						<!-- Loading state -->
-						<div
-							v-if="isLoading"
-							class="mt-4 flex items-center justify-center gap-2 text-sm text-blue-600"
+						<router-link
+							v-if="copy.kind === 'link'"
+							:to="copy.to"
+							class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
 						>
-							<svg
-								class="h-4 w-4 animate-spin"
-								xmlns="http://www.w3.org/2000/svg"
-								fill="none"
-								viewBox="0 0 24 24"
-							>
-								<circle
-									class="opacity-25"
-									cx="12"
-									cy="12"
-									r="10"
-									stroke="currentColor"
-									stroke-width="4"
-								></circle>
-								<path
-									class="opacity-75"
-									fill="currentColor"
-									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-								></path>
-							</svg>
-							<span>Enabling feature...</span>
-						</div>
+							{{ copy.text }}
+						</router-link>
+						<p v-else class="text-sm text-gray-500 dark:text-gray-400">
+							{{ copy.text }}
+						</p>
 					</div>
 				</div>
 			</div>
@@ -107,8 +63,9 @@
 
 <script setup lang="ts">
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { gateCopy } from '@/utils/modules';
 	import { Lock } from 'lucide-vue-next';
-	import { computed, ref, type Component } from 'vue';
+	import { computed, type Component } from 'vue';
 	import { useStore } from 'vuex';
 
 	interface Props {
@@ -121,29 +78,16 @@
 	const props = defineProps<Props>();
 
 	const store = useStore();
-	const { isFeatureEnabled, isLoaded: isTogglesLoaded } = useFeatureToggles();
-	const isLoading = ref(false);
+	const { isFeatureEnabled } = useFeatureToggles();
 
 	const iconComponent = computed(() => props.icon || Lock);
 
 	const isEnabled = computed(() => isFeatureEnabled(props.featureKey));
 
-	const currentWorkspaceId = computed(() => {
-		return store.getters.currentWorkspaceId;
-	});
-
-	const enableFeature = async () => {
-		isLoading.value = true;
-		try {
-			await store.dispatch('featureToggles/updateWorkspaceToggles', {
-				workspaceId: currentWorkspaceId.value,
-				toggles: { [props.featureKey]: true },
-			});
-			window.location.reload();
-		} catch (error) {
-			console.error('Failed to enable feature:', error);
-		} finally {
-			isLoading.value = false;
-		}
-	};
+	const copy = computed(() =>
+		gateCopy(
+			store.getters['featureToggles/canManageModules'],
+			store.getters['featureToggles/isHiddenByMe'](props.featureKey),
+		),
+	);
 </script>
