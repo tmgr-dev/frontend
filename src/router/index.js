@@ -1,4 +1,3 @@
-import { getWorkspaceFeatureToggles } from '@/actions/tmgr/featureToggles';
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { saveReturnPath } from '@/utils/emailVerification';
@@ -77,8 +76,10 @@ router.beforeEach(async (to, from, next) => {
 
 			if (currentWorkspaceId && !store.state.featureToggles?.workspaceLoaded) {
 				try {
-					const data = await getWorkspaceFeatureToggles(currentWorkspaceId);
-					store.commit('featureToggles/setWorkspaceToggles', data);
+					await store.dispatch(
+						'featureToggles/fetchWorkspaceModules',
+						currentWorkspaceId,
+					);
 				} catch (e) {
 					// continue with default list
 				}
@@ -96,15 +97,14 @@ router.beforeEach(async (to, from, next) => {
 			// Validate landing page against allowed features
 			let finalLanding = landingPage;
 			const allowedLanding = ['list'];
-			if (store.state.featureToggles?.workspaceToggles?.board?.enabled) {
+			const isOn = store.getters['featureToggles/isFeatureEnabled'];
+			if (isOn('board')) {
 				allowedLanding.push('board');
 			}
-			if (store.state.featureToggles?.workspaceToggles?.dashboard?.enabled) {
+			if (isOn('dashboard')) {
 				allowedLanding.push('dashboard');
 			}
-			if (
-				store.state.featureToggles?.workspaceToggles?.daily_routines?.enabled
-			) {
+			if (isOn('daily_routines')) {
 				allowedLanding.push('daily_routines');
 			}
 			if (!allowedLanding.includes(finalLanding)) {

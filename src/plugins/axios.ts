@@ -1,4 +1,5 @@
 import store from '@/store';
+import { notifyFeatureDisabled } from '@/utils/featureDisabledNotice';
 import { markSessionExpired } from '@/utils/sessionExpiry';
 import {
 	isSocialCallbackPath,
@@ -115,6 +116,7 @@ $axios.interceptors.request.use(
 $axios.interceptors.response.use(
 	(response) => response,
 	async (error) => {
+		notifyFeatureDisabled(error);
 		const config = error.config;
 
 		// No config → nothing can be retried or replayed (request was
