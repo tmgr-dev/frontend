@@ -3,6 +3,7 @@ import {
 	hasNativeTitleBar,
 	revealInFileManagerLabel,
 	supportsLocalAccess,
+	supportsPluginWindows,
 	supportsSelectionCapture,
 	thisComputerName,
 	trayName,
@@ -69,6 +70,9 @@ describe('platform copy and capabilities', () => {
 		expect(supportsLocalAccess('macos')).toBe(true);
 		expect(supportsLocalAccess('linux')).toBe(true);
 		expect(supportsLocalAccess('windows')).toBe(false);
+		expect(supportsPluginWindows('windows')).toBe(false);
+		expect(supportsPluginWindows('macos')).toBe(true);
+		expect(supportsPluginWindows('linux')).toBe(true);
 		expect(hasNativeTitleBar('macos')).toBe(false);
 		expect(hasNativeTitleBar('windows')).toBe(true);
 		expect(hasNativeTitleBar('linux')).toBe(true);

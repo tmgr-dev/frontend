@@ -56,6 +56,10 @@
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import { deepLinkConsentStore } from '@/pluginSystem/storage';
 	import router from '@/router';
+	import {
+		PLUGIN_WINDOWS_UNAVAILABLE,
+		supportsPluginWindows,
+	} from '@/utils/desktop';
 	import store from '@/store';
 	import {
 		createRecentUrlGuard,
@@ -178,6 +182,12 @@
 			const openViewLink = async (link) => {
 				const view = pluginHost()?.deepLinkView(link.pluginId, link.viewId);
 				if (!view) return cantOpenLink();
+				if (view.ui && !supportsPluginWindows()) {
+					return toast({
+						title: PLUGIN_WINDOWS_UNAVAILABLE,
+						variant: 'destructive',
+					});
+				}
 				const expected = capturedExpectation(link.pluginId);
 				await showMainWindow();
 				const result = await pluginHost()?.openDeepLinkView(

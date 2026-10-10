@@ -427,7 +427,7 @@ const createBroker = (deps) => {
     };
     const needTray = () => {
         if (!deps.tray) {
-            throw new PluginError('PERMISSION_DENIED', 'the menu bar is not available: not allowed on this computer');
+            throw new PluginError('PERMISSION_DENIED', 'the tray is not available: not allowed on this computer');
         }
         return deps.tray;
     };
@@ -1063,7 +1063,7 @@ const createBroker = (deps) => {
             run: (p) => {
                 const tray = needTray();
                 if (!tray.isTitleOwner()) {
-                    throw new PluginError('PERMISSION_DENIED', `${manifest.name} is not chosen for the menu bar text in Settings`);
+                    throw new PluginError('PERMISSION_DENIED', `${manifest.name} is not chosen for the tray text in Settings`);
                 }
                 if (p.text === null)
                     return tray.setTitle(null);
