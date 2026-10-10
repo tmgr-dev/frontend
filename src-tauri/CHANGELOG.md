@@ -3,6 +3,17 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.30 — 2026-10-11
+
+- Settings → Modules replaces Feature Settings. Modules are grouped into packs (Time & focus, Planning, Knowledge, AI
+  agents, Integrations). The workspace owner turns a module on or off for everyone; anyone can hide a module just for
+  themselves ("Hidden for you"). Core sections (Projects, Board, Timer, Comments, Assignees) can only be hidden for
+  yourself.
+- A module that is off or hidden disappears from the sidebar, the task window, cards, the status bar and the tray, and
+  the app stops calling it. Its data stays and comes back when it is turned on again.
+- Apply a preset (owner): Personal, Team, Developer with AI agents, Everything or Minimal, with a list of what turns on
+  and off and a live preview of the menu and task blocks. New workspaces open the same picker once.
+
 ## 0.9.29 — 2026-10-09
 
 - Agent work is now a workspace feature, on by default: the workspace owner can turn it off in Settings → Features →
