@@ -45,6 +45,13 @@ export const supportsSelectionCapture = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): boolean => isMacLike(platform);
 
+export const PLUGIN_WINDOWS_UNAVAILABLE =
+	'Plugin windows are not available on Windows yet.';
+
+export const supportsPluginWindows = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): boolean => platform !== 'windows';
+
 export const supportsLocalAccess = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): boolean => platform !== 'windows';

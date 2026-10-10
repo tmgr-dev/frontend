@@ -19,12 +19,21 @@
 				Open plugin settings
 			</router-link>
 		</div>
+		<p
+			v-else-if="view?.ui && !windowsSupported"
+			class="text-sm text-muted-foreground"
+		>
+			{{ unavailableText }}
+		</p>
 		<div v-else-if="view?.ui" class="flex flex-col items-start gap-3 text-sm">
 			<p class="text-muted-foreground">
 				“{{ view.title }}” is the plugin's own page. It opens in a separate
 				window, so it cannot slow down or freeze the app.
 			</p>
 			<Button size="sm" @click="openWindow">Open window</Button>
+			<p v-if="windowError" class="text-red-600 dark:text-red-400">
+				{{ windowError }}
+			</p>
 		</div>
 		<p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
 			{{ error }}
@@ -46,6 +55,10 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
+	import {
+		PLUGIN_WINDOWS_UNAVAILABLE,
+		supportsPluginWindows,
+	} from '@/utils/desktop';
 	import { sanitizeDeepLinkParams } from '@/utils/desktopShortcuts';
 	import { computed, defineComponent, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -65,8 +78,19 @@
 						(v) => v.id === viewId.value,
 					) ?? null,
 			);
-			const openWindow = () =>
-				pluginHost()?.openView(pluginId.value, viewId.value);
+			const windowsSupported = supportsPluginWindows();
+			const windowError = ref<string | null>(null);
+			const openWindowSafely = async (props?: Record<string, string>) => {
+				windowError.value = null;
+				try {
+					await pluginHost()?.openView(pluginId.value, viewId.value, props);
+				} catch (e) {
+					windowError.value = `Could not open the plugin window: ${
+						e instanceof Error ? e.message : e
+					}`;
+				}
+			};
+			const openWindow = () => openWindowSafely();
 			const error = ref<string | null>(null);
 			let request = 0;
 			let openedFor = '';
@@ -101,11 +125,9 @@
 					const key = `${pluginId.value}/${viewId.value}`;
 					if (openedFor !== key) {
 						openedFor = key;
-						void pluginHost()?.openView(
-							pluginId.value,
-							viewId.value,
-							queryProps.value ?? undefined,
-						);
+						if (windowsSupported) {
+							void openWindowSafely(queryProps.value ?? undefined);
+						}
 					}
 					return;
 				}
@@ -140,7 +162,18 @@
 				{ immediate: true },
 			);
 
-			return { pluginId, viewId, entry, tree, error, view, openWindow };
+			return {
+				pluginId,
+				viewId,
+				entry,
+				tree,
+				error,
+				view,
+				openWindow,
+				windowsSupported,
+				windowError,
+				unavailableText: PLUGIN_WINDOWS_UNAVAILABLE,
+			};
 		},
 	});
 </script>
