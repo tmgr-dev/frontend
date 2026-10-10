@@ -1,4 +1,4 @@
-import { formatTime } from '../timeUtils.js';
+import { formatDuration as formatTime } from '../formatDuration';
 
 describe('formatTime', () => {
 	it.each([
