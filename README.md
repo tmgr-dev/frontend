@@ -2,6 +2,34 @@
 
 Lightweight task manager application.
 
+## Install on NixOS
+
+The Linux desktop app is packaged as a flake that wraps the release `.deb`. It pins the latest desktop release and is bumped automatically after each release.
+
+```
+nix profile install github:tmgr-dev/frontend#tmgr
+nix run github:tmgr-dev/frontend#tmgr
+```
+
+NixOS configuration:
+
+```nix
+{
+  inputs.tmgr.url = "github:tmgr-dev/frontend";
+
+  outputs = { nixpkgs, tmgr, ... }: {
+    nixosConfigurations.host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        { environment.systemPackages = [ tmgr.packages.x86_64-linux.default ]; }
+      ];
+    };
+  };
+}
+```
+
+The built-in updater is disabled in this package; update with `nix flake update tmgr`.
+
 ## Project setup
 
 ```

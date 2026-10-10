@@ -1,0 +1,76 @@
+name: Desktop Nix
+
+on:
+  workflow_run:
+    workflows: ['Desktop release']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Desktop version to package, e.g. 0.9.30'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-nix
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: bump nix package
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'desktop-v'))
+    steps:
+      - name: resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          RAW="${INPUT_VERSION:-$HEAD_BRANCH}"
+          VERSION="${RAW#desktop-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$RAW' is not a desktop version"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: master
+
+      - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: bump nix/source.json
+        run: scripts/nix-bump.sh "$VERSION"
+
+      - name: build
+        run: nix build .#tmgr --print-build-logs
+
+      - name: check binary links
+        run: |
+          test -x result/bin/tmgr
+          if ldd result/bin/.tmgr-wrapped | grep '=> not found'; then
+            echo "::error::unresolved libraries in tmgr"
+            exit 1
+          fi
+
+      - name: commit
+        run: |
+          if git diff --quiet -- nix/source.json; then
+            echo "nix/source.json already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898589+github-actions[bot]@users.noreply.github.com"
+          git add nix/source.json
+          git commit -m "chore(nix): tmgr $VERSION"
+          git pull --rebase origin master
+          git push origin HEAD:master
