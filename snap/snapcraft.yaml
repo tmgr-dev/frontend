@@ -1,0 +1,63 @@
+name: tmgr
+base: core22
+version: '0.0.0'
+summary: Task manager with time tracking
+description: |
+  TMGR desktop app: tasks, time tracking, pages and local workspaces.
+  Updates come through the Snap Store.
+license: Proprietary
+grade: stable
+confinement: strict
+
+layout:
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1
+
+slots:
+  single-instance:
+    interface: dbus
+    bus: session
+    name: org.dev_tmgr_desktop.SingleInstance
+
+plugs:
+  single-instance-plug:
+    interface: dbus
+    bus: session
+    name: org.dev_tmgr_desktop.SingleInstance
+
+apps:
+  tmgr:
+    command: bin/tmgr-launch
+    desktop: usr/share/applications/tmgr.desktop
+    extensions: [gnome]
+    environment:
+      TMGR_DISABLE_UPDATER: "1"
+    plugs:
+      - network
+      - home
+      - desktop
+      - desktop-legacy
+      - unity7
+      - password-manager-service
+      - single-instance-plug
+
+parts:
+  tmgr:
+    plugin: nil
+    source: snap-src
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libayatana-appindicator3-1
+      - libxdo3
+      - libsecret-1-0
+    override-build: |
+      set -eu
+      dpkg -x "$SNAPCRAFT_PART_SRC"/*.deb "$SNAPCRAFT_PART_INSTALL"
+      BIN=$(find "$SNAPCRAFT_PART_INSTALL/usr/bin" -type f | head -n 1)
+      mkdir -p "$SNAPCRAFT_PART_INSTALL/bin"
+      ln -s "../usr/bin/$(basename "$BIN")" "$SNAPCRAFT_PART_INSTALL/bin/tmgr-launch"
+      APPS="$SNAPCRAFT_PART_INSTALL/usr/share/applications"
+      DESKTOP=$(find "$APPS" -name '*.desktop' | head -n 1)
+      [ "$DESKTOP" = "$APPS/tmgr.desktop" ] || mv "$DESKTOP" "$APPS/tmgr.desktop"
+      ICON=$(find "$SNAPCRAFT_PART_INSTALL/usr/share/icons" -name '*.png' -path '*128x128*' | head -n 1)
+      sed -i -E "s|^Icon=.*|Icon=\${SNAP}/${ICON#"$SNAPCRAFT_PART_INSTALL"/}|" "$APPS/tmgr.desktop"
