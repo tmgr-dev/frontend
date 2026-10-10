@@ -115,8 +115,7 @@ jobs:
         if: env.DRY_RUN == 'true'
         run: |
           npx tauri signer generate --ci -w "$RUNNER_TEMP/dry-run.key" -p ''
-          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$RUNNER_TEMP/dry-run.key" >> "$GITHUB_ENV"
-          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+          echo "DRY_RUN_KEY=$RUNNER_TEMP/dry-run.key" >> "$GITHUB_ENV"
 
       # The only step that sees signing secrets, and only on tag pushes. Tauri treats a set-but-empty
       # APPLE_* variable as configured, so empty ones are dropped before the build.
@@ -139,7 +138,7 @@ jobs:
           for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then unset "$name"; fi
           done
-          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then unset TAURI_SIGNING_PRIVATE_KEY; fi
+          if [ "$DRY_RUN" = "true" ]; then export TAURI_SIGNING_PRIVATE_KEY="$DRY_RUN_KEY"; fi
           npx tauri build --bundles ${{ matrix.bundles }}
 
       - name: stage bundles
