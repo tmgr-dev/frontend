@@ -4,7 +4,7 @@ export function formatTime(taskTime) {
 
 	return `${
 		hours > 0 ? hours + ' hour' + (hours > 1 ? 's' : '') : ''
-	} ${minutes} minute${minutes > 1 ? 's' : ''}`;
+	} ${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
 /**

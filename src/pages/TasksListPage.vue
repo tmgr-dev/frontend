@@ -163,7 +163,9 @@
 			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
 	);
 
-	const summaryTime = computed(() => formatTime(totalSeconds.value));
+	const summaryTime = computed(() =>
+		showSurface('timer.totals') ? formatTime(totalSeconds.value) : '',
+	);
 
 	const timeStats = computed(() => {
 		const seconds = totalSeconds.value;

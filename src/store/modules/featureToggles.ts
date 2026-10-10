@@ -16,6 +16,21 @@ import {
 } from '@/utils/modules';
 import { allowedLandings } from '@/utils/moduleSurfaces';
 
+const lookupEntry = (state, rootGetters, key) => {
+	const currentId = rootGetters?.currentWorkspaceId;
+	const fresh =
+		state.workspaceLoaded &&
+		(state.loadedWorkspaceId == null ||
+			currentId == null ||
+			state.loadedWorkspaceId == currentId);
+	const workspaceMap = fresh
+		? state.workspaceToggles
+		: readModulesCache(currentId);
+	return (
+		workspaceMap?.[key] ?? (state.userLoaded ? state.userToggles[key] : null)
+	);
+};
+
 export default {
 	namespaced: true,
 
@@ -56,21 +71,10 @@ export default {
 	},
 
 	getters: {
-		isFeatureEnabled: (state, getters, rootState, rootGetters) => (key) => {
-			const currentId = rootGetters?.currentWorkspaceId;
-			const fresh =
-				state.workspaceLoaded &&
-				(state.loadedWorkspaceId == null ||
-					currentId == null ||
-					state.loadedWorkspaceId == currentId);
-			const workspaceMap = fresh
-				? state.workspaceToggles
-				: readModulesCache(currentId);
-			const entry =
-				workspaceMap?.[key] ??
-				(state.userLoaded ? state.userToggles[key] : null);
-			return isEntryVisible(entry);
-		},
+		moduleEntry: (state, getters, rootState, rootGetters) => (key) =>
+			lookupEntry(state, rootGetters, key),
+		isFeatureEnabled: (state, getters, rootState, rootGetters) => (key) =>
+			isEntryVisible(lookupEntry(state, rootGetters, key)),
 		isHiddenByMe: (state) => (key) =>
 			state.workspaceToggles?.[key]?.hidden === true,
 		canManageModules: (state, getters, rootState, rootGetters) => {

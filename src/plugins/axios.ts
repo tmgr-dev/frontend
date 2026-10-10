@@ -1,5 +1,14 @@
 import store from '@/store';
-import { notifyFeatureDisabled } from '@/utils/featureDisabledNotice';
+import {
+	createFeatureDisabledNotifier,
+	showFeatureDisabledToast,
+} from '@/utils/featureDisabledNotice';
+import {
+	moduleKeyForRequest,
+	moduleOffError,
+	shouldBlockRequest,
+	workspaceIdInUrl,
+} from '@/utils/moduleRequestGate';
 import { markSessionExpired } from '@/utils/sessionExpiry';
 import {
 	isSocialCallbackPath,
@@ -30,6 +39,18 @@ const $axios = axios.create({
 		},
 	},
 });
+
+const notifyFeatureDisabled = createFeatureDisabledNotifier(
+	showFeatureDisabledToast,
+	Date.now,
+	(key) => store.getters['featureToggles/moduleEntry'](key)?.name,
+	() => {
+		const id = store.getters.currentWorkspaceId;
+		if (id != null) {
+			void store.dispatch('featureToggles/fetchWorkspaceModules', id);
+		}
+	},
+);
 
 // Every tab persists the envelope under the same key, so storage (not this
 // tab's Vuex copy) is the source of truth for the refresh token: another tab
@@ -93,6 +114,20 @@ const hardLogout = async () => {
 
 $axios.interceptors.request.use(
 	(config) => {
+		const entryFor = store.getters['featureToggles/moduleEntry'];
+		const urlWorkspace = workspaceIdInUrl(config.url);
+		const sameWorkspace =
+			urlWorkspace == null ||
+			urlWorkspace === String(store.getters.currentWorkspaceId);
+		if (
+			entryFor &&
+			sameWorkspace &&
+			shouldBlockRequest(config.method, config.url, entryFor)
+		) {
+			return Promise.reject(
+				moduleOffError(config, moduleKeyForRequest(config.url) as string),
+			);
+		}
 		const token = store.state.token?.token;
 		if (token && config.headers) {
 			config.headers.Authorization = `Bearer ${token}`;

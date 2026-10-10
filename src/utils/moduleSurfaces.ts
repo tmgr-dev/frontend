@@ -10,6 +10,7 @@ export const SURFACES = {
 	'routines.nav': ['daily_routines'],
 	'timer.board-card': ['task.countdown'],
 	'timer.stats': ['task.countdown'],
+	'timer.totals': ['task.countdown'],
 	'routines.stats': ['daily_routines'],
 	'checkpoints.board-card': ['task.checkpoints'],
 	'files.nav': ['task.files'],

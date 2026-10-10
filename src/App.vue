@@ -163,8 +163,11 @@
 			const isExpanded = ref(true);
 
 			onBeforeMount(async () => {
-				if (store.getters.isLoggedIn) {
-					dailyRoutinesCount.value = await getDailyTasksCount();
+				if (
+					store.getters.isLoggedIn &&
+					store.getters['featureToggles/isFeatureEnabled']('daily_routines')
+				) {
+					dailyRoutinesCount.value = await getDailyTasksCount().catch(() => 0);
 				}
 			});
 

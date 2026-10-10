@@ -41,6 +41,7 @@ const SURFACE_FILES: Record<SurfaceId, string[]> = {
 	'routines.nav': ['components/general/NavbarMenu.vue'],
 	'timer.board-card': ['components/tasks/TaskBoardCard.vue'],
 	'timer.stats': ['components/dashboard/StatisticsGrid.vue'],
+	'timer.totals': ['pages/TasksListPage.vue', 'pages/Board.vue'],
 	'routines.stats': ['components/dashboard/StatisticsGrid.vue'],
 	'checkpoints.board-card': ['components/tasks/TaskBoardCard.vue'],
 	'files.nav': ['components/general/CustomSidebar.vue'],

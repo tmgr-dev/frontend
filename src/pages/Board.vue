@@ -268,7 +268,7 @@
 
 																<div class="ml-auto flex items-center gap-2">
 																	<span
-																		v-if="column.summary"
+																		v-if="column.summary && showSurface('timer.totals')"
 																		class="font-mono text-2xs tabular-nums text-ink-subtle"
 																	>
 																		{{ column.summary }}
@@ -795,6 +795,7 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import FiltersBoard from '@/components/general/FiltersBoard.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -855,7 +856,9 @@
 
 		setup() {
 			const pusher = usePusher();
+			const { showSurface } = useFeatureToggles();
 			return {
+				showSurface,
 				SquareKanban,
 				pusher,
 			};
