@@ -1,6 +1,7 @@
 /// Every app command is behind a permission, granted only to the app's own windows in
 /// capabilities/default.json. Without this list, any webview (a plugin window included) could call them.
 const APP_COMMANDS: &[&str] = &[
+  "idle_supported",
   "capture_screenshot",
   "capture_selection",
   "take_capture",

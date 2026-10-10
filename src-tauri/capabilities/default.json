@@ -30,6 +30,7 @@
     "core:window:allow-unminimize",
     "core:window:allow-set-size",
     "core:window:allow-set-title",
+    "allow-idle-supported",
     "allow-capture-screenshot",
     "allow-capture-selection",
     "allow-take-capture",
