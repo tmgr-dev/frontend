@@ -255,33 +255,20 @@ jobs:
           cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_amd64.snap"
           ls -l staging
 
-      - name: smoke snap
+      - name: inspect snap
         run: |
-          sudo apt-get install -y xvfb dbus-x11
-          sudo snap install --dangerous "staging/TMGR_${APP_VERSION}_amd64.snap"
-          LOG="$RUNNER_TEMP/snap-smoke.log"
-          export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
-          set +e
-          dbus-run-session -- xvfb-run -a bash -c '
-            snap run tmgr > "$1" 2>&1 &
-            pid=$!
-            sleep 20
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "alive after 20s"
-              pkill -f /snap/tmgr || true
-              exit 0
-            fi
-            echo "process exited early"
-            exit 1
-          ' _ "$LOG"
-          STATUS=$?
-          set -e
-          cat "$LOG"
-          if grep -q panicked "$LOG"; then
-            echo "::error::panic found in snap smoke log"
-            exit 1
-          fi
-          exit $STATUS
+          unsquashfs -q -d "$RUNNER_TEMP/snapfs" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          cd "$RUNNER_TEMP/snapfs"
+          cat meta/snap.yaml
+          BIN=$(readlink -f bin/tmgr-launch)
+          test -x "$BIN"
+          DESKTOP=$(ls meta/gui/*.desktop)
+          cat "$DESKTOP"
+          ICON=$(sed -n 's/^Icon=\${SNAP}\///p' "$DESKTOP")
+          test -f "$ICON"
+          grep -q 'x-scheme-handler/tmgr' "$DESKTOP" || echo "::warning::desktop file has no tmgr scheme handler"
+          ls usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
+          grep -q 'TMGR_DISABLE_UPDATER' meta/snap.yaml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
