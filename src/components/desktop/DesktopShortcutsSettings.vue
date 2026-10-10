@@ -66,11 +66,14 @@
 		describeAccelerator,
 		eventToAccelerator,
 		findConflict,
+		primaryModifiersHint,
+		shortcutActionsFor,
 		saveShortcuts,
 		shortcutConfig,
 		shortcutStatus,
 		validateAccelerator,
 	} from '@/utils/desktopShortcuts';
+	import { isMacLike, desktopPlatform } from '@/utils/desktop';
 	import { RotateCcw } from 'lucide-vue-next';
 	import { computed, defineComponent, reactive, ref } from 'vue';
 
@@ -88,7 +91,9 @@
 		{
 			id: 'screenshot',
 			label: 'Screenshot to task',
-			hint: 'Select an area; creates a backlog task with the image (needs Screen Recording)',
+			hint: isMacLike(desktopPlatform())
+				? 'Select an area; creates a backlog task with the image (needs Screen Recording)'
+				: 'Select an area; creates a backlog task with the image',
 		},
 		{
 			id: 'selection',
@@ -129,7 +134,7 @@
 					errors[action] =
 						invalid === 'reserved'
 							? 'This is a system shortcut'
-							: 'Use at least one of ⌘ ⌃ ⌥';
+							: primaryModifiersHint();
 					return;
 				}
 				const conflict = findConflict(shortcutConfig.value, action, accelerator);
@@ -143,7 +148,7 @@
 			};
 
 			return {
-				actions: ACTIONS,
+				actions: ACTIONS.filter((a) => shortcutActionsFor().includes(a.id)),
 				config,
 				status: computed(() => shortcutStatus.value),
 				recording,

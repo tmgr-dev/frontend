@@ -1,5 +1,11 @@
 import { LOCAL_ID, PLUGIN_ID } from '@/pluginSystem/manifest';
 import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
+import {
+	DesktopPlatform,
+	desktopPlatform,
+	isMacLike,
+	supportsSelectionCapture,
+} from '@/utils/desktop';
 import { ref } from 'vue';
 
 export type ShortcutAction = 'quickAdd' | 'timer' | 'screenshot' | 'selection';
@@ -27,7 +33,7 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
 	selection: { accelerator: 'Alt+Shift+C', enabled: true },
 };
 
-const PRIMARY_MODIFIERS = ['Command', 'Control', 'Alt'];
+const PRIMARY_MODIFIERS = ['Command', 'CommandOrControl', 'Control', 'Alt', 'Super'];
 const RESERVED = [
 	'Command+Space',
 	'Command+Tab',
@@ -44,6 +50,14 @@ const RESERVED = [
 	'Command+Shift+4',
 	'Command+Shift+5',
 	'Control+Space',
+	'CommandOrControl+C',
+	'CommandOrControl+V',
+	'CommandOrControl+X',
+	'CommandOrControl+Z',
+	'CommandOrControl+A',
+	'CommandOrControl+W',
+	'Alt+Tab',
+	'Alt+F4',
 ];
 const SYMBOLS: Record<string, string> = {
 	Command: '⌘',
@@ -51,6 +65,27 @@ const SYMBOLS: Record<string, string> = {
 	Alt: '⌥',
 	Shift: '⇧',
 };
+
+const PLAIN_LABELS: Record<string, string> = {
+	Command: 'Ctrl',
+	CommandOrControl: 'Ctrl',
+	CmdOrCtrl: 'Ctrl',
+	Control: 'Ctrl',
+};
+
+export const shortcutActionsFor = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): ShortcutAction[] =>
+	SHORTCUT_ACTIONS.filter(
+		(action) => action !== 'selection' || supportsSelectionCapture(platform),
+	);
+
+export const primaryModifiersHint = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): string =>
+	isMacLike(platform)
+		? 'Use at least one of ⌘ ⌃ ⌥'
+		: `Use at least one of Ctrl, Alt, ${platform === 'windows' ? 'Win' : 'Super'}`;
 
 const keyFromCode = (code: string): string | null => {
 	if (/^Key[A-Z]$/.test(code)) return code.slice(3);
@@ -78,12 +113,16 @@ const keyFromCode = (code: string): string | null => {
 	return named[code] ?? null;
 };
 
-export const eventToAccelerator = (event: KeyboardEvent): string | null => {
+export const eventToAccelerator = (
+	event: KeyboardEvent,
+	platform: DesktopPlatform | null = desktopPlatform(),
+): string | null => {
 	const key = keyFromCode(event.code);
 	if (!key) return null;
+	const mac = isMacLike(platform);
 	const mods = [
-		event.metaKey && 'Command',
-		event.ctrlKey && 'Control',
+		event.metaKey && (mac ? 'Command' : 'Super'),
+		event.ctrlKey && (mac ? 'Control' : 'CommandOrControl'),
 		event.altKey && 'Alt',
 		event.shiftKey && 'Shift',
 	].filter(Boolean) as string[];
@@ -123,11 +162,19 @@ export const mergeShortcuts = (
 		{} as ShortcutConfig,
 	);
 
-export const describeAccelerator = (accelerator: string): string =>
-	accelerator
-		.split('+')
-		.map((part) => SYMBOLS[part] ?? part)
-		.join('');
+export const describeAccelerator = (
+	accelerator: string,
+	platform: DesktopPlatform | null = desktopPlatform(),
+): string => {
+	const parts = accelerator.split('+');
+	if (isMacLike(platform)) {
+		return parts.map((part) => SYMBOLS[part] ?? part).join('');
+	}
+	const meta = platform === 'windows' ? 'Win' : 'Super';
+	return parts
+		.map((part) => (part === 'Super' ? meta : (PLAIN_LABELS[part] ?? part)))
+		.join('+');
+};
 
 export type DeepLink =
 	| AuthCallback
@@ -267,6 +314,7 @@ export const registerShortcuts = async (
 	api: GlobalShortcutApi,
 	config: ShortcutConfig,
 	onPressed: (action: ShortcutAction) => void,
+	platform: DesktopPlatform | null = desktopPlatform(),
 ): Promise<{
 	registered: string[];
 	status: Record<ShortcutAction, ShortcutStatus>;
@@ -276,9 +324,10 @@ export const registerShortcuts = async (
 	await api.unregisterAll().catch(() => {});
 	const registered: string[] = [];
 	const status = {} as Record<ShortcutAction, ShortcutStatus>;
+	const supported = shortcutActionsFor(platform);
 	for (const action of SHORTCUT_ACTIONS) {
 		const { accelerator, enabled } = config[action];
-		if (!enabled) {
+		if (!enabled || !supported.includes(action)) {
 			status[action] = 'off';
 			continue;
 		}

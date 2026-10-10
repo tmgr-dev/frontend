@@ -5,6 +5,7 @@ import Selectable from '@/plugins/directives/selectable';
 import router from '@/router';
 import store from '@/store';
 import {
+	desktopPlatform,
 	desktopWindowLabel,
 	installAutoHideScrollbars,
 	isDesktopApp,
@@ -33,6 +34,8 @@ import App from './App.vue';
 
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
+	const platform = desktopPlatform();
+	if (platform) document.documentElement.classList.add(`tauri-${platform}`);
 	installAutoHideScrollbars();
 	installFileDropGuard(window);
 	installLocalWorkspaces($axios, {

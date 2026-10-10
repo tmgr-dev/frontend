@@ -51,9 +51,9 @@
 			</label>
 			<label class="flex items-center justify-between gap-4">
 				<span>
-					<span class="block text-sm font-medium">Menu bar text</span>
+					<span class="block text-sm font-medium">{{ trayLabel }} text</span>
 					<span class="block text-xs text-muted-foreground">
-						Let one plugin show text next to the timer in the menu bar.
+						Let one plugin show text next to the timer in the {{ trayName }}.
 					</span>
 				</span>
 				<Select :model-value="trayTitlePlugin" @update:model-value="setTrayTitlePlugin">
@@ -483,6 +483,7 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { Switch } from '@/components/ui/switch';
+	import { trayName } from '@/utils/desktop';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
@@ -538,7 +539,7 @@
 		'agent_work:read': 'read AI agent work on tasks',
 		'agent_work:write': 'record AI agent work on tasks',
 		alarms: 'wake up on a schedule in the background',
-		tray: 'add items and text to the menu bar icon',
+		tray: `add items and text to the ${trayName()} icon`,
 		deeplinks: 'be opened from tmgr:// links in other apps',
 		'links:open': 'open web links in your browser',
 		'routines:read': 'read your notes and routines (local workspaces only)',
@@ -671,7 +672,11 @@
 				}
 			};
 
+			const trayLabel = trayName().replace(/^./, (c) => c.toUpperCase());
+
 			return {
+				trayLabel,
+				trayName: trayName(),
 				repoInput,
 				checking,
 				installing,
