@@ -25,11 +25,15 @@
 					module for yourself.
 				</div>
 
-				<SettingsSection title="Core" description="Always on">
+				<SettingsSection title="Core" :description="CORE_DESCRIPTION">
 					<p class="text-sm text-ink" data-testid="core-line">
 						{{ view.core.join(' · ') }}
 					</p>
-					<details v-if="coreRows.length" class="mt-3 text-sm">
+					<details
+						v-if="coreRows.length"
+						:open="coreRows.some((r) => r.hidden)"
+						class="mt-3 text-sm"
+					>
 						<summary class="cursor-pointer text-ink-subtle">
 							Hide core sections for me
 						</summary>
@@ -38,15 +42,22 @@
 								v-for="row in coreRows"
 								:key="row.key"
 								:label="row.name"
-								:description="row.description"
 							>
+								<template #description>
+									{{ row.description }}
+									<span
+										v-if="hiddenBadge(row.hidden)"
+										class="ml-1 rounded bg-muted px-1.5 py-0.5 text-xs text-ink-subtle"
+										>{{ hiddenBadge(row.hidden) }}</span
+									>
+								</template>
 								<Button
 									variant="ghost"
 									size="sm"
 									:disabled="busy['hide:' + row.key]"
 									@click="toggleHidden(row)"
 								>
-									{{ row.hidden ? 'Show for me' : 'Hide for me' }}
+									{{ hideButtonLabel(row.hidden) }}
 								</Button>
 							</SettingsRow>
 						</div>
@@ -68,6 +79,11 @@
 							<template #description>
 								{{ row.description }}
 								<span
+									v-if="hiddenBadge(row.hidden)"
+									class="ml-1 rounded bg-muted px-1.5 py-0.5 text-xs text-ink-subtle"
+									>{{ hiddenBadge(row.hidden) }}</span
+								>
+								<span
 									v-if="row.clients || row.needs"
 									class="mt-0.5 block text-xs"
 								>
@@ -85,7 +101,7 @@
 									:disabled="busy['hide:' + row.key]"
 									@click="toggleHidden(row)"
 								>
-									{{ row.hidden ? 'Show for me' : 'Hide for me' }}
+									{{ hideButtonLabel(row.hidden) }}
 								</Button>
 								<Switch
 									:checked="row.enabled"
@@ -220,6 +236,9 @@
 	import { allowedLandings } from '@/utils/moduleSurfaces';
 	import {
 		buildModulesView,
+		CORE_DESCRIPTION,
+		hiddenBadge,
+		hideButtonLabel,
 		MODULES_FOOTER,
 		payloadFromLegacy,
 		type ModuleRow,

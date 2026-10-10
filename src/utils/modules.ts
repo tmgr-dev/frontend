@@ -298,3 +298,24 @@ export const payloadFromLegacy = (
 		modules,
 	};
 };
+
+export const CORE_DESCRIPTION =
+	'Always available. You can hide any of them for yourself.';
+
+export const hiddenBadge = (hidden: boolean): string | null =>
+	hidden ? 'Hidden for you' : null;
+
+export const hideButtonLabel = (hidden: boolean): string =>
+	hidden ? 'Show for me' : 'Hide for me';
+
+export const presetSummary = (
+	preset: ModulePreset,
+	modules: Pick<ModuleEntry, 'key' | 'name'>[],
+): string => {
+	if (preset.key === 'everything') return 'All modules';
+	const names = new Map(modules.map((m) => [m.key, m.name]));
+	return preset.modules
+		.filter((key) => !key.startsWith('notifications.'))
+		.map((key) => names.get(key) || humanizeKey(key))
+		.join(', ');
+};

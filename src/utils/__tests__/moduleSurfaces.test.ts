@@ -12,8 +12,15 @@ import { isEntryVisible, type ModuleEntry } from '../modules';
 
 const entries = (hiddenKeys: string[], off: string[] = []) => {
 	const map: Record<string, ModuleEntry> = {};
-	for (const key of Object.keys(SURFACES).flatMap((id) => SURFACES[id as SurfaceId])) {
-		map[key] = { key, core: true, enabled: true, hidden: hiddenKeys.includes(key) };
+	for (const key of Object.keys(SURFACES).flatMap(
+		(id) => SURFACES[id as SurfaceId],
+	)) {
+		map[key] = {
+			key,
+			core: true,
+			enabled: true,
+			hidden: hiddenKeys.includes(key),
+		};
 	}
 	for (const key of off) map[key] = { key, enabled: false };
 	return (key: string) => isEntryVisible(map[key]);
@@ -33,6 +40,10 @@ const SURFACE_FILES: Record<SurfaceId, string[]> = {
 	'dashboard.nav': ['components/general/NavbarMenu.vue'],
 	'routines.nav': ['components/general/NavbarMenu.vue'],
 	'timer.board-card': ['components/tasks/TaskBoardCard.vue'],
+	'timer.stats': ['components/dashboard/StatisticsGrid.vue'],
+	'routines.stats': ['components/dashboard/StatisticsGrid.vue'],
+	'checkpoints.board-card': ['components/tasks/TaskBoardCard.vue'],
+	'files.nav': ['components/general/CustomSidebar.vue'],
 	'timer.tray-recent': ['components/desktop/DesktopTray.vue'],
 	'timer.hotkey': ['components/desktop/DesktopHotkeys.vue'],
 	'timer.member': [
@@ -66,7 +77,9 @@ describe('surface visibility rule', () => {
 	);
 
 	it('hides a non-core module that the owner switched off', () => {
-		expect(showSurface('dashboard.nav', entries([], ['dashboard']))).toBe(false);
+		expect(showSurface('dashboard.nav', entries([], ['dashboard']))).toBe(
+			false,
+		);
 	});
 });
 
@@ -78,6 +91,10 @@ describe('surface wiring', () => {
 		expect(read(file)).toMatch(
 			new RegExp(`showSurface\\(\\s*['"]${id.replace('.', '\\.')}['"]`),
 		);
+	});
+
+	it('gates the files route', () => {
+		expect(read('router/routes.js')).toMatch(/gatedPage\(\s*'task\.files'/);
 	});
 
 	it('gates the category form routes', () => {
@@ -111,6 +128,8 @@ describe('board and landing page', () => {
 	});
 	it('is used by the router and the store', () => {
 		expect(read('router/index.js')).toContain('resolveLanding(');
-		expect(read('store/modules/featureToggles.ts')).toContain('allowedLandings(');
+		expect(read('store/modules/featureToggles.ts')).toContain(
+			'allowedLandings(',
+		);
 	});
 });

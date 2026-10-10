@@ -19,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { DashboardStatistics } from '@/types/dashboard';
 	import { computed } from 'vue';
 	import { useRouter } from 'vue-router';
@@ -63,91 +64,101 @@
 		return `${Math.round(value * 100)}%`;
 	};
 
-	const statisticCards = computed<StatisticCardData[]>(() => [
-		{
-			key: 'total_tasks',
-			title: 'Total Tasks',
-			value: props.statistics.total_tasks || 0,
-			icon: 'tasks',
-			color: 'blue',
-			description: 'All tasks in workspace',
-			filter: { status: 'all' },
-		},
-		{
-			key: 'active_tasks',
-			title: 'Active Tasks',
-			value: props.statistics.active_tasks || 0,
-			icon: 'play',
-			color: 'green',
-			description: 'Currently in progress',
-			filter: { status: 'active' },
-		},
-		{
-			key: 'completed_today',
-			title: 'Completed Today',
-			value: props.statistics.completed_today || 0,
-			icon: 'check',
-			color: 'green',
-			description: 'Tasks finished today',
-			filter: { status: 'completed', period: 'today' },
-		},
-		{
-			key: 'completed_week',
-			title: 'Completed This Week',
-			value: props.statistics.completed_week || 0,
-			icon: 'calendar',
-			color: 'indigo',
-			description: 'Tasks finished this week',
-			filter: { status: 'completed', period: 'week' },
-		},
-		{
-			key: 'time_today',
-			title: 'Time Today',
-			value: formatTime(props.statistics.time_today || 0),
-			icon: 'clock',
-			color: 'orange',
-			description: 'Time tracked today',
-			filter: { view: 'time_tracking', period: 'today' },
-		},
-		{
-			key: 'time_week',
-			title: 'Time This Week',
-			value: formatTime(props.statistics.time_week || 0),
-			icon: 'clock',
-			color: 'purple',
-			description: 'Time tracked this week',
-			filter: { view: 'time_tracking', period: 'week' },
-		},
-		{
-			key: 'team_members',
-			title: 'Team Members',
-			value: props.statistics.team_members || 0,
-			icon: 'users',
-			color: 'blue',
-			description: 'Active workspace members',
-			filter: { view: 'team' },
-		},
-		{
-			key: 'overdue_tasks',
-			title: 'Overdue Tasks',
-			value: props.statistics.overdue_tasks || 0,
-			icon: 'alert',
-			color: 'red',
-			description: 'Tasks past due date',
-			filter: { status: 'overdue' },
-		},
-		{
-			key: 'daily_routine_completion',
-			title: 'Daily Routine',
-			value: formatPercentage(
-				props.statistics.daily_routine_completion_rate || 0,
-			),
-			icon: 'repeat',
-			color: 'green',
-			description: 'Completion rate',
-			filter: { view: 'daily_routine' },
-		},
-	]);
+	const { showSurface } = useFeatureToggles();
+
+	const statisticCards = computed<StatisticCardData[]>(() =>
+		[
+			{
+				key: 'total_tasks',
+				title: 'Total Tasks',
+				value: props.statistics.total_tasks || 0,
+				icon: 'tasks',
+				color: 'blue',
+				description: 'All tasks in workspace',
+				filter: { status: 'all' },
+			},
+			{
+				key: 'active_tasks',
+				title: 'Active Tasks',
+				value: props.statistics.active_tasks || 0,
+				icon: 'play',
+				color: 'green',
+				description: 'Currently in progress',
+				filter: { status: 'active' },
+			},
+			{
+				key: 'completed_today',
+				title: 'Completed Today',
+				value: props.statistics.completed_today || 0,
+				icon: 'check',
+				color: 'green',
+				description: 'Tasks finished today',
+				filter: { status: 'completed', period: 'today' },
+			},
+			{
+				key: 'completed_week',
+				title: 'Completed This Week',
+				value: props.statistics.completed_week || 0,
+				icon: 'calendar',
+				color: 'indigo',
+				description: 'Tasks finished this week',
+				filter: { status: 'completed', period: 'week' },
+			},
+			{
+				key: 'time_today',
+				title: 'Time Today',
+				value: formatTime(props.statistics.time_today || 0),
+				icon: 'clock',
+				color: 'orange',
+				description: 'Time tracked today',
+				filter: { view: 'time_tracking', period: 'today' },
+			},
+			{
+				key: 'time_week',
+				title: 'Time This Week',
+				value: formatTime(props.statistics.time_week || 0),
+				icon: 'clock',
+				color: 'purple',
+				description: 'Time tracked this week',
+				filter: { view: 'time_tracking', period: 'week' },
+			},
+			{
+				key: 'team_members',
+				title: 'Team Members',
+				value: props.statistics.team_members || 0,
+				icon: 'users',
+				color: 'blue',
+				description: 'Active workspace members',
+				filter: { view: 'team' },
+			},
+			{
+				key: 'overdue_tasks',
+				title: 'Overdue Tasks',
+				value: props.statistics.overdue_tasks || 0,
+				icon: 'alert',
+				color: 'red',
+				description: 'Tasks past due date',
+				filter: { status: 'overdue' },
+			},
+			{
+				key: 'daily_routine_completion',
+				title: 'Daily Routine',
+				value: formatPercentage(
+					props.statistics.daily_routine_completion_rate || 0,
+				),
+				icon: 'repeat',
+				color: 'green',
+				description: 'Completion rate',
+				filter: { view: 'daily_routine' },
+			},
+		].filter(
+			(card) =>
+				(!['time_today', 'time_week'].includes(card.key) ||
+					showSurface('timer.stats')) &&
+				(card.key !== 'daily_routine_completion' ||
+					showSurface('routines.stats')),
+		),
+	);
 
 	const handleCardClick = (filter?: Record<string, any>) => {
 		// if (!filter) return;

@@ -308,7 +308,9 @@ const routes = [
 	// New URL structure for archive page
 	{
 		path: '/:workspace_code/files',
-		component: () => import('@/pages/WorkspaceFilesPage.vue'),
+		component: gatedPage('task.files', 'Files', () =>
+			import('@/pages/WorkspaceFilesPage.vue'),
+		),
 		meta: {
 			title: 'Files',
 			transitionName: 'slide',

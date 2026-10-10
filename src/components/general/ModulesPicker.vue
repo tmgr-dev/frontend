@@ -25,6 +25,11 @@
 						<span class="block text-sm font-medium text-ink">{{
 							preset.description || preset.name
 						}}</span>
+						<span
+							v-if="summaryFor(preset)"
+							class="mt-0.5 block text-xs text-ink-subtle"
+							>{{ summaryFor(preset) }}</span
+						>
 					</span>
 				</label>
 				<label :class="optionClass(CUSTOM_CHOICE)">
@@ -101,6 +106,7 @@
 		dismissPicker,
 		groupModules,
 		isPickerDismissed,
+		presetSummary,
 		shouldShowPicker,
 	} from '@/utils/modules';
 	import { computed, reactive, ref, watch } from 'vue';
@@ -129,6 +135,9 @@
 		} as any);
 		return grouped.packs;
 	});
+
+	const summaryFor = (preset: any) =>
+		presetSummary(preset, Object.values(toggles.value.workspaceToggles));
 
 	const eligible = computed(
 		() =>

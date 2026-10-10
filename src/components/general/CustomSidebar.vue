@@ -131,7 +131,8 @@
 
 	const route = useRoute();
 	const router = useRouter();
-	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
+	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
+		useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
 	const pagesEnabled = computed(() =>
@@ -833,7 +834,9 @@
 						<SidebarGroupLabel>More</SidebarGroupLabel>
 
 						<SidebarMenu>
-							<SidebarMenuItem v-if="activeWorkspace?.code">
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && showSurface('files.nav')"
+							>
 								<SidebarMenuButton as-child>
 									<router-link :to="`/${activeWorkspace.code}/files`">
 										<PaperclipIcon />

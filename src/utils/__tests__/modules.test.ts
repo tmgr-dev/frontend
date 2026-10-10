@@ -1,14 +1,18 @@
 import {
 	buildChoiceRequest,
 	buildModulesView,
+	CORE_DESCRIPTION,
 	dependencyLabel,
 	featureDisabledMessage,
 	gateCopy,
 	groupModules,
+	hiddenBadge,
+	hideButtonLabel,
 	isEntryVisible,
 	modulesToMap,
 	parseModulesPayload,
 	payloadFromLegacy,
+	presetSummary,
 	readModulesCache,
 	shouldShowPicker,
 	writeModulesCache,
@@ -445,5 +449,69 @@ describe('payloadFromLegacy', () => {
 			enabledCount: 0,
 			total: 1,
 		});
+	});
+});
+
+describe('hidden state copy', () => {
+	it('shows a badge only when the user hid the module', () => {
+		expect(hiddenBadge(true)).toBe('Hidden for you');
+		expect(hiddenBadge(false)).toBeNull();
+	});
+	it('keeps the button text as the action', () => {
+		expect(hideButtonLabel(true)).toBe('Show for me');
+		expect(hideButtonLabel(false)).toBe('Hide for me');
+	});
+	it('describes the core section', () => {
+		expect(CORE_DESCRIPTION).toBe(
+			'Always available. You can hide any of them for yourself.',
+		);
+	});
+});
+
+describe('presetSummary', () => {
+	const modules = [
+		{ key: 'dashboard', name: 'Dashboard' },
+		{ key: 'task.checkpoints', name: 'Checkpoints' },
+		{ key: 'notifications.push', name: 'Push notifications' },
+		{ key: 'exports', name: 'Reports & export' },
+	];
+	it('lists module names in API order and skips notifications', () => {
+		expect(
+			presetSummary(
+				{
+					key: 'personal',
+					name: 'Personal',
+					description: '',
+					modules: [
+						'dashboard',
+						'task.checkpoints',
+						'notifications.push',
+						'exports',
+					],
+				},
+				modules,
+			),
+		).toBe('Dashboard, Checkpoints, Reports & export');
+	});
+	it('falls back to a readable key for unknown modules', () => {
+		expect(
+			presetSummary(
+				{ key: 'x', name: 'X', description: '', modules: ['task.files'] },
+				[],
+			),
+		).toBe('Task files');
+	});
+	it('says all modules for the everything preset', () => {
+		expect(
+			presetSummary(
+				{
+					key: 'everything',
+					name: 'E',
+					description: '',
+					modules: ['dashboard'],
+				},
+				modules,
+			),
+		).toBe('All modules');
 	});
 });

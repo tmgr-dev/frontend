@@ -195,7 +195,10 @@
 			{{ task.title }}
 		</a>
 
-		<div v-if="checklistProgress" class="mb-2.5 flex items-center gap-2">
+		<div
+			v-if="checklistProgress && showSurface('checkpoints.board-card')"
+			class="mb-2.5 flex items-center gap-2"
+		>
 			<div class="h-1 flex-1 overflow-hidden rounded-full bg-surface-sunken">
 				<div
 					class="h-full rounded-full transition-all duration-300"
