@@ -25,6 +25,32 @@
 					module for yourself.
 				</div>
 
+				<div v-if="payload?.presets.length" class="flex items-center gap-3">
+					<Button
+						variant="outline"
+						size="sm"
+						:disabled="!canApplyPreset(isOwner)"
+						data-testid="apply-preset"
+						@click="presetOpen = true"
+					>
+						Apply a preset
+					</Button>
+					<span
+						v-if="!canApplyPreset(isOwner)"
+						class="text-sm text-ink-subtle"
+						data-testid="apply-preset-hint"
+						>Only the owner can change modules</span
+					>
+				</div>
+				<ModulesPresetDialog
+					v-if="payload && currentWorkspaceId"
+					v-model:open="presetOpen"
+					:workspace-id="currentWorkspaceId"
+					:presets="payload.presets"
+					:catalog="payload.modules"
+					@applied="commit"
+				/>
+
 				<SettingsSection title="Core" :description="CORE_DESCRIPTION">
 					<p class="text-sm text-ink" data-testid="core-line">
 						{{ view.core.join(' · ') }}
@@ -215,6 +241,7 @@
 	} from '@/actions/tmgr/modules';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import ModulesPresetDialog from '@/components/general/ModulesPresetDialog.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -236,6 +263,7 @@
 	import { allowedLandings } from '@/utils/moduleSurfaces';
 	import {
 		buildModulesView,
+		canApplyPreset,
 		CORE_DESCRIPTION,
 		hiddenBadge,
 		hideButtonLabel,
@@ -314,6 +342,8 @@
 			.split('_')
 			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
 			.join(' ');
+
+	const presetOpen = ref(false);
 
 	const commit = (next: ModulesPayload) => {
 		payload.value = next;

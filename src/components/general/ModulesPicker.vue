@@ -8,40 +8,15 @@
 				</DialogDescription>
 			</DialogHeader>
 
-			<div class="flex flex-col gap-2" role="radiogroup">
-				<label
-					v-for="preset in presets"
-					:key="preset.key"
-					:class="optionClass(preset.key)"
-				>
-					<input
-						v-model="choice"
-						type="radio"
-						name="modules-choice"
-						class="mt-1"
-						:value="preset.key"
-					/>
-					<span class="min-w-0">
-						<span class="block text-sm font-medium text-ink">{{
-							preset.description || preset.name
-						}}</span>
-						<span
-							v-if="summaryFor(preset)"
-							class="mt-0.5 block text-xs text-ink-subtle"
-							>{{ summaryFor(preset) }}</span
-						>
-					</span>
-				</label>
-				<label :class="optionClass(CUSTOM_CHOICE)">
-					<input
-						v-model="choice"
-						type="radio"
-						name="modules-choice"
-						class="mt-1"
-						:value="CUSTOM_CHOICE"
-					/>
-					<span class="block text-sm font-medium text-ink">Let me pick</span>
-				</label>
+			<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+				<ModulePresetOptions
+					v-model="choice"
+					:presets="presets"
+					:catalog="catalog"
+					show-custom
+					@hover="hovered = $event"
+				/>
+				<ModulePresetPreview v-if="previewPreset" v-bind="preview" />
 			</div>
 
 			<div
@@ -90,6 +65,8 @@
 
 <script setup lang="ts">
 	import { saveModulesChoice } from '@/actions/tmgr/modules';
+	import ModulePresetOptions from '@/components/general/ModulePresetOptions.vue';
+	import ModulePresetPreview from '@/components/general/ModulePresetPreview.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -106,9 +83,9 @@
 		dismissPicker,
 		groupModules,
 		isPickerDismissed,
-		presetSummary,
 		shouldShowPicker,
 	} from '@/utils/modules';
+	import { presetTarget, previewSurfaces } from '@/utils/previewSurfaces';
 	import { computed, reactive, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -136,8 +113,19 @@
 		return grouped.packs;
 	});
 
-	const summaryFor = (preset: any) =>
-		presetSummary(preset, Object.values(toggles.value.workspaceToggles));
+	const catalog = computed(
+		() => Object.values(toggles.value.workspaceToggles) as any[],
+	);
+	const hovered = ref<string | null>(null);
+	const previewPreset = computed(
+		() =>
+			presets.value.find(
+				(p: any) => p.key === (hovered.value ?? choice.value),
+			) ?? null,
+	);
+	const preview = computed(() =>
+		previewSurfaces(presetTarget(previewPreset.value as any, catalog.value)),
+	);
 
 	const eligible = computed(
 		() =>
@@ -166,13 +154,6 @@
 		},
 		{ immediate: true },
 	);
-
-	const optionClass = (key: string) => [
-		'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-		choice.value === key
-			? 'border-primary bg-primary/5'
-			: 'border-border hover:bg-muted/50',
-	];
 
 	const dismiss = () => {
 		dismissPicker(workspaceId.value);

@@ -15,7 +15,10 @@ await p.fill('input[type="email"], input[name="email"]', 'qa1@tmgr.dev');
 await p.fill('input[type="password"]', 'qa12345!');
 await p.keyboard.press('Enter');
 await p.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
-const toastText = async () => (await p.locator('body').innerText()).match(/is off in workspace|turned off in this workspace|Module is off/i)?.[0] || '';
+const toastText = async () => {
+  const toasts = await p.locator('[role=status], [role=alert], [data-sonner-toast], .toast, [class*=toast]').allInnerTexts().catch(() => []);
+  return toasts.join(' ').match(/is off in workspace|turned off|Module is off/i)?.[0] || '';
+};
 
 async function sweep(code, label) {
   const tasks = (await api('GET', `/api/tasks?workspace_id=${code.id}&per_page=5`, { token: t1, ws: code.id })).json;

@@ -1,6 +1,7 @@
 import {
 	buildChoiceRequest,
 	buildModulesView,
+	canApplyPreset,
 	CORE_DESCRIPTION,
 	dependencyLabel,
 	featureDisabledMessage,
@@ -12,6 +13,7 @@ import {
 	modulesToMap,
 	parseModulesPayload,
 	payloadFromLegacy,
+	presetDiff,
 	presetSummary,
 	readModulesCache,
 	shouldShowPicker,
@@ -513,5 +515,52 @@ describe('presetSummary', () => {
 				modules,
 			),
 		).toBe('All modules');
+	});
+});
+
+describe('presetDiff', () => {
+	const modules: any[] = [
+		{ key: 'board', name: 'Board', core: true, enabled: true },
+		{ key: 'dashboard', name: 'Dashboard', enabled: true },
+		{ key: 'pomodoro', name: 'Pomodoro', enabled: false },
+		{ key: 'pages', name: 'Pages', enabled: true },
+		{ key: 'notifications.push', name: 'Push notifications', enabled: true },
+		{ key: 'mcp', name: 'MCP', scope: 'user', enabled: false },
+	];
+	const preset = (keys: string[], key = 'p') => ({
+		key,
+		name: key,
+		description: '',
+		modules: keys,
+	});
+
+	it('lists what turns on and what turns off, by name', () => {
+		expect(presetDiff(preset(['dashboard', 'pomodoro']), modules)).toEqual({
+			on: ['Pomodoro'],
+			off: ['Pages', 'Push notifications'],
+		});
+	});
+	it('ignores core and user-scoped modules', () => {
+		const diff = presetDiff(preset(['board', 'mcp']), modules);
+		expect([...diff.on, ...diff.off]).not.toContain('Board');
+		expect([...diff.on, ...diff.off]).not.toContain('MCP');
+	});
+	it('is empty when nothing changes', () => {
+		expect(
+			presetDiff(preset(['dashboard', 'pages', 'notifications.push']), modules),
+		).toEqual({ on: [], off: [] });
+	});
+	it('turns every workspace module on for everything', () => {
+		expect(presetDiff(preset([], 'everything'), modules)).toEqual({
+			on: ['Pomodoro'],
+			off: [],
+		});
+	});
+});
+
+describe('canApplyPreset', () => {
+	it('is for owners only', () => {
+		expect(canApplyPreset(true)).toBe(true);
+		expect(canApplyPreset(false)).toBe(false);
 	});
 });

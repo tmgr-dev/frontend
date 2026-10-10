@@ -319,3 +319,22 @@ export const presetSummary = (
 		.map((key) => names.get(key) || humanizeKey(key))
 		.join(', ');
 };
+
+export const canApplyPreset = (canManage: boolean): boolean => canManage;
+
+export const presetDiff = (
+	preset: ModulePreset,
+	modules: Pick<ModuleEntry, 'key' | 'name' | 'enabled' | 'core' | 'scope'>[],
+): { on: string[]; off: string[] } => {
+	const on: string[] = [];
+	const off: string[] = [];
+	for (const m of modules) {
+		if (m.core || m.scope === 'user') continue;
+		const target =
+			preset.key === 'everything' || preset.modules.includes(m.key);
+		const name = m.name || humanizeKey(m.key);
+		if (target && m.enabled !== true) on.push(name);
+		if (!target && m.enabled === true) off.push(name);
+	}
+	return { on, off };
+};
