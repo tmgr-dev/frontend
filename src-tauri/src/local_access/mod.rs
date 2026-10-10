@@ -467,6 +467,7 @@ pub struct StatusInfo {
   pub safe_mode: bool,
   pub ready: bool,
   pub bridge_command: String,
+  pub supported: bool,
 }
 
 #[tauri::command]
@@ -484,6 +485,7 @@ pub fn local_access_status<R: Runtime>(
     safe_mode: crate::plugin_dev::plugins_safe_mode(),
     ready: state.user_id.lock().map_err(|e| e.to_string())?.is_some(),
     bridge_command,
+    supported: cfg!(unix),
   })
 }
 
@@ -493,6 +495,9 @@ pub fn local_access_set_enabled<R: Runtime>(
   state: tauri::State<'_, LocalAccessState>,
   enabled: bool,
 ) -> Result<(), String> {
+  if enabled && cfg!(not(unix)) {
+    return Err("Local access is not available on Windows yet.".into());
+  }
   write_settings(&app, &Settings { enabled })?;
   if enabled {
     ensure_started(&app, &state)

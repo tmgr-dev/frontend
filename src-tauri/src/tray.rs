@@ -20,6 +20,7 @@ impl Default for DndStore {
 }
 
 const TRAY_ID: &str = "timer";
+const CHECK_FOR_UPDATES_ID: &str = "check_for_updates";
 const LABEL_MAX: usize = 42;
 const TITLE_MAX: usize = 18;
 /// Caps how large the plugin part of the tray menu can grow, regardless of how many plugins run.
@@ -241,6 +242,9 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
         .checked(autostart)
         .build(app)?,
     );
+  if cfg!(not(target_os = "macos")) && crate::updater_enabled() {
+    menu = menu.item(&MenuItemBuilder::with_id(CHECK_FOR_UPDATES_ID, "Check for Updates…").build(app)?);
+  }
   if !state.plugin_sections.is_empty() {
     menu = menu.separator();
     for section in state.plugin_sections.iter().take(MAX_PLUGIN_SECTIONS) {
@@ -338,6 +342,10 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
       }
       let state = app.state::<TrayStore>().0.lock().unwrap().clone();
       refresh(app, &state);
+    }
+    CHECK_FOR_UPDATES_ID => {
+      show_main(app);
+      let _ = app.emit("menu://check-for-updates", ());
     }
     "quit" => app.exit(0),
     _ => {}

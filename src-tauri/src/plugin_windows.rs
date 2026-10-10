@@ -155,6 +155,9 @@ pub fn plugin_window_open<R: Runtime>(
   title: String,
   generation: String,
 ) -> Result<(), String> {
+  if cfg!(windows) {
+    return Err("Plugin windows are not available on Windows yet.".into());
+  }
   if !valid_key(&key) {
     return Err("bad plugin page key".into());
   }

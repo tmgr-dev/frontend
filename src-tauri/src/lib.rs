@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 mod app_menu;
 mod capture;
 mod downloads;
@@ -153,9 +154,16 @@ pub fn maybe_run_mcp_bridge() {
   local_access::bridge::maybe_run_and_exit();
 }
 
+pub(crate) fn updater_enabled() -> bool {
+  std::env::var_os("TMGR_DISABLE_UPDATER").map_or(true, |v| v.is_empty())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+  let builder = tauri::Builder::default();
+  #[cfg(any(windows, target_os = "linux"))]
+  let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| tray::show_main(app)));
+  let builder = builder
     .plugin(
       tauri_plugin_window_state::Builder::default()
         .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
@@ -182,6 +190,7 @@ pub fn run() {
       local_files::handle(ctx.app_handle(), request)
     })
     .invoke_handler(tauri::generate_handler![
+      idle::idle_supported,
       tray::tray_update,
       tray::dnd_update,
       task_windows::open_task_window,
@@ -258,10 +267,17 @@ pub fn run() {
     })
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_process::init())
-    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init());
+  let builder = if updater_enabled() {
+    builder.plugin(tauri_plugin_updater::Builder::new().build())
+  } else {
+    builder
+  };
+  #[cfg(target_os = "macos")]
+  let builder = builder
     .menu(|handle| app_menu::build(handle))
-    .on_menu_event(|app, event| app_menu::on_menu_event(app, event.id().as_ref()))
+    .on_menu_event(|app, event| app_menu::on_menu_event(app, event.id().as_ref()));
+  builder
     .setup(|app| {
       app.handle().plugin(
         tauri_plugin_log::Builder::default()
@@ -297,7 +313,17 @@ pub fn run() {
         window.show()?;
       }
 
-      tray::setup(app.handle())?;
+      #[cfg(any(windows, target_os = "linux"))]
+      {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        if let Err(error) = app.deep_link().register_all() {
+          log::error!("[deep-link] registration failed: {error}");
+        }
+      }
+
+      if let Err(error) = tray::setup(app.handle()) {
+        log::error!("[tray] unavailable: {error}");
+      }
       idle::start(app.handle());
       plugin_tick::start(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
