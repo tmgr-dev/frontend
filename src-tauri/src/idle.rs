@@ -66,9 +66,27 @@ fn system_idle_secs() -> f64 {
   unsafe { CGEventSourceSecondsSinceLastEventType(COMBINED_SESSION_STATE, ANY_INPUT_EVENT) }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn system_idle_secs() -> f64 {
+  use windows_sys::Win32::System::SystemInformation::GetTickCount;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+  let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+  if unsafe { GetLastInputInfo(&mut info) } == 0 {
+    return 0.0;
+  }
+  let now = unsafe { GetTickCount() };
+  f64::from(now.wrapping_sub(info.dwTime)) / 1000.0
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn system_idle_secs() -> f64 {
   0.0
+}
+
+/// False where `system_idle_secs` has no real source, so the UI can hide idle-related settings.
+#[tauri::command]
+pub fn idle_supported() -> bool {
+  cfg!(any(target_os = "macos", windows))
 }
 
 pub fn start<R: Runtime>(app: &AppHandle<R>) {
