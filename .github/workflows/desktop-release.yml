@@ -4,35 +4,99 @@ on:
   push:
     tags:
       - 'desktop-v[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/desktop-release.yml'
+      - 'snap/**'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
-  macos:
-    name: build macOS app
-    runs-on: macos-latest
+  meta:
+    name: version and notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: check tag matches app version
+      - id: v
         run: |
           APP_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ "desktop-v$APP_VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match src-tauri/tauri.conf.json version $APP_VERSION"
-            exit 1
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "desktop-v$APP_VERSION" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match src-tauri/tauri.conf.json version $APP_VERSION"
+              exit 1
+            fi
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
       - name: release notes from src-tauri/CHANGELOG.md
+        env:
+          APP_VERSION: ${{ steps.v.outputs.version }}
+          DRY_RUN: ${{ steps.v.outputs.dry_run }}
         run: |
           awk -v v="$APP_VERSION" '/^## /{p = ($2 == v); next} p' src-tauri/CHANGELOG.md \
             | sed -e '/./,$!d' > "$RUNNER_TEMP/notes.md"
           if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
-            echo "::error::src-tauri/CHANGELOG.md has no '## $APP_VERSION' section"
-            exit 1
+            if [ "$DRY_RUN" = "false" ]; then
+              echo "::error::src-tauri/CHANGELOG.md has no '## $APP_VERSION' section"
+              exit 1
+            fi
+            echo "::warning::src-tauri/CHANGELOG.md has no '## $APP_VERSION' section (dry run)"
+            echo "Dry run notes for $APP_VERSION" > "$RUNNER_TEMP/notes.md"
           fi
           cat "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: ${{ runner.temp }}/notes.md
+          if-no-files-found: error
+
+  build:
+    name: build ${{ matrix.name }}
+    needs: meta
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos
+            runner: macos-latest
+            bundles: app,dmg
+          - name: windows
+            runner: windows-latest
+            bundles: nsis,msi
+          - name: linux
+            runner: ubuntu-22.04
+            bundles: deb,rpm,appimage
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP_VERSION: ${{ needs.meta.outputs.version }}
+      DRY_RUN: ${{ needs.meta.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: linux system packages
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libdbus-1-dev libxdo-dev libssl-dev patchelf libfuse2 file xdg-utils xvfb dbus-x11
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -47,49 +111,271 @@ jobs:
 
       - run: npm ci
 
-      # The only step that sees signing secrets. Tauri treats a set-but-empty APPLE_* variable
-      # as configured, so empty ones are dropped before the build.
+      - name: throwaway signing key for dry runs
+        if: env.DRY_RUN == 'true'
+        run: |
+          npx tauri signer generate --ci -w "$RUNNER_TEMP/dry-run.key" -p ''
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$RUNNER_TEMP/dry-run.key" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+
+      # The only step that sees signing secrets, and only on tag pushes. Tauri treats a set-but-empty
+      # APPLE_* variable as configured, so empty ones are dropped before the build.
       - name: build and sign
         env:
           CI: true
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.DRY_RUN == 'false' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          APPLE_CERTIFICATE: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.DRY_RUN == 'false' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ env.DRY_RUN == 'false' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.DRY_RUN == 'false' && secrets.APPLE_TEAM_ID || '' }}
         run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+          if [ "$DRY_RUN" = "false" ] && [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is missing"
             exit 1
           fi
           for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then unset "$name"; fi
           done
-          npx tauri build
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then unset TAURI_SIGNING_PRIVATE_KEY; fi
+          npx tauri build --bundles ${{ matrix.bundles }}
 
-      - name: publish GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: stage bundles
         run: |
           BUNDLE=src-tauri/target/release/bundle
-          OUT=release
+          OUT=staging
           mkdir -p "$OUT"
-          cp "$BUNDLE/dmg/TMGR_${APP_VERSION}_aarch64.dmg" "$OUT/"
-          UPDATE="TMGR_${APP_VERSION}_aarch64.app.tar.gz"
-          cp "$BUNDLE/macos/TMGR.app.tar.gz" "$OUT/$UPDATE"
-          cp "$BUNDLE/macos/TMGR.app.tar.gz.sig" "$OUT/$UPDATE.sig"
+          stage() {
+            src=$(ls $1 | head -n 1)
+            cp "$src" "$OUT/$2"
+            if [ -f "$src.sig" ]; then cp "$src.sig" "$OUT/$2.sig"; fi
+          }
+          case "${{ matrix.name }}" in
+            macos)
+              stage "$BUNDLE/dmg/*.dmg" "TMGR_${APP_VERSION}_aarch64.dmg"
+              stage "$BUNDLE/macos/TMGR.app.tar.gz" "TMGR_${APP_VERSION}_aarch64.app.tar.gz"
+              ;;
+            windows)
+              stage "$BUNDLE/nsis/*-setup.exe" "TMGR_${APP_VERSION}_x64-setup.exe"
+              stage "$BUNDLE/msi/*.msi" "TMGR_${APP_VERSION}_x64_en-US.msi"
+              ;;
+            linux)
+              stage "$BUNDLE/appimage/*.AppImage" "TMGR_${APP_VERSION}_amd64.AppImage"
+              stage "$BUNDLE/deb/*.deb" "TMGR_${APP_VERSION}_amd64.deb"
+              stage "$BUNDLE/rpm/*.rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
+              ;;
+          esac
+          find src-tauri/target/release/bundle -type f \( -name '*.sig' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.tar.gz' \)
+          ls -l "$OUT"
+
+      - name: smoke linux
+        if: matrix.name == 'linux'
+        run: |
+          DEB="$PWD/staging/TMGR_${APP_VERSION}_amd64.deb"
+          sudo apt-get install -y "$DEB"
+          BIN=$(dpkg -L "$(dpkg-deb -f "$DEB" Package)" | grep '^/usr/bin/' | head -n 1)
+          echo "binary: $BIN"
+          LOG="$RUNNER_TEMP/smoke.log"
+          export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 RUST_BACKTRACE=1
+          set +e
+          dbus-run-session -- xvfb-run -a bash -c '
+            "$1" > "$2" 2>&1 &
+            pid=$!
+            sleep 15
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "alive after 15s"
+              kill "$pid"
+              exit 0
+            fi
+            echo "process exited early"
+            exit 1
+          ' _ "$BIN" "$LOG"
+          STATUS=$?
+          set -e
+          cat "$LOG"
+          if grep -q panicked "$LOG"; then
+            echo "::error::panic found in smoke log"
+            exit 1
+          fi
+          exit $STATUS
+
+      - name: smoke windows
+        if: matrix.name == 'windows'
+        run: |
+          EXE=$(ls src-tauri/target/release/*.exe | head -n 1)
+          NAME=$(basename "$EXE")
+          echo "binary: $EXE"
+          "$EXE" > "$RUNNER_TEMP/smoke.log" 2>&1 &
+          sleep 15
+          if ! tasklist | grep -i "$NAME"; then
+            echo "::error::$NAME is not running after 15s"
+            cat "$RUNNER_TEMP/smoke.log"
+            exit 1
+          fi
+          taskkill //F //IM "$NAME"
+          cat "$RUNNER_TEMP/smoke.log"
+          if grep -q panicked "$RUNNER_TEMP/smoke.log"; then
+            echo "::error::panic found in smoke log"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundles-${{ matrix.name }}
+          path: staging/*
+          if-no-files-found: error
+
+  snap:
+    name: build snap
+    needs: [meta, build]
+    runs-on: ubuntu-22.04
+    env:
+      APP_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundles-linux
+          path: linux
+
+      - name: prepare snap sources
+        run: |
+          mkdir snap-src
+          cp "linux/TMGR_${APP_VERSION}_amd64.deb" snap-src/
+          sed -i "s/^version: .*/version: '$APP_VERSION'/" snap/snapcraft.yaml
+
+      - uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
+        id: build
+
+      - name: stage snap
+        run: |
+          mkdir -p staging
+          cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          ls -l staging
+
+      - name: smoke snap
+        run: |
+          sudo apt-get install -y xvfb dbus-x11
+          sudo snap install --dangerous "staging/TMGR_${APP_VERSION}_amd64.snap"
+          LOG="$RUNNER_TEMP/snap-smoke.log"
+          export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+          set +e
+          dbus-run-session -- xvfb-run -a bash -c '
+            snap run tmgr > "$1" 2>&1 &
+            pid=$!
+            sleep 20
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "alive after 20s"
+              pkill -f /snap/tmgr || true
+              exit 0
+            fi
+            echo "process exited early"
+            exit 1
+          ' _ "$LOG"
+          STATUS=$?
+          set -e
+          cat "$LOG"
+          if grep -q panicked "$LOG"; then
+            echo "::error::panic found in snap smoke log"
+            exit 1
+          fi
+          exit $STATUS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundles-snap
+          path: staging/*
+          if-no-files-found: error
+
+  release:
+    name: ${{ needs.meta.outputs.dry_run == 'true' && 'assemble (dry run)' || 'publish release' }}
+    needs: [meta, build, snap]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      APP_VERSION: ${{ needs.meta.outputs.version }}
+      DRY_RUN: ${{ needs.meta.outputs.dry_run }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundles-*
+          path: release
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes
+          path: notes
+
+      - name: assemble latest.json
+        run: |
+          cd release
+          TAG="desktop-v$APP_VERSION"
+          BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          entries='{}'
+          add() {
+            for key in $1; do
+              if [ ! -f "$2" ] || [ ! -f "$2.sig" ]; then
+                echo "::error::missing $2 or its .sig, cannot publish platform key $key"
+                exit 1
+              fi
+              entries=$(jq -c --arg k "$key" --arg s "$(cat "$2.sig")" --arg u "$BASE/$2" \
+                '. + {($k): {signature: $s, url: $u}}' <<< "$entries")
+            done
+          }
+          add "darwin-aarch64" "TMGR_${APP_VERSION}_aarch64.app.tar.gz"
+          add "windows-x86_64 windows-x86_64-nsis" "TMGR_${APP_VERSION}_x64-setup.exe"
+          add "windows-x86_64-msi" "TMGR_${APP_VERSION}_x64_en-US.msi"
+          add "linux-x86_64 linux-x86_64-appimage" "TMGR_${APP_VERSION}_amd64.AppImage"
+          add "linux-x86_64-deb" "TMGR_${APP_VERSION}_amd64.deb"
+          add "linux-x86_64-rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
           jq -n \
             --arg version "$APP_VERSION" \
             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg signature "$(cat "$OUT/$UPDATE.sig")" \
-            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$UPDATE" \
-            --rawfile notes "$RUNNER_TEMP/notes.md" \
-            '{version: $version, pub_date: $date, notes: $notes, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
-            > "$OUT/latest.json"
-          gh release create "$GITHUB_REF_NAME" "$OUT"/* \
+            --rawfile notes ../notes/notes.md \
+            --argjson platforms "$entries" \
+            '{version: $version, pub_date: $date, notes: $notes, platforms: $platforms}' \
+            > latest.json
+          jq '.platforms |= map_values(.signature = "<sig>")' latest.json
+          ls -l
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.DRY_RUN == 'true'
+        with:
+          name: latest-json-dry-run
+          path: release/latest.json
+
+      - name: publish GitHub release
+        if: env.DRY_RUN == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "TMGR Desktop v$APP_VERSION" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
+            --notes-file notes/notes.md \
             --latest
+
+  snap-publish:
+    name: publish snap to edge
+    needs: [meta, release]
+    if: needs.meta.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    env:
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        with:
+          name: bundles-snap
+          path: snap
+
+      - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        with:
+          snap: snap/TMGR_${{ needs.meta.outputs.version }}_amd64.snap
+          release: edge
