@@ -266,7 +266,7 @@
 	const modalProjectCategoryId = computed(
 		() => store.state.createTaskInProjectCategoryId,
 	);
-	const { isFeatureEnabled } = useFeatureToggles();
+	const { isFeatureEnabled, showSurface } = useFeatureToggles();
 	const pagesVisible = computed(() =>
 		pagesAvailable(store.getters.currentWorkspace, isFeatureEnabled('pages')),
 	);
@@ -540,11 +540,18 @@
 	};
 
 	const hasActiveAgent = computed(() => {
-		return cursorAgents.value.some((a: any) => a.status === 'RUNNING');
+		return (
+			isFeatureEnabled('cursor') &&
+			cursorAgents.value.some((a: any) => a.status === 'RUNNING')
+		);
 	});
 
 	const canRunWithCursor = computed(() => {
-		return form.value.id && currentCategoryCode.value;
+		return (
+			isFeatureEnabled('cursor') &&
+			form.value.id &&
+			currentCategoryCode.value
+		);
 	});
 
 	const autoResizeTitle = () => {
@@ -712,7 +719,10 @@
 						getCategories,
 						getCategoriesOfWorkspace,
 						getWorkspaceMembers,
-						getAssignablePersonas,
+						getAssignablePersonas: (id: number) =>
+							isFeatureEnabled('personas')
+								? getAssignablePersonas(id)
+								: Promise.resolve([]),
 					},
 				)
 					.then(
@@ -1106,7 +1116,7 @@
 	};
 
 	const loadGitActivity = async () => {
-		if (!form.value.id) {
+		if (!form.value.id || !isFeatureEnabled('github')) {
 			console.log('[Git Activity] No task ID, skipping');
 			return;
 		}
@@ -1128,7 +1138,7 @@
 	};
 
 	const loadCursorAgents = async () => {
-		if (!form.value.id) return;
+		if (!form.value.id || !isFeatureEnabled('cursor')) return;
 		try {
 			const id = form.value.id;
 			const result = await getCursorAgents(id);
@@ -1145,9 +1155,12 @@
 		categoryGitHubLoaded.value = false;
 		categoryCursorLoaded.value = false;
 		if (!categoryId) return;
+		const moduleOff = () => Promise.reject(new Error('module is off'));
 		const [github, cursor] = await Promise.allSettled([
-			getCategoryGitHubStatus(categoryId),
-			getCursorStatus(categoryId),
+			isFeatureEnabled('github')
+				? getCategoryGitHubStatus(categoryId)
+				: moduleOff(),
+			isFeatureEnabled('cursor') ? getCursorStatus(categoryId) : moduleOff(),
 		]);
 		// Ignore stale responses if the category changed while this load was in flight.
 		if (form.value.project_category_id !== categoryId) return;
@@ -2120,7 +2133,10 @@
 	};
 
 	const commentAiReply = computed(
-		() => !isLocalWorkspaceTask.value && isCommentAiReplyOn(),
+		() =>
+			!isLocalWorkspaceTask.value &&
+			isFeatureEnabled('ai.assistant') &&
+			isCommentAiReplyOn(),
 	);
 
 	const toggleCommentAiReply = () => {
@@ -2251,7 +2267,7 @@
 
 					<div class="flex items-center gap-2">
 						<button
-							v-if="form.id"
+							v-if="form.id && isFeatureEnabled('pomodoro')"
 							type="button"
 							@click="togglePomodoro"
 							:disabled="pomodoroBusy"
@@ -2385,7 +2401,7 @@
 
 					<!-- Pomodoro block (per-task, opt-in) -->
 					<PomodoroBlock
-						v-if="form.id"
+						v-if="form.id && isFeatureEnabled('pomodoro')"
 						ref="pomodoroBlockRef"
 						:task-id="form.id"
 						:main-timer-running="mainTimerRunning"
@@ -2399,101 +2415,104 @@
 							grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);
 						"
 					>
-						<div class="flex items-center gap-2 text-ink-subtle">
-							<UserIcon class="h-3.5 w-3.5" />
-							<span>Assignee</span>
-						</div>
-						<div
-							v-if="isFeatureEnabled('task.assignees')"
-							class="flex min-w-0 items-center gap-2"
-						>
-							<AssigneesCombobox
-								:assignees="workspaceMembers"
-								v-model="assignees as any"
-								:assignable-personas="assignablePersonas"
-								:selected-personas="personaAssignees"
-								@toggle-persona="togglePersona"
-							/>
-							<PersonaAssigneeChips
-								:personas="personaAssignees"
-								:size="24"
-								:member-avatars="memberAvatars"
-							/>
-							<button
-								v-if="!isAssignedToMe"
-								type="button"
-								@click="assignToMe"
-								class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-brand-fg hover:opacity-90"
-								title="Assign to me"
-							>
-								<span class="material-icons" style="font-size: 14px"
-									>person_add</span
-								>
-							</button>
-						</div>
-						<div v-else class="text-ink-faint">—</div>
-
-						<div class="flex items-center gap-2 text-ink-subtle">
-							<FolderIcon class="h-3.5 w-3.5" />
-							<span>Category</span>
-						</div>
-						<div class="flex min-w-0 items-center gap-1.5">
-							<CategoriesCombobox
-								class="min-w-0 flex-1"
-								:categories="categories"
-								v-model="form.project_category_id"
-								@update:model-value="
-									() => {
-										if (!form.title) {
-											updateTaskTitle();
-										}
-										taskKeyNumber = '';
-									}
-								"
-							/>
-							<button
-								v-if="form.project_category_id"
-								type="button"
-								class="shrink-0 rounded-md border border-line px-1.5 py-1 text-ink-subtle hover:text-ink"
-								:title="`New task in ${currentCategoryCode || 'this category'}`"
-								@click="createAnotherInCategory"
-							>
-								<PlusIcon class="h-3.5 w-3.5" />
-							</button>
-						</div>
-
-						<template v-if="form.project_category_id">
+						<template v-if="showSurface('assignees.task-row')">
 							<div class="flex items-center gap-2 text-ink-subtle">
-								<HashtagIcon class="h-3.5 w-3.5" />
-								<span>Key</span>
+								<UserIcon class="h-3.5 w-3.5" />
+								<span>Assignee</span>
 							</div>
-							<div class="flex min-w-0 items-center gap-1.5">
-								<span class="shrink-0 font-mono text-sm text-ink-subtle"
-									>{{ currentCategoryCode || 'TASK' }}-</span
-								>
-								<input
-									type="number"
-									min="1"
-									step="1"
-									v-model="taskKeyNumber"
-									placeholder="auto"
-									class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+							<div class="flex min-w-0 items-center gap-2">
+								<AssigneesCombobox
+									:assignees="workspaceMembers"
+									v-model="assignees as any"
+									:assignable-personas="
+										isFeatureEnabled('personas') ? assignablePersonas : []
+									"
+									:selected-personas="personaAssignees"
+									@toggle-persona="togglePersona"
 								/>
-								<span
-									v-if="isAutoSaving && !taskKeyError"
-									class="text-2xs text-ink-faint"
-									>Saving…</span
+								<PersonaAssigneeChips
+									v-if="isFeatureEnabled('personas')"
+									:personas="personaAssignees"
+									:size="24"
+									:member-avatars="memberAvatars"
+								/>
+								<button
+									v-if="!isAssignedToMe"
+									type="button"
+									@click="assignToMe"
+									class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-brand-fg hover:opacity-90"
+									title="Assign to me"
 								>
-							</div>
-							<div
-								v-if="taskKeyError"
-								class="col-span-2 -mt-2 text-xs text-status-fix-fg"
-							>
-								{{ taskKeyError }}
+									<span class="material-icons" style="font-size: 14px"
+										>person_add</span
+									>
+								</button>
 							</div>
 						</template>
 
-						<template v-if="form.id">
+						<template v-if="showSurface('categories.task-picker')">
+							<div class="flex items-center gap-2 text-ink-subtle">
+								<FolderIcon class="h-3.5 w-3.5" />
+								<span>Category</span>
+							</div>
+							<div class="flex min-w-0 items-center gap-1.5">
+								<CategoriesCombobox
+									class="min-w-0 flex-1"
+									:categories="categories"
+									v-model="form.project_category_id"
+									@update:model-value="
+										() => {
+											if (!form.title) {
+												updateTaskTitle();
+											}
+											taskKeyNumber = '';
+										}
+									"
+								/>
+								<button
+									v-if="form.project_category_id"
+									type="button"
+									class="shrink-0 rounded-md border border-line px-1.5 py-1 text-ink-subtle hover:text-ink"
+									:title="`New task in ${currentCategoryCode || 'this category'}`"
+									@click="createAnotherInCategory"
+								>
+									<PlusIcon class="h-3.5 w-3.5" />
+								</button>
+							</div>
+
+							<template v-if="form.project_category_id">
+								<div class="flex items-center gap-2 text-ink-subtle">
+									<HashtagIcon class="h-3.5 w-3.5" />
+									<span>Key</span>
+								</div>
+								<div class="flex min-w-0 items-center gap-1.5">
+									<span class="shrink-0 font-mono text-sm text-ink-subtle"
+										>{{ currentCategoryCode || 'TASK' }}-</span
+									>
+									<input
+										type="number"
+										min="1"
+										step="1"
+										v-model="taskKeyNumber"
+										placeholder="auto"
+										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+									/>
+									<span
+										v-if="isAutoSaving && !taskKeyError"
+										class="text-2xs text-ink-faint"
+										>Saving…</span
+									>
+								</div>
+								<div
+									v-if="taskKeyError"
+									class="col-span-2 -mt-2 text-xs text-status-fix-fg"
+								>
+									{{ taskKeyError }}
+								</div>
+						</template>
+						</template>
+
+						<template v-if="form.id && isFeatureEnabled('github')">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<CodeBracketIcon class="h-3.5 w-3.5" />
 								<span>Git activity</span>
@@ -2710,7 +2729,7 @@
 
 					<!-- Comments (modal: inline at bottom of main; page: in right rail) -->
 					<TaskComments
-						v-if="isModal && form.id"
+						v-if="isModal && form.id && showSurface('comments.task-modal')"
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						class="mt-4"
@@ -2725,12 +2744,18 @@
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
-						v-if="isModal && form.id && isLocalWorkspaceTask"
+						v-if="
+							showSurface('comments.composer') &&
+							isFeatureEnabled('personas') &&
+							isModal &&
+							form.id &&
+							isLocalWorkspaceTask
+						"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>
 					<div
-						v-if="isModal && aiPending"
+						v-if="isModal && aiPending && showSurface('comments.composer')"
 						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
 					>
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
@@ -2745,7 +2770,7 @@
 						>
 					</div>
 					<div
-						v-if="isModal && form.id"
+						v-if="isModal && form.id && showSurface('comments.composer')"
 						class="mb-1.5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
 						@mousedown.stop
 					>
@@ -2768,7 +2793,7 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							v-if="!isLocalWorkspaceTask"
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
 							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
@@ -2898,7 +2923,7 @@
 
 			<!-- RIGHT RAIL — comments (page / non-modal only) -->
 			<aside
-				v-if="!isModal && form.id"
+				v-if="!isModal && form.id && showSurface('comments.rail')"
 				:style="footerHeightVars(footerHeight)"
 				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0 xl:w-[420px]"
 			>
@@ -2923,7 +2948,9 @@
 					@mousedown.stop
 				>
 					<AskPersonaButton
-						v-if="form.id && isLocalWorkspaceTask"
+						v-if="
+							isFeatureEnabled('personas') && form.id && isLocalWorkspaceTask
+						"
 						:task-id="form.id"
 						@posted="taskCommentsRef?.loadComments()"
 					/>
@@ -2962,7 +2989,7 @@
 							<Bot class="h-4 w-4" />
 						</button>
 						<button
-							v-if="!isLocalWorkspaceTask"
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
 							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"

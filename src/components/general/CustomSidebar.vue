@@ -1,8 +1,5 @@
 <script setup lang="ts">
-	import {
-		getUserFeatureToggles,
-		getWorkspaceFeatureToggles,
-	} from '@/actions/tmgr/featureToggles';
+	import { getUserFeatureToggles } from '@/actions/tmgr/featureToggles';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
@@ -23,6 +20,7 @@
 		Workspace,
 	} from '@/actions/tmgr/workspaces.ts';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
+	import ModulesPicker from '@/components/general/ModulesPicker.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import GlobalSearch from '@/components/general/GlobalSearch.vue';
 	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
@@ -133,7 +131,8 @@
 
 	const route = useRoute();
 	const router = useRouter();
-	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
+	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
+		useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
 	const pagesEnabled = computed(() =>
@@ -267,8 +266,10 @@
 			sidebarError.value = 'Some navigation data could not be loaded.';
 		try {
 			if (activeWorkspace.value?.id) {
-				const data = await getWorkspaceFeatureToggles(activeWorkspace.value.id);
-				if (current()) store.commit('featureToggles/setWorkspaceToggles', data);
+				await store.dispatch(
+					'featureToggles/fetchWorkspaceModules',
+					activeWorkspace.value.id,
+				);
 			}
 		} catch {
 			if (current()) sidebarError.value = 'Could not load workspace features.';
@@ -833,7 +834,9 @@
 						<SidebarGroupLabel>More</SidebarGroupLabel>
 
 						<SidebarMenu>
-							<SidebarMenuItem v-if="activeWorkspace?.code">
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && showSurface('files.nav')"
+							>
 								<SidebarMenuButton as-child>
 									<router-link :to="`/${activeWorkspace.code}/files`">
 										<PaperclipIcon />
@@ -993,13 +996,14 @@
 											Workspace Settings
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											@click="$router.push('/settings/features')"
+											@click="$router.push('/settings/modules')"
 											class="cursor-pointer"
 										>
 											<Sliders />
-											Feature Settings
+											Modules
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="isFeatureEnabled('personas')"
 											@click="$router.push('/settings/personas')"
 											class="cursor-pointer"
 										>
@@ -1007,6 +1011,7 @@
 											Personas
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="isFeatureEnabled('alerts')"
 											@click="$router.push('/settings/agent-notifications')"
 											class="cursor-pointer"
 										>
@@ -1139,7 +1144,7 @@
 						></div>
 						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
-								v-if="!isDesktop"
+								v-if="!isDesktop && isFeatureEnabled('ai.assistant')"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,
@@ -1150,7 +1155,7 @@
 							>
 								<Sparkles class="h-4 w-4" />
 							</button>
-							<ActiveCursorAgents v-if="!isDesktop" />
+							<ActiveCursorAgents v-if="!isDesktop && isFeatureEnabled('cursor')" />
 							<NotificationBell />
 						</div>
 					</div>
@@ -1162,7 +1167,10 @@
 					<slot />
 				</div>
 			</SidebarInset>
-			<AiAssistantPanel v-if="store.getters.isLoggedIn" />
+			<AiAssistantPanel
+				v-if="store.getters.isLoggedIn && isFeatureEnabled('ai.assistant')"
+			/>
+			<ModulesPicker v-if="store.getters.isLoggedIn" />
 		</SidebarMobileCloser>
 	</SidebarProvider>
 

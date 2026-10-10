@@ -6,41 +6,22 @@ jest.mock('vuex', () => ({
 	useStore: () => ({ getters: mockGetters }),
 }));
 
-describe('pages workspace feature toggle', () => {
+describe('useFeatureToggles', () => {
 	beforeEach(() => {
-		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = (key: string) =>
-			key === 'board';
-		mockGetters['featureToggles/isUserFeatureEnabled'] = () => true;
+		mockGetters['featureToggles/isFeatureEnabled'] = (key: string) =>
+			key !== 'pages';
 		mockGetters['featureToggles/isLoaded'] = true;
 	});
 
-	it('is read from the workspace toggles instead of defaulting to enabled', () => {
+	it('asks the store for every key', () => {
 		const { isFeatureEnabled } = useFeatureToggles();
 		expect(isFeatureEnabled('pages')).toBe(false);
+		expect(isFeatureEnabled('graph')).toBe(true);
 	});
 
-	it('is enabled when the workspace toggle is on', () => {
-		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = (key: string) =>
-			key === 'pages';
-		const { isFeatureEnabled } = useFeatureToggles();
-		expect(isFeatureEnabled('pages')).toBe(true);
-	});
-});
-
-describe('agent_work workspace feature toggle', () => {
-	beforeEach(() => {
-		mockGetters['featureToggles/isUserFeatureEnabled'] = () => true;
-		mockGetters['featureToggles/isLoaded'] = true;
-	});
-
-	it('is enabled when the workspace toggle is on', () => {
-		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = (key: string) =>
-			key === 'agent_work';
-		expect(useFeatureToggles().isFeatureEnabled('agent_work')).toBe(true);
-	});
-
-	it('is disabled when the workspace toggle is off', () => {
-		mockGetters['featureToggles/isWorkspaceFeatureEnabled'] = () => false;
-		expect(useFeatureToggles().isFeatureEnabled('agent_work')).toBe(false);
+	it('answers workspace and user lookups the same way', () => {
+		const toggles = useFeatureToggles();
+		expect(toggles.isWorkspaceFeatureEnabled('pages')).toBe(false);
+		expect(toggles.isUserFeatureEnabled('board.search_input')).toBe(true);
 	});
 });

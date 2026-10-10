@@ -19,11 +19,11 @@
 		type WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import Combobox from '@/components/Combobox.vue';
-	import Loader from '@/components/loaders/Loader.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import Loader from '@/components/loaders/Loader.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -51,12 +51,12 @@
 	import { Switch } from '@/components/ui/switch';
 	import { Textarea } from '@/components/ui/textarea';
 	import { useToast } from '@/components/ui/toast';
-	import { errorMessageFrom } from '@/utils/emailVerification';
 	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
 	import { dialogState } from '@/composable/dialog.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
+	import { errorMessageFrom } from '@/utils/emailVerification';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import {
 		CircleCheckBigIcon,
@@ -376,10 +376,15 @@
 			await store.dispatch('loadWorkspaces');
 			const workspace = workspaces.value.find((w) => w.id === created.id);
 			if (workspace) {
-				store.commit('updateUserWorkspaceSetting', { workspaceId: workspace.id });
+				store.commit('updateUserWorkspaceSetting', {
+					workspaceId: workspace.id,
+				});
 				activeWorkspace.value = store.state.user.settings.find(
 					(settingInStore) => settingInStore.key === 'current_workspace',
 				);
+				store
+					.dispatch('featureToggles/fetchWorkspaceModules', workspace.id)
+					.catch(() => undefined);
 			}
 		} catch (e) {
 			console.error(e);

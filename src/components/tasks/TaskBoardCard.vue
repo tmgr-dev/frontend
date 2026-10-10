@@ -23,7 +23,11 @@
 				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
 			</div>
 
-			<AppTooltip v-if="task.start_time" content="Stop timer" side="top">
+			<AppTooltip
+				v-if="showSurface('timer.board-card') && task.start_time"
+				content="Stop timer"
+				side="top"
+			>
 				<button
 					:disabled="isLoadingTimer"
 					class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold tabular-nums text-status-done-fg transition-colors hover:opacity-90 disabled:opacity-50"
@@ -39,7 +43,11 @@
 					</template>
 				</button>
 			</AppTooltip>
-			<AppTooltip v-else content="Start timer" side="top">
+			<AppTooltip
+				v-if="showSurface('timer.board-card') && !task.start_time"
+				content="Start timer"
+				side="top"
+			>
 				<button
 					:disabled="isLoadingTimer"
 					class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold tabular-nums text-ink-muted transition-colors hover:bg-line disabled:opacity-50"
@@ -60,7 +68,9 @@
 			<span class="flex-1"></span>
 
 			<PersonaAssigneeChips
-				v-if="isFeatureEnabled('task.assignees')"
+				v-if="
+					isFeatureEnabled('task.assignees') && isFeatureEnabled('personas')
+				"
 				:personas="personaAssignees"
 				:size="22"
 			/>
@@ -123,6 +133,7 @@
 								</CommandItem>
 							</CommandGroup>
 							<AssigneePersonaGroup
+								v-if="isFeatureEnabled('personas')"
 								:personas="assignablePersonas"
 								:selected-ids="personaAssigneeUuids"
 								@toggle="togglePersona"
@@ -184,7 +195,10 @@
 			{{ task.title }}
 		</a>
 
-		<div v-if="checklistProgress" class="mb-2.5 flex items-center gap-2">
+		<div
+			v-if="checklistProgress && showSurface('checkpoints.board-card')"
+			class="mb-2.5 flex items-center gap-2"
+		>
 			<div class="h-1 flex-1 overflow-hidden rounded-full bg-surface-sunken">
 				<div
 					class="h-full rounded-full transition-all duration-300"
@@ -201,7 +215,7 @@
 
 		<div class="flex flex-wrap items-center gap-1.5">
 			<CategoryBadge
-				v-if="task.category"
+				v-if="task.category && showSurface('categories.badge')"
 				:category="task.category"
 				:status-id="task.status_id"
 			/>
@@ -351,8 +365,8 @@
 		mixins: [TimePreparationMixin, TasksListMixin],
 		inject: { pluginBadges: { default: () => ({}) } },
 		setup() {
-			const { isFeatureEnabled } = useFeatureToggles();
-			return { isFeatureEnabled };
+			const { isFeatureEnabled, showSurface } = useFeatureToggles();
+			return { isFeatureEnabled, showSurface };
 		},
 		components: {
 			TaskTimeInfo,
@@ -607,7 +621,7 @@
 					this.$store.state.user?.settings?.find(
 						(s) => s.key === 'current_workspace',
 					)?.value;
-				if (!workspaceId) return;
+				if (!workspaceId || !this.isFeatureEnabled('personas')) return;
 				try {
 					this.assignablePersonas = await getAssignablePersonas(
 						Number(workspaceId),

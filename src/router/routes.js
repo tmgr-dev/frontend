@@ -1,8 +1,11 @@
+import { gatedPage } from '@/router/moduleGate';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
-const ProjectCategoryForm = () => import('@/pages/ProjectCategoryForm.vue');
+const ProjectCategoryForm = gatedPage('categories', 'Projects', () =>
+	import('@/pages/ProjectCategoryForm.vue'),
+);
 const DashboardPage = () => import('@/pages/DashboardPage.vue');
 
 // Helper function to get current workspace
@@ -305,7 +308,9 @@ const routes = [
 	// New URL structure for archive page
 	{
 		path: '/:workspace_code/files',
-		component: () => import('@/pages/WorkspaceFilesPage.vue'),
+		component: gatedPage('task.files', 'Files', () =>
+			import('@/pages/WorkspaceFilesPage.vue'),
+		),
 		meta: {
 			title: 'Files',
 			transitionName: 'slide',
@@ -451,24 +456,32 @@ const routes = [
 		name: 'WorkspaceSettings',
 	},
 	{
-		path: '/settings/features',
-		component: () => import('@/pages/Settings/FeatureToggles.vue'),
+		path: '/settings/modules',
+		component: () => import('@/pages/Settings/Modules.vue'),
 		meta: {
-			title: 'Feature Settings',
+			title: 'Modules',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
-		name: 'FeatureSettings',
+		name: 'ModuleSettings',
+	},
+	{
+		path: '/settings/features',
+		redirect: '/settings/modules',
 	},
 	{
 		path: '/settings/personas',
-		component: () => import('@/pages/Settings/Personas.vue'),
+		component: gatedPage('personas', 'Personas', () =>
+			import('@/pages/Settings/Personas.vue'),
+		),
 		meta: { title: 'Personas', transitionName: 'fade-fast', navbarHidden: true },
 		name: 'PersonaSettings',
 	},
 	{
 		path: '/settings/agent-notifications',
-		component: () => import('@/pages/Settings/AgentNotifications.vue'),
+		component: gatedPage('alerts', 'Agent notifications', () =>
+			import('@/pages/Settings/AgentNotifications.vue'),
+		),
 		meta: {
 			title: 'Agent notifications',
 			transitionName: 'fade-fast',

@@ -49,7 +49,7 @@
 							{{ member.current_task.title }}
 						</button>
 						<span
-							v-if="timerDuration"
+							v-if="timerDuration && showSurface('timer.member')"
 							class="shrink-0 font-mono text-status-done-fg"
 							>· {{ timerDuration }}</span
 						>
@@ -93,7 +93,8 @@
 
 			<!-- Stats -->
 			<dl
-				class="grid w-full grid-cols-5 gap-x-4 text-right sm:w-auto sm:shrink-0"
+				class="grid w-full gap-x-4 text-right sm:w-auto sm:shrink-0"
+				:class="showSurface('comments.count') ? 'grid-cols-5' : 'grid-cols-4'"
 			>
 				<div>
 					<dt class="sr-only">Tracked</dt>
@@ -122,7 +123,7 @@
 						active
 					</dd>
 				</div>
-				<div>
+				<div v-if="showSurface('comments.count')">
 					<dt class="sr-only">Comments</dt>
 					<dd class="text-sm font-semibold tabular-nums text-ink">
 						{{ member.comments_count }}
@@ -147,6 +148,7 @@
 
 <script setup lang="ts">
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { TeamMemberStatus } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import {
@@ -168,6 +170,7 @@
 	}>();
 
 	const timerInterval = ref<NodeJS.Timeout | null>(null);
+	const { showSurface } = useFeatureToggles();
 	const timerDuration = ref<string>('');
 
 	const formattedLastActivity = computed(() => {

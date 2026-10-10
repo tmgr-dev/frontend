@@ -81,7 +81,7 @@
 		</div>
 
 		<button
-			v-if="member?.current_task"
+			v-if="member?.current_task && showSurface('timer.member')"
 			type="button"
 			class="mt-5 flex w-full items-center justify-between rounded-card border border-line px-3 py-2 text-left hover:bg-surface-sunken"
 			@click="emit('task-click', member.current_task.id)"
@@ -96,6 +96,7 @@
 
 <script setup lang="ts">
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { MemberStats, TeamActivityWindow } from '@/types/dashboard';
 	import {
 		percentOfTeam,
@@ -106,6 +107,8 @@
 		sparklineBars,
 	} from '@/utils/dashboard/teamActivityFormat';
 	import { computed } from 'vue';
+
+	const { showSurface } = useFeatureToggles();
 
 	const props = defineProps<{
 		member: MemberStats | null;
@@ -172,11 +175,15 @@
 				value: m.active_tasks,
 				hint: `${m.assigned_count} assigned · ${m.created_count} created`,
 			},
-			{
-				label: 'Comments',
-				value: m.comments_count,
-				hint: `on ${m.commented_tasks_count} tasks`,
-			},
+			...(showSurface('comments.count')
+				? [
+						{
+							label: 'Comments',
+							value: m.comments_count,
+							hint: `on ${m.commented_tasks_count} tasks`,
+						},
+				  ]
+				: []),
 			{
 				label: 'Streak',
 				value: `${m.streak}d`,

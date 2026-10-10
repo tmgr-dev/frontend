@@ -40,16 +40,16 @@
 
 		<StatusBar
 			v-if="isDesktop && $store.getters.isLoggedIn"
-			:tasks="activeTasks"
+			:tasks="shownActiveTasks"
 		/>
-		<ActiveTasks v-else :tasks="activeTasks" />
+		<ActiveTasks v-else :tasks="shownActiveTasks" />
 		<DesktopTray
 			v-if="isDesktop && $store.getters.isLoggedIn"
-			:tasks="activeTasks"
+			:tasks="shownActiveTasks"
 		/>
 		<DesktopHotkeys
 			v-if="isDesktop && $store.getters.isLoggedIn"
-			:tasks="activeTasks"
+			:tasks="shownActiveTasks"
 		/>
 		<DesktopDownloads v-if="isDesktop" />
 		<DesktopUpdateCheck v-if="isDesktop" />
@@ -120,6 +120,7 @@
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import { isDetachedWindowLabel } from '@/utils/taskWindow';
+	import { visibleActiveTasks } from '@/utils/moduleSurfaces';
 	import { routeViewKey } from '@/utils/routeViewKey';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -161,11 +162,23 @@
 			const dailyRoutinesCount = ref(0);
 			const isExpanded = ref(true);
 
-			onBeforeMount(async () => {
-				if (store.getters.isLoggedIn) {
-					dailyRoutinesCount.value = await getDailyTasksCount();
+			const loadRoutinesCount = async () => {
+				if (
+					store.getters.isLoggedIn &&
+					store.getters['featureToggles/modulesKnown'] &&
+					store.getters['featureToggles/isFeatureEnabled']('daily_routines')
+				) {
+					dailyRoutinesCount.value = await getDailyTasksCount().catch(() => 0);
 				}
-			});
+			};
+			onBeforeMount(loadRoutinesCount);
+			watch(
+				() => [
+					store.getters['featureToggles/modulesKnown'],
+					store.getters.currentWorkspaceId,
+				],
+				loadRoutinesCount,
+			);
 
 			if (typeof window !== 'undefined') {
 				const savedState = localStorage.getItem('sidebarExpanded');
@@ -217,6 +230,12 @@
 			};
 		},
 		computed: {
+			shownActiveTasks() {
+				return visibleActiveTasks(
+					(key) => this.$store.getters['featureToggles/isFeatureEnabled'](key),
+					this.activeTasks,
+				);
+			},
 			activeTasksContext() {
 				return `${this.$store.state.sessionGeneration}:${this.$store.state.user?.id}:${this.$store.getters.currentWorkspaceId}`;
 			},

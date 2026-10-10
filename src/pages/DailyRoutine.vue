@@ -161,6 +161,7 @@
 								</div>
 								<template v-if="!isLocalWorkspace">
 									<button
+										v-if="isFeatureEnabled('import')"
 										type="button"
 										class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
 										title="Import .ics calendar"
@@ -182,6 +183,7 @@
 							</template>
 							<template v-if="isMobile && !isLocalWorkspace">
 								<button
+									v-if="isFeatureEnabled('import')"
 									type="button"
 									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
 									title="Import .ics"
@@ -436,6 +438,7 @@
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
@@ -619,6 +622,7 @@
 	);
 	// /routines is workspace-independent, so store.state.workspaces may be empty here.
 	const isLocalWorkspace = ref(false);
+	const { isFeatureEnabled } = useFeatureToggles();
 	const pageTitle = computed(() =>
 		isLocalWorkspace.value ? 'Local routines' : 'Daily routines',
 	);

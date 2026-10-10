@@ -28,6 +28,7 @@
 	} from '@/components/ui/dialog';
 	import { Skeleton } from '@/components/ui/skeleton';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
 	import store from '@/store';
 	import {
@@ -75,6 +76,7 @@
 	const tasks = ref<Task[]>([]);
 	const isLoadingActions = ref({});
 	const hasAbilityToShowConfetti = ref(false);
+	const { showSurface } = useFeatureToggles();
 	const categories = ref([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
@@ -161,7 +163,9 @@
 			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
 	);
 
-	const summaryTime = computed(() => formatTime(totalSeconds.value));
+	const summaryTime = computed(() =>
+		showSurface('timer.totals') ? formatTime(totalSeconds.value) : '',
+	);
 
 	const timeStats = computed(() => {
 		const seconds = totalSeconds.value;
@@ -681,7 +685,7 @@
 							</button>
 						</div>
 
-						<Dialog>
+						<Dialog v-if="showSurface('categories.list-filter')">
 							<DialogTrigger as-child>
 								<button
 									@click="showCategorySelect = !showCategorySelect"

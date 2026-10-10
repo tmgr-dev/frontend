@@ -64,6 +64,7 @@
 		shortcutConfig,
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
+	import { showSurface } from '@/utils/moduleSurfaces';
 	import { loadRecent } from '@/utils/desktopTray';
 	import { openPageLink } from '@/utils/openPageLink';
 	import { focusPageWindow } from '@/utils/pageWindow';
@@ -118,11 +119,13 @@
 			tasks: { type: Array, default: () => [] },
 		},
 		setup(props) {
+			const isOn = (key) => store.getters['featureToggles/isFeatureEnabled'](key);
 			let registered = [];
 			let unlistenDeepLink = null;
 			const pendingConfirm = ref(null);
 
 			const toggleTimer = async () => {
+				if (!showSurface('timer.hotkey', isOn)) return;
 				if (props.tasks.length) {
 					await Promise.all(
 						props.tasks.map((task) =>

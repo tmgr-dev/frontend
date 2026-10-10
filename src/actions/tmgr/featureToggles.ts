@@ -11,14 +11,7 @@ export interface FeatureToggle {
 	options?: string[];
 }
 
-export const getWorkspaceFeatureToggles = async (
-	workspaceId: number,
-): Promise<Record<string, FeatureToggle>> => {
-	const {
-		data: { data },
-	} = await $axios.get(`/workspaces/${workspaceId}/feature-toggles`);
-	return data;
-};
+export { getWorkspaceFeatureToggles } from '@/actions/tmgr/modules';
 
 export const updateWorkspaceFeatureToggles = async (
 	workspaceId: number,

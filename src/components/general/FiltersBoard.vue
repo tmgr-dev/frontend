@@ -27,10 +27,7 @@
 			</div>
 
 			<div
-				v-if="
-					isUserFeatureEnabled('board.user_filter') &&
-					workspaceUsers.length >= 2
-				"
+				v-if="showUserFilter"
 				class="w-full"
 			>
 				<Select
@@ -309,7 +306,8 @@
 	};
 
 	const store = useStore();
-	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
+	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
+		useFeatureToggles();
 
 	const selectedCategory = computed({
 		get: () => (store.state as { filter: State }).filter.selectedCategory,
@@ -384,11 +382,13 @@
 	);
 	const showUserFilter = computed(
 		() =>
+			showSurface('assignees.board-filter') &&
 			isUserFeatureEnabled('board.user_filter') &&
 			props.workspaceUsers.length >= 2,
 	);
 	const showPersonaFilter = computed(
 		() =>
+			isFeatureEnabled('personas') &&
 			isUserFeatureEnabled('board.user_filter') &&
 			props.personaOptions.length > 0,
 	);
