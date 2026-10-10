@@ -32,7 +32,10 @@
 					class="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400"
 				>
 					<!-- Category -->
-					<div v-if="task.category" class="flex items-center space-x-1">
+					<div
+						v-if="task.category && showSurface('categories.badge')"
+						class="flex items-center space-x-1"
+					>
 						<div
 							class="h-2 w-2 rounded-full"
 							:style="{ backgroundColor: task.category.color || '#6B7280' }"
@@ -198,7 +201,7 @@
 		'status-change': [statusId: number];
 	}>();
 
-	const { isFeatureEnabled } = useFeatureToggles();
+	const { isFeatureEnabled, showSurface } = useFeatureToggles();
 
 	const timerInterval = ref<NodeJS.Timeout | null>(null);
 	const timerDuration = ref<string>('');

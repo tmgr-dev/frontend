@@ -14,6 +14,7 @@ import {
 	readModulesCache,
 	writeModulesCache,
 } from '@/utils/modules';
+import { allowedLandings } from '@/utils/moduleSurfaces';
 
 export default {
 	namespaced: true,
@@ -99,9 +100,7 @@ export default {
 		},
 
 		async enforceLandingPage({ state, dispatch, getters }) {
-			const allowed = ['list'];
-			if (getters.isFeatureEnabled('board')) allowed.push('board');
-			if (getters.isFeatureEnabled('dashboard')) allowed.push('dashboard');
+			const allowed = allowedLandings(getters.isFeatureEnabled);
 
 			const current = state.userToggles?.default_landing_page?.value;
 			if (!allowed.includes(current)) {

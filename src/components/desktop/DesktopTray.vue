@@ -38,6 +38,7 @@
 	import router from '@/router';
 	import store from '@/store';
 	import { isDndActive, setDnd } from '@/utils/dnd';
+	import { showSurface } from '@/utils/moduleSurfaces';
 	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		buildTrayState,
@@ -95,6 +96,7 @@
 		},
 		setup(props) {
 			const pusher = usePusher();
+			const isOn = (key) => store.getters['featureToggles/isFeatureEnabled'](key);
 			const recent = ref([]);
 			const away = ref(null);
 			const unlisteners = [];
@@ -114,13 +116,17 @@
 				recent.value = rememberRecent(recent.value, props.tasks);
 				saveRecent(userId, recent.value);
 				pushTrayState({
-					...buildTrayState(props.tasks, recent.value),
+					...buildTrayState(
+						props.tasks,
+						showSurface('timer.tray-recent', isOn) ? recent.value : [],
+					),
 					pluginSections: pluginTraySections(),
 					trayTitle: pluginState.trayTitle,
 				});
 			};
 
 			watch(() => props.tasks, sync, { deep: true });
+			watch(() => showSurface('timer.tray-recent', isOn), sync);
 			watch(() => [pluginState.trayItems, pluginState.trayTitle], sync, {
 				deep: true,
 			});

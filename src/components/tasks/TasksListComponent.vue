@@ -209,7 +209,11 @@
 							</div>
 							<div class="min-w-0 flex-1">
 								<CategoryBadge
-									v-if="showCategoryBadges && task.category"
+									v-if="
+										showCategoryBadges &&
+										task.category &&
+										showSurface('categories.badge')
+									"
 									class="mb-2 shrink-0 self-start"
 									:category="task.category"
 								/>
@@ -637,9 +641,10 @@
 		},
 		mixins: [TasksListMixin, TaskActionsInTheListMixin],
 		data() {
-			const { isFeatureEnabled } = useFeatureToggles();
+			const { isFeatureEnabled, showSurface } = useFeatureToggles();
 			return {
 				isFeatureEnabled,
+				showSurface,
 				// One shared clock for every running timer in the list (TM-148).
 				nowSeconds: Math.floor(Date.now() / 1000),
 				clockInterval: null as ReturnType<typeof setInterval> | null,

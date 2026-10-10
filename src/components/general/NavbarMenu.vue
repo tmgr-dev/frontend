@@ -38,6 +38,7 @@
 	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { generateWorkspaceUrl } from '@/utils/url';
 	import { computed, onBeforeMount, ref, Ref } from 'vue';
 	import { useStore } from 'vuex';
@@ -48,6 +49,7 @@
 	const workspaceId: Ref<number> = ref(0);
 
 	const store = useStore();
+	const { showSurface } = useFeatureToggles();
 
 	onBeforeMount(async () => {
 		const [userData, workspaceData] = await Promise.all([
@@ -97,33 +99,42 @@
 		);
 	});
 
-	const links = computed(() => [
-		{
-			id: 1,
-			name: 'Dashboard',
-			path: generateWorkspaceUrl('dashboard', currentWorkspace.value),
-		},
-		{
-			id: 2,
-			name: 'List',
-			path: generateWorkspaceUrl('list', currentWorkspace.value),
-		},
-		{
-			id: 3,
-			name: 'Board',
-			path: generateWorkspaceUrl('board', currentWorkspace.value),
-		},
-		{
-			id: 4,
-			name: 'Categories',
-			path: generateWorkspaceUrl('categories', currentWorkspace.value),
-		},
-		{
-			id: 5,
-			name: currentWorkspace.value?.is_local ? 'Local routines' : 'Daily Routines',
-			path: '/routines',
-		},
-	]);
+	const links = computed(() =>
+		[
+			{
+				id: 1,
+				name: 'Dashboard',
+				path: generateWorkspaceUrl('dashboard', currentWorkspace.value),
+				show: showSurface('dashboard.nav'),
+			},
+			{
+				id: 2,
+				name: 'List',
+				path: generateWorkspaceUrl('list', currentWorkspace.value),
+				show: true,
+			},
+			{
+				id: 3,
+				name: 'Board',
+				path: generateWorkspaceUrl('board', currentWorkspace.value),
+				show: showSurface('board.nav'),
+			},
+			{
+				id: 4,
+				name: 'Categories',
+				path: generateWorkspaceUrl('categories', currentWorkspace.value),
+				show: showSurface('categories.nav'),
+			},
+			{
+				id: 5,
+				name: currentWorkspace.value?.is_local
+					? 'Local routines'
+					: 'Daily Routines',
+				path: '/routines',
+				show: showSurface('routines.nav'),
+			},
+		].filter((link) => link.show),
+	);
 
 	const handleNavigate = (navigate: () => void) => {
 		navigate();

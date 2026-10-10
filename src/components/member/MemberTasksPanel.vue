@@ -57,9 +57,11 @@
 							<span class="truncate text-sm text-ink">{{ task.title }}</span>
 						</span>
 						<span class="mt-0.5 block text-xs text-ink-subtle">
-							<span v-if="task.category">{{ task.category.code }} · </span>
+							<span v-if="task.category && showSurface('categories.badge')"
+								>{{ task.category.code }} · </span
+							>
 							<span>{{ task.status?.name ?? 'No status' }}</span>
-							<span v-if="task.my_comments">
+							<span v-if="task.my_comments && showSurface('comments.count')">
 								· {{ task.my_comments }} comments</span
 							>
 						</span>
@@ -85,6 +87,7 @@
 </template>
 
 <script setup lang="ts">
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { MemberTaskRow, MemberTasksTab } from '@/types/dashboard';
 	import { relativeAge } from '@/utils/dashboard/memberPageFormat';
 	import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
@@ -110,8 +113,10 @@
 		{ key: 'done', label: 'Done' },
 	];
 
+	const { showSurface } = useFeatureToggles();
+
 	const tracked = (task: MemberTaskRow) =>
-		task.timer_running
+		task.timer_running && showSurface('timer.member')
 			? `${formatTrackedSeconds(task.tracked_seconds)} ⏱`
 			: formatTrackedSeconds(task.tracked_seconds);
 

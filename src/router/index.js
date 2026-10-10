@@ -2,6 +2,7 @@ import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { saveReturnPath } from '@/utils/emailVerification';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
+import { resolveLanding } from '@/utils/moduleSurfaces';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
@@ -95,20 +96,11 @@ router.beforeEach(async (to, from, next) => {
 			const workspaceCode = workspace?.code;
 
 			// Validate landing page against allowed features
-			let finalLanding = landingPage;
-			const allowedLanding = ['list'];
-			const isOn = store.getters['featureToggles/isFeatureEnabled'];
-			if (isOn('board')) {
-				allowedLanding.push('board');
-			}
-			if (isOn('dashboard')) {
-				allowedLanding.push('dashboard');
-			}
-			if (isOn('daily_routines')) {
-				allowedLanding.push('daily_routines');
-			}
-			if (!allowedLanding.includes(finalLanding)) {
-				finalLanding = allowedLanding[0];
+			const finalLanding = resolveLanding(
+				landingPage,
+				store.getters['featureToggles/isFeatureEnabled'],
+			);
+			if (finalLanding !== landingPage) {
 				// persist fix
 				await store.dispatch('featureToggles/updateUserToggles', {
 					default_landing_page: finalLanding,

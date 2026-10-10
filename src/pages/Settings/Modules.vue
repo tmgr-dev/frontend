@@ -217,6 +217,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { featureDescription, humanizeKey } from '@/utils/featureToggleCopy';
+	import { allowedLandings } from '@/utils/moduleSurfaces';
 	import {
 		buildModulesView,
 		MODULES_FOOTER,
@@ -279,13 +280,7 @@
 	const userToggles = computed(
 		() => (store.state as any).featureToggles.userToggles,
 	);
-	const landingOptions = computed(() => {
-		const options = ['list'];
-		if (isFeatureEnabled('board')) options.push('board');
-		if (isFeatureEnabled('dashboard')) options.push('dashboard');
-		if (isFeatureEnabled('daily_routines')) options.push('daily_routines');
-		return options;
-	});
+	const landingOptions = computed(() => allowedLandings(isFeatureEnabled));
 	const personalFeatures = computed(() =>
 		Object.entries(userToggles.value || {})
 			.filter(([key]) => key === 'default_landing_page')

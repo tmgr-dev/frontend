@@ -3,7 +3,9 @@ import { gatedPage } from '@/router/moduleGate';
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
-const ProjectCategoryForm = () => import('@/pages/ProjectCategoryForm.vue');
+const ProjectCategoryForm = gatedPage('categories', 'Projects', () =>
+	import('@/pages/ProjectCategoryForm.vue'),
+);
 const DashboardPage = () => import('@/pages/DashboardPage.vue');
 
 // Helper function to get current workspace
