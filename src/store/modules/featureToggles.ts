@@ -31,6 +31,18 @@ const lookupEntry = (state, rootGetters, key) => {
 	);
 };
 
+export const modulesKnownFor = (state, rootGetters) => {
+	const currentId = rootGetters?.currentWorkspaceId;
+	if (
+		state.workspaceLoaded &&
+		(state.loadedWorkspaceId == null ||
+			currentId == null ||
+			state.loadedWorkspaceId == currentId)
+	)
+		return true;
+	return !!readModulesCache(currentId);
+};
+
 export default {
 	namespaced: true,
 
@@ -71,6 +83,8 @@ export default {
 	},
 
 	getters: {
+		modulesKnown: (state, getters, rootState, rootGetters) =>
+			modulesKnownFor(state, rootGetters),
 		moduleEntry: (state, getters, rootState, rootGetters) => (key) =>
 			lookupEntry(state, rootGetters, key),
 		isFeatureEnabled: (state, getters, rootState, rootGetters) => (key) =>
@@ -125,6 +139,17 @@ export default {
 				await getLegacyWorkspaceFeatureToggles(workspaceId),
 			);
 			return null;
+		},
+
+		async ensureWorkspaceModules({ getters, dispatch, rootGetters }) {
+			if (getters.modulesKnown) return;
+			const id = rootGetters.currentWorkspaceId;
+			if (id == null) return;
+			try {
+				await dispatch('fetchWorkspaceModules', id);
+			} catch (error) {
+				console.error('Failed to load modules:', error);
+			}
 		},
 
 		async loadWorkspaceToggles({ dispatch }, workspaceId) {

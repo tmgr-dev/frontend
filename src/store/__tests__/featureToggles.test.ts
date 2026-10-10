@@ -153,3 +153,27 @@ describe('canManageModules', () => {
 		expect(can(state(), { user: { id: 2 } }, {})).toBe(false);
 	});
 });
+
+describe('modulesKnown', () => {
+	const known = (s: any, id: number | null = 5) =>
+		store.getters.modulesKnown(s, {}, {}, root(id));
+
+	it('is false before anything loaded or cached', () => {
+		expect(known(state())).toBe(false);
+	});
+	it('is true once the current workspace loaded', () => {
+		expect(known(state({ workspaceLoaded: true, loadedWorkspaceId: 5 }))).toBe(
+			true,
+		);
+	});
+	it('is false when the loaded payload belongs to another workspace', () => {
+		expect(known(state({ workspaceLoaded: true, loadedWorkspaceId: 9 }))).toBe(
+			false,
+		);
+	});
+	it('is true from a cached payload for the same workspace only', () => {
+		storage.set('tmgr:modules:5', JSON.stringify({}));
+		expect(known(state())).toBe(true);
+		expect(known(state(), 6)).toBe(false);
+	});
+});

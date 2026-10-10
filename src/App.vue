@@ -162,14 +162,23 @@
 			const dailyRoutinesCount = ref(0);
 			const isExpanded = ref(true);
 
-			onBeforeMount(async () => {
+			const loadRoutinesCount = async () => {
 				if (
 					store.getters.isLoggedIn &&
+					store.getters['featureToggles/modulesKnown'] &&
 					store.getters['featureToggles/isFeatureEnabled']('daily_routines')
 				) {
 					dailyRoutinesCount.value = await getDailyTasksCount().catch(() => 0);
 				}
-			});
+			};
+			onBeforeMount(loadRoutinesCount);
+			watch(
+				() => [
+					store.getters['featureToggles/modulesKnown'],
+					store.getters.currentWorkspaceId,
+				],
+				loadRoutinesCount,
+			);
 
 			if (typeof window !== 'undefined') {
 				const savedState = localStorage.getItem('sidebarExpanded');

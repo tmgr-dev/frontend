@@ -76,6 +76,24 @@ describe('shouldBlockRequest', () => {
 	});
 });
 
+describe('shouldBlockRequest while modules are unknown', () => {
+	const none = () => undefined;
+	it('refuses gated reads until the modules state is known', () => {
+		expect(
+			shouldBlockRequest('get', 'daily-routines/tasks/count', none, false),
+		).toBe(true);
+		expect(
+			shouldBlockRequest('get', 'daily-routines/tasks/count', none, true),
+		).toBe(false);
+	});
+	it('lets ungated reads and writes through', () => {
+		expect(shouldBlockRequest('get', 'tasks', none, false)).toBe(false);
+		expect(shouldBlockRequest('post', 'tasks/9/pomodoro', none, false)).toBe(
+			false,
+		);
+	});
+});
+
 describe('moduleOffError', () => {
 	it('looks like the server feature_disabled response', () => {
 		const error: any = moduleOffError({ url: 'tasks/9/pomodoro' }, 'pomodoro');

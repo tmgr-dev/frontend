@@ -44,12 +44,14 @@ export const shouldBlockRequest = (
 	method: string | undefined,
 	url: string | undefined,
 	entryFor: EntryLookup,
+	modulesKnown = true,
 ): boolean => {
 	const key = moduleKeyForRequest(url);
 	if (!key) return false;
+	const read = ['get', 'head'].includes((method || 'get').toLowerCase());
+	if (read && !modulesKnown) return true;
 	const entry = entryFor(key);
 	if (!entry) return false;
-	const read = ['get', 'head'].includes((method || 'get').toLowerCase());
 	return read ? !isEntryVisible({ key, ...entry }) : entry.enabled === false;
 };
 

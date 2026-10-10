@@ -122,7 +122,12 @@ $axios.interceptors.request.use(
 		if (
 			entryFor &&
 			sameWorkspace &&
-			shouldBlockRequest(config.method, config.url, entryFor)
+			shouldBlockRequest(
+				config.method,
+				config.url,
+				entryFor,
+				store.getters['featureToggles/modulesKnown'],
+			)
 		) {
 			return Promise.reject(
 				moduleOffError(config, moduleKeyForRequest(config.url) as string),

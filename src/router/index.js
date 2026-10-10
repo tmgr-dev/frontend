@@ -144,6 +144,7 @@ router.beforeEach(async (to, from, next) => {
 					workspaceId: workspaceFromUrl.id,
 				});
 				await syncActiveLocalWorkspace(workspaceFromUrl.id);
+				await store.dispatch('featureToggles/ensureWorkspaceModules');
 			}
 		}
 
