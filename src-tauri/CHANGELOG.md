@@ -3,6 +3,19 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.30 — 2026-10-11
+
+- TMGR Desktop now runs on Windows and Linux, not only on Macs with Apple Silicon. Every release ships a Windows
+  installer (`-setup.exe`, plus an `.msi`) and Linux `.AppImage`, `.deb`, `.rpm` and `.snap` packages, and there is
+  a Nix flake for NixOS. The Windows installer is not code-signed yet, so Windows SmartScreen may warn the first
+  time: choose "More info" → "Run anyway".
+- The Windows installer, the AppImage, `.deb` and `.rpm` update themselves like the Mac app. The snap and the Nix
+  package are updated by the Snap Store or by Nix instead.
+- On Windows and Linux shortcuts use Ctrl instead of ⌘, the app lives in the system tray, and "Check for Updates…"
+  is in the tray menu. `tmgr://` links reach the window that is already open instead of starting a second copy.
+- Not available yet: on Linux, idle detection; on Windows, local agent access (MCP) and plugin windows; outside
+  macOS, the "selected text to task" shortcut.
+
 ## 0.9.29 — 2026-10-09
 
 - Agent work is now a workspace feature, on by default: the workspace owner can turn it off in Settings → Features →
