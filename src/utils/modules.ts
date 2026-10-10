@@ -313,6 +313,7 @@ export const presetSummary = (
 	modules: Pick<ModuleEntry, 'key' | 'name'>[],
 ): string => {
 	if (preset.key === 'everything') return 'All modules';
+	if (preset.modules.length === 0) return 'No modules, core only';
 	const names = new Map(modules.map((m) => [m.key, m.name]));
 	return preset.modules
 		.filter((key) => !key.startsWith('notifications.'))

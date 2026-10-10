@@ -495,6 +495,11 @@ describe('presetSummary', () => {
 			),
 		).toBe('Dashboard, Checkpoints, Reports & export');
 	});
+	it('says core only for a preset without modules', () => {
+		expect(
+			presetSummary({ key: 'minimal', name: 'Minimal', description: '', modules: [] }, modules),
+		).toBe('No modules, core only');
+	});
 	it('falls back to a readable key for unknown modules', () => {
 		expect(
 			presetSummary(
