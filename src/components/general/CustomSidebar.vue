@@ -7,7 +7,11 @@
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
-	import { isDesktopApp } from '@/utils/desktop';
+	import {
+		hasNativeTitleBar,
+		isDesktopApp,
+		revealInFileManagerLabel,
+	} from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
 	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
@@ -136,6 +140,8 @@
 	const { isFeatureEnabled, isUserFeatureEnabled } = useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
+	const showWindowControls = isDesktop && !hasNativeTitleBar();
+	const revealLabel = revealInFileManagerLabel();
 	const pagesEnabled = computed(() =>
 		pagesAvailable(activeWorkspace.value, isFeatureEnabled('pages')),
 	);
@@ -640,7 +646,7 @@
 												<FolderOpen class="size-4" />
 											</div>
 											<div class="font-medium text-muted-foreground">
-												Show in Finder
+												{{ revealLabel }}
 											</div>
 										</DropdownMenuItem>
 										<DropdownMenuItem
@@ -1081,7 +1087,7 @@
 						:class="{ 'md:px-6': !isDesktop }"
 					>
 						<div
-							v-if="isDesktop"
+							v-if="showWindowControls"
 							data-tauri-drag-region
 							class="-ml-1 flex w-[calc(var(--sidebar-width)-1rem)] shrink-0 items-center group-has-[[data-collapsible=icon]]/sidebar-wrapper:mr-1 group-has-[[data-collapsible=icon]]/sidebar-wrapper:w-auto"
 						>

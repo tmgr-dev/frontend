@@ -7,7 +7,9 @@ import {
 	mergeShortcuts,
 	parseDeepLink,
 	pickQuickAddWorkspace,
+	primaryModifiersHint,
 	registerShortcuts,
+	shortcutActionsFor,
 	sanitizeDeepLinkParams,
 	splitQuickText,
 	validateAccelerator,
@@ -30,7 +32,7 @@ describe('eventToAccelerator', () => {
 		expect(
 			eventToAccelerator(key('KeyT', { altKey: true, shiftKey: true })),
 		).toBe('Alt+Shift+T');
-		expect(eventToAccelerator(key('Digit1', { metaKey: true }))).toBe(
+		expect(eventToAccelerator(key('Digit1', { metaKey: true }), 'macos')).toBe(
 			'Command+1',
 		);
 	});
@@ -80,8 +82,66 @@ it('enables every shortcut by default', () => {
 });
 
 it('describes an accelerator with macOS symbols', () => {
-	expect(describeAccelerator('Alt+Shift+T')).toBe('⌥⇧T');
-	expect(describeAccelerator('Command+Control+Space')).toBe('⌘⌃Space');
+	expect(describeAccelerator('Alt+Shift+T', 'macos')).toBe('⌥⇧T');
+	expect(describeAccelerator('Command+Control+Space', 'macos')).toBe('⌘⌃Space');
+});
+
+describe('off macOS', () => {
+	it('describes an accelerator with Ctrl, Alt and Shift', () => {
+		expect(describeAccelerator('Alt+Shift+T', 'windows')).toBe('Alt+Shift+T');
+		expect(describeAccelerator('CommandOrControl+Shift+K', 'linux')).toBe(
+			'Ctrl+Shift+K',
+		);
+		expect(describeAccelerator('Super+Space', 'windows')).toBe('Win+Space');
+		expect(describeAccelerator('Super+Space', 'linux')).toBe('Super+Space');
+	});
+
+	it('records Ctrl as CommandOrControl and the Windows key as Super', () => {
+		expect(eventToAccelerator(key('KeyK', { ctrlKey: true }), 'windows')).toBe(
+			'CommandOrControl+K',
+		);
+		expect(eventToAccelerator(key('KeyK', { metaKey: true }), 'linux')).toBe(
+			'Super+K',
+		);
+		expect(eventToAccelerator(key('KeyK', { ctrlKey: true }), 'macos')).toBe(
+			'Control+K',
+		);
+	});
+
+	it('accepts Ctrl and Super as primary modifiers and reserves Ctrl+C', () => {
+		expect(validateAccelerator('CommandOrControl+Shift+K')).toBeNull();
+		expect(validateAccelerator('Super+K')).toBeNull();
+		expect(validateAccelerator('CommandOrControl+C')).toBe('reserved');
+	});
+
+	it('drops the selection shortcut and words the modifier hint without macOS symbols', () => {
+		expect(shortcutActionsFor('macos')).toContain('selection');
+		expect(shortcutActionsFor('windows')).not.toContain('selection');
+		expect(shortcutActionsFor('linux')).not.toContain('selection');
+		expect(primaryModifiersHint('macos')).toBe('Use at least one of ⌘ ⌃ ⌥');
+		expect(primaryModifiersHint('windows')).toBe(
+			'Use at least one of Ctrl, Alt, Win',
+		);
+	});
+
+	it('does not register the selection shortcut', async () => {
+		const registered: string[] = [];
+		const api = {
+			register: async (accelerator: string) => {
+				registered.push(accelerator);
+			},
+			unregisterAll: async () => {},
+		};
+		const result = await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			() => {},
+			'windows',
+		);
+		expect(registered).not.toContain(DEFAULT_SHORTCUTS.selection.accelerator);
+		expect(result.status.selection).toBe('off');
+		expect(result.status.quickAdd).toBe('ok');
+	});
 });
 
 describe('parseDeepLink pages', () => {
@@ -279,7 +339,7 @@ describe('registerShortcuts', () => {
 			selection: { accelerator: 'Alt+Shift+C', enabled: false },
 		};
 
-		const result = await registerShortcuts(api, config, () => {});
+		const result = await registerShortcuts(api, config, () => {}, 'macos');
 
 		expect(result.status).toEqual({
 			quickAdd: 'ok',
@@ -293,12 +353,12 @@ describe('registerShortcuts', () => {
 	it('takes the shortcuts back after a page reload left them grabbed by the previous page', async () => {
 		const api = fakeGlobalShortcuts();
 		const previousPage: string[] = [];
-		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => previousPage.push(action));
+		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => previousPage.push(action), 'macos');
 
 		const reloadedPage: string[] = [];
 		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) =>
 			reloadedPage.push(action),
-		);
+		'macos');
 
 		expect(result.status).toEqual({
 			quickAdd: 'ok',
@@ -314,7 +374,7 @@ describe('registerShortcuts', () => {
 	it('fires only on press, not on release', async () => {
 		const api = fakeGlobalShortcuts();
 		const fired: string[] = [];
-		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => fired.push(action));
+		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => fired.push(action), 'macos');
 
 		api.grabbed.get('Alt+Shift+T')?.({ state: 'Released' });
 		api.grabbed.get('Alt+Shift+T')?.({ state: 'Pressed' });
@@ -330,7 +390,7 @@ describe('registerShortcuts', () => {
 			return register(accelerator, handler);
 		};
 
-		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, () => {});
+		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, () => {}, 'macos');
 
 		expect(result.status.quickAdd).toBe('taken');
 		expect(result.registered).not.toContain('Alt+Space');

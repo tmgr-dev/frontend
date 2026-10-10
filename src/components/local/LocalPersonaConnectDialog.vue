@@ -124,10 +124,11 @@
 		extractFieldErrors,
 		validateTokenLabel,
 	} from '@/utils/personas';
+	import { thisComputerName } from '@/utils/desktop';
 	import { computed, defineComponent, reactive, ref, watch, type PropType } from 'vue';
 
 	const BOUNDARY_LINE =
-		"The token keeps an agent inside this persona's permissions and signs everything it writes. It is not a lock against other programs on this Mac: anything running as you can read this workspace's file directly.";
+		`The token keeps an agent inside this persona's permissions and signs everything it writes. It is not a lock against other programs on ${thisComputerName()}: anything running as you can read this workspace's file directly.`;
 
 	export default defineComponent({
 		name: 'LocalPersonaConnectDialog',

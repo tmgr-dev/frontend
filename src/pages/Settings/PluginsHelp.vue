@@ -208,7 +208,7 @@
 					<li class="flex flex-wrap items-center gap-2">
 						<Check class="h-4 w-4 shrink-0 text-emerald-600" />
 						<span
-							>Network, files, the menu bar, tmgr:// links and web links on your
+							>Network, files, the {{ trayName }}, tmgr:// links and web links on your
 							computer wait for</span
 						>
 						<span
@@ -297,7 +297,7 @@
 					</li>
 				</ol>
 				<p class="text-muted-foreground">
-					API 1.1: every new ability is its own permission (alarms, menu bar,
+					API 1.1: every new ability is its own permission (alarms, {{ trayName }},
 					tmgr:// links, web links, statuses, relations, agent work), shown when
 					you install or update. Try them all with
 					<code>plugin-sdk/examples/kitchen-sink</code> in developer mode; the
@@ -310,7 +310,7 @@
 				<p class="text-muted-foreground">
 					API 1.4: a plugin can show a counter on its own sidebar item. It needs
 					the views:badge permission, shown when you install or update, and no
-					extra consent. Long menu bar titles are shortened with "…" instead of
+					extra consent. Long {{ trayName }} titles are shortened with "…" instead of
 					being refused.
 				</p>
 				<p class="text-muted-foreground">
@@ -351,6 +351,7 @@
 		ShieldCheck,
 		Users,
 	} from 'lucide-vue-next';
+	import { trayName } from '@/utils/desktop';
 	import { defineComponent, h, type PropType } from 'vue';
 
 	const StepLabel = defineComponent({
@@ -436,6 +437,7 @@
 		setup() {
 			setDocumentTitle('How plugins work');
 			return {
+				trayName: trayName(),
 				glance: [
 					{
 						icon: ShieldCheck,

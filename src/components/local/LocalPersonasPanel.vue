@@ -110,7 +110,7 @@
 					</label>
 				</div>
 
-				<div v-if="canConnect(persona)" class="flex flex-col gap-2 border-t border-border pt-2">
+				<div v-if="canConnect(persona) && localAccessAvailable" class="flex flex-col gap-2 border-t border-border pt-2">
 					<div class="flex items-center justify-between">
 						<Button size="sm" variant="outline" @click="openConnect(persona)">
 							Connect an agent
@@ -176,12 +176,19 @@
 			<div class="flex items-center justify-between">
 				<h5 class="text-sm font-semibold">Local agent access</h5>
 				<Switch
+					v-if="localAccessAvailable"
 					:checked="accessStatus.enabled"
 					:disabled="accessToggling"
 					@update:checked="toggleAccess"
 				/>
 			</div>
-			<p class="text-xs text-muted-foreground">{{ accessStatusLine }}</p>
+			<p class="text-xs text-muted-foreground">
+				{{
+					localAccessAvailable
+						? accessStatusLine
+						: 'Local access is not available on Windows yet.'
+				}}
+			</p>
 		</section>
 
 		<LocalPersonaConnectDialog
@@ -223,6 +230,7 @@
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import { localAccessConnect, resolveLocalAccessConnect } from '@/pluginSystem/state';
+	import { supportsLocalAccess } from '@/utils/desktop';
 	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -268,6 +276,7 @@
 				bridgeCommand: '',
 			});
 			const accessToggling = ref(false);
+			const localAccessAvailable = supportsLocalAccess();
 
 			const currentUser = () => ({
 				id: Number(store.state.user?.id) || 0,
@@ -313,7 +322,7 @@
 
 			onMounted(async () => {
 				if (!workspace) return;
-				await Promise.all([refreshPersonas(), refreshLlmConfig(), refreshTokens(), refreshAccessStatus()]);
+				await Promise.all([refreshPersonas(), refreshLlmConfig(), refreshTokens(), localAccessAvailable && refreshAccessStatus()]);
 			});
 
 			const isEnabled = (persona: WorkspacePersonaRow) => !!persona.enabled_at && !persona.disabled_at;
@@ -457,6 +466,7 @@
 				removeApiKey,
 				tokens,
 				connectPersona,
+				localAccessAvailable,
 				accessStatus,
 				accessToggling,
 				accessStatusLine,
