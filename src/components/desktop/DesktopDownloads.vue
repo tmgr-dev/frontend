@@ -8,12 +8,14 @@
 		downloadToast,
 		type DownloadFinished,
 	} from '@/utils/desktopDownloads';
+	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import { defineComponent, h, onBeforeUnmount, onMounted } from 'vue';
 
 	export default defineComponent({
 		name: 'DesktopDownloads',
 		setup() {
 			const { toast } = useToast();
+			const revealLabel = revealInFileManagerLabel();
 			let unlisten: (() => void) | null = null;
 			let disposed = false;
 
@@ -42,10 +44,10 @@
 								? h(
 										ToastAction,
 										{
-											altText: 'Show in Finder',
+											altText: revealLabel,
 											onClick: () => reveal(revealPath),
 										},
-										() => 'Show in Finder',
+										() => revealLabel,
 								  )
 								: undefined,
 						});

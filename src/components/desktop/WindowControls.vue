@@ -18,7 +18,7 @@
 </template>
 
 <script>
-	import { isDesktopApp } from '@/utils/desktop';
+	import { hasNativeTitleBar, isDesktopApp } from '@/utils/desktop';
 	import { Maximize2, Minus, X } from 'lucide-vue-next';
 	import { defineComponent } from 'vue';
 
@@ -36,7 +36,7 @@
 				await getCurrentWindow()[action]();
 			};
 
-			return { controls, run, isDesktop: isDesktopApp() };
+			return { controls, run, isDesktop: isDesktopApp() && !hasNativeTitleBar() };
 		},
 	});
 </script>
