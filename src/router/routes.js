@@ -64,6 +64,15 @@ const safeRedirect = (to, target) => {
 
 const routes = [
 	{
+		path: '/welcome',
+		component: () => import('@/pages/desktop/Welcome.vue'),
+		name: 'Welcome',
+		meta: {
+			allowedGuests: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
 		path: '/login',
 		component: () => import('@/pages/auth/Login.vue'),
 		name: 'Login',

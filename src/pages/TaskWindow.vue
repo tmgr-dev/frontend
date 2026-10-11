@@ -55,7 +55,7 @@
 			onBeforeUnmount(removeGuard);
 
 			watch(
-				() => store.getters.isLoggedIn,
+				() => store.getters.canUseApp,
 				(loggedIn) => {
 					if (!loggedIn) void closeWindow();
 				},

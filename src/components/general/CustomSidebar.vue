@@ -218,7 +218,7 @@
 		++sidebarRequest;
 	});
 	async function loadSidebar() {
-		if (!store.getters.isLoggedIn) return;
+		if (!store.getters.canUseApp) return;
 		// Mounts before the router guard resolves the tab's workspace; the batch below reports getUser failures.
 		if (!store.state.user?.id) await getUser().catch(() => {});
 		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
@@ -330,7 +330,7 @@
 	watch(
 		() => store.state.appRerenderKey,
 		async () => {
-			if (store.getters.isLoggedIn && workspaces.value.length > 0) {
+			if (store.getters.canUseApp && workspaces.value.length > 0) {
 				// Re-check the current workspace from settings
 				const currentWorkspaceId = store.state.user?.settings?.find(
 					(setting: any) => setting.key === 'current_workspace',
@@ -519,7 +519,7 @@
 <template>
 	<SidebarProvider>
 		<SidebarMobileCloser>
-			<Sidebar collapsible="icon" v-if="store.getters.isLoggedIn">
+			<Sidebar collapsible="icon" v-if="store.getters.canUseApp">
 				<SidebarHeader>
 					<AsyncContent
 						:pending="sidebarPending"
@@ -1078,7 +1078,7 @@
 			>
 				<EmailVerifyBanner />
 				<header
-					v-if="store.getters.isLoggedIn"
+					v-if="store.getters.canUseApp"
 					data-tauri-drag-region
 					:class="
 						isDesktop

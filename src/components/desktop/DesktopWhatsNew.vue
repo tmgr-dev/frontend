@@ -78,7 +78,7 @@
 			const hasPriorData = hadSessionAtLaunch();
 
 			const ready = () =>
-				store.getters.isLoggedIn && router.currentRoute.value.path !== '/';
+				store.getters.canUseApp && router.currentRoute.value.path !== '/';
 
 			const check = () => {
 				if (checked || !ready()) return;
@@ -90,7 +90,7 @@
 				await router.isReady();
 				watch(
 					() => [
-						store.getters.isLoggedIn,
+						store.getters.canUseApp,
 						router.currentRoute.value.path,
 					],
 					check,
