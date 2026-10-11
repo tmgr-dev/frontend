@@ -296,6 +296,8 @@ const writableTaskFields = (body: any) => {
 	if ('title' in body) fields.title = String(body.title ?? '').trim();
 	if ('description' in body) fields.description = body.description ?? null;
 	if ('description_json' in body) fields.description_json = toJson(body.description_json);
+	if (body.clear_description === true) fields.description = null;
+	if (body.clear_description_json === true) fields.description_json = null;
 	if ('status_id' in body) fields.status_id = numberOrNull(body.status_id);
 	if ('project_category_id' in body) fields.project_category_id = numberOrNull(body.project_category_id);
 	if ('priority' in body && body.priority) fields.priority = String(body.priority);
