@@ -34,6 +34,11 @@ describe('validateProperties person', () => {
 		expect(errorFor(errors, 'company')).toBe('');
 	});
 
+	it('accepts the local identity as a person user id', () => {
+		expect(validateProperties('person', { user_id: -1 }).user_id).toBeUndefined();
+		expect(validateProperties('person', { user_id: 0 }).user_id).toBeTruthy();
+	});
+
 	it('rejects a non-integer user id and overlong text', () => {
 		const errors = validateProperties('person', {
 			user_id: 1.5,

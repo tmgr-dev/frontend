@@ -45,10 +45,13 @@ const isNullableText = (value: unknown): boolean =>
 const isId = (value: unknown): boolean =>
 	typeof value === 'number' && Number.isInteger(value) && value > 0;
 
+const isUserId = (value: unknown): boolean =>
+	typeof value === 'number' && Number.isInteger(value) && value !== 0;
+
 const validatePerson = (props: Record<string, any>): PropertyErrors => {
 	const errors: PropertyErrors = {};
 	const { user_id: userId, aliases, network, company, role } = props;
-	if (userId !== null && userId !== undefined && !isId(userId)) {
+	if (userId !== null && userId !== undefined && !isUserId(userId)) {
 		errors.user_id = 'Invalid member';
 	}
 	if (aliases !== undefined && aliases !== null) {

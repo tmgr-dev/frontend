@@ -42,9 +42,11 @@ describe('getWorkspaceModules', () => {
 		expect(await getWorkspaceModules(5)).toBeNull();
 	});
 
-	it('does not call the server for a local workspace', async () => {
-		expect(await getWorkspaceModules(-1)).toBeNull();
-		expect(http.get).not.toHaveBeenCalled();
+	it('asks the modules endpoint for a local workspace too', async () => {
+		http.get.mockResolvedValue({ data: { data: payload } });
+		const result = await getWorkspaceModules(-1);
+		expect(http.get).toHaveBeenCalledWith('/workspaces/-1/modules');
+		expect(result?.canManage).toBe(true);
 	});
 
 	it('rethrows other errors', async () => {

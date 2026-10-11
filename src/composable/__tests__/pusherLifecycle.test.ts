@@ -279,3 +279,22 @@ test('manual reconnect after the retry budget is spent starts a fresh budget', (
 	pusher.reconnect();
 	expect(pusher.getConnectionInfo().reconnectAttempts).toBe(0);
 });
+
+test('without a cloud token no socket is opened but local deliveries still reach subscribers', () => {
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: { getItem: () => null },
+	});
+	const { api, instances } = loadPusher();
+	const pusher = api.usePusher();
+	const started = jest.fn();
+	pusher.subscribeToUser(-1, { onTaskCountdownStarted: started });
+	pusher.subscribeToWorkspace(-5, { onTaskUpdated: jest.fn() });
+	pusher.subscribeToWorkspace(7, { onTaskUpdated: jest.fn() });
+	pusher.reconnect();
+	api.getSharedEcho();
+	api.deliverToUser(-1, (h: any) => h.onTaskCountdownStarted?.({ id: 1 }));
+
+	expect(instances).toHaveLength(0);
+	expect(started).toHaveBeenCalledWith({ id: 1 });
+});

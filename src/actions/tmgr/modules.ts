@@ -1,4 +1,3 @@
-import { isLocalWorkspaceId } from '@/local/classify';
 import $axios from '@/plugins/axios';
 import {
 	modulesToMap,
@@ -11,7 +10,6 @@ import {
 export const getWorkspaceModules = async (
 	workspaceId: number | string,
 ): Promise<ModulesPayload | null> => {
-	if (isLocalWorkspaceId(workspaceId)) return null;
 	try {
 		const { data } = await $axios.get(`/workspaces/${workspaceId}/modules`);
 		return parseModulesPayload(data);

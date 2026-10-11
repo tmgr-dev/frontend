@@ -120,7 +120,7 @@ export const localContext = async (
 		db.catch(() => databases.delete(workspace.code));
 	}
 	const ctx: LocalContext = { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace), actor };
-	if (user.id > 0 && !contextSeeded.has(workspace.code)) {
+	if (user.id !== 0 && !contextSeeded.has(workspace.code)) {
 		contextSeeded.add(workspace.code);
 		await ensureContextPage({ ...ctx, actor: undefined }).catch((error) => {
 			contextSeeded.delete(workspace.code);

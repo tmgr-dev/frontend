@@ -19,7 +19,7 @@
 	<alert ref="alert" />
 
 	<div
-		v-if="isDesktop && !$store.getters.isLoggedIn"
+		v-if="isDesktop && !$store.getters.canUseApp"
 		data-tauri-drag-region
 		class="fixed inset-x-0 top-0 z-50 flex h-10 items-center px-3"
 	>
@@ -39,16 +39,16 @@
 		</div>
 
 		<StatusBar
-			v-if="isDesktop && $store.getters.isLoggedIn"
+			v-if="isDesktop && $store.getters.canUseApp"
 			:tasks="shownActiveTasks"
 		/>
 		<ActiveTasks v-else :tasks="shownActiveTasks" />
 		<DesktopTray
-			v-if="isDesktop && $store.getters.isLoggedIn"
+			v-if="isDesktop && $store.getters.canUseApp"
 			:tasks="shownActiveTasks"
 		/>
 		<DesktopHotkeys
-			v-if="isDesktop && $store.getters.isLoggedIn"
+			v-if="isDesktop && $store.getters.canUseApp"
 			:tasks="shownActiveTasks"
 		/>
 		<DesktopDownloads v-if="isDesktop" />
@@ -164,7 +164,7 @@
 
 			const loadRoutinesCount = async () => {
 				if (
-					store.getters.isLoggedIn &&
+					store.getters.canUseApp &&
 					store.getters['featureToggles/modulesKnown'] &&
 					store.getters['featureToggles/isFeatureEnabled']('daily_routines')
 				) {
@@ -202,7 +202,7 @@
 			}
 			if (!isDetachedWindow) {
 				watch(
-					() => store.getters.isLoggedIn,
+					() => store.getters.canUseApp,
 					(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
 					{ immediate: true },
 				);
@@ -285,7 +285,7 @@
 			'$route.params.workspace_code': {
 				async handler(workspaceCode) {
 					if (this.isDetachedWindow) return;
-					if (workspaceCode && this.$store.getters.isLoggedIn) {
+					if (workspaceCode && this.$store.getters.canUseApp) {
 						// If URL has workspace code, check if it matches current workspace
 						const workspaces = this.$store.state.workspaces;
 						if (!workspaces || !workspaces.length) {
@@ -560,7 +560,7 @@
 				);
 			},
 			handleWorkspaceHotkeys(event) {
-				if (!this.$store.getters.isLoggedIn) return;
+				if (!this.$store.getters.canUseApp) return;
 
 				const workspaces = this.$store.state.workspaces;
 				if (!workspaces || !workspaces.length) return;
@@ -650,7 +650,12 @@
 				next();
 			});
 
-			if (!this.$store.state.user?.id || this.isQuickAddWindow || this.isDetachedWindow) {
+			if (
+				!this.$store.state.user?.id ||
+				this.$store.getters.isLocalOnly ||
+				this.isQuickAddWindow ||
+				this.isDetachedWindow
+			) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
@@ -672,7 +677,7 @@
 			// Guests must not fire authenticated calls: the 401 would trigger the
 			// interceptor's hardLogout() and yank the router off a social OAuth
 			// callback page before the code exchange completes.
-			if (this.$store.getters.isLoggedIn) {
+			if (this.$store.getters.canUseApp) {
 				this.ensureWorkspacesLoaded();
 			}
 			if (!this.isDetachedWindow) {

@@ -1,3 +1,4 @@
+import type { LocalProfile } from '@/utils/localProfile';
 import { Store } from 'vuex';
 
 export interface UserSetting {
@@ -10,6 +11,7 @@ export interface UserSetting {
 
 export interface User {
 	has_avatar?: boolean;
+	is_local?: boolean;
 	id: number;
 	email: string;
 	role: number;
@@ -64,10 +66,16 @@ export interface RootState {
 	urlManuallyChanged: boolean;
 	updatedTaskData: any | null;
 	updatedTaskKey: number;
+	localProfile: LocalProfile | null;
 }
+
+export type AccountMode = 'cloud' | 'local' | 'none';
 
 export interface RootGetters {
 	isLoggedIn: boolean;
+	accountMode: AccountMode;
+	canUseApp: boolean;
+	isLocalOnly: boolean;
 	workspaceById: (id: number) => Workspace | undefined;
 	workspaceStatusById: (id: number) => WorkspaceStatus | undefined;
 	userSettingByKey: (key: string) => UserSetting | undefined;

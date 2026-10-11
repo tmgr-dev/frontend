@@ -15,6 +15,8 @@ export interface ModuleEntry {
 	enabled?: boolean;
 	hidden?: boolean;
 	value?: string | boolean;
+	local?: boolean;
+	requires_account?: boolean;
 	[extra: string]: unknown;
 }
 
