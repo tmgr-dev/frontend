@@ -81,13 +81,12 @@
 									</a>
 								</div>
 							</SettingsSection>
-							<SettingsSection
+							<PromotionsList
 								v-if="promotionsEnabled && !localOnly"
-								title="More from the maker"
-								description="Other products from the people who build TMGR."
-							>
-								<PromotionsList placement="about" />
-							</SettingsSection>
+								placement="about"
+								section-title="More from the maker"
+								section-description="Other products from the people who build TMGR."
+							/>
 						</div>
 
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
