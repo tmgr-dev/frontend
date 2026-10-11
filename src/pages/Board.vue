@@ -420,13 +420,6 @@
 																		@task-archived="updateSingleTaskInBoard"
 																	/>
 																</template>
-																<template #footer>
-																	<BoardLoadMore
-																		v-if="hasMoreTasks(column)"
-																		:loading="paging[column.status.id].loading"
-																		@more="loadMoreTasks(column.status.id)"
-																	/>
-																</template>
 															</Draggable>
 
 															<!-- TM-151: quick-add right under the last card. Teleported into the
@@ -784,7 +777,7 @@
 	} from '@/actions/tmgr/statuses';
 	import {
 		createTask,
-		getStatusTasksPage,
+		getSortedTasksByStatus,
 		refreshAssignedTask,
 		updateStatusOfTasks,
 		updateTaskOrders,
@@ -797,7 +790,6 @@
 		getWorkspaceStatuses,
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
-	import BoardLoadMore from '@/components/board/BoardLoadMore.vue';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
@@ -822,12 +814,6 @@
 		filterBoardTasks,
 		MY_PERSONAS_FILTER,
 	} from '@/utils/boardLoading';
-	import {
-		appendUnknownTasks,
-		columnOrders,
-		consumeRest,
-		restAfterPage,
-	} from '@/utils/boardPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import { createRequestSequence } from '@/utils/requestSequence';
@@ -839,8 +825,6 @@
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
 	import { SquareKanban } from 'lucide-vue-next';
-
-	const BOARD_PAGE_SIZE = 50;
 
 	export default {
 		name: 'Board',
@@ -865,7 +849,6 @@
 			Select,
 			Confirm,
 			WorkspaceUsers,
-			BoardLoadMore,
 			BoardTaskCount,
 			FeatureGate,
 			BoardPreview,
@@ -924,8 +907,6 @@
 				},
 			],
 			columns: [],
-			paging: {},
-			loadGeneration: 0,
 			pluginBadgeFeed: markRaw(createCardBadgeFeed()),
 			cardHandlerCache: markRaw(new WeakMap()),
 			boardFilterToggles: {},
@@ -1111,16 +1092,13 @@
 				this.columns = this.columns.map((column) => {
 					if (affected && !affected.has(column.status.id)) return column;
 					const tasksInColumn = column.tasks;
-					const rest = this.paging[column.status.id]?.rest;
-					const taskCount =
-						tasksInColumn.length + Math.max(0, rest?.count || 0);
-					const summary =
-						tasksInColumn.reduce((acc, task) => task.common_time + acc, 0) +
-						Math.max(0, rest?.seconds || 0);
+					const taskCount = tasksInColumn.length;
+					const summary = tasksInColumn.reduce(
+						(acc, task) => task.common_time + acc,
+						0,
+					);
 					const summaryInHours = this.formatTime(summary);
-					const overtimeSeconds =
-						this.calculateColumnOvertime(tasksInColumn) +
-						Math.max(0, rest?.overtime || 0);
+					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
 					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
 					return {
@@ -1341,13 +1319,21 @@
 				});
 			},
 			async saveOrders(status) {
-				await this.ensureColumnComplete(status);
 				const column = this.findColumn(status);
 				if (!column) {
 					return;
 				}
+				const orders = [];
+				const { tasks } = column;
+				tasks.forEach(({ id }, index) => {
+					orders.push({
+						id: id,
+						order: index + 1,
+					});
+				});
+
 				await updateTaskOrders({
-					tasks: columnOrders(column.tasks),
+					tasks: orders,
 				});
 			},
 			cardHandlers(task) {
@@ -1379,7 +1365,6 @@
 				await this.saveOrders(column.status.id);
 			},
 			async handleMoveToBottom(task, column) {
-				await this.ensureColumnComplete(column.status.id);
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
 					return;
@@ -1409,7 +1394,6 @@
 				if (!column) {
 					return null;
 				}
-				await this.ensureColumnComplete(column.status.id);
 				const { tasks } = column;
 				const taskIds = tasks.map((t) => t.id);
 				const archiveStatus = this.statuses.find((s) => s.type === 'archived');
@@ -1459,7 +1443,6 @@
 					return;
 				}
 
-				await this.ensureColumnComplete(this.sourceColumnForMove.status.id);
 				const { tasks } = this.sourceColumnForMove;
 				if (tasks.length === 0) {
 					this.closeMoveTasksModal();
@@ -1588,90 +1571,22 @@
 					...this.$store.state.filter,
 					myUserId: this.$store.state.user?.id,
 				};
-				const search = filter.searchText || '';
-				const paged =
-					!search &&
-					!filter.selectedUser &&
-					!filter.selectedCategory &&
-					!filter.selectedPersona;
-				const pages = await Promise.all(
+				const tasks = await Promise.all(
 					columns.map((column) =>
-						getStatusTasksPage(
-							column.status.id,
-							paged
-								? { page: 1, perPage: BOARD_PAGE_SIZE }
-								: { search: search || undefined },
-						),
+						getSortedTasksByStatus(column.status.id, {
+							params: {
+								fields: 'card',
+								'order[column]': 'order',
+								'order[direction]': 'asc',
+								...(filter.searchText ? { search: filter.searchText } : {}),
+							},
+						}),
 					),
 				);
-				const paging = {};
-				const result = columns.map((column, index) => {
-					const { tasks, meta } = pages[index];
-					paging[column.status.id] = {
-						page: 1,
-						lastPage: paged ? meta.last_page : 1,
-						loading: false,
-						promise: null,
-						rest: paged
-							? restAfterPage(meta, tasks, this.calculateColumnOvertime)
-							: null,
-					};
-					return {
-						...column,
-						tasks: filterBoardTasks(tasks, filter),
-					};
-				});
-				return { columns: result, paging };
-			},
-			hasMoreTasks(column) {
-				const state = this.paging[column.status.id];
-				return !!state && state.page < state.lastPage;
-			},
-			loadMoreTasks(statusId) {
-				const state = this.paging[statusId];
-				if (!state || state.promise || state.page >= state.lastPage) return;
-				const generation = this.loadGeneration;
-				state.loading = true;
-				state.promise = (async () => {
-					try {
-						const next = state.page + 1;
-						const { tasks, meta } = await getStatusTasksPage(statusId, {
-							page: next,
-							perPage: BOARD_PAGE_SIZE,
-						});
-						if (generation !== this.loadGeneration) return;
-						const column = this.findColumn(statusId);
-						if (!column) return;
-						appendUnknownTasks(column.tasks, tasks);
-						state.page = next;
-						state.lastPage = meta.last_page;
-						if (state.rest)
-							consumeRest(state.rest, tasks, this.calculateColumnOvertime);
-						this.refreshColumnSummaries(new Set([statusId]));
-					} catch (error) {
-						if (generation === this.loadGeneration)
-							this.boardError = 'Could not load more tasks.';
-					} finally {
-						state.loading = false;
-						state.promise = null;
-					}
-				})();
-				return state.promise;
-			},
-			async ensureColumnComplete(statusId) {
-				const state = this.paging[statusId];
-				if (!state) return;
-				if (state.promise) await state.promise;
-				if (state.page >= state.lastPage) return;
-				const generation = this.loadGeneration;
-				const { tasks } = await getStatusTasksPage(statusId);
-				const column = this.findColumn(statusId);
-				if (generation !== this.loadGeneration || !column)
-					throw new Error('The board was reloaded');
-				appendUnknownTasks(column.tasks, tasks);
-				state.page = state.lastPage;
-				state.rest = { count: 0, seconds: 0, overtime: 0 };
-				this.refreshColumnSummaries(new Set([statusId]));
+				return columns.map((column, index) => ({
+					...column,
+					tasks: filterBoardTasks(tasks[index], filter),
+				}));
 			},
 			syncBoardFilters() {
 				const query = this.$route.query;
@@ -1932,9 +1847,7 @@
 					this.syncBoardQuery();
 					return this.fetchBoardTasks();
 				},
-				({ columns, paging }) => {
-					this.loadGeneration++;
-					this.paging = paging;
+				(columns) => {
 					this.columns = columns;
 					this.refreshColumnSummaries();
 					this.tasksLoaded = true;

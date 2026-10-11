@@ -372,8 +372,11 @@ const searchClause = (req: LocalRequest, params: any[]) => {
 	const clauses: string[] = [];
 	const search = req.query.get('search')?.trim().toLowerCase();
 	if (search) {
-		clauses.push(`(LOWER(t.title) LIKE ? OR LOWER(COALESCE(t.description, '')) LIKE ?)`);
-		params.push(`%${search}%`, `%${search}%`);
+		const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+		clauses.push(
+			`(LOWER(t.title) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(t.description, '')) LIKE ? ESCAPE '\\')`,
+		);
+		params.push(pattern, pattern);
 	}
 	clauses.push(...personaFilterClauses(req.query, req.ctx, params));
 	const category = req.query.get('project_category_id');

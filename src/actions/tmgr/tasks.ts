@@ -268,64 +268,6 @@ export const getSortedTasksByStatus = async (
 	);
 };
 
-export interface StatusTasksMeta {
-	total: number;
-	last_page: number;
-	current_page: number;
-	per_page: number;
-	total_seconds: number;
-	total_overtime_seconds: number;
-}
-
-export interface StatusTasksPage {
-	tasks: Task[];
-	meta: StatusTasksMeta;
-}
-
-export const getStatusTasksPage = async (
-	statusId: number,
-	options: { page?: number; perPage?: number; search?: string } = {},
-): Promise<StatusTasksPage> => {
-	const params: Record<string, string | number> = {
-		fields: 'card',
-		'order[column]': 'order',
-		'order[direction]': 'asc',
-	};
-	const paged = options.page !== undefined;
-	if (paged) {
-		params.page = options.page as number;
-		if (options.perPage) params.per_page = options.perPage;
-	}
-	if (options.search) params.search = options.search;
-	const cacheKey = requestCache.generateKey(
-		`tasks-status-${statusId}`,
-		paged ? params : { ...params, all: true },
-	);
-
-	return requestCache.getOrFetch(
-		cacheKey,
-		async () => {
-			const { data } = await $axios.get(
-				paged ? `tasks/status/${statusId}` : `tasks/status/${statusId}?all`,
-				{ params },
-			);
-			const tasks: Task[] = data.data;
-			return {
-				tasks,
-				meta: {
-					total: Number(data.meta?.total ?? tasks.length),
-					last_page: data.meta?.last_page ?? 1,
-					current_page: data.meta?.current_page ?? 1,
-					per_page: data.meta?.per_page ?? tasks.length,
-					total_seconds: Number(data.meta?.total_seconds ?? 0),
-					total_overtime_seconds: Number(data.meta?.total_overtime_seconds ?? 0),
-				},
-			};
-		},
-		{ ttl: 30000, cache: false },
-	);
-};
-
 export const getBatchTasksByStatuses = async (
 	statusIds: number[],
 	params: AxiosRequestConfig = {},
