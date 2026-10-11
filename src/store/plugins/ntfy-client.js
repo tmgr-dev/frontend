@@ -6,6 +6,7 @@ class NtfyClient {
 		this.userId = null;
 		this.serverUrl =
 			import.meta.env.VITE_NTFY_SERVER_URL || 'http://localhost:2586';
+		this.connectGeneration = 0;
 		this.onMessageCallback = null;
 	}
 
