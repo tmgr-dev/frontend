@@ -80,6 +80,7 @@
 	import SidebarMobileCloser from '@/components/ui/sidebar/SidebarMobileCloser.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useNavHistory } from '@/composable/useNavHistory';
 	import store from '@/store';
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
@@ -92,6 +93,8 @@
 	} from './sidebarViewBadge';
 	import {
 		ArchiveIcon,
+		ArrowLeft,
+		ArrowRight,
 		BadgeCheck,
 		BarChart3,
 		Bell,
@@ -142,6 +145,8 @@
 		useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
+	const navHistory = useNavHistory();
+	const { canBack, canForward } = navHistory;
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
 	const hasLocalWorkspaces = computed(
 		() =>
@@ -1167,6 +1172,28 @@
 							<WindowControls />
 						</div>
 						<SidebarTrigger class="-ml-1" />
+						<div v-if="isDesktop" class="flex items-center">
+							<button
+								type="button"
+								class="flex h-8 w-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+								aria-label="Back"
+								title="Back"
+								:disabled="!canBack"
+								@click="navHistory.back()"
+							>
+								<ArrowLeft class="h-4 w-4" />
+							</button>
+							<button
+								type="button"
+								class="flex h-8 w-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+								aria-label="Forward"
+								title="Forward"
+								:disabled="!canForward"
+								@click="navHistory.forward()"
+							>
+								<ArrowRight class="h-4 w-4" />
+							</button>
+						</div>
 						<AddTaskModalTrigger class="-ml-1" />
 						<GlobalSearch
 							v-if="activeWorkspace?.code"

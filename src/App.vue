@@ -115,6 +115,11 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
 	import store from '@/store';
+	import router from '@/router';
+	import {
+		installNavHistory,
+		useNavHistoryInputs,
+	} from '@/composable/useNavHistory';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
@@ -171,6 +176,10 @@
 			}
 
 			const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
+			if (isDesktopApp() && desktopWindowLabel() !== 'quick-add') {
+				installNavHistory(router, store);
+				useNavHistoryInputs();
+			}
 			if (!isDetachedWindow && desktopWindowLabel() !== 'quick-add') {
 				const reloadActiveTasks = () =>
 					store.commit('incrementReloadActiveTasksKey');
