@@ -315,6 +315,7 @@
 		hideButtonLabel,
 		MODULES_FOOTER,
 		payloadFromLegacy,
+		payloadNotices,
 		workflowOffConfirm,
 		type ModuleRow,
 		type ModulesPayload,
@@ -458,8 +459,10 @@
 					{ key: row.key, scope: row.scope },
 					enabled,
 				);
-				if (next) commit(next);
-				else await refresh();
+				if (next) {
+					commit(next);
+					payloadNotices(next).forEach((title) => toaster.toast({ title }));
+				} else await refresh();
 				toaster.toast({
 					title: 'Module updated',
 					action: CircleCheckBigIcon,

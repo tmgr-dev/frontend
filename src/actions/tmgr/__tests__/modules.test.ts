@@ -158,3 +158,27 @@ describe('getWorkspaceModules single flight', () => {
 		await stale;
 	});
 });
+
+describe('setModuleEnabled for workflow', () => {
+	it('sends workflow through the modules endpoint and returns its notices', async () => {
+		http.put.mockResolvedValue({
+			data: {
+				data: {
+					...payload,
+					modules: [{ key: 'workflow', enabled: false }],
+					notices: ['Added a Done status'],
+				},
+			},
+		});
+		const result = await setModuleEnabled(
+			5,
+			{ key: 'workflow', scope: 'workspace' },
+			false,
+		);
+		expect(http.put).toHaveBeenCalledWith('/workspaces/5/modules', {
+			modules: { workflow: false },
+		});
+		expect(http.get).not.toHaveBeenCalled();
+		expect(result?.notices).toEqual(['Added a Done status']);
+	});
+});

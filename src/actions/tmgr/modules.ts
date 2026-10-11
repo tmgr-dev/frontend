@@ -56,6 +56,13 @@ export const setModuleEnabled = async (
 	entry: Pick<ModuleEntry, 'key' | 'scope'>,
 	enabled: boolean,
 ): Promise<ModulesPayload | null> => {
+	if (
+		entry.key === 'workflow' &&
+		entry.scope !== 'user' &&
+		!isLocalWorkspaceId(workspaceId)
+	) {
+		return saveModulesChoice(workspaceId, { modules: { workflow: enabled } });
+	}
 	const url =
 		entry.scope === 'user'
 			? '/user/feature-toggles'
