@@ -88,7 +88,7 @@
 			const hasPriorData = hadSessionAtLaunch();
 
 			const ready = () =>
-				store.getters.canUseApp && router.currentRoute.value.path !== '/';
+				store.getters.canUseApp && router.currentRoute.value.path !== '/app';
 
 			const check = () => {
 				if (checked || !ready()) return;

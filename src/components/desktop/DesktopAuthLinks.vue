@@ -80,7 +80,7 @@
 				await router.push(
 					invitation
 						? { name: 'WorkspaceInvitation', params: { token: invitation } }
-						: '/',
+						: '/app',
 				);
 				store.commit('rerenderApp');
 			};

@@ -738,7 +738,7 @@
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/dashboard`
-												: '/'
+												: '/app'
 										"
 									>
 										<LayoutDashboard />
