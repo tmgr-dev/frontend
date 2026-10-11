@@ -14,6 +14,7 @@ import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { applyRelayedEvent, installWindowEventRelay } from '@/utils/windowEventRelay';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
+import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
 import { requestCache } from '@/utils/requestCache';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import $axios from '@/plugins/axios';
@@ -172,6 +173,14 @@ app.use(Selectable);
 
 const start = async () => {
 	await profileReady;
+	if (isDesktopApp() && desktopWindowLabel() === 'main') {
+		watch(
+			() => store.getters.accountMode,
+			(next, previous) => {
+				if (shouldReloadOnModeChange(previous, next)) window.location.assign('/');
+			},
+		);
+	}
 	app.use(router);
 	app.use(store);
 

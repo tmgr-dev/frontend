@@ -30,8 +30,9 @@ const signedOutTarget = () =>
 		: { name: 'Login' };
 
 router.beforeEach(async (to, from, next) => {
-	if (to.name === 'Welcome' && store.getters.canUseApp) {
-		return next('/');
+	if (to.name === 'Welcome') {
+		if (!isDesktopApp()) return next({ name: 'Login' });
+		if (store.getters.canUseApp) return next('/');
 	}
 
 	if (
