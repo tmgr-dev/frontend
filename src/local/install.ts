@@ -7,6 +7,7 @@ import axios, {
 } from 'axios';
 
 import {
+	FIRST_WORKSPACE_NAME,
 	LOCAL_USER_ID,
 	REQUIRES_ACCOUNT,
 	localIdentity,
@@ -31,12 +32,14 @@ import {
 } from './patch';
 import {
 	activeLocalWorkspace,
+	createLocalWorkspace,
 	hasActiveLocalWorkspace,
 	listLocalWorkspaces,
 	localContext,
 	localWorkspaceById,
 	setActiveLocalWorkspace,
 } from './runtime';
+import type { LocalWorkspace } from './types';
 
 interface Hooks {
 	currentUser: () => any;
@@ -274,12 +277,18 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		};
 	};
 
+	let creatingFirst: Promise<LocalWorkspace> | null = null;
 	const ensureActiveWorkspace = async () => {
 		const list = await listLocalWorkspaces();
 		const current = activeLocalWorkspace();
-		if (current || !list.length) return current;
-		setActiveLocalWorkspace(list[0]);
-		return list[0];
+		if (current) return current;
+		const first =
+			list[0] ??
+			(await (creatingFirst ??= createLocalWorkspace(FIRST_WORKSPACE_NAME).finally(() => {
+				creatingFirst = null;
+			})));
+		setActiveLocalWorkspace(first);
+		return first;
 	};
 
 	const identity = async () =>
@@ -292,6 +301,7 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		const verb = (config.method ?? 'get').toUpperCase();
 		const body = typeof config.data === 'string' ? JSON.parse(config.data || 'null') : config.data;
 		if (path === 'workspaces') {
+			await ensureActiveWorkspace();
 			return respond(config, 200, { data: mergeWorkspaces([], await listLocalWorkspaces(), LOCAL_USER_ID) });
 		}
 		if (path === 'user') return respond(config, 200, { data: await identity() });

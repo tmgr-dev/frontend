@@ -2,6 +2,8 @@ import { CURRENT_WORKSPACE } from './patch';
 
 export const LOCAL_USER_ID = -1;
 
+export const FIRST_WORKSPACE_NAME = 'My workspace';
+
 export const LOCAL_SETTING_IDS = {
 	[CURRENT_WORKSPACE]: 9001,
 	theme: 9002,

@@ -24,6 +24,7 @@ const storage = new Map<string, string>();
 
 let active: LocalWorkspace | null = null;
 let workspaces: LocalWorkspace[] = [LOCAL];
+const created: string[] = [];
 const db = nodeSqliteAvailable ? memoryDb() : null;
 
 jest.mock('../runtime', () => ({
@@ -34,6 +35,12 @@ jest.mock('../runtime', () => ({
 		active = w;
 	},
 	localWorkspaceById: async (id: number) => workspaces.find((w) => w.id === id) ?? null,
+	createLocalWorkspace: async (name: string) => {
+		created.push(name);
+		const workspace = { ...LOCAL, id: -77, name, code: 'created' };
+		workspaces = [...workspaces, workspace];
+		return workspace;
+	},
 	localContext: async (workspace: LocalWorkspace, user: any) => ({
 		db,
 		workspace,
@@ -86,6 +93,17 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 
 	const attempt = (method: string, url: string, data?: unknown) =>
 		client.request({ method, url, data }).catch((error) => error);
+
+	it('creates a first local workspace once when the profile exists but no workspace does', async () => {
+		workspaces = [];
+		created.length = 0;
+		const [user1, user2] = await Promise.all([client.get('user'), client.get('workspaces')]);
+		const current = user1.data.data.settings.find((s: any) => s.key === 'current_workspace');
+		expect(created).toEqual(['My workspace']);
+		expect(Number(current.value)).toBe(-77);
+		expect(user2.data.data.map((w: any) => w.id)).toEqual([-77]);
+		expect(sent).toEqual([]);
+	});
 
 	it('never lets any request reach the network, with or without an active local workspace', async () => {
 		const arbitrary: [string, string][] = [
