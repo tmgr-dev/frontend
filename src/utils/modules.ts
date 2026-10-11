@@ -394,3 +394,22 @@ export const presetNotes = (
 			: 'Workflow: statuses → Done checkbox',
 	];
 };
+
+const PRESET_SUMMARIES: Record<string, string> = {
+	personal: 'Just me: tasks and time, with a Done checkbox',
+	team: 'Work together with statuses and a board',
+	developer: 'Me and my AI agents, with statuses and a board',
+	everything: 'Every module turned on',
+	minimal: 'Just tasks: List, Timer and Comments',
+};
+
+export const presetCard = (
+	preset: Pick<ModulePreset, 'key' | 'name' | 'description'>,
+): { title: string; summary: string } => {
+	const title = preset.name || humanizeKey(preset.key);
+	const description = preset.description || '';
+	const summary =
+		PRESET_SUMMARIES[preset.key] ??
+		(description.toLowerCase() === title.toLowerCase() ? '' : description);
+	return { title, summary };
+};

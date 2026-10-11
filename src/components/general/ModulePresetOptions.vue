@@ -18,8 +18,13 @@
 			/>
 			<span class="min-w-0">
 				<span class="block text-sm font-medium text-ink">{{
-					preset.description || preset.name
+					presetCard(preset).title
 				}}</span>
+				<span
+					v-if="presetCard(preset).summary"
+					class="mt-0.5 block text-sm text-ink-muted"
+					>{{ presetCard(preset).summary }}</span
+				>
 				<span
 					v-if="summary(preset)"
 					class="mt-0.5 block text-xs text-ink-subtle"
@@ -48,6 +53,7 @@
 <script setup lang="ts">
 	import {
 		CUSTOM_CHOICE,
+		presetCard,
 		presetSummary,
 		type ModuleEntry,
 		type ModulePreset,

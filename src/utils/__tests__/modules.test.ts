@@ -18,6 +18,7 @@ import {
 	workflowOffConfirm,
 	payloadNotices,
 	presetSummary,
+	presetCard,
 	readModulesCache,
 	shouldShowPicker,
 	writeModulesCache,
@@ -646,5 +647,44 @@ describe('workflow copy', () => {
 		expect(buildModulesView(payload, true).coreItems).toEqual([
 			{ name: 'Board', needs: '', off: false },
 		]);
+	});
+});
+
+describe('presetCard', () => {
+	const preset = (key: string, name: string, description: string) => ({
+		key,
+		name,
+		description,
+		modules: [],
+	});
+
+	it('titles every card with the preset name and a short summary', () => {
+		expect(
+			presetCard(
+				preset(
+					'minimal',
+					'Minimal',
+					'Just tasks: List, Timer, Comments. Turn on more any time.',
+				),
+			),
+		).toEqual({ title: 'Minimal', summary: 'Just tasks: List, Timer and Comments' });
+		expect(presetCard(preset('team', 'Team', 'A team'))).toEqual({
+			title: 'Team',
+			summary: 'Work together with statuses and a board',
+		});
+	});
+
+	it('falls back to the server description for a preset it does not know', () => {
+		expect(presetCard(preset('focus', 'Focus', 'Deep work only'))).toEqual({
+			title: 'Focus',
+			summary: 'Deep work only',
+		});
+	});
+
+	it('drops a description that only repeats the name', () => {
+		expect(presetCard(preset('focus', 'Focus', 'focus'))).toEqual({
+			title: 'Focus',
+			summary: '',
+		});
 	});
 });
