@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { stripAnalytics } from '../../src/utils/stripAnalytics.ts';
 import { mockApp } from './mockApp.mjs';
 
 const tauriCsp = JSON.parse(
@@ -53,7 +54,8 @@ test('the desktop CSP lets the main screens run and blocks foreign hosts', async
       if (route.request().resourceType() !== 'document')
         return route.fallback();
       const response = await route.fetch();
-      const html = await response.text();
+      const html = stripAnalytics(await response.text());
+      expect(html).not.toMatch(/googletagmanager|mc\.yandex|analytics\.dzik/);
       await route.fulfill({
         response,
         body: html,
@@ -66,12 +68,11 @@ test('the desktop CSP lets the main screens run and blocks foreign hosts', async
   );
   await mockApp(page, { blockTask: true });
 
-  // vuedraggable's globalThis fallback tries `new Function` inside a try/catch; Plausible is blocked on desktop.
+  // vuedraggable's globalThis fallback tries `new Function` inside a try/catch.
   const violations = async () =>
     (await page.evaluate(() => window.__cspViolations)).filter(
       (entry) =>
-        !/^script-src eval .*vuedraggable/.test(entry) &&
-        !/^script-src-elem https:\/\/[^/]+\/js\/script\.js /.test(entry),
+        !/^script-src eval .*vuedraggable/.test(entry),
     );
   for (const path of [
     '/demo/board',

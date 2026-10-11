@@ -93,6 +93,15 @@ describe('router guard without a cloud account', () => {
 		expect(next).toHaveBeenCalledWith();
 	});
 
+	it('keeps the welcome screen off the web', async () => {
+		const next = jest.fn();
+		const store = localStore({ canUseApp: false, accountMode: 'none' });
+
+		await loadGuard(store, false)(route('Welcome', '/welcome', { allowedGuests: true }), {}, next);
+
+		expect(next).toHaveBeenCalledWith({ name: 'Login' });
+	});
+
 	it('leaves the welcome screen once the app can be used', async () => {
 		const next = jest.fn();
 
