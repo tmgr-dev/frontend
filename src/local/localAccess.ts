@@ -325,6 +325,6 @@ export const installLocalAccess = async (store: any): Promise<void> => {
 		);
 	});
 
-	store.watch((state: any) => [state.user, state.localProfile, store.getters?.isLocalOnly], notifyReady);
+	store.watch(() => currentUser()?.id ?? null, notifyReady);
 	notifyReady();
 };
