@@ -16,6 +16,9 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/Desktop-Auth/return',
 		'/desktop-auth/return',
 		'/desktop-auth/telegram?tx=1',
+		'/admin',
+		'/admin/',
+		'/admin/campaigns/3?x=1',
 	])('denies %s', (path) => {
 		expect(denied(path)).toBe(true);
 	});
@@ -26,6 +29,8 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/tmgrdev/tasks/1',
 		'/loginx',
 		'/registered',
+		'/administrator',
+		'/tmgrdev/admin',
 		'/tmgrdev/login',
 	])('allows %s', (path) => {
 		expect(denied(path)).toBe(false);
