@@ -11,17 +11,21 @@ const shot = async (page, name) => {
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
-const localPage = async (page, { profile = null, dark = false } = {}) => {
+const localPage = async (
+  page,
+  { profile = null, dark = false, loginAs = null } = {},
+) => {
   const apiRequests = [];
+  const authHeaders = [];
   const shell = await desktopPage(
     page,
-    { account: false, apiRequests },
+    { account: false, apiRequests, loginAs, authHeaders },
     { profile },
   );
   await page.addInitScript((scheme) => {
     localStorage.setItem('colorScheme', scheme);
   }, dark ? 'dark' : 'light');
-  return { shell, apiRequests };
+  return { shell, apiRequests, authHeaders };
 };
 
 const profile = {
@@ -173,4 +177,44 @@ test('cloud: desktop stub with a token still boots the cloud workspace', async (
   await expect(page).not.toHaveURL(/\/welcome/);
   await expect(page).toHaveURL(/\/demo\//);
   expect(requests.length).toBeGreaterThan(0);
+});
+
+test('sign in from local-only mode keeps local workspaces next to the cloud one', async ({
+  page,
+}) => {
+  const { shell, apiRequests, authHeaders } = await localPage(page, {
+    profile,
+    loginAs: 'cloud-token',
+  });
+  const created = await shell('local_workspace_create', { name: 'My workspace' });
+  await shell('local_workspace_set_schema', {});
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await addTask(page, 'Local only task');
+  await expect(page.getByText('Local only task').first()).toBeVisible();
+  expect(created.code).toBe('my-workspace');
+  await page.keyboard.press('Escape');
+  expect(apiRequests).toEqual([]);
+
+  await page.getByRole('button', { name: 'Create account' }).first().click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.locator('input[type="email"]').fill('test@example.test');
+  await page.locator('input[type="password"]').fill('secret-pass');
+  await page.locator('form button[type="submit"]').click();
+
+  await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await expect(page.getByText('Local only task').first()).toBeVisible();
+  await expect.poll(() => authHeaders.length).toBeGreaterThan(0);
+  expect(authHeaders.every((h) => h === 'Bearer cloud-token')).toBe(true);
+  await expect(page.getByText('Test User').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0);
+
+  await page.getByTitle('Switch workspace').first().click();
+  await expect(page.getByRole('menuitem', { name: /My workspace/ })).toBeVisible();
+  await page.getByRole('menuitem', { name: /Demo/ }).click();
+  await expect(page).toHaveURL(/\/demo\//);
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /My workspace/ }).click();
+  await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await expect(page.getByText('Local only task').first()).toBeVisible();
 });

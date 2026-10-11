@@ -8,10 +8,12 @@ export async function mockApp(
     blockTask = false,
     account = true,
     apiRequests = [],
+    loginAs = null,
+    authHeaders = [],
   } = {},
 ) {
   await page.routeWebSocket(/.*/, () => {});
-  if (!account) {
+  if (!account && !loginAs) {
     await page.route('**/api/**', async (route) => {
       apiRequests.push(
         `${route.request().method()} ${new URL(route.request().url()).pathname}`,
@@ -20,9 +22,10 @@ export async function mockApp(
     });
     return;
   }
-  await page.addInitScript(() =>
-    localStorage.setItem('token', JSON.stringify({ token: 'fixture' })),
-  );
+  if (account)
+    await page.addInitScript(() =>
+      localStorage.setItem('token', JSON.stringify({ token: 'fixture' })),
+    );
   const user = {
     id: 1,
     name: 'Test User',
@@ -175,6 +178,26 @@ export async function mockApp(
     if (multiStatus && path === 'tasks/status/2') data = [];
     await route.fulfill({ json: { data } });
   });
+  if (!account) {
+    let anonymous = true;
+    await page.route('**/api/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (anonymous && request.method() === 'POST' && path.endsWith('/auth/login')) {
+        apiRequests.push(`POST ${path}`);
+        anonymous = false;
+        await route.fulfill({ json: { data: { token: loginAs } } });
+        return;
+      }
+      if (anonymous) {
+        apiRequests.push(`${request.method()} ${path}`);
+        await route.fulfill({ status: 500, json: { message: 'no account' } });
+        return;
+      }
+      authHeaders.push(request.headers().authorization);
+      await route.fallback();
+    });
+  }
   return {
     recover: () => {
       categoriesFail = false;
