@@ -1,7 +1,9 @@
 import {
 	EDITOR_LABELS,
+	buildDescriptionPayload,
 	editorOptionLabel,
 	normalizeEditorType,
+	resolveEditorType,
 } from '@/utils/editorType';
 
 describe('normalizeEditorType', () => {
@@ -38,5 +40,138 @@ describe('normalizeEditorType', () => {
 		expect(editorOptionLabel('block')).toBe('Block (Editor.js) — legacy');
 		expect(editorOptionLabel('blockmd')).toBe('Block MD (Milkdown)');
 		expect(editorOptionLabel('unknown')).toBe('unknown');
+	});
+});
+
+const blocks = (text: string) => ({
+	blocks: [{ type: 'paragraph', data: { text } }],
+});
+const emptyJsons = [
+	null,
+	undefined,
+	{},
+	{ blocks: [] },
+	blocks('  '),
+	blocks('<br>'),
+];
+const emptyTexts = [null, undefined, '', '  \n'];
+
+describe('resolveEditorType', () => {
+	it('opens block-only tasks in Editor.js whatever the preference', () => {
+		for (const pref of ['markdown', 'blockmd', 'block'] as const) {
+			for (const text of emptyTexts) {
+				expect(
+					resolveEditorType(
+						{ description: text, description_json: blocks('hi') },
+						pref,
+					),
+				).toBe('block');
+			}
+		}
+	});
+
+	it('treats a non-paragraph block as content', () => {
+		const json = { blocks: [{ type: 'list', data: { items: [] } }] };
+		expect(
+			resolveEditorType(
+				{ description: null, description_json: json },
+				'markdown',
+			),
+		).toBe('block');
+	});
+
+	it('opens markdown-only tasks in markdown, or blockmd only when preferred', () => {
+		for (const json of emptyJsons) {
+			const task = { description: '# hi', description_json: json };
+			expect(resolveEditorType(task, 'markdown')).toBe('markdown');
+			expect(resolveEditorType(task, 'block')).toBe('markdown');
+			expect(resolveEditorType(task, 'blockmd')).toBe('blockmd');
+		}
+	});
+
+	it('uses the preference for empty tasks', () => {
+		for (const json of emptyJsons) {
+			for (const text of emptyTexts) {
+				for (const pref of ['markdown', 'blockmd', 'block'] as const) {
+					expect(
+						resolveEditorType(
+							{ description: text, description_json: json },
+							pref,
+						),
+					).toBe(pref);
+				}
+			}
+		}
+	});
+
+	it('lets the preference pick between two filled fields (legacy dual-write)', () => {
+		const task = { description: 'md', description_json: blocks('json') };
+		expect(resolveEditorType(task, 'block')).toBe('block');
+		expect(resolveEditorType(task, 'markdown')).toBe('markdown');
+		expect(resolveEditorType(task, 'blockmd')).toBe('blockmd');
+	});
+
+	it('does not carry the previous task editor over on a modal task switch', () => {
+		const pref = 'markdown';
+		const first = resolveEditorType(
+			{ description: null, description_json: blocks('a') },
+			pref,
+		);
+		const second = resolveEditorType(
+			{ description: 'b', description_json: null },
+			pref,
+		);
+		const third = resolveEditorType(
+			{ description: null, description_json: null },
+			pref,
+		);
+		expect([first, second, third]).toEqual(['block', 'markdown', 'markdown']);
+	});
+
+	it('copes with description_json delivered as a string', () => {
+		expect(
+			resolveEditorType(
+				{ description: '', description_json: JSON.stringify(blocks('x')) },
+				'markdown',
+			),
+		).toBe('block');
+		expect(
+			resolveEditorType(
+				{ description: '', description_json: 'not json' },
+				'markdown',
+			),
+		).toBe('markdown');
+	});
+});
+
+describe('buildDescriptionPayload', () => {
+	const task = { description: 'md', description_json: blocks('json') };
+
+	it('block format sends the JSON and clears the markdown field', () => {
+		expect(buildDescriptionPayload('block', task)).toEqual({
+			description_json: task.description_json,
+			clear_description: true,
+		});
+	});
+
+	it.each(['markdown', 'blockmd'] as const)(
+		'%s format sends the text and clears the JSON field',
+		(type) => {
+			expect(buildDescriptionPayload(type, task)).toEqual({
+				description: 'md',
+				clear_description_json: true,
+			});
+		},
+	);
+
+	it('sends null rather than undefined for an empty edited field', () => {
+		expect(buildDescriptionPayload('block', {})).toEqual({
+			description_json: null,
+			clear_description: true,
+		});
+		expect(buildDescriptionPayload('markdown', {})).toEqual({
+			description: null,
+			clear_description_json: true,
+		});
 	});
 });

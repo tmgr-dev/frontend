@@ -123,7 +123,12 @@
 		openTarget,
 	} from '@/utils/simpleStatus';
 	import { getBlockEditorDescription } from '@/utils/editor';
-	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
+	import {
+		EDITOR_LABELS,
+		buildDescriptionPayload,
+		normalizeEditorType,
+		resolveEditorType,
+	} from '@/utils/editorType';
 	import { focusField } from '@/utils/focusTarget';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
 	import {
@@ -841,20 +846,10 @@
 						? parseInt(taskData.approximately_time, 10) || 0
 						: taskData.approximately_time || 0;
 
-				// Before setting form value, check if we need to adjust editor type based on content
-				// Content decides the editor for this task only; the user's preference
-				// (Settings / localStorage) stays untouched so new tasks keep using it.
-				if (taskData.description_json && !taskData.description) {
-					// If task has JSON content but no markdown, use block editor
-					editorType.value = 'block';
-				} else if (
-					taskData.description &&
-					!taskData.description_json &&
-					editorType.value === 'block'
-				) {
-					// If task has markdown but no JSON, leave the block (JSON) editor
-					editorType.value = 'markdown';
-				}
+				editorType.value = resolveEditorType(
+					taskData,
+					getPreferredEditorWithFallback(),
+				);
 
 				form.value = taskData;
 				taskVersionGuard.recordKnown(taskData);
@@ -876,26 +871,6 @@
 						typeof approxTime === 'string'
 							? parseInt(approxTime, 10) || 0
 							: Number(approxTime) || 0;
-				}
-
-				// Handle editor type and content conversion - this is critical
-				// Make sure we use the correct editor type based on content
-				if (
-					editorType.value === 'block' &&
-					!form.value.description_json &&
-					form.value.description
-				) {
-					form.value.description_json = getBlockEditorDescription(
-						form.value.description,
-					);
-				} else if (
-					editorType.value !== 'block' &&
-					form.value.description_json &&
-					!form.value.description
-				) {
-					// If we're in markdown mode but only have JSON description, convert or provide a fallback
-					form.value.description =
-						form.value.description_json?.blocks?.[0]?.data?.text || '';
 				}
 
 				// Handle assignees
@@ -1108,6 +1083,10 @@
 	const applyExternalUpdate = () => {
 		if (externalUpdateData.value) {
 			taskVersionGuard.recordKnown(externalUpdateData.value);
+			editorType.value = resolveEditorType(
+				{ ...form.value, ...externalUpdateData.value },
+				getPreferredEditorWithFallback(),
+			);
 			Object.assign(form.value, externalUpdateData.value);
 			hasExternalUpdate.value = false;
 			externalUpdateData.value = null;
@@ -1126,6 +1105,10 @@
 			const id = taskId.value;
 			const taskData = await getTask(id);
 			if (formDisposed || taskId.value !== id) return;
+			editorType.value = resolveEditorType(
+				taskData,
+				getPreferredEditorWithFallback(),
+			);
 			form.value = taskData;
 			taskVersionGuard.recordKnown(taskData);
 			if (!statuses.value?.length)
@@ -1529,11 +1512,6 @@
 			// Clear the markdown description since we're using block editor
 			form.value.description = null;
 		} else {
-			// When using markdown editor, ensure description content is not lost
-			if (form.value.description_json && !form.value.description) {
-				form.value.description =
-					form.value.description_json?.blocks?.[0]?.data?.text || '';
-			}
 			// Clear the JSON description since we're using markdown editor
 			form.value.description_json = null;
 		}
@@ -1563,6 +1541,10 @@
 			(item: any) => (typeof item === 'object' ? item.id : item),
 		);
 		form.value = { ...form.value, ...recoverableDraft.value };
+		editorType.value = resolveEditorType(
+			form.value,
+			getPreferredEditorWithFallback(),
+		);
 		recoverableDraft.value = null;
 		try {
 			// Queue replacement before any forced read of the editor DOM.
@@ -1590,17 +1572,17 @@
 		} catch {
 			/* Saving still works if browser storage is unavailable. */
 		}
+		const body = {
+			...snapshot,
+			...buildDescriptionPayload(editorType.value, snapshot),
+			...(snapshot.persona_assignees === undefined
+				? {}
+				: { persona_assignees: personaAssigneeIds(snapshot) }),
+		} as Task;
+		if (editorType.value === 'block') delete (body as any).description;
+		else delete (body as any).description_json;
 		const saved = await taskVersionGuard.track(() =>
-			updateTask(
-				snapshot.id as number,
-				snapshot.persona_assignees === undefined
-					? snapshot
-					: {
-							...snapshot,
-							persona_assignees: personaAssigneeIds(snapshot),
-					  },
-				instanceId,
-			),
+			updateTask(snapshot.id as number, body, instanceId),
 		);
 		try {
 			if (sessionStorage.getItem(key) === serialized)
@@ -2035,14 +2017,10 @@
 			try {
 				const taskData = await getTask(newTaskId);
 				if (formDisposed || modalTaskId.value !== newTaskId) return;
-				if (taskData.description_json && !taskData.description)
-					editorType.value = 'block';
-				else if (
-					taskData.description &&
-					!taskData.description_json &&
-					editorType.value === 'block'
-				)
-					editorType.value = 'markdown';
+				editorType.value = resolveEditorType(
+					taskData,
+					getPreferredEditorWithFallback(),
+				);
 
 				taskData.approximately_time =
 					typeof taskData.approximately_time === 'string'
