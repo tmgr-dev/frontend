@@ -1,16 +1,19 @@
+import $axios from '@/plugins/axios';
+
 class NtfyClient {
 	constructor() {
 		this.eventSource = null;
 		this.userId = null;
 		this.serverUrl =
 			import.meta.env.VITE_NTFY_SERVER_URL || 'http://localhost:2586';
-		this.defaultTopic =
-			import.meta.env.VITE_NTFY_DEFAULT_TOPIC || 'tmgr-notifications';
+		this.connectGeneration = 0;
 		this.onMessageCallback = null;
 	}
 
-	getUserTopic() {
-		return `${this.defaultTopic}-user-${this.userId}`;
+	async fetchTopic() {
+		const { data } = await $axios.get('ntfy/subscription-info');
+		const info = data?.data ?? data;
+		return info?.topic || null;
 	}
 
 	async start() {
@@ -23,6 +26,7 @@ class NtfyClient {
 			this.eventSource = null;
 		}
 		this.userId = null;
+		this.connectGeneration++;
 		return Promise.resolve();
 	}
 
@@ -41,14 +45,17 @@ class NtfyClient {
 			return;
 		}
 
-		if (this.eventSource) {
-			this.eventSource.close();
-		}
-
-		const topic = this.getUserTopic();
-		const url = `${this.serverUrl}/${topic}/sse`;
+		const generation = ++this.connectGeneration;
 
 		try {
+			const topic = await this.fetchTopic();
+			if (!topic || generation !== this.connectGeneration) {
+				return;
+			}
+			if (this.eventSource) {
+				this.eventSource.close();
+			}
+			const url = `${this.serverUrl}/${topic}/sse`;
 			this.eventSource = new EventSource(url);
 
 			this.eventSource.onmessage = (event) => {
@@ -90,7 +97,7 @@ class NtfyClient {
 			};
 
 			this.eventSource.onopen = () => {
-				console.log('ntfy connection established for user:', this.userId);
+				console.log('ntfy connection established');
 			};
 		} catch (error) {
 			console.error('Failed to connect to ntfy:', error);

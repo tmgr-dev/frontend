@@ -64,7 +64,6 @@ jobs:
             VITE_PUSHER_SCHEME=${{ secrets.VITE_PUSHER_SCHEME }}
             VITE_TELEGRAM_BOT_NAME=${{ secrets.VITE_TELEGRAM_BOT_NAME }}
             VITE_NTFY_SERVER_URL=${{ secrets.VITE_NTFY_SERVER_URL }}
-            VITE_NTFY_DEFAULT_TOPIC=${{ secrets.VITE_NTFY_DEFAULT_TOPIC }}
 
       - name: Send build failure notification
         if: failure()
