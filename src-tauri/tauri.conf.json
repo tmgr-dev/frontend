@@ -32,7 +32,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "script-src": ["'self'", "https://www.googletagmanager.com", "https://telegram.org", "https://mc.yandex.ru", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
+        "script-src": ["'self'", "https://telegram.org", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
         "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
         "img-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
         "media-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
@@ -48,12 +48,7 @@
           "https://ws.tmgr.dev",
           "https://ntfy.tmgr.dev",
           "wss://ntfy.tmgr.dev",
-          "https://s3.danubedata.ro",
-          "https://*.google-analytics.com",
-          "https://*.analytics.google.com",
-          "https://www.googletagmanager.com",
-          "https://mc.yandex.ru",
-          "https://mc.yandex.com"
+          "https://s3.danubedata.ro"
         ],
         "frame-src": [
           "https://oauth.telegram.org",
