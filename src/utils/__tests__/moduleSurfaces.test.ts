@@ -121,6 +121,15 @@ describe('board and landing page', () => {
 		expect(resolveLanding('board', entries(['board']))).toBe('list');
 		expect(resolveLanding('board', entries([]))).toBe('board');
 	});
+	it('falls back to the list and hides the board nav when Workflow is off', () => {
+		const isOn = entries([], ['workflow']);
+		expect(resolveLanding('board', isOn)).toBe('list');
+		expect(allowedLandings(isOn)).not.toContain('board');
+		expect(showSurface('board.nav', isOn)).toBe(false);
+	});
+	it('falls back to the list when the user hides Workflow', () => {
+		expect(resolveLanding('board', entries(['workflow']))).toBe('list');
+	});
 	it('only offers modules the user can see', () => {
 		expect(allowedLandings(entries(['board'], ['dashboard']))).toEqual([
 			'list',

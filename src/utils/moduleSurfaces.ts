@@ -5,7 +5,7 @@ export const SURFACES = {
 	'categories.badge': ['categories'],
 	'categories.list-filter': ['categories'],
 	'categories.nav': ['categories'],
-	'board.nav': ['board'],
+	'board.nav': ['board', 'workflow'],
 	'dashboard.nav': ['dashboard'],
 	'routines.nav': ['daily_routines'],
 	'timer.board-card': ['task.countdown'],
@@ -35,7 +35,7 @@ export const visibleActiveTasks = <T>(isOn: IsOn, tasks: T[]): T[] =>
 
 export const allowedLandings = (isOn: IsOn): string[] => {
 	const allowed = ['list'];
-	if (isOn('board')) allowed.push('board');
+	if (isOn('board') && isOn('workflow')) allowed.push('board');
 	if (isOn('dashboard')) allowed.push('dashboard');
 	if (isOn('daily_routines')) allowed.push('daily_routines');
 	return allowed;
