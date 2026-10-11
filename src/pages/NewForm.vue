@@ -55,6 +55,7 @@
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
+		DropdownMenuItem,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { usePluginTaskMenu } from '@/composable/usePluginTaskMenu';
@@ -93,6 +94,8 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { usePusher } from '@/composable/usePusher';
@@ -111,6 +114,14 @@
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
+	import {
+		archiveTarget,
+		doneTarget,
+		DONE_DISABLED_TOOLTIP,
+		isTaskArchived,
+		isTaskDone,
+		openTarget,
+	} from '@/utils/simpleStatus';
 	import { getBlockEditorDescription } from '@/utils/editor';
 	import { EDITOR_LABELS, normalizeEditorType } from '@/utils/editorType';
 	import { focusField } from '@/utils/focusTarget';
@@ -152,6 +163,7 @@
 	} from '@heroicons/vue/24/outline';
 	import { useMagicKeys } from '@vueuse/core';
 	import {
+		Archive as ArchiveIcon,
 		Bot,
 		Loader2,
 		MoreVertical,
@@ -267,6 +279,7 @@
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const { isFeatureEnabled, showSurface } = useFeatureToggles();
+	const { simpleMode } = useWorkflowMode();
 	const pagesVisible = computed(() =>
 		pagesAvailable(store.getters.currentWorkspace, isFeatureEnabled('pages')),
 	);
@@ -592,6 +605,36 @@
 		return `${minutes}m`;
 	});
 
+	const simpleStatuses = computed<Status[]>(
+		() => statuses.value || workspaceStatuses.value || [],
+	);
+	const defaultStatusIdFor = (list: Status[]) =>
+		(simpleMode.value ? openTarget(list) : null) ??
+		pickDefaultStatusId(list) ??
+		list[0].id;
+	const canMarkDone = computed(
+		() => doneTarget(simpleStatuses.value) !== null,
+	);
+	const doneChecked = computed({
+		get: () => isTaskDone(form.value, simpleStatuses.value),
+		set: (checked: boolean) => {
+			const target = checked
+				? doneTarget(simpleStatuses.value)
+				: openTarget(simpleStatuses.value);
+			if (target !== null) form.value.status_id = target;
+		},
+	});
+	const isArchivedForm = computed(() =>
+		isTaskArchived(form.value, simpleStatuses.value),
+	);
+	const canArchiveTask = computed(
+		() =>
+			simpleMode.value &&
+			!!form.value.id &&
+			!isArchivedForm.value &&
+			archiveTarget(simpleStatuses.value) !== null,
+	);
+
 	const statusIdStr = computed({
 		get: () => form.value.status_id?.toString() || '',
 		set: (value: string) => {
@@ -746,8 +789,7 @@
 								!form.value.status_id &&
 								statuses.value?.length > 0
 							) {
-								form.value.status_id =
-									pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
+								form.value.status_id = defaultStatusIdFor(statuses.value);
 							}
 
 							// Title defaults only apply to a new task. Metadata must not hold an existing task behind it.
@@ -1651,16 +1693,37 @@
 			isLoading.value = false;
 		}
 
-		const prompt = backlogTimerPrompt(
-			form.value,
-			statuses.value || workspaceStatuses.value || [],
-		);
+		const prompt = simpleMode.value
+			? null
+			: backlogTimerPrompt(
+					form.value,
+					statuses.value || workspaceStatuses.value || [],
+			  );
 		if (prompt) {
 			backlogStatusChangeConfirm.value = {
 				taskId: taskId.value || (form.value.id as number),
 				prompt,
 			};
 			showBacklogStatusChangeConfirm.value = true;
+		}
+	};
+
+	const archiveTask = async () => {
+		const archiveId = archiveTarget(simpleStatuses.value);
+		const id = taskId.value || form.value.id;
+		if (archiveId === null || !id) return;
+		isLoading.value = true;
+		try {
+			suppressAutoSavingForOnce.value = true;
+			await taskVersionGuard.track(() => updateTaskStatus(id, archiveId));
+			form.value.status_id = archiveId;
+			store.commit('updateSingleTask', form.value);
+			store.commit('incrementReloadTasksKey');
+			if (props.isModal) emit('close');
+		} catch (e) {
+			console.error('Failed to archive task:', e);
+		} finally {
+			isLoading.value = false;
 		}
 	};
 
@@ -1926,8 +1989,7 @@
 				statuses.value &&
 				statuses.value.length > 0
 			) {
-				form.value.status_id =
-					pickDefaultStatusId(statuses.value) ?? statuses.value[0].id;
+				form.value.status_id = defaultStatusIdFor(statuses.value);
 			}
 
 			await updateTaskTitle();
@@ -2235,7 +2297,14 @@
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between gap-2 border-b border-line px-[14px] py-2.5"
 				>
 					<div class="flex min-w-0 items-center gap-2">
-						<Select v-model="statusIdStr">
+						<DoneCheckbox
+							v-if="simpleMode"
+							v-model="doneChecked"
+							class="h-7 rounded-pill bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide hover:bg-surface-hover"
+							:disabled="!canMarkDone"
+							:tooltip="DONE_DISABLED_TOOLTIP"
+						/>
+						<Select v-else v-model="statusIdStr">
 							<SelectTrigger
 								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover"
 							>
@@ -2292,7 +2361,9 @@
 							<Bot class="h-3.5 w-3.5" />
 						</button>
 
-						<DropdownMenu v-if="form.id && pluginTaskMenuItems.length">
+						<DropdownMenu
+							v-if="form.id && (pluginTaskMenuItems.length || canArchiveTask)"
+						>
 							<DropdownMenuTrigger as-child>
 								<button
 									type="button"
@@ -2303,6 +2374,10 @@
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" class="w-56">
+								<DropdownMenuItem v-if="canArchiveTask" @click="archiveTask">
+									<ArchiveIcon class="mr-2 h-4 w-4" />
+									<span>Archive</span>
+								</DropdownMenuItem>
 								<PluginTaskMenuItems :task-id="form.id" :separator="false" />
 							</DropdownMenuContent>
 						</DropdownMenu>

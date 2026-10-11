@@ -27,7 +27,14 @@
 						</option>
 					</select>
 				</label>
-				<label class="block">
+				<DoneCheckbox
+					v-if="simpleMode"
+					v-model="markDone"
+					class="text-sm"
+					:disabled="doneStatusId === null"
+					:tooltip="DONE_DISABLED_TOOLTIP"
+				/>
+				<label v-else class="block">
 					<span class="mb-1 block text-xs text-ink-subtle"
 						>Status (optional)</span
 					>
@@ -70,6 +77,7 @@
 <script lang="ts">
 	import { type Category, getCategories } from '@/actions/tmgr/categories';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
+	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -79,20 +87,24 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import {
 		pickDefaultCategory,
 		readLastCategory,
 	} from '@/utils/pages/taskFromSelection';
-	import { defineComponent, onMounted, ref } from 'vue';
+	import { DONE_DISABLED_TOOLTIP, doneTarget } from '@/utils/simpleStatus';
+	import { computed, defineComponent, onMounted, ref } from 'vue';
 
 	interface StatusOption {
 		id: number;
 		name: string;
+		type?: string | null;
 	}
 
 	export default defineComponent({
 		name: 'TaskFromSelectionDialog',
 		components: {
+			DoneCheckbox,
 			Button,
 			Dialog,
 			DialogContent,
@@ -112,6 +124,9 @@
 			const statuses = ref<StatusOption[]>([]);
 			const categoryId = ref<number | null>(null);
 			const statusId = ref<number | null>(null);
+			const markDone = ref(false);
+			const { simpleMode } = useWorkflowMode();
+			const doneStatusId = computed(() => doneTarget(statuses.value));
 
 			onMounted(async () => {
 				const [cats, stats] = await Promise.allSettled([
@@ -134,14 +149,28 @@
 				if (categoryId.value === null) return;
 				emit('submit', {
 					category_id: categoryId.value,
-					status_id: statusId.value,
+					status_id:
+						simpleMode.value && markDone.value
+							? doneStatusId.value
+							: statusId.value,
 				});
 			};
 			const onOpen = (open: boolean) => {
 				if (!open) emit('cancel');
 			};
 
-			return { categories, statuses, categoryId, statusId, submit, onOpen };
+			return {
+				categories,
+				statuses,
+				categoryId,
+				statusId,
+				markDone,
+				simpleMode,
+				doneStatusId,
+				DONE_DISABLED_TOOLTIP,
+				submit,
+				onOpen,
+			};
 		},
 	});
 </script>
