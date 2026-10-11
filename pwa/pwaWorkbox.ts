@@ -26,6 +26,7 @@ export const pwaWorkbox = {
 	navigateFallbackDenylist: [
 		/^\/(login|register)(\/|\?|$)/i,
 		/^\/desktop-auth(\/|\?|$)/i,
+		/^\/admin(\/|\?|$)/i,
 	],
 	importScripts: [
 		'clear-private-api-cache.js',
