@@ -41,6 +41,8 @@ if (isDesktopApp()) {
 	installLocalWorkspaces($axios, {
 		currentUser: () => store.state.user,
 		hasSession: () => !!store.state.token?.token,
+		accountless: () => store.getters.isLocalOnly,
+		profileName: () => store.state.localProfile?.name ?? '',
 	});
 	installDomainEvents($axios, domainEvents, () => {
 		const id = Number(store.getters.currentWorkspaceId);
@@ -162,14 +164,20 @@ components.map((component) => app.component(component.name || '', component));
 app.component('VueTheMask', VueTheMask);
 app.directive('mask', mask);
 app.use(Selectable);
-app.use(router);
-app.use(store);
 
-alertPlugin({ app });
+const start = async () => {
+	if (isDesktopApp()) await store.dispatch('refreshLocalProfile');
+	app.use(router);
+	app.use(store);
 
-if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
+	alertPlugin({ app });
 
-app.mount('#app');
+	if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
+
+	app.mount('#app');
+};
+
+void start();
 
 // Pause decorative skeleton animations when this document is not visible.
 const updatePageVisibility = () => {
