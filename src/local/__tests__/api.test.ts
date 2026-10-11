@@ -382,6 +382,19 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(loose.category_tasks_sequence_id).toBeNull();
 	});
 
+	it('clears the other description field only when asked to', async () => {
+		const blocks = { blocks: [{ type: 'paragraph', data: { text: 'j' } }] };
+		const task = await data('POST', 'tasks', { title: 'Both', description: 'md', description_json: blocks });
+		const kept = await data('PUT', `tasks/${task.id}`, { description_json: blocks });
+		expect(kept.description).toBe('md');
+		const block = await data('PUT', `tasks/${task.id}`, { description_json: blocks, clear_description: true });
+		expect(block.description).toBeNull();
+		expect(block.description_json).toEqual(blocks);
+		const md = await data('PUT', `tasks/${task.id}`, { description: 'md2', clear_description_json: true });
+		expect(md.description).toBe('md2');
+		expect(md.description_json).toBeNull();
+	});
+
 	it('restores missing default statuses when a previous migration stopped half-way', async () => {
 		await ctx.db.execute('DELETE FROM statuses');
 		await migrate(ctx.db, clock.toISOString());
