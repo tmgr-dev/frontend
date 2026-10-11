@@ -15,6 +15,11 @@ export const isDone = (status?: Pick<StatusLike, 'type'> | null): boolean =>
 export const isArchived = (status?: Pick<StatusLike, 'type'> | null): boolean =>
 	status?.type === 'archived';
 
+export const stateLabel = (
+	status?: Pick<StatusLike, 'type'> | null,
+): 'Done' | 'Archived' | 'Open' =>
+	isDone(status) ? 'Done' : isArchived(status) ? 'Archived' : 'Open';
+
 const firstId = (
 	statuses: StatusLike[] | null | undefined,
 	match: (status: StatusLike) => boolean,

@@ -196,6 +196,13 @@
 								<Archive class="mr-2 h-4 w-4" />
 								<span>Archive</span>
 							</DropdownMenuItem>
+							<DropdownMenuItem
+								v-if="canUnarchive(task)"
+								@click="unarchiveTask(task)"
+							>
+								<ArchiveRestore class="mr-2 h-4 w-4" />
+								<span>Restore</span>
+							</DropdownMenuItem>
 							<PluginTaskMenuItems :task-id="task.id as number" />
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -526,6 +533,7 @@
 	import {
 		AlarmClock,
 		Archive,
+		ArchiveRestore,
 		Check,
 		ClockPlus,
 		Eye,
@@ -552,6 +560,7 @@
 			TaskButtonsInTheList,
 			DoneCheckbox,
 			Archive,
+			ArchiveRestore,
 			AssigneeUsers,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
@@ -1091,6 +1100,23 @@
 				} catch (e) {
 					task.status_id = previous;
 					console.error('Failed to update task:', e);
+				}
+			},
+			canUnarchive(task: Task) {
+				return (
+					this.simpleMode &&
+					openTarget(this.statuses) !== null &&
+					isTaskArchived(task, this.statuses)
+				);
+			},
+			async unarchiveTask(task: Task) {
+				const target = openTarget(this.statuses);
+				if (target === null) return;
+				try {
+					await updateTaskStatus(task.id!, target);
+					this.loadTasks();
+				} catch (e) {
+					console.error('Failed to restore task:', e);
 				}
 			},
 			async archiveTask(task: Task) {

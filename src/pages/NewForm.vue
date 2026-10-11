@@ -164,6 +164,7 @@
 	import { useMagicKeys } from '@vueuse/core';
 	import {
 		Archive as ArchiveIcon,
+		ArchiveRestore,
 		Bot,
 		Loader2,
 		MoreVertical,
@@ -1708,6 +1709,32 @@
 		}
 	};
 
+	const canUnarchiveTask = computed(
+		() =>
+			simpleMode.value &&
+			!!form.value.id &&
+			isArchivedForm.value &&
+			openTarget(simpleStatuses.value) !== null,
+	);
+
+	const unarchiveTask = async () => {
+		const openId = openTarget(simpleStatuses.value);
+		const id = taskId.value || form.value.id;
+		if (openId === null || !id) return;
+		isLoading.value = true;
+		try {
+			suppressAutoSavingForOnce.value = true;
+			await taskVersionGuard.track(() => updateTaskStatus(id, openId));
+			form.value.status_id = openId;
+			store.commit('updateSingleTask', form.value);
+			store.commit('incrementReloadTasksKey');
+		} catch (e) {
+			console.error('Failed to restore task:', e);
+		} finally {
+			isLoading.value = false;
+		}
+	};
+
 	const archiveTask = async () => {
 		const archiveId = archiveTarget(simpleStatuses.value);
 		const id = taskId.value || form.value.id;
@@ -2362,7 +2389,7 @@
 						</button>
 
 						<DropdownMenu
-							v-if="form.id && (pluginTaskMenuItems.length || canArchiveTask)"
+							v-if="form.id && (pluginTaskMenuItems.length || canArchiveTask || canUnarchiveTask)"
 						>
 							<DropdownMenuTrigger as-child>
 								<button
@@ -2374,6 +2401,10 @@
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" class="w-56">
+								<DropdownMenuItem v-if="canUnarchiveTask" @click="unarchiveTask">
+									<ArchiveRestore class="mr-2 h-4 w-4" />
+									<span>Restore</span>
+								</DropdownMenuItem>
 								<DropdownMenuItem v-if="canArchiveTask" @click="archiveTask">
 									<ArchiveIcon class="mr-2 h-4 w-4" />
 									<span>Archive</span>

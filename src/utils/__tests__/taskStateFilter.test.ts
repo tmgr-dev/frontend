@@ -14,10 +14,11 @@ const tasks = [
 	{ id: 11, status_id: 2 },
 	{ id: 12, status_id: null },
 	{ id: 13, status_id: 2 },
+	{ id: 14, status_id: 3 },
 ];
 
 const filterCases: { filter: TaskStateFilter; ids: number[] }[] = [
-	{ filter: 'all', ids: [10, 11, 12, 13] },
+	{ filter: 'all', ids: [10, 11, 12, 13, 14] },
 	{ filter: 'open', ids: [10, 12] },
 	{ filter: 'done', ids: [11, 13] },
 ];

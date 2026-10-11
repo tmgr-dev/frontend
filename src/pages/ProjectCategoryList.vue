@@ -17,6 +17,11 @@
 	import Select from '@/components/general/Select.vue';
 	import CategoriesPreview from '@/components/previews/CategoriesPreview.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import {
+		filterTasksByState,
+		paginateLocally,
+	} from '@/utils/taskStateFilter';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -133,7 +138,26 @@
 		{ label: '50 per page', value: 50 },
 	];
 
+	const {
+		simpleMode,
+		workspaceStatuses: simpleStatuses,
+	} = useWorkflowMode();
+	const ALL_TASKS_PER_PAGE = 100000;
+	const simpleFilter = computed(() => {
+		const value = workspaceStatus.value;
+		return simpleMode.value && (value === 'open' || value === 'done')
+			? value
+			: null;
+	});
+
 	const workspaceStatuses = computed(() => {
+		if (simpleMode.value) {
+			return [
+				{ name: 'Open', id: 'open' },
+				{ name: 'Done', id: 'done' },
+				{ name: 'All', id: 'all' },
+			];
+		}
 		let statuses = store.state.workspaceStatuses;
 		return [
 			{
@@ -213,20 +237,38 @@
 		}
 		tasksPending.value = true;
 		try {
+			const localFilter = simpleFilter.value;
+			const routeStatus = route.params.status || null;
 			const response = await getTasks(
 				{
 					params: {
 						project_category_id: route.params.id,
-						status_id: route.params.status || null,
-						page: pagination.value.current_page,
-						per_page: pagination.value.per_page,
+						status_id: simpleMode.value
+							? /^\d+$/.test(String(routeStatus))
+								? routeStatus
+								: null
+							: routeStatus,
+						page: localFilter ? 1 : pagination.value.current_page,
+						per_page: localFilter
+							? ALL_TASKS_PER_PAGE
+							: pagination.value.per_page,
 					},
 				},
 				false,
 			);
 			if (!current()) return;
-			tasks.value = response.data;
-			pagination.value = response.meta;
+			if (localFilter) {
+				const paged = paginateLocally(
+					filterTasksByState(response.data, localFilter, simpleStatuses.value),
+					pagination.value.current_page,
+					pagination.value.per_page,
+				);
+				tasks.value = paged.data;
+				pagination.value = { ...pagination.value, ...paged.meta };
+			} else {
+				tasks.value = response.data;
+				pagination.value = response.meta;
+			}
 			setLoadingActions(tasks.value);
 			isTasksFirstLoading.value = false;
 		} catch (error) {

@@ -5,6 +5,7 @@ import {
 	isDone,
 	isTaskDone,
 	openTarget,
+	stateLabel,
 	toggleDoneTarget,
 } from '@/utils/simpleStatus';
 
@@ -209,5 +210,25 @@ describe('task completion', () => {
 	it.each(taskCases)('$name', ({ task, statuses, done, toggle }) => {
 		expect(isTaskDone(task, statuses)).toBe(done);
 		expect(toggleDoneTarget(task, statuses)).toBe(toggle);
+	});
+});
+
+const labelCases: {
+	name: string;
+	status: { type?: string | null } | null | undefined;
+	label: string;
+}[] = [
+	{ name: 'completed', status: { type: 'completed' }, label: 'Done' },
+	{ name: 'archived', status: { type: 'archived' }, label: 'Archived' },
+	{ name: 'default', status: { type: 'default' }, label: 'Open' },
+	{ name: 'active', status: { type: 'active' }, label: 'Open' },
+	{ name: 'hidden', status: { type: 'hidden' }, label: 'Open' },
+	{ name: 'no status', status: null, label: 'Open' },
+	{ name: 'undefined status', status: undefined, label: 'Open' },
+];
+
+describe('stateLabel', () => {
+	it.each(labelCases)('$name', ({ status, label }) => {
+		expect(stateLabel(status)).toBe(label);
 	});
 });

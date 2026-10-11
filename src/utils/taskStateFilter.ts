@@ -1,4 +1,5 @@
 import {
+	isTaskArchived,
 	isTaskDone,
 	type StatusLike,
 	type TaskLike,
@@ -12,8 +13,10 @@ export const filterTasksByState = <T extends TaskLike>(
 	statuses: StatusLike[] | null | undefined,
 ): T[] => {
 	if (filter === 'all') return tasks;
-	return tasks.filter(
-		(task) => isTaskDone(task, statuses) === (filter === 'done'),
+	return tasks.filter((task) =>
+		filter === 'done'
+			? isTaskDone(task, statuses)
+			: !isTaskDone(task, statuses) && !isTaskArchived(task, statuses),
 	);
 };
 

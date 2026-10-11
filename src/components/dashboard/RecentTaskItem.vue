@@ -14,7 +14,7 @@
 				<div class="mb-2 flex items-center space-x-2">
 					<div
 						:class="statusIndicatorClasses"
-						:title="task.status?.name || 'Unknown'"
+						:title="statusText"
 					></div>
 					<h4
 						class="truncate text-sm font-medium text-gray-900 dark:text-white"
@@ -114,9 +114,18 @@
 					</span>
 				</Button>
 
+				<DoneCheckbox
+					v-if="simpleMode"
+					class="text-xs"
+					:model-value="isDone(task.status)"
+					:disabled="doneStatusId === null"
+					:tooltip="DONE_DISABLED_TOOLTIP"
+					@update:model-value="handleDoneChange"
+				/>
+
 				<!-- Status Dropdown -->
 				<Select
-					v-if="task.status"
+					v-else-if="task.status"
 					:model-value="task.status.id.toString()"
 					@update:model-value="handleStatusChange"
 				>
@@ -154,6 +163,7 @@
 
 <script setup lang="ts">
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import {
 		Select,
@@ -163,6 +173,8 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import { DONE_DISABLED_TOOLTIP, isDone, stateLabel } from '@/utils/simpleStatus';
 	import type { RecentTask } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import {
@@ -202,6 +214,16 @@
 	}>();
 
 	const { isFeatureEnabled, showSurface } = useFeatureToggles();
+	const { simpleMode, doneStatusId, openStatusId } = useWorkflowMode();
+	const statusText = computed(() =>
+		simpleMode.value
+			? stateLabel(props.task.status)
+			: props.task.status?.name || 'Unknown',
+	);
+	const handleDoneChange = (checked: boolean) => {
+		const target = checked ? doneStatusId.value : openStatusId.value;
+		if (target !== null) emit('status-change', target);
+	};
 
 	const timerInterval = ref<NodeJS.Timeout | null>(null);
 	const timerDuration = ref<string>('');
@@ -289,7 +311,7 @@
 	const accessibilityLabel = computed(() => {
 		const parts = [
 			`Task: ${props.task.title}`,
-			`Status: ${props.task.status?.name || 'Unknown'}`,
+			`Status: ${statusText.value}`,
 			`Assigned to: ${props.task.user.name}`,
 			`Updated: ${props.task.updated_at_human}`,
 		];

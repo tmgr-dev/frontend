@@ -72,7 +72,7 @@
 								<span
 									v-if="selected.status"
 									class="rounded-md bg-violet-100 px-2 py-1 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200"
-									>{{ selected.status.name }}</span
+									>{{ statusText(selected) }}</span
 								>
 								<span
 									v-if="selected.category"
@@ -174,9 +174,11 @@
 </template>
 
 <script lang="ts">
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
 	import type { GraphNode, GraphResult } from '@/types/graph';
 	import { pageUrl } from '@/utils/pagesTree';
+	import { stateLabel } from '@/utils/simpleStatus';
 	import { ArrowLeft, X } from 'lucide-vue-next';
 	import {
 		computed,
@@ -208,6 +210,11 @@
 		emits: ['close'],
 		setup(props, { emit }) {
 			const router = useRouter();
+			const { simpleMode } = useWorkflowMode();
+			const statusText = (node: GraphNode): string =>
+				simpleMode.value && node.type === 'task'
+					? stateLabel(node.status)
+					: node.status?.name ?? '';
 			const dialog = ref<HTMLElement | null>(null);
 			const entity = ref(props.entity);
 			const trail = ref<string[]>([]);
@@ -339,6 +346,7 @@
 				selectedId,
 				selected,
 				selectedTitle,
+				statusText,
 				result,
 				crumb,
 				centerTitle,
