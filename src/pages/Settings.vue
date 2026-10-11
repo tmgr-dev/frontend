@@ -10,7 +10,7 @@
 					label="Loading settings"
 				>
 					<div class="flex flex-col gap-6">
-						<div v-if="isNotification" class="flex flex-col gap-6">
+						<div v-if="isNotification && !localOnly" class="flex flex-col gap-6">
 							<NotificationSettingsForm />
 
 							<SettingsSection title="Push notifications (legacy)">
@@ -69,7 +69,16 @@
 							<ThemePicker />
 						</SettingsSection>
 
-						<div v-if="isProfile" class="flex flex-col gap-6">
+						<div v-if="isProfile && localOnly" class="flex flex-col gap-6">
+							<LocalProfileSettings />
+							<LocalAccountSection />
+						</div>
+
+						<div v-if="isLocalData" class="flex flex-col gap-6">
+							<LocalDataSettings />
+						</div>
+
+						<div v-if="isProfile && !localOnly" class="flex flex-col gap-6">
 							<profile :standalone="false" @password-changed="onPasswordChanged" />
 
 							<SettingsSection v-if="telegramEnabled" title="Telegram">
@@ -95,7 +104,7 @@
 							</SettingsSection>
 						</div>
 
-						<div v-if="isDevice" class="flex flex-col gap-6">
+						<div v-if="isDevice && !localOnly" class="flex flex-col gap-6">
 							<SettingsSection v-if="mcpEnabled" title="API token">
 								<div class="flex max-w-xl flex-col gap-1.5">
 									<Label for="smart-device-token">API token</Label>
@@ -307,6 +316,9 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
+	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
+	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
+	import LocalProfileSettings from '@/components/desktop/LocalProfileSettings.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
@@ -336,6 +348,9 @@
 			Confirm,
 			NotificationSettingsForm,
 			DesktopShortcutsSettings,
+			LocalAccountSection,
+			LocalDataSettings,
+			LocalProfileSettings,
 			ThemePicker,
 			SettingsSection,
 			SettingsRow,
@@ -365,6 +380,7 @@
 			isDevice: false,
 			isTheme: false,
 			isDesktopSection: false,
+			isLocalData: false,
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
 			showToken: false,
@@ -378,6 +394,9 @@
 			},
 		},
 		computed: {
+			localOnly() {
+				return this.$store.getters.isLocalOnly === true;
+			},
 			telegramEnabled() {
 				return this.$store.getters['featureToggles/isFeatureEnabled'](
 					'telegram',
@@ -392,6 +411,7 @@
 				if (this.isNotification) return 'Notifications';
 				if (this.isTheme) return 'Theme';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
+				if (this.isLocalData) return 'Local data';
 				return 'Settings';
 			},
 			hasSmartDeviceToken() {
@@ -465,13 +485,17 @@
 				this.initialPending = true;
 				this.initialError = null;
 				try {
-					const [user, settings] = await Promise.all([
-						getUser(),
-						getUserSettingsV2(),
-					]);
-					this.user = user;
-					this.initSettings(settings, user.settings);
-					this.availableSettings = settings;
+					if (this.localOnly) {
+						this.user = await getUser();
+					} else {
+						const [user, settings] = await Promise.all([
+							getUser(),
+							getUserSettingsV2(),
+						]);
+						this.user = user;
+						this.initSettings(settings, user.settings);
+						this.availableSettings = settings;
+					}
 					this.initialLoaded = true;
 				} catch {
 					this.initialError = 'Could not load settings.';
@@ -504,7 +528,8 @@
 				} else {
 					switch (tab.toLowerCase()) {
 						case 'notification':
-							this.showNotificationSettings();
+							if (this.localOnly) this.showProfileSettings();
+							else this.showNotificationSettings();
 							break;
 						case 'workspace':
 							this.openWorkspaceSettings();
@@ -513,7 +538,8 @@
 							this.showProfileSettings();
 							break;
 						case 'device':
-							this.showDeviceSettings();
+							if (this.localOnly) this.showProfileSettings();
+							else this.showDeviceSettings();
 							break;
 						case 'theme':
 							this.showThemeSettings();
@@ -521,11 +547,15 @@
 						case 'desktop':
 							this.showDesktopSettings();
 							break;
+						case 'data':
+							this.showLocalDataSettings();
+							break;
 					}
 				}
 			},
 
 			showNotificationSettings() {
+				this.isLocalData = false;
 				this.isProfile = false;
 				this.isNotification = true;
 				this.isDevice = false;
@@ -539,6 +569,7 @@
 			},
 
 			showProfileSettings() {
+				this.isLocalData = false;
 				this.isNotification = false;
 				this.isProfile = true;
 				this.isDevice = false;
@@ -548,6 +579,7 @@
 			},
 
 			showDeviceSettings() {
+				this.isLocalData = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = true;
@@ -557,6 +589,7 @@
 			},
 
 			showThemeSettings() {
+				this.isLocalData = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = false;
@@ -566,12 +599,23 @@
 			},
 
 			showDesktopSettings() {
+				this.isLocalData = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = true;
 				this.updateQueryParam('desktop');
+			},
+
+			showLocalDataSettings() {
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isLocalData = true;
+				this.updateQueryParam('data');
 			},
 
 			updateQueryParam(tab) {
