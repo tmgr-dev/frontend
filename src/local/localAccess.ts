@@ -4,7 +4,7 @@ import { dispatchLocal } from './dispatch';
 import { respond } from './install';
 import { withLiveWrites } from './liveUpdates';
 import { handleMcpRequest } from './mcp';
-import { checkPersonaIdentity } from './personaGate';
+import { checkPersonaIdentity, LOCAL_OWNER_ID } from './personaGate';
 import { readPersonaCache } from './personaCache';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
@@ -286,7 +286,11 @@ export const installLocalAccess = async (store: any): Promise<void> => {
 
 	const currentUser = (): LocalUser | null => {
 		const user = store.state.user;
-		return user ? { id: user.id, name: user.name, email: user.email } : null;
+		if (store.getters?.isLocalOnly) {
+			const name = user?.name || store.state.localProfile?.name || '';
+			return { id: LOCAL_OWNER_ID, name, email: '' };
+		}
+		return typeof user?.id === 'number' ? { id: user.id, name: user.name, email: user.email } : null;
 	};
 
 	const notifyReady = () => {
@@ -321,6 +325,6 @@ export const installLocalAccess = async (store: any): Promise<void> => {
 		);
 	});
 
-	store.watch((state: any) => state.user, notifyReady);
+	store.watch((state: any) => [state.user, state.localProfile, store.getters?.isLocalOnly], notifyReady);
 	notifyReady();
 };
