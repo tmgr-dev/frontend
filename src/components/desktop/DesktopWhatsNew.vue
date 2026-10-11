@@ -40,6 +40,13 @@
 					>
 						No release notes for this version.
 					</p>
+					<PromotionsList
+						v-if="promotionsEnabled"
+						placement="release_notes"
+						heading="By the way, we made…"
+						compact
+						class="border-t border-border pt-4"
+					/>
 				</div>
 
 				<div class="flex justify-end border-t border-border px-5 py-3">
@@ -59,6 +66,8 @@
 <script>
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import Modal from '@/components/Modal.vue';
+	import PromotionsList from '@/components/promotions/PromotionsList.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import router from '@/router';
 	import store from '@/store';
 	import {
@@ -72,8 +81,9 @@
 
 	export default defineComponent({
 		name: 'DesktopWhatsNew',
-		components: { MarkdownText, Modal, X },
+		components: { MarkdownText, Modal, PromotionsList, X },
 		setup() {
+			const { isFeatureEnabled } = useFeatureToggles();
 			let checked = false;
 			const hasPriorData = hadSessionAtLaunch();
 
@@ -100,6 +110,7 @@
 
 			return {
 				state: whatsNewState,
+				promotionsEnabled: computed(() => isFeatureEnabled('promotions')),
 				close: closeWhatsNew,
 				title: computed(() =>
 					whatsNewState.value.version
