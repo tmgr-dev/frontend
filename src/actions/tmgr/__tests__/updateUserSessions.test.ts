@@ -60,3 +60,13 @@ test('falls back to the store token and omits the refresh token when there is no
 	await updateUser({ ...base, password: 'secret-1' });
 	expect(sent()).not.toHaveProperty('current_refresh_token');
 });
+
+test('current_password is sent together with a new password', async () => {
+	await updateUser({ ...base, password: 'secret-1', current_password: 'old-1' });
+	expect(sent().current_password).toBe('old-1');
+});
+
+test('current_password is dropped when no new password is entered', async () => {
+	await updateUser({ ...base, password: null, current_password: 'old-1' });
+	expect(sent()).not.toHaveProperty('current_password');
+});

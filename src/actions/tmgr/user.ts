@@ -54,10 +54,14 @@ const readRefreshToken = (): string | undefined => {
 };
 
 export const updateUser = async (
-	payload: User & { password?: string | null },
+	payload: User & {
+		password?: string | null;
+		current_password?: string | null;
+	},
 	options: { logoutOtherSessions?: boolean } = {},
 ) => {
 	const body: Record<string, unknown> = { ...payload };
+	if (!payload.password) delete body.current_password;
 	if (payload.password) {
 		body.logout_other_sessions = options.logoutOtherSessions ?? true;
 		const refreshToken = readRefreshToken();
