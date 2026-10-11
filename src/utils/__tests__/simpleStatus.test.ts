@@ -1,5 +1,6 @@
 import {
 	archiveTarget,
+	boardRedirect,
 	doneTarget,
 	isArchived,
 	isDone,
@@ -230,5 +231,22 @@ const labelCases: {
 describe('stateLabel', () => {
 	it.each(labelCases)('$name', ({ status, label }) => {
 		expect(stateLabel(status)).toBe(label);
+	});
+});
+
+describe('boardRedirect', () => {
+	const on = () => true;
+	const workflowOff = (key: string) => key !== 'workflow';
+
+	it('lets the board open while Workflow is on', () => {
+		expect(boardRedirect(on, 'ws')).toBeNull();
+	});
+
+	it('sends the board to the workspace list in simple mode', () => {
+		expect(boardRedirect(workflowOff, 'ws')).toBe('/ws/list');
+	});
+
+	it('falls back to the plain list without a workspace code', () => {
+		expect(boardRedirect(workflowOff, null)).toBe('/fallback-list');
 	});
 });

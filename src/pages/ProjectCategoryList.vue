@@ -9,7 +9,10 @@
 		restoreCategory as restoreCategoryAction,
 	} from '@/actions/tmgr/categories';
 	import { getTasks, updateTaskPartially } from '@/actions/tmgr/tasks';
-	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import {
+		getWorkspaceStatuses,
+		getWorkspaces,
+	} from '@/actions/tmgr/workspaces';
 	import EmptyState from '@/components/EmptyState.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
@@ -167,6 +170,10 @@
 		].concat(statuses);
 	});
 
+	watch(simpleStatuses, () => {
+		if (simpleFilter.value) loadTasks();
+	});
+
 	watch(workspaceStatus, (newStatus, prevStatus) => {
 		if (newStatus === prevStatus) {
 			return;
@@ -238,6 +245,10 @@
 		tasksPending.value = true;
 		try {
 			const localFilter = simpleFilter.value;
+			if (localFilter && !simpleStatuses.value.length) {
+				await getWorkspaceStatuses();
+				if (!current()) return;
+			}
 			const routeStatus = route.params.status || null;
 			const response = await getTasks(
 				{

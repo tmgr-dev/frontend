@@ -97,5 +97,18 @@ export const saveModulesChoice = async (
 		choice,
 	);
 	invalidateWorkspaceModules(workspaceId);
+	await refreshWorkspaceStatuses();
 	return parseModulesPayload(data);
+};
+
+const refreshWorkspaceStatuses = async () => {
+	requestCache.invalidate('statuses');
+	requestCache.invalidate(/^statuses-workspace-/);
+	requestCache.invalidate('workspace-statuses');
+	try {
+		const { getWorkspaceStatuses } = await import('@/actions/tmgr/workspaces');
+		await getWorkspaceStatuses(false);
+	} catch (error) {
+		console.error('Failed to reload statuses:', error);
+	}
 };

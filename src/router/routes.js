@@ -1,5 +1,5 @@
 import { gatedPage } from '@/router/moduleGate';
-import { isSimpleMode } from '@/utils/simpleStatus';
+import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
@@ -62,6 +62,14 @@ const safeRedirect = (to, target) => {
 	}
 	return target;
 };
+
+const simpleModeBoardGuard = (to) =>
+	boardRedirect(
+		(key) =>
+			window.app?.$store?.getters['featureToggles/isFeatureEnabled'](key) ??
+			true,
+		to.params.workspace_code || getCurrentWorkspaceCode(),
+	) ?? true;
 
 const routes = [
 	{
@@ -383,6 +391,7 @@ const routes = [
 	// Fallback route for when workspace code is not available
 	{
 		path: '/fallback-board',
+		beforeEnter: simpleModeBoardGuard,
 		component: () => import('@/pages/Board.vue'),
 		meta: {
 			title: 'Board',
@@ -619,6 +628,7 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/board',
+		beforeEnter: simpleModeBoardGuard,
 		component: () => import('@/pages/Board.vue'),
 		meta: {
 			title: 'Board',

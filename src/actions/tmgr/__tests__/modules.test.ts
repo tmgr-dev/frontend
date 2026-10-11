@@ -1,4 +1,6 @@
+import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 import $axios from '@/plugins/axios';
+import { requestCache } from '@/utils/requestCache';
 import {
 	getWorkspaceFeatureToggles,
 	getWorkspaceModules,
@@ -10,6 +12,10 @@ import {
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
 	default: { get: jest.fn(), put: jest.fn() },
+}));
+
+jest.mock('@/actions/tmgr/workspaces', () => ({
+	getWorkspaceStatuses: jest.fn().mockResolvedValue([]),
 }));
 
 const http = $axios as unknown as { get: jest.Mock; put: jest.Mock };
@@ -156,6 +162,19 @@ describe('getWorkspaceModules single flight', () => {
 		expect(http.get).toHaveBeenCalledTimes(2);
 		release({ data: { data: payload } });
 		await stale;
+	});
+});
+
+describe('saveModulesChoice status refresh', () => {
+	it('drops the cached statuses and reloads the workspace statuses', async () => {
+		const invalidate = jest.spyOn(requestCache, 'invalidate');
+		http.put.mockResolvedValue({ data: { data: payload } });
+		await saveModulesChoice(5, { modules: { workflow: false } });
+		expect(invalidate).toHaveBeenCalledWith('workspace-statuses');
+		expect(invalidate).toHaveBeenCalledWith('statuses');
+		expect(invalidate).toHaveBeenCalledWith(/^statuses-workspace-/);
+		expect(getWorkspaceStatuses).toHaveBeenCalledWith(false);
+		invalidate.mockRestore();
 	});
 });
 

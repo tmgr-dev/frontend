@@ -74,3 +74,11 @@ export const isSimpleMode = (isOn: IsOn): boolean => !isOn('workflow');
 
 export const isBoardVisible = (isOn: IsOn): boolean =>
 	isOn('board') && isOn('workflow');
+
+export const boardRedirect = (
+	isOn: IsOn,
+	workspaceCode: string | null | undefined,
+): string | null => {
+	if (!isSimpleMode(isOn)) return null;
+	return workspaceCode ? `/${workspaceCode}/list` : '/fallback-list';
+};

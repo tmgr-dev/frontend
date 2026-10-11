@@ -1717,41 +1717,32 @@
 			openTarget(simpleStatuses.value) !== null,
 	);
 
-	const unarchiveTask = async () => {
-		const openId = openTarget(simpleStatuses.value);
-		const id = taskId.value || form.value.id;
-		if (openId === null || !id) return;
+	const moveTaskToStatus = async (statusId: number) => {
 		isLoading.value = true;
 		try {
-			suppressAutoSavingForOnce.value = true;
-			await taskVersionGuard.track(() => updateTaskStatus(id, openId));
-			form.value.status_id = openId;
+			form.value.status_id = statusId;
+			await flushAutoSave(true);
 			store.commit('updateSingleTask', form.value);
 			store.commit('incrementReloadTasksKey');
+			return true;
 		} catch (e) {
-			console.error('Failed to restore task:', e);
+			console.error('Failed to change task status:', e);
+			return false;
 		} finally {
 			isLoading.value = false;
 		}
 	};
 
+	const unarchiveTask = async () => {
+		const openId = openTarget(simpleStatuses.value);
+		if (openId === null || !(taskId.value || form.value.id)) return;
+		await moveTaskToStatus(openId);
+	};
+
 	const archiveTask = async () => {
 		const archiveId = archiveTarget(simpleStatuses.value);
-		const id = taskId.value || form.value.id;
-		if (archiveId === null || !id) return;
-		isLoading.value = true;
-		try {
-			suppressAutoSavingForOnce.value = true;
-			await taskVersionGuard.track(() => updateTaskStatus(id, archiveId));
-			form.value.status_id = archiveId;
-			store.commit('updateSingleTask', form.value);
-			store.commit('incrementReloadTasksKey');
-			if (props.isModal) emit('close');
-		} catch (e) {
-			console.error('Failed to archive task:', e);
-		} finally {
-			isLoading.value = false;
-		}
+		if (archiveId === null || !(taskId.value || form.value.id)) return;
+		if ((await moveTaskToStatus(archiveId)) && props.isModal) emit('close');
 	};
 
 	const showBacklogStatusChangeConfirm = ref(false);

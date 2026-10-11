@@ -137,8 +137,9 @@ describe('board and landing page', () => {
 		]);
 	});
 	it('redirects the board routes to the list in simple mode', () => {
-		expect(read('router/index.js')).toContain('isSimpleMode(');
-		expect(read('router/routes.js')).toContain('isSimpleMode(');
+		const routes = read('router/routes.js');
+		expect(routes).toContain('isSimpleMode(');
+		expect(routes.match(/beforeEnter: simpleModeBoardGuard/g)).toHaveLength(2);
 	});
 	it('shows the sidebar board item through the board surface', () => {
 		expect(read('components/general/CustomSidebar.vue')).toMatch(
