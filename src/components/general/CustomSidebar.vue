@@ -108,6 +108,7 @@
 		Package,
 		PackageOpen,
 		Keyboard,
+		Info,
 		Palette,
 		PaperclipIcon,
 		Plug,
@@ -1088,6 +1089,13 @@
 										>
 											<HardDrive />
 											Local data
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/settings?tab=about')"
+											class="cursor-pointer"
+										>
+											<Info />
+											About
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="isDesktop"

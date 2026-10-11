@@ -65,6 +65,31 @@
 							<DesktopShortcutsSettings />
 						</SettingsSection>
 
+						<div v-if="isAbout" class="flex flex-col gap-6">
+							<SettingsSection title="TMGR">
+								<div class="flex flex-col gap-2 text-sm">
+									<p v-if="appVersion" class="text-muted-foreground">
+										Version {{ appVersion }}
+									</p>
+									<a
+										href="https://tmgr.dev"
+										target="_blank"
+										rel="noopener noreferrer"
+										class="text-primary hover:underline"
+									>
+										tmgr.dev
+									</a>
+								</div>
+							</SettingsSection>
+							<SettingsSection
+								v-if="promotionsEnabled && !localOnly"
+								title="More from the maker"
+								description="Other products from the people who build TMGR."
+							>
+								<PromotionsList placement="about" />
+							</SettingsSection>
+						</div>
+
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
 						</SettingsSection>
@@ -315,6 +340,7 @@
 	} from '@/actions/tmgr/user';
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
+	import PromotionsList from '@/components/promotions/PromotionsList.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
 	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
@@ -353,6 +379,7 @@
 			LocalProfileSettings,
 			ThemePicker,
 			SettingsSection,
+			PromotionsList,
 			SettingsRow,
 			Button,
 			Input,
@@ -381,6 +408,8 @@
 			isTheme: false,
 			isDesktopSection: false,
 			isLocalData: false,
+			isAbout: false,
+			appVersion: '',
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
 			showToken: false,
@@ -402,6 +431,11 @@
 					'telegram',
 				);
 			},
+			promotionsEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'promotions',
+				);
+			},
 			mcpEnabled() {
 				return this.$store.getters['featureToggles/isFeatureEnabled']('mcp');
 			},
@@ -412,6 +446,7 @@
 				if (this.isTheme) return 'Theme';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
 				if (this.isLocalData) return 'Local data';
+				if (this.isAbout) return 'About';
 				return 'Settings';
 			},
 			hasSmartDeviceToken() {
@@ -550,12 +585,16 @@
 						case 'data':
 							this.showLocalDataSettings();
 							break;
+						case 'about':
+							this.showAboutSettings();
+							break;
 					}
 				}
 			},
 
 			showNotificationSettings() {
 				this.isLocalData = false;
+				this.isAbout = false;
 				this.isProfile = false;
 				this.isNotification = true;
 				this.isDevice = false;
@@ -570,6 +609,7 @@
 
 			showProfileSettings() {
 				this.isLocalData = false;
+				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = true;
 				this.isDevice = false;
@@ -580,6 +620,7 @@
 
 			showDeviceSettings() {
 				this.isLocalData = false;
+				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = true;
@@ -590,6 +631,7 @@
 
 			showThemeSettings() {
 				this.isLocalData = false;
+				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = false;
@@ -600,6 +642,7 @@
 
 			showDesktopSettings() {
 				this.isLocalData = false;
+				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = false;
@@ -615,7 +658,30 @@
 				this.isTheme = false;
 				this.isDesktopSection = false;
 				this.isLocalData = true;
+				this.isAbout = false;
 				this.updateQueryParam('data');
+			},
+
+			async loadAppVersion() {
+				if (!this.isDesktop || this.appVersion) return;
+				try {
+					const { getVersion } = await import('@tauri-apps/api/app');
+					this.appVersion = await getVersion();
+				} catch {
+					this.appVersion = '';
+				}
+			},
+
+			showAboutSettings() {
+				this.loadAppVersion();
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isLocalData = false;
+				this.isAbout = true;
+				this.updateQueryParam('about');
 			},
 
 			updateQueryParam(tab) {
