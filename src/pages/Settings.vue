@@ -65,6 +65,20 @@
 							<DesktopShortcutsSettings />
 						</SettingsSection>
 
+						<SettingsSection
+							v-if="isAbout && promotionsEnabled"
+							title="More from the maker"
+							description="Other products from the people who build TMGR."
+						>
+							<PromotionsList placement="about" />
+						</SettingsSection>
+						<p
+							v-if="isAbout && !promotionsEnabled"
+							class="text-sm text-muted-foreground"
+						>
+							Nothing to show here.
+						</p>
+
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
 						</SettingsSection>
@@ -306,6 +320,7 @@
 	} from '@/actions/tmgr/user';
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
+	import PromotionsList from '@/components/promotions/PromotionsList.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -338,6 +353,7 @@
 			DesktopShortcutsSettings,
 			ThemePicker,
 			SettingsSection,
+			PromotionsList,
 			SettingsRow,
 			Button,
 			Input,
@@ -365,6 +381,7 @@
 			isDevice: false,
 			isTheme: false,
 			isDesktopSection: false,
+			isAbout: false,
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
 			showToken: false,
@@ -383,6 +400,11 @@
 					'telegram',
 				);
 			},
+			promotionsEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'promotions',
+				);
+			},
 			mcpEnabled() {
 				return this.$store.getters['featureToggles/isFeatureEnabled']('mcp');
 			},
@@ -392,6 +414,7 @@
 				if (this.isNotification) return 'Notifications';
 				if (this.isTheme) return 'Theme';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
+				if (this.isAbout) return 'About';
 				return 'Settings';
 			},
 			hasSmartDeviceToken() {
@@ -521,6 +544,9 @@
 						case 'desktop':
 							this.showDesktopSettings();
 							break;
+						case 'about':
+							this.showAboutSettings();
+							break;
 					}
 				}
 			},
@@ -531,6 +557,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isAbout = false;
 				this.updateQueryParam('notification');
 			},
 
@@ -544,6 +571,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isAbout = false;
 				this.updateQueryParam('profile');
 			},
 
@@ -553,6 +581,7 @@
 				this.isDevice = true;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isAbout = false;
 				this.updateQueryParam('device');
 			},
 
@@ -562,6 +591,7 @@
 				this.isDevice = false;
 				this.isTheme = true;
 				this.isDesktopSection = false;
+				this.isAbout = false;
 				this.updateQueryParam('theme');
 			},
 
@@ -571,7 +601,18 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = true;
+				this.isAbout = false;
 				this.updateQueryParam('desktop');
+			},
+
+			showAboutSettings() {
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isAbout = true;
+				this.updateQueryParam('about');
 			},
 
 			updateQueryParam(tab) {

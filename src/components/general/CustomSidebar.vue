@@ -106,6 +106,7 @@
 		Package,
 		PackageOpen,
 		Keyboard,
+		Info,
 		Palette,
 		PaperclipIcon,
 		Plug,
@@ -1045,6 +1046,14 @@
 										>
 											<Palette />
 											Theme
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="isFeatureEnabled('promotions')"
+											@click="$router.push('/settings?tab=about')"
+											class="cursor-pointer"
+										>
+											<Info />
+											About
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="isDesktop"
