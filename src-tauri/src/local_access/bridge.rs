@@ -133,7 +133,6 @@ fn send_request(socket_path: &Path, token: &str, line: &str) -> Result<(u16, Str
   use std::os::unix::net::UnixStream;
   let mut stream = UnixStream::connect(socket_path).map_err(|e| e.to_string())?;
   stream.write_all(&build_http_request(token, line)).map_err(|e| e.to_string())?;
-  stream.shutdown(std::net::Shutdown::Write).ok();
   let mut raw = Vec::new();
   stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
   parse_http_response(&raw)
@@ -305,6 +304,36 @@ mod tests {
     server.join().unwrap();
     assert_eq!(status, 200);
     assert_eq!(body, r#"{"jsonrpc":"2.0","id":1,"result":{}}"#);
+
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn keeps_the_write_side_open_so_a_server_that_drops_half_closed_peers_still_answers() {
+    use std::os::unix::net::UnixListener;
+    let dir = std::env::temp_dir().join(format!("tmgr-bridge-halfclose-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let socket_path = dir.join("fake.sock");
+    let _ = std::fs::remove_file(&socket_path);
+    let listener = UnixListener::bind(&socket_path).unwrap();
+
+    let server = std::thread::spawn(move || {
+      let (mut stream, _) = listener.accept().unwrap();
+      let mut buf = [0u8; 4096];
+      stream.read(&mut buf).unwrap();
+      stream.set_read_timeout(Some(std::time::Duration::from_millis(300))).unwrap();
+      if let Ok(0) = stream.read(&mut buf) {
+        return;
+      }
+      stream
+        .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}")
+        .unwrap();
+    });
+
+    let result = send_request(&socket_path, "tmgrl_test", r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    server.join().unwrap();
+    assert_eq!(result.unwrap().0, 200);
 
     let _ = std::fs::remove_dir_all(&dir);
   }
