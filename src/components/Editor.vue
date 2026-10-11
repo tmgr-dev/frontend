@@ -11,7 +11,9 @@
 		showPreview?: boolean;
 	}
 
-	config({ editorExtensions: { screenfull: { instance: { isEnabled: false } as any } } });
+	config({
+		editorExtensions: { screenfull: { instance: { isEnabled: false } as any } },
+	});
 
 	const props = defineProps<Props>();
 	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
@@ -25,7 +27,9 @@
 	};
 
 	onBeforeUnmount(() => {
-		const dom = document.querySelector<HTMLElement>(`#${editorId} .cm-editor`);
+		const dom = document.querySelector<HTMLElement>(
+			`#${editorId} .cm-editor`,
+		);
 		if (dom) EditorView.findFromDOM(dom)?.destroy();
 	});
 
