@@ -18,6 +18,8 @@ const CHECK_EVERY: Duration = Duration::from_secs(3600);
 const KEEP_DAYS: usize = 7;
 const KEEP_WEEKS: usize = 4;
 const KEEP_MONTHS: usize = 3;
+const FUTURE_SLACK: i64 = DAY;
+const STALE_TMP: i64 = 3600;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct BackupInfo {
@@ -116,11 +118,12 @@ fn week_key(secs: i64) -> i64 {
 }
 
 /// Names of automatic backups to delete. Keeps the newest file of each of the latest 7 days, 4 weeks
-/// and 3 months that have backups; only exact `auto-YYYYMMDD-HHMMSS.db` names are ever considered.
-pub fn files_to_delete(files: &[(String, i64)], _now: i64) -> Vec<String> {
+/// and 3 months that have backups; only exact `auto-YYYYMMDD-HHMMSS.db` names are ever considered,
+/// and files dated in the future (a clock that jumped) are left alone.
+pub fn files_to_delete(files: &[(String, i64)], now: i64) -> Vec<String> {
   let mut autos: Vec<(&String, i64)> = files
     .iter()
-    .filter(|(name, secs)| auto_time(name) == Some(*secs))
+    .filter(|(name, secs)| auto_time(name) == Some(*secs) && *secs <= now + FUTURE_SLACK)
     .map(|(name, secs)| (name, *secs))
     .collect();
   autos.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(a.0)));
@@ -183,29 +186,71 @@ fn info(dir: &Path, file: &str, kind: &str, secs: i64) -> BackupInfo {
   }
 }
 
-/// `VACUUM INTO` a temp file, verify it, and only then give it its final name.
-fn write_backup(conn: &Connection, dir: &Path, kind: &str, secs: i64) -> Result<BackupInfo, String> {
+fn backup_names(kind: &str, secs: i64) -> String {
+  format!("{kind}-{}.db", stamp(secs))
+}
+
+/// The only step that needs the workspace connection.
+fn snapshot(conn: &Connection, dir: &Path, kind: &str, secs: i64) -> Result<PathBuf, String> {
   fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-  let file = format!("{kind}-{}.db", stamp(secs));
-  let target = dir.join(&file);
-  if target.exists() {
-    return Err(format!("{file} already exists"));
-  }
-  let tmp = dir.join(format!(".{file}.tmp"));
+  let tmp = dir.join(format!(".{}.tmp", backup_names(kind, secs)));
   let _ = fs::remove_file(&tmp);
-  let result = conn
-    .execute("VACUUM INTO ?", [tmp.to_string_lossy().as_ref()])
-    .map_err(|e| e.to_string())
-    .and_then(|_| verify(&tmp))
-    .and_then(|_| fs::rename(&tmp, &target).map_err(|e| e.to_string()));
+  match conn.execute("VACUUM INTO ?", [tmp.to_string_lossy().as_ref()]) {
+    Ok(_) => Ok(tmp),
+    Err(e) => {
+      let _ = fs::remove_file(&tmp);
+      Err(e.to_string())
+    }
+  }
+}
+
+/// Verifies the snapshot and only then gives it its final name.
+fn finalize(tmp: &Path, dir: &Path, kind: &str, secs: i64) -> Result<BackupInfo, String> {
+  let file = backup_names(kind, secs);
+  let result = verify(tmp).and_then(|_| fs::rename(tmp, dir.join(&file)).map_err(|e| e.to_string()));
   if let Err(error) = result {
-    let _ = fs::remove_file(&tmp);
+    let _ = fs::remove_file(tmp);
     return Err(error);
   }
   Ok(info(dir, &file, kind, secs))
 }
 
-pub fn list_in(dir: &Path) -> Vec<BackupInfo> {
+fn existing(dir: &Path, kind: &str, secs: i64) -> Option<BackupInfo> {
+  let file = backup_names(kind, secs);
+  dir.join(&file).exists().then(|| info(dir, &file, kind, secs))
+}
+
+#[cfg(test)]
+fn write_backup(conn: &Connection, dir: &Path, kind: &str, secs: i64) -> Result<BackupInfo, String> {
+  if let Some(found) = existing(dir, kind, secs) {
+    return Ok(found);
+  }
+  finalize(&snapshot(conn, dir, kind, secs)?, dir, kind, secs)
+}
+
+fn remove_stale_temp_files(dir: &Path, kind: &str, now: i64) {
+  let Ok(entries) = fs::read_dir(dir) else {
+    return;
+  };
+  let prefix = format!(".{kind}-");
+  for entry in entries.filter_map(Result::ok) {
+    let name = entry.file_name().to_string_lossy().into_owned();
+    if !name.starts_with(&prefix) || !name.ends_with(".db.tmp") {
+      continue;
+    }
+    let age = entry
+      .metadata()
+      .and_then(|m| m.modified())
+      .ok()
+      .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+      .map(|d| now - d.as_secs() as i64);
+    if age.is_some_and(|a| a > STALE_TMP) {
+      let _ = fs::remove_file(entry.path());
+    }
+  }
+}
+
+fn list_with_secs(dir: &Path) -> Vec<(i64, BackupInfo)> {
   let Ok(entries) = fs::read_dir(dir) else {
     return Vec::new();
   };
@@ -237,19 +282,27 @@ pub fn list_in(dir: &Path) -> Vec<BackupInfo> {
     })
     .collect();
   backups.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.file.cmp(&a.1.file)));
-  backups.into_iter().map(|(_, b)| b).collect()
+  backups
 }
 
-fn newest_auto_secs(dir: &Path) -> Option<i64> {
-  list_in(dir)
-    .iter()
-    .filter(|b| b.kind == "auto")
-    .filter_map(|b| auto_time(&b.file))
-    .max()
+pub fn list_in(dir: &Path) -> Vec<BackupInfo> {
+  list_with_secs(dir).into_iter().map(|(_, b)| b).collect()
+}
+
+fn newest_secs(dir: &Path, now: i64) -> Option<i64> {
+  list_with_secs(dir).into_iter().map(|(s, _)| s).find(|s| *s <= now + FUTURE_SLACK)
+}
+
+fn newest_auto_secs(dir: &Path, now: i64) -> Option<i64> {
+  list_with_secs(dir)
+    .into_iter()
+    .filter(|(_, b)| b.kind == "auto")
+    .map(|(s, _)| s)
+    .find(|s| *s <= now + FUTURE_SLACK)
 }
 
 pub fn is_due(dir: &Path, now: i64) -> bool {
-  newest_auto_secs(dir).map_or(true, |newest| now - newest >= AUTO_EVERY)
+  newest_auto_secs(dir, now).map_or(true, |newest| now - newest >= AUTO_EVERY)
 }
 
 fn rotate(dir: &Path, now: i64) {
@@ -265,21 +318,40 @@ fn rotate(dir: &Path, now: i64) {
   }
 }
 
+const NOTHING_TO_BACK_UP: &str = "Nothing to back up yet";
+
 async fn run_backup<R: Runtime>(
   app: &AppHandle<R>,
   code: &str,
   kind: &'static str,
 ) -> Result<BackupInfo, String> {
   let workspace = local_workspaces::find(app, code)?;
+  if !Path::new(&workspace.database).exists() {
+    return Err(NOTHING_TO_BACK_UP.into());
+  }
   let dir = backups_dir(&workspace);
   let secs = crate::tray::now_secs();
+  if let Some(found) = existing(&dir, kind, secs) {
+    return Ok(found);
+  }
+  remove_stale_temp_files(&dir, kind, secs);
   let errors = app.state::<BackupErrors>();
   let dbs = app.state::<LocalDbs>();
   let target = dir.clone();
-  let result = with_connection(app.clone(), &dbs, code.to_string(), move |conn| {
-    write_backup(conn, &target, kind, secs)
+  let result = match with_connection(app.clone(), &dbs, code.to_string(), move |conn| {
+    snapshot(conn, &target, kind, secs)
   })
-  .await;
+  .await
+  {
+    Ok(tmp) => {
+      let dir = dir.clone();
+      tauri::async_runtime::spawn_blocking(move || finalize(&tmp, &dir, kind, secs))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
+    }
+    Err(error) => Err(error),
+  };
   match &result {
     Ok(_) => {
       errors.set(code, None);
@@ -340,7 +412,7 @@ pub fn local_backup_status<R: Runtime>(
       .map(|w| {
         let dir = backups_dir(&w);
         BackupStatus {
-          last_backup_at: list_in(&dir).first().map(|b| b.created_at.clone()),
+          last_backup_at: newest_secs(&dir, crate::tray::now_secs()).map(rfc3339),
           last_error: errors.get(&w.manifest.code),
           backups_dir: dir.to_string_lossy().into_owned(),
           code: w.manifest.code,
@@ -468,7 +540,7 @@ mod tests {
     assert!(fs::read_dir(&backups).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with('.')));
     let copy = Connection::open(&made.path).unwrap();
     assert_eq!(copy.query_row("SELECT a FROM t", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
-    assert!(write_backup(&db, &backups, "manual", secs).is_err());
+    assert_eq!(write_backup(&db, &backups, "manual", secs).unwrap(), made);
 
     write_backup(&db, &backups, "auto", secs + 60).unwrap();
     fs::write(backups.join("workspace-v2-1700000000.db"), b"x").unwrap();
@@ -507,6 +579,50 @@ mod tests {
     fs::write(dir.join(auto(now - 3600).0), b"x").unwrap();
     assert!(!is_due(&dir, now));
     assert!(is_due(&dir, now + DAY));
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn future_dated_files_do_not_block_backups_or_take_keep_slots() {
+    let dir = temp_dir("future");
+    let now = at(2026, 10, 11, 12);
+    fs::write(dir.join(auto(now + 30 * DAY).0), b"x").unwrap();
+    assert!(is_due(&dir, now));
+    assert_eq!(newest_secs(&dir, now), None);
+    fs::write(dir.join(auto(now - 2 * DAY).0), b"x").unwrap();
+    assert_eq!(newest_secs(&dir, now), Some(now - 2 * DAY));
+
+    let future = auto(now + 30 * DAY);
+    let mut files: Vec<_> = (0..10).map(|i| auto(now - i * DAY)).collect();
+    files.push(future.clone());
+    let del = files_to_delete(&files, now);
+    assert!(!del.contains(&future.0));
+    assert!(!del.contains(&files[0].0));
+    assert!(!del.contains(&files[6].0));
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn only_old_temp_files_of_the_kind_are_removed() {
+    let dir = temp_dir("stale");
+    let stale = dir.join(".auto-20200101-000000.db.tmp");
+    let other_kind = dir.join(".manual-20200101-000000.db.tmp");
+    let real = dir.join("auto-20200101-000000.db");
+    for f in [&stale, &other_kind, &real] {
+      fs::write(f, b"x").unwrap();
+    }
+    let now = crate::tray::now_secs();
+    let old = std::time::UNIX_EPOCH + Duration::from_secs((now - 2 * STALE_TMP) as u64);
+    for f in [&stale, &other_kind] {
+      fs::File::options().write(true).open(f).unwrap().set_modified(old).unwrap();
+    }
+    remove_stale_temp_files(&dir, "auto", now);
+    assert!(!stale.exists() && other_kind.exists() && real.exists());
+
+    let fresh = dir.join(".auto-20261011-120000.db.tmp");
+    fs::write(&fresh, b"x").unwrap();
+    remove_stale_temp_files(&dir, "auto", now);
+    assert!(fresh.exists());
     let _ = fs::remove_dir_all(&dir);
   }
 }
