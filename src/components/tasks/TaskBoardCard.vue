@@ -172,6 +172,7 @@
 						<ArrowDownToLine class="mr-2 h-4 w-4" />
 						<span>Move to bottom</span>
 					</DropdownMenuItem>
+					<TaskShareItems :task="task" submenu />
 					<PluginTaskMenuItems :task-id="task.id" />
 					<DropdownMenuSeparator />
 					<DropdownMenuItem @click="handleArchive">
@@ -286,6 +287,7 @@
 
 <script>
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
+	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import {
 		deleteTask,
 		startTaskTimeCounter,
@@ -389,6 +391,7 @@
 			DropdownMenuSeparator,
 			DropdownMenuTrigger,
 			PluginTaskMenuItems,
+			TaskShareItems,
 			Popover,
 			PopoverContent,
 			PopoverTrigger,

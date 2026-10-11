@@ -75,6 +75,7 @@
 	import TaskPageMentions from '@/components/tasks/TaskPageMentions.vue';
 	import TaskPersonChips from '@/components/tasks/TaskPersonChips.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
+	import TaskShareMenu from '@/components/tasks/TaskShareMenu.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import { Button } from '@/components/ui/button';
 	import {
@@ -2952,6 +2953,7 @@
 							</div>
 
 							<div class="ml-auto flex items-center gap-1">
+								<TaskShareMenu :task="form" :open-in-app="!isModal" />
 								<Button
 									v-if="!taskId && !form.id"
 									type="button"
