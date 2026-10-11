@@ -4,6 +4,7 @@
 	"description": "Task Manager. Take under control your life.",
 	"version": "3.0.0",
 	"private": true,
+	"license": "AGPL-3.0-only",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
