@@ -2,9 +2,10 @@ import vue from '@vitejs/plugin-vue';
 import autoprefixer from 'autoprefixer';
 import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { pwaWorkbox } from './pwa/pwaWorkbox';
+import { stripAnalytics } from './src/utils/stripAnalytics';
 
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -20,9 +21,22 @@ const vendorGroup = (name: string, packages: string[], priority: number) => ({
 	),
 });
 
+const desktopWithoutAnalytics = (): Plugin => {
+	let mode = '';
+	return {
+		name: 'desktop-without-analytics',
+		configResolved(config) {
+			mode = config.mode;
+		},
+		transformIndexHtml: (html) =>
+			mode === 'desktop' ? stripAnalytics(html) : html,
+	};
+};
+
 export default defineConfig({
 	plugins: [
 		vue(),
+		desktopWithoutAnalytics(),
 		VitePWA({
 			disable: Boolean(process.env.TAURI_ENV_PLATFORM),
 			registerType: 'autoUpdate',

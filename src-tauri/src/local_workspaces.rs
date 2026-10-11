@@ -150,7 +150,7 @@ pub fn local_workspace_set_schema<R: Runtime>(app: AppHandle<R>, code: String, v
   write_manifest(Path::new(&workspace.path), &manifest)
 }
 
-fn chrono_like_now() -> String {
+pub(crate) fn chrono_like_now() -> String {
   let secs = crate::tray::now_secs();
   let days = secs.div_euclid(86_400);
   let rem = secs.rem_euclid(86_400);

@@ -92,6 +92,9 @@ const refreshAuthToken = createTokenRefresher({
 });
 
 const hardLogout = async () => {
+	if (store.getters.isLocalOnly) {
+		return;
+	}
 	// The social OAuth callback page owns its session: it exchanges the code,
 	// sets the fresh token and navigates itself. A 401 from a boot-time call
 	// (guest or stale token) must neither wipe that token nor navigate away

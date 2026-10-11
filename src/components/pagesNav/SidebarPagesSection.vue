@@ -174,6 +174,7 @@
 		watch,
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
+	import { useStore } from 'vuex';
 	import Draggable from 'vuedraggable';
 	import PagesTreeNode from './PagesTreeNode.vue';
 	import { PAGES_TREE_KEY, type PagesTreeContext } from './context';
@@ -208,6 +209,10 @@
 		setup(props) {
 			const route = useRoute();
 			const router = useRouter();
+			const store = useStore();
+			const modulesKnown = computed(
+				() => store.getters['featureToggles/modulesKnown'] === true,
+			);
 			const workspaceId = toRef(props, 'workspaceId');
 			const workspaceCode = toRef(props, 'workspaceCode');
 			const actions = usePagesActions(() => props.workspaceCode);
@@ -215,7 +220,7 @@
 			const zone = useFileDrop((files) => io.openImport(null, files));
 			const tree = usePagesTree(
 				computed(() => workspaceId.value),
-				computed(() => true),
+				computed(() => modulesKnown.value),
 				() => actions.fail('Failed to move page'),
 			);
 

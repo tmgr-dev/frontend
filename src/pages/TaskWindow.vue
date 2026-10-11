@@ -27,6 +27,7 @@
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import NewForm from '@/pages/NewForm.vue';
 	import store from '@/store';
+	import { shouldCloseDetachedWindow } from '@/utils/accountModeSwitch';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { bootstrapTaskWindow } from '@/utils/taskWindowBootstrap';
 	import { installTaskWindowNavigationGuard } from '@/utils/taskWindowBridge';
@@ -55,9 +56,12 @@
 			onBeforeUnmount(removeGuard);
 
 			watch(
-				() => store.getters.isLoggedIn,
-				(loggedIn) => {
-					if (!loggedIn) void closeWindow();
+				() => ({
+					isLoggedIn: store.getters.isLoggedIn,
+					canUseApp: store.getters.canUseApp,
+				}),
+				(next, previous) => {
+					if (shouldCloseDetachedWindow(previous, next)) void closeWindow();
 				},
 			);
 

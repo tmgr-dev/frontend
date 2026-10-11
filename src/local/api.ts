@@ -13,6 +13,7 @@ import { addPageRoutes } from './pages/routes';
 import { mentionedPeople, syncTaskMentions } from './pages/mentions';
 import { addPageDataRoutes } from './pages/pageData';
 import { addGraphRoutes } from './graph/routes';
+import { addModulesRoutes, writeFeatures } from './modulesApi';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -1289,20 +1290,10 @@ export const createLocalApi = () => {
 			),
 		)
 		.add('PUT', 'workspaces/:wid/feature-toggles', async ({ ctx, body }) => {
-			for (const [key, meta] of [
-				['graph', GRAPH_FEATURE],
-				['agent_work', AGENT_WORK_FEATURE],
-			]) {
-				const value = body?.features?.[key];
-				if (typeof value === 'boolean') {
-					await ctx.db.execute(
-						`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-						[meta, value ? '1' : '0'],
-					);
-				}
-			}
+			await writeFeatures(ctx, body?.features ?? {});
 			return {};
 		});
+	addModulesRoutes(router);
 	addRoutineRoutes(router);
 	addPageRoutes(router);
 	addPageDataRoutes(router);

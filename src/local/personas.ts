@@ -1,5 +1,5 @@
 import { LocalHttpError, type LocalContext } from './types';
-import { PERSONA_PERMISSIONS, type PersonaPermission } from './personaGate';
+import { LOCAL_OWNER_ID, PERSONA_PERMISSIONS, type PersonaPermission } from './personaGate';
 
 /** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally — the prompt goes to the persona cache, never to workspace.db. */
 export interface CloudPersona {
@@ -143,4 +143,43 @@ export const disableLocalPersona = async (ctx: LocalContext, uuid: string): Prom
 		ctx.now().toISOString(),
 		uuid,
 	]);
+};
+
+export const DEFAULT_LOCAL_PERSONA_NAME = 'Local agent';
+
+/** Owner -1 marks a persona that never had a cloud origin, so no schema column is needed. */
+export const createLocalPersona = async (
+	ctx: LocalContext,
+	input: { name: string; description?: string | null },
+): Promise<PersonaRow> => {
+	const name = input.name.trim();
+	if (!name) throw new LocalHttpError(422, 'Name is required');
+	const uuid = crypto.randomUUID();
+	const now = ctx.now().toISOString();
+	const description = input.description?.trim() || null;
+	await ctx.db.execute(
+		`INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+		 VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
+		[uuid, LOCAL_OWNER_ID, ctx.user.name, name, description, now],
+	);
+	await enableLocalPersona(ctx, uuid, [...PERSONA_PERMISSIONS]);
+	return {
+		uuid,
+		owner_user_id: LOCAL_OWNER_ID,
+		owner_name: ctx.user.name,
+		name,
+		description,
+		avatar_file: null,
+		synced_at: now,
+		archived_at: null,
+	};
+};
+
+export const ensureDefaultLocalPersona = async (ctx: LocalContext): Promise<{ uuid: string }> => {
+	const [existing] = await ctx.db.select<{ uuid: string }>(
+		`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
+		[LOCAL_OWNER_ID],
+	);
+	if (existing) return existing;
+	return createLocalPersona(ctx, { name: DEFAULT_LOCAL_PERSONA_NAME });
 };

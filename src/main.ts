@@ -14,6 +14,7 @@ import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { applyRelayedEvent, installWindowEventRelay } from '@/utils/windowEventRelay';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
+import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
 import { requestCache } from '@/utils/requestCache';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import $axios from '@/plugins/axios';
@@ -32,6 +33,10 @@ import '@fontsource/jetbrains-mono/500.css';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 
+const profileReady: Promise<unknown> = isDesktopApp()
+	? store.dispatch('refreshLocalProfile')
+	: Promise.resolve();
+
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	const platform = desktopPlatform();
@@ -41,6 +46,9 @@ if (isDesktopApp()) {
 	installLocalWorkspaces($axios, {
 		currentUser: () => store.state.user,
 		hasSession: () => !!store.state.token?.token,
+		accountless: () => store.getters.isLocalOnly,
+		ready: () => profileReady,
+		profileName: () => store.state.localProfile?.name ?? '',
 	});
 	installDomainEvents($axios, domainEvents, () => {
 		const id = Number(store.getters.currentWorkspaceId);
@@ -162,14 +170,28 @@ components.map((component) => app.component(component.name || '', component));
 app.component('VueTheMask', VueTheMask);
 app.directive('mask', mask);
 app.use(Selectable);
-app.use(router);
-app.use(store);
 
-alertPlugin({ app });
+const start = async () => {
+	await profileReady;
+	if (isDesktopApp() && desktopWindowLabel() === 'main') {
+		watch(
+			() => store.getters.accountMode,
+			(next, previous) => {
+				if (shouldReloadOnModeChange(previous, next)) window.location.assign('/');
+			},
+		);
+	}
+	app.use(router);
+	app.use(store);
 
-if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
+	alertPlugin({ app });
 
-app.mount('#app');
+	if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
+
+	app.mount('#app');
+};
+
+void start();
 
 // Pause decorative skeleton animations when this document is not visible.
 const updatePageVisibility = () => {

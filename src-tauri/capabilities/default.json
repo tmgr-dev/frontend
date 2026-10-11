@@ -41,6 +41,7 @@
     "allow-local-db-select",
     "allow-local-export-write",
     "allow-local-reveal",
+    "allow-local-profile-get",
     "allow-local-file-write",
     "allow-local-workspace-create",
     "allow-local-workspace-set-schema",

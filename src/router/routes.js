@@ -64,6 +64,15 @@ const safeRedirect = (to, target) => {
 
 const routes = [
 	{
+		path: '/welcome',
+		component: () => import('@/pages/desktop/Welcome.vue'),
+		name: 'Welcome',
+		meta: {
+			allowedGuests: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
 		path: '/login',
 		component: () => import('@/pages/auth/Login.vue'),
 		name: 'Login',
@@ -164,7 +173,7 @@ const routes = [
 		beforeEnter: (to) => {
 			// Try to redirect to workspace path if possible
 			const store = window.app?.$store;
-			if (store && store.getters.isLoggedIn) {
+			if (store && store.getters.canUseApp) {
 				const currentWorkspaceId = store.state.user?.settings?.find(
 					(setting) => setting.key === 'current_workspace',
 				)?.value;
@@ -221,7 +230,7 @@ const routes = [
 		redirect: (to) => {
 			// Get current workspace from store
 			const store = window.app?.$store;
-			if (!store || !store.getters.isLoggedIn) {
+			if (!store || !store.getters.canUseApp) {
 				return safeRedirect(to, '/fallback-categories'); // Redirect to fallback route
 			}
 
@@ -340,7 +349,7 @@ const routes = [
 		redirect: (to) => {
 			// Get current workspace from store
 			const store = window.app?.$store;
-			if (!store || !store.getters.isLoggedIn) {
+			if (!store || !store.getters.canUseApp) {
 				// If user is not logged in, show login page
 				return safeRedirect(to, '/login');
 			}
@@ -799,7 +808,7 @@ const routes = [
 		beforeEnter: (to) => {
 			// Try to redirect to workspace path if possible
 			const store = window.app?.$store;
-			if (store && store.getters.isLoggedIn) {
+			if (store && store.getters.canUseApp) {
 				const currentWorkspaceId = store.state.user?.settings?.find(
 					(setting) => setting.key === 'current_workspace',
 				)?.value;

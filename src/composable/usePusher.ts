@@ -189,6 +189,9 @@ export function usePusher(): UsePusherReturn {
 		if (echoInstance) {
 			return; // Already initialized
 		}
+		if (!getAuthToken()) {
+			return; // No cloud session: nothing to connect to
+		}
 
 		try {
 			connectionState.value = 'connecting';
@@ -298,8 +301,9 @@ export function usePusher(): UsePusherReturn {
 
 	// Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
 	const subscribe = (channelName: string, events: EventHandlers): string => {
-		// Local (desktop, SQLite) workspaces have negative ids and no realtime channel.
-		if (/^App\.Workspace\.-\d+$/.test(channelName)) {
+		// Local (desktop, SQLite) workspaces have negative ids and no realtime channel; neither has a
+		// session without a cloud token.
+		if (/^App\.Workspace\.-\d+$/.test(channelName) || !getAuthToken()) {
 			const subscriptionId = generateSubscriptionId();
 			const existing = subscriptions.get(channelName);
 			if (existing) {

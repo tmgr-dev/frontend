@@ -989,7 +989,7 @@ test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, 
   await page.keyboard.press('Enter');
   await expect(page.getByText('card command ran').first()).toBeVisible();
 
-  const menuTrigger = page.getByRole('button', { name: 'Actions' });
+  const menuTrigger = page.getByRole('button', { name: 'Actions', exact: true });
   await menuTrigger.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('menuitem', { name: 'No confirm' })).toBeFocused();

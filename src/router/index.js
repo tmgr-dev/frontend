@@ -1,5 +1,6 @@
 import { getUser } from '@/actions/tmgr/user';
 import { getWorkspaces } from '@/actions/tmgr/workspaces';
+import { isDesktopApp } from '@/utils/desktop';
 import { saveReturnPath } from '@/utils/emailVerification';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 import { resolveLanding } from '@/utils/moduleSurfaces';
@@ -23,7 +24,17 @@ const router = createRouter({
 	),
 });
 
+const signedOutTarget = () =>
+	isDesktopApp() && store.getters.accountMode === 'none'
+		? { name: 'Welcome' }
+		: { name: 'Login' };
+
 router.beforeEach(async (to, from, next) => {
+	if (to.name === 'Welcome') {
+		if (!isDesktopApp()) return next({ name: 'Login' });
+		if (store.getters.canUseApp) return next('/');
+	}
+
 	if (
 		to.matched.some((record) => record.meta.allowedGuests) &&
 		store.getters.isLoggedIn
@@ -36,22 +47,22 @@ router.beforeEach(async (to, from, next) => {
 	}
 
 	if (to.matched.some((record) => !record.meta.allowedGuests)) {
-		if (!store.getters.isLoggedIn) {
+		if (!store.getters.canUseApp) {
 			if (to.matched.some((record) => record.meta.returnAfterLogin)) {
 				saveReturnPath(to.fullPath);
 			}
-			return next({ name: 'Login' });
+			return next(signedOutTarget());
 		}
 
-		// Handle root path redirect for logged-in users
-		if (to.path === '/' && store.getters.isLoggedIn) {
+		// Handle root path redirect for users who can use the app
+		if (to.path === '/' && store.getters.canUseApp) {
 			// Ensure user and workspaces are loaded after a hard reload
 			if (!store.state.user?.id) {
 				try {
 					await getUser();
 				} catch (e) {
 					// if fails, send to login
-					return next({ name: 'Login' });
+					return next(signedOutTarget());
 				}
 			}
 
@@ -61,7 +72,7 @@ router.beforeEach(async (to, from, next) => {
 					store.commit('setWorkspaces', workspaces);
 				} catch (e) {
 					// fall back to login if workspace fetch fails
-					return next({ name: 'Login' });
+					return next(signedOutTarget());
 				}
 			}
 

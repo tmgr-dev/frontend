@@ -25,7 +25,7 @@
 					module for yourself.
 				</div>
 
-				<div v-if="payload?.presets.length" class="flex items-center gap-3">
+				<div v-if="presets.length" class="flex items-center gap-3">
 					<Button
 						variant="outline"
 						size="sm"
@@ -46,7 +46,7 @@
 					v-if="payload && currentWorkspaceId"
 					v-model:open="presetOpen"
 					:workspace-id="currentWorkspaceId"
-					:presets="payload.presets"
+					:presets="presets"
 					:catalog="payload.modules"
 					@applied="commit"
 				/>
@@ -119,7 +119,10 @@
 									Ask the owner to turn this on
 								</span>
 							</template>
-							<template #default="{ labelId, descriptionId }">
+							<template v-if="localOnly && row.needsAccount" #default>
+								<RequiresAccount compact />
+							</template>
+							<template v-else #default="{ labelId, descriptionId }">
 								<Button
 									v-if="row.canHide"
 									variant="ghost"
@@ -241,6 +244,7 @@
 	} from '@/actions/tmgr/modules';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import RequiresAccount from '@/components/general/RequiresAccount.vue';
 	import ModulesPresetDialog from '@/components/general/ModulesPresetDialog.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
@@ -259,6 +263,7 @@
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { visiblePresets } from '@/utils/localOnly';
 	import { featureDescription, humanizeKey } from '@/utils/featureToggleCopy';
 	import { allowedLandings } from '@/utils/moduleSurfaces';
 	import {
@@ -309,6 +314,10 @@
 				currentWorkspace.value.user_id === store.state.user?.id),
 	);
 	const isOwner = computed(() => !!payload.value?.canManage);
+	const localOnly = computed(() => store.getters.isLocalOnly === true);
+	const presets = computed(() =>
+		visiblePresets(payload.value?.presets ?? [], localOnly.value),
+	);
 
 	const view = computed(() =>
 		payload.value ? buildModulesView(payload.value, isOwner.value) : null,
