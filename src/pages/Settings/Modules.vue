@@ -276,7 +276,6 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import RequiresAccount from '@/components/general/RequiresAccount.vue';
 	import ModulesPresetDialog from '@/components/general/ModulesPresetDialog.vue';
-	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
