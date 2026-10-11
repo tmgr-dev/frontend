@@ -6,6 +6,7 @@ import {
 	lastBackupLabel,
 	moduleNeedsAccount,
 	settingsAccess,
+	tildePath,
 	visiblePresets,
 	welcomeNote,
 } from '../localOnly';
@@ -172,5 +173,16 @@ describe('visiblePresets', () => {
 	it('hides the team preset in local-only mode', () => {
 		expect(visiblePresets(presets, true)).toEqual([{ key: 'solo' }]);
 		expect(visiblePresets(presets, false)).toEqual(presets);
+	});
+});
+
+describe('tildePath', () => {
+	it('replaces the home directory with a tilde', () => {
+		expect(tildePath('/Users/ada/.tmgr.dev/workspaces/w/backups')).toBe(
+			'~/.tmgr.dev/workspaces/w/backups',
+		);
+		expect(tildePath('/home/ada/.tmgr.dev')).toBe('~/.tmgr.dev');
+		expect(tildePath('/var/data')).toBe('/var/data');
+		expect(tildePath('')).toBe('');
 	});
 });
