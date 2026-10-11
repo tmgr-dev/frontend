@@ -6,12 +6,23 @@ export async function mockApp(
     taskCount = 1,
     multiStatus = false,
     blockTask = false,
+    account = true,
+    apiRequests = [],
   } = {},
 ) {
+  await page.routeWebSocket(/.*/, () => {});
+  if (!account) {
+    await page.route('**/api/**', async (route) => {
+      apiRequests.push(
+        `${route.request().method()} ${new URL(route.request().url()).pathname}`,
+      );
+      await route.fulfill({ status: 500, json: { message: 'no account' } });
+    });
+    return;
+  }
   await page.addInitScript(() =>
     localStorage.setItem('token', JSON.stringify({ token: 'fixture' })),
   );
-  await page.routeWebSocket(/.*/, () => {});
   const user = {
     id: 1,
     name: 'Test User',
