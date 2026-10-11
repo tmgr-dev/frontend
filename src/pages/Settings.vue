@@ -65,19 +65,30 @@
 							<DesktopShortcutsSettings />
 						</SettingsSection>
 
-						<SettingsSection
-							v-if="isAbout && promotionsEnabled"
-							title="More from the maker"
-							description="Other products from the people who build TMGR."
-						>
-							<PromotionsList placement="about" />
-						</SettingsSection>
-						<p
-							v-if="isAbout && !promotionsEnabled"
-							class="text-sm text-muted-foreground"
-						>
-							Nothing to show here.
-						</p>
+						<div v-if="isAbout" class="flex flex-col gap-6">
+							<SettingsSection title="TMGR">
+								<div class="flex flex-col gap-2 text-sm">
+									<p v-if="appVersion" class="text-muted-foreground">
+										Version {{ appVersion }}
+									</p>
+									<a
+										href="https://tmgr.dev"
+										target="_blank"
+										rel="noopener noreferrer"
+										class="text-primary hover:underline"
+									>
+										tmgr.dev
+									</a>
+								</div>
+							</SettingsSection>
+							<SettingsSection
+								v-if="promotionsEnabled"
+								title="More from the maker"
+								description="Other products from the people who build TMGR."
+							>
+								<PromotionsList placement="about" />
+							</SettingsSection>
+						</div>
 
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
@@ -382,6 +393,7 @@
 			isTheme: false,
 			isDesktopSection: false,
 			isAbout: false,
+			appVersion: '',
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
 			showToken: false,
@@ -605,7 +617,18 @@
 				this.updateQueryParam('desktop');
 			},
 
+			async loadAppVersion() {
+				if (!this.isDesktop || this.appVersion) return;
+				try {
+					const { getVersion } = await import('@tauri-apps/api/app');
+					this.appVersion = await getVersion();
+				} catch {
+					this.appVersion = '';
+				}
+			},
+
 			showAboutSettings() {
+				this.loadAppVersion();
 				this.isNotification = false;
 				this.isProfile = false;
 				this.isDevice = false;
