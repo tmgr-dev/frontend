@@ -54,6 +54,7 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	const sent: string[] = [];
 	let accountless = true;
 	let user: any = {};
+	let ready: Promise<unknown> = Promise.resolve();
 
 	const network = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
 		sent.push(`${config.method} ${config.url}`);
@@ -65,6 +66,7 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 		currentUser: () => user,
 		hasSession: () => !accountless,
 		accountless: () => accountless,
+		ready: () => ready,
 		profileName: () => 'Ada',
 	});
 
@@ -75,6 +77,7 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	beforeEach(() => {
 		sent.length = 0;
 		accountless = true;
+		ready = Promise.resolve();
 		active = null;
 		workspaces = [LOCAL];
 		user = {};
@@ -253,6 +256,22 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 
 		expect(data.data.user_id).toBe(-1);
 		expect(data.data.user.name).toBe('Ada');
+	});
+
+	it('holds every request until the profile is read, so none leaves as a signed-in one', async () => {
+		accountless = false;
+		let resolve!: () => void;
+		ready = new Promise<void>((done) => {
+			resolve = done;
+		});
+
+		const pending = Promise.all([attempt('GET', 'tasks/current'), attempt('GET', 'notifications/unread-count')]);
+		await Promise.resolve();
+		accountless = true;
+		resolve();
+		await pending;
+
+		expect(sent).toEqual([]);
 	});
 
 	it('goes back to the server once an account is signed in', async () => {

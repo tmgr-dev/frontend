@@ -43,6 +43,8 @@ interface Hooks {
 	hasSession: () => boolean;
 	/** True when there is no cloud token and a local profile: nothing may reach the network then. */
 	accountless?: () => boolean;
+	/** Resolves once `accountless` can be trusted; requests wait for it so none leaves before the profile is read. */
+	ready?: () => Promise<unknown>;
 	profileName?: () => string;
 }
 
@@ -328,6 +330,7 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		});
 
 	instance.interceptors.request.use(async (config) => {
+		await hooks.ready?.();
 		const accountless = isAccountless();
 		const localMode = hasActiveLocalWorkspace();
 		const route = classify(config.method ?? 'get', config.url ?? '', localMode, config.params, accountless);

@@ -650,7 +650,12 @@
 				next();
 			});
 
-			if (!this.$store.state.user?.id || this.isQuickAddWindow || this.isDetachedWindow) {
+			if (
+				!this.$store.state.user?.id ||
+				this.$store.getters.isLocalOnly ||
+				this.isQuickAddWindow ||
+				this.isDetachedWindow
+			) {
 				return;
 			}
 			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {

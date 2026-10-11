@@ -60,7 +60,7 @@ const entry = (
 const core = (key: string, name: string, description: string, clients: string[]) =>
 	entry(key, name, description, 'core', { clients, core: true, enforced: true, default: true, local: true });
 
-/** Snapshot of the backend module catalog; the defaults of local modules match the old local toggles. */
+/** Snapshot of the backend `ModuleCatalog`, except `task.assignees`: core there, but local keeps it switchable and off as before. */
 export const MODULES: CatalogModule[] = [
 	core('categories', 'Projects', 'Projects with ticket numbers', WEB_MOBILE),
 	core('board', 'Board', 'Kanban board', WEB_MOBILE),
@@ -71,7 +71,10 @@ export const MODULES: CatalogModule[] = [
 		core: false,
 		default: false,
 	},
-	entry('dashboard', 'Dashboard', 'Overview of today and the week', 'time_focus', { local: false }),
+	entry('dashboard', 'Dashboard', 'Overview of today and the week', 'time_focus', {
+		default: true,
+		local: false,
+	}),
 	entry('pomodoro', 'Pomodoro', '25/5 focus cycles on any task', 'time_focus', { local: false }),
 	entry('exports', 'Reports & export', 'Time reports and CSV', 'time_focus', {
 		clients: ['web'],
@@ -83,12 +86,12 @@ export const MODULES: CatalogModule[] = [
 		local: true,
 	}),
 	entry('task.relations', 'Relations', 'Links between tasks (blocks, relates to)', 'planning', {
-		default: true,
+		default: false,
 		local: true,
 	}),
 	entry('daily_routines', 'Routines', 'Daily and recurring routines', 'planning', {
 		clients: ['web', 'mobile', 'desktop'],
-		default: true,
+		default: false,
 		local: true,
 	}),
 	entry('task.files', 'Attachments & files', 'Attachments on tasks and the Files screen', 'planning', {
@@ -97,7 +100,7 @@ export const MODULES: CatalogModule[] = [
 	}),
 	entry('pages', 'Pages', 'Markdown wiki linked to tasks', 'knowledge', {
 		clients: ['web', 'desktop'],
-		default: true,
+		default: false,
 		local: true,
 	}),
 	entry('graph', 'Graph', 'Map of tasks, pages and agents', 'knowledge', {
@@ -108,10 +111,10 @@ export const MODULES: CatalogModule[] = [
 	entry('ai.assistant', 'AI assistant', 'Chat and AI replies to comments (uses AI credits)', 'ai', {
 		local: false,
 	}),
-	entry('agent_work', 'Agent work', 'See what agents did and how long', 'ai', { default: true, local: true }),
+	entry('agent_work', 'Agent work', 'See what agents did and how long', 'ai', { default: false, local: true }),
 	entry('personas', 'Personas', 'AI teammates with their own tokens and skills', 'ai', {
 		clients: ['web', 'desktop'],
-		default: true,
+		default: false,
 		local: true,
 	}),
 	entry('cursor', 'Cursor agents', 'Launch Cursor cloud agents from a task', 'ai', { local: false }),
@@ -143,6 +146,22 @@ export const MODULES: CatalogModule[] = [
 		local: false,
 	}),
 ];
+
+/**
+ * What a local workspace without a stored choice shows. These are the values the local toggles had
+ * before modules existed, so workspaces that were never configured look the same as before.
+ */
+export const LOCAL_DEFAULTS: Record<string, boolean> = {
+	'task.checkpoints': true,
+	'task.relations': true,
+	'task.files': true,
+	daily_routines: true,
+	pages: true,
+	graph: false,
+	agent_work: true,
+	personas: true,
+	'task.assignees': false,
+};
 
 const nonCoreWorkspaceKeys = (): string[] =>
 	MODULES.filter((m) => m.scope === 'workspace' && !m.core && m.local).map((m) => m.key);

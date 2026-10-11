@@ -1,5 +1,5 @@
 import { readUserToggles } from './accountless';
-import { MODULES, PACKS, PRESETS, type CatalogModule } from './modulesCatalog';
+import { LOCAL_DEFAULTS, MODULES, PACKS, PRESETS, type CatalogModule } from './modulesCatalog';
 import type { LocalRouter } from './router';
 import type { LocalContext } from './types';
 
@@ -40,7 +40,7 @@ export const localModulesPayload = async (ctx: LocalContext) => {
 		if (!module.local) enabled = false;
 		else if (module.core) enabled = true;
 		else if (module.scope === 'user') enabled = userToggles.mcp;
-		else enabled = stored.has(module.key) ? stored.get(module.key) === '1' : module.default;
+		else enabled = stored.has(module.key) ? stored.get(module.key) === '1' : LOCAL_DEFAULTS[module.key] ?? module.default;
 		return {
 			...module,
 			enabled,

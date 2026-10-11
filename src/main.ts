@@ -32,6 +32,10 @@ import '@fontsource/jetbrains-mono/500.css';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 
+const profileReady: Promise<unknown> = isDesktopApp()
+	? store.dispatch('refreshLocalProfile')
+	: Promise.resolve();
+
 if (isDesktopApp()) {
 	document.documentElement.classList.add('tauri-desktop');
 	const platform = desktopPlatform();
@@ -42,6 +46,7 @@ if (isDesktopApp()) {
 		currentUser: () => store.state.user,
 		hasSession: () => !!store.state.token?.token,
 		accountless: () => store.getters.isLocalOnly,
+		ready: () => profileReady,
 		profileName: () => store.state.localProfile?.name ?? '',
 	});
 	installDomainEvents($axios, domainEvents, () => {
@@ -166,7 +171,7 @@ app.directive('mask', mask);
 app.use(Selectable);
 
 const start = async () => {
-	if (isDesktopApp()) await store.dispatch('refreshLocalProfile');
+	await profileReady;
 	app.use(router);
 	app.use(store);
 
