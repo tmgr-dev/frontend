@@ -212,6 +212,23 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(three.id).toBeGreaterThan(two.id);
 	});
 
+	it('searches a board column by title or description, literally, and accepts fields=card', async () => {
+		const byTitle = await data('POST', 'tasks', { title: 'Zebra plan' });
+		await data('POST', 'tasks', { title: 'Other', description: '<p>has quartz inside</p>' });
+		await data('POST', 'tasks', { title: '100% sure' });
+		await data('POST', 'tasks', { title: 'plain' });
+		const url = (search: string) =>
+			`tasks/status/${byTitle.status_id}?all&fields=card&order[column]=order&order[direction]=asc&search=${encodeURIComponent(search)}`;
+
+		const titles = async (search: string) =>
+			(await data('GET', url(search))).map((t: any) => t.title);
+
+		expect(await titles('ZEBRA')).toEqual(['Zebra plan']);
+		expect(await titles('quartz')).toEqual(['Other']);
+		expect(await titles('%')).toEqual(['100% sure']);
+		expect(await titles('_')).toEqual([]);
+	});
+
 	it('runs the timer: start is idempotent, stop adds the elapsed time, runned lists running tasks', async () => {
 		const task = await data('POST', 'tasks', { title: 'Timed' });
 		await call('POST', `tasks/${task.id}/countdown`);

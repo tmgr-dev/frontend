@@ -1574,7 +1574,12 @@
 				const tasks = await Promise.all(
 					columns.map((column) =>
 						getSortedTasksByStatus(column.status.id, {
-							params: { 'order[column]': 'order', 'order[direction]': 'asc' },
+							params: {
+								fields: 'card',
+								'order[column]': 'order',
+								'order[direction]': 'asc',
+								...(filter.searchText ? { search: filter.searchText } : {}),
+							},
 						}),
 					),
 				);

@@ -50,8 +50,6 @@ export function createBoardLoader<T>(
 
 export function filterBoardTasks<
 	T extends {
-		title?: string | null;
-		description?: string | null;
 		project_category_id?: number | string;
 		assignees?: Array<{ id: number }>;
 		persona_assignees?: PersonaAssignee[];
@@ -59,19 +57,14 @@ export function filterBoardTasks<
 >(
 	tasks: T[],
 	filter: {
-		searchText?: string | null;
 		selectedUser?: number;
 		selectedCategory?: number;
 		selectedPersona?: string;
 		myUserId?: number | null;
 	},
 ) {
-	const search = (filter.searchText || '').toLowerCase();
 	return tasks.filter(
 		(task) =>
-			(!search ||
-				(task.title || '').toLowerCase().includes(search) ||
-				(task.description || '').toLowerCase().includes(search)) &&
 			(!filter.selectedUser ||
 				task.assignees?.some(
 					(user) => Number(user.id) === Number(filter.selectedUser),
