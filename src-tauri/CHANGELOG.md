@@ -3,6 +3,21 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.34 — 2026-10-12
+
+- Task links: `tmgr://task/<workspace>/<id>` and `https://tmgr.dev/<workspace>/tasks/<id>` links open the task in the app,
+  switching workspace if needed. A task that no longer exists or that you cannot access shows a message. Clicking such
+  a link inside the app (comments, pages, the editor) opens it in the app instead of the browser.
+- Share: a Share menu in the task window footer and the task context menu with Copy link, Copy app link and Copy as
+  Markdown.
+- Back and forward: Cmd+[ and Cmd+] (Alt+Left and Alt+Right on Windows and Linux), the mouse back and forward buttons,
+  arrows in the window header and View → Back / Forward walk through the tasks and screens you opened. The shortcuts
+  are ignored while you type in a field.
+- Fixed: opening and closing a task leaked the description editor, so memory grew with every task you opened.
+- Notifications: the ntfy topic now comes from the server, so notification pushes keep working after the server-side
+  change.
+- Includes web 3.4.147 (editor description format fix, local API clear flags, preset card names).
+
 ## 0.9.33 — 2026-10-11
 
 - Simple mode: a new Workflow module (Settings → Modules → Planning). With Workflow on nothing changes. With it off, a
