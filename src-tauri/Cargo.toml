@@ -1,6 +1,6 @@
 [package]
 name = "tmgr"
-version = "0.9.32"
+version = "0.9.33"
 description = "TMGR desktop app"
 authors = ["TMGR"]
 license = ""

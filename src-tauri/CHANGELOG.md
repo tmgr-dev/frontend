@@ -3,6 +3,20 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.33 — 2026-10-11
+
+- Simple mode: a new Workflow module (Settings → Modules → Planning). With Workflow on nothing changes. With it off, a
+  Done checkbox replaces the status picker in the task window, the task form and list rows; lists filter by
+  Open / Done / All; the Board is hidden. Archive becomes an action: "Archive" in the task menu and "Archive done" on
+  the list, and archived tasks can be restored. Statuses and their tasks stay and come back when Workflow is turned on
+  again. The Personal and Minimal presets use simple mode, and the preset preview shows it. It also works in local
+  workspaces.
+- Settings → About shows the app version and "More from the maker", other apps by the TMGR maker. It is hidden when
+  there is nothing to show, and in a local-only workspace.
+- What's new ends with a short "By the way, we made…" block with the same apps.
+- Fixed: the sidebar Pages tree waits until the workspace's modules are known before it loads, instead of loading
+  right at startup.
+
 ## 0.9.32 — 2026-10-11
 
 - Start without an account: on first launch choose "Start without an account" or "Sign in". Without an account your
