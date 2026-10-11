@@ -3,6 +3,20 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.32 — 2026-10-11
+
+- Start without an account: on first launch choose "Start without an account" or "Sign in". Without an account your
+  workspace lives only on this computer and works offline; you can create an account later and keep the local
+  workspace next to your cloud ones.
+- Automatic local backups: TMGR backs up every local workspace once a day into its `backups` folder (the last 7
+  days, 4 weeks and 3 months are kept) and checks each copy. Settings → Local data shows the last backup and has
+  "Back up now". A banner reminds you there is no cloud copy.
+- Features that need the TMGR cloud (Dashboard, Pomodoro, AI assistant, GitHub, Telegram, notifications and more)
+  show "Requires an account" in a local-only workspace.
+- Local agents without an account: Settings → Agents creates a "Local agent" and a token, so Claude Code or Codex can
+  work in your local workspace over MCP. Fixed the `TMGR mcp` bridge getting no answer from the app.
+- The desktop app no longer loads Google Analytics, Yandex Metrica or Plausible.
+
 ## 0.9.31 — 2026-10-11
 
 - TMGR Desktop now runs on Windows and Linux, not only on Macs with Apple Silicon. Every release ships a Windows
