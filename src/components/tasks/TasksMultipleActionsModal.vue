@@ -29,7 +29,33 @@
 						v-model="selectedAction"
 						class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
-						<optgroup label="Move to status">
+						<optgroup v-if="simpleMode" label="Update tasks">
+							<option
+								:value="`status:${doneStatusId}`"
+								:disabled="!doneStatusId"
+							>
+								{{ doneStatusId ? 'Mark done' : 'Mark done (no Done status)' }}
+							</option>
+							<option
+								:value="`status:${openStatusId}`"
+								:disabled="!openStatusId"
+							>
+								Mark open
+							</option>
+							<option
+								v-if="archiveStatusId"
+								:value="`status:${archiveStatusId}`"
+							>
+								Archive
+							</option>
+							<option
+								v-if="status === 'hidden' || status === 'done'"
+								value="delete"
+							>
+								Delete
+							</option>
+						</optgroup>
+						<optgroup v-else label="Move to status">
 							<option
 								v-for="workspaceStatus in statuses"
 								:key="workspaceStatus.id"
@@ -70,6 +96,7 @@
 <script>
 	import Modal from '@/components/Modal.vue';
 	import ExportSettingsPanel from '@/components/tasks/ExportSettingsPanel.vue';
+	import { archiveTarget, doneTarget, openTarget } from '@/utils/simpleStatus';
 
 	export default {
 		name: 'TasksMultipleActionsModal',
@@ -108,8 +135,21 @@
 				type: Object,
 				required: true,
 			},
+			simpleMode: {
+				type: Boolean,
+				default: false,
+			},
 		},
 		computed: {
+			doneStatusId() {
+				return doneTarget(this.statuses);
+			},
+			openStatusId() {
+				return openTarget(this.statuses);
+			},
+			archiveStatusId() {
+				return archiveTarget(this.statuses);
+			},
 			isLoading() {
 				return this.isLoadingActions.length > 0;
 			},

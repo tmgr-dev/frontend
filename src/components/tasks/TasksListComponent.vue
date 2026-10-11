@@ -9,6 +9,7 @@
 			:is-loading-actions="loadingActionsForMultipleTasks"
 			:status="status"
 			:statuses="statuses"
+			:simple-mode="simpleMode"
 			@close="closeTimeInModal"
 			@export="exportSelectedTasks"
 			@remove="deleteSelectedTasks"
@@ -188,6 +189,13 @@
 								<Settings2 class="mr-2 h-4 w-4" />
 								<span>Settings</span>
 							</DropdownMenuItem>
+							<DropdownMenuItem
+								v-if="canArchive(task)"
+								@click="archiveTask(task)"
+							>
+								<Archive class="mr-2 h-4 w-4" />
+								<span>Archive</span>
+							</DropdownMenuItem>
 							<PluginTaskMenuItems :task-id="task.id as number" />
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -305,7 +313,16 @@
 								:personas="personaAssigneesOf(task)"
 								:size="20"
 							/>
+							<DoneCheckbox
+								v-if="simpleMode"
+								:class="personaAssigneesOf(task).length ? '' : 'ml-auto'"
+								:model-value="isDoneTask(task)"
+								:disabled="doneStatusId === null"
+								:tooltip="DONE_DISABLED_TOOLTIP"
+								@update:model-value="toggleDone(task, $event)"
+							/>
 							<span
+								v-else
 								class="flex items-center gap-1.5 text-ink-subtle"
 								:class="personaAssigneesOf(task).length ? '' : 'ml-auto'"
 							>
@@ -423,6 +440,7 @@
 	import {
 		deleteTask,
 		exportTasks,
+		updateStatusOfTasks,
 		PaginationMeta,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
@@ -450,6 +468,7 @@
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Modal from '@/components/Modal.vue';
+	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
@@ -483,6 +502,14 @@
 	import downloadFile from '@/utils/downloadFile';
 	import { formatOvertime } from '@/utils/formatOvertime';
 	import {
+		archiveTarget,
+		DONE_DISABLED_TOOLTIP,
+		doneTarget,
+		isTaskArchived,
+		isTaskDone,
+		openTarget,
+	} from '@/utils/simpleStatus';
+	import {
 		isInteractiveTarget,
 		nextFocusIndex,
 		shouldIgnoreNavigationTarget,
@@ -498,6 +525,7 @@
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		AlarmClock,
+		Archive,
 		Check,
 		ClockPlus,
 		Eye,
@@ -522,6 +550,8 @@
 			Loader,
 			TasksMultipleActionsModal,
 			TaskButtonsInTheList,
+			DoneCheckbox,
+			Archive,
 			AssigneeUsers,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
@@ -645,6 +675,7 @@
 			return {
 				isFeatureEnabled,
 				showSurface,
+				DONE_DISABLED_TOOLTIP,
 				// One shared clock for every running timer in the list (TM-148).
 				nowSeconds: Math.floor(Date.now() / 1000),
 				clockInterval: null as ReturnType<typeof setInterval> | null,
@@ -691,6 +722,12 @@
 			if (this.clockInterval) clearInterval(this.clockInterval);
 		},
 		computed: {
+			simpleMode() {
+				return !this.isFeatureEnabled('workflow');
+			},
+			doneStatusId() {
+				return doneTarget(this.statuses);
+			},
 			focusOrderKey() {
 				return this.tasks.map((t) => t.id).join(',');
 			},
@@ -933,7 +970,9 @@
 						task.start_time = Math.floor(Date.now() / 1000);
 					}
 
-					const prompt = backlogTimerPrompt(task, this.statuses);
+					const prompt = this.simpleMode
+						? null
+						: backlogTimerPrompt(task, this.statuses);
 					if (prompt) {
 						this.backlogStatusChangeConfirm = { task, dotId, prompt };
 						this.showBacklogStatusChangeConfirm();
@@ -1028,13 +1067,60 @@
 					this.setLoadingAction(dotId, false);
 				}
 			},
+			isDoneTask(task: Task) {
+				return isTaskDone(task, this.statuses);
+			},
+			canArchive(task: Task) {
+				return (
+					this.simpleMode &&
+					!(task as { deleted_at?: unknown }).deleted_at &&
+					archiveTarget(this.statuses) !== null &&
+					!isTaskArchived(task, this.statuses)
+				);
+			},
+			async toggleDone(task: Task, checked: boolean) {
+				const target = checked
+					? doneTarget(this.statuses)
+					: openTarget(this.statuses);
+				if (target === null) return;
+				const previous = task.status_id;
+				task.status_id = target;
+				try {
+					await updateTaskStatus(task.id!, target);
+					this.loadTasks();
+				} catch (e) {
+					task.status_id = previous;
+					console.error('Failed to update task:', e);
+				}
+			},
+			async archiveTask(task: Task) {
+				const target = archiveTarget(this.statuses);
+				if (target === null) return;
+				try {
+					await updateTaskStatus(task.id!, target);
+					this.loadTasks();
+				} catch (e) {
+					console.error('Failed to archive task:', e);
+				}
+			},
 			async updateStatusForSelectedTasks(status) {
 				this.loadingActionsForMultipleTasks.push(status);
-				for (let i = 0; i < this.tasks.length; ++i) {
-					if (!this.selected[i]) {
-						continue;
+				if (this.simpleMode) {
+					const taskIds = this.tasks
+						.filter((_, i) => this.selected[i])
+						.map((task) => task.id as number);
+					try {
+						await updateStatusOfTasks(taskIds, Number(status));
+					} catch (e) {
+						console.error(e);
 					}
-					await this.updateStatus(this.tasks[i], status, null, false);
+				} else {
+					for (let i = 0; i < this.tasks.length; ++i) {
+						if (!this.selected[i]) {
+							continue;
+						}
+						await this.updateStatus(this.tasks[i], status, null, false);
+					}
 				}
 				await this.loadTasks();
 				this.loadingActionsForMultipleTasks =

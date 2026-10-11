@@ -179,6 +179,9 @@ export const updateStatusOfTasks = async (
 	statusId: number,
 ) => {
 	await $axios.put(`statuses/${statusId}/tasks`, { task_ids: taskIds });
+
+	taskIds.forEach((id) => requestCache.invalidate(`task-${id}`));
+	requestCache.invalidate(/^tasks-status-/);
 };
 
 export const updateTaskPartially = async (taskId: number, task: Task) => {

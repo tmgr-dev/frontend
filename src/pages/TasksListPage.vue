@@ -6,6 +6,7 @@
 		PaginationMeta,
 		refreshAssignedTask,
 		Task,
+		updateStatusOfTasks,
 	} from '@/actions/tmgr/tasks';
 	import { getUser } from '@/actions/tmgr/user';
 	import {
@@ -15,6 +16,7 @@
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import Confetti from '@/components/Confetti.vue';
 	import EmptyState from '@/components/EmptyState.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import { Button } from '@/components/ui/button';
@@ -27,9 +29,11 @@
 		DialogTrigger,
 	} from '@/components/ui/dialog';
 	import { Skeleton } from '@/components/ui/skeleton';
+	import { useToast } from '@/components/ui/toast/use-toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
 	import {
 		buildArchivedStatusSets,
@@ -43,6 +47,11 @@
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import { readTaskListQuery } from '@/utils/taskListQuery';
 	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
+	import {
+		filterTasksByState,
+		paginateLocally,
+		type TaskStateFilter,
+	} from '@/utils/taskStateFilter';
 	import { formatTime } from '@/utils/timeUtils.js';
 	import {
 		ArrowDownWideNarrowIcon,
@@ -77,6 +86,17 @@
 	const isLoadingActions = ref({});
 	const hasAbilityToShowConfetti = ref(false);
 	const { showSurface } = useFeatureToggles();
+	const { simpleMode, archiveStatusId, workspaceStatuses, isDoneTask } =
+		useWorkflowMode();
+	const { toast } = useToast();
+	const STATE_FILTERS: { value: TaskStateFilter; label: string }[] = [
+		{ value: 'open', label: 'Open' },
+		{ value: 'done', label: 'Done' },
+		{ value: 'all', label: 'All' },
+	];
+	const ALL_TASKS_PER_PAGE = 100000;
+	const stateFilter = ref<TaskStateFilter>('all');
+	const archiveDoneIds = ref<number[] | null>(null);
 	const categories = ref([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
@@ -133,6 +153,14 @@
 	function matchesKnownFilters(task: Task): boolean {
 		if (status.value && task.status !== status.value) return false;
 		if (isActiveList.value && isArchivedTask(task)) return false;
+		if (
+			simpleMode.value &&
+			isActiveList.value &&
+			stateFilter.value !== 'all' &&
+			isDoneTask(task) !== (stateFilter.value === 'done')
+		) {
+			return false;
+		}
 		if (
 			selectedCategory.value != null &&
 			selectedCategory.value !== -1 &&
@@ -359,6 +387,14 @@
 	);
 
 	watch(selectedCategory, loadTasks);
+	watch(stateFilter, () => {
+		pagination.value.current_page = 1;
+		if (route.query.page && String(route.query.page) !== '1') {
+			updateRouteQuery();
+		} else {
+			loadTasks();
+		}
+	});
 	watch(() => store.state.reloadTasksKey, loadTasks);
 	watch(
 		() => store.state.updatedTaskKey,
@@ -451,6 +487,30 @@
 			let response;
 			if (status.value) {
 				response = await getTasksByStatus(status.value, params);
+			} else if (simpleMode.value && stateFilter.value !== 'all') {
+				const everything = await getTasks({
+					params: params.params,
+					page: 1,
+					per_page: ALL_TASKS_PER_PAGE,
+				});
+				const matching = filterTasksByState(
+					everything.data,
+					stateFilter.value,
+					workspaceStatuses.value,
+				);
+				const paged = paginateLocally(
+					matching,
+					pagination.value.current_page,
+					pagination.value.per_page,
+				);
+				const meta: PaginationMeta & { total_seconds?: number } = {
+					...paged.meta,
+					total_seconds: matching.reduce(
+						(sum, task) => sum + (task.common_time || 0),
+						0,
+					),
+				};
+				response = { data: paged.data, meta };
 			} else {
 				response = await getTasks(params);
 			}
@@ -519,6 +579,47 @@
 	function clearSearch() {
 		searchText.value = null;
 		resetFilters();
+	}
+
+	async function askArchiveDone() {
+		try {
+			const everything = await getTasks({
+				params: {},
+				page: 1,
+				per_page: ALL_TASKS_PER_PAGE,
+			});
+			const ids = filterTasksByState(
+				everything.data,
+				'done',
+				workspaceStatuses.value,
+			).map((task) => task.id as number);
+			if (!ids.length) {
+				toast({ title: 'No done tasks to archive' });
+				return;
+			}
+			archiveDoneIds.value = ids;
+		} catch (e) {
+			console.error(e);
+			toast({
+				title: 'Could not load done tasks',
+				variant: 'destructive',
+			});
+		}
+	}
+
+	async function confirmArchiveDone() {
+		const ids = archiveDoneIds.value;
+		const archivedId = archiveStatusId.value;
+		archiveDoneIds.value = null;
+		if (!ids || archivedId === null) return;
+		try {
+			await updateStatusOfTasks(ids, archivedId);
+			await loadTasks();
+			toast({ title: `Archived ${ids.length} done tasks` });
+		} catch (e) {
+			console.error(e);
+			toast({ title: 'Could not archive tasks', variant: 'destructive' });
+		}
 	}
 
 	function openCreateTaskModal() {
@@ -643,6 +744,41 @@
 							</span>
 						</div>
 					</transition>
+
+					<div
+						v-if="simpleMode && isActiveList"
+						class="flex w-full items-center justify-between gap-2"
+					>
+						<div
+							class="flex shrink-0 overflow-hidden rounded-pill border border-line bg-surface"
+							role="group"
+							aria-label="Show tasks"
+						>
+							<button
+								v-for="option in STATE_FILTERS"
+								:key="option.value"
+								type="button"
+								class="h-9 px-3 text-sm transition-colors"
+								:class="
+									stateFilter === option.value
+										? 'bg-surface-sunken font-medium text-ink'
+										: 'text-ink-subtle hover:text-ink'
+								"
+								:aria-pressed="stateFilter === option.value"
+								@click="stateFilter = option.value"
+							>
+								{{ option.label }}
+							</button>
+						</div>
+						<button
+							v-if="archiveStatusId !== null"
+							type="button"
+							class="h-9 shrink-0 rounded-pill border border-line bg-surface px-3 text-sm text-ink-subtle transition-colors hover:text-ink"
+							@click="askArchiveDone"
+						>
+							Archive done
+						</button>
+					</div>
 
 					<div class="flex w-full items-center justify-end gap-2">
 						<div class="relative flex-1">
@@ -796,4 +932,14 @@
 			</div>
 		</template>
 	</BaseLayout>
+
+	<Confirm
+		v-if="archiveDoneIds"
+		title="Archive done tasks"
+		:body="`Archive ${archiveDoneIds.length} done ${
+			archiveDoneIds.length === 1 ? 'task' : 'tasks'
+		}?`"
+		@onCancel="archiveDoneIds = null"
+		@onOk="confirmArchiveDone"
+	/>
 </template>
