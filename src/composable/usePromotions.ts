@@ -5,6 +5,7 @@ import {
 	type Promotion,
 	type PromotionPlacement,
 } from '@/utils/promotions';
+import store from '@/store';
 import { onMounted, ref, watch } from 'vue';
 
 const MODULE_KEY = 'promotions';
@@ -30,7 +31,8 @@ const shared = () => {
 
 export function usePromotions(placement: PromotionPlacement) {
 	const { isFeatureEnabled, isLoaded } = useFeatureToggles();
-	enabledNow = () => isFeatureEnabled(MODULE_KEY);
+	enabledNow = () =>
+		isFeatureEnabled(MODULE_KEY) && store.getters.isLocalOnly !== true;
 	const promotions = ref<Promotion[]>([]);
 	const ctl = shared();
 
@@ -40,7 +42,7 @@ export function usePromotions(placement: PromotionPlacement) {
 	};
 
 	onMounted(refresh);
-	watch([() => isFeatureEnabled(MODULE_KEY), isLoaded], refresh);
+	watch([enabledNow, isLoaded], refresh);
 
 	return {
 		promotions,
