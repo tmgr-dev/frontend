@@ -88,7 +88,6 @@
 </template>
 
 <script>
-	import { getDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { getLaunchedTasks, getTask } from '@/actions/tmgr/tasks';
 	import { getUserSettings, updateUserSettingsV2 } from '@/actions/tmgr/user';
 	import {
@@ -126,7 +125,6 @@
 	import {
 		defineAsyncComponent,
 		defineComponent,
-		onBeforeMount,
 		onBeforeUnmount,
 		ref,
 		watch,
@@ -159,26 +157,7 @@
 			StatusBar,
 		},
 		setup() {
-			const dailyRoutinesCount = ref(0);
 			const isExpanded = ref(true);
-
-			const loadRoutinesCount = async () => {
-				if (
-					store.getters.canUseApp &&
-					store.getters['featureToggles/modulesKnown'] &&
-					store.getters['featureToggles/isFeatureEnabled']('daily_routines')
-				) {
-					dailyRoutinesCount.value = await getDailyTasksCount().catch(() => 0);
-				}
-			};
-			onBeforeMount(loadRoutinesCount);
-			watch(
-				() => [
-					store.getters['featureToggles/modulesKnown'],
-					store.getters.currentWorkspaceId,
-				],
-				loadRoutinesCount,
-			);
 
 			if (typeof window !== 'undefined') {
 				const savedState = localStorage.getItem('sidebarExpanded');

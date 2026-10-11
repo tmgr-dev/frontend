@@ -221,7 +221,8 @@
 		categoriesLoaded = ref(false),
 		sidebarError = ref<string | null>(null);
 	let sidebarDisposed = false,
-		sidebarRequest = 0;
+		sidebarRequest = 0,
+		sidebarBooting = 0;
 	onBeforeUnmount(() => {
 		sidebarDisposed = true;
 		++sidebarRequest;
@@ -229,8 +230,18 @@
 	async function loadSidebar() {
 		if (!store.getters.canUseApp) return;
 		// Mounts before the router guard resolves the tab's workspace; the batch below reports getUser failures.
-		if (!store.state.user?.id) await getUser().catch(() => {});
-		if (!store.state.workspaces?.length) await store.dispatch('loadWorkspaces');
+		let userJustLoaded = false;
+		sidebarBooting++;
+		try {
+			if (!store.state.user?.id) {
+				await getUser().catch(() => {});
+				userJustLoaded = !!store.state.user?.id;
+			}
+			if (!store.state.workspaces?.length)
+				await store.dispatch('loadWorkspaces');
+		} finally {
+			sidebarBooting--;
+		}
 		const request = ++sidebarRequest;
 		const context =
 			String(store.state.user?.id) +
@@ -260,9 +271,11 @@
 					categoriesLoaded.value = true;
 				}
 			}),
-			getUser().then((data) => {
-				if (current()) user.value = data;
-			}),
+			(userJustLoaded ? Promise.resolve(store.state.user as any) : getUser()).then(
+				(data) => {
+					if (current()) user.value = data;
+				},
+			),
 			getWorkspaces().then((data) => {
 				if (current()) workspaces.value = data;
 			}),
@@ -299,6 +312,7 @@
 				(s: any) => s.key === 'current_workspace',
 			)?.value,
 		() => {
+			if (sidebarBooting) return;
 			categories.value = [];
 			categoriesLoaded.value = false;
 			void loadSidebar();
