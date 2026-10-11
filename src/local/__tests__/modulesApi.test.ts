@@ -57,6 +57,16 @@ describeSqlite('local modules API', () => {
 		}
 	});
 
+	it('keeps Workflow on by default and lets the board follow it', async () => {
+		expect(enabled((await payload()).modules)).toMatchObject({ workflow: true, board: true });
+
+		await data('PUT', 'workspaces/-42/modules', { preset: 'personal' });
+		expect(enabled((await payload()).modules)).toMatchObject({ workflow: false, board: false });
+
+		await data('PUT', 'workspaces/-42/modules', { modules: { board: true } });
+		expect(enabled((await payload()).modules)).toMatchObject({ workflow: true, board: true });
+	});
+
 	it('shows every module of the catalog and keeps cloud-only ones off', async () => {
 		const { modules } = await payload();
 

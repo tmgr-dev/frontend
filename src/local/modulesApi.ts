@@ -48,6 +48,9 @@ export const localModulesPayload = async (ctx: LocalContext) => {
 			...(module.local ? {} : { requires_account: true }),
 		};
 	});
+	const workflow = modules.find((module) => module.key === 'workflow');
+	const board = modules.find((module) => module.key === 'board');
+	if (board && workflow) board.enabled = workflow.enabled;
 	return {
 		configured: true,
 		can_manage: true,
@@ -68,6 +71,7 @@ const applyChoice = async (ctx: LocalContext, body: any) => {
 		for (const [key, value] of Object.entries(body.modules)) {
 			if (typeof value === 'boolean') writes.set(key, value);
 		}
+		if (body.modules.board === true) writes.set('workflow', true);
 	}
 	await writeFeatures(ctx, Object.fromEntries(writes));
 };

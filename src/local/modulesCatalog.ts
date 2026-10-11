@@ -63,7 +63,7 @@ const core = (key: string, name: string, description: string, clients: string[])
 /** Snapshot of the backend `ModuleCatalog`, except `task.assignees`: core there, but local keeps it switchable and off as before. */
 export const MODULES: CatalogModule[] = [
 	core('categories', 'Projects', 'Projects with ticket numbers', WEB_MOBILE),
-	core('board', 'Board', 'Kanban board', WEB_MOBILE),
+	{ ...core('board', 'Board', 'Kanban board', WEB_MOBILE), depends_on: ['workflow'] },
 	core('task.countdown', 'Timer', 'Start and stop a timer on any task', ['web', 'mobile', 'desktop']),
 	core('task.comments', 'Comments', 'Comments and reactions', WEB_MOBILE),
 	{
@@ -79,6 +79,12 @@ export const MODULES: CatalogModule[] = [
 	entry('exports', 'Reports & export', 'Time reports and CSV', 'time_focus', {
 		clients: ['web'],
 		local: false,
+	}),
+	entry('workflow', 'Workflow', 'Custom statuses, the status picker and board columns', 'planning', {
+		clients: ['web', 'mobile', 'desktop'],
+		enforced: false,
+		default: true,
+		local: true,
 	}),
 	entry('task.checkpoints', 'Checkpoints', 'Checklist inside a task', 'planning', {
 		enforced: false,
@@ -188,7 +194,7 @@ export const PRESETS: CatalogPreset[] = [
 		key: 'developer',
 		name: 'Developer with AI agents',
 		description: 'Me and my AI agents',
-		modules: onlyLocal(['task.checkpoints', 'task.files', 'agent_work', 'personas']),
+		modules: onlyLocal(['workflow', 'task.checkpoints', 'task.files', 'agent_work', 'personas']),
 	},
 	{
 		key: 'everything',
