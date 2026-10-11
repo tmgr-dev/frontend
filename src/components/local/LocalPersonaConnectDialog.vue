@@ -74,7 +74,9 @@
 						>{{ codexSnippet }}</pre
 					>
 
-					<p class="text-xs text-muted-foreground">Claude Code</p>
+					<p class="text-xs text-muted-foreground">
+						Claude Code: run this once in your terminal, then restart Claude Code. TMGR must be running.
+					</p>
 					<pre
 						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
 						>{{ claudeSnippet }}</pre

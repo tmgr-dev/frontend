@@ -1,5 +1,8 @@
 import { LocalHttpError, type LocalContext } from './types';
 
+/** Owner id of a persona created on this machine without a cloud account; it keeps working after a later sign-in. */
+export const LOCAL_OWNER_ID = -1;
+
 /** Same permission vocabulary the cloud gate uses. */
 export const PERSONA_PERMISSIONS = [
 	'tasks:read',
@@ -86,7 +89,7 @@ export const checkPersonaIdentity = async (ctx: LocalContext): Promise<PersonaGr
 	);
 	if (!persona) throw new LocalHttpError(401, 'Persona is not known in this workspace', 'PERSONA_UNKNOWN');
 	if (persona.archived_at) throw new LocalHttpError(401, 'Persona is archived', 'PERSONA_ARCHIVED');
-	if (Number(persona.owner_user_id) !== Number(ctx.user.id)) {
+	if (Number(persona.owner_user_id) !== LOCAL_OWNER_ID && Number(persona.owner_user_id) !== Number(ctx.user.id)) {
 		throw new LocalHttpError(401, 'Persona belongs to a different account', 'OWNER_MISMATCH');
 	}
 	const [grant] = await ctx.db.select<PersonaGrant>(
