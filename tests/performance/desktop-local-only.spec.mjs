@@ -150,6 +150,19 @@ test('local data tab and local agents', async ({ page }) => {
   expect(apiRequests).toEqual([]);
 });
 
+test('settings opened directly as the first page keeps the pages tree', async ({
+  page,
+}) => {
+  const { apiRequests } = await localPage(page, { profile });
+  await page.goto('/settings/modules');
+  await expect(page.getByTestId('requires-account').first()).toBeVisible();
+  await expect(page.getByTestId('pages-sidebar-section')).toBeVisible();
+  await expect(page.getByText('Failed to load pages')).toHaveCount(0);
+  await expect(page.getByText('Loading…')).toHaveCount(0);
+  await shot(page, 'modules-direct.png');
+  expect(apiRequests).toEqual([]);
+});
+
 test('web: no desktop stub goes to login, never welcome', async ({ page }) => {
   await page.routeWebSocket(/.*/, () => {});
   await page.route('**/api/**', (route) =>
