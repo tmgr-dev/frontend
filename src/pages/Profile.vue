@@ -86,6 +86,22 @@
 					</p>
 				</div>
 				<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+					<div class="flex flex-col gap-1.5 sm:col-span-2">
+						<Label for="profile-current-password">Current password</Label>
+						<Input
+							id="profile-current-password"
+							v-model="user.current_password"
+							type="password"
+							autocomplete="current-password"
+						/>
+						<p
+							v-if="errors?.current_password"
+							class="text-xs text-destructive"
+							data-testid="current-password-error"
+						>
+							{{ errors.current_password[0] }}
+						</p>
+					</div>
 					<div class="flex flex-col gap-1.5">
 						<Label for="profile-password">New password</Label>
 						<Input
@@ -115,6 +131,10 @@
 							{{ errors.password_confirmation[0] }}
 						</p>
 					</div>
+					<p class="text-xs text-ink-subtle sm:col-span-2">
+						Signed up with Google, GitHub or Apple and never set a password? Use
+						Forgot password on the sign-in page to set one.
+					</p>
 				</div>
 				<label
 					for="profile-logout-other-sessions"
@@ -204,6 +224,7 @@
 				name: null,
 				password: null,
 				password_confirmation: null,
+				current_password: null,
 			},
 			errors: {},
 			avatarBusy: false,
@@ -278,6 +299,7 @@
 						this.user = { ...this.user, ...updated };
 					this.user.password = null;
 					this.user.password_confirmation = null;
+					this.user.current_password = null;
 					this.errors = {};
 					if (passwordChanged) {
 						this.tokensRevoked = true;
@@ -290,7 +312,13 @@
 						toast({ title: 'Saved', description: 'User data saved' });
 					}
 				} catch (error) {
-					this.errors = error.response?.data?.errors ?? {};
+					const data = error.response?.data;
+					this.errors = data?.errors ?? {};
+					if (
+						!this.errors.current_password &&
+						/current password/i.test(data?.message ?? '')
+					)
+						this.errors = { ...this.errors, current_password: [data.message] };
 				} finally {
 					this.saving = false;
 				}
