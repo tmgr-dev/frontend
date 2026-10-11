@@ -1650,30 +1650,33 @@
 						? this.$store.state.user
 						: await getUser();
 					if (this.boardDisposed) return;
-					const [workspaces, categories] = await Promise.all([
+					const setting = this.$store.state.user?.settings?.find(
+						(setting) => setting.key === 'current_workspace',
+					);
+					this.workspaceId = Number(setting?.value) || 0;
+					const personasEnabled = () =>
+						this.$store.getters['featureToggles/isFeatureEnabled']('personas');
+					const fetchPersonas = () =>
+						getAssignablePersonas(this.workspaceId).catch(() => []);
+					const earlyPersonas =
+						this.workspaceId && personasEnabled() ? fetchPersonas() : null;
+					const [workspaces, categories, users, personas] = await Promise.all([
 						getWorkspaces(),
 						getCategories(),
+						this.workspaceId ? getWorkspaceMembers(this.workspaceId) : [],
+						earlyPersonas,
+						this.loadColumns(),
 					]);
 					if (this.boardDisposed) return;
 					this.userData = user;
 					this.workspacesData = workspaces;
 					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
-					const setting = this.$store.state.user?.settings?.find(
-						(setting) => setting.key === 'current_workspace',
-					);
-					this.workspaceId = Number(setting?.value) || 0;
 					if (this.workspaceId) {
-						const users = await getWorkspaceMembers(this.workspaceId);
-						if (this.boardDisposed) return;
 						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
-						this.assignablePersonas = this.$store.getters[
-							'featureToggles/isFeatureEnabled'
-						]('personas')
-							? await getAssignablePersonas(this.workspaceId).catch(() => [])
-							: [];
+						this.assignablePersonas =
+							personas ?? (personasEnabled() ? await fetchPersonas() : []);
 						if (this.boardDisposed) return;
 					}
-					await this.loadColumns();
 					if (this.boardDisposed) return;
 					this.boardReady = true;
 					await this.loadTasks();

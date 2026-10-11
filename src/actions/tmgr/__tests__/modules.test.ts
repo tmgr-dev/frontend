@@ -123,3 +123,38 @@ describe('writes', () => {
 		});
 	});
 });
+
+describe('getWorkspaceModules single flight', () => {
+	it('sends one request for concurrent reads of the same workspace', async () => {
+		http.get.mockResolvedValue({ data: { data: payload } });
+		await Promise.all([getWorkspaceModules(7), getWorkspaceModules(7)]);
+		expect(http.get).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not share a request between workspaces', async () => {
+		http.get.mockResolvedValue({ data: { data: payload } });
+		await Promise.all([getWorkspaceModules(7), getWorkspaceModules(8)]);
+		expect(http.get).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not reuse a finished read', async () => {
+		http.get.mockResolvedValue({ data: { data: payload } });
+		await getWorkspaceModules(7);
+		await getWorkspaceModules(7);
+		expect(http.get).toHaveBeenCalledTimes(2);
+	});
+
+	it('re-reads after a save even when an older read is still in flight', async () => {
+		let release: (value: unknown) => void = () => {};
+		http.get.mockReturnValueOnce(
+			new Promise((resolve) => (release = resolve)),
+		);
+		http.get.mockResolvedValueOnce({ data: { data: payload } });
+		http.put.mockResolvedValue({ data: {} });
+		const stale = getWorkspaceModules(9);
+		await setModuleEnabled(9, { key: 'pages', scope: 'workspace' }, true);
+		expect(http.get).toHaveBeenCalledTimes(2);
+		release({ data: { data: payload } });
+		await stale;
+	});
+});
