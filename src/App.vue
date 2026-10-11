@@ -176,7 +176,7 @@
 			}
 
 			const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
-			if (isDesktopApp() && desktopWindowLabel() !== 'quick-add') {
+			if (isDesktopApp() && desktopWindowLabel() === 'main') {
 				installNavHistory(router, store);
 				useNavHistoryInputs();
 			}

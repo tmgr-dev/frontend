@@ -52,7 +52,7 @@ export const openTaskLink = async (
 	}
 
 	const workspaceId = Number(workspace.id);
-	if (workspaceId > 0) {
+	if (workspaceId > 0 && Number(currentId) > 0) {
 		try {
 			await deps.fetchTask(link.taskId, workspaceId);
 		} catch (error) {

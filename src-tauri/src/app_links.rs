@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, Runtime, Url};
 const OPEN_APP_LINK_EVENT: &str = "open-app-link";
 
 pub(crate) fn is_task_web_link(url: &Url) -> bool {
-  if url.scheme() != "https" || url.host_str() != Some("tmgr.dev") || url.port().is_some() || !url.username().is_empty() {
+  if url.scheme() != "https" || url.host_str() != Some("tmgr.dev") || url.port().is_some() || !url.username().is_empty() || url.password().is_some() {
     return false;
   }
   let Some(segments) = url.path_segments().map(|s| s.collect::<Vec<_>>()) else {

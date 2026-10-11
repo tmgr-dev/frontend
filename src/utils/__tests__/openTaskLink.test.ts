@@ -47,6 +47,14 @@ describe('openTaskLink', () => {
 		expect(calls).toEqual(['fetch', 'show', 'nav:/work/list', 'modal:7']);
 	});
 
+	it('skips the remote check when the current workspace is local', async () => {
+		const { deps } = makeDeps({ currentWorkspaceId: jest.fn(() => -3) });
+		const result = await openTaskLink({ workspaceCode: 'work', taskId: 7 }, deps);
+		expect(result).toEqual({ ok: true });
+		expect(deps.fetchTask).not.toHaveBeenCalled();
+		expect(deps.openModal).toHaveBeenCalledWith(7);
+	});
+
 	it('focuses the task window and does nothing else', async () => {
 		const { deps, calls } = makeDeps({ focusTaskWindow: jest.fn(async () => true) });
 		const result = await openTaskLink({ workspaceCode: 'work', taskId: 7 }, deps);
