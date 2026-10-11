@@ -25,11 +25,13 @@
 	} from '@/actions/tmgr/workspaces.ts';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import ModulesPicker from '@/components/general/ModulesPicker.vue';
+	import { Button } from '@/components/ui/button';
 	import Confirm from '@/components/general/Confirm.vue';
 	import GlobalSearch from '@/components/general/GlobalSearch.vue';
 	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
 	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
+	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import {
 		Breadcrumb,
@@ -139,6 +141,12 @@
 		useFeatureToggles();
 
 	const isDesktop = isDesktopApp();
+	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
+	const hasLocalWorkspaces = computed(
+		() =>
+			isDesktop &&
+			(isLocalOnly.value || workspaces.value.some((w: any) => w.is_local)),
+	);
 	const showWindowControls = isDesktop && !hasNativeTitleBar();
 	const revealLabel = revealInFileManagerLabel();
 	const pagesEnabled = computed(() =>
@@ -922,6 +930,19 @@
 
 				<SidebarFooter>
 					<SidebarMenu>
+						<SidebarMenuItem
+							v-if="isLocalOnly"
+							class="group-data-[collapsible=icon]:hidden"
+						>
+							<Button
+								class="w-full"
+								size="sm"
+								data-testid="sidebar-create-account"
+								@click="$router.push({ name: 'Login' })"
+							>
+								Create account
+							</Button>
+						</SidebarMenuItem>
 						<SidebarMenuItem>
 							<DropdownMenu>
 								<DropdownMenuTrigger as-child>
@@ -936,10 +957,20 @@
 											:size="32"
 										/>
 										<div class="grid flex-1 text-left text-sm leading-tight">
-											<span class="truncate font-semibold">{{
-												user.name
+											<span class="flex items-center gap-1.5">
+												<span class="truncate font-semibold">{{
+													user.name
+												}}</span>
+												<span
+													v-if="isLocalOnly"
+													data-testid="local-badge"
+													class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
+													>Local</span
+												>
+											</span>
+											<span v-if="!isLocalOnly" class="truncate text-xs">{{
+												user.email
 											}}</span>
-											<span class="truncate text-xs">{{ user.email }}</span>
 										</div>
 										<ChevronsUpDown class="ml-auto size-4" />
 									</SidebarMenuButton>
@@ -965,7 +996,9 @@
 												<span class="truncate font-semibold">
 													{{ user.name }}
 												</span>
-												<span class="truncate text-xs">{{ user.email }}</span>
+												<span v-if="!isLocalOnly" class="truncate text-xs">{{
+													user.email
+												}}</span>
 											</div>
 										</div>
 									</DropdownMenuLabel>
@@ -981,6 +1014,7 @@
 											Profile
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="!isLocalOnly"
 											@click="$router.push('/settings?tab=device')"
 											class="cursor-pointer"
 										>
@@ -988,6 +1022,7 @@
 											Smart Devices
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="!isLocalOnly"
 											@click="$router.push('/settings?tab=notification')"
 											class="cursor-pointer"
 										>
@@ -1017,7 +1052,7 @@
 											Personas
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											v-if="isFeatureEnabled('alerts')"
+											v-if="!isLocalOnly && isFeatureEnabled('alerts')"
 											@click="$router.push('/settings/agent-notifications')"
 											class="cursor-pointer"
 										>
@@ -1047,6 +1082,14 @@
 											Theme
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="hasLocalWorkspaces"
+											@click="$router.push('/settings?tab=data')"
+											class="cursor-pointer"
+										>
+											<HardDrive />
+											Local data
+										</DropdownMenuItem>
+										<DropdownMenuItem
 											v-if="isDesktop"
 											@click="$router.push('/settings?tab=desktop')"
 											class="cursor-pointer"
@@ -1059,12 +1102,14 @@
 										</DropdownMenuItem>
 									</DropdownMenuGroup>
 
-									<DropdownMenuSeparator />
+									<template v-if="!isLocalOnly">
+										<DropdownMenuSeparator />
 
-									<DropdownMenuItem class="cursor-pointer" @click="logout">
-										<LogOut />
-										Log out
-									</DropdownMenuItem>
+										<DropdownMenuItem class="cursor-pointer" @click="logout">
+											<LogOut />
+											Log out
+										</DropdownMenuItem>
+									</template>
 								</DropdownMenuContent>
 							</DropdownMenu>
 						</SidebarMenuItem>
@@ -1077,6 +1122,7 @@
 				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
 			>
 				<EmailVerifyBanner />
+				<LocalOnlyBanner v-if="isDesktop" />
 				<header
 					v-if="store.getters.isLoggedIn"
 					data-tauri-drag-region
@@ -1150,7 +1196,7 @@
 						></div>
 						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
-								v-if="!isDesktop && isFeatureEnabled('ai.assistant')"
+								v-if="!isDesktop && !isLocalOnly && isFeatureEnabled('ai.assistant')"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,
@@ -1162,7 +1208,7 @@
 								<Sparkles class="h-4 w-4" />
 							</button>
 							<ActiveCursorAgents v-if="!isDesktop && isFeatureEnabled('cursor')" />
-							<NotificationBell />
+							<NotificationBell v-if="!isLocalOnly" />
 						</div>
 					</div>
 				</header>
@@ -1174,9 +1220,13 @@
 				</div>
 			</SidebarInset>
 			<AiAssistantPanel
-				v-if="store.getters.isLoggedIn && isFeatureEnabled('ai.assistant')"
+				v-if="
+					store.getters.isLoggedIn &&
+					!isLocalOnly &&
+					isFeatureEnabled('ai.assistant')
+				"
 			/>
-			<ModulesPicker v-if="store.getters.isLoggedIn" />
+			<ModulesPicker v-if="store.getters.isLoggedIn && !isLocalOnly" />
 		</SidebarMobileCloser>
 	</SidebarProvider>
 
