@@ -6,6 +6,7 @@ const fakeShell = async ({
   localHttp = () => ({ status: 404, headers: [], body: '' }),
   releases = {},
   appVersion = '0.9.8',
+  profile: initialProfile = null,
 } = {}) => {
   const { createHash } = await import('node:crypto');
   const installed = new Map();
@@ -30,6 +31,10 @@ const fakeShell = async ({
   const files = new Map();
   const tokens = new Map();
   const accessReplies = [];
+  let profile = initialProfile;
+  const unknown = [];
+  const backups = new Map();
+  const backupRows = (code) => backups.get(code) ?? [];
   let tokenSeq = 0;
   let accessEnabled = false;
   const db = (code) => {
@@ -60,6 +65,78 @@ const fakeShell = async ({
         return db(args.code)
           .prepare(args.sql)
           .all(...args.params);
+      case 'local_profile_get':
+        return profile;
+      case 'local_profile_create':
+        profile ??= {
+          id: -1,
+          uuid: '00000000-0000-4000-8000-000000000001',
+          name: args.name ?? null,
+          created_at: new Date().toISOString(),
+        };
+        return profile;
+      case 'local_profile_update':
+        profile = { ...profile, name: args.name };
+        return profile;
+      case 'local_backup_status':
+        return workspaces.map((workspace) => {
+          const rows = backupRows(workspace.code);
+          return {
+            code: workspace.code,
+            name: workspace.name,
+            backups_dir: `${workspace.path}/backups`,
+            last_backup_at: rows[0]?.created_at ?? null,
+            last_error: null,
+          };
+        });
+      case 'local_backup_list':
+        return backupRows(args.code);
+      case 'local_backup_now': {
+        const created_at = new Date().toISOString();
+        const file = `manual-${created_at.replace(/\D/g, '').slice(0, 14)}.db`;
+        const info = {
+          file,
+          path: `/tmp/${args.code}/backups/${file}`,
+          size: 4096,
+          created_at,
+          kind: 'manual',
+          ok: true,
+        };
+        backups.set(args.code, [info, ...backupRows(args.code)]);
+        return info;
+      }
+      case 'local_backup_reveal':
+        revealed.push(args.code ?? args.path ?? 'backups');
+        return null;
+      case 'local_db_batch': {
+        const conn = db(args.code);
+        const results = [];
+        conn.exec('BEGIN IMMEDIATE');
+        try {
+          for (const [index, statement] of args.statements.entries()) {
+            const result = conn
+              .prepare(statement.sql)
+              .run(...(statement.params ?? []));
+            results.push({
+              rowsAffected: Number(result.changes),
+              lastInsertId: Number(result.lastInsertRowid),
+            });
+            if (statement.expectChanges && !result.changes) {
+              conn.exec('ROLLBACK');
+              return { results: [], failedAt: index };
+            }
+          }
+          conn.exec('COMMIT');
+          return { results, failedAt: null };
+        } catch (error) {
+          conn.exec('ROLLBACK');
+          throw error;
+        }
+      }
+      case 'local_access_ready':
+      case 'local_db_backup':
+      case 'local_workspace_set_schema':
+        return null;
       case 'local_db_execute': {
         const result = db(args.code)
           .prepare(args.sql)
@@ -199,9 +276,11 @@ const fakeShell = async ({
         accessEnabled = !!args.enabled;
         return null;
       default:
+        unknown.push(command);
         return null;
     }
   };
+  Object.defineProperty(handler, 'profile', { get: () => profile });
   return Object.assign(handler, {
     exports,
     files,
@@ -218,6 +297,7 @@ const fakeShell = async ({
     catalog,
     tokens,
     accessReplies,
+    unknown,
   });
 };
 
