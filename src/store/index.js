@@ -96,10 +96,18 @@ const state = {
 	updatedTaskKey: 0,
 	aiPanelOpen: false,
 	pagesEvent: null,
+	/** @type {import('@/utils/localProfile').LocalProfile | null} */
+	localProfile: null,
 };
 
 const getters = {
 	isLoggedIn: (state) => state.token !== null,
+	accountMode: (state) => {
+		if (state.token !== null) return 'cloud';
+		return isDesktopApp() && state.localProfile ? 'local' : 'none';
+	},
+	canUseApp: (state, getters) => getters.accountMode !== 'none',
+	isLocalOnly: (state, getters) => getters.accountMode === 'local',
 	workspaceById: (state) => (id) => state.workspacesById[id],
 	workspaceStatusById: (state) => (id) => state.workspaceStatusesById[id],
 	userSettingByKey: (state) => (key) => state.userSettingsMap[key],
@@ -191,6 +199,9 @@ const mutations = {
 	taskDeleted(state, taskId) {
 		state.deletedTaskId = taskId;
 		state.deletedTaskKey = (state.deletedTaskKey || 0) + 1;
+	},
+	setLocalProfile(state, profile) {
+		state.localProfile = profile ?? null;
 	},
 	setToken(state, token) {
 		if ((state.token == null) !== (token == null)) state.sessionGeneration++;
@@ -445,6 +456,28 @@ const actions = {
 		state.defaultWorkspaceId = null;
 		state.clientWorkspaceId = null;
 		requestCache.clear();
+	},
+
+	async refreshLocalProfile({ commit }) {
+		try {
+			const { loadLocalProfile } = await import('@/utils/localProfile');
+			commit('setLocalProfile', (await loadLocalProfile()) ?? null);
+		} catch (error) {
+			console.error('Failed to read the local profile', error);
+			commit('setLocalProfile', null);
+		}
+	},
+
+	async startWithoutAccount({ commit }, { name } = {}) {
+		const { createLocalProfile } = await import('@/utils/localProfile');
+		const runtime = await import('@/local/runtime');
+		const profile = await createLocalProfile(name);
+		let [first] = await runtime.listLocalWorkspaces(true);
+		if (!first) first = await runtime.createLocalWorkspace('My workspace');
+		runtime.setActiveLocalWorkspace(first);
+		commit('setLocalProfile', profile);
+		const { default: router } = await import('@/router');
+		await router.push('/');
 	},
 
 	async loadWorkspaces({ commit, state }) {
