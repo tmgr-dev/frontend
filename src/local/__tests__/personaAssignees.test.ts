@@ -86,6 +86,22 @@ describeSqlite('persona assignees in local workspaces', () => {
 		]);
 	});
 
+	it('keeps personas created without an account assignable and listed as mine after signing in', async () => {
+		await ctx.db.execute(
+			`INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 VALUES ('p-local', -1, 'Me', 'Local agent', NULL, NULL, ?, NULL)`,
+			[clock.toISOString()],
+		);
+		await enableLocalPersona(ctx, 'p-local', ['tasks:read', 'tasks:write']);
+
+		const listed = (await api('GET', 'workspaces/-1/assignable-personas')).data.data.map((p: any) => p.id);
+		const task = await createTask('Local', { persona_assignees: ['p-local'] });
+		const mine = (await api('GET', 'tasks?my_personas=1')).data.data.map((t: any) => t.id);
+
+		expect(listed).toContain('p-local');
+		expect(mine).toEqual([task.id]);
+	});
+
 	it('assigns several personas, implies the owner and emits payloads in the persona shape', async () => {
 		const task = await createTask('Queue me');
 		expect(task.persona_assignees).toEqual([]);

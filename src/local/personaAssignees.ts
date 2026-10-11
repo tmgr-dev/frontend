@@ -1,3 +1,4 @@
+import { LOCAL_OWNER_ID } from './personaGate';
 import { LocalHttpError, type LocalContext } from './types';
 
 export interface PersonaView {
@@ -54,7 +55,7 @@ export const personaView = (row: any): PersonaView => ({
 const ASSIGNABLE_SQL = `
 	SELECT p.* FROM personas p
 	JOIN workspace_personas wp ON wp.persona_uuid = p.uuid
-	WHERE p.archived_at IS NULL AND wp.disabled_at IS NULL AND p.owner_user_id = ?`;
+	WHERE p.archived_at IS NULL AND wp.disabled_at IS NULL AND p.owner_user_id IN (?, ${LOCAL_OWNER_ID})`;
 
 export const assignablePersonas = async (ctx: LocalContext): Promise<PersonaView[]> => {
 	const rows = await ctx.db.select<any>(`${ASSIGNABLE_SQL} ORDER BY p.name`, [ctx.user.id]);
@@ -219,7 +220,7 @@ export const personaFilterClauses = (
 	if (mine === '1' || mine === 'true') {
 		clauses.push(
 			`EXISTS (SELECT 1 FROM task_persona_assignees a JOIN personas p ON p.uuid = a.persona_uuid
-				WHERE a.task_id = t.id AND p.owner_user_id = ?)`,
+				WHERE a.task_id = t.id AND p.owner_user_id IN (?, ${LOCAL_OWNER_ID}))`,
 		);
 		params.push(ctx.user.id);
 	}
