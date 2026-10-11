@@ -39,6 +39,17 @@
 							{{ title }}
 						</h2>
 
+						<RequiresAccount
+							v-if="mode === 'requires-account'"
+							class="!border-0 !bg-transparent !p-0"
+						/>
+						<p
+							v-else-if="mode === 'not-in-local-workspace'"
+							class="text-sm text-gray-500 dark:text-gray-400"
+						>
+							Not available in local workspaces
+						</p>
+						<template v-else>
 						<!-- Description -->
 						<p class="mb-6 text-gray-600 dark:text-gray-400">
 							{{ description }}
@@ -54,6 +65,7 @@
 						<p v-else class="text-sm text-gray-500 dark:text-gray-400">
 							{{ copy.text }}
 						</p>
+						</template>
 					</div>
 				</div>
 			</div>
@@ -62,7 +74,9 @@
 </template>
 
 <script setup lang="ts">
+	import RequiresAccount from '@/components/general/RequiresAccount.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { gateMode } from '@/utils/localOnly';
 	import { gateCopy } from '@/utils/modules';
 	import { Lock } from 'lucide-vue-next';
 	import { computed, type Component } from 'vue';
@@ -83,6 +97,14 @@
 	const iconComponent = computed(() => props.icon || Lock);
 
 	const isEnabled = computed(() => isFeatureEnabled(props.featureKey));
+
+	const mode = computed(() =>
+		gateMode({
+			entry: store.getters['featureToggles/moduleEntry'](props.featureKey),
+			localOnly: store.getters.isLocalOnly === true,
+			localWorkspace: store.getters.currentWorkspace?.is_local === true,
+		}),
+	);
 
 	const copy = computed(() =>
 		gateCopy(

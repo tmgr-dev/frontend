@@ -1,4 +1,5 @@
 import { humanizeGroupName, humanizeKey } from '@/utils/featureToggleCopy';
+import { moduleNeedsAccount } from '@/utils/localOnly';
 
 export interface ModuleEntry {
 	key: string;
@@ -186,6 +187,7 @@ export interface ModuleRow {
 	canToggle: boolean;
 	canHide: boolean;
 	askOwner: boolean;
+	needsAccount: boolean;
 }
 
 export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
@@ -206,6 +208,7 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 			canToggle: user || isOwner,
 			canHide: !user && payload.canHide,
 			askOwner: !user && !isOwner && !enabled,
+			needsAccount: moduleNeedsAccount(entry),
 		};
 	};
 	return {
