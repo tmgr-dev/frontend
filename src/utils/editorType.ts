@@ -96,3 +96,11 @@ export const buildDescriptionPayload = (
 				description: task.description ?? null,
 				clear_description_json: true,
 		  };
+
+/** Drops the description field a queued snapshot marked as cleared, so the request depends only on the snapshot. */
+export const toUpdateBody = <T extends Record<string, any>>(snapshot: T): T => {
+	const body: Record<string, any> = { ...snapshot };
+	if (body.clear_description === true) delete body.description;
+	if (body.clear_description_json === true) delete body.description_json;
+	return body as T;
+};

@@ -126,6 +126,7 @@
 	import {
 		EDITOR_LABELS,
 		buildDescriptionPayload,
+		toUpdateBody,
 		normalizeEditorType,
 		resolveEditorType,
 	} from '@/utils/editorType';
@@ -278,6 +279,23 @@
 			editorType.value === 'block' &&
 			getPreferredEditorWithFallback() !== 'block',
 	);
+	const descriptionDirty = ref(false);
+	const applyResolvedEditor = (
+		task: Parameters<typeof resolveEditorType>[0],
+	) => {
+		editorType.value = resolveEditorType(
+			task,
+			getPreferredEditorWithFallback(),
+		);
+		descriptionDirty.value = false;
+	};
+	const onDescriptionInput = (
+		field: 'description' | 'description_json',
+		value: any,
+	) => {
+		descriptionDirty.value = true;
+		form.value[field] = value;
+	};
 	const isEditorLoading = ref(true);
 	const assignees = ref<number[]>([]);
 	const modalTaskId = toRef(store.state, 'currentTaskIdForModal');
@@ -846,10 +864,7 @@
 						? parseInt(taskData.approximately_time, 10) || 0
 						: taskData.approximately_time || 0;
 
-				editorType.value = resolveEditorType(
-					taskData,
-					getPreferredEditorWithFallback(),
-				);
+				applyResolvedEditor(taskData);
 
 				form.value = taskData;
 				taskVersionGuard.recordKnown(taskData);
@@ -1083,10 +1098,7 @@
 	const applyExternalUpdate = () => {
 		if (externalUpdateData.value) {
 			taskVersionGuard.recordKnown(externalUpdateData.value);
-			editorType.value = resolveEditorType(
-				{ ...form.value, ...externalUpdateData.value },
-				getPreferredEditorWithFallback(),
-			);
+			applyResolvedEditor({ ...form.value, ...externalUpdateData.value });
 			Object.assign(form.value, externalUpdateData.value);
 			hasExternalUpdate.value = false;
 			externalUpdateData.value = null;
@@ -1105,10 +1117,7 @@
 			const id = taskId.value;
 			const taskData = await getTask(id);
 			if (formDisposed || taskId.value !== id) return;
-			editorType.value = resolveEditorType(
-				taskData,
-				getPreferredEditorWithFallback(),
-			);
+			applyResolvedEditor(taskData);
 			form.value = taskData;
 			taskVersionGuard.recordKnown(taskData);
 			if (!statuses.value?.length)
@@ -1541,10 +1550,7 @@
 			(item: any) => (typeof item === 'object' ? item.id : item),
 		);
 		form.value = { ...form.value, ...recoverableDraft.value };
-		editorType.value = resolveEditorType(
-			form.value,
-			getPreferredEditorWithFallback(),
-		);
+		applyResolvedEditor(form.value);
 		recoverableDraft.value = null;
 		try {
 			// Queue replacement before any forced read of the editor DOM.
@@ -1572,15 +1578,12 @@
 		} catch {
 			/* Saving still works if browser storage is unavailable. */
 		}
-		const body = {
+		const body = toUpdateBody({
 			...snapshot,
-			...buildDescriptionPayload(editorType.value, snapshot),
 			...(snapshot.persona_assignees === undefined
 				? {}
 				: { persona_assignees: personaAssigneeIds(snapshot) }),
-		} as Task;
-		if (editorType.value === 'block') delete (body as any).description;
-		else delete (body as any).description_json;
+		}) as Task;
 		const saved = await taskVersionGuard.track(() =>
 			updateTask(snapshot.id as number, body, instanceId),
 		);
@@ -1777,6 +1780,11 @@
 			description: editorType.value === 'block' ? null : value.description,
 			description_json:
 				editorType.value === 'block' ? value.description_json : null,
+			clear_description: undefined,
+			clear_description_json: undefined,
+			...(descriptionDirty.value
+				? buildDescriptionPayload(editorType.value, value)
+				: {}),
 		}),
 		onDirty: (snapshot) => {
 			try {
@@ -1833,6 +1841,7 @@
 					) {
 						snapshot.description_json = content;
 						snapshot.description = null;
+						Object.assign(snapshot, buildDescriptionPayload('block', snapshot));
 						return enqueueTaskSnapshot(snapshot);
 					}
 				})
@@ -2017,10 +2026,7 @@
 			try {
 				const taskData = await getTask(newTaskId);
 				if (formDisposed || modalTaskId.value !== newTaskId) return;
-				editorType.value = resolveEditorType(
-					taskData,
-					getPreferredEditorWithFallback(),
-				);
+				applyResolvedEditor(taskData);
 
 				taskData.approximately_time =
 					typeof taskData.approximately_time === 'string'
@@ -2672,7 +2678,8 @@
 						<Editor
 							:key="form.id"
 							v-if="editorType === 'markdown'"
-							v-model="form.description"
+							:model-value="form.description"
+							@update:model-value="onDescriptionInput('description', $event)"
 							class="mb-0"
 							:show-preview="!!(taskId && form.description)"
 						/>
@@ -2681,7 +2688,8 @@
 							ref="blockEditorRef"
 							:key="form.id"
 							v-else-if="editorType === 'block'"
-							v-model="form.description_json"
+							:model-value="form.description_json"
+							@update:model-value="onDescriptionInput('description_json', $event)"
 							placeholder="Type your description here or enter / to see commands or "
 							class="block-editor-container mb-0 min-h-[240px] px-2"
 						/>
@@ -2689,7 +2697,8 @@
 						<BlockMdEditor
 							:key="form.id"
 							v-else-if="editorType === 'blockmd'"
-							v-model="form.description"
+							:model-value="form.description"
+							@update:model-value="onDescriptionInput('description', $event)"
 							placeholder="Type your description here or enter / to see commands"
 							class="mb-0 min-h-[240px]"
 						/>

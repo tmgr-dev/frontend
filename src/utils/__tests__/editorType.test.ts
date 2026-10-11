@@ -1,6 +1,7 @@
 import {
 	EDITOR_LABELS,
 	buildDescriptionPayload,
+	toUpdateBody,
 	editorOptionLabel,
 	normalizeEditorType,
 	resolveEditorType,
@@ -173,5 +174,34 @@ describe('buildDescriptionPayload', () => {
 			description: null,
 			clear_description_json: true,
 		});
+	});
+});
+
+describe('toUpdateBody', () => {
+	it('keeps the queued format even if the editor type changed before the save went out', () => {
+		const queuedAsBlock = {
+			id: 1,
+			description: null,
+			description_json: blocks('keep'),
+			...buildDescriptionPayload('block', { description_json: blocks('keep') }),
+		};
+		const body: Record<string, any> = toUpdateBody(queuedAsBlock);
+		expect(body).not.toHaveProperty('description');
+		expect(body.description_json).toEqual(blocks('keep'));
+		expect(body.clear_description).toBe(true);
+		expect(body).not.toHaveProperty('clear_description_json');
+	});
+
+	it('drops the JSON of a markdown snapshot', () => {
+		const body = toUpdateBody({
+			description: 'md',
+			description_json: null,
+			...buildDescriptionPayload('markdown', { description: 'md' }),
+		});
+		expect(body).toEqual({ description: 'md', clear_description_json: true });
+	});
+
+	it('leaves a snapshot without flags untouched', () => {
+		expect(toUpdateBody({ title: 't', description: null })).toEqual({ title: 't', description: null });
 	});
 });
