@@ -112,10 +112,7 @@
 					null,
 			);
 			const status = computed(
-				() =>
-					statuses.value.find((s) => s.code === code.value) ??
-					statuses.value[0] ??
-					null,
+				() => statuses.value.find((s) => s.code === code.value) ?? null,
 			);
 			const backupsDir = computed(() => status.value?.backups_dir ?? '');
 
