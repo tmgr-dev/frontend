@@ -113,10 +113,15 @@ export const updateWorkspaceOrder = async (
 	return data;
 };
 
-export const deleteWorkspace = async (workspaceId: number) => {
+export const deleteWorkspace = async (
+	workspaceId: number,
+	confirmName: string,
+) => {
 	const {
 		data: { data },
-	} = await $axios.delete(`workspaces/${workspaceId}`);
+	} = await $axios.delete(`workspaces/${workspaceId}`, {
+		data: { confirm_name: confirmName },
+	});
 
 	requestCache.invalidate('workspaces');
 	requestCache.invalidate(`workspace-${workspaceId}-members`);

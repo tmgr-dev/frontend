@@ -19,6 +19,7 @@
 		type WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import Combobox from '@/components/Combobox.vue';
+	import ConfirmByNameDialog from '@/components/general/ConfirmByNameDialog.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
@@ -101,6 +102,14 @@
 
 		return foundWorkspace?.type;
 	});
+	const activeWorkspaceName = computed(
+		() =>
+			workspaces.value.find(
+				(workspace) => workspace.id == activeWorkspace.value?.value,
+			)?.name ?? '',
+	);
+	const isDeleteDialogOpen = ref(false);
+	const isDeleting = ref(false);
 	const isLocalActiveWorkspace = computed(
 		() => Number(activeWorkspace.value?.value) < 0,
 	);
@@ -439,16 +448,27 @@
 	}
 
 	async function deleteWorkspace() {
+		const workspaceId = activeWorkspace.value?.value;
+		if (!workspaceId || isDeleting.value) return;
+		isDeleting.value = true;
 		try {
-			const workspaceId = activeWorkspace.value?.value;
-			if (workspaceId) {
-				await deleteWorkspaceAction(
-					typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId,
-				);
-				await updateUserSettings();
-			}
-		} catch (e) {
-			console.error(e);
+			await deleteWorkspaceAction(
+				typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId,
+				activeWorkspaceName.value,
+			);
+			isDeleteDialogOpen.value = false;
+			await updateUserSettings();
+		} catch (error) {
+			toaster.toast({
+				title: 'Error',
+				description: errorMessageFrom(
+					error,
+					'Failed to delete the workspace. Please try again.',
+				),
+				variant: 'destructive',
+			});
+		} finally {
+			isDeleting.value = false;
 		}
 	}
 
@@ -651,7 +671,7 @@
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
-					<AlertDialog
+					<template
 						v-if="
 							!isLoading &&
 							!isLocalActiveWorkspace &&
@@ -659,33 +679,24 @@
 							isOwnedActiveWorkspace
 						"
 					>
-						<AlertDialogTrigger as-child>
-							<Button
-								variant="outline"
-								class="text-destructive hover:text-destructive"
-							>
-								<Trash2Icon />
-								<span class="hidden lg:inline">Delete workspace</span>
-							</Button>
-						</AlertDialogTrigger>
-						<AlertDialogContent>
-							<AlertDialogHeader>
-								<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-								<AlertDialogDescription>
-									This action cannot be undone. This will delete your workspace.
-								</AlertDialogDescription>
-							</AlertDialogHeader>
-							<AlertDialogFooter>
-								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogAction
-									@click="deleteWorkspace"
-									class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
-								>
-									Delete workspace
-								</AlertDialogAction>
-							</AlertDialogFooter>
-						</AlertDialogContent>
-					</AlertDialog>
+						<Button
+							variant="outline"
+							class="text-destructive hover:text-destructive"
+							@click="isDeleteDialogOpen = true"
+						>
+							<Trash2Icon />
+							<span class="hidden lg:inline">Delete workspace</span>
+						</Button>
+						<ConfirmByNameDialog
+							v-model:open="isDeleteDialogOpen"
+							title="Delete workspace"
+							:description="`This permanently deletes the workspace ${activeWorkspaceName} with its tasks, pages and files for every member. This cannot be undone.`"
+							:expected-name="activeWorkspaceName"
+							confirm-label="Delete workspace"
+							:busy="isDeleting"
+							@confirm="deleteWorkspace"
+						/>
+					</template>
 					<AlertDialog
 						v-if="
 							!isLoading && !isLocalActiveWorkspace && !isOwnedActiveWorkspace
