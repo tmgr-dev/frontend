@@ -7,6 +7,8 @@ export type Route =
 	| 'settings'
 	| 'runned'
 	| 'local'
+	| 'guest'
+	| 'refuse'
 	| 'blocked';
 
 /** Account-level endpoints that carry no workspace data: they keep going to the server. */
@@ -33,6 +35,21 @@ const ACCOUNT = [
 	/^v2\/user\/settings$/,
 ];
 
+/** Calls an account-less session answers itself, so the app boots the same way it does signed in. */
+const GUEST: [RegExp, string[]][] = [
+	[/^user$/, ['GET']],
+	[/^user\/settings$/, ['GET', 'PUT', 'PATCH']],
+	[/^user\/feature-toggles$/, ['GET', 'PUT']],
+	[/^v2\/user\/settings$/, ['GET', 'PUT']],
+	[/^workspaces$/, ['GET']],
+	[/^notifications$/, ['GET']],
+	[/^notifications\/unread-count$/, ['GET']],
+	[/^personas$/, ['GET']],
+];
+
+/** Sign-in itself: the only calls an account-less session may send, because they start the account. */
+const SIGN_IN = [/^auth(\/|$)/, /^password(\/|$)/];
+
 /**
  * Where a request goes. Outside a local workspace everything goes to the server, except that the
  * workspace list and the current-workspace switch learn about local workspaces. Inside one, only
@@ -44,9 +61,11 @@ export const classify = (
 	url: string,
 	localActive: boolean,
 	params?: Record<string, any>,
+	accountless = false,
 ): Route => {
 	const path = normalizePath(url);
 	const verb = method.toUpperCase();
+	if (accountless) return classifyAccountless(verb, path, params);
 	if (verb === 'GET' && path === 'workspaces') return 'server:workspaces';
 	if (verb === 'PUT' && path === 'v2/user/settings') return 'settings';
 	if (verb === 'GET' && path === 'user') return 'server:user';
@@ -58,6 +77,22 @@ export const classify = (
 	const target = params?.workspace_id;
 	if (/^tasks\/\d+\/countdown$/.test(path) && target !== undefined && Number(target) >= 0) {
 		return 'server';
+	}
+	return 'local';
+};
+
+const classifyAccountless = (
+	verb: string,
+	path: string,
+	params?: Record<string, any>,
+): Route => {
+	if (SIGN_IN.some((pattern) => pattern.test(path))) return 'server';
+	if (GUEST.some(([pattern, verbs]) => pattern.test(path) && verbs.includes(verb))) return 'guest';
+	if (ACCOUNT.some((pattern) => pattern.test(path))) return 'refuse';
+	if (verb === 'GET' && path === 'tasks/runned') return 'runned';
+	const target = params?.workspace_id;
+	if (/^tasks\/\d+\/countdown$/.test(path) && target !== undefined && Number(target) >= 0) {
+		return 'refuse';
 	}
 	return 'local';
 };

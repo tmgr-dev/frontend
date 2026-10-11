@@ -64,6 +64,8 @@ export interface LocalContext {
 	files: LocalFiles;
 	/** Set by the plugin's pinned client from its headers; absent for the app's own client (kind 'user'). */
 	actor?: LocalActor;
+	/** No cloud account: modules that need one are off and user-scope switches are kept locally. */
+	accountless?: boolean;
 }
 
 /** A handler result sent as the response body as is (no `{data}` envelope), e.g. a Blob. */
