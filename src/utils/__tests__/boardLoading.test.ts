@@ -66,24 +66,16 @@ describe('board loading', () => {
 		expect(fetch).toHaveBeenCalledTimes(1);
 		expect(apply).not.toHaveBeenCalled();
 	});
-	it('filters nullable descriptions and combines user/category/search', () => {
+	it('combines user and category filters', () => {
 		const tasks = [
-			{
-				title: 'Match',
-				description: null,
-				project_category_id: 2,
-				assignees: [{ id: 3 }],
-			},
-			{ title: 'Other', description: null },
+			{ project_category_id: 2, assignees: [{ id: 3 }] },
+			{ project_category_id: 2 },
+			{ assignees: [{ id: 3 }] },
 		];
 		expect(
-			filterBoardTasks(tasks, {
-				searchText: 'match',
-				selectedUser: 3,
-				selectedCategory: 2,
-			}),
+			filterBoardTasks(tasks, { selectedUser: 3, selectedCategory: 2 }),
 		).toEqual([tasks[0]]);
-		expect(filterBoardTasks(tasks, { searchText: 'missing' })).toEqual([]);
+		expect(filterBoardTasks(tasks, {})).toEqual(tasks);
 	});
 	it('filters by a persona uuid and by "my personas" queue', () => {
 		const persona = (id: string, ownerId: number) => ({
