@@ -25,6 +25,7 @@ class NtfyClient {
 			this.eventSource = null;
 		}
 		this.userId = null;
+		this.connectGeneration++;
 		return Promise.resolve();
 	}
 
@@ -43,14 +44,15 @@ class NtfyClient {
 			return;
 		}
 
-		if (this.eventSource) {
-			this.eventSource.close();
-		}
+		const generation = ++this.connectGeneration;
 
 		try {
 			const topic = await this.fetchTopic();
-			if (!topic) {
+			if (!topic || generation !== this.connectGeneration) {
 				return;
+			}
+			if (this.eventSource) {
+				this.eventSource.close();
 			}
 			const url = `${this.serverUrl}/${topic}/sse`;
 			this.eventSource = new EventSource(url);
