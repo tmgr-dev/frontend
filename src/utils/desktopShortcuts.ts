@@ -6,6 +6,7 @@ import {
 	isMacLike,
 	supportsSelectionCapture,
 } from '@/utils/desktop';
+import { parseTaskLink } from '@/utils/taskLinks';
 import { ref } from 'vue';
 
 export type ShortcutAction = 'quickAdd' | 'timer' | 'screenshot' | 'selection';
@@ -178,7 +179,7 @@ export const describeAccelerator = (
 
 export type DeepLink =
 	| AuthCallback
-	| { type: 'task'; taskId: number }
+	| { type: 'task'; taskId: number; workspaceCode?: string }
 	| { type: 'page'; workspaceCode: string; slug: string }
 	| { type: 'view'; pluginId: string; viewId: string; params: Record<string, string> }
 	| { type: 'command'; pluginId: string; commandId: string; params: Record<string, string> };
@@ -228,8 +229,12 @@ export const parseDeepLink = (url: string): DeepLink | null => {
 	const trimmed = url.trim();
 	const auth = parseAuthCallback(trimmed);
 	if (auth) return auth;
-	const taskMatch = /^tmgr:\/\/task\/(\d+)\/?$/.exec(trimmed);
-	if (taskMatch) return { type: 'task', taskId: Number(taskMatch[1]) };
+	const task = parseTaskLink(trimmed);
+	if (task) {
+		return task.workspaceCode
+			? { type: 'task', taskId: task.taskId, workspaceCode: task.workspaceCode }
+			: { type: 'task', taskId: task.taskId };
+	}
 
 	const pageMatch = PAGE_LINK.exec(trimmed);
 	if (pageMatch) {

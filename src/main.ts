@@ -106,6 +106,12 @@ if (isDesktopApp()) {
 	}
 	if (isMainWindow || isDetachedWindow) {
 		const label = desktopWindowLabel() as string;
+		void Promise.all([
+			import('@tauri-apps/api/event'),
+			import('@/utils/taskLinkClicks'),
+		]).then(([{ emitTo }, { installTaskLinkClicks, OPEN_APP_LINK_EVENT }]) =>
+			installTaskLinkClicks((url) => emitTo('main', OPEN_APP_LINK_EVENT, url)),
+		);
 		void import('@tauri-apps/api/event').then(({ emit, listen }) =>
 			installWindowEventRelay(domainEvents, {
 				label,
