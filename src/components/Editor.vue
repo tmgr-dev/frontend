@@ -1,8 +1,9 @@
 <script setup lang="ts">
 	import '@/assets/styles/md-editor.css';
 	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
-	import { ExposeParam, MdEditor } from 'md-editor-v3';
-	import { onMounted, ref } from 'vue';
+	import { EditorView } from '@codemirror/view';
+	import { ExposeParam, MdEditor, config } from 'md-editor-v3';
+	import { onBeforeUnmount, onMounted, ref } from 'vue';
 	import store from '../store';
 
 	interface Props {
@@ -10,7 +11,10 @@
 		showPreview?: boolean;
 	}
 
+	config({ editorExtensions: { screenfull: { instance: { isEnabled: false } as any } } });
+
 	const props = defineProps<Props>();
+	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
 	const value = defineModel();
 	const editorRef = ref<ExposeParam>();
 	const editorPreviewActive = ref(false);
@@ -19,6 +23,11 @@
 		editorPreviewActive.value = !editorPreviewActive.value;
 		editorRef.value?.togglePreviewOnly();
 	};
+
+	onBeforeUnmount(() => {
+		const dom = document.querySelector<HTMLElement>(`#${editorId} .cm-editor`);
+		if (dom) EditorView.findFromDOM(dom)?.destroy();
+	});
 
 	onMounted(() => {
 		if (props.showPreview) {
@@ -31,6 +40,7 @@
 <template>
 	<MdEditor
 		ref="editorRef"
+		:editor-id="editorId"
 		v-model="value"
 		:preview="false"
 		language="en-US"
