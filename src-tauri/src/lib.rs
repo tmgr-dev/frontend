@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_menu;
+mod app_links;
 mod capture;
 mod downloads;
 mod embeds;
@@ -96,7 +97,9 @@ pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
       if is_app_url(url) || embeds::is_embed_url(url) {
         return true;
       }
-      if is_external_url(url) {
+      if app_links::is_task_web_link(url) {
+        app_links::forward_task_link(&nav_handle, url);
+      } else if is_external_url(url) {
         let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
       }
       false
@@ -110,7 +113,9 @@ pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
       }
     })
     .on_new_window(move |url, _features| {
-      if is_external_url(&url) {
+      if app_links::is_task_web_link(&url) {
+        app_links::forward_task_link(&popup_handle, &url);
+      } else if is_external_url(&url) {
         let _ = popup_handle.opener().open_url(url.as_str(), None::<&str>);
       }
       NewWindowResponse::Deny

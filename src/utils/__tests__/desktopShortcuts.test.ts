@@ -188,6 +188,12 @@ describe('parseDeepLink', () => {
 		expect(parseDeepLink('tmgr://task/9233/')).toEqual({ type: 'task', taskId: 9233 });
 	});
 
+	it('extracts the workspace from app and web task links', () => {
+		const expected = { type: 'task', taskId: 9233, workspaceCode: 'work' };
+		expect(parseDeepLink('tmgr://task/work/9233')).toEqual(expected);
+		expect(parseDeepLink('https://tmgr.dev/work/tasks/9233')).toEqual(expected);
+	});
+
 	it('ignores unknown links', () => {
 		expect(parseDeepLink('tmgr://task/abc')).toBeNull();
 		expect(parseDeepLink('https://tmgr.dev/task/1')).toBeNull();

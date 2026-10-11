@@ -50,6 +50,7 @@
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
 	import { getPage } from '@/actions/tmgr/pages';
+	import $axios from '@/plugins/axios';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import { pluginsReady } from '@/pluginSystem/app';
 	import { storageIdOf } from '@/pluginSystem/host';
@@ -71,7 +72,10 @@
 	import { showSurface } from '@/utils/moduleSurfaces';
 	import { loadRecent } from '@/utils/desktopTray';
 	import { openPageLink } from '@/utils/openPageLink';
+	import { openTaskLink, taskLinkFailureMessage } from '@/utils/openTaskLink';
 	import { focusPageWindow } from '@/utils/pageWindow';
+	import { OPEN_APP_LINK_EVENT } from '@/utils/taskLinkClicks';
+	import { focusTaskWindow } from '@/utils/taskWindow';
 	import {
 		computed,
 		defineComponent,
@@ -126,6 +130,7 @@
 			const isOn = (key) => store.getters['featureToggles/isFeatureEnabled'](key);
 			let registered = [];
 			let unlistenDeepLink = null;
+			let unlistenAppLink = null;
 			const pendingConfirm = ref(null);
 
 			const toggleTimer = async () => {
@@ -278,16 +283,41 @@
 				await showMainWindow();
 			};
 
-			const openLinks = async (urls) => {
+			const openLinks = async (urls, dedupe = true) => {
 				const url = (urls || []).find((u) => {
 					const parsed = parseDeepLink(u);
 					return parsed && parsed.type !== 'auth';
 				});
-				if (!url || isRecentDuplicateUrl(url)) return;
+				if (!url || (dedupe && isRecentDuplicateUrl(url))) return;
 				const link = parseDeepLink(url);
 				if (link.type === 'task') {
-					await showMainWindow();
-					store.commit('setCurrentTaskIdForModal', link.taskId);
+					const result = await openTaskLink(
+						{ workspaceCode: link.workspaceCode ?? null, taskId: link.taskId },
+						{
+							loadWorkspaces: async () => {
+								if (!store.state.workspaces?.length) {
+									store.commit('setWorkspaces', await getWorkspaces());
+								}
+								return store.state.workspaces || [];
+							},
+							currentWorkspaceId: () => store.getters.currentWorkspaceId,
+							fetchTask: (taskId, workspaceId) =>
+								$axios.get(`tasks/${taskId}`, {
+									headers: { 'X-Workspace-Id': String(workspaceId) },
+								}),
+							focusTaskWindow,
+							showMain: showMainWindow,
+							navigate: (path) => router.push(path),
+							openModal: (taskId) => store.commit('setCurrentTaskIdForModal', taskId),
+						},
+					);
+					if (!result.ok) {
+						await showMainWindow();
+						toast({
+							title: taskLinkFailureMessage(result.reason),
+							variant: 'destructive',
+						});
+					}
 					return;
 				}
 				if (link.type === 'page') {
@@ -322,6 +352,10 @@
 				await register(shortcutConfig.value);
 				const deepLink = await import('@tauri-apps/plugin-deep-link');
 				unlistenDeepLink = await deepLink.onOpenUrl(openLinks);
+				const { listen } = await import('@tauri-apps/api/event');
+				unlistenAppLink = await listen(OPEN_APP_LINK_EVENT, (event) =>
+					openLinks([event.payload], false),
+				);
 				if (!coldStartHandled) {
 					coldStartHandled = true;
 					openLinks(await deepLink.getCurrent());
@@ -330,6 +364,7 @@
 
 			onBeforeUnmount(async () => {
 				unlistenDeepLink?.();
+				unlistenAppLink?.();
 				if (registered.length) {
 					const shortcuts = await import('@tauri-apps/plugin-global-shortcut');
 					await shortcuts.unregister(registered).catch(() => {});

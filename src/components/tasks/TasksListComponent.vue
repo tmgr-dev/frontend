@@ -203,6 +203,7 @@
 								<ArchiveRestore class="mr-2 h-4 w-4" />
 								<span>Restore</span>
 							</DropdownMenuItem>
+							<TaskShareItems :task="task" submenu />
 							<PluginTaskMenuItems :task-id="task.id as number" />
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -443,6 +444,7 @@
 
 <script lang="ts">
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
+	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
 		deleteTask,
@@ -573,6 +575,7 @@
 			DropdownMenuItem,
 			DropdownMenuTrigger,
 			PluginTaskMenuItems,
+			TaskShareItems,
 			SettingsComponent,
 			Command,
 			CommandEmpty,
