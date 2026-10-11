@@ -56,7 +56,7 @@
 			{{ item.text }}
 		</component>
 
-		<DropdownMenu>
+		<DropdownMenu v-if="!localOnly">
 			<DropdownMenuTrigger as-child>
 				<button
 					type="button"
@@ -84,6 +84,7 @@
 		</DropdownMenu>
 
 		<div
+			v-if="!localOnly"
 			class="flex h-full items-center gap-1.5 px-3"
 			:title="`Realtime: ${connectionState}`"
 		>
@@ -246,6 +247,7 @@
 			);
 
 			return {
+				localOnly: computed(() => store.getters.isLocalOnly === true),
 				workspace: computed(() => store.getters.currentWorkspace),
 				title: computed(() => store.state.metaTitle || ''),
 				aiPanelOpen: computed(() => store.state.aiPanelOpen),
