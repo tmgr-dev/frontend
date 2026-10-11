@@ -1,5 +1,13 @@
 <template>
-	<PageContainer width="narrow">
+	<PageContainer v-if="isLocalOnly" width="narrow">
+		<PageHeader title="Agents">
+			<template #subtitle>
+				Connect Claude Code and other MCP clients to your local workspace.
+			</template>
+		</PageHeader>
+		<LocalPersonasPanel />
+	</PageContainer>
+	<PageContainer v-else width="narrow">
 		<PageHeader title="Personas">
 			<template #subtitle>
 				A persona is an identity your AI agents act under: its own name,
@@ -249,6 +257,7 @@
 			const formErrors = ref<Record<string, string[]>>({});
 			const saving = ref(false);
 			const isDesktop = isDesktopApp();
+			const isLocalOnly = isDesktop && !!store.getters.isLocalOnly;
 			const workspaceGrants = ref<PersonaGrant[]>([]);
 			const currentWorkspace = computed(
 				() => store.getters.currentWorkspace as
@@ -396,7 +405,9 @@
 				}
 			};
 
-			onMounted(load);
+			onMounted(() => {
+				if (!isLocalOnly) load();
+			});
 
 			return {
 				personas,
@@ -409,6 +420,7 @@
 				formErrors,
 				saving,
 				isDesktop,
+				isLocalOnly,
 				currentWorkspace,
 				sharedPersonas,
 				canEdit,

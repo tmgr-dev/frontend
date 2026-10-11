@@ -1,8 +1,15 @@
 <template>
 	<div id="local-personas-panel" class="flex flex-col gap-4 border-t border-border pt-6">
 		<header class="flex flex-col gap-1">
-			<h4 class="text-sm font-semibold">On this device</h4>
-			<p class="text-sm text-muted-foreground">
+			<h4 class="text-sm font-semibold">
+				{{ localOnly ? 'Agents on this device' : 'On this device' }}
+			</h4>
+			<p v-if="localOnly" class="text-sm text-muted-foreground">
+				Connect Claude Code or any MCP client to this workspace without an account.
+				Each agent is a local persona: press “Connect an agent”, copy the command
+				into your terminal, and the agent works through its own permissions.
+			</p>
+			<p v-else class="text-sm text-muted-foreground">
 				Personas from your account, snapshotted into this local workspace. Their
 				prompt and skills stay in this app's data folder, never in the workspace
 				file, so the folder stays safe to copy or move.
@@ -66,13 +73,39 @@
 		>
 			<div class="flex items-center justify-between">
 				<h5 class="text-sm font-semibold">Personas in this workspace</h5>
-				<Button size="sm" variant="outline" :disabled="syncing" @click="sync">
+				<Button v-if="!localOnly" size="sm" variant="outline" :disabled="syncing" @click="sync">
 					{{ syncing ? 'Syncing…' : 'Sync now' }}
 				</Button>
+				<Button v-else size="sm" variant="outline" @click="showAddForm = !showAddForm">
+					Add local agent
+				</Button>
 			</div>
+			<form
+				v-if="localOnly && showAddForm"
+				class="flex flex-col gap-2 rounded border border-border p-3"
+				@submit.prevent="addLocalAgent"
+			>
+				<label class="flex flex-col gap-1 text-sm">
+					Name
+					<Input v-model="addForm.name" maxlength="60" placeholder="Claude Code" />
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					Description (optional)
+					<Input v-model="addForm.description" placeholder="What this agent is for" />
+				</label>
+				<p v-if="addError" class="text-sm text-red-600 dark:text-red-400">{{ addError }}</p>
+				<div class="flex gap-2">
+					<Button type="submit" size="sm" :disabled="adding || !addForm.name.trim()">
+						{{ adding ? 'Adding…' : 'Add agent' }}
+					</Button>
+					<Button type="button" size="sm" variant="outline" @click="showAddForm = false">
+						Cancel
+					</Button>
+				</div>
+			</form>
 			<p v-if="syncError" class="text-sm text-red-600 dark:text-red-400">{{ syncError }}</p>
 			<p v-if="!personas.length" class="text-sm text-muted-foreground">
-				No personas synced yet.
+				{{ localOnly ? 'No local agents yet.' : 'No personas synced yet.' }}
 			</p>
 			<div
 				v-for="persona in personas"
@@ -83,7 +116,7 @@
 					<div>
 						<div class="text-sm font-medium">
 							{{ persona.name }}
-							<span v-if="persona.archived_at" class="ml-2 text-xs text-muted-foreground">
+							<span v-if="persona.archived_at && !localOnly" class="ml-2 text-xs text-muted-foreground">
 								(archived in the cloud)
 							</span>
 						</div>
@@ -220,10 +253,12 @@
 		type TokenInfo,
 	} from '@/local/localTokens';
 	import { tauriPersonaCache } from '@/local/personaCache';
-	import { PERSONA_PERMISSIONS, type PersonaPermission } from '@/local/personaGate';
+	import { LOCAL_OWNER_ID, PERSONA_PERMISSIONS, type PersonaPermission } from '@/local/personaGate';
 	import {
+		createLocalPersona,
 		disableLocalPersona,
 		enableLocalPersona,
+		ensureDefaultLocalPersona,
 		listLocalPersonas,
 		syncPersonasSnapshot,
 		type WorkspacePersonaRow,
@@ -278,15 +313,47 @@
 			const accessToggling = ref(false);
 			const localAccessAvailable = supportsLocalAccess();
 
-			const currentUser = () => ({
-				id: Number(store.state.user?.id) || 0,
-				name: store.state.user?.name ?? '',
-				email: store.state.user?.email ?? '',
-			});
+			const localOnly = !!store.getters?.isLocalOnly;
+			const showAddForm = ref(false);
+			const adding = ref(false);
+			const addError = ref<string | null>(null);
+			const addForm = reactive({ name: '', description: '' });
+
+			const currentUser = () =>
+				localOnly
+					? {
+							id: LOCAL_OWNER_ID,
+							name: store.state.user?.name || store.state.localProfile?.name || '',
+							email: '',
+						}
+					: {
+							id: Number(store.state.user?.id) || 0,
+							name: store.state.user?.name ?? '',
+							email: store.state.user?.email ?? '',
+						};
 
 			const ctxFor = async () => {
 				if (!workspace) throw new Error('No local workspace is open');
 				return localContext(workspace, currentUser());
+			};
+
+			const addLocalAgent = async () => {
+				adding.value = true;
+				addError.value = null;
+				try {
+					await createLocalPersona(await ctxFor(), {
+						name: addForm.name,
+						description: addForm.description,
+					});
+					addForm.name = '';
+					addForm.description = '';
+					showAddForm.value = false;
+					await refreshPersonas();
+				} catch (error) {
+					addError.value = error instanceof Error ? error.message : String(error);
+				} finally {
+					adding.value = false;
+				}
 			};
 
 			const refreshPersonas = async () => {
@@ -322,6 +389,7 @@
 
 			onMounted(async () => {
 				if (!workspace) return;
+				if (localOnly) await ensureDefaultLocalPersona(await ctxFor());
 				await Promise.all([refreshPersonas(), refreshLlmConfig(), refreshTokens(), localAccessAvailable && refreshAccessStatus()]);
 			});
 
@@ -449,6 +517,12 @@
 
 			return {
 				workspace,
+				localOnly,
+				showAddForm,
+				adding,
+				addError,
+				addForm,
+				addLocalAgent,
 				personas,
 				syncing,
 				syncError,
