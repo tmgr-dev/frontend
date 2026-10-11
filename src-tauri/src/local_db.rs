@@ -178,7 +178,7 @@ fn connection<R: Runtime>(app: &AppHandle<R>, dbs: &LocalDbs, code: &str) -> Res
 }
 
 /// SQLite calls block (busy_timeout up to 5 s), so they run off the async runtime.
-async fn with_connection<R: Runtime, T: Send + 'static>(
+pub(crate) async fn with_connection<R: Runtime, T: Send + 'static>(
   app: AppHandle<R>,
   dbs: &LocalDbs,
   code: String,
