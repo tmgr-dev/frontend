@@ -5,9 +5,11 @@ mod downloads;
 mod embeds;
 mod idle;
 mod local_access;
+mod local_backups;
 mod local_db;
 mod local_export;
 mod local_files;
+mod local_profile;
 mod local_workspaces;
 mod plugin_catalog;
 mod persona_cache;
@@ -181,6 +183,7 @@ pub fn run() {
     .manage(tray::DndStore::default())
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
+    .manage(local_backups::BackupErrors::default())
     .manage(downloads::PendingDownloads::default())
     .manage(plugin_windows::PluginWindows::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
@@ -210,6 +213,13 @@ pub fn run() {
       local_db::local_db_execute,
       local_db::local_db_backup,
       local_db::local_db_batch,
+      local_profile::local_profile_get,
+      local_profile::local_profile_create,
+      local_profile::local_profile_update,
+      local_backups::local_backup_now,
+      local_backups::local_backup_list,
+      local_backups::local_backup_status,
+      local_backups::local_backup_reveal,
       local_files::local_file_write,
       downloads::reveal_download,
       plugin_dev::plugins_dev_list,
@@ -325,6 +335,7 @@ pub fn run() {
         log::error!("[tray] unavailable: {error}");
       }
       idle::start(app.handle());
+      local_backups::start(app.handle());
       plugin_tick::start(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");

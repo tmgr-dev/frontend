@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local-profile",
+  "description": "Local profile and workspace backups: main window only.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-local-profile-get",
+    "allow-local-profile-create",
+    "allow-local-profile-update",
+    "allow-local-backup-now",
+    "allow-local-backup-list",
+    "allow-local-backup-status",
+    "allow-local-backup-reveal"
+  ]
+}
