@@ -1,4 +1,5 @@
 import { gatedPage } from '@/router/moduleGate';
+import { isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
@@ -366,7 +367,12 @@ const routes = [
 
 			// If we have a workspace code, redirect to workspace board
 			if (currentWorkspace?.code) {
-				return safeRedirect(to, `/${currentWorkspace.code}/board`);
+				const target = isSimpleMode(
+					store.getters['featureToggles/isFeatureEnabled'],
+				)
+					? 'list'
+					: 'board';
+				return safeRedirect(to, `/${currentWorkspace.code}/${target}`);
 			}
 
 			// If no workspace code is available, go to fallback board route

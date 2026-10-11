@@ -757,7 +757,7 @@
 								</SidebarMenuButton>
 							</SidebarMenuItem>
 
-							<SidebarMenuItem v-if="isFeatureEnabled('board')">
+							<SidebarMenuItem v-if="showSurface('board.nav')">
 								<SidebarMenuButton as-child>
 									<router-link
 										:to="

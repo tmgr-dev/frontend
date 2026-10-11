@@ -4,6 +4,7 @@ import { isDesktopApp } from '@/utils/desktop';
 import { saveReturnPath } from '@/utils/emailVerification';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 import { resolveLanding } from '@/utils/moduleSurfaces';
+import { isSimpleMode } from '@/utils/simpleStatus';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
 import routes from './routes';
@@ -156,6 +157,12 @@ router.beforeEach(async (to, from, next) => {
 				});
 				await syncActiveLocalWorkspace(workspaceFromUrl.id);
 				await store.dispatch('featureToggles/ensureWorkspaceModules');
+			}
+			if (
+				to.name === 'WorkspaceBoard' &&
+				isSimpleMode(store.getters['featureToggles/isFeatureEnabled'])
+			) {
+				return next(`/${to.params.workspace_code}/list`);
 			}
 		}
 

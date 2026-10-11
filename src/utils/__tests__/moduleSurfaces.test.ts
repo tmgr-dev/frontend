@@ -136,6 +136,15 @@ describe('board and landing page', () => {
 			'daily_routines',
 		]);
 	});
+	it('redirects the board routes to the list in simple mode', () => {
+		expect(read('router/index.js')).toContain('isSimpleMode(');
+		expect(read('router/routes.js')).toContain('isSimpleMode(');
+	});
+	it('shows the sidebar board item through the board surface', () => {
+		expect(read('components/general/CustomSidebar.vue')).toMatch(
+			/showSurface\(\s*'board\.nav'/,
+		);
+	});
 	it('is used by the router and the store', () => {
 		expect(read('router/index.js')).toContain('resolveLanding(');
 		expect(read('store/modules/featureToggles.ts')).toContain(
