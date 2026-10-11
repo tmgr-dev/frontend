@@ -7,7 +7,7 @@
 
 		<div class="grid grid-cols-2 gap-2">
 			<Button
-				class="h-10"
+				class="h-auto min-h-10 whitespace-normal px-4 py-2 text-center leading-tight"
 				:variant="startOpen ? 'secondary' : 'default'"
 				:disabled="busy"
 				data-testid="start-local"
@@ -17,7 +17,7 @@
 			</Button>
 			<Button
 				variant="outline"
-				class="h-10"
+				class="h-auto min-h-10 whitespace-normal px-4 py-2 text-center leading-tight"
 				:disabled="busy"
 				data-testid="sign-in"
 				@click="signIn"
