@@ -42,20 +42,32 @@ export const presetTarget = (
 	catalog: Pick<ModuleEntry, 'key' | 'core'>[],
 ) => {
 	const core = new Set(catalog.filter((m) => m.core).map((m) => m.key));
+	const known = new Set(catalog.map((m) => m.key));
 	return (key: string): boolean =>
 		core.has(key) ||
+		(key === 'workflow' && !known.has(key)) ||
 		preset.key === 'everything' ||
 		preset.modules.includes(key);
 };
 
+export const currentTarget =
+	(catalog: Pick<ModuleEntry, 'key' | 'core' | 'enabled'>[]) =>
+	(key: string): boolean => {
+		const entry = catalog.find((m) => m.key === key);
+		if (!entry) return key === 'workflow';
+		return entry.enabled === true || entry.core === true;
+	};
+
 export const previewSurfaces = (
 	target: (key: string) => boolean,
 	current?: (key: string) => boolean,
-): { nav: PreviewItem[]; task: PreviewItem[] } => {
+): { nav: PreviewItem[]; task: PreviewItem[]; card: 'status' | 'done' } => {
+	const active = (check: (key: string) => boolean, key: string | null) =>
+		key === null || (check(key) && (key !== 'board' || check('workflow')));
 	const build = (specs: Spec[]): PreviewItem[] =>
 		specs.map(({ id, label, key }) => {
-			const next = key === null || target(key);
-			const was = key === null || !current || current(key);
+			const next = active(target, key);
+			const was = !current || active(current, key);
 			const state: PreviewState =
 				next && !was
 					? 'new'
@@ -66,5 +78,9 @@ export const previewSurfaces = (
 					: 'off';
 			return { id, label, state };
 		});
-	return { nav: build(NAV), task: build(TASK) };
+	return {
+		nav: build(NAV),
+		task: build(TASK),
+		card: target('workflow') ? 'status' : 'done',
+	};
 };

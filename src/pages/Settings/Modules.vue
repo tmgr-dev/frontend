@@ -53,7 +53,18 @@
 
 				<SettingsSection title="Core" :description="CORE_DESCRIPTION">
 					<p class="text-sm text-ink" data-testid="core-line">
-						{{ view.core.join(' · ') }}
+						<template v-for="(item, index) in view.coreItems" :key="item.name">
+							<span v-if="index" class="text-ink-subtle"> · </span>
+							<span
+								:class="item.off ? 'text-ink-subtle opacity-60' : ''"
+								:data-testid="`core-item-${item.name}`"
+								:data-off="item.off || undefined"
+								>{{ item.name
+								}}<span v-if="item.needs" class="ml-1 text-xs"
+									>({{ item.needs }})</span
+								></span
+							>
+						</template>
 					</p>
 					<details
 						v-if="coreRows.length"
@@ -168,6 +179,25 @@
 					</div>
 				</SettingsSection>
 
+				<AlertDialog v-model:open="confirmOpen">
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Turn off Workflow?</AlertDialogTitle>
+							<AlertDialogDescription data-testid="workflow-off-confirm">
+								{{ confirmMessage }}
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel @click="pendingRow = null"
+								>Cancel</AlertDialogCancel
+							>
+							<AlertDialogAction @click="confirmToggle">
+								Turn off
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+
 				<p class="text-sm text-ink-subtle" data-testid="modules-footer">
 					{{ MODULES_FOOTER }}
 				</p>
@@ -246,9 +276,20 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import RequiresAccount from '@/components/general/RequiresAccount.vue';
 	import ModulesPresetDialog from '@/components/general/ModulesPresetDialog.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import {
 		Select,
@@ -274,6 +315,7 @@
 		hideButtonLabel,
 		MODULES_FOOTER,
 		payloadFromLegacy,
+		workflowOffConfirm,
 		type ModuleRow,
 		type ModulesPayload,
 	} from '@/utils/modules';
@@ -390,7 +432,25 @@
 		}
 	};
 
-	const toggleModule = (row: ModuleRow, enabled: boolean) =>
+	const confirmOpen = ref(false);
+	const pendingRow = ref<ModuleRow | null>(null);
+	const confirmMessage = ref('');
+
+	const toggleModule = (row: ModuleRow, enabled: boolean) => {
+		const message = workflowOffConfirm(row.key, enabled);
+		if (!message) return applyToggle(row, enabled);
+		pendingRow.value = row;
+		confirmMessage.value = message;
+		confirmOpen.value = true;
+	};
+
+	const confirmToggle = () => {
+		const row = pendingRow.value;
+		pendingRow.value = null;
+		if (row) void applyToggle(row, false);
+	};
+
+	const applyToggle = (row: ModuleRow, enabled: boolean) =>
 		withBusy('module:' + row.key, async () => {
 			try {
 				const next = await setModuleEnabled(

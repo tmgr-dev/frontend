@@ -26,6 +26,29 @@
 			<h4 class="mb-1 font-medium uppercase tracking-wide text-ink-subtle">
 				Task
 			</h4>
+			<div
+				class="mb-1 flex items-center gap-2 rounded border border-border bg-surface px-2 py-1 text-ink"
+				data-testid="preview-card"
+				:data-mode="card"
+			>
+				<span class="min-w-0 flex-1 truncate">Task title</span>
+				<span
+					v-if="card === 'done'"
+					class="flex shrink-0 items-center gap-1"
+					data-testid="preview-card-done"
+				>
+					<span
+						class="inline-block h-3 w-3 rounded-sm border border-ink-subtle"
+					/>
+					Done
+				</span>
+				<span
+					v-else
+					class="shrink-0 rounded bg-muted px-1.5 text-2xs text-ink-subtle"
+					data-testid="preview-card-status"
+					>Status</span
+				>
+			</div>
 			<ul class="flex flex-col gap-1">
 				<li
 					v-for="item in task"
@@ -47,7 +70,11 @@
 <script setup lang="ts">
 	import type { PreviewItem, PreviewState } from '@/utils/previewSurfaces';
 
-	defineProps<{ nav: PreviewItem[]; task: PreviewItem[] }>();
+	defineProps<{
+		nav: PreviewItem[];
+		task: PreviewItem[];
+		card?: 'status' | 'done';
+	}>();
 
 	const rowClass = (state: PreviewState) => [
 		'flex items-center justify-between gap-2 rounded px-2 py-1 text-ink',

@@ -40,6 +40,7 @@ export interface ModulesPayload {
 	packs: ModulePack[];
 	presets: ModulePreset[];
 	modules: ModuleEntry[];
+	notices: string[];
 }
 
 export type ModulesMap = Record<string, ModuleEntry>;
@@ -63,6 +64,7 @@ export const parseModulesPayload = (raw: any): ModulesPayload => {
 		packs: Array.isArray(body.packs) ? body.packs : [],
 		presets: Array.isArray(body.presets) ? body.presets : [],
 		modules,
+		notices: Array.isArray(body.notices) ? body.notices : [],
 	};
 };
 
@@ -213,8 +215,24 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 			needsAccount: moduleNeedsAccount(entry),
 		};
 	};
+	const coreItems = grouped.core.map((entry) => {
+		const name = entry.name || humanizeKey(entry.key);
+		const blocking = (entry.depends_on || [])
+			.map((key) => map[key])
+			.filter((dep) => dep && !dep.core && dep.enabled === false);
+		return {
+			name,
+			needs: blocking.length
+				? `needs ${blocking
+						.map((dep) => dep.name || humanizeKey(dep.key))
+						.join(', ')}`
+				: '',
+			off: blocking.length > 0,
+		};
+	});
 	return {
-		core: grouped.core.map((entry) => entry.name || humanizeKey(entry.key)),
+		core: coreItems.map((item) => item.name),
+		coreItems,
 		packs: grouped.packs.map((pack) => ({
 			key: pack.key,
 			name: pack.name,
@@ -301,6 +319,7 @@ export const payloadFromLegacy = (
 		packs: packKeys.map((key) => ({ key, name: humanizeGroupName(key) })),
 		presets: [],
 		modules,
+		notices: [],
 	};
 };
 
@@ -343,4 +362,35 @@ export const presetDiff = (
 		if (!target && m.enabled === true) off.push(name);
 	}
 	return { on, off };
+};
+
+export const payloadNotices = (payload: ModulesPayload): string[] =>
+	payload.notices.filter(
+		(notice): notice is string => typeof notice === 'string' && !!notice,
+	);
+
+export const WORKFLOW_OFF_CONFIRM =
+	'Tasks get a Done checkbox instead of statuses; the Board is hidden. Statuses and their tasks stay and come back when you turn it on.';
+
+export const workflowOffConfirm = (
+	key: string,
+	enabled: boolean,
+): string | null =>
+	key === 'workflow' && !enabled ? WORKFLOW_OFF_CONFIRM : null;
+
+export const presetNotes = (
+	preset: ModulePreset,
+	modules: Pick<ModuleEntry, 'key' | 'enabled'>[],
+): string[] => {
+	const workflow = modules.find((m) => m.key === 'workflow');
+	if (!workflow) return [];
+	const target =
+		preset.key === 'everything' || preset.modules.includes('workflow');
+	const was = workflow.enabled === true;
+	if (target === was) return [];
+	return [
+		target
+			? 'Workflow: Done checkbox → statuses'
+			: 'Workflow: statuses → Done checkbox',
+	];
 };

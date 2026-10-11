@@ -29,6 +29,9 @@
 						<span class="font-medium">Will turn off:</span>
 						{{ diff.off.join(', ') }}
 					</p>
+					<p v-for="note in notes" :key="note" data-testid="preset-diff-note">
+						{{ note }}
+					</p>
 				</template>
 				<p class="text-xs text-ink-subtle">
 					Your data is never deleted. Turning a module back on brings everything
@@ -72,14 +75,21 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { useToast } from '@/components/ui/toast';
 	import {
 		buildChoiceRequest,
+		payloadNotices,
 		presetDiff,
+		presetNotes,
 		type ModuleEntry,
 		type ModulePreset,
 		type ModulesPayload,
 	} from '@/utils/modules';
-	import { presetTarget, previewSurfaces } from '@/utils/previewSurfaces';
+	import {
+		currentTarget,
+		presetTarget,
+		previewSurfaces,
+	} from '@/utils/previewSurfaces';
 	import { computed, ref, watch } from 'vue';
 
 	const props = defineProps<{
@@ -93,6 +103,7 @@
 		applied: [payload: ModulesPayload];
 	}>();
 
+	const toaster = useToast();
 	const choice = ref('');
 	const hovered = ref<string | null>(null);
 	const saving = ref(false);
@@ -121,16 +132,16 @@
 			? presetDiff(selected.value, props.catalog)
 			: { on: [], off: [] },
 	);
+	const notes = computed(() =>
+		selected.value ? presetNotes(selected.value, props.catalog) : [],
+	);
 	const isEmpty = computed(
 		() => !diff.value.on.length && !diff.value.off.length,
 	);
-	const currentOn = (key: string) =>
-		props.catalog.find((m) => m.key === key)?.enabled === true ||
-		props.catalog.find((m) => m.key === key)?.core === true;
 	const preview = computed(() =>
 		previewSurfaces(
 			presetTarget(shown.value as ModulePreset, props.catalog),
-			currentOn,
+			currentTarget(props.catalog),
 		),
 	);
 
@@ -145,6 +156,7 @@
 				props.workspaceId,
 				buildChoiceRequest(selected.value.key, {}),
 			);
+			payloadNotices(payload).forEach((title) => toaster.toast({ title }));
 			emit('applied', payload);
 			close();
 		} catch {

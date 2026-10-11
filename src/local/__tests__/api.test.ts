@@ -294,6 +294,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		]);
 		const toggles = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(toggles.board.enabled).toBe(true);
+		expect(toggles.workflow).toEqual(
+			expect.objectContaining({ key: 'workflow', name: 'Workflow', enabled: true }),
+		);
 		expect(toggles['task.relations'].enabled).toBe(true);
 		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/nonexistent-route')).toBeNull();
 	});

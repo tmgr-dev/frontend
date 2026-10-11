@@ -14,6 +14,9 @@ import {
 	parseModulesPayload,
 	payloadFromLegacy,
 	presetDiff,
+	presetNotes,
+	workflowOffConfirm,
+	payloadNotices,
 	presetSummary,
 	readModulesCache,
 	shouldShowPicker,
@@ -567,5 +570,81 @@ describe('canApplyPreset', () => {
 	it('is for owners only', () => {
 		expect(canApplyPreset(true)).toBe(true);
 		expect(canApplyPreset(false)).toBe(false);
+	});
+});
+
+describe('workflow copy', () => {
+	const modules: any[] = [
+		{ key: 'workflow', name: 'Workflow', enabled: true },
+		{ key: 'board', name: 'Board', core: true, enabled: true },
+	];
+	const preset = (keys: string[], key = 'p') => ({
+		key,
+		name: key,
+		description: '',
+		modules: keys,
+	});
+
+	it('notes the status change when a preset turns workflow off', () => {
+		expect(presetNotes(preset([]), modules)).toEqual([
+			'Workflow: statuses → Done checkbox',
+		]);
+	});
+	it('notes the reverse when a preset turns workflow on', () => {
+		const off = modules.map((m) =>
+			m.key === 'workflow' ? { ...m, enabled: false } : m,
+		);
+		expect(presetNotes(preset(['workflow']), off)).toEqual([
+			'Workflow: Done checkbox → statuses',
+		]);
+		expect(presetNotes(preset([], 'everything'), off)).toEqual([
+			'Workflow: Done checkbox → statuses',
+		]);
+	});
+	it('has no notes without a change or without a workflow module', () => {
+		expect(presetNotes(preset(['workflow']), modules)).toEqual([]);
+		expect(presetNotes(preset([]), [modules[1]])).toEqual([]);
+	});
+	it('asks for confirmation only when workflow is turned off', () => {
+		expect(workflowOffConfirm('workflow', false)).toBe(
+			'Tasks get a Done checkbox instead of statuses; the Board is hidden. Statuses and their tasks stay and come back when you turn it on.',
+		);
+		expect(workflowOffConfirm('workflow', true)).toBeNull();
+		expect(workflowOffConfirm('pages', false)).toBeNull();
+	});
+	it('reads notices from the payload', () => {
+		expect(
+			parseModulesPayload({ ...raw, notices: ['Added a Done status'] }).notices,
+		).toEqual(['Added a Done status']);
+		expect(parseModulesPayload(raw).notices).toEqual([]);
+		expect(payloadNotices(parseModulesPayload({ ...raw, notices: ['a', 7] }))).toEqual(['a']);
+	});
+	it('greys Board in the core line when workflow is off', () => {
+		const payload = parseModulesPayload({
+			modules: [
+				{ key: 'board', name: 'Board', core: true, enabled: false, depends_on: ['workflow'] },
+				{ key: 'categories', name: 'Projects', core: true, enabled: true },
+				{ key: 'workflow', name: 'Workflow', pack: 'planning', enabled: false },
+			],
+			packs: [{ key: 'planning', name: 'Planning' }],
+		});
+		const view = buildModulesView(payload, true);
+		expect(view.coreItems).toEqual([
+			{ name: 'Board', needs: 'needs Workflow', off: true },
+			{ name: 'Projects', needs: '', off: false },
+		]);
+		expect(view.core).toEqual(['Board', 'Projects']);
+		expect(view.packs[0].rows[0].key).toBe('workflow');
+	});
+	it('does not grey Board when workflow is on', () => {
+		const payload = parseModulesPayload({
+			modules: [
+				{ key: 'board', name: 'Board', core: true, enabled: true, depends_on: ['workflow'] },
+				{ key: 'workflow', name: 'Workflow', pack: 'planning', enabled: true },
+			],
+		});
+		expect(buildModulesView(payload, true).coreItems).toEqual([
+			{ name: 'Board', needs: '', off: false },
+		]);
 	});
 });

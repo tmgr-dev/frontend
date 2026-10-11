@@ -45,3 +45,11 @@ describe('featureDescription', () => {
 		expect(featureDescription('unknown.key')).toBe('');
 	});
 });
+
+describe('workflow copy', () => {
+	it('describes the workflow key', () => {
+		expect(featureDescription('workflow')).toBe(
+			'Custom statuses, the status picker and board columns.',
+		);
+	});
+});

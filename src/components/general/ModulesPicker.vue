@@ -77,12 +77,14 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Switch } from '@/components/ui/switch';
+	import { useToast } from '@/components/ui/toast';
 	import {
 		buildChoiceRequest,
 		CUSTOM_CHOICE,
 		dismissPicker,
 		groupModules,
 		isPickerDismissed,
+		payloadNotices,
 		shouldShowPicker,
 	} from '@/utils/modules';
 	import { presetTarget, previewSurfaces } from '@/utils/previewSurfaces';
@@ -90,6 +92,7 @@
 	import { useStore } from 'vuex';
 
 	const store = useStore();
+	const toaster = useToast();
 
 	const open = ref(false);
 	const choice = ref('');
@@ -176,6 +179,7 @@
 				workspaceId: workspaceId.value,
 				payload,
 			});
+			payloadNotices(payload).forEach((title) => toaster.toast({ title }));
 			open.value = false;
 		} catch {
 			error.value = 'Could not save your choice. Try again.';

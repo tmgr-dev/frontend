@@ -507,6 +507,7 @@ const FEATURE_TOGGLES: Record<string, boolean> = {
 	'task.files': true,
 	'task.relations': true,
 	pages: true,
+	workflow: true,
 };
 
 const GRAPH_FEATURE = 'feature.graph';
@@ -534,7 +535,7 @@ const requireAgentWork = async (ctx: LocalContext) => {
 	}
 };
 
-const FEATURE_TOGGLE_NAMES: Record<string, string> = { agent_work: 'Agent work' };
+const FEATURE_TOGGLE_NAMES: Record<string, string> = { agent_work: 'Agent work', workflow: 'Workflow' };
 
 export const createLocalApi = () => {
 	const router = new LocalRouter()

@@ -1,4 +1,8 @@
-import { presetTarget, previewSurfaces } from '../previewSurfaces';
+import {
+	currentTarget,
+	presetTarget,
+	previewSurfaces,
+} from '../previewSurfaces';
 
 const catalog: any[] = [
 	{ key: 'categories', core: true, enabled: true },
@@ -119,6 +123,41 @@ describe('previewSurfaces', () => {
 	});
 });
 
+describe('workflow in the preview', () => {
+	const withWorkflow: any[] = [
+		...catalog,
+		{ key: 'workflow', enabled: true },
+	];
+	const off = presetTarget(preset('minimal', []), withWorkflow);
+	const on = presetTarget(preset('team', ['workflow']), withWorkflow);
+
+	it('shows a Done checkbox card and greys the Board when workflow is off', () => {
+		const { nav, card } = previewSurfaces(off);
+		expect(card).toBe('done');
+		expect(byId(nav).board).toBe('off');
+		expect(byId(nav).list).toBe('on');
+	});
+	it('shows the status chip and the Board when workflow is on', () => {
+		const { nav, card } = previewSurfaces(on);
+		expect(card).toBe('status');
+		expect(byId(nav).board).toBe('on');
+	});
+	it('marks the Board as will-hide or new against the current state', () => {
+		const current = currentTarget(withWorkflow);
+		expect(byId(previewSurfaces(off, current).nav).board).toBe('will-hide');
+		const wasOff = currentTarget(
+			withWorkflow.map((m) => (m.key === 'workflow' ? { ...m, enabled: false } : m)),
+		);
+		expect(byId(previewSurfaces(on, wasOff).nav).board).toBe('new');
+	});
+	it('treats a catalog without workflow as workflow on', () => {
+		const target = presetTarget(preset('personal', []), catalog);
+		expect(target('workflow')).toBe(true);
+		expect(currentTarget(catalog)('workflow')).toBe(true);
+		expect(previewSurfaces(target).card).toBe('status');
+	});
+});
+
 describe('wiring', () => {
 	const { readFileSync } = require('fs');
 	const { join } = require('path');
@@ -163,6 +202,23 @@ describe('wiring', () => {
 	it('applies a preset with only the preset key', () => {
 		expect(read('components/general/ModulesPresetDialog.vue')).toContain(
 			'buildChoiceRequest(selected.value.key, {})',
+		);
+	});
+	it('wires workflow copy, confirmation and notice toasts', () => {
+		expect(read('components/general/ModulesPresetDialog.vue')).toContain(
+			'presetNotes(',
+		);
+		expect(read('components/general/ModulesPresetDialog.vue')).toContain(
+			'payloadNotices(payload)',
+		);
+		expect(read('components/general/ModulesPicker.vue')).toContain(
+			'payloadNotices(payload)',
+		);
+		expect(read('components/general/ModulePresetPreview.vue')).toContain(
+			'preview-card-done',
+		);
+		expect(read('pages/Settings/Modules.vue')).toContain(
+			'workflowOffConfirm(row.key, enabled)',
 		);
 	});
 });

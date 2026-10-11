@@ -7,6 +7,7 @@ const GROUP_LABELS: Record<string, string> = {
 const DESCRIPTIONS: Record<string, string> = {
 	categories: 'Group tasks into categories to organize your workspace.',
 	board: 'Switch to a kanban board view for tracking task status.',
+	workflow: 'Custom statuses, the status picker and board columns.',
 	pages: 'Keep notes, context and documentation in a tree of pages that people and agents can edit.',
 	graph:
 		'See how tasks, pages, people and agent runs connect: a Graph section on tasks and pages, and the workspace Map.',
