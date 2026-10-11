@@ -305,7 +305,7 @@
 			setLoadingActions(tasks.value);
 
 			// Check if we're on the root path and have a current workspace
-			if (route.path === '/' && store.state.workspaces?.length) {
+			if (route.path === '/app' && store.state.workspaces?.length) {
 				// Get current workspace ID
 				const currentWorkspaceId = store.state.user?.settings?.find(
 					(setting) => setting.key === 'current_workspace',

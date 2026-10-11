@@ -520,7 +520,7 @@
 			watch(
 				[isLoaded, enabled],
 				([loaded, on]) => {
-					if (loaded && !on) router.replace('/');
+					if (loaded && !on) router.replace('/app');
 				},
 				{ immediate: true },
 			);

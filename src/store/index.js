@@ -477,7 +477,7 @@ const actions = {
 		runtime.setActiveLocalWorkspace(first);
 		commit('setLocalProfile', profile);
 		const { default: router } = await import('@/router');
-		await router.push('/');
+		await router.push('/app');
 	},
 
 	async loadWorkspaces({ commit, state }) {

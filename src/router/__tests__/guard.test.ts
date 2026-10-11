@@ -107,13 +107,13 @@ describe('router guard without a cloud account', () => {
 
 		await loadGuard(localStore(), true)(route('Welcome', '/welcome', { allowedGuests: true }), {}, next);
 
-		expect(next).toHaveBeenCalledWith('/');
+		expect(next).toHaveBeenCalledWith('/app');
 	});
 
 	it('opens the active local workspace and its landing page at the root', async () => {
 		const next = jest.fn();
 
-		await loadGuard(localStore(), true)(route('Root', '/'), {}, next);
+		await loadGuard(localStore(), true)(route('Dashboard', '/app'), {}, next);
 
 		expect(next).toHaveBeenCalledWith('/local-my-workspace/board');
 	});

@@ -183,7 +183,7 @@ const start = async () => {
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {
-				if (shouldReloadOnModeChange(previous, next)) window.location.assign('/');
+				if (shouldReloadOnModeChange(previous, next)) window.location.assign('/app');
 			},
 		);
 	}

@@ -32,7 +32,7 @@ const signedOutTarget = () =>
 router.beforeEach(async (to, from, next) => {
 	if (to.name === 'Welcome') {
 		if (!isDesktopApp()) return next({ name: 'Login' });
-		if (store.getters.canUseApp) return next('/');
+		if (store.getters.canUseApp) return next('/app');
 	}
 
 	if (
@@ -55,7 +55,7 @@ router.beforeEach(async (to, from, next) => {
 		}
 
 		// Handle root path redirect for users who can use the app
-		if (to.path === '/' && store.getters.canUseApp) {
+		if (to.path === '/app' && store.getters.canUseApp) {
 			// Ensure user and workspaces are loaded after a hard reload
 			if (!store.state.user?.id) {
 				try {

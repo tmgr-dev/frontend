@@ -177,7 +177,7 @@
 		}
 		event.stopPropagation();
 		event.preventDefault();
-		router.push('/');
+		router.push('/app');
 	};
 
 	const metaTitle = computed(() => {

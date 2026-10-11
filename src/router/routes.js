@@ -167,9 +167,12 @@ const routes = [
 			transitionName: 'fade-fast',
 		},
 	},
-	// Legacy routes - keep for backward compatibility
 	{
 		path: '/',
+		redirect: (to) => ({ path: '/app', query: to.query, hash: to.hash }),
+	},
+	{
+		path: '/app',
 		component: DashboardPage,
 		meta: {
 			title: 'Dashboard',

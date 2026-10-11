@@ -55,6 +55,8 @@ export default defineConfig({
 				theme_color: '#555555',
 				background_color: '#1a1a1a',
 				display: 'standalone',
+				start_url: '/app',
+				scope: '/',
 				icons: [
 					{
 						src: 'favicon-32x32.png',

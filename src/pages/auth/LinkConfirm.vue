@@ -22,7 +22,7 @@
 					Confirm linking
 				</Button>
 				<router-link
-					to="/"
+					to="/app"
 					class="block text-center underline underline-offset-4"
 					>Cancel</router-link
 				>
@@ -54,7 +54,7 @@
 				</Button>
 				<router-link
 					v-else
-					to="/"
+					to="/app"
 					class="block font-medium text-primary underline underline-offset-4"
 					>Go to TMGR</router-link
 				>

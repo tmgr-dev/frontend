@@ -1630,7 +1630,7 @@
 				emit('close');
 				store.commit('taskDeleted', id);
 			} else {
-				router.push('/');
+				router.push('/app');
 			}
 		} catch (e) {
 			console.error(e);

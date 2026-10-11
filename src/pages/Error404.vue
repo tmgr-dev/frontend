@@ -3,7 +3,7 @@
 		<div class="m-auto">
 			<div class="text-9xl">404</div>
 
-			<router-link to="/" class="hover:underline">Go home</router-link>
+			<router-link to="/app" class="hover:underline">Go home</router-link>
 		</div>
 	</div>
 </template>

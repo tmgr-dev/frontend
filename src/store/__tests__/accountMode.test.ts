@@ -106,7 +106,7 @@ describe('startWithoutAccount', () => {
 		expect(commit).toHaveBeenCalledWith('setLocalProfile', PROFILE);
 		expect(fx.mocks.createLocalWorkspace).toHaveBeenCalledWith('My workspace');
 		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(expect.objectContaining({ id: -5 }));
-		expect(fx.mocks.push).toHaveBeenCalledWith('/');
+		expect(fx.mocks.push).toHaveBeenCalledWith('/app');
 	});
 
 	it('keeps the workspaces that already exist', async () => {

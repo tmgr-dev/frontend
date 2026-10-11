@@ -49,13 +49,13 @@ export const installNavHistory = (
 		taskId: store.state.currentTaskIdForModal ?? null,
 	});
 	const record = () => {
-		if (current().path === '/') return;
+		if (current().path === '/app') return;
 		history.push(current());
 		sync();
 	};
 	let lastPosition: number | undefined;
 	const recordRoute = (to: { path: string }) => {
-		if (to.path === '/') return;
+		if (to.path === '/app') return;
 		const position = globalThis.history?.state?.position;
 		const replaced = position != null && position === lastPosition;
 		lastPosition = position;

@@ -19,12 +19,21 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/admin',
 		'/admin/',
 		'/admin/campaigns/3?x=1',
+		'/',
+		'/?a=1',
+		'/l',
+		'/l/',
+		'/l?x=1',
+		'/l/assets/x.css',
 	])('denies %s', (path) => {
 		expect(denied(path)).toBe(true);
 	});
 
 	it.each([
-		'/',
+		'/app',
+		'/app?x=1',
+		'/lx',
+		'/login-help',
 		'/tmgrdev/list',
 		'/tmgrdev/tasks/1',
 		'/loginx',
@@ -38,6 +47,10 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 });
 
 describe('pwaWorkbox precache', () => {
+	it('does not answer directory navigations from the precache', () => {
+		expect((pwaWorkbox as any).directoryIndex).toBeNull();
+	});
+
 	const entry = (url: string) => ({ url, revision: null, size: 1 });
 	const html =
 		'<script src="/assets/js/index-A.js"></script>' +
