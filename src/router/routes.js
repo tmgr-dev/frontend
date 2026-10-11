@@ -1,4 +1,5 @@
 import { gatedPage } from '@/router/moduleGate';
+import store from '@/store';
 import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
@@ -65,9 +66,7 @@ const safeRedirect = (to, target) => {
 
 const simpleModeBoardGuard = (to) =>
 	boardRedirect(
-		(key) =>
-			window.app?.$store?.getters['featureToggles/isFeatureEnabled'](key) ??
-			true,
+		(key) => store.getters['featureToggles/isFeatureEnabled'](key),
 		to.params.workspace_code || getCurrentWorkspaceCode(),
 	) ?? true;
 
