@@ -9,7 +9,9 @@
 			<span class="min-w-0 flex-1">
 				Local only — there is no cloud copy. TMGR backs up your workspace every
 				day to
-				<strong class="break-all">{{ backupsDir || 'the backups folder' }}</strong
+				<strong class="[overflow-wrap:anywhere]" :title="backupsDir">{{
+					backupsLabel
+				}}</strong
 				>.
 			</span>
 			<button
@@ -68,6 +70,7 @@
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		backupWarning,
+		tildePath,
 		bannerDismissed,
 		dismissBanner,
 	} from '@/utils/localOnly';
@@ -115,6 +118,9 @@
 				() => statuses.value.find((s) => s.code === code.value) ?? null,
 			);
 			const backupsDir = computed(() => status.value?.backups_dir ?? '');
+			const backupsLabel = computed(
+				() => tildePath(backupsDir.value) || 'the backups folder',
+			);
 
 			const refresh = async () => {
 				if (!watching.value) return;
@@ -166,6 +172,7 @@
 				showFirstRun,
 				warning,
 				backupsDir,
+				backupsLabel,
 				hiddenForSession,
 				backingUp,
 				dismissFirstRun,

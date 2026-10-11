@@ -100,3 +100,6 @@ export const visiblePresets = <T extends { key: string }>(
 	presets: T[],
 	localOnly: boolean,
 ): T[] => (localOnly ? presets.filter((p) => p.key !== 'team') : presets);
+
+export const tildePath = (path: string): string =>
+	path.replace(/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[/\\]|$)/, '~');
