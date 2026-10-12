@@ -186,6 +186,33 @@ test('a human comment author avatar opens the member page', async ({
   await expect(page).toHaveURL(/\/demo\/team\/2$/);
 });
 
+for (const view of ['list', 'board']) {
+  test(`the ${view} assignee avatar opens the picker with avatars and does not navigate`, async ({
+    page,
+  }) => {
+    await withMembers(page);
+    await page.goto(`/demo/${view}`);
+    const item = page.locator('[data-task-id="1"]').first();
+    const trigger = item.locator('button[title="Change assignee"]');
+    await expect(trigger).toBeVisible();
+    await expect(trigger.getByRole('link')).toHaveCount(0);
+    const before = page.url();
+
+    await trigger.click();
+    await expect(page.getByPlaceholder('Search members...')).toBeVisible();
+    expect(page.url()).toBe(before);
+
+    const options = page.getByRole('option');
+    await expect(options).toHaveCount(2);
+    for (const member of [me, ann]) {
+      const option = options.filter({ hasText: member.name });
+      await expect(avatarOf(option, member.name)).toHaveCount(1);
+      await expect(option.getByRole('link')).toHaveCount(0);
+    }
+    expect(page.url()).toBe(before);
+  });
+}
+
 test('a dashboard team member avatar opens the member page', async ({
   page,
 }) => {
@@ -199,4 +226,59 @@ test('a dashboard team member avatar opens the member page', async ({
   await expect(avatarOf(link, 'Ann Lee')).toHaveCount(1);
   await link.click();
   await expect(page).toHaveURL(/\/demo\/team\/2$/);
+});
+
+test('the assignee combobox shows avatars for the selected members and options', async ({
+  page,
+}) => {
+  await withMembers(page);
+  await page.goto('/demo/list');
+  await page.locator('[data-task-id="1"]').first().click();
+  const form = page.locator('.new-form-container');
+  await expect(form.getByPlaceholder('Task name')).toHaveValue('Original task');
+
+  const trigger = form
+    .locator('button[role="combobox"]')
+    .filter({ hasText: 'Ann Lee' });
+  await expect(trigger).toBeVisible();
+  for (const member of [me, ann])
+    await expect(avatarOf(trigger, member.name)).toHaveCount(1);
+
+  await trigger.click();
+  const options = page.getByRole('option');
+  await expect(options).toHaveCount(2);
+  for (const member of [me, ann])
+    await expect(
+      avatarOf(options.filter({ hasText: member.name }), member.name),
+    ).toHaveCount(1);
+});
+
+test('the board user filter shows avatars in its options and selected value', async ({
+  page,
+}) => {
+  await withMembers(page);
+  await page.goto('/demo/board');
+  await expect(page.locator('[data-task-id="1"]').first()).toBeVisible();
+  await page.getByRole('button', { name: /Filters/ }).click();
+
+  const select = page
+    .locator('button[role="combobox"]')
+    .filter({ hasText: 'All users' });
+  await expect(select).toBeVisible();
+  await select.click();
+  const options = page.getByRole('option');
+  await expect(options).toHaveCount(3);
+  await expect(
+    avatarOf(options.filter({ hasText: 'All users' }), 'All users'),
+  ).toHaveCount(0);
+  for (const member of [me, ann])
+    await expect(
+      avatarOf(options.filter({ hasText: member.name }), member.name),
+    ).toHaveCount(1);
+
+  await options.filter({ hasText: 'Ann Lee' }).click();
+  const selected = page
+    .locator('button[role="combobox"]')
+    .filter({ hasText: 'Ann Lee' });
+  await expect(avatarOf(selected, 'Ann Lee')).toHaveCount(1);
 });
