@@ -521,6 +521,17 @@ for (const size of SIZES) {
     expect(errors).toEqual([]);
   });
 
+  e2e(`ws.dashboard: without team members the optional member tip is skipped and the tour completes at ${size.name}`, async ({ page }) => {
+    const { writes, errors } = await boot(page, size, { members: [] });
+    await startFromHub(page, 'ws.dashboard');
+    await popover(page).getByRole('button', { name: 'Take me there' }).click();
+    await expect(page).toHaveURL(/\/demo\/dashboard$/);
+    await expect(popover(page)).toContainText('Team activity');
+    await popover(page).getByRole('button', { name: /^(Next|Done)$/ }).click();
+    await expect.poll(() => lastWrite(writes, 'ws.dashboard')?.status, { timeout: 15000 }).toBe('completed');
+    expect(errors).toEqual([]);
+  });
+
   for (const id of ['ws.workspaces', 'ws.appearance', 'ws.notifications', 'ws.privacy', 'ws.telegram', 'ws.default-landing']) {
     e2e(`${id} spot completes through the popover at ${size.name}`, async ({ page }) => {
       test.skip(mobile && id === 'ws.telegram', 'web and desktop only');
