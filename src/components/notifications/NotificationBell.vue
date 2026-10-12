@@ -19,7 +19,7 @@
 			</DropdownMenuTrigger>
 
 			<DropdownMenuContent
-				class="notification-dropdown"
+				class="notification-dropdown flex max-h-[600px] w-[380px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 [&>[role=separator]]:mx-0"
 				align="end"
 				:side-offset="8"
 			>
