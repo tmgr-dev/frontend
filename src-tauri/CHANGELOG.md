@@ -14,6 +14,9 @@ workflow copies that section into the GitHub release and the in-app update notes
   only possible when nothing changed since the move, every file that wasn't moved is exported or accepted as lost, and
   a fresh archive of the workspace is written; you confirm by typing the workspace name. The archive and the move
   snapshot stay in the backups folder.
+- Onboarding: a welcome screen asks how you plan to use TMGR, a Connect your agent screen shows live connection status
+  while you set up MCP, and a Getting started checklist tracks your first steps (sample tasks can be removed in one
+  click).
 - Deleting a cloud workspace now asks you to type its name.
 
 ## 0.9.35 — 2026-10-12
