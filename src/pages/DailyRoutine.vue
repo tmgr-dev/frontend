@@ -389,6 +389,7 @@
 						@edit="onEdit"
 						@archive="onArchive"
 						@delete="onDelete"
+						@duplicate="onDuplicate"
 					/>
 
 					<button
@@ -825,7 +826,7 @@
 		view.value = 'day';
 	}
 
-	async function onSaveRoutine(draft: RoutineDraft) {
+	async function saveRoutine(draft: RoutineDraft, fallbackDate?: string) {
 		const time = `${String(draft.timeH).padStart(2, '0')}:${String(
 			draft.timeM,
 		).padStart(2, '0')}`;
@@ -842,7 +843,7 @@
 			const payload = buildRoutinePayload(draft, todayIso.value);
 			const draftDate = isUnscheduled
 				? undefined
-				: draft.scheduledDate || editingRoutine.value?._draftDate;
+				: draft.scheduledDate || fallbackDate;
 			const created = await quickCreateRoutine({
 				title: draft.title,
 				date: draftDate,
@@ -856,7 +857,28 @@
 				await updateDailyTask(newId, payload);
 			}
 		}
+	}
+
+	async function onSaveRoutine(draft: RoutineDraft) {
+		await saveRoutine(draft, editingRoutine.value?._draftDate);
 		editingRoutine.value = null;
+		await reload();
+	}
+
+	async function onDuplicate(entry: RoutineEntry) {
+		try {
+			const draft = routineDraftFrom(
+				await loadRoutineForEdit(entry),
+				todayIso.value,
+			);
+			await saveRoutine({ ...draft, id: null, title: `${draft.title} (copy)` });
+		} catch (error) {
+			toast({
+				title: 'Could not duplicate the routine',
+				description: errorText(error),
+				variant: 'destructive',
+			});
+		}
 		await reload();
 	}
 

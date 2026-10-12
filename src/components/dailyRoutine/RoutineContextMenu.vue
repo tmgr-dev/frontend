@@ -23,6 +23,14 @@
 				<button
 					type="button"
 					class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
+					@click="onDuplicate"
+				>
+					<Copy :size="13" />
+					Duplicate
+				</button>
+				<button
+					type="button"
+					class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
 					@click="onArchive"
 				>
 					<DRIcon name="archive" :size="13" stroke="currentColor" />
@@ -44,6 +52,7 @@
 
 <script setup lang="ts">
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { Copy } from 'lucide-vue-next';
 	import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 	import DRIcon from './DRIcon.vue';
 
@@ -57,6 +66,7 @@
 		(e: 'close'): void;
 		(e: 'edit', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
+		(e: 'duplicate', entry: RoutineEntry): void;
 		(e: 'delete', entry: RoutineEntry): void;
 	}>();
 
@@ -92,6 +102,11 @@
 
 	function onEdit() {
 		emit('edit', props.entry);
+		emit('close');
+	}
+
+	function onDuplicate() {
+		emit('duplicate', props.entry);
 		emit('close');
 	}
 
