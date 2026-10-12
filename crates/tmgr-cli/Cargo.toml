@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tmgr-core.workspace = true
 ctrlc.workspace = true

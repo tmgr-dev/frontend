@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/error.json",
+  "title": "tmgr.v1 error envelope",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "error"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": false
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "exit"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "error",
+            "usage",
+            "not_found",
+            "auth",
+            "forbidden",
+            "conflict",
+            "offline",
+            "runner",
+            "link",
+            "needs_confirmation",
+            "interrupted"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "exit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 130
+        },
+        "hint": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

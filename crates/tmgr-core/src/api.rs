@@ -109,6 +109,13 @@ impl Client {
         self.tokens.borrow().is_some()
     }
 
+    pub fn token_expires_at(&self) -> Option<String> {
+        self.tokens
+            .borrow()
+            .as_ref()
+            .and_then(|t| t.expires_at.clone())
+    }
+
     pub fn set_tokens(&self, tokens: Tokens) {
         *self.tokens.borrow_mut() = Some(tokens);
     }

@@ -2344,6 +2344,7 @@ dependencies = [
  "ctrlc",
  "jsonschema",
  "rpassword",
+ "serde",
  "serde_json",
  "tempfile",
  "tmgr-core",

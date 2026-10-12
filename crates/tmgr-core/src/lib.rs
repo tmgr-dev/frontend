@@ -10,6 +10,8 @@ pub mod view;
 
 use serde::Serialize;
 
+pub use reqwest::Url;
+
 pub const SCHEMA: &str = "tmgr.v1";
 
 #[derive(Debug, Serialize)]
