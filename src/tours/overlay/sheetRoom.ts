@@ -3,12 +3,16 @@ const RESCROLL_DELAYS_MS = [350, 800, 1500];
 export function isAnchorClear(anchor: Element, sheet: boolean): boolean {
   const r = anchor.getBoundingClientRect();
   const limit = sheet ? window.innerHeight * 0.5 : window.innerHeight;
+  if (r.height > limit) return r.top >= 0 && r.top < limit;
   return r.top >= 0 && r.bottom <= limit;
 }
+
+const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'touchmove'] as const;
 
 export function createSheetRoom() {
   let timers: ReturnType<typeof setTimeout>[] = [];
   let padded: Array<[HTMLElement, string]> = [];
+  let stopInput: (() => void) | null = null;
 
   function makeRoom(anchor: Element) {
     let el = anchor.parentElement;
@@ -30,6 +34,19 @@ export function createSheetRoom() {
 
   return {
     watch(anchor: Element, sheet: boolean, onScrolled?: () => void) {
+      stopInput?.();
+      const cancel = () => {
+        timers.forEach(clearTimeout);
+        timers = [];
+        stopInput?.();
+      };
+      USER_INPUT_EVENTS.forEach((type) =>
+        window.addEventListener(type, cancel, { passive: true, once: true }),
+      );
+      stopInput = () => {
+        USER_INPUT_EVENTS.forEach((type) => window.removeEventListener(type, cancel));
+        stopInput = null;
+      };
       timers = RESCROLL_DELAYS_MS.map((delay) =>
         setTimeout(() => {
           if (!anchor.isConnected || isAnchorClear(anchor, sheet)) return;
@@ -40,6 +57,7 @@ export function createSheetRoom() {
       );
     },
     release() {
+      stopInput?.();
       timers.forEach(clearTimeout);
       timers = [];
       padded.forEach(([el, padding]) => {
