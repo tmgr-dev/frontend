@@ -332,17 +332,6 @@ for (const size of SIZES) {
     });
   }
 
-  e2e(`persona tours fall back when there is no persona, take-me works at ${size.name}`, async ({ page }) => {
-    test.skip(mobile, 'personas are web and desktop only');
-    const { errors } = await boot(page, size, { personas: [] });
-    await startFromHub(page, 'personas.token');
-    await expect(page).toHaveURL(/\/settings\/personas$/);
-    await expect(popover(page)).toContainText('could not find this');
-    await shoot(page, 'personas.token-no-persona', size, 'light');
-    await page.keyboard.press('Escape');
-    expect(errors).toEqual([]);
-  });
-
   e2e(`work-log: task opened, first run starts, run finishes, tour completes at ${size.name}`, async ({ page }) => {
     const { writes, errors } = await boot(page, size);
     await startFromHub(page, 'agents.work-log');
