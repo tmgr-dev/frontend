@@ -24,6 +24,7 @@ describe('normalizeOnboarding', () => {
 			tours_generation: 0,
 			tours: {},
 			facts: {},
+			malformed: true,
 		});
 	});
 

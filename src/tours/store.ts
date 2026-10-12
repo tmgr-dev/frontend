@@ -21,8 +21,9 @@ export const emptyOnboarding = (): OnboardingState => ({
 
 export function normalizeOnboarding(raw: unknown): OnboardingState {
   const state = emptyOnboarding();
-  if (!isRecord(raw)) return state;
+  if (!isRecord(raw)) return { ...state, malformed: true };
   state.intent = typeof raw.intent === 'string' ? raw.intent : null;
+  if (typeof raw.invited === 'boolean') state.invited = raw.invited;
   if (TIPS_MODES.includes(raw.tips_mode)) state.tips_mode = raw.tips_mode;
   state.hub_hidden = raw.hub_hidden === true;
   state.checklist_hidden = raw.checklist_hidden === true;

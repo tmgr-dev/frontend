@@ -11,7 +11,7 @@ export interface RedirectContext {
   ownsOnlyDefaultWorkspace: boolean;
 }
 
-export const ONBOARDING_SINCE = 0;
+export const ONBOARDING_SINCE = Date.UTC(2026, 9, 13);
 
 export const EXCLUDED_ROUTES: readonly string[] = [
   'WorkspaceInvitation',
@@ -19,8 +19,27 @@ export const EXCLUDED_ROUTES: readonly string[] = [
   'WelcomeSetupAgent',
   'Privacy',
   'VerifyEmail',
+  'Login',
+  'Register',
+  'SocialiteProxy',
+  'DesktopAuthReturn',
+  'DesktopAuthTelegram',
+  'ForgetPassword',
+  'NewPassword',
 ];
 
-export function shouldOfferIntent(_ctx: RedirectContext): boolean {
-  return false;
+export function shouldOfferIntent(ctx: RedirectContext): boolean {
+  const state = ctx.state;
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
+  if (state.malformed === true || state.intent !== null) return false;
+  if (state.invited === true) return false;
+  if (state.invited === undefined && !ctx.ownsOnlyDefaultWorkspace) return false;
+  if (ctx.hasWorkspaceInvitation || ctx.localOnly || !ctx.mainWindow) return false;
+  if (!ctx.routeName || EXCLUDED_ROUTES.includes(ctx.routeName)) return false;
+  if (state.facts?.has_task) return false;
+  if (ctx.userCreatedAt) {
+    const createdAt = Date.parse(ctx.userCreatedAt);
+    if (!Number.isFinite(createdAt) || createdAt < ctx.onboardingSince) return false;
+  }
+  return true;
 }

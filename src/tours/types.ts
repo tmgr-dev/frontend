@@ -84,6 +84,7 @@ export type TipsMode = 'auto' | 'hub_only' | 'off';
 export interface OnboardingState {
   intent: string | null;
   invited?: boolean;
+  malformed?: boolean;
   tips_mode: TipsMode;
   hub_hidden: boolean;
   checklist_hidden: boolean;
