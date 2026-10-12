@@ -45,3 +45,4 @@ docs/
 
 # Local Chrome profiles (kept outside Playwright cleanup)
 performance-results/
+/target/
