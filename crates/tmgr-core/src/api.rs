@@ -545,6 +545,16 @@ impl Client {
         .map(|_| ())
     }
 
+    pub fn agent_work(&self, task_id: u64) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::GET,
+            &format!("/api/tasks/{task_id}/agent-work"),
+            &[],
+            None,
+            "tasks:read",
+        )?))
+    }
+
     pub fn add_comment(&self, task_id: u64, message: &str) -> Result<()> {
         self.request(
             Method::POST,

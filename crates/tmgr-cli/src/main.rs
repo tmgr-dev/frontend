@@ -116,6 +116,7 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Routine { command }) => cmd::routine::run(ctx, command),
         Some(Command::Note(args)) => cmd::note::run(ctx, args),
         Some(Command::Page { command }) => cmd::page::run(ctx, command),
+        Some(Command::Board(args)) => cmd::board::run(ctx, args),
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
             cli::REFS_HELP.to_string(),

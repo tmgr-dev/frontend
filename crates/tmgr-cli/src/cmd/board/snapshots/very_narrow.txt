@@ -1,0 +1,14 @@
+tmgr board · Website relaunch · TM         5 tasks
+Backlog 2
+ TM-101 Pricing page copy review
+ TM-102 Fix flaky upload test
+In progress 1
+ TM-103 Fix login redirect loop ●
+Review 1
+ TM-104 Invoice export bug
+Done 1
+ TM-105 Footer links audit
+
+
+
+h l column  j k card  H L move  enter details

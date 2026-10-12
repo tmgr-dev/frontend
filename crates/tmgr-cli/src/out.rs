@@ -47,6 +47,10 @@ impl Style {
         })
     }
 
+    pub fn is_off(&self) -> bool {
+        self.0 == Level::None
+    }
+
     pub fn off() -> Style {
         Style(Level::None)
     }

@@ -1,5 +1,6 @@
 pub mod add;
 pub mod auth;
+pub mod board;
 pub mod config;
 pub mod githook;
 pub mod init;

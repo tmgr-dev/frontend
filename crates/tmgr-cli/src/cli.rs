@@ -113,6 +113,21 @@ pub enum Command {
         after_help = ""
     )]
     Refs,
+    /// Full-screen kanban board of the workspace
+    Board(BoardArgs),
+}
+
+#[derive(Args)]
+pub struct BoardArgs {
+    /// Project (category) code
+    #[arg(short, long, value_name = "CODE")]
+    pub project: Option<String>,
+    /// Only tasks assigned to you
+    #[arg(long)]
+    pub mine: bool,
+    /// ASCII glyphs and borders only
+    #[arg(long)]
+    pub ascii: bool,
 }
 
 pub const REFS_HELP: &str = "Task references

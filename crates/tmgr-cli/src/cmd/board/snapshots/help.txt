@@ -1,0 +1,20 @@
+tmgr board · Website relaunch · TM                                       5 tasks
+ Backlog 2  In progress 1  Review 1  Done 1
+╭───────────╭ keys ────────────────────────────────────────────────╮───────────╮
+│ TM-101 Pri│h l / arrows  previous / next column                  │           │
+│ Ann       │j k / arrows  previous / next card                    │           │
+│           │H L           move card to previous / next status     │           │
+│ TM-102 Fix│enter         toggle details                          │           │
+│ unassigned│s             start timer                             │           │
+│           │S             stop timer                              │           │
+│           │c             comment on the task                     │           │
+│           │/             filter (enter keeps, esc clears)        │           │
+│           │g             refresh                                 │           │
+│           │mouse         click selects, wheel moves              │           │
+│           │q / esc       quit                                    │           │
+│           │any key closes                                        │           │
+│           │                                                      │           │
+│           ╰──────────────────────────────────────────────────────╯           │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+h l column  j k card  H L move  enter details  s S timer  c comment  / filter

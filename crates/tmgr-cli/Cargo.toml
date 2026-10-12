@@ -21,6 +21,8 @@ ctrlc.workspace = true
 rpassword.workspace = true
 chrono.workspace = true
 tempfile.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

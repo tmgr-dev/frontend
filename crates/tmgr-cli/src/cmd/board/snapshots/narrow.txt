@@ -1,0 +1,12 @@
+tmgr board · Website relaunch · TM                                       5 tasks
+ Backlog 2  In progress 1  Review 1  Done 1
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ TM-103 Fix login redirect loop                                               │
+│ Ann · ● 1h 12m                                                               │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+h l column  j k card  H L move  enter details  s S timer  c comment  / filter
