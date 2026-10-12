@@ -141,14 +141,12 @@
 	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
 	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
 	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
-	import { resolveNotifyApiUrl } from '@/utils/agentConnectSnippets';
+	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 
-	const mcpUrl = `${
-		resolveNotifyApiUrl(
-			import.meta.env.VITE_API_BASE_URL,
-			window.location.origin,
-		) ?? 'https://api.tmgr.dev'
-	}/mcp`;
+	const mcpUrl = resolveMcpUrl(
+		import.meta.env.VITE_API_BASE_URL,
+		window.location.origin,
+	);
 
 	const claudeCommand = [
 		`claude mcp add --transport http tmgr ${mcpUrl}`,

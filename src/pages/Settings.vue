@@ -365,6 +365,7 @@
 	import Profile from '@/pages/Profile.vue';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { hasSmartDeviceToken, smartDeviceTokenState } from '@/utils/smartDeviceToken';
+	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { Check, Copy, Eye, EyeOff } from 'lucide-vue-next';
 
 	export default {
@@ -470,22 +471,10 @@
 				return this.$store.getters.getPusherBeamsUserId;
 			},
 			mcpUrl() {
-				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';
-
-				try {
-					const url = new URL(apiBaseUrl, window.location.origin);
-					const basePath = url.pathname
-						.replace(/\/api\/?$/, '')
-						.replace(/\/$/, '');
-
-					url.pathname = `${basePath}/mcp`;
-					url.search = '';
-					url.hash = '';
-
-					return url.toString();
-				} catch (error) {
-					return 'https://api.tmgr.dev/mcp';
-				}
+				return resolveMcpUrl(
+					import.meta.env.VITE_API_BASE_URL,
+					window.location.origin,
+				);
 			},
 			docsBaseUrl() {
 				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';
