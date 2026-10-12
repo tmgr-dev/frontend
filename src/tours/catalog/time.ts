@@ -60,7 +60,7 @@ export const timeTours: TourDef[] = [
   {
     id: 'time.parallel',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'time',
     title: 'Several timers at once',
     minutes: 1,
@@ -79,7 +79,7 @@ export const timeTours: TourDef[] = [
   {
     id: 'time.checkpoints',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'time',
     title: 'Checkpoints',
     minutes: 1,
@@ -101,7 +101,7 @@ export const timeTours: TourDef[] = [
   {
     id: 'time.pomodoro',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'time',
     title: 'Pomodoro',
     minutes: 1,
@@ -130,7 +130,7 @@ export const timeTours: TourDef[] = [
   {
     id: 'time.export',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'time',
     title: 'Export your hours',
     minutes: 2,

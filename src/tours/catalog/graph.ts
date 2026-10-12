@@ -8,7 +8,7 @@ export const graphTours: TourDef[] = [
   {
     id: 'graph.map',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'graph',
     title: 'Your workspace map',
     minutes: 1,
@@ -46,7 +46,7 @@ export const graphTours: TourDef[] = [
   {
     id: 'graph.enable',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'graph',
     title: 'Turn on Graph',
     minutes: 1,

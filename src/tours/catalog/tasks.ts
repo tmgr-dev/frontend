@@ -160,7 +160,7 @@ export const tasksTours: TourDef[] = [
   {
     id: 'tasks.statuses',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'tasks',
     title: 'Shape your workflow',
     minutes: 1,
@@ -189,7 +189,7 @@ export const tasksTours: TourDef[] = [
   {
     id: 'tasks.categories',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'tasks',
     title: 'Categories and ticket codes',
     minutes: 1,
@@ -219,7 +219,7 @@ export const tasksTours: TourDef[] = [
   {
     id: 'tasks.relations',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'tasks',
     title: 'Link related tasks',
     minutes: 1,
@@ -241,7 +241,7 @@ export const tasksTours: TourDef[] = [
   {
     id: 'tasks.files-page',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'tasks',
     title: 'All files in one place',
     minutes: 1,
@@ -261,7 +261,7 @@ export const tasksTours: TourDef[] = [
   {
     id: 'tasks.multi-select',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'tasks',
     title: 'Act on many tasks',
     minutes: 1,

@@ -37,7 +37,7 @@ describe('S4b catalog', () => {
 			expect(tour(id)).toBeDefined();
 			expect(tour(id).group).toBe(id.split('.')[0] === 'tasks' ? 'tasks' : id.split('.')[0]);
 			expect(tour(id).version).toBe(1);
-			expect(tour(id).since).toBe('3.4.156');
+			expect(tour(id).since).toBe('3.4.157');
 			expect(tour(id).triggers).toEqual(expect.arrayContaining([{ kind: 'hub' }]));
 		}
 	});

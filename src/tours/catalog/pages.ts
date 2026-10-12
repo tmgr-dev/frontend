@@ -8,7 +8,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.first',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Write your first page',
     minutes: 1,
@@ -38,7 +38,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.context',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'A context page agents read',
     minutes: 1,
@@ -70,7 +70,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.links',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Link pages and tasks',
     minutes: 1,
@@ -98,7 +98,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.versions',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Versions and restore',
     minutes: 1,
@@ -118,7 +118,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.people-meetings',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Person and meeting pages',
     minutes: 1,
@@ -138,7 +138,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.import',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Bring your notes',
     minutes: 1,
@@ -165,7 +165,7 @@ export const pagesTours: TourDef[] = [
   {
     id: 'pages.task-from-selection',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'pages',
     title: 'Turn text into a task',
     minutes: 1,

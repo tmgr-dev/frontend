@@ -8,7 +8,7 @@ export const routinesTours: TourDef[] = [
   {
     id: 'routines.first',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'routines',
     title: 'Add a daily routine',
     minutes: 1,
@@ -40,7 +40,7 @@ export const routinesTours: TourDef[] = [
   {
     id: 'routines.views',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'routines',
     title: 'Day, week, month, year',
     minutes: 1,
@@ -60,7 +60,7 @@ export const routinesTours: TourDef[] = [
   {
     id: 'routines.reminders',
     version: 1,
-    since: '3.4.156',
+    since: '3.4.157',
     group: 'routines',
     title: 'Reminders and conversion',
     minutes: 1,
