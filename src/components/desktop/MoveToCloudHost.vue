@@ -22,6 +22,7 @@
 	import { moveUi } from '@/local/moveToCloud/ui';
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
+	import { desktopOfferEnv, offerMoveToCloud } from '@/tours/desktopOffers';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -35,6 +36,9 @@
 			onMounted(async () => {
 				if (store.getters.isLocalOnly) return;
 				workspaces.value = await listLocalWorkspaces();
+				void offerMoveToCloud(
+					desktopOfferEnv(async () => workspaces.value.length > 0),
+				);
 				const pending = workspaces.value.filter(
 					(workspace) => loadPersisted(browserStorage, workspace.code).job,
 				);

@@ -68,6 +68,7 @@
 <script lang="ts">
 	import { backupNow, backupStatus, revealBackups, type BackupStatus } from '@/local/backups';
 	import { activeLocalWorkspace } from '@/local/runtime';
+	import { desktopOfferEnv, offerBackups } from '@/tours/desktopOffers';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		backupWarning,
@@ -147,6 +148,14 @@
 					return null;
 				return backupWarning(status.value);
 			});
+
+			watch(
+				warning,
+				(value) => {
+					if (value) offerBackups(desktopOfferEnv());
+				},
+				{ immediate: true },
+			);
 
 			const dismissFirstRun = () => {
 				dismissBanner();
