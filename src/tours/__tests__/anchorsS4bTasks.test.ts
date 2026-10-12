@@ -26,6 +26,14 @@ describe('S4b task-area data-tour anchors', () => {
 	);
 });
 
+describe('TasksMultipleActionsModal', () => {
+	it('keeps exportsEnabled in the only computed block so the export panel can render', () => {
+		const source = read('components/tasks/TasksMultipleActionsModal.vue');
+		expect(source.match(/^\t\tcomputed: \{/gm)).toHaveLength(1);
+		expect(source).toMatch(/computed: \{\s*exportsEnabled\(\)/);
+	});
+});
+
 describe('S4b task-area emits', () => {
 	it('NewForm emits checkpoint.added from addCheckpoint', () => {
 		expect(read('pages/NewForm.vue')).toMatch(/tourBus\.emit\('checkpoint\.added'/);

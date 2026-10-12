@@ -107,13 +107,6 @@
 			Modal,
 			ExportSettingsPanel,
 		},
-		computed: {
-			exportsEnabled() {
-				return this.$store.getters['featureToggles/isFeatureEnabled'](
-					'exports',
-				);
-			},
-		},
 		data() {
 			return {
 				exportSettings: {},
@@ -143,6 +136,11 @@
 			},
 		},
 		computed: {
+			exportsEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'exports',
+				);
+			},
 			doneStatusId() {
 				return doneTarget(this.statuses);
 			},
