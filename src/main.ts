@@ -32,6 +32,7 @@ import '@fontsource/exo-2/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import { installTours } from '@/tours/boot';
+import { installOnboardingFlow } from '@/onboarding/boot';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 
@@ -192,6 +193,7 @@ const start = async () => {
 	app.use(router);
 	app.use(store);
 	installTours($axios, store, router);
+	installOnboardingFlow(store, router);
 
 	alertPlugin({ app });
 

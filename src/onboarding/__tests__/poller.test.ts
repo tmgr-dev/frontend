@@ -1,4 +1,5 @@
 import { createFactsPoller, intervalFor } from '../poller';
+import type { FactsPollerDeps } from '../poller';
 import { createTourBus } from '@/tours/events';
 
 const S = 1000;
@@ -13,7 +14,7 @@ const harness = (over: Record<string, unknown> = {}) => {
   const bus = createTourBus();
   const emitted: string[] = [];
   bus.on('agent.first_mcp_call', () => emitted.push('agent.first_mcp_call'));
-  const poller = createFactsPoller({
+  const deps: FactsPollerDeps = {
     fetchFacts,
     keys: ['mcp_first_call_at'],
     now: () => clock,
@@ -32,8 +33,9 @@ const harness = (over: Record<string, unknown> = {}) => {
       },
     },
     bus,
-    ...over,
-  } as never);
+    ...(over as Partial<FactsPollerDeps>),
+  };
+  const poller = createFactsPoller(deps);
   const advance = async (ms: number) => {
     const target = clock + ms;
     for (;;) {
