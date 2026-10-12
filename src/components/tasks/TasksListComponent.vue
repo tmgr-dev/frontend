@@ -72,6 +72,7 @@
 						focusedIndex === i,
 				}"
 				:data-task-id="task.id"
+				data-tour="list.row"
 				:draggable="false"
 				tabindex="-1"
 				class="selectable relative mt-3 w-full outline-none"

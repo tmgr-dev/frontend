@@ -81,6 +81,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
+	import { useTours } from '@/tours/useTours';
 	import store from '@/store';
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
@@ -111,6 +112,7 @@
 		Package,
 		PackageOpen,
 		Keyboard,
+		LifeBuoy,
 		Info,
 		Palette,
 		PaperclipIcon,
@@ -143,6 +145,9 @@
 	const router = useRouter();
 	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
 		useFeatureToggles();
+
+	const { onboarding } = useTours();
+	const hubHidden = computed(() => onboarding.value?.hub_hidden === true);
 
 	const isDesktop = isDesktopApp();
 	const navHistory = useNavHistory();
@@ -547,7 +552,11 @@
 <template>
 	<SidebarProvider>
 		<SidebarMobileCloser>
-			<Sidebar collapsible="icon" v-if="store.getters.canUseApp">
+			<Sidebar
+				collapsible="icon"
+				v-if="store.getters.canUseApp"
+				data-tour="nav.sidebar"
+			>
 				<SidebarHeader>
 					<AsyncContent
 						:pending="sidebarPending"
@@ -561,6 +570,7 @@
 								<DropdownMenuTrigger as-child>
 									<SidebarMenuButton
 										size="lg"
+										data-tour="nav.workspace-switcher"
 										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 									>
 										<div
@@ -888,9 +898,23 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && !hubHidden"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										data-tour="nav.getting-started"
+										:to="`/${activeWorkspace.code}/getting-started`"
+									>
+										<LifeBuoy />
+										<span>Getting started</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
 							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
 									<router-link
+										data-tour="nav.archive"
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/archive`
@@ -968,6 +992,7 @@
 								<DropdownMenuTrigger as-child>
 									<SidebarMenuButton
 										size="lg"
+										data-tour="nav.user-menu"
 										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 									>
 										<UserAvatar
@@ -1110,6 +1135,17 @@
 											Local data
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											v-if="activeWorkspace?.code && hubHidden"
+											data-tour="nav.getting-started"
+											@click="
+												$router.push(`/${activeWorkspace.code}/getting-started`)
+											"
+											class="cursor-pointer"
+										>
+											<LifeBuoy />
+											Getting started
+										</DropdownMenuItem>
+										<DropdownMenuItem
 											@click="$router.push('/settings?tab=about')"
 											class="cursor-pointer"
 										>
@@ -1171,7 +1207,7 @@
 						>
 							<WindowControls />
 						</div>
-						<SidebarTrigger class="-ml-1" />
+						<SidebarTrigger class="-ml-1" data-tour="nav.menu-button" />
 						<div v-if="isDesktop" class="flex items-center">
 							<button
 								type="button"
@@ -1194,7 +1230,7 @@
 								<ArrowRight class="h-4 w-4" />
 							</button>
 						</div>
-						<AddTaskModalTrigger class="-ml-1" />
+						<AddTaskModalTrigger class="-ml-1" data-tour="nav.create-task" />
 						<GlobalSearch
 							v-if="activeWorkspace?.code"
 							:workspace-code="activeWorkspace.code"

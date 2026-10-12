@@ -17,8 +17,10 @@
 
 		<div class="-ml-0.5 mb-2 flex items-center gap-1.5">
 			<div
-				class="task-drag-handle flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint transition-colors duration-150 hover:text-ink-subtle active:cursor-grabbing"
+				data-tour="board.card-handle"
+				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint transition-colors duration-150 after:absolute after:-inset-y-[13px] after:-left-[25px] after:-right-[5px] hover:text-ink-subtle active:cursor-grabbing"
 				:title="'Drag to reorder'"
+				aria-label="Drag to move"
 			>
 				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
 			</div>

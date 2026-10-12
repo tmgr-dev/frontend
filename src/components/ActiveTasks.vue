@@ -46,6 +46,7 @@
 <template>
 	<div
 		v-if="tasks?.length > 0"
+		data-tour="nav.active-timers"
 		class="fixed bottom-4 right-4 z-10 flex flex-col items-end gap-3"
 	>
 		<DropdownMenu>

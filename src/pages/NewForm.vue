@@ -2302,6 +2302,7 @@
 					<div class="flex min-w-0 items-center gap-2">
 						<DoneCheckbox
 							v-if="simpleMode"
+							data-tour="task-form.done"
 							v-model="doneChecked"
 							class="h-7 rounded-pill bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide hover:bg-surface-hover"
 							:disabled="!canMarkDone"
@@ -2309,6 +2310,7 @@
 						/>
 						<Select v-else v-model="statusIdStr">
 							<SelectTrigger
+								data-tour="task-form.status"
 								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover"
 							>
 								<SelectValue placeholder="status" />
@@ -2442,6 +2444,7 @@
 
 					<div class="relative">
 						<textarea
+							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
 							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-none placeholder:text-ink-faint"
@@ -2474,6 +2477,7 @@
 					<!-- Hero TIMER block -->
 					<TimeCounter
 						v-if="form.id && isFeatureEnabled('task.countdown')"
+						data-tour="task-form.timer"
 						:form="form"
 						:disabled="!form.id"
 						@toggle="toggleTimer"
@@ -2504,6 +2508,7 @@
 							</div>
 							<div class="flex min-w-0 items-center gap-2">
 								<AssigneesCombobox
+									data-tour="task-form.assignees"
 									:assignees="workspaceMembers"
 									v-model="assignees as any"
 									:assignable-personas="
@@ -2539,6 +2544,7 @@
 							</div>
 							<div class="flex min-w-0 items-center gap-1.5">
 								<CategoriesCombobox
+									data-tour="task-form.category"
 									class="min-w-0 flex-1"
 									:categories="categories"
 									v-model="form.project_category_id"
@@ -2673,6 +2679,7 @@
 
 					<!-- Editor section with toggle button -->
 					<div
+						data-tour="task-form.description"
 						class="description-editor-wrapper relative min-h-[260px] shrink-0 rounded-md border border-line bg-surface-sunken"
 					>
 						<!-- Editor components - no loading state needed since we use localStorage -->
@@ -2726,6 +2733,7 @@
 					<!-- Task Attachments -->
 					<TaskAttachments
 						v-if="isFeatureEnabled('task.files')"
+						data-tour="task-form.attachments"
 						ref="attachmentsRef"
 						v-model:pending-files="pendingFiles"
 						:task-id="taskId || form.id"
@@ -2814,6 +2822,7 @@
 
 					<!-- Comments (modal: inline at bottom of main; page: in right rail) -->
 					<TaskComments
+						data-tour="task-form.comments"
 						v-if="isModal && form.id && showSurface('comments.task-modal')"
 						ref="taskCommentsRef"
 						:task-id="form.id"
@@ -3023,6 +3032,7 @@
 				</div>
 				<div class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
 					<TaskComments
+						data-tour="task-form.comments"
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						hide-header

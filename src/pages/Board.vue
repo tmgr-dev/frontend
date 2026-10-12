@@ -283,7 +283,8 @@
 
 																	<AppTooltip content="Create task" side="left">
 																		<button
-																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
+																			data-tour="board.add-in-column"
+																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
 																			@click="openTaskModal(column)"
 																		>
 																			<span class="material-icons text-base"
@@ -398,6 +399,7 @@
 																@end="onEnd"
 																:disabled="false"
 																:data-status="column.status.id"
+																data-tour="board.column"
 																:data-column-id="column.status.id"
 																class="board-card-draggable min-h-0 flex-1"
 																handle=".task-drag-handle"
