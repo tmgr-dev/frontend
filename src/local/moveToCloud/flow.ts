@@ -1,5 +1,6 @@
 import {
 	apiErrorMessage,
+	isFileNotAllowed,
 	isUnsupportedSchema,
 	UNSUPPORTED_SCHEMA_MESSAGE,
 	type CreateJobRequest,
@@ -291,7 +292,7 @@ export const createMover = (deps: MoveDeps) => {
 			j.jobId = created.job_id;
 			j.step = 'jobCreated';
 		});
-		if (created.status === 'created') {
+		if (created.status === 'created' && created.upload_url) {
 			await putOrThrow(
 				'Bundle upload',
 				created.upload_url,
@@ -300,8 +301,11 @@ export const createMover = (deps: MoveDeps) => {
 			);
 			await api.bundleUploaded(created.job_id);
 		}
+		const beyondUpload = ['running', 'failed', 'verified', 'published'];
 		update(code, (j) => {
-			j.step = 'bundleUploaded';
+			j.step = beyondUpload.includes(created.status)
+				? 'committed'
+				: 'bundleUploaded';
 		});
 	};
 
@@ -324,18 +328,17 @@ export const createMover = (deps: MoveDeps) => {
 					size: file.size,
 					mime: file.mime,
 				});
-				await putOrThrow(
-					`Upload of ${file.key}`,
-					target.upload_url,
-					target.upload_headers ?? {},
-					`${job.dir}/files/${file.key}`,
-				);
+				if (target.upload_url) {
+					await putOrThrow(
+						`Upload of ${file.key}`,
+						target.upload_url,
+						target.upload_headers ?? {},
+						`${job.dir}/files/${file.key}`,
+					);
+				}
 				await api.confirmFile(jobId, file.sha256);
 			} catch (error) {
-				if (
-					(error as any)?.response?.status === 422 &&
-					(error as any)?.response?.data?.error === 'file_not_allowed'
-				) {
+				if (isFileNotAllowed(error)) {
 					refused.add(file.sha256);
 					continue;
 				}
@@ -426,7 +429,7 @@ export const createMover = (deps: MoveDeps) => {
 			finishPublished(
 				code,
 				jobId,
-				result.workspace_id ?? status.workspace_id ?? null,
+				result?.workspace_id ?? status.workspace_id ?? null,
 				true,
 			);
 		} else if (status.status === 'published') {
@@ -532,7 +535,7 @@ export const createMover = (deps: MoveDeps) => {
 			finishPublished(
 				code,
 				job.jobId,
-				result.workspace_id ?? statuses.get(code)?.workspace_id ?? null,
+				result?.workspace_id ?? statuses.get(code)?.workspace_id ?? null,
 				false,
 			);
 		});

@@ -41,34 +41,35 @@ const ROWS: { id: RowId; label: string }[] = [
 	{ id: 'publish', label: 'Check and publish' },
 ];
 
-const PHASE_ROWS: [string, RowId][] = [
-	['valid', 'statuses'],
-	['stag', 'statuses'],
-	['persona', 'statuses'],
-	['status', 'statuses'],
-	['categor', 'statuses'],
-	['task', 'tasks'],
-	['relation', 'tasks'],
-	['comment', 'comments'],
-	['file', 'files'],
-	['page', 'pages'],
-	['version', 'pages'],
-	['link', 'links'],
-	['routine', 'routines'],
-	['agent', 'routines'],
-	['assign', 'routines'],
-	['module', 'routines'],
-	['verif', 'publish'],
-	['publish', 'publish'],
-];
-
-export const phaseRow = (phase: string | null | undefined): RowId => {
-	const normalized = (phase ?? '').toLowerCase();
-	return (
-		PHASE_ROWS.find(([prefix]) => normalized.startsWith(prefix))?.[1] ??
-		'statuses'
-	);
+const PHASES: Record<string, [RowId, number]> = {
+	staging: ['statuses', 100],
+	personas: ['statuses', 200],
+	statuses: ['statuses', 300],
+	categories: ['statuses', 400],
+	tasks: ['tasks', 500],
+	relations: ['tasks', 600],
+	comments: ['comments', 700],
+	pages: ['pages', 750],
+	page_versions: ['pages', 760],
+	routines: ['routines', 780],
+	files: ['files', 800],
+	assignments: ['routines', 900],
+	agent_runs: ['routines', 1000],
+	link_rewrite: ['links', 1050],
+	modules: ['routines', 1100],
+	verify: ['publish', 9000],
 };
+
+const ROW_LAST = Object.values(PHASES).reduce<Partial<Record<RowId, number>>>(
+	(last, [row, order]) => ({ ...last, [row]: Math.max(last[row] ?? 0, order) }),
+	{},
+);
+
+export const phaseRow = (phase: string | null | undefined): RowId =>
+	PHASES[(phase ?? '').toLowerCase()]?.[0] ?? 'statuses';
+
+const phaseOrder = (phase: string | null | undefined): number =>
+	PHASES[(phase ?? '').toLowerCase()]?.[1] ?? 0;
 
 const countLabel = (label: string, done: number, total: number) =>
 	total > 0 ? `${label} ${done} of ${total}` : label;
@@ -86,6 +87,7 @@ export const summarize = (view: MoveView): ProgressSummary => {
 		? ROWS.findIndex((r) => r.id === phaseRow(status!.phase))
 		: -1;
 
+	const order = phaseOrder(status?.phase);
 	const rows: ProgressRow[] = ROWS.map((row, index) => {
 		let state: RowState = 'pending';
 		if (row.id === 'backup')
@@ -100,7 +102,11 @@ export const summarize = (view: MoveView): ProgressSummary => {
 		} else if (serverDone || !job) state = 'done';
 		else if (current >= 0) {
 			state =
-				index < current ? 'done' : index === current ? 'active' : 'pending';
+				index === current
+					? 'active'
+					: (ROW_LAST[row.id] ?? Infinity) < order
+					? 'done'
+					: 'pending';
 		}
 		if (
 			row.id === 'files' &&

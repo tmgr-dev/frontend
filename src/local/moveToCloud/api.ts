@@ -30,9 +30,9 @@ export interface CreateJobRequest {
 
 export interface CreatedJob {
 	job_id: string;
-	upload_url: string;
-	upload_headers: Record<string, string>;
-	status: string;
+	status: ImportStatusName;
+	upload_url?: string;
+	upload_headers?: Record<string, string>;
 }
 
 export interface FilePresignRequest {
@@ -42,8 +42,10 @@ export interface FilePresignRequest {
 }
 
 export interface PresignedUpload {
-	upload_url: string;
-	upload_headers: Record<string, string>;
+	sha256: string;
+	status: 'pending' | 'uploaded';
+	upload_url?: string;
+	upload_headers?: Record<string, string>;
 }
 
 export type ImportStatusName =
@@ -60,9 +62,30 @@ export interface ImportStatus {
 	phase: string | null;
 	done: number;
 	total: number;
-	errors: unknown[];
-	report: Record<string, any> | null;
+	errors: ImportError[];
+	report: ImportReport | null;
 	workspace_id?: number | null;
+}
+
+export interface ImportError {
+	phase?: string;
+	code?: string;
+	entity?: string;
+	expected?: number;
+	actual?: number;
+	imported?: number;
+	skipped?: number;
+	count?: number;
+	message?: string;
+}
+
+export interface ImportReport {
+	counts: Record<
+		string,
+		{ expected: number; imported: number; skipped: number }
+	>;
+	skipped_files: { local_id: string; name: string; reason: string }[];
+	unmapped_refs: number;
 }
 
 export interface Http {
@@ -72,66 +95,64 @@ export interface Http {
 }
 
 export const UNSUPPORTED_SCHEMA_MESSAGE = 'Update TMGR to move this workspace.';
+export const QUOTA_MESSAGE =
+	'You can start up to 3 moves a day. Try again tomorrow.';
+export const RUNNING_MESSAGE = 'Another move is still running.';
+export const TOO_LARGE_MESSAGE =
+	'This workspace is too large to move in one go.';
 
 export interface ImportApi {
 	capabilities(): Promise<ImportCapabilities>;
 	createJob(request: CreateJobRequest): Promise<CreatedJob>;
-	bundleUploaded(jobId: string): Promise<void>;
+	bundleUploaded(jobId: string): Promise<ImportStatus>;
 	presignFile(
 		jobId: string,
 		file: FilePresignRequest,
 	): Promise<PresignedUpload>;
 	confirmFile(jobId: string, sha256: string): Promise<void>;
-	commit(jobId: string): Promise<void>;
+	commit(jobId: string): Promise<ImportStatus>;
 	status(jobId: string): Promise<ImportStatus>;
-	retry(jobId: string): Promise<void>;
-	publish(
-		jobId: string,
-		acceptDifferences?: boolean,
-	): Promise<{ workspace_id?: number | null }>;
+	retry(jobId: string): Promise<ImportStatus>;
+	publish(jobId: string, acceptDifferences?: boolean): Promise<ImportStatus>;
 	discard(jobId: string): Promise<void>;
 }
 
 const BASE = '/imports';
 
+const unwrap = <T>(response: { data: any }): T => response.data?.data as T;
+
 export const createImportApi = (http: Http): ImportApi => {
 	const job = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 	return {
 		capabilities: async () =>
-			(
-				await http.get<ImportCapabilities>(
-					`${BASE}/local-workspace/capabilities`,
-				)
-			).data,
+			unwrap(await http.get(`${BASE}/local-workspace/capabilities`)),
 		createJob: async (request) =>
-			(await http.post<CreatedJob>(`${BASE}/local-workspace`, request)).data,
-		bundleUploaded: async (id) => {
-			await http.post(`${job(id)}/bundle/uploaded`);
-		},
+			unwrap(await http.post(`${BASE}/local-workspace`, request)),
+		bundleUploaded: async (id) =>
+			unwrap(await http.post(`${job(id)}/bundle/uploaded`)),
 		presignFile: async (id, file) =>
-			(await http.post<PresignedUpload>(`${job(id)}/files/presign`, file)).data,
+			unwrap(await http.post(`${job(id)}/files/presign`, file)),
 		confirmFile: async (id, sha256) => {
 			await http.post(`${job(id)}/files/confirm`, { sha256 });
 		},
-		commit: async (id) => {
-			await http.post(`${job(id)}/commit`);
-		},
-		status: async (id) => (await http.get<ImportStatus>(job(id))).data,
-		retry: async (id) => {
-			await http.post(`${job(id)}/retry`);
-		},
+		commit: async (id) => unwrap(await http.post(`${job(id)}/commit`)),
+		status: async (id) => unwrap(await http.get(job(id))),
+		retry: async (id) => unwrap(await http.post(`${job(id)}/retry`)),
 		publish: async (id, acceptDifferences = false) =>
-			(
+			unwrap(
 				await http.post(
 					`${job(id)}/publish`,
 					acceptDifferences ? { accept_differences: true } : {},
-				)
-			).data ?? {},
+				),
+			),
 		discard: async (id) => {
 			await http.delete(job(id));
 		},
 	};
 };
+
+export const errorCode = (error: unknown): string | undefined =>
+	(error as any)?.response?.data?.error;
 
 export const isUnsupportedSchema = (error: unknown): boolean => {
 	const response = (error as any)?.response;
@@ -141,8 +162,16 @@ export const isUnsupportedSchema = (error: unknown): boolean => {
 	);
 };
 
+export const isFileNotAllowed = (error: unknown): boolean =>
+	(error as any)?.response?.status === 422 &&
+	errorCode(error) === 'file_not_allowed';
+
 export const apiErrorMessage = (error: unknown): string => {
 	if (isUnsupportedSchema(error)) return UNSUPPORTED_SCHEMA_MESSAGE;
+	const code = errorCode(error);
+	if (code === 'import_quota') return QUOTA_MESSAGE;
+	if (code === 'import_running') return RUNNING_MESSAGE;
+	if ((error as any)?.response?.status === 413) return TOO_LARGE_MESSAGE;
 	const data = (error as any)?.response?.data;
 	return (
 		data?.message ||

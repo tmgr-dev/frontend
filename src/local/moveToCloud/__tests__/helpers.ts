@@ -1,4 +1,9 @@
-import type { CreatedJob, ImportApi, ImportStatus } from '../api';
+import type {
+	CreatedJob,
+	ImportApi,
+	ImportStatus,
+	PresignedUpload,
+} from '../api';
 import type { MoveDeps, MoveNative } from '../flow';
 import type { LocalInventory } from '../inventory';
 import type { MoveStorage } from '../model';
@@ -184,24 +189,42 @@ export const harness = (
 				}
 			),
 		),
-		bundleUploaded: jest.fn(async () => void log('bundleUploaded')),
+		bundleUploaded: jest.fn(
+			async () => (
+				log('bundleUploaded'), verifiedStatus({ status: 'uploaded' })
+			),
+		),
 		presignFile: jest.fn(
-			async (_job: string, file: { sha256: string }) => (
+			async (
+				_job: string,
+				file: { sha256: string },
+			): Promise<PresignedUpload> => (
 				log(`presign:${file.sha256}`),
-				{ upload_url: `https://s3/${file.sha256}`, upload_headers: {} }
+				{
+					sha256: file.sha256,
+					status: 'pending' as const,
+					upload_url: `https://s3/${file.sha256}`,
+					upload_headers: {},
+				}
 			),
 		),
 		confirmFile: jest.fn(
 			async (_job: string, sha: string) => void log(`confirm:${sha}`),
 		),
-		commit: jest.fn(async () => void log('commit')),
+		commit: jest.fn(
+			async () => (log('commit'), verifiedStatus({ status: 'running' })),
+		),
 		status: jest.fn(
 			async () => (
 				log('status'), statuses.length > 1 ? statuses.shift()! : statuses[0]
 			),
 		),
-		retry: jest.fn(async () => void log('retry')),
-		publish: jest.fn(async () => (log('publish'), { workspace_id: 55 })),
+		retry: jest.fn(
+			async () => (log('retry'), verifiedStatus({ status: 'running' })),
+		),
+		publish: jest.fn(
+			async () => (log('publish'), verifiedStatus({ status: 'published' })),
+		),
 		discard: jest.fn(async () => void log('discard')),
 	} satisfies ImportApi & Record<string, any>;
 	const storage = memoryStorage();

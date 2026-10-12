@@ -2,6 +2,9 @@ import {
 	apiErrorMessage,
 	createImportApi,
 	isUnsupportedSchema,
+	QUOTA_MESSAGE,
+	RUNNING_MESSAGE,
+	TOO_LARGE_MESSAGE,
 	UNSUPPORTED_SCHEMA_MESSAGE,
 } from '../api';
 
@@ -12,12 +15,12 @@ const http = () => {
 		client: {
 			get: jest.fn(
 				async (url: string) => (
-					calls.push(['GET', url]), { data: { ok: 'get' } }
+					calls.push(['GET', url]), { data: { data: { ok: 'get' } } }
 				),
 			),
 			post: jest.fn(
 				async (url: string, body?: unknown) => (
-					calls.push(['POST', url, body]), { data: { ok: 'post' } }
+					calls.push(['POST', url, body]), { data: { data: { ok: 'post' } } }
 				),
 			),
 			delete: jest.fn(
@@ -59,6 +62,34 @@ describe('import api', () => {
 			['POST', '/imports/j/publish', { accept_differences: true }],
 			['DELETE', '/imports/j'],
 		]);
+	});
+
+	it('unwraps the data envelope', async () => {
+		const { client } = http();
+		const api = createImportApi(client as any);
+		expect(await api.status('j')).toEqual({ ok: 'get' });
+		expect(await api.createJob({} as any)).toEqual({ ok: 'post' });
+		expect(await api.commit('j')).toEqual({ ok: 'post' });
+		expect(await api.publish('j')).toEqual({ ok: 'post' });
+	});
+
+	it('maps server error codes to user messages', () => {
+		const err = (status: number, code?: string) => ({
+			response: { status, data: { error: code, message: 'server text' } },
+		});
+		expect(apiErrorMessage(err(429, 'import_quota'))).toBe(QUOTA_MESSAGE);
+		expect(QUOTA_MESSAGE).toBe(
+			'You can start up to 3 moves a day. Try again tomorrow.',
+		);
+		expect(apiErrorMessage(err(409, 'import_running'))).toBe(RUNNING_MESSAGE);
+		expect(RUNNING_MESSAGE).toBe('Another move is still running.');
+		expect(apiErrorMessage(err(413, 'bundle_too_large'))).toBe(
+			TOO_LARGE_MESSAGE,
+		);
+		expect(apiErrorMessage(err(413))).toBe(
+			'This workspace is too large to move in one go.',
+		);
+		expect(apiErrorMessage(err(409, 'invalid_state'))).toBe('server text');
 	});
 
 	it('recognises the unsupported schema refusal', () => {

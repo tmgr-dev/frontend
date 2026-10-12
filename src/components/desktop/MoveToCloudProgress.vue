@@ -11,6 +11,7 @@
 	import type { MoveView } from '@/local/moveToCloud/flow';
 	import { stepIndex } from '@/local/moveToCloud/model';
 	import { summarize } from '@/local/moveToCloud/progress';
+	import { reportLines, serverErrorLines } from '@/local/moveToCloud/report';
 	import { getMover } from '@/local/moveToCloud/runtime';
 	import { openCloudWorkspace } from '@/utils/openCloudWorkspace';
 	import {
@@ -24,13 +25,8 @@
 	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 
-	const serverError = (view: MoveView): string => {
-		const first = view.status?.errors?.[0] as any;
-		if (!first) return 'The move failed on the server.';
-		return typeof first === 'string'
-			? first
-			: first.message ?? JSON.stringify(first);
-	};
+	const serverError = (view: MoveView): string =>
+		serverErrorLines(view.status)[0] ?? 'The move failed on the server.';
 
 	export default defineComponent({
 		name: 'MoveToCloudProgress',
@@ -85,6 +81,14 @@
 				if (view.value.failedOnServer) return serverError(view.value);
 				return '';
 			});
+			const differences = computed(() =>
+				view.value.failedOnServer
+					? [
+							...serverErrorLines(view.value.status).slice(1),
+							...reportLines(view.value.status?.report),
+					  ]
+					: [],
+			);
 			const cancellable = computed(
 				() =>
 					!!view.value.job &&
@@ -114,6 +118,7 @@
 
 			return {
 				cancellable,
+				differences,
 				close: () => emit('update:open', false),
 				done,
 				failure,
@@ -210,6 +215,14 @@
 						<CircleAlert class="mt-0.5 size-4 shrink-0" />
 						<span class="break-words">{{ failure }}</span>
 					</p>
+					<ul
+						v-if="differences.length"
+						class="list-disc pl-9 text-xs text-ink-subtle"
+					>
+						<li v-for="line in differences" :key="line" class="break-words">
+							{{ line }}
+						</li>
+					</ul>
 					<div class="flex flex-wrap gap-2">
 						<Button size="sm" :disabled="view.busy" @click="retry"
 							>Retry</Button

@@ -262,6 +262,8 @@ describe('resume, retry, discard', () => {
 			async () => void h.calls.push('confirm:sha-a'),
 		);
 		h.api.presignFile.mockImplementationOnce(async (_j, f) => ({
+			sha256: f.sha256,
+			status: 'pending' as const,
 			upload_url: `https://s3/${f.sha256}`,
 			upload_headers: {},
 		}));
@@ -368,5 +370,57 @@ describe('resume, retry, discard', () => {
 		});
 		await mover.discard(CODE);
 		expect(loadPersisted(h.storage, CODE).published?.jobId).toBe('job-1');
+	});
+
+	it('confirms without a put when the server already holds the file', async () => {
+		const h = harness();
+		h.api.presignFile.mockImplementation(async (_j, f) => ({
+			sha256: f.sha256,
+			status: 'uploaded' as const,
+		}));
+		const mover = createMover(h.deps);
+		const dry = await mover.dryRun(CODE, 'Local');
+		await mover.start(CODE, 'Local', dry, { cloudName: 'C', personas: [] });
+		expect(h.calls.filter((c) => c.startsWith('put:https://s3/sha'))).toEqual(
+			[],
+		);
+		expect(h.api.confirmFile).toHaveBeenCalled();
+	});
+
+	it('goes straight to polling when the server already runs this job', async () => {
+		const h = harness();
+		h.api.createJob.mockResolvedValueOnce({
+			job_id: 'job-1',
+			status: 'running',
+		});
+		const mover = createMover(h.deps);
+		const dry = await mover.dryRun(CODE, 'Local');
+		const view = await mover.start(CODE, 'Local', dry, {
+			cloudName: 'C',
+			personas: [],
+		});
+		expect(h.calls).not.toContain('bundleUploaded');
+		expect(h.api.presignFile).not.toHaveBeenCalled();
+		expect(h.api.commit).not.toHaveBeenCalled();
+		expect(view.published?.workspaceId).toBe(55);
+	});
+
+	it('shows the quota message when the server refuses a new move', async () => {
+		const h = harness();
+		h.api.createJob.mockRejectedValueOnce({
+			response: {
+				status: 429,
+				data: { error: 'import_quota', message: 'server text' },
+			},
+		});
+		const mover = createMover(h.deps);
+		const dry = await mover.dryRun(CODE, 'Local');
+		const view = await mover.start(CODE, 'Local', dry, {
+			cloudName: 'C',
+			personas: [],
+		});
+		expect(view.job?.error).toBe(
+			'You can start up to 3 moves a day. Try again tomorrow.',
+		);
 	});
 });
