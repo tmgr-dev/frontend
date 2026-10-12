@@ -6,8 +6,8 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -22,6 +22,89 @@ const LOG_CAP: u64 = 20 << 20;
 const REAP_AFTER: Duration = Duration::from_secs(24 * 3600);
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING: usize = 4;
+const INPUT_CAP: usize = 1 << 20;
+
+#[derive(Default)]
+struct InputQueue {
+    q: Mutex<(VecDeque<Vec<u8>>, usize)>,
+    ready: Condvar,
+    dropped: AtomicU64,
+}
+
+impl InputQueue {
+    fn push(&self, data: Vec<u8>) {
+        let mut g = lock(&self.q);
+        if g.1 + data.len() > INPUT_CAP {
+            self.dropped.fetch_add(data.len() as u64, Ordering::SeqCst);
+            return;
+        }
+        g.1 += data.len();
+        g.0.push_back(data);
+        self.ready.notify_one();
+    }
+
+    fn pop(&self) -> Vec<u8> {
+        let mut g = lock(&self.q);
+        loop {
+            if let Some(d) = g.0.pop_front() {
+                return d;
+            }
+            g = self.ready.wait(g).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
+    fn done(&self, n: usize) {
+        lock(&self.q).1 -= n;
+    }
+}
+
+struct ChildGuard {
+    pid: i32,
+    exited: Mutex<bool>,
+}
+
+impl ChildGuard {
+    fn new(pid: i32) -> ChildGuard {
+        ChildGuard {
+            pid,
+            exited: Mutex::new(false),
+        }
+    }
+
+    fn signal(&self, sig: i32) -> bool {
+        let exited = lock(&self.exited);
+        !*exited && unsafe { libc::kill(-self.pid, sig) } == 0
+    }
+
+    fn wait(&self) -> libc::c_int {
+        loop {
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let r = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    self.pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT,
+                )
+            };
+            if r == 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+        let mut exited = lock(&self.exited);
+        *exited = true;
+        let mut status: libc::c_int = 0;
+        loop {
+            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
+            if r == self.pid {
+                return status;
+            }
+            if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                return 0;
+            }
+        }
+    }
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -85,11 +168,12 @@ struct State {
 struct Shim {
     id: String,
     child_pid: i32,
+    child: ChildGuard,
     started_ms: u64,
     endpoint: Endpoint,
     dir: PathBuf,
     st: Mutex<State>,
-    input: Mutex<Box<dyn Write + Send>>,
+    input: Arc<InputQueue>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     log: Mutex<OutLog>,
     reader_done: AtomicBool,
@@ -208,10 +292,7 @@ impl Shim {
         loop {
             match read_frame(&mut &*stream) {
                 Ok(Some(Frame::Bin(b))) if b.tag == TAG_INPUT => {
-                    let mut w = lock(&self.input);
-                    if w.write_all(&b.data).and_then(|_| w.flush()).is_err() {
-                        continue;
-                    }
+                    self.input.push(b.data);
                 }
                 Ok(Some(Frame::Json(v))) => match serde_json::from_value::<ToShim>(v) {
                     Ok(ToShim::Resize { cols, rows }) => {
@@ -236,10 +317,9 @@ impl Shim {
     }
 
     fn signal(&self, sig: i32) {
-        if !(1..=31).contains(&sig) || lock(&self.st).exit.is_some() {
-            return;
+        if (1..=31).contains(&sig) {
+            self.child.signal(sig);
         }
-        unsafe { libc::kill(-self.child_pid, sig) };
     }
 }
 
@@ -303,7 +383,8 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
         .process_id()
         .ok_or_else(|| io::Error::other("child has no pid"))? as i32;
     let reader = pair.master.try_clone_reader().map_err(io::Error::other)?;
-    let input = pair.master.take_writer().map_err(io::Error::other)?;
+    let writer = pair.master.take_writer().map_err(io::Error::other)?;
+    let input = Arc::new(InputQueue::default());
 
     crate::wire::write_atomic(
         &sdir.join("shim.pid"),
@@ -315,6 +396,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     let shim = Arc::new(Shim {
         id: id.to_string(),
         child_pid,
+        child: ChildGuard::new(child_pid),
         started_ms: now_ms(),
         endpoint,
         dir: dir.to_path_buf(),
@@ -325,12 +407,13 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
             exit: None,
             exited_at: None,
         }),
-        input: Mutex::new(input),
+        input: input.clone(),
         master: Mutex::new(pair.master),
         log: Mutex::new(OutLog::open(sdir.join("output.log"))),
         reader_done: AtomicBool::new(false),
     });
 
+    spawn_input_writer(input, writer);
     spawn_reader(&shim, reader);
     spawn_waiter(&shim, child);
     spawn_stat(&shim);
@@ -350,6 +433,14 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
         thread::spawn(move || shim.handle(stream, &secret, slot));
     }
     Ok(())
+}
+
+fn spawn_input_writer(queue: Arc<InputQueue>, mut pty: Box<dyn Write + Send>) {
+    thread::spawn(move || loop {
+        let data = queue.pop();
+        let _ = pty.write_all(&data).and_then(|()| pty.flush());
+        queue.done(data.len());
+    });
 }
 
 fn spawn_reader(shim: &Arc<Shim>, mut reader: Box<dyn Read + Send>) {
@@ -372,17 +463,7 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
     let shim = shim.clone();
     thread::spawn(move || {
         let _keep = child;
-        let mut status: libc::c_int = 0;
-        loop {
-            let r = unsafe { libc::waitpid(shim.child_pid, &mut status, 0) };
-            if r == shim.child_pid {
-                break;
-            }
-            if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-                status = 0;
-                break;
-            }
-        }
+        let status = shim.child.wait();
         let info = exit_info(status);
         let deadline = Instant::now() + Duration::from_secs(1);
         while !shim.reader_done.load(Ordering::SeqCst) && Instant::now() < deadline {
@@ -411,8 +492,12 @@ fn spawn_stat(shim: &Arc<Shim>) {
             fg_cpu_ns: proc::cpu_ns(pg),
             fg_waiting_tty: proc::waiting_tty(pg),
         };
+        let dropped = shim.input.dropped.swap(0, Ordering::SeqCst);
         let mut st = lock(&shim.st);
         shim.send(&mut st, &FromShim::Stat(stat));
+        if dropped > 0 {
+            shim.send(&mut st, &FromShim::InputDropped { bytes: dropped });
+        }
     });
 }
 
@@ -493,9 +578,67 @@ mod proc {
 
 #[cfg(test)]
 mod tests {
-    use super::proc;
-    use std::process::Command;
+    use super::{proc, ChildGuard, InputQueue, INPUT_CAP};
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
+
+    #[test]
+    fn signal_is_refused_once_the_child_exited_and_never_reaches_the_group() {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "sleep 30 & echo $!; exit 0"])
+            .stdout(Stdio::piped());
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        let mut child = cmd.spawn().unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let grandchild: i32 = line.trim().parse().unwrap();
+        let guard = ChildGuard::new(child.id() as i32);
+        let status = guard.wait();
+        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
+        assert!(!guard.signal(libc::SIGKILL));
+        let alive = unsafe { libc::kill(grandchild, 0) } == 0;
+        unsafe { libc::kill(grandchild, libc::SIGKILL) };
+        assert!(alive, "the group was signalled after the child exited");
+    }
+
+    #[test]
+    fn signal_reaches_a_running_child_group() {
+        let mut cmd = Command::new("/bin/sleep");
+        cmd.arg("30");
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        let child = cmd.spawn().unwrap();
+        let guard = ChildGuard::new(child.id() as i32);
+        assert!(guard.signal(libc::SIGKILL));
+        let status = guard.wait();
+        assert_eq!(libc::WTERMSIG(status), libc::SIGKILL);
+    }
+
+    #[test]
+    fn input_queue_drops_past_the_cap_and_counts_it() {
+        let q = InputQueue::default();
+        q.push(vec![0; INPUT_CAP]);
+        q.push(vec![0; 10]);
+        assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
+        let d = q.pop();
+        q.done(d.len());
+        q.push(vec![0; 10]);
+        assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
+    }
 
     #[test]
     fn cpu_time_is_in_nanoseconds() {

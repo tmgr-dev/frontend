@@ -716,3 +716,42 @@ fn a_client_that_never_reads_is_disconnected_and_others_keep_receiving() {
     assert!(ended, "stalled client is still being served");
     assert!(c.status().is_ok());
 }
+
+#[test]
+fn kill_works_while_the_agent_ignores_input_and_spams_queries() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let body = "import os, time, tty\ntty.setraw(0)\nwhile True:\n    os.write(1, b'\\x1b[6n' * 50)\n    time.sleep(0.001)\n";
+    let path = h.script("spam.py", body);
+    let info = c.create(h.req(&[PY, &path])).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(5, |w| w.cache.snapshot(&info.id).is_some()));
+    let writer = w.writer.clone();
+    let id = info.id.clone();
+    thread::spawn(move || {
+        let _ = writer.input(&id, &vec![b'a'; 10 << 20]);
+    });
+    thread::sleep(Duration::from_secs(1));
+    c.kill(&info.id, "kill").unwrap();
+    let done = wait_state(&mut c, &info.id, 2, |s| s.kind == StateKind::Exited);
+    assert_eq!(done.state.kind, StateKind::Exited, "{:?}", done.state);
+}
+
+#[test]
+fn kill_after_exit_is_not_running() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sh", "-c", "exit 0"])).unwrap();
+    wait_state(&mut c, &info.id, 5, |s| s.kind == StateKind::Exited);
+    for sig in ["term", "kill"] {
+        assert!(err_text(c.kill(&info.id, sig)).contains("not_running"));
+    }
+}

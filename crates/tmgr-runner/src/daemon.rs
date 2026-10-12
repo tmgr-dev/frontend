@@ -36,6 +36,11 @@ use tmgr_ipc::proto::{
 use tmgr_ipc::{auth, secret, server};
 
 const MAX_CONNS: usize = 64;
+const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const SHIM_QUEUE: usize = 1024;
+const SHIM_INPUT_CAP: usize = 1 << 20;
+const SHIM_INPUT_FRAMES: usize = 512;
+const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
 const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
 const PUSH_INTERVAL: Duration = Duration::from_millis(33);
@@ -177,13 +182,59 @@ struct Inner {
     size_owner: Option<u64>,
 }
 
+struct ShimLink {
+    tx: SyncSender<Frame>,
+    queued_bytes: Arc<AtomicUsize>,
+    queued_frames: Arc<AtomicUsize>,
+}
+
+impl ShimLink {
+    fn spawn(stream: &UnixStream) -> io::Result<ShimLink> {
+        let mut out = stream.try_clone()?;
+        out.set_write_timeout(Some(SHIM_WRITE_TIMEOUT))?;
+        let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
+        let queued_frames = Arc::new(AtomicUsize::new(0));
+        let (b, f) = (queued_bytes.clone(), queued_frames.clone());
+        thread::spawn(move || {
+            while let Ok(frame) = rx.recv() {
+                let input_len = match &frame {
+                    Frame::Bin(bin) if bin.tag == TAG_INPUT => Some(bin.data.len()),
+                    _ => None,
+                };
+                let res = write_frame(&mut out, &frame);
+                if let Some(n) = input_len {
+                    b.fetch_sub(n, Ordering::SeqCst);
+                    f.fetch_sub(1, Ordering::SeqCst);
+                }
+                if res.is_err() {
+                    let _ = out.shutdown(std::net::Shutdown::Both);
+                    break;
+                }
+            }
+        });
+        Ok(ShimLink {
+            tx,
+            queued_bytes,
+            queued_frames,
+        })
+    }
+}
+
+struct ReplyBudget {
+    window: Instant,
+    used: u32,
+}
+
 struct Session {
     id: String,
     dir: PathBuf,
     hub: Arc<Hub>,
     inner: Mutex<Inner>,
     version: AtomicU64,
-    shim: Mutex<Option<UnixStream>>,
+    shim: Mutex<Option<ShimLink>>,
+    replies: Mutex<ReplyBudget>,
+    drop_logged: AtomicBool,
     meta_lock: Mutex<()>,
 }
 
@@ -261,30 +312,55 @@ impl Session {
         self.publish(out);
     }
 
-    fn shim_frame(&self, frame: &Frame) {
-        let mut g = lock(&self.shim);
-        if let Some(s) = g.as_mut() {
-            if write_frame(s, frame).is_err() {
-                *g = None;
-            }
-        }
+    fn shim_tx(&self) -> Option<SyncSender<Frame>> {
+        lock(&self.shim).as_ref().map(|l| l.tx.clone())
     }
 
     fn shim_msg(&self, msg: &ToShim) {
-        let mut g = lock(&self.shim);
-        if let Some(s) = g.as_mut() {
-            if write_json(s, msg).is_err() {
-                *g = None;
+        let Some(tx) = self.shim_tx() else { return };
+        let Ok(v) = serde_json::to_value(msg) else {
+            return;
+        };
+        let frame = Frame::Json(v);
+        match msg {
+            ToShim::Resize { .. } => {
+                let _ = tx.try_send(frame);
+            }
+            _ => {
+                let _ = tx.send(frame);
             }
         }
     }
 
     fn shim_input(&self, bytes: &[u8]) {
-        self.shim_frame(&Frame::Bin(BinFrame {
+        let g = lock(&self.shim);
+        let Some(link) = g.as_ref() else { return };
+        if link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
+            || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
+        {
+            return;
+        }
+        link.queued_bytes.fetch_add(bytes.len(), Ordering::SeqCst);
+        link.queued_frames.fetch_add(1, Ordering::SeqCst);
+        let frame = Frame::Bin(BinFrame {
             tag: TAG_INPUT,
             session: self.id.clone(),
             data: bytes.to_vec(),
-        }));
+        });
+        if link.tx.try_send(frame).is_err() {
+            link.queued_bytes.fetch_sub(bytes.len(), Ordering::SeqCst);
+            link.queued_frames.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    fn reply_allowed(&self) -> bool {
+        let mut b = lock(&self.replies);
+        if b.window.elapsed() >= Duration::from_secs(1) {
+            b.window = Instant::now();
+            b.used = 0;
+        }
+        b.used += 1;
+        b.used <= MAX_REPLIES_PER_SEC
     }
 
     fn has_shim(&self) -> bool {
@@ -315,7 +391,9 @@ impl Session {
         });
         self.version.fetch_add(1, Ordering::SeqCst);
         for reply in replies {
-            self.shim_input(&reply);
+            if self.reply_allowed() {
+                self.shim_input(&reply);
+            }
         }
     }
 
@@ -377,8 +455,8 @@ impl Session {
     }
 
     fn attach_shim(self: &Arc<Self>, stream: UnixStream, hello: ShimHello, fresh: bool) {
-        if let Ok(w) = stream.try_clone() {
-            *lock(&self.shim) = Some(w);
+        if let Ok(link) = ShimLink::spawn(&stream) {
+            *lock(&self.shim) = Some(link);
         }
         if let Some(e) = &hello.exit {
             self.on_exited(e);
@@ -398,6 +476,14 @@ impl Session {
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
                     Ok(FromShim::Exited(e)) => self.on_exited(&e),
+                    Ok(FromShim::InputDropped { bytes }) => {
+                        if !self.drop_logged.swap(true, Ordering::SeqCst) {
+                            log(&format!(
+                                "session {} dropped {bytes} bytes of input",
+                                self.id
+                            ));
+                        }
+                    }
                     _ => {}
                 },
             }
@@ -875,6 +961,11 @@ impl Runner {
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
+            replies: Mutex::new(ReplyBudget {
+                window: Instant::now(),
+                used: 0,
+            }),
+            drop_logged: AtomicBool::new(false),
             meta_lock: Mutex::new(()),
         })
     }
