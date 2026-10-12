@@ -185,6 +185,7 @@
 		font-weight: 500;
 		margin-bottom: 0.25rem;
 		color: inherit;
+		overflow-wrap: anywhere;
 	}
 
 	.notification-message {
@@ -192,6 +193,7 @@
 		color: rgba(0, 0, 0, 0.6);
 		margin-bottom: 0.25rem;
 		overflow: hidden;
+		overflow-wrap: anywhere;
 		text-overflow: ellipsis;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
