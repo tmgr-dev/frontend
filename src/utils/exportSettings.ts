@@ -4,7 +4,6 @@ export interface ExportPanelSettings {
 	weekend_days: number[];
 	custom_holidays: string[];
 	parse_date_from_title: boolean;
-	week_start: number;
 }
 
 export const DEFAULT_EXPORT_SETTINGS: ExportPanelSettings = {
@@ -13,7 +12,6 @@ export const DEFAULT_EXPORT_SETTINGS: ExportPanelSettings = {
 	weekend_days: [0, 6],
 	custom_holidays: [],
 	parse_date_from_title: true,
-	week_start: 1,
 };
 
 const sameSet = (a: number[], b: number[]) =>

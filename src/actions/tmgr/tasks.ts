@@ -415,7 +415,6 @@ interface ExportSettings {
 	custom_holidays?: string[];
 	parse_date_from_title?: boolean;
 	include_explanations?: boolean;
-	week_start?: number;
 }
 
 export const exportTasks = async (

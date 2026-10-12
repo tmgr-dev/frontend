@@ -27,31 +27,6 @@
 				<span>Zero expected hours on off-days</span>
 			</label>
 
-			<!-- Week start -->
-			<div>
-				<span class="text-gray-500 dark:text-gray-400">Week start:</span>
-				<label class="ml-2 cursor-pointer">
-					<input
-						v-model.number="settings.week_start"
-						type="radio"
-						:value="1"
-						class="text-green-600 focus:ring-green-500"
-						@change="emitSettings"
-					/>
-					<span class="ml-1">Mon</span>
-				</label>
-				<label class="ml-3 cursor-pointer">
-					<input
-						v-model.number="settings.week_start"
-						type="radio"
-						:value="0"
-						class="text-green-600 focus:ring-green-500"
-						@change="emitSettings"
-					/>
-					<span class="ml-1">Sun</span>
-				</label>
-			</div>
-
 			<!-- Weekend days -->
 			<div>
 				<span class="text-gray-500 dark:text-gray-400">Weekend days:</span>
@@ -160,10 +135,7 @@
 		},
 		computed: {
 			orderedDays() {
-				if (this.settings.week_start === 1) {
-					return [...ALL_DAYS.slice(1), ALL_DAYS[0]];
-				}
-				return ALL_DAYS;
+				return [...ALL_DAYS.slice(1), ALL_DAYS[0]];
 			},
 		},
 		methods: {

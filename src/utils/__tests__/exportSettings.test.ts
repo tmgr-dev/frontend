@@ -22,7 +22,6 @@ describe('export settings defaults match the Java export request defaults', () =
 			weekend_days: [0, 6],
 			custom_holidays: [],
 			parse_date_from_title: true,
-			week_start: 1,
 		});
 	});
 
@@ -46,10 +45,9 @@ describe('export settings defaults match the Java export request defaults', () =
 		});
 	});
 
-	it('treats weekend days as a set and never sends week_start', () => {
+	it('treats weekend days as a set and ignores weekend day order', () => {
 		const s = fresh();
 		s.weekend_days = [6, 0];
-		s.week_start = 0;
 		expect(toExportParams(s)).toEqual({});
 	});
 
