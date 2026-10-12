@@ -50,6 +50,7 @@ pub fn dispatch(
         })),
         Err(Outcome::Http { status, body }) => Ok(Some(Response { status, data: body })),
         Err(Outcome::Failed(e)) => Err(e),
+        Err(Outcome::Unrouted) => Ok(None),
     }
 }
 

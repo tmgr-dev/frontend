@@ -3,6 +3,7 @@ mod db;
 mod dispatch;
 mod error;
 mod js;
+mod markdown;
 mod router;
 mod routes;
 mod serialize;

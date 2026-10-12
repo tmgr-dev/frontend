@@ -60,6 +60,7 @@ pub(crate) fn ctx(now: &str) -> Context {
         now: DateTime::parse_from_rfc3339(now)
             .unwrap()
             .with_timezone(&Utc),
+        local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
         actor: None,
     }
 }

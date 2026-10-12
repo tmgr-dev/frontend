@@ -4061,6 +4061,7 @@ dependencies = [
  "chrono",
  "form_urlencoded",
  "percent-encoding",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

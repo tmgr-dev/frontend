@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 
 use crate::workspace::LocalWorkspace;
 
@@ -23,10 +23,16 @@ pub struct Context {
     pub workspace: LocalWorkspace,
     pub user: User,
     pub now: DateTime<Utc>,
+    /// The user's UTC offset at `now`: "today" of a routine is a local date.
+    pub local_offset: FixedOffset,
     pub actor: Option<Actor>,
 }
 
 impl Context {
+    pub(crate) fn local_now(&self) -> DateTime<FixedOffset> {
+        self.now.with_timezone(&self.local_offset)
+    }
+
     pub(crate) fn epoch(&self) -> i64 {
         self.now.timestamp()
     }

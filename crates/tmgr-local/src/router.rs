@@ -25,7 +25,12 @@ impl Request<'_> {
 
 /// A handler result before the `{data}` envelope.
 pub(crate) enum Outcome {
-    Http { status: u16, body: Value },
+    /// The TS router has a route here that this crate does not answer yet.
+    Unrouted,
+    Http {
+        status: u16,
+        body: Value,
+    },
     Failed(Error),
 }
 
@@ -37,6 +42,10 @@ impl From<Error> for Outcome {
 
 pub(crate) type Handled = Result<Value, Outcome>;
 pub(crate) type Handler = fn(&Request<'_>) -> Handled;
+
+pub(crate) fn unrouted(_: &Request<'_>) -> Handled {
+    Err(Outcome::Unrouted)
+}
 
 pub(crate) fn http(status: u16, message: impl Into<String>) -> Outcome {
     Outcome::Http {

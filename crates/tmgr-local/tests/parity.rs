@@ -133,6 +133,7 @@ fn context(scenario: &Value) -> Context {
         now: DateTime::parse_from_rfc3339(scenario["now"].as_str().unwrap())
             .unwrap()
             .with_timezone(&Utc),
+        local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
         actor: None,
     }
 }

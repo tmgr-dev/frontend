@@ -2,11 +2,13 @@ use std::sync::OnceLock;
 
 use rusqlite::types::Value as Sql;
 
-use crate::router::Route;
+use crate::router::{unrouted, Route};
 
 mod agent_work;
 mod catalog;
 mod comments;
+mod pages;
+mod routines;
 mod rust_only;
 mod tasks;
 
@@ -65,6 +67,11 @@ pub(crate) fn table() -> &'static [Route] {
                 "workspaces/:wid/feature-toggles",
                 catalog::feature_toggles,
             ),
+            Route::new("GET", "daily-routines/expand", routines::expand),
+            Route::new("GET", "pages/tree", pages::tree),
+            Route::new("GET", "pages/trash", unrouted),
+            Route::new("GET", "pages/search", unrouted),
+            Route::new("GET", "pages/:id", pages::show),
             Route::new("GET", "workspaces", rust_only::workspaces),
             Route::new("GET", "tasks/by-key/:key", rust_only::task_by_key),
             Route::new(
