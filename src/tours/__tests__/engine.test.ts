@@ -127,7 +127,7 @@ describe('engine facade', () => {
 		await h.engine.init();
 		const items = h.engine.api.hubItems.value;
 		expect(items.find((i) => i.tour.id === 'start.nav')?.state?.status).toBe('completed');
-		expect(items.every((i) => i.available)).toBe(true);
+		expect(items.filter((i) => i.tour.group !== 'desktop').every((i) => i.available)).toBe(true);
 	});
 
 	it('refuses to start a tour unavailable on this platform', async () => {

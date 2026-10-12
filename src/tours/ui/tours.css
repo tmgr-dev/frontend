@@ -433,7 +433,7 @@ html.dark .tour-ring {
 .tour-kbd {
   display: inline-block;
   padding: 0 6px;
-  border: 1px solid var(--border, currentColor);
+  border: 1px solid var(--line-strong-color);
   border-radius: 6px;
   font: inherit;
   font-size: 0.9em;

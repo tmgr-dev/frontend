@@ -1,5 +1,6 @@
 import type { TourDef, TourId } from '../types';
 import { agentsTours } from './agents';
+import { desktopTours } from './desktop';
 import { graphTours } from './graph';
 import { pagesTours } from './pages';
 import { personasTours } from './personas';
@@ -19,6 +20,7 @@ export const TOURS: TourDef[] = [
   ...pagesTours,
   ...graphTours,
   ...routinesTours,
+  ...desktopTours,
 ];
 
 export function getTour(id: TourId): TourDef | undefined {

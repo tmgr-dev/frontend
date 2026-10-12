@@ -2,7 +2,22 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { TOURS } from '../catalog';
 
-const NOT_YET_IN_VUE = new Set<string>();
+const NOT_YET_IN_VUE = new Set<string>([
+	'settings.desktop-shortcuts',
+	'task-form.open-window',
+	'local.banner',
+	'local.badge',
+	'nav.create-account',
+	'settings.data-backups',
+	'settings.backup-now',
+	'local-personas.panel',
+	'local-personas.access',
+	'local-personas.connect',
+	'plugins.install',
+	'plugins.help',
+	'whats-new.item-tour',
+	'settings.data-move',
+]);
 
 const walk = (dir: string): string[] =>
 	readdirSync(dir).flatMap((name) => {

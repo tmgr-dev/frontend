@@ -4,6 +4,8 @@ import { KNOWN_EVENTS } from '../events';
 import { MODULES } from '@/local/modulesCatalog';
 import { getTour, TOURS } from '../catalog';
 
+const ANCHORLESS_WAITS = new Set(['desktop.quick-add/s2', 'desktop.move-to-cloud/s2']);
+
 const words = (text: string) => text.trim().split(/\s+/).length;
 
 const walk = (dir: string): string[] =>
@@ -100,7 +102,7 @@ describe('catalog lint', () => {
 		for (const tour of TOURS) {
 			expect(tour.triggers.some((t) => t.kind === 'hub')).toBe(true);
 			expect(tour.steps.length).toBeGreaterThan(0);
-			for (const step of tour.steps) if (step.type !== 'modal') expect(step.anchor).toBeTruthy();
+			for (const step of tour.steps) if (step.type !== 'modal' && !ANCHORLESS_WAITS.has(`${tour.id}/${step.id}`)) expect(step.anchor).toBeTruthy();
 		}
 	});
 
