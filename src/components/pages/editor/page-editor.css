@@ -1,0 +1,978 @@
+/* Shared document look for the Pages editor (Crepe) and PageMarkdown.
+   Colors come from app tokens, so a theme switch recolors without a remount. */
+
+.page-editor,
+.page-prose {
+	--pe-font-size: 16px;
+	--pe-leading: 1.7;
+	--pe-line: calc(var(--pe-font-size) * var(--pe-leading));
+	--pe-gap: 0.75rem;
+	--pe-text: var(--fg);
+	--pe-muted: var(--fg-muted);
+	--pe-subtle: var(--fg-subtle);
+	--pe-rule: var(--line-strong-color);
+	--pe-soft: var(--bg-hover);
+	--pe-code-bg: #f6f6f7;
+	--pe-inline-code-bg: rgba(24, 24, 27, 0.06);
+	--pe-link: rgb(37 99 235);
+	--pe-accent: rgb(59 130 246);
+	--pe-selection: rgb(59 130 246 / 0.2);
+	--pe-chip-bg: rgb(59 130 246 / 0.1);
+	--pe-chip-fg: rgb(29 78 216);
+	--pe-popover: #ffffff;
+	--pe-popover-shadow: 0 0 0 1px rgba(24, 24, 27, 0.08),
+		0 8px 24px -6px rgba(24, 24, 27, 0.16);
+	--pe-tok-keyword: #cf222e;
+	--pe-tok-string: #0a3069;
+	--pe-tok-number: #0550ae;
+	--pe-tok-comment: #6e7781;
+	--pe-tok-def: #8250df;
+	--pe-tok-type: #953800;
+	--pe-tok-prop: #0550ae;
+}
+
+.dark .page-editor,
+.dark .page-prose {
+	--pe-code-bg: rgba(255, 255, 255, 0.04);
+	--pe-inline-code-bg: rgba(255, 255, 255, 0.09);
+	--pe-link: rgb(147 197 253);
+	--pe-accent: rgb(96 165 250);
+	--pe-selection: rgb(96 165 250 / 0.3);
+	--pe-chip-bg: rgb(96 165 250 / 0.16);
+	--pe-chip-fg: rgb(147 197 253);
+	--pe-popover: #222226;
+	--pe-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08),
+		0 8px 24px -6px rgba(0, 0, 0, 0.6);
+	--pe-tok-keyword: #ff7b72;
+	--pe-tok-string: #a5d6ff;
+	--pe-tok-number: #79c0ff;
+	--pe-tok-comment: #8b949e;
+	--pe-tok-def: #d2a8ff;
+	--pe-tok-type: #ffa657;
+	--pe-tok-prop: #79c0ff;
+}
+
+.page-editor .milkdown {
+	--crepe-color-background: transparent;
+	--crepe-color-on-background: var(--pe-text);
+	--crepe-color-surface: var(--pe-popover);
+	--crepe-color-surface-low: var(--bg-sunken);
+	--crepe-color-on-surface: var(--pe-text);
+	--crepe-color-on-surface-variant: var(--pe-muted);
+	--crepe-color-outline: var(--pe-subtle);
+	--crepe-color-primary: var(--pe-accent);
+	--crepe-color-secondary: var(--bg-sunken);
+	--crepe-color-on-secondary: var(--pe-text);
+	--crepe-color-inverse: var(--pe-text);
+	--crepe-color-on-inverse: var(--bg-raised);
+	--crepe-color-inline-code: var(--pe-text);
+	--crepe-color-error: rgb(220 38 38);
+	--crepe-color-hover: var(--bg-active);
+	--crepe-color-selected: var(--pe-selection);
+	--crepe-color-inline-area: var(--pe-inline-code-bg);
+	--crepe-base-font-size: var(--pe-font-size);
+	--crepe-font-title: inherit;
+	--crepe-font-default: inherit;
+	--crepe-font-code: var(--font-mono);
+	--crepe-shadow-1: var(--pe-popover-shadow);
+	--crepe-shadow-2: var(--pe-popover-shadow);
+	background: transparent;
+}
+
+/* ---------- document typography (editor + PageMarkdown) ---------- */
+
+.page-editor .milkdown .ProseMirror,
+.page-prose {
+	padding: 0;
+	font-size: var(--pe-font-size);
+	line-height: var(--pe-leading);
+	color: var(--pe-text);
+	overflow-wrap: break-word;
+}
+
+.page-editor .milkdown .ProseMirror > *,
+.page-prose > * {
+	margin: 0;
+}
+
+.page-editor .milkdown .ProseMirror > * + *,
+.page-prose > * + * {
+	margin-top: var(--pe-gap);
+}
+
+.page-editor .milkdown .ProseMirror p,
+.page-prose p {
+	padding: 0;
+	font-size: 1em;
+	line-height: var(--pe-leading);
+}
+
+.page-editor .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6),
+.page-prose :is(h1, h2, h3, h4, h5, h6) {
+	padding: 0;
+	font-family: inherit;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--pe-text);
+}
+
+.page-editor .milkdown .ProseMirror h1,
+.page-prose h1 {
+	font-size: 1.625em;
+	line-height: 1.3;
+	font-weight: 700;
+}
+
+.page-editor .milkdown .ProseMirror h2,
+.page-prose h2 {
+	font-size: 1.3125em;
+	line-height: 1.35;
+}
+
+.page-editor .milkdown .ProseMirror :is(h3, h4, h5, h6),
+.page-prose :is(h3, h4, h5, h6) {
+	font-size: 1.125em;
+	line-height: 1.45;
+}
+
+.page-editor .milkdown .ProseMirror > :is(h1, h2, h3, h4, h5, h6) + *,
+.page-prose > :is(h1, h2, h3, h4, h5, h6) + * {
+	margin-top: 0.375rem;
+}
+
+.page-editor .milkdown .ProseMirror > * + h1,
+.page-prose > * + h1 {
+	margin-top: 1.75rem;
+}
+
+.page-editor .milkdown .ProseMirror > * + h2,
+.page-prose > * + h2 {
+	margin-top: 1.5rem;
+}
+
+.page-editor .milkdown .ProseMirror > * + :is(h3, h4, h5, h6),
+.page-prose > * + :is(h3, h4, h5, h6) {
+	margin-top: 1.25rem;
+}
+
+/* ProseMirror can put a widget (cursor helper) before the first block;
+   the block after it still starts the document. */
+.page-editor .milkdown .ProseMirror > .ProseMirror-widget:first-child + * {
+	margin-top: 0;
+}
+
+.page-editor .milkdown .ProseMirror strong,
+.page-prose strong {
+	font-weight: 600;
+}
+
+.page-editor .milkdown .ProseMirror a,
+.page-prose a:not(.tmgr-chip) {
+	color: var(--pe-link);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+	text-underline-offset: 2px;
+}
+
+.page-editor .milkdown .ProseMirror a.tmgr-chip,
+.page-prose a.tmgr-chip {
+	position: relative;
+	display: inline;
+	padding: 0.05em 0.2em;
+	border-radius: 0.3em;
+	background: var(--pe-chip-bg);
+	color: var(--pe-chip-fg);
+	font-weight: 500;
+	text-decoration: none;
+	cursor: pointer;
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+
+.page-editor .milkdown .ProseMirror a.tmgr-chip:hover,
+.page-prose a.tmgr-chip:hover {
+	background: color-mix(in srgb, var(--pe-chip-bg), var(--pe-chip-fg) 12%);
+}
+
+.page-editor a.tmgr-chip[data-current-title]:hover::after {
+	content: attr(data-current-title);
+	position: absolute;
+	left: 0;
+	top: 100%;
+	z-index: 20;
+	margin-top: 4px;
+	max-width: 20rem;
+	overflow: hidden;
+	border-radius: 6px;
+	background: rgb(31 41 55);
+	padding: 0.15rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 400;
+	line-height: 1.5;
+	color: white;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	pointer-events: none;
+}
+
+.dark .page-editor a.tmgr-chip[data-current-title]:hover::after {
+	background: rgb(63 63 70);
+}
+
+.page-editor .milkdown .ProseMirror code,
+.page-prose code {
+	display: inline;
+	padding: 0.15em 0.35em;
+	border-radius: 4px;
+	background: var(--pe-inline-code-bg);
+	color: var(--pe-text);
+	font-family: var(--font-mono);
+	font-size: 0.85em;
+	line-height: inherit;
+}
+
+.page-editor .milkdown .ProseMirror blockquote,
+.page-prose blockquote {
+	margin-left: 0;
+	margin-right: 0;
+	padding: 0 0 0 1rem;
+	border-left: 3px solid var(--pe-rule);
+	color: var(--pe-muted);
+}
+
+.page-editor .milkdown .ProseMirror blockquote::before {
+	display: none;
+}
+
+.page-editor .milkdown .ProseMirror blockquote > * + *,
+.page-prose blockquote > * + * {
+	margin-top: 0.5rem;
+}
+
+.page-editor .milkdown .ProseMirror hr {
+	height: 17px;
+	padding: 8px 0;
+	border: 0;
+	background-color: var(--pe-rule);
+	background-clip: content-box;
+}
+
+.page-prose hr {
+	height: 1px;
+	margin-top: calc(var(--pe-gap) + 8px);
+	margin-bottom: 8px;
+	border: 0;
+	background: var(--pe-rule);
+}
+
+.page-prose hr + * {
+	margin-top: calc(var(--pe-gap) + 8px);
+}
+
+.page-editor .milkdown .ProseMirror img,
+.page-prose img {
+	display: inline-block;
+	max-width: 100%;
+	border-radius: 6px;
+	vertical-align: bottom;
+}
+
+.page-editor .milkdown .ProseMirror *::selection {
+	background: var(--pe-selection);
+}
+
+/* ---------- lists ---------- */
+
+.page-editor .milkdown .milkdown-list-item-block li {
+	gap: 6px;
+}
+
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper {
+	flex-shrink: 0;
+	width: 24px;
+	height: var(--pe-line);
+	color: var(--pe-subtle);
+}
+
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .label {
+	height: var(--pe-line);
+	padding: 0;
+	line-height: var(--pe-line);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper svg {
+	width: 24px;
+	height: 24px;
+}
+
+.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li
+	.label-wrapper
+	svg.tmgr-bullet {
+	fill: var(--pe-muted);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li
+	.label-wrapper
+	svg.tmgr-check
+	.box {
+	fill: none;
+	stroke: var(--pe-subtle);
+	stroke-width: 1.5;
+}
+
+.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li
+	.label-wrapper
+	.checked
+	svg.tmgr-check
+	.box {
+	fill: var(--pe-accent);
+	stroke: none;
+}
+
+.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li
+	.label-wrapper
+	svg.tmgr-check
+	.tick {
+	fill: none;
+	stroke: #ffffff;
+	stroke-width: 2.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.dark
+	.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li
+	.label-wrapper
+	svg.tmgr-check
+	.tick {
+	stroke: #0b0b0d;
+}
+
+.page-editor
+	.milkdown
+	.milkdown-list-item-block
+	li:has(> .label-wrapper .checked)
+	> .children
+	> .content-dom
+	> :not(ul, ol) {
+	color: var(--pe-subtle);
+	text-decoration: line-through;
+	text-decoration-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.page-editor
+	.milkdown
+	.ProseMirror
+	:is(ul, ol)
+	> .milkdown-list-item-block
+	+ .milkdown-list-item-block,
+.page-editor .milkdown .milkdown-list-item-block .children > * + * {
+	margin-top: 2px;
+}
+
+.page-prose :is(ul, ol) {
+	padding-left: 30px;
+}
+
+.page-prose ul {
+	list-style: none;
+}
+
+.page-prose ol {
+	list-style: decimal;
+}
+
+.page-prose li {
+	position: relative;
+}
+
+.page-prose li + li,
+.page-prose li > :is(ul, ol),
+.page-prose li > p + * {
+	margin-top: 2px;
+}
+
+.page-prose ol > li::marker {
+	color: var(--pe-subtle);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-prose ul > li::before {
+	content: '';
+	position: absolute;
+	left: -20px;
+	top: calc(var(--pe-line) / 2 - 2.5px);
+	width: 5px;
+	height: 5px;
+	border-radius: 9999px;
+	background: var(--pe-muted);
+}
+
+.page-prose ul > li:has(> input[type='checkbox'])::before,
+.page-prose ul > li:has(> p:first-child > input[type='checkbox'])::before {
+	content: none;
+}
+
+.page-prose li > input[type='checkbox'],
+.page-prose li > p:first-child > input[type='checkbox'] {
+	-webkit-appearance: none;
+	appearance: none;
+	position: absolute;
+	left: -27px;
+	top: calc(var(--pe-line) / 2 - 7.5px);
+	width: 15px;
+	height: 15px;
+	margin: 0;
+	border: 1.5px solid var(--pe-subtle);
+	border-radius: 3.5px;
+}
+
+.page-prose li > input[type='checkbox']:checked,
+.page-prose li > p:first-child > input[type='checkbox']:checked {
+	border-color: var(--pe-accent);
+	background: var(--pe-accent)
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4.2 8.2 2.4 2.4 5.2-5.3' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+		center / 100% no-repeat;
+}
+
+.page-prose li:has(> input[type='checkbox']:checked),
+.page-prose li:has(> p:first-child > input[type='checkbox']:checked) {
+	color: var(--pe-subtle);
+}
+
+.page-prose li:has(> input[type='checkbox']:checked) > :is(ul, ol),
+.page-prose
+	li:has(> p:first-child > input[type='checkbox']:checked)
+	> :is(ul, ol) {
+	color: var(--pe-text);
+}
+
+/* ---------- code ---------- */
+
+.page-prose pre {
+	overflow-x: auto;
+	padding: 12px 16px;
+	border: 1px solid var(--line-color);
+	border-radius: 8px;
+	background: var(--pe-code-bg);
+	font-size: 0.85em;
+	line-height: 1.6;
+}
+
+.page-prose pre code {
+	padding: 0;
+	background: transparent;
+	font-size: 1em;
+}
+
+.page-editor .milkdown .milkdown-code-block {
+	padding: 10px 0;
+	border: 1px solid var(--line-color);
+	border-radius: 8px;
+	background: var(--pe-code-bg);
+}
+
+.page-editor .milkdown .milkdown-code-block.selected {
+	outline: 2px solid var(--pe-selection);
+}
+
+.page-editor .milkdown .milkdown-code-block .tools {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+	z-index: 2;
+	gap: 4px;
+}
+
+.page-editor .milkdown .milkdown-code-block .tools .language-button {
+	margin: 0;
+	padding: 2px 4px 2px 8px;
+	border-radius: 6px;
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+	color: var(--pe-muted);
+	font-weight: 500;
+}
+
+.page-editor .milkdown .milkdown-code-block .tools .tools-button-group button {
+	padding: 3px 8px;
+	border-radius: 6px !important;
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+	color: var(--pe-muted);
+	font-weight: 500;
+}
+
+.page-editor .milkdown .milkdown-code-block:focus-within .language-button,
+.page-editor
+	.milkdown
+	.milkdown-code-block:focus-within
+	.tools-button-group
+	> button {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.page-editor .milkdown .milkdown-code-block .language-button {
+		opacity: 1;
+	}
+}
+
+@media (max-width: 767px), (hover: none) {
+	.page-editor .milkdown .milkdown-code-block .tools {
+		position: static;
+		justify-content: flex-end;
+		padding: 0 8px 6px;
+	}
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-editor,
+.page-editor .milkdown .milkdown-code-block .cm-gutters {
+	background: transparent;
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-gutters {
+	display: none;
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-scroller {
+	font-family: var(--font-mono);
+	font-size: 13.5px;
+	line-height: 1.6;
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-content {
+	padding: 0;
+	caret-color: var(--pe-text);
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-line {
+	padding: 0 16px;
+	color: var(--pe-text);
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-activeLine {
+	background: transparent;
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-cursor {
+	border-left-color: var(--pe-text);
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-selectionBackground,
+.page-editor .milkdown .milkdown-code-block .cm-content ::selection {
+	background: var(--pe-selection) !important;
+}
+
+.page-editor .milkdown .milkdown-code-block .cm-matchingBracket {
+	background: var(--pe-selection);
+	outline: none;
+}
+
+/* Crepe anchors the picker bottom-start of the button; the button sits top-right. */
+.page-editor .milkdown .milkdown-code-block .language-picker {
+	left: auto !important;
+	right: 8px;
+}
+
+.page-editor .milkdown .milkdown-code-block .list-wrapper {
+	width: min(240px, calc(100vw - 32px));
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+	border-radius: 10px;
+	padding-top: 8px;
+}
+
+.page-editor .milkdown .milkdown-code-block .language-list {
+	height: auto;
+	max-height: 280px;
+	padding: 0 4px 4px;
+}
+
+.page-editor .milkdown .milkdown-code-block .language-list-item {
+	padding: 4px 10px;
+	border-radius: 6px;
+	font-weight: 400;
+}
+
+.page-editor .milkdown .milkdown-code-block .search-box {
+	margin: 0 8px 6px;
+	outline: 1px solid var(--pe-rule);
+	border-radius: 6px;
+}
+
+.page-editor .milkdown .milkdown-code-block .search-box:has(input:focus) {
+	outline: 2px solid var(--pe-accent);
+}
+
+.page-editor .tok-keyword,
+.page-editor .tok-operator,
+.page-editor .tok-bool,
+.page-editor .tok-atom {
+	color: var(--pe-tok-keyword);
+}
+
+.page-editor .tok-string,
+.page-editor .tok-string2,
+.page-editor .tok-url {
+	color: var(--pe-tok-string);
+}
+
+.page-editor .tok-number,
+.page-editor .tok-literal {
+	color: var(--pe-tok-number);
+}
+
+.page-editor .tok-comment,
+.page-editor .tok-meta {
+	color: var(--pe-tok-comment);
+	font-style: italic;
+}
+
+.page-editor .tok-variableName.tok-definition,
+.page-editor .tok-propertyName.tok-definition,
+.page-editor .tok-macroName,
+.page-editor .tok-heading {
+	color: var(--pe-tok-def);
+}
+
+.page-editor .tok-typeName,
+.page-editor .tok-className,
+.page-editor .tok-namespace,
+.page-editor .tok-labelName {
+	color: var(--pe-tok-type);
+}
+
+.page-editor .tok-propertyName {
+	color: var(--pe-tok-prop);
+}
+
+.page-editor .tok-strong {
+	font-weight: 600;
+}
+
+.page-editor .tok-emphasis {
+	font-style: italic;
+}
+
+.page-editor .tok-invalid,
+.page-editor .tok-deleted {
+	color: rgb(220 38 38);
+}
+
+.page-editor .tok-inserted {
+	color: rgb(22 163 74);
+}
+
+/* ---------- tables ---------- */
+
+.page-editor .milkdown .milkdown-table-block,
+.page-prose table {
+	font-size: 0.9375em;
+	line-height: 1.55;
+}
+
+.page-prose table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.page-editor .milkdown .milkdown-table-block :is(th, td),
+.page-prose :is(th, td) {
+	padding: 6px 12px;
+	border: 1px solid var(--pe-rule);
+	text-align: left;
+	vertical-align: top;
+}
+
+.page-editor .milkdown .milkdown-table-block th,
+.page-prose th {
+	background: var(--pe-soft);
+	font-weight: 600;
+}
+
+.page-editor .milkdown .milkdown-table-block :is(th, td) p {
+	line-height: 1.55;
+}
+
+/* ---------- placeholder ---------- */
+
+.page-editor .milkdown .crepe-placeholder::before {
+	content: none;
+	color: var(--pe-subtle);
+}
+
+.page-editor .milkdown .ProseMirror-focused .crepe-placeholder::before,
+.page-editor:only-child .milkdown .crepe-placeholder::before {
+	content: attr(data-placeholder);
+}
+
+.page-editor:last-child .milkdown .ProseMirror {
+	min-height: 8rem;
+}
+
+/* Crepe keeps an empty trailing paragraph after a list/code/table; it already
+   spaces the editor from a managed section below it. */
+.page-editor:has(
+		.ProseMirror > p:last-child > br.ProseMirror-trailingBreak:only-child
+	)
+	+ section[data-section-id] {
+	margin-top: 0;
+}
+
+/* ---------- block handle ---------- */
+
+.page-editor .milkdown .milkdown-block-handle {
+	gap: 0;
+	transition: opacity 0.15s;
+}
+
+/* Crepe leaves the last handle shown after the pointer leaves an editor. */
+.page-editor:not(:hover) .milkdown .milkdown-block-handle {
+	visibility: hidden;
+}
+
+.page-editor .milkdown .milkdown-block-handle .operation-item {
+	width: 24px;
+	height: 24px;
+	padding: 3px;
+	border-radius: 6px;
+	color: var(--pe-subtle);
+}
+
+.page-editor .milkdown .milkdown-block-handle .operation-item:hover {
+	background: var(--bg-active);
+	color: var(--pe-muted);
+}
+
+.page-editor .milkdown .milkdown-block-handle .operation-item svg,
+.page-editor .milkdown .milkdown-toolbar .toolbar-item svg,
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
+	width: 18px;
+	height: 18px;
+}
+
+.page-editor .milkdown svg.tmgr-icon {
+	fill: none !important;
+	stroke: currentColor;
+	color: inherit !important;
+}
+
+@media (max-width: 767px) {
+	.page-editor .milkdown .milkdown-block-handle {
+		display: none;
+	}
+
+	.page-editor
+		.milkdown
+		.milkdown-link-preview
+		> .link-preview
+		> .link-display {
+		width: auto;
+		max-width: 180px;
+	}
+}
+
+/* ---------- slash menu ---------- */
+
+.page-editor .milkdown .milkdown-slash-menu {
+	z-index: 30;
+	min-width: 240px;
+	padding: 4px;
+	border-radius: 10px;
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+	font-size: 14px;
+}
+
+.page-editor .milkdown .milkdown-slash-menu .tab-group {
+	display: none;
+}
+
+.page-editor .milkdown .milkdown-slash-menu .menu-groups {
+	max-height: min(340px, var(--pe-menu-max, 340px));
+	padding: 0;
+	scroll-behavior: auto;
+}
+
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group h6 {
+	padding: 8px 8px 4px;
+	color: var(--pe-subtle);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	line-height: 16px;
+}
+
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
+	min-width: 0;
+	gap: 10px;
+	padding: 5px 8px;
+	border-radius: 6px;
+	color: var(--pe-text);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-slash-menu
+	.menu-groups
+	.menu-group
+	li
+	.milkdown-icon {
+	width: 26px;
+	height: 26px;
+	flex-shrink: 0;
+	border: 1px solid var(--line-strong-color);
+	border-radius: 6px;
+	color: var(--pe-muted);
+}
+
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
+	width: 16px;
+	height: 16px;
+}
+
+.page-editor
+	.milkdown
+	.milkdown-slash-menu
+	.menu-groups
+	.menu-group
+	li
+	> span:last-child {
+	font-size: 14px;
+	font-weight: 400;
+	line-height: 20px;
+}
+
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover {
+	background: var(--bg-active);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-slash-menu
+	.menu-groups
+	.menu-group
+	li.hover
+	.milkdown-icon {
+	color: var(--pe-text);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-slash-menu
+	.menu-groups
+	.menu-group
+	+ .menu-group::before {
+	margin: 4px 0;
+}
+
+/* ---------- selection toolbar & link tooltip ---------- */
+
+.page-editor .milkdown .milkdown-toolbar {
+	z-index: 30;
+	align-items: center;
+	padding: 0 3px;
+	border-radius: 8px;
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+}
+
+.page-editor .milkdown .milkdown-toolbar .toolbar-item {
+	width: 28px;
+	height: 28px;
+	margin: 3px 1px;
+	padding: 5px;
+	border-radius: 6px;
+	color: var(--pe-muted);
+}
+
+.page-editor .milkdown .milkdown-toolbar .toolbar-item:hover {
+	background: var(--bg-active);
+	color: var(--pe-text);
+}
+
+.page-editor .milkdown .milkdown-toolbar .toolbar-item.active {
+	color: var(--pe-accent);
+}
+
+.page-editor .milkdown .milkdown-toolbar .divider {
+	height: 18px;
+	margin: 0 3px;
+	background: var(--line-strong-color);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-toolbar
+	.toolbar-item[data-toolbar-item='make-task'] {
+	width: auto;
+	padding: 0 8px 0 6px;
+	color: var(--pe-text);
+}
+
+.page-editor
+	.milkdown
+	.milkdown-toolbar
+	.toolbar-item[data-toolbar-item='make-task'] {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+/* Visual label only: the button's accessible name comes from aria-label. */
+.page-editor
+	.milkdown
+	.milkdown-toolbar
+	.toolbar-item[data-toolbar-item='make-task']::after {
+	content: 'Make a task';
+}
+
+.page-editor .milkdown .milkdown-link-preview > .link-preview,
+.page-editor .milkdown .milkdown-link-edit > .link-edit {
+	height: 34px;
+	align-items: center;
+	border-radius: 8px;
+	background: var(--pe-popover);
+	box-shadow: var(--pe-popover-shadow);
+	font-size: 13px;
+}
+
+.page-editor .milkdown .milkdown-link-preview > .link-preview > .link-display {
+	color: var(--pe-link);
+	font-size: 13px;
+}
+
+.page-editor .milkdown .milkdown-link-edit > .link-edit > .input-area {
+	font-size: 13px;
+	color: var(--pe-text);
+}
+
+/* ---------- mount ---------- */
+
+/* On a page's first render PageView's document column stays hidden until every
+   editor segment has rendered (PageEditor caps the wait and then marks the column
+   data-shown), so managed sections don't jump down as editors mount above them.
+   Later remounts (refresh, conflict resolution) keep the column visible. */
+.page-doc:not([data-shown]):has(> .page-editor[data-ready='false']) {
+	visibility: hidden;
+}

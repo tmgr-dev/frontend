@@ -59,14 +59,14 @@
 			</div>
 
 			<div
-				class="rounded-card border border-line bg-surface p-4 shadow-tmgr-xs md:p-6"
+				class="rounded-card border border-line bg-surface p-4 shadow-tmgr-xs md:p-6 md:pl-14"
 			>
 				<PageHeader class="[&>div:first-child]:flex-1">
 					<template #title>
 						<input
 							v-model="form.title"
 							type="text"
-							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-xl font-semibold text-ink placeholder-gray-400 focus:outline-none focus:ring-0 md:text-2xl"
+							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder-gray-400 focus:outline-none focus:ring-0 dark:placeholder-gray-500 md:text-[2.25rem]"
 							placeholder="Untitled"
 							:title="form.title"
 							maxlength="255"
@@ -170,8 +170,9 @@
 
 				<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
 					<div
+						:key="page.id"
 						ref="contentRef"
-						class="min-w-0"
+						class="page-doc min-w-0 max-w-[46rem]"
 						data-testid="page-content"
 						data-tour="page.editor"
 						@mouseup="scheduleSelectionRead"
@@ -186,8 +187,9 @@
 								:model-value="segment.text"
 								:directory="directory"
 								:upload-file="uploadImage"
-								placeholder="Start writing... @ for a link, [[ for a page"
+								placeholder="Type / for blocks, @ to link, [[ for a page"
 								@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
+								@make-task="openTaskDialog($event, false)"
 								@upload-error="onUploadError"
 								@navigate="onNavigate"
 							/>
@@ -550,7 +552,9 @@
 					!text ||
 					!element ||
 					!root.contains(element) ||
-					element.closest('[data-read-only="true"]')
+					element.closest('[data-read-only="true"]') ||
+					(element.closest('.page-editor') &&
+						!element.closest('.cm-editor'))
 				) {
 					selection.value = null;
 					return;
@@ -559,7 +563,10 @@
 				selection.value = {
 					text,
 					x: Math.max(8, Math.min(rect.right, window.innerWidth - 160)),
-					y: Math.min(rect.bottom + 6, window.innerHeight - 40),
+					y:
+						rect.top >= 44
+							? rect.top - 36
+							: Math.min(rect.bottom + 8, window.innerHeight - 40),
 				};
 			};
 
