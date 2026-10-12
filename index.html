@@ -67,12 +67,20 @@
 		<meta name="theme-color" content="#555555" />
 		<title>TMGR</title>
 		<!-- analytics:start -->
-		<!-- Plausible Analytics (self-hosted) -->
-		<script
-			defer
-			data-domain="tmgr.dev"
-			src="https://analytics.dzik.email/js/script.js"
-		></script>
+		<!-- Plausible Analytics (self-hosted), never on auth pages: their URLs carry OAuth codes and tokens -->
+		<script>
+			if (
+				!/^\/(login|register|desktop-auth|password|email\/verify|auth\/link-confirm|workspaces\/invitations)(\/|$)/i.test(
+					location.pathname,
+				)
+			) {
+				const script = document.createElement('script');
+				script.defer = true;
+				script.setAttribute('data-domain', 'tmgr.dev');
+				script.src = 'https://analytics.dzik.email/js/script.js';
+				document.head.appendChild(script);
+			}
+		</script>
 		<!-- analytics:end -->
 	</head>
 
