@@ -14,6 +14,25 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4179',
     serviceWorkers: 'block',
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://127.0.0.1:4179',
+          localStorage: [
+            {
+              name: 'tmgr:consent:v1',
+              value: JSON.stringify({
+                analytics: 'denied',
+                usage: 'denied',
+                usageGeneration: 1,
+                updatedAt: null,
+              }),
+            },
+          ],
+        },
+      ],
+    },
   },
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4179 --strictPort',

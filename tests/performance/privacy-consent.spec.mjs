@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
+test.use({ storageState: { cookies: [], origins: [] } });
+
 const screensDir = process.env.SCREENS_DIR;
 if (screensDir) mkdirSync(screensDir, { recursive: true });
 const shot = async (page, name) => {
