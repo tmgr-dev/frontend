@@ -1,5 +1,8 @@
 <template>
-	<div class="rounded-card border border-line bg-surface-sunken">
+	<div
+		data-tour="task-form.relations"
+		class="rounded-card border border-line bg-surface-sunken"
+	>
 		<!-- Compact Header (hidden when triggered from properties grid) -->
 		<div
 			v-if="!hideHeader"

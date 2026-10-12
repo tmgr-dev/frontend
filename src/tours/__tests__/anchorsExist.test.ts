@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { TOURS } from '../catalog';
 
-const NOT_YET_IN_VUE = new Set(['task-form.estimate']);
+const NOT_YET_IN_VUE = new Set<string>();
 
 const walk = (dir: string): string[] =>
 	readdirSync(dir).flatMap((name) => {

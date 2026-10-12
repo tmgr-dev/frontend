@@ -7,6 +7,7 @@
 			<button
 				type="button"
 				title="Settings"
+				data-tour="task-form.estimate"
 				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 			>
 				<CogIcon class="size-4" />

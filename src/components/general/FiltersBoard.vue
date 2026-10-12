@@ -208,7 +208,7 @@
 		</button>
 
 		<!-- Actions dropdown -->
-		<Dropdown>
+		<Dropdown data-tour="statuses.editor">
 			<MenuItem>
 				<div class="flex items-center px-3 py-2 text-sm text-ink">
 					<input

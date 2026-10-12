@@ -575,6 +575,7 @@
 							</Button>
 
 							<Button
+								data-tour="categories.create"
 								@click="
 									() => {
 										if (workspaceCode) {
@@ -625,6 +626,7 @@
 								<div
 									v-for="category in categories"
 									:key="category.id"
+									data-tour="categories.row"
 									class="mt-2 h-full"
 									:class="[
 										category.deleted_at !== null &&

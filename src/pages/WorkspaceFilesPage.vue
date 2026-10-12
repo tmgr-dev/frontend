@@ -1,5 +1,9 @@
 <template>
-	<PageContainer width="wide" class="workspace-files">
+	<PageContainer
+		width="wide"
+		class="workspace-files"
+		data-tour="files.list"
+	>
 		<PageHeader>
 			<template #title>
 				Files

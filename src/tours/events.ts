@@ -85,6 +85,9 @@ export function createTourBus(): TourBus {
 
 export const tourBus: TourBus = createTourBus();
 
+export const selectionStarted = (prev: number, next: number): boolean =>
+  prev === 0 && next >= 1;
+
 export type ResolveStatusType = (statusId: number) => string | undefined;
 
 export interface MatchContext {

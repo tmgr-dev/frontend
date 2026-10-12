@@ -108,6 +108,7 @@
 							type="button"
 							class="flex h-[26px] w-[26px] items-center justify-center rounded-md hover:bg-surface-hover"
 							title="Pomodoro settings"
+							data-tour="pomodoro.settings"
 							@click="settingsOpen = true"
 						>
 							<Settings :size="13" class="text-ink-subtle" />

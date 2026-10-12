@@ -862,6 +862,7 @@
 							@click="selectableTasks = !selectableTasks"
 							type="button"
 							title="Tasks selection mode"
+							data-tour="list.select"
 							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 							:class="[
 								selectableTasks ? 'border-brand text-brand' : 'border-line',

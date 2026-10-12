@@ -64,6 +64,7 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
+	import { tourBus } from '@/tours/events';
 	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
@@ -698,6 +699,9 @@
 			inputType: 'text',
 		});
 		checkpointUpdateKey.value++;
+		tourBus.emit('checkpoint.added', {
+			taskId: Number(formValue.id ?? taskId.value) || null,
+		});
 	};
 
 	// Update seconds for the last checkpoint
@@ -2344,6 +2348,7 @@
 							v-if="form.id && isFeatureEnabled('pomodoro')"
 							type="button"
 							@click="togglePomodoro"
+							data-tour="task-form.pomodoro"
 							:disabled="pomodoroBusy"
 							:class="[
 								'relative flex h-7 w-7 items-center justify-center rounded-pill text-sm leading-none transition disabled:opacity-50',
@@ -2742,6 +2747,7 @@
 					<!-- CHECKPOINTS = time log (start -> end, description, duration) -->
 					<section
 						v-if="isFeatureEnabled('task.checkpoints') && (taskId || form.id)"
+						data-tour="task-form.checkpoints"
 						class="flex flex-col gap-2"
 					>
 						<div class="flex items-center justify-between gap-2">

@@ -33,6 +33,7 @@
 				v-if="selected.filter(Boolean).length > 0"
 				@click="showProcessModal"
 				type="button"
+				data-tour="list.process"
 				class="h-9 rounded-pill bg-status-done px-4 text-sm font-medium text-white shadow-tmgr-xs hover:opacity-90"
 			>
 				Process ({{ selected.filter(Boolean).length }})
@@ -510,6 +511,7 @@
 		type BacklogTimerPrompt,
 	} from '@/utils/backlogTimerPrompt';
 	import downloadFile from '@/utils/downloadFile';
+	import { selectionStarted, tourBus } from '@/tours/events';
 	import { formatOvertime } from '@/utils/formatOvertime';
 	import {
 		archiveTarget,
@@ -649,6 +651,11 @@
 			},
 		},
 		watch: {
+			selectedCount(next, prev) {
+				if (selectionStarted(prev, next)) {
+					tourBus.emit('tasks.selected', { count: next });
+				}
+			},
 			hasSelectable(v) {
 				if (!v) {
 					this.selected = [];
@@ -735,6 +742,9 @@
 			if (this.clockInterval) clearInterval(this.clockInterval);
 		},
 		computed: {
+			selectedCount() {
+				return this.selected.filter(Boolean).length;
+			},
 			simpleMode() {
 				return !this.isFeatureEnabled('workflow');
 			},
@@ -1264,6 +1274,7 @@
 				}
 			},
 			showProcessModal() {
+				tourBus.emit('tasks.actions_opened');
 				this.countTimeForModal();
 				this.isShowSelectedTasksCommonTime = true;
 			},
