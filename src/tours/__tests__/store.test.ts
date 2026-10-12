@@ -6,7 +6,6 @@ const fakeApi = (state: unknown = {}): jest.Mocked<OnboardingApi> => ({
 	putTour: jest.fn().mockResolvedValue({}),
 	putPreferences: jest.fn().mockResolvedValue({}),
 	resetTours: jest.fn().mockResolvedValue({ tours_generation: 3 }),
-	fetchFacts: jest.fn().mockResolvedValue({}),
 });
 
 const make = (api = fakeApi()) =>

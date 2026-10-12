@@ -32,6 +32,7 @@ export interface ToursApi {
   active: Readonly<Ref<ActiveTour | null>>;
   hubItems: Readonly<Ref<HubItem[]>>;
   onboarding: Readonly<Ref<OnboardingState | null>>;
+  hostReady: Readonly<Ref<boolean>>;
   start(id: TourId, trigger: string): Promise<void>;
   resume(id: TourId): Promise<void>;
   pause(): void;

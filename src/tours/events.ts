@@ -183,6 +183,18 @@ export function matchRequest(
   return [];
 }
 
+const KNOWN_CAP = 500;
+
+export function rememberStatus(known: Map<number, number>, id: number, status: number): void {
+  known.delete(id);
+  known.set(id, status);
+  while (known.size > KNOWN_CAP) {
+    const oldest = known.keys().next().value;
+    if (oldest === undefined) break;
+    known.delete(oldest);
+  }
+}
+
 const rememberStatuses = (
   verb: string,
   path: string,
@@ -194,7 +206,7 @@ const rememberStatuses = (
     if (isRecord(task) && task.id != null && task.status_id != null) {
       const id = Number(task.id);
       const status = Number(task.status_id);
-      if (Number.isFinite(id) && Number.isFinite(status)) known.set(id, status);
+      if (Number.isFinite(id) && Number.isFinite(status)) rememberStatus(known, id, status);
     }
   };
   let m: RegExpMatchArray | null;
@@ -205,12 +217,12 @@ const rememberStatuses = (
     else remember(payload);
   } else if ((verb === 'PUT' || verb === 'PATCH') && /^tasks\/\d+$/.test(path)) {
     remember(isRecord(data) ? data.data : null);
-    if (body.status_id != null) known.set(Number(path.split('/')[1]), Number(body.status_id));
+    if (body.status_id != null) rememberStatus(known, Number(path.split('/')[1]), Number(body.status_id));
   } else if (verb === 'PUT' && (m = path.match(/^tasks\/(\d+)\/(\d+)$/))) {
-    known.set(Number(m[1]), Number(m[2]));
+    rememberStatus(known, Number(m[1]), Number(m[2]));
   } else if (verb === 'PUT' && (m = path.match(/^statuses\/(\d+)\/tasks$/))) {
     const ids = Array.isArray(body.task_ids) ? body.task_ids : [];
-    ids.forEach((id: unknown) => known.set(Number(id), Number(m![1])));
+    ids.forEach((id: unknown) => rememberStatus(known, Number(id), Number(m![1])));
   }
 };
 

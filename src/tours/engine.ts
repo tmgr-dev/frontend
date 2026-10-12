@@ -62,6 +62,7 @@ const WATCH_ANCHOR_MS = 10 * 60_000;
 export function createTours(deps: ToursHostDeps): ToursEngine {
   const active = ref<ActiveTour | null>(null) as Ref<ActiveTour | null>;
   const resumePill = ref<ResumePill | null>(null) as Ref<ResumePill | null>;
+  const hostReady = ref(!!deps.overlay());
   let lastView: RunnerView | null = null;
   let shownKey = '';
   let cancelRenew: (() => void) | null = null;
@@ -204,6 +205,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     active,
     hubItems: hubItems as unknown as ToursApi['hubItems'],
     onboarding: store.state,
+    hostReady,
     resumePill,
     start: async (id, trigger) => void (await begin(id, trigger, false)),
     resume: async (id) => void (await begin(id, 'resume', true)),
@@ -254,6 +256,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       runner.recheck();
     },
     rerender() {
+      hostReady.value = !!deps.overlay();
       showView(lastView);
     },
     dispose() {

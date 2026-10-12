@@ -23,7 +23,6 @@ const make = (over: Partial<ToursHostDeps> = {}, shared = memory()) => {
 		putTour: jest.fn().mockResolvedValue({}),
 		putPreferences: jest.fn().mockResolvedValue({}),
 		resetTours: jest.fn().mockResolvedValue({ tours_generation: 2 }),
-		fetchFacts: jest.fn().mockResolvedValue({}),
 	};
 	const track = jest.fn();
 	setTourTelemetry({ track });
@@ -270,5 +269,14 @@ describe('engine facade', () => {
 		h.api.fetchState.mockResolvedValue({ tips_mode: 'auto', tours_generation: 0 });
 		await h.engine.init();
 		expect(h.engine.api.onboarding.value?.tours_generation).toBe(0);
+	});
+
+	it('hostReady follows the overlay registration', () => {
+		let registered = false;
+		const h = make({ overlay: () => (registered ? { adapter: { show() {}, refresh() {}, hide() {} } } : null) });
+		expect(h.engine.api.hostReady.value).toBe(false);
+		registered = true;
+		h.engine.rerender();
+		expect(h.engine.api.hostReady.value).toBe(true);
 	});
 });

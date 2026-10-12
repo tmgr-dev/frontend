@@ -5,7 +5,11 @@
 		data-tour="settings.tips"
 	>
 		<div class="flex flex-col gap-4">
-			<fieldset class="flex flex-col gap-2" :disabled="busy">
+			<fieldset
+				:key="renderKey"
+				class="flex flex-col gap-2"
+				:disabled="busy"
+			>
 				<legend class="sr-only">When to show tips</legend>
 				<label
 					v-for="option in options"
@@ -26,6 +30,14 @@
 					</span>
 				</label>
 			</fieldset>
+
+			<p
+				v-if="failed"
+				role="alert"
+				class="text-sm text-red-600 dark:text-red-400"
+			>
+				Could not save your choice. Please try again.
+			</p>
 
 			<div class="flex flex-wrap items-center gap-3">
 				<template v-if="!confirming">
@@ -91,16 +103,21 @@
 			const tours = useTours();
 			const busy = ref(false);
 			const confirming = ref(false);
+			const failed = ref(false);
+			const renderKey = ref(0);
 			const mode = computed<TipsMode>(
 				() => tours.onboarding.value?.tips_mode ?? 'auto',
 			);
 
 			const guarded = async (work: () => Promise<void>) => {
 				busy.value = true;
+				failed.value = false;
 				try {
 					await work();
 				} catch (error) {
 					console.error(error);
+					failed.value = true;
+					renderKey.value += 1;
 				} finally {
 					busy.value = false;
 				}
@@ -110,6 +127,8 @@
 				options: OPTIONS,
 				mode,
 				busy,
+				failed,
+				renderKey,
 				confirming,
 				choose: (value: TipsMode) => guarded(() => tours.setTipsMode(value)),
 				reset: () =>

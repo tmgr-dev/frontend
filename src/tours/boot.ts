@@ -53,10 +53,13 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
   const mobile = () => window.innerWidth < SMALL_SCREEN_PX;
   const localOnly = () => !!store.getters.isLocalOnly;
 
+  const lease = createBrowserLease();
+  window.addEventListener('pagehide', () => lease.release());
+
   const engine = configureTours({
     api: onboardingApi(),
     bus: tourBus,
-    lease: createBrowserLease(),
+    lease,
     storage: safeStorage('localStorage'),
     session: safeStorage('sessionStorage'),
     now: Date.now,

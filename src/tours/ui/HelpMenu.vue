@@ -20,7 +20,7 @@
 				Getting started
 			</DropdownMenuItem>
 			<DropdownMenuItem
-				v-if="pageTour"
+				v-if="canRestart"
 				class="cursor-pointer"
 				@click="restart"
 			>
@@ -81,9 +81,14 @@
 				tourForRoute(tours.hubItems.value, route.name as string | undefined),
 			);
 
+			const canRestart = computed(
+				() => !!pageTour.value && tours.hostReady.value,
+			);
+
 			return {
 				workspaceCode,
 				pageTour,
+				canRestart,
 				restart: () => {
 					if (pageTour.value) void tours.start(pageTour.value.tour.id, 'hub');
 				},

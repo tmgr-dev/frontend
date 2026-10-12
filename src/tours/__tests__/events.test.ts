@@ -1,4 +1,4 @@
-import { matchRequest, tourBus, createTourBus, installTourInterceptor } from '../events';
+import { matchRequest, tourBus, createTourBus, installTourInterceptor, rememberStatus } from '../events';
 
 const names = (events: { name: string }[]) => events.map((e) => e.name);
 
@@ -171,5 +171,24 @@ describe('installTourInterceptor', () => {
 		run({ status: 201, config: { method: 'post', url: 'tasks' }, data: { data: { id: 1 } } });
 		expect(fn).toHaveBeenCalledTimes(1);
 		stop();
+	});
+});
+
+describe('rememberStatus', () => {
+	it('caps the map and drops the oldest entries first', () => {
+		const known = new Map<number, number>();
+		for (let i = 1; i <= 600; i++) rememberStatus(known, i, 1);
+		expect(known.size).toBe(500);
+		expect(known.has(1)).toBe(false);
+		expect(known.has(600)).toBe(true);
+	});
+
+	it('refreshes recency when an id is updated', () => {
+		const known = new Map<number, number>();
+		for (let i = 1; i <= 500; i++) rememberStatus(known, i, 1);
+		rememberStatus(known, 1, 2);
+		rememberStatus(known, 501, 1);
+		expect(known.get(1)).toBe(2);
+		expect(known.has(2)).toBe(false);
 	});
 });

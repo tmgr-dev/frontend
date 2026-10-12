@@ -26,12 +26,4 @@ describe('onboarding api', () => {
 		c.get.mockResolvedValue({ data: [] });
 		expect(await createOnboardingApi(c).fetchState()).toEqual([]);
 	});
-
-	it('requests only the named facts', async () => {
-		const c = client();
-		c.get.mockResolvedValue({ data: { data: { has_task: true } } });
-		const facts = await createOnboardingApi(c).fetchFacts(4, ['has_task']);
-		expect(facts).toEqual({ has_task: true });
-		expect(c.get).toHaveBeenCalledWith('onboarding/facts', { params: { keys: 'has_task', task_id: '4' } });
-	});
 });

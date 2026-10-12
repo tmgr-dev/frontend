@@ -25,7 +25,6 @@ export interface OnboardingApi {
   putTour(id: string, body: TourWrite): Promise<unknown>;
   putPreferences(body: PreferencesWrite): Promise<unknown>;
   resetTours(): Promise<unknown>;
-  fetchFacts(taskId: number | null, keys: string[]): Promise<Record<string, unknown>>;
 }
 
 const unwrap = (response: { data: unknown } | undefined): unknown => {
@@ -48,14 +47,6 @@ export function createOnboardingApi(client: HttpClient): OnboardingApi {
     },
     async resetTours() {
       return unwrap(await client.delete('onboarding/tours'));
-    },
-    async fetchFacts(taskId, keys) {
-      const params: Record<string, string> = { keys: keys.join(',') };
-      if (taskId != null) params.task_id = String(taskId);
-      const data = unwrap(await client.get('onboarding/facts', { params }));
-      return data && typeof data === 'object' && !Array.isArray(data)
-        ? (data as Record<string, unknown>)
-        : {};
     },
   };
 }
