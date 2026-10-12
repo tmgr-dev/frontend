@@ -18,6 +18,10 @@ test('leaf pages have no expand button and titles stay aligned', async ({
   const moves = [];
   await page.setViewportSize({ width: 1400, height: 900 });
   await mockApp(page);
+  // Leaf 3 was expanded back when leaves still had a chevron.
+  await page.addInitScript(() =>
+    localStorage.setItem('pages-expanded-1', JSON.stringify([3])),
+  );
   await page.route('**/api/**/feature-toggles', (route) => {
     const toggle = (key) => ({ key, name: key, group: 'pages', type: 'boolean', enabled: true });
     return route.fulfill({
@@ -58,6 +62,8 @@ test('leaf pages have no expand button and titles stay aligned', async ({
   await expect(
     leaf.getByRole('button', { name: /Expand|Collapse/ }),
   ).toHaveCount(0);
+
+  await expect(page.locator('[data-parent-id="3"]')).toHaveCount(0);
 
   const x = async (loc) => (await loc.getByText(/page$/).first().boundingBox()).x;
   expect(await x(leaf)).toBe(await x(parent));

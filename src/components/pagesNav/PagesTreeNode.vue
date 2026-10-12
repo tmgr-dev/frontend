@@ -99,7 +99,7 @@
 			</DropdownMenu>
 		</div>
 		<Draggable
-			v-if="isExpanded || showDropZone"
+			v-if="(isExpanded && node.children.length) || showDropZone"
 			:model-value="node.children"
 			group="pages"
 			item-key="id"
