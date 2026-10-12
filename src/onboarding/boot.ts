@@ -1,8 +1,11 @@
-import { watch } from 'vue';
+import { effectScope, watch } from 'vue';
 import type { Router } from 'vue-router';
 import { toursEngine } from '@/tours/useTours';
 import type { OnboardingState } from '@/tours/types';
 import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
+import { shouldShowConsentPanel } from '@/privacy/panelVisibility';
+import { useConsent } from '@/privacy/useConsent';
+import { clearFreshMarker, readFreshMarker, runLocalFirstRun } from './localFirstRun';
 import { EXCLUDED_ROUTES, ONBOARDING_SINCE, shouldOfferIntent } from './redirect';
 
 interface BootStore {
@@ -119,5 +122,59 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
     },
     { immediate: true },
   );
-  return stop;
+
+  const waitConsentClosed = () =>
+    new Promise<void>((resolve) => {
+      const scope = effectScope();
+      scope.run(() => {
+        const { consent } = useConsent();
+        const open = () =>
+          !store.getters.canUseApp ||
+          shouldShowConsentPanel({
+            analytics: consent.value.analytics,
+            usage: consent.value.usage,
+            path: router.currentRoute.value.path,
+            desktop: true,
+            ready: store.getters.canUseApp,
+          });
+        watch(
+          open,
+          (isOpen) => {
+            if (isOpen) return;
+            scope.stop();
+            resolve();
+          },
+          { immediate: true },
+        );
+      });
+    });
+
+  let firstRunHandled = false;
+  const stopFirstRun = watch(
+    () => toursEngine().store.loaded.value && !!store.getters.isLocalOnly,
+    (ready) => {
+      if (!ready) {
+        firstRunHandled = false;
+        return;
+      }
+      if (firstRunHandled) return;
+      firstRunHandled = true;
+      const engine = toursEngine();
+      void runLocalFirstRun({
+        localOnly: () => !!store.getters.isLocalOnly,
+        mainWindow: () => !isDesktopApp() || desktopWindowLabel() === 'main',
+        marker: () => readFreshMarker(localStorage),
+        clearMarker: () => clearFreshMarker(localStorage),
+        state: () => engine.store.state.value,
+        setIntent: (intent, options) => engine.api.setIntent(intent, options),
+        waitConsentClosed,
+        startSequence: (ids, trigger) => engine.api.startSequence(ids, trigger),
+      }).catch((error) => console.error('local first run failed', error));
+    },
+    { immediate: true },
+  );
+  return () => {
+    stop();
+    stopFirstRun();
+  };
 }

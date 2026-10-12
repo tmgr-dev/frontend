@@ -468,13 +468,29 @@ const actions = {
 		}
 	},
 
-	async startWithoutAccount({ commit }, { name } = {}) {
-		const { createLocalProfile } = await import('@/utils/localProfile');
+	async startWithoutAccount({ commit, state }, { name } = {}) {
+		const { createLocalProfile, loadLocalProfile } = await import('@/utils/localProfile');
 		const runtime = await import('@/local/runtime');
+		const firstRun = await import('@/onboarding/localFirstRun');
+		const storage = localStorageSafe();
+		let hadProfile = !!state.localProfile;
+		if (!hadProfile) {
+			try {
+				hadProfile = !!(await loadLocalProfile());
+			} catch {
+				hadProfile = true;
+			}
+		}
+		const fresh =
+			!!storage &&
+			firstRun.isFreshLocalInstall(
+				firstRun.freshInstallFacts(storage, hadProfile, (await runtime.listLocalWorkspaces(true)).length),
+			);
 		const profile = await createLocalProfile(name);
 		let [first] = await runtime.listLocalWorkspaces(true);
 		if (!first) first = await runtime.createLocalWorkspace('My workspace');
 		runtime.setActiveLocalWorkspace(first);
+		if (fresh) firstRun.writeFreshMarker(storage, first.code, new Date());
 		commit('setLocalProfile', profile);
 		const { default: router } = await import('@/router');
 		await router.push('/app');

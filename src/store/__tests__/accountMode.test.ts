@@ -1,8 +1,9 @@
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
+import * as firstRun from '@/onboarding/localFirstRun';
 import * as workspaceContext from '@/utils/workspaceContext';
 
-function evaluate(path: string, dependencies: Record<string, unknown>) {
+function evaluate(path: string, dependencies: Record<string, unknown>, storage?: unknown) {
 	const source = transpileModule(readFileSync(require.resolve(path), 'utf8'), {
 		compilerOptions: { module: ModuleKind.CommonJS },
 	}).outputText;
@@ -11,7 +12,7 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
 		(name: string) => dependencies[name] ?? { default: {} },
 		loaded,
 		loaded.exports,
-		{ getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() },
+		storage ?? { getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() },
 	);
 	return loaded.exports;
 }
@@ -19,6 +20,12 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
 const PROFILE = { id: -1, uuid: 'u-1', name: 'Ada', created_at: '2026-10-11T10:00:00Z' };
 
 function fixture(desktop = true) {
+	const data = new Map<string, string>();
+	const storage = {
+		getItem: (key: string) => data.get(key) ?? null,
+		setItem: (key: string, value: string) => void data.set(key, value),
+		removeItem: (key: string) => void data.delete(key),
+	};
 	const mocks = {
 		loadLocalProfile: jest.fn(),
 		createLocalProfile: jest.fn(async () => PROFILE),
@@ -44,7 +51,8 @@ function fixture(desktop = true) {
 			setActiveLocalWorkspace: mocks.setActiveLocalWorkspace,
 		},
 		'@/router': { default: { push: mocks.push } },
-	}).default;
+		'@/onboarding/localFirstRun': firstRun,
+	}, storage).default;
 	const getters = (state: any) => {
 		const bound: any = {};
 		for (const [key, fn] of Object.entries<any>(config.getters)) {
@@ -52,7 +60,7 @@ function fixture(desktop = true) {
 		}
 		return bound;
 	};
-	return { config, mocks, getters };
+	return { config, mocks, getters, data };
 }
 
 describe('account mode', () => {
@@ -116,6 +124,40 @@ describe('startWithoutAccount', () => {
 
 		expect(fx.mocks.createLocalWorkspace).not.toHaveBeenCalled();
 		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(expect.objectContaining({ id: -9 }));
+	});
+});
+
+describe('startWithoutAccount fresh-install marker', () => {
+	const MARKER = 'tmgr:onboarding:local-fresh';
+	const start = async (fx: ReturnType<typeof fixture>) => {
+		const commit = jest.fn((name: string, value: any) => fx.config.mutations[name](fx.config.state, value));
+		await fx.config.actions.startWithoutAccount({ commit, state: fx.config.state }, { name: 'Ada' });
+	};
+
+	it('writes the marker on a truly fresh install', async () => {
+		const fx = fixture();
+		await start(fx);
+		expect(JSON.parse(fx.data.get(MARKER)!)).toMatchObject({ code: 'my-workspace' });
+	});
+
+	it.each([
+		['a profile in the app state', (fx: ReturnType<typeof fixture>) => (fx.config.state.localProfile = PROFILE)],
+		['a profile on disk', (fx: ReturnType<typeof fixture>) => fx.mocks.loadLocalProfile.mockResolvedValue(PROFILE)],
+		['an unreadable profile', (fx: ReturnType<typeof fixture>) => fx.mocks.loadLocalProfile.mockRejectedValue(new Error('x'))],
+		[
+			'an existing local workspace',
+			(fx: ReturnType<typeof fixture>) => fx.mocks.listLocalWorkspaces.mockResolvedValue([{ id: -9, code: 'old' }]),
+		],
+		[
+			'a starter_seeded_at in the onboarding state',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.data.set('tmgr:onboarding:v1', JSON.stringify({ starter_seeded_at: '2026-10-12T10:00:00Z' })),
+		],
+	])('never writes the marker for %s', async (_name, arrange) => {
+		const fx = fixture();
+		arrange(fx);
+		await start(fx);
+		expect(fx.data.has(MARKER)).toBe(false);
 	});
 });
 
