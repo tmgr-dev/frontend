@@ -5,8 +5,17 @@ export type { EventName, EventProps, TrackArgs } from './catalog';
 
 let instance: Telemetry | null = null;
 
+const waiting = new Set<(telemetry: Telemetry) => void>();
+
 export const setTelemetry = (next: Telemetry | null) => {
 	instance = next;
+	if (next) waiting.forEach((fn) => fn(next));
+};
+
+export const onTelemetry = (fn: (telemetry: Telemetry) => void): (() => void) => {
+	if (instance) fn(instance);
+	waiting.add(fn);
+	return () => waiting.delete(fn);
 };
 
 export const getTelemetry = (): Telemetry | null => instance;

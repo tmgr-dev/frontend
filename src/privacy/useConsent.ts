@@ -12,6 +12,7 @@ export const useConsent = () => {
 		consent: readonly(record),
 		setAnalytics: (analytics: 'granted' | 'denied' | null) =>
 			store.set({ analytics }),
+		setUsage: (usage: 'granted' | 'denied' | null) => store.set({ usage }),
 		reopenChoice: () => store.set({ analytics: null }),
 	};
 };

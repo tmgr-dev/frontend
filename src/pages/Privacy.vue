@@ -9,7 +9,7 @@
 					<ul>
 						<li>We store what you put into TMGR (your account, tasks, pages, files, time logs) so the service works. We don't sell it and we don't show ads.</li>
 						<li>Local workspaces in the desktop app stay on your device.</li>
-						<li>Google Analytics is off until you allow it. Usage data, when the app starts asking, is off until you allow it too. You can change both at any time.</li>
+						<li>Google Analytics is off until you allow it. Usage data is off until you allow it too. You can change both at any time.</li>
 						<li>Some features send data to other companies, for example OpenAI for AI features or Twilio for alarm calls. They are listed below.</li>
 					</ul>
 				</section>
@@ -60,8 +60,7 @@
 				<section id="usage-data">
 					<h2>Usage data (optional)</h2>
 					<p>
-						The app doesn't collect usage data yet. When it starts asking, it
-						will work like this. If you agree, the app sends usage events that
+						If you agree, the app sends usage events that
 						are not linked to your account. They show us which screens and
 						guided tours people open and which steps they finish, so we can
 						improve TMGR.

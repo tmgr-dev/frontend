@@ -199,6 +199,9 @@ const start = async () => {
 
 	app.mount('#app');
 	startPrivacy();
+	void import('@/telemetry/start').then(({ startTelemetry }) =>
+		startTelemetry({ router, accountMode: () => store.getters.accountMode }),
+	);
 };
 
 void start();

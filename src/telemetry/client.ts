@@ -22,7 +22,7 @@ export interface ConsentView {
 
 export interface ChannelLike {
 	postMessage(data: unknown): void;
-	onmessage: ((event: unknown) => void) | null;
+	onmessage: ((event: never) => void) | null;
 }
 
 export interface TelemetryDeps {

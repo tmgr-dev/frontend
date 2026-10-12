@@ -120,6 +120,7 @@
 		Plug,
 		Plus,
 		Settings2,
+		ShieldCheck,
 		Sliders,
 		Smartphone,
 		Sparkles,
@@ -1145,6 +1146,13 @@
 										>
 											<LifeBuoy />
 											Getting started
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											@click="$router.push('/settings?tab=privacy')"
+											class="cursor-pointer"
+										>
+											<ShieldCheck />
+											Privacy
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings?tab=about')"

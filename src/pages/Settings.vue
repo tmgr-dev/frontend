@@ -81,8 +81,6 @@
 									</a>
 								</div>
 							</SettingsSection>
-							<PrivacySettings />
-							<TipsSettings />
 							<PromotionsList
 								v-if="promotionsEnabled && !localOnly"
 								placement="about"
@@ -90,6 +88,9 @@
 								section-description="Other products from the people who build TMGR."
 							/>
 						</div>
+
+						<PrivacySettings v-if="isPrivacy" />
+						<TipsSettings v-if="isPrivacy" />
 
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
@@ -414,6 +415,7 @@
 			isDesktopSection: false,
 			isLocalData: false,
 			isAbout: false,
+			isPrivacy: false,
 			appVersion: '',
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
@@ -451,6 +453,7 @@
 				if (this.isTheme) return 'Theme';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
 				if (this.isLocalData) return 'Local data';
+				if (this.isPrivacy) return 'Privacy';
 				if (this.isAbout) return 'About';
 				return 'Settings';
 			},
@@ -590,6 +593,9 @@
 						case 'data':
 							this.showLocalDataSettings();
 							break;
+						case 'privacy':
+							this.showPrivacySettings();
+							break;
 						case 'about':
 							this.showAboutSettings();
 							break;
@@ -599,6 +605,7 @@
 
 			showNotificationSettings() {
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.isProfile = false;
 				this.isNotification = true;
@@ -614,6 +621,7 @@
 
 			showProfileSettings() {
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = true;
@@ -625,6 +633,7 @@
 
 			showDeviceSettings() {
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -636,6 +645,7 @@
 
 			showThemeSettings() {
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -647,6 +657,7 @@
 
 			showDesktopSettings() {
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -663,6 +674,7 @@
 				this.isTheme = false;
 				this.isDesktopSection = false;
 				this.isLocalData = true;
+				this.isPrivacy = false;
 				this.isAbout = false;
 				this.updateQueryParam('data');
 			},
@@ -677,6 +689,18 @@
 				}
 			},
 
+			showPrivacySettings() {
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isLocalData = false;
+				this.isAbout = false;
+				this.isPrivacy = true;
+				this.updateQueryParam('privacy');
+			},
+
 			showAboutSettings() {
 				this.loadAppVersion();
 				this.isNotification = false;
@@ -685,6 +709,7 @@
 				this.isTheme = false;
 				this.isDesktopSection = false;
 				this.isLocalData = false;
+				this.isPrivacy = false;
 				this.isAbout = true;
 				this.updateQueryParam('about');
 			},

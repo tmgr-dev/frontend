@@ -84,7 +84,7 @@
 		@update:open="closePagesImport"
 	/>
 	<Toaster />
-	<ConsentPanel v-if="!isDesktop" />
+	<ConsentPanel v-if="!isDesktop || isMainWindow" />
 	<TourHost v-if="!isDesktop || isMainWindow" />
 	</template>
 </template>
