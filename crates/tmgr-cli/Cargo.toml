@@ -20,10 +20,10 @@ tmgr-core.workspace = true
 ctrlc.workspace = true
 rpassword.workspace = true
 chrono.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-tempfile.workspace = true
 wiremock.workspace = true
 tokio.workspace = true
 jsonschema.workspace = true

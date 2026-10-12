@@ -33,9 +33,16 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 - `tmgr init <shell> --install|--uninstall` edits the rc file between `# >>> tmgr init >>>` markers after printing a diff and asking; it writes `<file>.tmgr-backup-<timestamp>` first and follows symlinks. Without `--install` nothing is written.
 - Exit code 10 (needs_confirmation): a confirmation was required but there is no terminal.
 
+## Today, log, notes and pages
+
+- `tmgr today` combines `GET /api/workspaces/{id}/time-summary`, the workspace agent work list (`GET /api/workspaces/{id}/agent-work`, runs clipped to the local day) and `GET /api/daily-routines/expand`. `tmgr routine done` never calls the toggling `POST /api/daily-routines/tasks/{id}/complete` for a routine that is already done.
+- `tmgr log --follow` polls every 5 s; `TMGR_FOLLOW_INTERVAL_MS` and `TMGR_FOLLOW_OFFLINE_MS` shorten the interval and the offline give-up time (used by the tests).
+- `tmgr note` runs `$VISUAL`, then `$EDITOR`, then `vi`. The value is split with shell quoting rules (single and double quotes, backslash) and never expanded or passed to a shell; the temporary file path is its own argument.
+- Pages are read and written with `X-Workspace-Id` set to the workspace stored in the directory index. Page file names come from a strict slug grammar, never from server slugs; everything is opened relative to `<dir>` with `O_NOFOLLOW` (`<dir>` itself may be a symlink you typed). `.tmgr-pages.json` records the version, update time and body hash of each pulled file, so push can tell which files changed and refuses files it did not pull. The `version:` line in the front matter is the base version of a push. To resolve a conflict merge `<slug>.remote.md` into `<slug>.md`, set `version:` to the value in the remote copy, delete the remote copy and push again.
+
 ## JSON schemas
 
-`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop` and `done`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
+`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `today`, `run_list`, `run` (one NDJSON line of `log --follow --json`), `routine_list`, `routine_done`, `page_ref` (`note`), `page_sync` (`page pull|push`) and `page_status`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
 
 ## Exit codes
 

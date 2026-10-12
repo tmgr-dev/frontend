@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr today [--date YYYY-MM-DD|--yesterday] [--mine]`: tracked time per task (people), agent time per task (workspace agent work runs clipped to the day in your local time zone), status and project, a time split bar and the routines due that day. `--mine` filters agent runs by your user; tracked time of people is workspace-wide on the server and stays unfiltered (warning `human_time_workspace_wide`).
+- `tmgr routine list [--date D]` and `tmgr routine done <id> [--date D]`. `done` looks the routine up first and uses the idempotent instance route, so running it twice never un-completes a routine; a routine without an instance can only be completed for today.
+- `tmgr log [--task REF] [--since 2h] [--agent NAME] [--limit N] [--cursor C]`: agent work runs of the workspace, newest first. `--follow` polls every 5 seconds, prints each new or changed run once (NDJSON `{"schema":"tmgr.v1","event":"run.updated","data":{...}}` with `--json`), backs off while offline (exit 7 after about a minute) and exits 130 on Ctrl-C. A workspace with agent work turned off gives an empty result and the warning `agent_work_disabled`.
+- `tmgr note [TITLE] [--title T] [--task REF] [--parent PAGE_ID]`: opens `$VISUAL` / `$EDITOR` (fallback `vi`, split into arguments without a shell) on a 0600 file in a private 0700 directory, saves the note as a page (an empty or untouched note is cancelled, exit 130) and links it to the task with a `tmgr://task/<id>` line. When saving fails the note is kept and its path is printed.
+- `tmgr page pull <dir> [--tree PAGE_ID|--all] [--force]`, `tmgr page push [<file>...]`, `tmgr page status [<dir>]`: pages as `<slug>.md` files (slug `[a-z0-9-]{1,60}`, `-<id>` added on a name collision) with a `tmgr:` front matter block (`page_id`, `version`, `updated_at`, `workspace`) and a `.tmgr-pages.json` index. Files are written atomically without following symlinks and only inside `<dir>`; pull never overwrites a locally modified file without `--force`; push sends only changed files and refuses files that were not pulled. A version conflict exits 6 and writes `<slug>.remote.md` next to the file.
+- JSON schemas `today`, `run_list`, `run` (the `log --follow` event), `routine_list`, `routine_done`, `page_ref`, `page_sync`, `page_status`.
+
 ## 0.3.0
 
 - `tmgr start <ref>`: creates or switches to a branch from `branch_template` (default `{key_lower}-{slug}`, e.g. `tm-509-repo-prep-cargo-workspace`), moves a backlog task to the first active status, starts the timer and writes `~/.local/state/tmgr/active.json`. Flags: `--branch`, `--no-branch`, `--from`, `--no-timer`, `--status`, `--stash`. A dirty tree is refused with exit 6. A running timer on another task is stopped after confirmation (non-interactive: exit 10 unless `--yes`).
