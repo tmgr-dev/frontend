@@ -194,10 +194,15 @@ impl Client {
     }
 
     fn recover(&self, failed_access: &str) -> Result<bool> {
+        let guard = match &self.store {
+            Some(store) => Some(store.lock()?),
+            None => None,
+        };
         if let Some(store) = &self.store {
             if let Some((stored, _)) = store.load()? {
-                if stored.access.expose() != failed_access {
-                    self.set_tokens(stored);
+                let rotated = stored.access.expose() != failed_access;
+                self.set_tokens(stored);
+                if rotated {
                     return Ok(true);
                 }
             }
@@ -242,12 +247,19 @@ impl Client {
             refresh: Some(new_refresh),
             expires_at,
         };
-        if let Some(store) = &self.store {
-            if store.save(&tokens).is_err() {
-                self.warnings.borrow_mut().push(Warning::new(
+        if let (Some(store), Some(guard)) = (&self.store, &guard) {
+            match store.save_locked(guard, &tokens) {
+                Ok(saved) => {
+                    if let Some(w) = saved.warning {
+                        self.warnings
+                            .borrow_mut()
+                            .push(Warning::new("credential_store_fallback", w));
+                    }
+                }
+                Err(_) => self.warnings.borrow_mut().push(Warning::new(
                     "credentials_not_saved",
                     "could not save the refreshed token; the next command may need `tmgr login`",
-                ));
+                )),
             }
         }
         self.set_tokens(tokens);
@@ -337,14 +349,13 @@ impl Client {
     }
 
     pub fn logout(&self) -> Result<()> {
-        let (status, body) = self.send_raw(
-            Method::POST,
-            "/api/auth/devices/current/logout",
-            &[],
-            None,
-            Auth::Bearer,
-        )?;
-        if (200..300).contains(&status) || status == 401 {
+        let path = "/api/auth/devices/current/logout";
+        let sent = self.current_access()?;
+        let (mut status, mut body) = self.send_raw(Method::POST, path, &[], None, Auth::Bearer)?;
+        if status == 401 && self.recover(&sent)? {
+            (status, body) = self.send_raw(Method::POST, path, &[], None, Auth::Bearer)?;
+        }
+        if (200..300).contains(&status) {
             Ok(())
         } else {
             Err(map_error(status, &body, "any"))

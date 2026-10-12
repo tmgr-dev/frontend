@@ -13,6 +13,13 @@ use tmgr_core::redact::Secret;
 use tmgr_core::text::sanitize_line;
 
 const MAX_TOKEN_LEN: usize = 4096;
+const MAX_INTERVAL: u64 = 60;
+
+pub fn clamp_timing(interval: u64, expires_in: u64) -> (u64, u64, bool) {
+    let i = interval.clamp(1, MAX_INTERVAL);
+    let e = expires_in.clamp(60, 1800);
+    (i, e, i != interval || e != expires_in)
+}
 
 pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
     let server = ctx.server()?;
@@ -23,6 +30,7 @@ pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
     };
     let info = client.current_device()?;
     persist_login_settings(ctx, saved_backend, &server)?;
+    ctx.store()?.finalize(saved_backend);
     if let Some(w) = warning {
         ctx.warn("credential_store_fallback", w);
     }
@@ -31,7 +39,7 @@ pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
         "{} Logged in as {} ({})\n{}",
         ctx.style.good("\u{2713}"),
         name,
-        info.scopes.join(", "),
+        clean_scopes(&info).join(", "),
         ctx.style
             .muted(&format!("token stored in: {}", saved_backend.label()))
     );
@@ -118,11 +126,18 @@ fn login_device(
             .unwrap_or_else(|| dc.verification_uri.clone()),
     )?;
     let code = user_code(&dc.user_code)?;
+    let (interval, expires_in, clamped) = clamp_timing(dc.interval, dc.expires_in);
+    if clamped {
+        ctx.warn(
+            "device_timing_clamped",
+            "the server sent unusual polling timing; using safe bounds",
+        );
+    }
     eprintln!("Open this URL to sign in:  {url}");
     eprintln!(
         "Confirm the code:          {} (expires in {} min)",
         ctx.err_style.bold(&code),
-        (dc.expires_in / 60).max(1)
+        expires_in / 60
     );
     if !args.no_browser {
         open_browser(&url);
@@ -132,16 +147,22 @@ fn login_device(
         ctx.err_style
             .muted("Waiting for approval... (Ctrl-C to cancel)")
     );
-    let deadline = Instant::now() + Duration::from_secs(dc.expires_in);
-    let mut interval = dc.interval;
+    let deadline = Instant::now()
+        .checked_add(Duration::from_secs(expires_in))
+        .ok_or_else(expired)?;
+    let mut interval = interval;
     let (tokens, _granted) = loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(expired());
+        }
+        std::thread::sleep(Duration::from_secs(interval).min(remaining));
         if Instant::now() >= deadline {
             return Err(expired());
         }
-        std::thread::sleep(Duration::from_secs(interval));
         match client.device_token(&dc.device_code)? {
             DevicePoll::Pending => {}
-            DevicePoll::SlowDown => interval += 5,
+            DevicePoll::SlowDown => interval = interval.saturating_add(5).min(MAX_INTERVAL),
             DevicePoll::Expired => return Err(expired()),
             DevicePoll::Denied => {
                 return Err(Error::new(Kind::Forbidden, "the login request was denied"))
@@ -237,10 +258,14 @@ pub fn logout(ctx: &Ctx) -> Result<Output> {
             &ctx.server()?,
             &Ctx::user_agent(),
             Some(tokens.clone()),
-            None,
+            Some(ctx.store()?),
             ctx.verbose,
         )?;
-        match client.logout() {
+        let result = client.logout();
+        for w in client.take_warnings() {
+            ctx.warn(&w.code, w.message);
+        }
+        match result {
             Ok(()) => remote_revoked = true,
             Err(e) => ctx.warn(
                 "remote_logout_failed",
@@ -277,7 +302,7 @@ pub fn whoami(ctx: &Ctx) -> Result<Output> {
     let rows = vec![
         vec!["user".to_string(), who],
         vec!["server".to_string(), server.clone()],
-        vec!["scopes".to_string(), info.scopes.join(", ")],
+        vec!["scopes".to_string(), clean_scopes(&info).join(", ")],
         vec![
             "token expires".to_string(),
             info.expires_at
@@ -294,6 +319,10 @@ pub fn whoami(ctx: &Ctx) -> Result<Output> {
     ))
 }
 
+fn clean_scopes(info: &DeviceInfo) -> Vec<String> {
+    info.scopes.iter().map(|s| sanitize_line(s)).collect()
+}
+
 fn whoami_data(
     server: &str,
     info: &DeviceInfo,
@@ -303,8 +332,8 @@ fn whoami_data(
     json!({
         "user": {"id": info.user.id, "name": sanitize_line(&info.user.name), "email": info.user.email},
         "server": server,
-        "scopes": info.scopes,
-        "expires_at": info.expires_at.clone().or(fallback_expiry),
+        "scopes": clean_scopes(info),
+        "expires_at": info.expires_at.clone().or(fallback_expiry).map(|e| sanitize_line(&e)),
         "credential_store": backend.as_str(),
         "device_id": info.device_id,
     })
@@ -333,6 +362,13 @@ mod tests {
         assert!(verification_url("http://evil.example/device").is_err());
         assert!(verification_url("javascript:alert(1)").is_err());
         assert!(verification_url("-flag").is_err());
+    }
+
+    #[test]
+    fn device_timing_is_clamped() {
+        assert_eq!(clamp_timing(5, 600), (5, 600, false));
+        assert_eq!(clamp_timing(0, 10), (1, 60, true));
+        assert_eq!(clamp_timing(u64::MAX, u64::MAX), (60, 1800, true));
     }
 
     #[test]

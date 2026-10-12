@@ -2,6 +2,7 @@ use crate::config::{ensure_private_dir, write_atomic};
 use crate::error::{Error, Result};
 use crate::redact::Secret;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -73,25 +74,87 @@ impl Stored {
     }
 }
 
+#[derive(Debug)]
 pub struct Saved {
     pub backend: Backend,
     pub warning: Option<String>,
 }
+
+pub trait Keychain {
+    fn get(&self, account: &str) -> keyring::Result<String>;
+    fn set(&self, account: &str, blob: &str) -> keyring::Result<()>;
+    fn delete(&self, account: &str) -> keyring::Result<()>;
+}
+
+pub struct OsKeychain;
+
+impl Keychain for OsKeychain {
+    fn get(&self, account: &str) -> keyring::Result<String> {
+        keyring::Entry::new(SERVICE, account)?.get_password()
+    }
+
+    fn set(&self, account: &str, blob: &str) -> keyring::Result<()> {
+        keyring::Entry::new(SERVICE, account)?.set_password(blob)
+    }
+
+    fn delete(&self, account: &str) -> keyring::Result<()> {
+        keyring::Entry::new(SERVICE, account)?.delete_credential()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Failure {
+    NoEntry,
+    StoreAbsent,
+    Refused,
+}
+
+pub fn classify(err: &keyring::Error, linux: bool) -> Failure {
+    match err {
+        keyring::Error::NoEntry => Failure::NoEntry,
+        keyring::Error::NoDefaultStore | keyring::Error::NotSupportedByStore(_) => {
+            Failure::StoreAbsent
+        }
+        keyring::Error::PlatformFailure(_) if linux => Failure::StoreAbsent,
+        _ => Failure::Refused,
+    }
+}
+
+fn refused() -> Error {
+    Error::internal("the OS credential store refused access (locked or denied)").hint(format!(
+        "unlock the keychain and retry, or opt in to a 0600 file with {STORE_ENV}=file"
+    ))
+}
+
+pub struct Guard(#[allow(dead_code)] fs::File);
 
 pub struct CredentialStore {
     dir: PathBuf,
     account: String,
     forced_file: bool,
     preferred: Option<Backend>,
+    last_loaded: Cell<Option<Backend>>,
+    keychain: Box<dyn Keychain>,
 }
 
 impl CredentialStore {
     pub fn new(dir: &Path, account: &str, preferred: Option<Backend>) -> Self {
+        Self::with_keychain(dir, account, preferred, Box::new(OsKeychain))
+    }
+
+    pub fn with_keychain(
+        dir: &Path,
+        account: &str,
+        preferred: Option<Backend>,
+        keychain: Box<dyn Keychain>,
+    ) -> Self {
         Self {
             dir: dir.to_path_buf(),
             account: account.to_string(),
             forced_file: std::env::var(STORE_ENV).as_deref() == Ok("file"),
             preferred,
+            last_loaded: Cell::new(None),
+            keychain,
         }
     }
 
@@ -99,17 +162,49 @@ impl CredentialStore {
         self.dir.join("credentials.json")
     }
 
+    fn effective(&self) -> Option<Backend> {
+        if self.forced_file {
+            Some(Backend::File)
+        } else {
+            self.preferred.or(self.last_loaded.get())
+        }
+    }
+
+    pub fn lock(&self) -> Result<Guard> {
+        use std::os::unix::fs::OpenOptionsExt;
+        ensure_private_dir(&self.dir)?;
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(self.dir.join("credentials.lock"))?;
+        f.lock()?;
+        Ok(Guard(f))
+    }
+
     pub fn load(&self) -> Result<Option<(Tokens, Backend)>> {
-        if !self.forced_file && self.preferred != Some(Backend::File) {
-            if let Some(t) = self.keychain_load() {
+        if self.effective() != Some(Backend::File) {
+            if let Some(t) = self.keychain_load()? {
+                self.last_loaded.set(Some(Backend::Keychain));
                 return Ok(Some((t, Backend::Keychain)));
             }
         }
-        Ok(self.file_load()?.map(|t| (t, Backend::File)))
+        let loaded = self.file_load()?.map(|t| (t, Backend::File));
+        if loaded.is_some() {
+            self.last_loaded.set(Some(Backend::File));
+        }
+        Ok(loaded)
     }
 
     pub fn save(&self, tokens: &Tokens) -> Result<Saved> {
-        if self.forced_file {
+        let guard = self.lock()?;
+        self.save_locked(&guard, tokens)
+    }
+
+    pub fn save_locked(&self, _guard: &Guard, tokens: &Tokens) -> Result<Saved> {
+        let effective = self.effective();
+        if effective == Some(Backend::File) {
             self.file_save(tokens)?;
             return Ok(Saved {
                 backend: Backend::File,
@@ -117,17 +212,11 @@ impl CredentialStore {
             });
         }
         match self.keychain_save(tokens) {
-            Ok(()) => {
-                let _ = self.file_remove();
-                Ok(Saved {
-                    backend: Backend::Keychain,
-                    warning: None,
-                })
-            }
-            Err(_) => {
-                if let Ok(entry) = keyring::Entry::new(SERVICE, &self.account) {
-                    let _ = entry.delete_credential();
-                }
+            Ok(()) => Ok(Saved {
+                backend: Backend::Keychain,
+                warning: None,
+            }),
+            Err(Failure::StoreAbsent) if effective.is_none() => {
                 self.file_save(tokens)?;
                 Ok(Saved {
                     backend: Backend::File,
@@ -137,30 +226,62 @@ impl CredentialStore {
                     )),
                 })
             }
+            Err(_) => Err(refused()),
+        }
+    }
+
+    pub fn finalize(&self, backend: Backend) {
+        if let Ok(_guard) = self.lock() {
+            match backend {
+                Backend::Keychain => {
+                    let _ = self.file_remove();
+                }
+                Backend::File => {
+                    let _ = self.keychain.delete(&self.account);
+                }
+            }
         }
     }
 
     pub fn delete(&self) -> Result<()> {
-        if !self.forced_file {
-            if let Ok(entry) = keyring::Entry::new(SERVICE, &self.account) {
-                let _ = entry.delete_credential();
+        let _guard = self.lock()?;
+        let mut first: Option<Error> = None;
+        if self.effective() != Some(Backend::File) {
+            match self.keychain.delete(&self.account) {
+                Ok(()) => {}
+                Err(e) => {
+                    if classify(&e, cfg!(target_os = "linux")) == Failure::Refused {
+                        first = Some(refused());
+                    }
+                }
             }
         }
-        self.file_remove()
+        if let Err(e) = self.file_remove() {
+            first.get_or_insert(e);
+        }
+        first.map_or(Ok(()), Err)
     }
 
-    fn keychain_load(&self) -> Option<Tokens> {
-        let entry = keyring::Entry::new(SERVICE, &self.account).ok()?;
-        let blob = entry.get_password().ok()?;
-        serde_json::from_str::<Stored>(&blob)
-            .ok()
-            .map(Stored::into_tokens)
+    fn keychain_load(&self) -> Result<Option<Tokens>> {
+        match self.keychain.get(&self.account) {
+            Ok(blob) => serde_json::from_str::<Stored>(&blob)
+                .map(|s| Some(s.into_tokens()))
+                .map_err(|_| {
+                    Error::internal("the stored credential is corrupt").hint("tmgr login")
+                }),
+            Err(e) => match classify(&e, cfg!(target_os = "linux")) {
+                Failure::NoEntry | Failure::StoreAbsent => Ok(None),
+                Failure::Refused => Err(refused()),
+            },
+        }
     }
 
-    fn keychain_save(&self, tokens: &Tokens) -> std::result::Result<(), ()> {
-        let entry = keyring::Entry::new(SERVICE, &self.account).map_err(|_| ())?;
-        let blob = serde_json::to_string(&Stored::from_tokens(tokens)).map_err(|_| ())?;
-        entry.set_password(&blob).map_err(|_| ())
+    fn keychain_save(&self, tokens: &Tokens) -> std::result::Result<(), Failure> {
+        let blob =
+            serde_json::to_string(&Stored::from_tokens(tokens)).map_err(|_| Failure::Refused)?;
+        self.keychain
+            .set(&self.account, &blob)
+            .map_err(|e| classify(&e, cfg!(target_os = "linux")))
     }
 
     fn read_file_map(&self) -> Result<BTreeMap<String, Stored>> {
@@ -228,12 +349,172 @@ mod tests {
     use super::*;
 
     fn forced(dir: &Path, account: &str) -> CredentialStore {
-        CredentialStore {
-            dir: dir.join("tmgr"),
-            account: account.to_string(),
-            forced_file: true,
-            preferred: None,
+        let mut s = with_fake(dir, account, None, Mode::Locked);
+        s.forced_file = true;
+        s
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mode {
+        Works,
+        Absent,
+        Locked,
+    }
+
+    struct Fake {
+        mode: Mode,
+        blob: std::rc::Rc<std::cell::RefCell<Option<String>>>,
+    }
+
+    impl Fake {
+        fn err(&self) -> Option<keyring::Error> {
+            match self.mode {
+                Mode::Works => None,
+                Mode::Absent => Some(keyring::Error::NoDefaultStore),
+                Mode::Locked => Some(keyring::Error::NoStorageAccess(
+                    std::io::Error::other("locked").into(),
+                )),
+            }
         }
+    }
+
+    impl Keychain for Fake {
+        fn get(&self, _: &str) -> keyring::Result<String> {
+            if let Some(e) = self.err() {
+                return Err(e);
+            }
+            self.blob.borrow().clone().ok_or(keyring::Error::NoEntry)
+        }
+        fn set(&self, _: &str, b: &str) -> keyring::Result<()> {
+            if let Some(e) = self.err() {
+                return Err(e);
+            }
+            *self.blob.borrow_mut() = Some(b.to_string());
+            Ok(())
+        }
+        fn delete(&self, _: &str) -> keyring::Result<()> {
+            if let Some(e) = self.err() {
+                return Err(e);
+            }
+            self.blob
+                .borrow_mut()
+                .take()
+                .map(|_| ())
+                .ok_or(keyring::Error::NoEntry)
+        }
+    }
+
+    fn with_fake(
+        dir: &Path,
+        account: &str,
+        preferred: Option<Backend>,
+        mode: Mode,
+    ) -> CredentialStore {
+        let fake = Fake {
+            mode,
+            blob: Default::default(),
+        };
+        CredentialStore::with_keychain(&dir.join("tmgr"), account, preferred, Box::new(fake))
+    }
+
+    #[test]
+    fn typed_errors_are_classified_per_platform() {
+        let denied = || keyring::Error::NoStorageAccess(std::io::Error::other("x").into());
+        let platform = || keyring::Error::PlatformFailure(std::io::Error::other("x").into());
+        assert_eq!(classify(&keyring::Error::NoEntry, true), Failure::NoEntry);
+        assert_eq!(
+            classify(&keyring::Error::NoDefaultStore, false),
+            Failure::StoreAbsent
+        );
+        assert_eq!(classify(&denied(), true), Failure::Refused);
+        assert_eq!(classify(&denied(), false), Failure::Refused);
+        assert_eq!(classify(&platform(), true), Failure::StoreAbsent);
+        assert_eq!(classify(&platform(), false), Failure::Refused);
+    }
+
+    #[test]
+    fn missing_store_falls_back_to_the_file_with_a_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = with_fake(tmp.path(), "h:default", None, Mode::Absent);
+        let saved = s.save(&tokens("a", Some("r"))).unwrap();
+        assert_eq!(saved.backend, Backend::File);
+        assert!(saved.warning.unwrap().contains("no OS credential store"));
+        assert_eq!(s.load().unwrap().unwrap().1, Backend::File);
+    }
+
+    #[test]
+    fn a_locked_store_is_an_error_and_never_writes_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = with_fake(tmp.path(), "h:default", None, Mode::Locked);
+        let err = s.save(&tokens("a", None)).unwrap_err();
+        assert!(err.hint.unwrap().contains("TMGR_CREDENTIAL_STORE=file"));
+        assert!(!s.file_path().exists());
+        assert!(s.load().is_err());
+    }
+
+    #[test]
+    fn an_established_keychain_never_silently_downgrades_to_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = with_fake(
+            tmp.path(),
+            "h:default",
+            Some(Backend::Keychain),
+            Mode::Absent,
+        );
+        assert!(s.save(&tokens("a", None)).is_err());
+        assert!(!s.file_path().exists());
+    }
+
+    #[test]
+    fn a_file_preference_is_honoured_on_save_and_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = with_fake(tmp.path(), "h:default", Some(Backend::File), Mode::Locked);
+        let saved = s.save(&tokens("a", None)).unwrap();
+        assert_eq!((saved.backend, saved.warning), (Backend::File, None));
+        assert_eq!(s.load().unwrap().unwrap().0.access.expose(), "a");
+    }
+
+    #[test]
+    fn missing_entries_are_not_confused_with_refused_access() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = with_fake(tmp.path(), "h:default", None, Mode::Works);
+        assert!(s.load().unwrap().is_none());
+        s.delete().unwrap();
+        let locked = with_fake(tmp.path(), "h:default", None, Mode::Locked);
+        assert!(locked.delete().is_err());
+    }
+
+    #[test]
+    fn finalize_removes_the_other_copy_only_when_asked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut f = with_fake(tmp.path(), "h:default", None, Mode::Works);
+        f.forced_file = true;
+        f.save(&tokens("old", None)).unwrap();
+        f.forced_file = false;
+        let saved = f.save(&tokens("new", None)).unwrap();
+        assert_eq!(saved.backend, Backend::Keychain);
+        assert!(f.file_path().exists());
+        f.finalize(Backend::Keychain);
+        assert!(!f.file_path().exists());
+        assert_eq!(f.load().unwrap().unwrap().0.access.expose(), "new");
+    }
+
+    #[test]
+    fn the_credentials_lock_serialises_writers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let first = forced(tmp.path(), "h:default").lock().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let h = std::thread::spawn(move || {
+            let _g = forced(&dir, "h:default").lock().unwrap();
+            tx.send(()).unwrap();
+        });
+        assert!(rx
+            .recv_timeout(std::time::Duration::from_millis(300))
+            .is_err());
+        drop(first);
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(5)).is_ok());
+        h.join().unwrap();
     }
 
     fn tokens(a: &str, r: Option<&str>) -> Tokens {

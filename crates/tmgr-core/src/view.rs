@@ -15,7 +15,7 @@ impl StatusView {
         Self {
             id: Some(s.id),
             name: sanitize_line(&s.name),
-            kind: s.kind.clone(),
+            kind: sanitize_line(&s.kind),
         }
     }
 
@@ -26,7 +26,7 @@ impl StatusView {
             .unwrap_or_else(|| StatusView {
                 id: task.status_id,
                 name: sanitize_line(task.status.as_deref().unwrap_or("unknown")),
-                kind: task.status.clone().unwrap_or_else(|| "unknown".into()),
+                kind: sanitize_line(task.status.as_deref().unwrap_or("unknown")),
             })
     }
 }

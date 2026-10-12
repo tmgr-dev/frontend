@@ -207,3 +207,42 @@ async fn http_servers_other_than_loopback_are_refused() {
     assert_eq!(out.status.code(), Some(2));
     assert!(text(&out.stderr).contains("plain http"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_processes_refresh_once_and_share_the_rotated_tokens() {
+    let env = Env::new().await;
+    env.login_seed();
+    Mock::given(method("GET"))
+        .and(path("/api/workspaces"))
+        .and(header("authorization", format!("Bearer {ACCESS}").as_str()))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&env.server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/refresh"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_millis(600))
+                .set_body_json(json!({"data": {
+                    "token": "new-access-CCCC", "refresh_token": "new-refresh-DDDD", "expires_in": 3600}})),
+        )
+        .mount(&env.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/workspaces"))
+        .and(header("authorization", "Bearer new-access-CCCC"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+            {"id": 1, "name": "Personal", "code": "personal", "is_default": true}]})))
+        .mount(&env.server)
+        .await;
+    let a = env.std_cmd().args(["ws", "list"]).spawn().unwrap();
+    let b = env.std_cmd().args(["ws", "list"]).spawn().unwrap();
+    let (oa, ob) = (a.wait_with_output().unwrap(), b.wait_with_output().unwrap());
+    assert!(
+        oa.status.success() && ob.status.success(),
+        "{} {}",
+        text(&oa.stderr),
+        text(&ob.stderr)
+    );
+    assert_eq!(env.requests_to("/api/auth/refresh").await.len(), 1);
+}

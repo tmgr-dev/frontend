@@ -1,14 +1,19 @@
+fn unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+}
+
 pub fn sanitize(input: &str) -> String {
     input
         .chars()
-        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .filter(|c| !unsafe_char(*c) || *c == '\n' || *c == '\t')
         .collect()
 }
 
 pub fn sanitize_line(input: &str) -> String {
     input
         .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
+        .map(|c| if unsafe_char(c) { ' ' } else { c })
         .collect()
 }
 

@@ -350,3 +350,97 @@ async fn ctrl_c_during_the_device_flow_exits_130() {
     assert_eq!(code, Some(130));
     assert!(!env.creds_path().exists());
 }
+
+async fn mock_logout_after_refresh(env: &Env) {
+    Mock::given(method("POST"))
+        .and(path("/api/auth/devices/current/logout"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            format!("Bearer {ACCESS}").as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&env.server)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_with_an_expired_access_token_refreshes_and_retries_the_revoke() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_logout_after_refresh(&env).await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/refresh"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "token": "new-access-CCCC", "refresh_token": "new-refresh-DDDD", "expires_in": 3600}})))
+        .mount(&env.server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/devices/current/logout"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            "Bearer new-access-CCCC",
+        ))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&env.server)
+        .await;
+    let out = env.cmd().args(["logout", "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_eq!(v["data"]["remote_revoked"], true);
+    assert_eq!(v["data"]["logged_out"], true);
+    assert!(!env.creds_path().exists());
+    assert_no_secrets(&out);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_that_cannot_revoke_still_clears_local_credentials_and_warns() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_logout_after_refresh(&env).await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/refresh"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&env.server)
+        .await;
+    let out = env.cmd().args(["logout", "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_eq!(v["data"]["remote_revoked"], false);
+    assert_eq!(v["warnings"][0]["code"], "remote_logout_failed");
+    assert!(!env.creds_path().exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn device_timing_outside_sane_bounds_is_clamped_with_a_warning() {
+    let env = Env::new().await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/device/code"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "device_code": "dev-code-SECRET", "user_code": "HJQK-7PXM",
+            "verification_uri": "http://127.0.0.1:1/device",
+            "expires_in": 99999999999u64, "interval": 0
+        }})))
+        .mount(&env.server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/device/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "access_token": ACCESS, "refresh_token": REFRESH, "expires_in": 3600, "scopes": ["tasks:read"]
+        }})))
+        .mount(&env.server)
+        .await;
+    mock_current(&env, ACCESS).await;
+    let out = env
+        .cmd()
+        .args(["login", "--no-browser", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_eq!(v["warnings"][0]["code"], "device_timing_clamped");
+    assert!(
+        text(&out.stderr).contains("expires in 30 min"),
+        "{}",
+        text(&out.stderr)
+    );
+}

@@ -49,6 +49,19 @@ impl Env {
         c
     }
 
+    pub fn std_cmd(&self) -> std::process::Command {
+        let mut c = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"));
+        c.env_clear()
+            .env("HOME", self.tmp.path())
+            .env("XDG_CONFIG_HOME", self.xdg())
+            .env("TMGR_CREDENTIAL_STORE", "file")
+            .env("TMGR_SERVER", self.server.uri())
+            .env("NO_COLOR", "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        c
+    }
+
     pub fn cmd(&self) -> Command {
         self.cmd_for(&self.server.uri())
     }
