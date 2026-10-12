@@ -408,8 +408,6 @@ describe('start.connect-agent', () => {
 
 	it('skips the copy step and shows the connected step as already done when the fact is set', async () => {
 		const h = await connect({}, { facts: { mcp_first_call_at: '2026-10-12T10:00:00Z' } });
-		h.engine.api.next();
-		await flush();
 		expect(h.engine.api.active.value).toMatchObject({ alreadyDone: true });
 		expect(h.engine.api.active.value?.step.id).toBe('s3');
 	});

@@ -28,6 +28,7 @@ export function clampOffset(
 
 export function clampIntoViewport(el: HTMLElement, pad = VIEWPORT_PADDING): void {
   el.style.translate = '';
+  if (el.classList.contains('tour-host--sheet')) pad = 0;
   const { dx, dy } = clampOffset(
     el.getBoundingClientRect(),
     { width: window.innerWidth, height: window.innerHeight },

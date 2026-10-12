@@ -166,6 +166,7 @@ export const startTours: TourDef[] = [
         route: CONNECT,
         title: 'Pick your client',
         body: 'Pick the client you use. Each tab shows its own command.',
+        skipWhen: 'mcp_first_call_at',
       },
       {
         id: 's2',

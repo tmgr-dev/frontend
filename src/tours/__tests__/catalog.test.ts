@@ -44,6 +44,7 @@ describe('catalog lint', () => {
 			waitFor: { event: 'agent.first_mcp_call' },
 			alreadyDone: 'mcp_first_call_at',
 		});
+		expect(tour.steps[0].skipWhen).toBe('mcp_first_call_at');
 		expect(tour.steps[1].skipWhen).toBe('mcp_first_call_at');
 		expect(tour.steps[3].type).toBe('tip');
 	});
