@@ -572,6 +572,18 @@ const routes = [
 		name: 'PushNotificationsEnableGuide',
 	},
 	{
+		path: '/privacy',
+		component: () => import('@/pages/Privacy.vue'),
+		meta: {
+			title: 'Privacy policy',
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		},
+		name: 'Privacy',
+	},
+	{
 		path: '/docs/agents',
 		component: () => import('@/pages/AgentsGuide.vue'),
 		meta: {

@@ -32,6 +32,8 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 	it.each([
 		'/app',
 		'/app?x=1',
+		'/privacy',
+		'/privacy#analytics',
 		'/lx',
 		'/login-help',
 		'/tmgrdev/list',

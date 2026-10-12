@@ -64,3 +64,15 @@ describe('app home route', () => {
 		).toEqual({ path: '/app', query: { a: '1' }, hash: '#x' });
 	});
 });
+
+describe('privacy route', () => {
+	it('is open to guests and to signed-in users', () => {
+		const privacy = find(loadRoutes(true), '/privacy');
+		expect(privacy.name).toBe('Privacy');
+		expect(privacy.meta).toMatchObject({
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		});
+		expect(typeof privacy.component).toBe('function');
+	});
+});

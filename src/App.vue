@@ -84,6 +84,7 @@
 		@update:open="closePagesImport"
 	/>
 	<Toaster />
+	<ConsentPanel v-if="!isDesktop" />
 	</template>
 </template>
 
@@ -105,6 +106,7 @@
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
+	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
 	import Modal from '@/components/Modal.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import { Toaster } from '@/components/ui/toast';
@@ -146,6 +148,7 @@
 		components: {
 			PagesImportDialog,
 			Toaster,
+			ConsentPanel,
 			CustomSidebar,
 			NewForm,
 			ActiveTasks,

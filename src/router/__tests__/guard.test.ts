@@ -66,6 +66,21 @@ const localStore = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('router guard without a cloud account', () => {
+	const privacyMeta = { allowedGuests: true, notOnlyForLoggedUsers: true };
+
+	it.each([
+		['a guest on the web', localStore({ canUseApp: false, accountMode: 'none' }), false],
+		['a signed-in user', localStore({ isLoggedIn: true, accountMode: 'cloud' }), false],
+		['a local-mode desktop session', localStore(), true],
+		['a desktop session with no identity', localStore({ canUseApp: false, accountMode: 'none' }), true],
+	])('opens the privacy page for %s', async (_label, store, desktop) => {
+		const next = jest.fn();
+
+		await loadGuard(store, desktop)(route('Privacy', '/privacy', privacyMeta), {}, next);
+
+		expect(next).toHaveBeenCalledWith();
+	});
+
 	it('sends a desktop session with no identity to the welcome screen', async () => {
 		const next = jest.fn();
 		const store = localStore({ canUseApp: false, accountMode: 'none' });

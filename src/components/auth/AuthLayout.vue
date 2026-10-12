@@ -110,6 +110,8 @@
 					>
 						<slot name="footer" />
 					</div>
+
+					<PrivacyLinks class="mt-4" />
 				</div>
 			</div>
 		</main>
@@ -118,6 +120,7 @@
 
 <script lang="ts">
 	import ThemeSwitch from '@/components/auth/ThemeSwitch.vue';
+	import PrivacyLinks from '@/components/privacy/PrivacyLinks.vue';
 	import logoUrl from '@/assets/img/simple-logo.svg';
 	import { KanbanSquare, Timer, Users } from 'lucide-vue-next';
 	import { defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -146,7 +149,7 @@
 
 	export default defineComponent({
 		name: 'AuthLayout',
-		components: { AuthMark, ThemeSwitch },
+		components: { AuthMark, PrivacyLinks, ThemeSwitch },
 		setup() {
 			const sampleTasks = [
 				{

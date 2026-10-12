@@ -12,6 +12,7 @@ import {
 } from '@/utils/desktop';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { applyRelayedEvent, installWindowEventRelay } from '@/utils/windowEventRelay';
+import { startPrivacy } from '@/privacy/boot';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
 import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
@@ -195,6 +196,7 @@ const start = async () => {
 	if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
 
 	app.mount('#app');
+	startPrivacy();
 };
 
 void start();
