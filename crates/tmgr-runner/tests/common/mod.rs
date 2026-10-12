@@ -1,5 +1,7 @@
 #![allow(dead_code)]
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use tmgr_runner::sandbox::{prepare, SandboxSpec};
@@ -94,6 +96,51 @@ impl Fx {
         }
     }
 
+    pub fn run_pty(&self, script: &str) -> Out {
+        let spec = SandboxSpec {
+            session_id: SID.into(),
+            argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+            cwd: self.cwd.clone(),
+            home: self.home.clone(),
+            real_home: self.real_home.clone(),
+            runner_dir: self.runner_dir.clone(),
+            self_exe: self.self_exe.clone(),
+            env_pass: vec![],
+            base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
+        };
+        let l = prepare(&spec).expect("prepare");
+        let pair = native_pty_system().openpty(pty_size()).unwrap();
+        let mut cmd = CommandBuilder::new(&l.argv[0]);
+        cmd.args(&l.argv[1..]);
+        cmd.env_clear();
+        for (k, v) in &l.env {
+            cmd.env(k, v);
+        }
+        cmd.cwd(&l.cwd);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let t = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            buf
+        });
+        let status = child.wait().unwrap();
+        drop(pair.master);
+        let out = t.join().unwrap();
+        Out {
+            code: Some(status.exit_code() as i32),
+            stdout: String::from_utf8_lossy(&out).into_owned(),
+            stderr: String::new(),
+        }
+    }
+
     pub fn path(&self, p: &Path) -> String {
         p.display().to_string()
     }
@@ -105,4 +152,29 @@ pub fn spawn_sleep() -> Child {
 
 pub fn assert_alive(c: &mut Child) {
     assert!(c.try_wait().unwrap().is_none(), "outside process died");
+}
+
+fn pty_size() -> PtySize {
+    PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    }
+}
+
+pub struct Sacrificial {
+    _master: Box<dyn MasterPty + Send>,
+    _slave: Box<dyn portable_pty::SlavePty + Send>,
+    pub path: PathBuf,
+}
+
+pub fn sacrificial_pty() -> Sacrificial {
+    let pair = native_pty_system().openpty(pty_size()).unwrap();
+    let path = pair.master.tty_name().expect("tty name");
+    Sacrificial {
+        _master: pair.master,
+        _slave: pair.slave,
+        path,
+    }
 }

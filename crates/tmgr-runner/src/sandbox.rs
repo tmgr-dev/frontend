@@ -395,7 +395,6 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
         ));
     }
     s.push_str("(allow file-write* (literal \"/dev/null\") (literal \"/dev/tty\") (literal \"/dev/ptmx\"))\n");
-    s.push_str("(allow file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
     s.push_str("(allow file-write* (subpath \"/dev/fd\"))\n");
     for pre in &p.write_prefixes {
         s.push_str(&format!(
@@ -425,6 +424,8 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     s.push_str(&format!(
         "(allow network-outbound (remote unix-socket (subpath {home})))\n"
     ));
+    s.push_str("(deny file-read-data file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
+    s.push_str("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w][0-9a-f]$\"))\n");
     Ok(s)
 }
 
@@ -483,6 +484,7 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
     private_dirs(&[&dir])?;
     let policy = dir.join("sandbox.json");
     let body = serde_json::json!({
+        "cwd": plan.cwd,
         "read": plan.paths.read,
         "write": plan.paths.write,
     });
@@ -522,6 +524,7 @@ mod linux {
         RulesetCreatedAttr, RulesetStatus, Scope, ABI,
     };
     use serde::Deserialize;
+    use std::os::fd::{AsFd, AsRawFd, RawFd};
     use std::os::unix::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
@@ -550,14 +553,46 @@ mod linux {
         "/dev/random",
         "/dev/tty",
         "/dev/ptmx",
-        "/dev/pts",
         "/dev/full",
     ];
 
     #[derive(Deserialize)]
     struct Policy {
+        cwd: String,
         read: Vec<String>,
         write: Vec<String>,
+    }
+
+    fn open_exact(p: &Path) -> Result<PathFd, String> {
+        let err = |e: &dyn std::fmt::Display| format!("tmgr: sandbox setup failed: {e}");
+        let fd = PathFd::new(p).map_err(|e| err(&e))?;
+        let got = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_fd().as_raw_fd()))
+            .map_err(|e| err(&e))?;
+        if got != p {
+            return Err(format!(
+                "tmgr: sandbox setup failed: {} resolves to {}; the path changed after validation, the run does not start",
+                p.display(),
+                got.display()
+            ));
+        }
+        Ok(fd)
+    }
+
+    fn same_file(a: RawFd, b: RawFd) -> bool {
+        let stat = |fd: RawFd| {
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            (unsafe { libc::fstat(fd, &mut st) } == 0).then_some((st.st_dev, st.st_ino))
+        };
+        matches!((stat(a), stat(b)), (Some(x), Some(y)) if x == y)
+    }
+
+    fn own_terminal() -> Option<PathFd> {
+        let target = std::fs::read_link("/proc/self/fd/0").ok()?;
+        if !target.starts_with("/dev/pts/") {
+            return None;
+        }
+        let fd = PathFd::new(&target).ok()?;
+        same_file(0, fd.as_fd().as_raw_fd()).then_some(fd)
     }
 
     fn kernel_abi() -> i32 {
@@ -591,11 +626,11 @@ mod linux {
             .map_err(|e| err(&e))?;
         let grants = SYSTEM_READ
             .iter()
-            .map(|p| (p.to_string(), read))
-            .chain(policy.read.iter().map(|p| (p.clone(), read)))
-            .chain(policy.write.iter().map(|p| (p.clone(), all)))
-            .chain(DEV_RW.iter().map(|p| (p.to_string(), all)));
-        for (path, rights) in grants {
+            .map(|p| (p.to_string(), read, false))
+            .chain(policy.read.iter().map(|p| (p.clone(), read, true)))
+            .chain(policy.write.iter().map(|p| (p.clone(), all, true)))
+            .chain(DEV_RW.iter().map(|p| (p.to_string(), all, false)));
+        for (path, rights, exact) in grants {
             let p = Path::new(&path);
             if !p.exists() {
                 continue;
@@ -605,14 +640,36 @@ mod linux {
             } else {
                 rights & AccessFs::from_file(abi)
             };
-            let fd = PathFd::new(p).map_err(|e| err(&e))?;
+            let fd = if exact {
+                open_exact(p)?
+            } else {
+                PathFd::new(p).map_err(|e| err(&e))?
+            };
             rs = rs
                 .add_rule(PathBeneath::new(fd, rights))
+                .map_err(|e| err(&e))?;
+        }
+        if let Some(fd) = own_terminal() {
+            rs = rs
+                .add_rule(PathBeneath::new(fd, all & AccessFs::from_file(abi)))
                 .map_err(|e| err(&e))?;
         }
         let status = rs.restrict_self().map_err(|e| err(&e))?;
         if status.ruleset != RulesetStatus::FullyEnforced || !status.no_new_privs {
             return Err("tmgr: sandbox setup failed: restrictions are not fully enforced".into());
+        }
+        Ok(())
+    }
+
+    fn enter_cwd(cwd: &str) -> Result<(), String> {
+        let err = |e: &dyn std::fmt::Display| format!("tmgr: sandbox setup failed: {e}");
+        std::env::set_current_dir(cwd).map_err(|e| err(&e))?;
+        let got = std::env::current_dir().map_err(|e| err(&e))?;
+        if got != Path::new(cwd) {
+            return Err(format!(
+                "tmgr: sandbox setup failed: working directory {cwd} resolves to {}; the path changed after validation, the run does not start",
+                got.display()
+            ));
         }
         Ok(())
     }
@@ -635,6 +692,10 @@ mod linux {
                 return 78;
             }
         };
+        if let Err(m) = enter_cwd(&policy.cwd) {
+            eprintln!("{m}");
+            return 78;
+        }
         if let Err(m) = restrict(&policy, tier) {
             eprintln!("{m}");
             return 78;
@@ -928,6 +989,23 @@ mod tests {
         assert!(deny_sig < allow_sig);
         let reallow_home = s.rfind("(allow file-read* file-write* (subpath").unwrap();
         assert!(reallow_home > first_deny);
+    }
+
+    #[test]
+    fn profile_denies_terminal_devices_last() {
+        let f = fx();
+        let p = plan(&f.spec).unwrap().paths;
+        let s = seatbelt_profile(&p).unwrap();
+        assert!(!s.contains("(allow file-write* (regex"));
+        let tty = s
+            .find("(deny file-read-data file-write* (regex #\"^/dev/ttys")
+            .unwrap();
+        let pty = s
+            .find("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w]")
+            .unwrap();
+        let last_allow = s.rfind("(allow ").unwrap();
+        assert!(tty > last_allow && pty > last_allow);
+        assert!(s.contains("(literal \"/dev/tty\")"));
     }
 
     #[test]

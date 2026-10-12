@@ -154,3 +154,114 @@ fn missing_command_exits_127() {
     let o = f.run("exec /nonexistent/binary");
     assert_eq!(o.code, Some(127));
 }
+
+#[test]
+fn other_terminals_are_unreachable_but_own_pty_works() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let other = sacrificial_pty();
+    let t = f.path(&other.path);
+    let o = f.run_pty(&format!(
+        "echo own-out; echo tty-out > /dev/tty; (: > {t}) 2>/dev/null; echo w=$?; (: < {t}) 2>/dev/null; echo r=$?; own=$(readlink /proc/self/fd/0); (echo own-path >> $own) 2>/dev/null; echo o=$?"
+    ));
+    assert!(o.stdout.contains("own-out"), "{}", o.stdout);
+    assert!(o.stdout.contains("tty-out"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("w=") && !o.stdout.contains("w=0"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stdout.contains("r=") && !o.stdout.contains("r=0"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("o=0"), "{}", o.stdout);
+}
+
+fn launch_with(f: &Fx, script: &str, edit: impl FnOnce(&mut serde_json::Value)) -> Out {
+    use std::process::Stdio;
+    use tmgr_runner::sandbox::{prepare, SandboxSpec};
+    let spec = SandboxSpec {
+        session_id: SID.into(),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: f.cwd.join("sub"),
+        home: f.home.clone(),
+        real_home: f.real_home.clone(),
+        runner_dir: f.runner_dir.clone(),
+        self_exe: f.self_exe.clone(),
+        env_pass: vec![],
+        base_env: vec![("PATH".into(), "/usr/bin:/bin".into())],
+    };
+    let l = prepare(&spec).expect("prepare");
+    let pol = std::path::Path::new(&l.argv[2]);
+    let mut v: serde_json::Value = serde_json::from_slice(&fs::read(pol).unwrap()).unwrap();
+    edit(&mut v);
+    fs::write(pol, v.to_string()).unwrap();
+    let o = Command::new(&l.argv[0])
+        .args(&l.argv[1..])
+        .env_clear()
+        .envs(l.env.iter().cloned())
+        .current_dir(&f.cwd)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    Out {
+        code: o.status.code(),
+        stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+    }
+}
+
+fn swap_for_root_symlink(dir: &std::path::Path) {
+    let moved = dir.with_extension("moved");
+    fs::rename(dir, moved).unwrap();
+    std::os::unix::fs::symlink("/", dir).unwrap();
+}
+
+#[test]
+fn swapped_cwd_is_refused() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    fs::create_dir_all(f.cwd.join("sub")).unwrap();
+    let marker = f.cwd.join("marker");
+    let script = format!("echo ran > {}", f.path(&marker));
+    let cwd_sub = f.cwd.join("sub");
+    let o = launch_with(&f, &script, |_| swap_for_root_symlink(&cwd_sub));
+    assert_eq!(o.code, Some(78), "{} {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr.contains("changed after validation"),
+        "{}",
+        o.stderr
+    );
+    assert!(!marker.exists());
+}
+
+#[test]
+fn swapped_root_is_refused() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    fs::create_dir_all(f.cwd.join("sub")).unwrap();
+    let extra = f.cwd.join("extra");
+    fs::create_dir_all(&extra).unwrap();
+    let marker = f.cwd.join("marker");
+    let script = format!("echo ran > {}", f.path(&marker));
+    let extra_json = extra.display().to_string();
+    let o = launch_with(&f, &script, |v| {
+        v["write"].as_array_mut().unwrap().push(extra_json.into());
+        swap_for_root_symlink(&extra);
+    });
+    assert_eq!(o.code, Some(78), "{} {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr.contains("changed after validation"),
+        "{}",
+        o.stderr
+    );
+    assert!(!marker.exists());
+}

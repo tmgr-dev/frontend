@@ -24,7 +24,7 @@ is refused. Per-run homes must live in a dedicated directory `<homes>/<session i
 |---|---|---|
 | Read | everything except the real home; inside the real home only the working dir, the per-run home and existing toolchain dirs | `/usr /bin /sbin /lib* /etc /opt /nix /snap /proc /sys /run/systemd/resolve`, the working dir, the per-run home, toolchains |
 | Toolchains (read-only) | `.cargo/bin .cargo/registry .cargo/git .rustup .nvm .volta .bun .deno .local/bin .local/share/mise .local/share/pnpm .sdkman .pyenv .rbenv .npm` under the real home, when they exist | same |
-| Write | working dir, per-run home (includes the per-run `tmp`), `/dev/null /dev/tty /dev/ttys* /dev/ptmx /dev/fd` | working dir, per-run home, `/dev/null zero urandom random tty ptmx pts full` |
+| Write | working dir, per-run home (includes the per-run `tmp`), `/dev/null /dev/tty /dev/ptmx /dev/fd` | working dir, per-run home, `/dev/null zero urandom random tty ptmx full`, plus the session's own `/dev/pts/N` (resolved from fd 0) |
 | Execute | everywhere readable | the read roots above and the working dir / home |
 | Signals | own sandbox only (`deny signal` + `allow signal (target same-sandbox)`) | own domain only (Landlock `Scope::Signal`) |
 | Abstract unix sockets | not applicable | connecting to sockets created outside the domain is blocked (`Scope::AbstractUnixSocket`) |
@@ -66,4 +66,7 @@ command (exec failure: exit 127).
 - Git worktrees whose `.git` points outside the working dir cannot write the shared object store; the caller must put
   such a repository inside the working dir.
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
+- Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*` and `/dev/pty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
+- Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory must resolve to the policy `cwd`; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
+- The `tmgr` binary (`self_exe`) must not live inside the working dir or the per-run home; the run is refused otherwise.
 - Windows: not supported; `prepare` returns an error.

@@ -77,3 +77,25 @@ fn ordinary_tools_work() {
     assert!(o.stdout.starts_with("git version"), "{}", o.stderr);
     let _ = fs::metadata(&f.cwd);
 }
+
+#[test]
+fn other_terminals_are_unreachable_but_own_pty_works() {
+    let f = fx();
+    let other = sacrificial_pty();
+    let t = f.path(&other.path);
+    let o = f.run_pty(&format!(
+        "echo own-out; echo tty-out > /dev/tty; (: > {t}) 2>/dev/null; echo w=$?; (: < {t}) 2>/dev/null; echo r=$?"
+    ));
+    assert!(o.stdout.contains("own-out"), "{}", o.stdout);
+    assert!(o.stdout.contains("tty-out"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("w=") && !o.stdout.contains("w=0"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stdout.contains("r=") && !o.stdout.contains("r=0"),
+        "{}",
+        o.stdout
+    );
+}
