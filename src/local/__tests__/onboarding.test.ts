@@ -19,10 +19,30 @@ const empty = {
 	facts: {},
 };
 
+const first = { ...empty, intent: 'human', invited: false };
+
 describe('local onboarding handler', () => {
-	it('answers GET with the default state wrapped in data', () => {
+	it('answers GET with the default state, human intent, wrapped in data', () => {
 		const handle = createOnboardingHandler(memory());
-		expect(handle('GET', 'onboarding')).toEqual({ status: 200, data: { data: empty } });
+		expect(handle('GET', 'onboarding')).toEqual({ status: 200, data: { data: first } });
+	});
+
+	it('sets the human intent on the first session only and keeps it', () => {
+		const storage = memory();
+		createOnboardingHandler(storage)('GET', 'onboarding');
+		expect(JSON.parse(storage.map.get(ONBOARDING_KEY)!).intent).toBe('human');
+		const handle = createOnboardingHandler(storage);
+		handle('POST', 'onboarding/intent', { intent: 'skipped' });
+		expect(handle('GET', 'onboarding').data.data.intent).toBe('skipped');
+	});
+
+	it('accepts and ignores seed, never invited, creates no starter tasks', () => {
+		const handle = createOnboardingHandler(memory());
+		for (const body of [{ intent: 'human' }, { intent: 'human', seed: false }, { intent: 'human', seed: true }]) {
+			expect(handle('POST', 'onboarding/intent', body).data).toEqual({
+				data: { intent: 'human', starter_tasks_created: 0, invited: false },
+			});
+		}
 	});
 
 	it('persists preferences and ignores unknown values', () => {
@@ -102,7 +122,7 @@ describe('local onboarding handler', () => {
 		const storage = memory();
 		storage.setItem(ONBOARDING_KEY, '{not json');
 		const handle = createOnboardingHandler(storage);
-		expect(handle('GET', 'onboarding').data.data).toEqual(empty);
+		expect(handle('GET', 'onboarding').data.data).toEqual(first);
 		expect(handle('GET', 'onboarding/nope').status).toBe(404);
 	});
 });

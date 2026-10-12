@@ -66,7 +66,13 @@ export const createOnboardingHandler = (storage: OnboardingStorage) => {
 		const payload = body && typeof body === 'object' ? body : {};
 		const state = load(storage);
 
-		if (path === 'onboarding' && verb === 'GET') return ok(state);
+		if (path === 'onboarding' && verb === 'GET') {
+			if (state.intent === null) {
+				state.intent = 'human';
+				save(state);
+			}
+			return ok({ ...state, invited: false });
+		}
 
 		if (path === 'onboarding/facts' && verb === 'GET') return { status: 200, data: { data: {} } };
 
@@ -82,7 +88,7 @@ export const createOnboardingHandler = (storage: OnboardingStorage) => {
 			if (!INTENTS.includes(payload.intent)) return invalid('Unknown intent');
 			state.intent = payload.intent;
 			save(state);
-			return { status: 200, data: { data: { intent: state.intent, starter_tasks_created: 0 } } };
+			return { status: 200, data: { data: { intent: state.intent, starter_tasks_created: 0, invited: false } } };
 		}
 
 		if (path === 'onboarding/starter-tasks' && verb === 'DELETE') {
