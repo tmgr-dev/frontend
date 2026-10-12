@@ -1,5 +1,5 @@
 <template>
-	<div data-testid="checklist-card">
+	<div v-if="visible" ref="root" data-testid="checklist-card">
 		<button
 			v-if="hidden"
 			type="button"
@@ -32,12 +32,14 @@
 						:aria-expanded="menuOpen"
 						data-testid="checklist-menu"
 						@click="menuOpen = !menuOpen"
+						@keydown.esc="menuOpen = false"
 					>
 						<span class="material-icons text-xl" aria-hidden="true">more_horiz</span>
 					</button>
 					<div
 						v-if="menuOpen"
 						role="menu"
+						@keydown.esc="menuOpen = false"
 						class="absolute right-0 z-10 mt-1 w-44 rounded-md border border-line bg-surface py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
 					>
 						<button
@@ -96,7 +98,7 @@
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { buildChecklist } from '@/onboarding/checklist';
 	import { useTours } from '@/tours/useTours';
-	import { computed, defineComponent, ref } from 'vue';
+	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
@@ -107,6 +109,31 @@
 			const tours = useTours();
 			const busy = ref(false);
 			const menuOpen = ref(false);
+			const root = ref<HTMLElement | null>(null);
+
+			const visible = computed(() => {
+				if (store.getters.isLocalOnly) return false;
+				const intent = tours.onboarding.value?.intent;
+				return intent === 'human' || intent === 'agent';
+			});
+
+			const onDocumentPointer = (event: Event) => {
+				if (!root.value?.contains(event.target as Node)) menuOpen.value = false;
+			};
+			const onDocumentKey = (event: KeyboardEvent) => {
+				if (event.key === 'Escape') menuOpen.value = false;
+			};
+			const stopListening = () => {
+				document.removeEventListener('pointerdown', onDocumentPointer);
+				document.removeEventListener('keydown', onDocumentKey);
+			};
+			watch(menuOpen, (open) => {
+				stopListening();
+				if (!open) return;
+				document.addEventListener('pointerdown', onDocumentPointer);
+				document.addEventListener('keydown', onDocumentKey);
+			});
+			onBeforeUnmount(stopListening);
 
 			const checklist = computed(() =>
 				buildChecklist(
@@ -141,7 +168,7 @@
 				}
 			};
 
-			return { checklist, progressWidth, hidden, busy, menuOpen, setHidden };
+			return { root, visible, checklist, progressWidth, hidden, busy, menuOpen, setHidden };
 		},
 	});
 </script>

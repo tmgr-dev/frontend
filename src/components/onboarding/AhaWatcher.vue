@@ -80,7 +80,7 @@
 				);
 				off = tourBus.on('timer.stopped', async (payload) => {
 					const taskId = payload.taskId;
-					if (taskId == null) return;
+					if (taskId == null || !watcher?.timerEligible()) return;
 					let title = 'your task';
 					let minutes = 1;
 					try {

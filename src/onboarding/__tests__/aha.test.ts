@@ -206,9 +206,72 @@ describe('agent aha poller', () => {
         },
       },
     });
+    h.watcher.start();
+    await flush();
+    h.fetchFacts.mockResolvedValue({ agent_runs_finished: 1 });
+    await h.advance(30_000);
+    expect(h.toast).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a fact that is already true on first look as shown, silently', async () => {
+    const h = harness(agent);
     h.fetchFacts.mockResolvedValue({ agent_runs_finished: 1 });
     h.watcher.start();
     await flush();
-    expect(h.toast).toHaveBeenCalledTimes(1);
+    expect(h.toast).not.toHaveBeenCalled();
+    expect(JSON.parse(h.data.get(ahaKey(42))!)).toMatchObject({ agent: true });
+    expect(h.live()).toBe(0);
+  });
+
+  it('does not treat a failed first request as having seen the fact false', async () => {
+    const h = harness(agent);
+    h.fetchFacts.mockRejectedValueOnce(new Error('net'));
+    h.watcher.start();
+    await flush();
+    h.fetchFacts.mockResolvedValue({ agent_runs_finished: 1 });
+    await h.advance(30_000);
+    expect(h.toast).not.toHaveBeenCalled();
+    expect(JSON.parse(h.data.get(ahaKey(42))!)).toMatchObject({ agent: true });
+  });
+
+  it('does not toast when another tab marked it shown while the request was in flight', async () => {
+    const h = harness(agent);
+    h.watcher.start();
+    await flush();
+    h.fetchFacts.mockImplementation(async () => {
+      h.data.set(ahaKey(42), JSON.stringify({ agent: true }));
+      return { agent_runs_finished: 1 };
+    });
+    await h.advance(30_000);
+    expect(h.toast).not.toHaveBeenCalled();
+    expect(h.live()).toBe(0);
+  });
+});
+
+describe('timer aha window', () => {
+  it('does not toast after seven days since first seen', async () => {
+    const h = harness({ intentAt: () => 1_000_000 - 8 * DAY });
+    h.fetchFacts.mockResolvedValue({ has_timer_minute: true });
+    await h.watcher.onTimerStopped({ taskId: 5, minutes: 1, title: 'x' });
+    expect(h.fetchFacts).not.toHaveBeenCalled();
+    expect(h.toast).not.toHaveBeenCalled();
+  });
+
+  it('reports whether a timer stop is worth looking at', () => {
+    expect(harness().watcher.timerEligible()).toBe(true);
+    expect(harness({ intent: () => 'agent' }).watcher.timerEligible()).toBe(false);
+    expect(harness({ intent: () => null }).watcher.timerEligible()).toBe(false);
+    expect(harness({ intent: () => 'skipped' }).watcher.timerEligible()).toBe(false);
+    expect(harness({ inert: () => true }).watcher.timerEligible()).toBe(false);
+    expect(harness({ userId: () => null }).watcher.timerEligible()).toBe(false);
+  });
+
+  it('records the first-seen moment as soon as a human or agent session starts', () => {
+    const intentAt = jest.fn(() => 1_000_000);
+    harness({ intentAt }).watcher.start();
+    expect(intentAt).toHaveBeenCalled();
+    const skipped = jest.fn(() => 1_000_000);
+    harness({ intent: () => 'skipped', intentAt: skipped }).watcher.start();
+    expect(skipped).not.toHaveBeenCalled();
   });
 });
