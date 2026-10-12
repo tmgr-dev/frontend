@@ -187,6 +187,16 @@ describe('S4b catalog', () => {
 		expect(optional('routines.reminders')).toEqual([false, false, true]);
 	});
 
+	it('steps on data-dependent anchors are optional or offer a way to get there', () => {
+		const dataDependent = ['categories.row', 'routines.instance', 'page.versions', 'page.editor', 'page.backlinks', 'nav.active-timers'];
+		for (const id of S4B_IDS)
+			for (const step of tour(id).steps)
+				if (step.anchor && dataDependent.includes(step.anchor)) {
+					const ok = step.optional || step.takeMeRoute || step.route || tour(id).steps[0] !== step;
+					expect({ id, step: step.id, ok: !!ok }).toEqual({ id, step: step.id, ok: true });
+				}
+	});
+
 	it('TI1 estimate step is anchored with the new copy', () => {
 		const step = tour('time.timer').steps[3];
 		expect(step.body).toBe('Set an estimate in task settings to see when you run over.');

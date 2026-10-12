@@ -74,7 +74,7 @@ export const routinesTours: TourDef[] = [
         waitFor: { event: 'routine.editor_opened' },
         takeMeRoute: ROUTINES,
         title: 'Open a routine',
-        body: 'Open a routine to edit it.',
+        body: 'Open a routine to edit it. Add one first if the list is empty.',
       },
       {
         id: 's2',

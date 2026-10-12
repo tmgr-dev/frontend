@@ -271,9 +271,8 @@ driveTour('time.pomodoro: take me to the task, anchors appear after enabling', a
     return route.fulfill({
       json: {
         data: {
-          id: 1, task_id: 1, phase: 'focus', status: 'running', focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15,
-          cycles_before_long: 4, completed_cycles: 0, auto_start: false, pause_tracking_on_break: true, phase_started_at: new Date().toISOString(),
-          phase_ends_at: new Date(Date.now() + 1500000).toISOString(), version: 1,
+          id: 1, task_id: 1, user_id: 1, phase: 'focus', running: true, phase_started_at: new Date().toISOString(),
+          remaining_ms: 1500000, completed_pomodoros: 0, distractions_count: 0, updated_at: new Date().toISOString(),
         },
       },
     });
@@ -286,6 +285,7 @@ driveTour('time.pomodoro: take me to the task, anchors appear after enabling', a
   await page.locator('[data-tour="task-form.pomodoro"]').first().click();
   await expect.poll(() => lastWrite(writes, 'time.pomodoro')?.step_id ?? lastWrite(writes, 'time.pomodoro')?.status).toMatch(/s2|completed/);
   await attached(page, ['pomodoro.settings']);
+  await expectClear(page, 'pomodoro.settings');
   await shots(page, 'time.pomodoro-s2', size);
   expect(errors).toEqual([]);
 });
@@ -392,6 +392,7 @@ driveTour('graph.enable: switching Graph on completes and unlocks the map tour',
   const { writes, modules, errors } = await boot(page, size, { graph: false });
   await page.goto('/demo/getting-started');
   await expect(page.locator('[data-tour-id="graph.map"]')).toContainText('Turn on Graph in Settings -> Modules');
+  await page.locator('[data-tour-id="graph.map"]').scrollIntoViewIfNeeded();
   await shots(page, 'graph.hub-off', size);
   await hubStart(page, 'graph.enable').click();
   await expect(page).toHaveURL(/\/settings\/modules$/);

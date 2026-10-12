@@ -111,7 +111,7 @@ export const pagesTours: TourDef[] = [
         anchor: 'page.versions',
         takeMeRoute: PAGES,
         title: 'Versions',
-        body: 'Every save is a version. Compare and restore any of them.',
+        body: 'Open a page, then History. Every save is a version you can compare and restore.',
       },
     ],
   },

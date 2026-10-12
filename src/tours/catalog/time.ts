@@ -167,7 +167,7 @@ export const timeTours: TourDef[] = [
         type: 'spot',
         anchor: 'export.panel',
         title: 'Export settings',
-        body: 'Set hourly rate, currency and rounding.',
+        body: 'Choose rounding, weekend days and holidays for the report.',
       },
       {
         id: 's4',
