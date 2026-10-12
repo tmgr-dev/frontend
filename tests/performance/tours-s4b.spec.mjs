@@ -444,7 +444,7 @@ driveTour('routines.reminders: open a routine, reminder and convert steps', asyn
   await page.getByText('Stretch', { exact: true }).first().click();
   await expect.poll(() => lastWrite(writes, 'routines.reminders')?.step_id).toBe('s2');
   await attached(page, ['routine.reminder']);
-  await expect(popover(page)).toContainText('Reminder');
+  await expect(popover(page).locator('.tour-title, h2, h3, [id^="tour-title"]').first()).toHaveText('Reminder');
   await shots(page, 'routines.reminders-s2', size);
   await primary(page, 'Next').click();
   await expect.poll(() => lastWrite(writes, 'routines.reminders')?.step_id).toBe('s3');

@@ -113,6 +113,37 @@ describe('resolveAnchor occlusion', () => {
 	});
 });
 
+describe('resolveAnchor inside a scroller', () => {
+	afterEach(() => {
+		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+	});
+
+	it('scrolls a clipped anchor into view once and accepts it when it is no longer covered', async () => {
+		const host = add('<i data-tour="nav.sidebar" id="a"></i><u></u>');
+		const el = host.querySelector('i')! as HTMLElement;
+		const panel = host.querySelector('u')!;
+		let scrolled = false;
+		const scrollIntoView = jest.fn(() => {
+			scrolled = true;
+		});
+		el.scrollIntoView = scrollIntoView;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => (scrolled ? el : panel);
+		expect((await resolveAnchor(step(), { mobile: false, timeoutMs: 100 }))?.id).toBe('a');
+		expect(scrollIntoView).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not keep scrolling an anchor that stays covered', async () => {
+		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
+		const el = host.querySelector('i')! as HTMLElement;
+		const panel = host.querySelector('u')!;
+		const scrollIntoView = jest.fn();
+		el.scrollIntoView = scrollIntoView;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		expect(await resolveAnchor(step(), { mobile: false, timeoutMs: 600 })).toBeNull();
+		expect(scrollIntoView).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('resolveAnchor throttling', () => {
 	afterEach(() => {
 		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;

@@ -61,7 +61,15 @@ export function resolveAnchor(step: StepDef, options: ResolveOptions): Promise<E
     name,
     step.anchorScope === 'eventTask' ? options.eventTaskId : null,
   );
-  const find = () => Array.from(root.querySelectorAll(selector)).find((el) => isVisible(el) && !isOccluded(el)) ?? null;
+  const scrolled = new WeakSet<Element>();
+  const clear = (el: Element) => {
+    if (!isOccluded(el)) return true;
+    if (scrolled.has(el) || typeof el.scrollIntoView !== 'function') return false;
+    scrolled.add(el);
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' as ScrollBehavior });
+    return !isOccluded(el);
+  };
+  const find = () => Array.from(root.querySelectorAll(selector)).find((el) => isVisible(el) && clear(el)) ?? null;
 
   return new Promise((resolve) => {
     const first = find();
