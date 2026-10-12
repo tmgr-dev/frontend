@@ -3,6 +3,19 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.36 — 2026-10-12
+
+- Move to cloud: copy a local workspace into a new workspace in your TMGR account (Settings → Data, or the workspace
+  menu). A dry run lists what moves and what stays (persona tokens, plugin data, files the server can't take, such as
+  SVG or files over 25 MB) and lets you choose what happens to each local persona. The workspace is read-only for a
+  moment while a backup snapshot is taken, running timers are stopped first, and the move continues and resumes in the
+  background if it stops. Your local copy is kept.
+- Remove local copy: after a published and verified move you can remove the local workspace from this computer. It is
+  only possible when nothing changed since the move, every file that wasn't moved is exported or accepted as lost, and
+  a fresh archive of the workspace is written; you confirm by typing the workspace name. The archive and the move
+  snapshot stay in the backups folder.
+- Deleting a cloud workspace now asks you to type its name.
+
 ## 0.9.35 — 2026-10-12
 
 - Getting started hub and guided tours (skip anytime, restart from the user menu).
