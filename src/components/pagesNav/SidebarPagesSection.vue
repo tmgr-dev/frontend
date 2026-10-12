@@ -69,6 +69,8 @@
 			:fallback-tolerance="3"
 			:delay="150"
 			:delay-on-touch-only="true"
+			@start="onDragStart"
+			@end="dragging = null"
 			@change="(event) => onChange(null, event)"
 		>
 			<template #item="{ element }">
@@ -282,8 +284,16 @@
 				if (change) tree.move(change.element.id, parentId, change.newIndex);
 			};
 
+			const dragging = ref<number | null>(null);
+			const onDragStart = (event: { item: HTMLElement }) => {
+				const id = event.item.querySelector('[data-page-id]')?.getAttribute('data-page-id');
+				dragging.value = id ? Number(id) : null;
+			};
+
 			provide(PAGES_TREE_KEY, {
 				workspaceCode,
+				dragging,
+				onDragStart,
 				expanded: tree.expanded,
 				toggle: tree.toggle,
 				createChild,
@@ -309,6 +319,8 @@
 				confirmRename,
 				confirmDelete,
 				onChange,
+				dragging,
+				onDragStart,
 				createOptions: PAGE_CREATE_OPTIONS,
 			};
 		},
