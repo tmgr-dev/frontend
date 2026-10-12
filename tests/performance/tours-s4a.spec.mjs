@@ -96,6 +96,7 @@ const boot = async (page, size, { modules = ALL_MODULES, runs = [], personas = [
   await page.route('**/api/personas*', (route) => {
     if (route.request().method() === 'POST') {
       calls.push('POST personas');
+      if (!personas.includes(persona)) personas.push(persona);
       return route.fulfill({ json: { data: persona } });
     }
     return route.fulfill({ json: { data: personas } });
@@ -439,6 +440,28 @@ for (const size of SIZES) {
     for (const scheme of SCHEMES) await shoot(page, 'personas.create-grants', size, scheme);
     await popover(page).getByRole('button', { name: 'Done' }).click();
     await expect.poll(() => lastWrite(writes, 'personas.create')?.status).toBe('completed');
+    expect(errors).toEqual([]);
+  });
+
+  e2e(`hub hides persona-dependent tours until a persona exists at ${size.name}`, async ({ page }) => {
+    test.skip(mobile, 'web and desktop only');
+    const { errors } = await boot(page, size, { personas: [] });
+    await page.goto('/demo/getting-started');
+    await expect(page.getByTestId('hub-start-personas.create')).toBeVisible();
+    for (const id of ['personas.token', 'personas.assign', 'personas.skills']) {
+      await expect(page.locator(`[data-tour-id="${id}"]`), `${id} hidden without a persona`).toHaveCount(0);
+    }
+    for (const scheme of SCHEMES) await shoot(page, 'fu-hub-no-persona', size, scheme);
+    await startFromHub(page, 'personas.create');
+    await page.getByPlaceholder('Reviewer').fill('Reviewer');
+    await page.getByRole('button', { name: 'Create persona' }).click();
+    await expect(popover(page)).toContainText('Workspace access');
+    await popover(page).getByRole('button', { name: 'Done' }).click();
+    await page.locator('[data-tour="nav.getting-started"]').first().click();
+    for (const id of ['personas.token', 'personas.assign', 'personas.skills']) {
+      await expect(page.getByTestId(`hub-start-${id}`), `${id} visible after creating a persona`).toBeVisible();
+    }
+    for (const scheme of SCHEMES) await shoot(page, 'fu-hub-with-persona', size, scheme);
     expect(errors).toEqual([]);
   });
 
