@@ -25,7 +25,7 @@ const stretch = () => ({
 
 const mockRoutines = async (
   page,
-  { quickStatus = 200, putStatus = 200, entries = () => [stretch()] } = {},
+  { convertStatus = 200, quickStatus = 200, putStatus = 200, entries = () => [stretch()] } = {},
 ) => {
   const writes = [];
   // routines.first auto-offers 600ms after landing on /routines and covers the page.
@@ -43,6 +43,10 @@ const mockRoutines = async (
       return route.fulfill({ status: putStatus, json: { message: 'Save failed' } });
     if (method === 'PUT' && /^tasks\/\d+$/.test(path))
       return route.fulfill({ json: { data: { id: Number(path.split('/')[1]) } } });
+    if (method === 'POST' && /^tasks\/\d+\/convert$/.test(path))
+      return convertStatus === 200
+        ? route.fulfill({ json: { data: { id: 77, title: 'Stretch' } } })
+        : route.fulfill({ status: convertStatus, json: { message: 'Conversion exploded' } });
     if (path.startsWith('expand/stats')) return route.fulfill({ json: { data: {} } });
     if (path.startsWith('expand')) {
       const params = new URL(request.url()).searchParams;
@@ -248,7 +252,7 @@ test('a duplicate whose details fail to save shows a toast and reloads the list 
   await expect.poll(() => reloads.length).toBeGreaterThan(0);
 });
 
-test('on a phone the row More button opens Duplicate', async ({ page }) => {
+test('on a phone the row More button opens Duplicate and Convert', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApp(page);
   await mockRoutines(page, {
@@ -266,6 +270,7 @@ test('on a phone the row More button opens Duplicate', async ({ page }) => {
   expect(fits).toBe(true);
   await more.click();
   await expect(page.getByRole('button', { name: 'Duplicate' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Convert to task' })).toBeVisible();
 });
 
 test('Duplicate writes nothing when the occurrences fail to load', async ({ page }) => {
@@ -282,4 +287,63 @@ test('Duplicate writes nothing when the occurrences fail to load', async ({ page
   await page.getByRole('button', { name: 'Duplicate' }).click();
   await expect(page.getByText('Could not duplicate the routine', { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
+});
+
+test('convert from the menu closes the modal and offers to open the task', async ({ page }) => {
+  await mockApp(page);
+  const writes = await mockRoutines(page);
+  await openMenu(page);
+  await page.getByRole('button', { name: 'Convert to task' }).click();
+  const modal = page.getByRole('dialog', { name: 'Convert to task' });
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('combobox', { name: 'Workspace' })).toHaveValue('1');
+  await modal.getByRole('button', { name: 'Convert', exact: true }).click();
+
+  await expect(page.getByRole('alertdialog')).toContainText('Open the task now?');
+  await expect(modal).toBeHidden();
+  expect(writes.find((w) => w.path === 'tasks/31/convert').body).toMatchObject({ workspace_id: 1 });
+});
+
+test('a failed convert keeps the modal open and shows a toast', async ({ page }) => {
+  await mockApp(page);
+  await mockRoutines(page, { convertStatus: 422 });
+  await openMenu(page);
+  await page.getByRole('button', { name: 'Convert to task' }).click();
+  const modal = page.getByRole('dialog', { name: 'Convert to task' });
+  await modal.getByRole('button', { name: 'Convert', exact: true }).click();
+
+  await expect(page.getByText('Could not convert the routine', { exact: true })).toBeVisible();
+  await expect(page.getByText('Conversion exploded', { exact: true })).toBeVisible();
+  await expect(modal).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+});
+
+test('switching workspace fast never lists the previous workspace categories', async ({ page }) => {
+  await mockApp(page);
+  await page.route('**/api/workspaces', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          { id: 1, name: 'Demo', code: 'demo', user_id: 1, is_default: true },
+          { id: 2, name: 'Side', code: 'side', user_id: 1, is_default: false },
+        ],
+      },
+    }),
+  );
+  await page.route(/\/api\/project_categories\?/, async (route) => {
+    const workspaceId = new URL(route.request().url()).searchParams.get('workspace_id');
+    if (workspaceId === '1') await new Promise((resolve) => setTimeout(resolve, 1500));
+    const title = workspaceId === '1' ? 'Demo category' : 'Side category';
+    await route.fulfill({ json: { data: [{ id: Number(workspaceId) * 10, title }] } });
+  });
+  await mockRoutines(page);
+  await openMenu(page);
+  await page.getByRole('button', { name: 'Convert to task' }).click();
+  const modal = page.getByRole('dialog', { name: 'Convert to task' });
+  const category = modal.getByRole('combobox', { name: 'Category' });
+  await modal.getByRole('combobox', { name: 'Workspace' }).selectOption('2');
+  await expect(category.locator('option', { hasText: 'Side category' })).toHaveCount(1);
+  await page.waitForTimeout(2000);
+  await expect(category.locator('option', { hasText: 'Demo category' })).toHaveCount(0);
+  await expect(category.locator('option', { hasText: 'Side category' })).toHaveCount(1);
 });
