@@ -329,6 +329,16 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         }
     }
     let write = vec![cwd.clone(), home.clone()];
+    let self_exe = canon_lossy(&spec.self_exe);
+    if write
+        .iter()
+        .any(|w| self_exe.starts_with(w) || spec.self_exe.starts_with(w))
+    {
+        return Err(format!(
+            "the tmgr binary {} is inside the session directory; install tmgr outside the project or run from another directory",
+            self_exe.display()
+        ));
+    }
     let env = build_env(spec, &home, &tmp)?;
     Ok(Plan {
         cwd,
@@ -837,6 +847,31 @@ mod tests {
         f.spec.real_home = f.spec.cwd.join("h");
         fs::create_dir_all(f.spec.real_home.join(".ssh")).unwrap();
         assert!(!refusal(&f).is_empty());
+    }
+
+    #[test]
+    fn runner_binary_inside_writable_roots_is_refused() {
+        let mut f = fx();
+        let inside_cwd = f.spec.cwd.join("target/tmgr");
+        fs::create_dir_all(inside_cwd.parent().unwrap()).unwrap();
+        fs::write(&inside_cwd, "").unwrap();
+        f.spec.self_exe = inside_cwd;
+        let e = refusal(&f);
+        assert!(e.contains("is inside the session directory"), "{e}");
+
+        let mut f = fx();
+        f.spec.self_exe = f.spec.home.join("bin/tmgr");
+        assert!(refusal(&f).contains("is inside the session directory"));
+
+        let mut f = fx();
+        let link = f.spec.cwd.join("link");
+        std::os::unix::fs::symlink("/usr/bin", &link).unwrap();
+        f.spec.self_exe = link.join("tmgr");
+        assert!(refusal(&f).contains("is inside the session directory"));
+
+        let mut f = fx();
+        f.spec.self_exe = f.spec.runner_dir.join("tmgr");
+        assert!(plan(&f.spec).is_ok());
     }
 
     #[test]
