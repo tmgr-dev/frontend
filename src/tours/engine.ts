@@ -36,6 +36,7 @@ export interface ToursHostDeps {
   modulesKnown(): boolean;
   isModuleEnabled(key: string): boolean;
   currentRouteName(): string | null;
+  currentRouteQuery?(): Record<string, unknown>;
   navigate(route: NonNullable<StepDef['route']>): void;
   isBusy(): boolean;
   overlay(): OverlayRegistration | null;
@@ -152,6 +153,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     modulesKnown: deps.modulesKnown,
     isModuleEnabled: deps.isModuleEnabled,
     currentRouteName: deps.currentRouteName,
+    currentRouteQuery: deps.currentRouteQuery,
     navigate: deps.navigate,
     resolveAnchor: (step, options) => (deps.resolveAnchor ?? defaultResolveAnchor)(step, options),
     waitForAnchor: (step, options) =>

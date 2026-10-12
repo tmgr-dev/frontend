@@ -36,6 +36,7 @@ const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {})
 	setTourTelemetry({ track });
 	let now = 1_000_000;
 	let route: string | null = 'WorkspaceTasksList';
+	let query: Record<string, string> = {};
 	let modulesOn = new Set<string>(['board', 'workflow']);
 	let facts: Record<string, unknown> = {};
 	let saved: Record<string, TourState> = {};
@@ -47,6 +48,7 @@ const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {})
 		modulesKnown: () => true,
 		isModuleEnabled: (k) => modulesOn.has(k),
 		currentRouteName: () => route,
+		currentRouteQuery: () => query,
 		navigate: (r) => nav.push(r),
 		resolveAnchor: async (s) => (present.has(s.anchor!) || present.has(s.mobileAnchor ?? '#') ? ({ id: s.anchor } as unknown as Element) : null),
 		facts: () => facts,
@@ -78,6 +80,7 @@ const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {})
 		calls,
 		setNow: (n: number) => (now = n),
 		setRoute: (r: string | null) => (route = r),
+		setQuery: (q: Record<string, string>) => (query = q),
 		setModules: (m: string[]) => (modulesOn = new Set(m)),
 		setFacts: (f: Record<string, unknown>) => (facts = f),
 		setSaved: (s: Record<string, TourState>) => (saved = s),
@@ -304,6 +307,24 @@ describe('TourRunner', () => {
 		h.runner.routeChanged('Other');
 		expect(h.last()).toBeNull();
 		expect(h.saves.pop()[1].status).toBe('paused');
+	});
+
+	it('navigates again when the step route has the same name but another query', async () => {
+		const t = tour({
+			steps: [
+				step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } }),
+				step('b', { route: { name: 'Settings', query: { tab: 'about' } } }),
+			],
+		});
+		const h = setup([t]);
+		h.present.add('a.a');
+		h.present.add('a.b');
+		h.setRoute('Settings');
+		h.setQuery({ tab: 'privacy' });
+		await h.runner.start('t.one', 'hub');
+		expect(h.nav).toEqual([]);
+		await h.runner.skipStep();
+		expect(h.nav).toEqual([{ name: 'Settings', query: { tab: 'about' } }]);
 	});
 
 	it('Already done advances via facts after a short delay', async () => {

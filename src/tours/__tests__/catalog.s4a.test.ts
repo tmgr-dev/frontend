@@ -125,7 +125,10 @@ describe('S4a catalog', () => {
 		expect(tour('personas.skills').steps[0].route).toEqual({ name: 'PersonaSettings' });
 		expect(tour('ws.invite').steps[0].route).toEqual({ name: 'WorkspaceSettings' });
 		expect(tour('ws.appearance').steps[0].route).toEqual({ name: 'Settings', query: { tab: 'theme' } });
-		expect(tour('ws.privacy').steps.map((s) => s.route)).toEqual(Array(2).fill({ name: 'Settings', query: { tab: 'about' } }));
+		expect(tour('ws.privacy').steps.map((s) => s.route)).toEqual([
+			{ name: 'Settings', query: { tab: 'privacy' } },
+			{ name: 'Settings', query: { tab: 'about' } },
+		]);
 		expect(tour('ws.telegram').steps[0].route).toEqual({ name: 'Settings', query: { tab: 'profile' } });
 		expect(tour('ws.default-landing').steps[0].route).toEqual({ name: 'ModuleSettings' });
 		for (const id of ['agents.work-log', 'personas.assign'])

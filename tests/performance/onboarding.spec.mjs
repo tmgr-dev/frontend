@@ -106,7 +106,7 @@ test.describe('hub checklist and sample tasks', () => {
       await boot(page, size, { onboarding: { intent: 'agent', facts: { mcp_first_call_at: true } } });
       await page.goto('/demo/getting-started');
       await expect(page.locator('[data-checklist-item]')).toHaveCount(6);
-      await expect(page.getByText('Connect an agent')).toBeVisible();
+      await expect(page.getByTestId('checklist-card').getByText('Connect an agent')).toBeVisible();
     });
   }
 

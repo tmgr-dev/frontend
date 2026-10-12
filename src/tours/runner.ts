@@ -25,6 +25,7 @@ export interface RunnerDeps {
   modulesKnown(): boolean;
   isModuleEnabled(key: string): boolean;
   currentRouteName(): string | null;
+  currentRouteQuery?(): Record<string, unknown>;
   navigate(route: RunnerRoute): void;
   resolveAnchor(
     step: StepDef,
@@ -194,6 +195,12 @@ export class TourRunner {
     this.pause('navigated');
   }
 
+  private onRoute(route: NonNullable<StepDef['route']>): boolean {
+    if (this.deps.currentRouteName() !== route.name) return false;
+    const current = this.deps.currentRouteQuery?.() ?? {};
+    return Object.entries(route.query ?? {}).every(([key, value]) => current[key] === value);
+  }
+
   private modulesOk(tour: TourDef): boolean {
     if (!this.deps.modulesKnown()) return true;
     return (tour.requires?.modules ?? []).every((key) => this.deps.isModuleEnabled(key));
@@ -277,7 +284,7 @@ export class TourRunner {
       this.deps.save(tour.id, { status: 'in_progress', step_id: step.id, version: tour.version });
     }
 
-    if (step.route && this.deps.currentRouteName() !== step.route.name) {
+    if (step.route && !this.onRoute(step.route)) {
       this.navigatedAt = this.deps.now();
       this.deps.navigate(step.route);
     }

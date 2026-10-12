@@ -76,6 +76,7 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
     modulesKnown: () => !!store.getters['featureToggles/modulesKnown'],
     isModuleEnabled: (key) => !!store.getters['featureToggles/isFeatureEnabled'](key),
     currentRouteName: () => typeof router.currentRoute.value.name === 'string' ? router.currentRoute.value.name : null,
+    currentRouteQuery: () => router.currentRoute.value.query,
     navigate: (route) =>
       void router.push({
         name: route.name,

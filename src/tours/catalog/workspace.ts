@@ -2,6 +2,7 @@ import type { Platform, TourDef } from '../types';
 
 const MODULES = { name: 'ModuleSettings' } as const;
 const SETTINGS_ABOUT = { name: 'Settings', query: { tab: 'about' } } as const;
+const SETTINGS_PRIVACY = { name: 'Settings', query: { tab: 'privacy' } } as const;
 const ALL: Platform[] = ['web', 'mobile_web', 'desktop', 'desktop_local'];
 const CLOUD_APP: Platform[] = ['web', 'mobile_web', 'desktop'];
 
@@ -169,7 +170,7 @@ export const workspaceTours: TourDef[] = [
         id: 's1',
         type: 'spot',
         anchor: 'settings.privacy-telemetry',
-        route: SETTINGS_ABOUT,
+        route: SETTINGS_PRIVACY,
         title: 'Usage data',
         body: 'Share usage data that is not linked to your account, or not. Switch it off any time.',
       },
