@@ -77,8 +77,9 @@
 
 		<button
 			type="button"
-			class="hidden h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-brand md:flex"
+			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-brand"
 			title="More (right-click for menu)"
+			aria-label="More"
 			@click.stop="
 				$emit('context', { entry, x: $event.clientX, y: $event.clientY })
 			"
