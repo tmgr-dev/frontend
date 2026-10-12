@@ -48,6 +48,9 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
 
   store.subscribe((mutation) => {
     if (mutation.type === 'setShowCreatingTaskModal') tourBus.emit('task.create_opened');
+    if ((mutation.type === 'setAiPanelOpen' || mutation.type === 'toggleAiPanel') && store.state.aiPanelOpen) {
+      tourBus.emit('ai.panel_opened');
+    }
   });
 
   const mobile = () => window.innerWidth < SMALL_SCREEN_PX;
@@ -79,6 +82,7 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
         ...(route.params === 'currentWorkspace'
           ? { params: { workspace_code: store.getters.currentWorkspace?.code } }
           : {}),
+        ...(route.query ? { query: route.query } : {}),
       }),
     isBusy: () => isInputBusy(),
     setTimer: (fn, ms) => {

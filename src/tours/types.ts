@@ -47,8 +47,8 @@ export interface StepDef {
   mobileAnchor?: string;
   anchorScope?: 'eventTask';
   requiresModules?: string[];
-  route?: { name: string; params?: 'currentWorkspace' };
-  takeMeRoute?: { name: string; params?: 'currentWorkspace' };
+  route?: { name: string; params?: 'currentWorkspace'; query?: Record<string, string> };
+  takeMeRoute?: { name: string; params?: 'currentWorkspace'; query?: Record<string, string> };
   title: string;
   body: string;
   waitFor?: { event: string; where?: Record<string, string | number> };

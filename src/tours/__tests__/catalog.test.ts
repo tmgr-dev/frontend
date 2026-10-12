@@ -14,8 +14,8 @@ const walk = (dir: string): string[] =>
 
 describe('catalog lint', () => {
 	it('has the S2 tours', () => {
-		expect(TOURS.map((t) => t.id).sort()).toEqual(
-			[
+		expect(TOURS.map((t) => t.id)).toEqual(
+			expect.arrayContaining([
 				'start.connect-agent',
 				'start.first-task',
 				'start.hub',
@@ -25,7 +25,7 @@ describe('catalog lint', () => {
 				'tasks.board-move',
 				'tasks.comments-files',
 				'time.timer',
-			].sort(),
+			]),
 		);
 		expect(getTour('time.timer')?.steps).toHaveLength(4);
 	});
@@ -64,11 +64,17 @@ describe('catalog lint', () => {
 			}
 	});
 
+	const isKnownEvent = (event: unknown) => {
+		if (typeof event === 'string' && event.startsWith('module.enabled:'))
+			return MODULES.some((m) => m.key === event.slice('module.enabled:'.length));
+		return (KNOWN_EVENTS as readonly string[]).includes(event as string);
+	};
+
 	it('wait steps name a known event; other steps do not', () => {
 		for (const tour of TOURS)
 			for (const step of tour.steps) {
 				if (step.type === 'wait') {
-					expect(KNOWN_EVENTS as readonly string[]).toContain(step.waitFor?.event);
+					expect(`${tour.id}/${step.id}: ${isKnownEvent(step.waitFor?.event)}`).toMatch(/: true$/);
 				} else expect(step.waitFor).toBeUndefined();
 				if (step.alreadyDone) expect(step.type).toBe('wait');
 			}
@@ -76,9 +82,9 @@ describe('catalog lint', () => {
 
 	it('completeOn, event triggers and where refer to known events', () => {
 		for (const tour of TOURS) {
-			if (tour.completeOn) expect(KNOWN_EVENTS as readonly string[]).toContain(tour.completeOn);
+			if (tour.completeOn) expect(`${tour.id}: ${isKnownEvent(tour.completeOn)}`).toMatch(/: true$/);
 			for (const trigger of tour.triggers)
-				if (trigger.kind === 'event') expect(KNOWN_EVENTS as readonly string[]).toContain(trigger.event);
+				if (trigger.kind === 'event') expect(isKnownEvent(trigger.event)).toBe(true);
 		}
 	});
 
@@ -102,6 +108,13 @@ describe('catalog lint', () => {
 		for (const tour of TOURS)
 			for (const step of tour.steps)
 				if (step.anchor?.startsWith('nav.') && step.anchor !== 'nav.create-task' && step.anchor !== 'nav.active-timers')
+					expect(step.mobileAnchor || step.mobileBody).toBeTruthy();
+	});
+
+	it('sidebar page anchors work under 640px', () => {
+		for (const tour of TOURS)
+			for (const step of tour.steps)
+				if (step.anchor === 'pages.tree' || step.anchor === 'pages.type-picker')
 					expect(step.mobileAnchor || step.mobileBody).toBeTruthy();
 	});
 

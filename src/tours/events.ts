@@ -31,6 +31,12 @@ export const KNOWN_EVENTS = [
   'agent.run_started',
   'agent.run_finished',
   'agent.first_local_call',
+  'routine.completed',
+  'routine.editor_opened',
+  'task.created_from_page',
+  'checkpoint.added',
+  'page.context_saved',
+  'tasks.actions_opened',
 ] as const;
 
 export type KnownEvent = (typeof KNOWN_EVENTS)[number];
