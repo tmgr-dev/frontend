@@ -176,6 +176,46 @@ describe('onEscape', () => {
   });
 });
 
+describe('onEscape scoping', () => {
+  const esc = () =>
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+
+  it('ignores Esc raised inside a foreign dialog', () => {
+    document.body.innerHTML =
+      '<div role="dialog" id="foreign"><input id="f" /></div><div role="dialog" id="own"><button id="o"></button></div>';
+    const handler = jest.fn();
+    const other = jest.fn();
+    document.addEventListener('keydown', other, true);
+    const off = onEscape(handler, {
+      ownDialog: () => document.getElementById('own'),
+    });
+    const e = esc();
+    document.getElementById('f')?.dispatchEvent(e);
+    expect(handler).not.toHaveBeenCalled();
+    expect(other).toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+    document.getElementById('o')?.dispatchEvent(esc());
+    expect(handler).toHaveBeenCalledTimes(1);
+    off();
+    document.removeEventListener('keydown', other, true);
+  });
+
+  it('does not stop propagation in passive mode but still pauses', () => {
+    document.body.innerHTML = '<input id="i" />';
+    const handler = jest.fn();
+    const other = jest.fn();
+    document.addEventListener('keydown', other, true);
+    const off = onEscape(handler, { swallow: () => false });
+    const e = esc();
+    document.getElementById('i')?.dispatchEvent(e);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+    off();
+    document.removeEventListener('keydown', other, true);
+  });
+});
+
 describe('focus helpers', () => {
   it('restores focus to the remembered element', () => {
     document.body.innerHTML = '<button id="a"></button><button id="b"></button>';

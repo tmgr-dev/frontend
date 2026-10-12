@@ -160,12 +160,22 @@ export function isTransientLayerOpen(doc: Document = document): boolean {
   );
 }
 
-export function onEscape(handler: () => void): () => void {
+export interface EscapeOptions {
+  swallow?: () => boolean;
+  ownDialog?: () => Element | null;
+}
+
+export function onEscape(handler: () => void, options: EscapeOptions = {}): () => void {
   const listener = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.isComposing) return;
     if (isTransientLayerOpen()) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    const target = e.target instanceof Element ? e.target : null;
+    const dialog = target?.closest('[role="dialog"]') ?? null;
+    if (dialog && dialog !== options.ownDialog?.()) return;
+    if (options.swallow?.() ?? true) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
     handler();
   };
   window.addEventListener('keydown', listener, true);

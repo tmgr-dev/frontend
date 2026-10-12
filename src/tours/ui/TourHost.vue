@@ -146,6 +146,7 @@
 				releaseA11y = [];
 				if (!host) return;
 				await nextTick();
+				if (hostEl.value !== host) return;
 				const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
 				const { mode, anchorEl } = presentation.value;
 				if (!modal.value) {
@@ -166,7 +167,10 @@
 
 			function beginTour() {
 				restoreFocus = rememberFocus();
-				offEsc = onEscape(() => api.pause());
+				offEsc = onEscape(() => api.pause(), {
+					swallow: () => modal.value,
+					ownDialog: () => hostEl.value?.querySelector('[role="dialog"]') ?? null,
+				});
 			}
 
 			function endTour() {
