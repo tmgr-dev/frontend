@@ -4,6 +4,8 @@ import type { InjectionKey, Ref } from 'vue';
 export interface PagesTreeContext {
 	workspaceCode: Ref<string>;
 	expanded: Ref<Set<number>>;
+	dragging: Ref<number | null>;
+	onDragStart: (event: { item: HTMLElement }) => void;
 	toggle: (id: number) => void;
 	createChild: (parent: PageSummary, type: PageType) => void;
 	requestRename: (page: PageSummary) => void;

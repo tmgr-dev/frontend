@@ -12,6 +12,7 @@
 			v-on="zone.handlers"
 		>
 			<button
+				v-if="node.children.length"
 				type="button"
 				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink dark:text-gray-400 dark:hover:text-gray-200"
 				:aria-label="isExpanded ? 'Collapse' : 'Expand'"
@@ -22,6 +23,7 @@
 					:class="isExpanded ? 'rotate-90' : ''"
 				/>
 			</button>
+			<span v-else class="h-7 w-6 shrink-0" aria-hidden="true"></span>
 			<router-link
 				:to="url"
 				draggable="false"
@@ -97,7 +99,7 @@
 			</DropdownMenu>
 		</div>
 		<Draggable
-			v-if="isExpanded"
+			v-if="(isExpanded && node.children.length) || showDropZone"
 			:model-value="node.children"
 			group="pages"
 			item-key="id"
@@ -108,6 +110,8 @@
 			:fallback-tolerance="3"
 			:delay="150"
 			:delay-on-touch-only="true"
+			@start="ctx.onDragStart"
+			@end="ctx.dragging.value = null"
 			@change="(event) => ctx.onChange(node.id, event)"
 		>
 			<template #item="{ element }">
@@ -183,6 +187,12 @@
 			const ctx = inject(PAGES_TREE_KEY) as PagesTreeContext;
 			const route = useRoute();
 			const isExpanded = computed(() => ctx.expanded.value.has(props.node.id));
+			const showDropZone = computed(
+				() =>
+					ctx.dragging.value !== null &&
+					ctx.dragging.value !== props.node.id &&
+					!props.node.children.length,
+			);
 			const isActive = computed(() => route.params.slug === props.node.slug);
 			const zone = useFileDrop((files) => ctx.importInto(props.node, files));
 			const url = computed(() => pageUrl(ctx.workspaceCode.value, props.node.slug));
@@ -198,6 +208,7 @@
 				isDesktop: isDesktopApp(),
 				openInWindow,
 				isExpanded,
+				showDropZone,
 				isActive,
 				url,
 				createOptions: PAGE_CREATE_OPTIONS,
