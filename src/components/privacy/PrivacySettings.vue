@@ -15,9 +15,10 @@
 						@update:checked="(value) => setUsage(value ? 'granted' : 'denied')"
 					/>
 				</SettingsRow>
-				<SettingsRow label="Install ID">
-					<template #description>
-						<span data-testid="install-id">{{
+				<SettingsRow>
+					<template #label>
+						Install ID:
+						<span data-testid="install-id" class="font-mono">{{
 							snapshot.installId ? shortInstallId(snapshot.installId) : 'None while sharing is off'
 						}}</span>
 					</template>
@@ -30,8 +31,9 @@
 						Reset ID
 					</Button>
 				</SettingsRow>
-				<SettingsRow label="Events waiting to be sent">
-					<template #description>
+				<SettingsRow>
+					<template #label>
+						Events waiting to be sent:
 						<span data-testid="pending-count">{{ snapshot.pending }}</span>
 					</template>
 					<Button variant="outline" size="sm" @click="openQueue">View</Button>

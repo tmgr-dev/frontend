@@ -40,7 +40,7 @@ test('a first visit makes no analytics requests and shows the choice', async ({
 }) => {
   const hits = await watchTrackers(page);
   await page.goto('/login');
-  const panel = page.getByRole('region', { name: 'Cookies and analytics' });
+  const panel = page.getByRole('region', { name: 'Privacy choices' });
   await expect(panel).toBeVisible();
   await page.goto('/privacy');
   await expect(page.getByRole('heading', { name: 'Privacy policy' })).toBeVisible();
@@ -71,7 +71,8 @@ test('allowing analytics loads the Google tag, and revoking removes it', async (
   await page.getByRole('button', { name: 'Allow analytics' }).click();
   await expect.poll(() => hits.some((url) => /googletagmanager/.test(url))).toBe(true);
   expect(await gtagScripts(page)).toBe(1);
-  await expect(page.getByRole('region', { name: 'Cookies and analytics' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'No, thanks' }).click();
+  await expect(page.getByRole('region', { name: 'Privacy choices' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Cookie settings' }).click();
   await page.getByRole('button', { name: 'Decline' }).click();
@@ -82,9 +83,10 @@ test('declining keeps the tag away after a reload', async ({ page }) => {
   const hits = await watchTrackers(page);
   await page.goto('/login');
   await page.getByRole('button', { name: 'Decline' }).click();
+  await page.getByRole('button', { name: 'No, thanks' }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Cookies and analytics' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Privacy choices' })).toHaveCount(0);
   await page.waitForTimeout(500);
   expect(hits).toEqual([]);
   expect(await gtagScripts(page)).toBe(0);
@@ -104,7 +106,7 @@ test('the privacy page opens for a guest with every section', async ({ page }) =
   await expect(page.locator('#contact [data-todo="contact-email"]')).toBeVisible();
 
   await page.getByRole('button', { name: 'Cookie settings' }).click();
-  await expect(page.getByRole('region', { name: 'Cookies and analytics' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Privacy choices' })).toBeVisible();
   await shot(page, 'privacy-page.png');
 });
 
@@ -113,7 +115,7 @@ test.describe('screenshots', () => {
     test(`consent panel at ${name}`, async ({ page }) => {
       await page.setViewportSize({ width, height });
       await page.goto('/login');
-      await expect(page.getByRole('region', { name: 'Cookies and analytics' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Privacy choices' })).toBeVisible();
       await shot(page, `consent-panel-${name}.png`);
     });
   }
