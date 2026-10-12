@@ -16,7 +16,7 @@
 	import { onboardingApi } from '@/tours/api';
 	import { useTours } from '@/tours/useTours';
 	import { requestCache } from '@/utils/requestCache';
-	import { computed, defineComponent, ref } from 'vue';
+	import { computed, defineComponent, ref, type PropType } from 'vue';
 	import { useStore } from 'vuex';
 
 	const flagKey = (uid: unknown) => `tmgr:onboarding:starters-removed:${uid}`;
@@ -31,8 +31,11 @@
 
 	export default defineComponent({
 		name: 'RemoveSampleTasksButton',
+		props: {
+			tasks: { type: Array as PropType<Array<{ settings?: Array<{ key?: string }> }> | null>, default: null },
+		},
 		emits: ['removed'],
-		setup(_, { emit }) {
+		setup(props, { emit }) {
 			const store = useStore();
 			const tours = useTours();
 			const busy = ref(false);
@@ -40,12 +43,22 @@
 
 			const userId = computed(() => store.state.user?.id ?? null);
 			const intent = computed(() => tours.onboarding.value?.intent ?? null);
+			const exposesStarters = computed(
+				() => !!props.tasks?.some((task) => Array.isArray(task.settings)),
+			);
+			const hasStarter = computed(
+				() =>
+					!!props.tasks?.some((task) =>
+						task.settings?.some((setting) => setting.key === 'starter'),
+					),
+			);
 			const visible = computed(
 				() =>
 					userId.value !== null &&
 					(intent.value === 'human' || intent.value === 'agent') &&
 					!removedFlag.value &&
-					!readFlag(userId.value),
+					!readFlag(userId.value) &&
+					(!exposesStarters.value || hasStarter.value),
 			);
 
 			const remove = async () => {

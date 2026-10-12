@@ -26,7 +26,7 @@
 									/>
 
 									<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
-									<RemoveSampleTasksButton @removed="retryBoard" />
+									<RemoveSampleTasksButton :tasks="boardTasks" @removed="retryBoard" />
 
 									<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
 										<button
@@ -66,7 +66,7 @@
 											v-if="tasksLoaded"
 											:summary="sprintSummary"
 										/>
-										<RemoveSampleTasksButton @removed="retryBoard" />
+										<RemoveSampleTasksButton :tasks="boardTasks" @removed="retryBoard" />
 										<div
 											data-tauri-drag-region
 											class="h-5 w-px shrink-0 bg-line"
@@ -1036,6 +1036,9 @@
 			},
 			sprintSummary() {
 				return boardTaskCounts(this.columns);
+			},
+			boardTasks() {
+				return this.columns.flatMap((column) => column.tasks || []);
 			},
 			pluginBoardFilters() {
 				return Object.values(pluginState.plugins)

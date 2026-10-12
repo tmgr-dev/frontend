@@ -11,7 +11,7 @@ export interface RedirectContext {
   ownsOnlyDefaultWorkspace: boolean;
 }
 
-export const ONBOARDING_SINCE = Date.UTC(2026, 9, 13);
+export const ONBOARDING_SINCE = Date.UTC(2026, 9, 12);
 
 export const EXCLUDED_ROUTES: readonly string[] = [
   'WorkspaceInvitation',

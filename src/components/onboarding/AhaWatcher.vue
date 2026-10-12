@@ -9,7 +9,7 @@
 	import { tourBus } from '@/tours/events';
 	import { onboardingApi } from '@/tours/api';
 	import { useTours } from '@/tours/useTours';
-	import { defineComponent, onBeforeUnmount, onMounted } from 'vue';
+	import { defineComponent, onBeforeUnmount, onMounted, watch } from 'vue';
 	import { useStore } from 'vuex';
 
 	const safeStorage = () => ({
@@ -32,20 +32,28 @@
 		setup() {
 			const store = useStore();
 			const tours = useTours();
+			const firstSeenAt = (): number | null => {
+				const uid = store.state.user?.id;
+				if (uid == null) return null;
+				const key = `tmgr:onboarding:aha-since:${uid}`;
+				const storage = safeStorage();
+				const saved = Number(storage.getItem(key));
+				if (Number.isFinite(saved) && saved > 0) return saved;
+				const now = Date.now();
+				storage.setItem(key, String(now));
+				return now;
+			};
 			let watcher: AhaWatcher | null = null;
 			let stop: (() => void) | null = null;
 			let off: (() => void) | null = null;
+			let stopWatch: (() => void) | null = null;
 
 			onMounted(() => {
 				watcher = createAhaWatcher({
 					userId: () => store.state.user?.id ?? null,
 					intent: () => tours.onboarding.value?.intent ?? null,
-					intentAt: () => {
-						const at = (tours.onboarding.value as { intent_at?: string } | null)
-							?.intent_at;
-						const ms = at ? Date.parse(at) : NaN;
-						return Number.isFinite(ms) ? ms : null;
-					},
+					intentAt: firstSeenAt,
+					inert: () => !!store.getters.isLocalOnly,
 					now: Date.now,
 					storage: safeStorage(),
 					fetchFacts: (keys, taskId) => onboardingApi().fetchFacts(keys, taskId),
@@ -62,7 +70,14 @@
 						return () => clearTimeout(id);
 					},
 				});
-				stop = watcher.start();
+				stopWatch = watch(
+					() => [store.state.user?.id ?? null, tours.onboarding.value?.intent ?? null],
+					() => {
+						stop?.();
+						stop = watcher?.start() ?? null;
+					},
+					{ immediate: true },
+				);
 				off = tourBus.on('timer.stopped', async (payload) => {
 					const taskId = payload.taskId;
 					if (taskId == null) return;
@@ -79,6 +94,7 @@
 
 			onBeforeUnmount(() => {
 				off?.();
+				stopWatch?.();
 				stop?.();
 			});
 

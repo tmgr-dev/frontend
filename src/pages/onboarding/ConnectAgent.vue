@@ -338,6 +338,7 @@ export default defineComponent({
 
 		const fetchFacts = (keys: string[]) => onboardingApi().fetchFacts(keys);
 		const pollerDeps = {
+			inert: () => localOnly.value,
 			now: () => Date.now(),
 			setTimer: (fn: () => void, ms: number) => {
 				const id = setTimeout(fn, ms);

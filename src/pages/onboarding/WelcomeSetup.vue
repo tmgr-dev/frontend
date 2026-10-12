@@ -71,7 +71,6 @@ import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import IntentCard from '@/components/onboarding/IntentCard.vue';
 import { steps } from '@/onboarding/flow';
-import { SESSION_KEY } from '@/tours/triggers';
 import { useTours } from '@/tours/useTours';
 
 const HUMAN_SEQUENCE = ['start.nav', 'start.first-task', 'time.timer'];
@@ -123,11 +122,6 @@ export default defineComponent({
 		const skip = async () => {
 			if (busy.value) return;
 			if (!(await save('skipped'))) return;
-			try {
-				sessionStorage.setItem(SESSION_KEY, 'true');
-			} catch {
-				return;
-			}
 			await router.push(listPath());
 		};
 
