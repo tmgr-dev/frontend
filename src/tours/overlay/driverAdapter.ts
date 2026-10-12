@@ -1,6 +1,6 @@
 import { isSheetViewport, prefersReducedMotion } from '../a11y';
 import type { OverlayAdapter, OverlayShowOptions } from './OverlayAdapter';
-import { clampIntoViewport } from './clamp';
+import { createFrameClamp } from './clamp';
 import { createSheetRoom } from './sheetRoom';
 
 type DriverModule = typeof import('driver.js');
@@ -24,18 +24,18 @@ export function createDriverAdapter(): OverlayAdapter {
   let unmount: (() => void) | null = null;
   const room = createSheetRoom();
 
+  const frameClamp = createFrameClamp(() =>
+    document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover'),
+  );
+
   function hide() {
     seq += 1;
+    frameClamp.stop();
     room.release();
     unmount?.();
     unmount = null;
     instance?.destroy();
     instance = null;
-  }
-
-  function clampPopover() {
-    const el = document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover');
-    if (el && !el.classList.contains('tour-sheet-mode')) clampIntoViewport(el);
   }
 
   function show({ anchorEl, mount }: OverlayShowOptions) {
@@ -59,7 +59,7 @@ export function createDriverAdapter(): OverlayAdapter {
           : 'tour-driver-popover',
         onHighlighted: () => {
           instance?.refresh();
-          clampPopover();
+          frameClamp.schedule();
         },
         onPopoverRender: (popover) => {
           const { wrapper } = popover;
@@ -85,7 +85,7 @@ export function createDriverAdapter(): OverlayAdapter {
             typeof ResizeObserver === 'function'
               ? new ResizeObserver(() => {
                   instance?.refresh();
-                  clampPopover();
+                  frameClamp.schedule();
                 })
               : null;
           resize?.observe(host);
@@ -100,9 +100,10 @@ export function createDriverAdapter(): OverlayAdapter {
         element: anchorEl,
         popover: { title: ' ', description: ' ', side: 'bottom', align: 'start' },
       });
+      frameClamp.start();
       room.watch(anchorEl, sheet, () => {
         instance?.refresh();
-        clampPopover();
+        frameClamp.schedule();
       });
     });
   }
