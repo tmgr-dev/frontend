@@ -101,7 +101,7 @@ test('the privacy page opens for a guest with every section', async ({ page }) =
   }
   await expect(page.getByText('Last updated: 12 October 2026')).toBeVisible();
   await expect(page.locator('[data-todo="controller-name"]')).toBeVisible();
-  await expect(page.locator('[data-todo="contact-email"]')).toBeVisible();
+  await expect(page.locator('#contact [data-todo="contact-email"]')).toBeVisible();
 
   await page.getByRole('button', { name: 'Cookie settings' }).click();
   await expect(page.getByRole('region', { name: 'Cookies and analytics' })).toBeVisible();
