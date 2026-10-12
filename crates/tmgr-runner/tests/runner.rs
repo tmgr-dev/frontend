@@ -392,6 +392,19 @@ fn rejects_unauthorized_and_invalid_requests() {
     let mut missing = h.req(&["/bin/true"]);
     missing.cwd = h.work.join("nope").display().to_string();
     assert!(err_text(c.create(missing)).contains("invalid_params"));
+    let mut protected = vec!["/".to_string(), h.run.display().to_string()];
+    protected.push(h.run.join("sessions").display().to_string());
+    protected.push(h.tmp.path().display().to_string());
+    protected.push(h.homes.path().display().to_string());
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        protected.push(home.display().to_string());
+        protected.push(home.parent().unwrap().display().to_string());
+    }
+    for cwd in protected {
+        let mut r = h.req(&["/bin/true"]);
+        r.cwd = cwd.clone();
+        assert!(err_text(c.create(r)).contains("invalid_params"), "{cwd}");
+    }
     assert!(err_text(c.create(h.req(&["/bin/echo", "a\0b"]))).contains("invalid_params"));
     assert!(err_text(c.create(h.req(&[]))).contains("invalid_params"));
     let mut unknown = h.req(&["/bin/true"]);
@@ -493,4 +506,48 @@ fn send_kill_layout_and_stop() {
     }
     assert!(alive(live.child_pid) && alive(live.shim_pid));
     let _: &Path = &h.run;
+}
+
+#[test]
+fn start_background_is_idempotent() {
+    let h = Harness::new();
+    let cfg = tmgr_runner::daemon::RunnerConfig {
+        dir: h.run.clone(),
+        homes: h.homes.path().to_path_buf(),
+        self_exe: PathBuf::from(HOST),
+        quiet_ms: 5000,
+        version: "test".into(),
+        max_sessions: 16,
+    };
+    let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
+    let again = tmgr_runner::daemon::start_background(&cfg);
+    let mut c = h.client();
+    let status = c.status().unwrap();
+    let log_mode = fs::metadata(h.run.join("runner.log"))
+        .unwrap()
+        .permissions()
+        .mode();
+    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    assert_eq!(again.unwrap(), pid);
+    assert_eq!(status.pid, pid);
+    assert_eq!(log_mode & 0o777, 0o600);
+}
+
+#[test]
+fn large_input_is_chunked_and_first_screen_arrives() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(h.sh("stty raw -echo; head -c 200000 | wc -c; sleep 5\n"))
+        .unwrap();
+    let w = Watch::new(h.client(), &[&info.id]);
+    let mut w = w;
+    assert!(w.wait(5, |w| w.cache.snapshot(&info.id).is_some()));
+    w.writer.input(&info.id, &vec![b'a'; 200_000]).unwrap();
+    assert!(
+        w.wait(10, |w| w.has_line(&info.id, "200000")),
+        "{:?}",
+        w.text(&info.id)
+    );
 }

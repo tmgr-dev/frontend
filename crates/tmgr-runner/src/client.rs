@@ -1,5 +1,5 @@
 use crate::screen::Snapshot;
-use crate::wire::{CreateReq, EventMsg, ScreenPush, SessionInfo, StatusInfo};
+use crate::wire::{CreateReq, EventMsg, ScreenPush, SessionInfo, StatusInfo, MAX_INPUT};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io;
@@ -161,12 +161,17 @@ impl AttachWriter {
     }
 
     pub fn input(&self, id: &str, bytes: &[u8]) -> io::Result<()> {
-        let frame = Frame::Bin(BinFrame {
-            tag: TAG_INPUT,
-            session: id.into(),
-            data: bytes.to_vec(),
-        });
-        self.with(|st| write_frame(&mut st.stream, &frame))
+        self.with(|st| {
+            for chunk in bytes.chunks(MAX_INPUT) {
+                let frame = Frame::Bin(BinFrame {
+                    tag: TAG_INPUT,
+                    session: id.into(),
+                    data: chunk.to_vec(),
+                });
+                write_frame(&mut st.stream, &frame)?;
+            }
+            Ok(())
+        })
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> io::Result<()> {

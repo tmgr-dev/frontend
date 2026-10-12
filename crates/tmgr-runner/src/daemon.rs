@@ -40,6 +40,18 @@ const PUSH_INTERVAL: Duration = Duration::from_millis(33);
 const MAX_LAYOUT: usize = 64 << 10;
 const MAX_WATCHED: usize = 64;
 const LOG_TAIL: u64 = 2 << 20;
+const PROTECTED_IN_HOME: [&str; 10] = [
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".config/tmgr",
+    ".tmgr.dev",
+    ".mozilla",
+    ".config/google-chrome",
+    "Library/Keychains",
+    "Library/Application Support/Google/Chrome",
+    "Library/Application Support/Firefox",
+];
 
 #[derive(Clone)]
 pub struct RunnerConfig {
@@ -141,6 +153,7 @@ struct Session {
     inner: Mutex<Inner>,
     version: AtomicU64,
     shim: Mutex<Option<UnixStream>>,
+    meta_lock: Mutex<()>,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -186,16 +199,18 @@ impl Session {
         self.state().kind == StateKind::Exited
     }
 
+    fn persist(&self) {
+        let _g = lock(&self.meta_lock);
+        let meta = lock(&self.inner).meta.clone();
+        write_meta(&self.dir, &meta);
+    }
+
     fn publish(&self, states: Vec<State>) {
         let Some(last) = states.last().cloned() else {
             return;
         };
-        let meta = {
-            let mut i = lock(&self.inner);
-            i.meta.last_state = Some(last);
-            i.meta.clone()
-        };
-        write_meta(&self.dir, &meta);
+        lock(&self.inner).meta.last_state = Some(last);
+        self.persist();
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
@@ -280,15 +295,14 @@ impl Session {
 
     fn resize(&self, cols: u16, rows: u16, owner: Option<u64>) {
         let (cols, rows) = clamp_size(cols, rows);
-        let meta = {
+        {
             let mut i = lock(&self.inner);
             i.screen.resize(rows, cols);
             i.meta.cols = cols;
             i.meta.rows = rows;
             i.size_owner = owner;
-            i.meta.clone()
-        };
-        write_meta(&self.dir, &meta);
+        }
+        self.persist();
         self.version.fetch_add(1, Ordering::SeqCst);
         self.shim_msg(&ToShim::Resize { cols, rows });
     }
@@ -431,6 +445,7 @@ struct Conn {
     sizes: Mutex<HashMap<String, (u16, u16)>>,
     closed: AtomicBool,
     attached: AtomicBool,
+    pending_rx: Mutex<Option<Receiver<Value>>>,
 }
 
 impl Conn {
@@ -641,11 +656,25 @@ impl Runner {
             .ok()
             .filter(|p| p.is_dir())
             .ok_or_else(|| api("invalid_params", "cwd must be an existing directory"))?;
-        let home = std::env::var_os("HOME").and_then(|h| fs::canonicalize(h).ok());
-        if cwd == Path::new("/") || home.as_deref() == Some(cwd.as_path()) {
-            return bad("cwd must not be / or the home directory");
+        if cwd == Path::new("/") || self.protected_overlap(&cwd) {
+            return bad("cwd must not be /, the home directory or overlap protected paths");
         }
         Ok(cwd)
+    }
+
+    fn protected_overlap(&self, cwd: &Path) -> bool {
+        let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
+        let mut home = None;
+        if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
+            let h = canon(&h);
+            denied.extend(PROTECTED_IN_HOME.iter().map(|sub| h.join(sub)));
+            home = Some(h);
+        }
+        home.is_some_and(|h| h.starts_with(cwd))
+            || denied
+                .iter()
+                .any(|p| cwd.starts_with(p) || p.starts_with(cwd))
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
@@ -797,6 +826,7 @@ impl Runner {
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
+            meta_lock: Mutex::new(()),
         })
     }
 
@@ -919,13 +949,10 @@ impl Runner {
         Ok(Value::Null)
     }
 
-    fn attach_open(self: &Arc<Self>, conn: &Arc<Conn>, p: &Value) -> Result<Value, ApiErr> {
+    fn attach_open(&self, conn: &Arc<Conn>, p: &Value) -> Result<Value, ApiErr> {
         self.attach_set(conn, p)?;
         if !conn.attached.swap(true, Ordering::SeqCst) {
-            let rx = self.hub.subscribe();
-            let rt = self.clone();
-            let conn = conn.clone();
-            thread::spawn(move || rt.pusher(&conn, rx));
+            *lock(&conn.pending_rx) = Some(self.hub.subscribe());
         }
         Ok(Value::Null)
     }
@@ -1055,6 +1082,7 @@ impl Runner {
             sizes: Mutex::new(HashMap::new()),
             closed: AtomicBool::new(false),
             attached: AtomicBool::new(false),
+            pending_rx: Mutex::new(None),
         });
         let closed = |reason: &str| {
             let _ = conn.write(&ServerMsg::Closed {
@@ -1076,6 +1104,11 @@ impl Runner {
                         let resp = self.respond(&conn, req);
                         if conn.write(&ServerMsg::Response(resp)).is_err() {
                             break;
+                        }
+                        let pending = lock(&conn.pending_rx).take();
+                        if let Some(rx) = pending {
+                            let (rt, conn) = (self.clone(), conn.clone());
+                            thread::spawn(move || rt.pusher(&conn, rx));
                         }
                         if stop {
                             log("stop requested");
@@ -1237,30 +1270,32 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
         .stderr(log_file);
     unsafe {
         cmd.pre_exec(|| {
+            match libc::fork() {
+                -1 => return Err(io::Error::last_os_error()),
+                0 => {}
+                _ => libc::_exit(0),
+            }
             libc::setsid();
             Ok(())
         });
     }
-    let mut child = cmd.spawn()?;
+    let status = cmd.spawn()?.wait()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "runner launcher failed ({status})"
+        )));
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Ok(mut c) = Client::connect(&cfg.dir) {
             if let Ok(st) = c.status() {
-                thread::spawn(move || {
-                    let _ = child.wait();
-                });
                 return Ok(st.pid);
             }
-        }
-        if let Some(st) = child.try_wait()? {
-            return Err(io::Error::other(format!(
-                "runner exited during start ({st}); see runner.log"
-            )));
         }
         if Instant::now() >= deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "runner did not start within 5 s",
+                "runner did not start within 5 s; see runner.log",
             ));
         }
         thread::sleep(Duration::from_millis(50));
