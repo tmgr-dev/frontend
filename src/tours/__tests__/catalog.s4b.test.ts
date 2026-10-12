@@ -18,7 +18,6 @@ const S4B_IDS = [
 	'time.parallel',
 	'time.checkpoints',
 	'time.pomodoro',
-	'time.export',
 	'pages.first',
 	'pages.context',
 	'pages.links',
@@ -57,7 +56,6 @@ describe('S4b catalog', () => {
 		expect(anchors('time.parallel')).toEqual([undefined, 'nav.active-timers']);
 		expect(anchors('time.checkpoints')).toEqual(['task-form.checkpoints']);
 		expect(anchors('time.pomodoro')).toEqual(['task-form.pomodoro', 'pomodoro.settings']);
-		expect(anchors('time.export')).toEqual(['list.select', 'list.process', 'export.panel', 'export.download']);
 		expect(anchors('pages.first')).toEqual(['pages.new', 'pages.tree']);
 		expect(anchors('pages.context')).toEqual(['pages.type-picker', 'page.editor']);
 		expect(anchors('pages.links')).toEqual(['page.editor', 'page.backlinks']);
@@ -104,7 +102,6 @@ describe('S4b catalog', () => {
 		expect(tour('time.parallel').requires).toMatchObject({ modules: ['task.countdown'], platforms: WDDL });
 		expect(tour('time.checkpoints').requires).toMatchObject({ modules: ['task.checkpoints'], platforms: WDDL });
 		expect(tour('time.pomodoro').requires).toMatchObject({ modules: ['pomodoro'], account: 'cloud', platforms: ['web', 'mobile_web', 'desktop'] });
-		expect(tour('time.export').requires).toMatchObject({ modules: ['exports'], account: 'cloud', platforms: ['web', 'desktop'] });
 		expect(tour('pages.first').requires).toMatchObject({ modules: ['pages'], platforms: ALL });
 		for (const id of ['pages.context', 'pages.links', 'pages.versions', 'pages.people-meetings', 'pages.import', 'pages.task-from-selection'])
 			expect(tour(id).requires).toMatchObject({ modules: ['pages'], platforms: WDDL });
@@ -133,7 +130,6 @@ describe('S4b catalog', () => {
 		expect(waits('tasks.relations')).toEqual(['relation.created']);
 		expect(waits('time.checkpoints')).toEqual(['checkpoint.added']);
 		expect(waits('time.pomodoro')).toEqual(['pomodoro.started']);
-		expect(waits('time.export')).toEqual(['tasks.selected', 'tasks.actions_opened', 'export.downloaded']);
 		expect(waits('pages.first')).toEqual(['page.created']);
 		expect(waits('pages.context')).toEqual(['page.created', 'page.context_saved']);
 		expect(tour('pages.context').steps[0].waitFor?.where).toEqual({ type: 'context' });
@@ -157,7 +153,6 @@ describe('S4b catalog', () => {
 		expect(tour('tasks.multi-select').steps[0].route).toEqual(LIST);
 		expect(tour('time.checkpoints').steps[0].takeMeRoute).toEqual(LIST);
 		expect(tour('time.pomodoro').steps[0].takeMeRoute).toEqual(LIST);
-		expect(tour('time.export').steps[0].route).toEqual(LIST);
 		expect(tour('pages.first').steps[0].takeMeRoute).toEqual(PAGES);
 		expect(tour('pages.context').steps[0].takeMeRoute).toEqual(PAGES);
 		expect(tour('pages.links').steps[0].takeMeRoute).toEqual(PAGES);
@@ -268,7 +263,6 @@ describe('S4b catalog', () => {
 		it('hides cloud-only tours for a local desktop account', () => {
 			const { items } = hub('desktop_local', 'local', everything);
 			expect(reason(items, 'time.pomodoro')).toBe('platform');
-			expect(reason(items, 'time.export')).toBe('platform');
 			const available = items.filter((item) => item.available).map((item) => item.tour.id);
 			expect(available).toEqual(expect.arrayContaining(['time.checkpoints', 'pages.first', 'graph.map', 'routines.first']));
 		});

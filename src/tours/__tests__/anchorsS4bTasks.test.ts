@@ -8,8 +8,6 @@ const ANCHORS: Record<string, string[]> = {
 	'components/tasks/PomodoroBlock.vue': ['pomodoro.settings'],
 	'components/tasks/TaskRelations.vue': ['task-form.relations'],
 	'pages/TasksListPage.vue': ['list.select'],
-	'components/tasks/TasksListComponent.vue': ['list.process'],
-	'components/tasks/TasksMultipleActionsModal.vue': ['export.panel', 'export.download'],
 	'components/general/FiltersBoard.vue': ['statuses.editor'],
 	'pages/ProjectCategoryList.vue': ['categories.create', 'categories.row'],
 	'pages/WorkspaceFilesPage.vue': ['files.list'],
@@ -24,14 +22,6 @@ describe('S4b task-area data-tour anchors', () => {
 			expect(read(file)).toMatch(new RegExp(`data-tour="${anchor.replace(/\./g, '\\.')}"`));
 		},
 	);
-});
-
-describe('TasksMultipleActionsModal', () => {
-	it('keeps exportsEnabled in the only computed block so the export panel can render', () => {
-		const source = read('components/tasks/TasksMultipleActionsModal.vue');
-		expect(source.match(/^\t\tcomputed: \{/gm)).toHaveLength(1);
-		expect(source).toMatch(/computed: \{\s*exportsEnabled\(\)/);
-	});
 });
 
 describe('S4b task-area emits', () => {

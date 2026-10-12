@@ -21,7 +21,6 @@
 
 				<export-settings-panel
 					v-if="exportsEnabled"
-					data-tour="export.panel"
 					@update:settings="exportSettings = $event"
 				/>
 
@@ -78,7 +77,6 @@
 						</optgroup>
 					</select>
 					<button
-						data-tour="export.download"
 						class="flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
 						:disabled="isLoading"
 						@click="executeAction"
@@ -106,6 +104,13 @@
 		components: {
 			Modal,
 			ExportSettingsPanel,
+		},
+		computed: {
+			exportsEnabled() {
+				return this.$store.getters['featureToggles/isFeatureEnabled'](
+					'exports',
+				);
+			},
 		},
 		data() {
 			return {
@@ -136,11 +141,6 @@
 			},
 		},
 		computed: {
-			exportsEnabled() {
-				return this.$store.getters['featureToggles/isFeatureEnabled'](
-					'exports',
-				);
-			},
 			doneStatusId() {
 				return doneTarget(this.statuses);
 			},

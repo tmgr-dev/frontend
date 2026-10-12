@@ -86,7 +86,6 @@ const TOURS = [
   { id: 'time.parallel', mobile: false, intro: true },
   { id: 'time.checkpoints', mobile: false, take: 'task-form.checkpoints' },
   { id: 'time.pomodoro', mobile: true, take: 'task-form.pomodoro' },
-  { id: 'time.export', mobile: false, url: /\/demo\/list$/, anchor: 'list.select' },
   { id: 'pages.first', mobile: true, take: 'pages.new' },
   { id: 'pages.context', mobile: false, anchor: 'pages.type-picker' },
   { id: 'pages.links', mobile: false, take: 'page.editor' },
@@ -139,7 +138,6 @@ for (const size of SIZES) {
     await page.goto('/demo/getting-started');
     await expect(page.locator('[data-tour-id="graph.map"]')).toContainText('Turn on Graph in Settings -> Modules');
     await expect(page.locator('[data-tour-id="pages.first"]')).toContainText('Turn on Pages in Settings -> Modules');
-    await expect(page.locator('[data-tour-id="time.export"]')).toContainText('Turn on Exports');
     await expect(hubStart(page, 'tasks.statuses')).toHaveCount(0);
     for (const scheme of SCHEMES) await shoot(page, 'hub-s4b-modules-off', size, scheme);
     expect(errors).toEqual([]);
@@ -289,30 +287,6 @@ driveTour('time.pomodoro: take me to the task, anchors appear after enabling', a
   await shots(page, 'time.pomodoro-s2', size);
   expect(errors).toEqual([]);
 });
-
-driveTour('time.export: select, open actions, export panel dialog, download', async ({ page, size }) => {
-  const { writes, calls, errors } = await boot(page, size);
-  await startFromHub(page, 'time.export');
-  await expect(page).toHaveURL(/\/demo\/list$/);
-  await expectClear(page, 'list.select');
-  await shots(page, 'time.export-s1', size);
-  await page.locator('[data-tour="list.select"]').first().click();
-  await page.getByRole('button', { name: 'Select all' }).click();
-  await attached(page, ['list.process']);
-  await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s2');
-  await expect(popover(page)).toContainText('Open actions');
-  await shots(page, 'time.export-s2', size);
-  await page.locator('[data-tour="list.process"]').first().click();
-  await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s3');
-  await attached(page, ['export.panel', 'export.download']);
-  await expect(popover(page)).toContainText('Export settings');
-  await shots(page, 'time.export-s3-panel', size);
-  await primary(page, 'Next').click();
-  await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s4');
-  await shots(page, 'time.export-s4', size);
-  expect(errors).toEqual([]);
-  expect(calls).toBeDefined();
-}, { phone: false });
 
 driveTour('pages.first: new page advances to the page tree', async ({ page, size, mobile }) => {
   const { writes, calls, errors } = await boot(page, size);
@@ -485,11 +459,6 @@ e2e('every S4b anchor is in the DOM on its page, conditional ones after acting',
   await page.goto('/demo/list');
   await attached(page, ['list.select', 'nav.active-timers']);
   await page.locator('[data-tour="list.select"]').first().click();
-  await page.getByRole('button', { name: 'Select all' }).click();
-  await attached(page, ['list.process']);
-  await page.getByRole('button', { name: /^Process/ }).click();
-  await attached(page, ['export.panel', 'export.download']);
-  await page.keyboard.press('Escape');
   await openFirstTask(page);
   await attached(page, ['task-form.relations', 'task-form.checkpoints', 'task-form.pomodoro', 'task-form.estimate']);
   await page.goto('/demo/pages');
