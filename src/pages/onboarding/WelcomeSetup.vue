@@ -3,8 +3,8 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pt-6 dark:bg-gray-950"
-				:class="consentOpen ? 'pb-72 sm:pb-12' : 'pb-12'"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pt-6 dark:bg-gray-950 pb-[var(--screen-pad)] sm:pb-12"
+				:style="{ '--screen-pad': consentOpen ? `${consentPad + 24}px` : '3rem' }"
 				data-testid="welcome-setup"
 			>
 				<p class="text-xl font-bold tracking-tight text-brand">TMGR</p>
@@ -90,7 +90,7 @@ export default defineComponent({
 		const store = useStore();
 		const tours = useTours();
 		const root = ref<HTMLElement | null>(null);
-		const { consentOpen } = useFocusedScreen(root);
+		const { consentOpen, consentPad } = useFocusedScreen(root);
 		const selected = ref<'human' | 'agent' | null>(null);
 		const busy = ref(false);
 		const error = ref('');
@@ -138,7 +138,7 @@ export default defineComponent({
 			await router.push(listPath());
 		};
 
-		return { Bot, ListChecks, root, consentOpen, selected, busy, error, dots, choose, skip };
+		return { Bot, ListChecks, root, consentOpen, consentPad, selected, busy, error, dots, choose, skip };
 	},
 });
 </script>

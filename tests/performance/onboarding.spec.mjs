@@ -61,6 +61,9 @@ const boot = async (page, size, { onboarding = {}, user = OLD_USER, ...options }
   return app.onboarding;
 };
 
+const expectStarters = (page) =>
+  page.addInitScript(() => localStorage.setItem('tmgr:onboarding:starters-expected', '3'));
+
 const SIZES_SCHEMES = SIZES.flatMap((size) => SCHEMES.map((scheme) => [size, scheme]));
 
 test.describe('hub checklist and sample tasks', () => {
@@ -110,6 +113,7 @@ test.describe('hub checklist and sample tasks', () => {
   for (const [size, scheme] of SIZES_SCHEMES) {
     flow(`remove sample tasks from the hub at ${size.name}, ${scheme}`, async ({ page }) => {
       const fx = await boot(page, size, { onboarding: { intent: 'human', starterTasks: 3 } });
+      await expectStarters(page);
       await page.goto('/demo/getting-started');
       const button = page.getByTestId('remove-sample-tasks');
       await expect(button).toBeVisible();
@@ -126,7 +130,10 @@ test.describe('hub checklist and sample tasks', () => {
   }
 
   flow('remove sample tasks is offered in the board toolbar and refetches the board', async ({ page }) => {
-    const fx = await boot(page, SIZES[0], { onboarding: { intent: 'human', starterTasks: 3 } });
+    const fx = await boot(page, SIZES[0], {
+      onboarding: { intent: 'human', starterTasks: 3 },
+      taskSettings: [{ key: 'starter', value: '1' }],
+    });
     await page.goto('/demo/board');
     const button = page.getByTestId('remove-sample-tasks').first();
     await expect(button).toBeVisible();
@@ -134,6 +141,27 @@ test.describe('hub checklist and sample tasks', () => {
     await button.click();
     await expect(page.getByText('Removed 3 sample tasks').first()).toBeVisible();
     expect(fx.writes.length).toBeGreaterThan(before);
+  });
+
+  flow('no remove button on a board without starter tasks', async ({ page }) => {
+    await boot(page, SIZES[0], { onboarding: { intent: 'human', starterTasks: 3 } });
+    await page.goto('/demo/board');
+    await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
+  });
+
+  flow('no remove button on the hub after an empty-workspace start', async ({ page }) => {
+    await boot(page, SIZES[0], { onboarding: { intent: 'human' } });
+    await page.goto('/demo/getting-started');
+    await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
+  });
+
+  flow('removing when nothing is left says so', async ({ page }) => {
+    await boot(page, SIZES[0], { onboarding: { intent: 'human', starterTasks: 0 } });
+    await expectStarters(page);
+    await page.goto('/demo/getting-started');
+    await page.getByTestId('remove-sample-tasks').click();
+    await expect(page.getByText('No sample tasks to remove').first()).toBeVisible();
+    await expect(page.getByTestId('remove-sample-tasks')).toBeHidden();
   });
 
   flow('no remove button for intent skipped or null', async ({ page }) => {
@@ -202,7 +230,7 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
         route.fulfill({ json: { data: { token: 'fixture-token', has_token: false } } }),
       );
       await page.goto('/welcome-setup/agent');
-      await expect(page.getByText('Waiting for your agent')).toBeVisible();
+      await expect(page.getByTestId('shown-once')).toBeVisible();
       await page.clock.fastForward(181000);
       await expect(page.getByRole('heading', { name: 'Still waiting for your agent' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Check again' })).toBeVisible();
@@ -257,6 +285,8 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
 });
 
 test.describe('welcome screens: consent banner and keyboard', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   flow('the consent banner never hides Skip at 390', async ({ page }) => {
     await boot(page, SIZES[1], { user: NEW_USER, consent: false });
     await page.goto('/');

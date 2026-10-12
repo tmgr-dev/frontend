@@ -13,6 +13,7 @@ export async function mockApp(
     consent = true,
     onboarding = null,
     userExtra = {},
+    taskSettings = [],
   } = {},
 ) {
   if (consent)
@@ -71,7 +72,7 @@ export async function mockApp(
     user_id: 1,
     user,
     assignees: [],
-    settings: [],
+    settings: taskSettings,
     checkpoints: [],
     common_time: 0,
     start_time: 0,

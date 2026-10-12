@@ -3,8 +3,8 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pt-6 dark:bg-gray-950"
-				:class="consentOpen ? 'pb-72 sm:pb-16' : 'pb-16'"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pt-6 dark:bg-gray-950 pb-[var(--screen-pad)] sm:pb-16"
+				:style="{ '--screen-pad': consentOpen ? `${consentPad + 24}px` : '4rem' }"
 				data-testid="connect-agent"
 			>
 				<p class="sr-only" role="status" aria-live="polite">{{ liveMessage }}</p>
@@ -328,7 +328,7 @@ export default defineComponent({
 		const store = useStore();
 		const tours = useTours();
 		const root = ref<HTMLElement | null>(null);
-		const { consentOpen } = useFocusedScreen(root);
+		const { consentOpen, consentPad } = useFocusedScreen(root);
 
 		const tabs = TABS;
 		const activeId = ref('claude');
@@ -537,6 +537,7 @@ export default defineComponent({
 		return {
 			root,
 			consentOpen,
+			consentPad,
 			tabs,
 			activeId,
 			active,
