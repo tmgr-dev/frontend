@@ -14,6 +14,11 @@ export interface ActiveTour {
   index: number;
   total: number;
   waiting: boolean;
+  unavailable?: boolean;
+  alreadyDone?: boolean;
+  canTakeMe?: boolean;
+  mobile?: boolean;
+  hint?: 'timer_too_short';
 }
 
 export interface HubItem {
