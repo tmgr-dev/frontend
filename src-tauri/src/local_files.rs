@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tauri::http::{Method, Request, Response, StatusCode};
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::local_move::Moving;
+use crate::local_move::{Moving, Permit};
 use crate::local_workspaces;
 
 pub const SCHEME: &str = "tmgrfile";
@@ -121,18 +121,30 @@ pub async fn local_file_write<R: Runtime>(app: AppHandle<R>, request: tauri::ipc
     .and_then(parse_target)
     .ok_or("bad file path")?;
   let (code, key) = target;
-  app.state::<Moving>().check(&code)?;
+  let moving = app.state::<Moving>().inner().clone();
+  moving.check(&code)?;
   let workspace = local_workspaces::find(&app, &code)?;
   let path = file_path(Path::new(&workspace.path), &key);
   let body = body.clone();
-  tauri::async_runtime::spawn_blocking(move || store(&path, &body))
+  tauri::async_runtime::spawn_blocking(move || store_guarded(&moving, &code, &path, &body))
     .await
     .map_err(|e| e.to_string())?
     .map_err(|(_, message)| message)
 }
 
-fn refused_while_moving(moving: &Moving, method: &Method, code: &str) -> bool {
-  matches!(*method, Method::PUT | Method::DELETE) && moving.is_set(code)
+/// The permit lasts for the whole write, so a freeze that follows waits for it and a write that
+/// starts after the freeze is refused.
+pub fn store_guarded(moving: &Moving, code: &str, path: &Path, body: &[u8]) -> Result<(), (StatusCode, String)> {
+  let _permit = moving.permit(code).map_err(|message| (StatusCode::LOCKED, message))?;
+  store(path, body)
+}
+
+fn write_permit(moving: &Moving, method: &Method, code: &str) -> Result<Option<Permit>, String> {
+  if matches!(*method, Method::PUT | Method::DELETE) {
+    moving.permit(code).map(Some)
+  } else {
+    Ok(None)
+  }
 }
 
 pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
@@ -146,9 +158,9 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Resp
     return error(StatusCode::NOT_FOUND, "unknown workspace");
   };
   let path = file_path(Path::new(&workspace.path), &key);
-  if refused_while_moving(&app.state::<Moving>(), request.method(), &code) {
+  let Ok(_permit) = write_permit(&app.state::<Moving>(), request.method(), &code) else {
     return error(StatusCode::LOCKED, crate::local_move::MOVING);
-  }
+  };
   match *request.method() {
     Method::GET | Method::HEAD => match fs::read(&path) {
       Ok(bytes) => respond(StatusCode::OK, bytes, content_type(&key)),
@@ -209,12 +221,22 @@ mod tests {
   #[test]
   fn file_writes_and_deletes_are_refused_while_the_workspace_moves() {
     let moving = Moving::default();
-    moving.set("personal");
-    assert!(refused_while_moving(&moving, &Method::PUT, "personal"));
-    assert!(refused_while_moving(&moving, &Method::DELETE, "personal"));
-    assert!(!refused_while_moving(&moving, &Method::GET, "personal"));
-    assert!(!refused_while_moving(&moving, &Method::PUT, "work"));
+    let operation = moving.begin("personal").unwrap();
+    assert!(write_permit(&moving, &Method::PUT, "personal").is_err());
+    assert!(write_permit(&moving, &Method::DELETE, "personal").is_err());
+    assert!(write_permit(&moving, &Method::GET, "personal").unwrap().is_none());
+    assert!(write_permit(&moving, &Method::PUT, "work").unwrap().is_some());
     assert_eq!(moving.check("personal").unwrap_err(), "workspace is moving");
+
+    let dir = std::env::temp_dir().join(format!("tmgr-files-guard-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let path = file_path(&dir, "abc/notes.png");
+    assert_eq!(store_guarded(&moving, "personal", &path, b"png").unwrap_err().0, StatusCode::LOCKED);
+    assert!(!path.exists());
+    drop(operation);
+    store_guarded(&moving, "personal", &path, b"png").unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"png");
+    let _ = fs::remove_dir_all(&dir);
   }
 
   #[test]

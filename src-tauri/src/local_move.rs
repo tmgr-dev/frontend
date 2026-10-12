@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, TransactionBehavior};
@@ -12,7 +13,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Runtime, State};
 
 use crate::local_backups::{rfc3339, stamp, verify};
-use crate::local_db::{with_connection, LocalDbs};
+use crate::local_db::{live_connection, with_connection, LocalDbs};
 use crate::local_files::{content_type, file_path, parse_target};
 use crate::local_workspaces::{self, LocalWorkspace};
 
@@ -40,14 +41,81 @@ const ENTITIES: [&str; 17] = [
   "meta",
 ];
 
-/// Workspaces whose writers are held back while their content is copied to the cloud. In memory
-/// only: a crash or restart starts unfrozen.
+pub const BUSY: &str = "another move or removal is in progress";
+
+#[derive(Default)]
+struct SlotState {
+  owner: Option<u64>,
+  writers: usize,
+}
+
+#[derive(Default)]
+struct Slot {
+  state: Mutex<SlotState>,
+  drained: Condvar,
+}
+
+impl Slot {
+  fn lock(&self) -> MutexGuard<'_, SlotState> {
+    self.state.lock().unwrap_or_else(|e| e.into_inner())
+  }
+}
+
+/// Per-workspace operation lock. One owned token at a time (a move from freeze to unfreeze, an
+/// archive, a removal); only the holder of the token can release it. Writers take a permit for the
+/// whole write and are refused while a token is held; taking the token waits for permits already out.
+/// In memory only: a crash or restart starts unlocked.
 #[derive(Clone, Default)]
-pub struct Moving(Arc<Mutex<HashSet<String>>>);
+pub struct Moving {
+  slots: Arc<Mutex<HashMap<String, Arc<Slot>>>>,
+  next: Arc<AtomicU64>,
+}
+
+pub struct Operation {
+  moving: Moving,
+  code: String,
+  token: u64,
+  armed: bool,
+}
+
+impl Operation {
+  /// Keeps the lock past this value: the caller now owns the token and releases it explicitly.
+  pub fn keep(mut self) -> u64 {
+    self.armed = false;
+    self.token
+  }
+}
+
+impl Drop for Operation {
+  fn drop(&mut self) {
+    if self.armed {
+      self.moving.release(&self.code, self.token);
+    }
+  }
+}
+
+pub struct Permit {
+  slot: Arc<Slot>,
+}
+
+impl Drop for Permit {
+  fn drop(&mut self) {
+    let mut state = self.slot.lock();
+    state.writers = state.writers.saturating_sub(1);
+    if state.writers == 0 {
+      self.slot.drained.notify_all();
+    }
+  }
+}
 
 impl Moving {
+  fn slot(&self, code: &str) -> Arc<Slot> {
+    let mut slots = self.slots.lock().unwrap_or_else(|e| e.into_inner());
+    slots.entry(code.to_string()).or_default().clone()
+  }
+
   pub fn is_set(&self, code: &str) -> bool {
-    self.0.lock().map(|set| set.contains(code)).unwrap_or(true)
+    self.slot(code).lock().owner.is_some()
   }
 
   pub fn check(&self, code: &str) -> Result<(), String> {
@@ -58,13 +126,48 @@ impl Moving {
     }
   }
 
-  pub(crate) fn set(&self, code: &str) -> bool {
-    self.0.lock().map(|mut set| set.insert(code.to_string())).unwrap_or(false)
+  /// Takes the operation lock, then waits until every write already in flight has finished.
+  /// Blocks while draining, so call it off the async runtime.
+  pub fn begin(&self, code: &str) -> Result<Operation, String> {
+    let slot = self.slot(code);
+    let mut state = slot.lock();
+    if state.owner.is_some() {
+      return Err(BUSY.to_string());
+    }
+    let token = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+    state.owner = Some(token);
+    while state.writers > 0 {
+      state = slot.drained.wait(state).unwrap_or_else(|e| e.into_inner());
+    }
+    Ok(Operation { moving: self.clone(), code: code.to_string(), token, armed: true })
   }
 
-  pub(crate) fn clear(&self, code: &str) {
-    if let Ok(mut set) = self.0.lock() {
-      set.remove(code);
+  /// Held for the whole write, I/O included. Never blocks: while an operation owns the workspace it
+  /// refuses.
+  pub fn permit(&self, code: &str) -> Result<Permit, String> {
+    let slot = self.slot(code);
+    {
+      let mut state = slot.lock();
+      if state.owner.is_some() {
+        return Err(MOVING.to_string());
+      }
+      state.writers += 1;
+    }
+    Ok(Permit { slot })
+  }
+
+  pub fn owns(&self, code: &str, token: u64) -> bool {
+    self.slot(code).lock().owner == Some(token)
+  }
+
+  pub fn release(&self, code: &str, token: u64) -> bool {
+    let slot = self.slot(code);
+    let mut state = slot.lock();
+    if state.owner == Some(token) {
+      state.owner = None;
+      true
+    } else {
+      false
     }
   }
 }
@@ -110,18 +213,36 @@ fn feed_len(hasher: &mut Sha256, bytes: &[u8]) {
   hasher.update(bytes);
 }
 
-/// Exact content hash over every migrated table: each value carries its SQLite type tag, so a
-/// changed row, type or deleted row changes it. Independent of rowids and of the file layout.
-pub fn revision_of(conn: &Connection) -> Result<String, String> {
-  let mut names = conn
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+fn table_names(conn: &Connection) -> Result<Vec<(String, String)>, String> {
+  conn
+    .prepare("SELECT name, COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .map_err(|e| e.to_string())?
-    .query_map([], |row| row.get::<_, String>(0))
+    .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
     .map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
-  names.retain(|name| counted_table(name));
+    .map_err(|e| e.to_string())
+}
 
+/// Every real table: no SQLite internals, no virtual table and none of its shadow tables.
+fn full_digest_tables(conn: &Connection) -> Result<Vec<String>, String> {
+  let tables = table_names(conn)?;
+  let virtual_tables: Vec<&str> = tables
+    .iter()
+    .filter(|(_, sql)| sql.trim_start().to_ascii_uppercase().starts_with("CREATE VIRTUAL"))
+    .map(|(name, _)| name.as_str())
+    .collect();
+  Ok(
+    tables
+      .iter()
+      .map(|(name, _)| name.as_str())
+      .filter(|name| !name.starts_with("sqlite_"))
+      .filter(|name| !virtual_tables.iter().any(|vt| name == vt || name.starts_with(&format!("{vt}_"))))
+      .map(str::to_string)
+      .collect(),
+  )
+}
+
+fn hash_tables(conn: &Connection, names: Vec<String>) -> Result<String, String> {
   let mut hasher = Sha256::new();
   for table in names {
     let quoted = quote(&table);
@@ -177,6 +298,81 @@ pub fn revision_of(conn: &Connection) -> Result<String, String> {
     }
   }
   Ok(hex(&hasher.finalize()))
+}
+
+/// Exact content hash over every migrated table: each value carries its SQLite type tag, so a
+/// changed row, type or deleted row changes it. Independent of rowids and of the file layout.
+pub fn revision_of(conn: &Connection) -> Result<String, String> {
+  let mut names: Vec<String> = table_names(conn)?.into_iter().map(|(name, _)| name).collect();
+  names.retain(|name| counted_table(name));
+  hash_tables(conn, names)
+}
+
+/// The same hash over all tables, plugin and activity data included.
+pub fn db_digest_of(conn: &Connection) -> Result<String, String> {
+  hash_tables(conn, full_digest_tables(conn)?)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct InventoryFile {
+  pub path: String,
+  pub size: u64,
+  pub sha256: String,
+}
+
+/// Every regular file under `files/`, relative path with `/`, sorted. A symlink is an error: it could
+/// point outside the workspace and cannot be archived faithfully.
+fn walk_files(workspace_dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+  let root = workspace_dir.join("files");
+  let mut out = Vec::new();
+  if !root.exists() {
+    return Ok(out);
+  }
+  let mut stack = vec![(root, String::new())];
+  while let Some((dir, prefix)) = stack.pop() {
+    for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+      let entry = entry.map_err(|e| e.to_string())?;
+      let name = entry.file_name().into_string().map_err(|_| "a file name is not valid UTF-8".to_string())?;
+      let relative = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+      let kind = entry.file_type().map_err(|e| e.to_string())?;
+      if kind.is_symlink() {
+        return Err(format!("files/{relative} is a symbolic link"));
+      } else if kind.is_dir() {
+        stack.push((entry.path(), relative));
+      } else if kind.is_file() {
+        out.push((relative, entry.path()));
+      }
+    }
+  }
+  out.sort_by(|a, b| a.0.cmp(&b.0));
+  Ok(out)
+}
+
+pub fn files_inventory(workspace_dir: &Path) -> Result<Vec<InventoryFile>, String> {
+  walk_files(workspace_dir)?
+    .into_iter()
+    .map(|(path, full)| sha256_file(&full).map(|(size, sha256)| InventoryFile { path, size, sha256 }))
+    .collect()
+}
+
+pub fn digest_of(db_digest: &str, files: &[InventoryFile]) -> String {
+  let mut sorted: Vec<&InventoryFile> = files.iter().collect();
+  sorted.sort_by(|a, b| a.path.cmp(&b.path));
+  let mut hasher = Sha256::new();
+  hasher.update(b"FULL");
+  feed_len(&mut hasher, db_digest.as_bytes());
+  hasher.update((sorted.len() as u64).to_le_bytes());
+  for file in sorted {
+    feed_len(&mut hasher, file.path.as_bytes());
+    hasher.update(file.size.to_le_bytes());
+    feed_len(&mut hasher, file.sha256.as_bytes());
+  }
+  hex(&hasher.finalize())
+}
+
+/// What removal compares: every table plus every file under `files/`.
+pub fn full_digest(conn: &Connection, workspace_dir: &Path) -> Result<String, String> {
+  Ok(digest_of(&db_digest_of(conn)?, &files_inventory(workspace_dir)?))
 }
 
 /// Stops every running timer the way the app does (`start_time` is epoch seconds).
@@ -555,6 +751,21 @@ pub fn build_bundle(dir: &Path, input: &BundleInput<'_>) -> Result<BundleResult,
     pairs(hashes.iter().map(|h| json_text(h)).collect()),
   );
 
+  let mut excluded: Vec<ExcludedRecord> = file_rows(&conn)?
+    .into_iter()
+    .filter_map(|(id, key, _)| {
+      files.get(&id).and_then(|info| info.excluded).map(|reason| ExcludedRecord { key, reason: reason.to_string() })
+    })
+    .collect();
+  if let Ok(previous) = read_json::<BundleRecord>(&dir.join(BUNDLE_RECORD), "bundle record") {
+    for entry in previous.excluded.into_iter().filter(|e| e.reason == "refused") {
+      if !excluded.iter().any(|e| e.key == entry.key) {
+        excluded.push(entry);
+      }
+    }
+  }
+  write_json(&dir.join(BUNDLE_RECORD), &BundleRecord { excluded })?;
+
   let target = dir.join("bundle.ndjson.gz");
   let tmp = dir.join(".bundle.ndjson.gz.tmp");
   let written = (|| {
@@ -622,30 +833,25 @@ fn inside(parent: &Path, path: &Path) -> bool {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ArchiveFile {
-  pub key: String,
-  pub size: u64,
-  pub sha256: String,
-  pub missing: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ArchiveRecord {
   pub revision: String,
+  pub full_digest: String,
   pub created_at: String,
-  pub files: Vec<ArchiveFile>,
+  pub files: Vec<InventoryFile>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct ArchiveResult {
   pub path: String,
   pub revision: String,
+  pub full_digest: String,
   pub entries: usize,
   pub verified: bool,
 }
 
 const ARCHIVE_DB: &str = "workspace.db";
 const ARCHIVE_META: &str = "archive.json";
+const ARCHIVE_FILES: &str = "files/";
 
 fn zip_options(size: u64) -> zip::write::SimpleFileOptions {
   zip::write::SimpleFileOptions::default()
@@ -663,6 +869,7 @@ fn add_entry(
   zip.start_file(name, zip_options(size)).map_err(|e| e.to_string())?;
   let mut hasher = Sha256::new();
   let mut buffer = vec![0u8; 64 * 1024];
+  let mut written = 0u64;
   loop {
     let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
     if n == 0 {
@@ -670,31 +877,30 @@ fn add_entry(
     }
     hasher.update(&buffer[..n]);
     zip.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
+    written += n as u64;
   }
-  Ok((size, hex(&hasher.finalize())))
+  Ok((written, hex(&hasher.finalize())))
 }
 
+/// Writes the database copy and every file under `files/` (not only the ones the database mentions)
+/// and records what went in. The caller holds the workspace's operation lock.
 fn write_archive(workspace_dir: &Path, db_copy: &Path, now: i64) -> Result<ArchiveResult, String> {
   let backups = workspace_dir.join("backups");
   let tmp = backups.join(format!(".archive-{}.zip.tmp", stamp(now)));
   let built = (|| {
     let copy = open_read_only(db_copy)?;
     let revision = revision_of(&copy)?;
-    let rows = file_rows(&copy)?;
+    let db_digest = db_digest_of(&copy)?;
     drop(copy);
     let mut zip = zip::ZipWriter::new(BufWriter::new(File::create(&tmp).map_err(|e| e.to_string())?));
     add_entry(&mut zip, ARCHIVE_DB, db_copy)?;
     let mut files = Vec::new();
-    for (_, key, _) in rows {
-      let source = file_path(workspace_dir, &key);
-      if safe_key(&key) && source.is_file() {
-        let (size, sha256) = add_entry(&mut zip, &format!("files/{key}"), &source)?;
-        files.push(ArchiveFile { key, size, sha256, missing: false });
-      } else {
-        files.push(ArchiveFile { key, size: 0, sha256: String::new(), missing: true });
-      }
+    for (path, source) in walk_files(workspace_dir)? {
+      let (size, sha256) = add_entry(&mut zip, &format!("{ARCHIVE_FILES}{path}"), &source)?;
+      files.push(InventoryFile { path, size, sha256 });
     }
-    let record = ArchiveRecord { revision, created_at: rfc3339(now), files };
+    let full_digest = digest_of(&db_digest, &files);
+    let record = ArchiveRecord { revision, full_digest, created_at: rfc3339(now), files };
     zip.start_file(ARCHIVE_META, zip_options(0)).map_err(|e| e.to_string())?;
     zip.write_all(serde_json::to_string_pretty(&record).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| e.to_string())?;
     zip.finish().and_then(|mut w| w.flush().map_err(zip::result::ZipError::Io)).map_err(|e| e.to_string())?;
@@ -704,6 +910,7 @@ fn write_archive(workspace_dir: &Path, db_copy: &Path, now: i64) -> Result<Archi
     Ok(ArchiveResult {
       path: target.to_string_lossy().into_owned(),
       revision: verified.0.revision,
+      full_digest: verified.0.full_digest,
       entries: verified.1,
       verified: true,
     })
@@ -714,8 +921,15 @@ fn write_archive(workspace_dir: &Path, db_copy: &Path, now: i64) -> Result<Archi
   built
 }
 
-/// Re-reads the whole archive: every entry's CRC, every file's hash against the recorded one, then the
-/// database copy itself (integrity check and revision). Returns the record and the entry count.
+fn safe_entry_path(name: &str) -> bool {
+  !name.is_empty()
+    && !name.contains('\\')
+    && name.split('/').all(|segment| !segment.is_empty() && segment != "." && segment != ".." && !segment.contains(':'))
+}
+
+/// Re-reads the whole archive: entry names (nothing but the database, the record and `files/...`),
+/// every file against the recorded list (count, size, hash, nothing extra, nothing missing), then the
+/// database copy (integrity, revision) and the full digest recomputed from the extracted content.
 pub fn verify_archive(path: &Path) -> Result<(ArchiveRecord, usize), String> {
   let mut archive = zip::ZipArchive::new(File::open(path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
   let entries = archive.len();
@@ -728,13 +942,31 @@ pub fn verify_archive(path: &Path) -> Result<(ArchiveRecord, usize), String> {
       .map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| e.to_string())?
   };
-  let mut seen: HashMap<String, String> = HashMap::new();
+  let mut recorded: HashMap<&str, &InventoryFile> = HashMap::new();
+  for file in &record.files {
+    if !safe_entry_path(&file.path) || recorded.insert(file.path.as_str(), file).is_some() {
+      return Err(format!("the record lists an invalid or duplicate path: {}", file.path));
+    }
+  }
+  let mut names: HashSet<String> = HashSet::new();
+  let mut seen: HashMap<String, (u64, String)> = HashMap::new();
   let mut db_tmp: Option<PathBuf> = None;
   let outcome = (|| {
     for index in 0..entries {
       let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
       let name = entry.name().map_err(|e| e.to_string())?.to_string();
       if name.ends_with('/') {
+        continue;
+      }
+      let relative = name.strip_prefix(ARCHIVE_FILES);
+      let allowed = name == ARCHIVE_DB || name == ARCHIVE_META || relative.is_some_and(safe_entry_path);
+      if !allowed {
+        return Err(format!("unexpected entry {name}"));
+      }
+      if !names.insert(name.clone()) {
+        return Err(format!("duplicate entry {name}"));
+      }
+      if name == ARCHIVE_META {
         continue;
       }
       if name == ARCHIVE_DB {
@@ -747,27 +979,35 @@ pub fn verify_archive(path: &Path) -> Result<(ArchiveRecord, usize), String> {
       }
       let mut hasher = Sha256::new();
       let mut buffer = vec![0u8; 64 * 1024];
+      let mut size = 0u64;
       loop {
         let n = entry.read(&mut buffer).map_err(|e| format!("{name}: {e}"))?;
         if n == 0 {
           break;
         }
         hasher.update(&buffer[..n]);
+        size += n as u64;
       }
-      seen.insert(name, hex(&hasher.finalize()));
+      seen.insert(relative.unwrap_or_default().to_string(), (size, hex(&hasher.finalize())));
     }
-    for file in record.files.iter().filter(|f| !f.missing) {
-      match seen.get(&format!("files/{}", file.key)) {
-        Some(sha) if *sha == file.sha256 => {}
-        Some(_) => return Err(format!("files/{} does not match its recorded hash", file.key)),
-        None => return Err(format!("files/{} is missing", file.key)),
+    if seen.len() != record.files.len() {
+      return Err(format!("the archive holds {} files but the record lists {}", seen.len(), record.files.len()));
+    }
+    for file in &record.files {
+      match seen.get(&file.path) {
+        Some((size, sha)) if *size == file.size && *sha == file.sha256 => {}
+        Some(_) => return Err(format!("files/{} does not match its recorded size or hash", file.path)),
+        None => return Err(format!("files/{} is missing", file.path)),
       }
     }
     let tmp = db_tmp.as_ref().ok_or_else(|| format!("{ARCHIVE_DB} is missing"))?;
     verify(tmp)?;
-    let revision = revision_of(&open_read_only(tmp)?)?;
-    if revision != record.revision {
+    let extracted = open_read_only(tmp)?;
+    if revision_of(&extracted)? != record.revision {
       return Err("database revision does not match the archive record".to_string());
+    }
+    if digest_of(&db_digest_of(&extracted)?, &record.files) != record.full_digest {
+      return Err("archive digest does not match the archive record".to_string());
     }
     Ok(())
   })();
@@ -777,52 +1017,310 @@ pub fn verify_archive(path: &Path) -> Result<(ArchiveRecord, usize), String> {
   outcome.map(|_| (record, entries))
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ExcludedRecord {
+  pub key: String,
+  pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct BundleRecord {
+  pub excluded: Vec<ExcludedRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Decision {
+  pub decision: String,
+  pub size: u64,
+  pub sha256: String,
+}
+
+type Decisions = BTreeMap<String, Decision>;
+
+const BUNDLE_RECORD: &str = "bundle.json";
+const DECISIONS: &str = "decisions.json";
+const DECIDED: &str = "exported";
+const LOST: &str = "lost";
+
+static RECORD_LOCK: Mutex<()> = Mutex::new(());
+
+fn read_json<T: for<'de> Deserialize<'de>>(path: &Path, what: &str) -> Result<T, String> {
+  let raw = fs::read_to_string(path).map_err(|_| format!("{what} not found"))?;
+  serde_json::from_str(&raw).map_err(|e| format!("{what} is unreadable: {e}"))
+}
+
+fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
+  let tmp = path.with_extension("json.tmp");
+  fs::write(&tmp, serde_json::to_string_pretty(value).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+  fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+fn read_decisions(dir: &Path) -> Result<Decisions, String> {
+  if dir.join(DECISIONS).exists() {
+    read_json(&dir.join(DECISIONS), "decisions record")
+  } else {
+    Ok(Decisions::new())
+  }
+}
+
+fn change_decisions(dir: &Path, change: impl FnOnce(&mut Decisions) -> Result<(), String>) -> Result<(), String> {
+  let _guard = RECORD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+  let mut decisions = read_decisions(dir)?;
+  change(&mut decisions)?;
+  write_json(&dir.join(DECISIONS), &decisions)
+}
+
+fn snapshot_record(dir: &Path) -> Result<SnapshotRecord, String> {
+  read_json(&dir.join("snapshot.json"), "snapshot record")
+}
+
+fn snapshot_file(dir: &Path, key: &str) -> Result<SnapshotFile, String> {
+  snapshot_record(dir)?
+    .files
+    .into_iter()
+    .find(|file| file.key == key)
+    .ok_or_else(|| format!("{key} is not part of this snapshot"))
+}
+
+fn add_excluded(dir: &Path, keys: &[String], reason: &str) -> Result<(), String> {
+  let _guard = RECORD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+  let path = dir.join(BUNDLE_RECORD);
+  let mut record: BundleRecord = read_json(&path, "bundle record")?;
+  for key in keys {
+    snapshot_file(dir, key)?;
+    if !record.excluded.iter().any(|e| e.key == *key) {
+      record.excluded.push(ExcludedRecord { key: key.clone(), reason: reason.to_string() });
+    }
+  }
+  write_json(&path, &record)
+}
+
+/// Copies a snapshot file to the place the user chose and records `exported` only after the written
+/// copy has the recorded size and hash.
+pub fn export_file(workspace_dir: &Path, dir: &Path, key: &str, target: &Path, forbidden_root: &Path) -> Result<Decision, String> {
+  let file = snapshot_file(dir, key)?;
+  if file.missing {
+    return Err("this file is missing from the workspace and cannot be exported; accept it as lost instead".to_string());
+  }
+  if !target.is_absolute() || target.is_dir() {
+    return Err("choose a file path to export to".to_string());
+  }
+  let parent = target.parent().ok_or("choose a file path to export to")?;
+  let parent = fs::canonicalize(parent).map_err(|_| "the chosen folder does not exist".to_string())?;
+  if fs::canonicalize(forbidden_root).is_ok_and(|root| parent.starts_with(root)) {
+    return Err("export the file outside the local workspaces folder".to_string());
+  }
+  let source = [file_path(dir, key), file_path(workspace_dir, key)]
+    .into_iter()
+    .find(|candidate| sha256_file(candidate).is_ok_and(|(size, sha)| size == file.size && sha == file.sha256))
+    .ok_or_else(|| "the file no longer matches the snapshot".to_string())?;
+  let target = parent.join(target.file_name().ok_or("choose a file path to export to")?);
+  let copied = fs::copy(&source, &target)
+    .map_err(|e| e.to_string())
+    .and_then(|_| sha256_file(&target));
+  match copied {
+    Ok((size, sha)) if size == file.size && sha == file.sha256 => {}
+    Ok(_) => {
+      let _ = fs::remove_file(&target);
+      return Err("the exported copy does not match the original".to_string());
+    }
+    Err(error) => {
+      let _ = fs::remove_file(&target);
+      return Err(error);
+    }
+  }
+  let decision = Decision { decision: DECIDED.to_string(), size: file.size, sha256: file.sha256 };
+  change_decisions(dir, |decisions| {
+    decisions.insert(key.to_string(), decision.clone());
+    Ok(())
+  })?;
+  Ok(decision)
+}
+
+pub fn accept_lost(dir: &Path, key: &str) -> Result<(), String> {
+  let file = snapshot_file(dir, key)?;
+  change_decisions(dir, |decisions| {
+    decisions.insert(key.to_string(), Decision { decision: LOST.to_string(), size: file.size, sha256: file.sha256 });
+    Ok(())
+  })
+}
+
+pub fn clear_decision(dir: &Path, key: &str) -> Result<(), String> {
+  change_decisions(dir, |decisions| {
+    decisions.remove(key);
+    Ok(())
+  })
+}
+
+/// Every file the cloud copy lacks (missing from disk, excluded when the bundle was built, or refused
+/// by the server) needs a decision before the local copy may go.
+fn undecided_files(dir: &Path) -> Result<Vec<String>, String> {
+  let snapshot = snapshot_record(dir)?;
+  let bundle: BundleRecord = read_json(&dir.join(BUNDLE_RECORD), "bundle record")?;
+  let decisions = read_decisions(dir)?;
+  let mut needed: Vec<String> = snapshot.files.iter().filter(|f| f.missing).map(|f| f.key.clone()).collect();
+  needed.extend(bundle.excluded.iter().map(|e| e.key.clone()));
+  needed.sort();
+  needed.dedup();
+  Ok(needed.into_iter().filter(|key| !decisions.contains_key(key)).collect())
+}
+
+pub fn publication_verdict(body: &Json, expected_revision: &str) -> Result<(), String> {
+  let data = body.get("data").unwrap_or(&Json::Null);
+  if data.get("status").and_then(Json::as_str) != Some("published") {
+    return Err("the cloud copy is not published".to_string());
+  }
+  if data.get("verified").and_then(Json::as_bool) != Some(true) {
+    return Err("the cloud copy was not verified (it was published with accepted differences)".to_string());
+  }
+  if data.get("source_revision").and_then(Json::as_str) != Some(expected_revision) {
+    return Err("the cloud copy was made from a different revision of this workspace".to_string());
+  }
+  Ok(())
+}
+
+const JOB_BODY_LIMIT: usize = 1024 * 1024;
+
+fn ensure_tls_provider() {
+  if rustls::crypto::CryptoProvider::get_default().is_none() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+  }
+}
+
+fn job_url(api_base: &str, job_uuid: &str) -> Result<String, String> {
+  let local = ["http://127.0.0.1", "http://localhost", "http://[::1]"].iter().any(|prefix| api_base.starts_with(prefix));
+  if !(api_base.starts_with("https://") || local) {
+    return Err("the server address must use https".to_string());
+  }
+  if job_uuid.is_empty() || !job_uuid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    return Err("the move id is not valid".to_string());
+  }
+  let base = if api_base.ends_with('/') { api_base.to_string() } else { format!("{api_base}/") };
+  Ok(format!("{base}imports/{job_uuid}"))
+}
+
+/// Reads the job from the server with the caller's token. The token is only ever put in the request
+/// header: never logged, stored or echoed in an error.
+pub async fn fetch_job(api_base: &str, job_uuid: &str, token: &str) -> Result<Json, String> {
+  let url = job_url(api_base, job_uuid)?;
+  ensure_tls_provider();
+  let client = reqwest::Client::builder()
+    .redirect(reqwest::redirect::Policy::none())
+    .timeout(std::time::Duration::from_secs(15))
+    .build()
+    .map_err(|e| e.without_url().to_string())?;
+  let mut response = client
+    .get(url)
+    .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+    .header(reqwest::header::ACCEPT, "application/json")
+    .send()
+    .await
+    .map_err(|e| format!("could not reach the server to check the move: {}", e.without_url()))?;
+  let status = response.status();
+  if !status.is_success() {
+    return Err(format!("the server answered HTTP {} when checking the move", status.as_u16()));
+  }
+  let mut body = Vec::new();
+  while body.len() < JOB_BODY_LIMIT {
+    match response.chunk().await.map_err(|e| e.without_url().to_string())? {
+      Some(chunk) => body.extend_from_slice(&chunk),
+      None => break,
+    }
+  }
+  serde_json::from_slice(&body).map_err(|_| "the server answer is not readable".to_string())
+}
+
 fn removed_root(workspaces_root: &Path) -> PathBuf {
   workspaces_root.parent().unwrap_or(workspaces_root).join("removed")
 }
 
-/// Moves a workspace folder to `removed/<code>-<stamp>/` and deletes its database and files there;
-/// `backups/` and `workspace.json` stay. Every precondition has its own error.
-pub fn remove_in(
+pub struct RemoveRequest<'a> {
+  pub typed_name: &'a str,
+  pub expected_revision: &'a str,
+  pub archive_path: &'a Path,
+  pub dir: &'a Path,
+}
+
+/// Every precondition, each with its own error. The live revision and full digest are computed here,
+/// from the live data, while the caller holds the workspace's operation lock. Returns the workspace folder.
+pub fn check_removal(
   workspaces_root: &Path,
   code: &str,
-  typed_name: &str,
-  expected_revision: &str,
-  live_revision: &str,
-  archive_path: &Path,
-  now: i64,
+  request: &RemoveRequest<'_>,
+  live: Option<&Connection>,
 ) -> Result<PathBuf, String> {
   let workspace = local_workspaces::list_in(workspaces_root)
     .into_iter()
     .find(|w| w.manifest.code == code)
     .ok_or_else(|| format!("local workspace {code} not found"))?;
-  if typed_name != workspace.manifest.name {
+  if request.typed_name != workspace.manifest.name {
     return Err("typed name does not match the workspace name".to_string());
   }
-  if live_revision != expected_revision {
+  let workspace_dir = PathBuf::from(&workspace.path);
+  let owned;
+  let conn = match live {
+    Some(conn) => conn,
+    None => {
+      owned = open_read_only(&workspace_dir.join("workspace.db"))?;
+      &owned
+    }
+  };
+  if revision_of(conn)? != request.expected_revision {
     return Err("the workspace changed since the move snapshot".to_string());
   }
-  let workspace_dir = PathBuf::from(&workspace.path);
-  if !archive_path.exists() {
+  if !request.archive_path.exists() {
     return Err("archive file not found".to_string());
   }
-  if !inside(&workspace_dir.join("backups"), archive_path) {
+  if !inside(&workspace_dir.join("backups"), request.archive_path) {
     return Err("archive is not inside this workspace's backups folder".to_string());
   }
-  let (record, _) = verify_archive(archive_path).map_err(|e| format!("archive failed verification: {e}"))?;
-  if record.revision != expected_revision {
+  let (record, _) = verify_archive(request.archive_path).map_err(|e| format!("archive failed verification: {e}"))?;
+  if record.revision != request.expected_revision {
     return Err("archive was made from a different revision".to_string());
   }
+  if full_digest(conn, &workspace_dir)? != record.full_digest {
+    return Err("the workspace changed since the archive was made; create a new archive".to_string());
+  }
+  if !inside(&workspace_dir.join("backups"), request.dir) {
+    return Err("snapshot folder is not inside this workspace's backups".to_string());
+  }
+  if snapshot_record(request.dir)?.revision != request.expected_revision {
+    return Err("the snapshot folder belongs to a different revision".to_string());
+  }
+  let undecided = undecided_files(request.dir)?;
+  if !undecided.is_empty() {
+    return Err(format!(
+      "{} file(s) that are not in the cloud copy are neither exported nor accepted as lost: {}",
+      undecided.len(),
+      undecided.join(", ")
+    ));
+  }
+  Ok(workspace_dir)
+}
 
+/// Moves a workspace folder to `removed/<code>-<stamp>/` and deletes its database and files there;
+/// `backups/` and `workspace.json` stay.
+pub fn remove_folder(workspaces_root: &Path, code: &str, workspace_dir: &Path, now: i64) -> Result<PathBuf, String> {
   let removed = removed_root(workspaces_root);
   fs::create_dir_all(&removed).map_err(|e| e.to_string())?;
   let target = unique_path(removed.join(format!("{code}-{}", stamp(now))));
-  fs::rename(&workspace_dir, &target).map_err(|e| e.to_string())?;
+  fs::rename(workspace_dir, &target).map_err(|e| e.to_string())?;
   for suffix in ["", "-wal", "-shm", "-journal"] {
     let _ = fs::remove_file(target.join(format!("workspace.db{suffix}")));
   }
   let _ = fs::remove_dir_all(target.join("files"));
   Ok(target)
+}
+
+#[cfg(test)]
+pub fn remove_in(
+  workspaces_root: &Path,
+  code: &str,
+  request: &RemoveRequest<'_>,
+  now: i64,
+) -> Result<PathBuf, String> {
+  let workspace_dir = check_removal(workspaces_root, code, request, None)?;
+  remove_folder(workspaces_root, code, &workspace_dir, now)
 }
 
 fn workspace_and_dir<R: Runtime>(app: &AppHandle<R>, code: &str, dir: &str) -> Result<(LocalWorkspace, PathBuf), String> {
@@ -835,28 +1333,39 @@ fn workspace_and_dir<R: Runtime>(app: &AppHandle<R>, code: &str, dir: &str) -> R
   Ok((workspace, dir))
 }
 
+#[derive(Debug, Serialize)]
+pub struct Frozen {
+  pub stopped: usize,
+  pub token: String,
+}
+
+async fn begin_operation(moving: &Moving, code: &str) -> Result<Operation, String> {
+  let moving = moving.clone();
+  let code = code.to_string();
+  tauri::async_runtime::spawn_blocking(move || moving.begin(&code))
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn local_move_freeze<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
   moving: State<'_, Moving>,
   code: String,
-) -> Result<usize, String> {
-  let newly = moving.set(&code);
+) -> Result<Frozen, String> {
+  let operation = begin_operation(&moving, &code).await?;
   let now = crate::tray::now_secs();
-  let result = with_connection(app, &dbs, code.clone(), move |conn| stop_timers(conn, now)).await;
-  if result.is_err() && newly {
-    moving.clear(&code);
-  }
-  if let Ok(stopped) = &result {
-    log::info!("[local] froze {code} for a cloud move, stopped {stopped} timers");
-  }
-  result
+  let stopped = with_connection(app, &dbs, code.clone(), move |conn| stop_timers(conn, now)).await?;
+  log::info!("[local] froze {code} for a cloud move, stopped {stopped} timers");
+  Ok(Frozen { stopped, token: operation.keep().to_string() })
 }
 
 #[tauri::command]
-pub fn local_move_unfreeze(moving: State<'_, Moving>, code: String) {
-  moving.clear(&code);
+pub fn local_move_unfreeze(moving: State<'_, Moving>, code: String, token: String) {
+  if let Ok(token) = token.parse::<u64>() {
+    moving.release(&code, token);
+  }
 }
 
 #[tauri::command]
@@ -868,14 +1377,34 @@ pub async fn local_source_revision<R: Runtime>(
   with_connection(app, &dbs, code, |conn| revision_of(conn)).await
 }
 
+#[derive(Debug, Serialize)]
+pub struct SourceDigest {
+  pub revision: String,
+  pub full_digest: String,
+}
+
+#[tauri::command]
+pub async fn local_source_digest<R: Runtime>(
+  app: AppHandle<R>,
+  dbs: State<'_, LocalDbs>,
+  code: String,
+) -> Result<SourceDigest, String> {
+  let workspace_dir = PathBuf::from(local_workspaces::find(&app, &code)?.path);
+  with_connection(app, &dbs, code, move |conn| {
+    Ok(SourceDigest { revision: revision_of(conn)?, full_digest: full_digest(conn, &workspace_dir)? })
+  })
+  .await
+}
+
 #[tauri::command]
 pub async fn local_move_snapshot<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
   moving: State<'_, Moving>,
   code: String,
+  token: String,
 ) -> Result<Snapshot, String> {
-  if !moving.is_set(&code) {
+  if !token.parse::<u64>().is_ok_and(|token| moving.owns(&code, token)) {
     return Err("the workspace must be frozen before a snapshot".to_string());
   }
   let workspace = local_workspaces::find(&app, &code)?;
@@ -928,10 +1457,12 @@ pub async fn local_move_put<R: Runtime>(
 pub async fn local_move_archive<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
+  moving: State<'_, Moving>,
   code: String,
 ) -> Result<ArchiveResult, String> {
   let workspace = local_workspaces::find(&app, &code)?;
   let workspace_dir = PathBuf::from(&workspace.path);
+  let _operation = begin_operation(&moving, &code).await?;
   let now = crate::tray::now_secs();
   let backups = workspace_dir.join("backups");
   fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
@@ -950,6 +1481,58 @@ pub async fn local_move_archive<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn local_move_export_file<R: Runtime>(
+  app: AppHandle<R>,
+  code: String,
+  dir: String,
+  key: String,
+  target_path: String,
+) -> Result<(), String> {
+  let (workspace, dir) = workspace_and_dir(&app, &code, &dir)?;
+  let root = local_workspaces::root(&app)?;
+  tauri::async_runtime::spawn_blocking(move || {
+    export_file(Path::new(&workspace.path), &dir, &key, Path::new(&target_path), &root).map(|_| ())
+  })
+  .await
+  .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn local_move_pick_export_target<R: Runtime>(
+  app: AppHandle<R>,
+  file_name: String,
+) -> Result<Option<String>, String> {
+  use tauri_plugin_dialog::DialogExt;
+  let name: String = file_name.chars().filter(|c| !matches!(c, '/' | '\\')).take(160).collect();
+  let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_file_name(name).blocking_save_file())
+    .await
+    .map_err(|e| e.to_string())?;
+  match picked {
+    Some(path) => Ok(Some(path.into_path().map_err(|e| e.to_string())?.to_string_lossy().into_owned())),
+    None => Ok(None),
+  }
+}
+
+#[tauri::command]
+pub fn local_move_accept_lost<R: Runtime>(app: AppHandle<R>, code: String, dir: String, key: String) -> Result<(), String> {
+  let (_, dir) = workspace_and_dir(&app, &code, &dir)?;
+  accept_lost(&dir, &key)
+}
+
+#[tauri::command]
+pub fn local_move_clear_decision<R: Runtime>(app: AppHandle<R>, code: String, dir: String, key: String) -> Result<(), String> {
+  let (_, dir) = workspace_and_dir(&app, &code, &dir)?;
+  clear_decision(&dir, &key)
+}
+
+#[tauri::command]
+pub fn local_move_add_refused<R: Runtime>(app: AppHandle<R>, code: String, dir: String, keys: Vec<String>) -> Result<(), String> {
+  let (_, dir) = workspace_and_dir(&app, &code, &dir)?;
+  add_excluded(&dir, &keys, "refused")
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn local_workspace_remove<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
@@ -958,32 +1541,52 @@ pub async fn local_workspace_remove<R: Runtime>(
   typed_name: String,
   expected_revision: String,
   archive_path: String,
+  dir: String,
+  job_uuid: String,
+  api_base: String,
+  token: String,
 ) -> Result<(), String> {
   let root = local_workspaces::root(&app)?;
-  let newly = moving.set(&code);
-  let live = with_connection(app, &dbs, code.clone(), |conn| revision_of(conn)).await;
-  let removed = match live {
-    Ok(live_revision) => {
-      dbs.forget(&code);
-      let code = code.clone();
-      let now = crate::tray::now_secs();
-      tauri::async_runtime::spawn_blocking(move || {
-        remove_in(&root, &code, &typed_name, &expected_revision, &live_revision, Path::new(&archive_path), now)
-      })
-      .await
-      .map_err(|e| e.to_string())?
-    }
-    Err(error) => Err(error),
+  let (_, dir) = workspace_and_dir(&app, &code, &dir)?;
+  let evidence = fetch_job(&api_base, &job_uuid, &token).await?;
+  publication_verdict(&evidence, &expected_revision)?;
+
+  let _operation = begin_operation(&moving, &code).await?;
+  let connection = live_connection(&app, &dbs, &code)?;
+  let now = crate::tray::now_secs();
+  let removed = {
+    let code = code.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+      let workspace_dir = {
+        let conn = connection.lock().map_err(|e| e.to_string())?;
+        check_removal(
+          &root,
+          &code,
+          &RemoveRequest {
+            typed_name: &typed_name,
+            expected_revision: &expected_revision,
+            archive_path: Path::new(&archive_path),
+            dir: &dir,
+          },
+          Some(&conn),
+        )?
+      };
+      Ok::<_, String>((root, workspace_dir, connection))
+    })
+    .await
+    .map_err(|e| e.to_string())?
   };
-  match &removed {
-    Ok(target) => {
-      moving.clear(&code);
-      log::info!("[local] removed local workspace {code} to {}", target.display());
-    }
-    Err(_) if newly => moving.clear(&code),
-    Err(_) => {}
-  }
-  removed.map(|_| ())
+  let (root, workspace_dir, connection) = removed?;
+  dbs.forget(&code);
+  drop(connection);
+  let target = {
+    let code = code.clone();
+    tauri::async_runtime::spawn_blocking(move || remove_folder(&root, &code, &workspace_dir, now))
+      .await
+      .map_err(|e| e.to_string())??
+  };
+  log::info!("[local] removed local workspace {code} to {}", target.display());
+  Ok(())
 }
 
 #[cfg(test)]
@@ -1079,16 +1682,59 @@ mod tests {
   }
 
   #[test]
-  fn freeze_flag_is_per_code_and_clears() {
+  fn an_operation_owns_the_workspace_until_its_own_token_releases_it() {
     let moving = Moving::default();
     assert!(moving.check("a").is_ok());
-    assert!(moving.set("a"));
-    assert!(!moving.set("a"));
+    let first = moving.begin("a").unwrap();
+    assert_eq!(moving.begin("a").err().unwrap(), "another move or removal is in progress");
     assert_eq!(moving.check("a").unwrap_err(), "workspace is moving");
     assert!(moving.check("b").is_ok());
-    moving.clear("a");
-    assert!(moving.check("a").is_ok());
-    assert!(!Moving::default().is_set("a"));
+    let token = first.keep();
+    assert!(moving.owns("a", token));
+    assert!(!moving.owns("a", token + 1));
+    assert!(!moving.release("a", token + 1));
+    assert!(moving.is_set("a"));
+    assert!(moving.release("a", token));
+    assert!(!moving.release("a", token));
+    assert!(!moving.is_set("a"));
+    drop(moving.begin("a").unwrap());
+    assert!(!moving.is_set("a"));
+  }
+
+  #[test]
+  fn a_removal_lock_cannot_be_cleared_by_a_move_token() {
+    let moving = Moving::default();
+    let move_token = moving.begin("ws").unwrap().keep();
+    assert!(moving.release("ws", move_token));
+    let removal = moving.begin("ws").unwrap();
+    assert!(!moving.release("ws", move_token));
+    assert!(!moving.owns("ws", move_token));
+    assert!(moving.is_set("ws"));
+    assert!(moving.begin("ws").is_err());
+    drop(removal);
+    assert!(!moving.is_set("ws"));
+  }
+
+  #[test]
+  fn taking_the_lock_waits_for_a_slow_write_and_later_writes_are_refused() {
+    let moving = Moving::default();
+    let dir = temp("drain");
+    let marker = dir.join("written");
+    let permit = moving.permit("ws").unwrap();
+    let writer = {
+      let marker = marker.clone();
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        fs::write(marker, b"done").unwrap();
+        drop(permit);
+      })
+    };
+    let operation = moving.begin("ws").unwrap();
+    assert!(marker.exists(), "begin returned before the in-flight write finished");
+    assert_eq!(moving.permit("ws").err().unwrap(), "workspace is moving");
+    writer.join().unwrap();
+    drop(operation);
+    assert!(moving.permit("ws").is_ok());
   }
 
   #[test]
@@ -1434,9 +2080,65 @@ mod tests {
     assert!(!inside(&root, &root.join("missing")));
   }
 
+
+  #[test]
+  fn full_digest_covers_plugin_and_activity_tables_and_every_file_under_files() {
+    let root = temp("digest");
+    let dir = workspace(&root.join("workspaces"), "Dig");
+    let live = open_workspace(&dir);
+    let tables = full_digest_tables(&live).unwrap();
+    assert!(tables.contains(&"plugin_kv".to_string()) && tables.contains(&"activity_log".to_string()));
+    assert!(tables.iter().all(|t| !t.starts_with("sqlite_") && !t.starts_with("pages_fts")));
+
+    let (revision, digest) = (revision_of(&live).unwrap(), full_digest(&live, &dir).unwrap());
+    assert_eq!(full_digest(&live, &dir).unwrap(), digest);
+
+    live.execute_batch("UPDATE plugin_kv SET value = 'changed'").unwrap();
+    assert_eq!(revision_of(&live).unwrap(), revision);
+    let after_plugin = full_digest(&live, &dir).unwrap();
+    assert_ne!(after_plugin, digest);
+
+    live.execute_batch("INSERT INTO activity_log (at, method) VALUES ('later', 'POST')").unwrap();
+    let after_log = full_digest(&live, &dir).unwrap();
+    assert_ne!(after_log, after_plugin);
+
+    let orphan = dir.join("files/orphan/x.bin");
+    fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+    fs::write(&orphan, b"abc").unwrap();
+    let with_orphan = full_digest(&live, &dir).unwrap();
+    assert_ne!(with_orphan, after_log);
+    fs::write(&orphan, b"abd").unwrap();
+    assert_ne!(full_digest(&live, &dir).unwrap(), with_orphan);
+    fs::remove_file(&orphan).unwrap();
+    assert_eq!(full_digest(&live, &dir).unwrap(), after_log);
+  }
+
+  #[test]
+  fn full_digest_is_identical_for_the_live_database_and_its_vacuum_copy() {
+    let root = temp("digest-copy");
+    let dir = workspace(&root.join("workspaces"), "Dig");
+    let live = open_workspace(&dir);
+    let copy = dir.join("backups").join(".copy.db");
+    vacuum_into(&live, &copy).unwrap();
+    assert_eq!(db_digest_of(&live).unwrap(), db_digest_of(&open_read_only(&copy).unwrap()).unwrap());
+    assert_eq!(revision_of(&live).unwrap(), revision_of(&open_read_only(&copy).unwrap()).unwrap());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn a_symbolic_link_under_files_makes_the_inventory_fail() {
+    let root = temp("symlink");
+    let dir = workspace(&root.join("workspaces"), "Sym");
+    std::os::unix::fs::symlink("/etc/hosts", dir.join("files/link")).unwrap();
+    assert!(files_inventory(&dir).unwrap_err().contains("symbolic link"));
+  }
+
   fn archived(name: &str) -> (PathBuf, PathBuf, ArchiveResult, PathBuf) {
     let root = temp(name);
     let dir = workspace(&root.join("workspaces"), "Arch");
+    let orphan = dir.join("files/orphan/x.bin");
+    fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+    fs::write(orphan, b"unreferenced").unwrap();
     let live = open_workspace(&dir);
     let copy = dir.join("backups").join(".copy.db");
     vacuum_into(&live, &copy).unwrap();
@@ -1445,25 +2147,71 @@ mod tests {
   }
 
   #[test]
-  fn archive_contains_database_files_and_record_and_verifies() {
+  fn archive_contains_the_database_and_every_file_under_files_and_verifies() {
     let (_, dir, result, _) = archived("archive");
     assert!(result.verified);
-    assert_eq!(result.entries, 5);
-    assert_eq!(result.revision, revision_of(&open_workspace(&dir)).unwrap());
+    assert_eq!(result.entries, 6);
+    let live = open_workspace(&dir);
+    assert_eq!(result.revision, revision_of(&live).unwrap());
+    assert_eq!(result.full_digest, full_digest(&live, &dir).unwrap());
     assert!(Path::new(&result.path).starts_with(dir.join("backups")));
     assert!(result.path.ends_with("archive-20270115-080000.zip"));
 
     let (record, entries) = verify_archive(Path::new(&result.path)).unwrap();
-    assert_eq!(entries, 5);
-    assert_eq!(record.files.len(), 4);
-    assert!(record.files[3].missing);
+    assert_eq!(entries, 6);
+    assert_eq!(
+      record.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+      ["orphan/x.bin", "u1/a.png", "u2/big.png", "u3/n.txt"]
+    );
+    assert_eq!(record.files[1].size, 3);
+    assert_eq!(record.files[1].sha256, sha256_hex(b"png"));
     let mut zip = zip::ZipArchive::new(File::open(&result.path).unwrap()).unwrap();
     let mut names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().unwrap().to_string()).collect();
     names.sort();
-    assert_eq!(names, ["archive.json", "files/u1/a.png", "files/u2/big.png", "files/u3/n.txt", "workspace.db"]);
+    assert_eq!(
+      names,
+      ["archive.json", "files/orphan/x.bin", "files/u1/a.png", "files/u2/big.png", "files/u3/n.txt", "workspace.db"]
+    );
     let mut png = Vec::new();
     zip.by_name("files/u1/a.png").unwrap().read_to_end(&mut png).unwrap();
     assert_eq!(png, b"png");
+  }
+
+  fn rewrite_zip(
+    source: &str,
+    target: &Path,
+    edit: impl Fn(&str, Vec<u8>) -> Option<Vec<u8>>,
+    extra: &[(&str, &[u8])],
+  ) {
+    let mut zip = zip::ZipArchive::new(File::open(source).unwrap()).unwrap();
+    let mut out = zip::ZipWriter::new(File::create(target).unwrap());
+    for i in 0..zip.len() {
+      let mut entry = zip.by_index(i).unwrap();
+      let name = entry.name().unwrap().to_string();
+      let mut content = Vec::new();
+      entry.read_to_end(&mut content).unwrap();
+      if let Some(content) = edit(&name, content) {
+        out.start_file(name, zip_options(0)).unwrap();
+        out.write_all(&content).unwrap();
+      }
+    }
+    for (name, content) in extra {
+      out.start_file(*name, zip_options(0)).unwrap();
+      out.write_all(content).unwrap();
+    }
+    out.finish().unwrap();
+  }
+
+  fn edit_record(change: impl Fn(&mut ArchiveRecord) + Copy) -> impl Fn(&str, Vec<u8>) -> Option<Vec<u8>> {
+    move |name, content| {
+      if name == ARCHIVE_META {
+        let mut record: ArchiveRecord = serde_json::from_slice(&content).unwrap();
+        change(&mut record);
+        Some(serde_json::to_vec(&record).unwrap())
+      } else {
+        Some(content)
+      }
+    }
   }
 
   #[test]
@@ -1482,23 +2230,53 @@ mod tests {
     assert!(verify_archive(Path::new(&truncated)).is_err());
 
     let forged = result.path.replace(".zip", "-forged.zip");
-    let mut zip = zip::ZipArchive::new(File::open(&result.path).unwrap()).unwrap();
-    let mut out = zip::ZipWriter::new(File::create(&forged).unwrap());
-    for i in 0..zip.len() {
-      let mut entry = zip.by_index(i).unwrap();
-      let name = entry.name().unwrap().to_string();
-      let mut content = Vec::new();
-      entry.read_to_end(&mut content).unwrap();
-      if name == ARCHIVE_META {
-        let mut record: ArchiveRecord = serde_json::from_slice(&content).unwrap();
-        record.revision = "0".repeat(64);
-        content = serde_json::to_vec(&record).unwrap();
-      }
-      out.start_file(name, zip_options(0)).unwrap();
-      out.write_all(&content).unwrap();
-    }
-    out.finish().unwrap();
+    rewrite_zip(&result.path, Path::new(&forged), edit_record(|r| r.revision = "0".repeat(64)), &[]);
     assert!(verify_archive(Path::new(&forged)).unwrap_err().contains("revision"));
+
+    let digest = result.path.replace(".zip", "-digest.zip");
+    rewrite_zip(&result.path, Path::new(&digest), edit_record(|r| r.full_digest = "0".repeat(64)), &[]);
+    assert!(verify_archive(Path::new(&digest)).unwrap_err().contains("digest"));
+  }
+
+  #[test]
+  fn archive_verification_reconciles_entries_against_the_recorded_file_list() {
+    let (_, _, result, _) = archived("reconcile");
+    let path = |suffix: &str| PathBuf::from(result.path.replace(".zip", &format!("-{suffix}.zip")));
+    let check = |suffix: &str, edit: &dyn Fn(&str, Vec<u8>) -> Option<Vec<u8>>, extra: &[(&str, &[u8])]| {
+      let target = path(suffix);
+      rewrite_zip(&result.path, &target, edit, extra);
+      verify_archive(&target).unwrap_err()
+    };
+    let keep = |_: &str, content: Vec<u8>| Some(content);
+
+    let dropped = check("missing", &|name, c| (name != "files/u1/a.png").then_some(c), &[]);
+    assert!(dropped.contains("holds 3 files but the record lists 4"), "{dropped}");
+
+    let extra = check("extra", &keep, &[("files/extra.bin", b"x")]);
+    assert!(extra.contains("holds 5 files but the record lists 4"), "{extra}");
+
+    let swapped = check("swapped", &|name, c| if name == "files/u1/a.png" { Some(b"PNG".to_vec()) } else { Some(c) }, &[]);
+    assert!(swapped.contains("does not match"), "{swapped}");
+
+    let resized = check("resized", &|name, c| if name == "files/u1/a.png" { Some(b"pngpng".to_vec()) } else { Some(c) }, &[]);
+    assert!(resized.contains("does not match"), "{resized}");
+
+    let slip = check("slip", &keep, &[("files/../evil", b"x")]);
+    assert!(slip.contains("unexpected entry"), "{slip}");
+    let absolute = check("absolute", &keep, &[("/etc/evil", b"x")]);
+    assert!(absolute.contains("unexpected entry"), "{absolute}");
+    let backslash = check("backslash", &keep, &[("files\\..\\evil", b"x")]);
+    assert!(backslash.contains("unexpected entry"), "{backslash}");
+    let other = check("other", &keep, &[("notes.txt", b"x")]);
+    assert!(other.contains("unexpected entry"), "{other}");
+
+    let listed_twice = path("listed-twice");
+    rewrite_zip(&result.path, &listed_twice, edit_record(|r| r.files.push(r.files[0].clone())), &[]);
+    assert!(verify_archive(&listed_twice).unwrap_err().contains("invalid or duplicate path"));
+
+    let hostile_record = path("hostile");
+    rewrite_zip(&result.path, &hostile_record, edit_record(|r| r.files[0].path = "../x".to_string()), &[]);
+    assert!(verify_archive(&hostile_record).is_err());
   }
 
   struct Removal {
@@ -1506,66 +2284,157 @@ mod tests {
     dir: PathBuf,
     archive: PathBuf,
     revision: String,
+    snapshot: PathBuf,
+  }
+
+  fn snapshot_of(dir: &Path, code: &str) -> PathBuf {
+    let live = open_workspace(dir);
+    let snapshot = snapshot_db(&live, dir, 1_800_000_050).unwrap();
+    snapshot_files(&snapshot, dir, 1_800_000_050).unwrap();
+    build_bundle(
+      &snapshot,
+      &BundleInput { code, name: "Arch", profile_uuid: "profile", max_file_bytes: 5, mime_allowlist: &[] },
+    )
+    .unwrap();
+    snapshot
   }
 
   fn removal(name: &str) -> Removal {
     let (root, dir, result, _) = archived(name);
-    let revision = result.revision.clone();
-    Removal { root: root.join("workspaces"), dir, archive: PathBuf::from(result.path), revision }
+    let snapshot = snapshot_of(&dir, "arch");
+    Removal {
+      root: root.join("workspaces"),
+      dir,
+      archive: PathBuf::from(&result.path),
+      revision: result.revision.clone(),
+      snapshot,
+    }
   }
 
-  fn attempt(r: &Removal, typed: &str, expected: &str, live: &str, archive: &Path) -> Result<PathBuf, String> {
-    remove_in(&r.root, "arch", typed, expected, live, archive, 1_800_000_100)
+  fn decide_all(r: &Removal) {
+    accept_lost(&r.snapshot, "u4/gone.png").unwrap();
+    let out = temp("export").join("big.png");
+    export_file(&r.dir, &r.snapshot, "u2/big.png", &out, &r.root).unwrap();
+  }
+
+  fn attempt(r: &Removal, typed: &str, expected: &str, archive: &Path) -> Result<PathBuf, String> {
+    remove_in(
+      &r.root,
+      "arch",
+      &RemoveRequest { typed_name: typed, expected_revision: expected, archive_path: archive, dir: &r.snapshot },
+      1_800_000_100,
+    )
+  }
+
+  fn untouched(r: &Removal) {
+    assert!(r.dir.join("workspace.db").exists());
+    assert!(r.dir.join("files").exists());
+    assert!(!r.root.parent().unwrap().join("removed").exists());
   }
 
   #[test]
   fn removal_refuses_each_unmet_precondition_with_its_own_error() {
     let r = removal("refusals");
-    let code = r.dir.file_name().unwrap().to_string_lossy().to_string();
-    assert_eq!(code, "arch");
-    let ok = |typed: &str, expected: &str, live: &str, archive: &Path| attempt(&r, typed, expected, live, archive);
+    decide_all(&r);
+    let ok = |typed: &str, expected: &str, archive: &Path| attempt(&r, typed, expected, archive);
 
-    assert_eq!(ok("arch", &r.revision, &r.revision, &r.archive).unwrap_err(), "typed name does not match the workspace name");
-    assert_eq!(ok("Arch ", &r.revision, &r.revision, &r.archive).unwrap_err(), "typed name does not match the workspace name");
-    assert_eq!(ok("Arch", &r.revision, "changed", &r.archive).unwrap_err(), "the workspace changed since the move snapshot");
-    assert_eq!(ok("Arch", "stale", &r.revision, &r.archive).unwrap_err(), "the workspace changed since the move snapshot");
-    assert_eq!(ok("Arch", &r.revision, &r.revision, &r.dir.join("backups/archive-none.zip")).unwrap_err(), "archive file not found");
+    assert_eq!(ok("arch", &r.revision, &r.archive).unwrap_err(), "typed name does not match the workspace name");
+    assert_eq!(ok("Arch ", &r.revision, &r.archive).unwrap_err(), "typed name does not match the workspace name");
+    assert_eq!(ok("Arch", "stale", &r.archive).unwrap_err(), "the workspace changed since the move snapshot");
+    assert_eq!(ok("Arch", &r.revision, &r.dir.join("backups/archive-none.zip")).unwrap_err(), "archive file not found");
 
     let elsewhere = temp("elsewhere").join("archive.zip");
     fs::copy(&r.archive, &elsewhere).unwrap();
-    assert_eq!(ok("Arch", &r.revision, &r.revision, &elsewhere).unwrap_err(), "archive is not inside this workspace's backups folder");
+    assert_eq!(ok("Arch", &r.revision, &elsewhere).unwrap_err(), "archive is not inside this workspace's backups folder");
 
     let garbage = r.dir.join("backups/archive-garbage.zip");
     fs::write(&garbage, b"not a zip").unwrap();
-    assert!(ok("Arch", &r.revision, &r.revision, &garbage).unwrap_err().starts_with("archive failed verification"));
+    assert!(ok("Arch", &r.revision, &garbage).unwrap_err().starts_with("archive failed verification"));
 
+    let outside = temp("outside-snapshot");
+    let escaped = remove_in(
+      &r.root,
+      "arch",
+      &RemoveRequest { typed_name: "Arch", expected_revision: &r.revision, archive_path: &r.archive, dir: &outside },
+      0,
+    );
+    assert_eq!(escaped.unwrap_err(), "snapshot folder is not inside this workspace's backups");
+    assert!(remove_in(
+      &r.root,
+      "missing",
+      &RemoveRequest { typed_name: "Arch", expected_revision: &r.revision, archive_path: &r.archive, dir: &r.snapshot },
+      0
+    )
+    .unwrap_err()
+    .contains("not found"));
+    untouched(&r);
+  }
+
+  #[test]
+  fn removal_refuses_when_the_archive_no_longer_matches_the_live_data() {
+    let r = removal("drift");
+    decide_all(&r);
     let live = open_workspace(&r.dir);
+
+    live.execute_batch("UPDATE plugin_kv SET value = 'changed'").unwrap();
+    let message = attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err();
+    assert!(message.contains("changed since the archive"), "{message}");
+    live.execute_batch("UPDATE plugin_kv SET value = 'v'").unwrap();
+
+    fs::write(r.dir.join("files/orphan/late.bin"), b"late").unwrap();
+    assert!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err().contains("changed since the archive"));
+    fs::remove_file(r.dir.join("files/orphan/late.bin")).unwrap();
+
+    live.execute_batch("INSERT INTO activity_log (at, method) VALUES ('t2', 'POST')").unwrap();
+    assert!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err().contains("changed since the archive"));
+    live.execute_batch("DELETE FROM activity_log WHERE at = 't2'").unwrap();
+
     live.execute_batch("UPDATE meta SET value = 'x' WHERE key = 'pinned'").unwrap();
     let new_revision = revision_of(&live).unwrap();
-    assert_eq!(
-      ok("Arch", &new_revision, &new_revision, &r.archive).unwrap_err(),
-      "archive was made from a different revision"
-    );
+    assert_eq!(attempt(&r, "Arch", &new_revision, &r.archive).unwrap_err(), "archive was made from a different revision");
+    assert_eq!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err(), "the workspace changed since the move snapshot");
+    untouched(&r);
+  }
 
-    assert_eq!(attempt(&r, "Arch", "x", "x", &r.archive).unwrap_err(), "archive was made from a different revision");
-    assert!(r.dir.join("workspace.db").exists());
-    assert!(r.dir.join("files").exists());
-    assert!(!r.root.parent().unwrap().join("removed").exists());
-    assert!(remove_in(&r.root, "missing", "Arch", "x", "x", &r.archive, 0).unwrap_err().contains("not found"));
+  #[test]
+  fn removal_refuses_while_a_missing_or_excluded_file_has_no_decision() {
+    let r = removal("decisions");
+    let message = attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err();
+    assert!(message.contains("2 file(s)") && message.contains("u2/big.png") && message.contains("u4/gone.png"), "{message}");
+
+    accept_lost(&r.snapshot, "u4/gone.png").unwrap();
+    let message = attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err();
+    assert!(message.contains("1 file(s)") && message.contains("u2/big.png"), "{message}");
+
+    accept_lost(&r.snapshot, "u2/big.png").unwrap();
+    clear_decision(&r.snapshot, "u2/big.png").unwrap();
+    assert!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err().contains("u2/big.png"));
+
+    decide_all(&r);
+    add_excluded(&r.snapshot, &["u1/a.png".to_string()], "refused").unwrap();
+    assert!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err().contains("u1/a.png"));
+    assert!(add_excluded(&r.snapshot, &["nope/x.png".to_string()], "refused").is_err());
+    untouched(&r);
+  }
+
+  #[test]
+  fn removal_refuses_a_snapshot_folder_from_another_revision() {
+    let r = removal("other-snapshot");
+    decide_all(&r);
+    let mut record = snapshot_record(&r.snapshot).unwrap();
+    record.revision = "stale".to_string();
+    fs::write(r.snapshot.join("snapshot.json"), serde_json::to_string(&record).unwrap()).unwrap();
+    assert_eq!(attempt(&r, "Arch", &r.revision, &r.archive).unwrap_err(), "the snapshot folder belongs to a different revision");
+    untouched(&r);
   }
 
   #[test]
   fn removal_moves_the_folder_drops_data_and_keeps_backups() {
     let r = removal("success");
-    let snapshot = {
-      let live = open_workspace(&r.dir);
-      let dir = snapshot_db(&live, &r.dir, 1_800_000_050).unwrap();
-      snapshot_files(&dir, &r.dir, 1_800_000_050).unwrap();
-      dir
-    };
+    decide_all(&r);
     fs::write(r.dir.join("workspace.db-wal"), b"").unwrap();
 
-    let moved = attempt(&r, "Arch", &r.revision, &r.revision, &r.archive).unwrap();
+    let moved = attempt(&r, "Arch", &r.revision, &r.archive).unwrap();
     assert_eq!(moved, r.root.parent().unwrap().join("removed").join("arch-20270115-080140"));
     assert!(!r.dir.exists());
     assert!(local_workspaces::list_in(&r.root).is_empty());
@@ -1574,7 +2443,7 @@ mod tests {
     assert!(!moved.join("files").exists());
     assert!(moved.join("workspace.json").exists());
     assert!(moved.join("backups").join(r.archive.file_name().unwrap()).exists());
-    let kept = moved.join("backups").join(snapshot.file_name().unwrap());
+    let kept = moved.join("backups").join(r.snapshot.file_name().unwrap());
     assert!(kept.join("workspace.db").exists());
     assert_eq!(fs::read(kept.join("files/u1/a.png")).unwrap(), b"png");
     verify_archive(&moved.join("backups").join(r.archive.file_name().unwrap())).unwrap();
@@ -1583,17 +2452,171 @@ mod tests {
   #[test]
   fn two_removals_of_the_same_code_in_one_second_do_not_collide() {
     let r = removal("twice");
-    let first = attempt(&r, "Arch", &r.revision, &r.revision, &r.archive).unwrap();
+    decide_all(&r);
+    let first = attempt(&r, "Arch", &r.revision, &r.archive).unwrap();
+
     let again = local_workspaces::create_in(&r.root, "Arch", "2026-01-01T00:00:00Z").unwrap();
     assert_eq!(again.manifest.code, "arch");
+    let again_dir = PathBuf::from(&again.path);
     let conn = Connection::open(&again.database).unwrap();
     conn.execute_batch(SCHEMA).unwrap();
-    let rev = revision_of(&conn).unwrap();
-    let copy = Path::new(&again.path).join("backups/.c.db");
+    conn.execute_batch("INSERT INTO meta VALUES ('schema_version', '12')").unwrap();
+    let copy = again_dir.join("backups/.c.db");
     vacuum_into(&conn, &copy).unwrap();
-    let archive = write_archive(Path::new(&again.path), &copy, 1_800_000_000).unwrap();
-    let second = remove_in(&r.root, "arch", "Arch", &rev, &rev, Path::new(&archive.path), 1_800_000_100).unwrap();
+    let archive = write_archive(&again_dir, &copy, 1_800_000_000).unwrap();
+    let snapshot = snapshot_of(&again_dir, "arch");
+    let second = remove_in(
+      &r.root,
+      "arch",
+      &RemoveRequest {
+        typed_name: "Arch",
+        expected_revision: &archive.revision,
+        archive_path: Path::new(&archive.path),
+        dir: &snapshot,
+      },
+      1_800_000_100,
+    )
+    .unwrap();
     assert_ne!(first, second);
     assert!(second.exists());
+  }
+
+  #[test]
+  fn the_bundle_records_which_files_it_left_out() {
+    let r = removal("bundle-record");
+    let record: BundleRecord = read_json(&r.snapshot.join(BUNDLE_RECORD), "bundle record").unwrap();
+    assert_eq!(
+      record.excluded,
+      [
+        ExcludedRecord { key: "u2/big.png".into(), reason: "too_large".into() },
+        ExcludedRecord { key: "u4/gone.png".into(), reason: "missing".into() },
+      ]
+    );
+  }
+
+  #[test]
+  fn exporting_copies_the_file_verifies_it_and_records_the_decision() {
+    let r = removal("export");
+    let out = temp("export-out");
+    let target = out.join("big-copy.png");
+    let decision = export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"123456789");
+    assert_eq!(decision, Decision { decision: "exported".into(), size: 9, sha256: sha256_hex(b"123456789") });
+    assert_eq!(read_decisions(&r.snapshot).unwrap()["u2/big.png"], decision);
+
+    assert!(export_file(&r.dir, &r.snapshot, "u4/gone.png", &out.join("g.png"), &r.root).unwrap_err().contains("missing"));
+    assert!(export_file(&r.dir, &r.snapshot, "nope/x.png", &out.join("n.png"), &r.root).unwrap_err().contains("not part"));
+    assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", &r.root.join("inside.png"), &r.root).unwrap_err().contains("outside"));
+    assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", &out, &r.root).is_err());
+    assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", Path::new("relative.png"), &r.root).is_err());
+    assert!(!r.root.join("inside.png").exists());
+  }
+
+  #[test]
+  fn a_file_that_changed_since_the_snapshot_is_not_exported_or_recorded() {
+    let r = removal("export-changed");
+    fs::write(file_path(&r.snapshot, "u2/big.png"), b"tampered!").unwrap();
+    fs::write(file_path(&r.dir, "u2/big.png"), b"tampered!").unwrap();
+    let target = temp("export-changed-out").join("big.png");
+    let error = export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).unwrap_err();
+    assert!(error.contains("no longer matches"), "{error}");
+    assert!(!target.exists());
+    assert!(read_decisions(&r.snapshot).unwrap().is_empty());
+  }
+
+  #[test]
+  fn accepting_a_loss_and_taking_it_back_are_recorded_in_the_decisions_file() {
+    let r = removal("lost");
+    accept_lost(&r.snapshot, "u4/gone.png").unwrap();
+    assert_eq!(read_decisions(&r.snapshot).unwrap()["u4/gone.png"].decision, "lost");
+    assert!(accept_lost(&r.snapshot, "nope/x.png").is_err());
+    clear_decision(&r.snapshot, "u4/gone.png").unwrap();
+    assert!(read_decisions(&r.snapshot).unwrap().is_empty());
+  }
+
+  #[test]
+  fn publication_needs_published_verified_and_the_same_revision() {
+    let good = serde_json::json!({"data": {"status": "published", "verified": true, "source_revision": "rev"}});
+    assert!(publication_verdict(&good, "rev").is_ok());
+    assert!(publication_verdict(&good, "other").unwrap_err().contains("different revision"));
+    for (body, needle) in [
+      (serde_json::json!({"data": {"status": "verified", "verified": true, "source_revision": "rev"}}), "not published"),
+      (serde_json::json!({"data": {"status": "published", "verified": false, "source_revision": "rev"}}), "not verified"),
+      (serde_json::json!({"data": {"status": "published", "source_revision": "rev"}}), "not verified"),
+      (serde_json::json!({"data": {"status": "published", "verified": true}}), "different revision"),
+      (serde_json::json!({}), "not published"),
+    ] {
+      assert!(publication_verdict(&body, "rev").unwrap_err().contains(needle), "{body}");
+    }
+  }
+
+  #[test]
+  fn the_job_url_is_built_only_from_a_safe_id_and_a_secure_base() {
+    assert_eq!(job_url("https://tmgr.dev/api/", "ab-12").unwrap(), "https://tmgr.dev/api/imports/ab-12");
+    assert_eq!(job_url("https://tmgr.dev/api", "ab-12").unwrap(), "https://tmgr.dev/api/imports/ab-12");
+    assert!(job_url("http://127.0.0.1:8080/api/", "ab").is_ok());
+    assert!(job_url("http://example.com/api/", "ab").is_err());
+    for id in ["", "../x", "a/b", "a?b", "a b"] {
+      assert!(job_url("https://tmgr.dev/api/", id).is_err(), "{id}");
+    }
+  }
+
+  async fn serve_job(
+    status: u16,
+    location: Option<&'static str>,
+    body: &'static str,
+  ) -> (String, tokio::sync::oneshot::Receiver<(String, Option<String>)>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/api/", listener.local_addr().unwrap());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+      let (stream, _) = listener.accept().await.unwrap();
+      let tx = std::sync::Mutex::new(Some(tx));
+      let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+        let sender = tx.lock().unwrap().take();
+        async move {
+          let auth = req.headers().get("authorization").map(|v| v.to_str().unwrap().to_string());
+          if let Some(sender) = sender {
+            let _ = sender.send((req.uri().path().to_string(), auth));
+          }
+          let mut response = hyper::Response::builder().status(status);
+          if let Some(location) = location {
+            response = response.header("location", location);
+          }
+          Ok::<_, std::convert::Infallible>(response.body(http_body_util::Full::new(hyper::body::Bytes::from(body))).unwrap())
+        }
+      });
+      let _ = hyper::server::conn::http1::Builder::new()
+        .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
+        .await;
+    });
+    (base, rx)
+  }
+
+  #[tokio::test]
+  async fn the_job_is_read_from_the_server_with_the_bearer_token() {
+    let (base, seen) = serve_job(200, None, r#"{"data":{"status":"published","verified":true,"source_revision":"rev"}}"#).await;
+    let body = fetch_job(&base, "job-1", "secret-token").await.unwrap();
+    publication_verdict(&body, "rev").unwrap();
+    let (path, auth) = seen.await.unwrap();
+    assert_eq!(path, "/api/imports/job-1");
+    assert_eq!(auth.as_deref(), Some("Bearer secret-token"));
+  }
+
+  #[tokio::test]
+  async fn a_server_refusal_redirect_or_junk_answer_is_an_error_without_the_token() {
+    for (status, location, body) in [
+      (401u16, None, "{}"),
+      (404, None, "{}"),
+      (302, Some("https://elsewhere.example/"), ""),
+      (200, None, "<html>"),
+    ] {
+      let (base, _) = serve_job(status, location, body).await;
+      let error = fetch_job(&base, "job-1", "secret-token").await.unwrap_err();
+      assert!(!error.contains("secret-token"), "{error}");
+      assert!(error.contains(&status.to_string()) || status == 200, "{error}");
+    }
+    let unreachable = fetch_job("http://127.0.0.1:9/api/", "job-1", "secret-token").await.unwrap_err();
+    assert!(!unreachable.contains("secret-token"));
   }
 }

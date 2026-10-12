@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value as Json};
 use tauri::{AppHandle, Runtime, State};
 
-use crate::local_move::Moving;
+use crate::local_move::{Moving, Permit};
 use crate::local_workspaces;
 
 /// One connection per local workspace, opened lazily. SQLite serialises writers anyway; a single
@@ -106,6 +106,9 @@ pub fn open(path: &str) -> Result<Connection, String> {
 pub fn select(conn: &Connection, sql: &str, params: &[Json]) -> Result<Vec<Map<String, Json>>, String> {
   check_statement(sql)?;
   let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+  if !stmt.readonly() {
+    return Err("only read-only statements can be used to select".to_string());
+  }
   let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
   let mut rows = stmt
     .query(params_from_iter(params.iter().map(to_sql)))
@@ -129,29 +132,12 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Json]) -> Result<ExecuteR
   Ok(ExecuteResult { rows_affected, last_insert_id: conn.last_insert_rowid() })
 }
 
-/// The check runs while the caller holds the connection, so a freeze that has finished stopping
-/// timers can never be overtaken by a write that passed the check earlier.
-pub fn execute_guarded(
-  conn: &Connection,
-  moving: &Moving,
-  code: &str,
-  sql: &str,
-  params: &[Json],
-) -> Result<ExecuteResult, String> {
-  if !is_read_only(sql) {
-    moving.check(code)?;
+pub(crate) fn permit_for(moving: &Moving, code: &str, write: bool) -> Result<Option<Permit>, String> {
+  if write {
+    moving.permit(code).map(Some)
+  } else {
+    Ok(None)
   }
-  execute(conn, sql, params)
-}
-
-pub fn batch_guarded(
-  conn: &Connection,
-  moving: &Moving,
-  code: &str,
-  statements: &[BatchStatement],
-) -> Result<BatchResult, String> {
-  moving.check(code)?;
-  batch(conn, statements)
 }
 
 #[derive(Deserialize)]
@@ -231,6 +217,35 @@ pub(crate) async fn with_connection<R: Runtime, T: Send + 'static>(
   .map_err(|e| e.to_string())?
 }
 
+/// A write: the permit is taken before the connection lock and kept until the statement is done, so
+/// a freeze or removal (which waits for permits first, then takes the connection) never deadlocks
+/// with it and never overtakes it.
+pub(crate) async fn with_write_connection<R: Runtime, T: Send + 'static>(
+  app: AppHandle<R>,
+  dbs: &LocalDbs,
+  moving: Moving,
+  code: String,
+  write: bool,
+  work: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+  let conn = connection(&app, dbs, &code)?;
+  tauri::async_runtime::spawn_blocking(move || {
+    let _permit = permit_for(&moving, &code, write)?;
+    let guard = conn.lock().map_err(|e| e.to_string())?;
+    work(&guard)
+  })
+  .await
+  .map_err(|e| e.to_string())?
+}
+
+pub(crate) fn live_connection<R: Runtime>(
+  app: &AppHandle<R>,
+  dbs: &LocalDbs,
+  code: &str,
+) -> Result<Arc<Mutex<Connection>>, String> {
+  connection(app, dbs, code)
+}
+
 #[tauri::command]
 pub async fn local_db_select<R: Runtime>(
   app: AppHandle<R>,
@@ -251,9 +266,8 @@ pub async fn local_db_execute<R: Runtime>(
   sql: String,
   params: Vec<Json>,
 ) -> Result<ExecuteResult, String> {
-  let moving = moving.inner().clone();
-  let name = code.clone();
-  with_connection(app, &dbs, code, move |conn| execute_guarded(conn, &moving, &name, &sql, &params)).await
+  let write = !is_read_only(&sql);
+  with_write_connection(app, &dbs, moving.inner().clone(), code, write, move |conn| execute(conn, &sql, &params)).await
 }
 
 #[tauri::command]
@@ -264,9 +278,7 @@ pub async fn local_db_batch<R: Runtime>(
   code: String,
   statements: Vec<BatchStatement>,
 ) -> Result<BatchResult, String> {
-  let moving = moving.inner().clone();
-  let name = code.clone();
-  with_connection(app, &dbs, code, move |conn| batch_guarded(conn, &moving, &name, &statements)).await
+  with_write_connection(app, &dbs, moving.inner().clone(), code, true, move |conn| batch(conn, &statements)).await
 }
 
 /// Consistent snapshot of the workspace database before a schema migration (VACUUM INTO also
@@ -330,24 +342,38 @@ mod tests {
 
   #[test]
   fn a_moving_workspace_refuses_writes_and_batches_but_answers_selects() {
+    let moving = Moving::default();
+    assert!(permit_for(&moving, "ws", true).unwrap().is_some());
+
+    let operation = moving.begin("ws").unwrap();
+    for sql in ["INSERT INTO t (v) VALUES ('b')", "UPDATE t SET v = 'x'", "DELETE FROM t", "CREATE TABLE u (id INTEGER)"] {
+      assert!(!is_read_only(sql));
+      assert_eq!(permit_for(&moving, "ws", !is_read_only(sql)).err().unwrap(), "workspace is moving", "{sql}");
+    }
+    assert!(is_read_only("-- note\nSELECT 1"));
+    assert!(permit_for(&moving, "ws", false).unwrap().is_none());
+    assert_eq!(permit_for(&moving, "ws", true).err().unwrap(), "workspace is moving");
+    assert!(permit_for(&moving, "other", true).unwrap().is_some());
+
+    drop(operation);
+    assert!(permit_for(&moving, "ws", true).unwrap().is_some());
+  }
+
+  #[test]
+  fn select_refuses_statements_that_write() {
     let conn = open(":memory:").unwrap();
     execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)", &[]).unwrap();
-    let moving = Moving::default();
-    let write = |sql: &str| execute_guarded(&conn, &moving, "ws", sql, &[]);
-    write("INSERT INTO t (v) VALUES ('a')").unwrap();
-
-    moving.set("ws");
-    for sql in ["INSERT INTO t (v) VALUES ('b')", "UPDATE t SET v = 'x'", "DELETE FROM t", "CREATE TABLE u (id INTEGER)"] {
-      assert_eq!(write(sql).err().unwrap(), "workspace is moving", "{sql}");
+    execute(&conn, "INSERT INTO t (v) VALUES ('a')", &[]).unwrap();
+    for sql in [
+      "UPDATE t SET v = 'x' RETURNING id",
+      "INSERT INTO t (v) VALUES ('b') RETURNING id",
+      "DELETE FROM t RETURNING id",
+      "CREATE TABLE u (id INTEGER)",
+    ] {
+      assert!(select(&conn, sql, &[]).is_err(), "{sql}");
     }
-    assert_ne!(write("-- note\nSELECT 1").err().unwrap_or_default(), "workspace is moving");
-    let batch_error = batch_guarded(&conn, &moving, "ws", &[statement("SELECT 1", vec![], false)]).err().unwrap();
-    assert_eq!(batch_error, "workspace is moving");
-    assert_eq!(rows(&conn), 1);
-    assert!(execute_guarded(&conn, &moving, "other", "DELETE FROM t", &[]).is_ok());
-
-    moving.clear("ws");
-    batch_guarded(&conn, &moving, "ws", &[statement("INSERT INTO t (v) VALUES ('c')", vec![], false)]).unwrap();
+    assert_eq!(select(&conn, "SELECT v FROM t", &[]).unwrap()[0]["v"], json!("a"));
+    assert_eq!(select(&conn, "SELECT COUNT(*) AS n FROM t", &[]).unwrap()[0]["n"], json!(1));
   }
 
   #[test]
