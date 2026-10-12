@@ -1,6 +1,6 @@
 <template>
 	<section
-		v-if="inline || visible"
+		v-if="inline || visible || saveFailed"
 		role="region"
 		aria-label="Privacy choices"
 		data-consent-panel
@@ -10,6 +10,9 @@
 				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' + (authPage ? ' lg:left-4 lg:right-auto' : '')
 		"
 	>
+		<p v-if="saveFailed" role="alert" class="mb-3 text-sm text-destructive">
+			Couldn't save your choice in this browser. Sharing is stopped in this window.
+		</p>
 		<div v-if="showUsage" data-consent-block="usage">
 			<h2 class="text-base font-semibold">Help improve TMGR?</h2>
 			<p class="mt-2 text-sm text-muted-foreground">
@@ -134,7 +137,7 @@
 	const props = defineProps<{ inline?: boolean }>();
 
 	const route = useRoute();
-	const { consent, setAnalytics, setUsage } = useConsent();
+	const { consent, setAnalytics, setUsage, saveFailed } = useConsent();
 	const desktop = import.meta.env.MODE === 'desktop' || isDesktopApp();
 
 	const detailsOpen = ref(false);

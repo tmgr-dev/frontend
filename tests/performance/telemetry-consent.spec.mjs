@@ -196,6 +196,28 @@ test('the panel stays off the sign-in form and anchors left over the marketing c
   await page.getByRole('textbox').first().fill('a@b.test');
 });
 
+test('a guest who opted in can turn sharing off and delete on the privacy page', async ({
+  page,
+}) => {
+  await mockApp(page, { account: false, consent: false });
+  const { events, route } = await watchTelemetry(page.context());
+  await route(page);
+  await page.goto('/login');
+  await shareUsage(page);
+  await page.getByRole('button', { name: 'Decline' }).click();
+  await page.waitForTimeout(500);
+  await goHidden(page);
+  await expect.poll(() => events.filter((e) => e.method === 'POST').length).toBeGreaterThan(0);
+  await page.goto('/privacy#usage-data');
+  await expect(page.getByTestId('usage-switch')).toBeChecked();
+  await page.getByTestId('usage-switch').click();
+  await expect(page.getByTestId('usage-switch')).not.toBeChecked();
+  await expect(page.getByTestId('install-id')).toHaveText('\u2014');
+  await page.getByRole('button', { name: 'Delete data already sent' }).click();
+  await expect(page.getByTestId('delete-result')).toHaveText('Deleted. Sharing is off.');
+  expect(events.some((e) => e.method === 'DELETE' && e.headers['x-telemetry-secret'])).toBe(true);
+});
+
 test.describe('settings and screenshots', () => {
   test('the Privacy tab shows the controls and deletes sent data', async ({
     page,

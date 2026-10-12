@@ -78,6 +78,7 @@
 						data as pseudonymous personal data. The legal basis is your consent,
 						which you can withdraw at any time.
 					</p>
+					<UsageDataControls />
 				</section>
 
 				<section id="analytics">
@@ -210,6 +211,7 @@
 <script setup lang="ts">
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
+	import UsageDataControls from '@/components/privacy/UsageDataControls.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useConsent } from '@/privacy/useConsent';
