@@ -1,4 +1,4 @@
-use crate::wire::{now_ms, LaunchFile};
+use crate::wire::{now_ms, LaunchFile, Slot};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -21,6 +21,7 @@ const RING_CAP: usize = 2 << 20;
 const LOG_CAP: u64 = 20 << 20;
 const REAP_AFTER: Duration = Duration::from_secs(24 * 3600);
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_PENDING: usize = 4;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -134,14 +135,12 @@ impl Shim {
         }
     }
 
-    fn handle(self: &Arc<Self>, stream: UnixStream, adopt_secret: &str) {
-        if server::accept_check(&stream).is_err() {
-            return;
-        }
+    fn handle(self: &Arc<Self>, stream: UnixStream, adopt_secret: &str, pending: Slot) {
         let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
         if !self.authenticate(&stream, adopt_secret) {
             return;
         }
+        drop(pending);
         let Ok(out) = stream.try_clone() else { return };
         let _ = out.set_write_timeout(Some(IO_TIMEOUT));
         let conn_id = {
@@ -337,11 +336,18 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     spawn_stat(&shim);
     spawn_reaper(&shim);
 
+    let pending = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
+        if server::accept_check(&stream).is_err() {
+            continue;
+        }
+        let Some(slot) = Slot::take(&pending, MAX_PENDING) else {
+            continue;
+        };
         let shim = shim.clone();
         let secret = adopt_secret.clone();
-        thread::spawn(move || shim.handle(stream, &secret));
+        thread::spawn(move || shim.handle(stream, &secret, slot));
     }
     Ok(())
 }

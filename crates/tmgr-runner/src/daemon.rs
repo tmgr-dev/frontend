@@ -5,7 +5,7 @@ use crate::screen::{changed_lines, ScreenModel, Snapshot};
 use crate::t0::{self, Detector, State, StateKind};
 use crate::wire::{
     clamp_size, now_ms, write_atomic, CreateReq, EventMsg, LaunchFile, ScreenPush, SessionInfo,
-    StatusInfo, MAX_INPUT, SCROLLBACK,
+    Slot, StatusInfo, MAX_INPUT, SCROLLBACK,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,8 @@ use tmgr_ipc::proto::{
 use tmgr_ipc::{auth, secret, server};
 
 const MAX_CONNS: usize = 64;
+const MAX_PENDING: usize = 16;
+const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
 const PUSH_INTERVAL: Duration = Duration::from_millis(33);
 const MAX_LAYOUT: usize = 64 << 10;
 const MAX_WATCHED: usize = 64;
@@ -74,6 +76,26 @@ impl RunnerConfig {
             max_sessions: 16,
         })
     }
+}
+
+#[cfg(target_os = "linux")]
+pub fn landlock_abi() -> i32 {
+    const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    const CREATE_RULESET_VERSION: libc::c_ulong = 1;
+    let v = unsafe {
+        libc::syscall(
+            SYS_LANDLOCK_CREATE_RULESET,
+            std::ptr::null::<libc::c_void>(),
+            0 as libc::size_t,
+            CREATE_RULESET_VERSION,
+        )
+    };
+    i32::try_from(v).unwrap_or(0).max(0)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn landlock_abi() -> i32 {
+    i32::MAX
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -471,6 +493,12 @@ impl Conn {
     }
 }
 
+#[derive(Default)]
+struct Rejects {
+    last: Option<Instant>,
+    suppressed: u64,
+}
+
 struct Runner {
     cfg: RunnerConfig,
     secret: String,
@@ -480,16 +508,10 @@ struct Runner {
     create_lock: Mutex<()>,
     layout_lock: Mutex<()>,
     stop: AtomicBool,
-    conns: AtomicUsize,
+    conns: Arc<AtomicUsize>,
+    pending: Arc<AtomicUsize>,
+    rejects: Mutex<Rejects>,
     next_conn: AtomicU64,
-}
-
-struct ConnGuard(Arc<Runner>);
-
-impl Drop for ConnGuard {
-    fn drop(&mut self) {
-        self.0.conns.fetch_sub(1, Ordering::SeqCst);
-    }
 }
 
 fn valid_env_name(n: &str) -> bool {
@@ -696,6 +718,7 @@ impl Runner {
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
+        sandbox::landlock_tier(landlock_abi()).map_err(|e| api("sandbox", e))?;
         let matcher = match &req.profile {
             None => None,
             Some(pid) => {
@@ -1084,12 +1107,29 @@ impl Runner {
         s.resize(cols, rows, Some(conn.id));
     }
 
-    fn serve_conn(self: &Arc<Self>, stream: UnixStream) {
-        let _guard = ConnGuard(self.clone());
-        if let Err(e) = server::handshake_server(&stream, &self.secret, &self.cfg.version) {
-            log(&format!("rejected connection: {e}"));
+    fn log_reject(&self, why: &str) {
+        let mut r = lock(&self.rejects);
+        if r.last.is_some_and(|t| t.elapsed() < REJECT_LOG_EVERY) {
+            r.suppressed += 1;
             return;
         }
+        let n = std::mem::take(&mut r.suppressed);
+        r.last = Some(Instant::now());
+        drop(r);
+        if n > 0 {
+            log(&format!("rejected connection: {why} ({n} more suppressed)"));
+        } else {
+            log(&format!("rejected connection: {why}"));
+        }
+    }
+
+    fn serve_conn(self: &Arc<Self>, stream: UnixStream, conn_slot: Slot, pending: Slot) {
+        let _slot = conn_slot;
+        if let Err(e) = server::handshake_server(&stream, &self.secret, &self.cfg.version) {
+            self.log_reject(&e.to_string());
+            return;
+        }
+        drop(pending);
         let Ok(w) = stream.try_clone() else { return };
         let conn = Arc::new(Conn {
             id: self.next_conn.fetch_add(1, Ordering::SeqCst),
@@ -1206,7 +1246,9 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         create_lock: Mutex::new(()),
         layout_lock: Mutex::new(()),
         stop: AtomicBool::new(false),
-        conns: AtomicUsize::new(0),
+        conns: Arc::new(AtomicUsize::new(0)),
+        pending: Arc::new(AtomicUsize::new(0)),
+        rejects: Mutex::new(Rejects::default()),
         next_conn: AtomicU64::new(1),
     });
     log(&format!("runner {} starting", cfg.version));
@@ -1232,16 +1274,19 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
                     continue;
                 }
                 if server::accept_check(&stream).is_err() {
-                    log("rejected connection: other user");
+                    rt.log_reject("other user");
                     continue;
                 }
-                if rt.conns.fetch_add(1, Ordering::SeqCst) >= MAX_CONNS {
-                    rt.conns.fetch_sub(1, Ordering::SeqCst);
-                    log("rejected connection: too many connections");
+                let Some(pending) = Slot::take(&rt.pending, MAX_PENDING) else {
+                    rt.log_reject("too many pending connections");
                     continue;
-                }
+                };
+                let Some(conn_slot) = Slot::take(&rt.conns, MAX_CONNS) else {
+                    rt.log_reject("too many connections");
+                    continue;
+                };
                 let rt = rt.clone();
-                thread::spawn(move || rt.serve_conn(stream));
+                thread::spawn(move || rt.serve_conn(stream, conn_slot, pending));
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(30));

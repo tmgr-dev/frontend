@@ -2,6 +2,8 @@ use crate::screen::{Line, Modes, Snapshot};
 use crate::t0::State;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SCROLLBACK: usize = 5000;
@@ -13,6 +15,24 @@ pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
+}
+
+pub struct Slot(Arc<AtomicUsize>);
+
+impl Slot {
+    pub fn take(counter: &Arc<AtomicUsize>, cap: usize) -> Option<Slot> {
+        if counter.fetch_add(1, Ordering::SeqCst) >= cap {
+            counter.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Slot(counter.clone()))
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 pub fn clamp_size(cols: u16, rows: u16) -> (u16, u16) {

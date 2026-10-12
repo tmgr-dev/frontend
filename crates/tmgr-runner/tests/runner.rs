@@ -234,6 +234,15 @@ fn wait_state(c: &mut Client, id: &str, secs: u64, pred: impl Fn(&State) -> bool
     }
 }
 
+fn sessions_available() -> bool {
+    let abi = tmgr_runner::daemon::landlock_abi();
+    if abi >= 6 {
+        return true;
+    }
+    eprintln!("skipped: Landlock ABI {abi} < 6");
+    false
+}
+
 fn alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
@@ -582,4 +591,92 @@ fn start_background_replaces_a_squatted_runner_address() {
     let status = h.client().status().unwrap();
     unsafe { libc::kill(pid as i32, libc::SIGKILL) };
     assert_eq!(status.pid, pid);
+}
+
+#[test]
+fn trickling_handshake_is_disconnected_by_the_runner() {
+    use std::io::{Read, Write};
+    let mut h = Harness::new();
+    h.start(5000);
+    let ep = tmgr_ipc::endpoint::Endpoint::load_runner(&h.run).unwrap();
+    let mut s = tmgr_ipc::endpoint::connect(&ep).unwrap();
+    s.set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    let started = Instant::now();
+    let mut closed = false;
+    'outer: while started.elapsed() < Duration::from_secs(10) {
+        let _ = s.write_all(&[0]);
+        let tick = Instant::now();
+        while tick.elapsed() < Duration::from_secs(1) {
+            let mut b = [0u8; 8];
+            match s.read(&mut b) {
+                Ok(0) => {
+                    closed = true;
+                    break 'outer;
+                }
+                Ok(_) => {}
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
+                Err(_) => {
+                    closed = true;
+                    break 'outer;
+                }
+            }
+        }
+    }
+    assert!(closed, "still connected after {:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_secs(7),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn rejected_connections_do_not_flood_the_log() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let ep = tmgr_ipc::endpoint::Endpoint::load_runner(&h.run).unwrap();
+    let mut made = 0;
+    for _ in 0..10_000 {
+        if tmgr_ipc::endpoint::connect(&ep).is_ok() {
+            made += 1;
+        }
+    }
+    assert!(made > 100, "only {made} connections made");
+    thread::sleep(Duration::from_millis(500));
+    let log = fs::read_to_string(h.tmp.path().join("runner.err")).unwrap();
+    let lines = log
+        .lines()
+        .filter(|l| l.contains("rejected connection"))
+        .count();
+    assert!(lines <= 3, "{lines} rejection lines\n{log}");
+    assert!(h.client().status().is_ok());
+}
+
+#[test]
+fn shim_caps_pending_connections() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    let ep = tmgr_ipc::endpoint::Endpoint::load_session(&h.run, &info.id).unwrap();
+    let held: Vec<_> = (0..4)
+        .map(|_| tmgr_ipc::endpoint::connect(&ep).unwrap())
+        .collect();
+    thread::sleep(Duration::from_millis(200));
+    let mut extra = tmgr_ipc::endpoint::connect(&ep).unwrap();
+    extra
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut b = [0u8; 1];
+    let n = std::io::Read::read(&mut extra, &mut b);
+    assert!(matches!(n, Ok(0)), "extra connection was not closed: {n:?}");
+    drop(held);
 }
