@@ -147,7 +147,9 @@
 						</div>
 
 						<!-- Row: View switcher + chips/Import/Export (desktop) or Import/Export icons (mobile) + Today/nav/date when not list -->
-						<div class="flex items-center gap-3 overflow-x-auto pb-1">
+						<div
+							class="flex flex-wrap items-center gap-3 overflow-x-auto pb-1 sm:flex-nowrap"
+						>
 							<ViewSwitcher v-model="view" :compact="isTablet" />
 							<template v-if="!isMobile">
 								<div class="flex-1" />
