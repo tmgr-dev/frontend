@@ -41,6 +41,13 @@
 								Remove
 							</Button>
 						</div>
+						<AvatarCropModal
+							v-if="cropFile"
+							:file="cropFile"
+							@confirm="uploadAvatar"
+							@cancel="cropFile = null"
+							@error="onCropError"
+						/>
 						<p v-if="avatarError" class="text-xs text-destructive">
 							{{ avatarError }}
 						</p>
@@ -195,6 +202,7 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import AvatarCropModal from '@/components/profile/AvatarCropModal.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
@@ -205,6 +213,7 @@
 		name: 'Profile',
 		components: {
 			UserAvatar,
+			AvatarCropModal,
 			PageContainer,
 			PageHeader,
 			SettingsSection,
@@ -229,6 +238,7 @@
 			errors: {},
 			avatarBusy: false,
 			avatarError: null,
+			cropFile: null,
 			revokingAllTokens: false,
 			saving: false,
 			logoutOtherSessions: true,
@@ -254,6 +264,21 @@
 					return;
 				}
 
+				this.avatarError = null;
+
+				if (!file.type.startsWith('image/')) {
+					this.avatarError = 'Pick an image file';
+					return;
+				}
+
+				this.cropFile = file;
+			},
+			onCropError() {
+				this.cropFile = null;
+				this.avatarError = 'Could not read that image';
+			},
+			async uploadAvatar(file) {
+				this.cropFile = null;
 				this.avatarBusy = true;
 				this.avatarError = null;
 

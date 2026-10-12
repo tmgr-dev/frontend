@@ -132,7 +132,14 @@
 											isAssigned(member.id) ? 'opacity-100' : 'opacity-0',
 										]"
 									/>
-									{{ member.name }}
+									<UserAvatar
+										:user-id="member.id"
+										:name="member.name"
+										:has-avatar="member.has_avatar ?? false"
+										:size="20"
+										class="mr-2"
+									/>
+									<span class="truncate">{{ member.name }}</span>
 								</CommandItem>
 							</CommandGroup>
 							<AssigneePersonaGroup
@@ -310,6 +317,7 @@
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import Loader from '@/components/loaders/Loader.vue';
@@ -384,6 +392,7 @@
 			AssigneeAvatar,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
+			UserAvatar,
 			CategoryBadge,
 			Badge,
 			AppTooltip,

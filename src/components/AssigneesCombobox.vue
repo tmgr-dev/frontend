@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import { WorkspaceMember } from '@/actions/tmgr/workspaces';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Command,
@@ -43,15 +44,17 @@
 	const selectedPersonaIds = computed(() =>
 		props.selectedPersonas.map((p) => p.id),
 	);
+	const selectedMembers = computed(() =>
+		props.assignees.filter(
+			(assignee) =>
+				assigneeIds.value.includes(assignee.id) &&
+				!impliedOwnerIds.value.has(assignee.id),
+		),
+	);
+	const MAX_SUMMARY_AVATARS = 3;
 	const triggerLabel = computed(() => {
 		const names = [
-			...props.assignees
-				.filter(
-					(assignee) =>
-						assigneeIds.value.includes(assignee.id) &&
-						!impliedOwnerIds.value.has(assignee.id),
-				)
-				.map((assignee) => assignee.name),
+			...selectedMembers.value.map((assignee) => assignee.name),
 			...props.selectedPersonas.map((persona) => persona.name),
 		];
 		return names.length > 0 ? names.join(', ') : 'Assignee';
@@ -77,9 +80,34 @@
 					variant="ghost"
 					role="combobox"
 					:aria-expanded="openCombobox"
+					:aria-label="triggerLabel"
 					class="w-32 justify-between overflow-hidden px-0"
 				>
-					<span class="truncate">
+					<span
+						v-if="selectedMembers.length"
+						class="flex shrink-0 items-center -space-x-1.5"
+						:title="triggerLabel"
+					>
+						<UserAvatar
+							v-for="member in selectedMembers.slice(0, MAX_SUMMARY_AVATARS)"
+							:key="member.id"
+							:user-id="member.id"
+							:name="member.name"
+							:has-avatar="member.has_avatar ?? false"
+							:size="20"
+							class="ring-2 ring-white dark:ring-gray-800"
+						/>
+						<span
+							v-if="selectedMembers.length > MAX_SUMMARY_AVATARS"
+							class="relative z-10 pl-2.5 text-xs text-gray-600 dark:text-gray-400"
+						>
+							+{{ selectedMembers.length - MAX_SUMMARY_AVATARS }}
+						</span>
+					</span>
+					<span
+						class="truncate"
+						:class="{ 'ml-1.5': selectedMembers.length }"
+					>
 						{{ triggerLabel }}
 					</span>
 					<ChevronsUpDown class="ml-1 h-4 w-4 shrink-0 opacity-50" />
@@ -122,7 +150,14 @@
 								"
 								class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
 							>
-								{{ assignee.name }}
+								<UserAvatar
+									:user-id="assignee.id"
+									:name="assignee.name"
+									:has-avatar="assignee.has_avatar ?? false"
+									:size="20"
+									class="mr-2"
+								/>
+								<span class="truncate">{{ assignee.name }}</span>
 								<Check
 									:class="
 										cn(

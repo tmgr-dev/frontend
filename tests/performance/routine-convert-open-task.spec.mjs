@@ -3,6 +3,13 @@ import { desktopPage } from './desktopShell.mjs';
 
 const convertRoutine = async (page, title) => {
   await desktopPage(page);
+  // The desktop.move-to-cloud tour offer fires once a local workspace exists
+  // and navigates to Settings → Local data mid-test.
+  await page.addInitScript(() =>
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1'),
+  );
+  // routines.first auto-offers 600ms after landing on /routines and covers the page.
+  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
   await page.goto('/demo/board');
   await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();

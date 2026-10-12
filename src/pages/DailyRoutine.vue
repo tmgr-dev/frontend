@@ -147,7 +147,9 @@
 						</div>
 
 						<!-- Row: View switcher + chips/Import/Export (desktop) or Import/Export icons (mobile) + Today/nav/date when not list -->
-						<div class="flex items-center gap-3 overflow-x-auto pb-1">
+						<div
+							class="flex flex-wrap items-center gap-3 overflow-x-auto pb-1 sm:flex-nowrap"
+						>
 							<ViewSwitcher v-model="view" :compact="isTablet" />
 							<template v-if="!isMobile">
 								<div class="flex-1" />
@@ -387,6 +389,16 @@
 						@edit="onEdit"
 						@archive="onArchive"
 						@delete="onDelete"
+						@duplicate="onDuplicate"
+						@convert="convertingEntry = $event"
+					/>
+
+					<ConvertRoutineModal
+						v-if="convertingEntry"
+						:entry="convertingEntry"
+						:busy="convertBusy"
+						@close="convertingEntry = null"
+						@convert="onConvertFromMenu"
 					/>
 
 					<button
@@ -407,6 +419,7 @@
 
 <script setup lang="ts">
 	import {
+		expandRoutineRange,
 		getDailyTask,
 		quickCreateRoutine,
 		updateDailyTask,
@@ -424,10 +437,18 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import ConvertRoutineModal from '@/components/dailyRoutine/ConvertRoutineModal.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
 	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
+	import {
+		buildRoutinePayload,
+		occurrenceRangeOf,
+		routineDraftFrom,
+		routineForEdit,
+		type RoutineDraft,
+	} from '@/components/dailyRoutine/routinePayload';
 	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
 	import RoutineViewSkeleton from '@/components/dailyRoutine/RoutineViewSkeleton.vue';
 	import DayView from '@/components/dailyRoutine/views/DayView.vue';
@@ -439,6 +460,7 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
+	import { useToast } from '@/components/ui/toast';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -463,6 +485,7 @@
 	import { useStore } from 'vuex';
 
 	const store = useStore();
+	const { toast } = useToast();
 	const rootRef = ref<HTMLElement | null>(null);
 	const fileRef = ref<HTMLInputElement | null>(null);
 	const { width, isMobile, isTablet, bind } = useDailyRoutineViewport();
@@ -734,7 +757,7 @@
 			(t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 		)
 			return;
-		if (editingRoutine.value) return;
+		if (editingRoutine.value || convertingEntry.value) return;
 		if (e.key === 'n' || e.key === 'N') {
 			e.preventDefault();
 			onNewRoutine();
@@ -749,20 +772,32 @@
 		await store.dispatch('dailyRoutines/toggleComplete', entry);
 	}
 
+	async function loadRoutineForEdit(entry: RoutineEntry) {
+		const full = await getDailyTask(entry.task_id);
+		let occurrences: RoutineEntry[] = [];
+		if (entry.frequency === 'WEEKLY' && entry.date) {
+			const { from, to } = occurrenceRangeOf(entry.date);
+			occurrences = await expandRoutineRange(from, to);
+		}
+		// A one-off routine's schedule lives on its instance (carried by the
+		// entry), not on the task row the GET returns — overlay it so the modal
+		// shows the real time/date/duration instead of defaulting to unscheduled.
+		return routineForEdit(full, entry, occurrences);
+	}
+
+	function errorText(error: unknown): string {
+		return (error as any)?.response?.data?.message || 'Please try again.';
+	}
+
 	async function onEdit(entry: RoutineEntry) {
 		try {
-			const full = await getDailyTask(entry.task_id);
-			// A one-off routine's schedule lives on its instance (carried by the
-			// entry), not on the task row the GET returns — overlay it so the modal
-			// shows the real time/date/duration instead of defaulting to unscheduled.
-			editingRoutine.value = {
-				...full,
-				scheduled_time: entry.time ?? full.scheduled_time ?? null,
-				scheduled_date: entry.date ?? full.scheduled_date ?? null,
-				durationMin: entry.duration_min ?? full.approximately_time ?? undefined,
-			};
-		} catch {
-			editingRoutine.value = entry;
+			editingRoutine.value = await loadRoutineForEdit(entry);
+		} catch (error) {
+			toast({
+				title: 'Could not open the routine',
+				description: errorText(error),
+				variant: 'destructive',
+			});
 		}
 	}
 
@@ -801,55 +836,24 @@
 		view.value = 'day';
 	}
 
-	async function onSaveRoutine(draft: any) {
-		const dowKeys = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+	async function saveRoutine(draft: RoutineDraft, fallbackDate?: string) {
 		const time = `${String(draft.timeH).padStart(2, '0')}:${String(
 			draft.timeM,
 		).padStart(2, '0')}`;
-		const isRecurring = draft.frequency !== 'NONE';
-		const isUnscheduled = !isRecurring && !!draft.unscheduled;
-		const payload: any = {
-			title: draft.title,
-			description: draft.description,
-			routine_category: draft.cat,
-			is_daily_routine: true,
-			is_recurring: isRecurring,
-		};
-		if (isRecurring) {
-			payload.recurrence = {
-				frequency: draft.frequency,
-				interval: draft.interval || 1,
-				days_of_week:
-					draft.frequency === 'WEEKLY'
-						? draft.daysOfWeek.map((i: number) => dowKeys[i])
-						: null,
-				day_of_frequency: ['MONTHLY', 'YEARLY'].includes(draft.frequency)
-					? draft.dayOfMonth
-					: null,
-				month: draft.frequency === 'YEARLY' ? draft.month : null,
-				time: { hours: draft.timeH, minutes: draft.timeM },
-				duration_min: draft.durationMin,
-				reminder_min: draft.reminderMin,
-			};
-			// Mirror duration onto the task so it stays the single source of truth
-			// (day-view resize writes here too); the pattern's duration_min is legacy.
-			payload.approximately_time = draft.durationMin;
-		} else if (isUnscheduled) {
-			payload.unscheduled = true;
-		} else {
-			payload.scheduled_date = draft.scheduledDate || todayIso.value;
-			payload.scheduled_time = { hours: draft.timeH, minutes: draft.timeM };
-			// Duration of a one-off routine lives on the task (approximately_time),
-			// not on a recurrence pattern — send it so the block sizes correctly
-			// and the edit modal can read it back.
-			payload.approximately_time = draft.durationMin;
-		}
+		const isUnscheduled = draft.frequency === 'NONE' && !!draft.unscheduled;
 		if (draft.id) {
-			await updateDailyTask(draft.id, payload);
+			const original = routineDraftFrom(editingRoutine.value, todayIso.value);
+			// The modal raises a shorter duration to its 15 min minimum on open.
+			original.durationMin = Math.max(15, original.durationMin);
+			await updateDailyTask(
+				draft.id,
+				buildRoutinePayload(draft, todayIso.value, original),
+			);
 		} else {
+			const payload = buildRoutinePayload(draft, todayIso.value);
 			const draftDate = isUnscheduled
 				? undefined
-				: draft.scheduledDate || editingRoutine.value?._draftDate;
+				: draft.scheduledDate || fallbackDate;
 			const created = await quickCreateRoutine({
 				title: draft.title,
 				date: draftDate,
@@ -863,7 +867,28 @@
 				await updateDailyTask(newId, payload);
 			}
 		}
+	}
+
+	async function onSaveRoutine(draft: RoutineDraft) {
+		await saveRoutine(draft, editingRoutine.value?._draftDate);
 		editingRoutine.value = null;
+		await reload();
+	}
+
+	async function onDuplicate(entry: RoutineEntry) {
+		try {
+			const draft = routineDraftFrom(
+				await loadRoutineForEdit(entry),
+				todayIso.value,
+			);
+			await saveRoutine({ ...draft, id: null, title: `${draft.title} (copy)` });
+		} catch (error) {
+			toast({
+				title: 'Could not duplicate the routine',
+				description: errorText(error),
+				variant: 'destructive',
+			});
+		}
 		await reload();
 	}
 
@@ -920,9 +945,32 @@
 	}) {
 		const task = await store.dispatch('dailyRoutines/convertRoutine', payload);
 		editingRoutine.value = null;
+		convertingEntry.value = null;
 		await reload();
 		convertedTaskId.value = task.id;
 		showConvertedTaskPrompt.value = true;
+	}
+
+	const convertingEntry = ref<RoutineEntry | null>(null);
+	const convertBusy = ref(false);
+
+	async function onConvertFromMenu(payload: {
+		taskId: number;
+		workspaceId: number;
+		projectCategoryId: number | null;
+	}) {
+		convertBusy.value = true;
+		try {
+			await onConvertRoutine(payload);
+		} catch (error) {
+			toast({
+				title: 'Could not convert the routine',
+				description: errorText(error),
+				variant: 'destructive',
+			});
+		} finally {
+			convertBusy.value = false;
+		}
 	}
 
 	const convertedTaskId = ref<number | null>(null);

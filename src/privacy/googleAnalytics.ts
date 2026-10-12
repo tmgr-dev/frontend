@@ -1,3 +1,4 @@
+import { isAuthPath } from '@/utils/stripAnalytics';
 import type { ConsentStore } from './consent';
 
 const SCRIPT_ATTR = 'data-tmgr-ga';
@@ -32,6 +33,7 @@ export interface GoogleAnalyticsOptions {
 	enabled: boolean;
 	store: ConsentStore;
 	win?: Window;
+	onNavigate?: (recheck: (pathname: string) => void) => void;
 }
 
 export const startGoogleAnalytics = ({
@@ -39,6 +41,7 @@ export const startGoogleAnalytics = ({
 	enabled,
 	store,
 	win = window,
+	onNavigate,
 }: GoogleAnalyticsOptions): (() => void) => {
 	if (!enabled) return () => {};
 	const doc = win.document;
@@ -71,9 +74,33 @@ export const startGoogleAnalytics = ({
 		clearGoogleCookies(doc, win.location.hostname);
 	};
 
-	const apply = (analytics: string | null) =>
-		analytics === 'granted' ? load() : revoke();
+	const apply = (
+		analytics: string | null,
+		pathname = win.location.pathname,
+	) => {
+		if (analytics !== 'granted') return revoke();
+		if (isAuthPath(pathname)) {
+			w[flag] = true;
+			return;
+		}
+		w[flag] = false;
+		load();
+	};
+
+	// Back/Forward changes the URL before router guards run; registered before gtag.js so it runs first.
+	const onPopState = () => {
+		if (store.get().analytics === 'granted')
+			w[flag] = isAuthPath(win.location.pathname);
+	};
+	win.addEventListener('popstate', onPopState, { capture: true });
 
 	apply(store.get().analytics);
-	return store.subscribe((record) => apply(record.analytics));
+	onNavigate?.((pathname) => {
+		if (store.get().analytics === 'granted') apply('granted', pathname);
+	});
+	const unsubscribe = store.subscribe((record) => apply(record.analytics));
+	return () => {
+		unsubscribe();
+		win.removeEventListener('popstate', onPopState, { capture: true });
+	};
 };
