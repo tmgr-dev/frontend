@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - `tmgr self-update [--check] [--channel stable|beta] [--allow-downgrade]`: updates the binary from a GitHub release whose `manifest.json` carries a valid minisign signature (public key compiled in; a build without a key refuses with exit 5). Checks expiry, the archive sha256 and a rollback floor kept in `~/.local/state/tmgr/update.json`; keeps `tmgr.old`; refuses Homebrew, Nix, cargo and npm installs and prints their upgrade command.
 - `https://tmgr.dev/install.sh` installer, `nix/tmgr-cli.nix` (`packages.<system>.tmgr-cli`) and a Homebrew formula template; releases now include `manifest.json`.
