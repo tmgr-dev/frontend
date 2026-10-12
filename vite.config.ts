@@ -1,11 +1,16 @@
 import vue from '@vitejs/plugin-vue';
 import autoprefixer from 'autoprefixer';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwind from 'tailwindcss';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { pwaWorkbox } from './pwa/pwaWorkbox';
 import { stripAnalytics } from './src/utils/stripAnalytics';
+
+const appVersion: string =
+	process.env.VITE_APP_VERSION ||
+	JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -34,6 +39,7 @@ const desktopWithoutAnalytics = (): Plugin => {
 };
 
 export default defineConfig({
+	define: { __APP_VERSION__: JSON.stringify(appVersion) },
 	plugins: [
 		vue(),
 		desktopWithoutAnalytics(),

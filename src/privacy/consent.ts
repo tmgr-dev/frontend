@@ -3,6 +3,7 @@ export type ConsentValue = 'granted' | 'denied' | null;
 export interface ConsentRecord {
 	analytics: ConsentValue;
 	usage: ConsentValue;
+	usageGeneration: number;
 	updatedAt: string | null;
 }
 
@@ -14,6 +15,7 @@ export const CONSENT_CHANNEL = 'tmgr-consent';
 const empty = (): ConsentRecord => ({
 	analytics: null,
 	usage: null,
+	usageGeneration: 0,
 	updatedAt: null,
 });
 
@@ -27,6 +29,10 @@ const parse = (raw: string | null): ConsentRecord => {
 		return {
 			analytics: value(data?.analytics),
 			usage: value(data?.usage),
+			usageGeneration:
+				Number.isInteger(data?.usageGeneration) && data.usageGeneration > 0
+					? data.usageGeneration
+					: 0,
 			updatedAt: typeof data?.updatedAt === 'string' ? data.updatedAt : null,
 		};
 	} catch {
@@ -36,6 +42,7 @@ const parse = (raw: string | null): ConsentRecord => {
 
 export interface ConsentStore {
 	get(): ConsentRecord;
+	read(): ConsentRecord;
 	set(patch: Partial<Pick<ConsentRecord, 'analytics' | 'usage'>>): ConsentRecord;
 	subscribe(listener: ConsentListener): () => void;
 }
@@ -87,11 +94,17 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 
 	return {
 		get,
+		read,
 		set(patch) {
+			const base = read();
 			const next: ConsentRecord = {
-				...get(),
+				...base,
 				...(patch.analytics !== undefined && { analytics: patch.analytics }),
-				...(patch.usage !== undefined && { usage: patch.usage }),
+				...(patch.usage !== undefined && {
+					usage: patch.usage,
+					usageGeneration:
+						patch.usage === base.usage ? base.usageGeneration : base.usageGeneration + 1,
+				}),
 				updatedAt: new Date().toISOString(),
 			};
 			try {

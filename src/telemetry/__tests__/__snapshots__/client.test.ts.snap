@@ -1,0 +1,25 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`with consent builds an envelope from enums only, with t truncated to the hour 1`] = `
+{
+  "account_mode": "cloud",
+  "app_version": "3.4",
+  "events": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "n": "screen_viewed",
+      "p": {
+        "route": "WorkspaceBoard",
+      },
+      "seq": 0,
+      "t": 1791799200,
+    },
+  ],
+  "install_id": "00000000-0000-4000-8000-000000000001",
+  "platform": "web",
+  "schema": 1,
+  "secret_sha256": StringMatching /\\^\\[0-9a-f\\]\\{64\\}\\$/,
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "viewport": "l",
+}
+`;
