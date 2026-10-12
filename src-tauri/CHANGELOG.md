@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.35 — 2026-10-12
+
+- Getting started hub and guided tours (skip anytime, restart from the user menu).
+- Usage data: the app now asks whether you want to share usage data. It is off unless you choose "Share usage data".
+  Events are not linked to your account and never contain task, page or comment text, names or emails. Change it any
+  time in Settings → Privacy, where you can also reset the install ID and delete data already sent.
+- Privacy policy: linked from Settings → Privacy and from the usage-data question.
+- The desktop app still never loads Google Analytics, Yandex Metrica or Plausible.
+
 ## 0.9.34 — 2026-10-12
 
 - Task links: `tmgr://task/<workspace>/<id>` and `https://tmgr.dev/<workspace>/tasks/<id>` links open the task in the app,
