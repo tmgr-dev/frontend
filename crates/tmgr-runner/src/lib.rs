@@ -4,3 +4,8 @@ pub mod sandbox;
 pub mod sanitize;
 pub mod screen;
 pub mod t0;
+
+#[cfg(unix)]
+pub mod shim;
+#[cfg(unix)]
+pub mod wire;
