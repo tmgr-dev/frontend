@@ -16,7 +16,13 @@ path = "src/main.rs"
 clap.workspace = true
 serde_json.workspace = true
 tmgr-core.workspace = true
+ctrlc.workspace = true
+rpassword.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-serde_json.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true
+tokio.workspace = true
+jsonschema.workspace = true

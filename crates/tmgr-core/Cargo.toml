@@ -10,6 +10,12 @@ publish = false
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+toml.workspace = true
+keyring.workspace = true
+zeroize.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile.workspace = true
