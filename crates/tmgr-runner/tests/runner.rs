@@ -254,6 +254,9 @@ fn err_text(r: std::io::Result<impl std::fmt::Debug>) -> String {
 
 #[test]
 fn echo_input_and_exit_code() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -279,6 +282,9 @@ fn echo_input_and_exit_code() {
 
 #[test]
 fn terminal_queries_are_answered() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -307,6 +313,9 @@ fn terminal_queries_are_answered() {
 
 #[test]
 fn working_waiting_working_exited() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(300);
     let mut c = h.client();
@@ -347,6 +356,9 @@ fn working_waiting_working_exited() {
 
 #[test]
 fn sessions_survive_runner_restart() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -428,6 +440,9 @@ fn rejects_unauthorized_and_invalid_requests() {
     let e = err_text(c.call("attach.open", json!({"sessions": ["s_../..//.."]})));
     assert!(e.contains("invalid_params"), "{e}");
 
+    if !sessions_available() {
+        return;
+    }
     let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
     let w = Watch::new(h.client(), &[&info.id]);
     w.writer.resize(&info.id, 0, 0).unwrap();
@@ -449,6 +464,9 @@ fn rejects_unauthorized_and_invalid_requests() {
 
 #[test]
 fn resize_reaches_the_pty() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -469,6 +487,9 @@ fn resize_reaches_the_pty() {
 
 #[test]
 fn exited_session_can_be_removed() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -489,6 +510,9 @@ fn exited_session_can_be_removed() {
 
 #[test]
 fn send_kill_layout_and_stop() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -545,6 +569,9 @@ fn start_background_is_idempotent() {
 
 #[test]
 fn large_input_is_chunked_and_first_screen_arrives() {
+    if !sessions_available() {
+        return;
+    }
     let mut h = Harness::new();
     h.start(5000);
     let mut c = h.client();
@@ -693,7 +720,7 @@ fn a_client_that_never_reads_is_disconnected_and_others_keep_receiving() {
     let body = "import os\ni = 0\nwhile True:\n    os.write(1, ('\\x07line %d ' % i + 'x' * 60 + '\\n').encode())\n    i += 1\n";
     let path = h.script("flood.py", body);
     let info = c.create(h.req(&[PY, &path])).unwrap();
-    let mut stalled = h.client().attach(&[info.id.clone()]).unwrap();
+    let mut stalled = h.client().attach(std::slice::from_ref(&info.id)).unwrap();
     let mut w = Watch::new(h.client(), &[&info.id]);
     assert!(w.wait(5, |w| w.has_line(&info.id, "line")));
     thread::sleep(Duration::from_secs(4));
@@ -781,4 +808,18 @@ fn a_500x200_screen_of_alternating_colours_reaches_the_client_intact() {
     assert!(text.starts_with("abcdefghij"));
     assert!(snap.lines[198].spans.len() >= 500);
     assert!(c.status().is_ok());
+}
+
+#[test]
+fn create_is_refused_without_a_usable_sandbox() {
+    let abi = tmgr_runner::daemon::landlock_abi();
+    if abi >= 6 {
+        eprintln!("skipped: Landlock ABI {abi} is sufficient");
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let e = err_text(h.client().create(h.req(&["/bin/sleep", "30"])));
+    assert!(e.contains("sandbox unavailable"), "{e}");
+    assert!(h.client().list().unwrap().is_empty());
 }

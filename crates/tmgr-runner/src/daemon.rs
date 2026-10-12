@@ -1285,6 +1285,7 @@ impl Runner {
 
 const LOG_CAP: u64 = 5 << 20;
 
+#[allow(clippy::unnecessary_cast)]
 fn rotate_log(dir: &Path, fds: &[RawFd], cap: u64) -> io::Result<bool> {
     use std::os::unix::fs::MetadataExt;
     let path = dir.join("runner.log");

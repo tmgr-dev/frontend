@@ -25,6 +25,15 @@ fn private_dir(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
 }
 
+fn sandbox_usable() -> bool {
+    let abi = tmgr_runner::daemon::landlock_abi();
+    if abi >= 6 {
+        return true;
+    }
+    eprintln!("skipped: Landlock ABI {abi} < 6");
+    false
+}
+
 impl Env {
     fn new() -> Env {
         let tmp = tempfile::Builder::new()
@@ -88,6 +97,9 @@ impl Env {
     }
 
     fn start(&self, script: &str, name: &str) -> Option<String> {
+        if !sandbox_usable() {
+            return None;
+        }
         let cwd = self.proj.display().to_string();
         let out = self.tmgr(&[
             "run",
@@ -405,5 +417,25 @@ fn halt_send_and_rm_manage_a_session() {
     let data = env.data(&["agents", "--json"]);
     assert_eq!(data["summary"]["exited"], 1);
     env.data(&["rm", &id, "--json"]);
+    assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn run_is_refused_without_a_usable_sandbox() {
+    if tmgr_runner::daemon::landlock_abi() >= 6 {
+        eprintln!("skipped: the sandbox is usable here");
+        return;
+    }
+    let env = Env::new();
+    let script = env.script("never.sh", "sleep 5\n");
+    let cwd = env.proj.display().to_string();
+    let out = env.tmgr(&["run", "--agent-cmd", &script, "--cwd", &cwd, "--no-attach"]);
+    assert!(!out.status.success());
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(text.contains("sandbox unavailable"), "{text}");
     assert!(env.sessions().is_empty());
 }

@@ -586,6 +586,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    #[allow(clippy::zombie_processes)]
     fn signal_is_refused_once_the_child_exited_and_never_reaches_the_group() {
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", "sleep 30 & echo $!; exit 0"])
@@ -612,6 +613,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::zombie_processes)]
     fn signal_reaches_a_running_child_group() {
         let mut cmd = Command::new("/bin/sleep");
         cmd.arg("30");

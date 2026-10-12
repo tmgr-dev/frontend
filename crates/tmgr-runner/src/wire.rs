@@ -149,6 +149,77 @@ pub struct ScreenPush {
     pub scroll_max: usize,
 }
 
+fn json_len<T: Serialize>(v: &T) -> usize {
+    serde_json::to_vec(v).map_or(0, |b| b.len())
+}
+
+fn batches(rows: Vec<(usize, Line)>, budget: usize) -> Vec<Vec<(usize, Line)>> {
+    let mut out = Vec::new();
+    let mut cur = Vec::new();
+    let mut size = 0;
+    for row in rows {
+        let n = json_len(&row) + 1;
+        if !cur.is_empty() && size + n > budget {
+            out.push(std::mem::take(&mut cur));
+            size = 0;
+        }
+        size += n;
+        cur.push(row);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+pub fn screen_pushes(id: &str, prev: Option<&Snapshot>, snap: &Snapshot) -> Vec<ScreenPush> {
+    const ENVELOPE: usize = 1024;
+    let diff = prev.filter(|p| p.rows == snap.rows && p.cols == snap.cols);
+    let base = ScreenPush {
+        session: id.to_string(),
+        full: false,
+        snapshot: None,
+        lines: Vec::new(),
+        cursor: snap.cursor,
+        modes: Some(snap.modes),
+        scroll_offset: snap.scroll_offset,
+        scroll_max: snap.scroll_max,
+    };
+    let rows: Vec<(usize, Line)> = match diff {
+        Some(p) => changed_lines(p, snap)
+            .into_iter()
+            .map(|i| (i, snap.lines[i].clone()))
+            .collect(),
+        None => snap.lines.iter().cloned().enumerate().collect(),
+    };
+    let mut head = Snapshot {
+        lines: Vec::new(),
+        ..snap.clone()
+    };
+    let overhead = 2 * json_len(&base) + json_len(&head) + ENVELOPE;
+    let mut chunks = batches(rows, MAX_PUSH.saturating_sub(overhead)).into_iter();
+    let first = chunks.next().unwrap_or_default();
+    let mut out = Vec::new();
+    if diff.is_some() {
+        out.push(ScreenPush {
+            lines: first,
+            ..base.clone()
+        });
+    } else {
+        head.lines = first.into_iter().map(|(_, l)| l).collect();
+        out.push(ScreenPush {
+            full: true,
+            snapshot: Some(head),
+            ..base.clone()
+        });
+    }
+    out.extend(chunks.map(|lines| ScreenPush {
+        lines,
+        ..base.clone()
+    }));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,75 +324,4 @@ mod tests {
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }
-}
-
-fn json_len<T: Serialize>(v: &T) -> usize {
-    serde_json::to_vec(v).map_or(0, |b| b.len())
-}
-
-fn batches(rows: Vec<(usize, Line)>, budget: usize) -> Vec<Vec<(usize, Line)>> {
-    let mut out = Vec::new();
-    let mut cur = Vec::new();
-    let mut size = 0;
-    for row in rows {
-        let n = json_len(&row) + 1;
-        if !cur.is_empty() && size + n > budget {
-            out.push(std::mem::take(&mut cur));
-            size = 0;
-        }
-        size += n;
-        cur.push(row);
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}
-
-pub fn screen_pushes(id: &str, prev: Option<&Snapshot>, snap: &Snapshot) -> Vec<ScreenPush> {
-    const ENVELOPE: usize = 1024;
-    let diff = prev.filter(|p| p.rows == snap.rows && p.cols == snap.cols);
-    let base = ScreenPush {
-        session: id.to_string(),
-        full: false,
-        snapshot: None,
-        lines: Vec::new(),
-        cursor: snap.cursor,
-        modes: Some(snap.modes),
-        scroll_offset: snap.scroll_offset,
-        scroll_max: snap.scroll_max,
-    };
-    let rows: Vec<(usize, Line)> = match diff {
-        Some(p) => changed_lines(p, snap)
-            .into_iter()
-            .map(|i| (i, snap.lines[i].clone()))
-            .collect(),
-        None => snap.lines.iter().cloned().enumerate().collect(),
-    };
-    let mut head = Snapshot {
-        lines: Vec::new(),
-        ..snap.clone()
-    };
-    let overhead = 2 * json_len(&base) + json_len(&head) + ENVELOPE;
-    let mut chunks = batches(rows, MAX_PUSH.saturating_sub(overhead)).into_iter();
-    let first = chunks.next().unwrap_or_default();
-    let mut out = Vec::new();
-    if diff.is_some() {
-        out.push(ScreenPush {
-            lines: first,
-            ..base.clone()
-        });
-    } else {
-        head.lines = first.into_iter().map(|(_, l)| l).collect();
-        out.push(ScreenPush {
-            full: true,
-            snapshot: Some(head),
-            ..base.clone()
-        });
-    }
-    out.extend(chunks.map(|lines| ScreenPush {
-        lines,
-        ..base.clone()
-    }));
-    out
 }
