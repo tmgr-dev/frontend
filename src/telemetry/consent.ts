@@ -1,4 +1,5 @@
 import { CONSENT_KEY } from '@/privacy/consent';
+import { withLock } from './locks';
 
 export const USAGE_KEY = 'tmgr:telemetry:consent';
 export const TELEMETRY_CHANNEL = 'tmgr-telemetry';
@@ -11,8 +12,8 @@ export interface UsageView {
 
 export interface UsageConsent {
 	read(): UsageView;
-	set(on: boolean): UsageView;
-	subscribe(listener: () => void): () => void;
+	set(on: boolean): Promise<UsageView>;
+	subscribe(listener: (change?: 'deny' | 'withdraw') => void | Promise<void>): () => void;
 	saveFailed(): boolean;
 }
 
@@ -33,8 +34,9 @@ const parseStored = (raw: string | null): Stored | null => {
 	}
 };
 
-const migrateLegacy = (storage: Storage) => {
+const migrateLegacy = (win: Window) => {
 	try {
+		const storage = win.localStorage;
 		const raw = storage.getItem(CONSENT_KEY);
 		if (!raw) return;
 		const old = JSON.parse(raw);
@@ -45,18 +47,19 @@ const migrateLegacy = (storage: Storage) => {
 		}
 		const { usage: _usage, usageGeneration: _generation, ...rest } = old;
 		storage.setItem(CONSENT_KEY, JSON.stringify(rest));
-	} catch {
-		// the legacy record is left as it is
-	}
+	} catch {}
 };
 
 export const createUsageConsent = (win: Window = window): UsageConsent => {
-	const listeners = new Set<() => void>();
+	const listeners = new Set<(change?: 'deny' | 'withdraw') => void | Promise<void>>();
+	const locks = win.navigator?.locks;
 	let hardOff = false;
-	let floor = 0;
+	let denied = false;
+	let deniedThrough = 0;
+	let generationHere = 0;
+	let choice = 0;
 	let answeredHere = false;
 	let failed = false;
-	let wired = false;
 	let channel: BroadcastChannel | null = null;
 
 	const stored = (): Stored | null => {
@@ -69,65 +72,99 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 
 	const read = (): UsageView => {
 		const s = stored();
-		const generation = Math.max(s?.generation ?? 0, floor);
+		generationHere = Math.max(s?.generation ?? 0, generationHere);
 		return {
-			on: !!s?.on && !hardOff && s.generation > floor,
-			generation,
+			on: !!s?.on && !hardOff && !denied,
+			generation: generationHere,
 			answered: s !== null || answeredHere,
 		};
 	};
 
-	const notify = () => listeners.forEach((fn) => fn());
+	const notify = (change?: 'deny' | 'withdraw') =>
+		Promise.all([...listeners].map((fn) => fn(change))).then(() => {});
 
-	const wire = () => {
-		if (wired) return;
-		wired = true;
-		win.addEventListener('storage', (event: StorageEvent) => {
-			if (event.key === USAGE_KEY || event.key === null) notify();
-		});
-		const Channel = (win as unknown as { BroadcastChannel?: typeof BroadcastChannel }).BroadcastChannel;
-		if (typeof Channel === 'function') {
-			channel = new Channel(TELEMETRY_CHANNEL);
-			channel.onmessage = (event: MessageEvent) => {
-				const message = event.data;
-				if (message?.type !== 'deny' || !Number.isInteger(message.generation)) return;
-				if (message.generation < read().generation) return;
-				floor = message.generation;
-				notify();
-			};
-		}
-	};
+	win.addEventListener('storage', (event: StorageEvent) => {
+		if (event.key !== USAGE_KEY && event.key !== null) return;
+		const incoming = parseStored(event.newValue);
+		const current = stored();
+		if (
+			incoming?.on && current?.on &&
+			incoming.generation === current.generation && current.generation > deniedThrough
+		) denied = false;
+		generationHere = Math.max(current?.generation ?? 0, generationHere);
+		void notify();
+	});
+	read();
+	const Channel = (win as unknown as { BroadcastChannel?: typeof BroadcastChannel }).BroadcastChannel;
+	if (typeof Channel === 'function') {
+		channel = new Channel(TELEMETRY_CHANNEL);
+		channel.onmessage = (event: MessageEvent) => {
+			if (event.data?.type !== 'deny') return;
+			denied = true;
+			deniedThrough = generationHere;
+			answeredHere = true;
+			void notify('deny');
+		};
+	}
 
-	migrateLegacy(win.localStorage);
-	wire();
+	void withLock(locks, 'consent', () => migrateLegacy(win)).then(() => notify(), () => {});
 
 	return {
 		read,
 		saveFailed: () => failed,
-		set(on) {
-			const generation = read().generation + 1;
-			if (on) hardOff = false;
-			else {
+		async set(on) {
+			const request = ++choice;
+			if (!on) {
 				hardOff = true;
-				floor = generation;
 				answeredHere = true;
-			}
-			let saved = false;
-			try {
-				win.localStorage.setItem(USAGE_KEY, JSON.stringify({ on, generation }));
-				saved = true;
-			} catch {
-				if (!on) {
+				const generation = read().generation + 1;
+				generationHere = generation;
+				try {
+					win.localStorage.setItem(USAGE_KEY, JSON.stringify({ on: false, generation }));
+				} catch {
 					try {
 						win.localStorage.removeItem(USAGE_KEY);
-					} catch {
-						// this window stays off through hardOff
-					}
+					} catch {}
 				}
+				void notify('deny');
 			}
-			failed = !saved;
-			if (!on) channel?.postMessage({ type: 'deny', generation });
-			notify();
+			try {
+				await withLock(locks, 'consent', async () => {
+					const current = stored();
+					const generation =
+						!on && current && !current.on && current.generation === generationHere
+							? generationHere
+							: read().generation + 1;
+					if (on && ((stored()?.generation ?? 0) !== generation - 1 || request !== choice)) return;
+					generationHere = generation;
+					let saved = false;
+					try {
+						win.localStorage.setItem(USAGE_KEY, JSON.stringify({ on, generation }));
+						saved = true;
+					} catch {
+						if (!on) {
+							try {
+								win.localStorage.removeItem(USAGE_KEY);
+							} catch {}
+						}
+					}
+					failed = !saved;
+					if (on && saved && request === choice) {
+						hardOff = false;
+						denied = false;
+					}
+					if (!on) {
+						try {
+							channel?.postMessage({ type: 'deny', generation });
+						} catch {}
+						await withLock(locks, 'send', () => notify('withdraw'));
+					} else await notify();
+				});
+			} catch {
+				failed = true;
+				denied = true;
+				await notify('deny');
+			}
 			return read();
 		},
 		subscribe(listener) {

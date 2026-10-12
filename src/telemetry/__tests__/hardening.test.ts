@@ -80,34 +80,34 @@ describe('receipts as one key per install', () => {
 	const store = (storage: Storage, clock = makeClock()) =>
 		createIdentityStore({ storage, now: clock.now, uuid: () => ids.b, secret: () => 's'.repeat(64) });
 
-	it('writes {secret, expiresAt} under its own key', () => {
+	it('writes {secret, expiresAt} under its own key', async () => {
 		setConsent('granted', 1);
 		const tab = makeTab();
 		tab.telemetry.sync();
 		const id = stored(IDENTITY_KEY);
 		setConsent('denied', 2);
-		tab.telemetry.sync();
+		await tab.telemetry.withdraw();
 		expect(stored(RECEIPT_PREFIX + id.install_id)).toEqual({
 			secret: id.secret,
 			expiresAt: tab.clock.now() + 30 * 24 * 3600_000,
 		});
 	});
 
-	it('pruning in one tab keeps a receipt another tab just wrote', () => {
+	it('pruning in one tab keeps a receipt another tab just wrote', async () => {
 		const clock = makeClock();
 		localStorage.setItem(
 			RECEIPT_PREFIX + ids.a,
-			JSON.stringify({ secret: 'x', expiresAt: clock.now() - 1 }),
+			JSON.stringify({ secret: 'b'.repeat(64), expiresAt: clock.now() - 1 }),
 		);
 		const a = store(localStorage, clock);
 		const b = store(localStorage, clock);
-		localStorage.setItem(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'y', registered: false }));
-		expect(b.retire()).toBe(true);
-		expect(a.receipts().map((r) => r.install_id)).toEqual([ids.b]);
+		localStorage.setItem(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'c'.repeat(64), registered: false }));
+		expect(await b.retire()).toBe(true);
+		expect((await a.receipts()).map((r) => r.install_id)).toEqual([ids.b]);
 		expect(receiptKeys()).toEqual([RECEIPT_PREFIX + ids.b]);
 	});
 
-	it('writing a receipt never rewrites other receipts', () => {
+	it('writing a receipt never rewrites other receipts', async () => {
 		const writes: string[] = [];
 		const storage = new FlakyStorage();
 		const spy = {
@@ -119,23 +119,23 @@ describe('receipts as one key per install', () => {
 			setItem: (k: string, v: string) => (writes.push(k), storage.setItem(k, v)),
 			removeItem: (k: string) => storage.removeItem(k),
 		} as unknown as Storage;
-		storage.data.set(RECEIPT_PREFIX + ids.a, JSON.stringify({ secret: 'x', expiresAt: Date.now() + 1e9 }));
-		storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'y', registered: false }));
-		store(spy, makeClock(Date.now())).retire();
+		storage.data.set(RECEIPT_PREFIX + ids.a, JSON.stringify({ secret: 'b'.repeat(64), expiresAt: Date.now() + 1e9 }));
+		storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'c'.repeat(64), registered: false }));
+		await store(spy, makeClock(Date.now())).retire();
 		expect(writes).toEqual([RECEIPT_PREFIX + ids.b]);
 	});
 
-	it('retire never deletes a newer identity created by another tab', () => {
+	it('retire never deletes a newer identity created by another tab', async () => {
 		const storage = new FlakyStorage();
-		storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.a, secret: 'x', registered: false }));
+		storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.a, secret: 'b'.repeat(64), registered: false }));
 		const original = storage.setItem.bind(storage);
 		storage.setItem = (key: string, value: string) => {
 			original(key, value);
 			if (key === RECEIPT_PREFIX + ids.a) {
-				storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'z', registered: false }));
+				storage.data.set(IDENTITY_KEY, JSON.stringify({ install_id: ids.b, secret: 'd'.repeat(64), registered: false }));
 			}
 		};
-		expect(store(storage as unknown as Storage).retire()).toBe(true);
+		expect(await store(storage as unknown as Storage).retire()).toBe(true);
 		expect(JSON.parse(storage.data.get(IDENTITY_KEY)!).install_id).toBe(ids.b);
 		expect(storage.data.has(RECEIPT_PREFIX + ids.a)).toBe(true);
 	});
@@ -148,7 +148,7 @@ describe('receipts as one key per install', () => {
 		const id = JSON.parse(storage.data.get(IDENTITY_KEY)!);
 		storage.failSet = (key) => key.startsWith(RECEIPT_PREFIX);
 		setConsent('denied', 2);
-		tab.telemetry.sync();
+		await tab.telemetry.withdraw();
 		expect(storage.data.has(IDENTITY_KEY)).toBe(true);
 		expect(tab.telemetry.snapshot()).toMatchObject({ active: false, error: 'receipt' });
 		tab.calls.length = 0;
@@ -159,8 +159,8 @@ describe('receipts as one key per install', () => {
 
 	it('prunes expired receipts at startup', () => {
 		const clock = makeClock();
-		localStorage.setItem(RECEIPT_PREFIX + ids.a, JSON.stringify({ secret: 's', expiresAt: clock.now() - 1 }));
-		localStorage.setItem(RECEIPT_PREFIX + ids.b, JSON.stringify({ secret: 's', expiresAt: clock.now() + 1000 }));
+		localStorage.setItem(RECEIPT_PREFIX + ids.a, JSON.stringify({ secret: 'a'.repeat(64), expiresAt: clock.now() - 1 }));
+		localStorage.setItem(RECEIPT_PREFIX + ids.b, JSON.stringify({ secret: 'a'.repeat(64), expiresAt: clock.now() + 1000 }));
 		makeTab({}, clock);
 		expect(receiptKeys()).toEqual([RECEIPT_PREFIX + ids.b]);
 	});
@@ -211,6 +211,7 @@ describe('queue resurrection is harmless', () => {
 			locks: {
 				request: (name: string, cb: () => unknown) => {
 					names.push(name);
+					if (name !== 'tmgr-telemetry-queue') return Promise.resolve(cb());
 					held.push(cb);
 					return Promise.resolve();
 				},

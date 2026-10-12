@@ -1,3 +1,5 @@
+import { withLock, type Locks } from './locks';
+
 export const IDENTITY_KEY = 'tmgr:telemetry:identity';
 export const RECEIPT_PREFIX = 'tmgr:telemetry:receipt:';
 export const RECEIPT_TTL_MS = 30 * 24 * 3600 * 1000;
@@ -14,7 +16,8 @@ export interface Receipt {
 }
 
 export interface IdentityDeps {
-	storage: Storage;
+	storage: Storage | null;
+	locks?: Locks | null;
 	now: () => number;
 	uuid: () => string;
 	secret: () => string;
@@ -39,9 +42,15 @@ export const randomSecret = (): string => {
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 };
 
-export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps) => {
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SECRET = /^[0-9a-f]{64}$/;
+const validId = (value: unknown): value is string => typeof value === 'string' && UUID_V4.test(value);
+const validSecret = (value: unknown): value is string => typeof value === 'string' && SECRET.test(value);
+
+export const createIdentityStore = ({ storage, locks, now, uuid, secret }: IdentityDeps) => {
 	const write = (key: string, value: unknown): boolean => {
 		try {
+			if (!storage) return false;
 			storage.setItem(key, JSON.stringify(value));
 			return true;
 		} catch {
@@ -49,91 +58,83 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 		}
 	};
 
-	const remove = (key: string) => {
+	const remove = (key: string): boolean => {
 		try {
-			storage.removeItem(key);
+			storage?.removeItem(key);
+			return true;
 		} catch {
-			// pruned on a later access
+			return false;
+		}
+	};
+
+	const get = (key: string): string | null => {
+		try {
+			return storage?.getItem(key) ?? null;
+		} catch {
+			return null;
 		}
 	};
 
 	const read = (): Identity | null => {
-		const data = parseJson(storage.getItem(IDENTITY_KEY)) as Partial<Identity> | null;
-		return data && typeof data.install_id === 'string' && typeof data.secret === 'string'
+		const data = parseJson(get(IDENTITY_KEY)) as Partial<Identity> | null;
+		return data && validId(data.install_id) && validSecret(data.secret)
 			? { install_id: data.install_id, secret: data.secret, registered: data.registered === true }
 			: null;
 	};
 
-	const readReceipt = (installId: string): Receipt | null => {
-		const key = RECEIPT_PREFIX + installId;
-		const data = parseJson(storage.getItem(key)) as { secret?: unknown; expiresAt?: unknown } | null;
-		if (!data || typeof data.secret !== 'string' || typeof data.expiresAt !== 'number') {
-			if (storage.getItem(key) !== null) remove(key);
-			return null;
-		}
-		if (data.expiresAt <= now()) {
-			remove(key);
-			return null;
-		}
-		return { install_id: installId, secret: data.secret };
-	};
-
 	const receipts = (): Receipt[] => {
-		const ids: string[] = [];
-		for (let i = 0; i < storage.length; i += 1) {
-			const key = storage.key(i);
-			if (key?.startsWith(RECEIPT_PREFIX)) ids.push(key.slice(RECEIPT_PREFIX.length));
-		}
-		return ids.map(readReceipt).filter((r): r is Receipt => r !== null);
-	};
-
-	const addReceipt = (identity: Identity): boolean => {
-		if (!write(RECEIPT_PREFIX + identity.install_id, { secret: identity.secret, expiresAt: now() + RECEIPT_TTL_MS })) {
-			return false;
-		}
-		return readReceipt(identity.install_id)?.secret === identity.secret;
-	};
-
-	const removeIfSame = (installId: string): boolean => {
-		if (read()?.install_id === installId) {
-			try {
-				storage.removeItem(IDENTITY_KEY);
-			} catch {
-				return false;
+		const keys: string[] = [];
+		try {
+			for (let i = 0; storage && i < storage.length; i += 1) {
+				const key = storage.key(i);
+				if (key?.startsWith(RECEIPT_PREFIX)) keys.push(key);
 			}
+		} catch {
+			return [];
 		}
-		return true;
+		const live: Receipt[] = [];
+		for (const key of keys) {
+			const raw = get(key);
+			const data = parseJson(raw) as { secret?: unknown; expiresAt?: unknown } | null;
+			const installId = key.slice(RECEIPT_PREFIX.length);
+			if (validId(installId) && validSecret(data?.secret) && typeof data?.expiresAt === 'number' && data.expiresAt > now()) {
+				live.push({ install_id: installId, secret: data.secret });
+			} else if (get(key) === raw) remove(key);
+		}
+		return live;
+	};
+
+	const removeIfSame = (installId: string): boolean =>
+		read()?.install_id !== installId || remove(IDENTITY_KEY);
+
+	const retire = (installId?: string): boolean => {
+		const current = read();
+		if (!current || (installId !== undefined && current.install_id !== installId)) return true;
+		const key = RECEIPT_PREFIX + current.install_id;
+		const receipt = { secret: current.secret, expiresAt: now() + RECEIPT_TTL_MS };
+		return write(key, receipt) && get(key) === JSON.stringify(receipt) && removeIfSame(current.install_id);
 	};
 
 	const create = (): Identity | null => {
 		const identity: Identity = { install_id: uuid(), secret: secret(), registered: false };
+		if (!validId(identity.install_id) || !validSecret(identity.secret)) return null;
 		return write(IDENTITY_KEY, identity) ? identity : null;
 	};
 
 	return {
 		read,
-		create,
-		receipts,
-		markRegistered(registered: boolean) {
+		create: (allowed = () => true) => withLock(locks, 'identity', () => allowed() ? read() ?? create() : null),
+		receipts: () => withLock(locks, 'identity', receipts),
+		markRegistered: (installId: string, registered: boolean) => withLock(locks, 'identity', () => {
 			const current = read();
-			if (current && read()?.install_id === current.install_id) {
-				write(IDENTITY_KEY, { ...current, registered });
-			}
-		},
-		retire(): boolean {
-			const current = read();
-			if (!current) return true;
-			return addReceipt(current) && removeIfSame(current.install_id);
-		},
-		rotate(): Identity | null {
-			return this.retire() ? create() : null;
-		},
-		dropIdentity(installId: string) {
-			removeIfSame(installId);
-		},
-		removeReceipt(installId: string) {
+			if (current?.install_id === installId) write(IDENTITY_KEY, { ...current, registered });
+		}),
+		retire: (installId?: string) => withLock(locks, 'identity', () => retire(installId)),
+		rotate: (allowed = () => true) => withLock(locks, 'identity', () => allowed() && retire() ? create() : null),
+		forget: (installId: string) => withLock(locks, 'identity', () => {
 			remove(RECEIPT_PREFIX + installId);
-		},
+			removeIfSame(installId);
+		}),
 	};
 };
 

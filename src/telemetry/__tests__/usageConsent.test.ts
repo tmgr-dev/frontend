@@ -114,15 +114,16 @@ describe('asymmetric signals', () => {
 		expect(b.read().on).toBe(false);
 	});
 
-	it('ignores a stale deny and adopts a later grant only from storage', () => {
-		const { s, b } = pair();
+	it('adopts a stale deny and adopts a later grant only from storage', () => {
+		const { s, b, bWin } = pair();
 		new SpyChannel().postMessage({ type: 'deny', generation: 0 });
-		expect(b.read().on).toBe(true);
+		expect(b.read().on).toBe(false);
 		new SpyChannel().postMessage({ type: 'deny', generation: 2 });
 		expect(b.read().on).toBe(false);
 		new SpyChannel().postMessage({ type: 'grant', generation: 3 });
 		expect(b.read().on).toBe(false);
 		s.data.set(USAGE_KEY, JSON.stringify({ on: true, generation: 3 }));
+		bWin.fire('storage', { key: USAGE_KEY, newValue: s.data.get(USAGE_KEY) });
 		expect(b.read().on).toBe(true);
 	});
 
@@ -172,7 +173,7 @@ describe('asymmetric signals', () => {
 		const win = winWith(s);
 		const usage = createUsageConsent(win);
 		const seen: boolean[] = [];
-		usage.subscribe(() => seen.push(usage.read().on));
+		usage.subscribe(() => { seen.push(usage.read().on); });
 		s.data.set(USAGE_KEY, JSON.stringify({ on: true, generation: 1 }));
 		win.fire('storage', { key: USAGE_KEY });
 		expect(seen).toEqual([true]);

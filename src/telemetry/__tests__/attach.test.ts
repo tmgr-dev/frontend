@@ -62,8 +62,8 @@ describe('window wiring', () => {
 		expect(tab.telemetry.snapshot().pending).toBe(1);
 		setConsent('denied', 2);
 		window.dispatchEvent(new StorageEvent('storage', { key: USAGE_KEY }));
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
-		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
+		expect(tab.telemetry.snapshot()).toMatchObject({ active: false, pending: 0, error: null });
+		expect(localStorage.getItem(IDENTITY_KEY)).not.toBeNull();
 	});
 
 	it('does not start when attached without consent', () => {

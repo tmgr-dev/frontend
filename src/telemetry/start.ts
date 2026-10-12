@@ -1,3 +1,4 @@
+import { localStorageOf } from '@/privacy/storage';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 import { isCatalogRoute, type AccountMode } from './catalog';
 import { attachTelemetry } from './attach';
@@ -34,7 +35,7 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 	const appVersion = desktop ? await desktopVersion() : webVersion();
 	const usage = usageConsent();
 	const telemetry = createTelemetry({
-		storage: window.localStorage,
+		storage: localStorageOf(window),
 		now: () => Date.now(),
 		fetch: (input, init) => window.fetch(input, init),
 		baseUrl: telemetryBaseUrl(
@@ -46,7 +47,7 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 				const { on, generation } = usage.read();
 				return { on, generation };
 			},
-			deny: () => void usage.set(false),
+			deny: () => usage.set(false),
 		},
 		meta: makeMeta({
 			win: window,

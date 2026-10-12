@@ -38,7 +38,7 @@ export const makeClock = (start = Date.UTC(2026, 9, 12, 10, 37, 21)) => {
 export interface Tab {
 	telemetry: ReturnType<typeof createTelemetry>;
 	calls: FetchCall[];
-	respond: { status: number | 'network'; delay?: Promise<void> };
+	respond: { status: number | 'network'; delay?: Promise<void>; onStart?: () => void };
 	timers: { fn: () => void; ms: number; id: number; cleared: boolean }[];
 	later: { fn: () => void; ms: number }[];
 	clock: ReturnType<typeof makeClock>;
@@ -50,6 +50,7 @@ export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeCloc
 	const later: Tab['later'] = [];
 	const respond: Tab['respond'] = { status: 204 };
 	const fetchFn = (async (url: string, init: FetchCall['init']) => {
+		respond.onStart?.();
 		calls.push({ url, init });
 		if (respond.delay) await respond.delay;
 		if (init.signal?.aborted) throw new DOMException('aborted', 'AbortError');
@@ -120,3 +121,53 @@ export class FlakyStorage {
 		this.data.delete(key);
 	}
 }
+
+export class TestLocks {
+	held = new Set<string>();
+	requests: string[] = [];
+	private waiting = new Map<string, Array<() => void>>();
+	request = (name: string, callback: () => unknown): Promise<unknown> => {
+		this.requests.push(name);
+		return new Promise((resolve, reject) => {
+			const run = () => {
+				this.held.add(name);
+				let result: unknown;
+				try {
+					result = callback();
+				} catch (error) {
+					result = Promise.reject(error);
+				}
+				Promise.resolve(result).then(resolve, reject).finally(() => {
+					this.held.delete(name);
+					this.waiting.get(name)?.shift()?.();
+				});
+			};
+			if (this.held.has(name)) {
+				const queue = this.waiting.get(name) ?? [];
+				queue.push(run);
+				this.waiting.set(name, queue);
+			} else run();
+		});
+	};
+}
+
+export const testWindow = (storage: unknown, locks?: TestLocks) => {
+	const listeners: Record<string, Array<(event: any) => void>> = {};
+	return {
+		localStorage: storage,
+		navigator: { locks },
+		BroadcastChannel: FakeChannel,
+		document: new EventTarget(),
+		addEventListener: (type: string, fn: (event: any) => void) => (listeners[type] ??= []).push(fn),
+		removeEventListener: (type: string, fn: (event: any) => void) => {
+			listeners[type] = listeners[type]?.filter((listener) => listener !== fn);
+		},
+		fire: (type: string, event: unknown) => listeners[type]?.forEach((fn) => fn(event)),
+	} as unknown as Window & { fire(type: string, event: unknown): void };
+};
+
+export const deferred = <T = void>() => {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	const promise = new Promise<T>((done) => (resolve = done));
+	return { promise, resolve };
+};

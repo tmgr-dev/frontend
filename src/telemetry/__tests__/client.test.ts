@@ -179,7 +179,7 @@ describe('withdrawal', () => {
 		expect(tab.calls).toHaveLength(1);
 		const signal = tab.calls[0].init.signal as AbortSignal;
 		setConsent('denied', 2);
-		tab.telemetry.sync();
+		await tab.telemetry.withdraw();
 		expect(signal.aborted).toBe(true);
 		release();
 		await pending;
@@ -235,7 +235,8 @@ describe('withdrawal', () => {
 		expect(b.telemetry.snapshot().active).toBe(true);
 		setConsent('denied', 2);
 		b.telemetry.sync();
-		expect(b.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
+		expect(b.telemetry.snapshot()).toMatchObject({ active: false, pending: 0, error: null });
+		expect(localStorage.getItem(IDENTITY_KEY)).not.toBeNull();
 		expect(b.timers[0].cleared).toBe(true);
 		a.telemetry.sync();
 		expect(a.telemetry.snapshot().active).toBe(false);
@@ -250,7 +251,7 @@ describe('receipts and deletion', () => {
 		await tab.telemetry.flush();
 		const id = stored(IDENTITY_KEY);
 		setConsent('denied', 2);
-		tab.telemetry.sync();
+		await tab.telemetry.withdraw();
 		return { tab, id };
 	};
 
@@ -299,7 +300,7 @@ describe('receipts and deletion', () => {
 		const tab = makeTab();
 		tab.telemetry.sync();
 		const before = stored(IDENTITY_KEY);
-		tab.telemetry.resetId();
+		await tab.telemetry.resetId();
 		const after = stored(IDENTITY_KEY);
 		expect(after.install_id).not.toBe(before.install_id);
 		expect(after.registered).toBe(false);

@@ -702,8 +702,8 @@ const matches = (spec: Spec, value: unknown, props: Record<string, unknown>): bo
 	);
 };
 
-export const isKnownEvent = (name: string): name is EventName =>
-	Object.prototype.hasOwnProperty.call(CATALOG.events, name);
+export const isKnownEvent = (name: unknown): name is EventName =>
+	typeof name === 'string' && Object.prototype.hasOwnProperty.call(CATALOG.events, name);
 
 export const validProps = (name: EventName, props: Record<string, unknown> = {}): boolean => {
 	const specs = CATALOG.events[name] as Record<string, Spec>;
@@ -719,7 +719,17 @@ export const copyProps = (
 	name: EventName,
 	props: Record<string, unknown> = {},
 ): Record<string, string | number> | null => {
-	const snapshot: Record<string, unknown> = {};
-	for (const key of Object.keys(props)) snapshot[key] = props[key];
-	return validProps(name, snapshot) ? (snapshot as Record<string, string | number>) : null;
+	try {
+		const specs = CATALOG.events[name];
+		const keys = Object.keys(props);
+		if (
+			keys.length !== Object.keys(specs).length ||
+			keys.some((key) => !Object.prototype.hasOwnProperty.call(specs, key))
+		) return null;
+		const snapshot: Record<string, unknown> = {};
+		for (const key of keys) snapshot[key] = props[key];
+		return validProps(name, snapshot) ? (snapshot as Record<string, string | number>) : null;
+	} catch {
+		return null;
+	}
 };
