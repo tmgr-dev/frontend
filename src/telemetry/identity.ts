@@ -60,19 +60,32 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 	const receipts = (): Receipt[] => {
 		const data = parseJson(storage.getItem(RECEIPTS_KEY));
 		if (!Array.isArray(data)) return [];
-		return data.filter(
+		const live = data.filter(
 			(r): r is Receipt =>
 				typeof r?.install_id === 'string' &&
 				typeof r?.secret === 'string' &&
 				typeof r?.created === 'number' &&
 				now() - r.created < RECEIPT_TTL_MS,
 		);
+		if (live.length !== data.length) {
+			if (live.length) write(RECEIPTS_KEY, live);
+			else
+				try {
+					storage.removeItem(RECEIPTS_KEY);
+				} catch {
+					// pruned on the next access
+				}
+		}
+		return live;
 	};
 
-	const addReceipt = (identity: Identity) => {
+	const addReceipt = (identity: Identity): boolean => {
 		const list = receipts().filter((r) => r.install_id !== identity.install_id);
 		list.push({ install_id: identity.install_id, secret: identity.secret, created: now() });
-		write(RECEIPTS_KEY, list);
+		if (!write(RECEIPTS_KEY, list)) return false;
+		return receipts().some(
+			(r) => r.install_id === identity.install_id && r.secret === identity.secret,
+		);
 	};
 
 	const create = (): Identity | null => {
@@ -88,15 +101,26 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 			const current = read();
 			if (current) write(IDENTITY_KEY, { ...current, registered });
 		},
-		retire(): void {
+		retire(): boolean {
 			const current = read();
-			if (!current) return;
-			addReceipt(current);
-			storage.removeItem(IDENTITY_KEY);
+			if (!current) return true;
+			if (!addReceipt(current)) return false;
+			try {
+				storage.removeItem(IDENTITY_KEY);
+			} catch {
+				return false;
+			}
+			return true;
 		},
 		rotate(): Identity | null {
-			this.retire();
-			return create();
+			return this.retire() ? create() : null;
+		},
+		dropIdentity() {
+			try {
+				storage.removeItem(IDENTITY_KEY);
+			} catch {
+				// still sending is off because consent is off
+			}
 		},
 		removeReceipt(installId: string) {
 			write(

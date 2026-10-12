@@ -62,7 +62,7 @@ describe('window wiring', () => {
 		expect(tab.telemetry.snapshot().pending).toBe(1);
 		setConsent('denied', 2);
 		window.dispatchEvent(new StorageEvent('storage', { key: 'tmgr:consent:v1' }));
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0 });
+		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 	});
 

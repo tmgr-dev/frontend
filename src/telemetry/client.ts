@@ -1,14 +1,16 @@
-import { isKnownEvent, validProps, type EventName, type TrackArgs } from './catalog';
+import { copyProps, isKnownEvent, type EventName, type TrackArgs } from './catalog';
 import {
 	buildEnvelope,
 	hourStart,
 	MAX_AGE_MS,
 	MAX_QUEUE,
+	normalizeEntry,
 	pickBatch,
+	sanitizeMeta,
 	type EnvelopeMeta,
 	type QueuedEvent,
 } from './envelope';
-import { createIdentityStore, type Identity } from './identity';
+import { createIdentityStore, type Identity, type Receipt } from './identity';
 
 export const QUEUE_KEY = 'tmgr:telemetry:queue';
 export const FLUSH_INTERVAL_MS = 30_000;
@@ -38,12 +40,14 @@ export interface TelemetryDeps {
 	setInterval: (fn: () => void, ms: number) => unknown;
 	clearInterval: (handle: unknown) => void;
 	channel?: ChannelLike | null;
+	locks?: { request: (name: string, cb: () => unknown) => Promise<unknown> } | null;
 }
 
 export interface TelemetrySnapshot {
 	active: boolean;
 	installId: string | null;
 	pending: number;
+	error: 'receipt' | null;
 }
 
 export interface DeleteResult {
@@ -73,19 +77,37 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 	let retryAt = 0;
 	let chain: Promise<void> = Promise.resolve();
 
+	const safely = (fn: () => void) => {
+		try {
+			fn();
+		} catch {
+			// storage may be unavailable
+		}
+	};
+	let error: 'receipt' | null = null;
+
 	const emit = () => listeners.forEach((fn) => fn());
 
 	const persist = () => {
 		const ep = epoch;
-		const body = JSON.stringify({ generation, events: queue });
-		chain = chain.then(() => {
+		const gen = generation;
+		const body = JSON.stringify({ generation: gen, events: queue });
+		const write = () => {
 			if (ep !== epoch) return;
+			const consent = deps.consent.read();
+			if (!consent.on || consent.generation !== gen) return;
 			try {
 				deps.storage.setItem(QUEUE_KEY, body);
 			} catch {
 				// queue stays in memory
 			}
-		});
+		};
+		chain = chain
+			.then(() => (deps.locks ? deps.locks.request('tmgr-telemetry-queue', write) : write()))
+			.then(
+				() => {},
+				() => {},
+			);
 	};
 
 	const fresh = (events: QueuedEvent[]) =>
@@ -95,12 +117,15 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		try {
 			const data = JSON.parse(deps.storage.getItem(QUEUE_KEY) ?? 'null');
 			if (data?.generation === generation && Array.isArray(data.events)) {
-				return fresh(data.events).slice(-MAX_QUEUE);
+				const valid = data.events
+					.map(normalizeEntry)
+					.filter((e: QueuedEvent | null): e is QueuedEvent => e !== null);
+				return fresh(valid).slice(-MAX_QUEUE);
 			}
 		} catch {
 			// unreadable queue is discarded
 		}
-		deps.storage.removeItem(QUEUE_KEY);
+		safely(() => deps.storage.removeItem(QUEUE_KEY));
 		return [];
 	};
 
@@ -115,9 +140,9 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		timer = null;
 		inflight?.abort();
 		inflight = null;
-		deps.storage.removeItem(QUEUE_KEY);
-		identities.retire();
-		deps.channel?.postMessage('stop');
+		safely(() => deps.storage.removeItem(QUEUE_KEY));
+		error = identities.retire() ? null : 'receipt';
+		safely(() => deps.channel?.postMessage('stop'));
 		emit();
 	};
 
@@ -135,7 +160,20 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 	const sync = () => {
 		const consent = deps.consent.read();
 		if (!consent.on) {
-			if (active || identities.read() || deps.storage.getItem(QUEUE_KEY) !== null) stop();
+			let queued = false;
+			try {
+				queued = deps.storage.getItem(QUEUE_KEY) !== null;
+			} catch {
+				queued = false;
+			}
+			if (active || queued) stop();
+			else if (identities.read()) {
+				const next = identities.retire() ? null : 'receipt';
+				if (next !== error) {
+					error = next;
+					emit();
+				}
+			}
 			return;
 		}
 		if (active && consent.generation !== generation) stop();
@@ -217,8 +255,10 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 	};
 
 	const track = <N extends EventName>(name: N, ...args: TrackArgs<N>) => {
-		const props = (args[0] ?? {}) as Record<string, unknown>;
-		if (!isKnownEvent(name) || !validProps(name, props)) return;
+		if (!isKnownEvent(name)) return;
+		const props = copyProps(name, (args[0] ?? {}) as Record<string, unknown>);
+		const m = sanitizeMeta({ session_id: session, ...deps.meta() });
+		if (!props || !m) return;
 		sync();
 		if (!active) return;
 		const entry: QueuedEvent = {
@@ -227,7 +267,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 			t: hourStart(deps.now()),
 			seq: seq++,
 			p: props,
-			m: { session_id: session, ...deps.meta() },
+			m,
 		};
 		queue.push(entry);
 		if (queue.length > MAX_QUEUE) queue = queue.slice(-MAX_QUEUE);
@@ -239,7 +279,13 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		if (deps.consent.read().on) deps.consent.deny();
 		sync();
 		const result: DeleteResult = { deleted: 0, failed: 0 };
-		for (const receipt of identities.receipts()) {
+		const targets: Array<Pick<Receipt, 'install_id' | 'secret'> & { current?: boolean }> =
+			identities.receipts();
+		const leftover = identities.read();
+		if (leftover && !targets.some((r) => r.install_id === leftover.install_id)) {
+			targets.push({ install_id: leftover.install_id, secret: leftover.secret, current: true });
+		}
+		for (const receipt of targets) {
 			try {
 				const response = await deps.fetch(
 					endpoint(`t/installs/${encodeURIComponent(receipt.install_id)}`),
@@ -253,6 +299,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 				);
 				if (response.status === 204 || response.status === 404) {
 					identities.removeReceipt(receipt.install_id);
+					if (identities.read()?.install_id === receipt.install_id) identities.dropIdentity();
 					result.deleted += 1;
 				} else result.failed += 1;
 			} catch {
@@ -275,6 +322,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		emit();
 	};
 
+	identities.receipts();
 	if (deps.channel) deps.channel.onmessage = () => sync();
 
 	return {
@@ -288,7 +336,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 			return () => listeners.delete(fn);
 		},
 		snapshot(): TelemetrySnapshot {
-			return { active, installId: identities.read()?.install_id ?? null, pending: queue.length };
+			return { active, installId: identities.read()?.install_id ?? null, pending: queue.length, error };
 		},
 		queueJson: () => JSON.stringify(queue.map(({ id, n, t, seq: s, p, m }) => ({ id, n, t, seq: s, p, ...m })), null, 2),
 	};

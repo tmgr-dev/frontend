@@ -26,7 +26,7 @@ describe('without consent', () => {
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 		expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
 		expect(tab.timers).toEqual([]);
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0 });
+		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 	});
 });
 
@@ -187,7 +187,7 @@ describe('withdrawal', () => {
 		await tab.telemetry.flush();
 		await tick();
 		expect(tab.calls).toHaveLength(1);
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0 });
+		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 		expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
 		expect(stored(RECEIPTS_KEY)).toEqual([
@@ -236,7 +236,7 @@ describe('withdrawal', () => {
 		expect(b.telemetry.snapshot().active).toBe(true);
 		setConsent('denied', 2);
 		b.telemetry.sync();
-		expect(b.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0 });
+		expect(b.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 		expect(b.timers[0].cleared).toBe(true);
 		a.telemetry.sync();
 		expect(a.telemetry.snapshot().active).toBe(false);

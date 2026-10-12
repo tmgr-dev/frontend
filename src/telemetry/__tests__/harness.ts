@@ -90,3 +90,29 @@ export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeCloc
 };
 
 export const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+export class FlakyStorage {
+	data = new Map<string, string>();
+	failSet: ((key: string) => boolean) | null = null;
+	failRemove = false;
+	get length() {
+		return this.data.size;
+	}
+	key(i: number) {
+		return [...this.data.keys()][i] ?? null;
+	}
+	clear() {
+		this.data.clear();
+	}
+	getItem(key: string) {
+		return this.data.get(key) ?? null;
+	}
+	setItem(key: string, value: string) {
+		if (this.failSet?.(key)) throw new Error('quota');
+		this.data.set(key, value);
+	}
+	removeItem(key: string) {
+		if (this.failRemove) throw new Error('blocked');
+		this.data.delete(key);
+	}
+}
