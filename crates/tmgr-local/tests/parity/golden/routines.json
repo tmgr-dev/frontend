@@ -1,0 +1,1039 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"count": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"count": 1
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"count": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"approximately_time": 30,
+						"archived_at": null,
+						"category_tasks_sequence_id": null,
+						"common_time": 0,
+						"created_at": "2026-09-20T08:00:00Z",
+						"daily_routine": true,
+						"deleted_at": null,
+						"description": null,
+						"end_time": null,
+						"id": 2,
+						"is_daily_routine": true,
+						"order": null,
+						"priority": "medium",
+						"project_category_id": null,
+						"recurring": false,
+						"routine_category": "work",
+						"scheduled_date": "2026-09-21",
+						"scheduled_time": "18:00",
+						"settings": [],
+						"start_time": 0,
+						"status": null,
+						"status_id": null,
+						"title": "Weekly review",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"approximately_time": 10,
+						"archived_at": null,
+						"category_tasks_sequence_id": null,
+						"common_time": 0,
+						"created_at": "2026-09-20T08:00:00Z",
+						"daily_routine": true,
+						"deleted_at": null,
+						"description": "Every day",
+						"end_time": null,
+						"id": 1,
+						"is_daily_routine": true,
+						"order": null,
+						"priority": "low",
+						"project_category_id": null,
+						"recurring": false,
+						"routine_category": "health",
+						"scheduled_date": "2026-09-20",
+						"scheduled_time": "07:30",
+						"settings": [],
+						"start_time": 0,
+						"status": null,
+						"status_id": null,
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": 10,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-09-20T08:00:00Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Every day",
+					"end_time": null,
+					"id": 1,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "low",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": "health",
+					"scheduled_date": "2026-09-20",
+					"scheduled_time": "07:30",
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Stretch",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": 30,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-09-20T08:00:00Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 2,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": "work",
+					"scheduled_date": "2026-09-21",
+					"scheduled_time": "18:00",
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Weekly review",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"completed_at": "2026-09-24T07:40:00Z",
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 1,
+						"scheduled_date": "2026-09-24",
+						"scheduled_for": "2026-09-24Z",
+						"scheduled_time": "",
+						"skipped_at": null,
+						"status": "COMPLETED",
+						"task_id": 1,
+						"updated_at": "2026-09-20T08:00:00Z"
+					},
+					{
+						"completed_at": null,
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 2,
+						"scheduled_date": "2026-09-25",
+						"scheduled_for": "2026-09-25Z",
+						"scheduled_time": "",
+						"skipped_at": "2026-09-25T08:00:00Z",
+						"status": "SKIPPED",
+						"task_id": 1,
+						"updated_at": "2026-09-20T08:00:00Z"
+					},
+					{
+						"completed_at": null,
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 3,
+						"scheduled_date": "2026-09-26",
+						"scheduled_for": "2026-09-26Z",
+						"scheduled_time": "",
+						"skipped_at": null,
+						"status": "PENDING",
+						"task_id": 1,
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"completed_at": "2026-09-21T18:30:00Z",
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 4,
+						"scheduled_date": "2026-09-21",
+						"scheduled_for": "2026-09-21Z",
+						"scheduled_time": "",
+						"skipped_at": null,
+						"status": "COMPLETED",
+						"task_id": 2,
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"completed": 1,
+					"skipped": 1,
+					"total": 3
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed": 1,
+					"skipped": 0,
+					"total": 1
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-24",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-24T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": true
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-25",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": 2,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-25T07:30Z",
+						"status": "skipped",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": false
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-26",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": 3,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-26T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": false
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-27",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-27T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": true
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-28",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-28T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": true
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-29",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-29T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": true
+					},
+					{
+						"completed": false,
+						"created_at": "2026-09-20T08:00:00Z",
+						"date": "2026-09-30",
+						"description": "Every day",
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": 5,
+						"routine_category": {
+							"color": "#22c55e",
+							"id": "health",
+							"name": "Health"
+						},
+						"scheduled_for": "2026-09-30T07:30Z",
+						"status": "pending",
+						"task_id": 1,
+						"time": "07:30",
+						"title": "Stretch",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "from and to are required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"2026-09-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-24": {
+						"completed": 1,
+						"fires": 1
+					},
+					"2026-09-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-30": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-01": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-02": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-03": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-04": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-05": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-06": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-07": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-08": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-09": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-10": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-11": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-12": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-13": {
+						"completed": 0,
+						"fires": 1
+					}
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"2026-09-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-24": {
+						"completed": 1,
+						"fires": 1
+					},
+					"2026-09-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-30": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-01": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-02": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-03": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-04": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-05": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-06": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-07": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-08": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-09": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-10": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-11": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-12": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-13": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-14": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-15": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-16": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-17": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-18": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-19": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-24": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-30": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-10-31": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-01": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-02": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-03": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-04": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-05": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-06": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-07": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-08": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-09": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-10": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-11": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-12": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-13": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-14": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-15": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-16": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-17": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-18": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-19": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-24": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-11-30": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-01": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-02": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-03": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-04": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-05": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-06": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-07": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-08": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-09": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-10": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-11": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-12": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-13": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-14": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-15": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-16": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-17": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-18": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-19": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-24": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-30": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-12-31": {
+						"completed": 0,
+						"fires": 1
+					}
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"2026-09-20": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-21": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-22": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-23": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-24": {
+						"completed": 1,
+						"fires": 1
+					},
+					"2026-09-25": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-26": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-27": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-28": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-29": {
+						"completed": 0,
+						"fires": 1
+					},
+					"2026-09-30": {
+						"completed": 0,
+						"fires": 1
+					}
+				}
+			},
+			"status": 200
+		}
+	]
+}

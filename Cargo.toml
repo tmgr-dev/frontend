@@ -1,6 +1,7 @@
 [workspace]
 members = ["crates/*"]
-exclude = ["src-tauri"]
+# crates/tmgr-local has only its parity data until the crate lands.
+exclude = ["src-tauri", "crates/tmgr-local"]
 resolver = "2"
 
 [workspace.package]

@@ -1,0 +1,109 @@
+{
+	"now": "2026-10-13T12:00:00.000Z",
+	"workspace": {
+		"id": -42,
+		"code": "parity",
+		"name": "Parity"
+	},
+	"user": {
+		"id": 7,
+		"name": "Owner",
+		"email": "owner@example.com"
+	},
+	"actor": null,
+	"seed": [],
+	"requests": [
+		{
+			"method": "GET",
+			"url": "tasks"
+		},
+		{
+			"method": "GET",
+			"url": "tasks/current"
+		},
+		{
+			"method": "GET",
+			"url": "tasks/runned"
+		},
+		{
+			"method": "GET",
+			"url": "tasks/indexes"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/statuses"
+		},
+		{
+			"method": "GET",
+			"url": "project_categories"
+		},
+		{
+			"method": "GET",
+			"url": "project_categories/children"
+		},
+		{
+			"method": "GET",
+			"url": "pages"
+		},
+		{
+			"method": "GET",
+			"url": "pages/tree"
+		},
+		{
+			"method": "GET",
+			"url": "pages/trash"
+		},
+		{
+			"method": "GET",
+			"url": "daily-routines/tasks"
+		},
+		{
+			"method": "GET",
+			"url": "daily-routines/tasks/count"
+		},
+		{
+			"method": "GET",
+			"url": "tasks/1"
+		},
+		{
+			"method": "GET",
+			"url": "pages/1"
+		},
+		{
+			"method": "GET",
+			"url": "daily-routines/tasks/1"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/context"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/1/members"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/1/modules"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/1/feature-toggles"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/1/settings"
+		},
+		{
+			"method": "GET",
+			"url": "workspaces/1/assignable-personas"
+		},
+		{
+			"method": "GET",
+			"url": "task-relation-types"
+		},
+		{
+			"method": "GET",
+			"url": "tasks/settings"
+		}
+	]
+}
