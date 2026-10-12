@@ -106,6 +106,29 @@ test('manual entry normalises the code; unknown code shows the expired message',
   await shot(page, '04-invalid');
 });
 
+test('too many attempts shows the Retry-After wait', async ({ page }) => {
+  await mockApp(page);
+  await page.route('**/api/auth/device/requests/**', (route) =>
+    route.fulfill({
+      status: 429,
+      headers: { 'Retry-After': '420' },
+      json: { error: 'too_many_attempts' },
+    }),
+  );
+  await page.goto('/device?code=ABCD-2345');
+  await expect(
+    page.getByText('Too many wrong codes. Try again in 7 minutes.'),
+  ).toBeVisible();
+});
+
+test('layout is just the card in the app shell', async ({ page }) => {
+  await mockApp(page);
+  await mockDevice(page);
+  await page.goto('/device?code=ABCD-2345');
+  await expect(page.getByTestId('device-client')).toBeVisible();
+  await expect(page.getByText('Plan the work.')).toHaveCount(0);
+});
+
 test('logged out: login then come back to /device with the code', async ({
   page,
 }) => {
@@ -151,6 +174,13 @@ async function openProfile(page, list) {
       body: ['PATCH', 'POST'].includes(req.method()) ? req.postDataJSON() : null,
     });
     if (req.method() === 'GET') return route.fulfill({ json: { data: list } });
+    if (req.method() === 'PATCH') {
+      const id = new URL(req.url()).pathname.split('/').pop();
+      const device = list.find((d) => d.id === id);
+      return route.fulfill({
+        json: { data: { ...device, scopes: ['cli', ...req.postDataJSON().scopes] } },
+      });
+    }
     return route.fulfill({ status: 204, body: '' });
   });
   await page.goto('/settings?tab=profile');
@@ -185,6 +215,7 @@ test('devices list shows chips, edits scopes and revokes', async ({ page }) => {
     .click();
   await expect(page.getByTestId('device-dev-2')).toHaveCount(0);
   expect(calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/dev-2'))).toBe(true);
+  await expect(page.getByTestId('device-dev-1')).not.toContainText('time:write');
 });
 
 test('empty devices list shows the hint', async ({ page }) => {

@@ -51,8 +51,13 @@ describe('signed-in device calls', () => {
 		await expect(listCliDevices()).resolves.toEqual([{ id: 'd1' }]);
 		expect(http.get).toHaveBeenCalledWith('/auth/devices');
 
-		http.patch.mockResolvedValue({});
-		await updateCliDeviceScopes('d1', ['tasks:read']);
+		http.patch.mockResolvedValue({
+			data: { data: { id: 'd1', scopes: ['cli', 'tasks:read'] } },
+		});
+		await expect(updateCliDeviceScopes('d1', ['tasks:read'])).resolves.toEqual({
+			id: 'd1',
+			scopes: ['cli', 'tasks:read'],
+		});
 		expect(http.patch).toHaveBeenCalledWith('/auth/devices/d1', {
 			scopes: ['tasks:read'],
 		});

@@ -50,8 +50,13 @@ export const listCliDevices = async (): Promise<CliDevice[]> => {
 export const updateCliDeviceScopes = async (
 	id: string,
 	scopes: string[],
-): Promise<void> => {
-	await $axios.patch(`/auth/devices/${encodeURIComponent(id)}`, { scopes });
+): Promise<CliDevice> => {
+	const {
+		data: { data },
+	} = await $axios.patch(`/auth/devices/${encodeURIComponent(id)}`, {
+		scopes,
+	});
+	return data;
 };
 
 export const revokeCliDevice = async (id: string): Promise<void> => {

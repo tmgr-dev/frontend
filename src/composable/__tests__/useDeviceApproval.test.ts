@@ -8,7 +8,9 @@ const request = {
 	expires_at: '2026-10-12T10:10:00Z',
 };
 
-const http = (status: number) => ({ response: { status } });
+const http = (status: number, headers: Record<string, string> = {}) => ({
+	response: { status, headers },
+});
 
 const make = (overrides = {}) => {
 	const deps = {
@@ -72,7 +74,8 @@ describe('createDeviceApproval', () => {
 
 	it.each([
 		[404, 'not_found'],
-		[410, 'not_found'],
+		[400, 'error'],
+		[403, 'error'],
 		[429, 'locked'],
 		[500, 'error'],
 	])('maps lookup status %i to %s', async (status, expected) => {
@@ -98,6 +101,25 @@ describe('createDeviceApproval', () => {
 		expect(down.approval.state.value).toBe('error');
 		down.approval.retry();
 		expect(down.approval.state.value).toBe('ready');
+	});
+
+	it('exposes Retry-After seconds when locked, also on approve', async () => {
+		const locked = make({
+			lookup: jest.fn().mockRejectedValue(http(429, { 'retry-after': '420' })),
+		});
+		locked.approval.setCode('ABCD-2345');
+		await locked.approval.find();
+		expect(locked.approval.state.value).toBe('locked');
+		expect(locked.approval.retryAfter.value).toBe(420);
+
+		const approve = make({
+			approve: jest.fn().mockRejectedValue(http(429)),
+		});
+		approve.approval.setCode('ABCD-2345');
+		await approve.approval.find();
+		await approve.approval.approve();
+		expect(approve.approval.state.value).toBe('locked');
+		expect(approve.approval.retryAfter.value).toBe(0);
 	});
 
 	it('reset returns to an empty entry form', async () => {

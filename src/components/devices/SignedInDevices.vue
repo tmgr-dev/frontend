@@ -156,8 +156,13 @@
 			async saveEdit(device) {
 				this.busyId = device.id;
 				try {
-					await updateCliDeviceScopes(device.id, this.editSelected);
-					device.scopes = [...this.editSelected];
+					const updated = await updateCliDeviceScopes(
+						device.id,
+						this.editSelected,
+					);
+					this.devices = this.devices.map((item) =>
+						item.id === device.id ? { ...item, ...updated } : item,
+					);
 					this.editingId = null;
 					toast({ title: 'Saved', description: 'Device scopes updated' });
 				} catch {

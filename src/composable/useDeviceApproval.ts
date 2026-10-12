@@ -7,6 +7,14 @@ import {
 import { httpErrorInfo } from '@/utils/emailVerification';
 import { computed, ref } from 'vue';
 
+const retryAfterSeconds = (error: unknown): number => {
+	const headers = (
+		error as { response?: { headers?: Record<string, unknown> } }
+	)?.response?.headers;
+	const value = Number(headers?.['retry-after'] ?? headers?.['Retry-After']);
+	return Number.isFinite(value) && value > 0 ? value : 0;
+};
+
 export type DeviceApprovalState =
 	| 'entry'
 	| 'loading'
@@ -27,6 +35,7 @@ export const createDeviceApproval = (deps: {
 	const code = ref('');
 	const request = ref<DeviceRequest | null>(null);
 	const selected = ref<string[]>([]);
+	const retryAfter = ref(0);
 
 	const setCode = (raw: string) => {
 		code.value = normalizeUserCode(raw);
@@ -49,14 +58,19 @@ export const createDeviceApproval = (deps: {
 			selected.value = [...found.requested_scopes];
 			state.value = 'ready';
 		} catch (error) {
-			const { status } = httpErrorInfo(error);
-			if (status === 404 || status === 410 || status === 400) {
-				state.value = 'not_found';
-			} else if (status === 429 || status === 423) {
-				state.value = 'locked';
-			} else {
-				state.value = 'error';
-			}
+			fail(error);
+		}
+	};
+
+	const fail = (error: unknown) => {
+		const { status } = httpErrorInfo(error);
+		if (status === 404) {
+			state.value = 'not_found';
+		} else if (status === 429) {
+			retryAfter.value = retryAfterSeconds(error);
+			state.value = 'locked';
+		} else {
+			state.value = 'error';
 		}
 	};
 
@@ -71,8 +85,7 @@ export const createDeviceApproval = (deps: {
 			await deps.approve(code.value, selected.value);
 			state.value = 'approved';
 		} catch (error) {
-			const { status } = httpErrorInfo(error);
-			state.value = status === 404 || status === 410 ? 'not_found' : 'error';
+			fail(error);
 		}
 	};
 
@@ -83,8 +96,7 @@ export const createDeviceApproval = (deps: {
 			await deps.deny(code.value);
 			state.value = 'denied';
 		} catch (error) {
-			const { status } = httpErrorInfo(error);
-			state.value = status === 404 || status === 410 ? 'not_found' : 'error';
+			fail(error);
 		}
 	};
 
@@ -104,6 +116,7 @@ export const createDeviceApproval = (deps: {
 		code,
 		request,
 		selected,
+		retryAfter,
 		canLookup,
 		canApprove,
 		setCode,
