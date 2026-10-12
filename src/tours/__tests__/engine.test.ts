@@ -75,7 +75,7 @@ describe('engine facade', () => {
 		await h.engine.store.flush();
 		expect(h.api.putTour).toHaveBeenLastCalledWith('start.nav', {
 			status: 'paused',
-			step_id: 'workspace-switcher',
+			step_id: 's2',
 			version: 1,
 			platform: 'web',
 			generation: 1,
@@ -90,7 +90,7 @@ describe('engine facade', () => {
 		await flush();
 		h.engine.api.pause();
 		await h.engine.api.resume('start.nav');
-		expect(h.engine.api.active.value?.step.id).toBe('workspace-switcher');
+		expect(h.engine.api.active.value?.step.id).toBe('s2');
 	});
 
 	it('the lease blocks a second tab from starting a tour', async () => {
@@ -147,13 +147,13 @@ describe('engine facade', () => {
 		const h = make({ now: () => (t += 10_000) });
 		h.present.add('hub.catalog');
 		await h.engine.api.start('start.hub', 'hub');
-		expect(h.engine.api.active.value?.step.id).toBe('catalog');
+		expect(h.engine.api.active.value?.step.id).toBe('s2');
 		h.engine.routeEntered('WorkspaceBoard');
 		expect(h.engine.api.active.value).toBeNull();
 		expect(h.engine.api.resumePill.value).toEqual({ tourId: 'start.hub', title: 'Your Getting started page' });
 		await h.engine.api.resume('start.hub');
 		expect(h.engine.api.resumePill.value).toBeNull();
-		expect(h.engine.api.active.value?.step.id).toBe('catalog');
+		expect(h.engine.api.active.value?.step.id).toBe('s2');
 	});
 
 	it('an unavailable step is shown centered without blocking the page', async () => {
@@ -241,7 +241,7 @@ describe('engine facade', () => {
 		expect(h.engine.api.active.value).toMatchObject({ waiting: true });
 		h.bus.emit('task.create_opened');
 		await flush();
-		expect(h.engine.api.active.value?.step.id).toBe('title');
+		expect(h.engine.api.active.value?.step.id).toBe('s2');
 	});
 
 	it('re-runs first_visit for the current route when the state loads after the route was entered', async () => {

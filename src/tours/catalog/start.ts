@@ -16,7 +16,7 @@ export const startTours: TourDef[] = [
     requires: { platforms: [...ALL_WEB] },
     steps: [
       {
-        id: 'sidebar',
+        id: 's1',
         type: 'spot',
         anchor: 'nav.sidebar',
         mobileAnchor: 'nav.menu-button',
@@ -25,7 +25,7 @@ export const startTours: TourDef[] = [
         mobileBody: 'Tap the menu to switch between List, Board, Routines and Pages.',
       },
       {
-        id: 'workspace-switcher',
+        id: 's2',
         type: 'spot',
         anchor: 'nav.workspace-switcher',
         mobileAnchor: 'nav.menu-button',
@@ -34,14 +34,14 @@ export const startTours: TourDef[] = [
         mobileBody: 'Open the menu to switch workspaces or create a new one.',
       },
       {
-        id: 'create-task',
+        id: 's3',
         type: 'spot',
         anchor: 'nav.create-task',
         title: 'New task',
         body: 'Create a task from anywhere with this button.',
       },
       {
-        id: 'user-menu',
+        id: 's4',
         type: 'spot',
         anchor: 'nav.user-menu',
         mobileAnchor: 'nav.menu-button',
@@ -50,7 +50,7 @@ export const startTours: TourDef[] = [
         mobileBody: 'Open the menu for Settings, Modules, Personas and theme.',
       },
       {
-        id: 'getting-started',
+        id: 's5',
         type: 'spot',
         anchor: 'nav.getting-started',
         mobileAnchor: 'nav.menu-button',
@@ -77,7 +77,7 @@ export const startTours: TourDef[] = [
     completeOn: 'task.created',
     steps: [
       {
-        id: 'open-create',
+        id: 's1',
         type: 'wait',
         anchor: 'nav.create-task',
         waitFor: { event: 'task.create_opened' },
@@ -86,7 +86,7 @@ export const startTours: TourDef[] = [
         mobileBody: 'Tap here to create a task.',
       },
       {
-        id: 'title',
+        id: 's2',
         type: 'wait',
         anchor: 'task-form.title',
         waitFor: { event: 'task.created' },
@@ -95,7 +95,7 @@ export const startTours: TourDef[] = [
         mobileBody: 'Type a title, then tap Create. Everything else is optional.',
       },
       {
-        id: 'new-row',
+        id: 's3',
         type: 'tip',
         anchor: 'list.row',
         anchorScope: 'eventTask',
@@ -118,7 +118,7 @@ export const startTours: TourDef[] = [
     requires: { platforms: [...ALL_WEB] },
     steps: [
       {
-        id: 'checklist',
+        id: 's1',
         type: 'spot',
         anchor: 'hub.checklist',
         optional: true,
@@ -127,7 +127,7 @@ export const startTours: TourDef[] = [
         body: 'Your checklist ticks itself as you go.',
       },
       {
-        id: 'catalog',
+        id: 's2',
         type: 'spot',
         anchor: 'hub.catalog',
         route: HUB,
@@ -135,7 +135,7 @@ export const startTours: TourDef[] = [
         body: 'Short tours for every feature. Do them in any order.',
       },
       {
-        id: 'tips-toggle',
+        id: 's3',
         type: 'tip',
         anchor: 'hub.tips-toggle',
         route: HUB,

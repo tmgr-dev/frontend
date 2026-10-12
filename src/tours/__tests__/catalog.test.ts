@@ -34,6 +34,8 @@ describe('catalog lint', () => {
 		for (const tour of TOURS) {
 			expect(new Set(tour.steps.map((s) => s.id)).size).toBe(tour.steps.length);
 			tour.steps.forEach((s) => expect(s.id.length).toBeLessThanOrEqual(48));
+			expect(tour.steps.map((s) => s.id)).toEqual(tour.steps.map((_, i) => `s${i + 1}`));
+			tour.steps.forEach((s) => expect(s.id).toMatch(/^s\d+$/));
 			expect(tour.id.length).toBeLessThanOrEqual(64);
 		}
 	});

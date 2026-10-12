@@ -18,7 +18,7 @@ export const timeTours: TourDef[] = [
     completeOn: 'timer.stopped',
     steps: [
       {
-        id: 'start',
+        id: 's1',
         type: 'wait',
         anchor: 'task-form.timer',
         waitFor: { event: 'timer.started' },
@@ -27,7 +27,7 @@ export const timeTours: TourDef[] = [
         body: "Press play. We'll move on as soon as it is running.",
       },
       {
-        id: 'running',
+        id: 's2',
         type: 'spot',
         anchor: 'nav.active-timers',
         optional: true,
@@ -35,7 +35,7 @@ export const timeTours: TourDef[] = [
         body: 'Running timers stay visible here, even when the task is closed.',
       },
       {
-        id: 'stop',
+        id: 's3',
         type: 'wait',
         anchor: 'task-form.timer',
         waitFor: { event: 'timer.stopped' },
@@ -45,7 +45,7 @@ export const timeTours: TourDef[] = [
         body: "Stop it when you're done. Time adds to the task.",
       },
       {
-        id: 'estimate',
+        id: 's4',
         type: 'tip',
         anchor: 'task-form.estimate',
         optional: true,

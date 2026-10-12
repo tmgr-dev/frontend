@@ -295,7 +295,7 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
         await page.locator('[data-tour="task-form.timer"] button').first().click();
         await expect
           .poll(() => writes.filter((w) => w.path === 'onboarding/tours/time.timer').at(-1)?.body)
-          .toMatchObject({ status: 'in_progress', step_id: expect.not.stringMatching(/^start$/) });
+          .toMatchObject({ status: 'in_progress', step_id: expect.not.stringMatching(/^s1$/) });
         await shoot(page, 'ti1-step2', size, scheme);
       });
     }
@@ -364,7 +364,7 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
     await expect(popover(page)).toBeHidden();
     await expect
       .poll(() => writes.filter((w) => w.path === 'onboarding/tours/start.first-task').at(-1)?.body)
-      .toMatchObject({ status: 'paused', step_id: 'title' });
+      .toMatchObject({ status: 'paused', step_id: 's2' });
     await page.goto('/demo/getting-started');
     const row = page.locator('[data-tour-id="start.first-task"]');
     await expect(row.getByRole('button', { name: /Resume/ })).toBeVisible();
@@ -441,7 +441,7 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
 
     await choose('Pause tour');
     await expect(popover(page)).toBeHidden();
-    await expect.poll(() => last('onboarding/tours/start.nav')).toMatchObject({ status: 'paused', step_id: 'workspace-switcher' });
+    await expect.poll(() => last('onboarding/tours/start.nav')).toMatchObject({ status: 'paused', step_id: 's2' });
 
     await open();
     await choose("I'll explore myself");

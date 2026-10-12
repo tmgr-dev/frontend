@@ -16,7 +16,7 @@ export const tasksTours: TourDef[] = [
     requires: { platforms: [...ALL_WEB] },
     steps: [
       {
-        id: 'status',
+        id: 's1',
         type: 'spot',
         anchor: 'task-form.status',
         optional: true,
@@ -24,7 +24,7 @@ export const tasksTours: TourDef[] = [
         body: 'Status moves the task across your board.',
       },
       {
-        id: 'category',
+        id: 's2',
         type: 'spot',
         anchor: 'task-form.category',
         optional: true,
@@ -32,7 +32,7 @@ export const tasksTours: TourDef[] = [
         body: 'Categories give tasks ticket codes: a short prefix plus a number.',
       },
       {
-        id: 'assignees',
+        id: 's3',
         type: 'spot',
         anchor: 'task-form.assignees',
         requiresModules: ['task.assignees'],
@@ -41,7 +41,7 @@ export const tasksTours: TourDef[] = [
         body: 'Assign people or personas. Personas are your AI agents.',
       },
       {
-        id: 'description',
+        id: 's4',
         type: 'spot',
         anchor: 'task-form.description',
         takeMeRoute: LIST,
@@ -49,7 +49,7 @@ export const tasksTours: TourDef[] = [
         body: 'Write details here. Agents read this too.',
       },
       {
-        id: 'done',
+        id: 's5',
         type: 'spot',
         anchor: 'task-form.done',
         optional: true,
@@ -70,7 +70,7 @@ export const tasksTours: TourDef[] = [
     completeOn: 'task.status_changed',
     steps: [
       {
-        id: 'column',
+        id: 's1',
         type: 'spot',
         anchor: 'board.column',
         route: BOARD,
@@ -78,7 +78,7 @@ export const tasksTours: TourDef[] = [
         body: 'Each column is a status.',
       },
       {
-        id: 'move',
+        id: 's2',
         type: 'wait',
         anchor: 'board.card-handle',
         mobileAnchor: 'task-form.status',
@@ -90,7 +90,7 @@ export const tasksTours: TourDef[] = [
         mobileBody: 'Open a card and change its Status. No dragging needed.',
       },
       {
-        id: 'add-in-column',
+        id: 's3',
         type: 'tip',
         anchor: 'board.add-in-column',
         optional: true,
@@ -111,7 +111,7 @@ export const tasksTours: TourDef[] = [
     completeOn: 'comment.created',
     steps: [
       {
-        id: 'comment',
+        id: 's1',
         type: 'wait',
         anchor: 'task-form.comments',
         waitFor: { event: 'comment.created' },
@@ -120,7 +120,7 @@ export const tasksTours: TourDef[] = [
         body: 'Leave a comment. Agents post their notes here too.',
       },
       {
-        id: 'attachments',
+        id: 's2',
         type: 'tip',
         anchor: 'task-form.attachments',
         requiresModules: ['task.files'],
@@ -144,7 +144,7 @@ export const tasksTours: TourDef[] = [
     requires: { platforms: [...ALL_WEB] },
     steps: [
       {
-        id: 'archive',
+        id: 's1',
         type: 'spot',
         anchor: 'nav.archive',
         mobileAnchor: 'nav.menu-button',
