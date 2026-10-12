@@ -6,6 +6,7 @@
 	} from '@/actions/tmgr/comments';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
+	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
@@ -320,16 +321,23 @@
 				>
 					<AuthorBadge :author="comment.author" :size="28" :show-label="false" />
 				</span>
-				<Avatar v-else class="mt-0.5 h-7 w-7 flex-shrink-0">
-					<UserAvatar
-						:user-id="comment.user.id"
-						:name="comment.user.name"
-						:has-avatar="comment.user.has_avatar ?? false"
-						:size="28"
-						class="text-2xs font-bold text-white"
-						:style="{ backgroundColor: getAvatarColor(comment.user) }"
-					/>
-				</Avatar>
+				<MemberAvatarLink
+					v-else
+					:user-id="comment.user.id"
+					:label="comment.user.name"
+					class="mt-0.5 h-7 w-7 flex-shrink-0"
+				>
+					<Avatar class="h-7 w-7">
+						<UserAvatar
+							:user-id="comment.user.id"
+							:name="comment.user.name"
+							:has-avatar="comment.user.has_avatar ?? false"
+							:size="28"
+							class="text-2xs font-bold text-white"
+							:style="{ backgroundColor: getAvatarColor(comment.user) }"
+						/>
+					</Avatar>
+				</MemberAvatarLink>
 
 				<div class="min-w-0 flex-1">
 					<div class="mb-1 flex items-center gap-2">
