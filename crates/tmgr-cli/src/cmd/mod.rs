@@ -10,6 +10,7 @@ pub mod page;
 pub mod project;
 pub mod prompt;
 pub mod routine;
+pub mod self_update;
 pub mod shared;
 pub mod status;
 pub mod task;

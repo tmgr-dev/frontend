@@ -5,6 +5,24 @@ Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace
 - `tmgr-core` - shared library (envelope `tmgr.v1`, errors and exit codes, config, credential store, API client, task reference grammar).
 - `tmgr-cli` - the `tmgr` binary (clap).
 
+## Install
+
+```bash
+curl -fsSL https://tmgr.dev/install.sh | sh                 # Linux and macOS, into ~/.local/bin, no sudo
+curl -fsSL https://tmgr.dev/install.sh | TMGR_CHANNEL=beta sh   # also prereleases
+nix profile install github:tmgr-dev/frontend#tmgr-cli        # Nix (built from source)
+cargo install --locked --git https://github.com/tmgr-dev/frontend tmgr-cli
+brew install tmgr-dev/tap/tmgr                               # once the tap exists, see below
+```
+
+Windows: use WSL2 and the Linux installer inside it. The installer always checks the archive against `SHA256SUMS` and, when `minisign` is installed and the release is signed, the signature too. While the release signing key is not set up it refuses unless `TMGR_ALLOW_UNSIGNED=1`.
+
+The desktop app also installs a `tmgr` executable, so `tmgr-cli` and the desktop Nix package conflict in one profile.
+
+`tmgr self-update [--check] [--channel stable|beta] [--allow-downgrade]` replaces the binary with the newest release that has a valid minisign signature on `manifest.json` (public key compiled in from `tmgr-core/src/update_key.pub`; without a real key it refuses with exit 5). It checks the manifest expiry and the archive sha256, refuses versions older than the highest one already trusted on this machine (`~/.local/state/tmgr/update.json`; `--allow-downgrade` needs a terminal), keeps the previous binary as `tmgr.old` and refuses when Homebrew, Nix, cargo or npm manages the binary (it prints their upgrade command instead).
+
+Owner steps before signed releases and Homebrew work: generate a key with `minisign -G`, put the public key into `crates/tmgr-core/src/update_key.pub` and the base64 line into `MINISIGN_PUBKEY` in `public/install.sh`, add the secrets `CLI_MINISIGN_SECRET_KEY` (and `CLI_MINISIGN_PASSWORD` for an encrypted key). For Homebrew create the repository `tmgr-dev/homebrew-tap`, add `Formula/tmgr.rb` from the `homebrew-formula` artifact of a release run (rendered from `packaging/homebrew/tmgr.rb.tmpl`), and later a `HOMEBREW_TAP_TOKEN` secret (contents write on the tap only) so the workflow can push it.
+
 ## Build and test
 
 ```bash
@@ -16,7 +34,7 @@ cargo run -p tmgr-cli -- version --json
 
 ## Releases
 
-Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` section in `tmgr-cli/CHANGELOG.md`) runs `.github/workflows/cli-release.yml`: musl Linux and macOS archives, `SHA256SUMS`, minisign signatures, build provenance attestation, macOS codesign and notarization. When a signing secret is missing the release is published as a prerelease and says what was skipped. `workflow_dispatch` is a dry run that publishes nothing.
+Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` section in `tmgr-cli/CHANGELOG.md`) runs `.github/workflows/cli-release.yml`: musl Linux and macOS archives, `SHA256SUMS`, `manifest.json` (product, version, channel, key epoch, expiry, per-target sha256 and size), minisign signatures of all three, build provenance attestation, macOS codesign and notarization. When a signing secret is missing the release is published as a prerelease and says what was skipped. `workflow_dispatch` is a dry run that publishes nothing.
 
 ## Configuration and credentials
 

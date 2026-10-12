@@ -1,0 +1,2 @@
+TMGR-UPDATE-KEY-PLACEHOLDER
+replace this file with the public key of the release signing key (minisign .pub, two lines) before shipping signed releases

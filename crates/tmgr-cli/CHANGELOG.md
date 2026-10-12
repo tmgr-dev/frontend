@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `tmgr self-update [--check] [--channel stable|beta] [--allow-downgrade]`: updates the binary from a GitHub release whose `manifest.json` carries a valid minisign signature (public key compiled in; a build without a key refuses with exit 5). Checks expiry, the archive sha256 and a rollback floor kept in `~/.local/state/tmgr/update.json`; keeps `tmgr.old`; refuses Homebrew, Nix, cargo and npm installs and prints their upgrade command.
+- `https://tmgr.dev/install.sh` installer, `nix/tmgr-cli.nix` (`packages.<system>.tmgr-cli`) and a Homebrew formula template; releases now include `manifest.json`.
 - `tmgr today [--date YYYY-MM-DD|--yesterday] [--mine]`: tracked time per task (people), agent time per task (workspace agent work runs clipped to the day in your local time zone), status and project, a time split bar and the routines due that day. `--mine` filters agent runs by your user; tracked time of people is workspace-wide on the server and stays unfiltered (warning `human_time_workspace_wide`).
 - `tmgr routine list [--date D]` and `tmgr routine done <id> [--date D]`. `done` looks the routine up first and uses the idempotent instance route, so running it twice never un-completes a routine; a routine without an instance can only be completed for today.
 - `tmgr log [--task REF] [--since 2h] [--agent NAME] [--limit N] [--cursor C]`: agent work runs of the workspace, newest first. `--follow` polls every 5 seconds, prints each new or changed run once (NDJSON `{"schema":"tmgr.v1","event":"run.updated","data":{...}}` with `--json`), backs off while offline (exit 7 after about a minute) and exits 130 on Ctrl-C. A workspace with agent work turned off gives an empty result and the warning `agent_work_disabled`.

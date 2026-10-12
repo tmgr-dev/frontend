@@ -115,6 +115,9 @@ pub enum Command {
     Refs,
     /// Full-screen kanban board of the workspace
     Board(BoardArgs),
+    /// Update tmgr to the newest signed release
+    #[command(name = "self-update")]
+    SelfUpdate(SelfUpdateArgs),
 }
 
 #[derive(Args)]
@@ -128,6 +131,25 @@ pub struct BoardArgs {
     /// ASCII glyphs and borders only
     #[arg(long)]
     pub ascii: bool,
+}
+
+#[derive(Args)]
+pub struct SelfUpdateArgs {
+    /// Only report whether an update is available
+    #[arg(long)]
+    pub check: bool,
+    /// Release channel
+    #[arg(long, value_enum, default_value_t = UpdateChannel::Stable)]
+    pub channel: UpdateChannel,
+    /// Allow installing an older version (needs a terminal)
+    #[arg(long)]
+    pub allow_downgrade: bool,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum UpdateChannel {
+    Stable,
+    Beta,
 }
 
 pub const REFS_HELP: &str = "Task references

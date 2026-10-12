@@ -29,3 +29,4 @@ assert_cmd.workspace = true
 wiremock.workspace = true
 tokio.workspace = true
 jsonschema.workspace = true
+sha2.workspace = true

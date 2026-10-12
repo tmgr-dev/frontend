@@ -14,6 +14,7 @@ pub mod routines;
 pub mod runs;
 pub mod text;
 pub mod trailer;
+pub mod update;
 pub mod view;
 
 use serde::Serialize;
