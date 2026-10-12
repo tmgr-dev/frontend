@@ -476,13 +476,13 @@ impl Session {
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
                     Ok(FromShim::Exited(e)) => self.on_exited(&e),
-                    Ok(FromShim::InputDropped { bytes }) => {
-                        if !self.drop_logged.swap(true, Ordering::SeqCst) {
-                            log(&format!(
-                                "session {} dropped {bytes} bytes of input",
-                                self.id
-                            ));
-                        }
+                    Ok(FromShim::InputDropped { bytes })
+                        if !self.drop_logged.swap(true, Ordering::SeqCst) =>
+                    {
+                        log(&format!(
+                            "session {} dropped {bytes} bytes of input",
+                            self.id
+                        ));
                     }
                     _ => {}
                 },

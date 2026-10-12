@@ -82,6 +82,32 @@ pub fn check_private_dir(path: &Path) -> io::Result<()> {
     check_ancestors(&fs::canonicalize(path)?)
 }
 
+fn own_private_group(gid: u32) -> bool {
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut grp: libc::group = unsafe { std::mem::zeroed() };
+    let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut gres: *mut libc::group = std::ptr::null_mut();
+    let mut pres: *mut libc::passwd = std::ptr::null_mut();
+    let mut pbuf = vec![0 as libc::c_char; 4096];
+    unsafe {
+        if libc::getgrgid_r(gid, &mut grp, buf.as_mut_ptr(), buf.len(), &mut gres) != 0
+            || gres.is_null()
+            || libc::getpwuid_r(
+                crate::euid(),
+                &mut pw,
+                pbuf.as_mut_ptr(),
+                pbuf.len(),
+                &mut pres,
+            ) != 0
+            || pres.is_null()
+        {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(grp.gr_name) == std::ffi::CStr::from_ptr(pw.pw_name)
+            && libc::getegid() == gid
+    }
+}
+
 fn check_ancestors(canon: &Path) -> io::Result<()> {
     for anc in canon.ancestors().skip(1) {
         let meta = fs::metadata(anc)?;
@@ -89,7 +115,10 @@ fn check_ancestors(canon: &Path) -> io::Result<()> {
         if meta.uid() != 0 && meta.uid() != crate::euid() {
             return Err(denied(format!("ancestor {shown} is owned by another user")));
         }
-        if meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0 {
+        let group_ok = meta.mode() & 0o002 == 0
+            && meta.uid() == crate::euid()
+            && own_private_group(meta.gid());
+        if meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0 && !group_ok {
             return Err(denied(format!(
                 "ancestor {shown} is writable by group or others without the sticky bit (mode {:o})",
                 meta.mode() & 0o7777
@@ -101,7 +130,10 @@ fn check_ancestors(canon: &Path) -> io::Result<()> {
 
 pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        fs::create_dir_all(parent)?;
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)?;
     }
     match DirBuilder::new().mode(0o700).create(path) {
         Ok(()) => {}
