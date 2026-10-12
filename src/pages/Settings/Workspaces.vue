@@ -636,7 +636,7 @@
 						v-model:open="isOpenInvitation"
 					>
 						<DialogTrigger as-child>
-							<Button variant="outline">
+							<Button variant="outline" data-tour="workspace.members">
 								<UserPlus />
 								<span class="hidden lg:inline">Invite</span>
 							</Button>

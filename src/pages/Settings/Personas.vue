@@ -23,6 +23,7 @@
 		</PageHeader>
 
 		<SettingsSection
+			data-tour="personas.create"
 			:title="editingId ? 'Edit persona' : 'New persona'"
 			class="mb-6"
 		>
@@ -123,19 +124,19 @@
 				</header>
 
 				<details class="border-t border-border pt-3">
-					<summary class="cursor-pointer text-sm font-medium">
+					<summary data-tour="personas.grants" class="cursor-pointer text-sm font-medium">
 						Workspaces
 					</summary>
 					<PersonaWorkspaceGrants :persona="persona" class="mt-3" />
 				</details>
 
 				<details class="border-t border-border pt-3">
-					<summary class="cursor-pointer text-sm font-medium">Skills</summary>
+					<summary data-tour="personas.skills" class="cursor-pointer text-sm font-medium">Skills</summary>
 					<PersonaSkills :persona="persona" class="mt-3" />
 				</details>
 
 				<details class="border-t border-border pt-3">
-					<summary class="cursor-pointer text-sm font-medium">
+					<summary data-tour="personas.tokens" class="cursor-pointer text-sm font-medium">
 						Agent connections
 					</summary>
 					<PersonaTokens :persona="persona" class="mt-3" />

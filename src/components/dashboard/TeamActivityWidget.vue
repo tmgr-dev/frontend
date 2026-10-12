@@ -1,6 +1,6 @@
 <template>
 	<!-- CHANGES: Added min-h-64 to prevent CLS -->
-	<div class="team-activity-widget min-h-64">
+	<div class="team-activity-widget min-h-64" data-tour="dashboard.activity">
 		<div
 			class="team-activity-header mb-4 flex flex-wrap items-center justify-between gap-2"
 		>
@@ -73,6 +73,7 @@
 			>
 				<div class="space-y-3">
 					<TeamMemberItem
+						data-tour="dashboard.member"
 						v-for="member in teamActivity.members"
 						:key="member.id"
 						:member="member"

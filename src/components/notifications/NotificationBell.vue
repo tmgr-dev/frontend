@@ -1,5 +1,5 @@
 <template>
-	<div class="notification-bell">
+	<div class="notification-bell" data-tour="nav.notification-bell">
 		<DropdownMenu @update:open="handleDropdownOpen">
 			<DropdownMenuTrigger as-child>
 				<button

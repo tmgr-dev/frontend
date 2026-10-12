@@ -1,6 +1,6 @@
 <template>
 	<div class="flex flex-col gap-6">
-		<UsageDataControls />
+		<UsageDataControls data-tour="settings.privacy-telemetry" />
 
 		<SettingsSection v-if="!desktop" title="Cookies and analytics">
 			<SettingsRow

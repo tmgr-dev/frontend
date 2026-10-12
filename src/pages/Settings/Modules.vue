@@ -25,7 +25,7 @@
 					module for yourself.
 				</div>
 
-				<div v-if="presets.length" class="flex items-center gap-3">
+				<div v-if="presets.length" data-tour="modules.presets" class="flex items-center gap-3">
 					<Button
 						variant="outline"
 						size="sm"
@@ -104,6 +104,7 @@
 				<SettingsSection
 					v-for="pack in view.packs"
 					:key="pack.key"
+					data-tour="modules.list"
 					:title="pack.name"
 					:description="`${pack.enabledCount} of ${pack.total} on`"
 				>
@@ -136,6 +137,7 @@
 							<template v-else #default="{ labelId, descriptionId }">
 								<Button
 									v-if="row.canHide"
+									data-tour="modules.hide"
 									variant="ghost"
 									size="sm"
 									:disabled="busy['hide:' + row.key]"
@@ -144,6 +146,7 @@
 									{{ hideButtonLabel(row.hidden) }}
 								</Button>
 								<Switch
+									:data-tour="row.key === 'graph' ? 'modules.graph' : undefined"
 									:checked="row.enabled"
 									:disabled="!row.canToggle || busy['module:' + row.key]"
 									:aria-labelledby="labelId"
@@ -211,6 +214,7 @@
 						<SettingsRow
 							v-for="feature in personalFeatures"
 							:key="feature.key"
+							:data-tour="feature.key === 'default_landing_page' ? 'settings.default-landing' : undefined"
 							v-slot="{ labelId, descriptionId }"
 							:label="feature.name || humanizeKey(feature.key)"
 							:description="featureDescription(feature.key, feature)"

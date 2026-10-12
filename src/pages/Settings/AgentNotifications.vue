@@ -11,7 +11,7 @@
 
 		<AiAgentsOverview class="mb-6" />
 
-		<SettingsSection title="New token" class="mb-6">
+		<SettingsSection title="New token" class="mb-6" data-tour="agent-notify.connect">
 			<form class="flex flex-col gap-3" @submit.prevent="submitCreate">
 				<label class="flex flex-col gap-1">
 					<span class="text-sm font-medium">Label (optional)</span>
@@ -135,12 +135,13 @@
 						<CodeSnippet :code="issuedToken.token" label="Notify token" />
 					</div>
 
-					<AgentConnectTabs :token="issuedToken.token" />
+					<AgentConnectTabs :token="issuedToken.token" data-tour="agent-notify.command" />
 
 					<div class="flex flex-col gap-2 border-t border-border pt-4">
 						<div class="flex flex-wrap items-center gap-3">
 							<Button
 								type="button"
+								data-tour="agent-notify.test"
 								variant="outline"
 								size="sm"
 								:disabled="testing"

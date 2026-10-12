@@ -92,7 +92,7 @@
 
 						<PrivacySettings v-if="isPrivacy" />
 
-						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
+						<SettingsSection v-if="isTheme" data-tour="settings.theme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
 						</SettingsSection>
 
@@ -108,7 +108,7 @@
 						<div v-if="isProfile && !localOnly" class="flex flex-col gap-6">
 							<profile :standalone="false" @password-changed="onPasswordChanged" />
 
-							<SettingsSection v-if="telegramEnabled" title="Telegram">
+							<SettingsSection v-if="telegramEnabled" data-tour="settings.telegram" title="Telegram">
 								<div
 									v-if="user.telegram_username"
 									class="flex flex-wrap items-center gap-3"
@@ -132,7 +132,7 @@
 						</div>
 
 						<div v-if="isDevice && !localOnly" class="flex flex-col gap-6">
-							<SettingsSection v-if="mcpEnabled" title="API token">
+							<SettingsSection v-if="mcpEnabled" data-tour="settings.device-token" title="API token">
 								<div class="flex max-w-xl flex-col gap-1.5">
 									<Label for="smart-device-token">API token</Label>
 									<div class="flex flex-wrap items-center gap-2">
