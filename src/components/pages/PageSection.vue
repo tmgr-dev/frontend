@@ -1,6 +1,6 @@
 <template>
 	<section
-		class="my-3 -ml-3 rounded-lg border-l-4 border-violet-500 bg-violet-50 p-3 dark:bg-violet-900/20"
+		class="my-4 -ml-4 rounded-lg border-l-[3px] border-violet-400 bg-violet-50/70 py-3 pl-[13px] pr-4 dark:border-violet-400/70 dark:bg-violet-500/10"
 		:data-section-id="section.id"
 		data-testid="managed-section"
 		:data-read-only="readOnly ? 'true' : undefined"

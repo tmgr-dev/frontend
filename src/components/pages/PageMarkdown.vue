@@ -1,7 +1,7 @@
 <template>
 	<div
 		ref="rootRef"
-		class="page-markdown break-words text-sm leading-relaxed text-ink"
+		class="page-markdown page-prose"
 		@click="onClick"
 		v-html="html"
 	></div>
@@ -20,6 +20,7 @@
 		watch,
 		watchEffect,
 	} from 'vue';
+	import './editor/page-editor.css';
 	import type { TmgrDirectory } from './useTmgrDirectory';
 
 	export default defineComponent({
@@ -93,68 +94,3 @@
 		},
 	});
 </script>
-
-<style scoped>
-	.page-markdown :deep(> *:first-child) {
-		margin-top: 0;
-	}
-	.page-markdown :deep(> *:last-child) {
-		margin-bottom: 0;
-	}
-	.page-markdown :deep(p),
-	.page-markdown :deep(ul),
-	.page-markdown :deep(ol) {
-		margin: 0 0 0.6rem;
-	}
-	.page-markdown :deep(ul) {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-	.page-markdown :deep(ol) {
-		list-style: decimal;
-		padding-left: 1.25rem;
-	}
-	.page-markdown :deep(h1),
-	.page-markdown :deep(h2),
-	.page-markdown :deep(h3) {
-		margin: 0.9rem 0 0.4rem;
-		font-weight: 600;
-	}
-	.page-markdown :deep(h2) {
-		font-size: 1.15rem;
-	}
-	.page-markdown :deep(code) {
-		border-radius: 0.25rem;
-		background: rgb(127 127 127 / 0.15);
-		padding: 0.05rem 0.3rem;
-		font-size: 0.85em;
-	}
-	.page-markdown :deep(pre) {
-		overflow-x: auto;
-		border-radius: 0.375rem;
-		background: rgb(127 127 127 / 0.12);
-		padding: 0.6rem;
-	}
-	.page-markdown :deep(a:not(.tmgr-chip)) {
-		color: rgb(37 99 235);
-		text-decoration: underline;
-	}
-	.page-markdown :deep(a.tmgr-chip) {
-		border-radius: 9999px;
-		background: rgb(59 130 246 / 0.12);
-		padding: 0 0.5em;
-		color: rgb(29 78 216);
-		text-decoration: none;
-	}
-	.page-markdown :deep(img) {
-		max-width: 100%;
-		border-radius: 0.375rem;
-	}
-	.dark .page-markdown :deep(a:not(.tmgr-chip)) {
-		color: rgb(147 197 253);
-	}
-	.dark .page-markdown :deep(a.tmgr-chip) {
-		background: rgb(96 165 250 / 0.18);
-		color: rgb(147 197 253);
-	}
-</style>

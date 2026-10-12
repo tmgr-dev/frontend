@@ -21,6 +21,8 @@
 	},
 	"dependencies": {
 		"@bomdi/codebox": "^2.0.0",
+		"@codemirror/language": "6.10.3",
+		"@codemirror/language-data": "6.5.1",
 		"@codemirror/view": "^6.34.2",
 		"@editorjs/checklist": "^1.6.0",
 		"@editorjs/delimiter": "^1.4.2",
@@ -43,6 +45,7 @@
 		"@headlessui/vue": "^1.7.13",
 		"@heroicons/vue": "^2.0.17",
 		"@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
+		"@lezer/highlight": "1.2.1",
 		"@milkdown/crepe": "^7.22.1",
 		"@milkdown/kit": "^7.22.1",
 		"@radial-color-picker/vue-color-picker": "^5.0.1",

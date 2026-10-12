@@ -115,8 +115,15 @@ export const applyFreeEdit = (
 	const trimmed = markdown.replace(/\s+$/, '');
 	let text = '';
 	if (trimmed) {
+		const current = segments[index];
+		const lead =
+			segments[index - 1]?.kind === 'section' && current?.kind === 'free'
+				? current.text.trim()
+					? /^(?:\r?\n)*/.exec(current.text)![0]
+					: '\n'
+				: '';
 		const followedBySection = segments[index + 1]?.kind === 'section';
-		text = `${trimmed}\n${followedBySection ? '\n' : ''}`;
+		text = `${lead}${trimmed}\n${followedBySection ? '\n' : ''}`;
 	}
 	return segments.map((segment, i) =>
 		i === index ? { kind: 'free', text } : segment,
