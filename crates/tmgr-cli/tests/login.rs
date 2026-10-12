@@ -308,3 +308,45 @@ async fn logout_survives_an_unreachable_server_with_a_warning() {
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(text(&out.stderr).contains("warning:"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ctrl_c_during_the_device_flow_exits_130() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    let env = Env::new().await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/device/code"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "device_code": "dev-code-SECRET", "user_code": "HJQK-7PXM",
+            "verification_uri": "http://127.0.0.1:1/device", "expires_in": 600, "interval": 30
+        }})))
+        .mount(&env.server)
+        .await;
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin("tmgr"))
+        .args(["login", "--no-browser"])
+        .env_clear()
+        .env("HOME", env.tmp.path())
+        .env("XDG_CONFIG_HOME", env.xdg())
+        .env("TMGR_CREDENTIAL_STORE", "file")
+        .env("TMGR_SERVER", env.server.uri())
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    loop {
+        let line = lines.next().expect("stderr closed early").unwrap();
+        if line.contains("Waiting for approval") {
+            break;
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let status = Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let code = child.wait().unwrap().code();
+    assert_eq!(code, Some(130));
+    assert!(!env.creds_path().exists());
+}

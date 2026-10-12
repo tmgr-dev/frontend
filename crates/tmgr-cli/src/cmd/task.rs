@@ -137,14 +137,14 @@ fn show(ctx: &Ctx, reference: &str, comments_n: usize, max_desc: &str) -> Result
     let mut lines = vec![format!("{}  {}", s.accent(&tref_str), s.bold(&title))];
     lines.push(format!(
         "{}  {} ({})",
-        s.muted("status  "),
+        s.muted("status   "),
         status.name,
         status.kind
     ));
     if let Some(c) = &category {
         lines.push(format!(
             "{}  {}",
-            s.muted("category"),
+            s.muted("category "),
             match &c.code {
                 Some(code) => format!("{code} - {}", c.title),
                 None => c.title.clone(),
@@ -165,13 +165,13 @@ fn show(ctx: &Ctx, reference: &str, comments_n: usize, max_desc: &str) -> Result
     if task.common_time.unwrap_or(0) > 0 || task.approximately_time.unwrap_or(0) > 0 {
         lines.push(format!(
             "{}  {} tracked, {} estimated",
-            s.muted("time    "),
+            s.muted("time     "),
             format_duration(task.common_time.unwrap_or(0)),
             format_duration(task.approximately_time.unwrap_or(0))
         ));
     }
     if let Some(u) = &url {
-        lines.push(format!("{}  {}", s.muted("url     "), u));
+        lines.push(format!("{}  {}", s.muted("url      "), u));
     }
     if let Some(d) = &description {
         lines.push(String::new());

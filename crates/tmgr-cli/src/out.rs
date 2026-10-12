@@ -169,3 +169,34 @@ pub fn table(rows: &[Vec<String>]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colour_is_off_for_the_flag_and_for_non_tty() {
+        assert_eq!(Style::detect(true, true).accent("x"), "x");
+        assert_eq!(Style::detect(false, false).bold("x"), "x");
+    }
+
+    #[test]
+    fn colour_levels_paint_ansi_sequences() {
+        assert_eq!(Style(Level::Basic).accent("x"), "\x1b[31mx\x1b[0m");
+        assert_eq!(Style(Level::Ansi256).accent("x"), "\x1b[38;5;203mx\x1b[0m");
+        assert_eq!(
+            Style(Level::True).accent("x"),
+            "\x1b[38;2;232;104;90mx\x1b[0m"
+        );
+        assert_eq!(Style(Level::Basic).muted("x"), "\x1b[90mx\x1b[0m");
+    }
+
+    #[test]
+    fn tables_pad_all_but_the_last_column() {
+        let rows = vec![
+            vec!["a".to_string(), "bb".to_string(), "t1".to_string()],
+            vec!["ccc".to_string(), "d".to_string(), "t2".to_string()],
+        ];
+        assert_eq!(table(&rows), "a    bb  t1\nccc  d   t2");
+    }
+}
