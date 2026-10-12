@@ -26,6 +26,8 @@ for (const [w, h] of [
   test(`dropdown stays within bounds at ${w}x${h}`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     await mockApp(page);
+    // First-visit tours auto-offer ~600ms after landing and cover the page.
+    await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
     await page.route('**/api/notifications**', (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith('/unread-count'))
