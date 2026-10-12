@@ -33,7 +33,7 @@ use tmgr_ipc::proto::{
     new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, Request, Response,
     ServerMsg, ShimHello, ToShim, PROTO_VERSION,
 };
-use tmgr_ipc::{secret, server};
+use tmgr_ipc::{auth, secret, server};
 
 const MAX_CONNS: usize = 64;
 const PUSH_INTERVAL: Duration = Duration::from_millis(33);
@@ -419,21 +419,38 @@ fn adopt_shim(
             ));
         }
     }
+    let deadline = Instant::now() + server::HANDSHAKE_TIMEOUT;
+    stream.set_write_timeout(Some(server::HANDSHAKE_TIMEOUT))?;
+    let nonce_r = auth::nonce();
     write_json(
         &mut &stream,
         &ToShim::Adopt {
-            secret: adopt_secret.into(),
+            nonce_r: nonce_r.clone(),
         },
     )?;
-    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-    let hello = match read_frame(&mut &stream)? {
-        Some(Frame::Json(v)) => match serde_json::from_value::<FromShim>(v) {
-            Ok(FromShim::Hello(h)) => h,
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "bad shim hello")),
-        },
-        _ => return Err(io::ErrorKind::UnexpectedEof.into()),
+    let next = || match server::read_frame_by(&stream, deadline)? {
+        Some(Frame::Json(v)) => serde_json::from_value::<FromShim>(v)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad shim message")),
+        _ => Err(io::ErrorKind::UnexpectedEof.into()),
     };
-    stream.set_read_timeout(None)?;
+    let FromShim::AdoptChallenge { nonce_sh, proof_sh } = next()? else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "bad shim challenge",
+        ));
+    };
+    if !auth::verify(adopt_secret, auth::SHIM, &nonce_r, &nonce_sh, &proof_sh) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "shim identity check failed",
+        ));
+    }
+    let proof_r = auth::proof(adopt_secret, auth::RUNNER_ADOPT, &nonce_sh, &nonce_r);
+    write_json(&mut &stream, &ToShim::AdoptAuth { proof_r })?;
+    let FromShim::Hello(hello) = next()? else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "bad shim hello"));
+    };
+    let _ = stream.set_write_timeout(None);
     Ok((stream, hello))
 }
 
@@ -1299,5 +1316,83 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
             ));
         }
         thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::thread::JoinHandle;
+
+    const ID: &str = "s_abcdefghij";
+    const REAL: &str = "feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
+
+    fn fake_shim(dir: &Path, secret: &'static str) -> (JoinHandle<Vec<u8>>, UnixListener) {
+        let ep = Endpoint::new_session(dir, ID).unwrap();
+        let l = endpoint::bind(&ep).unwrap();
+        let l2 = l.try_clone().unwrap();
+        let h = thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let Some(Frame::Json(v)) = read_frame(&mut s).unwrap() else {
+                return Vec::new();
+            };
+            let ToShim::Adopt { nonce_r } = serde_json::from_value(v).unwrap() else {
+                return Vec::new();
+            };
+            let nonce_sh = auth::nonce();
+            let challenge = FromShim::AdoptChallenge {
+                proof_sh: auth::proof(secret, auth::SHIM, &nonce_r, &nonce_sh),
+                nonce_sh: nonce_sh.clone(),
+            };
+            write_json(&mut s, &challenge).unwrap();
+            let mut rest = Vec::new();
+            let Ok(Some(Frame::Json(v))) = read_frame(&mut s) else {
+                return rest;
+            };
+            if let Ok(ToShim::AdoptAuth { proof_r }) = serde_json::from_value(v.clone()) {
+                if auth::verify(secret, auth::RUNNER_ADOPT, &nonce_sh, &nonce_r, &proof_r) {
+                    let hello = FromShim::Hello(ShimHello {
+                        pid: 1,
+                        child_pid: 2,
+                        started_at_ms: 3,
+                        exit: None,
+                    });
+                    write_json(&mut s, &hello).unwrap();
+                    return b"ok".to_vec();
+                }
+            }
+            s.read_to_end(&mut rest).unwrap();
+            rest
+        });
+        (h, l2)
+    }
+
+    fn short_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("td")
+            .tempdir_in("/tmp")
+            .unwrap()
+    }
+
+    #[test]
+    fn adoption_succeeds_with_the_shared_secret() {
+        let t = short_dir();
+        let dir = t.path().join("r");
+        let (h, _l) = fake_shim(&dir, REAL);
+        let (_, hello) = adopt_shim(&dir, ID, REAL, None).unwrap();
+        assert_eq!(hello.child_pid, 2);
+        assert_eq!(h.join().unwrap(), b"ok");
+    }
+
+    #[test]
+    fn fake_shim_is_rejected_and_learns_nothing() {
+        let t = short_dir();
+        let dir = t.path().join("r");
+        let (h, _l) = fake_shim(&dir, "some-other-secret");
+        let e = adopt_shim(&dir, ID, REAL, None).err().unwrap();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(e.to_string().contains("identity check failed"), "{e}");
+        assert!(h.join().unwrap().is_empty());
     }
 }

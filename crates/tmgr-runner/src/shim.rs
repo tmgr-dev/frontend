@@ -15,7 +15,7 @@ use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_OUTPUT, TAG_REPLAY,
 };
 use tmgr_ipc::proto::{valid_session_id, ExitInfo, FromShim, ShimHello, Stat, ToShim};
-use tmgr_ipc::{secret, server};
+use tmgr_ipc::{auth, secret, server};
 
 const RING_CAP: usize = 2 << 20;
 const LOG_CAP: u64 = 20 << 20;
@@ -138,18 +138,10 @@ impl Shim {
         if server::accept_check(&stream).is_err() {
             return;
         }
-        let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-        let secret_ok = match read_frame(&mut &stream) {
-            Ok(Some(Frame::Json(v))) => match serde_json::from_value::<ToShim>(v) {
-                Ok(ToShim::Adopt { secret: s }) => secret::eq(&s, adopt_secret),
-                _ => false,
-            },
-            _ => false,
-        };
-        if !secret_ok {
+        let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+        if !self.authenticate(&stream, adopt_secret) {
             return;
         }
-        let _ = stream.set_read_timeout(None);
         let Ok(out) = stream.try_clone() else { return };
         let _ = out.set_write_timeout(Some(IO_TIMEOUT));
         let conn_id = {
@@ -184,6 +176,35 @@ impl Shim {
         }
     }
 
+    fn authenticate(&self, stream: &UnixStream, adopt_secret: &str) -> bool {
+        let deadline = Instant::now() + server::HANDSHAKE_TIMEOUT;
+        let next = || match server::read_frame_by(stream, deadline) {
+            Ok(Some(Frame::Json(v))) => serde_json::from_value::<ToShim>(v).ok(),
+            _ => None,
+        };
+        let Some(ToShim::Adopt { nonce_r }) = next() else {
+            return false;
+        };
+        let nonce_sh = auth::nonce();
+        let challenge = FromShim::AdoptChallenge {
+            proof_sh: auth::proof(adopt_secret, auth::SHIM, &nonce_r, &nonce_sh),
+            nonce_sh: nonce_sh.clone(),
+        };
+        if write_json(&mut &*stream, &challenge).is_err() {
+            return false;
+        }
+        let Some(ToShim::AdoptAuth { proof_r }) = next() else {
+            return false;
+        };
+        auth::verify(
+            adopt_secret,
+            auth::RUNNER_ADOPT,
+            &nonce_sh,
+            &nonce_r,
+            &proof_r,
+        )
+    }
+
     fn serve_conn(self: &Arc<Self>, stream: &UnixStream) {
         loop {
             match read_frame(&mut &*stream) {
@@ -208,7 +229,7 @@ impl Shim {
                         self.cleanup();
                         std::process::exit(0);
                     }
-                    Ok(ToShim::Adopt { .. }) | Err(_) => {}
+                    Ok(ToShim::Adopt { .. } | ToShim::AdoptAuth { .. }) | Err(_) => {}
                 },
                 _ => return,
             }

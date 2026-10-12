@@ -383,7 +383,7 @@ fn rejects_unauthorized_and_invalid_requests() {
     let wrong = "0".repeat(64);
     let e = Client::connect_with(&h.run, &wrong).err().unwrap();
     assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
-    assert!(e.to_string().contains("unauthorized"), "{e}");
+    assert!(e.to_string().contains("identity check failed"), "{e}");
 
     let mut c = h.client();
     let mut relative = h.req(&["/bin/true"]);
@@ -550,4 +550,36 @@ fn large_input_is_chunked_and_first_screen_arrives() {
         "{:?}",
         w.text(&info.id)
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn start_background_replaces_a_squatted_runner_address() {
+    use tmgr_ipc::endpoint::{bind, Endpoint};
+    use tmgr_ipc::frame::{read_frame, write_json};
+    let h = Harness::new();
+    let squat = bind(&Endpoint::new_runner(&h.run).unwrap()).unwrap();
+    thread::spawn(move || {
+        for s in squat.incoming().flatten() {
+            let mut s = s;
+            let _ = read_frame(&mut s);
+            let _ = write_json(
+                &mut s,
+                &json!({"type": "challenge", "nonce_s": "aa", "proof_s": "bb"}),
+            );
+        }
+    });
+    assert!(Client::connect(&h.run).is_err());
+    let cfg = tmgr_runner::daemon::RunnerConfig {
+        dir: h.run.clone(),
+        homes: h.homes.path().to_path_buf(),
+        self_exe: PathBuf::from(HOST),
+        quiet_ms: 5000,
+        version: "test".into(),
+        max_sessions: 16,
+    };
+    let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
+    let status = h.client().status().unwrap();
+    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    assert_eq!(status.pid, pid);
 }

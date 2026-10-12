@@ -1,5 +1,6 @@
 #![cfg(unix)]
 
+pub mod auth;
 pub mod dirs;
 pub mod endpoint;
 pub mod frame;

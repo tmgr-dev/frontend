@@ -57,15 +57,116 @@ fn handshake_ok() {
 }
 
 #[test]
-fn wrong_secret_is_unauthorized() {
+fn wrong_secret_fails_in_both_directions() {
     let t = short_dir();
     let ep = runner(t.path());
     let h = serve_once(&ep, "right");
     let s = connect(&ep).unwrap();
     let e = handshake_client(&s, "cli", "wrong").unwrap_err();
     assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
-    assert!(e.to_string().contains("unauthorized"), "{e}");
+    assert!(e.to_string().contains("identity check failed"), "{e}");
     assert!(h.join().unwrap().is_err());
+
+    let t = short_dir();
+    let ep = runner(t.path());
+    let h = serve_once(&ep, "wrong");
+    let s = connect(&ep).unwrap();
+    let e = handshake_client(&s, "cli", "right").unwrap_err();
+    assert!(e.to_string().contains("identity check failed"), "{e}");
+    assert!(h.join().unwrap().is_err());
+}
+
+#[test]
+fn client_without_the_secret_is_unauthorized() {
+    let t = short_dir();
+    let ep = runner(t.path());
+    let h = serve_once(&ep, "right");
+    let mut s = connect(&ep).unwrap();
+    write_json(
+        &mut s,
+        &json!({"type": "hello", "proto": 1, "client": "x", "version": "x", "pid": 1, "nonce_c": "aa"}),
+    )
+    .unwrap();
+    let Some(Frame::Json(c)) = read_frame(&mut s).unwrap() else {
+        panic!("no challenge")
+    };
+    assert_eq!(c["type"], "challenge");
+    write_json(&mut s, &json!({"type": "auth", "proof_c": "00"})).unwrap();
+    let Some(Frame::Json(v)) = read_frame(&mut s).unwrap() else {
+        panic!("no reply")
+    };
+    assert_eq!(v["code"], "unauthorized");
+    let e = h.join().unwrap().unwrap_err();
+    assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn fake_server_is_rejected_and_learns_no_secret() {
+    use std::io::Read;
+    const SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let t = short_dir();
+    let ep = runner(t.path());
+    let l = bind(&ep).unwrap();
+    let fake = thread::spawn(move || {
+        let (mut s, _) = l.accept().unwrap();
+        let Some(Frame::Json(h)) = read_frame(&mut s).unwrap() else {
+            panic!("no hello")
+        };
+        let nonce_c = h["nonce_c"].as_str().unwrap().to_string();
+        write_json(
+            &mut s,
+            &json!({"type": "challenge", "nonce_s": "11".repeat(32), "proof_s": "22".repeat(32)}),
+        )
+        .unwrap();
+        let mut rest = Vec::new();
+        s.read_to_end(&mut rest).unwrap();
+        (h.to_string(), nonce_c, rest)
+    });
+    let s = connect(&ep).unwrap();
+    let e = handshake_client(&s, "cli", SECRET).unwrap_err();
+    assert!(e.to_string().contains("identity check failed"), "{e}");
+    drop(s);
+    let (hello, nonce_c, rest) = fake.join().unwrap();
+    assert!(!hello.contains(SECRET));
+    assert_eq!(nonce_c.len(), 64);
+    assert!(rest.is_empty(), "client sent {} more bytes", rest.len());
+}
+
+#[test]
+fn trickling_handshake_is_cut_off_by_the_absolute_deadline() {
+    use std::io::Write;
+    use std::time::{Duration, Instant};
+    let t = short_dir();
+    let ep = runner(t.path());
+    let h = serve_once(&ep, "right");
+    let mut s = connect(&ep).unwrap();
+    let started = Instant::now();
+    let frame = br#"{"type":"hello","proto":1,"client":"x","version":"x","pid":1,"nonce_c":"aa"}"#;
+    let mut bytes = (frame.len() as u32 + 1).to_be_bytes().to_vec();
+    bytes.push(0);
+    bytes.extend_from_slice(frame);
+    for b in bytes {
+        if s.write_all(&[b]).is_err() {
+            break;
+        }
+        thread::sleep(Duration::from_secs(1));
+        if started.elapsed() > Duration::from_secs(8) {
+            break;
+        }
+    }
+    let e = h.join().unwrap().unwrap_err();
+    assert!(
+        matches!(
+            e.kind(),
+            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+        ),
+        "{e}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(7),
+        "{:?}",
+        started.elapsed()
+    );
 }
 
 #[test]
@@ -76,7 +177,7 @@ fn wrong_proto_is_mismatch() {
     let mut s = connect(&ep).unwrap();
     write_json(
         &mut s,
-        &json!({"type": "hello", "proto": 2, "client": "cli", "version": "x", "pid": 1, "secret": "right"}),
+        &json!({"type": "hello", "proto": 2, "client": "cli", "version": "x", "pid": 1, "nonce_c": "aa"}),
     )
     .unwrap();
     let Some(Frame::Json(v)) = read_frame(&mut s).unwrap() else {

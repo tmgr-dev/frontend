@@ -26,7 +26,18 @@ pub struct Hello {
     pub client: String,
     pub version: String,
     pub pid: u32,
-    pub secret: String,
+    pub nonce_c: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Challenge {
+    pub nonce_s: String,
+    pub proof_s: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Auth {
+    pub proof_c: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,6 +58,8 @@ pub struct ErrorBody {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Handshake {
     Hello(Hello),
+    Challenge(Challenge),
+    Auth(Auth),
     Welcome(Welcome),
     Error(ErrorBody),
 }
@@ -114,7 +127,8 @@ pub enum ServerMsg {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToShim {
-    Adopt { secret: String },
+    Adopt { nonce_r: String },
+    AdoptAuth { proof_r: String },
     Resize { cols: u16, rows: u16 },
     Signal { sig: i32 },
     Reap,
@@ -147,9 +161,11 @@ pub struct Stat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FromShim {
+    AdoptChallenge { nonce_sh: String, proof_sh: String },
     Hello(ShimHello),
     Stat(Stat),
     Exited(ExitInfo),
+    InputDropped { bytes: u64 },
 }
 
 #[cfg(test)]

@@ -3576,9 +3576,11 @@ version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
+ "hmac 0.13.0",
  "libc",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "subtle",
  "tempfile",
 ]
