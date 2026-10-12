@@ -128,6 +128,18 @@ describe('runLocalFirstRun', () => {
     expect(deps.startSequence).toHaveBeenCalledTimes(1);
   });
 
+  it('starts nothing when the app left local mode while waiting for the consent panel', async () => {
+    let local = true;
+    const { deps } = build({
+      localOnly: () => local,
+      waitConsentClosed: jest.fn(async () => {
+        local = false;
+      }),
+    });
+    expect(await runLocalFirstRun(deps)).toBe('none');
+    expect(deps.startSequence).not.toHaveBeenCalled();
+  });
+
   it('ignores and clears a marker older than ten minutes', async () => {
     const { deps, marker } = build({ now: () => new Date('2026-10-12T10:10:01.000Z') });
     expect(await runLocalFirstRun(deps)).toBe('none');

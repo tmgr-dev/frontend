@@ -148,6 +148,7 @@ export async function runLocalFirstRun(deps: LocalFirstRunDeps): Promise<'starte
     return 'seeded';
   }
   await deps.waitConsentClosed();
+  if (!deps.localOnly()) return 'none';
   await deps.startSequence(LOCAL_FIRST_RUN_SEQUENCE, 'first_run');
   deps.clearMarker();
   return 'started';

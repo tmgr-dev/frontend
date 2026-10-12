@@ -36,12 +36,14 @@ export const handleQuickAddCreated = (
 
 export const installQuickAddPageHost = async (store: HostStore) => {
 	const { listen } = await import('@tauri-apps/api/event');
-	await listen<{ kind?: string }>(QUICK_ADD_CREATED, ({ payload }) =>
-		handleQuickAddCreated(payload),
-	);
-	await listen<PageAppendedPayload>(QUICK_ADD_PAGE_APPENDED, ({ payload }) =>
-		handlePageAppended(store, payload),
-	);
+	await Promise.all([
+		listen<{ kind?: string }>(QUICK_ADD_CREATED, ({ payload }) =>
+			handleQuickAddCreated(payload),
+		),
+		listen<PageAppendedPayload>(QUICK_ADD_PAGE_APPENDED, ({ payload }) =>
+			handlePageAppended(store, payload),
+		),
+	]);
 };
 
 export const relayPageAppended = async (

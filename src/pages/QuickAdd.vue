@@ -457,8 +457,11 @@
 							),
 							is_daily_routine: false,
 						});
-						await uploadTaskFile(task.id, screenshot.value);
-						void relayCreated('task');
+						try {
+							await uploadTaskFile(task.id, screenshot.value);
+						} finally {
+							void relayCreated('task');
+						}
 					} else {
 						const routine = await createDailyTask(fields);
 						if (targetWorkspace?.is_local) {
@@ -472,8 +475,8 @@
 								console.error('quick add: routine-created relay failed', e);
 							}
 						}
+						void relayCreated('routine');
 					}
-					if (!screenshot.value) void relayCreated('routine');
 					message.value = 'Added';
 					setTimeout(async () => {
 						await hide();

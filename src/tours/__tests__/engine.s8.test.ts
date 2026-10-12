@@ -221,3 +221,26 @@ describe('body parts', () => {
 		expect(h.engine.api.active.value?.bodyParts).toBeUndefined();
 	});
 });
+
+describe('overlay blocking', () => {
+	const last = (h: ReturnType<typeof make>) => h.adapter.show.mock.calls[h.adapter.show.mock.calls.length - 1][0];
+
+	it('a passive wait step with no anchor does not block the page', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.start('desktop.quick-add', 'hub');
+		expect(last(h)).toMatchObject({ blocking: true });
+		h.engine.api.next();
+		await flush();
+		expect(h.engine.api.active.value?.step.type).toBe('wait');
+		expect(last(h)).toMatchObject({ mode: 'passive', anchorEl: null, blocking: false });
+	});
+
+	it('a modal step with an anchor still blocks', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.start('start.nav', 'hub');
+		expect(last(h)).toMatchObject({ mode: 'modal', blocking: true });
+		expect(last(h).anchorEl).toBeTruthy();
+	});
+});

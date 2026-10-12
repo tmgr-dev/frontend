@@ -68,6 +68,7 @@ export async function runOnboardingBoot(
 }
 
 const SESSION_WAIT_MS = 5000;
+const CONSENT_WAIT_MS = 10 * 60 * 1000;
 
 export function installOnboardingFlow(store: BootStore, router: Router): () => void {
   if (isDesktopApp() && desktopWindowLabel() !== 'main') return () => {};
@@ -124,9 +125,22 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
     { immediate: true },
   );
 
+  const consentScopes = new Set<{ stop(): void }>();
+
   const waitConsentClosed = () =>
     new Promise<void>((resolve) => {
       const scope = effectScope();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const entry = {
+        stop: () => {
+          clearTimeout(timeout);
+          consentScopes.delete(entry);
+          scope.stop();
+          resolve();
+        },
+      };
+      consentScopes.add(entry);
+      timeout = setTimeout(entry.stop, CONSENT_WAIT_MS);
       scope.run(() => {
         const { consent } = useConsent();
         const open = () =>
@@ -141,9 +155,7 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
         watch(
           open,
           (isOpen) => {
-            if (isOpen) return;
-            scope.stop();
-            resolve();
+            if (!isOpen) entry.stop();
           },
           { immediate: true },
         );
@@ -156,6 +168,7 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
     (ready) => {
       if (!ready) {
         firstRunHandled = false;
+        for (const entry of [...consentScopes]) entry.stop();
         return;
       }
       if (firstRunHandled) return;
@@ -179,5 +192,6 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
   return () => {
     stop();
     stopFirstRun();
+    for (const entry of [...consentScopes]) entry.stop();
   };
 }
