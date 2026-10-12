@@ -170,9 +170,9 @@ describe('S4a catalog', () => {
 		expect(text).not.toContain('settings.privacy-tips');
 	});
 
-	it('ships every S4a tour since 3.4.155', () => {
+	it('ships every S4a tour since 3.4.156', () => {
 		for (const id of S4A_IDS) {
-			expect(tour(id).since).toBe('3.4.155');
+			expect(tour(id).since).toBe('3.4.156');
 		}
 	});
 
