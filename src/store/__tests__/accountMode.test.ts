@@ -156,7 +156,7 @@ describe('startWithoutAccount fresh-install marker', () => {
 		],
 		[
 			'a listing that is not an array',
-			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue(null),
+			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue(null as any),
 		],
 		[
 			'a starter_seeded_at in the onboarding state',
