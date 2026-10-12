@@ -755,3 +755,30 @@ fn kill_after_exit_is_not_running() {
         assert!(err_text(c.kill(&info.id, sig)).contains("not_running"));
     }
 }
+
+#[test]
+fn a_500x200_screen_of_alternating_colours_reaches_the_client_intact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let body = "import sys, time\ntime.sleep(1.5)\nfor r in range(199):\n    sys.stdout.write(''.join('\\x1b[3%dm%s' % (1 + c % 2, chr(97 + c % 26)) for c in range(500)) + '\\x1b[0m\\r\\n')\nsys.stdout.write('done')\nsys.stdout.flush()\ntime.sleep(30)\n";
+    let path = h.script("wide.py", body);
+    let info = c.create(h.req(&[PY, &path])).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    w.writer.resize(&info.id, 500, 200).unwrap();
+    assert!(
+        w.wait(10, |w| w.has_line(&info.id, "done")),
+        "{:?}",
+        w.cache.snapshot(&info.id).map(|s| (s.rows, s.cols))
+    );
+    let snap = w.cache.snapshot(&info.id).unwrap();
+    assert_eq!((snap.rows, snap.cols, snap.lines.len()), (200, 500, 200));
+    let text: String = snap.lines[198].spans.iter().map(|s| s.t.as_str()).collect();
+    assert_eq!(text.len(), 500);
+    assert!(text.starts_with("abcdefghij"));
+    assert!(snap.lines[198].spans.len() >= 500);
+    assert!(c.status().is_ok());
+}

@@ -1,4 +1,4 @@
-use crate::screen::Snapshot;
+use crate::screen::{Line, Snapshot};
 use crate::wire::{CreateReq, EventMsg, ScreenPush, SessionInfo, StatusInfo, MAX_INPUT};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -273,14 +273,20 @@ impl ScreenCache {
         };
         let push: ScreenPush = serde_json::from_value(v.clone()).ok()?;
         if push.full {
-            self.screens.insert(push.session.clone(), push.snapshot?);
+            let mut snap = push.snapshot?;
+            let rows = snap.rows as usize;
+            if snap.lines.len() < rows {
+                snap.lines.resize(rows, Line { spans: Vec::new() });
+            }
+            self.screens.insert(push.session.clone(), snap);
             return Some(push.session);
         }
         let snap = self.screens.get_mut(&push.session)?;
         for (i, line) in push.lines {
-            if let Some(slot) = snap.lines.get_mut(i) {
-                *slot = line;
+            if i >= snap.lines.len() {
+                snap.lines.resize(i + 1, Line { spans: Vec::new() });
             }
+            snap.lines[i] = line;
         }
         snap.cursor = push.cursor;
         if let Some(m) = push.modes {

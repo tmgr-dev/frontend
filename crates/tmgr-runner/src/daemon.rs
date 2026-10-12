@@ -1,10 +1,10 @@
 use crate::client::Client;
 use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
-use crate::screen::{changed_lines, ScreenModel, Snapshot};
+use crate::screen::{ScreenModel, Snapshot};
 use crate::t0::{self, Detector, State, StateKind};
 use crate::wire::{
-    clamp_size, now_ms, write_atomic, CreateReq, EventMsg, LaunchFile, ScreenPush, SessionInfo,
+    clamp_size, now_ms, screen_pushes, write_atomic, CreateReq, EventMsg, LaunchFile, SessionInfo,
     Slot, StatusInfo, MAX_INPUT, SCROLLBACK,
 };
 use serde::de::DeserializeOwned;
@@ -1152,35 +1152,10 @@ impl Runner {
                     }
                 }
                 let snap = s.snapshot(offset);
-                let push = match sent.get(&id) {
-                    Some(prev) if prev.snap.rows == snap.rows && prev.snap.cols == snap.cols => {
-                        ScreenPush {
-                            session: id.clone(),
-                            full: false,
-                            snapshot: None,
-                            lines: changed_lines(&prev.snap, &snap)
-                                .into_iter()
-                                .map(|i| (i, snap.lines[i].clone()))
-                                .collect(),
-                            cursor: snap.cursor,
-                            modes: Some(snap.modes),
-                            scroll_offset: snap.scroll_offset,
-                            scroll_max: snap.scroll_max,
-                        }
+                for push in screen_pushes(&id, sent.get(&id).map(|p| &p.snap), &snap) {
+                    if conn.write(&ServerMsg::Screen(to_json(&push))).is_err() {
+                        return fail(conn);
                     }
-                    _ => ScreenPush {
-                        session: id.clone(),
-                        full: true,
-                        snapshot: Some(snap.clone()),
-                        lines: Vec::new(),
-                        cursor: None,
-                        modes: None,
-                        scroll_offset: 0,
-                        scroll_max: 0,
-                    },
-                };
-                if conn.write(&ServerMsg::Screen(to_json(&push))).is_err() {
-                    return fail(conn);
                 }
                 sent.insert(
                     id,

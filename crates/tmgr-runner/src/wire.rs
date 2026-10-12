@@ -1,4 +1,4 @@
-use crate::screen::{Line, Modes, Snapshot};
+use crate::screen::{changed_lines, Line, Modes, Snapshot};
 use crate::t0::State;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -10,6 +10,7 @@ pub const SCROLLBACK: usize = 5000;
 pub const MAX_COLS: u16 = 500;
 pub const MAX_ROWS: u16 = 200;
 pub const MAX_INPUT: usize = 64 << 10;
+pub const MAX_PUSH: usize = 256 << 10;
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -151,7 +152,84 @@ pub struct ScreenPush {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::ScreenCache;
+    use crate::screen::{Attr, Color, Span};
     use std::os::unix::fs::{symlink, PermissionsExt};
+    use tmgr_ipc::proto::ServerMsg;
+
+    const SID: &str = "s_abcdefghij";
+
+    fn busy_screen(rows: u16, cols: u16, shift: u8) -> Snapshot {
+        let line = |r: u8| Line {
+            spans: (0..cols as usize)
+                .map(|c| Span {
+                    a: Attr {
+                        fg: Color::Rgb(r, c as u8, shift),
+                        bg: Color::Idx((c % 2) as u8),
+                        flags: 0,
+                    },
+                    t: char::from(b'a' + (c % 26) as u8).to_string(),
+                })
+                .collect(),
+        };
+        Snapshot {
+            rows,
+            cols,
+            lines: (0..rows).map(|r| line(r as u8)).collect(),
+            cursor: Some((3, 4)),
+            modes: Modes {
+                app_cursor: false,
+                bracketed_paste: true,
+                alt_screen: false,
+                hide_cursor: false,
+            },
+            scroll_offset: 2,
+            scroll_max: 9,
+        }
+    }
+
+    fn apply_all(cache: &mut ScreenCache, pushes: &[ScreenPush]) {
+        for p in pushes {
+            let msg = ServerMsg::Screen(serde_json::to_value(p).unwrap());
+            assert!(serde_json::to_vec(&msg).unwrap().len() <= MAX_PUSH);
+            assert_eq!(cache.apply(&msg).as_deref(), Some(SID));
+        }
+    }
+
+    #[test]
+    fn a_maximal_busy_screen_travels_in_bounded_pushes_and_arrives_intact() {
+        let snap = busy_screen(200, 500, 0);
+        let whole = serde_json::to_vec(&snap).unwrap().len();
+        assert!(whole > 4 * MAX_PUSH, "{whole}");
+        let pushes = screen_pushes(SID, None, &snap);
+        assert!(pushes.len() > 4);
+        assert!(pushes[0].full && pushes[1..].iter().all(|p| !p.full));
+        let mut cache = ScreenCache::new();
+        apply_all(&mut cache, &pushes);
+        assert_eq!(cache.snapshot(SID), Some(&snap));
+
+        let next = busy_screen(200, 500, 7);
+        let diff = screen_pushes(SID, Some(&snap), &next);
+        assert!(diff.len() > 4 && diff.iter().all(|p| !p.full));
+        apply_all(&mut cache, &diff);
+        assert_eq!(cache.snapshot(SID), Some(&next));
+    }
+
+    #[test]
+    fn small_changes_stay_one_push() {
+        let a = busy_screen(24, 80, 0);
+        let mut b = a.clone();
+        b.lines[5] = a.lines[6].clone();
+        b.cursor = None;
+        let pushes = screen_pushes(SID, Some(&a), &b);
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].lines.len(), 1);
+        let mut cache = ScreenCache::new();
+        apply_all(&mut cache, &screen_pushes(SID, None, &a));
+        apply_all(&mut cache, &pushes);
+        assert_eq!(cache.snapshot(SID), Some(&b));
+        assert_eq!(screen_pushes(SID, None, &a).len(), 1);
+    }
 
     #[test]
     fn write_atomic_ignores_planted_symlink_and_is_private() {
@@ -175,4 +253,75 @@ mod tests {
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }
+}
+
+fn json_len<T: Serialize>(v: &T) -> usize {
+    serde_json::to_vec(v).map_or(0, |b| b.len())
+}
+
+fn batches(rows: Vec<(usize, Line)>, budget: usize) -> Vec<Vec<(usize, Line)>> {
+    let mut out = Vec::new();
+    let mut cur = Vec::new();
+    let mut size = 0;
+    for row in rows {
+        let n = json_len(&row) + 1;
+        if !cur.is_empty() && size + n > budget {
+            out.push(std::mem::take(&mut cur));
+            size = 0;
+        }
+        size += n;
+        cur.push(row);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+pub fn screen_pushes(id: &str, prev: Option<&Snapshot>, snap: &Snapshot) -> Vec<ScreenPush> {
+    const ENVELOPE: usize = 1024;
+    let diff = prev.filter(|p| p.rows == snap.rows && p.cols == snap.cols);
+    let base = ScreenPush {
+        session: id.to_string(),
+        full: false,
+        snapshot: None,
+        lines: Vec::new(),
+        cursor: snap.cursor,
+        modes: Some(snap.modes),
+        scroll_offset: snap.scroll_offset,
+        scroll_max: snap.scroll_max,
+    };
+    let rows: Vec<(usize, Line)> = match diff {
+        Some(p) => changed_lines(p, snap)
+            .into_iter()
+            .map(|i| (i, snap.lines[i].clone()))
+            .collect(),
+        None => snap.lines.iter().cloned().enumerate().collect(),
+    };
+    let mut head = Snapshot {
+        lines: Vec::new(),
+        ..snap.clone()
+    };
+    let overhead = 2 * json_len(&base) + json_len(&head) + ENVELOPE;
+    let mut chunks = batches(rows, MAX_PUSH.saturating_sub(overhead)).into_iter();
+    let first = chunks.next().unwrap_or_default();
+    let mut out = Vec::new();
+    if diff.is_some() {
+        out.push(ScreenPush {
+            lines: first,
+            ..base.clone()
+        });
+    } else {
+        head.lines = first.into_iter().map(|(_, l)| l).collect();
+        out.push(ScreenPush {
+            full: true,
+            snapshot: Some(head),
+            ..base.clone()
+        });
+    }
+    out.extend(chunks.map(|lines| ScreenPush {
+        lines,
+        ..base.clone()
+    }));
+    out
 }
