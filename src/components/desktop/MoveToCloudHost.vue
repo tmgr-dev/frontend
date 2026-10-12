@@ -23,6 +23,7 @@
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
 	import { desktopOfferEnv, offerMoveToCloud } from '@/tours/desktopOffers';
+	import { toursEngine } from '@/tours/useTours';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -33,12 +34,20 @@
 			const store = useStore();
 			const workspaces = ref<LocalWorkspace[]>([]);
 
-			onMounted(async () => {
+			const retryOffer = () => {
 				if (store.getters.isLocalOnly) return;
-				workspaces.value = await listLocalWorkspaces();
 				void offerMoveToCloud(
 					desktopOfferEnv(async () => workspaces.value.length > 0),
 				);
+			};
+			watch(() => toursEngine().store.loaded.value, (loaded) => {
+				if (loaded) retryOffer();
+			});
+
+			onMounted(async () => {
+				if (store.getters.isLocalOnly) return;
+				workspaces.value = await listLocalWorkspaces();
+				retryOffer();
 				const pending = workspaces.value.filter(
 					(workspace) => loadPersisted(browserStorage, workspace.code).job,
 				);

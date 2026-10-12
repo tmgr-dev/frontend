@@ -131,6 +131,22 @@ describeSqlite('local onboarding facts and starters on SQLite', () => {
 		expect(await facts('has_board_move', t2.id)).toEqual({ has_board_move: true });
 	});
 
+	it('never fails a status change when the board move note cannot be written', async () => {
+		const statuses = await call(a, 'GET', 'workspaces/statuses');
+		const task = await call(a, 'POST', 'tasks', { title: 'one', status_id: statuses[0].id });
+		const failing: LocalContext = {
+			...a,
+			db: {
+				...a.db,
+				execute: (sql, params) =>
+					sql.includes('INSERT OR IGNORE INTO meta') ? Promise.reject(new Error('disk full')) : a.db.execute(sql, params),
+			},
+		};
+		const moved = await call(failing, 'PATCH', `tasks/${task.id}`, { status_id: statuses[1].id });
+		expect(moved.status_id).toBe(statuses[1].id);
+		expect(await facts('has_board_move', task.id)).toEqual({ has_board_move: false });
+	});
+
 	it('scopes has_timer_minute to the given task', async () => {
 		const t1 = await call(a, 'POST', 'tasks', { title: 'one' });
 		const t2 = await call(a, 'POST', 'tasks', { title: 'two' });

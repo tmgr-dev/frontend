@@ -21,9 +21,13 @@ const env = (over: Partial<DesktopOfferEnv> = {}): DesktopOfferEnv & { offer: je
 };
 
 describe('desktop offers', () => {
-	it('offers backups once per install', () => {
+	const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	it('offers backups once per install', async () => {
 		const e = env();
 		offerBackups(e);
+		offerBackups(e);
+		await flush();
 		offerBackups(e);
 		expect(e.offer).toHaveBeenCalledTimes(1);
 		expect(e.offer).toHaveBeenCalledWith('desktop.backups', 'event', { retryMs: 60_000 });
@@ -31,7 +35,7 @@ describe('desktop offers', () => {
 
 	it('offers move to cloud once when a local workspace exists', async () => {
 		const e = env();
-		await offerMoveToCloud(e);
+		await Promise.all([offerMoveToCloud(e), offerMoveToCloud(e)]);
 		await offerMoveToCloud(e);
 		expect(e.offer).toHaveBeenCalledTimes(1);
 		expect(e.offer).toHaveBeenCalledWith('desktop.move-to-cloud', 'event', { retryMs: 60_000 });
@@ -45,6 +49,29 @@ describe('desktop offers', () => {
 		has = true;
 		await offerMoveToCloud(e);
 		expect(e.offer).toHaveBeenCalledTimes(1);
+	});
+
+	it('writes no flag while the offer is not shown, so the next trigger offers again', async () => {
+		const e = env();
+		e.offer.mockResolvedValueOnce(false).mockResolvedValue(true);
+		await offerMoveToCloud(e);
+		expect(e.storage.getItem('tmgr:tours:offered:desktop.move-to-cloud')).toBeNull();
+		await offerMoveToCloud(e);
+		expect(e.offer).toHaveBeenCalledTimes(2);
+		expect(e.storage.getItem('tmgr:tours:offered:desktop.move-to-cloud')).toBe('1');
+		await offerMoveToCloud(e);
+		expect(e.offer).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not offer backups again after a failed offer is dropped and keeps no flag', async () => {
+		const e = env();
+		e.offer.mockRejectedValueOnce(new Error('x'));
+		offerBackups(e);
+		await flush();
+		expect(e.storage.getItem('tmgr:tours:offered:desktop.backups')).toBeNull();
+		offerBackups(e);
+		await flush();
+		expect(e.offer).toHaveBeenCalledTimes(2);
 	});
 
 	it('stays silent on the web and in detached windows', async () => {

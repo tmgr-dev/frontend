@@ -32,10 +32,25 @@ const remember = (env: DesktopOfferEnv, key: string) => {
 	}
 };
 
+const inFlight = new Map<string, Promise<void>>();
+
+const deliver = (env: DesktopOfferEnv, key: string, id: 'desktop.backups' | 'desktop.move-to-cloud') => {
+	const pending = inFlight.get(key);
+	if (pending) return pending;
+	const run = env
+		.offer(id, 'event', { retryMs: OFFER_RETRY_MS })
+		.then((shown) => {
+			if (shown) remember(env, key);
+		})
+		.catch(() => {})
+		.finally(() => inFlight.delete(key));
+	inFlight.set(key, run);
+	return run;
+};
+
 export function offerBackups(env: DesktopOfferEnv): void {
 	if (!inMainDesktopWindow(env) || seen(env, BACKUPS_KEY)) return;
-	remember(env, BACKUPS_KEY);
-	void env.offer('desktop.backups', 'event', { retryMs: OFFER_RETRY_MS });
+	void deliver(env, BACKUPS_KEY, 'desktop.backups');
 }
 
 export async function offerMoveToCloud(env: DesktopOfferEnv): Promise<void> {
@@ -45,8 +60,7 @@ export async function offerMoveToCloud(env: DesktopOfferEnv): Promise<void> {
 	} catch {
 		return;
 	}
-	remember(env, MOVE_KEY);
-	void env.offer('desktop.move-to-cloud', 'event', { retryMs: OFFER_RETRY_MS });
+	await deliver(env, MOVE_KEY, 'desktop.move-to-cloud');
 }
 
 export const desktopOfferEnv = (

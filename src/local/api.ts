@@ -321,10 +321,14 @@ export const BOARD_MOVE_META_PREFIX = 'onboarding:board_move:';
 
 export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
 	if (ctx.actor && ctx.actor.kind !== 'user') return;
-	await ctx.db.execute(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)`, [
-		`${BOARD_MOVE_META_PREFIX}${taskId}`,
-		iso(ctx),
-	]);
+	try {
+		await ctx.db.execute(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)`, [
+			`${BOARD_MOVE_META_PREFIX}${taskId}`,
+			iso(ctx),
+		]);
+	} catch (error) {
+		console.error('board move note failed', error);
+	}
 };
 
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
