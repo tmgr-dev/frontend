@@ -65,6 +65,8 @@ export interface ImportStatus {
 	errors: ImportError[];
 	report: ImportReport | null;
 	workspace_id?: number | null;
+	verified?: boolean;
+	source_revision?: string;
 }
 
 export interface ImportError {

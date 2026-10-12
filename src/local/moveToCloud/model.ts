@@ -74,6 +74,7 @@ export interface MoveJob {
 	confirmed: string[];
 	startedAt: string;
 	error: string | null;
+	userId: number | null;
 }
 
 export interface PublishedMove {
@@ -84,7 +85,9 @@ export interface PublishedMove {
 	revision: string;
 	verified: boolean;
 	excluded: ExcludedFile[];
-	archive: { path: string; revision: string } | null;
+	archive: { path: string; revision: string; fullDigest: string } | null;
+	dir: string | null;
+	userId: number | null;
 }
 
 export interface PersistedMove {

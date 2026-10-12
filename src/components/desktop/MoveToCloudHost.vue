@@ -16,8 +16,9 @@
 <script lang="ts">
 	import MoveToCloudDialog from '@/components/desktop/MoveToCloudDialog.vue';
 	import MoveToCloudProgress from '@/components/desktop/MoveToCloudProgress.vue';
+	import { waitForUser } from '@/local/moveToCloud/account';
 	import { browserStorage, loadPersisted } from '@/local/moveToCloud/model';
-	import { getMover } from '@/local/moveToCloud/runtime';
+	import { getMover, userSnapshot } from '@/local/moveToCloud/runtime';
 	import { moveUi } from '@/local/moveToCloud/ui';
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
@@ -34,10 +35,17 @@
 			onMounted(async () => {
 				if (store.getters.isLocalOnly) return;
 				workspaces.value = await listLocalWorkspaces();
-				for (const workspace of workspaces.value) {
-					if (loadPersisted(browserStorage, workspace.code).job) {
-						void getMover().resume(workspace.code);
-					}
+				const pending = workspaces.value.filter(
+					(workspace) => loadPersisted(browserStorage, workspace.code).job,
+				);
+				if (!pending.length) return;
+				const account = await waitForUser(
+					userSnapshot,
+					(ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+				);
+				if (!account.known) return;
+				for (const workspace of pending) {
+					void getMover().resume(workspace.code);
 				}
 			});
 

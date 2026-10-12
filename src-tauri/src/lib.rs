@@ -236,7 +236,6 @@ pub fn run() {
       local_move::local_move_put,
       local_move::local_move_archive,
       local_move::local_workspace_remove,
-      local_move::local_source_digest,
       local_move::local_move_export_file,
       local_move::local_move_pick_export_target,
       local_move::local_move_accept_lost,

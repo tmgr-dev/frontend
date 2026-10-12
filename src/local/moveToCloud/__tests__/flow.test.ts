@@ -1,7 +1,13 @@
 import { UNSUPPORTED_SCHEMA_MESSAGE } from '../api';
 import { createMover, toMappingPayload } from '../flow';
 import { loadPersisted, savePersisted, storageKey } from '../model';
-import { harness, INVENTORY, verifiedStatus } from './helpers';
+import {
+	harness,
+	INVENTORY,
+	publishedStatus,
+	SNAPSHOT,
+	verifiedStatus,
+} from './helpers';
 
 const CODE = 'loc';
 
@@ -57,6 +63,8 @@ describe('dry run', () => {
 				verified: true,
 				excluded: [],
 				archive: null,
+				dir: null,
+				userId: 7,
 			},
 		});
 		const dry = await createMover(h.deps).dryRun(CODE, 'Local');
@@ -103,6 +111,7 @@ describe('move flow', () => {
 			'commit',
 			'status',
 			'publish',
+			'status',
 		]);
 		expect(view.published).toMatchObject({
 			workspaceId: 55,
@@ -236,7 +245,10 @@ describe('resume, retry, discard', () => {
 		expect(loadPersisted(h.storage, CODE).job?.step).toBe(step);
 		h.api.status.mockReset();
 		h.api.status.mockImplementation(
-			async () => (h.calls.push('status'), verifiedStatus()),
+			async () => (
+				h.calls.push('status'),
+				h.calls.includes('publish') ? publishedStatus() : verifiedStatus()
+			),
 		);
 		h.calls.length = 0;
 		return { h, mover };
@@ -292,7 +304,7 @@ describe('resume, retry, discard', () => {
 			personas: [],
 		});
 		expect(view.job?.step).toBe('started');
-		expect(h.native.moveUnfreeze).toHaveBeenCalled();
+		expect(h.native.moveUnfreeze).not.toHaveBeenCalled();
 		const resumed = await mover.resume(CODE);
 		expect(resumed.published).not.toBeNull();
 	});
@@ -308,7 +320,9 @@ describe('resume, retry, discard', () => {
 		expect(view.failedOnServer).toBe(true);
 		expect(view.canPublishAnyway).toBe(false);
 		h.api.status.mockReset();
-		h.api.status.mockResolvedValue(verifiedStatus());
+		h.api.status.mockImplementation(async () =>
+			h.calls.includes('publish') ? publishedStatus() : verifiedStatus(),
+		);
 		const after = await mover.retry(CODE);
 		expect(h.api.retry).toHaveBeenCalledWith('job-1');
 		expect(after.published).not.toBeNull();
@@ -422,5 +436,211 @@ describe('resume, retry, discard', () => {
 		expect(view.job?.error).toBe(
 			'You can start up to 3 moves a day. Try again tomorrow.',
 		);
+	});
+});
+
+describe('publication evidence comes from the server', () => {
+	it('stores verified exactly as the server reports it', async () => {
+		const verified = await begin(harness({ serverVerified: true }));
+		expect(verified.view.published?.verified).toBe(true);
+		const unverified = await begin(harness({ serverVerified: false }));
+		expect(unverified.view.published?.verified).toBe(false);
+		const absent = await begin(harness({ serverVerified: 'absent' }));
+		expect(absent.view.published?.verified).toBe(false);
+	});
+
+	it('re-reads the job when the publish response was lost', async () => {
+		const h = harness({ publishFails: true });
+		const { view } = await begin(h);
+		expect(h.calls.slice(-3)).toEqual(['status', 'publish', 'status']);
+		expect(view.published).toMatchObject({ verified: true, workspaceId: 55 });
+	});
+
+	it('keeps the move unpublished when the publish failed and the server did not publish', async () => {
+		const h = harness();
+		h.api.publish.mockRejectedValueOnce(new Error('network down'));
+		const { view } = await begin(h);
+		expect(view.published).toBeNull();
+		expect(view.job?.error).toBe('network down');
+	});
+
+	it('takes verified from the server when the app restarted after publishing', async () => {
+		const h = harness({
+			statuses: [publishedStatus(false)],
+		});
+		const { view } = await begin(h);
+		expect(h.api.publish).not.toHaveBeenCalled();
+		expect(view.published?.verified).toBe(false);
+	});
+
+	it('refuses a cloud copy made from another revision', async () => {
+		const h = harness({ serverRevision: 'rev-other' });
+		const { view } = await begin(h);
+		expect(view.published).toBeNull();
+		expect(view.job?.error).toMatch(/different revision/);
+	});
+
+	it('refreshes a stored published move from the server', async () => {
+		const h = harness({ serverVerified: false });
+		const { mover } = await begin(h);
+		const stored = loadPersisted(h.storage, CODE);
+		stored.published!.verified = true;
+		savePersisted(h.storage, CODE, stored);
+		await mover.refreshPublished(CODE);
+		expect(loadPersisted(h.storage, CODE).published?.verified).toBe(false);
+	});
+
+	it('does not ask the server with another account', async () => {
+		const h = harness();
+		const { mover } = await begin(h);
+		h.api.status.mockClear();
+		h.user.id = 8;
+		await mover.refreshPublished(CODE);
+		expect(h.api.status).not.toHaveBeenCalled();
+	});
+});
+
+describe('account binding', () => {
+	const interrupted = async (userId: number | null = 7) => {
+		const h = harness({ userId });
+		h.api.presignFile.mockRejectedValueOnce(new Error('stop'));
+		const { mover } = await begin(h);
+		h.calls.length = 0;
+		return { h, mover };
+	};
+
+	it('stores the cloud user id with the job and the published move', async () => {
+		const { h } = await interrupted();
+		expect(loadPersisted(h.storage, CODE).job?.userId).toBe(7);
+		const done = await begin(harness());
+		expect(done.view.published?.userId).toBe(7);
+	});
+
+	it('stops without any request when another account or nobody is signed in', async () => {
+		for (const other of [8, null]) {
+			const { h, mover } = await interrupted();
+			h.user.id = other;
+			expect(mover.view(CODE).accountMismatch).toBe(true);
+			const view = await mover.resume(CODE);
+			expect(view.job?.error).toBe(
+				'This move was started by another account. Sign in as that account to continue, or discard it.',
+			);
+			expect(h.calls).toEqual([]);
+			expect(h.api.status).not.toHaveBeenCalled();
+			expect(h.api.commit).not.toHaveBeenCalled();
+			await mover.retry(CODE);
+			await mover.publishAnyway(CODE);
+			expect(h.calls).toEqual([]);
+		}
+	});
+
+	it('continues when the same account signs back in', async () => {
+		const { h, mover } = await interrupted();
+		h.user.id = 8;
+		await mover.resume(CODE);
+		h.user.id = 7;
+		const view = await mover.resume(CODE);
+		expect(view.published).not.toBeNull();
+	});
+
+	it('discards locally without calling the server as another account', async () => {
+		const { h, mover } = await interrupted();
+		h.user.id = 8;
+		const view = await mover.discard(CODE);
+		expect(h.api.discard).not.toHaveBeenCalled();
+		expect(view.job).toBeNull();
+	});
+});
+
+describe('cancellation', () => {
+	const startMover = async (h: ReturnType<typeof harness>) => {
+		const mover = createMover(h.deps);
+		const dry = await mover.dryRun(CODE, 'Local');
+		const run = () =>
+			mover.start(CODE, 'Local', dry, { cloudName: 'C', personas: [] });
+		return { mover, run };
+	};
+
+	it('does not upload or commit anything when cancelled during the snapshot', async () => {
+		const h = harness();
+		const { mover, run } = await startMover(h);
+		h.native.moveSnapshot.mockImplementationOnce(async () => {
+			void mover.cancel(CODE);
+			return SNAPSHOT;
+		});
+		await run();
+		await mover.cancel(CODE);
+		expect(h.native.moveUnfreeze).toHaveBeenCalledWith(CODE, 'tok-1');
+		expect(h.api.createJob).not.toHaveBeenCalled();
+		expect(h.native.movePut).not.toHaveBeenCalled();
+		expect(h.api.commit).not.toHaveBeenCalled();
+		expect(loadPersisted(h.storage, CODE).job).toBeNull();
+	});
+
+	it('does not go on after a cancel that arrives while freezing', async () => {
+		const h = harness();
+		const { mover, run } = await startMover(h);
+		h.native.moveFreeze.mockImplementationOnce(async () => {
+			void mover.cancel(CODE);
+			return { stopped: 0, token: 'tok-1' };
+		});
+		await run();
+		await mover.cancel(CODE);
+		expect(h.native.moveSnapshot).not.toHaveBeenCalled();
+		expect(h.native.moveUnfreeze).toHaveBeenCalledWith(CODE, 'tok-1');
+		expect(h.api.createJob).not.toHaveBeenCalled();
+	});
+
+	it('stops between file uploads, never confirms or commits, and discards the job', async () => {
+		const h = harness();
+		const { mover, run } = await startMover(h);
+		h.native.movePut.mockImplementation(async (url: string) => {
+			h.calls.push(`put:${url}`);
+			if (url === 'https://s3/sha-a') void mover.cancel(CODE);
+			return { status: 200, body: '' };
+		});
+		await run();
+		await mover.cancel(CODE);
+		expect(h.api.confirmFile).not.toHaveBeenCalled();
+		expect(h.api.presignFile).toHaveBeenCalledTimes(1);
+		expect(h.api.commit).not.toHaveBeenCalled();
+		expect(h.api.discard).toHaveBeenCalledWith('job-1');
+		expect(loadPersisted(h.storage, CODE).job).toBeNull();
+	});
+
+	it('never commits when the last file finished just as the move was cancelled', async () => {
+		const h = harness();
+		const { mover, run } = await startMover(h);
+		h.api.confirmFile.mockImplementation(async (_job, sha) => {
+			h.calls.push(`confirm:${sha}`);
+			if (sha === 'sha-b') void mover.cancel(CODE);
+		});
+		await run();
+		await mover.cancel(CODE);
+		expect(h.api.commit).not.toHaveBeenCalled();
+		expect(h.api.discard).toHaveBeenCalledWith('job-1');
+	});
+});
+
+describe('freeze token and refused files', () => {
+	it('hands the freeze token to the snapshot and back to the unfreeze', async () => {
+		const h = harness();
+		await begin(h);
+		expect(h.native.moveSnapshot).toHaveBeenCalledWith(CODE, 'tok-1');
+		expect(h.native.moveUnfreeze).toHaveBeenCalledWith(CODE, 'tok-1');
+	});
+
+	it('tells the native side which files the server refused so removal asks about them', async () => {
+		const h = harness();
+		h.api.presignFile.mockRejectedValueOnce({
+			response: { status: 422, data: { error: 'file_not_allowed' } },
+		});
+		const { view } = await begin(h);
+		expect(h.native.moveAddRefused).toHaveBeenCalledWith(
+			CODE,
+			'/ws/backups/cloud-move-1',
+			['u1/a.png'],
+		);
+		expect(view.published?.excluded.map((f) => f.reason)).toContain('refused');
 	});
 });

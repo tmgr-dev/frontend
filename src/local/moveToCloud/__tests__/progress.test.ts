@@ -53,6 +53,7 @@ describe('progress', () => {
 					busy: true,
 					canPublishAnyway: false,
 					failedOnServer: false,
+					accountMismatch: false,
 				}).rows.map((r) => [r.id, r.state]),
 			);
 		expect(rowsAt('relations')).toMatchObject({
@@ -121,6 +122,7 @@ describe('progress', () => {
 			busy: true,
 			canPublishAnyway: false,
 			failedOnServer: false,
+			accountMismatch: false,
 		});
 		const states = summary.rows.map((r) => r.state);
 		expect(states).toEqual([
@@ -151,6 +153,7 @@ describe('progress', () => {
 			busy: false,
 			canPublishAnyway: false,
 			failedOnServer: false,
+			accountMismatch: false,
 		});
 		expect(summary.percent).toBe(100);
 	});

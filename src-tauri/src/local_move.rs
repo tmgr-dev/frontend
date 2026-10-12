@@ -1377,25 +1377,6 @@ pub async fn local_source_revision<R: Runtime>(
   with_connection(app, &dbs, code, |conn| revision_of(conn)).await
 }
 
-#[derive(Debug, Serialize)]
-pub struct SourceDigest {
-  pub revision: String,
-  pub full_digest: String,
-}
-
-#[tauri::command]
-pub async fn local_source_digest<R: Runtime>(
-  app: AppHandle<R>,
-  dbs: State<'_, LocalDbs>,
-  code: String,
-) -> Result<SourceDigest, String> {
-  let workspace_dir = PathBuf::from(local_workspaces::find(&app, &code)?.path);
-  with_connection(app, &dbs, code, move |conn| {
-    Ok(SourceDigest { revision: revision_of(conn)?, full_digest: full_digest(conn, &workspace_dir)? })
-  })
-  .await
-}
-
 #[tauri::command]
 pub async fn local_move_snapshot<R: Runtime>(
   app: AppHandle<R>,

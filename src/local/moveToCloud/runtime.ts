@@ -1,9 +1,11 @@
+import store from '@/store';
 import { createLocalProfile, loadLocalProfile } from '@/utils/localProfile';
 import { listLocalWorkspaces, localContext } from '../runtime';
 import { importApi } from './api';
 import { createMover, type Mover } from './flow';
+import type { DecisionDeps, RemoveDeps } from './guards';
 import { readInventory } from './inventory';
-import { browserStorage, type MoveStorage } from './model';
+import { browserStorage } from './model';
 import * as native from './native';
 
 const reader = { id: 0, name: '', email: '' };
@@ -13,6 +15,16 @@ const localWorkspace = async (code: string) => {
 	if (!workspace) throw new Error(`Local workspace ${code} not found`);
 	return workspace;
 };
+
+export const currentUserId = (): number | null => {
+	const id = Number(store.state.user?.id);
+	return Number.isFinite(id) && id > 0 ? id : null;
+};
+
+export const userSnapshot = () => ({
+	userId: currentUserId(),
+	signedIn: !!store.state.token?.token,
+});
 
 let shared: Mover | null = null;
 
@@ -30,30 +42,22 @@ export const getMover = (): Mover => {
 				readInventory(
 					(await localContext(await localWorkspace(code), reader)).db,
 				),
+			userId: currentUserId,
 		});
 	}
 	return shared;
 };
 
-export const removeDeps = {
-	storage: browserStorage as MoveStorage,
+export const removeDeps: RemoveDeps = {
+	storage: browserStorage,
 	sourceRevision: native.sourceRevision,
+	moveArchive: native.moveArchive,
 	workspaceRemove: native.workspaceRemove,
+	session: () => ({
+		userId: currentUserId(),
+		token: store.state.token?.token ?? null,
+		apiBase: import.meta.env.VITE_API_BASE_URL,
+	}),
 };
 
-/** Saves one attachment of the local workspace through the browser's download flow; reading changes nothing. */
-export const exportLocalFile = async (
-	code: string,
-	file: { key: string; name: string },
-): Promise<void> => {
-	const context = await localContext(await localWorkspace(code), reader);
-	const blob = await context.files.read(file.key);
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement('a');
-	link.href = url;
-	link.download = file.name;
-	document.body.appendChild(link);
-	link.click();
-	link.remove();
-	setTimeout(() => URL.revokeObjectURL(url), 10_000);
-};
+export const decisionDeps: DecisionDeps = { storage: browserStorage, native };

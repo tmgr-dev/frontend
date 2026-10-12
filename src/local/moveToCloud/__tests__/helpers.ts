@@ -133,19 +133,48 @@ export const verifiedStatus = (
 	...extra,
 });
 
+export const publishedStatus = (
+	verified: boolean | 'absent' = true,
+	sourceRevision = 'rev-1',
+): ImportStatus => {
+	const status = verifiedStatus({
+		status: 'published',
+		verified: verified === 'absent' ? undefined : verified,
+		source_revision: sourceRevision,
+	});
+	if (verified === 'absent') delete status.verified;
+	return status;
+};
+
 export const harness = (
 	overrides: {
 		statuses?: ImportStatus[];
 		inventory?: LocalInventory;
+		serverVerified?: boolean | 'absent';
+		serverRevision?: string;
+		publishFails?: boolean;
+		userId?: number | null;
 	} = {},
 ) => {
 	const calls: string[] = [];
 	const log = (name: string) => calls.push(name);
 	const statuses = [...(overrides.statuses ?? [verifiedStatus()])];
+	let serverPublished = false;
+	const user = { id: overrides.userId === undefined ? 7 : overrides.userId };
 	const native = {
-		moveFreeze: jest.fn(async () => (log('freeze'), 1)),
-		moveUnfreeze: jest.fn(async () => void log('unfreeze')),
-		moveSnapshot: jest.fn(async () => (log('snapshot'), SNAPSHOT)),
+		moveFreeze: jest.fn(
+			async () => (log('freeze'), { stopped: 1, token: 'tok-1' }),
+		),
+		moveUnfreeze: jest.fn(
+			async (_code: string, _token: string) => void log('unfreeze'),
+		),
+		moveSnapshot: jest.fn(
+			async (_code: string, _token: string) => (log('snapshot'), SNAPSHOT),
+		),
+		moveAddRefused: jest.fn(
+			async (_code: string, _dir: string, _keys: string[]) =>
+				void log('addRefused'),
+		),
 		moveBuildBundle: jest.fn(async () => {
 			log('build');
 			return {
@@ -214,17 +243,27 @@ export const harness = (
 		commit: jest.fn(
 			async () => (log('commit'), verifiedStatus({ status: 'running' })),
 		),
-		status: jest.fn(
-			async () => (
-				log('status'), statuses.length > 1 ? statuses.shift()! : statuses[0]
-			),
-		),
+		status: jest.fn(async (): Promise<ImportStatus> => {
+			log('status');
+			if (serverPublished)
+				return publishedStatus(
+					overrides.serverVerified,
+					overrides.serverRevision,
+				);
+			return statuses.length > 1 ? statuses.shift()! : statuses[0];
+		}),
 		retry: jest.fn(
 			async () => (log('retry'), verifiedStatus({ status: 'running' })),
 		),
-		publish: jest.fn(
-			async () => (log('publish'), verifiedStatus({ status: 'published' })),
-		),
+		publish: jest.fn(async (_job?: string, _accept?: boolean) => {
+			log('publish');
+			serverPublished = true;
+			if (overrides.publishFails) throw new Error('network down');
+			return publishedStatus(
+				overrides.serverVerified,
+				overrides.serverRevision,
+			);
+		}),
 		discard: jest.fn(async () => void log('discard')),
 	} satisfies ImportApi & Record<string, any>;
 	const storage = memoryStorage();
@@ -237,6 +276,7 @@ export const harness = (
 		sleep: async (ms) => void sleeps.push(ms),
 		profileUuid: async () => 'prof',
 		inventory: async () => overrides.inventory ?? INVENTORY,
+		userId: () => user.id,
 	};
-	return { deps, native, api, storage, calls, sleeps };
+	return { deps, native, api, storage, calls, sleeps, user };
 };

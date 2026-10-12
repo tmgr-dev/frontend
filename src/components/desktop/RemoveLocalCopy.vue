@@ -2,8 +2,9 @@
 	<div class="flex flex-col gap-3" data-testid="remove-local-copy">
 		<p class="text-sm text-ink-subtle">
 			Copied to your cloud workspace <strong>{{ published.name }}</strong> on
-			{{ movedOn }}. Removing the local copy deletes it from this computer; the
-			archive in the backups folder stays.
+			{{ movedOn }}. Removing the local copy deletes it from this computer. A
+			fresh archive of the current data is created first and stays in the
+			backups folder.
 		</p>
 
 		<ul class="flex flex-col gap-1.5 text-sm">
@@ -69,6 +70,9 @@
 				Remove local copy…
 			</Button>
 		</div>
+		<p v-if="otherAccount" role="alert" class="text-sm text-destructive">
+			{{ otherAccountMessage }}
+		</p>
 		<p v-if="error" role="alert" class="break-words text-sm text-destructive">
 			{{ error }}
 		</p>
@@ -91,10 +95,13 @@
 	import { useToast } from '@/components/ui/toast';
 	import { formatMoveDate } from '@/local/moveToCloud/banner';
 	import {
+		exportExcludedFile,
 		recordArchive,
+		removalAccountMismatch,
+		REMOVE_ACCOUNT_MESSAGE,
 		removeLocalCopy,
 		removeLocalCopyGuards,
-		resolveExcludedFile,
+		setLostDecision,
 	} from '@/local/moveToCloud/guards';
 	import {
 		browserStorage,
@@ -104,7 +111,12 @@
 		type PublishedMove,
 	} from '@/local/moveToCloud/model';
 	import { moveArchive, sourceRevision } from '@/local/moveToCloud/native';
-	import { exportLocalFile, removeDeps } from '@/local/moveToCloud/runtime';
+	import {
+		currentUserId,
+		decisionDeps,
+		getMover,
+		removeDeps,
+	} from '@/local/moveToCloud/runtime';
 	import {
 		activeLocalWorkspace,
 		listLocalWorkspaces,
@@ -160,7 +172,18 @@
 					error.value = message(e);
 				}
 			};
-			onMounted(refreshRevision);
+			const otherAccount = computed(() =>
+				removalAccountMismatch(published.value, currentUserId()),
+			);
+			onMounted(async () => {
+				await refreshRevision();
+				try {
+					await getMover().refreshPublished(props.workspace.code);
+					reload();
+				} catch {
+					/* offline: the native check decides at removal time */
+				}
+			});
 
 			const guards = computed(() =>
 				removeLocalCopyGuards({
@@ -192,25 +215,23 @@
 
 			const exportFile = (file: ExcludedFile) =>
 				run(async () => {
-					await exportLocalFile(props.workspace.code, file);
-					resolveExcludedFile(
-						browserStorage,
-						props.workspace.code,
-						file.id,
-						'exported',
-					);
+					await exportExcludedFile(decisionDeps, props.workspace.code, file);
 					reload();
 				});
 
-			const acceptLost = (file: ExcludedFile, checked: boolean) => {
-				resolveExcludedFile(
-					browserStorage,
-					props.workspace.code,
-					file.id,
-					checked ? 'lost' : null,
-				);
-				reload();
-			};
+			const acceptLost = (file: ExcludedFile, checked: boolean) =>
+				run(async () => {
+					try {
+						await setLostDecision(
+							decisionDeps,
+							props.workspace.code,
+							file,
+							checked,
+						);
+					} finally {
+						reload();
+					}
+				});
 
 			const remove = (typedName: string) =>
 				run(async () => {
@@ -231,13 +252,17 @@
 
 			return {
 				acceptLost,
-				allowed: computed(() => guards.value.every((g) => g.ok)),
+				allowed: computed(
+					() => !otherAccount.value && guards.value.every((g) => g.ok),
+				),
 				busy,
 				confirmOpen,
 				createArchive,
 				error,
 				exportFile,
 				guards,
+				otherAccount,
+				otherAccountMessage: REMOVE_ACCOUNT_MESSAGE,
 				movedOn: computed(() => formatMoveDate(published.value.at)),
 				published,
 				reasonLabel,

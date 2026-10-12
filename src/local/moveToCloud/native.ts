@@ -41,8 +41,14 @@ export interface MovePutResult {
 export interface MoveArchive {
 	path: string;
 	revision: string;
+	full_digest: string;
 	entries: number;
 	verified: true;
+}
+
+export interface MoveFrozen {
+	stopped: number;
+	token: string;
 }
 
 export const WORKSPACE_MOVING = 'workspace is moving';
@@ -60,19 +66,22 @@ export const isWorkspaceMoving = (error: unknown): boolean =>
 		WORKSPACE_MOVING,
 	);
 
-/** Returns how many running timers were stopped. */
-export const moveFreeze = (code: string): Promise<number> =>
-	invoke<number>('local_move_freeze', { code });
+/** Takes the workspace's operation lock; the token is the only thing that can release it. */
+export const moveFreeze = (code: string): Promise<MoveFrozen> =>
+	invoke<MoveFrozen>('local_move_freeze', { code });
 
-export const moveUnfreeze = (code: string): Promise<void> =>
-	invoke<void>('local_move_unfreeze', { code });
+export const moveUnfreeze = (code: string, token: string): Promise<void> =>
+	invoke<void>('local_move_unfreeze', { code, token });
 
 export const sourceRevision = (code: string): Promise<string> =>
 	invoke<string>('local_source_revision', { code });
 
-/** Requires the workspace to be frozen. */
-export const moveSnapshot = (code: string): Promise<MoveSnapshot> =>
-	invoke<MoveSnapshot>('local_move_snapshot', { code });
+/** Requires the freeze token. */
+export const moveSnapshot = (
+	code: string,
+	token: string,
+): Promise<MoveSnapshot> =>
+	invoke<MoveSnapshot>('local_move_snapshot', { code, token });
 
 /** An empty mimeAllowlist allows every type; entries are `type/subtype` or `type/*`. */
 export const moveBuildBundle = (args: {
@@ -95,9 +104,47 @@ export const movePut = (
 export const moveArchive = (code: string): Promise<MoveArchive> =>
 	invoke<MoveArchive>('local_move_archive', { code });
 
+/** Files the server refused during the upload; removal then asks for a decision on each. */
+export const moveAddRefused = (
+	code: string,
+	dir: string,
+	keys: string[],
+): Promise<void> => invoke<void>('local_move_add_refused', { code, dir, keys });
+
+/** Opens the system save dialog; null when the user cancels. */
+export const movePickExportTarget = (
+	fileName: string,
+): Promise<string | null> =>
+	invoke<string | null>('local_move_pick_export_target', { fileName });
+
+export const moveExportFile = (args: {
+	code: string;
+	dir: string;
+	key: string;
+	targetPath: string;
+}): Promise<void> => invoke<void>('local_move_export_file', args);
+
+export const moveAcceptLost = (
+	code: string,
+	dir: string,
+	key: string,
+): Promise<void> => invoke<void>('local_move_accept_lost', { code, dir, key });
+
+export const moveClearDecision = (
+	code: string,
+	dir: string,
+	key: string,
+): Promise<void> =>
+	invoke<void>('local_move_clear_decision', { code, dir, key });
+
+/** The native side re-checks everything; its refusal text is the message. */
 export const workspaceRemove = (args: {
 	code: string;
 	typedName: string;
 	expectedRevision: string;
 	archivePath: string;
+	dir: string;
+	jobUuid: string;
+	apiBase: string;
+	token: string;
 }): Promise<void> => invoke<void>('local_workspace_remove', args);

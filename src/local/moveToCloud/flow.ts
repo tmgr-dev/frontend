@@ -23,12 +23,22 @@ import {
 	type PersistedMove,
 	type PublishedMove,
 } from './model';
-import type { MoveBundle, MovePutResult, MoveSnapshot } from './native';
+import type {
+	MoveBundle,
+	MoveFrozen,
+	MovePutResult,
+	MoveSnapshot,
+} from './native';
+
+export const ACCOUNT_MISMATCH_MESSAGE =
+	'This move was started by another account. Sign in as that account to continue, or discard it.';
+export const CANCELLED_MESSAGE = 'Move cancelled';
 
 export interface MoveNative {
-	moveFreeze(code: string): Promise<number>;
-	moveUnfreeze(code: string): Promise<void>;
-	moveSnapshot(code: string): Promise<MoveSnapshot>;
+	moveFreeze(code: string): Promise<MoveFrozen>;
+	moveUnfreeze(code: string, token: string): Promise<void>;
+	moveSnapshot(code: string, token: string): Promise<MoveSnapshot>;
+	moveAddRefused(code: string, dir: string, keys: string[]): Promise<void>;
 	moveBuildBundle(args: {
 		code: string;
 		dir: string;
@@ -52,6 +62,7 @@ export interface MoveDeps {
 	sleep(ms: number): Promise<void>;
 	profileUuid(): Promise<string>;
 	inventory(code: string): Promise<LocalInventory>;
+	userId(): number | null;
 }
 
 export interface PersonaChoice {
@@ -87,6 +98,7 @@ export interface MoveView {
 	busy: boolean;
 	canPublishAnyway: boolean;
 	failedOnServer: boolean;
+	accountMismatch: boolean;
 }
 
 export const STEP_POLL_START_MS = 1000;
@@ -136,6 +148,15 @@ export const createMover = (deps: MoveDeps) => {
 	const listeners = new Set<(view: MoveView) => void>();
 	const cancelled = new Set<string>();
 
+	const accountMismatch = (job: MoveJob | null) =>
+		!!job && job.userId != null && deps.userId() !== job.userId;
+	const assertAccount = (job: MoveJob | null) => {
+		if (accountMismatch(job)) throw new Error(ACCOUNT_MISMATCH_MESSAGE);
+	};
+	const ensureActive = (code: string) => {
+		if (cancelled.has(code)) throw new Error(CANCELLED_MESSAGE);
+	};
+
 	const load = (code: string) => loadPersisted(storage, code);
 	const save = (code: string, state: PersistedMove) =>
 		savePersisted(storage, code, state);
@@ -153,6 +174,7 @@ export const createMover = (deps: MoveDeps) => {
 			filesTotal: job ? new Set(job.staged.map((f) => f.sha256)).size : 0,
 			busy: running.has(code),
 			failedOnServer: status?.status === 'failed',
+			accountMismatch: accountMismatch(job),
 			canPublishAnyway:
 				status?.status === 'failed' &&
 				status.phase === 'verify' &&
@@ -213,21 +235,27 @@ export const createMover = (deps: MoveDeps) => {
 	};
 
 	const snapshotPhase = async (code: string, job: MoveJob) => {
-		let stopped = 0;
+		let frozen: MoveFrozen | null = null;
 		let snapshot: MoveSnapshot | null = null;
 		let failure: unknown = null;
 		try {
-			stopped = await native.moveFreeze(code);
-			snapshot = await native.moveSnapshot(code);
+			ensureActive(code);
+			frozen = await native.moveFreeze(code);
+			ensureActive(code);
+			snapshot = await native.moveSnapshot(code, frozen.token);
 		} catch (error) {
 			failure = error;
 		}
-		try {
-			await native.moveUnfreeze(code);
-		} catch (error) {
-			failure ??= error;
+		if (frozen) {
+			try {
+				await native.moveUnfreeze(code, frozen.token);
+			} catch (error) {
+				failure ??= error;
+			}
 		}
 		if (failure) throw failure;
+		ensureActive(code);
+		const stopped = frozen!.stopped;
 		const inventory = await deps.inventory(code).catch(() => null);
 		const names = new Map<number, string>(
 			(inventory?.files ?? []).map((f) => [f.id, f.name]),
@@ -248,6 +276,7 @@ export const createMover = (deps: MoveDeps) => {
 	};
 
 	const buildPhase = async (code: string, job: MoveJob) => {
+		ensureActive(code);
 		const bundle = await native.moveBuildBundle({
 			code,
 			dir: job.dir!,
@@ -275,18 +304,22 @@ export const createMover = (deps: MoveDeps) => {
 	};
 
 	const putOrThrow = async (
+		code: string,
 		what: string,
 		url: string,
 		headers: Record<string, string>,
 		path: string,
 	) => {
+		ensureActive(code);
 		const result = await native.movePut(url, headers, path);
+		ensureActive(code);
 		if (result.status < 200 || result.status >= 300) {
 			throw new Error(`${what} failed (HTTP ${result.status})`);
 		}
 	};
 
 	const uploadBundlePhase = async (code: string, job: MoveJob) => {
+		ensureActive(code);
 		const created = await api.createJob(job.request!);
 		update(code, (j) => {
 			j.jobId = created.job_id;
@@ -294,11 +327,13 @@ export const createMover = (deps: MoveDeps) => {
 		});
 		if (created.status === 'created' && created.upload_url) {
 			await putOrThrow(
+				code,
 				'Bundle upload',
 				created.upload_url,
 				created.upload_headers ?? {},
 				job.bundlePath!,
 			);
+			ensureActive(code);
 			await api.bundleUploaded(created.job_id);
 		}
 		const beyondUpload = ['running', 'failed', 'verified', 'published'];
@@ -321,7 +356,7 @@ export const createMover = (deps: MoveDeps) => {
 		let sinceSave = 0;
 		for (const file of unique.values()) {
 			if (confirmed.has(file.sha256)) continue;
-			if (cancelled.has(code)) throw new Error('Move cancelled');
+			ensureActive(code);
 			try {
 				const target = await api.presignFile(jobId, {
 					sha256: file.sha256,
@@ -330,12 +365,14 @@ export const createMover = (deps: MoveDeps) => {
 				});
 				if (target.upload_url) {
 					await putOrThrow(
+						code,
 						`Upload of ${file.key}`,
 						target.upload_url,
 						target.upload_headers ?? {},
 						`${job.dir}/files/${file.key}`,
 					);
 				}
+				ensureActive(code);
 				await api.confirmFile(jobId, file.sha256);
 			} catch (error) {
 				if (isFileNotAllowed(error)) {
@@ -352,6 +389,13 @@ export const createMover = (deps: MoveDeps) => {
 					j.confirmed = [...confirmed];
 				});
 			} else emit(code);
+		}
+		ensureActive(code);
+		if (refused.size) {
+			const keys = job.staged
+				.filter((f) => refused.has(f.sha256))
+				.map((f) => f.key);
+			await native.moveAddRefused(code, job.dir!, keys);
 		}
 		update(code, (j) => {
 			j.confirmed = [...confirmed];
@@ -380,7 +424,7 @@ export const createMover = (deps: MoveDeps) => {
 		let delay = STEP_POLL_START_MS;
 		let failures = 0;
 		for (;;) {
-			if (cancelled.has(code)) throw new Error('Move cancelled');
+			ensureActive(code);
 			try {
 				const status = await api.status(jobId);
 				failures = 0;
@@ -398,25 +442,50 @@ export const createMover = (deps: MoveDeps) => {
 	const finishPublished = (
 		code: string,
 		jobId: string,
-		workspaceId: number | null,
+		status: ImportStatus,
 		verified: boolean,
 	) => {
 		const state = load(code);
 		const job = state.job;
+		if (
+			job?.revision &&
+			status.source_revision !== undefined &&
+			status.source_revision !== job.revision
+		) {
+			throw new Error(
+				'The cloud copy was made from a different revision of this workspace.',
+			);
+		}
 		state.published = {
 			jobId,
-			workspaceId,
+			workspaceId: status.workspace_id ?? null,
 			name: job?.input.cloudName ?? state.published?.name ?? '',
 			at: deps.now().toISOString(),
 			revision: job?.revision ?? '',
 			verified,
 			excluded: job?.excluded ?? [],
 			archive: null,
+			dir: job?.dir ?? null,
+			userId: job?.userId ?? deps.userId(),
 		};
 		state.job = null;
 		statuses.delete(code);
 		save(code, state);
 		emit(code);
+	};
+
+	const publishFromServer = async (jobId: string): Promise<ImportStatus> => {
+		let failure: unknown = null;
+		try {
+			await api.publish(jobId);
+		} catch (error) {
+			failure = error;
+		}
+		const status = await api.status(jobId);
+		if (status.status !== 'published') {
+			throw failure ?? new Error('The server has not published the move yet.');
+		}
+		return status;
 	};
 
 	const afterStatus = async (
@@ -425,15 +494,11 @@ export const createMover = (deps: MoveDeps) => {
 		status: ImportStatus,
 	) => {
 		if (status.status === 'verified') {
-			const result = await api.publish(jobId);
-			finishPublished(
-				code,
-				jobId,
-				result?.workspace_id ?? status.workspace_id ?? null,
-				true,
-			);
+			ensureActive(code);
+			const published = await publishFromServer(jobId);
+			finishPublished(code, jobId, published, published.verified === true);
 		} else if (status.status === 'published') {
-			finishPublished(code, jobId, status.workspace_id ?? null, true);
+			finishPublished(code, jobId, status, status.verified === true);
 		}
 	};
 
@@ -463,6 +528,8 @@ export const createMover = (deps: MoveDeps) => {
 		for (;;) {
 			const job = load(code).job;
 			if (!job) return;
+			assertAccount(job);
+			ensureActive(code);
 			if (job.error) update(code, (j) => (j.error = null));
 			const step = job.step;
 			if (step === 'started') await snapshotPhase(code, job);
@@ -471,6 +538,7 @@ export const createMover = (deps: MoveDeps) => {
 				await uploadBundlePhase(code, job);
 			else if (step === 'bundleUploaded') await uploadFilesPhase(code, job);
 			else if (step === 'filesUploaded') {
+				ensureActive(code);
 				await api.commit(job.jobId!);
 				update(code, (j) => {
 					j.step = 'committed';
@@ -509,6 +577,7 @@ export const createMover = (deps: MoveDeps) => {
 			confirmed: [],
 			startedAt: deps.now().toISOString(),
 			error: null,
+			userId: deps.userId(),
 		};
 		save(code, state);
 		return guarded(code, () => advance(code));
@@ -520,6 +589,7 @@ export const createMover = (deps: MoveDeps) => {
 		guarded(code, async () => {
 			const job = load(code).job;
 			if (!job) return;
+			assertAccount(job);
 			if (job.step === 'committed' && statuses.get(code)?.status === 'failed') {
 				await api.retry(job.jobId!);
 				statuses.delete(code);
@@ -531,11 +601,17 @@ export const createMover = (deps: MoveDeps) => {
 		guarded(code, async () => {
 			const job = load(code).job;
 			if (!job?.jobId) return;
+			assertAccount(job);
 			const result = await api.publish(job.jobId, true);
 			finishPublished(
 				code,
 				job.jobId,
-				result?.workspace_id ?? statuses.get(code)?.workspace_id ?? null,
+				{
+					...(statuses.get(code) as ImportStatus),
+					...result,
+					workspace_id:
+						result?.workspace_id ?? statuses.get(code)?.workspace_id ?? null,
+				},
 				false,
 			);
 		});
@@ -545,7 +621,7 @@ export const createMover = (deps: MoveDeps) => {
 		while (running.has(code)) await deps.sleep(100);
 		return guarded(code, async () => {
 			const job = load(code).job;
-			if (job?.jobId) {
+			if (job?.jobId && !accountMismatch(job)) {
 				try {
 					await api.discard(job.jobId);
 				} catch (error) {
@@ -560,8 +636,24 @@ export const createMover = (deps: MoveDeps) => {
 		});
 	};
 
+	const refreshPublished = async (code: string) => {
+		const state = load(code);
+		const published = state.published;
+		if (!published || state.job) return;
+		if (published.userId != null && deps.userId() !== published.userId) return;
+		const status = await api.status(published.jobId);
+		published.verified =
+			status.status === 'published' &&
+			status.verified === true &&
+			(status.source_revision === undefined ||
+				status.source_revision === published.revision);
+		save(code, state);
+		emit(code);
+	};
+
 	return {
 		view,
+		refreshPublished,
 		dryRun,
 		start,
 		resume,
