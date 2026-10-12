@@ -21,7 +21,7 @@ export type TourGroup =
 
 export type TourTrigger =
   | { kind: 'first_run'; route?: 'human' | 'agent' }
-  | { kind: 'first_visit'; routeName: string }
+  | { kind: 'first_visit'; routeName: string; unlessFact?: string }
   | { kind: 'feature_enabled'; module: string }
   | {
       kind: 'event';
@@ -48,6 +48,7 @@ export interface StepDef {
   anchorScope?: 'eventTask';
   requiresModules?: string[];
   route?: { name: string; params?: 'currentWorkspace' };
+  takeMeRoute?: { name: string; params?: 'currentWorkspace' };
   title: string;
   body: string;
   waitFor?: { event: string; where?: Record<string, string | number> };
@@ -78,7 +79,7 @@ export interface TourState {
   generation: number;
 }
 
-export type TipsMode = 'all' | 'minimal' | 'off';
+export type TipsMode = 'auto' | 'hub_only' | 'off';
 
 export interface OnboardingState {
   intent: string | null;
