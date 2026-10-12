@@ -50,7 +50,7 @@
 			);
 
 			const confirm = () => {
-				if (canConfirm.value) emit('confirm');
+				if (canConfirm.value) emit('confirm', typed.value.trim());
 			};
 
 			return { typed, canConfirm, confirm };

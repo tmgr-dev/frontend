@@ -447,14 +447,14 @@
 		}, 100);
 	}
 
-	async function deleteWorkspace() {
+	async function deleteWorkspace(typedName: string) {
 		const workspaceId = activeWorkspace.value?.value;
 		if (!workspaceId || isDeleting.value) return;
 		isDeleting.value = true;
 		try {
 			await deleteWorkspaceAction(
 				typeof workspaceId === 'string' ? parseInt(workspaceId) : workspaceId,
-				activeWorkspaceName.value,
+				typedName,
 			);
 			isDeleteDialogOpen.value = false;
 			await updateUserSettings();

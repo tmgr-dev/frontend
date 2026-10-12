@@ -25,4 +25,8 @@ describe('isConfirmNameMatch', () => {
 	it('rejects empty typed value', () => {
 		expect(isConfirmNameMatch('', 'My WS')).toBe(false);
 	});
+
+	it('ignores surrounding spaces in the expected name', () => {
+		expect(isConfirmNameMatch('My WS', ' My WS ')).toBe(true);
+	});
 });
