@@ -33,6 +33,8 @@ describe('classify', () => {
 			'user/store-avatar',
 			'password/reset',
 			'stats',
+			'onboarding',
+			'onboarding/tours/start.nav',
 		]) {
 			expect(classify('GET', url, true)).toBe('server');
 		}
@@ -196,5 +198,16 @@ describe('pages endpoints in the local API', () => {
 		]) {
 			expect(api.match(method, url)).not.toBeNull();
 		}
+	});
+});
+
+describe('classify onboarding', () => {
+	it('answers every onboarding verb itself without an account and never sends it to a local workspace', () => {
+		for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+			for (const url of ['onboarding', 'onboarding/preferences', 'onboarding/tours/start.nav', 'onboarding/facts']) {
+				expect(classify(method, url, false, undefined, true)).toBe('guest');
+			}
+		}
+		expect(classify('GET', 'onboardings', true)).toBe('local');
 	});
 });

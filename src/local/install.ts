@@ -22,6 +22,7 @@ import {
 import { createLocalApi } from './api';
 import { classify, crossesWorkspaces } from './classify';
 import { dispatchLocal } from './dispatch';
+import { createOnboardingHandler } from './onboarding';
 import { normalizePath } from './router';
 import {
 	CURRENT_WORKSPACE,
@@ -294,6 +295,11 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 	const identity = async () =>
 		localIdentity(hooks.profileName?.() ?? '', (await ensureActiveWorkspace())?.id ?? null);
 
+	const onboarding = createOnboardingHandler({
+		getItem: (key) => localStorage.getItem(key),
+		setItem: (key, value) => localStorage.setItem(key, value),
+	});
+
 	const refuseAccount: AxiosAdapter = async (config) => respond(config, 403, REQUIRES_ACCOUNT);
 
 	const guestAdapter: AxiosAdapter = async (config) => {
@@ -331,6 +337,10 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		}
 		if (path === 'notifications/unread-count') return respond(config, 200, { count: 0 });
 		if (path === 'personas') return respond(config, 200, { data: [] });
+		if (/^onboarding(\/|$)/.test(path)) {
+			const result = onboarding(verb, path, body);
+			return respond(config, result.status, result.data);
+		}
 		return respond(config, 403, REQUIRES_ACCOUNT);
 	};
 

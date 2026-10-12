@@ -33,6 +33,7 @@ const ACCOUNT = [
 	/^stats$/,
 	/^error-reports$/,
 	/^v2\/user\/settings$/,
+	/^onboarding(\/|$)/,
 ];
 
 /** Calls an account-less session answers itself, so the app boots the same way it does signed in. */
@@ -45,6 +46,7 @@ const GUEST: [RegExp, string[]][] = [
 	[/^notifications$/, ['GET']],
 	[/^notifications\/unread-count$/, ['GET']],
 	[/^personas$/, ['GET']],
+	[/^onboarding(\/|$)/, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']],
 ];
 
 /** Sign-in itself: the only calls an account-less session may send, because they start the account. */

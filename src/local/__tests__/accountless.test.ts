@@ -127,6 +127,16 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 		expect(sent).toEqual([]);
 	});
 
+	it('serves onboarding from local storage without touching the network', async () => {
+		const put = await client.put('onboarding/preferences', { tips_mode: 'off' });
+		expect(put.data.data.tips_mode).toBe('off');
+		const got = await client.get('onboarding');
+		expect(got.data.data).toMatchObject({ tips_mode: 'off', tours: {}, facts: {} });
+		const reset = await client.delete('onboarding/tours');
+		expect(reset.data.data.tours_generation).toBe(1);
+		expect(sent).toEqual([]);
+	});
+
 	it('refuses an account route with requires_account', async () => {
 		for (const [method, url] of [
 			['POST', 'notify-tokens'],
