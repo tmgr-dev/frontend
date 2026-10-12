@@ -117,7 +117,8 @@
 						modulesKnown: () => !!store.getters['featureToggles/modulesKnown'],
 						canManageModules: store.getters['featureToggles/canManageModules'] === true,
 						account: store.getters.isLocalOnly ? 'local' : 'cloud',
-						emailVerified: !!store.state.user?.email_verified_at,
+						emailVerified: !!(store.state.user as { email_verified_at?: string | null } | undefined)
+							?.email_verified_at,
 					},
 				),
 			);
