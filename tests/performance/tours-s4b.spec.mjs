@@ -292,29 +292,101 @@ driveTour('time.pomodoro: take me to the task, anchors appear after enabling', a
   expect(errors).toEqual([]);
 });
 
-driveTour('time.export: select, open actions, export panel dialog, download', async ({ page, size }) => {
-  const { writes, calls, errors } = await boot(page, size);
+driveTour('time.export: select, open actions, export panel, download', async ({ page, size }) => {
+  const exportUrls = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && /\/api\/exports\/tasks\//.test(request.url())) exportUrls.push(request.url());
+  });
+  const { writes, errors } = await boot(page, size);
   await startFromHub(page, 'time.export');
   await expect(page).toHaveURL(/\/demo\/list$/);
   await expectClear(page, 'list.select');
-  await shots(page, 'time.export-s1', size);
+  await shots(page, 'fu-ti5-s1', size);
   await page.locator('[data-tour="list.select"]').first().click();
   await page.getByRole('button', { name: 'Select all' }).click();
   await attached(page, ['list.process']);
   await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s2');
   await expect(popover(page)).toContainText('Open actions');
-  await shots(page, 'time.export-s2', size);
+  await shots(page, 'fu-ti5-s2', size);
   await page.locator('[data-tour="list.process"]').first().click();
   await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s3');
   await attached(page, ['export.panel', 'export.download']);
+  await expect(page.locator('[data-tour="export.panel"]').first()).toBeVisible();
   await expect(popover(page)).toContainText('Export settings');
-  await shots(page, 'time.export-s3-panel', size);
+  await shots(page, 'fu-ti5-s3-panel', size);
   await primary(page, 'Next').click();
   await expect.poll(() => lastWrite(writes, 'time.export')?.step_id).toBe('s4');
-  await shots(page, 'time.export-s4', size);
+  await shots(page, 'fu-ti5-s4', size);
+  await page.locator('[data-tour="export.download"]').first().click();
+  await expect.poll(() => exportUrls.length).toBe(1);
+  await expect.poll(() => lastWrite(writes, 'time.export')?.status).toBe('completed');
+  await shots(page, 'fu-ti5-done', size);
   expect(errors).toEqual([]);
-  expect(calls).toBeDefined();
 }, { phone: false });
+
+const openExportModal = async (page) => {
+  await page.goto('/demo/list');
+  await page.locator('[data-tour="list.select"]').first().click();
+  await page.getByRole('button', { name: 'Select all' }).click();
+  await page.locator('[data-tour="list.process"]').first().click();
+};
+
+e2e('export panel: no AI checkbox, untouched request equals the backend defaults, changes are sent', async ({ page }) => {
+  const size = SIZES[0];
+  const exportUrls = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && /\/api\/exports\/tasks\//.test(request.url())) exportUrls.push(request.url());
+  });
+  const { errors } = await boot(page, size);
+  await openExportModal(page);
+  const panel = page.locator('[data-tour="export.panel"]').first();
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toContainText(/AI|explanation/i);
+  await expect(page.getByText(/AI explanations/i)).toHaveCount(0);
+  await expect(panel.getByLabel('Zero expected hours on off-days')).not.toBeChecked();
+  await expect(panel.getByLabel('Parse date from task title')).toBeChecked();
+  await expect(panel.getByLabel('Round hours up')).not.toBeChecked();
+  await shoot(page, 'fu-ti5-panel-defaults', size, 'light');
+  await shoot(page, 'fu-ti5-panel-defaults', size, 'dark');
+  await setScheme(page, 'light');
+  await page.locator('[data-tour="export.download"]').first().click();
+  await expect.poll(() => exportUrls.length).toBe(1);
+  const first = new URL(exportUrls[0]);
+  expect(first.pathname).toMatch(/\/exports\/tasks\/csv$/);
+  for (const key of first.searchParams.keys()) expect(key, key).toMatch(/^(ids\[\d+\]|per_hour)$/);
+  for (const key of ['zero_expected_weekends', 'round_hours_up', 'parse_date_from_title', 'weekend_days[0]', 'custom_holidays[0]', 'include_explanations', 'week_start'])
+    expect(first.searchParams.has(key), key).toBe(false);
+
+  await openExportModal(page);
+  await panel.getByLabel('Zero expected hours on off-days').check();
+  await panel.getByLabel('Parse date from task title').uncheck();
+  await panel.getByLabel('Round hours up').check();
+  await panel.locator('input[type="date"]').fill('2026-10-12');
+  await panel.getByRole('button', { name: 'Add' }).click();
+  await shoot(page, 'fu-ti5-panel-changed', size, 'light');
+  await page.locator('[data-tour="export.download"]').first().click();
+  await expect.poll(() => exportUrls.length).toBe(2);
+  const second = new URL(exportUrls[1]).searchParams;
+  expect(second.get('zero_expected_weekends')).toBe('true');
+  expect(second.get('parse_date_from_title')).toBe('false');
+  expect(second.get('round_hours_up')).toBe('true');
+  expect(second.get('custom_holidays[0]')).toBe('2026-10-12');
+  expect(second.has('include_explanations')).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+e2e('export panel and time.export are absent when the exports module is off', async ({ page }) => {
+  const size = SIZES[0];
+  const { errors } = await boot(page, size, { modules: ['pages', 'routines'] });
+  await openExportModal(page);
+  await expect(page.getByText('Batch Actions')).toBeVisible();
+  await expect(page.locator('[data-tour="export.panel"]')).toHaveCount(0);
+  await shoot(page, 'fu-ti5-module-off', size, 'light');
+  await page.keyboard.press('Escape');
+  await page.goto('/demo/getting-started');
+  await expect(page.locator('[data-tour-id="time.export"]')).toContainText('Turn on Exports');
+  expect(errors).toEqual([]);
+});
 
 driveTour('pages.first: new page advances to the page tree', async ({ page, size, mobile }) => {
   const { writes, calls, errors } = await boot(page, size);
