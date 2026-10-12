@@ -57,7 +57,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
-	import { errorMessageFrom } from '@/utils/emailVerification';
+	import { errorMessageFrom, httpErrorInfo } from '@/utils/emailVerification';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import {
 		CircleCheckBigIcon,
@@ -459,12 +459,21 @@
 			isDeleteDialogOpen.value = false;
 			await updateUserSettings();
 		} catch (error) {
+			const { status, message } = httpErrorInfo(error);
+			if (status === 422 && message) {
+				workspaces.value = await getWorkspaces(false).catch(
+					() => workspaces.value,
+				);
+			}
 			toaster.toast({
 				title: 'Error',
-				description: errorMessageFrom(
-					error,
-					'Failed to delete the workspace. Please try again.',
-				),
+				description:
+					status === 422 && message
+						? message
+						: errorMessageFrom(
+								error,
+								'Failed to delete the workspace. Please try again.',
+						  ),
 				variant: 'destructive',
 			});
 		} finally {
