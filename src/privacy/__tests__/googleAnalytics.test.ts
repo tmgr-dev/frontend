@@ -85,3 +85,77 @@ describe('google analytics loader', () => {
 		expect(scripts()).toHaveLength(0);
 	});
 });
+
+describe('google analytics on auth pages', () => {
+	const disabled = () => (window as any)[`ga-disable-${ID}`];
+	const granted = () => {
+		const store = createConsentStore(window);
+		store.set({ analytics: 'granted' });
+		return store;
+	};
+
+	afterEach(() => window.history.replaceState({}, '', '/'));
+
+	it.each([
+		'/login/github?code=x&state=y',
+		'/login',
+		'/register',
+		'/desktop-auth/return',
+		'/password/reset?token=t',
+	])('loads nothing and sends no config on %s', (url) => {
+		window.history.replaceState({}, '', url);
+		startGoogleAnalytics({ id: ID, enabled: true, store: granted() });
+		expect(scripts()).toHaveLength(0);
+		expect((window as any).dataLayer).toBeUndefined();
+	});
+
+	it('loads on an app page', () => {
+		window.history.replaceState({}, '', '/tmgrdev/board?x=1');
+		startGoogleAnalytics({ id: ID, enabled: true, store: granted() });
+		expect(scripts()).toHaveLength(1);
+		expect((window as any).dataLayer).toHaveLength(2);
+	});
+
+	it('loads once the user moves from an auth page to an app page', () => {
+		window.history.replaceState({}, '', '/login/github?code=x&state=y');
+		let recheck: (pathname: string) => void = () => {};
+		startGoogleAnalytics({
+			id: ID,
+			enabled: true,
+			store: granted(),
+			onNavigate: (fn) => (recheck = fn),
+		});
+		expect(scripts()).toHaveLength(0);
+		recheck('/tmgrdev/board');
+		expect(scripts()).toHaveLength(1);
+		expect(disabled()).toBe(false);
+	});
+
+	it('stops reporting while on an auth page and resumes after it', () => {
+		window.history.replaceState({}, '', '/tmgrdev/board');
+		let recheck: (pathname: string) => void = () => {};
+		startGoogleAnalytics({
+			id: ID,
+			enabled: true,
+			store: granted(),
+			onNavigate: (fn) => (recheck = fn),
+		});
+		recheck('/login');
+		expect(disabled()).toBe(true);
+		recheck('/tmgrdev/list');
+		expect(disabled()).toBe(false);
+		expect(scripts()).toHaveLength(1);
+	});
+
+	it('a navigation does not load analytics without consent', () => {
+		let recheck: (pathname: string) => void = () => {};
+		startGoogleAnalytics({
+			id: ID,
+			enabled: true,
+			store: createConsentStore(window),
+			onNavigate: (fn) => (recheck = fn),
+		});
+		recheck('/tmgrdev/board');
+		expect(scripts()).toHaveLength(0);
+	});
+});

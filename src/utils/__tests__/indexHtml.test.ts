@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { stripAnalytics } from '../stripAnalytics';
+import { AUTH_PATH, stripAnalytics } from '../stripAnalytics';
 
 const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
 
@@ -33,6 +33,10 @@ describe('index.html analytics', () => {
 			runInNewContext(loader, { document, location: { pathname } });
 			return appended;
 		};
+
+		it('uses the same auth-path rule as the Google Analytics gate', () => {
+			expect(loader).toContain(AUTH_PATH.source);
+		});
 
 		it.each([
 			'/login',
