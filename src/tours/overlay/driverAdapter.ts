@@ -1,5 +1,6 @@
 import { isSheetViewport, prefersReducedMotion } from '../a11y';
 import type { OverlayAdapter, OverlayShowOptions } from './OverlayAdapter';
+import { clampIntoViewport } from './clamp';
 import { createSheetRoom } from './sheetRoom';
 
 type DriverModule = typeof import('driver.js');
@@ -32,6 +33,11 @@ export function createDriverAdapter(): OverlayAdapter {
     instance = null;
   }
 
+  function clampPopover() {
+    const el = document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover');
+    if (el && !el.classList.contains('tour-sheet-mode')) clampIntoViewport(el);
+  }
+
   function show({ anchorEl, mount }: OverlayShowOptions) {
     hide();
     const mine = seq;
@@ -51,7 +57,10 @@ export function createDriverAdapter(): OverlayAdapter {
         popoverClass: sheet
           ? 'tour-driver-popover tour-sheet-mode'
           : 'tour-driver-popover',
-        onHighlighted: () => instance?.refresh(),
+        onHighlighted: () => {
+          instance?.refresh();
+          clampPopover();
+        },
         onPopoverRender: (popover) => {
           const { wrapper } = popover;
           ['role', 'aria-modal', 'aria-labelledby', 'aria-describedby'].forEach(
@@ -74,7 +83,10 @@ export function createDriverAdapter(): OverlayAdapter {
           const release = mount(host);
           const resize =
             typeof ResizeObserver === 'function'
-              ? new ResizeObserver(() => instance?.refresh())
+              ? new ResizeObserver(() => {
+                  instance?.refresh();
+                  clampPopover();
+                })
               : null;
           resize?.observe(host);
           unmount = () => {
@@ -88,7 +100,10 @@ export function createDriverAdapter(): OverlayAdapter {
         element: anchorEl,
         popover: { title: ' ', description: ' ', side: 'bottom', align: 'start' },
       });
-      room.watch(anchorEl, sheet, () => instance?.refresh());
+      room.watch(anchorEl, sheet, () => {
+        instance?.refresh();
+        clampPopover();
+      });
     });
   }
 

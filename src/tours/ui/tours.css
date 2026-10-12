@@ -109,6 +109,13 @@ html.dark .tour-ring {
   line-height: 1.45;
 }
 
+.tour-pop__body {
+  max-height: calc(100vh - 220px);
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .tour-host--driver .tour-pop {
   border: 0;
   box-shadow: none;

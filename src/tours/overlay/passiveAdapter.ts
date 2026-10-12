@@ -7,6 +7,7 @@ import {
 } from '@floating-ui/dom';
 import { isSheetViewport, prefersReducedMotion } from '../a11y';
 import type { OverlayAdapter, OverlayShowOptions } from './OverlayAdapter';
+import { clampIntoViewport } from './clamp';
 import { createSheetRoom } from './sheetRoom';
 
 const RING_PADDING = 8;
@@ -103,6 +104,7 @@ export function createPassiveAdapter(): OverlayAdapter {
           }).then(({ x, y }) => {
             host.style.left = `${x}px`;
             host.style.top = `${y}px`;
+            clampIntoViewport(host);
           });
         };
         stopAuto = autoUpdate(anchorEl, host, () => update?.(), {
@@ -115,8 +117,17 @@ export function createPassiveAdapter(): OverlayAdapter {
     nodes.push(host);
     const unmount = mount(host);
 
+    const clamp = () => clampIntoViewport(host);
+    const resize =
+      typeof ResizeObserver === 'function' ? new ResizeObserver(clamp) : null;
+    resize?.observe(host);
+    window.addEventListener('resize', clamp);
+    clamp();
+
     cleanup = () => {
       stopAuto?.();
+      resize?.disconnect();
+      window.removeEventListener('resize', clamp);
       unmount();
       nodes.forEach((n) => n.remove());
     };
