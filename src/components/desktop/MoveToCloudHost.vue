@@ -1,0 +1,62 @@
+<template>
+	<MoveToCloudDialog
+		:open="dialogOpen"
+		:code="moveUi.dialogCode ?? ''"
+		:name="nameOf(moveUi.dialogCode)"
+		@update:open="(open: boolean) => !open && (moveUi.dialogCode = null)"
+	/>
+	<MoveToCloudProgress
+		:open="progressOpen"
+		:code="moveUi.progressCode ?? ''"
+		:name="nameOf(moveUi.progressCode)"
+		@update:open="(open: boolean) => !open && (moveUi.progressCode = null)"
+	/>
+</template>
+
+<script lang="ts">
+	import MoveToCloudDialog from '@/components/desktop/MoveToCloudDialog.vue';
+	import MoveToCloudProgress from '@/components/desktop/MoveToCloudProgress.vue';
+	import { browserStorage, loadPersisted } from '@/local/moveToCloud/model';
+	import { getMover } from '@/local/moveToCloud/runtime';
+	import { moveUi } from '@/local/moveToCloud/ui';
+	import { listLocalWorkspaces } from '@/local/runtime';
+	import type { LocalWorkspace } from '@/local/types';
+	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
+	import { useStore } from 'vuex';
+
+	export default defineComponent({
+		name: 'MoveToCloudHost',
+		components: { MoveToCloudDialog, MoveToCloudProgress },
+		setup() {
+			const store = useStore();
+			const workspaces = ref<LocalWorkspace[]>([]);
+
+			onMounted(async () => {
+				if (store.getters.isLocalOnly) return;
+				workspaces.value = await listLocalWorkspaces();
+				for (const workspace of workspaces.value) {
+					if (loadPersisted(browserStorage, workspace.code).job) {
+						void getMover().resume(workspace.code);
+					}
+				}
+			});
+
+			watch(
+				() => [moveUi.dialogCode, moveUi.progressCode],
+				async () => {
+					workspaces.value = await listLocalWorkspaces();
+				},
+			);
+
+			const nameOf = (code: string | null) =>
+				workspaces.value.find((w) => w.code === code)?.name ?? '';
+
+			return {
+				moveUi,
+				nameOf,
+				dialogOpen: computed(() => moveUi.dialogCode !== null),
+				progressOpen: computed(() => moveUi.progressCode !== null),
+			};
+		},
+	});
+</script>

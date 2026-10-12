@@ -31,7 +31,10 @@
 	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
 	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
+	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
+	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
+	import { openMoveDialog } from '@/local/moveToCloud/ui';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import {
 		Breadcrumb,
@@ -105,6 +108,7 @@
 		ClipboardListIcon,
 		FolderClosedIcon,
 		Inbox,
+		CloudUpload,
 		FileDown,
 		FolderOpen,
 		HardDrive,
@@ -519,6 +523,12 @@
 		}
 	};
 
+	const moveToCloud = async () => {
+		const { activeLocalWorkspace } = await import('@/local/runtime');
+		const workspace = activeLocalWorkspace();
+		if (workspace) openMoveDialog(workspace.code);
+	};
+
 	const canLeaveWorkspace = (workspace: Workspace) => {
 		if (workspace.is_local) {
 			return false;
@@ -701,6 +711,21 @@
 											</div>
 											<div class="font-medium text-muted-foreground">
 												Export to Markdown
+											</div>
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="!isLocalOnly"
+											class="cursor-pointer gap-2 p-2"
+											data-testid="move-to-cloud-menu-item"
+											@click="moveToCloud"
+										>
+											<div
+												class="flex size-6 items-center justify-center rounded-md border bg-background"
+											>
+												<CloudUpload class="size-4" />
+											</div>
+											<div class="font-medium text-muted-foreground">
+												Move to cloud…
 											</div>
 										</DropdownMenuItem>
 									</template>
@@ -1195,6 +1220,7 @@
 			>
 				<EmailVerifyBanner />
 				<LocalOnlyBanner v-if="isDesktop" />
+				<LocalMoveBanner v-if="isDesktop && !isLocalOnly" />
 				<header
 					v-if="store.getters.canUseApp"
 					data-tauri-drag-region
@@ -1356,6 +1382,8 @@
 			</form>
 		</DialogContent>
 	</Dialog>
+
+	<MoveToCloudHost v-if="isDesktop && !isLocalOnly" />
 
 	<Confirm
 		v-if="showExitConfirm"

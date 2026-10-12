@@ -7,7 +7,7 @@
 			v-for="row in rows"
 			:key="row.workspace.code"
 			:title="row.workspace.name"
-			description="No cloud copy. Backups stay on this computer."
+			:description="sectionDescription(row)"
 		>
 			<div class="divide-y divide-border">
 				<SettingsRow label="Data folder">
@@ -50,6 +50,48 @@
 						{{ row.busy ? 'Backing up…' : 'Back up now' }}
 					</Button>
 				</SettingsRow>
+				<SettingsRow label="Move to cloud">
+					<template #description>
+						<template v-if="!signedIn">
+							Sign in to move this workspace to your account.
+						</template>
+						<template v-else-if="moveState(row).job">
+							A move is in progress.
+						</template>
+						<template v-else>
+							Copies this workspace into a new workspace in your TMGR account. The
+							local copy stays.
+						</template>
+					</template>
+					<Button
+						v-if="signedIn && moveState(row).job"
+						variant="outline"
+						size="sm"
+						@click="openProgress(row.workspace.code)"
+					>
+						View progress
+					</Button>
+					<Button
+						v-else
+						variant="outline"
+						size="sm"
+						:disabled="!signedIn"
+						@click="openDialog(row.workspace.code)"
+					>
+						Move to cloud…
+					</Button>
+				</SettingsRow>
+			</div>
+			<div
+				v-if="signedIn && moveState(row).published"
+				class="mt-4 border-t border-border pt-4"
+			>
+				<h3 class="mb-2 text-sm font-semibold">Remove local copy</h3>
+				<RemoveLocalCopy
+					:key="moveState(row).published!.jobId + moveState(row).published!.at"
+					:workspace="row.workspace"
+					@removed="load"
+				/>
 			</div>
 			<p v-if="row.error" role="alert" class="mt-3 text-sm text-destructive">
 				{{ row.error }}
@@ -69,14 +111,20 @@
 		revealWorkspaceFolder,
 		type BackupStatus,
 	} from '@/local/backups';
+	import { formatMoveDate } from '@/local/moveToCloud/banner';
+	import { browserStorage, loadPersisted } from '@/local/moveToCloud/model';
+	import { getMover } from '@/local/moveToCloud/runtime';
+	import { openMoveDialog, openMoveProgress } from '@/local/moveToCloud/ui';
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
+	import RemoveLocalCopy from '@/components/desktop/RemoveLocalCopy.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import { lastBackupLabel } from '@/utils/localOnly';
-	import { defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+	import { useStore } from 'vuex';
 
 	interface Row {
 		workspace: LocalWorkspace;
@@ -90,8 +138,10 @@
 
 	export default defineComponent({
 		name: 'LocalDataSettings',
-		components: { SettingsRow, SettingsSection, Button },
+		components: { RemoveLocalCopy, SettingsRow, SettingsSection, Button },
 		setup() {
+			const store = useStore();
+			const signedIn = computed(() => store.getters.isLocalOnly === false);
 			const rows = ref<Row[]>([]);
 			const loaded = ref(false);
 			const loadError = ref('');
@@ -115,7 +165,13 @@
 				}
 			};
 
-			onMounted(load);
+			const moveTick = ref(0);
+			let unsubscribe: (() => void) | null = null;
+			onMounted(() => {
+				unsubscribe = getMover().subscribe(() => moveTick.value++);
+				void load();
+			});
+			onBeforeUnmount(() => unsubscribe?.());
 
 			const run = async (row: Row, action: () => Promise<unknown>) => {
 				row.error = '';
@@ -140,7 +196,24 @@
 				row.busy = false;
 			};
 
+			const moveState = (row: Row) => {
+				void moveTick.value;
+				return loadPersisted(browserStorage, row.workspace.code);
+			};
+			const sectionDescription = (row: Row) => {
+				const published = moveState(row).published;
+				return published
+					? `Copied to your cloud workspace ${published.name} on ${formatMoveDate(published.at)}. Backups stay on this computer.`
+					: 'No cloud copy. Backups stay on this computer.';
+			};
+
 			return {
+				signedIn,
+				load,
+				moveState,
+				sectionDescription,
+				openDialog: openMoveDialog,
+				openProgress: openMoveProgress,
 				rows,
 				loaded,
 				loadError,
