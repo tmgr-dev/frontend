@@ -12,7 +12,12 @@
 	>
 		<div class="tour-pop__eyebrow">{{ eyebrow }}</div>
 		<h2 :id="titleId" class="tour-pop__title">{{ title }}</h2>
-		<p :id="bodyId" class="tour-pop__body">
+		<p
+			:id="bodyId"
+			ref="bodyEl"
+			class="tour-pop__body"
+			:tabindex="scrollable ? 0 : undefined"
+		>
 			<template v-if="bodyParts">
 				<template v-for="(part, i) in bodyParts" :key="i">
 					<kbd v-if="part.kind === 'key'" class="tour-kbd">{{ part.text }}</kbd>
@@ -64,7 +69,7 @@
 </template>
 
 <script lang="ts">
-	import { computed, defineComponent, type PropType } from 'vue';
+	import { computed, defineComponent, onBeforeUnmount, onMounted, ref, type PropType } from 'vue';
 	import type { BodyPart } from '../keycaps';
 	import TourSkipMenu, { type SkipMenuKey } from './TourSkipMenu.vue';
 
@@ -97,6 +102,26 @@
 					.join(' · '),
 			);
 
+			const bodyEl = ref<HTMLElement | null>(null);
+			const scrollable = ref(false);
+			const measure = () => {
+				const el = bodyEl.value;
+				scrollable.value = !!el && el.scrollHeight > el.clientHeight;
+			};
+			let resize: ResizeObserver | null = null;
+			onMounted(() => {
+				measure();
+				if (typeof ResizeObserver === 'function' && bodyEl.value) {
+					resize = new ResizeObserver(measure);
+					resize.observe(bodyEl.value);
+				}
+				window.addEventListener('resize', measure);
+			});
+			onBeforeUnmount(() => {
+				resize?.disconnect();
+				window.removeEventListener('resize', measure);
+			});
+
 			function onSelect(key: SkipMenuKey) {
 				emit(key);
 			}
@@ -117,7 +142,7 @@
 				);
 			}
 
-			return { titleId, bodyId, eyebrow, onSelect, primaryLabel, primary };
+			return { titleId, bodyId, bodyEl, scrollable, eyebrow, onSelect, primaryLabel, primary };
 		},
 	});
 </script>

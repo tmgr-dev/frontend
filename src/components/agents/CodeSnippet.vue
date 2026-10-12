@@ -12,10 +12,12 @@
 			size="sm"
 			:class="[SNIPPET_BUTTON_CLASS, 'h-11 px-2 text-xs sm:h-7']"
 			data-testid="snippet-copy"
+			:aria-label="`Copy ${label ?? 'code'}`"
 			@click="copy"
 		>
 			{{ copied ? 'Copied' : 'Copy' }}
 		</Button>
+		<span class="sr-only" role="status" aria-live="polite">{{ copied ? 'Copied' : '' }}</span>
 	</div>
 </template>
 

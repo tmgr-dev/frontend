@@ -12,10 +12,12 @@
 				:class="[buttonClass, 'inline-flex min-h-[44px] items-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[32px] dark:border-gray-700 dark:bg-gray-900']"
 				data-testid="snippet-copy"
 				:disabled="!code"
+				:aria-label="`Copy ${label}`"
 				@click="copy"
 			>
 				{{ copied ? 'Copied' : 'Copy' }}
 			</button>
+			<span class="sr-only" role="status" aria-live="polite">{{ copied ? 'Copied' : '' }}</span>
 		</div>
 		<p v-if="failed" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
 			Could not copy. Select the text and copy it by hand.
