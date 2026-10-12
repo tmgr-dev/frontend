@@ -91,6 +91,22 @@ pub enum Command {
         #[arg(value_enum)]
         target: StatuslineTarget,
     },
+    /// Agent work runs of the workspace (`--follow` keeps polling)
+    Log(LogArgs),
+    /// Tracked time, agent time and routines for a day
+    Today(TodayArgs),
+    /// Daily routines
+    Routine {
+        #[command(subcommand)]
+        command: RoutineCommand,
+    },
+    /// Write a note in $VISUAL / $EDITOR and save it as a page
+    Note(NoteArgs),
+    /// Sync pages with Markdown files
+    Page {
+        #[command(subcommand)]
+        command: PageCommand,
+    },
     #[command(
         about = "How task references are written",
         long_about = REFS_HELP,
@@ -306,4 +322,91 @@ pub struct InitArgs {
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum StatuslineTarget {
     Claude,
+}
+
+#[derive(Args)]
+pub struct LogArgs {
+    /// Keep polling every 5 seconds (NDJSON events with --json), Ctrl-C to stop
+    #[arg(long)]
+    pub follow: bool,
+    /// Only runs of this task (TM-512 or #8974)
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
+    /// Only runs from the last period, e.g. 30m, 2h, 1d
+    #[arg(long, value_name = "PERIOD")]
+    pub since: Option<String>,
+    /// Only runs of this agent, e.g. claude-code
+    #[arg(long, value_name = "NAME")]
+    pub agent: Option<String>,
+    #[arg(long, default_value_t = 20, value_name = "N")]
+    pub limit: u32,
+    /// Value of next_cursor from the previous page
+    #[arg(long, value_name = "C", conflicts_with = "follow")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Args)]
+pub struct TodayArgs {
+    /// Day to show, YYYY-MM-DD (default: today)
+    #[arg(long, value_name = "DATE", conflicts_with = "yesterday")]
+    pub date: Option<String>,
+    #[arg(long)]
+    pub yesterday: bool,
+    /// Count only agent runs started by you
+    #[arg(long)]
+    pub mine: bool,
+}
+
+#[derive(Subcommand)]
+pub enum RoutineCommand {
+    /// List routines due on a day
+    List {
+        /// Day to show, YYYY-MM-DD (default: today)
+        #[arg(long, value_name = "DATE")]
+        date: Option<String>,
+    },
+    /// Mark a routine done (ID as shown by `routine list`)
+    Done {
+        id: String,
+        /// Day of the routine instance, YYYY-MM-DD (default: today)
+        #[arg(long, value_name = "DATE")]
+        date: Option<String>,
+    },
+}
+
+#[derive(Args)]
+pub struct NoteArgs {
+    /// Page title (default: the first heading of the note)
+    #[arg(conflicts_with = "title_flag")]
+    pub title: Option<String>,
+    /// Page title
+    #[arg(long = "title", value_name = "TEXT")]
+    pub title_flag: Option<String>,
+    /// Link the page to this task
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
+    /// Parent page id
+    #[arg(long, value_name = "ID")]
+    pub parent: Option<String>,
+}
+
+#[derive(Subcommand)]
+pub enum PageCommand {
+    /// Write pages of the workspace as Markdown files into a directory
+    Pull {
+        dir: std::path::PathBuf,
+        /// Only this page and its children
+        #[arg(long, value_name = "PAGE_ID", conflicts_with = "all")]
+        tree: Option<u64>,
+        /// Every page of the workspace (default)
+        #[arg(long)]
+        all: bool,
+        /// Overwrite files with local changes
+        #[arg(long)]
+        force: bool,
+    },
+    /// Upload changed files (default: the current directory)
+    Push { files: Vec<std::path::PathBuf> },
+    /// Show which files changed locally or remotely
+    Status { dir: Option<std::path::PathBuf> },
 }

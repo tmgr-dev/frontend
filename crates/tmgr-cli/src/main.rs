@@ -32,6 +32,9 @@ fn run() -> i32 {
             return out::print_error(cli.json, cli.verbose, out::stderr_style(cli.no_color), &e)
         }
     };
+    if let Some(code) = cmd::log::follow_entry(&ctx, &cli) {
+        return code;
+    }
     match dispatch(&ctx, &cli) {
         Ok(output) => out::emit(&ctx, output),
         Err(e) => out::print_error(ctx.json, ctx.verbose, ctx.err_style, &e),
@@ -108,6 +111,11 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
             Err(Error::internal("handled before the session starts"))
         }
+        Some(Command::Log(args)) => cmd::log::run(ctx, args),
+        Some(Command::Today(args)) => cmd::today::run(ctx, args),
+        Some(Command::Routine { command }) => cmd::routine::run(ctx, command),
+        Some(Command::Note(args)) => cmd::note::run(ctx, args),
+        Some(Command::Page { command }) => cmd::page::run(ctx, command),
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
             cli::REFS_HELP.to_string(),

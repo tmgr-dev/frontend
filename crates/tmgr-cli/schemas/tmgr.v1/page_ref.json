@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/page_ref.json",
+  "title": "tmgr.v1 created page",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "page_id",
+        "title",
+        "version"
+      ],
+      "properties": {
+        "page_id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "task": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "id",
+        "agent",
+        "status",
+        "duration_s",
+        "commits"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "task": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "ref",
+                "title"
+              ],
+              "properties": {
+                "id": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "user_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "agent": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": "integer"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pr_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sha",
+              "message"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "tests": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "passed": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "failed": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "command": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "routine": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "done",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
