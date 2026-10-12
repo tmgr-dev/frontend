@@ -138,14 +138,32 @@ fn context(scenario: &Value) -> Context {
 }
 
 /// Routes only the Rust crate has; the TS golden answers them with "no route".
-fn rust_only(path: &str) -> bool {
-    let path = path.split('?').next().unwrap_or("");
-    let path = path.trim_start_matches("api/").trim_matches('/');
-    let parts: Vec<&str> = path.split('/').collect();
+fn rust_only(url: &str) -> bool {
     matches!(
-        parts.as_slice(),
+        segments(url).as_slice(),
         ["workspaces"] | ["tasks", "by-key", _] | ["workspaces", _, "time-summary" | "agent-work"]
     )
+}
+
+/// Route families the crate does not answer yet; any other unanswered request is a failure.
+fn not_ported_yet(url: &str) -> bool {
+    matches!(
+        segments(url).as_slice(),
+        ["pages", ..]
+            | ["tasks", _, "pages" | "files"]
+            | ["daily-routines", ..]
+            | ["files", ..]
+            | ["plugins", ..]
+            | ["graph", ..]
+            | ["workspaces", "context"]
+            | ["workspaces", _, "modules" | "settings" | "files"]
+    )
+}
+
+fn segments(url: &str) -> Vec<&str> {
+    let path = url.split('?').next().unwrap_or("");
+    let path = path.trim_start_matches('/').trim_start_matches("api/");
+    path.trim_matches('/').split('/').collect()
 }
 
 #[derive(Default)]
@@ -186,7 +204,7 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         }
         let got = match dispatch(&conn, &ctx, method, url, request.get("body")) {
             Ok(Some(r)) => json!({ "status": r.status, "data": r.data }),
-            Ok(None) if *want != not_found => {
+            Ok(None) if *want != not_found && not_ported_yet(url) => {
                 outcome.unported.push(label);
                 continue;
             }
