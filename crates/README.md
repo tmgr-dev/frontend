@@ -4,6 +4,7 @@ Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace
 
 - `tmgr-core` - shared library (envelope `tmgr.v1`, errors and exit codes, config, credential store, API client, task reference grammar).
 - `tmgr-cli` - the `tmgr` binary (clap).
+- `tmgr-local` - local (desktop) workspaces: reads `~/.tmgr.dev/workspaces/<code>/workspace.db` (`TMGR_LOCAL_ROOT` overrides the root) and answers the REST-shaped local API with the same JSON as the desktop's TS local API. `tests/parity` holds scenarios and goldens shared with `src/local/__tests__/parity.test.ts`.
 
 ## Install
 

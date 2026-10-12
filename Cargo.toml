@@ -1,7 +1,6 @@
 [workspace]
 members = ["crates/*"]
-# crates/tmgr-local has only its parity data until the crate lands.
-exclude = ["src-tauri", "crates/tmgr-local"]
+exclude = ["src-tauri"]
 resolver = "2"
 
 [workspace.package]
@@ -34,6 +33,9 @@ ratatui = "0.30"
 unicode-width = "0.2"
 toml_edit = "0.22"
 libc = "0.2"
+rusqlite = { version = "0.37", features = ["bundled"] }
+form_urlencoded = "1"
+percent-encoding = "2"
 tmgr-core = { path = "crates/tmgr-core" }
 tmgr-link = { path = "crates/tmgr-link" }
 tmgr-ipc = { path = "crates/tmgr-ipc" }
