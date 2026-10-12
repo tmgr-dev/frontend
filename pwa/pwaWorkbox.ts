@@ -31,10 +31,7 @@ export const pwaWorkbox = {
 		/^\/desktop-auth(\/|\?|$)/i,
 		/^\/admin(\/|\?|$)/i,
 	],
-	importScripts: [
-		'clear-private-api-cache.js',
-		'https://js.pusher.com/beams/service-worker.js',
-	],
+	importScripts: ['clear-private-api-cache.js'],
 	runtimeCaching: [
 		{ urlPattern: /\/api\/.*/i, handler: 'NetworkOnly' as const },
 		{

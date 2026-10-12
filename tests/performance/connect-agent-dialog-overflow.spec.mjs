@@ -22,6 +22,13 @@ const persona = {
 
 const openIssuedDialog = async (page) => {
   await desktopPage(page);
+  // The desktop.move-to-cloud tour offer fires once a local workspace exists
+  // and navigates to Settings → Local data mid-test.
+  await page.addInitScript(() =>
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1'),
+  );
+  // First-visit tours auto-offer ~600ms after landing and cover the page.
+  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
   await page.route('**/api/personas*', (route) =>
     route.fulfill({ json: { data: [persona] } }),
   );
@@ -34,7 +41,9 @@ const openIssuedDialog = async (page) => {
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.goto('/settings/personas');
-  await expect(page.getByText('On this device')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'On this device' }),
+  ).toBeVisible();
   const personasSection = page.locator('section', {
     hasText: 'Personas in this workspace',
   });
@@ -50,6 +59,24 @@ const openIssuedDialog = async (page) => {
   await page.getByRole('button', { name: 'Issue token' }).click();
   await expect(page.getByText('Token issued.')).toBeVisible();
 };
+
+// The dialog is centred, so any late reflow (font swap, re-render) shifts it;
+// read every box in one frame so dialog and children are measured together.
+const measure = (page) =>
+  page.getByRole('dialog').evaluate((dialog) => {
+    const box = (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    const done = [...dialog.querySelectorAll('button')].find(
+      (b) => b.textContent.trim() === 'Done',
+    );
+    return {
+      dialog: box(dialog),
+      pres: [...dialog.querySelectorAll('pre')].map(box),
+      done: box(done),
+    };
+  });
 
 const expectInside = (inner, outer) => {
   expect(inner.x).toBeGreaterThanOrEqual(outer.x - 1);
@@ -69,18 +96,12 @@ test('the connect-an-agent dialog keeps its issued-state content inside the dial
   await screenshot(page, 'wide-dark');
   await page.emulateMedia({ colorScheme: 'light' });
 
-  const dialog = page.getByRole('dialog');
-  const dialogBox = await dialog.boundingBox();
-  expect(dialogBox).toBeTruthy();
-
-  const pres = dialog.locator('pre');
-  await expect(pres).toHaveCount(2);
-  for (const pre of await pres.all()) {
-    expectInside(await pre.boundingBox(), dialogBox);
+  await expect(page.getByRole('dialog').locator('pre')).toHaveCount(2);
+  const boxes = await measure(page);
+  for (const pre of boxes.pres) {
+    expectInside(pre, boxes.dialog);
   }
-
-  const doneButton = page.getByRole('button', { name: 'Done' });
-  expectInside(await doneButton.boundingBox(), dialogBox);
+  expectInside(boxes.done, boxes.dialog);
 });
 
 test('the connect-an-agent dialog stays inside the viewport at phone width', async ({
@@ -95,11 +116,8 @@ test('the connect-an-agent dialog stays inside the viewport at phone width', asy
   await screenshot(page, 'phone-dark');
   await page.emulateMedia({ colorScheme: 'light' });
 
-  const dialog = page.getByRole('dialog');
-  const dialogBox = await dialog.boundingBox();
+  const boxes = await measure(page);
   const viewport = page.viewportSize();
-  expectInside(dialogBox, { x: 0, y: 0, width: viewport.width, height: viewport.height + 10000 });
-
-  const doneButton = page.getByRole('button', { name: 'Done' });
-  expectInside(await doneButton.boundingBox(), dialogBox);
+  expectInside(boxes.dialog, { x: 0, y: 0, width: viewport.width, height: viewport.height + 10000 });
+  expectInside(boxes.done, boxes.dialog);
 });

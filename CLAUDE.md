@@ -55,7 +55,7 @@ Route meta flags drive the guard:
 ### Build chunking
 `vite.config.ts` defines manual vendor chunks: `vendor-vue`, `vendor-editor` (Editor.js + plugins), `vendor-ui` (Radix/Headless/Lucide), `vendor-utils`, `vendor-markdown`, `vendor-pusher`. When adding a heavy dependency, slot it into the appropriate chunk to avoid bloating the entry. Production strips `console.log/info/debug` via terser.
 
-PWA is configured in `vite.config.ts` with `NetworkFirst` for `/api/*` (5min TTL, 10s network timeout). Fonts (Inter, JetBrains Mono, Quicksand, Instrument Serif) are self-hosted via `@fontsource/*` and excluded from the precache via `globIgnores`. Service worker imports Pusher Beams' SW.
+PWA is configured in `vite.config.ts` with `NetworkFirst` for `/api/*` (5min TTL, 10s network timeout). Fonts (Inter, JetBrains Mono, Quicksand, Instrument Serif) are self-hosted via `@fontsource/*` and excluded from the precache via `globIgnores`. The service worker imports only `clear-private-api-cache.js` (`importScripts` in `pwa/pwaWorkbox.ts`); the Pusher Beams SW is no longer loaded.
 
 ## Conventions
 
