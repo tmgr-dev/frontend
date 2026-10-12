@@ -159,6 +159,15 @@ const routes = [
 		},
 	},
 	{
+		path: '/device',
+		component: () => import('@/pages/auth/DeviceLogin.vue'),
+		name: 'DeviceLogin',
+		meta: {
+			returnAfterLogin: true,
+			transitionName: 'fade-fast',
+		},
+	},
+	{
 		path: '/auth/link-confirm',
 		component: () => import('@/pages/auth/LinkConfirm.vue'),
 		name: 'LinkConfirm',

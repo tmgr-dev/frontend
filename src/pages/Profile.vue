@@ -169,6 +169,8 @@
 				</template>
 			</SettingsSection>
 
+			<SignedInDevices />
+
 			<SettingsSection
 				tone="danger"
 				title="Agent connections"
@@ -202,6 +204,7 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import SignedInDevices from '@/components/devices/SignedInDevices.vue';
 	import AvatarCropModal from '@/components/profile/AvatarCropModal.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
@@ -217,6 +220,7 @@
 			PageContainer,
 			PageHeader,
 			SettingsSection,
+			SignedInDevices,
 			Button,
 			Input,
 			Label,
