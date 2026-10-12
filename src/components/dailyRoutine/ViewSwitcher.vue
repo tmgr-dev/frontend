@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="inline-flex items-center gap-0.5 rounded-card border border-line bg-surface-sunken p-0.5"
+		class="flex w-full items-center gap-0.5 rounded-card border border-line bg-surface-sunken p-0.5 sm:inline-flex sm:w-auto"
 		data-tour="routines.view-switcher"
 	>
 		<button
@@ -9,7 +9,7 @@
 			type="button"
 			:title="v.label"
 			:class="[
-				'inline-flex items-center gap-1.5 rounded-[calc(var(--radius-lg)-2px)] px-2.5 py-1.5 text-xs font-medium transition-colors',
+				'inline-flex flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)-2px)] px-2.5 py-1.5 text-xs font-medium transition-colors sm:flex-none',
 				model === v.id
 					? 'bg-surface text-ink shadow-tmgr-xs'
 					: 'text-ink-subtle hover:text-ink',
