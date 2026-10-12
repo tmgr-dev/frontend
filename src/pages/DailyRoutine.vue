@@ -757,7 +757,7 @@
 			(t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 		)
 			return;
-		if (editingRoutine.value) return;
+		if (editingRoutine.value || convertingEntry.value) return;
 		if (e.key === 'n' || e.key === 'N') {
 			e.preventDefault();
 			onNewRoutine();
