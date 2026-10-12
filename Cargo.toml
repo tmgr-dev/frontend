@@ -33,6 +33,18 @@ unicode-width = "0.2"
 toml_edit = "0.22"
 libc = "0.2"
 tmgr-core = { path = "crates/tmgr-core" }
+tmgr-ipc = { path = "crates/tmgr-ipc" }
+tmgr-runner = { path = "crates/tmgr-runner" }
+libc = "0.2"
+portable-pty = "0.9"
+vt100 = "0.16"
+crossterm = "0.29"
+regex = "1"
+base64 = "0.22"
+getrandom = "0.3"
+shell-words = "1"
+subtle = "2"
+landlock = "0.4"
 
 [profile.release]
 lto = true

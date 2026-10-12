@@ -1,0 +1,31 @@
+[package]
+name = "tmgr-runner"
+description = "TMGR runner: PTY sessions for AI agents, shims, screen model, attach view, sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+tmgr-ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+libc.workspace = true
+vt100.workspace = true
+regex.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+shell-words.workspace = true
+portable-pty.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+unicode-width.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

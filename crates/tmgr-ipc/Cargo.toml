@@ -1,0 +1,20 @@
+[package]
+name = "tmgr-ipc"
+description = "Local IPC of the TMGR runner: framing, protocol, private directory and peer checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+getrandom.workspace = true
+subtle.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
