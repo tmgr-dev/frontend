@@ -6,6 +6,7 @@ import {
 	removeLocalCopyGuards,
 	resolveExcludedFile,
 	setLostDecision,
+	type RemoveSession,
 } from '../guards';
 import { loadPersisted, savePersisted, type PublishedMove } from '../model';
 import { memoryStorage } from './helpers';
@@ -102,7 +103,7 @@ describe('removeLocalCopyGuards', () => {
 	});
 });
 
-const session = { userId: 7, token: 'tok', apiBase: 'https://x.test/api/' };
+const session: RemoveSession = { userId: 7, token: 'tok', apiBase: 'https://x.test/api/' };
 
 describe('removal', () => {
 	const setup = (p: PublishedMove | null) => {
