@@ -204,7 +204,7 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
       await page.goto('/welcome-setup/agent');
       await expect(page.getByText('Waiting for your agent')).toBeVisible();
       await page.clock.fastForward(181000);
-      await expect(page.getByText('Still waiting')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Still waiting for your agent' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Check again' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Do this later' })).toBeVisible();
       await shoot(page, 'agent-still-waiting', size, scheme);
@@ -253,5 +253,52 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
     await expect(page).toHaveURL(/\/demo\/list$/);
     await page.waitForTimeout(1000);
     await expect(page).not.toHaveURL(/welcome-setup/);
+  });
+});
+
+test.describe('welcome screens: consent banner and keyboard', () => {
+  flow('the consent banner never hides Skip at 390', async ({ page }) => {
+    await boot(page, SIZES[1], { user: NEW_USER, consent: false });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/welcome-setup$/);
+    const banner = page.locator('[data-consent-panel]');
+    await expect(banner).toBeVisible();
+    const skip = page.getByTestId('intent-skip');
+    await page.getByTestId('welcome-setup').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    const skipBox = await skip.boundingBox();
+    const bannerBox = await banner.boundingBox();
+    expect(skipBox.y + skipBox.height).toBeLessThanOrEqual(bannerBox.y);
+    expect(skipBox.height).toBeGreaterThanOrEqual(44);
+    await shoot(page, 'intent-consent', SIZES[1], 'light');
+    await page.getByRole('button', { name: 'Decline' }).click();
+  });
+
+  flow('keyboard reaches the intent cards first and the shell is inert', async ({ page }) => {
+    await boot(page, SIZES[0], { user: NEW_USER });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/welcome-setup$/);
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: /Just track my tasks/ })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: /Connect my AI agent/ })).toBeFocused();
+  });
+
+  flow('connect screen: tabs, copy and status are keyboard reachable', async ({ page }) => {
+    await boot(page, SIZES[1], { user: NEW_USER });
+    await page.route('**/api/smart-device/token/**', (route) =>
+      route.fulfill({ json: { data: { token: 'fixture-token', has_token: false } } }),
+    );
+    await page.goto('/welcome-setup/agent');
+    const tabs = page.getByRole('tab');
+    await expect(tabs).toHaveCount(4);
+    for (const tab of await tabs.all()) expect((await tab.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await page.getByRole('tab', { name: 'Claude Code' }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Codex' })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Copy' })).toBeFocused();
+    const copy = await page.getByRole('button', { name: 'Copy' }).boundingBox();
+    expect(copy.height).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole('status').filter({ hasText: 'Waiting for your agent' })).toHaveAttribute('aria-live', 'polite');
   });
 });

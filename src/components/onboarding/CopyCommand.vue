@@ -1,13 +1,13 @@
 <template>
-	<div class="relative">
+	<div class="flex flex-col gap-2 sm:relative sm:block">
 		<pre
 			:aria-label="label"
-			class="overflow-x-auto whitespace-pre rounded-md border border-line bg-surface-sunken px-3 py-3 pr-24 font-mono text-xs text-ink dark:border-gray-700 dark:bg-gray-950"
+			class="overflow-x-auto whitespace-pre rounded-md border border-line bg-surface-sunken px-3 py-3 font-mono sm:pr-24 text-xs text-ink dark:border-gray-700 dark:bg-gray-950"
 			>{{ display ?? code }}</pre
 		>
 		<button
 			type="button"
-			class="absolute right-2 top-2 inline-flex min-h-[44px] items-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[32px] dark:border-gray-700 dark:bg-gray-900"
+			class="inline-flex self-end sm:absolute sm:right-2 sm:top-2 min-h-[44px] items-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[32px] dark:border-gray-700 dark:bg-gray-900"
 			:disabled="!code"
 			@click="copy"
 		>
