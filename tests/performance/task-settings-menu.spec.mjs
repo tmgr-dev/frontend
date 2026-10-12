@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+});
+
 const mockSettings = async (page) => {
   const saved = [];
   await page.route('**/api/tasks/settings', (route) =>
