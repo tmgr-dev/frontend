@@ -145,6 +145,23 @@ describe('TourRunner', () => {
 		expect(h.calls('tour_step_completed')[0]).toMatchObject({ via: 'action' });
 	});
 
+	it('wait step listens to a module.enabled event that is not in the fixed list', async () => {
+		const t = tour({
+			completeOn: 'module.enabled:graph',
+			steps: [step('w', { type: 'wait', waitFor: { event: 'module.enabled:graph' } })],
+		});
+		const h = setup([t]);
+		h.present.add('a.w');
+		await h.runner.start('t.one', 'hub');
+		h.bus.emit('module.enabled:board');
+		await flush();
+		expect(h.last()?.step.id).toBe('w');
+		h.bus.emit('module.enabled:graph');
+		await flush();
+		expect(h.last()).toBeNull();
+		expect(h.saves.pop()[1].status).toBe('completed');
+	});
+
 	it('finishes with completed, dur bucket and a final persisted state', async () => {
 		const h = setup([tour({ steps: [step('only')] })]);
 		h.present.add('a.only');

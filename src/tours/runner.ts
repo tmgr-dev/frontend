@@ -1,5 +1,5 @@
 import type { ActiveTour } from './useTours';
-import type { TourBus } from './events';
+import type { TourBus, TourEventNameKey } from './events';
 import { KNOWN_EVENTS } from './events';
 import { pickAnchorName } from './anchors';
 import { tourTelemetry } from './telemetry';
@@ -79,16 +79,27 @@ export class TourRunner {
   private navigatedAt = -Infinity;
   private renavigated = false;
   private offBus: Array<() => void> = [];
+  private listening = new Set<string>();
 
   constructor(private deps: RunnerDeps) {
-    for (const name of KNOWN_EVENTS) {
-      this.offBus.push(deps.bus.on(name, (payload) => void this.onEvent(name, payload)));
-    }
+    for (const name of KNOWN_EVENTS) this.listen(name);
+  }
+
+  private listen(name: TourEventNameKey): void {
+    if (this.listening.has(name)) return;
+    this.listening.add(name);
+    this.offBus.push(this.deps.bus.on(name, (payload) => void this.onEvent(name, payload)));
+  }
+
+  private listenForTour(tour: TourDef): void {
+    const names = [tour.completeOn, ...tour.steps.map((s) => s.waitFor?.event)];
+    for (const name of names) if (name) this.listen(name as TourEventNameKey);
   }
 
   dispose(): void {
     this.offBus.forEach((off) => off());
     this.offBus = [];
+    this.listening.clear();
     this.cancelPending();
     this.cur = null;
   }
@@ -102,6 +113,7 @@ export class TourRunner {
     if (!tour || tour.steps.length === 0) return false;
     if (this.deps.eligible && !this.deps.eligible(tour)) return false;
     if (!this.modulesOk(tour)) return false;
+    this.listenForTour(tour);
     if (this.cur) this.pause();
     const found = fromStepId ? tour.steps.findIndex((s) => s.id === fromStepId) : -1;
     const idx = found >= 0 ? found : 0;
