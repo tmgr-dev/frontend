@@ -153,20 +153,86 @@ fn rust_only(url: &str) -> bool {
     )
 }
 
-/// Route families the crate does not answer yet; any other unanswered request is a failure.
+/// TS routes the crate does not answer yet (`:x` any segment, `#` digits only). Any other request
+/// without an answer is a failure.
+const NOT_PORTED: &[(&str, &str)] = &[
+    ("POST", "tasks/#/related-to/#/with/#"),
+    ("DELETE", "tasks/#/related-to/#/with/#"),
+    ("POST", "files/presign-upload"),
+    ("GET", "tasks/#/files"),
+    ("POST", "tasks/#/files"),
+    ("GET", "files/#"),
+    ("GET", "files/#/signed-url"),
+    ("GET", "files/#/content"),
+    ("DELETE", "files/#"),
+    ("GET", "workspaces/:x/files"),
+    ("GET", "plugins/:x/storage"),
+    ("GET", "plugins/:x/storage/:x"),
+    ("PUT", "plugins/:x/storage/:x"),
+    ("DELETE", "plugins/:x/storage/:x"),
+    ("GET", "plugins/:x/tasks/#/data/:x"),
+    ("PUT", "plugins/:x/tasks/#/data/:x"),
+    ("DELETE", "plugins/:x/tasks/#/data/:x"),
+    ("POST", "plugins/:x/task-data/query"),
+    ("GET", "workspaces/:x/modules"),
+    ("PUT", "workspaces/:x/modules"),
+    ("PUT", "workspaces/:x/modules/hidden"),
+    ("GET", "daily-routines/workspace"),
+    ("GET", "daily-routines/tasks/count"),
+    ("GET", "daily-routines/tasks/archived/count"),
+    ("GET", "daily-routines/tasks/completed/count"),
+    ("POST", "daily-routines/tasks"),
+    ("POST", "daily-routines/tasks/recurring"),
+    ("POST", "daily-routines/tasks/quick"),
+    ("GET", "daily-routines/tasks/upcoming"),
+    ("GET", "daily-routines/tasks"),
+    ("GET", "daily-routines/tasks/#"),
+    ("PUT", "daily-routines/tasks/#"),
+    ("DELETE", "daily-routines/tasks/#"),
+    ("POST", "daily-routines/tasks/#/archive"),
+    ("POST", "daily-routines/tasks/#/convert"),
+    ("GET", "daily-routines/tasks/#/instances"),
+    ("DELETE", "daily-routines/tasks/#/instances/#"),
+    ("PATCH", "daily-routines/tasks/#/instances/:x"),
+    ("PUT", "daily-routines/tasks/#/pattern"),
+    ("GET", "daily-routines/tasks/#/stats"),
+    ("GET", "daily-routines/expand/stats"),
+    ("GET", "workspaces/:x/settings"),
+    ("PUT", "workspaces/:x/settings"),
+    ("GET", "workspaces/context"),
+    ("GET", "pages"),
+    ("GET", "pages/trash"),
+    ("GET", "pages/search"),
+    ("POST", "pages/:x/versions/#/restore"),
+    ("GET", "pages/:x/files"),
+    ("POST", "pages/:x/files"),
+    ("POST", "pages/:x/task-from-selection"),
+    ("POST", "pages/:x/follow"),
+    ("DELETE", "pages/:x/follow"),
+    ("GET", "tasks/#/pages"),
+    ("GET", "plugins/:x/pages/#/data/:x"),
+    ("PUT", "plugins/:x/pages/#/data/:x"),
+    ("DELETE", "plugins/:x/pages/#/data/:x"),
+    ("POST", "plugins/:x/page-data/query"),
+    ("GET", "graph/related"),
+    ("GET", "graph/path"),
+    ("GET", "graph/hubs"),
+    ("GET", "graph/orphans"),
+    ("GET", "graph/map"),
+];
+
 fn not_ported_yet(method: &str, url: &str) -> bool {
-    method != "GET"
-        || matches!(
-            segments(url).as_slice(),
-            ["pages", ..]
-                | ["tasks", _, "pages" | "files"]
-                | ["daily-routines", ..]
-                | ["files", ..]
-                | ["plugins", ..]
-                | ["graph", ..]
-                | ["workspaces", "context"]
-                | ["workspaces", _, "modules" | "settings" | "files"]
-        )
+    let parts = segments(url);
+    NOT_PORTED.iter().any(|(m, pattern)| {
+        let pattern: Vec<&str> = pattern.split('/').collect();
+        *m == method
+            && pattern.len() == parts.len()
+            && pattern.iter().zip(&parts).all(|(p, s)| match *p {
+                ":x" => !s.is_empty(),
+                "#" => !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()),
+                lit => lit == *s,
+            })
+    })
 }
 
 fn segments(url: &str) -> Vec<&str> {
@@ -180,7 +246,6 @@ struct Outcome {
     passed: usize,
     unported: Vec<String>,
     failed: Vec<String>,
-    after_unported: Vec<String>,
     tables_matched: usize,
     tables_skipped: Vec<String>,
 }
@@ -227,7 +292,7 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
             Ok(Some(r)) => json!({ "status": r.status, "data": r.data }),
             Ok(None) if *want != not_found && not_ported_yet(method, url) => {
                 outcome.unported.push(label);
-                skipped = true;
+                skipped |= method != "GET";
                 continue;
             }
             Ok(None) => not_found,
@@ -235,8 +300,6 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         };
         if got == *want {
             outcome.passed += 1;
-        } else if skipped {
-            outcome.after_unported.push(label);
         } else {
             outcome.failed.push(format!(
                 "{label}\n  want {}\n  got  {}",
@@ -326,9 +389,6 @@ fn scenarios_match_the_ts_goldens() {
         outcome.tables_matched,
         outcome.tables_skipped
     );
-    for label in &outcome.after_unported {
-        eprintln!("  differs after a not-ported write: {label}");
-    }
     for label in &outcome.unported {
         eprintln!("  not ported: {label}");
     }

@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(dispatch(&conn, &c, "GET", "nope", None).unwrap(), None);
         conn.execute_batch("PRAGMA query_only = OFF").unwrap();
         assert_eq!(
-            dispatch(&conn, &c, "POST", "project_categories", None).unwrap(),
+            dispatch(&conn, &c, "POST", "daily-routines/tasks/quick", None).unwrap(),
             None
         );
         assert!(conn.is_autocommit());

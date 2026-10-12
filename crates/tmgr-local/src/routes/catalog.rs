@@ -5,7 +5,7 @@ use crate::db::{select, select_one, Row};
 use crate::router::{not_found, sql, Handled, Outcome, Request};
 use crate::serialize::{category_json, col, paginate, status_json};
 
-const CATEGORY_COUNTS: &str = "
+pub(super) const CATEGORY_COUNTS: &str = "
 	SELECT c.*,
 		(SELECT COUNT(*) FROM categories k WHERE k.parent_id = c.id AND k.deleted_at IS NULL) AS children_count,
 		(SELECT COUNT(*) FROM tasks t WHERE t.project_category_id = c.id AND t.deleted_at IS NULL) AS tasks_count

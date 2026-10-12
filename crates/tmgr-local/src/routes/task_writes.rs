@@ -18,7 +18,7 @@ const ROUTINE_ID_BASE: i64 = 1_000_000_000;
 const BOARD_MOVE_META_PREFIX: &str = "onboarding:board_move:";
 
 /// `Number(value)` as a SQLite value: whole numbers as integers, NaN as NULL.
-fn number_sql(v: &Value) -> Sql {
+pub(super) fn number_sql(v: &Value) -> Sql {
     let f = match v {
         Value::Null => 0.0,
         Value::Bool(b) => *b as i64 as f64,
@@ -31,7 +31,7 @@ fn number_sql(v: &Value) -> Sql {
     json_sql(&js::float_json(f))
 }
 
-fn json_sql(v: &Value) -> Sql {
+pub(super) fn json_sql(v: &Value) -> Sql {
     match v {
         Value::Null => Sql::Null,
         Value::Bool(b) => Sql::Integer(*b as i64),
@@ -44,7 +44,7 @@ fn json_sql(v: &Value) -> Sql {
     }
 }
 
-fn number_or_null(v: &Value) -> Sql {
+pub(super) fn number_or_null(v: &Value) -> Sql {
     match v {
         Value::Null => Sql::Null,
         Value::String(s) if s.is_empty() => Sql::Null,
@@ -63,7 +63,7 @@ fn number_or_zero(v: &Value, floor_zero: bool) -> Sql {
     json_sql(&js::float_json(if floor_zero { n.max(0.0) } else { n }))
 }
 
-fn to_json(v: Option<&Value>) -> Sql {
+pub(super) fn to_json(v: Option<&Value>) -> Sql {
     match v {
         None | Some(Value::Null) => Sql::Null,
         Some(v) => Sql::Text(js::stringify(v)),
@@ -228,7 +228,7 @@ fn default_status_id(req: &Request<'_>) -> Result<Sql, Outcome> {
     Ok(pick.map_or(Sql::Null, |r| json_sql(col(r, "id"))))
 }
 
-fn note_status_change(req: &Request<'_>, task_id: i64) {
+pub(super) fn note_status_change(req: &Request<'_>, task_id: i64) {
     if req.ctx.actor.as_ref().is_some_and(|a| a.kind != "user") {
         return;
     }

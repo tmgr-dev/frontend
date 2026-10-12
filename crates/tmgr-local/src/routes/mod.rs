@@ -6,6 +6,7 @@ use crate::router::{unrouted, Route};
 
 mod agent_work;
 mod catalog;
+mod catalog_writes;
 mod comments;
 mod page_writes;
 mod pages;
@@ -95,12 +96,29 @@ pub(crate) fn table() -> &'static [Route] {
             Route::new("GET", "workspaces/:wid/files", unrouted),
             Route::new("GET", "workspaces/statuses", catalog::statuses),
             Route::new("GET", "workspaces/:wid/statuses", catalog::statuses),
-            Route::new("POST", "workspaces/:wid/statuses", unrouted),
-            Route::new("PUT", "workspaces/:wid/statuses/order", unrouted),
+            Route::new(
+                "POST",
+                "workspaces/:wid/statuses",
+                catalog_writes::create_status,
+            )
+            .created(),
+            Route::new(
+                "PUT",
+                "workspaces/:wid/statuses/order",
+                catalog_writes::order_statuses,
+            ),
             Route::new("GET", "statuses/:id(\\d+)", catalog::status),
-            Route::new("PUT", "statuses/:id(\\d+)", unrouted),
-            Route::new("DELETE", "statuses/:id(\\d+)", unrouted),
-            Route::new("PUT", "statuses/:id(\\d+)/tasks", unrouted),
+            Route::new("PUT", "statuses/:id(\\d+)", catalog_writes::update_status),
+            Route::new(
+                "DELETE",
+                "statuses/:id(\\d+)",
+                catalog_writes::delete_status,
+            ),
+            Route::new(
+                "PUT",
+                "statuses/:id(\\d+)/tasks",
+                catalog_writes::move_tasks,
+            ),
             Route::new("GET", "project_categories", catalog::categories),
             Route::new(
                 "GET",
@@ -118,9 +136,22 @@ pub(crate) fn table() -> &'static [Route] {
                 catalog::category_with_parents,
             ),
             Route::new("GET", "project_categories/:id(\\d+)", catalog::category),
-            Route::new("POST", "project_categories", unrouted),
-            Route::new("PUT", "project_categories/:id(\\d+)", unrouted),
-            Route::new("DELETE", "project_categories/:id(\\d+)", unrouted),
+            Route::new(
+                "POST",
+                "project_categories",
+                catalog_writes::create_category,
+            )
+            .created(),
+            Route::new(
+                "PUT",
+                "project_categories/:id(\\d+)",
+                catalog_writes::update_category,
+            ),
+            Route::new(
+                "DELETE",
+                "project_categories/:id(\\d+)",
+                catalog_writes::delete_category,
+            ),
             Route::new("GET", "plugins/:pid/storage", unrouted),
             Route::new("GET", "plugins/:pid/storage/:key", unrouted),
             Route::new("PUT", "plugins/:pid/storage/:key", unrouted),
@@ -143,7 +174,11 @@ pub(crate) fn table() -> &'static [Route] {
                 "workspaces/:wid/feature-toggles",
                 catalog::feature_toggles,
             ),
-            Route::new("PUT", "workspaces/:wid/feature-toggles", unrouted),
+            Route::new(
+                "PUT",
+                "workspaces/:wid/feature-toggles",
+                catalog_writes::put_feature_toggles,
+            ),
             Route::new("GET", "workspaces/:wid/modules", unrouted),
             Route::new("PUT", "workspaces/:wid/modules", unrouted),
             Route::new("PUT", "workspaces/:wid/modules/hidden", unrouted),
