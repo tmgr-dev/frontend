@@ -1,3 +1,4 @@
+pub mod attach;
 pub mod profile;
 pub mod sandbox;
 pub mod sanitize;

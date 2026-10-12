@@ -1,0 +1,12 @@
+ SESSIONS      Ctrl-] b ╭ 1  codex · blocked ──────────────────────────────────────────────────────────────────────────╮
+ ◆ codex             3m │                                                                                              │
+ ● claude           18m │                                                                                              │
+ ◌ dev-server       12m │                                                                                              │
+ ✓ tests            52m │                                                                                              │
+                        │                                         connecting…                                          │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+ tmgr runner · spark · only one session, nothing to split                                                 Ctrl-] ? help
