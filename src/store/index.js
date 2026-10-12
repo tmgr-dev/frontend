@@ -446,7 +446,11 @@ const actions = {
 		commit('setAiPanelOpen', false);
 		localStorage.removeItem('newTaskWithCheckpoints');
 		Object.keys(localStorage)
-			.filter((key) => key.startsWith('pomo-enabled-'))
+			.filter(
+				(key) =>
+					key.startsWith('pomo-enabled-') ||
+					key.startsWith('tmgr:last-task-settings:'),
+			)
 			.forEach((key) => localStorage.removeItem(key));
 		localStorage.removeItem('theme');
 		localStorage.removeItem('colorScheme');

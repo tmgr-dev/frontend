@@ -230,6 +230,36 @@ describe('logout: clears the tab and the remembered workspace', () => {
 		expect(sessionStorage.getItem('tmgr:tabWorkspaceId')).toBeNull();
 		expect(localStorage.getItem('tmgr:lastWorkspaceId')).toBeNull();
 	});
+
+	test('forgets the remembered new-task settings of every workspace', () => {
+		const localStorage: Record<string, string> = {
+			'tmgr:last-task-settings:acme': '{}',
+			'tmgr:last-task-settings:other': '{}',
+			preferred_editor: 'markdown',
+		};
+		Object.defineProperties(localStorage, {
+			getItem: { value: (key: string) => localStorage[key] ?? null },
+			setItem: {
+				value: (key: string, value: string) => {
+					localStorage[key] = value;
+				},
+			},
+			removeItem: {
+				value: (key: string) => {
+					delete localStorage[key];
+				},
+			},
+		});
+		const { config } = fixture(
+			{
+				'@/local/personaCache': { clearPersonaLlmForLogout: jest.fn() },
+				'@/utils/desktop': { isDesktopApp: () => false },
+			},
+			{ localStorage },
+		);
+		config.actions.logout({ commit: jest.fn(), state: config.state });
+		expect(Object.keys(localStorage)).toEqual(['preferred_editor']);
+	});
 });
 
 describe('updateUserWorkspaceSetting in a task, page or quick add window', () => {
