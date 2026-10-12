@@ -1,0 +1,14 @@
+id = "codex"
+name = "Codex"
+command = ["codex"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+
+# Illustrative approval-prompt shapes; not verified against a real session.
+[status]
+blocked = [
+  '(?i)(approve|allow) (this|the) (command|change|edit)',
+  '(?i)\ballow .+\?',
+]
+idle = []

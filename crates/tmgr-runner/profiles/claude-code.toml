@@ -1,0 +1,14 @@
+id = "claude-code"
+name = "Claude Code"
+command = ["claude"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+
+# Illustrative approval-prompt shapes; not verified against a real session.
+[status]
+blocked = [
+  '(?i)do you want to (proceed|allow|make this edit)',
+  '(?i)\ballow .+\?',
+]
+idle = []
