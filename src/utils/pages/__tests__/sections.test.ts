@@ -133,10 +133,31 @@ describe('applyFreeEdit', () => {
 		expect(joined.endsWith('<!-- /tmgr:section -->\n')).toBe(true);
 	});
 
-	it('appends text after the last section', () => {
+	it('appends text after the last section with a blank line', () => {
 		const padded = padSegments(splitBody(CONTEXT));
 		const joined = joinSegments(applyFreeEdit(padded, 2, 'tail'));
-		expect(joined).toBe(`${CONTEXT}tail\n`);
+		expect(joined).toBe(`${CONTEXT}\ntail\n`);
+	});
+
+	it('keeps a blank line after a section when an emptied segment is retyped', () => {
+		const segments = padSegments(splitBody(`${CONTEXT}\nEdit here\n`));
+		const emptied = applyFreeEdit(segments, 2, '');
+		expect(joinSegments(emptied)).toBe(CONTEXT);
+		const joined = joinSegments(applyFreeEdit(emptied, 2, 'Text'));
+		expect(joined).toBe(`${CONTEXT}\nText\n`);
+	});
+
+	it('keeps the blank line after a section when the next segment is edited', () => {
+		const body = `Intro\n\n${CONTEXT}\nEdit here\n`;
+		const segments = padSegments(splitBody(body));
+		const joined = joinSegments(applyFreeEdit(segments, 2, 'Edit here.\n'));
+		expect(joined).toBe(`Intro\n\n${CONTEXT}\nEdit here.\n`);
+	});
+
+	it('keeps text directly after a section without adding a blank line', () => {
+		const segments = padSegments(splitBody(`${CONTEXT}Edit here\n`));
+		const joined = joinSegments(applyFreeEdit(segments, 2, 'Edit here.\n'));
+		expect(joined).toBe(`${CONTEXT}Edit here.\n`);
 	});
 
 	it('does not touch other segments', () => {
