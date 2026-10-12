@@ -116,3 +116,9 @@ describe('pwaWorkbox runtime caching', () => {
 		expect(match('/api/tasks').handler).toBe('NetworkOnly');
 	});
 });
+
+describe('pwaWorkbox importScripts', () => {
+	it('imports only the private api cache cleaner, no Pusher Beams', () => {
+		expect(pwaWorkbox.importScripts).toEqual(['clear-private-api-cache.js']);
+	});
+});
