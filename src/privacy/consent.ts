@@ -43,22 +43,53 @@ const parse = (raw: string | null): ConsentRecord => {
 export interface ConsentStore {
 	get(): ConsentRecord;
 	read(): ConsentRecord;
+	saveFailed(): boolean;
 	set(patch: Partial<Pick<ConsentRecord, 'analytics' | 'usage'>>): ConsentRecord;
 	subscribe(listener: ConsentListener): () => void;
 }
+
+type Patch = Partial<Pick<ConsentRecord, 'analytics' | 'usage'>>;
+
+const sameState = (a: ConsentRecord, b: ConsentRecord) =>
+	a.usage === b.usage && a.usageGeneration === b.usageGeneration && a.analytics === b.analytics;
+
+const merge = (base: ConsentRecord, patch: Patch): ConsentRecord => ({
+	...base,
+	...(patch.analytics !== undefined && { analytics: patch.analytics }),
+	...(patch.usage !== undefined && {
+		usage: patch.usage,
+		usageGeneration:
+			patch.usage === base.usage ? base.usageGeneration : base.usageGeneration + 1,
+	}),
+	updatedAt: new Date().toISOString(),
+});
+
+const usageWinner = (a: ConsentRecord, b: ConsentRecord): ConsentRecord => {
+	if (a.usageGeneration !== b.usageGeneration) return a.usageGeneration > b.usageGeneration ? a : b;
+	return a.usage === 'denied' ? a : b;
+};
 
 export const createConsentStore = (win: Window = window): ConsentStore => {
 	const listeners = new Set<ConsentListener>();
 	let current: ConsentRecord | null = null;
 	let channel: BroadcastChannel | null = null;
 	let wired = false;
+	let hardOff = false;
+	let failed = false;
 
-	const read = (): ConsentRecord => {
+	const readStored = (): ConsentRecord => {
 		try {
 			return parse(win.localStorage.getItem(CONSENT_KEY));
 		} catch {
 			return current ?? empty();
 		}
+	};
+
+	const read = (): ConsentRecord => {
+		const stored = readStored();
+		return hardOff && stored.usage === 'granted'
+			? { ...stored, usage: 'denied', usageGeneration: stored.usageGeneration + 1 }
+			: stored;
 	};
 
 	const adopt = (record: ConsentRecord) => {
@@ -78,7 +109,7 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 			channel = new Channel(CONSENT_CHANNEL);
 			channel.onmessage = (event: MessageEvent) => {
 				try {
-					adopt(parse(win.localStorage.getItem(CONSENT_KEY)));
+					adopt(read());
 				} catch {
 					const incoming = parse(JSON.stringify(event.data));
 					if ((incoming.updatedAt ?? '') > (current?.updatedAt ?? '')) adopt(incoming);
@@ -92,29 +123,64 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 		return current;
 	};
 
+	const write = (record: ConsentRecord): boolean => {
+		try {
+			win.localStorage.setItem(CONSENT_KEY, JSON.stringify(record));
+			return sameState(readStored(), record);
+		} catch {
+			return false;
+		}
+	};
+
+	const reconcile = (intended: ConsentRecord, patch: Patch) => {
+		const stored = readStored();
+		const winner = usageWinner(stored, intended);
+		const merged: ConsentRecord = {
+			...winner,
+			analytics: patch.analytics !== undefined ? patch.analytics : stored.analytics,
+		};
+		if (!sameState(stored, merged) && write(merged)) {
+			failed = false;
+			hardOff = false;
+		}
+		if (!sameState(current ?? empty(), merged)) adopt(merged);
+	};
+
 	return {
 		get,
 		read,
+		saveFailed: () => failed,
 		set(patch) {
-			const base = read();
-			const next: ConsentRecord = {
-				...base,
-				...(patch.analytics !== undefined && { analytics: patch.analytics }),
-				...(patch.usage !== undefined && {
-					usage: patch.usage,
-					usageGeneration:
-						patch.usage === base.usage ? base.usageGeneration : base.usageGeneration + 1,
-				}),
-				updatedAt: new Date().toISOString(),
-			};
-			try {
-				win.localStorage.setItem(CONSENT_KEY, JSON.stringify(next));
-			} catch {
-				// kept in memory for this tab
+			if (patch.usage === 'denied') hardOff = true;
+			const before = read();
+			let next = merge(before, patch);
+			for (let i = 0; i < 3; i += 1) {
+				const rawBase = readStored();
+				next = merge(read(), patch);
+				if (sameState(rawBase, readStored())) break;
+			}
+			if (write(next)) {
+				failed = false;
+				hardOff = false;
+			} else {
+				failed = true;
+				if (patch.usage !== undefined && next.usage !== 'granted') {
+					try {
+						win.localStorage.removeItem(CONSENT_KEY);
+					} catch {
+						// this window stays off through hardOff
+					}
+				}
+				if (patch.usage === 'granted') {
+					next = { ...next, usage: before.usage, usageGeneration: before.usageGeneration };
+				}
 			}
 			wire();
 			channel?.postMessage(next);
 			adopt(next);
+			const locks = (win as unknown as { navigator?: { locks?: { request: (n: string, cb: () => void) => Promise<unknown> } } })
+				.navigator?.locks;
+			void locks?.request('tmgr-consent', () => reconcile(next, patch)).catch(() => {});
 			return next;
 		},
 		subscribe(listener) {
