@@ -1,3 +1,4 @@
+// Snapshot for local mode only; tours and UI read runtime featureToggles/isFeatureEnabled.
 export interface CatalogPack {
 	key: string;
 	name: string;
