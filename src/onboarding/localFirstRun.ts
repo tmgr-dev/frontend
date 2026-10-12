@@ -10,6 +10,8 @@ export const LOCAL_FIRST_RUN_SEQUENCE = [
   'desktop.quick-add',
 ];
 
+export const FRESH_MARKER_TTL_MS = 10 * 60 * 1000;
+
 export interface FreshMarker {
   code: string;
   at: string;
@@ -88,12 +90,19 @@ export interface LocalFirstRunContext {
   localOnly: boolean;
   mainWindow: boolean;
   marker: FreshMarker | null;
+  activeCode: string | null;
   state: OnboardingState | null | undefined;
 }
+
+export const isFreshMarkerExpired = (marker: FreshMarker, now: Date): boolean => {
+  const at = Date.parse(marker.at);
+  return !Number.isFinite(at) || now.getTime() - at > FRESH_MARKER_TTL_MS;
+};
 
 export function shouldRunLocalFirstRun(ctx: LocalFirstRunContext): boolean {
   const state = ctx.state;
   if (!ctx.localOnly || !ctx.mainWindow || !ctx.marker) return false;
+  if (ctx.marker.code !== ctx.activeCode) return false;
   if (!state || typeof state !== 'object' || Array.isArray(state) || state.malformed === true) {
     return false;
   }
@@ -104,25 +113,36 @@ export interface LocalFirstRunDeps {
   localOnly(): boolean;
   mainWindow(): boolean;
   marker(): FreshMarker | null;
+  activeCode(): string | null;
+  now(): Date;
   clearMarker(): void;
   state(): OnboardingState | null | undefined;
-  setIntent(intent: string, options: { seed: boolean }): Promise<void>;
+  setIntent(intent: string, options: { seed: boolean; workspace: string }): Promise<void>;
   waitConsentClosed(): Promise<void>;
   startSequence(ids: string[], trigger: string): Promise<void>;
 }
 
 export async function runLocalFirstRun(deps: LocalFirstRunDeps): Promise<'started' | 'seeded' | 'none'> {
+  const marker = deps.marker();
+  if (marker && isFreshMarkerExpired(marker, deps.now())) {
+    deps.clearMarker();
+    return 'none';
+  }
   if (
+    !marker ||
     !shouldRunLocalFirstRun({
       localOnly: deps.localOnly(),
       mainWindow: deps.mainWindow(),
-      marker: deps.marker(),
+      marker,
+      activeCode: deps.activeCode(),
       state: deps.state(),
     })
   ) {
     return 'none';
   }
-  if (deps.state()?.intent === null) await deps.setIntent('human', { seed: true });
+  if (deps.state()?.intent === null) {
+    await deps.setIntent('human', { seed: true, workspace: marker.code });
+  }
   if (deps.state()?.tips_mode !== 'auto') {
     deps.clearMarker();
     return 'seeded';

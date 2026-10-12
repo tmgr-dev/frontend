@@ -48,6 +48,8 @@ export const createLocalWorkspace = async (name: string): Promise<LocalWorkspace
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
 	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
 
+export const activeLocalWorkspaceCode = (): string | null => activeCode;
+
 /** Whether a local workspace is active, even before the folder list has been read. */
 export const hasActiveLocalWorkspace = (): boolean => activeCode !== null;
 

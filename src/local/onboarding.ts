@@ -81,10 +81,10 @@ export const createOnboardingHandler = (storage: OnboardingStorage, deps?: Onboa
 		}
 	};
 
-	const seed = async (state: LocalOnboardingState): Promise<number> => {
+	const seed = async (state: LocalOnboardingState, workspace?: string): Promise<number> => {
 		if (!deps || state.starter_seeded_at) return 0;
 		try {
-			const ctx = await deps.ctxFor();
+			const ctx = await deps.ctxFor(workspace);
 			if (!ctx) return 0;
 			const created = await seedStarters(ctx);
 			state.starter_seeded_at = ctx.now().toISOString();
@@ -128,7 +128,7 @@ export const createOnboardingHandler = (storage: OnboardingStorage, deps?: Onboa
 		if (path === 'onboarding/intent' && verb === 'POST') {
 			if (!INTENTS.includes(payload.intent)) return invalid('Unknown intent');
 			state.intent = payload.intent;
-			const created = payload.intent === 'human' && payload.seed !== false ? await seed(state) : 0;
+			const created = payload.intent === 'human' && payload.seed !== false ? await seed(state, typeof payload.workspace === 'string' ? payload.workspace : undefined) : 0;
 			save(state);
 			return { status: 200, data: { data: { intent: state.intent, starter_tasks_created: created, invited: false } } };
 		}

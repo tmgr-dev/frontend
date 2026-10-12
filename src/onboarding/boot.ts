@@ -1,5 +1,6 @@
 import { effectScope, watch } from 'vue';
 import type { Router } from 'vue-router';
+import { activeLocalWorkspaceCode } from '@/local/runtime';
 import { toursEngine } from '@/tours/useTours';
 import type { OnboardingState } from '@/tours/types';
 import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
@@ -164,6 +165,8 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
         localOnly: () => !!store.getters.isLocalOnly,
         mainWindow: () => !isDesktopApp() || desktopWindowLabel() === 'main',
         marker: () => readFreshMarker(localStorage),
+        activeCode: () => activeLocalWorkspaceCode(),
+        now: () => new Date(),
         clearMarker: () => clearFreshMarker(localStorage),
         state: () => engine.store.state.value,
         setIntent: (intent, options) => engine.api.setIntent(intent, options),

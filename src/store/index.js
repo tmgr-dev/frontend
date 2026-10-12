@@ -481,11 +481,18 @@ const actions = {
 				hadProfile = true;
 			}
 		}
+		let workspaceCount = Infinity;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const list = await invoke('local_workspaces_list');
+			if (Array.isArray(list)) workspaceCount = list.length;
+		} catch {
+			workspaceCount = Infinity;
+		}
 		const fresh =
 			!!storage &&
-			firstRun.isFreshLocalInstall(
-				firstRun.freshInstallFacts(storage, hadProfile, (await runtime.listLocalWorkspaces(true)).length),
-			);
+			firstRun.isFreshLocalInstall(firstRun.freshInstallFacts(storage, hadProfile, workspaceCount));
+		if (!fresh && storage) firstRun.clearFreshMarker(storage);
 		const profile = await createLocalProfile(name);
 		let [first] = await runtime.listLocalWorkspaces(true);
 		if (!first) first = await runtime.createLocalWorkspace('My workspace');

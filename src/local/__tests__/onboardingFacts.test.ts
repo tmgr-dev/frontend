@@ -221,6 +221,14 @@ describeSqlite('local onboarding facts and starters on SQLite', () => {
 		expect(facts.local_agent_connected).toBe(false);
 	});
 
+	it('seeds the named workspace instead of the active one', async () => {
+		active = b;
+		const res = (await handle('POST', 'onboarding/intent', { intent: 'human', seed: true, workspace: 'local-a' })).data.data;
+		expect(res.starter_tasks_created).toBe(3);
+		expect(await a.db.select(`SELECT id FROM tasks`)).toHaveLength(3);
+		expect(await b.db.select(`SELECT id FROM tasks`)).toHaveLength(0);
+	});
+
 	it('passes the query params through to the facts handler', async () => {
 		const seen: unknown[] = [];
 		const spy = createOnboardingHandler(storage, {

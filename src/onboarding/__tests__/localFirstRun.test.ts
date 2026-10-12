@@ -48,7 +48,7 @@ describe('fresh marker storage', () => {
 });
 
 describe('shouldRunLocalFirstRun', () => {
-  const base = { localOnly: true, mainWindow: true, marker: MARKER, state: emptyOnboarding() };
+  const base = { localOnly: true, mainWindow: true, marker: MARKER, activeCode: 'my-workspace', state: emptyOnboarding() };
 
   it('runs for a local main window with a marker and a pristine state', () => {
     expect(shouldRunLocalFirstRun(base)).toBe(true);
@@ -58,6 +58,8 @@ describe('shouldRunLocalFirstRun', () => {
     ['not local', { localOnly: false }],
     ['a detached window', { mainWindow: false }],
     ['no marker', { marker: null }],
+    ['another active workspace', { activeCode: 'other' }],
+    ['no active workspace', { activeCode: null }],
     ['no state', { state: null }],
     ['a malformed state', { state: { ...emptyOnboarding(), malformed: true } }],
     ['another intent', { state: { ...emptyOnboarding(), intent: 'agent' } }],
@@ -82,6 +84,8 @@ describe('runLocalFirstRun', () => {
       localOnly: () => true,
       mainWindow: () => true,
       marker: () => marker,
+      activeCode: () => 'my-workspace',
+      now: () => new Date('2026-10-12T10:05:00.000Z'),
       clearMarker: jest.fn(() => {
         order.push('clear');
         marker = null;
@@ -111,7 +115,7 @@ describe('runLocalFirstRun', () => {
     release();
     expect(await done).toBe('started');
     expect(order).toEqual(['intent', 'consent-wait', 'consent-closed', 'sequence', 'clear']);
-    expect(deps.setIntent).toHaveBeenCalledWith('human', { seed: true });
+    expect(deps.setIntent).toHaveBeenCalledWith('human', { seed: true, workspace: 'my-workspace' });
     expect(deps.startSequence).toHaveBeenCalledWith(LOCAL_FIRST_RUN_SEQUENCE, 'first_run');
     expect(LOCAL_FIRST_RUN_SEQUENCE).toEqual([
       'desktop.local-workspace',
@@ -122,6 +126,20 @@ describe('runLocalFirstRun', () => {
     expect(marker()).toBeNull();
     expect(await runLocalFirstRun(deps)).toBe('none');
     expect(deps.startSequence).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores and clears a marker older than ten minutes', async () => {
+    const { deps, marker } = build({ now: () => new Date('2026-10-12T10:10:01.000Z') });
+    expect(await runLocalFirstRun(deps)).toBe('none');
+    expect(deps.setIntent).not.toHaveBeenCalled();
+    expect(marker()).toBeNull();
+  });
+
+  it('keeps the marker and does nothing while another workspace is active', async () => {
+    const { deps, marker } = build({ activeCode: () => 'other' });
+    expect(await runLocalFirstRun(deps)).toBe('none');
+    expect(deps.setIntent).not.toHaveBeenCalled();
+    expect(marker()).toEqual(MARKER);
   });
 
   it('seeds but starts nothing and clears the marker at once when tips are not auto', async () => {

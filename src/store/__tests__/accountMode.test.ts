@@ -33,6 +33,7 @@ function fixture(desktop = true) {
 		createLocalWorkspace: jest.fn(async (name: string) => ({ id: -5, name, code: 'my-workspace' })),
 		setActiveLocalWorkspace: jest.fn(),
 		push: jest.fn(async () => {}),
+		invoke: jest.fn(async (_command: string) => [] as any[]),
 	};
 	const config = evaluate('../index.js', {
 		vuex: { createStore: (options: any) => options },
@@ -50,6 +51,7 @@ function fixture(desktop = true) {
 			createLocalWorkspace: mocks.createLocalWorkspace,
 			setActiveLocalWorkspace: mocks.setActiveLocalWorkspace,
 		},
+		'@tauri-apps/api/core': { invoke: mocks.invoke },
 		'@/router': { default: { push: mocks.push } },
 		'@/onboarding/localFirstRun': firstRun,
 	}, storage).default;
@@ -146,7 +148,15 @@ describe('startWithoutAccount fresh-install marker', () => {
 		['an unreadable profile', (fx: ReturnType<typeof fixture>) => fx.mocks.loadLocalProfile.mockRejectedValue(new Error('x'))],
 		[
 			'an existing local workspace',
-			(fx: ReturnType<typeof fixture>) => fx.mocks.listLocalWorkspaces.mockResolvedValue([{ id: -9, code: 'old' }]),
+			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue([{ id: -9, code: 'old' }]),
+		],
+		[
+			'a failing workspace listing',
+			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockRejectedValue(new Error('ipc down')),
+		],
+		[
+			'a listing that is not an array',
+			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue(null),
 		],
 		[
 			'a starter_seeded_at in the onboarding state',
@@ -158,6 +168,38 @@ describe('startWithoutAccount fresh-install marker', () => {
 		arrange(fx);
 		await start(fx);
 		expect(fx.data.has(MARKER)).toBe(false);
+	});
+});
+
+describe('startWithoutAccount stale marker', () => {
+	const MARKER = 'tmgr:onboarding:local-fresh';
+	const stale = JSON.stringify({ code: 'old', at: '2026-10-01T10:00:00.000Z' });
+	const start = async (fx: ReturnType<typeof fixture>) => {
+		const commit = jest.fn((name: string, value: any) => fx.config.mutations[name](fx.config.state, value));
+		await fx.config.actions.startWithoutAccount({ commit, state: fx.config.state }, { name: 'Ada' });
+	};
+
+	it('clears a stale marker when the install is not fresh', async () => {
+		const fx = fixture();
+		fx.data.set(MARKER, stale);
+		fx.mocks.invoke.mockResolvedValue([{ id: -9, code: 'old' }]);
+		await start(fx);
+		expect(fx.data.has(MARKER)).toBe(false);
+	});
+
+	it('replaces the marker with the new workspace on a fresh install', async () => {
+		const fx = fixture();
+		fx.data.set(MARKER, stale);
+		await start(fx);
+		expect(JSON.parse(fx.data.get(MARKER)!).code).toBe('my-workspace');
+	});
+
+	it('decides freshness from the backend list, not the cached runtime list', async () => {
+		const fx = fixture();
+		fx.mocks.listLocalWorkspaces.mockResolvedValue([{ id: -9, code: 'old' }]);
+		await start(fx);
+		expect(fx.mocks.invoke).toHaveBeenCalledWith('local_workspaces_list');
+		expect(JSON.parse(fx.data.get(MARKER)!).code).toBe('old');
 	});
 });
 

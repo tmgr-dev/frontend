@@ -28,7 +28,7 @@ export interface OnboardingApi {
   putTour(id: string, body: TourWrite): Promise<unknown>;
   putPreferences(body: PreferencesWrite): Promise<unknown>;
   resetTours(): Promise<unknown>;
-  setIntent(intent: string, options?: { seed?: boolean }): Promise<unknown>;
+  setIntent(intent: string, options?: { seed?: boolean; workspace?: string }): Promise<unknown>;
   fetchFacts(keys: string[], taskId?: number | string): Promise<OnboardingFacts>;
   removeStarterTasks(): Promise<{ removed: number }>;
 }
@@ -57,6 +57,7 @@ export function createOnboardingApi(client: HttpClient): OnboardingApi {
     async setIntent(intent, options) {
       const body: Record<string, unknown> = { intent };
       if (options?.seed !== undefined) body.seed = options.seed;
+      if (options?.workspace !== undefined) body.workspace = options.workspace;
       return unwrap(await client.post('onboarding/intent', body));
     },
     async fetchFacts(keys, taskId) {
