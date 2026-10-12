@@ -309,6 +309,21 @@ describe('TourRunner', () => {
 		expect(h.saves.pop()[1].status).toBe('paused');
 	});
 
+	it('goes back to the step route once when the app redirects elsewhere right after it navigated', async () => {
+		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
+		const h = setup([t]);
+		h.present.add('a.b');
+		await h.runner.start('t.one', 'hub');
+		expect(h.nav).toHaveLength(1);
+		h.setRoute('Other');
+		h.runner.routeChanged('Other');
+		expect(h.nav).toHaveLength(2);
+		expect(h.nav[1]).toEqual({ name: 'WorkspaceBoard', params: 'currentWorkspace' });
+		h.runner.routeChanged('Other');
+		expect(h.nav).toHaveLength(2);
+		expect(h.last()).not.toBeNull();
+	});
+
 	it('pauses when only the query leaves the step route query', async () => {
 		const t = tour({ steps: [step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } })] });
 		const h = setup([t]);

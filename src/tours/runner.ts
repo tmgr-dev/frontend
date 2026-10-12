@@ -77,6 +77,7 @@ export class TourRunner {
   private timerStarts = new Map<number, number>();
   private seen = new Set<string>();
   private navigatedAt = -Infinity;
+  private renavigated = false;
   private offBus: Array<() => void> = [];
 
   constructor(private deps: RunnerDeps) {
@@ -172,6 +173,7 @@ export class TourRunner {
     const route = step.takeMeRoute ?? step.route;
     if (!route) return;
     this.navigatedAt = this.deps.now();
+    this.renavigated = false;
     this.deps.navigate(route);
     await this.enterStep(cur.idx);
   }
@@ -192,7 +194,13 @@ export class TourRunner {
     const route = cur.tour.steps[cur.idx].route;
     if (!route) return;
     if (name === route.name && this.queryMatches(route)) return;
-    if (this.deps.now() - this.navigatedAt < 3000) return;
+    if (this.deps.now() - this.navigatedAt < 3000) {
+      if (!this.renavigated) {
+        this.renavigated = true;
+        this.deps.navigate(route);
+      }
+      return;
+    }
     this.pause('navigated');
   }
 
@@ -290,6 +298,7 @@ export class TourRunner {
 
     if (step.route && !this.onRoute(step.route)) {
       this.navigatedAt = this.deps.now();
+      this.renavigated = false;
       this.deps.navigate(step.route);
     }
 

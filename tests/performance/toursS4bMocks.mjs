@@ -7,6 +7,7 @@ export const S4B_MODULES = [
   'task.relations',
   'task.files',
   'task.checkpoints',
+  'task.countdown',
   'pomodoro',
   'exports',
   'pages',
@@ -16,15 +17,15 @@ export const S4B_MODULES = [
 
 const author = { kind: 'user', id: 1, name: 'Test User' };
 
-export const mockModules = async (page, { graph = true } = {}) => {
+export const mockModules = async (page, { graph = true, canManage = true, only = null } = {}) => {
   const state = { graph };
   const entries = () =>
     S4B_MODULES.map((key) => ({
       key,
       name: key,
-      pack: 'core',
+      pack: 'main',
       scope: 'workspace',
-      enabled: key === 'graph' ? state.graph : true,
+      enabled: only ? only.includes(key) : key === 'graph' ? state.graph : true,
     }));
   const toggles = () =>
     Object.fromEntries(
@@ -35,7 +36,15 @@ export const mockModules = async (page, { graph = true } = {}) => {
     );
   await page.route('**/api/workspaces/1/modules', (route) =>
     route.fulfill({
-      json: { data: { configured: true, can_manage: true, modules: entries() } },
+      json: {
+        data: {
+          configured: true,
+          can_manage: canManage,
+          packs: [{ key: 'main', name: 'Main' }],
+          presets: [{ key: 'personal', name: 'Personal', description: 'Just you', modules: ['board'] }],
+          modules: entries(),
+        },
+      },
     }),
   );
   await page.route('**/api/**/feature-toggles', async (route) => {
@@ -179,16 +188,28 @@ export const mockGraph = async (page) => {
   );
 };
 
-export const mockMisc = async (page, calls) => {
+const category = { id: 9, title: 'Fixture', code: 'FIX', workspace_id: 1, deleted_at: null, settings: [], parent_id: null };
+
+export const mockMisc = async (page, calls, { timers = false } = {}) => {
   await page.route('**/api/project_categories**', (route) => {
-    if (route.request().method() === 'POST') {
+    const request = route.request();
+    if (request.method() === 'POST') {
       calls.push('POST project_categories');
+      return route.fulfill({ json: { data: category } });
+    }
+    if (request.method() === 'GET' && /project_categories\/children\/?(\?|$)/.test(request.url())) {
       return route.fulfill({
-        json: { data: { id: 9, title: 'Fixture', code: 'FIX', workspace_id: 1, deleted_at: null, settings: [] } },
+        json: { data: [{ ...category, children_count: 0 }], meta: { current_page: 1, per_page: 15, last_page: 1, total: 1 }, links: {} },
       });
     }
     return route.fallback();
   });
+  await page.route('**/api/tasks/*/pomodoro**', (route) => route.fulfill({ status: 404, json: { message: 'none' } }));
+  if (timers) {
+    await page.route('**/api/tasks/runned', (route) =>
+      route.fulfill({ json: { data: [{ id: 1, title: 'Original task', start_time: Date.now() / 1000, workspace_id: 1 }] } }),
+    );
+  }
   await page.route('**/api/exports/**', (route) => {
     calls.push('GET export');
     return route.fulfill({ body: 'id,title\n1,Original task\n', contentType: 'text/csv' });

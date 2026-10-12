@@ -75,6 +75,13 @@ describe('isOccluded', () => {
 		expect(isOccluded(el)).toBe(true);
 	});
 
+	it('ignores the sidebar resize rail that overlaps the sidebar edge', () => {
+		const host = add('<i data-tour="a"></i><button data-sidebar="rail"></button>');
+		const el = host.querySelector('i')!;
+		stubHit(() => host.querySelector('button'));
+		expect(isOccluded(el)).toBe(false);
+	});
+
 	it('ignores the tour own overlay layers', () => {
 		const host = add('<i data-tour="a"></i><div class="tour-backdrop"></div>');
 		const el = host.querySelector('i')!;

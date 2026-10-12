@@ -12,6 +12,8 @@ export function isVisible(el: Element): boolean {
 
 export const OWN_LAYERS = '.driver-overlay, .driver-popover, .tour-backdrop, .tour-host, .tour-ring';
 
+const IGNORED_HITS = `${OWN_LAYERS}, [data-sidebar="rail"]`;
+
 export function isOccluded(el: Element): boolean {
   if (typeof document.elementFromPoint !== 'function') return false;
   const rect = el.getBoundingClientRect();
@@ -27,7 +29,7 @@ export function isOccluded(el: Element): boolean {
   return points.some(([x, y]) => {
     if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false;
     const hit = document.elementFromPoint(x, y);
-    if (!hit || hit.closest(OWN_LAYERS)) return false;
+    if (!hit || hit.closest(IGNORED_HITS)) return false;
     return !(el.contains(hit) || hit.contains(el));
   });
 }
