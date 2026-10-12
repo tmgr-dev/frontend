@@ -45,6 +45,8 @@ export function anchorSelector(name: string, taskId?: number | null): string {
   return `${base}${task}, ${task} ${base}, ${base} ${task}`;
 }
 
+const scrolled = new WeakSet<Element>();
+
 export interface ResolveOptions {
   mobile: boolean;
   eventTaskId?: number | null;
@@ -61,15 +63,19 @@ export function resolveAnchor(step: StepDef, options: ResolveOptions): Promise<E
     name,
     step.anchorScope === 'eventTask' ? options.eventTaskId : null,
   );
-  const scrolled = new WeakSet<Element>();
-  const clear = (el: Element) => {
-    if (!isOccluded(el)) return true;
-    if (scrolled.has(el) || typeof el.scrollIntoView !== 'function') return false;
-    scrolled.add(el);
-    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' as ScrollBehavior });
-    return !isOccluded(el);
+  let scrolledHere = false;
+  const find = () => {
+    const visible = Array.from(root.querySelectorAll(selector)).filter(isVisible);
+    for (const el of visible) {
+      if (!isOccluded(el)) return el;
+      if (el !== visible[0] || scrolledHere || scrolled.has(el) || typeof el.scrollIntoView !== 'function') continue;
+      scrolledHere = true;
+      scrolled.add(el);
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' as ScrollBehavior });
+      if (!isOccluded(el)) return el;
+    }
+    return null;
   };
-  const find = () => Array.from(root.querySelectorAll(selector)).find((el) => isVisible(el) && clear(el)) ?? null;
 
   return new Promise((resolve) => {
     const first = find();

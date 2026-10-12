@@ -144,6 +144,38 @@ describe('resolveAnchor inside a scroller', () => {
 	});
 });
 
+describe('resolveAnchor scroll budget', () => {
+	afterEach(() => {
+		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+	});
+
+	it('scrolls only the first visible candidate, never the later ones', async () => {
+		const host = add('<i data-tour="nav.sidebar"></i><i data-tour="nav.sidebar"></i><u></u>');
+		const [a, b] = Array.from(host.querySelectorAll('i')) as HTMLElement[];
+		const panel = host.querySelector('u')!;
+		const first = jest.fn();
+		const second = jest.fn();
+		a.scrollIntoView = first;
+		b.scrollIntoView = second;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		await resolveAnchor(step(), { mobile: false, timeoutMs: 600 });
+		expect(first).toHaveBeenCalledTimes(1);
+		expect(second).not.toHaveBeenCalled();
+	});
+
+	it('does not scroll the same element again on a later call', async () => {
+		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
+		const el = host.querySelector('i')! as HTMLElement;
+		const panel = host.querySelector('u')!;
+		const scrollIntoView = jest.fn();
+		el.scrollIntoView = scrollIntoView;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		await resolveAnchor(step(), { mobile: false, timeoutMs: 300 });
+		await resolveAnchor(step(), { mobile: false, timeoutMs: 300 });
+		expect(scrollIntoView).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('resolveAnchor throttling', () => {
 	afterEach(() => {
 		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
