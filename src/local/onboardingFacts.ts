@@ -5,11 +5,25 @@ import { TASK_SELECT, taskJson } from './serialize';
 import type { LocalContext, SqlValue } from './types';
 
 export const STARTERS_SEEDED_META = 'onboarding:starters_seeded';
+export const STARTER_IDS_META = 'onboarding:starter_ids';
 export const STARTER_SETTINGS = '[{"key":"starter","value":"1"}]';
 export const STARTER_TITLES = ['Plan your week', 'Try a timer on this task', 'Drag me to In progress'];
 
-const NOT_STARTER = `settings NOT LIKE '%"key":"starter"%'`;
-const IS_STARTER = `settings LIKE '%"key":"starter"%'`;
+const MARKER = `settings LIKE '%"key":"starter"%'`;
+
+const starterIds = async (ctx: LocalContext): Promise<number[]> => {
+	const rows = await ctx.db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [STARTER_IDS_META]);
+	if (!rows.length) return [];
+	try {
+		const parsed = JSON.parse(rows[0].value);
+		return Array.isArray(parsed) ? parsed.filter((id) => Number.isInteger(id)) : [];
+	} catch {
+		return [];
+	}
+};
+
+const starterCondition = (ids: number[]) =>
+	ids.length ? `(${MARKER} AND id IN (${ids.map(() => '?').join(',')}))` : '0';
 
 export const FACT_KEYS = [
 	'has_task',
@@ -38,7 +52,8 @@ export const computeFacts = async (
 	const scoped = Number.isFinite(taskId) && taskId !== undefined;
 	for (const key of keys) {
 		if (key === 'has_task') {
-			facts[key] = await exists(ctx, `tasks WHERE deleted_at IS NULL AND ${NOT_STARTER}`);
+			const ids = await starterIds(ctx);
+			facts[key] = await exists(ctx, `tasks WHERE deleted_at IS NULL AND NOT ${starterCondition(ids)}`, ids);
 		} else if (key === 'has_timer_minute') {
 			facts[key] = scoped
 				? await exists(ctx, `tasks WHERE deleted_at IS NULL AND common_time >= 60 AND id = ?`, [taskId as number])
@@ -52,7 +67,12 @@ export const computeFacts = async (
 		} else if (key === 'has_page') {
 			facts[key] = await exists(ctx, `pages WHERE deleted_at IS NULL AND type <> 'context'`);
 		} else if (key === 'local_agent_connected') {
-			facts[key] = (await tokens()).some((token) => !!token.lastUsedAt && !token.revokedAt);
+			try {
+				facts[key] = (await tokens()).some((token) => !!token.lastUsedAt && !token.revokedAt);
+			} catch (error) {
+				console.error('local token list failed', error);
+				facts[key] = false;
+			}
 		}
 	}
 	return facts;
@@ -86,6 +106,10 @@ export const seedStarters = async (ctx: LocalContext): Promise<number> => {
 		);
 		ids.push(Number(result.lastInsertId));
 	}
+	await ctx.db.execute(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, [
+		STARTER_IDS_META,
+		JSON.stringify(ids),
+	]);
 	for (const id of ids) {
 		const rows = await ctx.db.select(`${TASK_SELECT} WHERE t.id = ?`, [id]);
 		if (!rows.length) continue;
@@ -100,9 +124,13 @@ export const seedStarters = async (ctx: LocalContext): Promise<number> => {
 };
 
 export const removeStarters = async (ctx: LocalContext): Promise<number> => {
-	const rows = await ctx.db.select<{ id: number }>(
-		`SELECT id FROM tasks WHERE deleted_at IS NULL AND ${IS_STARTER}`,
-	);
+	const ids = await starterIds(ctx);
+	const rows = ids.length
+		? await ctx.db.select<{ id: number }>(
+				`SELECT id FROM tasks WHERE deleted_at IS NULL AND ${starterCondition(ids)}`,
+				ids,
+			)
+		: [];
 	const api = createLocalApi();
 	let removed = 0;
 	for (const { id } of rows) {

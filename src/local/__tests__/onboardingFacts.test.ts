@@ -193,6 +193,34 @@ describeSqlite('local onboarding facts and starters on SQLite', () => {
 		expect((await handle('DELETE', 'onboarding/starter-tasks')).data.data).toEqual({ removed: 0 });
 	});
 
+	it('stores the starter ids and never touches a user task carrying a starter key', async () => {
+		await handle('POST', 'onboarding/intent', { intent: 'human', seed: true });
+		const [{ value }] = await a.db.select<{ value: string }>(`SELECT value FROM meta WHERE key = 'onboarding:starter_ids'`);
+		expect(JSON.parse(value)).toHaveLength(3);
+		const mine = await call(a, 'POST', 'tasks', { title: 'Mine', settings: [{ key: 'starter', value: '1' }] });
+		expect(await facts('has_task')).toEqual({ has_task: true });
+		expect((await handle('DELETE', 'onboarding/starter-tasks')).data.data).toEqual({ removed: 3 });
+		const left = await a.db.select<{ id: number }>(`SELECT id FROM tasks WHERE deleted_at IS NULL`);
+		expect(left.map((t) => t.id)).toEqual([mine.id]);
+	});
+
+	it('removes nothing when no starter ids were recorded', async () => {
+		await call(a, 'POST', 'tasks', { title: 'Mine', settings: [{ key: 'starter', value: '1' }] });
+		await a.db.execute(`DELETE FROM meta WHERE key = 'onboarding:starter_ids'`);
+		storage.setItem('tmgr:onboarding:v1', JSON.stringify({ starter_workspace: 'local-a', starter_seeded_at: 'x' }));
+		expect((await handle('DELETE', 'onboarding/starter-tasks')).data.data).toEqual({ removed: 0 });
+		expect(await a.db.select(`SELECT id FROM tasks WHERE deleted_at IS NULL`)).toHaveLength(1);
+	});
+
+	it('drops only local_agent_connected when the token list fails', async () => {
+		await call(a, 'POST', 'tasks', { title: 'Real work' });
+		const facts = await computeFacts(a, FACT_KEYS, async () => {
+			throw new Error('unsupported');
+		});
+		expect(facts.has_task).toBe(true);
+		expect(facts.local_agent_connected).toBe(false);
+	});
+
 	it('passes the query params through to the facts handler', async () => {
 		const seen: unknown[] = [];
 		const spy = createOnboardingHandler(storage, {
