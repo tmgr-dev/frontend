@@ -244,4 +244,31 @@ describe('engine facade', () => {
 		await flush();
 		expect(h.engine.api.active.value?.step.id).toBe('title');
 	});
+
+	it('re-runs first_visit for the current route when the state loads after the route was entered', async () => {
+		const timers: Array<() => void> = [];
+		const h = make({ setTimer: (fn) => { timers.push(fn); return () => {}; } });
+		h.present.add('nav.create-task');
+		h.engine.routeEntered('WorkspaceTasksList');
+		timers.splice(0).forEach((f) => f());
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+		await h.engine.init();
+		timers.splice(0).forEach((f) => f());
+		await flush();
+		expect(h.engine.api.active.value?.tour.id).toBe('start.first-task');
+	});
+
+	it('signedOut abandons the active tour and drops the previous account state', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.start('start.nav', 'hub');
+		expect(h.engine.api.active.value).not.toBeNull();
+		h.engine.signedOut();
+		expect(h.engine.api.active.value).toBeNull();
+		expect(h.engine.api.onboarding.value).toBeNull();
+		h.api.fetchState.mockResolvedValue({ tips_mode: 'auto', tours_generation: 0 });
+		await h.engine.init();
+		expect(h.engine.api.onboarding.value?.tours_generation).toBe(0);
+	});
 });

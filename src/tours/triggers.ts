@@ -89,7 +89,12 @@ export function createTriggers(deps: TriggerDeps): Triggers {
       if (!canAutoOffer(tour)) continue;
       write(deps.session, SESSION_KEY, true);
       tourTelemetry().track('tour_offered', { tour: tour.id, trigger: 'first_visit' });
-      void deps.start(tour.id, 'first_visit');
+      void deps
+        .start(tour.id, 'first_visit')
+        .then((started) => {
+          if (started === false) write(deps.session, SESSION_KEY, false);
+        })
+        .catch(() => write(deps.session, SESSION_KEY, false));
       return;
     }
   };

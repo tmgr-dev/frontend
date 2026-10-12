@@ -166,4 +166,28 @@ describe('store', () => {
 		store.saveTour('a', { status: 'paused', step_id: 's', version: 1 });
 		expect(store.tourState('a')?.status).toBe('paused');
 	});
+
+	it('clear drops state and ignores a load that was in flight', async () => {
+		let resolve!: (v: unknown) => void;
+		const api = fakeApi();
+		api.fetchState.mockReturnValue(new Promise((r) => (resolve = r)));
+		const store = make(api);
+		const pending = store.load();
+		store.clear();
+		resolve({ tours_generation: 5 });
+		expect(await pending).toBeNull();
+		expect(store.state.value).toBeNull();
+		expect(store.loaded.value).toBe(false);
+	});
+
+	it('does not carry the generation of a previous account after clear', async () => {
+		const api = fakeApi({ tours_generation: 4 });
+		const store = make(api);
+		await store.load();
+		store.clear();
+		api.fetchState.mockResolvedValue({ tours_generation: 1, tours: { a: { status: 'paused', version: 1, generation: 1 } } });
+		await store.load();
+		expect(store.state.value?.tours_generation).toBe(1);
+		expect(Object.keys(store.state.value?.tours ?? {})).toEqual(['a']);
+	});
 });

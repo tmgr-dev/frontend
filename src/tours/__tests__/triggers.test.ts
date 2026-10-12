@@ -199,4 +199,20 @@ describe('triggers', () => {
 		h.visit('List');
 		expect(h.start).toHaveBeenCalledWith('a.tour', 'first_visit');
 	});
+
+	it('does not consume the session slot when the tour fails to start', async () => {
+		const h = setup({ start: jest.fn().mockResolvedValue(false) });
+		h.visit('List');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.triggers.canAutoOffer(tour('a.tour', 'List'))).toBe(true);
+	});
+
+	it('keeps the session slot once the tour started', async () => {
+		const h = setup();
+		h.visit('List');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.triggers.canAutoOffer(tour('b.tour', 'Board'))).toBe(false);
+	});
 });

@@ -71,6 +71,7 @@ export interface ToursStore {
   state: Ref<OnboardingState | null>;
   loaded: Ref<boolean>;
   load(): Promise<OnboardingState | null>;
+  clear(): void;
   tourState(id: TourId): TourState | null;
   saveTour(id: TourId, input: SaveTourInput): TourState | null;
   applyRemote(id: TourId, remote: TourState): boolean;
@@ -83,6 +84,7 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
   const state = ref<OnboardingState | null>(null);
   const loaded = ref(false);
   const queues = new Map<TourId, Promise<unknown>>();
+  let epoch = 0;
 
   const ensure = (): OnboardingState => {
     if (!state.value) state.value = emptyOnboarding();
@@ -104,6 +106,7 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
     loaded,
 
     async load() {
+      const startedAt = epoch;
       let raw: unknown;
       try {
         raw = await deps.api.fetchState();
@@ -111,6 +114,7 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
         console.error('onboarding load failed', error);
         return null;
       }
+      if (startedAt !== epoch) return null;
       const incoming = normalizeOnboarding(raw);
       const current = state.value;
       if (current && incoming.tours_generation < current.tours_generation) {
@@ -120,6 +124,13 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
       state.value = incoming;
       loaded.value = true;
       return incoming;
+    },
+
+    clear() {
+      epoch += 1;
+      state.value = null;
+      loaded.value = false;
+      queues.clear();
     },
 
     tourState(id) {

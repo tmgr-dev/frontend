@@ -92,6 +92,7 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
     () => !!store.getters.canUseApp,
     (usable) => {
       if (usable) void engine.init();
+      else engine.signedOut();
     },
     { immediate: true },
   );

@@ -49,6 +49,7 @@ export interface ToursEngine {
   store: ToursStore;
   triggers: Triggers;
   init(): Promise<void>;
+  signedOut(): void;
   routeEntered(name: string | null): void;
   modulesChanged(): void;
   rerender(): void;
@@ -190,12 +191,13 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     setTimer: deps.setTimer,
   });
 
-  async function begin(id: TourId, trigger: string, resume: boolean): Promise<void> {
-    if (!deps.lease.acquire()) return;
+  async function begin(id: TourId, trigger: string, resume: boolean): Promise<boolean> {
+    if (!deps.lease.acquire()) return false;
     resumePill.value = null;
     const started = resume ? await runner.resume(id) : await runner.start(id, trigger);
     if (started) keepLease();
     else deps.lease.release();
+    return started;
   }
 
   const api: ToursApi = {
@@ -203,8 +205,8 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     hubItems: hubItems as unknown as ToursApi['hubItems'],
     onboarding: store.state,
     resumePill,
-    start: (id, trigger) => begin(id, trigger, false),
-    resume: (id) => begin(id, 'resume', true),
+    start: async (id, trigger) => void (await begin(id, trigger, false)),
+    resume: async (id) => void (await begin(id, 'resume', true)),
     pause: () => runner.pause(),
     next: () => void runner.next(),
     skipStep: () => void runner.skipStep(),
@@ -235,6 +237,14 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     triggers,
     async init() {
       await store.load();
+      const route = deps.currentRouteName();
+      if (route) triggers.onRouteEntered(route);
+    },
+    signedOut() {
+      runner.abandon();
+      triggers.dispose();
+      store.clear();
+      resumePill.value = null;
     },
     routeEntered(name) {
       runner.routeChanged(name);
