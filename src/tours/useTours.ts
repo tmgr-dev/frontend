@@ -25,7 +25,7 @@ export interface HubItem {
   tour: TourDef;
   state: TourState | null;
   available: boolean;
-  unavailableReason?: 'module_off' | 'platform' | 'account' | 'role';
+  unavailableReason?: 'module_off' | 'module_on' | 'platform' | 'account' | 'role';
 }
 
 export interface ToursApi {

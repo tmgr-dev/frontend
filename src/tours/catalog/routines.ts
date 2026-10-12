@@ -45,7 +45,7 @@ export const routinesTours: TourDef[] = [
     title: 'Day, week, month, year',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { platforms: ALL },
+    requires: { modules: ['daily_routines'], platforms: ALL },
     steps: [
       {
         id: 's1',
@@ -65,7 +65,7 @@ export const routinesTours: TourDef[] = [
     title: 'Reminders and conversion',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { platforms: WDDL },
+    requires: { modules: ['daily_routines'], platforms: WDDL },
     steps: [
       {
         id: 's1',

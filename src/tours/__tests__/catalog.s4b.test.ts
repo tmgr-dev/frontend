@@ -108,8 +108,10 @@ describe('S4b catalog', () => {
 		expect(tour('graph.map').requires).toMatchObject({ modules: ['graph', 'pages'], platforms: WDDL });
 		expect(tour('graph.enable').requires).toMatchObject({ role: 'owner', platforms: WDDL });
 		expect(tour('routines.first').requires).toMatchObject({ modules: ['daily_routines'], platforms: ALL });
-		expect(tour('routines.views').requires?.platforms).toEqual(ALL);
-		expect(tour('routines.reminders').requires?.platforms).toEqual(WDDL);
+		expect(tour('routines.views').requires).toMatchObject({ modules: ['daily_routines'], platforms: ALL });
+		expect(tour('routines.reminders').requires).toMatchObject({ modules: ['daily_routines'], platforms: WDDL });
+		for (const id of ['routines.first', 'routines.views', 'routines.reminders'])
+			expect(tour(id).requires?.modules).toEqual(['daily_routines']);
 	});
 
 	it('triggers', () => {
@@ -257,7 +259,22 @@ describe('S4b catalog', () => {
 
 		it('shows every S4b tour on web with all modules on', () => {
 			const { items } = hub('web', 'cloud', everything);
-			expect(items.filter((item) => !item.available)).toEqual([]);
+			expect(items.filter((item) => !item.available).map((item) => item.tour.id)).toEqual(['graph.enable']);
+		});
+
+		it('hides graph.enable from the hub once Graph is on and shows it while Graph is off', () => {
+			const on = hub('web', 'cloud', everything);
+			expect(reason(on.items, 'graph.enable')).toBe('module_on');
+			expect(on.rows.map((row) => row.id)).not.toContain('graph.enable');
+			const off = hub('web', 'cloud', ['board']);
+			expect(off.items.find((item) => item.tour.id === 'graph.enable')?.available).toBe(true);
+			expect(off.rows.map((row) => row.id)).toContain('graph.enable');
+		});
+
+		it('greys the routines views and reminders tours when Routines is off', () => {
+			const { items } = hub('web', 'cloud', ['board']);
+			expect(reason(items, 'routines.views')).toBe('module_off');
+			expect(reason(items, 'routines.reminders')).toBe('module_off');
 		});
 
 		it('hides cloud-only tours for a local desktop account', () => {

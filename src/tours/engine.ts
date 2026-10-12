@@ -88,6 +88,8 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     if (req?.role === 'owner' && !deps.isOwner()) return 'role';
     if (deps.modulesKnown() && (req?.modules ?? []).some((key) => !deps.isModuleEnabled(key)))
       return 'module_off';
+    if (deps.modulesKnown() && (req?.modulesOff ?? []).some((key) => deps.isModuleEnabled(key)))
+      return 'module_on';
     return undefined;
   };
 

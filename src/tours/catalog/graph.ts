@@ -51,7 +51,7 @@ export const graphTours: TourDef[] = [
     title: 'Turn on Graph',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { role: 'owner', platforms: WDDL },
+    requires: { role: 'owner', modulesOff: ['graph'], platforms: WDDL },
     completeOn: 'module.enabled:graph',
     steps: [
       {

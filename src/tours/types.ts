@@ -34,6 +34,7 @@ export type TourTrigger =
 
 export interface TourRequires {
   modules?: string[];
+  modulesOff?: string[];
   platforms?: Platform[];
   account?: 'cloud' | 'local' | 'any';
   role?: 'owner' | 'member';
