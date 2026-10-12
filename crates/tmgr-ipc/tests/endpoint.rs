@@ -1,5 +1,6 @@
 use serde_json::json;
 use std::io;
+#[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::thread;
