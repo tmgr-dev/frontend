@@ -10,6 +10,7 @@ mod local_backups;
 mod local_db;
 mod local_export;
 mod local_files;
+mod local_move;
 mod local_profile;
 mod local_workspaces;
 mod plugin_catalog;
@@ -189,6 +190,7 @@ pub fn run() {
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(local_backups::BackupErrors::default())
+    .manage(local_move::Moving::default())
     .manage(downloads::PendingDownloads::default())
     .manage(plugin_windows::PluginWindows::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
@@ -226,6 +228,14 @@ pub fn run() {
       local_backups::local_backup_status,
       local_backups::local_backup_reveal,
       local_files::local_file_write,
+      local_move::local_move_freeze,
+      local_move::local_move_unfreeze,
+      local_move::local_source_revision,
+      local_move::local_move_snapshot,
+      local_move::local_move_build_bundle,
+      local_move::local_move_put,
+      local_move::local_move_archive,
+      local_move::local_workspace_remove,
       downloads::reveal_download,
       plugin_dev::plugins_dev_list,
       plugin_dev::plugins_dev_fingerprints,

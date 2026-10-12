@@ -67,13 +67,13 @@ fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
   era * 146_097 + doe - 719_468
 }
 
-fn stamp(secs: i64) -> String {
+pub(crate) fn stamp(secs: i64) -> String {
   let (y, m, d) = civil_from_days(secs.div_euclid(DAY));
   let rem = secs.rem_euclid(DAY);
   format!("{y:04}{m:02}{d:02}-{:02}{:02}{:02}", rem / 3600, (rem % 3600) / 60, rem % 60)
 }
 
-fn rfc3339(secs: i64) -> String {
+pub(crate) fn rfc3339(secs: i64) -> String {
   let (y, m, d) = civil_from_days(secs.div_euclid(DAY));
   let rem = secs.rem_euclid(DAY);
   format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
@@ -163,7 +163,7 @@ fn backups_dir(workspace: &LocalWorkspace) -> PathBuf {
   Path::new(&workspace.path).join("backups")
 }
 
-fn verify(path: &Path) -> Result<(), String> {
+pub(crate) fn verify(path: &Path) -> Result<(), String> {
   let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
   let result: String = conn
     .query_row("PRAGMA integrity_check", [], |row| row.get(0))
@@ -569,6 +569,26 @@ mod tests {
     fs::write(dir.join("bad.db"), vec![7u8; 4096]).unwrap();
     assert!(verify(&dir.join("bad.db")).is_err());
     let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn rotation_never_touches_cloud_move_folders_or_archives() {
+    let dir = temp_dir("rotate-keep");
+    let now = at(2026, 6, 30, 12);
+    let old = at(2025, 1, 1, 0);
+    for secs in [old, old + 3600] {
+      fs::write(dir.join(backup_names("auto", secs)), b"x").unwrap();
+    }
+    fs::write(dir.join(backup_names("auto", now)), b"x").unwrap();
+    let snapshot = dir.join(format!("cloud-move-{}", stamp(old)));
+    fs::create_dir_all(snapshot.join("files")).unwrap();
+    fs::write(snapshot.join("workspace.db"), b"x").unwrap();
+    let archive = dir.join(format!("archive-{}.zip", stamp(old)));
+    fs::write(&archive, b"x").unwrap();
+    rotate(&dir, now);
+    assert!(snapshot.join("workspace.db").exists());
+    assert!(archive.exists());
+    assert!(!dir.join(backup_names("auto", old)).exists());
   }
 
   #[test]

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value as Json};
 use tauri::{AppHandle, Runtime, State};
 
+use crate::local_move::Moving;
 use crate::local_workspaces;
 
 /// One connection per local workspace, opened lazily. SQLite serialises writers anyway; a single
@@ -40,6 +41,18 @@ pub fn check_statement(sql: &str) -> Result<(), String> {
     }
   }
   Ok(())
+}
+
+pub fn is_read_only(sql: &str) -> bool {
+  first_keyword(sql).is_some_and(|word| word == "SELECT")
+}
+
+impl LocalDbs {
+  pub(crate) fn forget(&self, code: &str) {
+    if let Ok(mut map) = self.0.lock() {
+      map.remove(code);
+    }
+  }
 }
 
 /// The leading keyword of a statement, after whitespace and SQL comments (trigger bodies contain BEGIN/END later on).
@@ -114,6 +127,31 @@ pub fn execute(conn: &Connection, sql: &str, params: &[Json]) -> Result<ExecuteR
     .execute(sql, params_from_iter(params.iter().map(to_sql)))
     .map_err(|e| e.to_string())?;
   Ok(ExecuteResult { rows_affected, last_insert_id: conn.last_insert_rowid() })
+}
+
+/// The check runs while the caller holds the connection, so a freeze that has finished stopping
+/// timers can never be overtaken by a write that passed the check earlier.
+pub fn execute_guarded(
+  conn: &Connection,
+  moving: &Moving,
+  code: &str,
+  sql: &str,
+  params: &[Json],
+) -> Result<ExecuteResult, String> {
+  if !is_read_only(sql) {
+    moving.check(code)?;
+  }
+  execute(conn, sql, params)
+}
+
+pub fn batch_guarded(
+  conn: &Connection,
+  moving: &Moving,
+  code: &str,
+  statements: &[BatchStatement],
+) -> Result<BatchResult, String> {
+  moving.check(code)?;
+  batch(conn, statements)
 }
 
 #[derive(Deserialize)]
@@ -208,21 +246,27 @@ pub async fn local_db_select<R: Runtime>(
 pub async fn local_db_execute<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
+  moving: State<'_, Moving>,
   code: String,
   sql: String,
   params: Vec<Json>,
 ) -> Result<ExecuteResult, String> {
-  with_connection(app, &dbs, code, move |conn| execute(conn, &sql, &params)).await
+  let moving = moving.inner().clone();
+  let name = code.clone();
+  with_connection(app, &dbs, code, move |conn| execute_guarded(conn, &moving, &name, &sql, &params)).await
 }
 
 #[tauri::command]
 pub async fn local_db_batch<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
+  moving: State<'_, Moving>,
   code: String,
   statements: Vec<BatchStatement>,
 ) -> Result<BatchResult, String> {
-  with_connection(app, &dbs, code, move |conn| batch(conn, &statements)).await
+  let moving = moving.inner().clone();
+  let name = code.clone();
+  with_connection(app, &dbs, code, move |conn| batch_guarded(conn, &moving, &name, &statements)).await
 }
 
 /// Consistent snapshot of the workspace database before a schema migration (VACUUM INTO also
@@ -282,6 +326,28 @@ mod tests {
     assert!(check_statement("INSERT INTO t (v) VALUES ('rollback')").is_ok());
     assert!(check_statement("CREATE TRIGGER x AFTER INSERT ON t BEGIN SELECT 1; END").is_ok());
     assert!(check_statement("-- note\nSELECT 1").is_ok());
+  }
+
+  #[test]
+  fn a_moving_workspace_refuses_writes_and_batches_but_answers_selects() {
+    let conn = open(":memory:").unwrap();
+    execute(&conn, "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)", &[]).unwrap();
+    let moving = Moving::default();
+    let write = |sql: &str| execute_guarded(&conn, &moving, "ws", sql, &[]);
+    write("INSERT INTO t (v) VALUES ('a')").unwrap();
+
+    moving.set("ws");
+    for sql in ["INSERT INTO t (v) VALUES ('b')", "UPDATE t SET v = 'x'", "DELETE FROM t", "CREATE TABLE u (id INTEGER)"] {
+      assert_eq!(write(sql).err().unwrap(), "workspace is moving", "{sql}");
+    }
+    assert_ne!(write("-- note\nSELECT 1").err().unwrap_or_default(), "workspace is moving");
+    let batch_error = batch_guarded(&conn, &moving, "ws", &[statement("SELECT 1", vec![], false)]).err().unwrap();
+    assert_eq!(batch_error, "workspace is moving");
+    assert_eq!(rows(&conn), 1);
+    assert!(execute_guarded(&conn, &moving, "other", "DELETE FROM t", &[]).is_ok());
+
+    moving.clear("ws");
+    batch_guarded(&conn, &moving, "ws", &[statement("INSERT INTO t (v) VALUES ('c')", vec![], false)]).unwrap();
   }
 
   #[test]

@@ -3,8 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tauri::http::{Method, Request, Response, StatusCode};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
+use crate::local_move::Moving;
 use crate::local_workspaces;
 
 pub const SCHEME: &str = "tmgrfile";
@@ -120,6 +121,7 @@ pub async fn local_file_write<R: Runtime>(app: AppHandle<R>, request: tauri::ipc
     .and_then(parse_target)
     .ok_or("bad file path")?;
   let (code, key) = target;
+  app.state::<Moving>().check(&code)?;
   let workspace = local_workspaces::find(&app, &code)?;
   let path = file_path(Path::new(&workspace.path), &key);
   let body = body.clone();
@@ -127,6 +129,10 @@ pub async fn local_file_write<R: Runtime>(app: AppHandle<R>, request: tauri::ipc
     .await
     .map_err(|e| e.to_string())?
     .map_err(|(_, message)| message)
+}
+
+fn refused_while_moving(moving: &Moving, method: &Method, code: &str) -> bool {
+  matches!(*method, Method::PUT | Method::DELETE) && moving.is_set(code)
 }
 
 pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
@@ -140,6 +146,9 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Resp
     return error(StatusCode::NOT_FOUND, "unknown workspace");
   };
   let path = file_path(Path::new(&workspace.path), &key);
+  if refused_while_moving(&app.state::<Moving>(), request.method(), &code) {
+    return error(StatusCode::LOCKED, crate::local_move::MOVING);
+  }
   match *request.method() {
     Method::GET | Method::HEAD => match fs::read(&path) {
       Ok(bytes) => respond(StatusCode::OK, bytes, content_type(&key)),
@@ -195,6 +204,17 @@ mod tests {
     assert_eq!(fs::read(&path).unwrap(), b"png");
     assert_eq!(store(&path, b"again").unwrap_err().0, StatusCode::CONFLICT);
     let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn file_writes_and_deletes_are_refused_while_the_workspace_moves() {
+    let moving = Moving::default();
+    moving.set("personal");
+    assert!(refused_while_moving(&moving, &Method::PUT, "personal"));
+    assert!(refused_while_moving(&moving, &Method::DELETE, "personal"));
+    assert!(!refused_while_moving(&moving, &Method::GET, "personal"));
+    assert!(!refused_while_moving(&moving, &Method::PUT, "work"));
+    assert_eq!(moving.check("personal").unwrap_err(), "workspace is moving");
   }
 
   #[test]
