@@ -3,6 +3,7 @@
 		class="group-data-[collapsible=icon]:hidden"
 		:class="zone.dragging.value ? 'rounded-md ring-2 ring-blue-500' : ''"
 		data-testid="pages-sidebar-section"
+		data-tour="pages.tree"
 		v-on="zone.handlers"
 	>
 		<SidebarGroupLabel>Pages</SidebarGroupLabel>
@@ -23,6 +24,7 @@
 						class="flex h-5 w-4 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 						title="Page type"
 						aria-label="Choose page type"
+						data-tour="pages.type-picker"
 					>
 						<ChevronDown class="h-3.5 w-3.5" />
 					</button>

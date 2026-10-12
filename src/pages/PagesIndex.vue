@@ -17,6 +17,7 @@
 					type="button"
 					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					data-testid="pages-import"
+					data-tour="pages.import"
 					@click="io.openImport(null)"
 				>
 					<Upload class="h-4 w-4" />
@@ -27,6 +28,7 @@
 					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-50"
 					:disabled="io.busy.value"
 					data-testid="pages-export-all"
+					data-tour="pages.export"
 					@click="io.exportWorkspace()"
 				>
 					<Download class="h-4 w-4" />
@@ -35,6 +37,7 @@
 				<button
 					type="button"
 					class="inline-flex h-9 items-center gap-2 rounded-md bg-tmgr-blue px-4 text-sm font-medium text-white hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
+					data-tour="pages.new"
 					@click="create()"
 				>
 					<Plus class="h-4 w-4" />

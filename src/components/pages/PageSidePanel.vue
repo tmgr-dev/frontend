@@ -21,7 +21,7 @@
 			</ul>
 		</section>
 
-		<section data-testid="page-backlinks">
+		<section data-testid="page-backlinks" data-tour="page.backlinks">
 			<h2
 				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
 			>

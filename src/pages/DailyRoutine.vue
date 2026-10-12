@@ -59,6 +59,7 @@
 											isMobile ? 'Quick add…' : 'Quick add → Unscheduled'
 										"
 										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
+										data-tour="routines.quick-add"
 										@focus="quickFocused = true"
 										@blur="quickFocused = false"
 										@keyup.enter="onQuickAdd"
@@ -393,6 +394,7 @@
 						class="focus:ring-brand/40 fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover focus:outline-none focus:ring-2 md:bottom-6 md:right-6 md:h-14 md:w-14"
 						title="New routine (N)"
 						aria-label="New routine"
+						data-tour="routines.add"
 						@click="onNewRoutine"
 					>
 						<Plus :size="22" stroke-width="2.4" />

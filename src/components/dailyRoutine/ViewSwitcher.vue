@@ -1,6 +1,7 @@
 <template>
 	<div
 		class="inline-flex items-center gap-0.5 rounded-card border border-line bg-surface-sunken p-0.5"
+		data-tour="routines.view-switcher"
 	>
 		<button
 			v-for="v in views"

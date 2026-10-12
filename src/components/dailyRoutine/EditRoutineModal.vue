@@ -270,7 +270,7 @@
 						</ERSection>
 
 						<!-- Reminder -->
-						<ERSection label="Reminder">
+						<ERSection label="Reminder" data-tour="routine.reminder">
 							<div class="flex flex-wrap gap-1.5">
 								<button
 									v-for="p in reminderPresets"
@@ -290,7 +290,11 @@
 						</ERSection>
 
 						<!-- Convert to task -->
-						<ERSection v-if="!isNew" label="Convert to task">
+						<ERSection
+							v-if="!isNew"
+							label="Convert to task"
+							data-tour="routine.to-task"
+						>
 							<button
 								v-if="!convertOpen"
 								type="button"
@@ -395,6 +399,7 @@
 		ROUTINE_CATEGORY_LIST,
 		resolveCategory,
 	} from '@/utils/dailyRoutines/categoryMap';
+	import { emitRoutineEditorOpened } from '@/tours/pageRoutineEvents';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
 	import {
 		isUnscheduledDraft,
@@ -681,6 +686,7 @@
 
 	onMounted(() => {
 		document.addEventListener('keydown', onKey);
+		emitRoutineEditorOpened(isNew.value);
 		setTimeout(() => titleRef.value?.focus(), 50);
 	});
 	onBeforeUnmount(() => document.removeEventListener('keydown', onKey));

@@ -20,6 +20,7 @@
 
 		<button
 			type="button"
+			data-tour="routines.instance"
 			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill border transition-colors"
 			:class="
 				entry.completed

@@ -42,6 +42,7 @@
 <script lang="ts">
 	import { fileDisplayUrl, releaseFileDisplayUrl } from '@/actions/tmgr/files';
 	import store from '@/store';
+	import { emitPageLinkAdded } from '@/tours/pageRoutineEvents';
 	import { imageFilesOf } from '@/utils/pages/files';
 	import { extractTmgrRefs, parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { Crepe } from '@milkdown/crepe';
@@ -151,6 +152,7 @@
 				const tr = view.state.tr.replaceWith(state.from, state.to, label);
 				tr.insert(state.from + item.title.length, schema.text(' '));
 				view.dispatch(tr);
+				emitPageLinkAdded(item.kind);
 				props.directory.titles[`${item.kind}/${item.id}`] = item.title;
 				closeMention();
 				view.focus();

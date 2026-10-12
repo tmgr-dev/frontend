@@ -39,6 +39,7 @@
 									"
 									class="w-36 bg-transparent text-ink outline-none placeholder:text-ink-subtle"
 									data-testid="map-search"
+									data-tour="map.search"
 									@focus="listOpen = true"
 									@blur="listOpen = false"
 									@input="onSearchInput"
@@ -80,6 +81,7 @@
 							class="flex rounded-xl border border-line bg-surface p-0.5"
 							role="group"
 							aria-label="Time range"
+							data-tour="map.filters"
 						>
 							<button
 								v-for="r in RANGES"
@@ -124,6 +126,7 @@
 					<section
 						class="relative h-[calc(100dvh-300px)] min-h-[360px] min-w-0 flex-1 overflow-hidden rounded-2xl border border-line bg-surface-sunken sm:h-[calc(100dvh-250px)] sm:min-h-[420px] lg:h-[calc(100dvh-200px)] lg:min-h-[560px]"
 						data-testid="map-stage"
+						data-tour="map.canvas"
 					>
 						<MapCanvas
 							ref="canvas"

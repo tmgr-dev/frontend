@@ -114,6 +114,7 @@
 						</button>
 						<router-link
 							:to="`/${workspaceCode}/pages/${page.slug}/versions`"
+							data-tour="page.versions"
 							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
 						>
 							<History class="h-4 w-4" />
@@ -171,6 +172,7 @@
 						ref="contentRef"
 						class="min-w-0"
 						data-testid="page-content"
+						data-tour="page.editor"
 						@mouseup="scheduleSelectionRead"
 						@keyup="scheduleSelectionRead"
 					>
