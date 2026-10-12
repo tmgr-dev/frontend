@@ -400,6 +400,67 @@ describe('TourRunner', () => {
 		expect(h.calls('tour_step_completed')[0]).toMatchObject({ via: 'action' });
 	});
 
+	it('skipWhen skips a step whose fact is already set, even when its anchor is missing', async () => {
+		const t = tour({ steps: [step('s1'), step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.s1');
+		h.present.add('a.after');
+		h.setFacts({ connected: true });
+		await h.runner.start('t.one', 'hub');
+		await h.runner.next();
+		expect(h.last()?.step.id).toBe('after');
+		expect(h.last()?.unavailable).toBe(false);
+	});
+
+	it('factsChanged skips the active step when its skipWhen fact appears', async () => {
+		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.w');
+		h.present.add('a.after');
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()?.step.id).toBe('w');
+		h.setFacts({ connected: true });
+		h.runner.factsChanged();
+		await flush();
+		expect(h.last()?.step.id).toBe('after');
+	});
+
+	it('factsChanged re-evaluates alreadyDone on the active wait step and auto-advances', async () => {
+		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.w');
+		h.present.add('a.after');
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()).toMatchObject({ waiting: true, alreadyDone: false });
+		h.setFacts({ has_timer_minute: true });
+		h.runner.factsChanged();
+		await flush();
+		expect(h.last()).toMatchObject({ alreadyDone: true, waiting: false });
+		h.tick();
+		await flush();
+		expect(h.last()?.step.id).toBe('after');
+	});
+
+	it('a wait step already done with a missing anchor advances instead of showing unavailable', async () => {
+		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.after');
+		h.setFacts({ has_timer_minute: true });
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()?.step.id).toBe('after');
+	});
+
+	it('factsChanged does nothing for steps without a matching fact', async () => {
+		const h = setup();
+		h.present.add('a.s1');
+		await h.runner.start('t.one', 'hub');
+		const before = h.views.length;
+		h.setFacts({ other: true });
+		h.runner.factsChanged();
+		await flush();
+		expect(h.views.length).toBe(before);
+	});
+
 	it('Already done also advances via a previously seen event', async () => {
 		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'comment.created' }, alreadyDone: 'comment.created' }), step('after')] });
 		const h = setup([t]);

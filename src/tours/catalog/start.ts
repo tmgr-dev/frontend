@@ -173,6 +173,7 @@ export const startTours: TourDef[] = [
         anchor: 'connect.command',
         route: CONNECT,
         waitFor: { event: 'connect.command_copied' },
+        skipWhen: 'mcp_first_call_at',
         title: 'Copy the command',
         body: 'Copy this command and run it in your terminal. The token is shown once.',
         mobileBody: 'Open this page on your computer, or copy the command to send it there.',

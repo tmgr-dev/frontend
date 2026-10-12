@@ -54,6 +54,7 @@ export interface StepDef {
   body: string;
   waitFor?: { event: string; where?: Record<string, string | number> };
   alreadyDone?: string;
+  skipWhen?: string;
   optional?: boolean;
   mobileBody?: string;
   bodyByPlatform?: { macos?: string; other?: string };

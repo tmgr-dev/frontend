@@ -406,14 +406,23 @@ describe('start.connect-agent', () => {
 		expect(h.api.putTour).toHaveBeenLastCalledWith('start.connect-agent', expect.objectContaining({ status: 'completed' }));
 	});
 
-	it('shows the connected step as already done when the fact is set', async () => {
+	it('skips the copy step and shows the connected step as already done when the fact is set', async () => {
 		const h = await connect({}, { facts: { mcp_first_call_at: '2026-10-12T10:00:00Z' } });
 		h.engine.api.next();
 		await flush();
-		h.bus.emit('connect.command_copied');
-		await flush();
 		expect(h.engine.api.active.value).toMatchObject({ alreadyDone: true });
 		expect(h.engine.api.active.value?.step.id).toBe('s3');
+	});
+
+	it('moves off the copy step when the screen reports the agent connected', async () => {
+		const h = await connect();
+		h.engine.api.next();
+		await flush();
+		expect(h.engine.api.active.value?.step.id).toBe('s2');
+		h.engine.api.patchFacts({ mcp_first_call_at: '2026-10-12T10:00:00Z' });
+		await flush();
+		expect(h.engine.api.active.value?.step.id).toBe('s3');
+		expect(h.engine.api.active.value).toMatchObject({ alreadyDone: true });
 	});
 
 	it('is unavailable when the mcp module is off or the account is local', async () => {

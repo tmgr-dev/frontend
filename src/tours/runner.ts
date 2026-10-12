@@ -294,8 +294,11 @@ export class TourRunner {
     const token = this.token;
     const { tour } = cur;
     let idx = from;
-    while (idx < tour.steps.length && !this.stepModulesOk(tour.steps[idx])) {
-      tourTelemetry().track('tour_step_unavailable', { tour: tour.id, step: tour.steps[idx].id });
+    while (idx < tour.steps.length) {
+      const candidate = tour.steps[idx];
+      if (!this.stepModulesOk(candidate)) {
+        tourTelemetry().track('tour_step_unavailable', { tour: tour.id, step: candidate.id });
+      } else if (!this.skipped(candidate)) break;
       idx++;
     }
     if (idx >= tour.steps.length) return this.complete();
@@ -326,6 +329,7 @@ export class TourRunner {
       });
       if (token !== this.token || this.cur !== cur) return;
       if (!anchor) {
+        if (step.type === 'wait' && this.alreadyDone(step)) return this.enterStep(idx + 1);
         tourTelemetry().track('tour_step_unavailable', { tour: tour.id, step: step.id });
         if (step.optional) return this.enterStep(idx + 1);
         cur.unavailable = true;
@@ -363,6 +367,21 @@ export class TourRunner {
       .then((anchor) => {
         if (anchor && token === this.token && this.cur === cur) void this.enterStep(cur.idx);
       });
+  }
+
+  factsChanged(): void {
+    const cur = this.cur;
+    if (!cur) return;
+    const step = cur.tour.steps[cur.idx];
+    if (this.skipped(step)) {
+      void this.enterStep(cur.idx + 1);
+      return;
+    }
+    if (step.type === 'wait' && !cur.alreadyDone && this.alreadyDone(step)) void this.enterStep(cur.idx);
+  }
+
+  private skipped(step: StepDef): boolean {
+    return !!step.skipWhen && !!this.deps.facts()[step.skipWhen];
   }
 
   private alreadyDone(step: StepDef): boolean {

@@ -382,7 +382,11 @@ export default defineComponent({
 			return code ? `/${code}/${page}` : '/';
 		};
 
-		const fetchFacts = (keys: string[]) => onboardingApi().fetchFacts(keys);
+		const fetchFacts = async (keys: string[]) => {
+			const facts = await onboardingApi().fetchFacts(keys);
+			if (facts?.mcp_first_call_at) tours.patchFacts({ mcp_first_call_at: facts.mcp_first_call_at });
+			return facts;
+		};
 		const pollerDeps = {
 			inert: () => localOnly.value,
 			now: () => Date.now(),

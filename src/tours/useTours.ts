@@ -49,6 +49,7 @@ export interface ToursApi {
   setChecklistHidden(hidden: boolean): Promise<void>;
   resetAll(): Promise<void>;
   takeMeThere(): void;
+  patchFacts(facts: Record<string, unknown>): void;
   resumePill: Readonly<Ref<ResumePill | null>>;
   dismissPill(): void;
 }

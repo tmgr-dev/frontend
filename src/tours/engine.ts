@@ -301,6 +301,10 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     skipStep: () => void runner.skipStep(),
     skipTour: () => runner.skipTour(),
     takeMeThere: () => void runner.takeMeThere(),
+    patchFacts: (facts) => {
+      store.patchFacts(facts);
+      runner.factsChanged();
+    },
     dismissPill: () => {
       resumePill.value = null;
     },
