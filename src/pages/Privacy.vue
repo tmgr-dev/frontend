@@ -36,7 +36,7 @@
 					<p>
 						We use this data to run TMGR for you. We don't store your IP address
 						in the database. Our servers keep client IP addresses in memory for
-						up to 15 minutes to limit abuse such as password guessing.
+						up to an hour to limit abuse such as password guessing.
 					</p>
 				</section>
 
@@ -68,10 +68,10 @@
 					<ul>
 						<li><strong>What is sent:</strong> event names such as <code>tour_step_completed</code> with fixed values (for example which tour and which step), a random install id created on your device, a random id for each app start, the app version (major and minor), the platform, whether you use a cloud account or a local workspace, a screen size class (small, medium or large) and the hour of the event.</li>
 						<li><strong>What is never sent:</strong> task, page or comment text, names, emails, file names, workspace names, links, your account id, your sign-in token or cookies.</li>
-						<li><strong>Your IP address</strong> is not stored with events. It is held in memory for up to 15 minutes to limit abuse.</li>
+						<li><strong>Your IP address</strong> is not stored with events. It is held in memory for up to an hour to limit abuse.</li>
 						<li><strong>Retention:</strong> raw events are deleted after 30 days. Daily totals (counts per event, without install ids) are kept for 13 months.</li>
-						<li><strong>Turning it off:</strong> switch off "Share usage data" in Settings → Privacy. Sending stops at once in every tab and window, and events waiting on your device are deleted.</li>
-						<li><strong>Deleting what was sent:</strong> your device keeps a deletion key for each install id. "Delete data already sent" in Settings → Privacy uses it to delete those events from our servers, also after you turned sharing off.</li>
+						<li><strong>Turning it off:</strong> switch off "Share usage data" in Settings → Privacy or below on this page. Sending stops at once in every tab and window, and events waiting on your device are deleted.</li>
+						<li><strong>Deleting what was sent:</strong> your device keeps a deletion key for each install id. "Delete data already sent" in Settings → Privacy or below on this page uses it to delete those events from our servers, also after you turned sharing off.</li>
 					</ul>
 					<p>
 						Because the install id stays the same over time, we treat usage

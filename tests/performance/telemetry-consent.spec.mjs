@@ -301,3 +301,30 @@ test('desktop without an account asks only about usage data and reports local mo
   await expect(page.getByTestId('analytics-switch')).toHaveCount(0);
   expect(others).toEqual([]);
 });
+
+for (const analytics of ['denied', 'granted']) {
+  test(`a browser upgraded from the GA-only release keeps analytics ${analytics} and is asked about usage`, async ({
+    page,
+  }) => {
+    await mockApp(page, { account: false, consent: false });
+    await page.addInitScript((value) => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem(
+        'tmgr:consent:v1',
+        JSON.stringify({ analytics: value, usage: null, updatedAt: '2026-10-12T00:00:00.000Z' }),
+      );
+    }, analytics);
+    const { events, others, route } = await watchTelemetry(page.context());
+    await route(page);
+    await page.goto('/login');
+    await expect(page.locator('[data-consent-block="usage"]')).toHaveCount(1);
+    await expect(page.locator('[data-consent-block="analytics"]')).toHaveCount(0);
+    await page.waitForTimeout(1000);
+    expect(events).toEqual([]);
+    if (analytics === 'denied') expect(others).toEqual([]);
+    else expect(others.some((u) => /googletagmanager/.test(u))).toBe(true);
+    const usage = await page.evaluate(() => localStorage.getItem('tmgr:telemetry:consent'));
+    expect(usage === null || JSON.parse(usage).on === false).toBe(true);
+  });
+}

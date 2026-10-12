@@ -230,283 +230,78 @@ export const CATALOG = {
 		]
 	},
 	"steps": {
-		"start.nav": [
-			"nav.sidebar",
-			"nav.workspace-switcher",
-			"nav.create-task",
-			"nav.user-menu",
-			"nav.getting-started",
-			"nav.menu-button"
-		],
-		"start.first-task": [
-			"nav.create-task",
-			"task-form.title",
-			"list.row",
-			"list-add"
-		],
-		"start.connect-agent": [
-			"connect.client-tabs",
-			"connect.command",
-			"connect.status",
-			"connect.prompt"
-		],
-		"start.hub": [
-			"hub.checklist",
-			"hub.catalog",
-			"hub.tips-toggle"
-		],
-		"tasks.anatomy": [
-			"task-form.status",
-			"task-form.category",
-			"task-form.assignees",
-			"task-form.description",
-			"task-form.done"
-		],
-		"tasks.board-move": [
-			"board.column",
-			"board.card-handle",
-			"board.add-in-column"
-		],
-		"tasks.statuses": [
-			"statuses.editor",
-			"statuses.add"
-		],
-		"tasks.categories": [
-			"categories.create",
-			"categories.row"
-		],
-		"tasks.comments-files": [
-			"task-form.comments",
-			"task-form.attachments"
-		],
-		"tasks.relations": [
-			"task-form.relations"
-		],
-		"tasks.archive": [
-			"nav.archive"
-		],
-		"tasks.files-page": [
-			"files.list"
-		],
-		"tasks.multi-select": [
-			"list.select"
-		],
-		"time.timer": [
-			"task-form.timer",
-			"nav.active-timers",
-			"task-form.estimate",
-			"task-timer",
-			"s2"
-		],
-		"time.parallel": [
-			"nav.active-timers"
-		],
-		"time.checkpoints": [
-			"task-form.checkpoints"
-		],
-		"time.pomodoro": [
-			"task-form.pomodoro",
-			"pomodoro.settings"
-		],
-		"time.export": [
-			"list.select",
-			"export.panel",
-			"export.download"
-		],
-		"time.timer-prompt": [
-			"settings.timer-prompt"
-		],
-		"agents.work-log": [
-			"task-form.agent-work",
-			"task-form.agent-totals"
-		],
-		"agents.phone-alerts": [
-			"agent-notify.connect",
-			"agent-notify.command",
-			"agent-notify.test"
-		],
-		"agents.mcp-token": [
-			"settings.device-token"
-		],
-		"agents.ask-ai": [
-			"nav.ask-ai",
-			"ai.input"
-		],
-		"agents.connect-later": [
-			"connect.client-tabs",
-			"connect.command",
-			"connect.status",
-			"connect.prompt"
-		],
-		"personas.create": [
-			"personas.create",
-			"personas.grants"
-		],
-		"personas.token": [
-			"personas.tokens"
-		],
-		"personas.assign": [
-			"task-form.persona-assignees"
-		],
-		"personas.skills": [
-			"personas.skills"
-		],
-		"pages.first": [
-			"pages.new",
-			"pages.tree"
-		],
-		"pages.context": [
-			"pages.context"
-		],
-		"pages.links": [
-			"page.editor",
-			"page.backlinks"
-		],
-		"pages.versions": [
-			"page.versions"
-		],
-		"pages.people-meetings": [
-			"pages.type-picker"
-		],
-		"pages.import": [
-			"pages.import",
-			"pages.export"
-		],
-		"pages.task-from-selection": [
-			"page.selection-menu"
-		],
-		"graph.map": [
-			"map.canvas",
-			"map.filters",
-			"map.node"
-		],
-		"graph.enable": [
-			"modules.graph"
-		],
-		"routines.first": [
-			"routines.add",
-			"routines.instance"
-		],
-		"routines.views": [
-			"routines.view-switcher"
-		],
-		"routines.reminders": [
-			"routine.reminder",
-			"routine.to-task"
-		],
-		"ws.modules": [
-			"modules.presets",
-			"modules.list",
-			"modules.hide"
-		],
-		"ws.invite": [
-			"workspace.members"
-		],
-		"ws.dashboard": [
-			"dashboard.activity",
-			"dashboard.member"
-		],
-		"ws.workspaces": [
-			"nav.workspace-switcher"
-		],
-		"ws.appearance": [
-			"settings.theme"
-		],
-		"ws.notifications": [
-			"nav.notification-bell"
-		],
-		"ws.privacy": [
-			"settings.privacy-telemetry",
-			"settings.privacy-tips"
-		],
-		"ws.telegram": [
-			"settings.telegram"
-		],
-		"ws.default-landing": [
-			"settings.default-landing"
-		],
-		"desktop.quick-add": [
-			"s1",
-			"s2"
-		],
-		"desktop.capture": [
-			"s1",
-			"settings.desktop-shortcuts"
-		],
-		"desktop.menu-bar-timer": [
-			"s1",
-			"s2"
-		],
-		"desktop.windows": [
-			"task-form.open-window"
-		],
-		"desktop.local-workspace": [
-			"local.banner",
-			"local.badge",
-			"nav.create-account"
-		],
-		"desktop.backups": [
-			"settings.data-backups",
-			"settings.backup-now"
-		],
-		"desktop.local-agent": [
-			"local-personas.panel",
-			"local-personas.connect"
-		],
-		"desktop.plugins": [
-			"plugins.install",
-			"plugins.help"
-		],
-		"desktop.whats-new": [
-			"whats-new.item-tour"
-		],
-		"desktop.move-to-cloud": [
-			"settings.data-move",
-			"s2"
-		],
-		"ios.tabs": [
-			"tab-list",
-			"tab-board",
-			"tab-routines",
-			"workspace-pill",
-			"tab-more"
-		],
-		"ios.pomodoro": [
-			"s1"
-		],
-		"ios.widgets": [
-			"s1"
-		],
-		"ios.controls": [
-			"s1"
-		],
-		"ios.watch": [
-			"s1"
-		],
-		"ios.siri": [
-			"s1"
-		],
-		"ios.share": [
-			"s1"
-		],
-		"ios.notifications": [
-			"s1"
-		],
-		"ios.alarms": [
-			"s1"
-		],
-		"ios.alarm-phone": [
-			"s1"
-		],
-		"ios.telegram": [
-			"s1"
-		],
-		"ios.face-id": [
-			"s1"
-		],
-		"ios.ask-ai": [
-			"s1"
-		]
+		"start.nav": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"start.first-task": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"start.connect-agent": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"start.hub": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.anatomy": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.board-move": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.statuses": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.categories": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.comments-files": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.relations": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.archive": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.files-page": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"tasks.multi-select": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.timer": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.parallel": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.checkpoints": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.pomodoro": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.export": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"time.timer-prompt": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"agents.work-log": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"agents.phone-alerts": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"agents.mcp-token": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"agents.ask-ai": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"agents.connect-later": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"personas.create": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"personas.token": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"personas.assign": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"personas.skills": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.first": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.context": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.links": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.versions": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.people-meetings": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.import": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"pages.task-from-selection": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"graph.map": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"graph.enable": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"routines.first": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"routines.views": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"routines.reminders": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.modules": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.invite": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.dashboard": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.workspaces": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.appearance": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.notifications": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.privacy": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.telegram": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ws.default-landing": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.quick-add": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.capture": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.menu-bar-timer": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.windows": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.local-workspace": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.backups": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.local-agent": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.plugins": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.whats-new": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"desktop.move-to-cloud": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.tabs": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.pomodoro": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.widgets": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.controls": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.watch": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.siri": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.share": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.notifications": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.alarms": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.alarm-phone": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.telegram": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.face-id": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"],
+		"ios.ask-ai": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"]
 	},
 	"events": {
 		"onboarding_shown": {},

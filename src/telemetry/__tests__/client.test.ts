@@ -94,9 +94,10 @@ describe('with consent', () => {
 		track('screen_viewed', { route: 'SecretRoute' });
 		track('screen_viewed', { route: 'Board', extra: 'x' });
 		track('tour_step_viewed', { tour: 'time.timer', step: 'nav.sidebar', i: 1 });
-		track('tour_step_viewed', { tour: 'time.timer', step: 'task-form.timer', i: 99 });
+		track('tour_step_viewed', { tour: 'time.timer', step: 's13', i: 1 });
+		track('tour_step_viewed', { tour: 'time.timer', step: 's2', i: 99 });
 		expect(tab.telemetry.snapshot().pending).toBe(0);
-		track('tour_step_viewed', { tour: 'time.timer', step: 'task-form.timer', i: 1 });
+		track('tour_step_viewed', { tour: 'time.timer', step: 's2', i: 1 });
 		expect(tab.telemetry.snapshot().pending).toBe(1);
 	});
 
