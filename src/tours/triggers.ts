@@ -31,6 +31,7 @@ export interface Triggers {
   noteSkip(id: TourId): void;
   canAutoOffer(tour: TourDef): boolean;
   skipCount(id: TourId): number;
+  reset(): void;
   dispose(): void;
 }
 
@@ -113,6 +114,11 @@ export function createTriggers(deps: TriggerDeps): Triggers {
 
     canAutoOffer,
     skipCount,
+
+    reset() {
+      write(deps.storage, COOLDOWN_KEY, 0);
+      write(deps.storage, SKIPS_KEY, {});
+    },
 
     dispose() {
       pending?.();

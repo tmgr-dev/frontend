@@ -40,8 +40,89 @@ export interface ToursApi {
   skipTour(): void;
   setTipsMode(mode: TipsMode): Promise<void>;
   resetAll(): Promise<void>;
+  takeMeThere(): void;
+  resumePill: Readonly<Ref<ResumePill | null>>;
+  dismissPill(): void;
+}
+
+export interface ResumePill {
+  tourId: TourId;
+  title: string;
+}
+
+import type { OverlayAdapter } from './overlay/OverlayAdapter';
+import { createTours } from './engine';
+import type { OverlayRegistration, ToursEngine, ToursHostDeps } from './engine';
+import { tourBus } from './events';
+import { createOnboardingApi } from './api';
+
+let overlay: OverlayRegistration | null = null;
+let engine: ToursEngine | null = null;
+
+export function setOverlayAdapter(
+  adapter: OverlayAdapter | null,
+  mount?: (host: HTMLElement) => () => void,
+): void {
+  overlay = adapter ? { adapter, mount } : null;
+  engine?.rerender();
+}
+
+const inertDeps = (): ToursHostDeps => {
+  const memory = () => {
+    const data = new Map<string, string>();
+    return {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+    };
+  };
+  const none = async () => ({});
+  return {
+    api: createOnboardingApi({ get: none as never, put: none as never, delete: none as never }),
+    bus: tourBus,
+    lease: {
+      acquire: () => true,
+      renew: () => true,
+      release() {},
+      holds: () => true,
+      broadcast() {},
+      onMessage() {},
+    },
+    storage: memory(),
+    session: memory(),
+    now: Date.now,
+    platform: () => 'web',
+    mobile: () => false,
+    account: () => 'cloud',
+    isOwner: () => true,
+    modulesKnown: () => false,
+    isModuleEnabled: () => true,
+    currentRouteName: () => null,
+    navigate() {},
+    isBusy: () => false,
+    overlay: () => overlay,
+    setTimer: (fn, ms) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    },
+  };
+};
+
+export function configureTours(deps: Omit<ToursHostDeps, 'overlay'>): ToursEngine {
+  engine?.dispose();
+  engine = createTours({ ...deps, overlay: () => overlay });
+  return engine;
+}
+
+export function toursEngine(): ToursEngine {
+  return engine ?? configureTours(inertDeps());
+}
+
+export function resetToursForTests(): void {
+  engine?.dispose();
+  engine = null;
+  overlay = null;
 }
 
 export function useTours(): ToursApi {
-  throw new Error('not implemented');
+  return toursEngine().api;
 }

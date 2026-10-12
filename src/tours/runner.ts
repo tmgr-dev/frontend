@@ -171,6 +171,10 @@ export class TourRunner {
     await this.enterStep(cur.idx);
   }
 
+  abandon(): void {
+    if (this.cur) this.finish('paused');
+  }
+
   recheck(): void {
     const cur = this.cur;
     if (!cur || !this.deps.modulesKnown()) return;
