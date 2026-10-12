@@ -16,6 +16,8 @@ toml.workspace = true
 keyring.workspace = true
 zeroize.workspace = true
 chrono.workspace = true
+rustix.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

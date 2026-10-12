@@ -9,7 +9,7 @@ use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Read;
 use std::time::Duration;
 
@@ -68,6 +68,7 @@ pub struct Client {
     store: Option<CredentialStore>,
     verbose: bool,
     warnings: RefCell<Vec<Warning>>,
+    workspace_header: Cell<Option<u64>>,
 }
 
 impl Client {
@@ -98,6 +99,7 @@ impl Client {
             store,
             verbose,
             warnings: RefCell::new(Vec::new()),
+            workspace_header: Cell::new(None),
         })
     }
 
@@ -114,6 +116,10 @@ impl Client {
             .borrow()
             .as_ref()
             .and_then(|t| t.expires_at.clone())
+    }
+
+    pub fn set_workspace_header(&self, workspace_id: Option<u64>) {
+        self.workspace_header.set(workspace_id);
     }
 
     pub fn set_tokens(&self, tokens: Tokens) {
@@ -143,6 +149,9 @@ impl Client {
                 .map_err(|_| Error::auth("stored token is malformed").hint("tmgr login"))?;
             value.set_sensitive(true);
             req = req.header(AUTHORIZATION, value);
+            if let Some(id) = self.workspace_header.get() {
+                req = req.header("X-Workspace-Id", id.to_string());
+            }
         }
         let resp = req.send().map_err(|e| self.network_error(&e))?;
         let status = resp.status().as_u16();
@@ -164,7 +173,7 @@ impl Client {
             .hint("check your connection, or `tmgr config get server`")
     }
 
-    fn request(
+    pub(crate) fn request(
         &self,
         method: Method,
         path: &str,
@@ -172,17 +181,28 @@ impl Client {
         body: Option<&Value>,
         scope: &str,
     ) -> Result<Value> {
+        let (status, value) = self.request_status(method, path, query, body)?;
+        if (200..300).contains(&status) {
+            Ok(value)
+        } else {
+            Err(map_error(status, &value, scope))
+        }
+    }
+
+    pub(crate) fn request_status(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<&Value>,
+    ) -> Result<(u16, Value)> {
         let sent_access = self.current_access()?;
         let (mut status, mut value) =
             self.send_raw(method.clone(), path, query, body, Auth::Bearer)?;
         if status == 401 && self.recover(&sent_access)? {
             (status, value) = self.send_raw(method, path, query, body, Auth::Bearer)?;
         }
-        if (200..300).contains(&status) {
-            Ok(value)
-        } else {
-            Err(map_error(status, &value, scope))
-        }
+        Ok((status, value))
     }
 
     fn current_access(&self) -> Result<String> {
@@ -561,7 +581,7 @@ pub fn unwrap_data(v: Value) -> Value {
     }
 }
 
-fn items<T: DeserializeOwned>(v: Value) -> Result<Vec<T>> {
+pub(crate) fn items<T: DeserializeOwned>(v: Value) -> Result<Vec<T>> {
     match unwrap_data(v) {
         Value::Array(a) => a.into_iter().map(parse).collect(),
         Value::Null => Ok(Vec::new()),
@@ -569,11 +589,11 @@ fn items<T: DeserializeOwned>(v: Value) -> Result<Vec<T>> {
     }
 }
 
-fn parse<T: DeserializeOwned>(v: Value) -> Result<T> {
+pub(crate) fn parse<T: DeserializeOwned>(v: Value) -> Result<T> {
     serde_json::from_value(v).map_err(|_| unexpected())
 }
 
-fn unexpected() -> Error {
+pub(crate) fn unexpected() -> Error {
     Error::internal("unexpected response from the server")
 }
 

@@ -1,0 +1,268 @@
+use crate::api::{items, map_error, parse, unexpected, unwrap_data, Client};
+use crate::error::Result;
+use crate::pages::ApiPage;
+use crate::routines::ApiRoutine;
+use crate::runs::ApiRun;
+use reqwest::Method;
+use serde_json::{json, Value};
+
+pub struct TimeItem {
+    pub task_id: u64,
+    pub key: String,
+    pub title: String,
+    pub seconds: i64,
+}
+
+pub struct TimeSummary {
+    pub total_s: i64,
+    pub items: Vec<TimeItem>,
+}
+
+#[derive(Default, Clone)]
+pub struct RunQuery {
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub task_id: Option<u64>,
+    pub agent: Option<String>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+}
+
+pub struct RunsPage {
+    pub runs: Vec<ApiRun>,
+    pub next_cursor: Option<String>,
+}
+
+pub enum PageUpdate {
+    Updated(ApiPage),
+    Conflict(Option<ApiPage>),
+}
+
+fn cursor_of(body: &Value) -> Option<String> {
+    [
+        body.get("next_cursor"),
+        body.get("meta").and_then(|m| m.get("next_cursor")),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+}
+
+pub fn parse_runs_page(body: Value) -> Result<RunsPage> {
+    let next_cursor = cursor_of(&body);
+    let list = match &body {
+        Value::Array(_) => body.clone(),
+        Value::Object(m) => match m.get("runs").or_else(|| m.get("data")) {
+            Some(Value::Object(inner)) => inner.get("runs").cloned().unwrap_or(Value::Null),
+            Some(other) => other.clone(),
+            None => Value::Null,
+        },
+        _ => Value::Null,
+    };
+    let next_cursor = next_cursor.or_else(|| {
+        body.get("data")
+            .filter(|d| d.is_object())
+            .and_then(cursor_of)
+    });
+    Ok(RunsPage {
+        runs: items(list)?,
+        next_cursor,
+    })
+}
+
+impl Client {
+    pub fn time_summary(&self, workspace_id: u64, from: &str, to: &str) -> Result<TimeSummary> {
+        let body = self.request(
+            Method::GET,
+            &format!("/api/workspaces/{workspace_id}/time-summary"),
+            &[
+                ("from", from.to_string()),
+                ("to", to.to_string()),
+                ("group_by", "task".to_string()),
+            ],
+            None,
+            "time:read",
+        )?;
+        let data = unwrap_data(body);
+        let total_s = data
+            .get("total_s")
+            .or_else(|| data.get("total_seconds"))
+            .and_then(Value::as_i64)
+            .ok_or_else(unexpected)?;
+        let items = data
+            .get("items")
+            .and_then(Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|r| {
+                        Some(TimeItem {
+                            task_id: r.get("task_id")?.as_u64()?,
+                            key: r.get("key").and_then(Value::as_str).unwrap_or("").into(),
+                            title: r.get("title").and_then(Value::as_str).unwrap_or("").into(),
+                            seconds: r.get("seconds").and_then(Value::as_i64).unwrap_or(0),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(TimeSummary { total_s, items })
+    }
+
+    pub fn workspace_agent_runs(
+        &self,
+        workspace_id: u64,
+        q: &RunQuery,
+    ) -> Result<Option<RunsPage>> {
+        let mut query: Vec<(&str, String)> = Vec::new();
+        if let Some(v) = &q.since {
+            query.push(("since", v.clone()));
+        }
+        if let Some(v) = &q.until {
+            query.push(("until", v.clone()));
+        }
+        if let Some(v) = q.task_id {
+            query.push(("task_id", v.to_string()));
+        }
+        if let Some(v) = &q.agent {
+            query.push(("agent", v.clone()));
+        }
+        if let Some(v) = q.limit {
+            query.push(("limit", v.to_string()));
+        }
+        if let Some(v) = &q.cursor {
+            query.push(("cursor", v.clone()));
+        }
+        let (status, body) = self.request_status(
+            Method::GET,
+            &format!("/api/workspaces/{workspace_id}/agent-work"),
+            &query,
+            None,
+        )?;
+        if status == 403 && body.get("error").and_then(Value::as_str) == Some("feature_disabled") {
+            return Ok(None);
+        }
+        if !(200..300).contains(&status) {
+            return Err(map_error(status, &body, "tasks:read"));
+        }
+        parse_runs_page(body).map(Some)
+    }
+
+    pub fn routines_expand(&self, from: &str, to: &str) -> Result<Vec<ApiRoutine>> {
+        items(self.request(
+            Method::GET,
+            "/api/daily-routines/expand",
+            &[("from", from.to_string()), ("to", to.to_string())],
+            None,
+            "tasks:read",
+        )?)
+    }
+
+    pub fn complete_routine_today(&self, task_id: u64) -> Result<()> {
+        self.request(
+            Method::POST,
+            &format!("/api/daily-routines/tasks/{task_id}/complete"),
+            &[],
+            None,
+            "tasks:write",
+        )
+        .map(|_| ())
+    }
+
+    pub fn complete_routine_instance(&self, task_id: u64, instance_id: u64) -> Result<()> {
+        self.request(
+            Method::POST,
+            &format!("/api/daily-routines/tasks/{task_id}/instances/{instance_id}/complete"),
+            &[],
+            None,
+            "tasks:write",
+        )
+        .map(|_| ())
+    }
+
+    fn in_workspace<T>(&self, workspace_id: u64, call: impl FnOnce() -> Result<T>) -> Result<T> {
+        self.set_workspace_header(Some(workspace_id));
+        let out = call();
+        self.set_workspace_header(None);
+        out
+    }
+
+    pub fn pages_flat(&self, workspace_id: u64) -> Result<Vec<ApiPage>> {
+        self.in_workspace(workspace_id, || {
+            items(self.request(Method::GET, "/api/pages/tree", &[], None, "pages:read")?)
+        })
+    }
+
+    pub fn page_get(&self, workspace_id: u64, id: u64) -> Result<ApiPage> {
+        self.in_workspace(workspace_id, || {
+            parse(unwrap_data(self.request(
+                Method::GET,
+                &format!("/api/pages/{id}"),
+                &[],
+                None,
+                "pages:read",
+            )?))
+        })
+    }
+
+    pub fn page_create(&self, workspace_id: u64, body: &Value) -> Result<ApiPage> {
+        self.in_workspace(workspace_id, || {
+            parse(unwrap_data(self.request(
+                Method::POST,
+                "/api/pages",
+                &[],
+                Some(body),
+                "pages:write",
+            )?))
+        })
+    }
+
+    pub fn page_update(
+        &self,
+        workspace_id: u64,
+        id: u64,
+        version: i64,
+        body: &str,
+    ) -> Result<PageUpdate> {
+        self.in_workspace(workspace_id, || {
+            let (status, value) = self.request_status(
+                Method::PATCH,
+                &format!("/api/pages/{id}"),
+                &[],
+                Some(&json!({"version": version, "body": body})),
+            )?;
+            if (200..300).contains(&status) {
+                return parse(unwrap_data(value)).map(PageUpdate::Updated);
+            }
+            if status == 409 {
+                let current = parse::<ApiPage>(unwrap_data(value)).ok();
+                return Ok(PageUpdate::Conflict(current));
+            }
+            Err(map_error(status, &value, "pages:write"))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_pages_accept_the_plausible_envelopes() {
+        let run = json!({"id": 1, "agent": "codex"});
+        for body in [
+            json!([run]),
+            json!({"data": [run], "next_cursor": "c1"}),
+            json!({"runs": [run], "meta": {"next_cursor": "c1"}}),
+            json!({"data": {"runs": [run], "next_cursor": "c1"}}),
+        ] {
+            let page = parse_runs_page(body.clone()).unwrap();
+            assert_eq!(page.runs.len(), 1, "{body}");
+            assert_eq!(
+                page.next_cursor.as_deref(),
+                if body.is_array() { None } else { Some("c1") },
+                "{body}"
+            );
+        }
+        assert_eq!(parse_runs_page(json!({"data": []})).unwrap().runs.len(), 0);
+    }
+}
