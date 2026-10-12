@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import type { Ref } from 'vue';
 import type { OverlayAdapter } from './overlay/OverlayAdapter';
+import { STARTERS_EXPECTED_KEY } from '@/onboarding/starters';
 import { resolveAnchor as defaultResolveAnchor } from './anchors';
 import { getTour, TOURS } from './catalog';
 import type { OnboardingApi } from './api';
@@ -266,13 +267,18 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       }
       const reply = (typeof result === 'object' && result !== null ? result : {}) as Record<string, unknown>;
       if (typeof reply.invited === 'boolean') store.applyIntent(intent, { invited: reply.invited });
-      if (options?.seed === false && Number(reply.starter_tasks_created) > 0) {
+      let expected = Number(reply.starter_tasks_created) > 0 ? Number(reply.starter_tasks_created) : 0;
+      if (options?.seed === false && expected > 0) {
         try {
           await deps.api.removeStarterTasks();
+          expected = 0;
         } catch (error) {
           console.error('removing starter tasks failed', error);
         }
       }
+      try {
+        deps.storage.setItem(STARTERS_EXPECTED_KEY, expected > 0 ? String(expected) : '');
+      } catch {}
       if (intent === 'skipped' || intent === 'agent') markAutoUsed(true);
     },
     async setChecklistHidden(hidden: boolean) {

@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { STARTERS_EXPECTED_KEY } from '@/onboarding/starters';
 import { createTours } from '../engine';
 import type { ToursHostDeps } from '../engine';
 import { createTourBus } from '../events';
@@ -464,6 +465,25 @@ describe('setIntent and checklist', () => {
 		h.api.removeStarterTasks.mockRejectedValue(new Error('net'));
 		jest.spyOn(console, 'error').mockImplementation(() => {});
 		await expect(h.engine.api.setIntent('human', { seed: false })).resolves.toBeUndefined();
+	});
+
+	it('records that starter tasks exist so the hub can offer their removal', async () => {
+		const h = make();
+		await h.engine.init();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 3 });
+		await h.engine.api.setIntent('human');
+		expect(h.deps.storage.getItem(STARTERS_EXPECTED_KEY)).toBe('3');
+	});
+
+	it('records nothing when none were created or the empty workspace removed them', async () => {
+		const h = make();
+		await h.engine.init();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 3 });
+		await h.engine.api.setIntent('human', { seed: false });
+		expect(h.deps.storage.getItem(STARTERS_EXPECTED_KEY)).toBeFalsy();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 0 });
+		await h.engine.api.setIntent('human');
+		expect(h.deps.storage.getItem(STARTERS_EXPECTED_KEY)).toBeFalsy();
 	});
 
 	it('rolls the intent back and rethrows when the request fails', async () => {

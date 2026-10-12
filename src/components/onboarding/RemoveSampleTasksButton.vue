@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { toast } from '@/components/ui/toast';
+	import { showRemoveStarters, STARTERS_EXPECTED_KEY } from '@/onboarding/starters';
 	import { onboardingApi } from '@/tours/api';
 	import { useTours } from '@/tours/useTours';
 	import { requestCache } from '@/utils/requestCache';
@@ -24,6 +25,14 @@
 	const readFlag = (uid: unknown): boolean => {
 		try {
 			return localStorage.getItem(flagKey(uid)) === '1';
+		} catch {
+			return false;
+		}
+	};
+
+	const readExpected = (): boolean => {
+		try {
+			return Number(localStorage.getItem(STARTERS_EXPECTED_KEY)) > 0;
 		} catch {
 			return false;
 		}
@@ -49,12 +58,15 @@
 						task.settings?.some((setting) => setting.key === 'starter'),
 					),
 			);
-			const visible = computed(
-				() =>
-					userId.value !== null &&
-					(intent.value === 'human' || intent.value === 'agent') &&
-					!removedFlag.value &&
-					(hasStarter.value || !readFlag(userId.value)),
+			const visible = computed(() =>
+				showRemoveStarters({
+					intent: intent.value,
+					hasUser: userId.value !== null,
+					removed: removedFlag.value,
+					boardTasks: props.tasks !== null,
+					boardHasStarter: hasStarter.value,
+					expected: readExpected() && !readFlag(userId.value),
+				}),
 			);
 
 			const remove = async () => {
@@ -65,7 +77,12 @@
 						localStorage.setItem(flagKey(userId.value), '1');
 					} catch {}
 					removedFlag.value = true;
-					if (removed > 0) {
+					try {
+						localStorage.setItem(STARTERS_EXPECTED_KEY, '');
+					} catch {}
+					if (removed === 0) {
+						toast({ title: 'No sample tasks to remove' });
+					} else {
 						requestCache.invalidate(/^tasks-status-/);
 						requestCache.invalidate(/^task-/);
 						toast({
