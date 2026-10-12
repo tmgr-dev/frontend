@@ -52,12 +52,17 @@
 						:size="20"
 					/>
 					<template v-else>
-						<UserAvatar
+						<MemberAvatarLink
 							:user-id="activity.user.id"
-							:name="activity.user.name"
-							:has-avatar="activity.user.has_avatar ?? false"
-							:size="20"
-						/>
+							:label="activity.user.name"
+						>
+							<UserAvatar
+								:user-id="activity.user.id"
+								:name="activity.user.name"
+								:has-avatar="activity.user.has_avatar ?? false"
+								:size="20"
+							/>
+						</MemberAvatarLink>
 						<span class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-400">
 							by {{ activity.user.name }}
 						</span>
@@ -70,6 +75,7 @@
 
 <script setup lang="ts">
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
+	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import type { Activity } from '@/types/dashboard';
 	import { cn } from '@/utils';
