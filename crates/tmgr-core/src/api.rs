@@ -485,6 +485,15 @@ impl Client {
         )?))
     }
 
+    pub fn running_tasks(&self) -> Result<Vec<ApiTask>> {
+        let tasks: Vec<ApiTask> =
+            items(self.request(Method::GET, "/api/tasks/runned", &[], None, "tasks:read")?)?;
+        Ok(tasks
+            .into_iter()
+            .filter(|t| t.start_time.is_some_and(|s| s > 0))
+            .collect())
+    }
+
     pub fn start_countdown(&self, task_id: u64) -> Result<ApiTask> {
         parse(unwrap_data(self.request(
             Method::POST,

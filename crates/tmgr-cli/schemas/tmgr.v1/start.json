@@ -142,6 +142,24 @@
                   "type": "string"
                 }
               }
+            },
+            "stopped_all": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "ref"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "ref": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         },

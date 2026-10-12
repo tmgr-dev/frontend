@@ -249,15 +249,32 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
     }
     let target_status = target_status.filter(|s| Some(s.id) != r.status.id);
 
-    let previous = active::load().filter(|a| a.timer_running() && a.task.id != r.task.id);
-    if let Some(p) = &previous {
-        if !replace_running && !args.no_timer {
-            interact::confirm(
-                &format!("The timer on {} is running. Stop it?", p.task.key),
-                true,
-                ctx.yes,
-            )?;
+    let others: Vec<(u64, String)> = if args.no_timer {
+        Vec::new()
+    } else {
+        match ctx.soft(
+            client.running_tasks(),
+            "running_timers_unavailable",
+            "the list of running timers",
+        )? {
+            Some(list) => list
+                .iter()
+                .filter(|t| t.id != r.task.id)
+                .map(|t| (t.id, task_ref(t)))
+                .collect(),
+            None => active::load()
+                .filter(|a| a.timer_running() && a.task.id != r.task.id)
+                .map(|a| vec![(a.task.id, a.task.key)])
+                .unwrap_or_default(),
         }
+    };
+    if !others.is_empty() && !replace_running {
+        let names: Vec<&str> = others.iter().map(|(_, k)| k.as_str()).collect();
+        interact::confirm(
+            &format!("A timer is running on {}. Stop it?", names.join(", ")),
+            true,
+            ctx.yes,
+        )?;
     }
 
     if let (Some(g), Some(p)) = (&git, &plan) {
@@ -271,20 +288,19 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
         }
     }
 
-    let mut stopped_previous = None;
-    if let Some(p) = &previous {
-        if !args.no_timer {
-            match client.stop_countdown(p.task.id) {
-                Ok(_) => {}
-                Err(e) if e.kind == Kind::NotFound => ctx.warn(
-                    "previous_timer_gone",
-                    format!("the task {} no longer exists", p.task.key),
-                ),
-                Err(e) => return Err(e),
-            }
-            stopped_previous = Some(json!({"id": p.task.id, "ref": p.task.key}));
+    let mut stopped_all = Vec::new();
+    for (id, key) in &others {
+        match client.stop_countdown(*id) {
+            Ok(_) => {}
+            Err(e) if e.kind == Kind::NotFound => ctx.warn(
+                "previous_timer_gone",
+                format!("the task {key} no longer exists"),
+            ),
+            Err(e) => return Err(e),
         }
+        stopped_all.push(json!({"id": id, "ref": key}));
     }
+    let stopped_previous = stopped_all.first().cloned();
 
     let mut status_change = None;
     let mut shown_status = r.status.clone();
@@ -377,7 +393,7 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
             s.muted("stash ")
         ));
     }
-    if let Some(prev) = &stopped_previous {
+    for prev in &stopped_all {
         lines.push(format!(
             "{} {}  stopped {}",
             s.good("\u{2713}"),
@@ -409,6 +425,7 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
             "started_at": started_at.map(rfc3339),
             "already_running": already_running,
             "stopped_previous": stopped_previous,
+            "stopped_all": stopped_all,
         },
         "repo": git.as_ref().map(gitx::repo_name),
     });

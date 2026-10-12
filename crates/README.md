@@ -26,7 +26,7 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 
 ## Timer, git and prompt
 
-- `tmgr start|stop|switch|done` drive the timer, the task status, a branch named from `branch_template` and the PR comment. They call only `GET` task/status routes, `PUT /api/tasks/{id}/{statusId}`, `POST|DELETE /api/tasks/{id}/countdown` and `POST /api/tasks/{id}/comments`. The branch key is the key in the task title (`TM-509: ...`), never `category_tasks_sequence_id`.
+- `tmgr start|stop|switch|done` drive the timer, the task status, a branch named from `branch_template` and the PR comment. They call only `GET` task/status routes, `PUT /api/tasks/{id}/{statusId}`, `GET /api/tasks/runned`, `POST|DELETE /api/tasks/{id}/countdown` and `POST /api/tasks/{id}/comments`. The branch key is the key in the task title (`TM-509: ...`), never `category_tasks_sequence_id`.
 - Local state: `$XDG_STATE_HOME/tmgr/active.json` (`~/.local/state/tmgr`, mode 0600, written atomically; schema `tmgr.active.v1`). `tmgr prompt` and `tmgr statusline claude` read only this file: no network, no config. Garbage, oversized or control-character content prints nothing.
 - Git arguments are data: branch names follow `[A-Za-z0-9._/-]` with no leading `-` or `..`, slugs are `[a-z0-9-]{1,40}`, git is always called with argv (never a shell) and `--` before positional arguments.
 - `tmgr git install-hooks` writes a `commit-msg` hook that calls the binary by absolute path; an existing hook is moved to `commit-msg.tmgr-prev` and still runs first. The hook never fails a commit. Installs that affect every repository (`--global`, or a `core.hooksPath` from the global config or pointing outside the repository) need an interactive confirmation that `--yes` does not satisfy.

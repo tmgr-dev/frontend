@@ -9,6 +9,7 @@
 - `tmgr prompt [--format plain|zsh|bash|fish|starship|tmux|claude]` and `tmgr statusline claude`: print `⏱ TM-509 1h12m` from the local state file only, with no network access.
 - `tmgr init zsh|bash|fish|starship|tmux|claude` prints the snippet; `--install` / `--uninstall` edit the config file after showing a diff, asking, and writing a timestamped backup.
 - `config` keys `branch_template` and `review_status`. Global `--yes` accepts non-privileged confirmations. New exit code 10 (needs_confirmation).
+- `start` finds timers running on other tasks through `GET /api/tasks/runned` (falls back to the local state file when the route is unavailable); `tmgr status` shows the running task (the latest one, with a warning when several run).
 - JSON schemas `start`, `stop`, `done`.
 
 ## 0.2.0

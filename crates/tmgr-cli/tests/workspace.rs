@@ -161,3 +161,81 @@ async fn status_without_login_is_exit_4() {
     assert_eq!(out.status.code(), Some(4));
     assert!(text(&out.stderr).contains("hint: tmgr login"));
 }
+
+async fn status_fixture(env: &Env, runned: serde_json::Value) {
+    env.login_seed();
+    env.mock_workspaces().await;
+    env.mock_statuses().await;
+    env.mock_json(
+        "/api/workspaces/1/time-summary",
+        json!({"data": {"total_s": 60}}),
+    )
+    .await;
+    env.mock_json("/api/tasks/runned", runned).await;
+}
+
+fn running_task(id: u64, title: &str, start: i64) -> serde_json::Value {
+    let mut t = task_json(id, title);
+    t["start_time"] = json!(start);
+    t
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn status_fills_active_from_the_running_timer() {
+    let env = Env::new().await;
+    let start = now_s() - 4320;
+    status_fixture(
+        &env,
+        json!({"data": [running_task(8974, "TM-512: Checkout", start)]}),
+    )
+    .await;
+    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("status", &v);
+    let a = &v["data"]["active"];
+    assert_eq!(a["task"]["ref"], "TM-512");
+    assert_eq!(a["task"]["title"], "Checkout");
+    assert_eq!(a["task"]["status"]["name"], "In progress");
+    assert_eq!(
+        a["task"]["url"],
+        "http://localhost:5173/personal/tasks/8974"
+    );
+    assert_eq!(a["timer"]["running"], true);
+    assert!((4320..4340).contains(&a["timer"]["seconds"].as_i64().unwrap()));
+    assert!(v["warnings"].as_array().unwrap().is_empty());
+    let out = env.cmd().arg("status").output().unwrap();
+    let s = text(&out.stdout);
+    assert!(s.contains("ACTIVE  TM-512  Checkout"), "{s}");
+    assert!(s.contains("1h 12m"), "{s}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn status_with_several_timers_shows_the_latest_and_warns() {
+    let env = Env::new().await;
+    let now = now_s();
+    status_fixture(
+        &env,
+        json!({"data": [
+            running_task(7, "TM-7: Old", now - 9000),
+            running_task(8974, "TM-512: New", now - 100)
+        ]}),
+    )
+    .await;
+    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    let v = stdout_json(&out);
+    assert_valid("status", &v);
+    assert_eq!(v["data"]["active"]["task"]["ref"], "TM-512");
+    assert_eq!(v["warnings"][0]["code"], "multiple_timers");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn status_without_running_timers_has_no_active_and_no_warning() {
+    let env = Env::new().await;
+    status_fixture(&env, json!({"data": []})).await;
+    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    let v = stdout_json(&out);
+    assert_valid("status", &v);
+    assert!(v["data"]["active"].is_null());
+    assert!(v["warnings"].as_array().unwrap().is_empty());
+}

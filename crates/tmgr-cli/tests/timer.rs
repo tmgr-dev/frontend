@@ -99,7 +99,7 @@ async fn start_creates_the_branch_moves_the_status_and_starts_the_timer() {
                               "to": {"id": 11, "name": "In progress", "type": "active"}},
             "branch": {"name": "tm-512-checkout-apple-pay-button", "action": "created", "base": "main"},
             "stash": false,
-            "timer": {"running": true, "started_at": "2026-10-12T09:00:00Z", "already_running": false, "stopped_previous": null},
+            "timer": {"running": true, "started_at": "2026-10-12T09:00:00Z", "already_running": false, "stopped_previous": null, "stopped_all": []},
             "repo": "repo"
         })
     );
@@ -778,4 +778,154 @@ async fn project_map_list_unmap() {
         .output()
         .unwrap();
     assert!(text(&out.stdout).contains("No projects mapped"));
+}
+
+fn running(id: u64, title: &str, start: i64) -> Value {
+    let mut t = task_json(id, title);
+    t["start_time"] = json!(start);
+    t
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_finds_other_running_timers_on_the_server() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_flow(&env, 11, 0).await;
+    env.mock_json(
+        "/api/tasks/runned",
+        json!({"data": [running(7, "TM-7: Other", STARTED), running(9, "TM-9: Third", STARTED + 5)], "meta": {"current_page": 1, "last_page": 1}}),
+    )
+    .await;
+    env.mock_any(
+        "DELETE",
+        "/api/tasks/7/countdown",
+        json!({"data": {"id": 7}}),
+    )
+    .await;
+    env.mock_any(
+        "DELETE",
+        "/api/tasks/9/countdown",
+        json!({"data": {"id": 9}}),
+    )
+    .await;
+    let plain = env.tmp.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+
+    let out = env
+        .tmgr_in(&plain, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(10), "{}", text(&out.stdout));
+    for p in [
+        "/api/tasks/7/countdown",
+        "/api/tasks/9/countdown",
+        "/api/tasks/8974/countdown",
+    ] {
+        assert!(env.requests_to(p).await.is_empty(), "{p}");
+    }
+
+    let out = env
+        .tmgr_in(&plain, None)
+        .args(["start", "TM-512", "--yes", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("start", &v);
+    assert_eq!(
+        v["data"]["timer"]["stopped_all"].as_array().unwrap().len(),
+        2
+    );
+    assert_eq!(v["data"]["timer"]["stopped_previous"]["ref"], "TM-7");
+    assert_eq!(env.requests_to("/api/tasks/7/countdown").await.len(), 1);
+    assert_eq!(env.requests_to("/api/tasks/9/countdown").await.len(), 1);
+    assert_eq!(env.requests_to("/api/tasks/8974/countdown").await.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_list_wins_over_a_stale_active_file() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_flow(&env, 11, 0).await;
+    env.mock_json("/api/tasks/runned", json!({"data": []}))
+        .await;
+    let plain = env.tmp.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let mut stale = active_json(&plain, Some(STARTED));
+    stale["task"] = json!({"id": 7, "key": "TM-7", "title": "Other"});
+    env.seed_active(stale);
+    let out = env
+        .tmgr_in(&plain, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(env.requests_to("/api/tasks/7/countdown").await.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_that_already_runs_is_not_restarted_or_stopped() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_flow(&env, 11, STARTED).await;
+    env.mock_json(
+        "/api/tasks/runned",
+        json!({"data": [running(8974, "TM-512: Checkout: Apple Pay button", STARTED)]}),
+    )
+    .await;
+    let plain = env.tmp.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let out = env
+        .tmgr_in(&plain, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_eq!(v["data"]["timer"]["already_running"], true);
+    assert_eq!(v["data"]["timer"]["stopped_all"], json!([]));
+    assert!(env
+        .requests_to("/api/tasks/8974/countdown")
+        .await
+        .is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn done_and_start_output_is_sanitised() {
+    let env = Env::new().await;
+    env.login_seed();
+    env.mock_workspaces().await;
+    env.mock_json(
+        "/api/workspaces/1/statuses",
+        json!([
+            {"id": 10, "name": "Back\u{1b}[31mlog\u{202e}", "type": "default"},
+            {"id": 11, "name": "In\u{7} progress", "type": "active"}
+        ]),
+    )
+    .await;
+    let mut t = task(10, 0);
+    t["title"] = json!("TM-512: evil \u{1b}]0;pwn\u{7} \u{202e}title");
+    env.mock_json("/api/tasks/by-key/TM-512", json!({"data": t}))
+        .await;
+    env.mock_any("PUT", "/api/tasks/8974/11", json!({"data": {}}))
+        .await;
+    env.mock_any(
+        "POST",
+        "/api/tasks/8974/countdown",
+        json!({"data": task(11, STARTED)}),
+    )
+    .await;
+    let plain = env.tmp.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let out = env
+        .tmgr_in(&plain, None)
+        .args(["start", "TM-512"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let all = format!("{}{}", text(&out.stdout), text(&out.stderr));
+    for bad in ['\u{1b}', '\u{7}', '\u{202e}'] {
+        assert!(!all.contains(bad), "{all:?}");
+    }
 }
