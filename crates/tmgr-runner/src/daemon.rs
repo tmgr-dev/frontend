@@ -1,0 +1,1268 @@
+use crate::client::Client;
+use crate::profile::{self, Matcher, ProfileSet};
+use crate::sandbox::{self, SandboxSpec};
+use crate::screen::{changed_lines, ScreenModel, Snapshot};
+use crate::t0::{self, Detector, State, StateKind};
+use crate::wire::{
+    clamp_size, now_ms, write_atomic, CreateReq, EventMsg, LaunchFile, ScreenPush, SessionInfo,
+    StatusInfo, MAX_INPUT, SCROLLBACK,
+};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread;
+use std::time::{Duration, Instant};
+use tmgr_ipc::dirs::{self, ensure_private_dir};
+use tmgr_ipc::endpoint::{self, Endpoint};
+use tmgr_ipc::frame::{
+    read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_REPLAY,
+};
+use tmgr_ipc::proto::{
+    new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, Request, Response,
+    ServerMsg, ShimHello, ToShim, PROTO_VERSION,
+};
+use tmgr_ipc::{secret, server};
+
+const MAX_CONNS: usize = 64;
+const PUSH_INTERVAL: Duration = Duration::from_millis(33);
+const MAX_LAYOUT: usize = 64 << 10;
+const MAX_WATCHED: usize = 64;
+const LOG_TAIL: u64 = 2 << 20;
+
+#[derive(Clone)]
+pub struct RunnerConfig {
+    pub dir: PathBuf,
+    pub homes: PathBuf,
+    pub self_exe: PathBuf,
+    pub quiet_ms: u64,
+    pub version: String,
+    pub max_sessions: usize,
+}
+
+impl RunnerConfig {
+    pub fn from_env(self_exe: PathBuf, version: String) -> io::Result<RunnerConfig> {
+        Ok(RunnerConfig {
+            dir: dirs::runner_dir()?,
+            homes: dirs::homes_dir()?,
+            self_exe,
+            quiet_ms: t0::quiet_ms_from_env(),
+            version,
+            max_sessions: 16,
+        })
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn log(msg: &str) {
+    eprintln!("{} {msg}", now_ms() / 1000);
+}
+
+struct ApiErr {
+    code: &'static str,
+    msg: String,
+}
+
+fn api(code: &'static str, msg: impl Into<String>) -> ApiErr {
+    ApiErr {
+        code,
+        msg: msg.into(),
+    }
+}
+
+fn params<T: DeserializeOwned>(v: &Value) -> Result<T, ApiErr> {
+    serde_json::from_value(v.clone()).map_err(|e| api("invalid_params", e.to_string()))
+}
+
+fn to_json<T: Serialize>(v: &T) -> Value {
+    serde_json::to_value(v).unwrap_or(Value::Null)
+}
+
+#[derive(Default)]
+struct Hub {
+    subs: Mutex<Vec<Sender<Value>>>,
+}
+
+impl Hub {
+    fn subscribe(&self) -> Receiver<Value> {
+        let (tx, rx) = mpsc::channel();
+        lock(&self.subs).push(tx);
+        rx
+    }
+
+    fn broadcast(&self, v: Value) {
+        lock(&self.subs).retain(|s| s.send(v.clone()).is_ok());
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Meta {
+    id: String,
+    name: String,
+    argv: Vec<String>,
+    cwd: String,
+    profile: Option<String>,
+    created_ms: u64,
+    cols: u16,
+    rows: u16,
+    shim_pid: u32,
+    child_pid: u32,
+    #[serde(default)]
+    last_state: Option<State>,
+}
+
+struct Inner {
+    meta: Meta,
+    screen: ScreenModel,
+    det: Detector,
+    matcher: Option<Matcher>,
+    fixed: Option<State>,
+    size_owner: Option<u64>,
+}
+
+struct Session {
+    id: String,
+    dir: PathBuf,
+    hub: Arc<Hub>,
+    inner: Mutex<Inner>,
+    version: AtomicU64,
+    shim: Mutex<Option<UnixStream>>,
+}
+
+fn write_meta(dir: &Path, meta: &Meta) {
+    if let Ok(bytes) = serde_json::to_vec(meta) {
+        let _ = write_atomic(&dir.join("meta.json"), &bytes);
+    }
+}
+
+fn interrupted_state() -> State {
+    State {
+        kind: StateKind::Exited,
+        since_ms: now_ms(),
+        detail: Some("interrupted".into()),
+        exit_code: None,
+    }
+}
+
+impl Session {
+    fn state(&self) -> State {
+        let i = lock(&self.inner);
+        i.fixed.clone().unwrap_or_else(|| i.det.state().clone())
+    }
+
+    fn info(&self) -> SessionInfo {
+        let i = lock(&self.inner);
+        let m = &i.meta;
+        SessionInfo {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            argv: m.argv.clone(),
+            cwd: m.cwd.clone(),
+            profile: m.profile.clone(),
+            state: i.fixed.clone().unwrap_or_else(|| i.det.state().clone()),
+            created_ms: m.created_ms,
+            cols: m.cols,
+            rows: m.rows,
+            shim_pid: m.shim_pid,
+            child_pid: m.child_pid,
+        }
+    }
+
+    fn is_exited(&self) -> bool {
+        self.state().kind == StateKind::Exited
+    }
+
+    fn publish(&self, states: Vec<State>) {
+        let Some(last) = states.last().cloned() else {
+            return;
+        };
+        let meta = {
+            let mut i = lock(&self.inner);
+            i.meta.last_state = Some(last);
+            i.meta.clone()
+        };
+        write_meta(&self.dir, &meta);
+        for state in states {
+            self.hub.broadcast(to_json(&EventMsg {
+                session: self.id.clone(),
+                state,
+            }));
+        }
+    }
+
+    fn change(&self, f: impl FnOnce(&mut Inner, u64, &mut Vec<State>)) {
+        let mut out = Vec::new();
+        {
+            let mut i = lock(&self.inner);
+            if i.fixed.is_none() {
+                f(&mut i, now_ms(), &mut out);
+            }
+        }
+        self.publish(out);
+    }
+
+    fn shim_frame(&self, frame: &Frame) {
+        let mut g = lock(&self.shim);
+        if let Some(s) = g.as_mut() {
+            if write_frame(s, frame).is_err() {
+                *g = None;
+            }
+        }
+    }
+
+    fn shim_msg(&self, msg: &ToShim) {
+        let mut g = lock(&self.shim);
+        if let Some(s) = g.as_mut() {
+            if write_json(s, msg).is_err() {
+                *g = None;
+            }
+        }
+    }
+
+    fn shim_input(&self, bytes: &[u8]) {
+        self.shim_frame(&Frame::Bin(BinFrame {
+            tag: TAG_INPUT,
+            session: self.id.clone(),
+            data: bytes.to_vec(),
+        }));
+    }
+
+    fn has_shim(&self) -> bool {
+        lock(&self.shim).is_some()
+    }
+
+    fn feed(&self, bytes: &[u8], live: bool) {
+        let mut replies = Vec::new();
+        self.change(|i, now, out| {
+            let r = i.screen.feed(bytes);
+            if live {
+                replies = r.replies;
+                out.extend(i.det.on_output(now));
+                if r.bell || r.notify {
+                    out.extend(i.det.on_bell(now));
+                }
+            } else if !bytes.is_empty() {
+                out.extend(i.det.on_output(now));
+            }
+            if let Some(m) = &i.matcher {
+                match m.check(&i.screen.bottom_text(10)) {
+                    Some((rule, line)) if rule.starts_with("blocked") => {
+                        out.extend(i.det.on_blocked(now, &rule, &line))
+                    }
+                    _ => out.extend(i.det.on_unblocked(now)),
+                }
+            }
+        });
+        self.version.fetch_add(1, Ordering::SeqCst);
+        for reply in replies {
+            self.shim_input(&reply);
+        }
+    }
+
+    fn input(&self, bytes: &[u8]) {
+        self.shim_input(bytes);
+        self.change(|i, now, out| out.extend(i.det.on_input(now)));
+    }
+
+    fn resize(&self, cols: u16, rows: u16, owner: Option<u64>) {
+        let (cols, rows) = clamp_size(cols, rows);
+        let meta = {
+            let mut i = lock(&self.inner);
+            i.screen.resize(rows, cols);
+            i.meta.cols = cols;
+            i.meta.rows = rows;
+            i.size_owner = owner;
+            i.meta.clone()
+        };
+        write_meta(&self.dir, &meta);
+        self.version.fetch_add(1, Ordering::SeqCst);
+        self.shim_msg(&ToShim::Resize { cols, rows });
+    }
+
+    fn snapshot(&self, offset: usize) -> Snapshot {
+        lock(&self.inner).screen.snapshot(offset)
+    }
+
+    fn on_stat(&self, cpu: Option<u64>, waiting: Option<bool>) {
+        self.change(|i, now, out| out.extend(i.det.on_stat(now, cpu, waiting)));
+    }
+
+    fn on_exited(&self, e: &ExitInfo) {
+        self.change(|i, now, out| {
+            let changed = i.det.on_exit(now, e.code, e.signal);
+            if changed.is_some() {
+                log(&format!(
+                    "session {} exited code={:?} signal={:?}",
+                    self.id, e.code, e.signal
+                ));
+            }
+            out.extend(changed)
+        });
+    }
+
+    fn tick(&self) {
+        self.change(|i, now, out| out.extend(i.det.tick(now)));
+    }
+
+    fn interrupt(&self) {
+        let state = {
+            let mut i = lock(&self.inner);
+            if i.fixed.is_some() || i.det.state().kind == StateKind::Exited {
+                return;
+            }
+            let s = interrupted_state();
+            i.fixed = Some(s.clone());
+            s
+        };
+        self.publish(vec![state]);
+    }
+
+    fn attach_shim(self: &Arc<Self>, stream: UnixStream, hello: ShimHello, fresh: bool) {
+        if let Ok(w) = stream.try_clone() {
+            *lock(&self.shim) = Some(w);
+        }
+        if let Some(e) = &hello.exit {
+            self.on_exited(e);
+        }
+        let me = self.clone();
+        thread::spawn(move || {
+            me.read_shim(&stream, fresh);
+            *lock(&me.shim) = None;
+            me.interrupt();
+        });
+    }
+
+    fn read_shim(&self, stream: &UnixStream, answer_replay: bool) {
+        while let Ok(Some(frame)) = read_frame(&mut &*stream) {
+            match frame {
+                Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
+                Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
+                    Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
+                    Ok(FromShim::Exited(e)) => self.on_exited(&e),
+                    _ => {}
+                },
+            }
+        }
+    }
+
+    fn nudge(&self) {
+        let (cols, rows) = {
+            let i = lock(&self.inner);
+            (i.meta.cols, i.meta.rows)
+        };
+        let alt = if cols > 1 { cols - 1 } else { cols + 1 };
+        self.shim_msg(&ToShim::Resize { cols: alt, rows });
+        thread::sleep(Duration::from_millis(50));
+        self.shim_msg(&ToShim::Resize { cols, rows });
+    }
+
+    fn load_dead(&self) {
+        let mut i = lock(&self.inner);
+        if let Ok(mut f) = File::open(self.dir.join("output.log")) {
+            let len = f.metadata().map_or(0, |m| m.len());
+            let _ = f.seek(SeekFrom::Start(len.saturating_sub(LOG_TAIL)));
+            let mut buf = Vec::new();
+            if f.take(LOG_TAIL).read_to_end(&mut buf).is_ok() {
+                i.screen.feed(&buf);
+            }
+        }
+        let known = i
+            .meta
+            .last_state
+            .clone()
+            .filter(|s| s.kind == StateKind::Exited);
+        i.fixed = Some(known.unwrap_or_else(interrupted_state));
+    }
+}
+
+fn adopt_shim(
+    dir: &Path,
+    id: &str,
+    adopt_secret: &str,
+    expect_pid: Option<u32>,
+) -> io::Result<(UnixStream, ShimHello)> {
+    let stream = endpoint::connect(&Endpoint::load_session(dir, id)?)?;
+    let cred = server::accept_check(&stream)?;
+    if let Some(p) = expect_pid {
+        if cred.pid != Some(p as i32) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "shim pid does not match the recorded pid",
+            ));
+        }
+    }
+    write_json(
+        &mut &stream,
+        &ToShim::Adopt {
+            secret: adopt_secret.into(),
+        },
+    )?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let hello = match read_frame(&mut &stream)? {
+        Some(Frame::Json(v)) => match serde_json::from_value::<FromShim>(v) {
+            Ok(FromShim::Hello(h)) => h,
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "bad shim hello")),
+        },
+        _ => return Err(io::ErrorKind::UnexpectedEof.into()),
+    };
+    stream.set_read_timeout(None)?;
+    Ok((stream, hello))
+}
+
+struct Conn {
+    id: u64,
+    w: Mutex<UnixStream>,
+    watched: Mutex<Vec<String>>,
+    scroll: Mutex<HashMap<String, usize>>,
+    sizes: Mutex<HashMap<String, (u16, u16)>>,
+    closed: AtomicBool,
+    attached: AtomicBool,
+}
+
+impl Conn {
+    fn write(&self, msg: &ServerMsg) -> io::Result<()> {
+        write_json(&mut *lock(&self.w), msg)
+    }
+}
+
+struct Runner {
+    cfg: RunnerConfig,
+    secret: String,
+    started: Instant,
+    sessions: Mutex<HashMap<String, Arc<Session>>>,
+    hub: Arc<Hub>,
+    create_lock: Mutex<()>,
+    layout_lock: Mutex<()>,
+    stop: AtomicBool,
+    conns: AtomicUsize,
+    next_conn: AtomicU64,
+}
+
+struct ConnGuard(Arc<Runner>);
+
+impl Drop for ConnGuard {
+    fn drop(&mut self) {
+        self.0.conns.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn valid_env_name(n: &str) -> bool {
+    let b = n.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && !b[0].is_ascii_digit()
+        && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
+fn base_env() -> Vec<(String, String)> {
+    std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .filter(|(k, _)| {
+            matches!(
+                k.as_str(),
+                "PATH" | "USER" | "LOGNAME" | "LANG" | "SHELL" | "TMPDIR" | "COLORTERM"
+            ) || k.starts_with("LC_")
+        })
+        .collect()
+}
+
+fn signal_number(name: &str) -> Option<i32> {
+    match name {
+        "term" => Some(libc::SIGTERM),
+        "kill" => Some(libc::SIGKILL),
+        "int" => Some(libc::SIGINT),
+        "hup" => Some(libc::SIGHUP),
+        _ => None,
+    }
+}
+
+fn session_id_param(v: &Value) -> Result<String, ApiErr> {
+    let id = v
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| api("invalid_params", "id is required"))?;
+    if valid_session_id(id) {
+        Ok(id.to_string())
+    } else {
+        Err(api("invalid_params", "invalid session id"))
+    }
+}
+
+impl Runner {
+    fn session(&self, id: &str) -> Option<Arc<Session>> {
+        lock(&self.sessions).get(id).cloned()
+    }
+
+    fn all(&self) -> Vec<Arc<Session>> {
+        lock(&self.sessions).values().cloned().collect()
+    }
+
+    fn sdir(&self, id: &str) -> PathBuf {
+        self.cfg.dir.join("sessions").join(id)
+    }
+
+    fn respond(self: &Arc<Self>, conn: &Arc<Conn>, req: Request) -> Response {
+        match self.dispatch(conn, &req) {
+            Ok(v) => Response {
+                id: req.id,
+                ok: Some(v),
+                err: None,
+            },
+            Err(e) => Response {
+                id: req.id,
+                ok: None,
+                err: Some(ErrorBody {
+                    code: e.code.into(),
+                    message: e.msg,
+                }),
+            },
+        }
+    }
+
+    fn dispatch(self: &Arc<Self>, conn: &Arc<Conn>, req: &Request) -> Result<Value, ApiErr> {
+        let p = &req.params;
+        match req.method.as_str() {
+            "runner.status" => Ok(to_json(&StatusInfo {
+                pid: std::process::id(),
+                version: self.cfg.version.clone(),
+                proto: PROTO_VERSION,
+                uptime_s: self.started.elapsed().as_secs(),
+                sessions: lock(&self.sessions).len(),
+            })),
+            "runner.stop" => Ok(Value::Null),
+            "sessions.list" => {
+                let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
+                list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
+                Ok(to_json(&list))
+            }
+            "sessions.create" => self.create(params(p)?).map(|i| to_json(&i)),
+            "sessions.kill" => {
+                let s = self.live(&session_id_param(p)?)?;
+                let name = p.get("signal").and_then(Value::as_str).unwrap_or("");
+                let sig = signal_number(name).ok_or_else(|| {
+                    api("invalid_params", "signal must be term, kill, int or hup")
+                })?;
+                s.shim_msg(&ToShim::Signal { sig });
+                Ok(Value::Null)
+            }
+            "sessions.send" => {
+                let s = self.live(&session_id_param(p)?)?;
+                let text = p
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| api("invalid_params", "text is required"))?;
+                if text.len() > MAX_INPUT {
+                    return Err(api("invalid_params", "text is too large"));
+                }
+                s.input(text.as_bytes());
+                Ok(Value::Null)
+            }
+            "sessions.remove" => self.remove(&session_id_param(p)?).map(|_| Value::Null),
+            "layout.get" => Ok(self.layout_get()),
+            "layout.set" => self.layout_set(p).map(|_| Value::Null),
+            "attach.open" => self.attach_open(conn, p),
+            "attach.set" => self.attach_set(conn, p),
+            m => Err(api("unknown_method", format!("unknown method {m}"))),
+        }
+    }
+
+    fn live(&self, id: &str) -> Result<Arc<Session>, ApiErr> {
+        let s = self
+            .session(id)
+            .ok_or_else(|| api("not_found", "no such session"))?;
+        if s.is_exited() || !s.has_shim() {
+            return Err(api("not_running", "session is not running"));
+        }
+        Ok(s)
+    }
+
+    fn layout_path(&self) -> PathBuf {
+        self.cfg.dir.join("layout.json")
+    }
+
+    fn layout_get(&self) -> Value {
+        let _g = lock(&self.layout_lock);
+        fs::read(self.layout_path())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null)
+    }
+
+    fn layout_set(&self, p: &Value) -> Result<(), ApiErr> {
+        let layout = p
+            .get("layout")
+            .ok_or_else(|| api("invalid_params", "layout is required"))?;
+        let bytes = serde_json::to_vec(layout).map_err(|e| api("invalid_params", e.to_string()))?;
+        if bytes.len() > MAX_LAYOUT {
+            return Err(api("invalid_params", "layout is too large"));
+        }
+        let _g = lock(&self.layout_lock);
+        write_atomic(&self.layout_path(), &bytes).map_err(|e| api("internal", e.to_string()))
+    }
+
+    fn validate(&self, r: &CreateReq) -> Result<PathBuf, ApiErr> {
+        let bad = |m: &str| Err(api("invalid_params", m));
+        if r.argv.is_empty() || r.argv.len() > 64 {
+            return bad("argv must have 1 to 64 entries");
+        }
+        if r.argv.iter().any(|a| a.len() > 4096 || a.contains('\0')) {
+            return bad("argv entries must be at most 4096 bytes without NUL");
+        }
+        if r.argv[0].is_empty() {
+            return bad("argv[0] must not be empty");
+        }
+        if let Some(n) = &r.name {
+            if n.is_empty() || n.chars().count() > 64 || n.chars().any(char::is_control) {
+                return bad("name must be 1 to 64 printable characters");
+            }
+        }
+        if r.env_pass.len() > 64 || !r.env_pass.iter().all(|n| valid_env_name(n)) {
+            return bad("invalid env_pass");
+        }
+        let cwd = Path::new(&r.cwd);
+        if !cwd.is_absolute() || r.cwd.contains('\0') {
+            return bad("cwd must be an absolute path");
+        }
+        let cwd = fs::canonicalize(cwd)
+            .ok()
+            .filter(|p| p.is_dir())
+            .ok_or_else(|| api("invalid_params", "cwd must be an existing directory"))?;
+        let home = std::env::var_os("HOME").and_then(|h| fs::canonicalize(h).ok());
+        if cwd == Path::new("/") || home.as_deref() == Some(cwd.as_path()) {
+            return bad("cwd must not be / or the home directory");
+        }
+        Ok(cwd)
+    }
+
+    fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
+        let cwd = self.validate(&req)?;
+        let matcher = match &req.profile {
+            None => None,
+            Some(pid) => {
+                let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+                let prof = set
+                    .get(pid)
+                    .ok_or_else(|| api("unknown_profile", format!("unknown profile {pid}")))?;
+                Some(Matcher::new(prof).map_err(|e| api("unknown_profile", e))?)
+            }
+        };
+        let _g = lock(&self.create_lock);
+        if lock(&self.sessions).len() >= self.cfg.max_sessions {
+            return Err(api("limit", "too many sessions"));
+        }
+        let id = new_session_id();
+        let sdir = self.sdir(&id);
+        let home = self.cfg.homes.join(&id);
+        let result = self.spawn_session(&req, &cwd, matcher, &id, &sdir, &home);
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&sdir);
+            let _ = fs::remove_dir_all(&home);
+        }
+        result
+    }
+
+    fn spawn_session(
+        self: &Arc<Self>,
+        req: &CreateReq,
+        cwd: &Path,
+        matcher: Option<Matcher>,
+        id: &str,
+        sdir: &Path,
+        home: &Path,
+    ) -> Result<SessionInfo, ApiErr> {
+        let internal = |e: io::Error| api("internal", e.to_string());
+        ensure_private_dir(sdir).map_err(internal)?;
+        ensure_private_dir(home).map_err(internal)?;
+        let mut env_pass = req.env_pass.clone();
+        if let Some(pid) = &req.profile {
+            let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+            if let Some(p) = set.get(pid) {
+                env_pass.extend(p.env_pass.iter().cloned());
+            }
+        }
+        let launch = sandbox::prepare(&SandboxSpec {
+            session_id: id.to_string(),
+            argv: req.argv.clone(),
+            cwd: cwd.to_path_buf(),
+            home: home.to_path_buf(),
+            real_home: std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default(),
+            runner_dir: self.cfg.dir.clone(),
+            self_exe: self.cfg.self_exe.clone(),
+            env_pass,
+            base_env: base_env(),
+        })
+        .map_err(|e| api("sandbox", e))?;
+        let (cols, rows) = clamp_size(req.cols, req.rows);
+        let lf = LaunchFile {
+            argv: launch.argv,
+            env: launch.env,
+            cwd: launch.cwd.display().to_string(),
+            cols,
+            rows,
+        };
+        let bytes = serde_json::to_vec(&lf).map_err(|e| api("internal", e.to_string()))?;
+        write_atomic(&sdir.join("launch.json"), &bytes).map_err(internal)?;
+        let adopt_secret = secret::write_new(&sdir.join("adopt.secret")).map_err(internal)?;
+        let log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .open(sdir.join("shim.log"))
+            .map_err(internal)?;
+        let mut child = Command::new(&self.cfg.self_exe)
+            .arg("__shim")
+            .arg(&self.cfg.dir)
+            .arg(id)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(log_file)
+            .spawn()
+            .map_err(internal)?;
+        let shim_pid = child.id();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let adopted = loop {
+            match adopt_shim(&self.cfg.dir, id, &adopt_secret, Some(shim_pid)) {
+                Ok(r) => break Ok(r),
+                Err(e) => {
+                    if let Ok(Some(st)) = child.try_wait() {
+                        break Err(api("internal", format!("shim exited early ({st})")));
+                    }
+                    if Instant::now() >= deadline {
+                        unsafe { libc::kill(shim_pid as i32, libc::SIGKILL) };
+                        let _ = child.wait();
+                        break Err(api("internal", format!("shim did not start: {e}")));
+                    }
+                    thread::sleep(Duration::from_millis(30));
+                }
+            }
+        };
+        thread::spawn(move || {
+            let _ = child.wait();
+        });
+        let (stream, hello) = adopted?;
+        let meta = Meta {
+            id: id.to_string(),
+            name: req.name.clone().unwrap_or_else(|| {
+                Path::new(&req.argv[0])
+                    .file_name()
+                    .map_or_else(|| req.argv[0].clone(), |n| n.to_string_lossy().into_owned())
+            }),
+            argv: req.argv.clone(),
+            cwd: cwd.display().to_string(),
+            profile: req.profile.clone(),
+            created_ms: now_ms(),
+            cols,
+            rows,
+            shim_pid,
+            child_pid: hello.child_pid,
+            last_state: None,
+        };
+        write_meta(sdir, &meta);
+        let session = self.new_session(meta, matcher, sdir);
+        session.attach_shim(stream, hello, true);
+        lock(&self.sessions).insert(id.to_string(), session.clone());
+        log(&format!("session {id} created: {}", req.argv[0]));
+        Ok(session.info())
+    }
+
+    fn new_session(&self, meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
+        let screen = ScreenModel::new(meta.rows, meta.cols, SCROLLBACK);
+        Arc::new(Session {
+            id: meta.id.clone(),
+            dir: sdir.to_path_buf(),
+            hub: self.hub.clone(),
+            inner: Mutex::new(Inner {
+                meta,
+                screen,
+                det: Detector::new(self.cfg.quiet_ms, now_ms()),
+                matcher,
+                fixed: None,
+                size_owner: None,
+            }),
+            version: AtomicU64::new(0),
+            shim: Mutex::new(None),
+        })
+    }
+
+    fn remove(&self, id: &str) -> Result<(), ApiErr> {
+        let s = self
+            .session(id)
+            .ok_or_else(|| api("not_found", "no such session"))?;
+        if !s.is_exited() {
+            return Err(api("busy", "only exited sessions can be removed"));
+        }
+        s.shim_msg(&ToShim::Reap);
+        lock(&self.sessions).remove(id);
+        let _ = fs::remove_dir_all(self.sdir(id));
+        let _ = fs::remove_dir_all(self.cfg.homes.join(id));
+        let s_dir = self.cfg.dir.join("s");
+        let _ = fs::remove_file(s_dir.join(format!("{id}.sock")));
+        let _ = fs::remove_file(s_dir.join(format!("{id}.addr")));
+        log(&format!("session {id} removed"));
+        Ok(())
+    }
+
+    fn adopt_all(self: &Arc<Self>) {
+        let Ok(rd) = fs::read_dir(self.cfg.dir.join("sessions")) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !valid_session_id(&name) {
+                log("skipping session directory with an invalid name");
+                continue;
+            }
+            match self.load_session(&name) {
+                Ok(()) => {}
+                Err(e) => log(&format!("session {name} not loaded: {e}")),
+            }
+        }
+    }
+
+    fn load_session(self: &Arc<Self>, id: &str) -> io::Result<()> {
+        let sdir = self.sdir(id);
+        let meta: Meta = serde_json::from_slice(&fs::read(sdir.join("meta.json"))?)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if meta.id != id {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "meta id mismatch",
+            ));
+        }
+        let matcher = meta.profile.as_deref().and_then(|pid| {
+            let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+            set.get(pid).and_then(|p| Matcher::new(p).ok())
+        });
+        let session = self.new_session(meta, matcher, &sdir);
+        let shim_pid = fs::read_to_string(sdir.join("shim.pid"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok());
+        let adopt_secret = secret::read(&sdir.join("adopt.secret"));
+        let adopted = match (shim_pid, adopt_secret) {
+            (Some(pid), Ok(sec)) => adopt_shim(&self.cfg.dir, id, &sec, Some(pid)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "shim record missing",
+            )),
+        };
+        match adopted {
+            Ok((stream, hello)) => {
+                session.attach_shim(stream, hello, false);
+                let s = session.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(150));
+                    s.nudge();
+                });
+                log(&format!("session {id} adopted"));
+            }
+            Err(e) => {
+                session.load_dead();
+                log(&format!("session {id} has no live shim ({:?})", e.kind()));
+            }
+        }
+        lock(&self.sessions).insert(id.to_string(), session);
+        Ok(())
+    }
+
+    fn watch_list(&self, p: &Value) -> Result<Vec<String>, ApiErr> {
+        let ids: Vec<String> = match p.get("sessions") {
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|_| api("invalid_params", "sessions must be a list of ids"))?,
+            None => Vec::new(),
+        };
+        if ids.len() > MAX_WATCHED {
+            return Err(api("invalid_params", "too many sessions"));
+        }
+        for id in &ids {
+            if !valid_session_id(id) {
+                return Err(api("invalid_params", "invalid session id"));
+            }
+            if self.session(id).is_none() {
+                return Err(api("not_found", format!("no such session {id}")));
+            }
+        }
+        Ok(ids)
+    }
+
+    fn attach_set(&self, conn: &Arc<Conn>, p: &Value) -> Result<Value, ApiErr> {
+        let ids = self.watch_list(p)?;
+        if let Some(sizes) = p.get("sizes").and_then(Value::as_object) {
+            for (id, v) in sizes {
+                if let (true, Ok((cols, rows))) = (
+                    ids.contains(id),
+                    serde_json::from_value::<(u16, u16)>(v.clone()),
+                ) {
+                    lock(&conn.sizes).insert(id.clone(), (cols, rows));
+                    if let Some(s) = self.session(id) {
+                        s.resize(cols, rows, Some(conn.id));
+                    }
+                }
+            }
+        }
+        *lock(&conn.watched) = ids;
+        Ok(Value::Null)
+    }
+
+    fn attach_open(self: &Arc<Self>, conn: &Arc<Conn>, p: &Value) -> Result<Value, ApiErr> {
+        self.attach_set(conn, p)?;
+        if !conn.attached.swap(true, Ordering::SeqCst) {
+            let rx = self.hub.subscribe();
+            let rt = self.clone();
+            let conn = conn.clone();
+            thread::spawn(move || rt.pusher(&conn, rx));
+        }
+        Ok(Value::Null)
+    }
+
+    fn pusher(&self, conn: &Arc<Conn>, rx: Receiver<Value>) {
+        struct Sent {
+            version: u64,
+            offset: usize,
+            snap: Snapshot,
+            at: Instant,
+        }
+        let mut sent: HashMap<String, Sent> = HashMap::new();
+        let fail = |conn: &Conn| {
+            let _ = lock(&conn.w).shutdown(std::net::Shutdown::Both);
+        };
+        while !conn.closed.load(Ordering::SeqCst) {
+            let mut events = Vec::new();
+            match rx.recv_timeout(PUSH_INTERVAL) {
+                Ok(ev) => events.push(ev),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+            while let Ok(ev) = rx.try_recv() {
+                events.push(ev);
+            }
+            for ev in events {
+                if conn.write(&ServerMsg::Event(ev)).is_err() {
+                    return fail(conn);
+                }
+            }
+            let watched = lock(&conn.watched).clone();
+            sent.retain(|id, _| watched.contains(id));
+            for id in watched {
+                let Some(s) = self.session(&id) else { continue };
+                let offset = lock(&conn.scroll).get(&id).copied().unwrap_or(0);
+                let version = s.version.load(Ordering::SeqCst);
+                if let Some(e) = sent.get(&id) {
+                    if (e.version == version && e.offset == offset)
+                        || e.at.elapsed() < PUSH_INTERVAL
+                    {
+                        continue;
+                    }
+                } else {
+                    let ev = EventMsg {
+                        session: id.clone(),
+                        state: s.state(),
+                    };
+                    if conn.write(&ServerMsg::Event(to_json(&ev))).is_err() {
+                        return fail(conn);
+                    }
+                }
+                let snap = s.snapshot(offset);
+                let push = match sent.get(&id) {
+                    Some(prev) if prev.snap.rows == snap.rows && prev.snap.cols == snap.cols => {
+                        ScreenPush {
+                            session: id.clone(),
+                            full: false,
+                            snapshot: None,
+                            lines: changed_lines(&prev.snap, &snap)
+                                .into_iter()
+                                .map(|i| (i, snap.lines[i].clone()))
+                                .collect(),
+                            cursor: snap.cursor,
+                            modes: Some(snap.modes),
+                            scroll_offset: snap.scroll_offset,
+                            scroll_max: snap.scroll_max,
+                        }
+                    }
+                    _ => ScreenPush {
+                        session: id.clone(),
+                        full: true,
+                        snapshot: Some(snap.clone()),
+                        lines: Vec::new(),
+                        cursor: None,
+                        modes: None,
+                        scroll_offset: 0,
+                        scroll_max: 0,
+                    },
+                };
+                if conn.write(&ServerMsg::Screen(to_json(&push))).is_err() {
+                    return fail(conn);
+                }
+                sent.insert(
+                    id,
+                    Sent {
+                        version,
+                        offset,
+                        snap,
+                        at: Instant::now(),
+                    },
+                );
+            }
+        }
+    }
+
+    fn client_input(&self, conn: &Conn, id: &str, data: &[u8]) {
+        let Some(s) = self.session(id) else { return };
+        let owner_matches = lock(&s.inner).size_owner == Some(conn.id);
+        if !owner_matches {
+            let size = lock(&conn.sizes).get(id).copied();
+            if let Some((cols, rows)) = size {
+                s.resize(cols, rows, Some(conn.id));
+            }
+        }
+        s.input(data);
+    }
+
+    fn client_resize(&self, conn: &Conn, id: &str, cols: u16, rows: u16) {
+        let Some(s) = self.session(id) else { return };
+        let (cols, rows) = clamp_size(cols, rows);
+        lock(&conn.sizes).insert(id.to_string(), (cols, rows));
+        s.resize(cols, rows, Some(conn.id));
+    }
+
+    fn serve_conn(self: &Arc<Self>, stream: UnixStream) {
+        let _guard = ConnGuard(self.clone());
+        if let Err(e) = server::handshake_server(&stream, &self.secret, &self.cfg.version) {
+            log(&format!("rejected connection: {e}"));
+            return;
+        }
+        let Ok(w) = stream.try_clone() else { return };
+        let conn = Arc::new(Conn {
+            id: self.next_conn.fetch_add(1, Ordering::SeqCst),
+            w: Mutex::new(w),
+            watched: Mutex::new(Vec::new()),
+            scroll: Mutex::new(HashMap::new()),
+            sizes: Mutex::new(HashMap::new()),
+            closed: AtomicBool::new(false),
+            attached: AtomicBool::new(false),
+        });
+        let closed = |reason: &str| {
+            let _ = conn.write(&ServerMsg::Closed {
+                reason: reason.into(),
+            });
+        };
+        while let Ok(Some(frame)) = read_frame(&mut &stream) {
+            match frame {
+                Frame::Bin(b) if b.tag == TAG_INPUT => {
+                    if b.data.len() > MAX_INPUT {
+                        closed("input frame too large");
+                        break;
+                    }
+                    self.client_input(&conn, &b.session, &b.data);
+                }
+                Frame::Json(v) => match serde_json::from_value::<ClientMsg>(v) {
+                    Ok(ClientMsg::Request(req)) => {
+                        let stop = req.method == "runner.stop";
+                        let resp = self.respond(&conn, req);
+                        if conn.write(&ServerMsg::Response(resp)).is_err() {
+                            break;
+                        }
+                        if stop {
+                            log("stop requested");
+                            self.stop.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    Ok(ClientMsg::Resize(r)) => {
+                        if valid_session_id(&r.session) {
+                            self.client_resize(&conn, &r.session, r.cols, r.rows);
+                        }
+                    }
+                    Ok(ClientMsg::Scroll(s)) => {
+                        lock(&conn.scroll).insert(s.session, s.offset as usize);
+                    }
+                    Ok(ClientMsg::Focus(_)) => {}
+                    Ok(ClientMsg::Detach) => break,
+                    Err(_) => {
+                        closed("bad message");
+                        break;
+                    }
+                },
+                Frame::Bin(_) => {
+                    closed("unexpected binary frame");
+                    break;
+                }
+            }
+        }
+        conn.closed.store(true, Ordering::SeqCst);
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+fn take_lock(dir: &Path) -> io::Result<File> {
+    let f = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(dir.join("runner.lock"))?;
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::AddrInUse,
+            "runner already running",
+        ));
+    }
+    Ok(f)
+}
+
+fn load_client_secret(dir: &Path) -> io::Result<String> {
+    let path = dir.join("client.secret");
+    match secret::read(&path) {
+        Ok(s) if s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()) => Ok(s),
+        Ok(_) => {
+            fs::remove_file(&path)?;
+            secret::write_new(&path)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => secret::write_new(&path),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
+    ensure_private_dir(&cfg.dir)?;
+    ensure_private_dir(&cfg.dir.join("sessions"))?;
+    ensure_private_dir(&cfg.homes)?;
+    let _lock = take_lock(&cfg.dir)?;
+    write_atomic(
+        &cfg.dir.join("runner.pid"),
+        std::process::id().to_string().as_bytes(),
+    )?;
+    let secret = load_client_secret(&cfg.dir)?;
+    let rt = Arc::new(Runner {
+        cfg: cfg.clone(),
+        secret,
+        started: Instant::now(),
+        sessions: Mutex::new(HashMap::new()),
+        hub: Arc::new(Hub::default()),
+        create_lock: Mutex::new(()),
+        layout_lock: Mutex::new(()),
+        stop: AtomicBool::new(false),
+        conns: AtomicUsize::new(0),
+        next_conn: AtomicU64::new(1),
+    });
+    log(&format!("runner {} starting", cfg.version));
+    rt.adopt_all();
+    let ep = Endpoint::new_runner(&cfg.dir)?;
+    let listener: UnixListener = endpoint::bind(&ep)?;
+    listener.set_nonblocking(true)?;
+
+    let ticker = rt.clone();
+    thread::spawn(move || {
+        while !ticker.stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(250));
+            for s in ticker.all() {
+                s.tick();
+            }
+        }
+    });
+
+    while !rt.stop.load(Ordering::SeqCst) {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if stream.set_nonblocking(false).is_err() {
+                    continue;
+                }
+                if server::accept_check(&stream).is_err() {
+                    log("rejected connection: other user");
+                    continue;
+                }
+                if rt.conns.fetch_add(1, Ordering::SeqCst) >= MAX_CONNS {
+                    rt.conns.fetch_sub(1, Ordering::SeqCst);
+                    log("rejected connection: too many connections");
+                    continue;
+                }
+                let rt = rt.clone();
+                thread::spawn(move || rt.serve_conn(stream));
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(30));
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => {
+                log(&format!("accept failed: {e}"));
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+    thread::sleep(Duration::from_millis(100));
+    match &ep {
+        Endpoint::Path(p) => {
+            let _ = fs::remove_file(p);
+        }
+        Endpoint::Abstract(_) => {
+            let _ = fs::remove_file(cfg.dir.join("runner.addr"));
+        }
+    }
+    let _ = fs::remove_file(cfg.dir.join("runner.pid"));
+    log("runner stopped");
+    Ok(())
+}
+
+pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
+    if let Ok(mut c) = Client::connect(&cfg.dir) {
+        return Ok(c.status()?.pid);
+    }
+    ensure_private_dir(&cfg.dir)?;
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(cfg.dir.join("runner.log"))?;
+    let mut cmd = Command::new(&cfg.self_exe);
+    cmd.args(["runner", "serve"])
+        .env("TMGR_RUNNER_DIR", &cfg.dir)
+        .env("TMGR_RUNNER_HOMES", &cfg.homes)
+        .env("TMGR_T0_QUIET_MS", cfg.quiet_ms.to_string())
+        .stdin(Stdio::null())
+        .stdout(log_file.try_clone()?)
+        .stderr(log_file);
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(mut c) = Client::connect(&cfg.dir) {
+            if let Ok(st) = c.status() {
+                thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Ok(st.pid);
+            }
+        }
+        if let Some(st) = child.try_wait()? {
+            return Err(io::Error::other(format!(
+                "runner exited during start ({st}); see runner.log"
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "runner did not start within 5 s",
+            ));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
