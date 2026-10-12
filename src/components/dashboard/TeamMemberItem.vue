@@ -11,12 +11,14 @@
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
 			<!-- Avatar + presence dot -->
 			<div class="relative shrink-0">
-				<UserAvatar
-					:user-id="member.id"
-					:name="member.name"
-					:has-avatar="member.has_avatar ?? false"
-					:size="40"
-				/>
+				<MemberAvatarLink :user-id="member.id" :label="member.name">
+					<UserAvatar
+						:user-id="member.id"
+						:name="member.name"
+						:has-avatar="member.has_avatar ?? false"
+						:size="40"
+					/>
+				</MemberAvatarLink>
 				<div
 					:class="statusIndicatorClasses"
 					:title="
@@ -147,6 +149,7 @@
 </template>
 
 <script setup lang="ts">
+	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { TeamMemberStatus } from '@/types/dashboard';

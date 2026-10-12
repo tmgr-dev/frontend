@@ -73,15 +73,20 @@
 						>Assignees:</span
 					>
 					<div class="flex -space-x-1">
-						<UserAvatar
+						<MemberAvatarLink
 							v-for="assignee in task.assignees.slice(0, 3)"
 							:key="assignee.id"
 							:user-id="assignee.id"
-							:name="assignee.name"
-							:has-avatar="assignee.has_avatar ?? false"
-							:size="20"
-							class="border border-white dark:border-gray-800"
-						/>
+							:label="assignee.name"
+						>
+							<UserAvatar
+								:user-id="assignee.id"
+								:name="assignee.name"
+								:has-avatar="assignee.has_avatar ?? false"
+								:size="20"
+								class="border border-white dark:border-gray-800"
+							/>
+						</MemberAvatarLink>
 						<div
 							v-if="task.assignees.length > 3"
 							class="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-gray-300 dark:border-gray-800 dark:bg-gray-600"
@@ -162,6 +167,7 @@
 </template>
 
 <script setup lang="ts">
+	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import Button from '@/components/ui/button/Button.vue';
