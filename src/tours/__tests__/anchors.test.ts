@@ -106,6 +106,26 @@ describe('resolveAnchor occlusion', () => {
 	});
 });
 
+describe('resolveAnchor throttling', () => {
+	afterEach(() => {
+		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+	});
+
+	it('checks at most once per frame during a burst of mutations and samples few points', async () => {
+		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
+		const panel = host.querySelector('u')!;
+		const hit = jest.fn(() => panel);
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = hit;
+		const promise = resolveAnchor(step(), { mobile: false, timeoutMs: 120 });
+		for (let i = 0; i < 20; i++) {
+			add('<span></span>');
+			await Promise.resolve();
+		}
+		await promise;
+		expect(hit.mock.calls.length).toBeLessThanOrEqual(4);
+	});
+});
+
 describe('anchorSelector', () => {
 	it('scopes to the event task', () => {
 		expect(anchorSelector('list.row', 5)).toContain('[data-task-id="5"]');

@@ -22,9 +22,6 @@ export function isOccluded(el: Element): boolean {
   const bottom = rect.bottom - inset;
   const points: Array<[number, number]> = [
     [(left + right) / 2, (top + bottom) / 2],
-    [left, top],
-    [right, top],
-    [left, bottom],
     [right, bottom],
   ];
   return points.some(([x, y]) => {
@@ -70,11 +67,15 @@ export function resolveAnchor(step: StepDef, options: ResolveOptions): Promise<E
 
     let observer: MutationObserver | null = null;
     let poll: ReturnType<typeof setInterval> | undefined;
+    let frame: number | undefined;
+    let frameTimer: ReturnType<typeof setTimeout> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (el: Element | null) => {
       observer?.disconnect();
       clearInterval(poll);
       clearTimeout(timer);
+      clearTimeout(frameTimer);
+      if (frame !== undefined) cancelAnimationFrame(frame);
       options.signal?.removeEventListener('abort', onAbort);
       resolve(el);
     };
@@ -83,15 +84,21 @@ export function resolveAnchor(step: StepDef, options: ResolveOptions): Promise<E
       if (el) finish(el);
     };
     const onAbort = () => finish(null);
+    const schedule = () => {
+      if (frame !== undefined || frameTimer !== undefined) return;
+      const run = () => {
+        frame = undefined;
+        frameTimer = undefined;
+        check();
+      };
+      if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(run);
+      else frameTimer = setTimeout(run, 16);
+    };
 
     if (options.signal?.aborted) return resolve(null);
     options.signal?.addEventListener('abort', onAbort);
-    observer = new MutationObserver(check);
-    observer.observe(root.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-    });
+    observer = new MutationObserver(schedule);
+    observer.observe(root.documentElement, { childList: true, subtree: true });
     poll = setInterval(check, POLL_MS);
     timer = setTimeout(() => finish(null), options.timeoutMs ?? ANCHOR_TIMEOUT_MS);
   });
