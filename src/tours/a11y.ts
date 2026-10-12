@@ -99,10 +99,15 @@ export function trapFocus(
     items[next].focus({ preventScroll: true });
   };
 
+  let pulling = false;
   const onFocusin = (e: FocusEvent) => {
     const target = e.target as Node | null;
-    if (target && !container.contains(target)) {
+    if (pulling || !target || container.contains(target)) return;
+    pulling = true;
+    try {
       (getFocusable(container)[0] ?? container).focus({ preventScroll: true });
+    } finally {
+      pulling = false;
     }
   };
 

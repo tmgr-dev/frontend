@@ -85,6 +85,7 @@
 	/>
 	<Toaster />
 	<ConsentPanel v-if="!isDesktop" />
+	<TourHost v-if="!isDesktop || isMainWindow" />
 	</template>
 </template>
 
@@ -137,6 +138,9 @@
 		watch,
 	} from 'vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
+	const TourHost = defineAsyncComponent(
+		() => import('@/tours/ui/TourHost.vue'),
+	);
 	const PagesImportDialog = defineAsyncComponent(
 		() => import('@/components/pages/PagesImportDialog.vue'),
 	);
@@ -147,6 +151,7 @@
 		name: 'App',
 		components: {
 			PagesImportDialog,
+			TourHost,
 			Toaster,
 			ConsentPanel,
 			CustomSidebar,
