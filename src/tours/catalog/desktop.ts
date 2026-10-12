@@ -81,7 +81,7 @@ export const desktopTours: TourDef[] = [
     version: 1,
     since: SINCE,
     group: 'desktop',
-    title: 'Timer in the menu bar',
+    title: 'Timer in the menu bar or tray',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
     requires: { platforms: DESKTOP },

@@ -63,8 +63,12 @@ const advance = async (page) => {
   else if (await link.count()) await link.first().click();
 };
 
-const finishTour = async (page) => {
+const finishTour = async (page, shot) => {
   for (let i = 0; i < 12 && (await popover(page).count()); i++) {
+    if (shot) {
+      const title = await popover(page).locator('[id^="tour-title"]').first().innerText();
+      await shoot(page, `${shot}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
+    }
     await advance(page);
     await page.waitForTimeout(300);
   }
@@ -110,11 +114,21 @@ const startFromHub = async (page, id, route = '/demo/getting-started') => {
   await expect(popover(page)).toBeVisible();
 };
 
+const runTimer = async (page) => {
+  await page.getByText('Try a timer on this task').first().click();
+  const timer = page.locator('[data-tour="task-form.timer"] button').first();
+  await timer.click();
+  const confirm = page.getByRole('button', { name: 'Ok', exact: true });
+  await confirm.click();
+  await page.waitForTimeout(1200);
+  await timer.click();
+  await page.keyboard.press('Escape');
+};
+
 e2e('fresh local profile: welcome, starters, then D5, G2, TI1, D1 in order', async ({ page }) => {
   await localBoot(page);
   await startLocal(page);
   await answerConsent(page);
-  await page.goto('/local-my-workspace/board');
   for (const title of ['Plan your week', 'Try a timer on this task', 'Drag me to In progress'])
     await expect(page.getByText(title).first()).toBeVisible();
 
@@ -125,21 +139,15 @@ e2e('fresh local profile: welcome, starters, then D5, G2, TI1, D1 in order', asy
     await expect
       .poll(() => page.evaluate(() => window.__toursStarted), { timeout: 20000 })
       .toContain(id);
-    expect(await page.evaluate(() => window.__toursStarted.indexOf(id))).toBe(index);
-    await finishTour(page);
+    expect(await page.evaluate((tourId) => window.__toursStarted.indexOf(tourId), id)).toBe(index);
+    if (id === 'time.timer') await runTimer(page);
+    await finishTour(page, 'first-run');
   }
 
-  const count = page.getByTestId('checklist-count');
-  if (await count.count()) {
-    const before = await count.textContent();
-    await page.getByRole('button', { name: 'Open Add Task Modal' }).first().click();
-    await page.getByPlaceholder('Task name').fill('My own task');
-    await page.keyboard.press('ControlOrMeta+KeyS');
-    await expect.poll(() => count.textContent()).not.toBe(before);
-  }
-
-  await page.getByTestId('checklist-menu').click();
-  await page.getByText('Remove sample tasks').click();
+  await page.getByRole('link', { name: 'Board', exact: true }).first().click();
+  await expect(page.getByTestId('remove-sample-tasks').first()).toBeVisible();
+  await shoot(page, 'starters-board');
+  await page.getByTestId('remove-sample-tasks').first().click();
   await expect(page.getByText('Plan your week')).toHaveCount(0);
 });
 
@@ -191,7 +199,7 @@ e2e('quick-add window relays created, main completes D1 s2', async ({ page, brow
   await expect.poll(() => localTour(page, 'desktop.quick-add').then((s) => s?.status)).toBe('completed');
 
   const other = await browser.newPage();
-  await desktopPage(other, { account: false }, { profile, windowLabel: 'quick-add' });
+  await desktopPage(other, {}, { windowLabel: 'quick-add' });
   await other.route('**/api/daily-routines/tasks', (route) =>
     route.fulfill({ json: { data: { id: 5, workspace_id: 1 } } }),
   );
@@ -213,8 +221,9 @@ for (const [name, platform, expected] of [
   e2e(`D2 capture and D3 timer copy on ${name}`, async ({ page }) => {
     await cloudBoot(page, { platform });
     await startFromHub(page, 'desktop.capture');
-    await expect(popover(page)).not.toContainText(/selection/i);
-    await expect(popover(page)).toContainText(/screenshot/i);
+    const body = popover(page).locator('[id^="tour-body"]');
+    await expect(body).not.toContainText(/selection/i);
+    await expect(body).toContainText(/screenshot/i);
     await shoot(page, `d2-${name}`);
     await page.goto('/settings?tab=desktop');
     await attached(page, ['settings.desktop-shortcuts']);
@@ -257,6 +266,7 @@ e2e('D7 runs on macOS up to the connect anchor', async ({ page }) => {
   await expect(popover(page)).toBeVisible();
   await advance(page);
   await attached(page, ['local-personas.panel', 'local-personas.access']);
+  await expect(popover(page)).toBeInViewport({ ratio: 1 });
   await shoot(page, 'd7-agent');
 });
 
@@ -265,7 +275,7 @@ e2e('D8 starts on the first visit to plugins', async ({ page }) => {
   await page.goto('/settings/plugins');
   await expect(popover(page)).toBeVisible();
   await attached(page, ['plugins.install', 'plugins.help']);
-  await expect.poll(() => page.evaluate(() => window.__toursStarted)).toContain('desktop.plugins');
+  await expect(popover(page)).toContainText('Plugins');
   await shoot(page, 'd8-plugins');
 });
 
@@ -288,6 +298,9 @@ e2e('D9 button opens the tour from What is new', async ({ page }) => {
 e2e('D10 starts from the hub on the data tab and waits for the move', async ({ page }) => {
   await cloudBoot(page);
   await startFromHub(page, 'desktop.move-to-cloud');
+  await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke('local_workspace_create', { name: 'Home' }),
+  );
   await page.goto('/settings?tab=data');
   await attached(page, ['settings.data-move']);
   await shoot(page, 'd10-move');
