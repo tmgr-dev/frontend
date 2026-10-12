@@ -19,7 +19,7 @@
 					<template #label>
 						Install ID:
 						<span data-testid="install-id" class="font-mono">{{
-							snapshot.installId ? shortInstallId(snapshot.installId) : 'None while sharing is off'
+							snapshot.installId ? shortInstallId(snapshot.installId) : '\u2014'
 						}}</span>
 					</template>
 					<Button

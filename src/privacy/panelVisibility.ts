@@ -20,3 +20,19 @@ export const shouldShowConsentPanel = (state: PanelState): boolean =>
 	!(state.desktop && state.ready === false) &&
 	!/^\/privacy(\/|$)/.test(state.path) &&
 	(showAnalyticsBlock(state) || showUsageBlock(state));
+
+const AUTH_ROUTES = new Set([
+	'Login',
+	'Register',
+	'ForgetPassword',
+	'NewPassword',
+	'VerifyEmail',
+	'LinkConfirm',
+	'DesktopAuthReturn',
+	'DesktopAuthTelegram',
+	'SocialiteProxy',
+	'Welcome',
+]);
+
+export const isAuthRoute = (name: unknown): boolean =>
+	typeof name === 'string' && AUTH_ROUTES.has(name);

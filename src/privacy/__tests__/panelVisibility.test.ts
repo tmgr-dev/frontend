@@ -1,4 +1,5 @@
 import {
+	isAuthRoute,
 	shouldShowConsentPanel,
 	showAnalyticsBlock,
 	showUsageBlock,
@@ -43,5 +44,14 @@ describe('consent panel visibility', () => {
 		expect(shouldShowConsentPanel({ ...desktop, ready: false })).toBe(false);
 		expect(shouldShowConsentPanel({ ...desktop, ready: true })).toBe(true);
 		expect(shouldShowConsentPanel({ ...base, ready: false })).toBe(true);
+	});
+});
+
+describe('isAuthRoute', () => {
+	it('recognises the pages drawn by AuthLayout', () => {
+		expect(isAuthRoute('Login')).toBe(true);
+		expect(isAuthRoute('Register')).toBe(true);
+		expect(isAuthRoute('WorkspaceBoard')).toBe(false);
+		expect(isAuthRoute(undefined)).toBe(false);
 	});
 });

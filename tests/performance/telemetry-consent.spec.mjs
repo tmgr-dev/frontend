@@ -79,6 +79,10 @@ test('both blocks stand alone and the buttons weigh the same', async ({ page }) 
   const [a, b] = [await no.boundingBox(), await yes.boundingBox()];
   expect(a.width).toBeCloseTo(b.width, 0);
   expect(a.height).toBeCloseTo(b.height, 0);
+  await expect(page.getByText('We never send:')).toHaveCount(0);
+  await page.getByRole('button', { name: 'What we send' }).click();
+  await expect(page.getByText('We never send:')).toBeVisible();
+  await page.getByRole('button', { name: 'What we send' }).click();
   await expect(page.getByRole('link', { name: 'What we collect' })).toHaveAttribute(
     'href',
     '/privacy#usage-data',
@@ -154,7 +158,8 @@ test('turning sharing off in Settings stops a second tab at once', async ({
   await page.goto('/settings?tab=privacy');
   await expect(page.getByTestId('usage-switch')).toBeVisible();
   await page.getByTestId('usage-switch').click();
-  await expect(page.getByTestId('install-id')).toHaveText('None while sharing is off');
+  await expect(page.getByTestId('install-id')).toHaveText('\u2014');
+  await expect(page.getByTestId('pending-count')).toHaveText('0');
   await expect
     .poll(() => second.evaluate(() => localStorage.getItem('tmgr:telemetry:identity')))
     .toBeNull();
@@ -167,6 +172,28 @@ test('turning sharing off in Settings stops a second tab at once', async ({
     JSON.parse(localStorage.getItem('tmgr:telemetry:receipts') ?? '[]'),
   );
   expect(receipts).toHaveLength(1);
+});
+
+test('the panel stays off the sign-in form and anchors left over the marketing column', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApp(page, { account: false, consent: false });
+  await page.goto('/login');
+  const panel = page.getByRole('region', { name: 'Privacy choices' });
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  for (const field of ['#email', '#password']) {
+    const input = await page.locator(field).first().boundingBox();
+    const overlap =
+      box.x < input.x + input.width &&
+      input.x < box.x + box.width &&
+      box.y < input.y + input.height &&
+      input.y < box.y + box.height;
+    expect(overlap, field).toBe(false);
+  }
+  expect(box.x).toBeLessThan(40);
+  await page.getByRole('textbox').first().fill('a@b.test');
 });
 
 test.describe('settings and screenshots', () => {
@@ -187,7 +214,9 @@ test.describe('settings and screenshots', () => {
       'href',
       '/privacy#onboarding-aggregates',
     );
-    await shot(page, 's6b-settings-privacy.png');
+    await expect(page.getByTestId('usage-switch')).toBeChecked();
+    await page.waitForTimeout(500);
+    await shot(page, 's6b-settings-privacy-on.png');
     await page.getByRole('button', { name: 'View' }).click();
     await expect(page.getByTestId('queue-json')).toContainText('app_opened');
     await page.keyboard.press('Escape');
@@ -199,6 +228,10 @@ test.describe('settings and screenshots', () => {
       true,
     );
     await expect(page.getByTestId('usage-switch')).not.toBeChecked();
+    await expect(page.getByTestId('install-id')).toHaveText('\u2014');
+    await expect(page.getByTestId('pending-count')).toHaveText('0');
+    await page.waitForTimeout(500);
+    await shot(page, 's6b-settings-privacy-off.png');
   });
 
   for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
