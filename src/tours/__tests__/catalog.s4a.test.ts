@@ -1,4 +1,9 @@
+import { buildHubModel } from '../hubModel';
+import { createTours } from '../engine';
+import { createTourBus } from '../events';
+import { createLease } from '../lease';
 import { getTour } from '../catalog';
+import type { Platform } from '../types';
 
 const ALL = ['web', 'mobile_web', 'desktop', 'desktop_local'];
 const tour = (id: string) => getTour(id)!;
@@ -170,5 +175,85 @@ describe('S4a catalog', () => {
 		for (const id of S4A_IDS) {
 			expect(tour(id).since).toBe('3.4.155');
 		}
+	});
+
+	describe('hub availability', () => {
+		const memory = () => {
+			const data = new Map<string, string>();
+			return {
+				getItem: (k: string) => data.get(k) ?? null,
+				setItem: (k: string, v: string) => void data.set(k, v),
+				removeItem: (k: string) => void data.delete(k),
+			};
+		};
+		const hub = (platform: Platform, account: 'cloud' | 'local', modules: string[]) => {
+			const engine = createTours({
+				api: {
+					fetchState: jest.fn().mockResolvedValue({}),
+					putTour: jest.fn(),
+					putPreferences: jest.fn(),
+					resetTours: jest.fn(),
+					setIntent: jest.fn(),
+					fetchFacts: jest.fn(),
+					removeStarterTasks: jest.fn(),
+				} as never,
+				bus: createTourBus(),
+				lease: createLease({ storage: memory(), now: () => Date.now(), ownerId: 'a' }),
+				storage: memory(),
+				session: memory(),
+				now: () => Date.now(),
+				platform: () => platform,
+				mobile: () => platform === 'mobile_web',
+				account: () => account,
+				isOwner: () => true,
+				modulesKnown: () => true,
+				isModuleEnabled: (key) => modules.includes(key),
+				currentRouteName: () => null,
+				navigate: () => {},
+				isBusy: () => false,
+				overlay: () => null,
+				setTimer: () => () => {},
+			});
+			const items = engine.api.hubItems.value.filter((item) => S4A_IDS.includes(item.tour.id));
+			const rows = buildHubModel(items, { canManageModules: true, isModuleEnabled: (key) => modules.includes(key) })
+				.groups.flatMap((group) => group.rows);
+			return { items, rows };
+		};
+		const everything = ['agent_work', 'alerts', 'mcp', 'ai.assistant', 'personas', 'task.assignees', 'dashboard', 'telegram'];
+		const reason = (items: ReturnType<typeof hub>['items'], id: string) =>
+			items.find((item) => item.tour.id === id)?.unavailableReason;
+
+		it('shows every S4a tour on web with all modules on', () => {
+			const { items } = hub('web', 'cloud', everything);
+			expect(items.filter((item) => !item.available)).toEqual([]);
+		});
+
+		it('hides cloud-only tours for a local desktop account and keeps the local ones', () => {
+			const { items, rows } = hub('desktop_local', 'local', everything);
+			expect(reason(items, 'agents.work-log')).toBe('platform');
+			expect(reason(items, 'ws.invite')).toBe('platform');
+			expect(reason(items, 'personas.create')).toBe('platform');
+			const available = items.filter((item) => item.available).map((item) => item.tour.id);
+			expect(available).toEqual(expect.arrayContaining(['personas.assign', 'ws.modules', 'ws.workspaces', 'ws.appearance', 'ws.privacy']));
+			expect(rows.map((row) => row.id)).not.toContain('agents.work-log');
+		});
+
+		it('hides platform-limited tours on mobile web', () => {
+			const { items } = hub('mobile_web', 'cloud', everything);
+			for (const id of ['agents.mcp-token', 'personas.create', 'personas.token', 'personas.assign', 'personas.skills', 'ws.telegram'])
+				expect(reason(items, id)).toBe('platform');
+			expect(reason(items, 'agents.ask-ai')).toBeUndefined();
+		});
+
+		it('hides the Ask AI tour on the desktop app', () => {
+			expect(reason(hub('desktop', 'cloud', everything).items, 'agents.ask-ai')).toBe('platform');
+		});
+
+		it('greys module-off tours with the turn-on message', () => {
+			const { rows } = hub('web', 'cloud', ['board']);
+			const row = rows.find((candidate) => candidate.id === 'personas.create');
+			expect(row).toMatchObject({ action: 'none' });
+			expect(row?.disabledMessage).toContain('Turn on');
+		});
 	});
 });
