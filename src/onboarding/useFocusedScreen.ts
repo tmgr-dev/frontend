@@ -12,7 +12,12 @@ export function useFocusedScreen(root: Ref<HTMLElement | null>): { consentOpen: 
   const { consent } = useConsent();
   const desktop = import.meta.env.MODE === 'desktop' || isDesktopApp();
   const consentOpen = computed(() =>
-    shouldShowConsentPanel({ analytics: consent.value.analytics, path: route.path, desktop }),
+    shouldShowConsentPanel({
+      analytics: consent.value.analytics,
+      usage: consent.value.usage,
+      path: route.path,
+      desktop,
+    }),
   );
 
   let restore: (() => void) | null = null;
