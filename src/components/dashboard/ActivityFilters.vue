@@ -57,7 +57,15 @@
 					:key="user.id"
 					:value="user.id.toString()"
 				>
-					{{ user.name }}
+					<span class="flex min-w-0 items-center gap-2">
+						<UserAvatar
+							:user-id="user.id"
+							:name="user.name"
+							:has-avatar="user.has_avatar ?? false"
+							:size="20"
+						/>
+						<span class="truncate">{{ user.name }}</span>
+					</span>
 				</SelectItem>
 			</SelectContent>
 		</Select>
@@ -106,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import {
 		Popover,
@@ -127,7 +136,7 @@
 
 	interface Props {
 		modelValue: ActivityFiltersType;
-		workspaceUsers?: Array<{ id: number; name: string }>;
+		workspaceUsers?: Array<{ id: number; name: string; has_avatar?: boolean }>;
 	}
 
 	interface DateRange {

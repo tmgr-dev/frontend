@@ -216,6 +216,7 @@
 			teamActivity.value?.members?.map((member) => ({
 				id: member.id,
 				name: member.name,
+				has_avatar: member.has_avatar,
 			})) || []
 		);
 	});
