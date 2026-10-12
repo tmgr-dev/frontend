@@ -10,7 +10,7 @@ interface KeyValueStorage {
 
 interface Channel {
   postMessage(data: unknown): void;
-  onmessage: ((event: { data: unknown }) => void) | null;
+  onmessage: ((event: any) => void) | null;
   close?(): void;
 }
 
