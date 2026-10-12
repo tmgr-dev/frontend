@@ -71,14 +71,12 @@ fn is_agent_hook_invocation() -> bool {
 }
 
 fn usage_exit(e: clap::Error) -> i32 {
-    if is_agent_hook_invocation() {
-        return 0;
-    }
     match e.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
             let _ = e.print();
             0
         }
+        _ if is_agent_hook_invocation() => 0,
         _ => {
             let json = std::env::args().any(|a| a == "--json");
             if json {

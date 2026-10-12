@@ -394,3 +394,15 @@ async fn an_expired_login_is_skipped_without_refreshing() {
             .unwrap();
     assert_eq!(state["runs"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn help_is_still_printed_for_the_hook_commands() {
+    let env = Env::new().await;
+    let out = env
+        .cmd()
+        .args(["hook", "claude", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(text(&out.stdout).contains("Claude Code hook entry point"));
+}

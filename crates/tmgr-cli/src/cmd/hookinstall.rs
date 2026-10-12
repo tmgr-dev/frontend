@@ -204,6 +204,7 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
             Error::usage("the settings file is not valid JSON; fix it first (nothing was changed)")
         })?
     };
+    let original = root.clone();
     let obj = root
         .as_object_mut()
         .ok_or_else(|| invalid("the settings file"))?;
@@ -243,11 +244,10 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
             install_event(arr, sub, &desired_command(exe, sub));
         }
     }
-    let rendered = render_json(&root, old);
-    Ok(if rendered.trim() == old.trim() {
+    Ok(if root == original && !old.trim().is_empty() {
         old.to_string()
     } else {
-        rendered
+        render_json(&root, old)
     })
 }
 
@@ -631,6 +631,14 @@ mod tests {
             cmds(&v, "Notification"),
             vec![format!("{EXE} hook claude notification")]
         );
+    }
+
+    #[test]
+    fn a_hand_formatted_file_that_already_has_the_hooks_is_left_alone() {
+        let old = format!(
+            "{{\"hooks\": {{\n  \"Notification\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude notification\"}}]}}],\n  \"UserPromptSubmit\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude user-prompt-submit\"}}]}}],\n  \"Stop\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude stop\"}}]}}]\n}}}}\n"
+        );
+        assert_eq!(plan_claude(&old, EXE, false).unwrap(), old);
     }
 
     #[test]
