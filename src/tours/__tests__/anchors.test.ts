@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { anchorSelector, isVisible, pickAnchorName, resolveAnchor } from '../anchors';
+import { anchorSelector, isOccluded, isVisible, pickAnchorName, resolveAnchor } from '../anchors';
 import type { StepDef } from '../types';
 
 const step = (extra: Partial<StepDef> = {}): StepDef => ({
@@ -45,6 +45,44 @@ describe('isVisible', () => {
 	});
 });
 
+describe('isOccluded', () => {
+	const stubHit = (hit: (x: number, y: number) => Element | null) => {
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = hit;
+	};
+	afterEach(() => {
+		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+	});
+
+	it('is false when the browser cannot hit-test', () => {
+		const host = add('<i data-tour="a"></i>');
+		expect(isOccluded(host.firstElementChild!)).toBe(false);
+	});
+
+	it('is false when the element or a relative of it is on top at every sample point', () => {
+		const host = add('<b id="p"><i data-tour="a"></i></b>');
+		const el = host.querySelector('i')!;
+		stubHit(() => el);
+		expect(isOccluded(el)).toBe(false);
+		stubHit(() => host.querySelector('b'));
+		expect(isOccluded(el)).toBe(false);
+	});
+
+	it('is true when another element covers a sample point', () => {
+		const host = add('<i data-tour="a"></i><u id="panel"></u>');
+		const el = host.querySelector('i')!;
+		const panel = host.querySelector('u')!;
+		stubHit((x) => (x > 5 ? panel : el));
+		expect(isOccluded(el)).toBe(true);
+	});
+
+	it('ignores the tour own overlay layers', () => {
+		const host = add('<i data-tour="a"></i><div class="tour-backdrop"></div>');
+		const el = host.querySelector('i')!;
+		stubHit(() => host.querySelector('.tour-backdrop'));
+		expect(isOccluded(el)).toBe(false);
+	});
+});
+
 describe('pickAnchorName', () => {
 	it('uses mobileAnchor under 640px only', () => {
 		const s = step({ mobileAnchor: 'nav.menu-button' });
@@ -52,6 +90,19 @@ describe('pickAnchorName', () => {
 		expect(pickAnchorName(s, false)).toBe('nav.sidebar');
 		expect(pickAnchorName(step(), true)).toBe('nav.sidebar');
 		expect(pickAnchorName(step({ anchor: undefined }), false)).toBeUndefined();
+	});
+});
+
+describe('resolveAnchor occlusion', () => {
+	afterEach(() => {
+		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+	});
+
+	it('skips anchors that sit behind another surface', async () => {
+		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
+		const panel = host.querySelector('u')!;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		expect(await resolveAnchor(step(), { mobile: false, timeoutMs: 20 })).toBeNull();
 	});
 });
 

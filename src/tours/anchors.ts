@@ -10,6 +10,31 @@ export function isVisible(el: Element): boolean {
   return style.display !== 'none' && style.visibility !== 'hidden';
 }
 
+const OWN_LAYERS = '.driver-overlay, .driver-popover, .tour-backdrop, .tour-host, .tour-ring';
+
+export function isOccluded(el: Element): boolean {
+  if (typeof document.elementFromPoint !== 'function') return false;
+  const rect = el.getBoundingClientRect();
+  const inset = Math.min(8, rect.width / 4, rect.height / 4);
+  const left = rect.left + inset;
+  const right = rect.right - inset;
+  const top = rect.top + inset;
+  const bottom = rect.bottom - inset;
+  const points: Array<[number, number]> = [
+    [(left + right) / 2, (top + bottom) / 2],
+    [left, top],
+    [right, top],
+    [left, bottom],
+    [right, bottom],
+  ];
+  return points.some(([x, y]) => {
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || hit.closest(OWN_LAYERS)) return false;
+    return !(el.contains(hit) || hit.contains(el));
+  });
+}
+
 export function pickAnchorName(step: StepDef, mobile: boolean): string | undefined {
   return mobile && step.mobileAnchor ? step.mobileAnchor : step.anchor;
 }
@@ -37,7 +62,7 @@ export function resolveAnchor(step: StepDef, options: ResolveOptions): Promise<E
     name,
     step.anchorScope === 'eventTask' ? options.eventTaskId : null,
   );
-  const find = () => Array.from(root.querySelectorAll(selector)).find(isVisible) ?? null;
+  const find = () => Array.from(root.querySelectorAll(selector)).find((el) => isVisible(el) && !isOccluded(el)) ?? null;
 
   return new Promise((resolve) => {
     const first = find();

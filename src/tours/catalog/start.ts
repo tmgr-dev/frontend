@@ -99,6 +99,7 @@ export const startTours: TourDef[] = [
         type: 'tip',
         anchor: 'list.row',
         anchorScope: 'eventTask',
+        optional: true,
         takeMeRoute: LIST,
         title: 'Your first task',
         body: 'Done. Click a task to open details, a timer and comments.',

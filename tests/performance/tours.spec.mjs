@@ -271,13 +271,10 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
         await page.locator('[data-tour="task-form.title"]').fill('First task from the tour');
         await page.keyboard.press('Control+s');
         await expect.poll(() => created.length).toBe(1);
-        await expect(popover(page)).toContainText('Done.');
-        await shoot(page, 'g2-step3', size, scheme);
         await expect
           .poll(() => writes.filter((w) => w.path === 'onboarding/tours/start.first-task').at(-1)?.body)
           .toMatchObject({ status: 'completed', step_id: null });
-        await popover(page).getByRole('button', { name: 'Done' }).click();
-        await expect(popover(page)).toBeHidden();
+        await expect(dialogs(page)).toHaveCount(0, { timeout: 8000 });
       });
 
       engine(`TI1 from the hub: take me there, then run a timer at ${size.name}, ${scheme}`, async ({ page }) => {
@@ -326,27 +323,31 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
       await page.locator('[data-tour="task-form.title"]').fill('Wide first task');
       await page.keyboard.press('Control+s');
       await expect.poll(() => created.length).toBe(1);
-      await expect(popover(page)).toContainText('Done.');
-      await shoot(page, 'g2-step3', WIDE, scheme);
+      await expect(dialogs(page)).toHaveCount(0, { timeout: 8000 });
     });
   }
 
-  engine('a missing anchor falls back to a centered card that never blocks the page', async ({ page }) => {
-    const { created } = await boot(page, SIZES[0]);
+  engine('a missing anchor falls back to a floating card that never blocks the page, then picks the step up', async ({ page }) => {
+    const { writes } = await boot(page, SIZES[0]);
+    await page.route('**/api/tasks/1/countdown', (route) =>
+      route.fulfill({ json: { data: { id: 1, start_time: 1 } } }),
+    );
     await page.goto('/demo/getting-started');
-    await page.getByTestId('hub-start-start.first-task').click();
-    await page.locator('[data-tour="nav.create-task"]').first().click();
-    await page.locator('[data-tour="task-form.title"]').fill('Fallback task');
-    await page.keyboard.press('Control+s');
-    await expect.poll(() => created.length).toBe(1);
+    await page.getByTestId('hub-start-time.timer').click();
     await expect(popover(page)).toContainText('could not find this');
     await expect(popover(page).getByRole('button', { name: 'Take me there' })).toBeVisible();
     await expect(page.locator('.tour-backdrop')).toHaveCount(0);
     await shoot(page, 'fallback', SIZES[0], 'light');
     await popover(page).getByRole('button', { name: 'Take me there' }).click();
     await expect(page).toHaveURL(/\/demo\/list$/);
-    await expect(popover(page)).toContainText('Done. Click a task');
+    await page.waitForTimeout(500);
+    await page.locator('[data-task-id="1"]').first().click();
+    await expect(popover(page)).toContainText('Press play');
     await expect(popover(page)).not.toContainText('could not find this');
+    await page.locator('[data-tour="task-form.timer"] button').first().click();
+    await expect
+      .poll(() => writes.filter((w) => w.path === 'onboarding/tours/time.timer').at(-1)?.body)
+      .toMatchObject({ status: 'in_progress' });
   });
 
   engine('Esc pauses the tour, keeps the task panel open and the hub offers Resume', async ({ page }) => {
@@ -427,6 +428,7 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1)', () => {
       await expect(popover(page)).toContainText('Step ');
     };
     const choose = async (name) => {
+      await page.waitForTimeout(600);
       await popover(page).getByRole('button', { name: 'Skip' }).click();
       await shoot(page, 'skip-menu', SIZES[0], 'light');
       await page.getByRole('menuitem', { name: new RegExp(name) }).click();
