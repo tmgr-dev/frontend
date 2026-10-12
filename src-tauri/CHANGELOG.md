@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.37 — 2026-10-12
+
+- Getting started tours on desktop: quick add, screenshot capture, the menu bar or system tray timer, plugin and
+  task windows, your local workspace, backups, local agent access, plugins and Move to cloud. Start them from the
+  Getting started hub; the first few run on their own in a new local workspace.
+- New local workspaces come with three sample tasks you can remove in one click.
+- What's new now has a button to take the tour for each new feature.
+
 ## 0.9.36 — 2026-10-12
 
 - Move to cloud: copy a local workspace into a new workspace in your TMGR account (Settings → Data, or the workspace
