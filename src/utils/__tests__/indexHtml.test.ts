@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { AUTH_PATH, stripAnalytics } from '../stripAnalytics';
+import { AUTH_PATH, carriesSecret, stripAnalytics } from '../stripAnalytics';
 
 const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
 
@@ -62,6 +62,19 @@ describe('index.html analytics', () => {
 				expect(script.attrs['data-domain']).toBe('tmgr.dev');
 			},
 		);
+	});
+
+	it.each([
+		['/workspaces/invitations/abc123', true],
+		['/login/github?code=x&state=y', true],
+		['/password/reset?token=t', true],
+		['/email/verify?token=t', true],
+		['/login', false],
+		['/register', false],
+		['/workspaces/invitations', false],
+		['/tmgrdev/board?x=1', false],
+	])('carriesSecret(%s) is %s', (fullPath, expected) => {
+		expect(carriesSecret(fullPath as string)).toBe(expected);
 	});
 
 	it('desktop build has no third-party analytics at all', () => {

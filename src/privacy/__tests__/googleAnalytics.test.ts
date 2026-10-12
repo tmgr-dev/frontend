@@ -150,6 +150,18 @@ describe('google analytics on auth pages', () => {
 		expect(scripts()).toHaveLength(1);
 	});
 
+	it('Back/Forward onto an auth URL disables reporting before the router runs', () => {
+		window.history.replaceState({}, '', '/tmgrdev/board');
+		const stop = startGoogleAnalytics({ id: ID, enabled: true, store: granted() });
+		window.history.replaceState({}, '', '/workspaces/invitations/secret-token');
+		window.dispatchEvent(new PopStateEvent('popstate'));
+		expect(disabled()).toBe(true);
+		window.history.replaceState({}, '', '/tmgrdev/list');
+		window.dispatchEvent(new PopStateEvent('popstate'));
+		expect(disabled()).toBe(false);
+		stop();
+	});
+
 	it('a navigation does not load analytics without consent', () => {
 		let recheck: (pathname: string) => void = () => {};
 		startGoogleAnalytics({

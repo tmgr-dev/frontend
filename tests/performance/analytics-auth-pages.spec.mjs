@@ -68,3 +68,20 @@ test('with analytics consent Google Analytics loads on an app page', async ({ pa
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toContain('https://www.googletagmanager.com/gtag/js?id=');
 });
+
+test('an in-app navigation to a token URL does a full load so Plausible stays off it', async ({ page }) => {
+  await mockApp(page);
+  const requests = await watchAnalytics(page);
+  await page.goto('/tmgrdev/board', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => requests.length).toBe(1);
+  await page.evaluate(() => (window.__sameDocument = true));
+  await page.evaluate(() =>
+    document
+      .querySelector('#app')
+      .__vue_app__.config.globalProperties.$router.push('/workspaces/invitations/secret-token'),
+  );
+  await expect(page).toHaveURL(/\/workspaces\/invitations\/secret-token$/);
+  await expect.poll(() => page.evaluate(() => window.__sameDocument)).toBeUndefined();
+  await page.waitForTimeout(1000);
+  expect(requests).toHaveLength(1);
+});

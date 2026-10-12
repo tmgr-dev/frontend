@@ -87,9 +87,20 @@ export const startGoogleAnalytics = ({
 		load();
 	};
 
+	// Back/Forward changes the URL before router guards run; registered before gtag.js so it runs first.
+	const onPopState = () => {
+		if (store.get().analytics === 'granted')
+			w[flag] = isAuthPath(win.location.pathname);
+	};
+	win.addEventListener('popstate', onPopState);
+
 	apply(store.get().analytics);
 	onNavigate?.((pathname) => {
 		if (store.get().analytics === 'granted') apply('granted', pathname);
 	});
-	return store.subscribe((record) => apply(record.analytics));
+	const unsubscribe = store.subscribe((record) => apply(record.analytics));
+	return () => {
+		unsubscribe();
+		win.removeEventListener('popstate', onPopState);
+	};
 };
