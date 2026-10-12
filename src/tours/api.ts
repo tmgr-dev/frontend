@@ -20,11 +20,16 @@ interface HttpClient {
   delete(url: string): Promise<{ data: unknown }>;
 }
 
+export type OnboardingFacts = Record<string, unknown>;
+
 export interface OnboardingApi {
   fetchState(): Promise<unknown>;
   putTour(id: string, body: TourWrite): Promise<unknown>;
   putPreferences(body: PreferencesWrite): Promise<unknown>;
   resetTours(): Promise<unknown>;
+  setIntent(intent: string, options?: { seed?: boolean }): Promise<unknown>;
+  fetchFacts(keys: string[], taskId?: number | string): Promise<OnboardingFacts>;
+  removeStarterTasks(): Promise<{ removed: number }>;
 }
 
 const unwrap = (response: { data: unknown } | undefined): unknown => {
@@ -47,6 +52,15 @@ export function createOnboardingApi(client: HttpClient): OnboardingApi {
     },
     async resetTours() {
       return unwrap(await client.delete('onboarding/tours'));
+    },
+    async setIntent() {
+      throw new Error('not implemented');
+    },
+    async fetchFacts() {
+      throw new Error('not implemented');
+    },
+    async removeStarterTasks() {
+      throw new Error('not implemented');
     },
   };
 }

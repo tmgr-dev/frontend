@@ -224,6 +224,9 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     async setHubHidden(hidden: boolean) {
       await store.setPreferences({ hub_hidden: hidden });
     },
+    async startSequence() {},
+    async setIntent() {},
+    async setChecklistHidden() {},
     async resetAll() {
       runner.abandon();
       await store.resetAll();

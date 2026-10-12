@@ -77,6 +77,9 @@ export interface ToursStore {
   applyRemote(id: TourId, remote: TourState): boolean;
   setPreferences(patch: PreferencesWrite): Promise<void>;
   resetAll(): Promise<void>;
+  applyIntent(intent: string, options?: { invited?: boolean }): void;
+  setChecklistHidden(hidden: boolean): Promise<void>;
+  patchFacts(facts: Record<string, unknown>): void;
   flush(): Promise<void>;
 }
 
@@ -191,6 +194,12 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
         ? Math.max(generation, current.tours_generation)
         : current.tours_generation + 1;
     },
+
+    applyIntent() {},
+
+    async setChecklistHidden() {},
+
+    patchFacts() {},
 
     async flush() {
       await Promise.all([...queues.values()]);

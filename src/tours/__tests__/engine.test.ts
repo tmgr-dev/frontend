@@ -23,6 +23,9 @@ const make = (over: Partial<ToursHostDeps> = {}, shared = memory()) => {
 		putTour: jest.fn().mockResolvedValue({}),
 		putPreferences: jest.fn().mockResolvedValue({}),
 		resetTours: jest.fn().mockResolvedValue({ tours_generation: 2 }),
+		setIntent: jest.fn().mockResolvedValue({}),
+		fetchFacts: jest.fn().mockResolvedValue({}),
+		removeStarterTasks: jest.fn().mockResolvedValue({ removed: 0 }),
 	};
 	const track = jest.fn();
 	setTourTelemetry({ track });

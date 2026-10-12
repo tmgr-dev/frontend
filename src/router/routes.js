@@ -339,6 +339,26 @@ const routes = [
 		name: 'WorkspaceFiles',
 	},
 	{
+		path: '/welcome-setup',
+		component: () => import('@/pages/onboarding/WelcomeSetup.vue'),
+		meta: {
+			title: 'Welcome',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WelcomeSetup',
+	},
+	{
+		path: '/welcome-setup/agent',
+		component: () => import('@/pages/onboarding/ConnectAgent.vue'),
+		meta: {
+			title: 'Connect your agent',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WelcomeSetupAgent',
+	},
+	{
 		path: '/:workspace_code/getting-started',
 		component: () => import('@/pages/GettingStarted.vue'),
 		meta: {

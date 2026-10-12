@@ -41,6 +41,9 @@ export interface ToursApi {
   skipTour(): void;
   setTipsMode(mode: TipsMode): Promise<void>;
   setHubHidden(hidden: boolean): Promise<void>;
+  startSequence(ids: TourId[], trigger: string): Promise<void>;
+  setIntent(intent: string, options?: { seed?: boolean }): Promise<void>;
+  setChecklistHidden(hidden: boolean): Promise<void>;
   resetAll(): Promise<void>;
   takeMeThere(): void;
   resumePill: Readonly<Ref<ResumePill | null>>;
