@@ -29,6 +29,7 @@
 			role="menu"
 			class="tour-menu__list"
 			:data-side="side"
+			:data-align="label === 'More' ? 'right' : 'left'"
 			data-state="open"
 			data-tour-menu="open"
 			:aria-label="label"

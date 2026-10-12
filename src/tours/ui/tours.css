@@ -254,6 +254,11 @@ html.dark .tour-ring {
   box-shadow: var(--shadow-lg);
 }
 
+.tour-menu__list[data-align='right'] {
+  left: auto;
+  right: 0;
+}
+
 .tour-menu__list[data-side='below'] {
   top: calc(100% + 4px);
 }

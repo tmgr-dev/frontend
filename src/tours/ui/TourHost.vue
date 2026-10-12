@@ -165,6 +165,29 @@
 				});
 			}
 
+			watch(hostEl, async (host) => {
+				releaseA11y.forEach((fn) => fn());
+				releaseA11y = [];
+				if (!host) return;
+				await nextTick();
+				const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
+				const { mode, anchorEl } = presentation.value;
+				if (mode === 'passive') {
+					if (!anchorEl?.contains(document.activeElement)) {
+						focusAnchor(anchorEl);
+					}
+				} else if (dialog) {
+					const decor = Array.from(
+						document.querySelectorAll(
+							'.driver-overlay,.tour-backdrop,.tour-ring',
+						),
+					);
+					releaseA11y.push(inertAround([host, anchorEl, ...decor]));
+					releaseA11y.push(trapFocus(dialog, dialog));
+				}
+				announceStep();
+			});
+
 			let hadTour = false;
 			watch(
 				() => {
@@ -193,29 +216,6 @@
 				},
 				{ immediate: true },
 			);
-
-			watch(hostEl, async (host) => {
-				releaseA11y.forEach((fn) => fn());
-				releaseA11y = [];
-				if (!host) return;
-				await nextTick();
-				const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
-				const { mode, anchorEl } = presentation.value;
-				if (mode === 'passive') {
-					if (!anchorEl?.contains(document.activeElement)) {
-						focusAnchor(anchorEl);
-					}
-				} else if (dialog) {
-					const decor = Array.from(
-						document.querySelectorAll(
-							'.driver-overlay,.tour-backdrop,.tour-ring',
-						),
-					);
-					releaseA11y.push(inertAround([host, anchorEl, ...decor]));
-					releaseA11y.push(trapFocus(dialog, dialog));
-				}
-				announceStep();
-			});
 
 			function announceStep() {
 				const a = active.value;

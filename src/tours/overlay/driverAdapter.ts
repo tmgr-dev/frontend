@@ -48,6 +48,7 @@ export function createDriverAdapter(): OverlayAdapter {
         popoverClass: sheet
           ? 'tour-driver-popover tour-sheet-mode'
           : 'tour-driver-popover',
+        onHighlighted: () => instance?.refresh(),
         onPopoverRender: (popover) => {
           const { wrapper } = popover;
           ['role', 'aria-modal', 'aria-labelledby', 'aria-describedby'].forEach(
@@ -68,7 +69,13 @@ export function createDriverAdapter(): OverlayAdapter {
           wrapper.appendChild(host);
           unmount?.();
           const release = mount(host);
+          const resize =
+            typeof ResizeObserver === 'function'
+              ? new ResizeObserver(() => instance?.refresh())
+              : null;
+          resize?.observe(host);
           unmount = () => {
+            resize?.disconnect();
             release();
             host.remove();
           };
