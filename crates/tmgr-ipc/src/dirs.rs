@@ -79,6 +79,23 @@ pub fn check_private_dir(path: &Path) -> io::Result<()> {
             meta.mode() & 0o777
         )));
     }
+    check_ancestors(&fs::canonicalize(path)?)
+}
+
+fn check_ancestors(canon: &Path) -> io::Result<()> {
+    for anc in canon.ancestors().skip(1) {
+        let meta = fs::metadata(anc)?;
+        let shown = anc.display();
+        if meta.uid() != 0 && meta.uid() != crate::euid() {
+            return Err(denied(format!("ancestor {shown} is owned by another user")));
+        }
+        if meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0 {
+            return Err(denied(format!(
+                "ancestor {shown} is writable by group or others without the sticky bit (mode {:o})",
+                meta.mode() & 0o7777
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -128,6 +145,35 @@ mod tests {
         fs::set_permissions(&d, fs::Permissions::from_mode(0o755)).unwrap();
         assert!(check_private_dir(&d).is_err());
         assert!(ensure_private_dir(&d).is_err());
+    }
+
+    fn mkdir(p: &Path, mode: u32) {
+        fs::create_dir_all(p).unwrap();
+        fs::set_permissions(p, fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[test]
+    fn refuses_writable_non_sticky_ancestor() {
+        let t = tempfile::tempdir().unwrap();
+        let loose = t.path().join("loose");
+        mkdir(&loose, 0o777);
+        let d = loose.join("mid/priv");
+        let e = ensure_private_dir(&d).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(e.to_string().contains("loose"), "{e}");
+        assert!(check_private_dir(&d).is_err());
+    }
+
+    #[test]
+    fn sticky_writable_ancestor_is_accepted() {
+        let t = tempfile::Builder::new()
+            .prefix("dirs")
+            .tempdir_in("/tmp")
+            .unwrap();
+        ensure_private_dir(&t.path().join("a")).unwrap();
+        let sticky = t.path().join("sticky");
+        mkdir(&sticky, 0o1777);
+        ensure_private_dir(&sticky.join("priv")).unwrap();
     }
 
     #[test]

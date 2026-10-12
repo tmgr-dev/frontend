@@ -22,16 +22,29 @@ pub fn clamp_size(cols: u16, rows: u16) -> (u16, u16) {
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    let tmp = path.with_extension("tmp");
+    let mut rnd = [0u8; 8];
+    getrandom::fill(&mut rnd).map_err(std::io::Error::other)?;
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let tmp = path.with_file_name(format!(
+        ".{name}.{}.tmp",
+        rnd.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    ));
     let mut f = std::fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
         .mode(0o600)
         .open(&tmp)?;
-    f.write_all(bytes)?;
-    drop(f);
-    std::fs::rename(&tmp, path)
+    let res = f.write_all(bytes).and_then(|()| {
+        drop(f);
+        std::fs::rename(&tmp, path)
+    });
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,4 +126,33 @@ pub struct ScreenPush {
     pub scroll_offset: usize,
     #[serde(default)]
     pub scroll_max: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn write_atomic_ignores_planted_symlink_and_is_private() {
+        let t = tempfile::tempdir().unwrap();
+        let victim = t.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        let target = t.path().join("runner.pid");
+        symlink(&victim, target.with_extension("tmp")).unwrap();
+        write_atomic(&target, b"42").unwrap();
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "42");
+        assert_eq!(
+            std::fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(t.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".runner.pid"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
 }

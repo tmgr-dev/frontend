@@ -18,6 +18,7 @@ pub(crate) fn write_private(path: &Path, content: &str) -> io::Result<()> {
     let mut f = OpenOptions::new()
         .write(true)
         .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
         .mode(0o600)
         .open(path)?;
     f.write_all(content.as_bytes())
