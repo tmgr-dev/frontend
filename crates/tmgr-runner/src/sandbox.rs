@@ -189,6 +189,32 @@ pub struct PolicyPaths {
     pub read: Vec<PathBuf>,
     pub write: Vec<PathBuf>,
     pub deny: Vec<PathBuf>,
+    pub write_prefixes: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn xcrun_cache_prefix() -> Option<String> {
+    let mut buf = vec![0u8; 1024];
+    let n = unsafe {
+        libc::confstr(
+            libc::_CS_DARWIN_USER_TEMP_DIR,
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+        )
+    };
+    if n == 0 || n > buf.len() {
+        return None;
+    }
+    buf.truncate(n - 1);
+    let dir = PathBuf::from(String::from_utf8(buf).ok()?)
+        .canonicalize()
+        .ok()?;
+    Some(format!("{}/xcrun_db", dir.to_str()?.trim_end_matches('/')))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn xcrun_cache_prefix() -> Option<String> {
+    None
 }
 
 struct Plan {
@@ -313,6 +339,7 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
             read,
             write,
             deny,
+            write_prefixes: xcrun_cache_prefix().into_iter().collect(),
         },
         env,
     })
@@ -360,6 +387,12 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     s.push_str("(allow file-write* (literal \"/dev/null\") (literal \"/dev/tty\") (literal \"/dev/ptmx\"))\n");
     s.push_str("(allow file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
     s.push_str("(allow file-write* (subpath \"/dev/fd\"))\n");
+    for pre in &p.write_prefixes {
+        s.push_str(&format!(
+            "(allow file-write* file-read-data (prefix {}))\n",
+            sbpl_quote(Path::new(pre))?
+        ));
+    }
     for d in &p.deny {
         s.push_str(&format!(
             "(deny file-read* file-write* (subpath {}))\n",

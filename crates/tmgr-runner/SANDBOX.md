@@ -31,7 +31,7 @@ is refused. Per-run homes must live in a dedicated directory `<homes>/<session i
 | Pathname unix sockets | connect denied under the deny list and the runner directory | blocked only on ABI >= 9 (`ResolveUnix`) |
 | Network | allowed | allowed |
 
-`/tmp` and `/var/folders` are not writable on either OS: tools must use `TMPDIR`.
+`/tmp` and `/var/folders` are not writable on either OS: tools must use `TMPDIR`. One exception on macOS: files starting with `xcrun_db` in the per-user temp dir (`getconf DARWIN_USER_TEMP_DIR`), the cache the `/usr/bin` Xcode shims (`python3`, `git`, …) write regardless of `TMPDIR`.
 
 ## Denied (read and write; plus unix-socket connect on macOS)
 
@@ -62,7 +62,7 @@ command (exec failure: exit 127).
 - macOS: reads outside the real home are not restricted (system files, other volumes); process listing and
   `sysctl` process info of other processes are not blocked; Mach/XPC services are reachable (default allow);
   Seatbelt is deprecated by Apple but still enforced.
-- macOS tools that cache under `/var/folders` (some Xcode shims, clang module caches) fail to write there.
+- macOS tools that cache under `/var/folders` (clang module caches and similar) fail to write there; only the `xcrun_db` cache is allowed.
 - Git worktrees whose `.git` points outside the working dir cannot write the shared object store; the caller must put
   such a repository inside the working dir.
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
