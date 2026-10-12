@@ -283,3 +283,214 @@ describe('engine facade', () => {
 		expect(h.engine.api.hostReady.value).toBe(true);
 	});
 });
+
+describe('startSequence', () => {
+	const walk = async (h: ReturnType<typeof make>, times: number) => {
+		for (let i = 0; i < times; i++) {
+			h.engine.api.next();
+			await flush();
+		}
+	};
+
+	it('chains the tours on completion and marks the session as used', async () => {
+		const session = memory();
+		const h = make({ session });
+		await h.engine.init();
+		await h.engine.api.startSequence(['start.nav', 'start.first-task'], 'first_run');
+		expect(h.engine.api.active.value?.tour.id).toBe('start.nav');
+		expect(session.getItem('tmgr:tours:auto')).toBe('true');
+		await walk(h, 5);
+		expect(h.engine.api.active.value?.tour.id).toBe('start.first-task');
+		expect(h.track).toHaveBeenCalledWith('tour_started', { tour: 'start.first-task', trigger: 'first_run' });
+	});
+
+	it('does nothing unless tips mode is auto', async () => {
+		const session = memory();
+		const h = make({ session });
+		h.api.fetchState.mockResolvedValue({ tips_mode: 'hub_only', tours_generation: 1 });
+		await h.engine.init();
+		await h.engine.api.startSequence(['start.nav'], 'first_run');
+		expect(h.engine.api.active.value).toBeNull();
+		expect(session.getItem('tmgr:tours:auto')).toBeNull();
+	});
+
+	it('skipping a tour ends the sequence', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.startSequence(['start.nav', 'start.first-task'], 'first_run');
+		h.engine.api.skipTour();
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+	});
+
+	it('navigating away ends the sequence', async () => {
+		const h = make();
+		await h.engine.init();
+		h.state.route = 'WorkspaceGettingStarted';
+		['hub.checklist', 'hub.catalog', 'hub.tips-toggle'].forEach((a) => h.present.add(a));
+		await h.engine.api.startSequence(['start.hub', 'start.first-task'], 'first_run');
+		h.state.route = 'Board';
+		h.engine.routeEntered('Board');
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+		expect(h.engine.api.resumePill.value?.tourId).toBe('start.hub');
+	});
+
+	it('pausing ends the sequence', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.startSequence(['start.nav', 'start.first-task'], 'first_run');
+		h.engine.api.pause();
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+	});
+
+	it('skips an unavailable tour in the chain', async () => {
+		const h = make();
+		await h.engine.init();
+		h.state.modules.delete('task.countdown');
+		await h.engine.api.startSequence(['start.nav', 'time.timer', 'start.first-task'], 'first_run');
+		await walk(h, 5);
+		expect(h.engine.api.active.value?.tour.id).toBe('start.first-task');
+	});
+
+	it('starts nothing and frees the session when no tour is available', async () => {
+		const session = memory();
+		const h = make({ session });
+		await h.engine.init();
+		h.state.modules.delete('task.countdown');
+		await h.engine.api.startSequence(['time.timer'], 'first_run');
+		expect(h.engine.api.active.value).toBeNull();
+		expect(session.getItem('tmgr:tours:auto')).toBe('false');
+	});
+
+	it('signing out drops the pending chain', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.startSequence(['start.nav', 'start.first-task'], 'first_run');
+		h.engine.signedOut();
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+	});
+});
+
+describe('start.connect-agent', () => {
+	const connect = async (over: Partial<ToursHostDeps> = {}, state: object = {}) => {
+		const h = make(over);
+		h.state.route = 'WelcomeSetupAgent';
+		h.state.modules.add('mcp');
+		h.api.fetchState.mockResolvedValue({ tips_mode: 'auto', tours_generation: 1, ...state });
+		['connect.client-tabs', 'connect.command', 'connect.status', 'connect.prompt'].forEach((a) => h.present.add(a));
+		await h.engine.init();
+		await h.engine.api.start('start.connect-agent', 'first_run');
+		return h;
+	};
+
+	it('does not complete when the first MCP call lands, so the prompt step still shows', async () => {
+		const h = await connect();
+		h.engine.api.next();
+		await flush();
+		h.bus.emit('connect.command_copied');
+		await flush();
+		expect(h.engine.api.active.value?.step.id).toBe('s3');
+		h.bus.emit('agent.first_mcp_call');
+		await flush();
+		expect(h.engine.api.active.value?.step.id).toBe('s4');
+		await h.engine.store.flush();
+		expect(h.api.putTour).not.toHaveBeenCalledWith('start.connect-agent', expect.objectContaining({ status: 'completed' }));
+		h.engine.api.next();
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+		await h.engine.store.flush();
+		expect(h.api.putTour).toHaveBeenLastCalledWith('start.connect-agent', expect.objectContaining({ status: 'completed' }));
+	});
+
+	it('shows the connected step as already done when the fact is set', async () => {
+		const h = await connect({}, { facts: { mcp_first_call_at: '2026-10-12T10:00:00Z' } });
+		h.engine.api.next();
+		await flush();
+		h.bus.emit('connect.command_copied');
+		await flush();
+		expect(h.engine.api.active.value).toMatchObject({ alreadyDone: true });
+		expect(h.engine.api.active.value?.step.id).toBe('s3');
+	});
+
+	it('is unavailable when the mcp module is off or the account is local', async () => {
+		const h = make();
+		await h.engine.init();
+		const item = () => h.engine.api.hubItems.value.find((i) => i.tour.id === 'start.connect-agent')!;
+		expect(item().available).toBe(false);
+		h.state.modules.add('mcp');
+		expect(item().available).toBe(true);
+		const local = make({ account: () => 'local' });
+		local.state.modules.add('mcp');
+		await local.engine.init();
+		expect(local.engine.api.hubItems.value.find((i) => i.tour.id === 'start.connect-agent')?.unavailableReason).toBe('account');
+	});
+});
+
+describe('setIntent and checklist', () => {
+	it('applies the intent optimistically and passes seed through', async () => {
+		const h = make();
+		await h.engine.init();
+		let seenDuringCall: string | null = null;
+		h.api.setIntent.mockImplementation(async () => {
+			seenDuringCall = h.engine.api.onboarding.value?.intent ?? null;
+			return { intent: 'human', starter_tasks_created: 3, invited: false };
+		});
+		await h.engine.api.setIntent('human');
+		expect(seenDuringCall).toBe('human');
+		expect(h.api.setIntent).toHaveBeenCalledWith('human', undefined);
+		expect(h.engine.api.onboarding.value).toMatchObject({ intent: 'human', invited: false });
+		expect(h.api.removeStarterTasks).not.toHaveBeenCalled();
+	});
+
+	it('deletes the starter tasks when seed:false still created some', async () => {
+		const h = make();
+		await h.engine.init();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 3 });
+		await h.engine.api.setIntent('human', { seed: false });
+		expect(h.api.setIntent).toHaveBeenCalledWith('human', { seed: false });
+		expect(h.api.removeStarterTasks).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not delete when seed:false created none, and tolerates a failing delete', async () => {
+		const h = make();
+		await h.engine.init();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 0 });
+		await h.engine.api.setIntent('human', { seed: false });
+		expect(h.api.removeStarterTasks).not.toHaveBeenCalled();
+		h.api.setIntent.mockResolvedValue({ intent: 'human', starter_tasks_created: 2 });
+		h.api.removeStarterTasks.mockRejectedValue(new Error('net'));
+		jest.spyOn(console, 'error').mockImplementation(() => {});
+		await expect(h.engine.api.setIntent('human', { seed: false })).resolves.toBeUndefined();
+	});
+
+	it('rolls the intent back and rethrows when the request fails', async () => {
+		const h = make();
+		await h.engine.init();
+		h.api.setIntent.mockRejectedValue(new Error('net'));
+		await expect(h.engine.api.setIntent('agent')).rejects.toThrow('net');
+		expect(h.engine.api.onboarding.value?.intent).toBeNull();
+	});
+
+	it.each([['skipped', 'true'], ['agent', 'true'], ['human', null]])(
+		'intent %s sets the session auto flag to %s',
+		async (intent, expected) => {
+			const session = memory();
+			const h = make({ session });
+			await h.engine.init();
+			await h.engine.api.setIntent(intent);
+			expect(session.getItem('tmgr:tours:auto')).toBe(expected);
+		},
+	);
+
+	it('setChecklistHidden persists the preference', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.setChecklistHidden(true);
+		expect(h.api.putPreferences).toHaveBeenCalledWith({ checklist_hidden: true });
+		expect(h.engine.api.onboarding.value?.checklist_hidden).toBe(true);
+	});
+});
+

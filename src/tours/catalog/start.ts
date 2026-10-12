@@ -1,6 +1,7 @@
 import type { TourDef } from '../types';
 
 const LIST = { name: 'WorkspaceTasksList', params: 'currentWorkspace' } as const;
+const CONNECT = { name: 'WelcomeSetupAgent' } as const;
 const HUB = { name: 'WorkspaceGettingStarted', params: 'currentWorkspace' } as const;
 const ALL_WEB = ['web', 'mobile_web', 'desktop', 'desktop_local'] as const;
 
@@ -141,6 +142,58 @@ export const startTours: TourDef[] = [
         route: HUB,
         title: 'Automatic tips',
         body: 'Turn automatic tips off here. Tours stay available on this page.',
+      },
+    ],
+  },
+  {
+    id: 'start.connect-agent',
+    version: 1,
+    since: '3.5.0',
+    group: 'start',
+    title: 'Connect your AI agent',
+    minutes: 3,
+    triggers: [{ kind: 'first_run', route: 'agent' }, { kind: 'hub' }],
+    requires: {
+      modules: ['mcp'],
+      account: 'cloud',
+      platforms: ['web', 'mobile_web', 'desktop'],
+    },
+    steps: [
+      {
+        id: 's1',
+        type: 'tip',
+        anchor: 'connect.client-tabs',
+        route: CONNECT,
+        title: 'Pick your client',
+        body: 'Pick the client you use. Each tab shows its own command.',
+      },
+      {
+        id: 's2',
+        type: 'wait',
+        anchor: 'connect.command',
+        route: CONNECT,
+        waitFor: { event: 'connect.command_copied' },
+        title: 'Copy the command',
+        body: 'Copy this command and run it in your terminal. The token is shown once.',
+        mobileBody: 'Open this page on your computer, or copy the command to send it there.',
+      },
+      {
+        id: 's3',
+        type: 'wait',
+        anchor: 'connect.status',
+        route: CONNECT,
+        waitFor: { event: 'agent.first_mcp_call' },
+        alreadyDone: 'mcp_first_call_at',
+        title: 'Waiting for your agent',
+        body: 'Waiting for your agent to connect. This updates by itself.',
+      },
+      {
+        id: 's4',
+        type: 'tip',
+        anchor: 'connect.prompt',
+        route: CONNECT,
+        title: 'Try a prompt',
+        body: 'Paste this prompt into your agent. It will pick up the starter task.',
       },
     ],
   },

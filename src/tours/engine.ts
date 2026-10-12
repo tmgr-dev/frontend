@@ -10,7 +10,7 @@ import type { RunnerView } from './runner';
 import { createToursStore } from './store';
 import type { ToursStore } from './store';
 import { tourTelemetry } from './telemetry';
-import { createTriggers } from './triggers';
+import { createTriggers, SESSION_KEY } from './triggers';
 import type { Triggers } from './triggers';
 import type { TourLease } from './lease';
 import type { Platform, StepDef, TipsMode, TourDef, TourId, TourState } from './types';
@@ -66,6 +66,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
   let lastView: RunnerView | null = null;
   let shownKey = '';
   let cancelRenew: (() => void) | null = null;
+  let sequence: { current: TourId; rest: TourId[]; trigger: string } | null = null;
 
   const store = createToursStore({
     api: deps.api,
@@ -174,6 +175,10 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       deps.lease.release();
       const tour = getTour(id);
       resumePill.value = reason === 'navigated' && tour ? { tourId: id, title: tour.title } : null;
+      const chain = sequence;
+      if (!chain || chain.current !== id) return;
+      if (reason === 'completed') void runSequence(chain.rest, chain.trigger);
+      else sequence = null;
     },
     onSkip: (id) => triggers.noteSkip(id),
   });
@@ -201,6 +206,23 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     return started;
   }
 
+  const markAutoUsed = (used: boolean) => {
+    try {
+      deps.session.setItem(SESSION_KEY, JSON.stringify(used));
+    } catch {
+      return;
+    }
+  };
+
+  async function runSequence(ids: TourId[], trigger: string): Promise<boolean> {
+    for (let i = 0; i < ids.length; i++) {
+      sequence = { current: ids[i], rest: ids.slice(i + 1), trigger };
+      if (await begin(ids[i], trigger, false)) return true;
+    }
+    sequence = null;
+    return false;
+  }
+
   const api: ToursApi = {
     active,
     hubItems: hubItems as unknown as ToursApi['hubItems'],
@@ -224,10 +246,40 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     async setHubHidden(hidden: boolean) {
       await store.setPreferences({ hub_hidden: hidden });
     },
-    async startSequence() {},
-    async setIntent() {},
-    async setChecklistHidden() {},
+    async startSequence(ids, trigger) {
+      if (store.state.value?.tips_mode !== 'auto') return;
+      markAutoUsed(true);
+      if (!(await runSequence(ids, trigger))) markAutoUsed(false);
+    },
+    async setIntent(intent, options) {
+      const before = store.state.value;
+      const previous = before ? { intent: before.intent, invited: before.invited } : null;
+      store.applyIntent(intent);
+      let result: unknown;
+      try {
+        result = await deps.api.setIntent(intent, options);
+      } catch (error) {
+        const current = store.state.value;
+        if (current && previous) Object.assign(current, previous);
+        else if (current) current.intent = null;
+        throw error;
+      }
+      const reply = (typeof result === 'object' && result !== null ? result : {}) as Record<string, unknown>;
+      if (typeof reply.invited === 'boolean') store.applyIntent(intent, { invited: reply.invited });
+      if (options?.seed === false && Number(reply.starter_tasks_created) > 0) {
+        try {
+          await deps.api.removeStarterTasks();
+        } catch (error) {
+          console.error('removing starter tasks failed', error);
+        }
+      }
+      if (intent === 'skipped' || intent === 'agent') markAutoUsed(true);
+    },
+    async setChecklistHidden(hidden: boolean) {
+      await store.setChecklistHidden(hidden);
+    },
     async resetAll() {
+      sequence = null;
       runner.abandon();
       await store.resetAll();
       triggers.reset();
@@ -246,6 +298,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       if (route) triggers.onRouteEntered(route);
     },
     signedOut() {
+      sequence = null;
       runner.abandon();
       triggers.dispose();
       store.clear();
@@ -263,6 +316,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       showView(lastView);
     },
     dispose() {
+      sequence = null;
       runner.dispose();
       triggers.dispose();
       stopRenewing();

@@ -16,6 +16,7 @@ describe('catalog lint', () => {
 	it('has the S2 tours', () => {
 		expect(TOURS.map((t) => t.id).sort()).toEqual(
 			[
+				'start.connect-agent',
 				'start.first-task',
 				'start.hub',
 				'start.nav',
@@ -27,6 +28,21 @@ describe('catalog lint', () => {
 			].sort(),
 		);
 		expect(getTour('time.timer')?.steps).toHaveLength(4);
+	});
+
+	it('the connect-agent tour waits on the first MCP call without completing on it', () => {
+		const tour = getTour('start.connect-agent')!;
+		expect(tour.completeOn).toBeUndefined();
+		expect(tour.requires).toMatchObject({ modules: ['mcp'], account: 'cloud' });
+		expect(tour.requires?.platforms).not.toContain('desktop_local');
+		expect(tour.triggers).toEqual(expect.arrayContaining([{ kind: 'first_run', route: 'agent' }, { kind: 'hub' }]));
+		expect(tour.steps.map((s) => s.route?.name)).toEqual(Array(4).fill('WelcomeSetupAgent'));
+		expect(tour.steps[2]).toMatchObject({
+			type: 'wait',
+			waitFor: { event: 'agent.first_mcp_call' },
+			alreadyDone: 'mcp_first_call_at',
+		});
+		expect(tour.steps[3].type).toBe('tip');
 	});
 
 	it('tour ids and step ids are unique', () => {
