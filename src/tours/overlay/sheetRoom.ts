@@ -11,17 +11,20 @@ export function createSheetRoom() {
   let padded: Array<[HTMLElement, string]> = [];
 
   function makeRoom(anchor: Element) {
-    for (let el = anchor.parentElement; el && el !== document.body; el = el.parentElement) {
+    let el = anchor.parentElement;
+    while (el && el !== document.body) {
       const style = getComputedStyle(el);
       const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll';
       const bounded = el.scrollHeight > el.clientHeight || style.maxHeight !== 'none';
-      if (!scrolls || !bounded) continue;
-      const scroller = el as HTMLElement;
-      if (!padded.some(([done]) => done === scroller)) {
-        padded.push([scroller, scroller.style.paddingBottom]);
-        scroller.style.paddingBottom = `${Math.round(window.innerHeight * 0.5)}px`;
+      if (scrolls && bounded) {
+        const scroller = el;
+        if (!padded.some(([done]) => done === scroller)) {
+          padded.push([scroller, scroller.style.paddingBottom]);
+          scroller.style.paddingBottom = `${Math.round(window.innerHeight * 0.5)}px`;
+        }
+        return;
       }
-      return;
+      el = el.parentElement;
     }
   }
 
