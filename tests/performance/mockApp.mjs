@@ -11,6 +11,8 @@ export async function mockApp(
     loginAs = null,
     authHeaders = [],
     consent = true,
+    onboarding = null,
+    userExtra = {},
   } = {},
 ) {
   if (consent)
@@ -43,6 +45,7 @@ export async function mockApp(
     name: 'Test User',
     email: 'test@example.test',
     settings: [{ key: 'current_workspace', value: '1' }],
+    ...userExtra,
   };
   const task = {
     id: 1,
@@ -76,6 +79,25 @@ export async function mockApp(
     created_at: '2026-09-13T10:00:00Z',
     updated_at: '2026-09-13T10:00:00Z',
   };
+  const onboardingFixture = onboarding
+    ? {
+        state: {
+          intent: null,
+          invited: false,
+          tips_mode: 'hub_only',
+          hub_hidden: false,
+          checklist_hidden: false,
+          tours_generation: 0,
+          tours: {},
+          facts: {},
+          ...onboarding,
+        },
+        writes: [],
+        factsRequests: [],
+        starterTasks: onboarding.starterTasks ?? 0,
+      }
+    : null;
+  if (onboardingFixture) delete onboardingFixture.state.starterTasks;
   let release;
   let requests = 0;
   let boardRequests = 0;
@@ -85,6 +107,42 @@ export async function mockApp(
     const url = new URL(route.request().url());
     const path = url.pathname.replace('/api/', '');
     let data = [];
+    if (onboardingFixture && path.startsWith('onboarding')) {
+      const fx = onboardingFixture;
+      const method = route.request().method();
+      const body = method === 'GET' || method === 'DELETE' ? null : route.request().postDataJSON();
+      if (method !== 'GET') fx.writes.push({ method, path, body });
+      let out = fx.state;
+      if (path === 'onboarding/facts') {
+        const keys = (url.searchParams.get('keys') ?? '').split(',').filter(Boolean);
+        fx.factsRequests.push({ keys, taskId: url.searchParams.get('task_id') });
+        out = Object.fromEntries(keys.map((k) => [k, fx.state.facts[k] ?? false]));
+      } else if (path === 'onboarding/intent' && method === 'POST') {
+        fx.state.intent = body.intent;
+        fx.state.intent_at = new Date().toISOString();
+        const created = body.intent === 'human' && body.seed !== false ? 3 : 0;
+        fx.starterTasks = created;
+        out = { ...fx.state, starter_tasks_created: created };
+      } else if (path === 'onboarding/starter-tasks' && method === 'DELETE') {
+        out = { removed: fx.starterTasks };
+        fx.starterTasks = 0;
+      } else if (path === 'onboarding/preferences' && method === 'PUT') {
+        for (const key of ['tips_mode', 'hub_hidden', 'checklist_hidden'])
+          if (body?.[key] !== undefined) fx.state[key] = body[key];
+      } else if (path.startsWith('onboarding/tours/') && method === 'PUT') {
+        fx.state.tours[decodeURIComponent(path.slice('onboarding/tours/'.length))] = {
+          status: body.status,
+          step_id: body.step_id ?? null,
+          version: body.version ?? 1,
+          generation: body.generation ?? 0,
+        };
+      } else if (path === 'onboarding/tours' && method === 'DELETE') {
+        fx.state.tours = {};
+        fx.state.tours_generation += 1;
+      }
+      await route.fulfill({ json: { data: out } });
+      return;
+    }
     if (path === 'project_categories' && categoriesFail) {
       await route.fulfill({
         status: 500,
@@ -219,5 +277,6 @@ export async function mockApp(
     requests: () => requests,
     boardRequests: () => boardRequests,
     savedTasks,
+    onboarding: onboardingFixture,
   };
 }
