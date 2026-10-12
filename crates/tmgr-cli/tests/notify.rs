@@ -371,3 +371,38 @@ async fn alarm_no_wait_and_status_use_the_last_alarm_id() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn logging_in_again_drops_and_revokes_the_old_notify_token() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_mint(&env).await;
+    mock_push(&env, MINTED).await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/notify-tokens/7"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&env.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/auth/devices/current"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {"device_id": 9, "user": {"id": 2, "name": "Bob"}, "scopes": ["tasks:read"]}})))
+        .mount(&env.server)
+        .await;
+    assert!(env
+        .cmd()
+        .args(["notify", "hello"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    let out = env
+        .cmd()
+        .args(["login", "--with-token"])
+        .write_stdin("new-token-EEEE5555\n")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(env.requests_to("/api/notify-tokens/7").await.len(), 1);
+    assert!(!env.creds_text().contains(MINTED));
+    leaks(&out);
+}

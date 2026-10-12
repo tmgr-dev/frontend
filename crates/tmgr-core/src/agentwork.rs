@@ -142,6 +142,32 @@ fn finish_call(status: u16, body: Value) -> Result<Outcome> {
     Err(map_error(status, &body, SCOPE))
 }
 
+pub fn run_commits(client: &Client, task_id: u64, run_id: u64) -> Result<Vec<String>> {
+    let (status, body) = client.call(
+        "GET",
+        &format!("/api/tasks/{task_id}/agent-work"),
+        None,
+        true,
+    )?;
+    if !(200..300).contains(&status) {
+        return Err(map_error(status, &body, "tasks:read"));
+    }
+    let data = unwrap_data(body);
+    let run = data
+        .get("runs")
+        .and_then(Value::as_array)
+        .and_then(|runs| {
+            runs.iter()
+                .find(|r| r.get("id").and_then(Value::as_u64) == Some(run_id))
+        })
+        .cloned()
+        .ok_or_else(|| {
+            Error::not_found(format!("run {run_id} not found on that task"))
+                .hint("check --task and --run")
+        })?;
+    Ok(parse_run(run)?.commits)
+}
+
 pub struct StartBody<'a> {
     pub agent: &'a str,
     pub model: Option<&'a str>,

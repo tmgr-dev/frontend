@@ -92,24 +92,53 @@ fn tests_of(p: &ProgressArgs) -> Option<Tests> {
     })
 }
 
-fn start(ctx: &Ctx, args: &AgentStartArgs) -> Result<Output> {
-    let client = ctx.client()?;
-    let tref = parse_task_ref(&args.reference)?;
+fn resolve_task(
+    ctx: &Ctx,
+    client: &tmgr_core::api::Client,
+    reference: &str,
+) -> Result<tmgr_core::models::ApiTask> {
+    let tref = parse_task_ref(reference)?;
     let not_found = |e: Error| {
         if e.kind == Kind::NotFound {
-            Error::not_found(format!("Task {} not found", sanitize_line(&args.reference)))
+            Error::not_found(format!("Task {} not found", sanitize_line(reference)))
                 .hint("check --ws, or tmgr task list")
         } else {
             e
         }
     };
-    let task = match &tref {
+    Ok(match &tref {
         TaskRef::Key(key) => {
             let ws = ctx.workspace(client)?;
             client.task_by_key(key, ws.id).map_err(not_found)?
         }
         TaskRef::Id(id) => client.task_by_id(*id).map_err(not_found)?,
-    };
+    })
+}
+
+fn sent_commits(
+    ctx: &Ctx,
+    client: &tmgr_core::api::Client,
+    run_id: u64,
+    known: Option<&Run>,
+    p: &ProgressArgs,
+) -> Result<Vec<String>> {
+    if let Some(r) = known {
+        return Ok(r.commits.clone());
+    }
+    if p.commits.is_empty() {
+        return Ok(Vec::new());
+    }
+    let reference = p.task.as_deref().ok_or_else(|| {
+        Error::usage("this run is not in the local state, so its commits cannot be merged")
+            .hint("pass --task REF")
+    })?;
+    let task = resolve_task(ctx, client, reference)?;
+    agentwork::run_commits(client, task.id, run_id)
+}
+
+fn start(ctx: &Ctx, args: &AgentStartArgs) -> Result<Output> {
+    let client = ctx.client()?;
+    let task = resolve_task(ctx, client, &args.reference)?;
     let key = task_ref(&task);
     let git = gitx::cwd_repo();
     let branch = match &args.branch {
@@ -185,15 +214,10 @@ fn find_run(run: Option<u64>) -> Result<(u64, Option<Run>)> {
 fn progress_of(
     p: &ProgressArgs,
     branch: Option<String>,
-    known: Option<&Run>,
+    sent: &[String],
 ) -> Result<(Progress, Option<Vec<String>>)> {
     let new = parse_commits(&p.commits)?;
-    let merged = (!new.is_empty()).then(|| {
-        merge_commits(
-            known.map(|r| r.commits.as_slice()).unwrap_or_default(),
-            &new,
-        )
-    });
+    let merged = (!new.is_empty()).then(|| merge_commits(sent, &new));
     if let Some(b) = &branch {
         branch::validate_branch_name(b)?;
     }
@@ -210,7 +234,8 @@ fn progress_of(
 fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
     let client = ctx.client()?;
     let (run_id, known) = find_run(args.run)?;
-    let (progress, merged) = progress_of(&args.progress, args.branch.clone(), known.as_ref())?;
+    let sent = sent_commits(ctx, client, run_id, known.as_ref(), &args.progress)?;
+    let (progress, merged) = progress_of(&args.progress, args.branch.clone(), &sent)?;
     let key = known.as_ref().map(|r| r.task_key.clone());
     match agentwork::update(client, run_id, &progress, true)? {
         Outcome::Disabled => Ok(disabled(
@@ -250,7 +275,8 @@ fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
 fn finish(ctx: &Ctx, args: &AgentFinishArgs) -> Result<Output> {
     let client = ctx.client()?;
     let (run_id, known) = find_run(args.run)?;
-    let (progress, _) = progress_of(&args.progress, None, known.as_ref())?;
+    let sent = sent_commits(ctx, client, run_id, known.as_ref(), &args.progress)?;
+    let (progress, _) = progress_of(&args.progress, None, &sent)?;
     let key = known.as_ref().map(|r| r.task_key.clone());
     let task_id = known.as_ref().map(|r| r.task_id);
     let result = agentwork::finish(client, run_id, args.status.as_str(), &progress);

@@ -43,6 +43,9 @@ pub struct ProgressArgs {
     /// What has been done, plain text
     #[arg(long, value_name = "TEXT")]
     pub summary: Option<String>,
+    /// Task of a run that is not in the local state (needed to merge its commits)
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
 }
 
 #[derive(Args)]

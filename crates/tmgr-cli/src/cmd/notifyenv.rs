@@ -320,3 +320,21 @@ pub fn revoke_on_logout(ctx: &Ctx, client: Option<&Client>) {
     }
     let _ = store.delete();
 }
+
+pub fn drop_stale_notify_token(ctx: &Ctx, server: &str) {
+    let old = ctx
+        .store()
+        .ok()
+        .and_then(|st| st.load().ok().flatten())
+        .and_then(|(tokens, _)| {
+            Client::new(
+                server,
+                &Ctx::user_agent(),
+                Some(tokens),
+                ctx.store().ok(),
+                ctx.verbose,
+            )
+            .ok()
+        });
+    revoke_on_logout(ctx, old.as_ref());
+}

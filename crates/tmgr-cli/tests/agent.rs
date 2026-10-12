@@ -241,3 +241,63 @@ async fn update_without_a_run_for_the_branch_is_a_usage_error() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unknown_run_merges_with_the_commits_the_server_already_has() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_task(&env).await;
+    env.mock_json(
+        "/api/tasks/8974/agent-work",
+        json!({"runs": [{"id": 41, "task_id": 8974, "status": "running", "commits": [{"sha": "aaa1111", "message": "old one"}]}], "totals": {}}),
+    )
+    .await;
+    mock_run(
+        &env,
+        "PATCH",
+        "/api/agent-work/41",
+        200,
+        run_view(json!({})),
+    )
+    .await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+
+    let out = env
+        .tmgr_in(&repo, None)
+        .args([
+            "agent",
+            "update",
+            "--run",
+            "41",
+            "--commit",
+            "bbb2222 new one",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stdout));
+    assert!(env.requests_to("/api/agent-work/41").await.is_empty());
+
+    let out = env
+        .tmgr_in(&repo, None)
+        .args([
+            "agent",
+            "update",
+            "--run",
+            "41",
+            "--task",
+            "TM-512",
+            "--commit",
+            "bbb2222 new one",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let sent: Value =
+        serde_json::from_slice(&env.requests_to("/api/agent-work/41").await[0].body).unwrap();
+    assert_eq!(
+        sent["commits"],
+        json!([{"sha": "aaa1111", "message": "old one"}, {"sha": "bbb2222", "message": "new one"}])
+    );
+}

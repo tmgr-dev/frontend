@@ -23,6 +23,7 @@ pub fn clamp_timing(interval: u64, expires_in: u64) -> (u64, u64, bool) {
 
 pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
     let server = ctx.server()?;
+    crate::cmd::notifyenv::drop_stale_notify_token(ctx, &server);
     let (client, saved_backend, warning) = if args.with_token {
         login_with_token(ctx, &server)?
     } else {
