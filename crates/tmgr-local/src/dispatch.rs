@@ -55,7 +55,9 @@ pub fn dispatch(
         Ok(data) => {
             if journal_worthy(ctx, &method, route.status) {
                 let entity_id = entity_id(&req, &method, Some(&data));
-                if journal(&req, &method, route.pattern, entity_id, route.status).is_err() {
+                let audited = journal(&req, &method, route.pattern, entity_id, route.status);
+                let persona = ctx.actor.as_ref().is_some_and(|a| a.kind == "persona");
+                if audited.is_err() && persona {
                     return Ok(Some(Response {
                         status: 500,
                         data: json!({ "message": "Audit failed" }),
@@ -266,5 +268,110 @@ mod tests {
             )
             .unwrap();
         assert_eq!(logged, 1);
+    }
+
+    fn writable() -> rusqlite::Connection {
+        let conn = db("INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 1, 'Owner', 'Scribe', 'x');
+            INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:write\"]', 'x');");
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        conn
+    }
+
+    fn as_actor(kind: &str, id: &str) -> Context {
+        let mut c = ctx("2026-10-13T12:00:00.000Z");
+        c.actor = Some(Actor {
+            kind: kind.into(),
+            id: id.into(),
+            name: id.into(),
+            owner_id: None,
+        });
+        c
+    }
+
+    fn count(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_request_that_fails_after_writing_leaves_nothing() {
+        let conn = writable();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        let body = json!({ "title": "Kept by TS, not here", "persona_assignees": ["nope"] });
+        let r = dispatch(&conn, &c, "POST", "tasks", Some(&body))
+            .unwrap()
+            .unwrap();
+        assert_eq!(r.status, 422);
+        assert_eq!(count(&conn, "tasks"), 0);
+        assert!(conn.is_autocommit());
+    }
+
+    #[test]
+    fn a_failed_audit_stores_nothing_for_a_persona_but_not_for_a_plugin() {
+        let conn = writable();
+        conn.execute_batch(
+            "CREATE TRIGGER deny BEFORE INSERT ON activity_log BEGIN SELECT RAISE(ABORT, 'x'); END;",
+        )
+        .unwrap();
+        let body = json!({ "title": "Audited" });
+        let r = dispatch(
+            &conn,
+            &as_actor("persona", "p1"),
+            "POST",
+            "tasks",
+            Some(&body),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (r.status, r.data),
+            (500, json!({ "message": "Audit failed" }))
+        );
+        assert_eq!(count(&conn, "tasks"), 0);
+        let r = dispatch(
+            &conn,
+            &as_actor("plugin", "tmgr.x"),
+            "POST",
+            "tasks",
+            Some(&body),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(r.status, 201);
+        assert_eq!(count(&conn, "tasks"), 1);
+    }
+
+    #[test]
+    fn a_plugin_write_is_journaled_with_the_created_id() {
+        let conn = writable();
+        let body = json!({ "title": "From a plugin" });
+        let r = dispatch(
+            &conn,
+            &as_actor("plugin", "tmgr.x"),
+            "POST",
+            "tasks",
+            Some(&body),
+        )
+        .unwrap()
+        .unwrap();
+        let id = r.data["data"]["id"].as_i64().unwrap();
+        let row: (String, String, String, String, i64) = conn
+            .query_row(
+                "SELECT actor_kind, route, entity, entity_id, status FROM activity_log",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "plugin".into(),
+                "tasks".into(),
+                "tasks".into(),
+                id.to_string(),
+                201
+            )
+        );
+        assert_eq!(count(&conn, "activity_log"), 1);
     }
 }
