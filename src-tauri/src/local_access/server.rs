@@ -50,6 +50,7 @@ pub struct ServerDeps {
   pub tokens: Arc<TokenStore>,
   pub workspace_exists: Arc<dyn Fn(&str) -> Option<i64> + Send + Sync>,
   pub ready: Arc<dyn Fn() -> bool + Send + Sync>,
+  pub is_moving: Arc<dyn Fn(&str) -> bool + Send + Sync>,
   pub bridge: BridgeFn,
   pub app_version: String,
   pub now_epoch: Arc<dyn Fn() -> i64 + Send + Sync>,
@@ -427,6 +428,9 @@ async fn handle(
   }
 
   let is_get = method.eq_ignore_ascii_case("GET");
+  if let Some(refusal) = refuse_while_moving(&deps, &method, &token.workspace_code) {
+    return refusal;
+  }
   if !limiter.check(&token.id, is_get) {
     return json_error_retry(429, "RATE_LIMITED", "Too many requests", 1);
   }
@@ -460,6 +464,11 @@ async fn handle(
     Ok(reply) => json_raw_response(reply.status, reply.body),
     Err(_) => json_error(504, "TIMEOUT", "The app did not answer in time"),
   }
+}
+
+fn refuse_while_moving(deps: &ServerDeps, method: &str, workspace_code: &str) -> Option<Response<ResponseBody>> {
+  let is_read = method.eq_ignore_ascii_case("GET");
+  (!is_read && (deps.is_moving)(workspace_code)).then(|| json_error(423, "WORKSPACE_MOVING", "workspace is moving"))
 }
 
 fn extract_cursor(headers: &HeaderMap, path_and_query: &str) -> Option<Cursor> {
@@ -688,6 +697,7 @@ mod tests {
       tokens: Arc::new(store),
       workspace_exists: Arc::new(|_| Some(-1)),
       ready: Arc::new(|| true),
+      is_moving: Arc::new(|_| false),
       bridge,
       app_version: "0.0.0-test".into(),
       now_epoch: Arc::new(|| 0),
@@ -701,6 +711,19 @@ mod tests {
     req: Request<Empty<Bytes>>,
   ) -> Response<Incoming> {
     sender.send_request(req).await.unwrap()
+  }
+
+  #[test]
+  fn writes_to_a_moving_workspace_are_refused_and_reads_are_not() {
+    let mut secret_holder = None;
+    let (mut deps, _) = test_deps(&mut secret_holder);
+    deps.is_moving = Arc::new(|code| code == "local-personal");
+    for method in ["POST", "PATCH", "PUT", "DELETE"] {
+      let refusal = refuse_while_moving(&deps, method, "local-personal").expect(method);
+      assert_eq!(refusal.status(), 423);
+    }
+    assert!(refuse_while_moving(&deps, "GET", "local-personal").is_none());
+    assert!(refuse_while_moving(&deps, "POST", "local-other").is_none());
   }
 
   #[tokio::test]
@@ -1018,6 +1041,7 @@ mod tests {
       tokens: Arc::new(store),
       workspace_exists: Arc::new(|_| Some(-1)),
       ready: Arc::new(|| true),
+      is_moving: Arc::new(|_| false),
       bridge,
       app_version: "0.0.0-test".into(),
       now_epoch: Arc::new(|| 0),

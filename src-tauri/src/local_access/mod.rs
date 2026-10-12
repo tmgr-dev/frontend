@@ -336,6 +336,7 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
 
   let bridge = make_bridge(app.clone(), state.pending.clone());
   let user_id = state.user_id.clone();
+  let moving = app.state::<crate::local_move::Moving>().inner().clone();
   let app_for_workspaces = app.clone();
   let deps = ServerDeps {
     tokens: state.token_store.clone(),
@@ -343,6 +344,7 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
       crate::local_workspaces::find(&app_for_workspaces, code).ok().map(|w| w.manifest.id)
     }),
     ready: Arc::new(move || user_id.lock().map(|guard| guard.is_some()).unwrap_or(false)),
+    is_moving: Arc::new(move |code: &str| moving.is_set(code)),
     bridge,
     app_version: app.package_info().version.to_string(),
     now_epoch: Arc::new(now_epoch),
