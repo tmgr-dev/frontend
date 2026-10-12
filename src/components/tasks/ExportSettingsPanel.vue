@@ -64,6 +64,10 @@
 						<input
 							type="checkbox"
 							:checked="settings.weekend_days.includes(day.value)"
+							:disabled="
+								settings.weekend_days.length === 1 &&
+								settings.weekend_days.includes(day.value)
+							"
 							class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
 							@change="toggleWeekendDay(day.value)"
 						/>
@@ -118,22 +122,16 @@
 				/>
 				<span>Parse date from task title</span>
 			</label>
-
-			<!-- Generate AI explanations -->
-			<label class="flex cursor-pointer items-center gap-2">
-				<input
-					v-model="settings.include_explanations"
-					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
-					@change="emitSettings"
-				/>
-				<span>Generate AI explanations</span>
-			</label>
 		</div>
 	</div>
 </template>
 
 <script>
+	import {
+		DEFAULT_EXPORT_SETTINGS,
+		toExportParams,
+	} from '@/utils/exportSettings';
+
 	const ALL_DAYS = [
 		{ value: 0, label: 'Sun' },
 		{ value: 1, label: 'Mon' },
@@ -154,13 +152,9 @@
 			return {
 				holidayInput: '',
 				settings: {
-					round_hours_up: false,
-					zero_expected_weekends: true,
-					weekend_days: [0, 6],
+					...DEFAULT_EXPORT_SETTINGS,
+					weekend_days: [...DEFAULT_EXPORT_SETTINGS.weekend_days],
 					custom_holidays: [],
-					parse_date_from_title: true,
-					include_explanations: false,
-					week_start: 1,
 				},
 			};
 		},
@@ -174,7 +168,7 @@
 		},
 		methods: {
 			emitSettings() {
-				this.$emit('update:settings', { ...this.settings });
+				this.$emit('update:settings', toExportParams(this.settings));
 			},
 			toggleWeekendDay(value) {
 				const idx = this.settings.weekend_days.indexOf(value);

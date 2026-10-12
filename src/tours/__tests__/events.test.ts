@@ -73,6 +73,9 @@ describe('matchRequest', () => {
 		['POST', 'agent/conversations'],
 		['POST', 'pages/3/restore'],
 		['GET', 'exports'],
+		['GET', 'exports/tasks'],
+		['GET', 'exports/tasks/csv/extra'],
+		['POST', 'exports/tasks/csv'],
 	])('does not match %s %s', (method, url) => {
 		expect(matchRequest(method, url, { status_id: 3 }, { data: { id: 1 } }, ctx)).toEqual([]);
 	});
@@ -168,6 +171,11 @@ describe('matchRequest S4b mappings', () => {
 		['DELETE', 'notify-tokens/1'],
 	])('existing negative %s %s', (m, u) => {
 		expect(run(m, u)).toEqual([]);
+	});
+
+	it.each(['xlsx', 'csv', 'jpg'])('export.downloaded on bracket-array query GET exports/tasks/%s', (type) => {
+		const url = `/api/exports/tasks/${type}?ids[0]=1&per_hour=1000&weekend_days[0]=5&custom_holidays[0]=2026-10-12`;
+		expect(names(run('GET', url))).toEqual(['export.downloaded']);
 	});
 
 	it('export.downloaded on GET exports/tasks/csv?ids=1', () => {

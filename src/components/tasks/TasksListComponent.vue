@@ -33,6 +33,7 @@
 				v-if="selected.filter(Boolean).length > 0"
 				@click="showProcessModal"
 				type="button"
+				data-tour="list.process"
 				class="h-9 rounded-pill bg-status-done px-4 text-sm font-medium text-white shadow-tmgr-xs hover:opacity-90"
 			>
 				Process ({{ selected.filter(Boolean).length }})
