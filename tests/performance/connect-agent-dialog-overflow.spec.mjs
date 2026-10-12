@@ -27,6 +27,8 @@ const openIssuedDialog = async (page) => {
   await page.addInitScript(() =>
     localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1'),
   );
+  // First-visit tours auto-offer ~600ms after landing and cover the page.
+  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
   await page.route('**/api/personas*', (route) =>
     route.fulfill({ json: { data: [persona] } }),
   );
