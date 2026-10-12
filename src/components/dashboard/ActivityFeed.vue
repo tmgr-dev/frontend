@@ -120,7 +120,7 @@
 		loadingMore?: boolean;
 		workspaceId: number;
 		connected?: boolean;
-		workspaceUsers?: Array<{ id: number; name: string }>;
+		workspaceUsers?: Array<{ id: number; name: string; has_avatar?: boolean }>;
 	}
 
 	const props = withDefaults(defineProps<Props>(), {

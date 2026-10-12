@@ -30,13 +30,29 @@
 				v-if="showUserFilter"
 				class="w-full"
 			>
-				<Select
-					placeholder="Select user"
-					:options="workspaceUsers"
-					v-model="selectedUser"
-					label-key="name"
-					value-key="id"
-				/>
+				<UiSelect v-model="selectedUserValue">
+					<UiSelectTrigger class="w-full">
+						<UiSelectValue placeholder="Select user" />
+					</UiSelectTrigger>
+					<UiSelectContent>
+						<UiSelectItem
+							v-for="u in workspaceUsers"
+							:key="u.id"
+							:value="String(u.id)"
+						>
+							<span class="flex min-w-0 items-center gap-2">
+								<UserAvatar
+									v-if="u.id !== 0"
+									:user-id="u.id"
+									:name="u.name"
+									:has-avatar="u.has_avatar ?? false"
+									:size="20"
+								/>
+								<span class="truncate">{{ u.name }}</span>
+							</span>
+						</UiSelectItem>
+					</UiSelectContent>
+				</UiSelect>
 			</div>
 
 			<div v-if="showPersonaFilter" class="w-full">
@@ -146,18 +162,31 @@
 
 				<!-- User select -->
 				<div v-if="showUserFilter" class="relative">
-					<select
-						v-model.number="selectedUser"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong"
-					>
-						<option :value="0">All users</option>
-						<option v-for="u in userOptions" :key="u.id" :value="u.id">
-							{{ u.name }}
-						</option>
-					</select>
-					<ChevronDownIcon
-						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
-					/>
+					<UiSelect v-model="selectedUserValue">
+						<UiSelectTrigger
+							class="h-9 rounded-pill border-line bg-surface px-3 text-ink focus:border-line-strong"
+						>
+							<UiSelectValue placeholder="All users" />
+						</UiSelectTrigger>
+						<UiSelectContent>
+							<UiSelectItem value="0">All users</UiSelectItem>
+							<UiSelectItem
+								v-for="u in userOptions"
+								:key="u.id"
+								:value="String(u.id)"
+							>
+								<span class="flex min-w-0 items-center gap-2">
+									<UserAvatar
+										:user-id="u.id"
+										:name="u.name"
+										:has-avatar="u.has_avatar ?? false"
+										:size="20"
+									/>
+									<span class="truncate">{{ u.name }}</span>
+								</span>
+							</UiSelectItem>
+						</UiSelectContent>
+					</UiSelect>
 				</div>
 
 				<!-- Persona select -->
@@ -239,6 +268,14 @@
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import {
+		Select as UiSelect,
+		SelectContent as UiSelectContent,
+		SelectItem as UiSelectItem,
+		SelectTrigger as UiSelectTrigger,
+		SelectValue as UiSelectValue,
+	} from '@/components/ui/select';
 	import {
 		MenuItem,
 		Popover,
@@ -260,6 +297,7 @@
 		name: string;
 		value: number;
 		label: string;
+		has_avatar?: boolean;
 	}
 	export interface CategoryOption {
 		id: number;
@@ -327,6 +365,13 @@
 		get: () => (store.state as { filter: State }).filter.selectedUser,
 		set: (value) => {
 			store.commit('updateSelectedUser', value);
+		},
+	});
+
+	const selectedUserValue = computed({
+		get: () => String(selectedUser.value || 0),
+		set: (value) => {
+			selectedUser.value = Number(value) || 0;
 		},
 	});
 
