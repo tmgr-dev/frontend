@@ -78,6 +78,7 @@ export class TourRunner {
   private seen = new Set<string>();
   private navigatedAt = -Infinity;
   private renavigated = false;
+  private routeReached = false;
   private offBus: Array<() => void> = [];
   private listening = new Set<string>();
 
@@ -186,6 +187,7 @@ export class TourRunner {
     if (!route) return;
     this.navigatedAt = this.deps.now();
     this.renavigated = false;
+    this.routeReached = false;
     this.deps.navigate(route);
     await this.enterStep(cur.idx);
   }
@@ -205,9 +207,12 @@ export class TourRunner {
     if (!cur) return;
     const route = cur.tour.steps[cur.idx].route;
     if (!route) return;
-    if (name === route.name && this.queryMatches(route)) return;
+    if (name === route.name && this.queryMatches(route)) {
+      this.routeReached = true;
+      return;
+    }
     if (this.deps.now() - this.navigatedAt < 3000) {
-      if (!this.renavigated) {
+      if (!this.renavigated && !this.routeReached) {
         this.renavigated = true;
         this.deps.navigate(route);
       }
@@ -311,7 +316,10 @@ export class TourRunner {
     if (step.route && !this.onRoute(step.route)) {
       this.navigatedAt = this.deps.now();
       this.renavigated = false;
+      this.routeReached = false;
       this.deps.navigate(step.route);
+    } else if (step.route) {
+      this.routeReached = true;
     }
 
     if (pickAnchorName(step, this.deps.mobile())) {

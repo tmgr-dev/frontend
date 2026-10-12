@@ -341,6 +341,19 @@ describe('TourRunner', () => {
 		expect(h.last()).not.toBeNull();
 	});
 
+	it('does not pull the user back after the step route was reached and they clicked away', async () => {
+		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
+		const h = setup([t]);
+		h.present.add('a.b');
+		await h.runner.start('t.one', 'hub');
+		h.setRoute('WorkspaceBoard');
+		h.runner.routeChanged('WorkspaceBoard');
+		h.setRoute('Other');
+		h.runner.routeChanged('Other');
+		expect(h.nav).toHaveLength(1);
+		expect(h.last()).not.toBeNull();
+	});
+
 	it('pauses when only the query leaves the step route query', async () => {
 		const t = tour({ steps: [step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } })] });
 		const h = setup([t]);
