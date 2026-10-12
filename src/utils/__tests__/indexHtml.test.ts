@@ -47,11 +47,14 @@ describe('index.html analytics', () => {
 			'/desktop-auth/telegram',
 			'/password/forget',
 			'/password/reset',
+			'/email/verify',
+			'/auth/link-confirm',
+			'/workspaces/invitations/abc123',
 		])('is not loaded on the auth page %s', (pathname) => {
 			expect(injectedOn(pathname)).toHaveLength(0);
 		});
 
-		it.each(['/', '/tmgrdev/board', '/loginhistory', '/l/abc', '/settings/personas'])(
+		it.each(['/', '/tmgrdev/board', '/loginhistory', '/l/abc', '/settings/personas', '/workspaces'])(
 			'is loaded on %s',
 			(pathname) => {
 				const [script] = injectedOn(pathname);

@@ -16,6 +16,9 @@ for (const path of [
   '/register',
   '/desktop-auth/return',
   '/password/reset?token=t',
+  '/email/verify?token=t',
+  '/auth/link-confirm?token=t',
+  '/workspaces/invitations/secret-token',
 ]) {
   test(`auth page ${path} does not load analytics`, async ({ page }) => {
     const requests = await watchAnalytics(page);

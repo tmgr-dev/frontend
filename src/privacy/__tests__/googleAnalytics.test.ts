@@ -102,6 +102,9 @@ describe('google analytics on auth pages', () => {
 		'/register',
 		'/desktop-auth/return',
 		'/password/reset?token=t',
+		'/email/verify?token=t',
+		'/auth/link-confirm?token=t',
+		'/workspaces/invitations/secret-token',
 	])('loads nothing and sends no config on %s', (url) => {
 		window.history.replaceState({}, '', url);
 		startGoogleAnalytics({ id: ID, enabled: true, store: granted() });

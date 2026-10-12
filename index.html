@@ -67,10 +67,10 @@
 		<meta name="theme-color" content="#555555" />
 		<title>TMGR</title>
 		<!-- analytics:start -->
-		<!-- Plausible Analytics (self-hosted), never on auth pages: their URLs carry OAuth codes and reset tokens -->
+		<!-- Plausible Analytics (self-hosted), never on auth pages: their URLs carry OAuth codes and tokens -->
 		<script>
 			if (
-				!/^\/(login|register|desktop-auth|password)(\/|$)/i.test(
+				!/^\/(login|register|desktop-auth|password|email\/verify|auth\/link-confirm|workspaces\/invitations)(\/|$)/i.test(
 					location.pathname,
 				)
 			) {
