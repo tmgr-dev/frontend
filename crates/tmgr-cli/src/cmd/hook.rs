@@ -15,12 +15,31 @@ use tmgr_core::error::Kind;
 use tmgr_core::notify::{self, NotifyHttp, PushPayload};
 use tmgr_core::runstate::{self, clean_commit, merge_commits, valid_sha};
 
-pub const DEADLINE: Duration = Duration::from_millis(1500);
+const DEFAULT_BUDGET_MS: u64 = 1500;
+const BUDGET_ENV: &str = "TMGR_HOOK_BUDGET_MS";
 const MAX_STDIN: u64 = 256 * 1024;
 const MAX_ARG_JSON: usize = 64 * 1024;
 const TRANSCRIPT_TAIL: u64 = 256 * 1024;
-const GIT_TIMEOUT: Duration = Duration::from_millis(400);
-const PUSH_TIMEOUT: Duration = Duration::from_millis(1200);
+
+// Testing only: lets slow CI machines run the hook with more time. Not documented for users.
+fn budget() -> Duration {
+    parse_budget(std::env::var(BUDGET_ENV).ok().as_deref())
+}
+
+fn parse_budget(raw: Option<&str>) -> Duration {
+    let ms = raw
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(DEFAULT_BUDGET_MS, |v| v.clamp(500, 10_000));
+    Duration::from_millis(ms)
+}
+
+fn git_timeout() -> Duration {
+    (budget() / 4).max(Duration::from_millis(400))
+}
+
+fn push_timeout() -> Duration {
+    budget().saturating_sub(Duration::from_millis(300))
+}
 const STATE_WAIT: Duration = Duration::from_millis(300);
 const HEARTBEAT_EVERY: i64 = 300;
 const SESSION_MAX_AGE: Duration = Duration::from_secs(24 * 3600);
@@ -44,7 +63,7 @@ fn guarded(work: impl FnOnce() + Send + 'static) {
         let _ = tx.send(());
     });
     if spawned.is_ok() {
-        let _ = rx.recv_timeout(DEADLINE);
+        let _ = rx.recv_timeout(budget());
     }
 }
 
@@ -174,13 +193,13 @@ fn send_push(env: &NotifyEnv, payload: &PushPayload) {
     let Ok(http) = NotifyHttp::new(&r.server, r.token.expose(), &Ctx::user_agent()) else {
         return;
     };
-    let _ = http.push(payload, PUSH_TIMEOUT);
+    let _ = http.push(payload, push_timeout());
 }
 
 fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
     let mut full = vec!["-c", "core.fsmonitor=false"];
     full.extend_from_slice(args);
-    let out = run_capture("git", Some(cwd), &full, GIT_TIMEOUT).ok()?;
+    let out = run_capture("git", Some(cwd), &full, git_timeout()).ok()?;
     let text = out.stdout.trim().to_string();
     (out.ok && !text.is_empty()).then_some(text)
 }
@@ -205,6 +224,30 @@ enum Touch {
     Commits,
 }
 
+fn build_client(env: &NotifyEnv) -> Option<Client> {
+    let server = env.server().ok()?;
+    let (tokens, _) = env.login_store(&server).load().ok().flatten()?;
+    Client::new(&server, &Ctx::user_agent(), Some(tokens), None, false).ok()
+}
+
+fn locate_run(state: &runstate::Runs, cwd: &Path, now: i64, mode: Touch) -> Option<runstate::Run> {
+    let out = git_out(
+        cwd,
+        &["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
+    )?;
+    let mut lines = out.lines();
+    let repo = lines.next()?.to_string();
+    let branch_name = lines.next()?.to_string();
+    if branch_name == "HEAD" {
+        return None;
+    }
+    let key = branch::key_from_branch(&branch_name);
+    let run = state
+        .find_branch(Some(&repo), &branch_name, key.as_deref())
+        .cloned()?;
+    (mode == Touch::Commits || now - run.last_sent >= HEARTBEAT_EVERY).then_some(run)
+}
+
 fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
     let Some(path) = runstate::runs_path() else {
         return;
@@ -220,20 +263,13 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
     {
         return;
     }
-    let Some(branch_name) = git_out(cwd, &["symbolic-ref", "--short", "-q", "HEAD"]) else {
-        return;
-    };
-    let repo = git_out(cwd, &["rev-parse", "--show-toplevel"]);
-    let key = branch::key_from_branch(&branch_name);
-    let Some(run) = state
-        .find_branch(repo.as_deref(), &branch_name, key.as_deref())
-        .cloned()
-    else {
-        return;
-    };
-    if mode == Touch::Heartbeat && now - run.last_sent < HEARTBEAT_EVERY {
-        return;
-    }
+    let (client, located) = std::thread::scope(|sc| {
+        let located = sc.spawn(|| locate_run(&state, cwd, now, mode));
+        let client = build_client(env);
+        (client, located.join().ok().flatten())
+    });
+    let Some(run) = located else { return };
+    let Some(client) = client else { return };
     let mut progress = Progress::default();
     let mut merged = None;
     if mode == Touch::Commits {
@@ -246,13 +282,6 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
             }
         }
     }
-    let Ok(server) = env.server() else { return };
-    let Ok(Some((tokens, _))) = env.login_store(&server).load() else {
-        return;
-    };
-    let Ok(client) = Client::new(&server, &Ctx::user_agent(), Some(tokens), None, false) else {
-        return;
-    };
     match agentwork::update(&client, run.run_id, &progress, false) {
         Ok(Outcome::Run(_)) => {
             let _ = runstate::modify(&path, STATE_WAIT, |r| {
@@ -344,4 +373,18 @@ fn codex_work(raw: Option<String>, server_override: Option<String>) {
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("/"));
     push_and_touch(&env, Some(payload), &cwd, Touch::Heartbeat);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_testing_budget_is_clamped() {
+        assert_eq!(parse_budget(None), Duration::from_millis(1500));
+        assert_eq!(parse_budget(Some("x")), Duration::from_millis(1500));
+        assert_eq!(parse_budget(Some("1")), Duration::from_millis(500));
+        assert_eq!(parse_budget(Some("5000")), Duration::from_millis(5000));
+        assert_eq!(parse_budget(Some("999999")), Duration::from_millis(10_000));
+    }
 }

@@ -7,17 +7,29 @@ use wiremock::{Mock, ResponseTemplate};
 
 const TOKEN: &str = "tmgrn_hooktoken_SECRET0009";
 
+fn hook_with_budget(env: &Env, args: &[&str], stdin: &[u8]) -> (std::process::Output, Duration) {
+    run_hook(env, args, stdin, Some("5000"))
+}
+
 fn hook(env: &Env, args: &[&str], stdin: &[u8]) -> (std::process::Output, Duration) {
+    run_hook(env, args, stdin, None)
+}
+
+fn run_hook(
+    env: &Env,
+    args: &[&str],
+    stdin: &[u8],
+    budget_ms: Option<&str>,
+) -> (std::process::Output, Duration) {
     warm_up();
     let started = Instant::now();
-    let out = env
-        .cmd()
-        .env("TMGR_NOTIFY_TOKEN", TOKEN)
-        .env("TMGR_URL", env.server.uri())
-        .args(args)
-        .write_stdin(stdin.to_vec())
-        .output()
-        .unwrap();
+    let mut cmd = env.cmd();
+    cmd.env("TMGR_NOTIFY_TOKEN", TOKEN)
+        .env("TMGR_URL", env.server.uri());
+    if let Some(ms) = budget_ms {
+        cmd.env("TMGR_HOOK_BUDGET_MS", ms);
+    }
+    let out = cmd.args(args).write_stdin(stdin.to_vec()).output().unwrap();
     (out, started.elapsed())
 }
 
@@ -310,7 +322,7 @@ async fn stop_adds_the_new_commits_to_the_active_run_and_heartbeats() {
     seed_run(&env, &repo, "tm-512-x", &start, 0).await;
 
     let stop = json!({"session_id": "s9", "cwd": repo.display().to_string()}).to_string();
-    let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "stop"], stop.as_bytes());
     quiet(&out);
 
     let patches = env.requests_to("/api/agent-work/41").await;
@@ -344,7 +356,7 @@ async fn heartbeats_are_throttled_and_a_finished_run_is_forgotten() {
     let payload = json!({"cwd": repo.display().to_string()}).to_string();
 
     seed_run(&env, &repo, "tm-512-x", &start, now_s()).await;
-    let (out, _) = hook(
+    let (out, _) = hook_with_budget(
         &env,
         &["hook", "claude", "pre-tool-use"],
         payload.as_bytes(),
@@ -356,7 +368,7 @@ async fn heartbeats_are_throttled_and_a_finished_run_is_forgotten() {
     );
 
     seed_run(&env, &repo, "tm-512-x", &start, now_s() - 1000).await;
-    let (out, _) = hook(
+    let (out, _) = hook_with_budget(
         &env,
         &["hook", "claude", "pre-tool-use"],
         payload.as_bytes(),
