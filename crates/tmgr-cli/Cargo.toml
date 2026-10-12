@@ -12,6 +12,9 @@ publish = false
 name = "tmgr"
 path = "src/main.rs"
 
+[features]
+runner = ["dep:tmgr-runner", "dep:tmgr-ipc", "dep:shell-words", "dep:libc"]
+
 [dependencies]
 clap.workspace = true
 serde.workspace = true
@@ -25,6 +28,10 @@ tempfile.workspace = true
 ratatui.workspace = true
 unicode-width.workspace = true
 toml_edit.workspace = true
+tmgr-runner = { workspace = true, optional = true }
+tmgr-ipc = { workspace = true, optional = true }
+shell-words = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd.workspace = true
@@ -32,3 +39,5 @@ wiremock.workspace = true
 tokio.workspace = true
 jsonschema.workspace = true
 sha2.workspace = true
+portable-pty.workspace = true
+vt100.workspace = true

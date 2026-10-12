@@ -22,6 +22,10 @@ fn main() {
 }
 
 fn run() -> i32 {
+    #[cfg(feature = "runner")]
+    if let Some(code) = cmd::runner::internal_entry() {
+        return code;
+    }
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => return usage_exit(e),
@@ -46,6 +50,8 @@ fn run() -> i32 {
 
 fn standalone(cli: &Cli) -> Option<i32> {
     match &cli.command {
+        #[cfg(feature = "runner")]
+        Some(Command::Runner(c)) => Some(cmd::runner::run(cli, c)),
         Some(Command::Prompt(args)) => Some(cmd::prompt::prompt(args, cli.no_color)),
         Some(Command::Statusline { target }) => Some(cmd::prompt::statusline(*target)),
         Some(Command::Git {
@@ -134,6 +140,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         },
         Some(Command::Notify(args)) => cmd::notify::notify(ctx, args),
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
+        #[cfg(feature = "runner")]
+        Some(Command::Runner(_)) => Err(Error::internal("handled before the session starts")),
         Some(Command::Mcp) => Err(Error::internal("handled before the session starts")),
         Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
             Err(Error::internal("handled before the session starts"))

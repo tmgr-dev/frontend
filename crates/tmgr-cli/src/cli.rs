@@ -33,6 +33,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    #[cfg(feature = "runner")]
+    #[command(flatten)]
+    Runner(crate::cmd::runner::RunnerCommands),
     /// Print version, commit and build target
     Version,
     /// Sign in with a device code

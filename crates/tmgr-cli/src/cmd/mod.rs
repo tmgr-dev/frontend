@@ -16,6 +16,8 @@ pub mod page;
 pub mod project;
 pub mod prompt;
 pub mod routine;
+#[cfg(feature = "runner")]
+pub mod runner;
 pub mod self_update;
 pub mod shared;
 pub mod status;
