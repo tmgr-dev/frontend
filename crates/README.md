@@ -20,17 +20,26 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 
 ## Configuration and credentials
 
-- Config: `$XDG_CONFIG_HOME/tmgr/config.toml` (`~/.config/tmgr` when unset, also on macOS). Keys: `server` (default `https://api.tmgr.dev`), `default_workspace`, `web_url` (derived from `server` when unset). `tmgr config list|get|set|path` edits only these keys.
+- Config: `$XDG_CONFIG_HOME/tmgr/config.toml` (`~/.config/tmgr` when unset, also on macOS). Keys: `server` (default `https://api.tmgr.dev`), `default_workspace`, `web_url` (derived from `server` when unset), `branch_template` (default `{key_lower}-{slug}`; placeholders `key`, `key_lower`, `code_lower`, `seq`, `slug`), `review_status` (default `Review`). `tmgr config list|get|set|path` edits only these keys; `[projects]` (project code to repository path) is written by `tmgr project map`.
 - Tokens are stored in the OS credential store under service `dev.tmgr.cli`, account `<server host>:default` (macOS Keychain; Linux Secret Service through a pure Rust client, no libdbus). Without a store they go to `$XDG_CONFIG_HOME/tmgr/credentials.json` (file mode 0600, directory 0700) and a warning is printed. A file readable by other users is refused. `TMGR_CREDENTIAL_STORE=file` forces the file store (used by the tests, so they never touch a real keychain).
 - Tokens are never printed, logged or put into `--json` output or error messages. Redirects are not followed, so the bearer token cannot be forwarded to another host. Plain `http` is accepted only for localhost.
 
+## Timer, git and prompt
+
+- `tmgr start|stop|switch|done` drive the timer, the task status, a branch named from `branch_template` and the PR comment. They call only `GET` task/status routes, `PUT /api/tasks/{id}/{statusId}`, `POST|DELETE /api/tasks/{id}/countdown` and `POST /api/tasks/{id}/comments`. The branch key is the key in the task title (`TM-509: ...`), never `category_tasks_sequence_id`.
+- Local state: `$XDG_STATE_HOME/tmgr/active.json` (`~/.local/state/tmgr`, mode 0600, written atomically; schema `tmgr.active.v1`). `tmgr prompt` and `tmgr statusline claude` read only this file: no network, no config. Garbage, oversized or control-character content prints nothing.
+- Git arguments are data: branch names follow `[A-Za-z0-9._/-]` with no leading `-` or `..`, slugs are `[a-z0-9-]{1,40}`, git is always called with argv (never a shell) and `--` before positional arguments.
+- `tmgr git install-hooks` writes a `commit-msg` hook that calls the binary by absolute path; an existing hook is moved to `commit-msg.tmgr-prev` and still runs first. The hook never fails a commit. Installs that affect every repository (`--global`, or a `core.hooksPath` from the global config or pointing outside the repository) need an interactive confirmation that `--yes` does not satisfy.
+- `tmgr init <shell> --install|--uninstall` edits the rc file between `# >>> tmgr init >>>` markers after printing a diff and asking; it writes `<file>.tmgr-backup-<timestamp>` first and follows symlinks. Without `--install` nothing is written.
+- Exit code 10 (needs_confirmation): a confirmation was required but there is no terminal.
+
 ## JSON schemas
 
-`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created` and `whoami` (also the result of `login`). The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
+`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop` and `done`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
 
 ## Exit codes
 
-0 ok, 1 error, 2 usage, 3 not found, 4 auth, 5 forbidden (including `insufficient_scope`, with a `tmgr login --scopes` hint), 6 conflict, 7 offline, 130 interrupted.
+0 ok, 1 error, 2 usage, 3 not found, 4 auth, 5 forbidden (including `insufficient_scope`, with a `tmgr login --scopes` hint), 6 conflict (including a dirty working tree), 7 offline, 10 needs confirmation, 130 interrupted (also a declined confirmation).
 
 ## Task references
 

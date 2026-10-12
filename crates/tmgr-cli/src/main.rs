@@ -1,11 +1,13 @@
 mod cli;
 mod cmd;
 mod ctx;
+mod gitx;
+mod interact;
 mod out;
 
 use clap::error::ErrorKind;
 use clap::Parser;
-use cli::{AuthCommand, Cli, Command, VERSION};
+use cli::{AuthCommand, Cli, Command, GitCommand, HookCommand, VERSION};
 use ctx::Ctx;
 use out::Output;
 use serde_json::json;
@@ -21,6 +23,9 @@ fn run() -> i32 {
         Ok(cli) => cli,
         Err(e) => return usage_exit(e),
     };
+    if let Some(code) = standalone(&cli) {
+        return code;
+    }
     let ctx = match Ctx::new(&cli) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -30,6 +35,20 @@ fn run() -> i32 {
     match dispatch(&ctx, &cli) {
         Ok(output) => out::emit(&ctx, output),
         Err(e) => out::print_error(ctx.json, ctx.verbose, ctx.err_style, &e),
+    }
+}
+
+fn standalone(cli: &Cli) -> Option<i32> {
+    match &cli.command {
+        Some(Command::Prompt(args)) => Some(cmd::prompt::prompt(args, cli.no_color)),
+        Some(Command::Statusline { target }) => Some(cmd::prompt::statusline(*target)),
+        Some(Command::Git {
+            command:
+                GitCommand::Hook {
+                    command: HookCommand::CommitMsg { file },
+                },
+        }) => Some(cmd::githook::commit_msg(file)),
+        _ => None,
     }
 }
 
@@ -79,6 +98,16 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Task { command }) => cmd::task::run(ctx, command),
         Some(Command::Add(args)) => cmd::add::run(ctx, args),
         Some(Command::Config { command }) => cmd::config::run(ctx, command),
+        Some(Command::Start(args)) => cmd::timer::start(ctx, args),
+        Some(Command::Stop) => cmd::timer::stop(ctx),
+        Some(Command::Switch(args)) => cmd::timer::switch(ctx, args),
+        Some(Command::Done(args)) => cmd::timer::done(ctx, args),
+        Some(Command::Project { command }) => cmd::project::run(ctx, command),
+        Some(Command::Git { command }) => cmd::githook::run(ctx, command),
+        Some(Command::Init(args)) => cmd::init::run(ctx, args),
+        Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
+            Err(Error::internal("handled before the session starts"))
+        }
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
             cli::REFS_HELP.to_string(),

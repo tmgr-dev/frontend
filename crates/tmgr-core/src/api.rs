@@ -484,6 +484,48 @@ impl Client {
             "tasks:create",
         )?))
     }
+
+    pub fn start_countdown(&self, task_id: u64) -> Result<ApiTask> {
+        parse(unwrap_data(self.request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/countdown"),
+            &[],
+            None,
+            "time:write",
+        )?))
+    }
+
+    pub fn stop_countdown(&self, task_id: u64) -> Result<ApiTask> {
+        parse(unwrap_data(self.request(
+            Method::DELETE,
+            &format!("/api/tasks/{task_id}/countdown"),
+            &[],
+            None,
+            "time:write",
+        )?))
+    }
+
+    pub fn set_task_status(&self, task_id: u64, status_id: u64) -> Result<()> {
+        self.request(
+            Method::PUT,
+            &format!("/api/tasks/{task_id}/{status_id}"),
+            &[],
+            None,
+            "tasks:write",
+        )
+        .map(|_| ())
+    }
+
+    pub fn add_comment(&self, task_id: u64, message: &str) -> Result<()> {
+        self.request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/comments"),
+            &[],
+            Some(&json!({ "message": message })),
+            "comments:create",
+        )
+        .map(|_| ())
+    }
 }
 
 fn session_expired() -> Error {

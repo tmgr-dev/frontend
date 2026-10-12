@@ -1,6 +1,11 @@
 pub mod add;
 pub mod auth;
 pub mod config;
+pub mod githook;
+pub mod init;
+pub mod project;
+pub mod prompt;
 pub mod status;
 pub mod task;
+pub mod timer;
 pub mod ws;

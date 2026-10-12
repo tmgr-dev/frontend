@@ -58,6 +58,8 @@ pub struct ApiTask {
     pub workspace_id: Option<u64>,
     #[serde(default)]
     pub common_time: Option<i64>,
+    #[serde(default, alias = "startTime")]
+    pub start_time: Option<i64>,
     #[serde(default)]
     pub approximately_time: Option<i64>,
     #[serde(default)]

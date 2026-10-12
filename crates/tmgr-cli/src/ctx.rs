@@ -12,6 +12,7 @@ use tmgr_core::refs::is_workspace_code;
 pub struct Ctx {
     pub json: bool,
     pub quiet: bool,
+    pub yes: bool,
     pub verbose: bool,
     pub style: Style,
     pub err_style: Style,
@@ -32,6 +33,7 @@ impl Ctx {
         Ok(Ctx {
             json: cli.json,
             quiet: cli.quiet,
+            yes: cli.yes,
             verbose: cli.verbose,
             style: stdout_style(cli.no_color),
             err_style: stderr_style(cli.no_color),

@@ -217,3 +217,115 @@ pub fn dead_server() -> String {
     drop(l);
     format!("http://{addr}")
 }
+
+impl Env {
+    pub fn state_dir(&self) -> PathBuf {
+        self.tmp.path().join(".local/state/tmgr")
+    }
+
+    pub fn active_path(&self) -> PathBuf {
+        self.state_dir().join("active.json")
+    }
+
+    pub fn seed_active_raw(&self, bytes: &[u8]) {
+        std::fs::create_dir_all(self.state_dir()).unwrap();
+        std::fs::write(self.active_path(), bytes).unwrap();
+    }
+
+    pub fn seed_active(&self, v: Value) {
+        self.seed_active_raw(v.to_string().as_bytes());
+    }
+
+    pub fn read_active(&self) -> Option<Value> {
+        std::fs::read_to_string(self.active_path())
+            .ok()
+            .map(|t| serde_json::from_str(&t).unwrap())
+    }
+
+    pub fn tmgr_in(&self, cwd: &std::path::Path, stub_dir: Option<&std::path::Path>) -> Command {
+        let mut c = self.cmd();
+        c.current_dir(cwd)
+            .env("PATH", path_with(stub_dir))
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com");
+        c
+    }
+
+    pub async fn mock_any(&self, verb: &str, p: &str, body: Value) {
+        Mock::given(method(verb))
+            .and(path(p))
+            .and(header("authorization", format!("Bearer {ACCESS}").as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&self.server)
+            .await;
+    }
+}
+
+pub fn path_with(stub_dir: Option<&std::path::Path>) -> String {
+    let git = std::process::Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let git_dir = std::path::Path::new(&git)
+        .parent()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let mut parts = Vec::new();
+    if let Some(s) = stub_dir {
+        parts.push(s.display().to_string());
+    }
+    parts.push(git_dir);
+    parts.push("/usr/bin".into());
+    parts.push("/bin".into());
+    parts.join(":")
+}
+
+pub fn git(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+pub fn init_repo(dir: &std::path::Path) -> PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    git(dir, &["init", "-q", "-b", "main", "."]);
+    std::fs::write(dir.join("README.md"), "hello\n").unwrap();
+    git(dir, &["add", "README.md"]);
+    git(dir, &["commit", "-q", "-m", "initial"]);
+    std::fs::canonicalize(dir).unwrap()
+}
+
+pub fn write_script(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(dir).unwrap();
+    let p = dir.join(name);
+    std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    p
+}
+
+pub fn now_s() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}

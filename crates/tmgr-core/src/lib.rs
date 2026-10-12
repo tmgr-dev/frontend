@@ -1,11 +1,15 @@
+pub mod active;
 pub mod api;
+pub mod branch;
 pub mod config;
 pub mod creds;
 pub mod error;
 pub mod models;
+pub mod prompt;
 pub mod redact;
 pub mod refs;
 pub mod text;
+pub mod trailer;
 pub mod view;
 
 use serde::Serialize;

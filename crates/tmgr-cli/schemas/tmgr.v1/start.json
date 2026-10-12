@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/start.json",
+  "title": "tmgr.v1 start and switch",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "task",
+        "status_change",
+        "branch",
+        "stash",
+        "timer",
+        "repo"
+      ],
+      "properties": {
+        "task": {
+          "type": "object",
+          "required": [
+            "id",
+            "ref",
+            "title",
+            "url",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/status"
+            }
+          }
+        },
+        "status_change": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/status"
+            },
+            "to": {
+              "$ref": "#/$defs/status"
+            }
+          }
+        },
+        "branch": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "name",
+            "action",
+            "base"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "action": {
+              "enum": [
+                "created",
+                "switched",
+                "current"
+              ]
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "stash": {
+          "type": "boolean"
+        },
+        "timer": {
+          "type": "object",
+          "required": [
+            "running",
+            "started_at",
+            "already_running",
+            "stopped_previous"
+          ],
+          "properties": {
+            "running": {
+              "type": "boolean"
+            },
+            "started_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "already_running": {
+              "type": "boolean"
+            },
+            "stopped_previous": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "id",
+                "ref"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

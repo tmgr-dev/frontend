@@ -122,6 +122,7 @@ mod tests {
             }),
             workspace_id: None,
             common_time: None,
+            start_time: None,
             approximately_time: None,
             priority: None,
             assignees: vec![],

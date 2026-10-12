@@ -7,7 +7,14 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 3] = ["server", "default_workspace", "web_url"];
+pub const KEYS: [&str; 5] = [
+    "server",
+    "default_workspace",
+    "web_url",
+    "branch_template",
+    "review_status",
+];
+pub const DEFAULT_REVIEW_STATUS: &str = "Review";
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
@@ -17,6 +24,10 @@ pub struct Config {
     pub default_workspace: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_store: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -73,6 +84,8 @@ impl Config {
             "server" => self.server.clone(),
             "default_workspace" => self.default_workspace.clone(),
             "web_url" => self.web_url.clone(),
+            "branch_template" => self.branch_template.clone(),
+            "review_status" => self.review_status.clone(),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -97,8 +110,34 @@ impl Config {
                 self.default_workspace = Some(value.to_string());
                 Ok(value.to_string())
             }
+            "branch_template" => {
+                crate::branch::validate_template(value)?;
+                self.branch_template = Some(value.to_string());
+                Ok(value.to_string())
+            }
+            "review_status" => {
+                let v = crate::text::sanitize_line(value).trim().to_string();
+                if v.is_empty() || v.chars().count() > 64 {
+                    return Err(Error::usage("invalid review_status")
+                        .hint("a status name of up to 64 characters"));
+                }
+                self.review_status = Some(v.clone());
+                Ok(v)
+            }
             _ => Err(unknown_key(key)),
         }
+    }
+
+    pub fn branch_template(&self) -> &str {
+        self.branch_template
+            .as_deref()
+            .unwrap_or(crate::branch::DEFAULT_TEMPLATE)
+    }
+
+    pub fn review_status(&self) -> &str {
+        self.review_status
+            .as_deref()
+            .unwrap_or(DEFAULT_REVIEW_STATUS)
     }
 
     pub fn list(&self) -> Vec<(&'static str, Option<String>)> {
@@ -280,6 +319,16 @@ mod tests {
         assert_eq!(back.default_workspace.as_deref(), Some("personal"));
         assert_eq!(back.server.as_deref(), Some("https://api.example.com"));
         assert!(c.set("projects.TM", "/x").is_err());
+        assert_eq!(c.branch_template(), "{key_lower}-{slug}");
+        assert_eq!(c.review_status(), "Review");
+        c.set("branch_template", "feat/{key_lower}-{slug}").unwrap();
+        c.set("review_status", " In review ").unwrap();
+        assert_eq!(
+            c.get("review_status").unwrap().as_deref(),
+            Some("In review")
+        );
+        assert!(c.set("branch_template", "-{slug}$").is_err());
+        assert!(c.set("review_status", "  ").is_err());
         assert!(c.set("default_workspace", "a b").is_err());
         assert!(c.get("nope").is_err());
     }

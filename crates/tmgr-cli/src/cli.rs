@@ -17,6 +17,9 @@ pub struct Cli {
     /// Print only what was asked for
     #[arg(short, long, global = true)]
     pub quiet: bool,
+    /// Accept non-privileged confirmations without asking
+    #[arg(short = 'y', long, global = true)]
+    pub yes: bool,
     /// Log requests (never tokens) to stderr
     #[arg(short, long, global = true)]
     pub verbose: bool,
@@ -60,6 +63,33 @@ pub enum Command {
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
+    },
+    /// Start a task: branch, status and timer
+    Start(StartArgs),
+    /// Stop the running timer
+    Stop,
+    /// Stop the running timer and start another task
+    Switch(StartArgs),
+    /// Finish a task: stop the timer, move to review, link the PR
+    Done(DoneArgs),
+    /// Map task projects to local repositories
+    Project {
+        #[command(subcommand)]
+        command: ProjectCommand,
+    },
+    /// Git integration (commit hook)
+    Git {
+        #[command(subcommand)]
+        command: GitCommand,
+    },
+    /// Print the prompt segment (reads only the local state file)
+    Prompt(PromptArgs),
+    /// Print a shell, tmux, starship or Claude Code snippet
+    Init(InitArgs),
+    /// Status line output for other tools
+    Statusline {
+        #[arg(value_enum)]
+        target: StatuslineTarget,
     },
     #[command(
         about = "How task references are written",
@@ -166,4 +196,114 @@ pub enum ConfigCommand {
     Set { key: String, value: String },
     /// Print the config file path
     Path,
+}
+
+#[derive(Args)]
+pub struct StartArgs {
+    /// TM-512, #8974 or 8974 (see `tmgr help refs`)
+    pub reference: String,
+    /// Branch name (default: from branch_template)
+    #[arg(long, value_name = "NAME", conflicts_with = "no_branch")]
+    pub branch: Option<String>,
+    /// Do not create or switch a branch
+    #[arg(long)]
+    pub no_branch: bool,
+    /// Create the branch from this base (default: the current HEAD)
+    #[arg(long, value_name = "BASE")]
+    pub from: Option<String>,
+    /// Do not start the timer
+    #[arg(long)]
+    pub no_timer: bool,
+    /// Move the task to this status instead of the first active one
+    #[arg(long, value_name = "NAME")]
+    pub status: Option<String>,
+    /// Stash uncommitted changes (git stash push -u) instead of refusing
+    #[arg(long)]
+    pub stash: bool,
+}
+
+#[derive(Args)]
+pub struct DoneArgs {
+    /// Task reference (default: the active task)
+    pub reference: Option<String>,
+    /// Move the task to this status instead of the review status
+    #[arg(long, value_name = "NAME")]
+    pub status: Option<String>,
+    /// Do not look for a pull request
+    #[arg(long)]
+    pub no_pr: bool,
+    /// Text of the comment (the PR link is appended)
+    #[arg(long, value_name = "TEXT")]
+    pub comment: Option<String>,
+    /// Continue although the working tree has uncommitted changes
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Subcommand)]
+pub enum ProjectCommand {
+    /// Map a project code to a local repository
+    Map {
+        code: String,
+        path: std::path::PathBuf,
+    },
+    /// Remove a mapping
+    Unmap { code: String },
+    /// List mappings
+    List,
+}
+
+#[derive(Subcommand)]
+pub enum GitCommand {
+    /// Run a git hook (called by the installed hook script)
+    Hook {
+        #[command(subcommand)]
+        command: HookCommand,
+    },
+    /// Install the commit-msg hook
+    InstallHooks {
+        /// Install for every repository (core.hooksPath in the global git config)
+        #[arg(long)]
+        global: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HookCommand {
+    /// Append a Refs trailer for the task of the current branch
+    CommitMsg { file: std::path::PathBuf },
+}
+
+#[derive(Args)]
+pub struct PromptArgs {
+    /// plain, zsh, bash, fish, starship, tmux or claude
+    #[arg(long, default_value = "plain", value_name = "FORMAT")]
+    pub format: String,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+pub enum InitTarget {
+    Zsh,
+    Bash,
+    Fish,
+    Starship,
+    Tmux,
+    Claude,
+}
+
+#[derive(Args)]
+pub struct InitArgs {
+    #[arg(value_enum)]
+    pub target: InitTarget,
+    /// Add the snippet to the config file (shows a diff, asks, writes a backup)
+    #[arg(long, conflicts_with = "uninstall")]
+    pub install: bool,
+    /// Remove the snippet added by --install
+    #[arg(long)]
+    pub uninstall: bool,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum StatuslineTarget {
+    Claude,
 }
