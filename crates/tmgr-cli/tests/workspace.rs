@@ -101,31 +101,47 @@ async fn status_shows_workspace_and_todays_total() {
     env.login_seed();
     env.mock_workspaces().await;
     Mock::given(method("GET"))
-        .and(path("/api/workspaces/1/time-summary"))
-        .and(query_param("group_by", "task"))
+        .and(path("/api/workspaces/1/time/daily"))
+        .and(query_param("mine", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
-            "from": "2026-10-12", "to": "2026-10-12", "total_s": 13260, "items": []
+            "from": "2026-10-12", "to": "2026-10-12", "tz": "UTC", "days": [
+                {"date": chrono::Utc::now().format("%Y-%m-%d").to_string(), "total_s": 13260, "items": []}
+            ]
         }})))
         .mount(&env.server)
         .await;
-    let out = env.cmd().output().unwrap();
+    let out = env.cmd().env("TZ", "UTC").output().unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
     let s = text(&out.stdout);
     assert!(s.contains("TMGR  workspace Personal"), "{s}");
     assert!(s.contains("TODAY   3h 41m tracked"), "{s}");
-    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    let out = env
+        .cmd()
+        .env("TZ", "UTC")
+        .args(["status", "--json"])
+        .output()
+        .unwrap();
     let v = stdout_json(&out);
     assert_valid("status", &v);
     assert_eq!(v["data"]["today"]["total_s"], 13260);
+    assert_eq!(v["data"]["today"]["human_s"], 13260);
+    assert!(v["data"]["today"]["agent_s"].is_null());
     assert!(
         v["data"]["active"].is_null()
             && v["data"]["git"].is_null()
             && v["data"]["agents"].is_null()
     );
     assert_eq!(v["warnings"][0]["code"], "active_unavailable");
-    let req = &env.requests_to("/api/workspaces/1/time-summary").await[0];
+    let req = &env.requests_to("/api/workspaces/1/time/daily").await[0];
     let q = req.url.query().unwrap();
-    assert!(q.contains("from=") && q.contains("to="));
+    assert!(
+        q.contains("from=") && q.contains("to=") && q.contains("tz=UTC"),
+        "{q}"
+    );
+    assert!(env
+        .requests_to("/api/workspaces/1/time-summary")
+        .await
+        .is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -134,7 +150,7 @@ async fn status_omits_today_with_a_warning_when_time_is_forbidden() {
     env.login_seed();
     env.mock_workspaces().await;
     Mock::given(method("GET"))
-        .and(path("/api/workspaces/1/time-summary"))
+        .and(path("/api/workspaces/1/time/daily"))
         .respond_with(
             ResponseTemplate::new(403).set_body_json(json!({"error": "insufficient_scope"})),
         )
@@ -155,6 +171,30 @@ async fn status_omits_today_with_a_warning_when_time_is_forbidden() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn status_falls_back_to_the_time_summary_on_an_older_server() {
+    let env = Env::new().await;
+    env.login_seed();
+    env.mock_workspaces().await;
+    env.mock_json(
+        "/api/workspaces/1/time-summary",
+        json!({"data": {"total_s": 600, "items": []}}),
+    )
+    .await;
+    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("status", &v);
+    assert_eq!(v["data"]["today"]["total_s"], 600);
+    let codes: Vec<_> = v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["code"].as_str().unwrap())
+        .collect();
+    assert!(codes.contains(&"daily_time_unavailable"), "{codes:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn status_without_login_is_exit_4() {
     let env = Env::new().await;
     let out = env.cmd().output().unwrap();
@@ -167,8 +207,8 @@ async fn status_fixture(env: &Env, runned: serde_json::Value) {
     env.mock_workspaces().await;
     env.mock_statuses().await;
     env.mock_json(
-        "/api/workspaces/1/time-summary",
-        json!({"data": {"total_s": 60}}),
+        "/api/workspaces/1/time/daily",
+        json!({"data": {"days": [{"date": chrono::Utc::now().format("%Y-%m-%d").to_string(), "total_s": 60, "items": []}]}}),
     )
     .await;
     env.mock_json("/api/tasks/runned", runned).await;

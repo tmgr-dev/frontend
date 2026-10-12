@@ -11,15 +11,28 @@ fn run(id: u64, task_id: u64, key: &str, start: &str, end: Option<&str>, secs: i
     })
 }
 
+fn daily(items: Value, total: i64) -> Value {
+    json!({"data": {"from": "2026-10-12", "to": "2026-10-12", "tz": "UTC", "days": [
+        {"date": "2026-10-12", "total_s": total, "items": items}
+    ]}})
+}
+
 async fn fixtures(env: &Env) {
     env.login_seed();
     env.mock_workspaces().await;
     env.mock_statuses().await;
     env.mock_json(
-        "/api/workspaces/1/time-summary",
-        json!({"data": {"from": "2026-10-12", "to": "2026-10-12", "total_s": 7200, "items": [
-            {"task_id": 8974, "key": "TM-512", "title": "TM-512: Fix login\u{1b}[31m loop", "seconds": 7200}
-        ]}}),
+        "/api/workspaces/1/time/daily",
+        daily(
+            json!([{
+                "task": {"id": 8974, "key": "TM-512", "title": "TM-512: Fix login\u{1b}[31m loop", "url": "https://tmgr.dev/tmgrdev/tasks/8974"},
+                "status": {"id": 11, "name": "In progress\u{1b}[31m", "type": "active"},
+                "category": {"id": 2, "code": "TM", "name": "Tmgr\u{1b}]0;pwn\u{7}"},
+                "seconds": 7200,
+                "users": [{"id": 3, "name": "Ann\u{1b}[31m Lee", "seconds": 7200}]
+            }]),
+            7200,
+        ),
     )
     .await;
     env.mock_json(
@@ -37,16 +50,6 @@ async fn fixtures(env: &Env) {
             {"task_id": 31, "title": "Morning plan", "date": "2026-10-12", "time": "09:00", "status": "completed", "completed": true, "instance_id": 501, "virtual": false},
             {"task_id": 32, "title": "Standup\u{1b}[31m notes", "date": "2026-10-12", "time": "17:30", "status": "pending", "completed": false, "instance_id": null, "virtual": true}
         ]),
-    )
-    .await;
-    env.mock_json(
-        "/api/tasks/8974",
-        json!({"data": task_json(8974, "TM-512: Fix login loop")}),
-    )
-    .await;
-    env.mock_json(
-        "/api/tasks/9000",
-        json!({"data": task_json(9000, "TM-518: Upload")}),
     )
     .await;
 }
@@ -77,8 +80,12 @@ async fn today_json_combines_time_agents_and_routines() {
     assert_eq!(tasks[0]["ref"], "TM-512");
     assert_eq!(tasks[0]["human_s"], 7200);
     assert_eq!(tasks[0]["agent_s"], 3600);
-    assert_eq!(tasks[0]["status"], "In progress");
-    assert_eq!(tasks[0]["project"], "Tmgr");
+    assert_eq!(tasks[0]["status"], "In progress [31m");
+    assert_eq!(tasks[0]["project"], "Tmgr ]0;pwn ");
+    assert_eq!(tasks[0]["url"], "https://tmgr.dev/tmgrdev/tasks/8974");
+    assert_eq!(tasks[0]["users"][0]["name"], "Ann [31m Lee");
+    assert_eq!(tasks[0]["users"][0]["human_s"], 7200);
+    assert_eq!(d["tz"], "UTC");
     assert_eq!(tasks[1]["ref"], "TM-518");
     assert_eq!(tasks[1]["agent_s"], 1800);
     assert_eq!(tasks[1]["human_s"], 0);
@@ -86,15 +93,23 @@ async fn today_json_combines_time_agents_and_routines() {
     assert_eq!(d["routines"][0]["title"], "Morning plan");
     assert_eq!(d["routines"][0]["done"], true);
     assert_eq!(d["routines"][1]["done"], false);
-    let q = env.requests_to("/api/workspaces/1/time-summary").await[0]
+    let q = env.requests_to("/api/workspaces/1/time/daily").await[0]
         .url
         .query()
         .unwrap()
         .to_string();
     assert!(
-        q.contains("from=2026-10-12") && q.contains("to=2026-10-12"),
+        q.contains("from=2026-10-12")
+            && q.contains("to=2026-10-12")
+            && q.contains("tz=UTC")
+            && q.contains("mine=true"),
         "{q}"
     );
+    assert!(env
+        .requests_to("/api/workspaces/1/time-summary")
+        .await
+        .is_empty());
+    assert!(env.requests_to("/api/tasks/8974").await.is_empty());
     let q = env.requests_to("/api/workspaces/1/agent-work").await[0]
         .url
         .query()
@@ -128,6 +143,10 @@ async fn today_human_output_is_a_clean_table_without_escape_sequences() {
     );
     assert!(s.contains("TM-512 Fix login [31m loop"), "{s}");
     assert!(
+        s.contains("Tmgr ]0;pwn") && s.contains("In progress [31m"),
+        "{s}"
+    );
+    assert!(
         s.contains("YOU") && s.contains("AGENTS") && s.contains("STATUS"),
         "{s}"
     );
@@ -138,7 +157,7 @@ async fn today_human_output_is_a_clean_table_without_escape_sequences() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn today_mine_keeps_only_my_agent_runs_and_says_human_time_is_not_filtered() {
+async fn today_mine_keeps_only_my_agent_runs() {
     let env = Env::new().await;
     fixtures(&env).await;
     env.mock_json(
@@ -153,7 +172,38 @@ async fn today_mine_keeps_only_my_agent_runs_and_says_human_time_is_not_filtered
     assert!(out.status.success(), "{}", text(&out.stderr));
     let v = stdout_json(&out);
     assert_eq!(v["data"]["totals"]["agent_s"], 0);
-    assert_eq!(v["warnings"][0]["code"], "human_time_workspace_wide");
+    assert!(v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|w| w["code"] != "human_time_workspace_wide"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn today_falls_back_to_the_time_summary_on_an_older_server() {
+    let env = Env::new().await;
+    env.login_seed();
+    env.mock_workspaces().await;
+    env.mock_json(
+        "/api/workspaces/1/time-summary",
+        json!({"data": {"total_s": 900, "items": [
+            {"task_id": 8974, "key": "TM-512", "title": "TM-512: Fix login", "seconds": 900}
+        ]}}),
+    )
+    .await;
+    env.mock_json("/api/daily-routines/expand", json!([])).await;
+    env.mock_json("/api/workspaces/1/agent-work", json!({"data": []}))
+        .await;
+    let out = today_cmd(&env)
+        .args(["today", "--date", "2026-10-12", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("today", &v);
+    assert_eq!(v["data"]["totals"]["human_s"], 900);
+    assert_eq!(v["data"]["tasks"][0]["ref"], "TM-512");
+    assert_eq!(v["warnings"][0]["code"], "daily_time_unavailable");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -161,11 +211,8 @@ async fn today_with_nothing_prints_an_empty_state_and_survives_missing_modules()
     let env = Env::new().await;
     env.login_seed();
     env.mock_workspaces().await;
-    env.mock_json(
-        "/api/workspaces/1/time-summary",
-        json!({"data": {"total_s": 0, "items": []}}),
-    )
-    .await;
+    env.mock_json("/api/workspaces/1/time/daily", daily(json!([]), 0))
+        .await;
     env.mock_json("/api/daily-routines/expand", json!([])).await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/api/workspaces/1/agent-work"))

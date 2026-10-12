@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr today` and the `TODAY` line of `tmgr status` read tracked time from the per-day endpoint `GET /api/workspaces/{id}/time/daily` (time zone from `TZ`, else the system IANA zone, else UTC with the warning `timezone_unknown`). Tracked time is now yours by default (`mine=true`: "you" in the you/agents split); previously it was workspace-wide. Status and project come from the same response, so the per-task lookups and the warnings `status_partial` and `human_time_workspace_wide` are gone. An older server without the endpoint falls back to the time summary with the warning `daily_time_unavailable`.
+- `today --json`: new `tz`, and per task `url` and `users` (`id`, `name`, `human_s`). `status --json`: `today.human_s` is filled, `today.agent_s` stays null.
+
 ## 0.4.0
 
 - `tmgr self-update [--check] [--channel stable|beta] [--allow-downgrade]`: updates the binary from a GitHub release whose `manifest.json` carries a valid minisign signature (public key compiled in; a build without a key refuses with exit 5). Checks expiry, the archive sha256 and a rollback floor kept in `~/.local/state/tmgr/update.json`; keeps `tmgr.old`; refuses Homebrew, Nix, cargo and npm installs and prints their upgrade command.

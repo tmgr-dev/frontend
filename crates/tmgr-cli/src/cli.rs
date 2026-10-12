@@ -406,7 +406,7 @@ pub struct TodayArgs {
     pub date: Option<String>,
     #[arg(long)]
     pub yesterday: bool,
-    /// Count only agent runs started by you
+    /// Count only agent runs started by you (tracked time is always yours)
     #[arg(long)]
     pub mine: bool,
 }

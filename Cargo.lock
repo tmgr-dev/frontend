@@ -3436,6 +3436,7 @@ dependencies = [
  "chrono",
  "clap",
  "ctrlc",
+ "iana-time-zone",
  "jsonschema",
  "ratatui",
  "rpassword",

@@ -20,6 +20,7 @@ tmgr-core.workspace = true
 ctrlc.workspace = true
 rpassword.workspace = true
 chrono.workspace = true
+iana-time-zone = "0.1"
 tempfile.workspace = true
 ratatui.workspace = true
 unicode-width.workspace = true

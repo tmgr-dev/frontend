@@ -242,6 +242,125 @@ impl Client {
     }
 }
 
+pub struct DailyUser {
+    pub id: Option<u64>,
+    pub name: String,
+    pub seconds: i64,
+}
+
+pub struct DailyItem {
+    pub task_id: u64,
+    pub key: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub status: Option<String>,
+    pub category: Option<String>,
+    pub seconds: i64,
+    pub users: Vec<DailyUser>,
+}
+
+pub struct DailyTime {
+    pub date: String,
+    pub total_s: i64,
+    pub items: Vec<DailyItem>,
+}
+
+fn str_of(v: &Value, key: &str) -> Option<String> {
+    v.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+pub fn parse_daily_time(body: Value, date: &str) -> Result<DailyTime> {
+    let data = unwrap_data(body);
+    let days = data
+        .get("days")
+        .and_then(Value::as_array)
+        .ok_or_else(unexpected)?;
+    let Some(day) = days
+        .iter()
+        .find(|d| d.get("date").and_then(Value::as_str) == Some(date))
+    else {
+        return Ok(DailyTime {
+            date: date.to_string(),
+            total_s: 0,
+            items: Vec::new(),
+        });
+    };
+    let items: Vec<DailyItem> = day
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| {
+                    let task = r.get("task")?;
+                    Some(DailyItem {
+                        task_id: task.get("id")?.as_u64()?,
+                        key: str_of(task, "key").unwrap_or_default(),
+                        title: str_of(task, "title").unwrap_or_default(),
+                        url: str_of(task, "url"),
+                        status: r.get("status").and_then(|s| str_of(s, "name")),
+                        category: r.get("category").and_then(|c| str_of(c, "name")),
+                        seconds: r.get("seconds").and_then(Value::as_i64).unwrap_or(0),
+                        users: r
+                            .get("users")
+                            .and_then(Value::as_array)
+                            .map(|us| {
+                                us.iter()
+                                    .map(|u| DailyUser {
+                                        id: u.get("id").and_then(Value::as_u64),
+                                        name: str_of(u, "name").unwrap_or_default(),
+                                        seconds: u
+                                            .get("seconds")
+                                            .and_then(Value::as_i64)
+                                            .unwrap_or(0),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let total_s = day
+        .get("total_s")
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| items.iter().map(|i| i.seconds).sum());
+    Ok(DailyTime {
+        date: date.to_string(),
+        total_s,
+        items,
+    })
+}
+
+impl Client {
+    pub fn time_daily(
+        &self,
+        workspace_id: u64,
+        date: &str,
+        tz: &str,
+        mine: bool,
+    ) -> Result<Option<DailyTime>> {
+        let (status, body) = self.request_status(
+            Method::GET,
+            &format!("/api/workspaces/{workspace_id}/time/daily"),
+            &[
+                ("from", date.to_string()),
+                ("to", date.to_string()),
+                ("tz", tz.to_string()),
+                ("mine", mine.to_string()),
+            ],
+            None,
+        )?;
+        if status == 404 || status == 405 {
+            return Ok(None);
+        }
+        if !(200..300).contains(&status) {
+            return Err(map_error(status, &body, "time:read"));
+        }
+        parse_daily_time(body, date).map(Some)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

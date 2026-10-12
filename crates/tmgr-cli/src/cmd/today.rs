@@ -6,15 +6,19 @@ use crate::out::{table, Output};
 use chrono::{Duration, Local, NaiveDate, SecondsFormat, Utc};
 use serde_json::json;
 use std::collections::HashMap;
-use tmgr_core::api_ext::RunQuery;
+use tmgr_core::api_ext::{DailyTime, RunQuery, TimeSummary};
 use tmgr_core::error::Result;
 use tmgr_core::refs::parse_key;
 use tmgr_core::runs::{clipped_seconds, day_bounds, task_ref_of, ApiRun};
 use tmgr_core::text::{format_duration, sanitize_line};
-use tmgr_core::view::{display_title, StatusView};
+use tmgr_core::view::display_title;
 
 const MAX_RUN_PAGES: u32 = 10;
-const STATUS_LOOKUPS: usize = 30;
+
+enum Summary {
+    Daily(DailyTime),
+    Legacy(TimeSummary),
+}
 
 struct Row {
     id: Option<u64>,
@@ -24,6 +28,33 @@ struct Row {
     agent_s: i64,
     status: Option<String>,
     project: Option<String>,
+    url: Option<String>,
+    users: Vec<(Option<u64>, String, i64)>,
+}
+
+pub(crate) fn detect_tz(ctx: &Ctx) -> String {
+    let from_env = std::env::var("TZ")
+        .ok()
+        .map(|v| v.trim_start_matches(':').to_string());
+    let valid = |z: &str| {
+        !z.is_empty()
+            && z.len() <= 64
+            && z.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '+' | '-'))
+    };
+    if let Some(z) = from_env.filter(|z| valid(z)) {
+        return z;
+    }
+    match iana_time_zone::get_timezone() {
+        Ok(z) if valid(&z) => z,
+        _ => {
+            ctx.warn(
+                "timezone_unknown",
+                "could not detect the time zone; day boundaries use UTC",
+            );
+            "UTC".to_string()
+        }
+    }
 }
 
 fn dur(s: i64) -> String {
@@ -51,11 +82,28 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     let ws = ctx.workspace(client)?;
     let (day_start, day_end) = day_bounds(&Local, date);
     let now = Utc::now();
-    let summary = ctx.soft(
-        client.time_summary(ws.id, &ds, &ds),
+    let tz = detect_tz(ctx);
+    let daily = ctx.soft(
+        client.time_daily(ws.id, &ds, &tz, true),
         "time_summary_unavailable",
         "tracked time",
     )?;
+    let summary = match daily {
+        Some(Some(d)) => Some(Summary::Daily(d)),
+        Some(None) => {
+            ctx.warn(
+                "daily_time_unavailable",
+                "this server has no per-day time endpoint; using the time summary",
+            );
+            ctx.soft(
+                client.time_summary(ws.id, &ds, &ds),
+                "time_summary_unavailable",
+                "tracked time",
+            )?
+            .map(Summary::Legacy)
+        }
+        None => None,
+    };
     let mut runs: Vec<ApiRun> = Vec::new();
     let mut cursor = None;
     for _ in 0..MAX_RUN_PAGES {
@@ -88,10 +136,6 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     if args.mine {
         let me = client.current_device()?.user.id;
         runs.retain(|r| r.user_id.is_some() && r.user_id == me);
-        ctx.warn(
-            "human_time_workspace_wide",
-            "tracked time of people is not filtered by --mine; only agent runs are",
-        );
     }
     let routines = ctx
         .soft(
@@ -103,27 +147,60 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
 
     let mut rows: HashMap<u64, Row> = HashMap::new();
     let mut human_total = 0;
-    if let Some(s) = &summary {
-        human_total = s.total_s;
-        for item in &s.items {
-            let reference = if parse_key(&item.key).is_some() {
-                item.key.clone()
-            } else {
-                format!("#{}", item.task_id)
-            };
-            rows.insert(
-                item.task_id,
-                Row {
-                    id: Some(item.task_id),
-                    reference,
-                    title: display_title(&item.title),
-                    human_s: item.seconds.max(0),
-                    agent_s: 0,
-                    status: None,
-                    project: None,
-                },
-            );
+    match &summary {
+        Some(Summary::Daily(d)) => {
+            human_total = d.total_s;
+            for item in &d.items {
+                let reference = if parse_key(&item.key).is_some() {
+                    item.key.clone()
+                } else {
+                    format!("#{}", item.task_id)
+                };
+                rows.insert(
+                    item.task_id,
+                    Row {
+                        id: Some(item.task_id),
+                        reference,
+                        title: display_title(&item.title),
+                        human_s: item.seconds.max(0),
+                        agent_s: 0,
+                        status: item.status.as_deref().map(sanitize_line),
+                        project: item.category.as_deref().map(sanitize_line),
+                        url: item.url.as_deref().map(sanitize_line),
+                        users: item
+                            .users
+                            .iter()
+                            .map(|u| (u.id, sanitize_line(&u.name), u.seconds.max(0)))
+                            .collect(),
+                    },
+                );
+            }
         }
+        Some(Summary::Legacy(s)) => {
+            human_total = s.total_s;
+            for item in &s.items {
+                let reference = if parse_key(&item.key).is_some() {
+                    item.key.clone()
+                } else {
+                    format!("#{}", item.task_id)
+                };
+                rows.insert(
+                    item.task_id,
+                    Row {
+                        id: Some(item.task_id),
+                        reference,
+                        title: display_title(&item.title),
+                        human_s: item.seconds.max(0),
+                        agent_s: 0,
+                        status: None,
+                        project: None,
+                        url: None,
+                        users: Vec::new(),
+                    },
+                );
+            }
+        }
+        None => {}
     }
     for r in &runs {
         let secs = clipped_seconds(r, day_start, day_end, now);
@@ -144,6 +221,8 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
             agent_s: 0,
             status: None,
             project: None,
+            url: None,
+            users: Vec::new(),
         });
         row.agent_s += secs;
     }
@@ -151,30 +230,8 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     rows.sort_by(|a, b| {
         (b.human_s + b.agent_s, &a.reference).cmp(&(a.human_s + a.agent_s, &b.reference))
     });
-    if !rows.is_empty() {
-        let statuses = ctx
-            .soft(client.statuses(ws.id), "status_unresolved", "status names")?
-            .unwrap_or_default();
-        for row in rows.iter_mut().take(STATUS_LOOKUPS) {
-            let Some(id) = row.id else { continue };
-            if let Ok(task) = client.task_by_id(id) {
-                row.status = Some(StatusView::resolve(&task, &statuses).name);
-                row.project = task.category.as_ref().map(|c| sanitize_line(&c.title));
-            }
-        }
-        if rows.len() > STATUS_LOOKUPS {
-            ctx.warn(
-                "status_partial",
-                format!("status and project are shown for the first {STATUS_LOOKUPS} tasks only"),
-            );
-        }
-    }
     let agent_total: i64 = rows.iter().map(|r| r.agent_s).sum();
-    let human_total = if summary.is_some() {
-        human_total.max(0)
-    } else {
-        0
-    };
+    let human_total = human_total.max(0);
 
     let s = &ctx.style;
     let title = if date == today_local() {
@@ -242,7 +299,8 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
             json!({
                 "id": r.id, "ref": r.reference, "title": r.title,
                 "human_s": r.human_s, "agent_s": r.agent_s,
-                "status": r.status, "project": r.project,
+                "status": r.status, "project": r.project, "url": r.url,
+                "users": r.users.iter().map(|(id, name, secs)| json!({"id": id, "name": name, "human_s": secs})).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -250,6 +308,7 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
         json!({
             "date": ds,
             "workspace": sanitize_line(&ws.code),
+            "tz": tz,
             "tasks": tasks,
             "routines": routines,
             "totals": {"human_s": human_total, "agent_s": agent_total},

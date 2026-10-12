@@ -72,6 +72,36 @@
                   "string",
                   "null"
                 ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "users": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "human_s"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "human_s": {
+                      "type": "integer"
+                    }
+                  }
+                }
               }
             }
           }
@@ -96,6 +126,9 @@
               "type": "integer"
             }
           }
+        },
+        "tz": {
+          "type": "string"
         }
       }
     },

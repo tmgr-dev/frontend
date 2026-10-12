@@ -14,11 +14,26 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
         .date_naive()
         .format("%Y-%m-%d")
         .to_string();
-    let total = ctx.soft(
-        client.time_summary_total(ws.id, &today, &today),
+    let tz = crate::cmd::today::detect_tz(ctx);
+    let total = match ctx.soft(
+        client.time_daily(ws.id, &today, &tz, true),
         "time_summary_unavailable",
         "today's time",
-    )?;
+    )? {
+        Some(Some(d)) => Some(d.total_s),
+        Some(None) => {
+            ctx.warn(
+                "daily_time_unavailable",
+                "this server has no per-day time endpoint; using the time summary",
+            );
+            ctx.soft(
+                client.time_summary_total(ws.id, &today, &today),
+                "time_summary_unavailable",
+                "today's time",
+            )?
+        }
+        None => None,
+    };
     let running = ctx.soft(
         client.running_tasks(),
         "active_unavailable",
@@ -68,7 +83,7 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
         "workspace": {"id": ws.id, "code": sanitize_line(&ws.code), "name": sanitize_line(&ws.name)},
         "active": active.as_ref().map(|(v, _)| v),
         "git": null,
-        "today": total.map(|t| json!({"total_s": t, "human_s": null, "agent_s": null})),
+        "today": total.map(|t| json!({"total_s": t, "human_s": t, "agent_s": null})),
         "agents": null,
     });
     Ok(Output::new(data, lines.join("\n")))

@@ -70,8 +70,8 @@ async fn fixtures(env: &Env) {
     .await;
     auth_get(
         env,
-        "/api/workspaces/1/time-summary",
-        json!({"data": {"total_s": 60, "items": []}}),
+        "/api/workspaces/1/time/daily",
+        json!({"data": {"days": [{"date": chrono::Utc::now().format("%Y-%m-%d").to_string(), "total_s": 60, "items": []}]}}),
     )
     .await;
 }
