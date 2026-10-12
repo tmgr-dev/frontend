@@ -2,6 +2,9 @@ import type { TourDef } from '../types';
 
 const LIST = { name: 'WorkspaceTasksList', params: 'currentWorkspace' } as const;
 const BOARD = { name: 'WorkspaceBoard', params: 'currentWorkspace' } as const;
+const CATEGORIES = { name: 'WorkspaceCategories', params: 'currentWorkspace' } as const;
+const FILES = { name: 'WorkspaceFiles', params: 'currentWorkspace' } as const;
+const WDDL = ['web', 'desktop', 'desktop_local'] as const;
 const ALL_WEB = ['web', 'mobile_web', 'desktop', 'desktop_local'] as const;
 
 export const tasksTours: TourDef[] = [
@@ -151,6 +154,127 @@ export const tasksTours: TourDef[] = [
         title: 'Archive',
         body: 'Completed tasks are kept here. Open the archive to find them again.',
         mobileBody: 'Open the menu to find the archive, where completed tasks are kept.',
+      },
+    ],
+  },
+  {
+    id: 'tasks.statuses',
+    version: 1,
+    since: '3.4.156',
+    group: 'tasks',
+    title: 'Shape your workflow',
+    minutes: 1,
+    triggers: [{ kind: 'hub' }, { kind: 'feature_enabled', module: 'workflow' }],
+    requires: { modules: ['workflow', 'board'], role: 'owner', platforms: [...WDDL] },
+    steps: [
+      {
+        id: 's1',
+        type: 'spot',
+        anchor: 'statuses.editor',
+        route: BOARD,
+        title: 'Statuses',
+        body: 'Rename, colour and reorder statuses. The type decides what counts as active or done.',
+      },
+      {
+        id: 's2',
+        type: 'wait',
+        anchor: 'statuses.editor',
+        waitFor: { event: 'status.created' },
+        optional: true,
+        title: 'Add a status',
+        body: 'Add a status for your own stage, for example Review.',
+      },
+    ],
+  },
+  {
+    id: 'tasks.categories',
+    version: 1,
+    since: '3.4.156',
+    group: 'tasks',
+    title: 'Categories and ticket codes',
+    minutes: 1,
+    triggers: [{ kind: 'first_visit', routeName: 'WorkspaceCategories' }, { kind: 'hub' }],
+    requires: { modules: ['categories'], platforms: [...ALL_WEB] },
+    steps: [
+      {
+        id: 's1',
+        type: 'wait',
+        anchor: 'categories.create',
+        waitFor: { event: 'category.created' },
+        takeMeRoute: CATEGORIES,
+        title: 'Create a category',
+        body: 'Create a category. Its short code becomes the prefix of every task number in it.',
+      },
+      {
+        id: 's2',
+        type: 'tip',
+        anchor: 'categories.row',
+        route: CATEGORIES,
+        optional: true,
+        title: 'Open a category',
+        body: 'Open a category to see only its tasks. Categories can nest.',
+      },
+    ],
+  },
+  {
+    id: 'tasks.relations',
+    version: 1,
+    since: '3.4.156',
+    group: 'tasks',
+    title: 'Link related tasks',
+    minutes: 1,
+    triggers: [{ kind: 'hub' }],
+    requires: { modules: ['task.relations'], platforms: [...WDDL] },
+    completeOn: 'relation.created',
+    steps: [
+      {
+        id: 's1',
+        type: 'wait',
+        anchor: 'task-form.relations',
+        waitFor: { event: 'relation.created' },
+        takeMeRoute: LIST,
+        title: 'Relations',
+        body: 'Mark that this task blocks, duplicates or relates to another one.',
+      },
+    ],
+  },
+  {
+    id: 'tasks.files-page',
+    version: 1,
+    since: '3.4.156',
+    group: 'tasks',
+    title: 'All files in one place',
+    minutes: 1,
+    triggers: [{ kind: 'first_visit', routeName: 'WorkspaceFiles' }, { kind: 'hub' }],
+    requires: { modules: ['task.files'], platforms: [...ALL_WEB] },
+    steps: [
+      {
+        id: 's1',
+        type: 'spot',
+        anchor: 'files.list',
+        route: FILES,
+        title: 'Files',
+        body: 'Every file attached to a task or page in this workspace.',
+      },
+    ],
+  },
+  {
+    id: 'tasks.multi-select',
+    version: 1,
+    since: '3.4.156',
+    group: 'tasks',
+    title: 'Act on many tasks',
+    minutes: 1,
+    triggers: [{ kind: 'hub' }],
+    requires: { platforms: [...WDDL] },
+    steps: [
+      {
+        id: 's1',
+        type: 'spot',
+        anchor: 'list.select',
+        route: LIST,
+        title: 'Selection mode',
+        body: 'Select several tasks to move, complete or export them together.',
       },
     ],
   },
