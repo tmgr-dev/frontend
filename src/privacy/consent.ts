@@ -70,7 +70,12 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 		if (typeof Channel === 'function') {
 			channel = new Channel(CONSENT_CHANNEL);
 			channel.onmessage = (event: MessageEvent) => {
-				adopt(parse(JSON.stringify(event.data)));
+				try {
+					adopt(parse(win.localStorage.getItem(CONSENT_KEY)));
+				} catch {
+					const incoming = parse(JSON.stringify(event.data));
+					if ((incoming.updatedAt ?? '') > (current?.updatedAt ?? '')) adopt(incoming);
+				}
 			};
 		}
 	};

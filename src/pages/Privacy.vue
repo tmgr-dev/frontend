@@ -50,7 +50,7 @@
 					<p>The desktop app still connects to the internet for a few things:</p>
 					<ul>
 						<li>It checks GitHub for app updates. GitHub sees your IP address.</li>
-						<li>It loads the plugin catalog from GitHub when you open it.</li>
+						<li>It refreshes the plugin catalog from GitHub when it starts and every six hours.</li>
 						<li>It talks to the AI endpoint you configure yourself, if you set one up.</li>
 						<li>It sends usage data only if you turn usage data on (see below).</li>
 					</ul>

@@ -65,7 +65,6 @@ export const startGoogleAnalytics = ({
 	};
 
 	const revoke = () => {
-		if (!loaded) return;
 		loaded = false;
 		w[flag] = true;
 		doc.querySelectorAll(`script[${SCRIPT_ATTR}]`).forEach((el) => el.remove());

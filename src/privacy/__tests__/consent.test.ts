@@ -94,4 +94,17 @@ describe('consent store', () => {
 		spy.mockRestore();
 		set.mockRestore();
 	});
+
+	it('a delayed broadcast cannot override the stored choice', () => {
+		const win = freshWindow();
+		const a = createConsentStore(win);
+		const b = createConsentStore(win);
+		b.subscribe(() => {});
+		a.subscribe(() => {});
+		const stale = { analytics: 'granted', usage: null, updatedAt: '2026-01-01T00:00:00.000Z' };
+		b.set({ analytics: 'denied' });
+		FakeChannel.all[1].postMessage(stale);
+		expect(a.get().analytics).toBe('denied');
+		expect(b.get().analytics).toBe('denied');
+	});
 });

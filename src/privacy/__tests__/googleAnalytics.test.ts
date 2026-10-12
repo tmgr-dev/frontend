@@ -74,4 +74,14 @@ describe('google analytics loader', () => {
 		expect(scripts()).toHaveLength(0);
 		expect((window as any).dataLayer).toBeUndefined();
 	});
+
+	it('clears cookies left from before and disables tracking when not granted at start', () => {
+		document.cookie = '_ga=GA1.1.1.1; path=/';
+		const store = createConsentStore(window);
+		store.set({ analytics: 'denied' });
+		startGoogleAnalytics({ id: ID, enabled: true, store });
+		expect(document.cookie).not.toMatch(/_ga=/);
+		expect((window as any)[`ga-disable-${ID}`]).toBe(true);
+		expect(scripts()).toHaveLength(0);
+	});
 });
