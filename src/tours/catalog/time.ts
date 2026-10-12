@@ -137,7 +137,7 @@ export const timeTours: TourDef[] = [
   {
     id: 'time.export',
     version: 1,
-    since: '3.4.160',
+    since: '3.4.162',
     group: 'time',
     title: 'Export your hours',
     minutes: 2,
