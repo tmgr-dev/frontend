@@ -22,3 +22,13 @@ export function agentRunEvent(
   }
   return null;
 }
+
+export const AGENT_WORK_ANCHOR = 'task-form.agent-work';
+
+export function showAgentWorkEmptyState(o: {
+  loaded: boolean;
+  runs: unknown[];
+  tourAnchor?: string | null;
+}): boolean {
+  return o.loaded && o.runs.length === 0 && o.tourAnchor === AGENT_WORK_ANCHOR;
+}

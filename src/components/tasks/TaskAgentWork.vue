@@ -100,7 +100,7 @@
 		</ul>
 	</section>
 	<section
-		v-else-if="loaded"
+		v-else-if="showEmptyState"
 		class="rounded-card border border-dashed border-line-strong px-3 py-3 text-center text-xs text-ink-subtle"
 		data-tour="task-form.agent-work"
 	>
@@ -121,8 +121,9 @@
 		upsertRun,
 	} from '@/utils/agentWork';
 	import store from '@/store';
-	import { agentRunEvent } from '@/tours/agentRunEvents';
+	import { agentRunEvent, showAgentWorkEmptyState } from '@/tours/agentRunEvents';
 	import { tourBus } from '@/tours/events';
+	import { useTours } from '@/tours/useTours';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		computed,
@@ -158,6 +159,7 @@
 				unsubscribeHandler,
 				unsubscribeHandlerFromWorkspace,
 			} = usePusher();
+			const { active } = useTours();
 			const runs = ref([]);
 			const loaded = ref(false);
 			const serverTotals = ref({
@@ -276,9 +278,18 @@
 				followTimer(null);
 			});
 
+			const showEmptyState = computed(() =>
+				showAgentWorkEmptyState({
+					loaded: loaded.value,
+					runs: runs.value,
+					tourAnchor: active.value?.step.anchor,
+				}),
+			);
+
 			return {
 				runs,
 				loaded,
+				showEmptyState,
 				now,
 				expanded,
 				STATUS_TONE,

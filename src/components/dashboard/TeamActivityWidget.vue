@@ -73,10 +73,10 @@
 			>
 				<div class="space-y-3">
 					<TeamMemberItem
-						data-tour="dashboard.member"
 						v-for="member in teamActivity.members"
 						:key="member.id"
 						:member="member"
+						data-tour="dashboard.member"
 						@click="handleMemberClick(member)"
 						@task-click="handleTaskClick"
 					/>
