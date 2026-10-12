@@ -21,7 +21,9 @@ const MAX_MANIFEST: u64 = 256 * 1024;
 const MAX_LISTING: u64 = 4 * 1024 * 1024;
 const MAX_ARCHIVE: u64 = 120 * 1024 * 1024;
 const MAX_BINARY: u64 = 200 * 1024 * 1024;
-const MAX_PAGES: u32 = 3;
+const MAX_PAGES: u32 = 10;
+const MAX_DECOMPRESSED: u64 = 400 * 1024 * 1024;
+const MAX_ENTRIES: usize = 64;
 
 pub fn embedded_key() -> Result<PublicKey> {
     key_from_text(EMBEDDED_KEY)
@@ -201,6 +203,26 @@ fn state_file(dir: &Path) -> PathBuf {
     dir.join("update.json")
 }
 
+pub struct UpdateLock(#[allow(dead_code)] std::fs::File);
+
+pub fn lock_updates(dir: &Path) -> Result<UpdateLock> {
+    use std::os::unix::fs::OpenOptionsExt;
+    ensure_private_dir(dir)?;
+    let f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(dir.join("update.lock"))?;
+    match f.try_lock() {
+        Ok(()) => Ok(UpdateLock(f)),
+        Err(std::fs::TryLockError::WouldBlock) => {
+            Err(Error::conflict("another tmgr update is already running"))
+        }
+        Err(std::fs::TryLockError::Error(e)) => Err(e.into()),
+    }
+}
+
 pub fn load_trusted(dir: &Path) -> Result<Option<Version>> {
     let path = state_file(dir);
     let file = match std::fs::File::open(&path) {
@@ -228,6 +250,10 @@ pub fn load_trusted(dir: &Path) -> Result<Option<Version>> {
 
 pub fn store_trusted(dir: &Path, version: &Version) -> Result<()> {
     ensure_private_dir(dir)?;
+    let version = &match load_trusted(dir)? {
+        Some(existing) if &existing > version => existing,
+        _ => version.clone(),
+    };
     let bytes = serde_json::to_vec_pretty(&TrustState {
         schema: STATE_SCHEMA.to_string(),
         highest_version: version.to_string(),
@@ -242,14 +268,20 @@ pub fn sha256_matches(bytes: &[u8], expected_hex: &str) -> bool {
 }
 
 pub fn extract_binary(archive: &[u8], package_dir: &str) -> Result<Vec<u8>> {
+    extract_binary_limited(archive, package_dir, MAX_DECOMPRESSED)
+}
+
+fn extract_binary_limited(archive: &[u8], package_dir: &str, max_total: u64) -> Result<Vec<u8>> {
     let wanted = format!("{package_dir}/tmgr");
-    let decoder = flate2::read::GzDecoder::new(archive);
+    let decoder = flate2::read::GzDecoder::new(archive).take(max_total);
     let mut tar = tar::Archive::new(decoder);
-    let entries = tar
-        .entries()
-        .map_err(|_| untrusted("the archive is not a valid tar.gz"))?;
-    for entry in entries {
-        let entry = entry.map_err(|_| untrusted("the archive is not a valid tar.gz"))?;
+    let bad = |_| untrusted("the archive is not a valid tar.gz within the size limits");
+    let entries = tar.entries().map_err(bad)?;
+    for (seen, entry) in entries.enumerate() {
+        if seen >= MAX_ENTRIES {
+            return Err(untrusted("the archive has too many entries"));
+        }
+        let entry = entry.map_err(bad)?;
         if !entry.header().entry_type().is_file() {
             continue;
         }
@@ -261,12 +293,13 @@ pub fn extract_binary(archive: &[u8], package_dir: &str) -> Result<Vec<u8>> {
         if !is_wanted {
             continue;
         }
-        if entry.header().size().unwrap_or(u64::MAX) > MAX_BINARY {
+        let declared = entry.header().size().unwrap_or(u64::MAX);
+        if declared > MAX_BINARY {
             return Err(untrusted("the binary in the archive is too large"));
         }
         let mut out = Vec::new();
         entry.take(MAX_BINARY + 1).read_to_end(&mut out)?;
-        if out.len() as u64 > MAX_BINARY || out.is_empty() {
+        if out.len() as u64 != declared || out.is_empty() {
             return Err(untrusted("the binary in the archive has an invalid size"));
         }
         return Ok(out);
@@ -313,7 +346,7 @@ pub fn detect_managed(exe: &Path) -> Option<Managed> {
 #[cfg(unix)]
 pub fn install_binary(exe: &Path, bytes: &[u8]) -> Result<PathBuf> {
     use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
     let dir = exe
         .parent()
         .ok_or_else(|| Error::internal("cannot locate the install directory"))?;
@@ -321,7 +354,6 @@ pub fn install_binary(exe: &Path, bytes: &[u8]) -> Result<PathBuf> {
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| Error::internal("cannot read the binary name"))?;
-    let new = dir.join(format!(".{name}.new.{}", std::process::id()));
     let old = dir.join(format!("{name}.old"));
     let denied = |e: std::io::Error| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
@@ -334,24 +366,58 @@ pub fn install_binary(exe: &Path, bytes: &[u8]) -> Result<PathBuf> {
             Error::from(e)
         }
     };
-    let result = (|| -> Result<()> {
-        let mut f = std::fs::OpenOptions::new()
+    let unsafe_dir = || {
+        Error::new(
+            Kind::Forbidden,
+            "the install directory is not owned by you or is writable by others; refusing to replace the binary",
+        )
+    };
+    let mut staged: Option<(PathBuf, std::fs::File)> = None;
+    for attempt in 0..16u32 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let candidate = dir.join(format!(
+            ".{name}.new.{}.{nanos:x}.{attempt}",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .mode(0o755)
-            .open(&new)
-            .map_err(denied)?;
+            .mode(0o700)
+            .open(&candidate)
+        {
+            Ok(f) => {
+                staged = Some((candidate, f));
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(denied(e)),
+        }
+    }
+    let (new, mut f) = staged.ok_or_else(|| Error::internal("cannot create a staging file"))?;
+    let result = (|| -> Result<()> {
+        let dir_meta = std::fs::metadata(dir)?;
+        let mine = f.metadata()?;
+        if dir_meta.uid() != mine.uid() || dir_meta.mode() & 0o022 != 0 {
+            return Err(unsafe_dir());
+        }
         f.write_all(bytes)?;
         f.sync_all()?;
-        drop(f);
         std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))?;
-        let _ = std::fs::remove_file(&old);
-        if std::fs::hard_link(exe, &old).is_err() {
-            std::fs::copy(exe, &old)?;
+        match std::fs::remove_file(&old) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(denied(e)),
         }
+        std::fs::hard_link(exe, &old).map_err(|_| {
+            Error::internal("cannot keep the previous binary as a backup; nothing was changed")
+        })?;
         std::fs::rename(&new, exe)?;
         Ok(())
     })();
+    drop(f);
     if result.is_err() {
         let _ = std::fs::remove_file(&new);
     }
@@ -440,13 +506,18 @@ fn list_releases(client: &reqwest::blocking::Client, api_base: &str) -> Result<V
         let batch: Vec<Release> = serde_json::from_slice(&body)
             .map_err(|_| Error::internal("unexpected answer from the releases API"))?;
         let full = batch.len() >= 100;
-        let has_cli = batch.iter().any(|r| r.tag_name.starts_with(TAG_PREFIX));
         all.extend(batch);
-        if !full || has_cli {
-            break;
+        if !full {
+            return Ok(all);
         }
     }
-    Ok(all)
+    Err(Error::new(
+        Kind::Offline,
+        format!(
+            "incomplete search: more than {MAX_PAGES} pages of releases; a newer release may exist"
+        ),
+    )
+    .hint("try again later, or reinstall with https://tmgr.dev/install.sh"))
 }
 
 pub struct Options {
@@ -483,6 +554,11 @@ pub fn run(opts: &Options, key: &PublicKey) -> Result<Report> {
         installed: false,
         backup: None,
         expires_at,
+    };
+    let _lock = if opts.check_only {
+        None
+    } else {
+        Some(lock_updates(&opts.state_dir)?)
     };
     let releases = list_releases(&client, &opts.api_base)?;
     let Some((release, version)) = pick_release(releases, opts.channel) else {
@@ -562,10 +638,12 @@ pub fn run(opts: &Options, key: &PublicKey) -> Result<Report> {
     }
     let binary = extract_binary(&archive, &package)?;
     let backup = install_binary(&exe, &binary)?;
-    let highest = match &trusted {
-        Some(t) if t > &version => t.clone(),
-        _ => version.clone(),
-    };
+    let highest = [Some(&opts.current), trusted.as_ref(), Some(&version)]
+        .into_iter()
+        .flatten()
+        .max()
+        .cloned()
+        .unwrap_or(version);
     store_trusted(&opts.state_dir, &highest)?;
     Ok(Report {
         installed: true,

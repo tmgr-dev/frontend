@@ -562,3 +562,145 @@ fn managed_install_is_refused_with_a_hint() {
     assert_eq!(err.kind, Kind::Conflict);
     assert_eq!(err.hint.as_deref(), Some("brew upgrade tmgr"));
 }
+
+#[test]
+fn consented_downgrade_never_lowers_the_floor_below_the_replaced_version() {
+    let s = Stand::new();
+    s.publish_good("0.4.0");
+    let mut opts = s.opts("0.6.0");
+    opts.allow_downgrade = true;
+    assert!(run(&opts, &s.keys.pk).unwrap().installed);
+    assert_eq!(load_trusted(&opts.state_dir).unwrap(), Some(v("0.6.0")));
+}
+
+#[test]
+fn stored_floor_is_monotonic() {
+    let dir = tempfile::tempdir().unwrap();
+    store_trusted(dir.path(), &v("0.5.0")).unwrap();
+    store_trusted(dir.path(), &v("0.4.0")).unwrap();
+    assert_eq!(load_trusted(dir.path()).unwrap(), Some(v("0.5.0")));
+}
+
+#[test]
+fn concurrent_updates_are_serialised() {
+    let s = Stand::new();
+    s.publish_good("0.4.0");
+    let opts = s.opts("0.3.0");
+    let _held = lock_updates(&opts.state_dir).unwrap();
+    let err = run(&opts, &s.keys.pk).unwrap_err();
+    assert_eq!(err.kind, Kind::Conflict);
+    assert!(err.message.contains("already running"));
+    assert_eq!(std::fs::read(&opts.exe).unwrap(), b"OLDBIN");
+}
+
+#[test]
+fn decompression_bombs_are_cut_off() {
+    let big = vec![0u8; 3 * 1024 * 1024];
+    let a = archive("0.4.0", &big);
+    let pkg = format!("tmgr-0.4.0-{TARGET}");
+    assert!(extract_binary_limited(&a, &pkg, 1024 * 1024).is_err());
+    assert!(extract_binary_limited(&a, &pkg, 8 * 1024 * 1024).is_ok());
+}
+
+#[test]
+fn archives_with_too_many_entries_are_refused() {
+    let enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut tar = tar::Builder::new(enc);
+    for i in 0..(MAX_ENTRIES + 1) {
+        let mut h = tar::Header::new_gnu();
+        h.set_size(1);
+        h.set_cksum();
+        tar.append_data(&mut h, format!("pkg/f{i}"), &b"x"[..])
+            .unwrap();
+    }
+    let a = tar.into_inner().unwrap().finish().unwrap();
+    assert!(extract_binary(&a, "pkg").is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn group_writable_install_directory_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let exe = bin.join("tmgr");
+    std::fs::write(&exe, b"OLD").unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o775)).unwrap();
+    let err = install_binary(&exe, b"NEW").unwrap_err();
+    assert_eq!(err.kind, Kind::Forbidden);
+    assert_eq!(std::fs::read(&exe).unwrap(), b"OLD");
+    let leftovers = std::fs::read_dir(&bin).unwrap().count();
+    assert_eq!(leftovers, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_never_overwrites_through_a_planted_backup_symlink() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("tmgr");
+    let victim = dir.path().join("victim");
+    std::fs::write(&exe, b"OLD").unwrap();
+    std::fs::write(&victim, b"PRECIOUS").unwrap();
+    std::os::unix::fs::symlink(&victim, dir.path().join("tmgr.old")).unwrap();
+    install_binary(&exe, b"NEW").unwrap();
+    assert_eq!(std::fs::read(&victim).unwrap(), b"PRECIOUS");
+    assert_eq!(std::fs::read(dir.path().join("tmgr.old")).unwrap(), b"OLD");
+}
+
+fn mount_pages(s: &Stand, pages: u32, cli_on: Option<u32>) {
+    let base = s.server.uri();
+    for page in 1..=pages {
+        let mut items: Vec<serde_json::Value> = (0..100)
+            .map(
+                |i| serde_json::json!({"tag_name": format!("desktop-v1.{page}.{i}"), "assets": []}),
+            )
+            .collect();
+        if cli_on == Some(page) {
+            let tag = "cli-v0.4.0";
+            let arch = archive("0.4.0", b"NEWBIN");
+            let m = manifest_json("0.4.0", "beta", "2031-01-01T00:00:00Z", &arch);
+            let name = format!("tmgr-0.4.0-{TARGET}.tar.gz");
+            items[0] = serde_json::json!({"tag_name": tag, "prerelease": true, "assets": [
+                {"name": "manifest.json", "browser_download_url": format!("{base}/dl/m")},
+                {"name": "manifest.json.minisig", "browser_download_url": format!("{base}/dl/s")},
+                {"name": name, "browser_download_url": format!("{base}/dl/a")},
+            ]});
+            s.mount("/dl/m", m.clone());
+            s.mount("/dl/s", sign(&s.keys, &m).into_bytes());
+            s.mount("/dl/a", arch);
+        }
+        s.rt.block_on(
+            Mock::given(method("GET"))
+                .and(path(format!("/repos/{REPO}/releases")))
+                .and(query_param("page", page.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(items))
+                .mount(&s.server),
+        );
+    }
+    if pages < MAX_PAGES {
+        s.rt.block_on(
+            Mock::given(method("GET"))
+                .and(path(format!("/repos/{REPO}/releases")))
+                .and(query_param("page", (pages + 1).to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+                .mount(&s.server),
+        );
+    }
+}
+
+#[test]
+fn releases_are_searched_across_pages() {
+    let s = Stand::new();
+    mount_pages(&s, 3, Some(3));
+    let r = run(&s.opts("0.3.0"), &s.keys.pk).unwrap();
+    assert!(r.installed);
+}
+
+#[test]
+fn hitting_the_page_cap_is_reported_as_an_incomplete_search() {
+    let s = Stand::new();
+    mount_pages(&s, MAX_PAGES, None);
+    let err = run(&s.opts("0.3.0"), &s.keys.pk).unwrap_err();
+    assert!(err.message.contains("incomplete search"), "{}", err.message);
+}

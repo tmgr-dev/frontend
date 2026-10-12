@@ -6,22 +6,30 @@
 # Installs the tmgr binary into ~/.local/bin (or $TMGR_INSTALL_DIR). Never uses sudo.
 #   TMGR_CHANNEL=beta        also consider prereleases (default: stable)
 #   TMGR_INSTALL_DIR=DIR     install directory
-#   TMGR_ALLOW_UNSIGNED=1    install even though the signature cannot be verified
+#   TMGR_ALLOW_DOWNGRADE=1   allow replacing a newer installed tmgr
+#   TMGR_ALLOW_UNSIGNED=1    install without verifying the release signature
 #
-# The archive checksum (SHA256SUMS) is always verified. The signature of
-# SHA256SUMS is verified with minisign when minisign is installed.
+# The release manifest is verified with minisign (required), then the archive
+# is checked against the sha256 listed in the signed manifest.
 
 set -eu
 
 REPO="tmgr-dev/frontend"
 MINISIGN_PUBKEY="TMGR-UPDATE-KEY-PLACEHOLDER"
 PLACEHOLDER="TMGR-UPDATE-KEY-PLACEHOLDER"
+MAX_API=4194304
+MAX_MANIFEST=262144
+MAX_ARCHIVE=125829120
 
 TMP=""
+STAGED=""
 
 cleanup() {
   if [ -n "$TMP" ]; then
     rm -rf "$TMP"
+  fi
+  if [ -n "$STAGED" ]; then
+    rm -f "$STAGED"
   fi
 }
 
@@ -38,22 +46,20 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
-safe_url() {
+fetch() {
+  have curl || die "curl is required"
   case "$1" in
-    https://* | http://127.0.0.1 | http://127.0.0.1[:/]* | http://localhost | http://localhost[:/]*) ;;
+    https://*)
+      curl -fsS -L --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        --max-time 300 --max-filesize "$3" --retry 2 -o "$2" "$1" || return 1
+      ;;
+    http://127.0.0.1 | http://127.0.0.1[:/]* | http://localhost | http://localhost[:/]*)
+      curl -fsS --proto '=http,https' --max-time 300 --max-filesize "$3" -o "$2" "$1" || return 1
+      ;;
     *) die "refusing a non-https URL: $1" ;;
   esac
-}
-
-fetch() {
-  safe_url "$1"
-  if have curl; then
-    curl -fsSL --proto-redir '=https' --retry 2 -o "$2" "$1"
-  elif have wget; then
-    wget -q -O "$2" "$1"
-  else
-    die "curl or wget is required"
-  fi
+  size=$(wc -c <"$2" | tr -d ' ')
+  [ "$size" -le "$3" ] || die "download from $1 is larger than allowed"
 }
 
 detect_target() {
@@ -114,15 +120,77 @@ select_tag() {
 find_tag() {
   channel=$1
   page=1
-  while [ "$page" -le 3 ]; do
-    fetch "$API/repos/$REPO/releases?per_page=100&page=$page" "$TMP/releases.json" || return 1
-    if tag=$(release_rows <"$TMP/releases.json" | select_tag "$channel"); then
-      echo "$tag"
-      return 0
+  : >"$TMP/rows"
+  while [ "$page" -le 10 ]; do
+    fetch "$API/repos/$REPO/releases?per_page=100&page=$page" "$TMP/releases.json" "$MAX_API" || return 1
+    release_rows <"$TMP/releases.json" >>"$TMP/rows"
+    if [ "$(grep -c '"tag_name"' "$TMP/releases.json" || true)" -lt 100 ]; then
+      select_tag "$channel" <"$TMP/rows"
+      return
     fi
     page=$((page + 1))
   done
-  return 1
+  die "incomplete search: more than 10 pages of releases; a newer release may exist"
+}
+
+manifest_field() {
+  awk -v k="$1" '
+    $0 ~ "^  \"" k "\": " {
+      v = $0
+      sub("^  \"" k "\": *\"?", "", v)
+      sub("\"?,?[ ]*$", "", v)
+      print v
+      exit
+    }
+  ' "$TMP/manifest.json"
+}
+
+manifest_artifacts() {
+  awk '
+    /^      "target": / { t = $2; gsub(/[",]/, "", t) }
+    /^      "name": / { n = $2; gsub(/[",]/, "", n) }
+    /^      "sha256": / { h = $2; gsub(/[",]/, "", h) }
+    /^      "size": / { z = $2; gsub(/[",]/, "", z) }
+    /^    }/ { if (t != "" && n != "" && h != "" && z != "") print t, n, h, z; t = n = h = z = "" }
+  ' "$TMP/manifest.json"
+}
+
+ver_cmp() {
+  awk -v a="$1" -v b="$2" '
+    function parse(s, out,   core, pre, p, n, i) {
+      sub(/\+.*/, "", s)
+      pre = ""
+      p = index(s, "-")
+      if (p > 0) { pre = substr(s, p + 1); s = substr(s, 1, p - 1) }
+      n = split(s, c, ".")
+      for (i = 1; i <= 3; i++) out[i] = (i <= n ? c[i] + 0 : 0)
+      out[4] = pre
+    }
+    BEGIN {
+      parse(a, x); parse(b, y)
+      for (i = 1; i <= 3; i++) {
+        if (x[i] < y[i]) { print "lt"; exit }
+        if (x[i] > y[i]) { print "gt"; exit }
+      }
+      if (x[4] == y[4]) { print "eq"; exit }
+      if (x[4] == "") { print "gt"; exit }
+      if (y[4] == "") { print "lt"; exit }
+      na = split(x[4], p, "."); nb = split(y[4], q, ".")
+      n = (na < nb ? na : nb)
+      for (i = 1; i <= n; i++) {
+        pn = (p[i] ~ /^[0-9]+$/); qn = (q[i] ~ /^[0-9]+$/)
+        if (pn && qn) {
+          if (p[i] + 0 < q[i] + 0) { print "lt"; exit }
+          if (p[i] + 0 > q[i] + 0) { print "gt"; exit }
+        } else if (pn) { print "lt"; exit }
+        else if (qn) { print "gt"; exit }
+        else {
+          if (p[i] < q[i]) { print "lt"; exit }
+          if (p[i] > q[i]) { print "gt"; exit }
+        }
+      }
+      if (na < nb) print "lt"; else if (na > nb) print "gt"; else print "eq"
+    }'
 }
 
 sha256_of() {
@@ -135,44 +203,76 @@ sha256_of() {
   fi
 }
 
-verify_checksum() {
-  archive_name=$1
-  expected=$(awk -v f="$archive_name" '$2 == f || $2 == "*" f { print $1; exit }' "$TMP/SHA256SUMS")
-  [ -n "$expected" ] || die "SHA256SUMS has no entry for $archive_name"
-  actual=$(sha256_of "$TMP/$archive_name")
-  [ "$expected" = "$actual" ] || die "checksum mismatch for $archive_name; nothing was installed"
-}
-
 verify_signature() {
   allow=${TMGR_ALLOW_UNSIGNED:-0}
-  signed=0
-  if fetch "$DL/$1/SHA256SUMS.minisig" "$TMP/SHA256SUMS.minisig" 2>/dev/null; then
-    signed=1
-  fi
-
   if [ "$MINISIGN_PUBKEY" = "$PLACEHOLDER" ]; then
-    if [ "$allow" != "1" ]; then
-      die "this installer has no signing key yet, so the release cannot be verified. Set TMGR_ALLOW_UNSIGNED=1 to install on the strength of the SHA256SUMS checksum alone."
-    fi
-    warn "WARNING: installing WITHOUT signature verification (TMGR_ALLOW_UNSIGNED=1). Only the SHA256SUMS checksum from the same release was checked."
+    [ "$allow" = "1" ] ||
+      die "this installer has no signing key yet, so the release cannot be verified. Set TMGR_ALLOW_UNSIGNED=1 to install without verification."
+    warn "WARNING: installing WITHOUT signature verification (TMGR_ALLOW_UNSIGNED=1)."
     return 0
   fi
-
-  if [ "$signed" -eq 0 ]; then
-    if [ "$allow" != "1" ]; then
-      die "release $1 is not signed; refusing to install. Set TMGR_ALLOW_UNSIGNED=1 to override."
-    fi
+  if ! have minisign; then
+    [ "$allow" = "1" ] ||
+      die "minisign is required to verify the release signature (install it, or set TMGR_ALLOW_UNSIGNED=1 to skip verification)."
+    warn "WARNING: minisign not found; installing WITHOUT signature verification (TMGR_ALLOW_UNSIGNED=1)."
+    return 0
+  fi
+  if ! fetch "$DL/$1/manifest.json.minisig" "$TMP/manifest.json.minisig" "$MAX_MANIFEST" 2>/dev/null; then
+    [ "$allow" = "1" ] || die "release $1 has no signature; refusing to install. Set TMGR_ALLOW_UNSIGNED=1 to override."
     warn "WARNING: installing an UNSIGNED release (TMGR_ALLOW_UNSIGNED=1)."
     return 0
   fi
+  minisign -Vm "$TMP/manifest.json" -x "$TMP/manifest.json.minisig" -P "$MINISIGN_PUBKEY" >/dev/null ||
+    die "signature verification FAILED; nothing was installed"
+  echo "signature verified"
+}
 
-  if have minisign; then
-    minisign -Vm "$TMP/SHA256SUMS" -x "$TMP/SHA256SUMS.minisig" -P "$MINISIGN_PUBKEY" >/dev/null ||
-      die "signature verification FAILED; nothing was installed"
-    echo "signature verified"
-  else
-    warn "minisign is not installed: only the SHA256SUMS checksum was verified, not the signature."
+check_manifest() {
+  tag=$1
+  version=$2
+  channel=$3
+  [ "$(manifest_field product)" = "tmgr-cli" ] || die "the manifest is for a different product"
+  [ "$(manifest_field version)" = "$version" ] || die "the manifest version does not match the release tag"
+  [ "$(manifest_field key_epoch)" = "1" ] || die "the manifest uses an unsupported key epoch; get a newer installer from https://tmgr.dev/install.sh"
+  mchannel=$(manifest_field channel)
+  case "$channel:$mchannel" in
+    stable:stable | beta:stable | beta:beta) ;;
+    *) die "the release is on channel $mchannel, not $channel" ;;
+  esac
+  expires=$(manifest_field expires_at)
+  case "$expires" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+    *) die "the manifest carries an invalid expiry" ;;
+  esac
+  expires_digits=$(printf '%s' "$expires" | tr -d '\n:TZ-')
+  now_digits=$(date -u +%Y%m%d%H%M%S)
+  [ "$expires_digits" -gt "$now_digits" ] || die "the manifest of $tag has expired; refusing a stale release"
+}
+
+check_not_older() {
+  [ -x "$1/tmgr" ] || return 0
+  installed=$("$1/tmgr" version --json 2>/dev/null |
+    sed -n 's/.*"data":{"version":"\([^"]*\)".*/\1/p' | head -n 1) || installed=""
+  if [ -z "$installed" ]; then
+    warn "could not read the version of the installed tmgr; not checking for a downgrade"
+    return 0
   fi
+  if [ "$(ver_cmp "$2" "$installed")" = "lt" ]; then
+    [ "${TMGR_ALLOW_DOWNGRADE:-0}" = "1" ] ||
+      die "installed tmgr $installed is newer than $2; refusing to downgrade (TMGR_ALLOW_DOWNGRADE=1 to override)"
+    warn "WARNING: downgrading tmgr $installed to $2 (TMGR_ALLOW_DOWNGRADE=1)."
+  fi
+}
+
+check_dir() {
+  uid=$(id -u)
+  [ -n "$(find -L "$1" -prune -user "$uid" 2>/dev/null)" ] ||
+    die "$1 is not owned by you; refusing to install there"
+  # shellcheck disable=SC2012
+  perm=$(ls -ldL "$1" | cut -c1-10)
+  case "$perm" in
+    ?????w???? | ????????w?) die "$1 is writable by group or others; refusing to install there" ;;
+  esac
 }
 
 main() {
@@ -197,22 +297,38 @@ main() {
     "" | *[!0-9A-Za-z.+-]*) die "unexpected release tag: $tag" ;;
   esac
 
-  archive="tmgr-$version-$target.tar.gz"
   echo "Installing tmgr $version ($target)"
-  fetch "$DL/$tag/$archive" "$TMP/$archive"
-  fetch "$DL/$tag/SHA256SUMS" "$TMP/SHA256SUMS"
-  verify_checksum "$archive"
+  fetch "$DL/$tag/manifest.json" "$TMP/manifest.json" "$MAX_MANIFEST"
   verify_signature "$tag"
+  check_manifest "$tag" "$version" "$channel"
+
+  archive="tmgr-$version-$target.tar.gz"
+  row=$(manifest_artifacts | awk -v t="$target" -v n="$archive" '$1 == t && $2 == n { print; exit }')
+  [ -n "$row" ] || die "release $version has no build for $target"
+  expected=$(echo "$row" | cut -d' ' -f3)
+  size=$(echo "$row" | cut -d' ' -f4)
+  case "$size" in
+    "" | *[!0-9]*) die "the manifest carries an invalid size" ;;
+  esac
+  [ "$size" -gt 0 ] && [ "$size" -le "$MAX_ARCHIVE" ] || die "the manifest declares an invalid archive size"
+
+  fetch "$DL/$tag/$archive" "$TMP/$archive" "$size"
+  [ "$(wc -c <"$TMP/$archive" | tr -d ' ')" = "$size" ] || die "archive size does not match the manifest; nothing was installed"
+  [ "$(sha256_of "$TMP/$archive")" = "$expected" ] || die "checksum mismatch for $archive; nothing was installed"
+
+  check_not_older "$dest" "$version"
 
   mkdir "$TMP/x"
   tar -xzf "$TMP/$archive" -C "$TMP/x" "tmgr-$version-$target/tmgr"
   [ -f "$TMP/x/tmgr-$version-$target/tmgr" ] || die "the archive does not contain tmgr"
 
   mkdir -p "$dest"
-  staged="$dest/.tmgr.new.$$"
-  cp "$TMP/x/tmgr-$version-$target/tmgr" "$staged"
-  chmod 755 "$staged"
-  mv -f "$staged" "$dest/tmgr"
+  check_dir "$dest"
+  STAGED=$(mktemp "$dest/.tmgr.new.XXXXXX")
+  cat "$TMP/x/tmgr-$version-$target/tmgr" >"$STAGED"
+  chmod 755 "$STAGED"
+  mv -f "$STAGED" "$dest/tmgr"
+  STAGED=""
 
   echo "Installed $dest/tmgr"
   case ":$PATH:" in
