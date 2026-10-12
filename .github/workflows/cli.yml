@@ -43,6 +43,8 @@ jobs:
 
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      - run: cargo clippy -p tmgr-cli --features runner --all-targets --locked -- -D warnings
+
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
@@ -78,3 +80,9 @@ jobs:
           TARGET: ${{ matrix.target }}
           TMGR_BUILD_COMMIT: ${{ github.sha }}
         run: cargo test --workspace --locked ${TARGET:+--target "$TARGET"}
+
+      - name: test runner feature
+        env:
+          TARGET: ${{ matrix.target }}
+          TMGR_BUILD_COMMIT: ${{ github.sha }}
+        run: cargo test -p tmgr-cli --features runner --locked ${TARGET:+--target "$TARGET"}
