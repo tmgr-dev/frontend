@@ -10,6 +10,7 @@ pub const INVERSE: u8 = 16;
 const MAX_ROWS: u16 = 200;
 const MAX_COLS: u16 = 500;
 const MAX_CSI_LEN: usize = 16;
+const MAX_STRING: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -104,6 +105,13 @@ enum Query {
     Da2,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StrKind {
+    Osc,
+    Dcs,
+    Other,
+}
+
 #[derive(Default)]
 enum ScanState {
     #[default]
@@ -111,20 +119,24 @@ enum ScanState {
     Esc,
     Csi(Vec<u8>),
     Str {
-        osc: bool,
+        kind: StrKind,
+        len: usize,
     },
 }
 
 #[derive(Default)]
 struct Scanner {
     state: ScanState,
+    dropped: u64,
 }
 
 impl Scanner {
-    fn scan(&mut self, bytes: &[u8]) -> Vec<(usize, Query)> {
+    fn scan(&mut self, bytes: &[u8]) -> (Vec<u8>, Vec<(usize, Query)>) {
         let mut found = Vec::new();
-        for (i, &b) in bytes.iter().enumerate() {
+        let mut kept = Vec::with_capacity(bytes.len());
+        for &b in bytes {
             let state = std::mem::take(&mut self.state);
+            let mut drop = false;
             self.state = match state {
                 ScanState::Ground => {
                     if b == 0x1b {
@@ -135,8 +147,18 @@ impl Scanner {
                 }
                 ScanState::Esc => match b {
                     b'[' => ScanState::Csi(Vec::new()),
-                    b']' => ScanState::Str { osc: true },
-                    b'P' | b'X' | b'^' | b'_' => ScanState::Str { osc: false },
+                    b']' => ScanState::Str {
+                        kind: StrKind::Osc,
+                        len: 0,
+                    },
+                    b'P' => ScanState::Str {
+                        kind: StrKind::Dcs,
+                        len: 0,
+                    },
+                    b'X' | b'^' | b'_' => ScanState::Str {
+                        kind: StrKind::Other,
+                        len: 0,
+                    },
                     0x1b => ScanState::Esc,
                     0x18 | 0x1a => ScanState::Ground,
                     _ => ScanState::Ground,
@@ -152,21 +174,31 @@ impl Scanner {
                     }
                     0x40..=0x7e => {
                         if let Some(q) = classify(&buf, b) {
-                            found.push((i, q));
+                            found.push((kept.len(), q));
                         }
                         ScanState::Ground
                     }
                     _ => ScanState::Csi(buf),
                 },
-                ScanState::Str { osc } => match b {
+                ScanState::Str { kind, len } => match b {
                     0x1b => ScanState::Esc,
                     0x18 | 0x1a => ScanState::Ground,
-                    0x07 if osc => ScanState::Ground,
-                    _ => ScanState::Str { osc },
+                    0x07 if kind == StrKind::Osc => ScanState::Ground,
+                    0x9c if kind == StrKind::Dcs => ScanState::Ground,
+                    _ if len >= MAX_STRING => {
+                        drop = true;
+                        ScanState::Str { kind, len }
+                    }
+                    _ => ScanState::Str { kind, len: len + 1 },
                 },
             };
+            if drop {
+                self.dropped += 1;
+            } else {
+                kept.push(b);
+            }
         }
-        found
+        (kept, found)
     }
 }
 
@@ -200,8 +232,9 @@ impl ScreenModel {
 
     pub fn feed(&mut self, bytes: &[u8]) -> FeedResult {
         let mut result = FeedResult::default();
+        let (bytes, queries) = self.scanner.scan(bytes);
         let mut start = 0;
-        for (end, query) in self.scanner.scan(bytes) {
+        for (end, query) in queries {
             self.parser.process(&bytes[start..=end]);
             start = end + 1;
             let (row, col) = self.parser.screen().cursor_position();
@@ -217,6 +250,10 @@ impl ScreenModel {
         result.bell = std::mem::take(&mut signals.bell);
         result.notify = std::mem::take(&mut signals.notify);
         result
+    }
+
+    pub fn dropped_string_bytes(&self) -> u64 {
+        self.scanner.dropped
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -618,5 +655,70 @@ mod tests {
         assert!(json.contains("\"b\":null"), "{json}");
         let back: Snapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(back, s);
+    }
+
+    fn feed_endless(m: &mut ScreenModel, head: &[u8], term: &[u8]) {
+        let chunk = vec![b'a'; 64 * 1024];
+        m.feed(head);
+        for _ in 0..(50 * 16) {
+            m.feed(&chunk);
+        }
+        m.feed(term);
+        m.feed(b"hello");
+    }
+
+    fn assert_hello_and_bounded(m: &mut ScreenModel) {
+        let s = m.snapshot(0);
+        assert_eq!(row_text(&s, 0).trim_end(), "hello");
+        let dropped = m.dropped_string_bytes();
+        assert!(dropped >= 50 * 1024 * 1024 - MAX_STRING as u64, "{dropped}");
+    }
+
+    #[test]
+    fn endless_osc_is_cut_and_terminated_by_bel() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1b]0;", b"\x07");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_osc_is_cut_and_terminated_by_st() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1b]0;", b"\x1b\\");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_dcs_is_cut_and_terminated_by_st() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1bPq", b"\x1b\\");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_apc_is_cut_and_terminated_by_st() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1b_G", b"\x1b\\");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_dcs_is_terminated_by_raw_9c() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1bPq", b"\x9c");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn short_strings_are_untouched_and_long_ones_do_not_swallow_the_next() {
+        let mut m = model();
+        let mut long = b"\x1b]9;".to_vec();
+        long.extend(std::iter::repeat_n(b'a', MAX_STRING * 2));
+        long.push(0x07);
+        assert!(m.feed(&long).notify);
+        assert_eq!(m.dropped_string_bytes(), MAX_STRING as u64 + 2);
+        let r = m.feed(b"\x1b]9;hi\x07");
+        assert!(r.notify);
+        assert!(m.feed(b"\x1b[6n").replies.len() == 1);
     }
 }
