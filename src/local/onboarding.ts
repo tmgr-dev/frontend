@@ -12,13 +12,13 @@ export interface OnboardingResult {
 	data: any;
 }
 
-const TIPS_MODES: TipsMode[] = ['all', 'minimal', 'off'];
+const TIPS_MODES: TipsMode[] = ['auto', 'hub_only', 'off'];
 const STATUSES: TourStatus[] = ['in_progress', 'paused', 'completed', 'skipped'];
 const INTENTS = ['human', 'agent', 'skipped'];
 
 const initial = (): OnboardingState => ({
 	intent: null,
-	tips_mode: 'all',
+	tips_mode: 'auto',
 	hub_hidden: false,
 	checklist_hidden: false,
 	tours_generation: 0,
@@ -40,6 +40,16 @@ const load = (storage: OnboardingStorage): OnboardingState => {
 };
 
 const ok = (state: OnboardingState): OnboardingResult => ({ status: 200, data: { data: state } });
+const preferences = (state: OnboardingState): OnboardingResult => ({
+	status: 200,
+	data: {
+		data: {
+			tips_mode: state.tips_mode,
+			hub_hidden: state.hub_hidden,
+			checklist_hidden: state.checklist_hidden,
+		},
+	},
+});
 const invalid = (message: string): OnboardingResult => ({ status: 422, data: { message } });
 
 export const createOnboardingHandler = (storage: OnboardingStorage) => {
@@ -65,25 +75,25 @@ export const createOnboardingHandler = (storage: OnboardingStorage) => {
 			if (typeof payload.hub_hidden === 'boolean') state.hub_hidden = payload.hub_hidden;
 			if (typeof payload.checklist_hidden === 'boolean') state.checklist_hidden = payload.checklist_hidden;
 			save(state);
-			return ok(state);
+			return preferences(state);
 		}
 
 		if (path === 'onboarding/intent' && verb === 'POST') {
 			if (!INTENTS.includes(payload.intent)) return invalid('Unknown intent');
 			state.intent = payload.intent;
 			save(state);
-			return ok(state);
+			return { status: 200, data: { data: { intent: state.intent, starter_tasks_created: 0 } } };
 		}
 
 		if (path === 'onboarding/starter-tasks' && verb === 'DELETE') {
-			return { status: 200, data: { data: { deleted: 0 } } };
+			return { status: 200, data: { data: { removed: 0 } } };
 		}
 
 		if (path === 'onboarding/tours' && verb === 'DELETE') {
 			state.tours = {};
 			state.tours_generation += 1;
 			save(state);
-			return ok(state);
+			return { status: 200, data: { data: { tours_generation: state.tours_generation } } };
 		}
 
 		const tour = /^onboarding\/tours\/([^/]+)$/.exec(path);
@@ -92,7 +102,7 @@ export const createOnboardingHandler = (storage: OnboardingStorage) => {
 			if (!STATUSES.includes(payload.status)) return invalid('Unknown tour status');
 			const generation = Number(payload.generation ?? 0);
 			const version = Number(payload.version ?? 1);
-			if (generation < state.tours_generation) return ok(state);
+			if (generation < state.tours_generation) return { status: 200, data: { data: state.tours[id] ?? null } };
 			const existing: TourState | undefined = state.tours[id];
 			const downgrade =
 				existing?.status === 'completed' &&
@@ -102,7 +112,7 @@ export const createOnboardingHandler = (storage: OnboardingStorage) => {
 				state.tours[id] = { status: payload.status, step_id: payload.step_id ?? null, version, generation };
 				save(state);
 			}
-			return ok(state);
+			return { status: 200, data: { data: state.tours[id] ?? null } };
 		}
 
 		return { status: 404, data: { message: 'Not found' } };

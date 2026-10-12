@@ -11,7 +11,7 @@ const memory = (): OnboardingStorage & { map: Map<string, string> } => {
 
 const empty = {
 	intent: null,
-	tips_mode: 'all',
+	tips_mode: 'auto',
 	hub_hidden: false,
 	checklist_hidden: false,
 	tours_generation: 0,
@@ -45,12 +45,21 @@ describe('local onboarding handler', () => {
 			platform: 'web',
 		});
 		expect(res.status).toBe(200);
-		expect(res.data.data.tours['start.first-task']).toEqual({
+		expect(res.data.data).toEqual({
 			status: 'in_progress',
 			step_id: 'create',
 			version: 1,
 			generation: 0,
 		});
+	});
+
+	it('answers a preferences write with the preference fields only', () => {
+		const handle = createOnboardingHandler(memory());
+		const res = handle('PUT', 'onboarding/preferences', { tips_mode: 'hub_only' });
+		expect(res.data).toEqual({
+			data: { tips_mode: 'hub_only', hub_hidden: false, checklist_hidden: false },
+		});
+		expect(handle('PUT', 'onboarding/preferences', { tips_mode: 'all' }).data.data.tips_mode).toBe('hub_only');
 	});
 
 	it('rejects an invalid tour status', () => {
@@ -70,8 +79,7 @@ describe('local onboarding handler', () => {
 		const handle = createOnboardingHandler(memory());
 		handle('PUT', 'onboarding/tours/a', { status: 'completed', step_id: null, version: 1, generation: 0 });
 		const reset = handle('DELETE', 'onboarding/tours');
-		expect(reset.data.data.tours).toEqual({});
-		expect(reset.data.data.tours_generation).toBe(1);
+		expect(reset.data).toEqual({ data: { tours_generation: 1 } });
 		handle('PUT', 'onboarding/tours/b', { status: 'in_progress', step_id: 'x', version: 1, generation: 0 });
 		expect(handle('GET', 'onboarding').data.data.tours).toEqual({});
 		handle('PUT', 'onboarding/tours/b', { status: 'in_progress', step_id: 'x', version: 1, generation: 1 });

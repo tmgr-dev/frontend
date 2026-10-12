@@ -50,6 +50,20 @@ describe('normalizeOnboarding', () => {
 });
 
 describe('store', () => {
+	it.each([
+		['web', 'web'],
+		['mobile_web', 'web'],
+		['desktop', 'desktop'],
+		['desktop_local', 'desktop'],
+		['ios', 'ios'],
+	])('sends backend platform for %s as %s', async (client, sent) => {
+		const api = fakeApi();
+		const store = createToursStore({ api, platform: () => client });
+		store.saveTour('a.b', { status: 'paused', step_id: 'x', version: 1 });
+		await store.flush();
+		expect(api.putTour).toHaveBeenCalledWith('a.b', expect.objectContaining({ platform: sent }));
+	});
+
 	it('loads and exposes state; load failure leaves defaults flagged', async () => {
 		const store = make(fakeApi({ tips_mode: 'off' }));
 		await store.load();

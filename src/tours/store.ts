@@ -49,6 +49,12 @@ export function normalizeOnboarding(raw: unknown): OnboardingState {
   return state;
 }
 
+const backendPlatform = (platform: string): string => {
+  if (platform === 'desktop_local' || platform === 'desktop') return 'desktop';
+  if (platform === 'ios') return 'ios';
+  return 'web';
+};
+
 export interface SaveTourInput {
   status: TourStatus;
   step_id: string | null;
@@ -131,7 +137,7 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
       };
       current.tours[id] = next;
       enqueue(id, () =>
-        deps.api.putTour(id, { ...next, platform: deps.platform() }),
+        deps.api.putTour(id, { ...next, platform: backendPlatform(deps.platform()) }),
       );
       deps.onSaved?.(id, next);
       return next;

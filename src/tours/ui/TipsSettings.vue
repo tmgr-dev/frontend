@@ -68,12 +68,12 @@
 
 	const OPTIONS: { value: TipsMode; label: string; description: string }[] = [
 		{
-			value: 'all',
+			value: 'auto',
 			label: 'Show tips automatically',
 			description: 'A short tour is offered the first time you open a feature.',
 		},
 		{
-			value: 'minimal',
+			value: 'hub_only',
 			label: 'Only from Getting started',
 			description: 'No automatic tours. Start any tour yourself from the Getting started page.',
 		},
@@ -92,7 +92,7 @@
 			const busy = ref(false);
 			const confirming = ref(false);
 			const mode = computed<TipsMode>(
-				() => tours.onboarding.value?.tips_mode ?? 'all',
+				() => tours.onboarding.value?.tips_mode ?? 'auto',
 			);
 
 			const guarded = async (work: () => Promise<void>) => {

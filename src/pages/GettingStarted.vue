@@ -128,7 +128,6 @@
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { Switch } from '@/components/ui/switch';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { setHubHidden } from '@/tours/hubPreferences';
 	import { buildHubModel, type HubRow } from '@/tours/hubModel';
 	import { useTours } from '@/tours/useTours';
 	import { computed, defineComponent, ref } from 'vue';
@@ -154,7 +153,7 @@
 					? `${Math.round((model.value.done / model.value.total) * 100)}%`
 					: '0%',
 			);
-			const tipsOn = computed(() => tours.onboarding.value?.tips_mode !== 'off');
+			const tipsOn = computed(() => tours.onboarding.value?.tips_mode === 'auto');
 			const hubHidden = computed(() => tours.onboarding.value?.hub_hidden === true);
 
 			const guarded = async (work: () => Promise<void>) => {
@@ -175,9 +174,9 @@
 				hubHidden,
 				busy,
 				toggleTips: (on: boolean) =>
-					guarded(() => tours.setTipsMode(on ? 'all' : 'off')),
+					guarded(() => tours.setTipsMode(on ? 'auto' : 'off')),
 				toggleHubHidden: () =>
-					guarded(() => setHubHidden(tours.onboarding, !hubHidden.value)),
+					guarded(() => tours.setHubHidden(!hubHidden.value)),
 				run: (row: HubRow) =>
 					guarded(() =>
 						row.action === 'resume' ? tours.resume(row.id) : tours.start(row.id, 'hub'),

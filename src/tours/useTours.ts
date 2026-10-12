@@ -39,6 +39,7 @@ export interface ToursApi {
   skipStep(): void;
   skipTour(): void;
   setTipsMode(mode: TipsMode): Promise<void>;
+  setHubHidden(hidden: boolean): Promise<void>;
   resetAll(): Promise<void>;
   takeMeThere(): void;
   resumePill: Readonly<Ref<ResumePill | null>>;

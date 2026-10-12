@@ -213,6 +213,9 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       await store.setPreferences({ tips_mode: mode });
       tourTelemetry().track('tips_mode_changed', { mode });
     },
+    async setHubHidden(hidden: boolean) {
+      await store.setPreferences({ hub_hidden: hidden });
+    },
     async resetAll() {
       runner.abandon();
       await store.resetAll();

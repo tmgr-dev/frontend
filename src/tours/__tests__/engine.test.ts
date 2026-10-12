@@ -166,6 +166,14 @@ describe('engine facade', () => {
 		expect(h.engine.api.onboarding.value?.tips_mode).toBe('off');
 	});
 
+	it('setHubHidden persists and updates onboarding state', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.setHubHidden(true);
+		expect(h.api.putPreferences).toHaveBeenCalledWith({ hub_hidden: true });
+		expect(h.engine.api.onboarding.value?.hub_hidden).toBe(true);
+	});
+
 	it('resetAll abandons the active tour, clears state and bumps the generation', async () => {
 		const h = make();
 		await h.engine.init();
