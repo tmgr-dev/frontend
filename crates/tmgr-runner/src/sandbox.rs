@@ -92,10 +92,14 @@ const HOME_DENY: &[&str] = &[
     ".config/google-chrome",
     ".config/chromium",
     ".local/share/keyrings",
+    ".cargo/credentials",
+    ".cargo/credentials.toml",
 ];
 
 const HOME_READ: &[&str] = &[
-    ".cargo",
+    ".cargo/bin",
+    ".cargo/registry",
+    ".cargo/git",
     ".rustup",
     ".nvm",
     ".volta",
@@ -812,12 +816,13 @@ mod tests {
     #[test]
     fn plan_lists_deny_and_allow_roots() {
         let f = fx();
-        fs::create_dir_all(f.spec.real_home.join(".cargo")).unwrap();
+        fs::create_dir_all(f.spec.real_home.join(".cargo/registry")).unwrap();
         let p = plan(&f.spec).unwrap().paths;
         assert!(p.deny.contains(&p.real_home.join(".ssh")));
         assert!(p.deny.contains(&p.runner_dir));
         assert!(p.deny.contains(&p.home.parent().unwrap().to_path_buf()));
-        assert!(p.read.contains(&p.real_home.join(".cargo")));
+        assert!(p.read.contains(&p.real_home.join(".cargo/registry")));
+        assert!(!p.read.contains(&p.real_home.join(".cargo")));
         assert!(!p.read.contains(&p.real_home.join(".nvm")));
         assert_eq!(p.write.len(), 2);
     }

@@ -23,7 +23,7 @@ is refused. Per-run homes must live in a dedicated directory `<homes>/<session i
 | | macOS (Seatbelt, `sandbox-exec -p`) | Linux (Landlock, needs ABI >= 6) |
 |---|---|---|
 | Read | everything except the real home; inside the real home only the working dir, the per-run home and existing toolchain dirs | `/usr /bin /sbin /lib* /etc /opt /nix /snap /proc /sys /run/systemd/resolve`, the working dir, the per-run home, toolchains |
-| Toolchains (read-only) | `.cargo .rustup .nvm .volta .bun .deno .local/bin .local/share/mise .local/share/pnpm .sdkman .pyenv .rbenv .npm` under the real home, when they exist | same |
+| Toolchains (read-only) | `.cargo/bin .cargo/registry .cargo/git .rustup .nvm .volta .bun .deno .local/bin .local/share/mise .local/share/pnpm .sdkman .pyenv .rbenv .npm` under the real home, when they exist | same |
 | Write | working dir, per-run home (includes the per-run `tmp`), `/dev/null /dev/tty /dev/ttys* /dev/ptmx /dev/fd` | working dir, per-run home, `/dev/null zero urandom random tty ptmx pts full` |
 | Execute | everywhere readable | the read roots above and the working dir / home |
 | Signals | own sandbox only (`deny signal` + `allow signal (target same-sandbox)`) | own domain only (Landlock `Scope::Signal`) |
