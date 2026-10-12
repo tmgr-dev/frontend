@@ -69,6 +69,7 @@ describe('index.html analytics', () => {
 		['/login/github?code=x&state=y', true],
 		['/password/reset?token=t', true],
 		['/email/verify?token=t', true],
+		['/login#token=t', true],
 		['/login', false],
 		['/register', false],
 		['/workspaces/invitations', false],

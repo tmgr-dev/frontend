@@ -11,6 +11,6 @@ export const carriesSecret = (fullPath: string): boolean => {
 	const path = fullPath.split(/[?#]/)[0];
 	return (
 		isAuthPath(path) &&
-		(fullPath.includes('?') || /^\/workspaces\/invitations\/[^/]/i.test(path))
+		(/[?#]/.test(fullPath) || /^\/workspaces\/invitations\/[^/]/i.test(path))
 	);
 };

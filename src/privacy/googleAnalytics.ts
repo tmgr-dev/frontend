@@ -92,7 +92,7 @@ export const startGoogleAnalytics = ({
 		if (store.get().analytics === 'granted')
 			w[flag] = isAuthPath(win.location.pathname);
 	};
-	win.addEventListener('popstate', onPopState);
+	win.addEventListener('popstate', onPopState, { capture: true });
 
 	apply(store.get().analytics);
 	onNavigate?.((pathname) => {
@@ -101,6 +101,6 @@ export const startGoogleAnalytics = ({
 	const unsubscribe = store.subscribe((record) => apply(record.analytics));
 	return () => {
 		unsubscribe();
-		win.removeEventListener('popstate', onPopState);
+		win.removeEventListener('popstate', onPopState, { capture: true });
 	};
 };
