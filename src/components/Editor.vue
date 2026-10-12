@@ -1,49 +1,26 @@
 <script setup lang="ts">
 	import '@/assets/styles/md-editor.css';
-	import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 	import { EditorView } from '@codemirror/view';
-	import { ExposeParam, MdEditor, config } from 'md-editor-v3';
-	import { onBeforeUnmount, onMounted, ref } from 'vue';
+	import { MdEditor, config } from 'md-editor-v3';
+	import { onBeforeUnmount } from 'vue';
 	import store from '../store';
-
-	interface Props {
-		modelValue: string;
-		showPreview?: boolean;
-	}
 
 	config({
 		editorExtensions: { screenfull: { instance: { isEnabled: false } as any } },
 	});
 
-	const props = defineProps<Props>();
 	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
 	const value = defineModel();
-	const editorRef = ref<ExposeParam>();
-	const editorPreviewActive = ref(false);
-
-	const togglePreview = () => {
-		editorPreviewActive.value = !editorPreviewActive.value;
-		editorRef.value?.togglePreviewOnly();
-	};
-
 	onBeforeUnmount(() => {
 		const dom = document.querySelector<HTMLElement>(
 			`#${editorId} .cm-editor`,
 		);
 		if (dom) EditorView.findFromDOM(dom)?.destroy();
 	});
-
-	onMounted(() => {
-		if (props.showPreview) {
-			editorPreviewActive.value = true;
-			editorRef.value?.togglePreviewOnly(true);
-		}
-	});
 </script>
 
 <template>
 	<MdEditor
-		ref="editorRef"
 		:editor-id="editorId"
 		v-model="value"
 		:preview="false"
@@ -66,23 +43,8 @@
 			'catalog',
 			'github',
 		]"
-		:footers="['=', 0]"
-	>
-		<template #defFooters>
-			<button
-				@click="togglePreview"
-				type="button"
-				class="flex h-full items-center gap-1.5 bg-gray-200/60 px-2 transition hover:bg-gray-200/90 dark:bg-gray-800/80"
-			>
-				<EyeSlashIcon
-					v-if="editorPreviewActive"
-					class="size-3.5 stroke-gray-500"
-				/>
-				<EyeIcon v-else class="size-3.5 stroke-gray-500" />
-				<span class="text-dark-400">Preview</span>
-			</button>
-		</template>
-	</MdEditor>
+		:footers="[]"
+	/>
 </template>
 
 <style>
