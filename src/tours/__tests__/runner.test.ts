@@ -326,10 +326,9 @@ describe('TourRunner', () => {
 		expect(h.saves.pop()[1].status).toBe('paused');
 	});
 
-	it('goes back to the step route once when the app redirects elsewhere right after it navigated', async () => {
+	it('goes back to the step route once when the app redirects elsewhere before the step was shown', async () => {
 		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
 		const h = setup([t]);
-		h.present.add('a.b');
 		await h.runner.start('t.one', 'hub');
 		expect(h.nav).toHaveLength(1);
 		h.setRoute('Other');
@@ -341,7 +340,7 @@ describe('TourRunner', () => {
 		expect(h.last()).not.toBeNull();
 	});
 
-	it('does not pull the user back after the step route was reached and they clicked away', async () => {
+	it('does not pull the user back once the step was shown and they clicked away', async () => {
 		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
 		const h = setup([t]);
 		h.present.add('a.b');

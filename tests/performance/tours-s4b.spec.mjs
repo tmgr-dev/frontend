@@ -106,7 +106,9 @@ for (const size of SIZES) {
   e2e(`hub lists every S4b tour as startable with all modules on at ${size.name}`, async ({ page }) => {
     const { errors } = await boot(page, size);
     await page.goto('/demo/getting-started');
+    await expect(page.locator('[data-tour-id="graph.enable"]')).toHaveCount(0);
     for (const tour of TOURS) {
+      if (tour.graphOff) continue;
       const start = hubStart(page, tour.id);
       if (mobile && !tour.mobile) await expect(start, `${tour.id} unavailable: platform`).toHaveCount(0);
       else await expect(start, tour.id).toBeVisible();

@@ -207,10 +207,7 @@ export class TourRunner {
     if (!cur) return;
     const route = cur.tour.steps[cur.idx].route;
     if (!route) return;
-    if (name === route.name && this.queryMatches(route)) {
-      this.routeReached = true;
-      return;
-    }
+    if (name === route.name && this.queryMatches(route)) return;
     if (this.deps.now() - this.navigatedAt < 3000) {
       if (!this.renavigated && !this.routeReached) {
         this.renavigated = true;
@@ -318,8 +315,6 @@ export class TourRunner {
       this.renavigated = false;
       this.routeReached = false;
       this.deps.navigate(step.route);
-    } else if (step.route) {
-      this.routeReached = true;
     }
 
     if (pickAnchorName(step, this.deps.mobile())) {
@@ -340,6 +335,7 @@ export class TourRunner {
       }
       cur.anchorEl = anchor;
     }
+    this.routeReached = true;
 
     const isWait = step.type === 'wait';
     if (isWait && this.alreadyDone(step)) {
