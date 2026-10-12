@@ -196,11 +196,20 @@ export function createToursStore(deps: ToursStoreDeps): ToursStore {
         : current.tours_generation + 1;
     },
 
-    applyIntent() {},
+    applyIntent(intent, options) {
+      const current = ensure();
+      current.intent = intent;
+      if (options?.invited !== undefined) current.invited = options.invited;
+    },
 
-    async setChecklistHidden() {},
+    async setChecklistHidden(hidden) {
+      return this.setPreferences({ checklist_hidden: hidden });
+    },
 
-    patchFacts() {},
+    patchFacts(facts) {
+      const current = ensure();
+      current.facts = { ...current.facts, ...facts };
+    },
 
     async flush() {
       await Promise.all([...queues.values()]);

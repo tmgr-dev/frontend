@@ -16,6 +16,7 @@ export interface PreferencesWrite {
 
 interface HttpClient {
   get(url: string, config?: unknown): Promise<{ data: unknown }>;
+  post(url: string, body?: unknown): Promise<{ data: unknown }>;
   put(url: string, body?: unknown): Promise<{ data: unknown }>;
   delete(url: string): Promise<{ data: unknown }>;
 }
@@ -53,14 +54,23 @@ export function createOnboardingApi(client: HttpClient): OnboardingApi {
     async resetTours() {
       return unwrap(await client.delete('onboarding/tours'));
     },
-    async setIntent() {
-      throw new Error('not implemented');
+    async setIntent(intent, options) {
+      const body: Record<string, unknown> = { intent };
+      if (options?.seed !== undefined) body.seed = options.seed;
+      return unwrap(await client.post('onboarding/intent', body));
     },
-    async fetchFacts() {
-      throw new Error('not implemented');
+    async fetchFacts(keys, taskId) {
+      const params: Record<string, unknown> = { keys: keys.join(',') };
+      if (taskId !== undefined) params.task_id = taskId;
+      const body = unwrap(await client.get('onboarding/facts', { params }));
+      return body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as OnboardingFacts)
+        : {};
     },
     async removeStarterTasks() {
-      throw new Error('not implemented');
+      const body = unwrap(await client.delete('onboarding/starter-tasks'));
+      const removed = Number((body as { removed?: unknown } | null)?.removed);
+      return { removed: Number.isFinite(removed) ? removed : 0 };
     },
   };
 }
@@ -72,6 +82,7 @@ export function onboardingApi(): OnboardingApi {
   const lazy = async () => (await import('@/plugins/axios')).default;
   shared = createOnboardingApi({
     get: async (url, config) => (await lazy()).get(url, config as never),
+    post: async (url, body) => (await lazy()).post(url, body),
     put: async (url, body) => (await lazy()).put(url, body),
     delete: async (url) => (await lazy()).delete(url),
   });

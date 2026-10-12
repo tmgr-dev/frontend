@@ -82,7 +82,7 @@ const inertDeps = (): ToursHostDeps => {
   };
   const none = async () => ({});
   return {
-    api: createOnboardingApi({ get: none as never, put: none as never, delete: none as never }),
+    api: createOnboardingApi({ get: none as never, post: none as never, put: none as never, delete: none as never }),
     bus: tourBus,
     lease: {
       acquire: () => true,

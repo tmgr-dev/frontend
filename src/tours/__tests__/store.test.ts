@@ -194,3 +194,39 @@ describe('store', () => {
 		expect(Object.keys(store.state.value?.tours ?? {})).toEqual(['a']);
 	});
 });
+
+describe('store intent, checklist and facts', () => {
+	it('applyIntent sets the intent and invited flag optimistically', () => {
+		const store = make();
+		store.applyIntent('human', { invited: false });
+		expect(store.state.value?.intent).toBe('human');
+		expect(store.state.value?.invited).toBe(false);
+		store.applyIntent('agent');
+		expect(store.state.value?.intent).toBe('agent');
+		expect(store.state.value?.invited).toBe(false);
+	});
+
+	it('normalize keeps the invited flag', () => {
+		expect(normalizeOnboarding({ intent: null, invited: true }).invited).toBe(true);
+		expect(normalizeOnboarding({ intent: null }).invited).toBeUndefined();
+	});
+
+	it('setChecklistHidden saves and rolls back on failure', async () => {
+		const api = fakeApi();
+		const store = make(api);
+		await store.setChecklistHidden(true);
+		expect(api.putPreferences).toHaveBeenCalledWith({ checklist_hidden: true });
+		expect(store.state.value?.checklist_hidden).toBe(true);
+		api.putPreferences.mockRejectedValue(new Error('net'));
+		await expect(store.setChecklistHidden(false)).rejects.toThrow('net');
+		expect(store.state.value?.checklist_hidden).toBe(true);
+	});
+
+	it('patchFacts merges into the loaded facts without replacing others', async () => {
+		const store = make(fakeApi({ facts: { has_task: true } }));
+		await store.load();
+		store.patchFacts({ mcp_first_call_at: 'x' });
+		expect(store.state.value?.facts).toEqual({ has_task: true, mcp_first_call_at: 'x' });
+	});
+});
+
