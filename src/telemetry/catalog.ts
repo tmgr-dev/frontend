@@ -719,8 +719,7 @@ export const copyProps = (
 	name: EventName,
 	props: Record<string, unknown> = {},
 ): Record<string, string | number> | null => {
-	if (!validProps(name, props)) return null;
-	const copy: Record<string, string | number> = {};
-	for (const key of Object.keys(CATALOG.events[name])) copy[key] = props[key] as string | number;
-	return copy;
+	const snapshot: Record<string, unknown> = {};
+	for (const key of Object.keys(props)) snapshot[key] = props[key];
+	return validProps(name, snapshot) ? (snapshot as Record<string, string | number>) : null;
 };

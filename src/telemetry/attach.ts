@@ -1,23 +1,23 @@
-import { CONSENT_KEY, type ConsentStore } from '@/privacy/consent';
 import type { Telemetry } from './client';
+import type { UsageConsent } from './consent';
 import { IDENTITY_KEY } from './identity';
 
 export const attachTelemetry = (
 	telemetry: Telemetry,
-	store: ConsentStore,
+	usage: Pick<UsageConsent, 'subscribe'>,
 	win: Window,
 	onQuit?: (handler: () => void) => void,
 ): (() => void) => {
 	const flushNow = () => void telemetry.flush({ keepalive: true });
 	const onStorage = (event: StorageEvent) => {
-		if (event.key === null || event.key === CONSENT_KEY || event.key === IDENTITY_KEY) {
+		if (event.key === null || event.key === IDENTITY_KEY) {
 			telemetry.sync();
 		}
 	};
 	const onVisibility = () => {
 		if (win.document.visibilityState === 'hidden') flushNow();
 	};
-	const unsubscribe = store.subscribe(() => telemetry.sync());
+	const unsubscribe = usage.subscribe(() => telemetry.sync());
 	win.addEventListener('storage', onStorage);
 	win.addEventListener('pagehide', flushNow);
 	win.document.addEventListener('visibilitychange', onVisibility);

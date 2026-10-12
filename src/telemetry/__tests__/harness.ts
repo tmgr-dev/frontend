@@ -1,10 +1,10 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { CONSENT_KEY } from '@/privacy/consent';
-import { createTelemetry, type ChannelLike, type TelemetryDeps } from '../client';
+import { USAGE_KEY } from '../consent';
+import { createTelemetry, type TelemetryDeps } from '../client';
 
 export const BASE = 'https://api.example.test/api/';
 
-export class FakeChannel implements ChannelLike {
+export class FakeChannel {
 	static all: FakeChannel[] = [];
 	onmessage: ((event: unknown) => void) | null = null;
 	constructor(public name = 'tmgr-telemetry') {
@@ -22,11 +22,13 @@ export interface FetchCall {
 	init: RequestInit & { headers: Record<string, string> };
 }
 
-export const setConsent = (usage: 'granted' | 'denied' | null, usageGeneration: number) =>
-	localStorage.setItem(
-		CONSENT_KEY,
-		JSON.stringify({ analytics: null, usage, usageGeneration, updatedAt: null }),
-	);
+export const setConsent = (usage: 'granted' | 'denied' | null, generation: number) =>
+	usage === null
+		? localStorage.removeItem(USAGE_KEY)
+		: localStorage.setItem(USAGE_KEY, JSON.stringify({ on: usage === 'granted', generation }));
+
+export const receiptKeys = (storage: Storage = localStorage): string[] =>
+	Object.keys(storage).filter((key) => key.startsWith('tmgr:telemetry:receipt:'));
 
 export const makeClock = (start = Date.UTC(2026, 9, 12, 10, 37, 21)) => {
 	let time = start;
@@ -38,12 +40,14 @@ export interface Tab {
 	calls: FetchCall[];
 	respond: { status: number | 'network'; delay?: Promise<void> };
 	timers: { fn: () => void; ms: number; id: number; cleared: boolean }[];
+	later: { fn: () => void; ms: number }[];
 	clock: ReturnType<typeof makeClock>;
 }
 
 export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeClock()): Tab => {
 	const calls: FetchCall[] = [];
 	const timers: Tab['timers'] = [];
+	const later: Tab['later'] = [];
 	const respond: Tab['respond'] = { status: 204 };
 	const fetchFn = (async (url: string, init: FetchCall['init']) => {
 		calls.push({ url, init });
@@ -59,12 +63,12 @@ export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeCloc
 		baseUrl: BASE,
 		consent: {
 			read: () => {
-				const raw = JSON.parse(localStorage.getItem(CONSENT_KEY) ?? '{}');
-				return { on: raw.usage === 'granted', generation: raw.usageGeneration ?? 0 };
+				const raw = JSON.parse(localStorage.getItem(USAGE_KEY) ?? '{}');
+				return { on: raw.on === true, generation: raw.generation ?? 0 };
 			},
 			deny: () => {
-				const raw = JSON.parse(localStorage.getItem(CONSENT_KEY) ?? '{}');
-				setConsent('denied', (raw.usageGeneration ?? 0) + 1);
+				const raw = JSON.parse(localStorage.getItem(USAGE_KEY) ?? '{}');
+				setConsent('denied', (raw.generation ?? 0) + 1);
 			},
 		},
 		meta: () => ({
@@ -83,10 +87,10 @@ export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeCloc
 		clearInterval: (id) => {
 			timers[id as number].cleared = true;
 		},
-		channel: new FakeChannel(),
+		later: (fn, ms) => later.push({ fn, ms }),
 		...overrides,
 	});
-	return { telemetry, calls, respond, timers, clock };
+	return { telemetry, calls, respond, timers, later, clock };
 };
 
 export const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));

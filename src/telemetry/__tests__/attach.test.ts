@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
-import { createConsentStore } from '@/privacy/consent';
 import { attachTelemetry } from '../attach';
+import { createUsageConsent, USAGE_KEY } from '../consent';
 import { makeMeta, telemetryBaseUrl } from '../env';
 import { IDENTITY_KEY } from '../identity';
 import { FakeChannel, makeTab, setConsent, tick } from './harness';
@@ -20,7 +20,7 @@ describe('window wiring', () => {
 	it('flushes with keepalive when the page is hidden, only while sharing is on', async () => {
 		setConsent('granted', 1);
 		const tab = makeTab();
-		const store = createConsentStore(window);
+		const store = createUsageConsent(window);
 		const detach = attachTelemetry(tab.telemetry, store, window);
 		tab.telemetry.track('app_opened');
 		hide('visible');
@@ -42,7 +42,7 @@ describe('window wiring', () => {
 		setConsent('granted', 1);
 		const tab = makeTab();
 		let quit = () => {};
-		attachTelemetry(tab.telemetry, createConsentStore(window), window, (handler) => (quit = handler));
+		attachTelemetry(tab.telemetry, createUsageConsent(window), window, (handler) => (quit = handler));
 		tab.telemetry.track('app_opened');
 		quit();
 		await tick();
@@ -57,18 +57,18 @@ describe('window wiring', () => {
 	it('stops on a storage event from another tab and clears the queue', () => {
 		setConsent('granted', 1);
 		const tab = makeTab();
-		attachTelemetry(tab.telemetry, createConsentStore(window), window);
+		attachTelemetry(tab.telemetry, createUsageConsent(window), window);
 		tab.telemetry.track('app_opened');
 		expect(tab.telemetry.snapshot().pending).toBe(1);
 		setConsent('denied', 2);
-		window.dispatchEvent(new StorageEvent('storage', { key: 'tmgr:consent:v1' }));
+		window.dispatchEvent(new StorageEvent('storage', { key: USAGE_KEY }));
 		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 	});
 
 	it('does not start when attached without consent', () => {
 		const tab = makeTab();
-		attachTelemetry(tab.telemetry, createConsentStore(window), window);
+		attachTelemetry(tab.telemetry, createUsageConsent(window), window);
 		expect(tab.telemetry.snapshot().active).toBe(false);
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 	});

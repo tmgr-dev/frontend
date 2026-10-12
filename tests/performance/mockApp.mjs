@@ -14,12 +14,16 @@ export async function mockApp(
   } = {},
 ) {
   if (consent)
-    await page.addInitScript(() =>
+    await page.addInitScript(() => {
       localStorage.setItem(
         'tmgr:consent:v1',
-        JSON.stringify({ analytics: 'denied', usage: 'denied', updatedAt: null }),
-      ),
-    );
+        JSON.stringify({ analytics: 'denied', updatedAt: null }),
+      );
+      localStorage.setItem(
+        'tmgr:telemetry:consent',
+        JSON.stringify({ on: false, generation: 1 }),
+      );
+    });
   await page.routeWebSocket(/.*/, () => {});
   if (!account && !loginAs) {
     await page.route('**/api/**', async (route) => {

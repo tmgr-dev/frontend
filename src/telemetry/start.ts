@@ -1,8 +1,8 @@
-import { consentStore } from '@/privacy/consent';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 import { isCatalogRoute, type AccountMode } from './catalog';
 import { attachTelemetry } from './attach';
 import { createTelemetry } from './client';
+import { usageConsent } from './consent';
 import { makeMeta, telemetryBaseUrl } from './env';
 import { randomSecret, sha256Hex } from './identity';
 import { setTelemetry } from './index';
@@ -32,7 +32,7 @@ const webVersion = (): string =>
 export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 	const desktop = isDesktopApp();
 	const appVersion = desktop ? await desktopVersion() : webVersion();
-	const store = consentStore();
+	const usage = usageConsent();
 	const telemetry = createTelemetry({
 		storage: window.localStorage,
 		now: () => Date.now(),
@@ -43,10 +43,10 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 		),
 		consent: {
 			read: () => {
-				const record = store.read();
-				return { on: record.usage === 'granted', generation: record.usageGeneration };
+				const { on, generation } = usage.read();
+				return { on, generation };
 			},
-			deny: () => void store.set({ usage: 'denied' }),
+			deny: () => void usage.set(false),
 		},
 		meta: makeMeta({
 			win: window,
@@ -59,7 +59,8 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 		sha256: sha256Hex,
 		setInterval: (fn, ms) => window.setInterval(fn, ms),
 		clearInterval: (handle) => window.clearInterval(handle as number),
-		channel: typeof BroadcastChannel === 'function' ? new BroadcastChannel('tmgr-telemetry') : null,
+		later: (fn, ms) => void window.setTimeout(fn, ms),
+		locks: navigator.locks ?? null,
 	});
 	setTelemetry(telemetry);
 	let opened = false;
@@ -70,7 +71,7 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 	});
 	attachTelemetry(
 		telemetry,
-		store,
+		usage,
 		window,
 		desktop
 			? (handler) => {

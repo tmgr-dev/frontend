@@ -1,8 +1,8 @@
 /** @jest-environment jsdom */
 import { createHash } from 'node:crypto';
 import { QUEUE_KEY } from '../client';
-import { IDENTITY_KEY, RECEIPTS_KEY } from '../identity';
-import { BASE, FakeChannel, makeClock, makeTab, setConsent, tick } from './harness';
+import { IDENTITY_KEY } from '../identity';
+import { BASE, FakeChannel, makeClock, makeTab, receiptKeys, setConsent, tick } from './harness';
 
 beforeEach(() => {
 	localStorage.clear();
@@ -190,9 +190,8 @@ describe('withdrawal', () => {
 		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 		expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
-		expect(stored(RECEIPTS_KEY)).toEqual([
-			expect.objectContaining({ install_id: id.install_id, secret: id.secret }),
-		]);
+		expect(receiptKeys()).toEqual([`tmgr:telemetry:receipt:${id.install_id}`]);
+		expect(stored(receiptKeys()[0]).secret).toBe(id.secret);
 	});
 
 	it('does not send when consent flips while the secret hash is being computed', async () => {
@@ -241,20 +240,6 @@ describe('withdrawal', () => {
 		a.telemetry.sync();
 		expect(a.telemetry.snapshot().active).toBe(false);
 	});
-
-	it('stops a second tab on a channel message, but only because storage says so', () => {
-		const a = makeTab();
-		const b = makeTab();
-		a.telemetry.sync();
-		b.telemetry.sync();
-		new FakeChannel().postMessage('stop');
-		expect(a.telemetry.snapshot().active).toBe(true);
-		expect(b.telemetry.snapshot().active).toBe(true);
-		setConsent('denied', 2);
-		new FakeChannel().postMessage('stop');
-		expect(a.telemetry.snapshot().active).toBe(false);
-		expect(b.telemetry.snapshot().active).toBe(false);
-	});
 });
 
 describe('receipts and deletion', () => {
@@ -277,19 +262,19 @@ describe('receipts and deletion', () => {
 		expect(tab.calls[0].url).toBe(`${BASE}t/installs/${id.install_id}`);
 		expect(tab.calls[0].init.method).toBe('DELETE');
 		expect(tab.calls[0].init.headers['X-Telemetry-Secret']).toBe(id.secret);
-		expect(stored(RECEIPTS_KEY)).toEqual([]);
+		expect(receiptKeys()).toEqual([]);
 	});
 
 	it('treats 404 as done and keeps the receipt on 500', async () => {
 		const { tab } = await optOutWithReceipt();
 		tab.respond.status = 500;
 		expect(await tab.telemetry.deleteSent()).toEqual({ deleted: 0, failed: 1 });
-		expect(stored(RECEIPTS_KEY)).toHaveLength(1);
+		expect(receiptKeys()).toHaveLength(1);
 		tab.respond.status = 'network';
 		expect(await tab.telemetry.deleteSent()).toEqual({ deleted: 0, failed: 1 });
 		tab.respond.status = 404;
 		expect(await tab.telemetry.deleteSent()).toEqual({ deleted: 1, failed: 0 });
-		expect(stored(RECEIPTS_KEY)).toEqual([]);
+		expect(receiptKeys()).toEqual([]);
 	});
 
 	it('stops collection before deleting while sharing is still on', async () => {
@@ -318,7 +303,7 @@ describe('receipts and deletion', () => {
 		const after = stored(IDENTITY_KEY);
 		expect(after.install_id).not.toBe(before.install_id);
 		expect(after.registered).toBe(false);
-		expect(stored(RECEIPTS_KEY)[0].install_id).toBe(before.install_id);
+		expect(receiptKeys()).toEqual([`tmgr:telemetry:receipt:${before.install_id}`]);
 	});
 
 	it('Reset ID does nothing while sharing is off', () => {
@@ -326,6 +311,6 @@ describe('receipts and deletion', () => {
 		const tab = makeTab();
 		tab.telemetry.resetId();
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
-		expect(localStorage.getItem(RECEIPTS_KEY)).toBeNull();
+		expect(receiptKeys()).toEqual([]);
 	});
 });

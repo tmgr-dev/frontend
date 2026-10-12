@@ -169,7 +169,9 @@ test('turning sharing off in Settings stops a second tab at once', async ({
   await second.waitForTimeout(800);
   expect(events.length).toBe(before);
   const receipts = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('tmgr:telemetry:receipts') ?? '[]'),
+    Object.keys(localStorage).filter((key) =>
+      key.startsWith('tmgr:telemetry:receipt:'),
+    ),
   );
   expect(receipts).toHaveLength(1);
 });

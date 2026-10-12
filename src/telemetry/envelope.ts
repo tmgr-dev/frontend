@@ -19,6 +19,7 @@ export interface QueuedEvent {
 	seq: number;
 	p: Record<string, unknown>;
 	m: EnvelopeMeta;
+	g: number;
 }
 
 export const hourStart = (ms: number): number => Math.floor(ms / 3_600_000) * 3600;
@@ -76,11 +77,12 @@ export const normalizeEntry = (raw: unknown): QueuedEvent | null => {
 	if (typeof e.n !== 'string' || !isKnownEvent(e.n)) return null;
 	if (!Number.isInteger(e.t) || (e.t as number) % 3600 !== 0 || (e.t as number) <= 0) return null;
 	if (!Number.isInteger(e.seq) || (e.seq as number) < 0 || (e.seq as number) > 1_000_000) return null;
+	if (!Number.isInteger(e.g) || (e.g as number) < 0) return null;
 	const p = copyProps(e.n, e.p as Record<string, unknown>);
 	const rawMeta = e.m as Record<string, unknown> | null;
 	const m = sanitizeMeta(rawMeta);
 	if (!p || !m || rawMeta?.app_version !== m.app_version) return null;
-	return { id: e.id, n: e.n, t: e.t as number, seq: e.seq as number, p, m };
+	return { id: e.id, n: e.n, t: e.t as number, seq: e.seq as number, p, m, g: e.g as number };
 };
 
 export const buildEnvelope = (

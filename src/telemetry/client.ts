@@ -22,11 +22,6 @@ export interface ConsentView {
 	generation: number;
 }
 
-export interface ChannelLike {
-	postMessage(data: unknown): void;
-	onmessage: ((event: never) => void) | null;
-}
-
 export interface TelemetryDeps {
 	storage: Storage;
 	now: () => number;
@@ -39,7 +34,7 @@ export interface TelemetryDeps {
 	sha256: (text: string) => Promise<string>;
 	setInterval: (fn: () => void, ms: number) => unknown;
 	clearInterval: (handle: unknown) => void;
-	channel?: ChannelLike | null;
+	later: (fn: () => void, ms: number) => void;
 	locks?: { request: (name: string, cb: () => unknown) => Promise<unknown> } | null;
 }
 
@@ -85,48 +80,55 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		}
 	};
 	let error: 'receipt' | null = null;
+	const noop = () => {};
 
 	const emit = () => listeners.forEach((fn) => fn());
 
+	const withLock = <T>(fn: () => T): Promise<unknown> =>
+		deps.locks ? deps.locks.request('tmgr-telemetry-queue', fn) : Promise.resolve().then(fn);
+
+	const storeQueue = (events: QueuedEvent[]) =>
+		safely(() => {
+			if (events.length) deps.storage.setItem(QUEUE_KEY, JSON.stringify({ events }));
+			else deps.storage.removeItem(QUEUE_KEY);
+		});
+
 	const persist = () => {
 		const ep = epoch;
-		const gen = generation;
-		const body = JSON.stringify({ generation: gen, events: queue });
+		const snapshot = queue.slice();
 		const write = () => {
 			if (ep !== epoch) return;
 			const consent = deps.consent.read();
-			if (!consent.on || consent.generation !== gen) return;
-			try {
-				deps.storage.setItem(QUEUE_KEY, body);
-			} catch {
-				// queue stays in memory
-			}
+			if (!consent.on) return;
+			storeQueue(snapshot.filter((e) => e.g === consent.generation));
 		};
-		chain = chain
-			.then(() => (deps.locks ? deps.locks.request('tmgr-telemetry-queue', write) : write()))
-			.then(
-				() => {},
-				() => {},
-			);
+		chain = chain.then(() => withLock(write)).then(noop, noop);
 	};
 
 	const fresh = (events: QueuedEvent[]) =>
 		events.filter((e) => e.t * 1000 >= deps.now() - MAX_AGE_MS);
 
-	const loadQueue = (): QueuedEvent[] => {
+	const readStoredQueue = (): QueuedEvent[] => {
 		try {
 			const data = JSON.parse(deps.storage.getItem(QUEUE_KEY) ?? 'null');
-			if (data?.generation === generation && Array.isArray(data.events)) {
-				const valid = data.events
-					.map(normalizeEntry)
-					.filter((e: QueuedEvent | null): e is QueuedEvent => e !== null);
-				return fresh(valid).slice(-MAX_QUEUE);
-			}
+			return Array.isArray(data?.events)
+				? data.events.map(normalizeEntry).filter((e: QueuedEvent | null): e is QueuedEvent => e !== null)
+				: [];
 		} catch {
-			// unreadable queue is discarded
+			return [];
 		}
-		safely(() => deps.storage.removeItem(QUEUE_KEY));
-		return [];
+	};
+
+	const purgeStored = () => {
+		const consent = deps.consent.read();
+		if (!consent.on) return safely(() => deps.storage.removeItem(QUEUE_KEY));
+		storeQueue(fresh(readStoredQueue()).filter((e) => e.g === consent.generation));
+	};
+
+	const loadQueue = (gen: number): QueuedEvent[] => {
+		const events = fresh(readStoredQueue()).filter((e) => e.g === gen).slice(-MAX_QUEUE);
+		storeQueue(events);
+		return events;
 	};
 
 	const stop = () => {
@@ -141,8 +143,9 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		inflight?.abort();
 		inflight = null;
 		safely(() => deps.storage.removeItem(QUEUE_KEY));
+		chain = chain.then(() => withLock(purgeStored)).then(noop, noop);
+		deps.later(() => void withLock(purgeStored).then(noop, noop), 1000);
 		error = identities.retire() ? null : 'receipt';
-		safely(() => deps.channel?.postMessage('stop'));
 		emit();
 	};
 
@@ -152,7 +155,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		epoch += 1;
 		active = true;
 		generation = gen;
-		queue = loadQueue();
+		queue = loadQueue(gen);
 		timer = deps.setInterval(() => void flush(), FLUSH_INTERVAL_MS);
 		emit();
 	};
@@ -209,6 +212,8 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 				sync();
 				return;
 			}
+			queue = queue.filter((e) => e.g === consent.generation);
+			if (!queue.length) return;
 			const batch = pickBatch(queue);
 			const response = await deps.fetch(endpoint('t/events'), {
 				method: 'POST',
@@ -268,6 +273,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 			seq: seq++,
 			p: props,
 			m,
+			g: generation,
 		};
 		queue.push(entry);
 		if (queue.length > MAX_QUEUE) queue = queue.slice(-MAX_QUEUE);
@@ -299,7 +305,7 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 				);
 				if (response.status === 204 || response.status === 404) {
 					identities.removeReceipt(receipt.install_id);
-					if (identities.read()?.install_id === receipt.install_id) identities.dropIdentity();
+					identities.dropIdentity(receipt.install_id);
 					result.deleted += 1;
 				} else result.failed += 1;
 			} catch {
@@ -323,7 +329,6 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 	};
 
 	identities.receipts();
-	if (deps.channel) deps.channel.onmessage = () => sync();
 
 	return {
 		track,

@@ -28,7 +28,7 @@ beforeEach(() => {
 describe('consent store', () => {
 	it('defaults to no choice', () => {
 		const store = createConsentStore(freshWindow());
-		expect(store.get()).toEqual({ analytics: null, usage: null, usageGeneration: 0, updatedAt: null });
+		expect(store.get()).toEqual({ analytics: null, updatedAt: null });
 	});
 
 	it('persists a choice and notifies subscribers', () => {
@@ -37,7 +37,6 @@ describe('consent store', () => {
 		store.subscribe((r) => seen.push(r.analytics));
 		store.set({ analytics: 'granted' });
 		expect(store.get().analytics).toBe('granted');
-		expect(store.get().usage).toBeNull();
 		expect(JSON.parse(localStorage.getItem(CONSENT_KEY)!).analytics).toBe('granted');
 		expect(seen).toEqual(['granted']);
 	});
@@ -45,10 +44,10 @@ describe('consent store', () => {
 	it('reads an existing record and ignores garbage values', () => {
 		localStorage.setItem(
 			CONSENT_KEY,
-			JSON.stringify({ analytics: 'denied', usage: 'maybe', updatedAt: 5 }),
+			JSON.stringify({ analytics: 'denied', usage: 'granted', updatedAt: 5 }),
 		);
 		const store = createConsentStore(freshWindow());
-		expect(store.get()).toEqual({ analytics: 'denied', usage: null, usageGeneration: 0, updatedAt: null });
+		expect(store.get()).toEqual({ analytics: 'denied', updatedAt: null });
 	});
 
 	it('survives corrupt JSON', () => {
@@ -106,29 +105,5 @@ describe('consent store', () => {
 		FakeChannel.all[1].postMessage(stale);
 		expect(a.get().analytics).toBe('denied');
 		expect(b.get().analytics).toBe('denied');
-	});
-});
-
-describe('usage generation', () => {
-	it('bumps only when the usage answer changes', () => {
-		const store = createConsentStore(freshWindow());
-		store.set({ usage: 'granted' });
-		store.set({ analytics: 'granted' });
-		store.set({ usage: 'granted' });
-		expect(store.get().usageGeneration).toBe(1);
-		store.set({ usage: 'denied' });
-		store.set({ usage: 'granted' });
-		expect(store.get().usageGeneration).toBe(3);
-	});
-
-	it('builds on what another tab wrote, not on a stale copy', () => {
-		const store = createConsentStore(freshWindow());
-		store.get();
-		localStorage.setItem(
-			CONSENT_KEY,
-			JSON.stringify({ analytics: null, usage: 'granted', usageGeneration: 4, updatedAt: null }),
-		);
-		store.set({ usage: 'denied' });
-		expect(store.get().usageGeneration).toBe(5);
 	});
 });

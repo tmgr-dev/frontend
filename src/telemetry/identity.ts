@@ -1,5 +1,5 @@
 export const IDENTITY_KEY = 'tmgr:telemetry:identity';
-export const RECEIPTS_KEY = 'tmgr:telemetry:receipts';
+export const RECEIPT_PREFIX = 'tmgr:telemetry:receipt:';
 export const RECEIPT_TTL_MS = 30 * 24 * 3600 * 1000;
 
 export interface Identity {
@@ -11,7 +11,6 @@ export interface Identity {
 export interface Receipt {
 	install_id: string;
 	secret: string;
-	created: number;
 }
 
 export interface IdentityDeps {
@@ -50,6 +49,14 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 		}
 	};
 
+	const remove = (key: string) => {
+		try {
+			storage.removeItem(key);
+		} catch {
+			// pruned on a later access
+		}
+	};
+
 	const read = (): Identity | null => {
 		const data = parseJson(storage.getItem(IDENTITY_KEY)) as Partial<Identity> | null;
 		return data && typeof data.install_id === 'string' && typeof data.secret === 'string'
@@ -57,35 +64,45 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 			: null;
 	};
 
-	const receipts = (): Receipt[] => {
-		const data = parseJson(storage.getItem(RECEIPTS_KEY));
-		if (!Array.isArray(data)) return [];
-		const live = data.filter(
-			(r): r is Receipt =>
-				typeof r?.install_id === 'string' &&
-				typeof r?.secret === 'string' &&
-				typeof r?.created === 'number' &&
-				now() - r.created < RECEIPT_TTL_MS,
-		);
-		if (live.length !== data.length) {
-			if (live.length) write(RECEIPTS_KEY, live);
-			else
-				try {
-					storage.removeItem(RECEIPTS_KEY);
-				} catch {
-					// pruned on the next access
-				}
+	const readReceipt = (installId: string): Receipt | null => {
+		const key = RECEIPT_PREFIX + installId;
+		const data = parseJson(storage.getItem(key)) as { secret?: unknown; expiresAt?: unknown } | null;
+		if (!data || typeof data.secret !== 'string' || typeof data.expiresAt !== 'number') {
+			if (storage.getItem(key) !== null) remove(key);
+			return null;
 		}
-		return live;
+		if (data.expiresAt <= now()) {
+			remove(key);
+			return null;
+		}
+		return { install_id: installId, secret: data.secret };
+	};
+
+	const receipts = (): Receipt[] => {
+		const ids: string[] = [];
+		for (let i = 0; i < storage.length; i += 1) {
+			const key = storage.key(i);
+			if (key?.startsWith(RECEIPT_PREFIX)) ids.push(key.slice(RECEIPT_PREFIX.length));
+		}
+		return ids.map(readReceipt).filter((r): r is Receipt => r !== null);
 	};
 
 	const addReceipt = (identity: Identity): boolean => {
-		const list = receipts().filter((r) => r.install_id !== identity.install_id);
-		list.push({ install_id: identity.install_id, secret: identity.secret, created: now() });
-		if (!write(RECEIPTS_KEY, list)) return false;
-		return receipts().some(
-			(r) => r.install_id === identity.install_id && r.secret === identity.secret,
-		);
+		if (!write(RECEIPT_PREFIX + identity.install_id, { secret: identity.secret, expiresAt: now() + RECEIPT_TTL_MS })) {
+			return false;
+		}
+		return readReceipt(identity.install_id)?.secret === identity.secret;
+	};
+
+	const removeIfSame = (installId: string): boolean => {
+		if (read()?.install_id === installId) {
+			try {
+				storage.removeItem(IDENTITY_KEY);
+			} catch {
+				return false;
+			}
+		}
+		return true;
 	};
 
 	const create = (): Identity | null => {
@@ -99,34 +116,23 @@ export const createIdentityStore = ({ storage, now, uuid, secret }: IdentityDeps
 		receipts,
 		markRegistered(registered: boolean) {
 			const current = read();
-			if (current) write(IDENTITY_KEY, { ...current, registered });
+			if (current && read()?.install_id === current.install_id) {
+				write(IDENTITY_KEY, { ...current, registered });
+			}
 		},
 		retire(): boolean {
 			const current = read();
 			if (!current) return true;
-			if (!addReceipt(current)) return false;
-			try {
-				storage.removeItem(IDENTITY_KEY);
-			} catch {
-				return false;
-			}
-			return true;
+			return addReceipt(current) && removeIfSame(current.install_id);
 		},
 		rotate(): Identity | null {
 			return this.retire() ? create() : null;
 		},
-		dropIdentity() {
-			try {
-				storage.removeItem(IDENTITY_KEY);
-			} catch {
-				// still sending is off because consent is off
-			}
+		dropIdentity(installId: string) {
+			removeIfSame(installId);
 		},
 		removeReceipt(installId: string) {
-			write(
-				RECEIPTS_KEY,
-				receipts().filter((r) => r.install_id !== installId),
-			);
+			remove(RECEIPT_PREFIX + installId);
 		},
 	};
 };

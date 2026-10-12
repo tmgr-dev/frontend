@@ -22,12 +22,11 @@ export default defineConfig({
           localStorage: [
             {
               name: 'tmgr:consent:v1',
-              value: JSON.stringify({
-                analytics: 'denied',
-                usage: 'denied',
-                usageGeneration: 1,
-                updatedAt: null,
-              }),
+              value: JSON.stringify({ analytics: 'denied', updatedAt: null }),
+            },
+            {
+              name: 'tmgr:telemetry:consent',
+              value: JSON.stringify({ on: false, generation: 1 }),
             },
           ],
         },
