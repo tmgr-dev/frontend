@@ -54,6 +54,12 @@ export function rememberFocus(): () => void {
       previous.isConnected
     ) {
       previous.focus({ preventScroll: true });
+      return;
+    }
+    const heading = document.querySelector<HTMLElement>('h1');
+    if (heading && previous instanceof HTMLElement && previous !== document.body) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
     }
   };
 }

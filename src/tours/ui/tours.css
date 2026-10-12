@@ -18,6 +18,14 @@
   width: min(400px, calc(100vw - 32px));
 }
 
+.tour-host--floating {
+  left: auto;
+  top: auto;
+  right: 24px;
+  bottom: 24px;
+  width: min(400px, calc(100vw - 32px));
+}
+
 .tour-host--sheet {
   left: 0;
   right: 0;

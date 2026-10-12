@@ -195,6 +195,15 @@ describe('focus helpers', () => {
     expect(() => restore()).not.toThrow();
   });
 
+  it('falls back to the page heading when the remembered element is gone', () => {
+    document.body.innerHTML = '<h1 id="h">Page</h1><button id="a"></button>';
+    (document.getElementById('a') as HTMLElement).focus();
+    const restore = rememberFocus();
+    document.getElementById('a')?.remove();
+    restore();
+    expect(document.activeElement?.id).toBe('h');
+  });
+
   it('focuses the anchor or its first focusable descendant', () => {
     document.body.innerHTML =
       '<button id="a"></button><div id="wrap"><span></span><input id="in"></div><div id="none"></div>';

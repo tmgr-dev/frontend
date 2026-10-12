@@ -62,8 +62,10 @@ export function createPassiveAdapter(): OverlayAdapter {
         backdrop.className = 'tour-backdrop';
         document.body.appendChild(backdrop);
         nodes.push(backdrop);
+        host.classList.add('tour-host--centered');
+      } else {
+        host.classList.add(sheet ? 'tour-host--sheet' : 'tour-host--floating');
       }
-      host.classList.add('tour-host--centered');
     } else if (anchorEl) {
       const ring = document.createElement('div');
       ring.className = 'tour-ring';
