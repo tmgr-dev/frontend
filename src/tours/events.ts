@@ -161,7 +161,12 @@ export function matchRequest(
       return [
         event('page.created', {
           pageId: entityId(responseData),
-          type: typeof page.type === 'string' ? page.type : null,
+          type:
+            typeof page.type === 'string'
+              ? page.type
+              : typeof parsed.type === 'string'
+                ? parsed.type
+                : null,
         }),
       ];
     }

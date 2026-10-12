@@ -131,6 +131,10 @@ describe('matchRequest S4b mappings', () => {
 		expect(event.payload).toEqual({ pageId: 8, type: 'person' });
 		const [bare] = run('POST', 'pages', {}, {});
 		expect(bare.payload).toEqual({ pageId: null, type: null });
+		const [fromBody] = run('POST', 'pages', { type: 'context', title: 'x' }, { data: { id: 9 } });
+		expect(fromBody.payload).toEqual({ pageId: 9, type: 'context' });
+		const [responseWins] = run('POST', 'pages', { type: 'page' }, { data: { id: 9, type: 'person' } });
+		expect(responseWins.payload).toEqual({ pageId: 9, type: 'person' });
 	});
 
 	it('page.context_saved only for PATCH of a context page', () => {
