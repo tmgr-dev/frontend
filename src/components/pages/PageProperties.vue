@@ -11,7 +11,7 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-author"
 			>
-				<span class="text-xs">Author</span>
+				<span>Author</span>
 				<AuthorBadge :author="author" :size="18" />
 			</span>
 			<span
@@ -19,9 +19,9 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-updated-by"
 			>
-				<span class="text-xs">Edited by</span>
+				<span>Edited by</span>
 				<AuthorBadge :author="updatedBy" :size="18" />
-				<span class="text-xs">{{ updatedAt }}</span>
+				<span>{{ updatedAt }}</span>
 			</span>
 		</div>
 

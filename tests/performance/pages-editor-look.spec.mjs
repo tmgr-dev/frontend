@@ -895,6 +895,41 @@ test.describe('QA verification', () => {
       .toBe('hidden');
   });
 
+  test('block handle can be reached with a real pointer path from the text', async ({
+    page,
+  }) => {
+    await page.setViewportSize(VIEWPORTS.desktop);
+    await setupPages(page, {
+      richBody: 'Alpha line\n\nBeta line\n\nGamma line\n',
+    });
+    await openPage(page, 'rich-page', 1);
+    const para = (text) =>
+      page.locator('.page-editor .ProseMirror p', { hasText: text });
+    const handle = page.locator(
+      '.page-editor .milkdown-block-handle[data-show="true"]',
+    );
+    const centerY = async (locator) => {
+      const box = await locator.boundingBox();
+      return box.y + box.height / 2;
+    };
+    const gamma = await para('Gamma line').boundingBox();
+    await page.mouse.move(gamma.x + 40, gamma.y + gamma.height / 2);
+    await expect(handle).toBeVisible();
+    const plus = await handle.locator('.operation-item').first().boundingBox();
+    const betaY = await centerY(para('Beta line'));
+    await page.mouse.move(plus.x + plus.width / 2, betaY, { steps: 40 });
+    await expect
+      .poll(async () => Math.abs((await centerY(handle)) - betaY), {
+        message: 'handle follows the row the pointer is on in the gutter',
+      })
+      .toBeLessThan(4);
+    await expect(handle).toHaveCSS('visibility', 'visible');
+    await handle.locator('.operation-item').first().click();
+    await expect(
+      page.locator('.page-editor .milkdown-slash-menu[data-show="true"]'),
+    ).toBeVisible();
+  });
+
   test('block handle drag moves the block', async ({ page }) => {
     await page.setViewportSize(VIEWPORTS.desktop);
     const state = await setupPages(page, {

@@ -743,6 +743,16 @@
 	transition: opacity 0.15s;
 }
 
+/* The handle sits in the card's left gutter, but Crepe only tracks the pointer
+   over .ProseMirror: stretch it into the gutter so the handle follows the row
+   under the pointer there instead of hiding on the way to it. */
+@media (min-width: 768px) {
+	.page-editor .milkdown .ProseMirror {
+		margin-left: -3.5rem;
+		padding-left: 3.5rem;
+	}
+}
+
 /* Crepe leaves the last handle shown after the pointer leaves an editor. */
 .page-editor:not(:hover) .milkdown .milkdown-block-handle {
 	visibility: hidden;
