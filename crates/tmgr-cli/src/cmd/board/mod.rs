@@ -143,7 +143,7 @@ impl Drop for TerminalGuard {
 
 fn spawn_worker(
     conn: Conn,
-    ws_id: u64,
+    ws_id: i64,
     category: Option<u64>,
     effects: mpsc::Receiver<Effect>,
     results: mpsc::Sender<Msg>,
@@ -176,7 +176,7 @@ fn event_loop(
     mut app: App,
     theme: &Theme,
     conn: Conn,
-    ws_id: u64,
+    ws_id: i64,
     category: Option<u64>,
 ) -> Result<()> {
     let (eff_tx, eff_rx) = mpsc::channel();

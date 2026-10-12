@@ -68,7 +68,7 @@ pub struct Client {
     store: Option<CredentialStore>,
     verbose: bool,
     warnings: RefCell<Vec<Warning>>,
-    workspace_header: Cell<Option<u64>>,
+    workspace_header: Cell<Option<i64>>,
 }
 
 impl Client {
@@ -118,7 +118,7 @@ impl Client {
             .and_then(|t| t.expires_at.clone())
     }
 
-    pub fn set_workspace_header(&self, workspace_id: Option<u64>) {
+    pub fn set_workspace_header(&self, workspace_id: Option<i64>) {
         self.workspace_header.set(workspace_id);
     }
 
@@ -413,7 +413,7 @@ impl Client {
         items(self.request(Method::GET, "/api/workspaces", &[], None, "workspaces:read")?)
     }
 
-    pub fn statuses(&self, workspace_id: u64) -> Result<Vec<Status>> {
+    pub fn statuses(&self, workspace_id: i64) -> Result<Vec<Status>> {
         items(self.request(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/statuses"),
@@ -423,7 +423,7 @@ impl Client {
         )?)
     }
 
-    pub fn categories(&self, workspace_id: u64) -> Result<Vec<Category>> {
+    pub fn categories(&self, workspace_id: i64) -> Result<Vec<Category>> {
         items(self.request(
             Method::GET,
             "/api/project_categories",
@@ -443,7 +443,7 @@ impl Client {
         )?))
     }
 
-    pub fn task_by_key(&self, key: &str, workspace_id: u64) -> Result<ApiTask> {
+    pub fn task_by_key(&self, key: &str, workspace_id: i64) -> Result<ApiTask> {
         if crate::refs::parse_key(key).is_none() {
             return Err(Error::usage("invalid task key"));
         }
@@ -468,7 +468,7 @@ impl Client {
 
     pub fn tasks_page(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         category_id: Option<u64>,
         status_id: Option<u64>,
         page: u64,
@@ -503,7 +503,7 @@ impl Client {
         })
     }
 
-    pub fn time_summary_total(&self, workspace_id: u64, from: &str, to: &str) -> Result<i64> {
+    pub fn time_summary_total(&self, workspace_id: i64, from: &str, to: &str) -> Result<i64> {
         let body = self.request(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/time-summary"),

@@ -16,7 +16,7 @@ fn failure(e: Error) -> Failure {
     Failure::new(e.kind, &e.message)
 }
 
-pub fn fetch(client: &Client, ws_id: u64, category: Option<u64>) -> Result<Snapshot, Error> {
+pub fn fetch(client: &Client, ws_id: i64, category: Option<u64>) -> Result<Snapshot, Error> {
     let statuses = client.statuses(ws_id)?;
     let mut tasks = Vec::new();
     let mut more = false;
@@ -37,7 +37,7 @@ pub fn fetch(client: &Client, ws_id: u64, category: Option<u64>) -> Result<Snaps
 
 fn fetch_status(
     client: &Client,
-    ws_id: u64,
+    ws_id: i64,
     category: Option<u64>,
     status: &Status,
 ) -> Result<(Vec<tmgr_core::models::ApiTask>, bool), Error> {
@@ -131,7 +131,7 @@ pub fn load_detail(client: &Client, id: u64) -> Result<Detail, Failure> {
     })
 }
 
-pub fn exec(client: &Client, ws_id: u64, category: Option<u64>, effect: Effect) -> Msg {
+pub fn exec(client: &Client, ws_id: i64, category: Option<u64>, effect: Effect) -> Msg {
     match effect {
         Effect::Refresh => Msg::Loaded(fetch(client, ws_id, category).map_err(failure)),
         Effect::LoadDetail(id) => Msg::Detail(id, Box::new(load_detail(client, id))),

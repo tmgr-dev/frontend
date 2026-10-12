@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Workspace {
-    pub id: u64,
+    pub id: i64,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -32,7 +32,7 @@ pub struct Category {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Person {
     #[serde(default)]
-    pub id: Option<u64>,
+    pub id: Option<i64>,
     #[serde(default)]
     pub name: Option<String>,
 }
@@ -55,7 +55,7 @@ pub struct ApiTask {
     #[serde(default)]
     pub category: Option<Category>,
     #[serde(default)]
-    pub workspace_id: Option<u64>,
+    pub workspace_id: Option<i64>,
     #[serde(default)]
     pub common_time: Option<i64>,
     #[serde(default, alias = "startTime")]
@@ -107,7 +107,7 @@ fn default_interval() -> u64 {
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeviceUser {
     #[serde(default)]
-    pub id: Option<u64>,
+    pub id: Option<i64>,
     #[serde(default)]
     pub name: String,
     #[serde(default)]

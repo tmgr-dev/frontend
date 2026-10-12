@@ -19,14 +19,14 @@ pub struct TaskView {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct UserView {
-    pub id: Option<u64>,
+    pub id: Option<i64>,
     pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SessionView {
     pub session_id: String,
-    pub workspace_id: Option<u64>,
+    pub workspace_id: Option<i64>,
     pub task: Option<TaskView>,
     pub state: String,
     pub state_since: Option<String>,
@@ -41,7 +41,7 @@ pub struct SessionView {
 
 pub struct PutBody<'a> {
     pub task: Option<&'a TaskRef>,
-    pub workspace_id: u64,
+    pub workspace_id: i64,
     pub agent_profile: &'a str,
     pub state: &'a str,
     pub started_at: Option<&'a str>,
@@ -135,12 +135,12 @@ pub fn parse_session(v: &Value) -> Result<SessionView> {
         key: text(t, "key", 40),
     });
     let user = v.get("user").filter(|u| u.is_object()).map(|u| UserView {
-        id: u.get("id").and_then(Value::as_u64),
+        id: u.get("id").and_then(Value::as_i64),
         name: text(u, "name", 80),
     });
     Ok(SessionView {
         session_id,
-        workspace_id: v.get("workspace_id").and_then(Value::as_u64),
+        workspace_id: v.get("workspace_id").and_then(Value::as_i64),
         task,
         state: text(v, "state", 16).unwrap_or_else(|| "unknown".into()),
         state_since: text(v, "state_since", 40),
@@ -214,7 +214,7 @@ pub fn clear(client: &Client, session_id: &str) -> Result<Option<SessionView>> {
     )
 }
 
-pub fn list(client: &Client, workspace_id: u64) -> Result<Option<Vec<SessionView>>> {
+pub fn list(client: &Client, workspace_id: i64) -> Result<Option<Vec<SessionView>>> {
     let (status, body) = client.call(
         "GET",
         &format!("/api/workspaces/{workspace_id}/agent-status"),

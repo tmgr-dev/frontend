@@ -40,7 +40,7 @@ pub fn run(ctx: &Ctx, cmd: &TaskCommand) -> Result<Output> {
     }
 }
 
-fn workspace_code(ctx: &Ctx, workspace_id: Option<u64>) -> Option<String> {
+fn workspace_code(ctx: &Ctx, workspace_id: Option<i64>) -> Option<String> {
     let client = ctx.client().ok()?;
     let list = ctx.workspaces(client).ok()?;
     list.iter()

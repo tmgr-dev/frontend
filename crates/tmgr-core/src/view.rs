@@ -40,7 +40,7 @@ pub struct CategoryView {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonView {
-    pub id: Option<u64>,
+    pub id: Option<i64>,
     pub name: String,
 }
 

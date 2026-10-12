@@ -39,7 +39,7 @@ pub struct ApiRun {
     #[serde(default)]
     pub task_id: Option<u64>,
     #[serde(default)]
-    pub user_id: Option<u64>,
+    pub user_id: Option<i64>,
     #[serde(default)]
     pub agent: Option<String>,
     #[serde(default)]
@@ -93,7 +93,7 @@ pub struct TestsView {
 pub struct RunView {
     pub id: u64,
     pub task: Option<RunTaskView>,
-    pub user_id: Option<u64>,
+    pub user_id: Option<i64>,
     pub agent: String,
     pub model: Option<String>,
     pub branch: Option<String>,
