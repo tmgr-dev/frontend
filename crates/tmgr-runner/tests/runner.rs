@@ -56,6 +56,7 @@ impl Harness {
             .env("TMGR_RUNNER_DIR", &self.run)
             .env("TMGR_RUNNER_HOMES", self.homes.path())
             .env("TMGR_T0_QUIET_MS", quiet_ms.to_string())
+            .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(err)
@@ -679,4 +680,39 @@ fn shim_caps_pending_connections() {
     let n = std::io::Read::read(&mut extra, &mut b);
     assert!(matches!(n, Ok(0)), "extra connection was not closed: {n:?}");
     drop(held);
+}
+
+#[test]
+fn a_client_that_never_reads_is_disconnected_and_others_keep_receiving() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let body = "import os\ni = 0\nwhile True:\n    os.write(1, ('\\x07line %d ' % i + 'x' * 60 + '\\n').encode())\n    i += 1\n";
+    let path = h.script("flood.py", body);
+    let info = c.create(h.req(&[PY, &path])).unwrap();
+    let mut stalled = h.client().attach(&[info.id.clone()]).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(5, |w| w.has_line(&info.id, "line")));
+    thread::sleep(Duration::from_secs(4));
+    let before = w.text(&info.id);
+    assert!(
+        w.wait(5, |w| w.text(&info.id) != before),
+        "healthy client stopped receiving"
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut ended = false;
+    while Instant::now() < deadline {
+        match stalled.recv() {
+            Ok(Some(ServerMsg::Closed { .. })) | Ok(None) | Err(_) => {
+                ended = true;
+                break;
+            }
+            Ok(Some(_)) => {}
+        }
+    }
+    assert!(ended, "stalled client is still being served");
+    assert!(c.status().is_ok());
 }

@@ -20,7 +20,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -126,21 +126,30 @@ fn to_json<T: Serialize>(v: &T) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
 
+const CLIENT_QUEUE: usize = 256;
+
 #[derive(Default)]
 struct Hub {
-    subs: Mutex<Vec<Sender<Value>>>,
+    subs: Mutex<Vec<SyncSender<Value>>>,
 }
 
 impl Hub {
     fn subscribe(&self) -> Receiver<Value> {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(CLIENT_QUEUE);
         lock(&self.subs).push(tx);
         rx
     }
 
     fn broadcast(&self, v: Value) {
-        lock(&self.subs).retain(|s| s.send(v.clone()).is_ok());
+        lock(&self.subs).retain(|s| s.try_send(v.clone()).is_ok());
     }
+}
+
+fn write_timeout() -> Duration {
+    std::env::var("TMGR_RUNNER_WRITE_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(Duration::from_secs(10), Duration::from_millis)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -985,6 +994,8 @@ impl Runner {
                 }
             }
         }
+        lock(&conn.scroll).retain(|id, _| ids.contains(id));
+        lock(&conn.sizes).retain(|id, _| ids.contains(id));
         *lock(&conn.watched) = ids;
         Ok(Value::Null)
     }
@@ -1013,7 +1024,12 @@ impl Runner {
             match rx.recv_timeout(PUSH_INTERVAL) {
                 Ok(ev) => events.push(ev),
                 Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => break,
+                Err(RecvTimeoutError::Disconnected) => {
+                    let _ = conn.write(&ServerMsg::Closed {
+                        reason: "client too slow".into(),
+                    });
+                    return fail(conn);
+                }
             }
             while let Ok(ev) = rx.try_recv() {
                 events.push(ev);
@@ -1130,6 +1146,7 @@ impl Runner {
             return;
         }
         drop(pending);
+        let _ = stream.set_write_timeout(Some(write_timeout()));
         let Ok(w) = stream.try_clone() else { return };
         let conn = Arc::new(Conn {
             id: self.next_conn.fetch_add(1, Ordering::SeqCst),
@@ -1173,12 +1190,14 @@ impl Runner {
                         }
                     }
                     Ok(ClientMsg::Resize(r)) => {
-                        if valid_session_id(&r.session) {
+                        if lock(&conn.watched).contains(&r.session) {
                             self.client_resize(&conn, &r.session, r.cols, r.rows);
                         }
                     }
                     Ok(ClientMsg::Scroll(s)) => {
-                        lock(&conn.scroll).insert(s.session, s.offset as usize);
+                        if lock(&conn.watched).contains(&s.session) {
+                            lock(&conn.scroll).insert(s.session, s.offset as usize);
+                        }
                     }
                     Ok(ClientMsg::Focus(_)) => {}
                     Ok(ClientMsg::Detach) => break,
@@ -1495,5 +1514,23 @@ mod tests {
         moved.write_all(b"after\n").unwrap();
         assert_eq!(fs::metadata(&log_path).unwrap().len(), 6);
         assert!(!rotate_log(t.path(), &[fd], 1000).unwrap());
+    }
+
+    #[test]
+    fn a_stalled_subscriber_is_dropped_at_the_queue_cap_while_others_keep_receiving() {
+        let hub = Hub::default();
+        let stalled = hub.subscribe();
+        let live = hub.subscribe();
+        let mut seen = 0;
+        for i in 0..1000 {
+            hub.broadcast(serde_json::json!({"n": i}));
+            while live.try_recv().is_ok() {
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 1000);
+        assert_eq!(stalled.try_iter().count(), CLIENT_QUEUE);
+        assert!(stalled.try_recv().is_err());
+        assert_eq!(lock(&hub.subs).len(), 1);
     }
 }
