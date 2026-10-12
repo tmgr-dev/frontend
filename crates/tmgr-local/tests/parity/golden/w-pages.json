@@ -1,0 +1,1128 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "Hello [[page:1]] and tmgr://task/2",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 5,
+					"parent_id": null,
+					"pinned": false,
+					"position": 1,
+					"properties": {},
+					"sections": [],
+					"slug": "plain-note",
+					"title": "Plain note",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nHello\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- first\n<!-- /tmgr:section -->\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 6,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 3,
+					"properties": {},
+					"sections": [
+						{
+							"heading": "Intro",
+							"id": "intro",
+							"owner": "human"
+						},
+						{
+							"heading": "Agent log",
+							"id": "agent-log",
+							"owner": "agents"
+						}
+					],
+					"slug": "sectioned",
+					"title": "Sectioned",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 7,
+					"parent_id": null,
+					"pinned": false,
+					"position": 2,
+					"properties": {},
+					"sections": [],
+					"slug": "templated",
+					"title": "Templated",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"error": "title_required",
+				"message": "title is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"error": "unsupported_type",
+				"message": "Page type 'weird' is not supported"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"error": "parent_not_found",
+				"message": "Parent page not found"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "Hello [[page:1]] and tmgr://task/2",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 5,
+					"parent_id": null,
+					"pinned": false,
+					"position": 1,
+					"properties": {},
+					"sections": [],
+					"slug": "plain-note",
+					"title": "Plain note",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nHello\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- first\n<!-- /tmgr:section -->\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 6,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 3,
+					"properties": {},
+					"sections": [
+						{
+							"heading": "Intro",
+							"id": "intro",
+							"owner": "human"
+						},
+						{
+							"heading": "Agent log",
+							"id": "agent-log",
+							"owner": "agents"
+						}
+					],
+					"slug": "sectioned",
+					"title": "Sectioned",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "Rewritten",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 5,
+					"parent_id": null,
+					"pinned": false,
+					"position": 1,
+					"properties": {},
+					"sections": [],
+					"slug": "plain-note",
+					"title": "Plain note v2",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:30:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "Rewritten",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 5,
+					"parent_id": null,
+					"pinned": false,
+					"position": 1,
+					"properties": {},
+					"sections": [],
+					"slug": "plain-note",
+					"title": "Plain note v2",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:30:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				},
+				"error": "page_conflict",
+				"message": "Page was changed"
+			},
+			"status": 409
+		},
+		{
+			"data": {
+				"error": "version_required",
+				"message": "version is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "Rewritten\n\nAppended line\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 5,
+					"parent_id": null,
+					"pinned": false,
+					"position": 1,
+					"properties": {},
+					"sections": [],
+					"slug": "plain-note",
+					"title": "Plain note v2",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 3,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "markdown_required",
+				"message": "markdown is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- first\n<!-- /tmgr:section -->\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 6,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 3,
+					"properties": {},
+					"sections": [
+						{
+							"heading": "Intro",
+							"id": "intro",
+							"owner": "human"
+						},
+						{
+							"heading": "Agent log",
+							"id": "agent-log",
+							"owner": "agents"
+						}
+					],
+					"slug": "sectioned",
+					"title": "Sectioned",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- second\n<!-- /tmgr:section -->\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 6,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 3,
+					"properties": {},
+					"sections": [
+						{
+							"heading": "Intro",
+							"id": "intro",
+							"owner": "human"
+						},
+						{
+							"heading": "Agent log",
+							"id": "agent-log",
+							"owner": "agents"
+						}
+					],
+					"slug": "sectioned",
+					"title": "Sectioned",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 3,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "section_not_found",
+				"message": "Section 'missing' not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"error": "markdown_required",
+				"message": "markdown is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- second\n<!-- /tmgr:section -->\n",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 6,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 3,
+					"properties": {},
+					"sections": [
+						{
+							"heading": "Intro",
+							"id": "intro",
+							"owner": "human"
+						},
+						{
+							"heading": "Agent log",
+							"id": "agent-log",
+							"owner": "agents"
+						}
+					],
+					"slug": "sectioned",
+					"title": "Sectioned",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 3,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 1,
+							"parent_id": null,
+							"pinned": true,
+							"position": 0,
+							"slug": "handbook",
+							"title": "Handbook",
+							"type": "plain",
+							"updated_at": "2026-09-22T08:00:00Z"
+						}
+					],
+					"body": "Child body with needle word",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 2,
+					"parent_id": 1,
+					"pinned": true,
+					"position": 1,
+					"properties": {
+						"tag": "a"
+					},
+					"sections": [],
+					"slug": "child-page",
+					"title": "Child page",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 2,
+							"parent_id": 1,
+							"pinned": true,
+							"position": 1,
+							"slug": "child-page",
+							"title": "Child page",
+							"type": "plain",
+							"updated_at": "2026-10-13T12:00:00.000Z"
+						}
+					],
+					"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [
+						{
+							"created_at": "2026-09-20T08:00:00Z",
+							"file_path": "pages/1/page.png",
+							"id": 4,
+							"mime_type": "image/png",
+							"name": "page.png",
+							"original_name": "page.png",
+							"page_id": 1,
+							"size": 99,
+							"user_id": 7,
+							"workspace_id": -42
+						}
+					],
+					"following": false,
+					"id": 1,
+					"parent_id": null,
+					"pinned": false,
+					"position": 0,
+					"properties": {},
+					"sections": [],
+					"slug": "handbook",
+					"title": "Handbook",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": "11111111-1111-4111-8111-111111111111",
+						"kind": "persona",
+						"name": "Scribe",
+						"owner": {
+							"id": "7",
+							"name": "Owner"
+						}
+					},
+					"backlinks": [],
+					"body": "By persona",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 4,
+					"parent_id": 2,
+					"pinned": false,
+					"position": 0,
+					"properties": {},
+					"sections": [],
+					"slug": "persona-page",
+					"title": "Persona page",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": "11111111-1111-4111-8111-111111111111",
+						"kind": "persona",
+						"name": "Scribe",
+						"owner": {
+							"id": "7",
+							"name": "Owner"
+						}
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "page_cycle",
+				"message": "A page cannot be moved under itself"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"deleted": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 1,
+							"parent_id": null,
+							"pinned": false,
+							"position": 0,
+							"slug": "handbook",
+							"title": "Handbook",
+							"type": "plain",
+							"updated_at": "2026-10-13T12:00:00.000Z"
+						}
+					],
+					"body": "Child body with needle word",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 2,
+					"parent_id": 1,
+					"pinned": true,
+					"position": 1,
+					"properties": {
+						"tag": "a"
+					},
+					"sections": [],
+					"slug": "child-page",
+					"title": "Child page",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [],
+					"body": "gone",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 3,
+					"parent_id": null,
+					"pinned": false,
+					"position": 2,
+					"properties": {},
+					"sections": [],
+					"slug": "trashed",
+					"title": "Trashed",
+					"type": "plain",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": false,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 5,
+						"parent_id": null,
+						"pinned": false,
+						"position": 1,
+						"slug": "plain-note",
+						"title": "Plain note v2",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 3,
+						"parent_id": null,
+						"pinned": false,
+						"position": 2,
+						"slug": "trashed",
+						"title": "Trashed",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 7,
+						"parent_id": null,
+						"pinned": false,
+						"position": 2,
+						"slug": "templated",
+						"title": "Templated",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 2,
+						"parent_id": 1,
+						"pinned": true,
+						"position": 1,
+						"slug": "child-page",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 6,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 3,
+						"slug": "sectioned",
+						"title": "Sectioned",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					},
+					{
+						"id": 4,
+						"parent_id": 2,
+						"pinned": false,
+						"position": 0,
+						"slug": "persona-page",
+						"title": "Persona page",
+						"type": "plain",
+						"updated_at": "2026-10-13T12:00:00.000Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"author": {
+							"id": 7,
+							"kind": "user",
+							"name": "Owner"
+						},
+						"created_at": "2026-09-22T08:00:00Z",
+						"summary": "Added links",
+						"title": "Handbook",
+						"version": 2
+					},
+					{
+						"author": {
+							"id": 7,
+							"kind": "user",
+							"name": "Owner"
+						},
+						"created_at": "2026-09-20T08:00:00Z",
+						"summary": null,
+						"title": "Handbook",
+						"version": 1
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"page_versions": [
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Handbook",
+				"created_at": "2026-09-20T08:00:00Z",
+				"page_id": 1,
+				"properties": "{}",
+				"summary": null,
+				"title": "Handbook",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+				"created_at": "2026-09-22T08:00:00Z",
+				"page_id": 1,
+				"properties": "{}",
+				"summary": "Added links",
+				"title": "Handbook",
+				"version": 2
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Child body with needle word",
+				"created_at": "2026-09-20T08:00:00Z",
+				"page_id": 2,
+				"properties": "{\"tag\":\"a\"}",
+				"summary": null,
+				"title": "Child page",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Hello [[page:1]] and tmgr://task/2",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 5,
+				"properties": "{}",
+				"summary": null,
+				"title": "Plain note",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nHello\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- first\n<!-- /tmgr:section -->\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 6,
+				"properties": "{}",
+				"summary": null,
+				"title": "Sectioned",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 7,
+				"properties": "{}",
+				"summary": null,
+				"title": "Templated",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Rewritten",
+				"created_at": "2026-10-13T12:30:00.000Z",
+				"page_id": 5,
+				"properties": "{}",
+				"summary": null,
+				"title": "Plain note v2",
+				"version": 2
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Rewritten\n\nAppended line\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 5,
+				"properties": "{}",
+				"summary": null,
+				"title": "Plain note v2",
+				"version": 3
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- first\n<!-- /tmgr:section -->\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 6,
+				"properties": "{}",
+				"summary": null,
+				"title": "Sectioned",
+				"version": 2
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- second\n<!-- /tmgr:section -->\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"page_id": 6,
+				"properties": "{}",
+				"summary": null,
+				"title": "Sectioned",
+				"version": 3
+			}
+		],
+		"pages": [
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 1,
+				"parent_id": null,
+				"pinned": 0,
+				"position": 0,
+				"properties": "{}",
+				"slug": "handbook",
+				"title": "Handbook",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 2
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Child body with needle word",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 2,
+				"parent_id": 1,
+				"pinned": 1,
+				"position": 1,
+				"properties": "{\"tag\":\"a\"}",
+				"slug": "child-page",
+				"title": "Child page",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "gone",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 3,
+				"parent_id": null,
+				"pinned": 0,
+				"position": 2,
+				"properties": "{}",
+				"slug": "trashed",
+				"title": "Trashed",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 1
+			},
+			{
+				"author_id": 0,
+				"author_kind": "persona",
+				"author_ref": "11111111-1111-4111-8111-111111111111",
+				"body": "By persona",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 4,
+				"parent_id": 2,
+				"pinned": 0,
+				"position": 0,
+				"properties": "{}",
+				"slug": "persona-page",
+				"title": "Persona page",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 0,
+				"updated_by_kind": "persona",
+				"updated_by_ref": "11111111-1111-4111-8111-111111111111",
+				"version": 1
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "Rewritten\n\nAppended line\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"id": 5,
+				"parent_id": null,
+				"pinned": 0,
+				"position": 1,
+				"properties": "{}",
+				"slug": "plain-note",
+				"title": "Plain note v2",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 3
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "# Notes\n\n<!-- tmgr:section id=\"intro\" owner=\"human\" -->\n## Intro\nReplaced\n<!-- /tmgr:section -->\n\n<!-- tmgr:section id=\"agent-log\" owner=\"agents\" -->\n## Agent log\n- second\n<!-- /tmgr:section -->\n",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"id": 6,
+				"parent_id": 1,
+				"pinned": 0,
+				"position": 3,
+				"properties": "{}",
+				"slug": "sectioned",
+				"title": "Sectioned",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 3
+			},
+			{
+				"author_id": 7,
+				"author_kind": "user",
+				"author_ref": "7",
+				"body": "",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"id": 7,
+				"parent_id": null,
+				"pinned": 0,
+				"position": 2,
+				"properties": "{}",
+				"slug": "templated",
+				"title": "Templated",
+				"type": "plain",
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"updated_by_id": 7,
+				"updated_by_kind": "user",
+				"updated_by_ref": "7",
+				"version": 1
+			}
+		]
+	}
+}

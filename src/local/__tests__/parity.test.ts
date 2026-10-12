@@ -18,6 +18,8 @@ interface ParityRequest {
 	method: string;
 	url: string;
 	body?: unknown;
+	now?: string;
+	actor?: LocalActor | null;
 }
 
 interface ParityScenario {
@@ -80,11 +82,20 @@ const runScenario = async (scenario: ParityScenario) => {
 	const api = createLocalApi();
 	const responses: unknown[] = [];
 	for (const request of scenario.requests) {
-		const res = await dispatchLocal(api, ctx, request.method, request.url, request.body ?? undefined);
+		const requestCtx: LocalContext = {
+			...ctx,
+			now: () => new Date(request.now ?? scenario.now),
+			actor: 'actor' in request ? request.actor ?? undefined : ctx.actor,
+		};
+		const res = await dispatchLocal(api, requestCtx, request.method, request.url, request.body ?? undefined);
 		responses.push(res ?? { status: 404, data: null });
 	}
-	expect(await dumpTables(db)).toEqual(before);
-	return { responses };
+	const after = await dumpTables(db);
+	const tables = Object.fromEntries(
+		Object.entries(after).filter(([name, rows]) => JSON.stringify(rows) !== JSON.stringify(before[name])),
+	);
+	if (scenario.requests.every((r) => r.method.toUpperCase() === 'GET')) expect(tables).toEqual({});
+	return Object.keys(tables).length ? { responses, tables } : { responses };
 };
 
 const readJson = (file: string) => JSON.parse(fs.readFileSync(file, 'utf8'));
