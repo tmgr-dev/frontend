@@ -1,4 +1,9 @@
+import { buildHubModel } from '../hubModel';
+import { createTours } from '../engine';
+import { createTourBus } from '../events';
+import { createLease } from '../lease';
 import { getTour } from '../catalog';
+import type { Platform } from '../types';
 
 const tour = (id: string) => getTour(id)!;
 const anchors = (id: string) => tour(id).steps.map((s) => s.anchor);
@@ -49,7 +54,7 @@ describe('S4b catalog', () => {
 		expect(anchors('tasks.files-page')).toEqual(['files.list']);
 		expect(anchors('tasks.multi-select')).toEqual(['list.select']);
 		expect(anchors('time.timer')).toEqual(['task-form.timer', 'nav.active-timers', 'task-form.timer', 'task-form.estimate']);
-		expect(anchors('time.parallel')).toEqual(['nav.active-timers']);
+		expect(anchors('time.parallel')).toEqual([undefined, 'nav.active-timers']);
 		expect(anchors('time.checkpoints')).toEqual(['task-form.checkpoints']);
 		expect(anchors('time.pomodoro')).toEqual(['task-form.pomodoro', 'pomodoro.settings']);
 		expect(anchors('time.export')).toEqual(['list.select', 'list.process', 'export.panel', 'export.download']);
@@ -96,7 +101,7 @@ describe('S4b catalog', () => {
 		expect(tour('tasks.relations').requires).toMatchObject({ modules: ['task.relations'], platforms: WDDL });
 		expect(tour('tasks.files-page').requires).toMatchObject({ modules: ['task.files'], platforms: ALL });
 		expect(tour('tasks.multi-select').requires?.platforms).toEqual(WDDL);
-		expect(tour('time.parallel').requires?.platforms).toEqual(WDDL);
+		expect(tour('time.parallel').requires).toMatchObject({ modules: ['task.countdown'], platforms: WDDL });
 		expect(tour('time.checkpoints').requires).toMatchObject({ modules: ['task.checkpoints'], platforms: WDDL });
 		expect(tour('time.pomodoro').requires).toMatchObject({ modules: ['pomodoro'], account: 'cloud', platforms: ['web', 'mobile_web', 'desktop'] });
 		expect(tour('time.export').requires).toMatchObject({ modules: ['exports'], account: 'cloud', platforms: ['web', 'desktop'] });
@@ -194,5 +199,97 @@ describe('S4b catalog', () => {
 		expect(text).not.toContain('settings.timer-prompt');
 		expect(text).not.toContain('pages.import_done');
 		expect(tour('pages.import').completeOn).toBeUndefined();
+	});
+
+	describe('hub availability', () => {
+		const memory = () => {
+			const data = new Map<string, string>();
+			return {
+				getItem: (k: string) => data.get(k) ?? null,
+				setItem: (k: string, v: string) => void data.set(k, v),
+				removeItem: (k: string) => void data.delete(k),
+			};
+		};
+		const hub = (platform: Platform, account: 'cloud' | 'local', modules: string[], isOwner = true) => {
+			const engine = createTours({
+				api: {
+					fetchState: jest.fn().mockResolvedValue({}),
+					putTour: jest.fn(),
+					putPreferences: jest.fn(),
+					resetTours: jest.fn(),
+					setIntent: jest.fn(),
+					fetchFacts: jest.fn(),
+					removeStarterTasks: jest.fn(),
+				} as never,
+				bus: createTourBus(),
+				lease: createLease({ storage: memory(), now: () => Date.now(), ownerId: 'a' }),
+				storage: memory(),
+				session: memory(),
+				now: () => Date.now(),
+				platform: () => platform,
+				mobile: () => platform === 'mobile_web',
+				account: () => account,
+				isOwner: () => isOwner,
+				modulesKnown: () => true,
+				isModuleEnabled: (key) => modules.includes(key),
+				currentRouteName: () => null,
+				navigate: () => {},
+				isBusy: () => false,
+				overlay: () => null,
+				setTimer: () => () => {},
+			});
+			const items = engine.api.hubItems.value.filter((item) => S4B_IDS.includes(item.tour.id));
+			const rows = buildHubModel(items, { canManageModules: isOwner, isModuleEnabled: (key) => modules.includes(key) })
+				.groups.flatMap((group) => group.rows);
+			return { items, rows };
+		};
+		const everything = [
+			'workflow', 'board', 'categories', 'task.relations', 'task.files', 'task.countdown',
+			'task.checkpoints', 'pomodoro', 'exports', 'pages', 'graph', 'daily_routines',
+		];
+		const reason = (items: ReturnType<typeof hub>['items'], id: string) =>
+			items.find((item) => item.tour.id === id)?.unavailableReason;
+
+		it('shows every S4b tour on web with all modules on', () => {
+			const { items } = hub('web', 'cloud', everything);
+			expect(items.filter((item) => !item.available)).toEqual([]);
+		});
+
+		it('hides cloud-only tours for a local desktop account', () => {
+			const { items } = hub('desktop_local', 'local', everything);
+			expect(reason(items, 'time.pomodoro')).toBe('platform');
+			expect(reason(items, 'time.export')).toBe('platform');
+			const available = items.filter((item) => item.available).map((item) => item.tour.id);
+			expect(available).toEqual(expect.arrayContaining(['time.checkpoints', 'pages.first', 'graph.map', 'routines.first']));
+		});
+
+		it('keeps only the phone-friendly tours on mobile web', () => {
+			const { items } = hub('mobile_web', 'cloud', everything);
+			const available = items.filter((item) => item.available).map((item) => item.tour.id).sort();
+			expect(available).toEqual(
+				['pages.first', 'routines.first', 'routines.views', 'tasks.categories', 'tasks.files-page', 'time.pomodoro'].sort(),
+			);
+		});
+
+		it('hides owner-only tours from members', () => {
+			const { items, rows } = hub('web', 'cloud', everything, false);
+			expect(reason(items, 'tasks.statuses')).toBe('role');
+			expect(reason(items, 'graph.enable')).toBe('role');
+			expect(rows.map((row) => row.id)).not.toContain('graph.enable');
+		});
+
+		it('greys Graph and Pages tours when their module is off with the turn-on message', () => {
+			const { rows } = hub('web', 'cloud', ['board']);
+			const map = rows.find((row) => row.id === 'graph.map');
+			expect(map).toMatchObject({ action: 'none' });
+			expect(map?.disabledMessage).toBe('Turn on Graph in Settings -> Modules');
+			const first = rows.find((row) => row.id === 'pages.first');
+			expect(first?.disabledMessage).toBe('Turn on Pages in Settings -> Modules');
+		});
+
+		it('tells members to ask the owner when a module is off', () => {
+			const { rows } = hub('web', 'cloud', ['board'], false);
+			expect(rows.find((row) => row.id === 'graph.map')?.disabledMessage).toBe('Ask the workspace owner to turn on Graph');
+		});
 	});
 });
