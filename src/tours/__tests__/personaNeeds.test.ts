@@ -16,7 +16,10 @@ const memory = () => {
 };
 const flush = () => new Promise((r) => setImmediate(r));
 
-const make = (hasPersonas: () => Promise<boolean>) => {
+const make = (
+	hasPersonas: () => Promise<boolean>,
+	gate: { known: boolean; enabled: boolean } = { known: true, enabled: true },
+) => {
 	setTourTelemetry({ track: jest.fn() });
 	const bus = createTourBus();
 	const deps: ToursHostDeps = {
@@ -38,8 +41,8 @@ const make = (hasPersonas: () => Promise<boolean>) => {
 		mobile: () => false,
 		account: () => 'cloud',
 		isOwner: () => true,
-		modulesKnown: () => true,
-		isModuleEnabled: () => true,
+		modulesKnown: () => gate.known,
+		isModuleEnabled: () => gate.enabled,
 		currentRouteName: () => 'WorkspaceTasksList',
 		navigate: jest.fn(),
 		isBusy: () => false,
@@ -47,7 +50,7 @@ const make = (hasPersonas: () => Promise<boolean>) => {
 		setTimer: () => () => {},
 		hasPersonas,
 	};
-	return { engine: createTours(deps), bus };
+	return { engine: createTours(deps), bus, gate };
 };
 
 const hubIds = (engine: ReturnType<typeof make>['engine']) =>
@@ -90,17 +93,71 @@ describe('hub persona gating', () => {
 		expect(hubIds(h.engine)).toContain('personas.token');
 	});
 
-	it('does not refetch once a persona is known and treats a failed fetch as none', async () => {
+	it('does not refetch once a persona is known', async () => {
 		const fetcher = jest.fn().mockResolvedValue(true);
 		const h = make(fetcher);
 		await h.engine.init();
 		await h.engine.api.ensurePersonas();
 		await h.engine.api.ensurePersonas();
 		expect(fetcher).toHaveBeenCalledTimes(1);
-		const failing = make(() => Promise.reject(new Error('x')));
-		await failing.engine.init();
-		await failing.engine.api.ensurePersonas();
-		expect(hubIds(failing.engine)).not.toContain('personas.token');
+	});
+
+	it('keeps the answer unknown and the rows visible when the request fails', async () => {
+		const fetcher = jest.fn().mockRejectedValue(new Error('x'));
+		const h = make(fetcher);
+		await h.engine.init();
+		await h.engine.api.ensurePersonas();
+		expect(hubIds(h.engine)).toContain('personas.token');
+		await h.engine.api.ensurePersonas();
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not ask while the module list is unknown or personas is off', async () => {
+		const fetcher = jest.fn().mockResolvedValue(false);
+		const h = make(fetcher, { known: false, enabled: true });
+		await h.engine.init();
+		await h.engine.api.ensurePersonas();
+		expect(fetcher).not.toHaveBeenCalled();
+		h.gate.known = true;
+		h.gate.enabled = false;
+		await h.engine.api.ensurePersonas();
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+
+	it('asks again once modules become known', async () => {
+		const fetcher = jest.fn().mockResolvedValue(false);
+		const h = make(fetcher, { known: false, enabled: true });
+		await h.engine.init();
+		await h.engine.api.ensurePersonas();
+		h.gate.known = true;
+		h.engine.modulesChanged();
+		await flush();
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(hubIds(h.engine)).not.toContain('personas.token');
+	});
+
+	it('resets the answer when the workspace modules reload', async () => {
+		const fetcher = jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		const h = make(fetcher);
+		await h.engine.init();
+		await h.engine.api.ensurePersonas();
+		expect(hubIds(h.engine)).toContain('personas.token');
+		h.gate.known = false;
+		h.engine.modulesChanged();
+		h.gate.known = true;
+		h.engine.modulesChanged();
+		await flush();
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(hubIds(h.engine)).not.toContain('personas.token');
+	});
+
+	it('looks the answer up lazily when starting a persona tour', async () => {
+		const fetcher = jest.fn().mockResolvedValue(false);
+		const h = make(fetcher);
+		await h.engine.init();
+		await h.engine.api.start('personas.token', 'hub');
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(h.engine.api.active.value).toBeNull();
 	});
 
 	it('refuses to start a persona tour without one', async () => {

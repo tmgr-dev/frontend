@@ -93,23 +93,42 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     personaKnown.value = true;
   });
 
+  let personaEpoch = 0;
+  let personaDeferred = false;
+
+  const resetPersonas = () => {
+    personaEpoch++;
+    personaDeferred = personaDeferred || personaKnown.value !== null || personaFetch !== null;
+    personaKnown.value = null;
+    personaFetch = null;
+  };
+
+  const personasAskable = () =>
+    !!deps.hasPersonas && deps.modulesKnown() && deps.isModuleEnabled('personas');
+
   const ensurePersonas = (): Promise<void> => {
     if (personaKnown.value === true || !deps.hasPersonas) return Promise.resolve();
+    if (!personasAskable()) {
+      personaDeferred = true;
+      return Promise.resolve();
+    }
+    personaDeferred = false;
     if (!personaFetch) {
-      personaFetch = deps
-        .hasPersonas()
+      const epoch = personaEpoch;
+      const pending: Promise<void> = deps
+        .hasPersonas!()
         .then(
           (has) => {
+            if (epoch !== personaEpoch) return;
             if (has) personaKnown.value = true;
             else if (personaKnown.value === null) personaKnown.value = false;
           },
-          () => {
-            if (personaKnown.value === null) personaKnown.value = false;
-          },
+          () => {},
         )
         .finally(() => {
-          personaFetch = null;
+          if (personaFetch === pending) personaFetch = null;
         });
+      personaFetch = pending;
     }
     return personaFetch;
   };
@@ -124,7 +143,10 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       return 'module_off';
     if (deps.modulesKnown() && (req?.modulesOff ?? []).some((key) => deps.isModuleEnabled(key)))
       return 'module_on';
-    if (req?.needs?.includes('persona') && deps.hasPersonas && personaKnown.value !== true) return 'needs_persona';
+    if (req?.needs?.includes('persona') && deps.hasPersonas) {
+      if (personaKnown.value === null) void ensurePersonas();
+      else if (personaKnown.value === false) return 'needs_persona';
+    }
     return undefined;
   };
 
@@ -240,6 +262,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
   });
 
   async function begin(id: TourId, trigger: string, resume: boolean): Promise<boolean> {
+    if (getTour(id)?.requires?.needs?.includes('persona')) await ensurePersonas();
     if (!deps.lease.acquire()) return false;
     resumePill.value = null;
     const started = resume ? await runner.resume(id) : await runner.start(id, trigger);
@@ -409,13 +432,16 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       triggers.dispose();
       store.clear();
       resumePill.value = null;
-      personaKnown.value = null;
+      resetPersonas();
+      personaDeferred = false;
     },
     routeEntered(name) {
       runner.routeChanged(name);
       triggers.onRouteEntered(name);
     },
     modulesChanged() {
+      if (!deps.modulesKnown()) resetPersonas();
+      else if (personaKnown.value === null && personaDeferred) void ensurePersonas();
       runner.recheck();
     },
     rerender() {

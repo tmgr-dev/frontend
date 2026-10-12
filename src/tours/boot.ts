@@ -115,7 +115,7 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
     hasPersonas: async () => {
       if (localOnly()) return false;
       const { listPersonas } = await import('@/actions/tmgr/personas');
-      return (await listPersonas()).length > 0;
+      return (await listPersonas(false, false)).length > 0;
     },
     capability: (name) => (name === 'localAccess' ? supportsLocalAccess() : supportsPluginWindows()),
     keycaps,
