@@ -10,8 +10,16 @@ export async function mockApp(
     apiRequests = [],
     loginAs = null,
     authHeaders = [],
+    consent = true,
   } = {},
 ) {
+  if (consent)
+    await page.addInitScript(() =>
+      localStorage.setItem(
+        'tmgr:consent:v1',
+        JSON.stringify({ analytics: 'denied', usage: 'denied', updatedAt: null }),
+      ),
+    );
   await page.routeWebSocket(/.*/, () => {});
   if (!account && !loginAs) {
     await page.route('**/api/**', async (route) => {

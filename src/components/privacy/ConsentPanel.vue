@@ -7,7 +7,7 @@
 		:class="
 			inline
 				? 'rounded-lg border border-border bg-card p-4 text-card-foreground'
-				: 'fixed inset-x-0 bottom-0 z-[60] border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:left-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4'
+				: 'fixed inset-x-0 bottom-0 z-[60] border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4'
 		"
 	>
 		<h2 class="text-base font-semibold">Cookies and analytics</h2>
