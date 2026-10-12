@@ -60,7 +60,7 @@
 				</div>
 
 				<div class="relative z-10 min-w-0 flex-1">
-					<div class="mb-1.5 flex items-center gap-2">
+					<div class="mb-1.5 flex flex-wrap items-center gap-2">
 						<span
 							class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-[.08em]"
 							:style="{ background: phaseMeta.soft, color: phaseMeta.color }"
