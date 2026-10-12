@@ -110,8 +110,30 @@
 								:aria-labelledby="`connect-tab-${activeId}`"
 								class="mt-4 space-y-3"
 							>
-								<div v-if="tokenMode === 'loading'" class="text-sm text-ink-subtle" role="status">
+								<div v-if="tokenMode === 'checking'" class="text-sm text-ink-subtle" role="status">
+									Checking your account…
+								</div>
+
+								<div v-else-if="tokenMode === 'loading'" class="text-sm text-ink-subtle" role="status">
 									Creating your token…
+								</div>
+
+								<div v-else-if="tokenMode === 'user-error'" class="space-y-2 text-sm" role="alert">
+									<p class="text-red-600 dark:text-red-400">Could not check your account.</p>
+									<button type="button" class="min-h-[44px] text-ink underline" @click="retryPlan">
+										Try again
+									</button>
+								</div>
+
+								<div v-else-if="tokenMode === 'reconnect'" class="space-y-3 text-sm text-ink">
+									<p>An agent has connected to this account before, and you have no active token.</p>
+									<button
+										type="button"
+										class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-white"
+										@click="mint"
+									>
+										Generate a token
+									</button>
 								</div>
 
 								<div v-else-if="tokenMode === 'error'" class="space-y-2 text-sm" role="alert">
@@ -260,7 +282,7 @@
 
 <script lang="ts">
 import { Check } from 'lucide-vue-next';
-import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import ConnectStatus from '@/components/onboarding/ConnectStatus.vue';
@@ -269,6 +291,7 @@ import StarterPrompt from '@/components/onboarding/StarterPrompt.vue';
 import StillWaiting from '@/components/onboarding/StillWaiting.vue';
 import { generateSmartDeviceToken } from '@/actions/tmgr/smart-devices';
 import { getUser } from '@/actions/tmgr/user';
+import { planConnect } from '@/onboarding/connectPlan';
 import { steps } from '@/onboarding/flow';
 import { useFocusedScreen } from '@/onboarding/useFocusedScreen';
 import { createFactsPoller } from '@/onboarding/poller';
@@ -277,10 +300,16 @@ import { onboardingApi } from '@/tours/api';
 import { tourBus } from '@/tours/events';
 import { useTours } from '@/tours/useTours';
 import { buildMcpSnippets, resolveMcpUrl } from '@/utils/mcpConnectSnippets';
-import { hasSmartDeviceToken } from '@/utils/smartDeviceToken';
-import type { SmartDeviceTokenUser } from '@/utils/smartDeviceToken';
 
-type TokenMode = 'loading' | 'ready' | 'choose' | 'confirm' | 'error';
+type TokenMode =
+	| 'checking'
+	| 'loading'
+	| 'ready'
+	| 'choose'
+	| 'confirm'
+	| 'reconnect'
+	| 'user-error'
+	| 'error';
 
 const TABS = [
 	{ id: 'claude', label: 'Claude Code', verify: 'claude mcp list' },
@@ -306,7 +335,7 @@ export default defineComponent({
 		const token = ref('');
 		const pasted = ref('');
 		const fresh = ref(false);
-		const tokenMode = ref<TokenMode>('loading');
+		const tokenMode = ref<TokenMode>('checking');
 		const stalled = ref(false);
 		const connected = ref(false);
 		const runLogged = ref(false);
@@ -315,9 +344,11 @@ export default defineComponent({
 		let runsPoller: FactsPoller | null = null;
 
 		const localOnly = computed(() => !!store.getters.isLocalOnly);
+		const modulesKnown = computed(() => !!store.getters['featureToggles/modulesKnown']);
 		const mcpEnabled = computed(() => !!store.getters['featureToggles/isFeatureEnabled']?.('mcp'));
 		const blocked = computed(() => {
 			if (localOnly.value) return 'Connecting an AI agent needs a TMGR cloud account.';
+			if (!modulesKnown.value) return '';
 			if (!mcpEnabled.value) return 'The MCP module is off for this workspace, so agents cannot connect yet.';
 			return '';
 		});
@@ -382,6 +413,7 @@ export default defineComponent({
 		};
 
 		const startConnectPoller = () => {
+			if (connectPoller) return;
 			connectPoller = createFactsPoller({
 				...pollerDeps,
 				keys: ['mcp_first_call_at'],
@@ -447,6 +479,7 @@ export default defineComponent({
 		};
 
 		const checkAgain = () => {
+			if (!connectPoller) return void goWorkspace();
 			stalled.value = false;
 			connectPoller?.checkAgain();
 		};
@@ -468,18 +501,30 @@ export default defineComponent({
 			tourBus.emit('connect.command_copied', { client: 'cursor' });
 		};
 
-		onMounted(async () => {
-			if (blocked.value) return;
-			startConnectPoller();
-			try {
-				const user = await getUser();
-				if (unmounted) return;
-				if (hasSmartDeviceToken(user as unknown as SmartDeviceTokenUser)) tokenMode.value = 'choose';
-				else await mint();
-			} catch {
-				if (!unmounted) tokenMode.value = 'error';
+		let planning = false;
+		const begin = async () => {
+			if (planning || connectPoller || blocked.value || !modulesKnown.value) return;
+			planning = true;
+			tokenMode.value = 'checking';
+			const plan = await planConnect({ getUser, fetchFacts });
+			planning = false;
+			if (unmounted) return;
+			if (plan === 'user-error') {
+				tokenMode.value = 'user-error';
+				return;
 			}
-		});
+			if (plan === 'reconnect') {
+				tokenMode.value = 'reconnect';
+				return;
+			}
+			startConnectPoller();
+			if (plan === 'choose') tokenMode.value = 'choose';
+			else await mint();
+		};
+
+		const retryPlan = () => void begin();
+
+		watch([modulesKnown, mcpEnabled, localOnly], () => void begin(), { immediate: true });
 
 		onBeforeUnmount(() => {
 			unmounted = true;
@@ -511,6 +556,7 @@ export default defineComponent({
 			liveMessage,
 			mask,
 			mint,
+			retryPlan,
 			usePasted,
 			onTabKey,
 			checkAgain,
