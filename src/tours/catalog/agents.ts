@@ -9,7 +9,7 @@ export const agentsTours: TourDef[] = [
   {
     id: 'agents.work-log',
     version: 1,
-    since: '3.4.155',
+    since: '3.4.156',
     group: 'agents',
     title: 'Watch an agent log its work',
     minutes: 2,
@@ -46,7 +46,7 @@ export const agentsTours: TourDef[] = [
   {
     id: 'agents.phone-alerts',
     version: 1,
-    since: '3.4.155',
+    since: '3.4.156',
     group: 'agents',
     title: 'Phone alerts for agents',
     minutes: 2,
@@ -84,7 +84,7 @@ export const agentsTours: TourDef[] = [
   {
     id: 'agents.mcp-token',
     version: 1,
-    since: '3.4.155',
+    since: '3.4.156',
     group: 'agents',
     title: 'Personal MCP token',
     minutes: 1,
@@ -105,7 +105,7 @@ export const agentsTours: TourDef[] = [
   {
     id: 'agents.ask-ai',
     version: 1,
-    since: '3.4.155',
+    since: '3.4.156',
     group: 'agents',
     title: 'Ask AI about your workspace',
     minutes: 1,
@@ -135,7 +135,7 @@ export const agentsTours: TourDef[] = [
   {
     id: 'agents.connect-later',
     version: 1,
-    since: '3.4.155',
+    since: '3.4.156',
     group: 'agents',
     title: 'Connect an agent',
     minutes: connectAgent.minutes,
