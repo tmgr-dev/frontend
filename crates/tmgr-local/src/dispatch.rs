@@ -206,7 +206,12 @@ mod tests {
         let conn = db("");
         let c = ctx("2026-10-13T12:00:00.000Z");
         assert_eq!(dispatch(&conn, &c, "GET", "nope", None).unwrap(), None);
-        assert_eq!(dispatch(&conn, &c, "POST", "tasks", None).unwrap(), None);
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        assert_eq!(
+            dispatch(&conn, &c, "POST", "project_categories", None).unwrap(),
+            None
+        );
+        assert!(conn.is_autocommit());
     }
 
     #[test]

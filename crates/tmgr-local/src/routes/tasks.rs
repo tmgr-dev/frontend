@@ -7,10 +7,9 @@ use super::{int, text};
 use crate::context::Context;
 use crate::db::{execute, select, select_one, Row};
 use crate::js;
+use crate::persona::LOCAL_OWNER_ID;
 use crate::router::{not_found, sql, Handled, Outcome, Request};
 use crate::serialize::{col, paginate, task_json, TASK_SELECT};
-
-pub(crate) const LOCAL_OWNER_ID: i64 = -1;
 
 pub(super) fn current(req: &Request<'_>) -> Handled {
     list_tasks(

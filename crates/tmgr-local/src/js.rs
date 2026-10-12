@@ -91,7 +91,21 @@ pub(crate) fn length(s: &str) -> usize {
 
 /// `JSON.stringify` of a value built by a handler (compact, keys in insertion order).
 pub(crate) fn stringify(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_default()
+    serde_json::to_string(&js_numbers(value)).unwrap_or_default()
+}
+
+/// Whole floats as integers, the way JavaScript prints them.
+fn js_numbers(value: &Value) -> Value {
+    match value {
+        Value::Number(n) if n.is_f64() => float_json(n.as_f64().unwrap_or(f64::NAN)),
+        Value::Array(items) => Value::Array(items.iter().map(js_numbers).collect()),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), js_numbers(v)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
 }
 
 /// `parseJson(raw, fallback)` from the TS serializer: bad or empty JSON yields the fallback.

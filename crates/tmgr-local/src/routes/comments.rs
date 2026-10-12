@@ -31,7 +31,7 @@ pub(super) fn list(req: &Request<'_>) -> Handled {
     ))
 }
 
-fn comment_json(row: &Row, ctx: &Context) -> Value {
+pub(super) fn comment_json(row: &Row, ctx: &Context) -> Value {
     let kind = match col(row, "author_kind") {
         Value::Null => json!("user"),
         other => other.clone(),
@@ -64,7 +64,10 @@ fn comment_json(row: &Row, ctx: &Context) -> Value {
 }
 
 /// Per-comment reaction summaries; `reacted` is relative to whoever asks.
-fn reactions_for(req: &Request<'_>, ids: &[i64]) -> Result<HashMap<i64, Vec<Value>>, Outcome> {
+pub(super) fn reactions_for(
+    req: &Request<'_>,
+    ids: &[i64],
+) -> Result<HashMap<i64, Vec<Value>>, Outcome> {
     let mut result = HashMap::new();
     if ids.is_empty() {
         return Ok(result);

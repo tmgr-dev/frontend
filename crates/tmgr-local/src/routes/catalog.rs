@@ -25,7 +25,7 @@ const FEATURE_TOGGLES: [(&str, bool); 11] = [
     ("workflow", true),
 ];
 
-fn load_statuses(req: &Request<'_>) -> Result<Vec<Row>, Outcome> {
+pub(super) fn load_statuses(req: &Request<'_>) -> Result<Vec<Row>, Outcome> {
     sql(select(
         req.conn,
         "SELECT * FROM statuses ORDER BY CASE WHEN type = 'archived' THEN 1 ELSE 0 END, sort_order, id",
