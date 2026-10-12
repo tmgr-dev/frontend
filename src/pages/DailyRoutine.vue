@@ -390,6 +390,15 @@
 						@archive="onArchive"
 						@delete="onDelete"
 						@duplicate="onDuplicate"
+						@convert="convertingEntry = $event"
+					/>
+
+					<ConvertRoutineModal
+						v-if="convertingEntry"
+						:entry="convertingEntry"
+						:busy="convertBusy"
+						@close="convertingEntry = null"
+						@convert="onConvertFromMenu"
 					/>
 
 					<button
@@ -428,6 +437,7 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import ConvertRoutineModal from '@/components/dailyRoutine/ConvertRoutineModal.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
@@ -935,9 +945,32 @@
 	}) {
 		const task = await store.dispatch('dailyRoutines/convertRoutine', payload);
 		editingRoutine.value = null;
+		convertingEntry.value = null;
 		await reload();
 		convertedTaskId.value = task.id;
 		showConvertedTaskPrompt.value = true;
+	}
+
+	const convertingEntry = ref<RoutineEntry | null>(null);
+	const convertBusy = ref(false);
+
+	async function onConvertFromMenu(payload: {
+		taskId: number;
+		workspaceId: number;
+		projectCategoryId: number | null;
+	}) {
+		convertBusy.value = true;
+		try {
+			await onConvertRoutine(payload);
+		} catch (error) {
+			toast({
+				title: 'Could not convert the routine',
+				description: errorText(error),
+				variant: 'destructive',
+			});
+		} finally {
+			convertBusy.value = false;
+		}
 	}
 
 	const convertedTaskId = ref<number | null>(null);

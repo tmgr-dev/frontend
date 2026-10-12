@@ -312,42 +312,7 @@
 							>
 								Move to a workspace as a regular task…
 							</button>
-							<div v-else class="flex flex-col gap-2">
-								<select
-									v-model.number="convertWorkspaceId"
-									class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
-									@change="loadConvertCategories"
-								>
-									<option
-										v-for="w in convertWorkspaceOptions"
-										:key="w.id"
-										:value="w.id"
-									>
-										{{ w.name }}
-									</option>
-								</select>
-								<select
-									v-model="convertCategoryId"
-									class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
-								>
-									<option :value="null">No category</option>
-									<option
-										v-for="c in convertCategories"
-										:key="c.id"
-										:value="c.id"
-									>
-										{{ c.title }}
-									</option>
-								</select>
-								<button
-									type="button"
-									class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle"
-									:disabled="!convertWorkspaceId"
-									@click="onConvert"
-								>
-									Convert
-								</button>
-							</div>
+							<ConvertRoutineFields v-else @convert="onConvert" />
 						</ERSection>
 					</div>
 				</div>
@@ -395,11 +360,6 @@
 </template>
 
 <script setup lang="ts">
-	import {
-		getWorkspaceCategories,
-		type Category,
-	} from '@/actions/tmgr/categories';
-	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import type { RoutineFrequency } from '@/types/dailyRoutine';
 	import {
 		ROUTINE_CATEGORY_LIST,
@@ -415,7 +375,7 @@
 		ref,
 		watch,
 	} from 'vue';
-	import { useStore } from 'vuex';
+	import ConvertRoutineFields from './ConvertRoutineFields.vue';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
 	import { routineDraftFrom, type RoutineDraft } from './routinePayload';
@@ -438,7 +398,6 @@
 		): void;
 	}>();
 
-	const store = useStore();
 	const titleRef = ref<HTMLInputElement | null>(null);
 
 	function todayIso(): string {
@@ -584,50 +543,18 @@
 
 	// ── convert to task ────────────────────────────────────────────────────
 	const convertOpen = ref(false);
-	const convertWorkspaceId = ref<number | null>(null);
-	const convertCategoryId = ref<number | null>(null);
-	const convertCategories = ref<Category[]>([]);
-	const convertWorkspaceOptions = ref<{ id: number; name: string }[]>(
-		store.state.workspaces ?? [],
-	);
 
 	function openConvert() {
 		convertOpen.value = true;
-		convertWorkspaceId.value =
-			store.getters.currentWorkspaceId ??
-			store.state.workspaces?.[0]?.id ??
-			null;
-		// The local API rejects any target other than the active local workspace with 409.
-		getWorkspaces()
-			.then((workspaces) => {
-				const current = workspaces.find(
-					(w) => Number(w.id) === Number(convertWorkspaceId.value),
-				);
-				convertWorkspaceOptions.value = current?.is_local ? [current] : workspaces;
-			})
-			.catch(() => {});
-		loadConvertCategories();
 	}
 
-	async function loadConvertCategories() {
-		convertCategoryId.value = null;
-		convertCategories.value = [];
-		if (!convertWorkspaceId.value) return;
-		try {
-			convertCategories.value = await getWorkspaceCategories(
-				convertWorkspaceId.value,
-			);
-		} catch {
-			// category list is optional — conversion works without one
-		}
-	}
-
-	function onConvert() {
-		if (!convertWorkspaceId.value) return;
+	function onConvert(target: {
+		workspaceId: number;
+		projectCategoryId: number | null;
+	}) {
 		emit('convert', {
 			taskId: props.routine.task_id ?? props.routine.id,
-			workspaceId: convertWorkspaceId.value,
-			projectCategoryId: convertCategoryId.value,
+			...target,
 		});
 		emit('close');
 	}
