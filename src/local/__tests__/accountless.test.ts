@@ -137,6 +137,18 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 		expect(sent).toEqual([]);
 	});
 
+	it('forwards request params to the onboarding handler and seeds starters through the adapter', async () => {
+		const only = await client.get('onboarding/facts', { params: { keys: 'has_page,has_task', task_id: 3 } });
+		expect(only.data.data).toEqual({ has_page: false, has_task: false });
+		const seeded = await client.post('onboarding/intent', { intent: 'human', seed: true });
+		expect(seeded.data.data.starter_tasks_created).toBe(3);
+		expect((await client.get('onboarding/facts', { params: { keys: 'has_task' } })).data.data).toEqual({
+			has_task: false,
+		});
+		expect((await client.delete('onboarding/starter-tasks')).data.data).toEqual({ removed: 3 });
+		expect(sent).toEqual([]);
+	});
+
 	it('refuses an account route with requires_account', async () => {
 		for (const [method, url] of [
 			['POST', 'notify-tokens'],
