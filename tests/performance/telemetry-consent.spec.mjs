@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { desktopPage } from './desktopShell.mjs';
 import { mockApp } from './mockApp.mjs';
 
 const screensDir = process.env.SCREENS_DIR;
@@ -207,4 +208,37 @@ test.describe('settings and screenshots', () => {
       await shot(page, `s6b-consent-panel-${name}.png`);
     });
   }
+});
+
+test('desktop without an account asks only about usage data and reports local mode', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await desktopPage(
+    page,
+    { account: false, consent: false },
+    { profile: null },
+  );
+  const { events, others, route } = await watchTelemetry(page.context());
+  await route(page);
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/welcome/);
+  await page.getByTestId('start-local').click();
+  await page.getByLabel('Your name').fill('Ada');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await expect(page.locator('[data-consent-block="usage"]')).toBeVisible();
+  await expect(page.locator('[data-consent-block="analytics"]')).toHaveCount(0);
+  expect(events).toEqual([]);
+  await shareUsage(page);
+  await goHidden(page);
+  await expect.poll(() => events.length).toBeGreaterThan(0);
+  const body = JSON.parse(events[0].body);
+  expect(body.account_mode).toBe('local');
+  expect(body.platform).toMatch(/^desktop_/);
+  expect(events[0].headers.authorization).toBeUndefined();
+  await page.goto('/settings?tab=privacy');
+  await expect(page.getByTestId('usage-switch')).toBeVisible();
+  await expect(page.getByTestId('analytics-switch')).toHaveCount(0);
+  expect(others).toEqual([]);
 });

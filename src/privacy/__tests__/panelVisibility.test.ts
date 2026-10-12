@@ -37,4 +37,11 @@ describe('consent panel visibility', () => {
 		expect(shouldShowConsentPanel(desktop)).toBe(true);
 		expect(shouldShowConsentPanel({ ...desktop, analytics: null, usage: 'denied' })).toBe(false);
 	});
+
+	it('waits for the desktop welcome step before asking', () => {
+		const desktop = { ...base, desktop: true } as const;
+		expect(shouldShowConsentPanel({ ...desktop, ready: false })).toBe(false);
+		expect(shouldShowConsentPanel({ ...desktop, ready: true })).toBe(true);
+		expect(shouldShowConsentPanel({ ...base, ready: false })).toBe(true);
+	});
 });

@@ -112,6 +112,7 @@
 	import { useConsent } from '@/privacy/useConsent';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { computed } from 'vue';
+	import store from '@/store';
 	import { useRoute } from 'vue-router';
 
 	const props = defineProps<{ inline?: boolean }>();
@@ -125,6 +126,7 @@
 		usage: consent.value.usage,
 		path: route.path,
 		desktop,
+		ready: store.getters.canUseApp,
 	}));
 	const visible = computed(() => shouldShowConsentPanel(state.value));
 	const showAnalytics = computed(() =>
