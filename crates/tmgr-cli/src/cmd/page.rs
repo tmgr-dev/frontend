@@ -527,16 +527,13 @@ fn status(ctx: &Ctx, dir: &Path) -> Result<Output> {
         .ok();
     let mut items = Vec::new();
     for (file, entry) in &index.pages {
-        let local = match d.read(file, MAX_FILE_BYTES)? {
-            None => None,
-            Some(bytes) => Some(
-                std::str::from_utf8(&bytes)
-                    .ok()
-                    .and_then(|c| split(c).ok())
-                    .map(|(_, body)| sha256_hex(body.as_bytes()) != entry.body_sha256)
-                    .unwrap_or(true),
-            ),
-        };
+        let local = d.read(file, MAX_FILE_BYTES)?.map(|bytes| {
+            std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|c| split(c).ok())
+                .map(|(_, body)| sha256_hex(body.as_bytes()) != entry.body_sha256)
+                .unwrap_or(true)
+        });
         let remote_state = remote.as_ref().map(|m| m.get(&entry.page_id));
         let remote_changed =
             matches!(remote_state, Some(Some(stamp)) if *stamp != entry.updated_at);

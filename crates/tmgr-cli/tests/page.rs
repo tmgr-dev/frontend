@@ -497,7 +497,7 @@ async fn pulling_into_a_directory_of_another_workspace_is_refused() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn status_works_offline_and_reports_local_changes() {
-    let (env, dir) = pulled().await;
+    let (_env, dir) = pulled().await;
     let f = dir.join("notes.md");
     std::fs::write(&f, std::fs::read_to_string(&f).unwrap() + "more\n").unwrap();
     std::fs::remove_file(dir.join("notes-3.md")).unwrap();

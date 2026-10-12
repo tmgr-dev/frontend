@@ -96,7 +96,7 @@ pub fn render_run(s: &Style, r: &RunView) -> String {
     if let Some(c) = r.commits.last() {
         lines.push(format!(
             "      {}",
-            s.muted(&format!("{} {}", c.sha, c.message).trim().to_string())
+            s.muted(format!("{} {}", c.sha, c.message).trim())
         ));
     }
     if let Some(pr) = &r.pr_url {
