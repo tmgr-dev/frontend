@@ -19,6 +19,8 @@ export const ACCOUNT_ROUTES_SAMPLE: [string, string][] = [
 	['POST', 'personas'],
 	['GET', 'personas/abc'],
 	['GET', 'persona-tokens'],
+	['GET', 'imports/local-workspace/capabilities'],
+	['POST', 'imports/local-workspace'],
 	['POST', 'notify-tokens'],
 	['DELETE', 'notify-tokens/7'],
 	['POST', 'smart-device/token/generate'],
