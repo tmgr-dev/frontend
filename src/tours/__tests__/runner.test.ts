@@ -425,7 +425,7 @@ describe('TourRunner', () => {
 		expect(h.last()?.step.id).toBe('after');
 	});
 
-	it('factsChanged re-evaluates alreadyDone on the active wait step and auto-advances', async () => {
+	it('factsChanged on a shown wait step advances directly without re-viewing or the done card', async () => {
 		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
 		const h = setup([t]);
 		h.present.add('a.w');
@@ -435,10 +435,51 @@ describe('TourRunner', () => {
 		h.setFacts({ has_timer_minute: true });
 		h.runner.factsChanged();
 		await flush();
-		expect(h.last()).toMatchObject({ alreadyDone: true, waiting: false });
-		h.tick();
+		expect(h.last()?.step.id).toBe('after');
+		expect(h.views.some((v) => v?.alreadyDone)).toBe(false);
+		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'w')).toHaveLength(1);
+		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
+	});
+
+	it('the waitFor event arriving after factsChanged advanced is a no-op', async () => {
+		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.w');
+		h.present.add('a.after');
+		await h.runner.start('t.one', 'hub');
+		h.setFacts({ has_timer_minute: true });
+		h.runner.factsChanged();
+		h.bus.emit('timer.started', { taskId: 1 });
 		await flush();
 		expect(h.last()?.step.id).toBe('after');
+		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
+		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'after')).toHaveLength(1);
+	});
+
+	it('factsChanged arriving after the waitFor event advanced is a no-op', async () => {
+		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.w');
+		h.present.add('a.after');
+		await h.runner.start('t.one', 'hub');
+		h.bus.emit('timer.started', { taskId: 1 });
+		h.setFacts({ has_timer_minute: true });
+		h.runner.factsChanged();
+		await flush();
+		expect(h.last()?.step.id).toBe('after');
+		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
+		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'after')).toHaveLength(1);
+	});
+
+	it('emits tour_step_skipped for steps skipped via skipWhen', async () => {
+		const t = tour({ steps: [step('s1'), step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const h = setup([t]);
+		h.present.add('a.s1');
+		h.present.add('a.after');
+		h.setFacts({ connected: true });
+		await h.runner.start('t.one', 'hub');
+		await h.runner.next();
+		expect(h.calls('tour_step_skipped')).toEqual([expect.objectContaining({ step: 'w' })]);
 	});
 
 	it('a wait step already done with a missing anchor advances instead of showing unavailable', async () => {

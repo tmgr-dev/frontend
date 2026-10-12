@@ -299,6 +299,7 @@ export class TourRunner {
       if (!this.stepModulesOk(candidate)) {
         tourTelemetry().track('tour_step_unavailable', { tour: tour.id, step: candidate.id });
       } else if (!this.skipped(candidate)) break;
+      else this.trackSkipWhen(tour, candidate, idx);
       idx++;
     }
     if (idx >= tour.steps.length) return this.complete();
@@ -374,10 +375,17 @@ export class TourRunner {
     if (!cur) return;
     const step = cur.tour.steps[cur.idx];
     if (this.skipped(step)) {
+      this.trackSkipWhen(cur.tour, step, cur.idx);
       void this.enterStep(cur.idx + 1);
       return;
     }
-    if (step.type === 'wait' && !cur.alreadyDone && this.alreadyDone(step)) void this.enterStep(cur.idx);
+    if (step.type === 'wait' && !cur.alreadyDone && this.alreadyDone(step)) {
+      void (cur.unavailable ? this.enterStep(cur.idx) : this.advance('action'));
+    }
+  }
+
+  private trackSkipWhen(tour: TourDef, step: StepDef, idx: number): void {
+    tourTelemetry().track('tour_step_skipped', { tour: tour.id, step: step.id, i: idx + 1 });
   }
 
   private skipped(step: StepDef): boolean {
