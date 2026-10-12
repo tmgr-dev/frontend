@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
@@ -1198,6 +1198,36 @@ impl Runner {
     }
 }
 
+const LOG_CAP: u64 = 5 << 20;
+
+fn rotate_log(dir: &Path, fds: &[RawFd], cap: u64) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let path = dir.join("runner.log");
+    let meta = fs::symlink_metadata(&path)?;
+    if meta.len() <= cap {
+        return Ok(false);
+    }
+    let mut old = path.clone().into_os_string();
+    old.push(".1");
+    fs::rename(&path, PathBuf::from(old))?;
+    let fresh = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o600)
+        .open(&path)?;
+    for &fd in fds {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd, &mut st) } == 0
+            && st.st_ino as u64 == meta.ino()
+            && st.st_dev as u64 == meta.dev()
+        {
+            unsafe { libc::dup2(fresh.as_raw_fd(), fd) };
+        }
+    }
+    Ok(true)
+}
+
 fn take_lock(dir: &Path) -> io::Result<File> {
     let f = OpenOptions::new()
         .create(true)
@@ -1261,6 +1291,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     thread::spawn(move || {
         while !ticker.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
+            let _ = rotate_log(&ticker.cfg.dir, &[1, 2], LOG_CAP);
             for s in ticker.all() {
                 s.tick();
             }
@@ -1439,5 +1470,30 @@ mod tests {
         assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
         assert!(e.to_string().contains("identity check failed"), "{e}");
         assert!(h.join().unwrap().is_empty());
+    }
+
+    #[test]
+    fn log_over_the_cap_is_rotated_once_and_the_fd_follows() {
+        use std::io::Write;
+        let t = short_dir();
+        let log_path = t.path().join("runner.log");
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .unwrap();
+        f.write_all(&[b'x'; 2000]).unwrap();
+        assert!(!rotate_log(t.path(), &[f.as_raw_fd()], 5000).unwrap());
+        let fd = unsafe { libc::dup(f.as_raw_fd()) };
+        assert!(rotate_log(t.path(), &[fd], 1000).unwrap());
+        assert_eq!(
+            fs::metadata(t.path().join("runner.log.1")).unwrap().len(),
+            2000
+        );
+        assert_eq!(fs::metadata(&log_path).unwrap().len(), 0);
+        let mut moved = unsafe { <File as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+        moved.write_all(b"after\n").unwrap();
+        assert_eq!(fs::metadata(&log_path).unwrap().len(), 6);
+        assert!(!rotate_log(t.path(), &[fd], 1000).unwrap());
     }
 }
