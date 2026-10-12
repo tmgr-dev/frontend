@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { isTourLayerEvent } from '@/tours/a11y';
 	import { cn } from '@/utils';
 	import { X } from 'lucide-vue-next';
 	import {
@@ -39,6 +40,11 @@
 					)
 				"
 				v-bind="forwarded"
+				@interact-outside="
+					(event) => {
+						if (isTourLayerEvent(event)) event.preventDefault();
+					}
+				"
 				@pointer-down-outside="(event) => {
           const originalEvent = event.detail.originalEvent;
           const target = originalEvent.target as HTMLElement;

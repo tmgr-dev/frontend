@@ -152,7 +152,7 @@ export const workspaceTours: TourDef[] = [
         anchor: 'nav.notification-bell',
         title: 'Notifications',
         body: 'Mentions, assignments and agent updates land here.',
-        mobileBody: 'Open the menu, then the bell. Mentions, assignments and agent updates land there.',
+        mobileBody: 'Tap the bell in the top bar.',
       },
     ],
   },

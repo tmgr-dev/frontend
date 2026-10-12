@@ -10,7 +10,7 @@ export function isVisible(el: Element): boolean {
   return style.display !== 'none' && style.visibility !== 'hidden';
 }
 
-const OWN_LAYERS = '.driver-overlay, .driver-popover, .tour-backdrop, .tour-host, .tour-ring';
+export const OWN_LAYERS = '.driver-overlay, .driver-popover, .tour-backdrop, .tour-host, .tour-ring';
 
 export function isOccluded(el: Element): boolean {
   if (typeof document.elementFromPoint !== 'function') return false;

@@ -15,7 +15,7 @@ export function agentRunEvent(
 ): AgentRunEvent | null {
   if (!loaded) return null;
   const previous = known.find((run) => run.id === incoming.id);
-  if (!previous) return incoming.status === 'running' ? 'agent.run_started' : null;
+  if (!previous) return 'agent.run_started';
   if (previous.version > incoming.version) return null;
   if (previous.status === 'running' && FINISHED.includes(incoming.status)) {
     return 'agent.run_finished';

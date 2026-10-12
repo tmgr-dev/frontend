@@ -19,8 +19,8 @@ describe('agentRunEvent', () => {
     expect(agentRunEvent([], run(1, 'running'), false)).toBeNull();
   });
 
-  it('emits nothing for an unknown finished run', () => {
-    expect(agentRunEvent([], run(1, 'succeeded'), true)).toBeNull();
+  it('emits started for an unknown run that is already finished', () => {
+    expect(agentRunEvent([], run(1, 'succeeded'), true)).toBe('agent.run_started');
   });
 
   it('emits nothing for updates of a running run or stale versions', () => {

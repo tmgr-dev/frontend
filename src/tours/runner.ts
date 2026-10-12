@@ -190,13 +190,17 @@ export class TourRunner {
     const cur = this.cur;
     if (!cur) return;
     const route = cur.tour.steps[cur.idx].route;
-    if (!route || name === route.name) return;
+    if (!route) return;
+    if (name === route.name && this.queryMatches(route)) return;
     if (this.deps.now() - this.navigatedAt < 3000) return;
     this.pause('navigated');
   }
 
   private onRoute(route: NonNullable<StepDef['route']>): boolean {
-    if (this.deps.currentRouteName() !== route.name) return false;
+    return this.deps.currentRouteName() === route.name && this.queryMatches(route);
+  }
+
+  private queryMatches(route: NonNullable<StepDef['route']>): boolean {
     const current = this.deps.currentRouteQuery?.() ?? {};
     return Object.entries(route.query ?? {}).every(([key, value]) => current[key] === value);
   }

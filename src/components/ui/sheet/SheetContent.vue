@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { isTourLayerEvent } from '@/tours/a11y';
 	import { cn } from '@/utils';
 	import { X } from 'lucide-vue-next';
 	import {
@@ -43,6 +44,11 @@
 		<DialogContent
 			:class="cn(sheetVariants({ side }), props.class)"
 			v-bind="{ ...forwarded, ...$attrs }"
+			@interact-outside="
+				(event) => {
+					if (isTourLayerEvent(event)) event.preventDefault();
+				}
+			"
 		>
 			<slot />
 

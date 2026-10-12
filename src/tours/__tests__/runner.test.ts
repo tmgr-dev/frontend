@@ -309,6 +309,21 @@ describe('TourRunner', () => {
 		expect(h.saves.pop()[1].status).toBe('paused');
 	});
 
+	it('pauses when only the query leaves the step route query', async () => {
+		const t = tour({ steps: [step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } })] });
+		const h = setup([t]);
+		h.present.add('a.a');
+		h.setRoute('Settings');
+		h.setQuery({ tab: 'privacy' });
+		await h.runner.start('t.one', 'hub');
+		h.setNow(1_000_000 + 5000);
+		h.runner.routeChanged('Settings');
+		expect(h.last()).not.toBeNull();
+		h.setQuery({ tab: 'about' });
+		h.runner.routeChanged('Settings');
+		expect(h.last()).toBeNull();
+	});
+
 	it('navigates again when the step route has the same name but another query', async () => {
 		const t = tour({
 			steps: [

@@ -91,8 +91,7 @@ describe('S4a catalog', () => {
 		expect(tour('agents.ask-ai').requires?.platforms).not.toContain('desktop');
 		expect(tour('agents.ask-ai').requires?.platforms).not.toContain('desktop_local');
 		expect(tour('personas.create').requires).toMatchObject({ modules: ['personas'], account: 'cloud', platforms: ['web', 'desktop'] });
-		expect(tour('personas.assign').requires).toMatchObject({ modules: ['personas', 'task.assignees'], platforms: ['web', 'desktop', 'desktop_local'] });
-		expect(tour('personas.assign').requires?.account).toBeUndefined();
+		expect(tour('personas.assign').requires).toMatchObject({ modules: ['personas', 'task.assignees'], account: 'cloud', platforms: ['web', 'desktop'] });
 		expect(tour('ws.modules').requires?.platforms).toEqual(ALL);
 		expect(tour('ws.invite').requires).toMatchObject({ account: 'cloud', platforms: ['web', 'mobile_web', 'desktop'] });
 		expect(tour('ws.dashboard').requires).toMatchObject({ modules: ['dashboard'], account: 'cloud' });
@@ -109,7 +108,7 @@ describe('S4a catalog', () => {
 	it('wait steps listen for the planned events', () => {
 		const waits = (id: string) => tour(id).steps.filter((s) => s.type === 'wait').map((s) => s.waitFor?.event);
 		expect(waits('agents.work-log')).toEqual(['agent.run_started', 'agent.run_finished']);
-		expect(tour('agents.work-log').steps[1].alreadyDone).toBe('agent_runs_finished');
+		expect(tour('agents.work-log').steps[1].alreadyDone).toBeUndefined();
 		expect(waits('agents.phone-alerts')).toEqual(['notify.token_created']);
 		expect(tour('agents.phone-alerts').steps[0].alreadyDone).toBe('notify_token');
 		expect(waits('agents.mcp-token')).toEqual(['mcp.token_created']);
@@ -141,9 +140,9 @@ describe('S4a catalog', () => {
 	});
 
 	it('mobile fallbacks', () => {
-		expect(tour('agents.ask-ai').steps[0].mobileBody).toBeTruthy();
+		expect(tour('agents.ask-ai').steps[0].mobileBody).toBe('Tap Ask AI in the top bar.');
 		expect(tour('ws.workspaces').steps[0].mobileAnchor).toBe('nav.menu-button');
-		expect(tour('ws.notifications').steps[0].mobileBody).toBeTruthy();
+		expect(tour('ws.notifications').steps[0].mobileBody).toBe('Tap the bell in the top bar.');
 	});
 
 	it('optional steps', () => {
@@ -233,8 +232,9 @@ describe('S4a catalog', () => {
 			expect(reason(items, 'agents.work-log')).toBe('platform');
 			expect(reason(items, 'ws.invite')).toBe('platform');
 			expect(reason(items, 'personas.create')).toBe('platform');
+			expect(reason(items, 'personas.assign')).toBe('platform');
 			const available = items.filter((item) => item.available).map((item) => item.tour.id);
-			expect(available).toEqual(expect.arrayContaining(['personas.assign', 'ws.modules', 'ws.workspaces', 'ws.appearance', 'ws.privacy']));
+			expect(available).toEqual(expect.arrayContaining(['ws.modules', 'ws.workspaces', 'ws.appearance', 'ws.privacy']));
 			expect(rows.map((row) => row.id)).not.toContain('agents.work-log');
 		});
 

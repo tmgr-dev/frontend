@@ -61,7 +61,7 @@ export const personasTours: TourDef[] = [
     title: 'Assign a task to a persona',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { modules: ['personas', 'task.assignees'], platforms: ['web', 'desktop', 'desktop_local'] },
+    requires: { modules: ['personas', 'task.assignees'], account: 'cloud', platforms: ['web', 'desktop'] },
     steps: [
       {
         id: 's1',

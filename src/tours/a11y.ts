@@ -1,3 +1,5 @@
+import { OWN_LAYERS } from './anchors';
+
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
@@ -212,5 +214,5 @@ export function isTourLayerEvent(event: {
   detail?: { originalEvent?: { target?: EventTarget | null } };
 }): boolean {
   const target = event.detail?.originalEvent?.target ?? event.target;
-  return target instanceof Element && !!target.closest('.tour-host, .driver-popover, .driver-overlay');
+  return target instanceof Element && !!target.closest(OWN_LAYERS);
 }

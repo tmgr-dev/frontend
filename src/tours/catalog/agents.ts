@@ -30,7 +30,6 @@ export const agentsTours: TourDef[] = [
         type: 'wait',
         anchor: 'task-form.agent-work',
         waitFor: { event: 'agent.run_finished' },
-        alreadyDone: 'agent_runs_finished',
         title: 'Run in progress',
         body: 'Waiting for the agent to finish its run…',
       },
@@ -121,7 +120,7 @@ export const agentsTours: TourDef[] = [
         waitFor: { event: 'ai.panel_opened' },
         title: 'Open Ask AI',
         body: 'Ask questions about tasks, time and deadlines.',
-        mobileBody: 'Open the menu, then tap Ask AI to ask about tasks, time and deadlines.',
+        mobileBody: 'Tap Ask AI in the top bar.',
       },
       {
         id: 's2',
