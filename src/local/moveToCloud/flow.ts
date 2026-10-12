@@ -29,7 +29,7 @@ import type {
 	MovePutResult,
 	MoveSnapshot,
 } from './native';
-import { tourBus, type TourEventNameKey } from '@/tours/events';
+import { tourBus } from '@/tours/events';
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
@@ -482,7 +482,7 @@ export const createMover = (deps: MoveDeps) => {
 		statuses.delete(code);
 		save(code, state);
 		emit(code);
-		tourBus.emit('migration.completed' as TourEventNameKey);
+		tourBus.emit('migration.completed');
 	};
 
 	const publishFromServer = async (
@@ -598,7 +598,7 @@ export const createMover = (deps: MoveDeps) => {
 			userId,
 		};
 		save(code, state);
-		tourBus.emit('migration.started' as TourEventNameKey);
+		tourBus.emit('migration.started');
 		return guarded(code, () => advance(code));
 	};
 

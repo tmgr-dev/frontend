@@ -1,6 +1,8 @@
+import { DESKTOP_RELEASE_TOURS } from './catalog/desktop';
+
 export type TourStartStatus = 'available' | 'completed' | 'unavailable';
 
-export const RELEASE_TOURS: Record<string, string[]> = {};
+export const RELEASE_TOURS: Record<string, string[]> = DESKTOP_RELEASE_TOURS;
 
 export const WHATS_NEW_TOUR_ID = 'desktop.whats-new';
 
