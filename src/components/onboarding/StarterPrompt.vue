@@ -4,7 +4,7 @@
 			Your first task is ready: <span class="font-medium text-ink">Say hello to TMGR</span>
 		</p>
 		<p class="text-sm font-medium text-ink">Paste this into your agent:</p>
-		<CopyCommand :code="prompt" label="Starter prompt" :emit-event="false" />
+		<CopyCommand :code="prompt" label="Starter prompt" :emit-event="false" wrap />
 		<p
 			v-if="runLogged"
 			class="text-sm font-medium text-green-700 dark:text-green-400"

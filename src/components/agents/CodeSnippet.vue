@@ -1,15 +1,17 @@
 <template>
-	<div class="relative">
+	<div :class="SNIPPET_ROW_CLASS">
 		<pre
 			:aria-label="label"
-			class="overflow-x-auto whitespace-pre rounded-md border border-border bg-muted px-3 py-2 pr-20 font-mono text-xs text-ink"
+			:class="[snippetTextClass(false), 'rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink']"
+			data-testid="snippet-text"
 			>{{ code }}</pre
 		>
 		<Button
 			type="button"
 			variant="outline"
 			size="sm"
-			class="absolute right-2 top-2 h-7 px-2 text-xs"
+			:class="[SNIPPET_BUTTON_CLASS, 'h-11 px-2 text-xs sm:h-7']"
+			data-testid="snippet-copy"
 			@click="copy"
 		>
 			{{ copied ? 'Copied' : 'Copy' }}
@@ -21,6 +23,7 @@
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
 	import { onBeforeUnmount, ref } from 'vue';
+	import { SNIPPET_BUTTON_CLASS, SNIPPET_ROW_CLASS, snippetTextClass } from '@/utils/snippetLayout';
 
 	const props = defineProps<{
 		code: string;
