@@ -81,6 +81,7 @@
 									</a>
 								</div>
 							</SettingsSection>
+							<TipsSettings />
 							<PromotionsList
 								v-if="promotionsEnabled && !localOnly"
 								placement="about"
@@ -90,7 +91,6 @@
 						</div>
 
 						<PrivacySettings v-if="isPrivacy" />
-						<TipsSettings v-if="isPrivacy" />
 
 						<SettingsSection v-if="isTheme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
