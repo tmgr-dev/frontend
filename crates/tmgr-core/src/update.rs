@@ -176,18 +176,18 @@ pub fn pick_release(releases: Vec<Release>, channel: Channel) -> Option<(Release
 pub enum Decision {
     UpToDate,
     Update,
-    Downgrade,
+    Older,
+    Rollback,
 }
 
 pub fn decide(current: &Version, trusted: Option<&Version>, candidate: &Version) -> Decision {
-    let floor = match trusted {
-        Some(t) if t > current => t,
-        _ => current,
-    };
-    match candidate.cmp(floor) {
+    if trusted.is_some_and(|t| candidate < t) {
+        return Decision::Rollback;
+    }
+    match candidate.cmp(current) {
         std::cmp::Ordering::Equal => Decision::UpToDate,
-        std::cmp::Ordering::Less => Decision::Downgrade,
         std::cmp::Ordering::Greater => Decision::Update,
+        std::cmp::Ordering::Less => Decision::Older,
     }
 }
 
@@ -511,7 +511,8 @@ pub fn run(opts: &Options, key: &PublicKey) -> Result<Report> {
     let expires = Some(manifest.expires_at.clone());
     match decision {
         Decision::UpToDate => return Ok(report(latest, expires)),
-        Decision::Downgrade if !opts.allow_downgrade => {
+        Decision::Older if !opts.allow_downgrade => return Ok(report(latest, expires)),
+        Decision::Rollback if !opts.allow_downgrade => {
             return Err(Error::conflict(format!(
                 "version {version} is older than what this machine already trusts; refusing to downgrade"
             ))
@@ -562,7 +563,7 @@ pub fn run(opts: &Options, key: &PublicKey) -> Result<Report> {
     let binary = extract_binary(&archive, &package)?;
     let backup = install_binary(&exe, &binary)?;
     let highest = match &trusted {
-        Some(t) if t > &version && !opts.allow_downgrade => t.clone(),
+        Some(t) if t > &version => t.clone(),
         _ => version.clone(),
     };
     store_trusted(&opts.state_dir, &highest)?;

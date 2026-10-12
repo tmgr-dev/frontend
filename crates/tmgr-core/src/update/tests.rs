@@ -187,17 +187,21 @@ fn pick_release_uses_the_cli_prefix_and_channel() {
 }
 
 #[test]
-fn decision_refuses_to_go_backwards() {
+fn decision_separates_rollback_from_not_newer() {
     assert_eq!(decide(&v("0.3.0"), None, &v("0.4.0")), Decision::Update);
     assert_eq!(decide(&v("0.3.0"), None, &v("0.3.0")), Decision::UpToDate);
-    assert_eq!(decide(&v("0.3.0"), None, &v("0.2.0")), Decision::Downgrade);
+    assert_eq!(decide(&v("0.3.0"), None, &v("0.2.0")), Decision::Older);
     assert_eq!(
         decide(&v("0.3.0"), Some(&v("0.5.0")), &v("0.4.0")),
-        Decision::Downgrade
+        Decision::Rollback
     );
     assert_eq!(
-        decide(&v("0.3.0"), Some(&v("0.5.0")), &v("0.5.0")),
-        Decision::UpToDate
+        decide(&v("0.3.0"), Some(&v("0.4.0")), &v("0.4.0")),
+        Decision::Update
+    );
+    assert_eq!(
+        decide(&v("0.6.0"), Some(&v("0.5.0")), &v("0.5.0")),
+        Decision::Older
     );
     assert_eq!(
         decide(&v("0.3.0"), Some(&v("0.2.0")), &v("0.4.0")),
@@ -428,15 +432,38 @@ fn up_to_date_installs_nothing() {
 }
 
 #[test]
-fn downgrade_is_refused_unless_allowed() {
+fn older_release_is_not_installed_unless_downgrade_is_allowed() {
     let s = Stand::new();
     s.publish_good("0.4.0");
     let mut opts = s.opts("0.5.0");
-    let err = run(&opts, &s.keys.pk).unwrap_err();
-    assert_eq!(err.kind, Kind::Conflict);
+    let r = run(&opts, &s.keys.pk).unwrap();
+    assert!(!r.installed && !r.update_available);
     assert_eq!(std::fs::read(&opts.exe).unwrap(), b"OLDBIN");
     opts.allow_downgrade = true;
     assert!(run(&opts, &s.keys.pk).unwrap().installed);
+}
+
+#[test]
+fn consented_downgrade_keeps_the_trusted_floor() {
+    let s = Stand::new();
+    s.publish_good("0.4.0");
+    let mut opts = s.opts("0.5.0");
+    store_trusted(&opts.state_dir, &v("0.5.0")).unwrap();
+    assert_eq!(run(&opts, &s.keys.pk).unwrap_err().kind, Kind::Conflict);
+    opts.allow_downgrade = true;
+    assert!(run(&opts, &s.keys.pk).unwrap().installed);
+    assert_eq!(load_trusted(&opts.state_dir).unwrap(), Some(v("0.5.0")));
+}
+
+#[test]
+fn reinstalled_older_binary_can_reach_the_trusted_version() {
+    let s = Stand::new();
+    s.publish_good("0.4.0");
+    let opts = s.opts("0.3.0");
+    store_trusted(&opts.state_dir, &v("0.4.0")).unwrap();
+    let r = run(&opts, &s.keys.pk).unwrap();
+    assert!(r.installed);
+    assert_eq!(std::fs::read(&opts.exe).unwrap(), b"NEWBIN");
 }
 
 #[test]
