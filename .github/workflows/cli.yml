@@ -74,4 +74,5 @@ jobs:
       - name: test
         env:
           TARGET: ${{ matrix.target }}
+          TMGR_BUILD_COMMIT: ${{ github.sha }}
         run: cargo test --workspace --locked ${TARGET:+--target "$TARGET"}

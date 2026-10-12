@@ -28,7 +28,7 @@ jobs:
           CLI_VERSION=$(cargo metadata --no-deps --format-version 1 --locked \
             | jq -r '.packages[] | select(.name == "tmgr-cli") | .version')
           echo "version=$CLI_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_TYPE" = "tag" ] && [[ "$GITHUB_REF_NAME" == cli-v* ]]; then
             if [ "cli-v$CLI_VERSION" != "$GITHUB_REF_NAME" ]; then
               echo "::error::tag $GITHUB_REF_NAME does not match crates/tmgr-cli version $CLI_VERSION"
               exit 1
@@ -82,8 +82,8 @@ jobs:
         shell: bash
     env:
       CLI_VERSION: ${{ needs.meta.outputs.version }}
-      DRY_RUN: ${{ needs.meta.outputs.dry_run }}
       TARGET: ${{ matrix.target }}
+      TMGR_BUILD_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -97,14 +97,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          key: release-${{ matrix.target }}
-
       - name: build
         run: |
           cargo build --release --locked --package tmgr-cli --target "$TARGET"
-          mkdir -p dist missing
+          mkdir -p dist
           cp "target/$TARGET/release/tmgr" dist/tmgr
           file dist/tmgr
 
@@ -113,16 +109,41 @@ jobs:
           ./dist/tmgr --version
           ./dist/tmgr version --json | jq -e --arg v "$CLI_VERSION" '.schema == "tmgr.v1" and .ok and .data.version == $v'
 
-      # The only step that sees the Apple certificate. Secrets are exposed on tag pushes only.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist/tmgr
+          if-no-files-found: error
+
+  sign-macos:
+    name: sign ${{ matrix.target }}
+    needs: build
+    runs-on: macos-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    defaults:
+      run:
+        shell: bash
+    env:
+      SIGNING: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist
+
       - name: codesign
-        if: runner.os == 'macOS'
         env:
-          APPLE_CERTIFICATE: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ env.DRY_RUN == 'false' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_CERTIFICATE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
+          mkdir -p missing
           if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; then
-            echo "::warning::macOS codesign skipped (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY not all set or dry run)"
+            echo "::warning::macOS codesign skipped (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY not all set, or not a tag push)"
             echo "macOS codesign" >> missing/codesign.txt
             exit 0
           fi
@@ -146,11 +167,10 @@ jobs:
           touch signed
 
       - name: notarize
-        if: runner.os == 'macOS'
         env:
-          APPLE_ID: ${{ env.DRY_RUN == 'false' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ env.DRY_RUN == 'false' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_ID: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && secrets.APPLE_TEAM_ID || '' }}
         run: |
           if [ ! -f signed ]; then
             echo "::warning::macOS notarization skipped (binary is not signed)"
@@ -166,25 +186,10 @@ jobs:
           xcrun notarytool submit "$RUNNER_TEMP/tmgr-notarize.zip" \
             --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
 
-      - name: package
-        run: |
-          NAME="tmgr-$CLI_VERSION-$TARGET"
-          mkdir -p "pkg/$NAME" staging
-          cp dist/tmgr LICENSE "pkg/$NAME/"
-          {
-            echo "tmgr $CLI_VERSION ($TARGET)"
-            echo
-            echo "Command line tool for TMGR. Put the tmgr binary on your PATH."
-            echo "Verify the archive against SHA256SUMS and its .minisig from the release page."
-            echo "Source: https://github.com/$GITHUB_REPOSITORY (AGPL-3.0-only)"
-          } > "pkg/$NAME/README.txt"
-          tar -czf "staging/$NAME.tar.gz" -C pkg "$NAME"
-          ls -l staging
-
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: archive-${{ matrix.target }}
-          path: staging/*
+          name: signed-${{ matrix.target }}
+          path: dist/tmgr
           if-no-files-found: error
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -193,23 +198,25 @@ jobs:
           path: missing/*
           if-no-files-found: ignore
 
-  release:
-    name: ${{ needs.meta.outputs.dry_run == 'true' && 'assemble (dry run)' || 'publish release' }}
-    needs: [meta, build]
+  assemble:
+    name: ${{ needs.meta.outputs.dry_run == 'true' && 'assemble (dry run)' || 'assemble' }}
+    needs: [meta, build, sign-macos]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
     env:
       CLI_VERSION: ${{ needs.meta.outputs.version }}
       DRY_RUN: ${{ needs.meta.outputs.dry_run }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: archive-*
-          path: release
-          merge-multiple: true
+          pattern: bin-*-linux-musl
+          path: in
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: signed-*
+          path: in
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -222,65 +229,37 @@ jobs:
           name: notes
           path: notes
 
-      - name: checksums
+      - name: archives and checksums
         run: |
+          mkdir -p release pkg missing
+          for dir in in/*/; do
+            NAME=$(basename "$dir")
+            TARGET=${NAME#bin-}
+            TARGET=${TARGET#signed-}
+            PKG="tmgr-$CLI_VERSION-$TARGET"
+            mkdir -p "pkg/$PKG"
+            install -m 755 "$dir/tmgr" "pkg/$PKG/tmgr"
+            cp LICENSE "pkg/$PKG/"
+            {
+              echo "tmgr $CLI_VERSION ($TARGET)"
+              echo
+              echo "Command line tool for TMGR. Put the tmgr binary on your PATH."
+              echo "Verify the archive against SHA256SUMS and its .minisig from the release page."
+              echo "Source: https://github.com/$GITHUB_REPOSITORY (AGPL-3.0-only)"
+            } > "pkg/$PKG/README.txt"
+            tar -czf "release/$PKG.tar.gz" -C pkg "$PKG"
+          done
           cd release
           sha256sum tmgr-*.tar.gz > SHA256SUMS
           cat SHA256SUMS
           test "$(wc -l < SHA256SUMS)" -eq 4
 
-      - name: minisign
-        env:
-          CLI_MINISIGN_SECRET_KEY: ${{ env.DRY_RUN == 'false' && secrets.CLI_MINISIGN_SECRET_KEY || '' }}
-          CLI_MINISIGN_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.CLI_MINISIGN_PASSWORD || '' }}
-        run: |
-          mkdir -p missing
-          if [ -z "$CLI_MINISIGN_SECRET_KEY" ]; then
-            echo "::warning::minisign signatures skipped (CLI_MINISIGN_SECRET_KEY not set or dry run)"
-            echo "minisign signatures (CLI_MINISIGN_SECRET_KEY)" >> missing/minisign.txt
-            exit 0
-          fi
-          sudo apt-get update
-          sudo apt-get install -y minisign
-          KEY="$RUNNER_TEMP/minisign.key"
-          trap 'rm -f "$KEY"' EXIT
-          umask 077
-          printf '%s\n' "$CLI_MINISIGN_SECRET_KEY" > "$KEY"
-          cd release
-          for f in tmgr-*.tar.gz SHA256SUMS; do
-            if [ -n "$CLI_MINISIGN_PASSWORD" ]; then
-              printf '%s\n' "$CLI_MINISIGN_PASSWORD" | minisign -S -s "$KEY" -m "$f"
-            else
-              minisign -S -W -s "$KEY" -m "$f"
-            fi
-          done
-          ls -l
-
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        if: env.DRY_RUN == 'false'
-        with:
-          subject-path: |
-            release/tmgr-*.tar.gz
-            release/SHA256SUMS
-
       - name: notes and summary
         run: |
           cp notes/notes.md release-notes.md
-          PRERELEASE=false
-          if [[ "$CLI_VERSION" == *-* ]]; then PRERELEASE=true; fi
-          if compgen -G "missing/*.txt" > /dev/null; then
-            PRERELEASE=true
-            LIST=$(sort -u missing/*.txt | paste -sd ',' - | sed 's/,/, /g')
-            {
-              echo
-              echo "Unsigned prerelease: $LIST."
-            } >> release-notes.md
-          fi
-          echo "PRERELEASE=$PRERELEASE" >> "$GITHUB_ENV"
           {
             echo "### tmgr $CLI_VERSION"
             echo "- dry run: $DRY_RUN"
-            echo "- prerelease: $PRERELEASE"
             if compgen -G "missing/*.txt" > /dev/null; then
               echo "- skipped:"
               sort -u missing/*.txt | sed 's/^/  - /'
@@ -289,17 +268,89 @@ jobs:
           cat release-notes.md
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: env.DRY_RUN == 'true'
         with:
-          name: release-dry-run
-          path: release/*
+          name: release
+          path: |
+            release/*
+            release-notes.md
+            missing
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    needs: [meta, assemble]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cli-v') && needs.meta.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      CLI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: .
+
+      - name: minisign
+        env:
+          CLI_MINISIGN_SECRET_KEY: ${{ secrets.CLI_MINISIGN_SECRET_KEY }}
+          CLI_MINISIGN_PASSWORD: ${{ secrets.CLI_MINISIGN_PASSWORD }}
+        run: |
+          mkdir -p missing
+          if [ -z "$CLI_MINISIGN_SECRET_KEY" ]; then
+            echo "::warning::minisign signatures skipped (CLI_MINISIGN_SECRET_KEY not set)"
+            echo "minisign signatures (CLI_MINISIGN_SECRET_KEY)" >> missing/minisign.txt
+            exit 0
+          fi
+          KEY="$RUNNER_TEMP/minisign.key"
+          trap 'rm -f "$KEY"' EXIT
+          umask 077
+          printf '%s\n' "$CLI_MINISIGN_SECRET_KEY" > "$KEY"
+          KDF=$(sed -n 2p "$KEY" | base64 --decode | od -An -tx1 | tr -d ' \n' | cut -c5-8)
+          if [ "$KDF" = "5363" ] && [ -z "$CLI_MINISIGN_PASSWORD" ]; then
+            echo "::warning::minisign signatures skipped (secret key is encrypted and CLI_MINISIGN_PASSWORD is not set)"
+            echo "minisign signatures (CLI_MINISIGN_PASSWORD)" >> missing/minisign.txt
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          cd release
+          for f in tmgr-*.tar.gz SHA256SUMS; do
+            if [ "$KDF" = "5363" ]; then
+              printf '%s\n' "$CLI_MINISIGN_PASSWORD" | minisign -S -s "$KEY" -m "$f"
+            else
+              minisign -S -W -s "$KEY" -m "$f"
+            fi
+          done
+          ls -l
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/tmgr-*.tar.gz
+            release/SHA256SUMS
 
       - name: publish GitHub release
-        if: env.DRY_RUN == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          FLAGS=()
+          PRERELEASE=false
+          if [[ "$CLI_VERSION" == *-* ]]; then PRERELEASE=true; fi
+          if compgen -G "missing/*.txt" > /dev/null; then
+            PRERELEASE=true
+            LIST=$(sort -u missing/*.txt | paste -sd ',' - | sed 's/,/, /g')
+            printf '\nUnsigned prerelease: %s.\n' "$LIST" >> release-notes.md
+          fi
+          {
+            echo "- prerelease: $PRERELEASE"
+            if compgen -G "missing/*.txt" > /dev/null; then
+              echo "- skipped:"
+              sort -u missing/*.txt | sed 's/^/  - /'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          FLAGS=(--latest=false)
           if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" release/* \
             --repo "$GITHUB_REPOSITORY" \
