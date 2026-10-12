@@ -284,6 +284,20 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
   });
 });
 
+test.describe('welcome intent cards', () => {
+  flow('the two intent cards have the same height at 390', async ({ page }) => {
+    await boot(page, SIZES[1], { user: NEW_USER });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/welcome-setup$/);
+    const human = page.getByRole('button', { name: /Just track my tasks/ });
+    const agent = page.getByRole('button', { name: /Connect my AI agent/ });
+    await expect(agent).toBeVisible();
+    const [a, b] = [await human.boundingBox(), await agent.boundingBox()];
+    expect(Math.abs(a.height - b.height)).toBeLessThan(1);
+    await shoot(page, 'intent-cards', SIZES[1], 'light');
+  });
+});
+
 test.describe('welcome screens: consent banner and keyboard', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 

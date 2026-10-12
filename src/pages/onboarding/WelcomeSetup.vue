@@ -12,7 +12,7 @@
 					<h1 class="text-2xl font-semibold text-ink sm:text-3xl">How do you want to start?</h1>
 					<p class="mt-2 text-sm text-ink-subtle">You can do both later. Nothing here is permanent.</p>
 
-					<div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2" role="group" aria-label="Start with">
+					<div class="mt-8 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2" role="group" aria-label="Start with">
 						<IntentCard
 							title="Just track my tasks"
 							description="Tasks, a board and a timer. Ready in a minute."
