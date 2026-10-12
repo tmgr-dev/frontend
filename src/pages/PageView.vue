@@ -318,6 +318,7 @@
 	} from '@/utils/pages/properties';
 	import {
 		type PageUpdatedEvent,
+		refreshAction,
 		shouldShowUpdateBanner,
 	} from '@/utils/pages/realtime';
 	import {
@@ -822,14 +823,27 @@
 				}
 			}
 
-			const refresh = async () => {
-				if (!page.value) return;
-				try {
-					const current = await getPage(page.value.id);
-					const dirty =
-						JSON.stringify(changedFields(form.value, savedState.value)) !==
-						'{}';
-					if (dirty) {
+			const refresh = () =>
+				runExclusive(async () => {
+					if (!page.value) return;
+					const id = page.value.id;
+					let current: Page;
+					try {
+						current = await getPage(id);
+					} catch {
+						return;
+					}
+					if (page.value?.id !== id) return;
+					const action = refreshAction({
+						serverVersion: current.version,
+						loadedVersion: page.value.version,
+						ownVersions,
+						form: form.value,
+						saved: savedState.value,
+					});
+					if (action === 'ignore') {
+						updateBanner.value = null;
+					} else if (action === 'conflict') {
 						cancel();
 						comparing.value = false;
 						conflict.value = current;
@@ -837,10 +851,7 @@
 					} else {
 						adopt(current);
 					}
-				} catch {
-					return;
-				}
-			};
+				});
 
 			const onFreeChange = (
 				index: number,
@@ -1010,7 +1021,10 @@
 				() => (store.state as RootState).pagesEvent?.seq,
 				() => {
 					const event = (store.state as RootState).pagesEvent;
-					if (event?.type === 'page.updated') onRealtime(event);
+					// The echo of our own save can arrive before its PATCH response.
+					if (event?.type === 'page.updated') {
+						void runExclusive(async () => onRealtime(event));
+					}
 				},
 			);
 
