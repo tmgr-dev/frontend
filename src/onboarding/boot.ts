@@ -3,7 +3,7 @@ import type { Router } from 'vue-router';
 import { toursEngine } from '@/tours/useTours';
 import type { OnboardingState } from '@/tours/types';
 import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
-import { ONBOARDING_SINCE, shouldOfferIntent } from './redirect';
+import { EXCLUDED_ROUTES, ONBOARDING_SINCE, shouldOfferIntent } from './redirect';
 
 interface BootStore {
   state: any;
@@ -21,14 +21,11 @@ export interface OnboardingBootDeps {
   ready(): Promise<void>;
   routeName(): string | null;
   redirect(name: string): void;
-  startSequence(ids: string[], trigger: string): Promise<void>;
   hasWorkspaceInvitation(): boolean;
   user(): { id?: number | string; created_at?: string | null };
   workspaces(): WorkspaceLike[];
-  waitForSession(needWorkspaces: boolean): Promise<void>;
+  waitForSession(needWorkspaces: boolean): Promise<boolean>;
 }
-
-const LOCAL_SEQUENCE = ['start.nav', 'start.first-task'];
 
 export function ownsOnlyDefaultWorkspace(
   workspaces: WorkspaceLike[],
@@ -40,19 +37,14 @@ export function ownsOnlyDefaultWorkspace(
 
 export async function runOnboardingBoot(
   deps: OnboardingBootDeps,
-): Promise<'redirected' | 'sequence' | 'none'> {
+): Promise<'redirected' | 'none'> {
   const state = deps.state();
   if (!state) return 'none';
 
-  if (deps.localOnly()) {
-    const untouched = LOCAL_SEQUENCE.every((id) => !state.tours[id]);
-    if (state.intent !== 'human' || !untouched) return 'none';
-    await deps.startSequence(LOCAL_SEQUENCE, 'first_run');
-    return 'sequence';
-  }
+  if (deps.localOnly()) return 'none';
 
   await deps.ready();
-  await deps.waitForSession(state.invited === undefined);
+  if (!(await deps.waitForSession(state.invited === undefined))) return 'none';
   const user = deps.user();
   const offer = shouldOfferIntent({
     state: deps.state(),
@@ -65,6 +57,8 @@ export async function runOnboardingBoot(
     ownsOnlyDefaultWorkspace: ownsOnlyDefaultWorkspace(deps.workspaces(), user.id),
   });
   if (!offer) return 'none';
+  const route = deps.routeName();
+  if (!route || EXCLUDED_ROUTES.includes(route)) return 'none';
   deps.redirect('WelcomeSetup');
   return 'redirected';
 }
@@ -75,21 +69,21 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
   if (isDesktopApp() && desktopWindowLabel() !== 'main') return () => {};
 
   const waitForSession = (needWorkspaces: boolean) =>
-    new Promise<void>((resolve) => {
+    new Promise<boolean>((resolve) => {
       const ready = () =>
         store.state.user?.id !== undefined &&
         (!needWorkspaces || (store.state.workspaces?.length ?? 0) > 0);
-      if (ready()) return resolve();
+      if (ready()) return resolve(true);
       let stop = () => {};
       const timeout = setTimeout(() => {
         stop();
-        resolve();
+        resolve(false);
       }, SESSION_WAIT_MS);
       stop = store.watch(ready, (ok) => {
         if (!ok) return;
         clearTimeout(timeout);
         stop();
-        resolve();
+        resolve(true);
       });
     });
 
@@ -111,7 +105,6 @@ export function installOnboardingFlow(store: BootStore, router: Router): () => v
         routeName: () =>
           typeof router.currentRoute.value.name === 'string' ? router.currentRoute.value.name : null,
         redirect: (name) => void router.replace({ name }),
-        startSequence: (ids, trigger) => engine.api.startSequence(ids, trigger),
         hasWorkspaceInvitation: () => {
           try {
             return !!localStorage.getItem('workspace.invitation');

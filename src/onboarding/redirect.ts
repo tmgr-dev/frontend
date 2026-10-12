@@ -37,9 +37,6 @@ export function shouldOfferIntent(ctx: RedirectContext): boolean {
   if (ctx.hasWorkspaceInvitation || ctx.localOnly || !ctx.mainWindow) return false;
   if (!ctx.routeName || EXCLUDED_ROUTES.includes(ctx.routeName)) return false;
   if (state.facts?.has_task) return false;
-  if (ctx.userCreatedAt) {
-    const createdAt = Date.parse(ctx.userCreatedAt);
-    if (!Number.isFinite(createdAt) || createdAt < ctx.onboardingSince) return false;
-  }
-  return true;
+  const createdAt = ctx.userCreatedAt ? Date.parse(ctx.userCreatedAt) : NaN;
+  return Number.isFinite(createdAt) && createdAt >= ctx.onboardingSince;
 }

@@ -8,11 +8,10 @@ const deps = (over: Partial<OnboardingBootDeps> = {}): OnboardingBootDeps => ({
   ready: jest.fn().mockResolvedValue(undefined),
   routeName: () => 'WorkspaceTasksList',
   redirect: jest.fn(),
-  startSequence: jest.fn().mockResolvedValue(undefined),
   hasWorkspaceInvitation: () => false,
   user: () => ({ id: 1, created_at: '2999-01-01T00:00:00Z' }),
   workspaces: () => [{ id: 1, user_id: 1, is_default: true }],
-  waitForSession: jest.fn().mockResolvedValue(undefined),
+  waitForSession: jest.fn().mockResolvedValue(true),
   ...over,
 });
 
@@ -75,31 +74,39 @@ describe('runOnboardingBoot', () => {
     expect(await runOnboardingBoot(d)).toBe('none');
   });
 
+  it('does not redirect when the user never loaded (created_at unknown)', async () => {
+    const d = deps({ user: () => ({}) });
+    expect(await runOnboardingBoot(d)).toBe('none');
+    expect(d.redirect).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect when the session wait times out', async () => {
+    const d = deps({ waitForSession: jest.fn().mockResolvedValue(false) });
+    expect(await runOnboardingBoot(d)).toBe('none');
+    expect(d.redirect).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect when the route changed to an excluded one while waiting', async () => {
+    let calls = 0;
+    const d = deps({ routeName: () => (++calls > 1 ? 'WorkspaceInvitation' : 'WorkspaceTasksList') });
+    expect(await runOnboardingBoot(d)).toBe('none');
+    expect(d.redirect).not.toHaveBeenCalled();
+  });
+
   it('does not redirect from an excluded route', async () => {
     const d = deps({ routeName: () => 'WorkspaceInvitation' });
     expect(await runOnboardingBoot(d)).toBe('none');
   });
 
   describe('local mode', () => {
-    const local = (over: Partial<OnboardingBootDeps> = {}) =>
-      deps({ localOnly: () => true, state: () => ({ ...emptyOnboarding(), intent: 'human' }), ...over });
-
-    it('never redirects and starts G1 then G2 on the first session', async () => {
-      const d = local();
-      expect(await runOnboardingBoot(d)).toBe('sequence');
-      expect(d.redirect).not.toHaveBeenCalled();
-      expect(d.startSequence).toHaveBeenCalledWith(['start.nav', 'start.first-task'], 'first_run');
-    });
-
-    it('does not repeat once a tour has state', async () => {
-      const state = { ...emptyOnboarding(), intent: 'human', tours: { 'start.nav': { status: 'skipped', step_id: 's1', version: 1, generation: 0 } } };
-      const d = local({ state: () => state as never });
+    it('never redirects and never starts a sequence', async () => {
+      const d = deps({ localOnly: () => true, state: () => ({ ...emptyOnboarding(), intent: 'human' }) });
       expect(await runOnboardingBoot(d)).toBe('none');
-      expect(d.startSequence).not.toHaveBeenCalled();
+      expect(d.redirect).not.toHaveBeenCalled();
     });
 
-    it('does not start for a non-human intent', async () => {
-      const d = local({ state: () => ({ ...emptyOnboarding(), intent: 'skipped' }) });
+    it('stays idle with a null intent too', async () => {
+      const d = deps({ localOnly: () => true });
       expect(await runOnboardingBoot(d)).toBe('none');
     });
   });

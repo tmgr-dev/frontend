@@ -72,7 +72,7 @@
 
 <script lang="ts">
 import { Bot, ListChecks } from 'lucide-vue-next';
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import IntentCard from '@/components/onboarding/IntentCard.vue';
@@ -115,6 +115,10 @@ export default defineComponent({
 				return false;
 			}
 		};
+
+		onMounted(() => {
+			if (store.getters.isLocalOnly) void router.replace(listPath());
+		});
 
 		const choose = async (intent: 'human' | 'agent', seed = true) => {
 			if (busy.value) return;

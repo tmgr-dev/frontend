@@ -37,6 +37,9 @@ describe('shouldOfferIntent', () => {
     ['unknown route', { routeName: null }],
     ['old account', { userCreatedAt: '2026-10-01T09:00:00Z' }],
     ['unparsable created_at with task', { userCreatedAt: 'nope', state: { ...emptyOnboarding(), facts: { has_task: true } } }],
+    ['null created_at', { userCreatedAt: null }],
+    ['empty created_at', { userCreatedAt: '' }],
+    ['unparsable created_at', { userCreatedAt: 'nope' }],
     ['has task', { state: { ...emptyOnboarding(), facts: { has_task: true } } }],
     ['guest of another workspace (invited unknown)', { ownsOnlyDefaultWorkspace: false }],
   ])('refuses: %s', (_name, over) => {
@@ -56,15 +59,6 @@ describe('shouldOfferIntent', () => {
         ctx({ state: { ...emptyOnboarding(), invited: false }, ownsOnlyDefaultWorkspace: false }),
       ),
     ).toBe(true);
-  });
-
-  it('falls back to has_task alone when created_at is unknown', () => {
-    expect(shouldOfferIntent(ctx({ userCreatedAt: null }))).toBe(true);
-    expect(
-      shouldOfferIntent(
-        ctx({ userCreatedAt: null, state: { ...emptyOnboarding(), facts: { has_task: true } } }),
-      ),
-    ).toBe(false);
   });
 
   it('accepts an account created exactly at the boundary', () => {

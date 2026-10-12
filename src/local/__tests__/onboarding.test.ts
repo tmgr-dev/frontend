@@ -19,21 +19,16 @@ const empty = {
 	facts: {},
 };
 
-const first = { ...empty, intent: 'human', invited: false };
-
 describe('local onboarding handler', () => {
-	it('answers GET with the default state, human intent, wrapped in data', () => {
+	it('answers GET with the default state, intent null, wrapped in data', () => {
 		const handle = createOnboardingHandler(memory());
-		expect(handle('GET', 'onboarding')).toEqual({ status: 200, data: { data: first } });
+		expect(handle('GET', 'onboarding')).toEqual({ status: 200, data: { data: empty } });
 	});
 
-	it('sets the human intent on the first session only and keeps it', () => {
+	it('does not store an intent on GET', () => {
 		const storage = memory();
 		createOnboardingHandler(storage)('GET', 'onboarding');
-		expect(JSON.parse(storage.map.get(ONBOARDING_KEY)!).intent).toBe('human');
-		const handle = createOnboardingHandler(storage);
-		handle('POST', 'onboarding/intent', { intent: 'skipped' });
-		expect(handle('GET', 'onboarding').data.data.intent).toBe('skipped');
+		expect(storage.map.has(ONBOARDING_KEY)).toBe(false);
 	});
 
 	it('accepts and ignores seed, never invited, creates no starter tasks', () => {
@@ -122,7 +117,7 @@ describe('local onboarding handler', () => {
 		const storage = memory();
 		storage.setItem(ONBOARDING_KEY, '{not json');
 		const handle = createOnboardingHandler(storage);
-		expect(handle('GET', 'onboarding').data.data).toEqual(first);
+		expect(handle('GET', 'onboarding').data.data).toEqual(empty);
 		expect(handle('GET', 'onboarding/nope').status).toBe(404);
 	});
 });
