@@ -106,6 +106,10 @@ fn login_device(
 ) -> Result<(Client, Backend, Option<String>)> {
     let scopes = parse_scopes(args.scopes.as_deref())?;
     let label = parse_label(&args.label)?;
+    let _ = ctrlc::set_handler(|| {
+        eprintln!();
+        std::process::exit(130);
+    });
     let client = ctx.anonymous_client()?;
     let dc = client.device_code(&format!("tmgr {VERSION}"), &label, &scopes)?;
     let url = verification_url(
@@ -128,10 +132,6 @@ fn login_device(
         ctx.err_style
             .muted("Waiting for approval... (Ctrl-C to cancel)")
     );
-    let _ = ctrlc::set_handler(|| {
-        eprintln!();
-        std::process::exit(130);
-    });
     let deadline = Instant::now() + Duration::from_secs(dc.expires_in);
     let mut interval = dc.interval;
     let (tokens, _granted) = loop {

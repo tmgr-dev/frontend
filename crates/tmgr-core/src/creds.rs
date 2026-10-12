@@ -125,6 +125,9 @@ impl CredentialStore {
                 })
             }
             Err(_) => {
+                if let Ok(entry) = keyring::Entry::new(SERVICE, &self.account) {
+                    let _ = entry.delete_credential();
+                }
                 self.file_save(tokens)?;
                 Ok(Saved {
                     backend: Backend::File,
