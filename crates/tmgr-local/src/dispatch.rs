@@ -37,6 +37,10 @@ pub fn dispatch(
     else {
         return Ok(None);
     };
+    let persona = ctx.actor.as_ref().is_some_and(|a| a.kind == "persona");
+    if !route.ported && !persona {
+        return Ok(None);
+    }
     let req = Request {
         conn,
         ctx,
@@ -44,6 +48,22 @@ pub fn dispatch(
         query: Query::parse(url.split_once('?').map_or("", |(_, q)| q)),
         body: parse_body(body),
     };
+    if !route.ported {
+        return match check_access(conn, ctx, &method, route.pattern) {
+            Err(Outcome::Http { status, body }) => {
+                let _ = journal(
+                    &req,
+                    &method,
+                    route.pattern,
+                    entity_id(&req, &method, None),
+                    status,
+                );
+                Ok(Some(Response { status, data: body }))
+            }
+            Err(Outcome::Failed(e)) => Err(e),
+            _ => Ok(None),
+        };
+    }
     let tx = if method == "GET" {
         None
     } else {
@@ -56,7 +76,6 @@ pub fn dispatch(
             if journal_worthy(ctx, &method, route.status) {
                 let entity_id = entity_id(&req, &method, Some(&data));
                 let audited = journal(&req, &method, route.pattern, entity_id, route.status);
-                let persona = ctx.actor.as_ref().is_some_and(|a| a.kind == "persona");
                 if audited.is_err() && persona {
                     return Ok(Some(Response {
                         status: 500,
@@ -318,6 +337,43 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn an_unported_write_answers_nothing_without_taking_the_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.db");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(&crate::testing::schema())
+            .unwrap();
+        let desktop = crate::open_write(&path).unwrap();
+        desktop.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let cli = crate::db::open_write_with(&path, 50).unwrap();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        assert_eq!(
+            dispatch(&cli, &c, "POST", "daily-routines/tasks/quick", None).unwrap(),
+            None
+        );
+        assert!(cli.is_autocommit());
+        desktop.execute_batch("ROLLBACK").unwrap();
+    }
+
+    #[test]
+    fn a_persona_on_an_unported_route_is_still_refused_and_journaled() {
+        let conn = writable();
+        let r = dispatch(
+            &conn,
+            &as_actor("persona", "p1"),
+            "GET",
+            "daily-routines/tasks",
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(r.status, 403);
+        assert_eq!(count(&conn, "activity_log"), 1);
+        assert!(conn.is_autocommit());
     }
 
     #[test]

@@ -48,10 +48,6 @@ impl From<Error> for Outcome {
 pub(crate) type Handled = Result<Value, Outcome>;
 pub(crate) type Handler = fn(&Request<'_>) -> Handled;
 
-pub(crate) fn unrouted(_: &Request<'_>) -> Handled {
-    Err(Outcome::Unrouted)
-}
-
 pub(crate) fn http(status: u16, message: impl Into<String>) -> Outcome {
     Outcome::Http {
         status,
@@ -115,6 +111,8 @@ pub(crate) struct Route {
     pub pattern: &'static str,
     pub status: u16,
     pub handler: Handler,
+    /// False for a TS route this crate does not answer yet.
+    pub ported: bool,
     segments: Vec<Segment>,
 }
 
@@ -135,8 +133,15 @@ impl Route {
             pattern,
             status: 200,
             handler,
+            ported: true,
             segments,
         }
+    }
+
+    pub fn unported(method: &'static str, pattern: &'static str) -> Self {
+        let mut route = Route::new(method, pattern, |_| Err(Outcome::Unrouted));
+        route.ported = false;
+        route
     }
 
     pub fn created(mut self) -> Self {
