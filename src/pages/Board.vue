@@ -855,6 +855,7 @@
 			Confirm,
 			WorkspaceUsers,
 			BoardTaskCount,
+			RemoveSampleTasksButton,
 			FeatureGate,
 			BoardPreview,
 		},
