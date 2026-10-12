@@ -270,15 +270,24 @@
 						</ERSection>
 
 						<!-- Reminder -->
-						<ERSection label="Reminder" data-tour="routine.reminder">
+						<ERSection
+							label="Reminder"
+							data-tour="routine.reminder"
+							:hint="
+								draft.frequency === 'NONE'
+									? 'Only for repeating routines'
+									: undefined
+							"
+						>
 							<div class="flex flex-wrap gap-1.5">
 								<button
 									v-for="p in reminderPresets"
 									:key="p.id"
 									type="button"
-									class="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+									:disabled="draft.frequency === 'NONE'"
+									class="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 									:class="
-										draft.reminderMin === p.min
+										draft.frequency !== 'NONE' && draft.reminderMin === p.min
 											? 'border-brand bg-brand-bg text-ink'
 											: 'border-line bg-surface-sunken text-ink-subtle hover:text-ink'
 									"
@@ -391,20 +400,13 @@
 		type Category,
 	} from '@/actions/tmgr/categories';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
-	import type {
-		RoutineCategoryId,
-		RoutineFrequency,
-	} from '@/types/dailyRoutine';
+	import type { RoutineFrequency } from '@/types/dailyRoutine';
 	import {
 		ROUTINE_CATEGORY_LIST,
 		resolveCategory,
 	} from '@/utils/dailyRoutines/categoryMap';
 	import { emitRoutineEditorOpened } from '@/tours/pageRoutineEvents';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
-	import {
-		isUnscheduledDraft,
-		parseTimeStr,
-	} from '@/utils/dailyRoutines/routineDraft';
 	import {
 		computed,
 		onBeforeUnmount,
@@ -416,24 +418,7 @@
 	import { useStore } from 'vuex';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
-
-	interface RoutineDraft {
-		id: number | null;
-		title: string;
-		description: string;
-		cat: RoutineCategoryId;
-		timeH: number;
-		timeM: number;
-		durationMin: number;
-		frequency: RoutineFrequency;
-		interval: number;
-		daysOfWeek: number[];
-		dayOfMonth: number;
-		month: number;
-		reminderMin: number | null;
-		unscheduled: boolean;
-		scheduledDate: string;
-	}
+	import { routineDraftFrom, type RoutineDraft } from './routinePayload';
 
 	const props = defineProps<{
 		routine: any | null;
@@ -464,29 +449,7 @@
 		return `${y}-${m}-${day}`;
 	}
 
-	const r = props.routine ?? {};
-	const initialFreq = (r.recurrence?.frequency ??
-		r.frequency ??
-		'NONE') as RoutineFrequency;
-	const taskTime = parseTimeStr(r.scheduled_time);
-
-	const initial: RoutineDraft = {
-		id: r.id ?? null,
-		title: r.title ?? '',
-		description: r.description ?? '',
-		cat: (r.routine_category?.id ?? r.cat ?? 'none') as RoutineCategoryId,
-		timeH: r.time?.h ?? r.recurrence?.time?.hours ?? taskTime?.h ?? 9,
-		timeM: r.time?.m ?? r.recurrence?.time?.minutes ?? taskTime?.m ?? 0,
-		durationMin: r.recurrence?.duration_min ?? r.durationMin ?? 30,
-		frequency: initialFreq,
-		interval: r.recurrence?.interval ?? 1,
-		daysOfWeek: dowsToIndices(r.recurrence?.days_of_week ?? []),
-		dayOfMonth: r.recurrence?.day_of_frequency ?? new Date().getDate(),
-		month: r.recurrence?.month ?? 0,
-		reminderMin: r.recurrence?.reminder_min ?? null,
-		unscheduled: isUnscheduledDraft(r),
-		scheduledDate: r.scheduled_date ?? r._draftDate ?? r.date ?? todayIso(),
-	};
+	const initial = routineDraftFrom(props.routine ?? {}, todayIso());
 
 	const draft = reactive<RoutineDraft>(initial);
 	const isNew = computed(() => !props.routine?.id);
@@ -564,17 +527,6 @@
 		{ id: '30', label: '30m', min: 30 },
 		{ id: '60', label: '1h', min: 60 },
 	];
-
-	function dowsToIndices(arr: any[]): number[] {
-		const KEYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-		if (!arr) return [];
-		return arr
-			.map((d: any) =>
-				typeof d === 'number' ? d : KEYS.indexOf(String(d).toUpperCase()),
-			)
-			.filter((i: number) => i >= 0)
-			.sort();
-	}
 
 	function toggleDow(i: number) {
 		if (draft.daysOfWeek.includes(i)) {
