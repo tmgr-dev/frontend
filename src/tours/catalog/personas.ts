@@ -7,7 +7,7 @@ export const personasTours: TourDef[] = [
   {
     id: 'personas.create',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'personas',
     title: 'Give your agent an identity',
     minutes: 2,
@@ -35,7 +35,7 @@ export const personasTours: TourDef[] = [
   {
     id: 'personas.token',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'personas',
     title: 'Persona token',
     minutes: 1,
@@ -56,7 +56,7 @@ export const personasTours: TourDef[] = [
   {
     id: 'personas.assign',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'personas',
     title: 'Assign a task to a persona',
     minutes: 1,
@@ -85,7 +85,7 @@ export const personasTours: TourDef[] = [
   {
     id: 'personas.skills',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'personas',
     title: 'Persona skills',
     minutes: 1,

@@ -162,4 +162,11 @@ describe('S4a catalog', () => {
 		expect(text).not.toContain('map.node');
 		expect(text).not.toContain('settings.privacy-tips');
 	});
+
+	it('ships every S4a tour since 3.4.155', () => {
+		for (const id of S4A_IDS) {
+			if (id === 'agents.connect-later') continue;
+			expect(tour(id).since).toBe('3.4.155');
+		}
+	});
 });

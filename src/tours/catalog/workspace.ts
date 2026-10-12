@@ -9,7 +9,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.modules',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Turn features on and off',
     minutes: 1,
@@ -47,7 +47,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.invite',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Invite a teammate',
     minutes: 1,
@@ -69,7 +69,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.dashboard',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Team dashboard',
     minutes: 1,
@@ -97,7 +97,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.workspaces',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Several workspaces',
     minutes: 1,
@@ -118,7 +118,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.appearance',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Theme and colours',
     minutes: 1,
@@ -138,7 +138,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.notifications',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Notifications',
     minutes: 1,
@@ -158,7 +158,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.privacy',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Privacy and tips',
     minutes: 1,
@@ -186,7 +186,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.telegram',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Telegram bot',
     minutes: 1,
@@ -206,7 +206,7 @@ export const workspaceTours: TourDef[] = [
   {
     id: 'ws.default-landing',
     version: 1,
-    since: '3.6.0',
+    since: '3.4.155',
     group: 'workspace',
     title: 'Choose your start page',
     minutes: 1,
