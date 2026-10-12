@@ -81,6 +81,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
+	import HelpMenu from '@/tours/ui/HelpMenu.vue';
 	import { useTours } from '@/tours/useTours';
 	import store from '@/store';
 	import { pagesAvailable } from '@/utils/pagesTree';
@@ -1293,6 +1294,7 @@
 								<Sparkles class="h-4 w-4" />
 							</button>
 							<ActiveCursorAgents v-if="!isDesktop && isFeatureEnabled('cursor')" />
+							<HelpMenu />
 							<NotificationBell v-if="!isLocalOnly" />
 						</div>
 					</div>

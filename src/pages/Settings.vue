@@ -82,6 +82,7 @@
 								</div>
 							</SettingsSection>
 							<PrivacySettings />
+							<TipsSettings />
 							<PromotionsList
 								v-if="promotionsEnabled && !localOnly"
 								placement="about"
@@ -347,6 +348,7 @@
 	import LocalProfileSettings from '@/components/desktop/LocalProfileSettings.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import PrivacySettings from '@/components/privacy/PrivacySettings.vue';
+	import TipsSettings from '@/tours/ui/TipsSettings.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
 	import {
@@ -383,6 +385,7 @@
 			PromotionsList,
 			SettingsRow,
 			PrivacySettings,
+			TipsSettings,
 			Button,
 			Input,
 			Label,

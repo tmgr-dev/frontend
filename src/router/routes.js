@@ -339,6 +339,16 @@ const routes = [
 		name: 'WorkspaceFiles',
 	},
 	{
+		path: '/:workspace_code/getting-started',
+		component: () => import('@/pages/GettingStarted.vue'),
+		meta: {
+			title: 'Getting started',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceGettingStarted',
+	},
+	{
 		path: '/:workspace_code/plugins/:pluginId/:viewId',
 		component: () => import('@/pages/PluginPage.vue'),
 		meta: { title: 'Plugin', transitionName: 'slide', navbarHidden: true },
