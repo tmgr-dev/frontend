@@ -162,7 +162,7 @@
 		followActiveLocalWorkspace,
 	} from '@/local/runtime';
 	import store from '@/store';
-	import { relayPageAppended } from '@/utils/quickAddPageRelay';
+	import { relayCreated, relayPageAppended } from '@/utils/quickAddPageRelay';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
@@ -458,6 +458,7 @@
 							is_daily_routine: false,
 						});
 						await uploadTaskFile(task.id, screenshot.value);
+						void relayCreated('task');
 					} else {
 						const routine = await createDailyTask(fields);
 						if (targetWorkspace?.is_local) {
@@ -472,6 +473,7 @@
 							}
 						}
 					}
+					if (!screenshot.value) void relayCreated('routine');
 					message.value = 'Added';
 					setTimeout(async () => {
 						await hide();

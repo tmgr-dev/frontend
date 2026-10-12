@@ -1,6 +1,10 @@
 import { invalidatePages } from '@/actions/tmgr/pages';
+import { tourBus } from '@/tours/events';
 
 export const QUICK_ADD_PAGE_APPENDED = 'quick-add://page-appended';
+export const QUICK_ADD_CREATED = 'quick-add://created';
+
+export type QuickAddKind = 'task' | 'routine';
 
 export interface PageAppendedPayload {
 	workspace_code: string;
@@ -22,8 +26,19 @@ export const handlePageAppended = (
 	store.commit('pagesEvent', { type: 'page.updated', page: payload.page });
 };
 
+export const handleQuickAddCreated = (
+	payload: { kind?: string } | null | undefined,
+): void => {
+	const kind = payload?.kind;
+	if (kind !== 'task' && kind !== 'routine') return;
+	tourBus.emit('task.created', { source: 'quick_add', kind });
+};
+
 export const installQuickAddPageHost = async (store: HostStore) => {
 	const { listen } = await import('@tauri-apps/api/event');
+	await listen<{ kind?: string }>(QUICK_ADD_CREATED, ({ payload }) =>
+		handleQuickAddCreated(payload),
+	);
 	await listen<PageAppendedPayload>(QUICK_ADD_PAGE_APPENDED, ({ payload }) =>
 		handlePageAppended(store, payload),
 	);
@@ -34,4 +49,13 @@ export const relayPageAppended = async (
 ): Promise<void> => {
 	const { emitTo } = await import('@tauri-apps/api/event');
 	await emitTo('main', QUICK_ADD_PAGE_APPENDED, payload);
+};
+
+export const relayCreated = async (kind: QuickAddKind): Promise<void> => {
+	try {
+		const { emitTo } = await import('@tauri-apps/api/event');
+		await emitTo('main', QUICK_ADD_CREATED, { kind });
+	} catch (e) {
+		console.error('quick add: created relay failed', e);
+	}
 };

@@ -38,3 +38,25 @@ describe('handlePageAppended', () => {
 		expect(commit).not.toHaveBeenCalled();
 	});
 });
+
+describe('handleQuickAddCreated', () => {
+	const { tourBus } = jest.requireActual('@/tours/events');
+	const { handleQuickAddCreated } = jest.requireActual('../quickAddPageRelay');
+
+	it.each(['task', 'routine'])('maps a %s to task.created from quick add', (kind) => {
+		const seen: unknown[] = [];
+		const off = tourBus.on('task.created', (p: unknown) => seen.push(p));
+		handleQuickAddCreated({ kind });
+		off();
+		expect(seen).toEqual([{ source: 'quick_add', kind }]);
+	});
+
+	it('ignores an unknown or missing kind', () => {
+		const seen: unknown[] = [];
+		const off = tourBus.on('task.created', (p: unknown) => seen.push(p));
+		handleQuickAddCreated({ kind: 'page' });
+		handleQuickAddCreated(null);
+		off();
+		expect(seen).toEqual([]);
+	});
+});

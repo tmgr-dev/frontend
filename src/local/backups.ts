@@ -1,3 +1,5 @@
+import { tourBus } from '@/tours/events';
+
 export interface BackupInfo {
 	file: string;
 	path: string;
@@ -25,8 +27,11 @@ const invoke = async <T>(
 export const backupStatus = (): Promise<BackupStatus[]> =>
 	invoke<BackupStatus[]>('local_backup_status');
 
-export const backupNow = (code: string): Promise<BackupInfo> =>
-	invoke<BackupInfo>('local_backup_now', { code });
+export const backupNow = async (code: string): Promise<BackupInfo> => {
+	const info = await invoke<BackupInfo>('local_backup_now', { code });
+	tourBus.emit('backup.created', { kind: info?.kind ?? 'manual' });
+	return info;
+};
 
 export const listBackups = (code: string): Promise<BackupInfo[]> =>
 	invoke<BackupInfo[]>('local_backup_list', { code });

@@ -11,6 +11,7 @@ import { listLocalWorkspaces, localContext } from './runtime';
 import { LocalHttpError, type LocalActor, type LocalContext, type LocalUser, type LocalWorkspace } from './types';
 import { domainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
 import { PLUGIN_EVENTS } from '@/pluginSystem/broker';
+import { tourBus } from '@/tours/events';
 
 export interface LocalAccessRequestPayload {
 	id: number;
@@ -55,6 +56,16 @@ const defaultCodeFor = (status: number): string => {
 };
 
 const localApi = createLocalApi();
+
+let firstCallNoted = false;
+const noteFirstLocalCall = (status: number) => {
+	if (firstCallNoted || status < 200 || status >= 300) return;
+	firstCallNoted = true;
+	tourBus.emit('agent.first_local_call');
+};
+export const resetFirstLocalCallForTests = () => {
+	firstCallNoted = false;
+};
 
 /**
  * One axios instance per request: dispatches into the local router as the persona, and emits the
@@ -191,6 +202,7 @@ export const handleLocalAccessRequest = async (
 				deps.tokenInfo(payload.tokenId),
 				deps.promptVersion(payload.personaUuid),
 			]);
+			noteFirstLocalCall(200);
 			return { status: 200, body: JSON.stringify(await whoamiBody(ctx, payload.tokenId, tokenInfo, promptVersion)) };
 		}
 		// Internal only: the socket refuses this path from the outside (see server.rs). The SSE
@@ -219,6 +231,7 @@ export const handleLocalAccessRequest = async (
 			const result = await handleMcpRequest(router, ctx, payload.body ?? '', {
 				personaPrompt: (uuid) => readPersonaCache(uuid, ctx.user.id),
 			});
+			noteFirstLocalCall(result.status);
 			return { status: result.status, body: result.body };
 		}
 

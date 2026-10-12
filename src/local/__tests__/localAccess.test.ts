@@ -1,3 +1,4 @@
+import { tourBus } from '@/tours/events';
 import { domainEvents } from '@/utils/domainEvents';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -6,6 +7,7 @@ import { dispatchLocal } from '../dispatch';
 import {
 	handleLocalAccessRequest,
 	installLocalAccess,
+	resetFirstLocalCallForTests,
 	type LocalAccessDeps,
 	type LocalAccessRequestPayload,
 } from '../localAccess';
@@ -187,6 +189,19 @@ describeSqlite('local access socket bridge handler', () => {
 		);
 		expect(reply.status).toBe(202);
 		expect(reply.body).toBe('');
+	});
+
+	it('emits agent.first_local_call once, on the first successful request, and never on a 4xx', async () => {
+		resetFirstLocalCallForTests();
+		const seen: unknown[] = [];
+		const off = tourBus.on('agent.first_local_call', (p) => seen.push(p));
+		await handleLocalAccessRequest(payload({ path: '/api/local/events' }), baseDeps());
+		await handleLocalAccessRequest(payload({ path: '/api/tasks/99999' }), baseDeps());
+		expect(seen).toHaveLength(0);
+		await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		off();
+		expect(seen).toHaveLength(1);
 	});
 
 	it('answers an unlisted /api/local/* route with 404', async () => {
