@@ -135,7 +135,7 @@ describeSqlite('tmgr-local parity goldens', () => {
 			stable({
 				schema_version: LATEST_SCHEMA,
 				sqlite_master: await db.select(
-					`SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE 'pages_fts_%' ORDER BY rowid`,
+					`SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT IN ('pages_fts_data','pages_fts_idx','pages_fts_docsize','pages_fts_config') ORDER BY rowid`,
 				),
 				meta: await db.select(`SELECT key, value FROM meta ORDER BY key`),
 				statuses: await db.select(`SELECT * FROM statuses ORDER BY id`),

@@ -230,6 +230,24 @@
 			"type": "table"
 		},
 		{
+			"name": "pages_fts_ai",
+			"sql": "CREATE TRIGGER pages_fts_ai AFTER INSERT ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
+			"name": "pages_fts_ad",
+			"sql": "CREATE TRIGGER pages_fts_ad AFTER DELETE ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
+			"name": "pages_fts_au",
+			"sql": "CREATE TRIGGER pages_fts_au AFTER UPDATE OF title, body ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);\n\t\t\t\tINSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
 			"name": "files",
 			"sql": "CREATE TABLE \"files\" (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tpage_id INTEGER REFERENCES pages(id) ON DELETE CASCADE,\n\t\t\t\tname TEXT NOT NULL,\n\t\t\t\tfile_path TEXT NOT NULL UNIQUE,\n\t\t\t\tmime_type TEXT,\n\t\t\t\tsize INTEGER,\n\t\t\t\tcreated_at TEXT NOT NULL\n\t\t\t)",
 			"tbl_name": "files",
