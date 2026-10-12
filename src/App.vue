@@ -86,6 +86,7 @@
 	<Toaster />
 	<ConsentPanel v-if="!isDesktop || isMainWindow" />
 	<TourHost v-if="!isDesktop || isMainWindow" />
+	<AhaWatcher v-if="(!isDesktop || isMainWindow) && $store.getters.isLoggedIn" />
 	</template>
 </template>
 
@@ -141,6 +142,9 @@
 	const TourHost = defineAsyncComponent(
 		() => import('@/tours/ui/TourHost.vue'),
 	);
+	const AhaWatcher = defineAsyncComponent(
+		() => import('@/components/onboarding/AhaWatcher.vue'),
+	);
 	const PagesImportDialog = defineAsyncComponent(
 		() => import('@/components/pages/PagesImportDialog.vue'),
 	);
@@ -152,6 +156,7 @@
 		components: {
 			PagesImportDialog,
 			TourHost,
+			AhaWatcher,
 			Toaster,
 			ConsentPanel,
 			CustomSidebar,

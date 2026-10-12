@@ -1,0 +1,78 @@
+<template>
+	<button
+		v-if="visible"
+		type="button"
+		class="min-h-[44px] rounded border border-line px-3 text-sm text-ink-muted hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 sm:min-h-[32px]"
+		data-testid="remove-sample-tasks"
+		:disabled="busy"
+		@click="remove"
+	>
+		Remove sample tasks
+	</button>
+</template>
+
+<script lang="ts">
+	import { toast } from '@/components/ui/toast';
+	import { onboardingApi } from '@/tours/api';
+	import { useTours } from '@/tours/useTours';
+	import { requestCache } from '@/utils/requestCache';
+	import { computed, defineComponent, ref } from 'vue';
+	import { useStore } from 'vuex';
+
+	const flagKey = (uid: unknown) => `tmgr:onboarding:starters-removed:${uid}`;
+
+	const readFlag = (uid: unknown): boolean => {
+		try {
+			return localStorage.getItem(flagKey(uid)) === '1';
+		} catch {
+			return false;
+		}
+	};
+
+	export default defineComponent({
+		name: 'RemoveSampleTasksButton',
+		emits: ['removed'],
+		setup(_, { emit }) {
+			const store = useStore();
+			const tours = useTours();
+			const busy = ref(false);
+			const removedFlag = ref(false);
+
+			const userId = computed(() => store.state.user?.id ?? null);
+			const intent = computed(() => tours.onboarding.value?.intent ?? null);
+			const visible = computed(
+				() =>
+					userId.value !== null &&
+					(intent.value === 'human' || intent.value === 'agent') &&
+					!removedFlag.value &&
+					!readFlag(userId.value),
+			);
+
+			const remove = async () => {
+				busy.value = true;
+				try {
+					const { removed } = await onboardingApi().removeStarterTasks();
+					try {
+						localStorage.setItem(flagKey(userId.value), '1');
+					} catch {}
+					removedFlag.value = true;
+					if (removed > 0) {
+						requestCache.invalidate(/^tasks-status-/);
+						requestCache.invalidate(/^task-/);
+						toast({
+							title: `Removed ${removed} sample ${removed === 1 ? 'task' : 'tasks'}`,
+						});
+						emit('removed', removed);
+					}
+				} catch (error) {
+					console.error(error);
+					toast({ title: 'Could not remove sample tasks', variant: 'destructive' });
+				} finally {
+					busy.value = false;
+				}
+			};
+
+			return { visible, busy, remove };
+		},
+	});
+</script>

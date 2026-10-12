@@ -33,28 +33,31 @@
 			</template>
 		</PageHeader>
 
-		<section
-			data-tour="hub.checklist"
-			class="mb-6 rounded-card border border-line bg-surface p-4 dark:border-gray-700 dark:bg-gray-900"
-			aria-labelledby="hub-progress-label"
-		>
-			<p id="hub-progress-label" class="text-sm font-medium text-ink">
-				{{ model.done }} of {{ model.total }} tours done
-			</p>
-			<div
-				class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-surface-sunken dark:bg-gray-800"
-				role="progressbar"
+		<div data-tour="hub.checklist" class="mb-6 flex flex-col gap-3">
+			<ChecklistCard />
+			<RemoveSampleTasksButton class="self-start" />
+			<section
+				class="rounded-card border border-line bg-surface p-4 dark:border-gray-700 dark:bg-gray-900"
 				aria-labelledby="hub-progress-label"
-				aria-valuemin="0"
-				:aria-valuemax="model.total"
-				:aria-valuenow="model.done"
 			>
+				<p id="hub-progress-label" class="text-sm font-medium text-ink">
+					{{ model.done }} of {{ model.total }} tours done
+				</p>
 				<div
-					class="h-full rounded-full bg-brand transition-all"
-					:style="{ width: progressWidth }"
-				/>
-			</div>
-		</section>
+					class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-surface-sunken dark:bg-gray-800"
+					role="progressbar"
+					aria-labelledby="hub-progress-label"
+					aria-valuemin="0"
+					:aria-valuemax="model.total"
+					:aria-valuenow="model.done"
+				>
+					<div
+						class="h-full rounded-full bg-brand transition-all"
+						:style="{ width: progressWidth }"
+					/>
+				</div>
+			</section>
+		</div>
 
 		<div
 			data-tour="hub.catalog"
@@ -124,6 +127,8 @@
 </template>
 
 <script lang="ts">
+	import ChecklistCard from '@/components/onboarding/ChecklistCard.vue';
+	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { Switch } from '@/components/ui/switch';
@@ -135,7 +140,13 @@
 
 	export default defineComponent({
 		name: 'GettingStarted',
-		components: { PageContainer, PageHeader, Switch },
+		components: {
+			ChecklistCard,
+			PageContainer,
+			PageHeader,
+			RemoveSampleTasksButton,
+			Switch,
+		},
 		setup() {
 			const store = useStore();
 			const { isFeatureEnabled } = useFeatureToggles();

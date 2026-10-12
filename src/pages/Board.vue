@@ -26,6 +26,7 @@
 									/>
 
 									<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
+									<RemoveSampleTasksButton @removed="retryBoard" />
 
 									<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
 										<button
@@ -65,6 +66,7 @@
 											v-if="tasksLoaded"
 											:summary="sprintSummary"
 										/>
+										<RemoveSampleTasksButton @removed="retryBoard" />
 										<div
 											data-tauri-drag-region
 											class="h-5 w-px shrink-0 bg-line"
@@ -793,6 +795,7 @@
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
+	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
