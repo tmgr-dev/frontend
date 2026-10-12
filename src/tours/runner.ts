@@ -30,6 +30,10 @@ export interface RunnerDeps {
     step: StepDef,
     options: { mobile: boolean; eventTaskId: number | null; signal: AbortSignal },
   ): Promise<Element | null>;
+  waitForAnchor?(
+    step: StepDef,
+    options: { mobile: boolean; eventTaskId: number | null; signal: AbortSignal },
+  ): Promise<Element | null>;
   facts(): Record<string, unknown>;
   save(id: TourId, input: SaveTourInput): void;
   bus: TourBus;
@@ -291,6 +295,7 @@ export class TourRunner {
         if (step.optional) return this.enterStep(idx + 1);
         cur.unavailable = true;
         this.present(cur, 'centered');
+        this.watchForAnchor(cur, step, token);
         return;
       }
       cur.anchorEl = anchor;
@@ -308,6 +313,20 @@ export class TourRunner {
     }
     this.present(cur, isWait ? 'passive' : cur.anchorEl ? 'modal' : 'centered');
     tourTelemetry().track('tour_step_viewed', { tour: tour.id, step: step.id, i: idx + 1 });
+  }
+
+  private watchForAnchor(cur: Current, step: StepDef, token: number): void {
+    if (!this.deps.waitForAnchor) return;
+    this.abort = new AbortController();
+    void this.deps
+      .waitForAnchor(step, {
+        mobile: this.deps.mobile(),
+        eventTaskId: this.eventTaskId,
+        signal: this.abort.signal,
+      })
+      .then((anchor) => {
+        if (anchor && token === this.token && this.cur === cur) void this.enterStep(cur.idx);
+      });
   }
 
   private alreadyDone(step: StepDef): boolean {

@@ -44,7 +44,7 @@ export function createPassiveAdapter(): OverlayAdapter {
     }
   }
 
-  function show({ anchorEl, mode, mount }: OverlayShowOptions) {
+  function show({ anchorEl, mode, mount, blocking = true }: OverlayShowOptions) {
     hide();
     const centered = mode === 'centered' || !anchorEl;
     const sheet = isSheetViewport();
@@ -57,10 +57,12 @@ export function createPassiveAdapter(): OverlayAdapter {
     let stopAuto: (() => void) | null = null;
 
     if (centered) {
-      const backdrop = document.createElement('div');
-      backdrop.className = 'tour-backdrop';
-      document.body.appendChild(backdrop);
-      nodes.push(backdrop);
+      if (blocking) {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'tour-backdrop';
+        document.body.appendChild(backdrop);
+        nodes.push(backdrop);
+      }
       host.classList.add('tour-host--centered');
     } else if (anchorEl) {
       const ring = document.createElement('div');

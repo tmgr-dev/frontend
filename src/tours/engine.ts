@@ -56,6 +56,7 @@ export interface ToursEngine {
 }
 
 const LEASE_RENEW_MS = 10_000;
+const WATCH_ANCHOR_MS = 10 * 60_000;
 
 export function createTours(deps: ToursHostDeps): ToursEngine {
   const active = ref<ActiveTour | null>(null) as Ref<ActiveTour | null>;
@@ -133,6 +134,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       registration.adapter.show({
         anchorEl: view.anchorEl,
         mode: view.mode,
+        blocking: !view.unavailable,
         mount: registration.mount ?? (() => () => {}),
       });
   };
@@ -148,6 +150,8 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     currentRouteName: deps.currentRouteName,
     navigate: deps.navigate,
     resolveAnchor: (step, options) => (deps.resolveAnchor ?? defaultResolveAnchor)(step, options),
+    waitForAnchor: (step, options) =>
+      (deps.resolveAnchor ?? defaultResolveAnchor)(step, { ...options, timeoutMs: WATCH_ANCHOR_MS }),
     facts: () => ({ ...(store.state.value?.facts ?? {}), ...(deps.facts?.() ?? {}) }),
     save: (id, input) => void store.saveTour(id, input),
     bus: deps.bus,

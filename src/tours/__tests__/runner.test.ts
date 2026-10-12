@@ -252,6 +252,33 @@ describe('TourRunner', () => {
 		expect(h.last()).toMatchObject({ mode: 'modal', unavailable: false });
 	});
 
+	it('re-enters an unavailable step as soon as its anchor shows up', async () => {
+		let appear: (el: Element) => void = () => {};
+		const waitForAnchor = jest.fn(
+			() => new Promise<Element | null>((resolve) => (appear = resolve)),
+		);
+		const t = tour({ steps: [step('r', { type: 'wait', waitFor: { event: 'timer.started' } }), step('n')] });
+		const h = setup([t], { waitForAnchor });
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()).toMatchObject({ unavailable: true, mode: 'centered' });
+		h.present.add('a.r');
+		appear({} as Element);
+		await flush();
+		expect(h.last()).toMatchObject({ unavailable: false, mode: 'passive', waiting: true });
+	});
+
+	it('stops watching for the anchor once the tour is paused', async () => {
+		let signal: AbortSignal | undefined;
+		const waitForAnchor = jest.fn((_s: unknown, o: { signal: AbortSignal }) => {
+			signal = o.signal;
+			return new Promise<Element | null>(() => {});
+		});
+		const h = setup([tour({ steps: [step('r'), step('n')] })], { waitForAnchor });
+		await h.runner.start('t.one', 'hub');
+		h.runner.pause();
+		expect(signal?.aborted).toBe(true);
+	});
+
 	it('canTakeMe is false without a route; skipStep gets past it', async () => {
 		const t = tour({ steps: [step('r'), step('n')] });
 		const h = setup([t]);

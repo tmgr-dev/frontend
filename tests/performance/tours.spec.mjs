@@ -13,7 +13,7 @@ const SCHEMES = ['light', 'dark'];
 
 const freshState = () => ({
   intent: null,
-  tips_mode: 'all',
+  tips_mode: 'auto',
   hub_hidden: false,
   checklist_hidden: false,
   tours_generation: 0,
@@ -113,7 +113,7 @@ const shoot = async (page, name, size, scheme) => {
   await page.screenshot({ path: `${SHOTS}/${name}-${size.name}-${scheme}.png` });
 };
 
-const boot = async (page, size, { onboarding = {}, ...options } = {}) => {
+const boot = async (page, size, { onboarding = { tips_mode: 'hub_only' }, ...options } = {}) => {
   await page.setViewportSize({ width: size.width, height: size.height });
   await mockApp(page, { multiStatus: true, ...options });
   const created = await mockTasks(page);
@@ -121,7 +121,7 @@ const boot = async (page, size, { onboarding = {}, ...options } = {}) => {
   return { ...fixture, created };
 };
 
-const popover = (page) => page.getByRole('dialog').filter({ hasText: /Step \d of \d|Esc/ }).first();
+const popover = (page) => page.locator('[role="dialog"][aria-labelledby^="tour-"]').first();
 
 test.describe('anchors and hub (need the tour engine from W1 for useTours)', () => {
   test('every anchor of the S2 catalog is in the DOM on its page', async ({ page }) => {
@@ -173,6 +173,7 @@ test.describe('anchors and hub (need the tour engine from W1 for useTours)', () 
     test(`the hub lists tours and keeps its controls working at ${size.name}`, async ({ page }) => {
       const { writes } = await boot(page, size, {
         onboarding: {
+          tips_mode: 'hub_only',
           tours: { 'start.nav': { status: 'completed', step_id: null, version: 1, generation: 0 } },
         },
       });
@@ -189,7 +190,7 @@ test.describe('anchors and hub (need the tour engine from W1 for useTours)', () 
       await page.getByRole('switch', { name: 'Show tips automatically' }).click();
       await expect
         .poll(() => writes.find((w) => w.path === 'onboarding/preferences')?.body)
-        .toEqual({ tips_mode: 'off' });
+        .toEqual({ tips_mode: 'auto' });
 
       await page.getByTestId('hub-hide').click();
       await expect
@@ -252,6 +253,7 @@ test.describe('G2 and TI1 with the real engine (TOURS_E2E_ENGINE=1, needs W1 and
         await expect.poll(() => created.length).toBe(1);
         expect(writes.some((w) => w.path === 'onboarding/tours/start.first-task')).toBe(true);
         await expect(popover(page)).toContainText('Done. Click a task');
+        await page.waitForTimeout(1500); await page.screenshot({ path: '/private/tmp/claude-502/-Users-iuriikarpov-projects-own-projects-tmgr-dev/f84a97c2-7084-46b5-96ab-f0a34c476b3a/scratchpad/g2dbg.png' });
         await expect(page.locator(`[data-task-id="${created[0].id}"]`).first()).toBeVisible();
         await shoot(page, 'g2-step3', size, scheme);
       });

@@ -8,7 +8,7 @@
 			:position="active.index + 1"
 			:total="active.total"
 			:waiting="active.waiting"
-			:modal="presentation.mode !== 'passive'"
+			:modal="modal"
 			:can-take-me="active.canTakeMe === true"
 			:unavailable="active.unavailable === true"
 			@next="api.next()"
@@ -70,7 +70,7 @@
 	import TourPopover from './TourPopover.vue';
 	import './tours.css';
 
-	type Presentation = Pick<OverlayShowOptions, 'mode' | 'anchorEl'>;
+	type Presentation = Pick<OverlayShowOptions, 'mode' | 'anchorEl' | 'blocking'>;
 
 	export default defineComponent({
 		name: 'TourHost',
@@ -94,6 +94,7 @@
 					presentation.value = {
 						mode: options.mode,
 						anchorEl: options.anchorEl,
+						blocking: options.blocking,
 					};
 					inner.show(options);
 				},
@@ -133,6 +134,11 @@
 				return base;
 			});
 
+			const modal = computed(
+				() =>
+					presentation.value.mode !== 'passive' &&
+					presentation.value.blocking !== false,
+			);
 			const pill = computed(() => api.resumePill.value);
 
 			watch(hostEl, async (host) => {
@@ -142,8 +148,8 @@
 				await nextTick();
 				const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
 				const { mode, anchorEl } = presentation.value;
-				if (mode === 'passive') {
-					if (!anchorEl?.contains(document.activeElement)) {
+				if (!modal.value) {
+					if (mode === 'passive' && !anchorEl?.contains(document.activeElement)) {
 						focusAnchor(anchorEl);
 					}
 				} else if (dialog) {
@@ -227,6 +233,7 @@
 				titleText,
 				bodyText,
 				pill,
+				modal,
 				onExplore,
 				onNever,
 				resumePaused,
