@@ -1323,6 +1323,7 @@
 								}"
 								aria-label="Ask AI"
 								title="Ask AI"
+								data-tour="nav.ask-ai"
 								@click="store.commit('toggleAiPanel')"
 							>
 								<Sparkles class="h-4 w-4" />

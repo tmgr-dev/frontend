@@ -1,10 +1,14 @@
 <template>
-	<section v-if="runs.length" class="flex flex-col gap-2">
+	<section
+		v-if="runs.length"
+		class="flex flex-col gap-2"
+		data-tour="task-form.agent-work"
+	>
 		<div class="flex items-baseline justify-between gap-2">
 			<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 				>Agent work</span
 			>
-			<span class="text-2xs text-ink-faint">
+			<span class="text-2xs text-ink-faint" data-tour="task-form.agent-totals">
 				Agents {{ formatWorkDuration(totals.agentSeconds) }} · You
 				{{ formatWorkDuration(totals.humanSeconds) }}
 			</span>
@@ -95,6 +99,13 @@
 			</li>
 		</ul>
 	</section>
+	<section
+		v-else-if="loaded"
+		class="rounded-card border border-dashed border-line-strong px-3 py-3 text-center text-xs text-ink-subtle"
+		data-tour="task-form.agent-work"
+	>
+		No agent runs yet. Runs from your MCP agent appear here.
+	</section>
 </template>
 
 <script>
@@ -110,6 +121,8 @@
 		upsertRun,
 	} from '@/utils/agentWork';
 	import store from '@/store';
+	import { agentRunEvent } from '@/tours/agentRunEvents';
+	import { tourBus } from '@/tours/events';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		computed,
@@ -146,6 +159,7 @@
 				unsubscribeHandlerFromWorkspace,
 			} = usePusher();
 			const runs = ref([]);
+			const loaded = ref(false);
 			const serverTotals = ref({
 				agent_seconds: 0,
 				human_seconds: 0,
@@ -178,6 +192,7 @@
 					runs.value = mergeSnapshot(runs.value, overview.runs);
 					serverTotals.value = overview.totals;
 					totalsReceivedAt.value = Date.now();
+					loaded.value = true;
 				} catch (error) {
 					console.error('Failed to load agent work', error);
 				}
@@ -212,8 +227,10 @@
 				subscription = subscribeToWorkspace(workspaceId, {
 					onAgentWorkChanged: (run) => {
 						if (run?.task_id === props.taskId) {
+							const event = agentRunEvent(runs.value, run, loaded.value);
 							markReceived([run]);
 							runs.value = upsertRun(runs.value, run);
+							if (event) tourBus.emit(event, { task_id: props.taskId });
 						}
 					},
 				});
@@ -247,6 +264,7 @@
 				() => props.taskId,
 				() => {
 					runs.value = [];
+					loaded.value = false;
 					Object.keys(expanded).forEach((id) => delete expanded[id]);
 					load();
 				},
@@ -260,6 +278,7 @@
 
 			return {
 				runs,
+				loaded,
 				now,
 				expanded,
 				STATUS_TONE,

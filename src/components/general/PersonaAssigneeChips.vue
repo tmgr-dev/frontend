@@ -1,5 +1,10 @@
 <template>
-	<div v-if="personas.length" class="flex items-center" @click.stop>
+	<div
+		v-if="personas.length"
+		class="flex items-center"
+		data-tour="task-form.persona-assignees"
+		@click.stop
+	>
 		<Popover v-for="(persona, i) in personas" :key="persona.id">
 			<PopoverTrigger as-child>
 				<button

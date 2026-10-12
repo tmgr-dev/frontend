@@ -154,6 +154,7 @@
 				<input
 					ref="input"
 					v-model="draft"
+					data-tour="ai.input"
 					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
 					:disabled="busy"
