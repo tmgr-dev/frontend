@@ -16,9 +16,9 @@
 				v-if="!waiting"
 				type="button"
 				class="tour-btn tour-btn--primary"
-				@click="$emit('next')"
+				@click="primary"
 			>
-				{{ position >= total ? 'Done' : 'Next' }}
+				{{ primaryLabel }}
 			</button>
 			<button
 				v-else
@@ -45,9 +45,9 @@
 				v-else
 				type="button"
 				class="tour-btn tour-btn--primary"
-				@click="$emit('next')"
+				@click="primary"
 			>
-				{{ position >= total ? 'Done' : 'Next' }}
+				{{ primaryLabel }}
 			</button>
 			<div class="tour-sheet__row">
 				<button type="button" class="tour-link" @click="$emit('skip-step')">
@@ -90,9 +90,11 @@
 			total: { type: Number, required: true },
 			waiting: { type: Boolean, default: false },
 			modal: { type: Boolean, default: true },
+			canTakeMe: { type: Boolean, default: false },
+			unavailable: { type: Boolean, default: false },
 			waitingText: { type: String, default: 'Waiting for you…' },
 		},
-		emits: ['next', 'skip-step', 'skip-tour', 'pause', 'explore', 'never'],
+		emits: ['next', 'take-me', 'skip-step', 'skip-tour', 'pause', 'explore', 'never'],
 		setup(props, { emit }) {
 			counter += 1;
 			const titleId = `tour-sheet-title-${counter}`;
@@ -134,7 +136,31 @@
 				emit(key);
 			}
 
-			return { titleId, bodyId, collapsed, eyebrow, onSelect };
+			const primaryLabel = computed(() =>
+				props.canTakeMe
+					? 'Take me there'
+					: props.unavailable
+					? 'Skip step'
+					: props.position >= props.total
+					? 'Done'
+					: 'Next',
+			);
+
+			function primary() {
+				emit(
+					props.canTakeMe ? 'take-me' : props.unavailable ? 'skip-step' : 'next',
+				);
+			}
+
+			return {
+				titleId,
+				bodyId,
+				collapsed,
+				eyebrow,
+				onSelect,
+				primaryLabel,
+				primary,
+			};
 		},
 	});
 </script>

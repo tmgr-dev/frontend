@@ -183,4 +183,20 @@ describe('triggers', () => {
 		h.visit('List');
 		expect(h.start).not.toHaveBeenCalled();
 	});
+
+	it.each(['hub_only', 'off'] as const)('tips_mode %s never auto-starts a tour', (mode) => {
+		const h = setup();
+		h.setOb(onboarding({ tips_mode: mode }));
+		h.visit('List');
+		h.visit('Board');
+		expect(h.start).not.toHaveBeenCalled();
+		expect(h.track).not.toHaveBeenCalledWith('tour_offered', expect.anything());
+	});
+
+	it('unlessFact starts the tour while the fact is false', () => {
+		const h = setup({}, [tour('a.tour', 'List', { unlessFact: 'has_task' })]);
+		h.setOb(onboarding({ facts: { has_task: false } }));
+		h.visit('List');
+		expect(h.start).toHaveBeenCalledWith('a.tour', 'first_visit');
+	});
 });

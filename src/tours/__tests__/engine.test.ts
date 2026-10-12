@@ -196,6 +196,34 @@ describe('engine facade', () => {
 		expect(h.track).toHaveBeenCalledWith('tour_offered', { tour: 'start.first-task', trigger: 'first_visit' });
 	});
 
+	it.each([
+		[{ tips_mode: 'hub_only', tours_generation: 1 }],
+		[{ tips_mode: 'off', tours_generation: 1 }],
+		[{ tips_mode: 'auto', tours_generation: 1, facts: { has_task: true } }],
+	])('first_visit does not auto-start G2 for %j', async (state: object) => {
+		const timers: Array<() => void> = [];
+		const h = make({ setTimer: (fn) => { timers.push(fn); return () => {}; } });
+		h.api.fetchState.mockResolvedValue(state);
+		await h.engine.init();
+		h.present.add('nav.create-task');
+		h.engine.routeEntered('WorkspaceTasksList');
+		timers.splice(0).forEach((f) => f());
+		await flush();
+		expect(h.engine.api.active.value).toBeNull();
+	});
+
+	it('first_visit starts G2 when has_task is false', async () => {
+		const timers: Array<() => void> = [];
+		const h = make({ setTimer: (fn) => { timers.push(fn); return () => {}; } });
+		h.api.fetchState.mockResolvedValue({ tips_mode: 'auto', tours_generation: 1, facts: { has_task: false } });
+		await h.engine.init();
+		h.present.add('nav.create-task');
+		h.engine.routeEntered('WorkspaceTasksList');
+		timers.splice(0).forEach((f) => f());
+		await flush();
+		expect(h.engine.api.active.value?.tour.id).toBe('start.first-task');
+	});
+
 	it('wait step advances from a bus event through the facade', async () => {
 		const h = make();
 		await h.engine.init();

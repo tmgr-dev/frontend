@@ -7,9 +7,12 @@
 			:body="bodyText"
 			:position="active.index + 1"
 			:total="active.total"
-			:waiting="active.step.type === 'wait'"
+			:waiting="active.waiting"
 			:modal="presentation.mode !== 'passive'"
+			:can-take-me="active.canTakeMe === true"
+			:unavailable="active.unavailable === true"
 			@next="api.next()"
+			@take-me="api.takeMeThere()"
 			@skip-step="api.skipStep()"
 			@skip-tour="api.skipTour()"
 			@pause="api.pause()"
@@ -26,7 +29,7 @@
 				type="button"
 				class="tour-pill tour-pill--icon"
 				aria-label="Dismiss"
-				@click="pillDismissed = true"
+				@click="api.dismissPill()"
 			>
 				&times;
 			</button>
@@ -58,16 +61,16 @@
 		trapFocus,
 	} from '../a11y';
 	import { createOverlayAdapter } from '../overlay';
-	import { watchAnchorEl } from '../overlay/anchorEl';
-	import { useTours, type ToursApi } from '../useTours';
+	import type {
+		OverlayAdapter,
+		OverlayShowOptions,
+	} from '../overlay/OverlayAdapter';
+	import { setOverlayAdapter, useTours, type ToursApi } from '../useTours';
 	import BottomSheetStep from './BottomSheetStep.vue';
 	import TourPopover from './TourPopover.vue';
 	import './tours.css';
 
-	type Presentation = {
-		mode: 'modal' | 'passive' | 'centered';
-		anchorEl: Element | null;
-	};
+	type Presentation = Pick<OverlayShowOptions, 'mode' | 'anchorEl'>;
 
 	export default defineComponent({
 		name: 'TourHost',
@@ -78,17 +81,32 @@
 		setup(props) {
 			const api = props.api ?? useTours();
 			const active = api.active;
-			const adapter = createOverlayAdapter();
 			const hostEl = shallowRef<HTMLElement | null>(null);
 			const presentation = ref<Presentation>({
 				mode: 'centered',
 				anchorEl: null,
 			});
 			const sheet = ref(isSheetViewport());
-			const lastTourId = ref<string | null>(null);
-			const pillDismissed = ref(false);
 
-			let stopAnchor: (() => void) | null = null;
+			const inner = createOverlayAdapter();
+			const adapter: OverlayAdapter = {
+				show(options) {
+					presentation.value = {
+						mode: options.mode,
+						anchorEl: options.anchorEl,
+					};
+					inner.show(options);
+				},
+				refresh: () => inner.refresh(),
+				hide: () => inner.hide(),
+			};
+			setOverlayAdapter(adapter, (host) => {
+				hostEl.value = host;
+				return () => {
+					if (hostEl.value === host) hostEl.value = null;
+				};
+			});
+
 			let releaseA11y: Array<() => void> = [];
 			let restoreFocus: (() => void) | null = null;
 			let offEsc: (() => void) | null = null;
@@ -106,64 +124,16 @@
 			const bodyText = computed(() => {
 				const a = active.value;
 				if (!a) return '';
-				return sheet.value && a.step.mobileBody
-					? a.step.mobileBody
-					: a.step.body;
+				const base =
+					sheet.value && a.step.mobileBody ? a.step.mobileBody : a.step.body;
+				if (a.unavailable)
+					return `${base} We could not find this on the screen right now.`;
+				if (a.hint === 'timer_too_short')
+					return `${base} Let the timer run for at least a minute.`;
+				return base;
 			});
 
-			const pausedItem = computed(() => {
-				const id = lastTourId.value;
-				if (!id || active.value) return null;
-				const item = api.hubItems.value.find((i) => i.tour.id === id);
-				return item?.state?.status === 'paused' ? item : null;
-			});
-			const pill = computed(() => !!pausedItem.value && !pillDismissed.value);
-
-			function endStep() {
-				stopAnchor?.();
-				stopAnchor = null;
-				adapter.hide();
-				releaseA11y.forEach((fn) => fn());
-				releaseA11y = [];
-				hostEl.value = null;
-			}
-
-			function beginTour() {
-				restoreFocus = rememberFocus();
-				offEsc = onEscape(() => api.pause());
-				pillDismissed.value = false;
-			}
-
-			function endTour() {
-				offEsc?.();
-				offEsc = null;
-				removeLiveRegion();
-				const restore = restoreFocus;
-				restoreFocus = null;
-				if (restore) void nextTick(restore);
-			}
-
-			function present(anchorEl: Element | null) {
-				const a = active.value;
-				if (!a) return;
-				const wait = a.step.type === 'wait';
-				const mode: Presentation['mode'] = !anchorEl
-					? 'centered'
-					: wait
-					? 'passive'
-					: 'modal';
-				presentation.value = { mode, anchorEl };
-				adapter.show({
-					anchorEl,
-					mode,
-					mount: (host) => {
-						hostEl.value = host;
-						return () => {
-							if (hostEl.value === host) hostEl.value = null;
-						};
-					},
-				});
-			}
+			const pill = computed(() => api.resumePill.value);
 
 			watch(hostEl, async (host) => {
 				releaseA11y.forEach((fn) => fn());
@@ -188,31 +158,28 @@
 				announceStep();
 			});
 
-			let hadTour = false;
+			function beginTour() {
+				restoreFocus = rememberFocus();
+				offEsc = onEscape(() => api.pause());
+			}
+
+			function endTour() {
+				offEsc?.();
+				offEsc = null;
+				releaseA11y.forEach((fn) => fn());
+				releaseA11y = [];
+				hostEl.value = null;
+				removeLiveRegion();
+				const restore = restoreFocus;
+				restoreFocus = null;
+				if (restore) void nextTick(restore);
+			}
+
 			watch(
-				() => {
-					const a = active.value;
-					return a
-						? `${a.tour.id}:${a.step.id}:${sheet.value ? 'm' : 'd'}`
-						: null;
-				},
-				(key) => {
-					endStep();
-					if (!key) {
-						if (hadTour) endTour();
-						hadTour = false;
-						return;
-					}
-					const a = active.value;
-					if (!a) return;
-					if (!hadTour) beginTour();
-					hadTour = true;
-					lastTourId.value = a.tour.id;
-					const name =
-						sheet.value && a.step.mobileAnchor
-							? a.step.mobileAnchor
-							: a.step.anchor;
-					stopAnchor = watchAnchorEl(name, present);
+				() => active.value?.tour.id ?? null,
+				(id, before) => {
+					if (id && !before) beginTour();
+					else if (!id && before) endTour();
 				},
 				{ immediate: true },
 			);
@@ -225,14 +192,14 @@
 						position: a.index + 1,
 						total: a.total,
 						title: a.step.title,
-						waiting: a.step.type === 'wait',
+						waiting: a.waiting,
 					}),
 				);
 			}
 
 			function onExplore() {
 				api.pause();
-				void api.setTipsMode('minimal');
+				void api.setTipsMode('hub_only');
 			}
 
 			function onNever() {
@@ -241,14 +208,14 @@
 			}
 
 			function resumePaused() {
-				const item = pausedItem.value;
-				if (item) void api.resume(item.tour.id);
+				if (pill.value) void api.resume(pill.value.tourId);
 			}
 
 			onBeforeUnmount(() => {
 				media?.removeEventListener('change', onMedia);
-				endStep();
-				endTour();
+				setOverlayAdapter(null);
+				inner.hide();
+				if (offEsc) endTour();
 			});
 
 			return {
@@ -260,7 +227,6 @@
 				titleText,
 				bodyText,
 				pill,
-				pillDismissed,
 				onExplore,
 				onNever,
 				resumePaused,

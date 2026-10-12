@@ -2,7 +2,6 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { TOURS } from '../catalog';
 
-const ENABLED = process.env.TOURS_CHECK_ANCHORS === '1';
 const NOT_YET_IN_VUE = new Set(['task-form.estimate']);
 
 const walk = (dir: string): string[] =>
@@ -18,9 +17,7 @@ const anchors = () =>
 			.filter((a) => !NOT_YET_IN_VUE.has(a)),
 	);
 
-const suite = ENABLED ? describe : describe.skip;
-
-suite('every tour anchor exists as data-tour in a .vue file (set TOURS_CHECK_ANCHORS=1 once W3 lands anchors)', () => {
+describe('every tour anchor exists as data-tour in a .vue file', () => {
 	const source = walk(join(__dirname, '../..'))
 		.filter((f) => f.endsWith('.vue'))
 		.map((f) => readFileSync(f, 'utf8'))
