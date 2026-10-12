@@ -90,7 +90,7 @@ export function createDriverAdapter(): OverlayAdapter {
               ? new ResizeObserver(() => {
                   instance?.refresh();
                   frameClamp.schedule();
-                  if (isSheetViewport()) room.revealAvoided(host, currentAnchor);
+                  if (isSheetViewport()) room.revealAvoided(wrapper, currentAnchor);
                 })
               : null;
           resize?.observe(host);
