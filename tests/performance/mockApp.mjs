@@ -45,6 +45,7 @@ export async function mockApp(
     name: 'Test User',
     email: 'test@example.test',
     settings: [{ key: 'current_workspace', value: '1' }],
+    created_at: '2026-01-01T10:00:00Z',
     ...userExtra,
   };
   const task = {
