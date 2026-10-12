@@ -233,19 +233,8 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 			setActiveLocalWorkspace(null);
 			return respond(config, 409, { message: 'The local workspace is gone; pick another workspace' });
 		}
-		const accountless = isAccountless();
-		const current = hooks.currentUser();
-		const user = accountless
-			? { id: LOCAL_USER_ID, name: hooks.profileName?.() ?? '', email: '' }
-			: current?.id
-			? current
-			: (recall('user')?.data ?? {});
-		const ctx = await localContext(workspace, {
-			id: Number(user.id ?? 0),
-			name: user.name ?? '',
-			email: user.email ?? '',
-		});
-		if (accountless) ctx.accountless = true;
+		const ctx = await localContext(workspace, localUser());
+		if (isAccountless()) ctx.accountless = true;
 		const result = await dispatchLocal(
 			api,
 			ctx,
@@ -295,10 +284,34 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 	const identity = async () =>
 		localIdentity(hooks.profileName?.() ?? '', (await ensureActiveWorkspace())?.id ?? null);
 
-	const onboarding = createOnboardingHandler({
-		getItem: (key) => localStorage.getItem(key),
-		setItem: (key, value) => localStorage.setItem(key, value),
-	});
+	const localUser = () => {
+		if (isAccountless()) return { id: LOCAL_USER_ID, name: hooks.profileName?.() ?? '', email: '' };
+		const current = hooks.currentUser();
+		const user = current?.id ? current : (recall('user')?.data ?? {});
+		return { id: Number(user.id ?? 0), name: user.name ?? '', email: user.email ?? '' };
+	};
+
+	const onboarding = createOnboardingHandler(
+		{
+			getItem: (key) => localStorage.getItem(key),
+			setItem: (key, value) => localStorage.setItem(key, value),
+		},
+		{
+			ctxFor: async (code) => {
+				const workspace = code
+					? (await listLocalWorkspaces()).find((w) => w.code === code)
+					: await ensureActiveWorkspace();
+				if (!workspace) return null;
+				const ctx = await localContext(workspace, localUser());
+				if (isAccountless()) ctx.accountless = true;
+				return ctx;
+			},
+			tokens: async () => {
+				const core = await import('@tauri-apps/api/core');
+				return core.invoke('local_token_list', {});
+			},
+		},
+	);
 
 	const refuseAccount: AxiosAdapter = async (config) => respond(config, 403, REQUIRES_ACCOUNT);
 
@@ -338,7 +351,7 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		if (path === 'notifications/unread-count') return respond(config, 200, { count: 0 });
 		if (path === 'personas') return respond(config, 200, { data: [] });
 		if (/^onboarding(\/|$)/.test(path)) {
-			const result = onboarding(verb, path, body);
+			const result = await onboarding(verb, path, body, config.params);
 			return respond(config, result.status, result.data);
 		}
 		return respond(config, 403, REQUIRES_ACCOUNT);

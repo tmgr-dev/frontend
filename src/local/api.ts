@@ -317,7 +317,22 @@ const personaWritableFields = (ctx: LocalContext, body: any) => {
 	return fields;
 };
 
+export const BOARD_MOVE_META_PREFIX = 'onboarding:board_move:';
+
+export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
+	if (ctx.actor && ctx.actor.kind !== 'user') return;
+	await ctx.db.execute(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)`, [
+		`${BOARD_MOVE_META_PREFIX}${taskId}`,
+		iso(ctx),
+	]);
+};
+
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
+	let statusBefore: number | null | undefined;
+	if ('status_id' in fields) {
+		const [before] = await ctx.db.select<any>(`SELECT status_id FROM tasks WHERE id = ?`, [id]);
+		statusBefore = before ? before.status_id : undefined;
+	}
 	if ('status_id' in fields && fields.status_id != null) {
 		const [status] = await ctx.db.select<any>(`SELECT type FROM statuses WHERE id = ?`, [
 			fields.status_id,
@@ -341,6 +356,9 @@ const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, 
 		[...values, id],
 	);
 	if (!result.rowsAffected) throw notFound('Task');
+	if (statusBefore !== undefined && fields.status_id != null && fields.status_id !== statusBefore) {
+		await noteStatusChange(ctx, id);
+	}
 	await syncTaskMentions(ctx, id);
 	return loadTask(ctx, id);
 };
@@ -959,11 +977,15 @@ export const createLocalApi = () => {
 			const status = await statusFor(ctx, params.id);
 			for (const taskId of body?.task_ids ?? []) {
 				if (status.type === 'archived') await stopTimer(ctx, Number(taskId));
-				await ctx.db.execute(`UPDATE tasks SET status_id = ?, updated_at = ? WHERE id = ?`, [
+				const [before] = await ctx.db.select<any>(`SELECT status_id FROM tasks WHERE id = ?`, [Number(taskId)]);
+				const moved = await ctx.db.execute(`UPDATE tasks SET status_id = ?, updated_at = ? WHERE id = ?`, [
 					status.id,
 					iso(ctx),
 					Number(taskId),
 				]);
+				if (moved.rowsAffected && before && before.status_id !== status.id) {
+					await noteStatusChange(ctx, Number(taskId));
+				}
 			}
 			return { success: true };
 		})
