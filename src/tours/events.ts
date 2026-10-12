@@ -114,6 +114,14 @@ const entityId = (responseData: unknown): number | null => {
   return Number.isFinite(id) && entity.id != null ? id : null;
 };
 
+const entityOf = (responseData: unknown): Record<string, any> => {
+  if (!isRecord(responseData)) return {};
+  return isRecord(responseData.data) ? responseData.data : responseData;
+};
+
+const enabledKeys = (flags: unknown): string[] =>
+  isRecord(flags) ? Object.keys(flags).filter((k) => flags[k] === true) : [];
+
 export function matchRequest(
   method: string,
   url: string,
@@ -145,7 +153,22 @@ export function matchRequest(
     if ((m = path.match(/^workspaces\/(\d+)\/statuses$/)))
       return [event('status.created', { workspaceId: Number(m[1]) })];
     if (path === 'project_categories') return [event('category.created')];
-    if (path === 'pages') return [event('page.created')];
+    if (path === 'pages') {
+      const page = entityOf(responseData);
+      return [
+        event('page.created', {
+          pageId: entityId(responseData),
+          type: typeof page.type === 'string' ? page.type : null,
+        }),
+      ];
+    }
+    if (/^pages\/\d+\/task-from-selection$/.test(path)) return [event('task.created_from_page')];
+    if (path === 'daily-routines/tasks' || path === 'daily-routines/tasks/quick')
+      return [event('routine.created')];
+    if (/^daily-routines\/tasks\/\d+\/(complete|instances\/[^/]+\/complete)$/.test(path))
+      return [event('routine.completed')];
+    if (/^daily-routines\/tasks\/\d+\/complete-on$/.test(path))
+      return entityOf(responseData).completed === true ? [event('routine.completed')] : [];
     if (path === 'personas') return [event('persona.created')];
     if (/^personas\/[^/]+\/tokens$/.test(path)) return [event('persona.token_created')];
     if ((m = path.match(/^tasks\/(\d+)\/personas\/[^/]+$/)))
@@ -172,6 +195,12 @@ export function matchRequest(
   }
 
   if (verb === 'PUT' || verb === 'PATCH') {
+    if (verb === 'PATCH' && /^pages\/\d+$/.test(path))
+      return entityOf(responseData).type === 'context' ? [event('page.context_saved')] : [];
+    if (verb === 'PUT' && /^(workspaces\/\d+\/feature-toggles|user\/feature-toggles)$/.test(path))
+      return enabledKeys(parsed.features).map((k) => event(`module.enabled:${k}`));
+    if (verb === 'PUT' && /^workspaces\/\d+\/modules$/.test(path))
+      return enabledKeys(parsed.modules).map((k) => event(`module.enabled:${k}`));
     if ((m = path.match(/^tasks\/(\d+)\/(\d+)$/)) && verb === 'PUT')
       return [statusEvent(Number(m[1]), Number(m[2]))];
     if ((m = path.match(/^statuses\/(\d+)\/tasks$/)) && verb === 'PUT') {

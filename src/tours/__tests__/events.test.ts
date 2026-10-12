@@ -16,7 +16,7 @@ describe('matchRequest', () => {
 		['POST', 'tasks/5/comments', { data: { id: 2 } }, 'comment.created', { taskId: 5 }],
 		['POST', 'workspaces/4/statuses', { data: { id: 9 } }, 'status.created', { workspaceId: 4 }],
 		['POST', 'project_categories', { data: { id: 9 } }, 'category.created', {}],
-		['POST', 'pages', { data: {} }, 'page.created', {}],
+		['POST', 'pages', { data: { id: 4, type: 'context' } }, 'page.created', { pageId: 4, type: 'context' }],
 		['POST', 'personas', { data: {} }, 'persona.created', {}],
 		['POST', 'personas/abc-1/tokens', {}, 'persona.token_created', {}],
 		['POST', 'tasks/5/personas/abc-1', {}, 'persona.assigned', { taskId: 5 }],
@@ -84,6 +84,90 @@ describe('matchRequest', () => {
 	it('tolerates malformed bodies', () => {
 		expect(matchRequest('POST', 'tasks', undefined, undefined)[0].payload.taskId).toBeNull();
 		expect(matchRequest('PUT', 'statuses/3/tasks', 'oops', {}, ctx)).toEqual([]);
+	});
+});
+
+describe('matchRequest S4b mappings', () => {
+	const run = (m: string, u: string, body: unknown = {}, res: unknown = {}) => matchRequest(m, u, body, res);
+
+	it.each([
+		['POST', 'daily-routines/tasks'],
+		['POST', 'daily-routines/tasks/quick'],
+	])('%s %s -> routine.created', (m, u) => {
+		expect(names(run(m, u))).toEqual(['routine.created']);
+	});
+
+	it.each([
+		['POST', 'daily-routines/tasks/5/complete'],
+		['POST', 'daily-routines/tasks/5/archive'],
+		['POST', 'daily-routines/tasks/5/convert'],
+		['POST', 'daily-routines/tasks/5/complete-on'],
+		['POST', 'daily-routines/ics/import'],
+		['PUT', 'daily-routines/tasks/5'],
+	])('does not map %s %s to routine.created', (m, u) => {
+		expect(names(run(m, u))).not.toContain('routine.created');
+	});
+
+	it('routine.completed on complete-on only when completed is true', () => {
+		expect(names(run('POST', 'daily-routines/tasks/5/complete-on', { date: 'x' }, { data: { completed: true } }))).toEqual(['routine.completed']);
+		expect(run('POST', 'daily-routines/tasks/5/complete-on', {}, { data: { completed: false } })).toEqual([]);
+		expect(run('POST', 'daily-routines/tasks/5/complete-on', {}, {})).toEqual([]);
+	});
+
+	it('routine.completed on complete and instance complete', () => {
+		expect(names(run('POST', 'daily-routines/tasks/5/complete'))).toEqual(['routine.completed']);
+		expect(names(run('POST', 'daily-routines/tasks/5/instances/9/complete'))).toEqual(['routine.completed']);
+	});
+
+	it('task.created_from_page', () => {
+		const events = run('POST', 'pages/3/task-from-selection');
+		expect(names(events)).toEqual(['task.created_from_page']);
+		expect(run('POST', 'pages/3/append')).toEqual([]);
+		expect(run('POST', 'pages/3/move')).toEqual([]);
+	});
+
+	it('page.created carries pageId and type', () => {
+		const [event] = run('POST', 'pages', { title: 'x' }, { data: { id: 8, type: 'person' } });
+		expect(event.payload).toEqual({ pageId: 8, type: 'person' });
+		const [bare] = run('POST', 'pages', {}, {});
+		expect(bare.payload).toEqual({ pageId: null, type: null });
+	});
+
+	it('page.context_saved only for PATCH of a context page', () => {
+		expect(names(run('PATCH', 'pages/3', { body: 'x' }, { data: { id: 3, type: 'context' } }))).toEqual(['page.context_saved']);
+		expect(run('PATCH', 'pages/3', {}, { data: { id: 3, type: 'page' } })).toEqual([]);
+		expect(run('PUT', 'pages/3/sections/x', {}, { data: { type: 'context' } })).toEqual([]);
+	});
+
+	it('module.enabled from feature-toggles and modules PUTs', () => {
+		expect(names(run('PUT', 'workspaces/1/feature-toggles', { features: { graph: true, pomodoro: false, board: true } }))).toEqual(['module.enabled:graph', 'module.enabled:board']);
+		expect(names(run('PUT', '/user/feature-toggles', { features: { alerts: true } }))).toEqual(['module.enabled:alerts']);
+		expect(names(run('PUT', 'workspaces/1/modules', { modules: { workflow: true, graph: false } }))).toEqual(['module.enabled:workflow']);
+	});
+
+	it('module.enabled negatives', () => {
+		expect(run('PUT', 'workspaces/1/modules/hidden', { graph: true })).toEqual([]);
+		expect(run('PUT', 'workspaces/1/modules', { preset: 'solo' })).toEqual([]);
+		expect(run('PUT', 'workspaces/1/modules', { modules: { graph: false } })).toEqual([]);
+		expect(run('PUT', 'workspaces/1/feature-toggles', { features: { graph: 'yes' } })).toEqual([]);
+	});
+
+	it.each([
+		['POST', 'personas/x/restore'],
+		['POST', 'personas/x/avatar'],
+		['DELETE', 'tasks/5/personas/x'],
+		['POST', 'workspaces/invitations/t/accept'],
+		['POST', 'tasks/5/pomodoro/distract'],
+		['PUT', 'tasks/5/pomodoro'],
+		['POST', 'smart-device/token/revoke'],
+		['POST', 'smart-device/token/verify'],
+		['DELETE', 'notify-tokens/1'],
+	])('existing negative %s %s', (m, u) => {
+		expect(run(m, u)).toEqual([]);
+	});
+
+	it('export.downloaded on GET exports/tasks/csv?ids=1', () => {
+		expect(names(run('GET', 'exports/tasks/csv?ids=1'))).toEqual(['export.downloaded']);
 	});
 });
 
