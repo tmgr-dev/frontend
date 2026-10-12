@@ -205,6 +205,24 @@ impl Client {
         Ok((status, value))
     }
 
+    pub fn call(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+        refresh: bool,
+    ) -> Result<(u16, Value)> {
+        let method = Method::from_bytes(method.as_bytes())
+            .map_err(|_| Error::internal("invalid HTTP method"))?;
+        let sent_access = self.current_access()?;
+        let (mut status, mut value) =
+            self.send_raw(method.clone(), path, &[], body, Auth::Bearer)?;
+        if status == 401 && refresh && self.recover(&sent_access)? {
+            (status, value) = self.send_raw(method, path, &[], body, Auth::Bearer)?;
+        }
+        Ok((status, value))
+    }
+
     fn current_access(&self) -> Result<String> {
         self.tokens
             .borrow()
