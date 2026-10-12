@@ -7,19 +7,18 @@ import {
 } from '@floating-ui/dom';
 import { isSheetViewport, prefersReducedMotion } from '../a11y';
 import type { OverlayAdapter, OverlayShowOptions } from './OverlayAdapter';
+import { createSheetRoom } from './sheetRoom';
 
 const RING_PADDING = 8;
 const RING_RADIUS = 12;
-const RESCROLL_DELAYS_MS = [350, 800, 1500];
 
 export function createPassiveAdapter(): OverlayAdapter {
   let cleanup: (() => void) | null = null;
   let update: (() => void) | null = null;
-  let rescrollTimers: ReturnType<typeof setTimeout>[] = [];
+  const room = createSheetRoom();
 
   function hide() {
-    rescrollTimers.forEach(clearTimeout);
-    rescrollTimers = [];
+    room.release();
     cleanup?.();
     cleanup = null;
     update = null;
@@ -46,21 +45,6 @@ export function createPassiveAdapter(): OverlayAdapter {
     } else {
       anchor.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
     }
-  }
-
-  function inView(anchor: Element, sheet: boolean) {
-    const r = anchor.getBoundingClientRect();
-    const limit = sheet ? window.innerHeight * 0.5 : window.innerHeight;
-    return r.top >= 0 && r.bottom <= limit;
-  }
-
-  function rescrollWhileLayoutSettles(anchor: Element, sheet: boolean) {
-    rescrollTimers = RESCROLL_DELAYS_MS.map((delay) =>
-      setTimeout(() => {
-        if (!anchor.isConnected || inView(anchor, sheet)) return;
-        anchor.scrollIntoView({ block: 'center', behavior: 'auto' });
-      }, delay),
-    );
   }
 
   function show({ anchorEl, mode, mount, blocking = true }: OverlayShowOptions) {
@@ -92,7 +76,7 @@ export function createPassiveAdapter(): OverlayAdapter {
       document.body.appendChild(ring);
       nodes.push(ring);
       scrollIntoView(anchorEl, sheet);
-      rescrollWhileLayoutSettles(anchorEl, sheet);
+      room.watch(anchorEl, sheet);
 
       if (sheet) {
         host.classList.add('tour-host--sheet');

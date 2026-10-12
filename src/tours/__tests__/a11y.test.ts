@@ -4,6 +4,7 @@ import {
   focusAnchor,
   inertAround,
   isKeyboardOpen,
+  isTourLayerEvent,
   isTransientLayerOpen,
   onEscape,
   rememberFocus,
@@ -261,5 +262,18 @@ describe('isKeyboardOpen', () => {
     expect(isKeyboardOpen(844, 844)).toBe(false);
     expect(isKeyboardOpen(520, 844)).toBe(true);
     expect(isKeyboardOpen(0, 0)).toBe(false);
+  });
+});
+
+describe('isTourLayerEvent', () => {
+  it('is true for events on the tour popover, sheet or driver layers', () => {
+    document.body.innerHTML =
+      '<div class="tour-host"><button id="a"></button></div><div class="driver-popover"><i id="b"></i></div><button id="c"></button>';
+    const detail = (id: string) => ({ detail: { originalEvent: { target: document.getElementById(id) } } });
+    expect(isTourLayerEvent(detail('a'))).toBe(true);
+    expect(isTourLayerEvent(detail('b'))).toBe(true);
+    expect(isTourLayerEvent(detail('c'))).toBe(false);
+    expect(isTourLayerEvent({ target: document.getElementById('a') })).toBe(true);
+    expect(isTourLayerEvent({})).toBe(false);
   });
 });

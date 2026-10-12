@@ -206,3 +206,11 @@ export function isKeyboardOpen(
 ): boolean {
   return layoutHeight > 0 && viewportHeight < layoutHeight * 0.75;
 }
+
+export function isTourLayerEvent(event: {
+  target?: EventTarget | null;
+  detail?: { originalEvent?: { target?: EventTarget | null } };
+}): boolean {
+  const target = event.detail?.originalEvent?.target ?? event.target;
+  return target instanceof Element && !!target.closest('.tour-host, .driver-popover, .driver-overlay');
+}

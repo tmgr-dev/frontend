@@ -384,6 +384,8 @@ for (const size of SIZES) {
     for (const scheme of SCHEMES) await shoot(page, 'agents.phone-alerts-dialog-command', size, scheme);
     await popover(page).getByRole('button', { name: 'Next' }).click();
     await expect(popover(page)).toContainText('Send a test');
+    await expect(page.getByRole('button', { name: 'Send test notification' })).toBeVisible();
+    await expectClear(page, 'agent-notify.test');
     for (const scheme of SCHEMES) await shoot(page, 'agents.phone-alerts-dialog-test', size, scheme);
     await popover(page).getByRole('button', { name: 'Done' }).click();
     await expect.poll(() => lastWrite(writes, 'agents.phone-alerts')?.status).toBe('completed');

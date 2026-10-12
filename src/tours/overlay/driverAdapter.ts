@@ -1,5 +1,6 @@
 import { isSheetViewport, prefersReducedMotion } from '../a11y';
 import type { OverlayAdapter, OverlayShowOptions } from './OverlayAdapter';
+import { createSheetRoom } from './sheetRoom';
 
 type DriverModule = typeof import('driver.js');
 type Driver = ReturnType<DriverModule['driver']>;
@@ -20,9 +21,11 @@ export function createDriverAdapter(): OverlayAdapter {
   let seq = 0;
   let instance: Driver | null = null;
   let unmount: (() => void) | null = null;
+  const room = createSheetRoom();
 
   function hide() {
     seq += 1;
+    room.release();
     unmount?.();
     unmount = null;
     instance?.destroy();
@@ -85,6 +88,7 @@ export function createDriverAdapter(): OverlayAdapter {
         element: anchorEl,
         popover: { title: ' ', description: ' ', side: 'bottom', align: 'start' },
       });
+      room.watch(anchorEl, sheet, () => instance?.refresh());
     });
   }
 
