@@ -270,11 +270,17 @@
 								<button
 									type="button"
 									class="min-h-[44px] w-full max-w-xs rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface-sunken dark:border-gray-700"
+									data-tour-avoid="cta"
 									@click="checkAgain"
 								>
 									I ran it
 								</button>
-								<button type="button" class="min-h-[44px] text-sm text-ink-subtle underline hover:text-ink" @click="later">
+								<button
+									type="button"
+									class="min-h-[44px] text-sm text-ink-subtle underline hover:text-ink"
+									data-tour-avoid="cta"
+									@click="later"
+								>
 									Do this later
 								</button>
 							</div>

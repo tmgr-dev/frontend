@@ -18,13 +18,13 @@ export function createSheetRoom() {
   let padded: Array<[HTMLElement, string]> = [];
   let stopInput: (() => void) | null = null;
 
-  function findScroller(from: Element): HTMLElement | null {
+  function findScroller(from: Element, requireBounded = true): HTMLElement | null {
     let el = from.parentElement;
     while (el && el !== document.body) {
       const style = getComputedStyle(el);
       const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll';
       const bounded = el.scrollHeight > el.clientHeight || style.maxHeight !== 'none';
-      if (scrolls && bounded) return el;
+      if (scrolls && (bounded || !requireBounded)) return el;
       el = el.parentElement;
     }
     return null;
@@ -58,7 +58,7 @@ export function createSheetRoom() {
       const anchorRect = anchor?.getBoundingClientRect();
       if (anchorRect) delta = Math.min(delta, Math.max(0, anchorRect.bottom - ANCHOR_KEEP));
       if (delta <= 0) continue;
-      const scroller = findScroller(target);
+      const scroller = findScroller(target, false);
       if (scroller) {
         padScroller(scroller, sheetRect.height + AVOID_GAP * 2);
         scroller.scrollTop += delta;

@@ -23,7 +23,7 @@ const setScheme = async (page, scheme) => {
 
 const shoot = async (page, name, size, scheme) => {
   await setScheme(page, scheme);
-  await page.screenshot({ path: `${SHOTS}/fix-${name}-${size.name}-${scheme}.png` });
+  await page.screenshot({ path: `${SHOTS}/${name.startsWith('fu-') ? '' : 'fix-'}${name}-${size.name}-${scheme}.png` });
 };
 
 const boot = async (page, size, scheme) => {
@@ -77,6 +77,31 @@ const expectCardsInViewport = async (page) => {
     expect(b.right).toBeLessThanOrEqual(b.w + 0.5);
     expect(b.bottom).toBeLessThanOrEqual(b.h + 0.5);
   }
+};
+
+const expectClearOfCtas = async (page, label, shotName = null) => {
+  await page.waitForTimeout(2000);
+  if (shotName) await shoot(page, shotName.name, shotName.size, shotName.scheme);
+  const { cards, ctas, vh } = await page.evaluate(() => {
+    const box = (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    const cards = [...document.querySelectorAll('.tour-host, .driver-popover.tour-driver-popover')]
+      .filter((el) => el.getClientRects().length && el.querySelector('[role="dialog"]'))
+      .map(box);
+    const ctas = [...document.querySelectorAll('[data-tour-avoid]')]
+      .filter((el) => el.getClientRects().length)
+      .map((el) => ({ text: el.textContent.trim(), ...box(el) }));
+    return { cards, ctas, vh: innerHeight };
+  });
+  expect(cards.length, `${label}: card`).toBeGreaterThan(0);
+  for (const cta of ctas) {
+    for (const c of cards) {
+      expect(intersects(cta, c), `${label}: card covers "${cta.text}"`).toBe(false);
+    }
+  }
+  return ctas.length;
 };
 
 const startTour = async (page) => {
@@ -145,3 +170,46 @@ flow('tour card with a missing anchor stays inside a short viewport', async ({ p
   await connect(fx, page);
   await expectCardsInViewport(page);
 });
+
+for (const size of SIZES) {
+  for (const scheme of SCHEMES) {
+    flow(`tour card never covers a primary CTA: ${size.name} ${scheme}`, async ({ page }) => {
+      await page.clock.install();
+      const fx = await boot(page, size, scheme);
+      await startTour(page);
+      await expect(card(page)).toContainText('Pick your client');
+      let seen = await expectClearOfCtas(page, 's1 not connected', { name: 'fu-avoid-s1', size, scheme });
+      await expectCardsInViewport(page);
+      await card(page).getByRole('button', { name: 'Next' }).click();
+      await expect(card(page)).toContainText('Copy the command');
+      seen += await expectClearOfCtas(page, 's2 not connected', { name: 'fu-avoid-s2', size, scheme });
+      await expectCardsInViewport(page);
+      await card(page).getByRole('button', { name: /Skip (this )?step/ }).click();
+      await expect(card(page)).toContainText('Waiting for your agent');
+      seen += await expectClearOfCtas(page, 's3 waiting', { name: 'fu-avoid-s3', size, scheme });
+      await page.clock.fastForward(181000);
+      await expect(page.getByTestId('still-waiting')).toBeVisible();
+      await expect(card(page)).toBeVisible();
+      seen += await expectClearOfCtas(page, 's3 still waiting', { name: 'fu-avoid-still-waiting', size, scheme });
+      await expectCardsInViewport(page);
+      expect(seen).toBeGreaterThan(0);
+    });
+
+    flow(`tour card never covers Open my workspace once connected: ${size.name} ${scheme}`, async ({ page }) => {
+      const fx = await boot(page, size, scheme);
+      await startTour(page);
+      await expect(card(page)).toBeVisible();
+      await connect(fx, page);
+      await expect(card(page)).toContainText('Try a prompt', { timeout: 10000 });
+      const seen = await expectClearOfCtas(page, 's4 connected', { name: 'fu-avoid-s4-connected', size, scheme });
+      expect(seen).toBeGreaterThan(0);
+      const cta = page.getByRole('button', { name: 'Open my workspace' });
+      await expect(cta).toBeVisible();
+      await expectCardsInViewport(page);
+      const vp = page.viewportSize();
+      const box = await cta.boundingBox();
+      expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+    });
+  }
+}
