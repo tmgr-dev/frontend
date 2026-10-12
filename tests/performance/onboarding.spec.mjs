@@ -50,7 +50,7 @@ const boot = async (page, size, { onboarding = {}, user = OLD_USER, ...options }
   await page.setViewportSize({ width: size.width, height: size.height });
   const app = await mockApp(page, {
     multiStatus: true,
-    onboarding,
+    onboarding: { tips_mode: 'auto', ...onboarding },
     userExtra: user,
     ...options,
   });
@@ -116,7 +116,7 @@ test.describe('hub checklist and sample tasks', () => {
       if (size.width < 640) expect((await button.boundingBox()).height).toBeGreaterThanOrEqual(44);
       await shoot(page, 'remove-samples-hub', size, scheme);
       await button.click();
-      await expect(page.getByText('Removed 3 sample tasks')).toBeVisible();
+      await expect(page.getByText('Removed 3 sample tasks').first()).toBeVisible();
       await expect(button).toBeHidden();
       expect(fx.writes.some((w) => w.method === 'DELETE' && w.path === 'onboarding/starter-tasks')).toBe(true);
       await shoot(page, 'remove-samples-done', size, scheme);
@@ -132,7 +132,7 @@ test.describe('hub checklist and sample tasks', () => {
     await expect(button).toBeVisible();
     const before = fx.writes.length;
     await button.click();
-    await expect(page.getByText('Removed 3 sample tasks')).toBeVisible();
+    await expect(page.getByText('Removed 3 sample tasks').first()).toBeVisible();
     expect(fx.writes.length).toBeGreaterThan(before);
   });
 
@@ -164,10 +164,12 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
 
       await page.goto('/demo/list');
       await page.locator('[data-task-id="1"]').first().click();
-      await page.locator('[data-tour="task-form.timer"] button').first().click();
+      await page.getByTitle('Start timer').click();
+      await expect(page.getByTitle('Stop timer')).toBeVisible();
+      await page.getByRole('button', { name: 'Ok', exact: true }).click();
       fx.state.facts.has_timer_minute = true;
-      await page.locator('[data-tour="task-form.timer"] button').first().click();
-      await expect(page.getByText(/Logged \d+m on .*Your time stays with the task\./)).toBeVisible();
+      await page.getByTitle('Stop timer').click();
+      await expect(page.getByText(/Logged \d+m on .*Your time stays with the task\./).first()).toBeVisible();
       await shoot(page, 'human-aha-timer', size, scheme);
       expect(fx.factsRequests.some((r) => r.keys.includes('has_timer_minute'))).toBe(true);
     });
@@ -186,7 +188,7 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
       fx.state.facts.mcp_first_call_at = true;
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await expect(page.getByText('Connected', { exact: true })).toBeVisible({ timeout: 20000 });
-      await expect(page.getByText(/Say hello to TMGR/)).toBeVisible();
+      await expect(page.getByTestId('starter-prompt')).toBeVisible();
       await shoot(page, 'agent-connected-prompt', size, scheme);
 
       fx.state.facts.agent_runs_finished = true;

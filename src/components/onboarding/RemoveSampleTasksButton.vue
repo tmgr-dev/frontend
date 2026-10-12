@@ -43,9 +43,6 @@
 
 			const userId = computed(() => store.state.user?.id ?? null);
 			const intent = computed(() => tours.onboarding.value?.intent ?? null);
-			const exposesStarters = computed(
-				() => !!props.tasks?.some((task) => Array.isArray(task.settings)),
-			);
 			const hasStarter = computed(
 				() =>
 					!!props.tasks?.some((task) =>
@@ -57,8 +54,7 @@
 					userId.value !== null &&
 					(intent.value === 'human' || intent.value === 'agent') &&
 					!removedFlag.value &&
-					!readFlag(userId.value) &&
-					(!exposesStarters.value || hasStarter.value),
+					(hasStarter.value || !readFlag(userId.value)),
 			);
 
 			const remove = async () => {
