@@ -24,7 +24,9 @@ fn run_hook(
     warm_up();
     let started = Instant::now();
     let mut cmd = env.cmd();
-    cmd.env("TMGR_NOTIFY_TOKEN", TOKEN)
+    cmd.env("PATH", path_with(None))
+        .env("TMGR_HOOK_DEBUG", "1")
+        .env("TMGR_NOTIFY_TOKEN", TOKEN)
         .env("TMGR_URL", env.server.uri());
     if let Some(ms) = budget_ms {
         cmd.env("TMGR_HOOK_BUDGET_MS", ms);
@@ -326,7 +328,7 @@ async fn stop_adds_the_new_commits_to_the_active_run_and_heartbeats() {
     quiet(&out);
 
     let patches = env.requests_to("/api/agent-work/41").await;
-    assert_eq!(patches.len(), 1);
+    assert_eq!(patches.len(), 1, "hook stderr: {}", text(&out.stderr));
     let body: Value = serde_json::from_slice(&patches[0].body).unwrap();
     let commits = body["commits"].as_array().unwrap();
     assert_eq!(commits.len(), 3);
@@ -374,7 +376,12 @@ async fn heartbeats_are_throttled_and_a_finished_run_is_forgotten() {
         payload.as_bytes(),
     );
     quiet(&out);
-    assert_eq!(env.requests_to("/api/agent-work/41").await.len(), 1);
+    assert_eq!(
+        env.requests_to("/api/agent-work/41").await.len(),
+        1,
+        "hook stderr: {}",
+        text(&out.stderr)
+    );
     let state: Value =
         serde_json::from_str(&std::fs::read_to_string(env.state_dir().join("runs.json")).unwrap())
             .unwrap();

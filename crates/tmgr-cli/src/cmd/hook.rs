@@ -33,6 +33,21 @@ fn parse_budget(raw: Option<&str>) -> Duration {
     Duration::from_millis(ms)
 }
 
+fn debug(msg: &str) {
+    if std::env::var_os("TMGR_HOOK_DEBUG").is_some() {
+        eprintln!("tmgr hook: {}", tmgr_core::text::sanitize_line(msg));
+    }
+}
+
+fn git_program() -> &'static str {
+    let no_path = std::env::var_os("PATH").is_none_or(|p| p.is_empty());
+    if no_path && Path::new("/usr/bin/git").exists() {
+        "/usr/bin/git"
+    } else {
+        "git"
+    }
+}
+
 fn git_timeout() -> Duration {
     (budget() / 4).max(Duration::from_millis(400))
 }
@@ -199,8 +214,17 @@ fn send_push(env: &NotifyEnv, payload: &PushPayload) {
 fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
     let mut full = vec!["-c", "core.fsmonitor=false"];
     full.extend_from_slice(args);
-    let out = run_capture("git", Some(cwd), &full, git_timeout()).ok()?;
+    let out = match run_capture(git_program(), Some(cwd), &full, git_timeout()) {
+        Ok(o) => o,
+        Err(e) => {
+            debug(&format!("git {args:?} could not run: {e}"));
+            return None;
+        }
+    };
     let text = out.stdout.trim().to_string();
+    if !out.ok || text.is_empty() {
+        debug(&format!("git {args:?} ok={} output={text:?}", out.ok));
+    }
     (out.ok && !text.is_empty()).then_some(text)
 }
 
@@ -268,8 +292,14 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
         let client = build_client(env);
         (client, located.join().ok().flatten())
     });
-    let Some(run) = located else { return };
-    let Some(client) = client else { return };
+    let Some(run) = located else {
+        debug("no run matches the current branch");
+        return;
+    };
+    let Some(client) = client else {
+        debug("no usable login");
+        return;
+    };
     let mut progress = Progress::default();
     let mut merged = None;
     if mode == Touch::Commits {
@@ -282,7 +312,11 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
             }
         }
     }
-    match agentwork::update(&client, run.run_id, &progress, false) {
+    let result = agentwork::update(&client, run.run_id, &progress, false);
+    if let Err(e) = &result {
+        debug(&format!("run update failed: {}", e.message));
+    }
+    match result {
         Ok(Outcome::Run(_)) => {
             let _ = runstate::modify(&path, STATE_WAIT, |r| {
                 if let Some(e) = r.runs.iter_mut().find(|e| e.run_id == run.run_id) {
