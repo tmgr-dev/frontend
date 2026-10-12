@@ -67,7 +67,14 @@ const boot = async (page, size, { modules = ALL_MODULES, runs = [], personas = [
         data: {
           configured: true,
           can_manage: true,
-          modules: ALL_MODULES.map((key) => ({ key, name: key, enabled: modules.includes(key) })),
+          packs: [{ key: 'main', name: 'Main' }],
+          presets: [{ key: 'personal', name: 'Personal', description: 'Just you', modules: ['board'] }],
+          modules: [...ALL_MODULES, 'graph'].map((key) => ({
+            key,
+            name: key,
+            pack: 'main',
+            enabled: modules.includes(key),
+          })),
         },
       },
     }),
@@ -87,26 +94,95 @@ const boot = async (page, size, { modules = ALL_MODULES, runs = [], personas = [
     return route.fulfill({ json: { data: [] } });
   });
   await page.route('**/api/personas*', (route) => {
-    const request = route.request();
-    if (request.method() === 'POST') {
+    if (route.request().method() === 'POST') {
       calls.push('POST personas');
       return route.fulfill({ json: { data: persona } });
     }
-    if (/\/personas\/[^/]+\/tokens/.test(request.url())) {
-      if (request.method() === 'POST') calls.push('POST persona-token');
+    return route.fulfill({ json: { data: personas } });
+  });
+  await page.route('**/api/personas/*/tokens*', (route) => {
+    if (route.request().method() === 'POST') {
+      calls.push('POST persona-token');
       return route.fulfill({
         json: {
-          data: request.method() === 'POST'
-            ? { token: 'tmgrp_secret', id: 1, label: 'x', prefix: 'tmgrp', workspace_name: 'Demo', expires_at: '2027-01-01T00:00:00Z' }
-            : [],
+          data: {
+            secret: 'tmgrp_secret',
+            token: { id: 1, label: 'x', prefix: 'tmgrp', workspace_id: 1, workspace_name: 'Demo', expires_at: '2027-01-01T00:00:00Z', last_used_at: null, revoked_at: null },
+          },
         },
       });
     }
-    if (/\/personas\/[^/]+\/(skills|workspaces)/.test(request.url())) return route.fulfill({ json: { data: [] } });
-    return route.fulfill({ json: { data: personas } });
+    return route.fulfill({ json: { data: [] } });
   });
+  await page.route('**/api/workspaces/1/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: personas.map((p) => ({
+          persona: { id: p.id, name: p.name, description: p.description, avatar_url: null, archived: false, owner: p.owner },
+          workspace_id: 1,
+          permissions: ['read'],
+          blocked: false,
+          blocked_at: null,
+          effective_permissions: ['read'],
+        })),
+      },
+    }),
+  );
   await page.route('**/api/workspaces/1/assignable-personas*', (route) => route.fulfill({ json: { data: personas } }));
   await page.route('**/api/workspaces/1/members*', (route) => route.fulfill({ json: { data: members } }));
+  await page.route('**/api/workspaces/1/dashboard/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('team-activity'))
+      return route.fulfill({
+        json: {
+          data: {
+            members: members.map((m) => ({
+              id: m.id,
+              name: m.name,
+              email: `m${m.id}@example.test`,
+              role: 'member',
+              is_online: m.id === 1,
+              last_activity_at: null,
+              last_task: null,
+              current_task: null,
+              tracked_seconds: 3600,
+              done_count: 2,
+              active_tasks: 1,
+              completed_tasks: 2,
+              comments_count: 3,
+              activity_count: 4,
+              daily_activity: [],
+              streak: 1,
+            })),
+            total_members: members.length,
+            online_members: 1,
+            active_today: 1,
+            active_timers: 0,
+            tracked_seconds: 3600,
+            done_count: 2,
+            window: '7d',
+          },
+        },
+      });
+    if (path.endsWith('heatmap'))
+      return route.fulfill({
+        json: { data: { contributions: [], total_contributions: 0, streak: { current: 0, longest: 0 }, year: 2026, weeks: 53 } },
+      });
+    if (path.endsWith('activities'))
+      return route.fulfill({ json: { data: [], meta: { current_page: 1, per_page: 20, total: 0, last_page: 1 }, links: {} } });
+    if (path.endsWith('recent-tasks')) return route.fulfill({ json: { data: [] } });
+    if (path.endsWith('statistics'))
+      return route.fulfill({
+        json: {
+          data: {
+            total_tasks: 1, active_tasks: 1, completed_today: 0, completed_week: 0, completed_month: 0,
+            time_today: 0, time_week: 0, time_month: 0, time_total: 0, team_members: members.length,
+            overdue_tasks: 0, daily_routine_completion_rate: 0,
+          },
+        },
+      });
+    return route.fulfill({ json: { data: {} } });
+  });
   await page.route('**/api/workspaces/1/invitations*', (route) => {
     if (route.request().method() === 'POST') calls.push('POST invitations');
     return route.fulfill({ json: { data: [] } });
@@ -144,6 +220,27 @@ const startFromHub = async (page, id) => {
   await expect(popover(page)).toBeVisible();
 };
 
+const expectClear = async (page, anchor) => {
+  const target = page.locator(`[data-tour="${anchor}"]`).first();
+  await expect(target).toBeInViewport();
+  await page.waitForTimeout(900);
+  const a = await target.boundingBox();
+  const p = await popover(page).boundingBox();
+  const vw = page.viewportSize();
+  const x1 = Math.max(a.x, 0);
+  const y1 = Math.max(a.y, 0);
+  const x2 = Math.min(a.x + a.width, vw.width);
+  const y2 = Math.min(a.y + a.height, vw.height);
+  const visible = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const ox = Math.max(0, Math.min(x2, p.x + p.width) - Math.max(x1, p.x));
+  const oy = Math.max(0, Math.min(y2, p.y + p.height) - Math.max(y1, p.y));
+  expect(ox * oy, `${anchor} is mostly covered by the tour card`).toBeLessThan(visible * 0.6);
+  expect(p.x, `${anchor} card is on screen`).toBeGreaterThanOrEqual(-1);
+  expect(p.y, `${anchor} card is on screen`).toBeGreaterThanOrEqual(-1);
+  expect(p.x + p.width).toBeLessThanOrEqual(vw.width + 1);
+  expect(p.y + p.height).toBeLessThanOrEqual(vw.height + 1);
+};
+
 const fire = (page, name, payload = {}) =>
   page.evaluate(
     async ([n, p]) => {
@@ -166,10 +263,10 @@ const TOURS = [
   { id: 'ws.modules', mobile: true, url: /\/settings\/modules$/, anchor: 'modules.presets' },
   { id: 'ws.invite', mobile: true, url: /\/settings\/workspaces$/, anchor: 'workspace.members' },
   { id: 'ws.dashboard', mobile: true, anchor: null },
-  { id: 'ws.workspaces', mobile: true, anchor: 'nav.menu-button' },
+  { id: 'ws.workspaces', mobile: true, anchor: 'nav.workspace-switcher', mobileAnchor: 'nav.menu-button' },
   { id: 'ws.appearance', mobile: true, url: /\/settings\?tab=theme$/, anchor: 'settings.theme' },
   { id: 'ws.notifications', mobile: true, anchor: 'nav.notification-bell' },
-  { id: 'ws.privacy', mobile: true, url: /\/settings\?tab=about$/, anchor: 'settings.privacy-telemetry' },
+  { id: 'ws.privacy', mobile: true, url: /\/settings\?tab=privacy$/, anchor: 'settings.privacy-telemetry' },
   { id: 'ws.telegram', mobile: false, url: /\/settings\?tab=profile$/, anchor: 'settings.telegram' },
   { id: 'ws.default-landing', mobile: true, url: /\/settings\/modules$/, anchor: 'settings.default-landing' },
 ];
@@ -189,7 +286,7 @@ for (const size of SIZES) {
         await expect(row, `${tour.id} hidden by platform`).toHaveCount(0);
         continue;
       }
-      const moduleless = ['agents.work-log', 'agents.phone-alerts', 'agents.mcp-token', 'agents.ask-ai', 'personas.create', 'personas.token', 'personas.assign', 'personas.skills', 'ws.dashboard', 'ws.telegram'];
+      const moduleless = ['agents.work-log', 'agents.phone-alerts', 'agents.mcp-token', 'agents.ask-ai', 'personas.create', 'personas.token', 'personas.assign', 'personas.skills', 'ws.dashboard', 'ws.telegram', 'agents.connect-later'];
       if (moduleless.includes(tour.id)) {
         await expect(row, `${tour.id} module off`).toContainText('Turn on');
         await expect(page.getByTestId(`hub-start-${tour.id}`)).toHaveCount(0);
@@ -223,8 +320,10 @@ for (const size of SIZES) {
         await expect(popover(page)).toContainText('could not find this');
         await expect(popover(page).getByRole('button', { name: 'Take me there' })).toBeVisible();
       } else if (tour.anchor) {
+        const anchor = mobile && tour.mobileAnchor ? tour.mobileAnchor : tour.anchor;
         await expect(popover(page)).not.toContainText('could not find this');
-        await expect(page.locator(`[data-tour="${tour.anchor}"]`).first()).toBeVisible();
+        await expect(page.locator(`[data-tour="${anchor}"]`).first()).toBeVisible();
+        await expectClear(page, anchor);
       }
       for (const scheme of SCHEMES) await shoot(page, tour.id, size, scheme);
       await page.keyboard.press('Escape');
@@ -253,6 +352,7 @@ for (const size of SIZES) {
     await expect(page.locator('section[data-tour="task-form.agent-work"]')).toContainText('No agent runs yet');
     await expect(popover(page)).toContainText('Agent runs');
     await expect(popover(page)).not.toContainText('could not find this');
+    await expectClear(page, 'task-form.agent-work');
     for (const scheme of SCHEMES) await shoot(page, 'agents.work-log-empty-state', size, scheme);
     await fire(page, 'agent.run_started', { task_id: 1 });
     await expect.poll(() => lastWrite(writes, 'agents.work-log')?.step_id).toBe('s2');
@@ -293,8 +393,8 @@ for (const size of SIZES) {
   e2e(`phone-alerts: skip this step on the wait step moves on at ${size.name}`, async ({ page }) => {
     const { writes, errors } = await boot(page, size);
     await startFromHub(page, 'agents.phone-alerts');
-    await popover(page).getByRole('button', { name: 'Skip this step' }).click();
-    await expect.poll(() => lastWrite(writes, 'agents.phone-alerts')?.status).toMatch(/completed|skipped/);
+    await popover(page).getByRole('button', { name: /^Skip (this )?step$/ }).click();
+    await expect.poll(() => lastWrite(writes, 'agents.phone-alerts')?.status, { timeout: 15000 }).toMatch(/completed|skipped/);
     expect(errors).toEqual([]);
   });
 
@@ -319,6 +419,7 @@ for (const size of SIZES) {
     const { writes, calls, errors } = await boot(page, size);
     await startFromHub(page, 'agents.mcp-token');
     await page.getByRole('button', { name: /Generate/ }).click();
+    await page.getByRole('button', { name: 'Ok', exact: true }).click();
     await expect.poll(() => calls.includes('POST smart-device')).toBe(true);
     await expect.poll(() => lastWrite(writes, 'agents.mcp-token')?.status).toBe('completed');
     expect(errors).toEqual([]);
@@ -346,8 +447,8 @@ for (const size of SIZES) {
     await page.locator('[data-tour="personas.tokens"]').first().click();
     await page.getByRole('button', { name: 'Connect an agent' }).click();
     await shoot(page, 'personas.token-dialog', size, 'light');
-    const create = page.getByRole('dialog').getByRole('button', { name: /Create|Connect|Generate/ }).last();
-    await create.click();
+    await page.getByRole('dialog', { name: 'Connect an agent' }).getByPlaceholder('Claude Code on my laptop').fill('Claude Code on my laptop');
+    await page.getByRole('button', { name: 'Issue token' }).click();
     await expect.poll(() => calls.includes('POST persona-token')).toBe(true);
     await expect.poll(() => lastWrite(writes, 'personas.token')?.status).toBe('completed');
     expect(errors).toEqual([]);
@@ -408,9 +509,13 @@ for (const size of SIZES) {
     await popover(page).getByRole('button', { name: 'Take me there' }).click();
     await expect(page).toHaveURL(/\/demo\/dashboard$/);
     await expect(popover(page)).toContainText('Team activity');
+    await expectClear(page, 'dashboard.activity');
     for (const scheme of SCHEMES) await shoot(page, 'ws.dashboard-s1', size, scheme);
-    await popover(page).getByRole('button', { name: /Next|Done/ }).click();
-    await expect.poll(() => lastWrite(writes, 'ws.dashboard')?.step_id).not.toBe('s1');
+    await popover(page).getByRole('button', { name: 'Next' }).click();
+    await expect(popover(page)).toContainText('Team members');
+    for (const scheme of SCHEMES) await shoot(page, 'ws.dashboard-s2', size, scheme);
+    await popover(page).getByRole('button', { name: 'Done' }).click();
+    await expect.poll(() => lastWrite(writes, 'ws.dashboard')?.status).toBe('completed');
     expect(errors).toEqual([]);
   });
 
@@ -435,8 +540,12 @@ for (const size of SIZES) {
     const { writes, errors } = await boot(page, size);
     await startFromHub(page, 'ws.appearance');
     await page.waitForTimeout(600);
-    await popover(page).getByRole('button', { name: 'Skip' }).click();
-    await page.getByRole('menuitem', { name: /Skip tour/ }).click();
+    if (mobile) {
+      await popover(page).getByRole('button', { name: 'Skip tour' }).click();
+    } else {
+      await popover(page).getByRole('button', { name: /^Skip$/ }).click();
+      await page.getByRole('menuitem', { name: /Skip tour/ }).click();
+    }
     await expect.poll(() => lastWrite(writes, 'ws.appearance')?.status).toBe('skipped');
     expect(errors).toEqual([]);
   });
@@ -477,9 +586,12 @@ e2e('every S4a anchor is in the DOM on its page, dialog anchors after opening', 
   await attached(page, ['dashboard.activity', 'dashboard.member']);
   await page.goto('/settings?tab=theme');
   await attached(page, ['settings.theme']);
+  await page.goto('/settings?tab=privacy');
+  await attached(page, ['settings.privacy-telemetry']);
   await page.goto('/settings?tab=about');
-  await attached(page, ['settings.privacy-telemetry', 'settings.tips']);
+  await attached(page, ['settings.tips']);
   await page.goto('/settings?tab=profile');
   await attached(page, ['settings.telegram']);
   await setScheme(page, 'light');
 });
+
