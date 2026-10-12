@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use rusqlite::types::ValueRef;
@@ -43,9 +42,14 @@ const ENTITIES: [&str; 17] = [
 
 pub const BUSY: &str = "another move or removal is in progress";
 
+struct Owner {
+  token: String,
+  freeze: bool,
+}
+
 #[derive(Default)]
 struct SlotState {
-  owner: Option<u64>,
+  owner: Option<Owner>,
   writers: usize,
 }
 
@@ -68,28 +72,33 @@ impl Slot {
 #[derive(Clone, Default)]
 pub struct Moving {
   slots: Arc<Mutex<HashMap<String, Arc<Slot>>>>,
-  next: Arc<AtomicU64>,
 }
 
 pub struct Operation {
   moving: Moving,
   code: String,
-  token: u64,
+  token: String,
   armed: bool,
 }
 
 impl Operation {
   /// Keeps the lock past this value: the caller now owns the token and releases it explicitly.
-  pub fn keep(mut self) -> u64 {
+  pub fn keep(mut self) -> String {
     self.armed = false;
-    self.token
+    std::mem::take(&mut self.token)
   }
+}
+
+fn random_token() -> String {
+  let mut bytes = [0u8; 16];
+  getrandom::fill(&mut bytes).expect("the system random source is unavailable");
+  hex(&bytes)
 }
 
 impl Drop for Operation {
   fn drop(&mut self) {
     if self.armed {
-      self.moving.release(&self.code, self.token);
+      self.moving.release(&self.code, &self.token);
     }
   }
 }
@@ -129,13 +138,22 @@ impl Moving {
   /// Takes the operation lock, then waits until every write already in flight has finished.
   /// Blocks while draining, so call it off the async runtime.
   pub fn begin(&self, code: &str) -> Result<Operation, String> {
+    self.begin_as(code, false)
+  }
+
+  /// Like `begin`, but the lock is a freeze: the only kind its token can release over IPC.
+  pub fn begin_freeze(&self, code: &str) -> Result<Operation, String> {
+    self.begin_as(code, true)
+  }
+
+  fn begin_as(&self, code: &str, freeze: bool) -> Result<Operation, String> {
     let slot = self.slot(code);
     let mut state = slot.lock();
     if state.owner.is_some() {
       return Err(BUSY.to_string());
     }
-    let token = self.next.fetch_add(1, Ordering::Relaxed) + 1;
-    state.owner = Some(token);
+    let token = random_token();
+    state.owner = Some(Owner { token: token.clone(), freeze });
     while state.writers > 0 {
       state = slot.drained.wait(state).unwrap_or_else(|e| e.into_inner());
     }
@@ -156,14 +174,27 @@ impl Moving {
     Ok(Permit { slot })
   }
 
-  pub fn owns(&self, code: &str, token: u64) -> bool {
-    self.slot(code).lock().owner == Some(token)
+  pub fn owns_freeze(&self, code: &str, token: &str) -> bool {
+    self.slot(code).lock().owner.as_ref().is_some_and(|o| o.freeze && o.token == token)
   }
 
-  pub fn release(&self, code: &str, token: u64) -> bool {
+  /// Releases a freeze by the token its holder was given. Archive and removal locks are never
+  /// released this way.
+  pub fn release_freeze(&self, code: &str, token: &str) -> bool {
     let slot = self.slot(code);
     let mut state = slot.lock();
-    if state.owner == Some(token) {
+    if state.owner.as_ref().is_some_and(|o| o.freeze && o.token == token) {
+      state.owner = None;
+      true
+    } else {
+      false
+    }
+  }
+
+  fn release(&self, code: &str, token: &str) -> bool {
+    let slot = self.slot(code);
+    let mut state = slot.lock();
+    if state.owner.as_ref().is_some_and(|o| o.token == token) {
       state.owner = None;
       true
     } else {
@@ -1033,6 +1064,8 @@ pub struct Decision {
   pub decision: String,
   pub size: u64,
   pub sha256: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub path: Option<String>,
 }
 
 type Decisions = BTreeMap<String, Decision>;
@@ -1040,7 +1073,7 @@ type Decisions = BTreeMap<String, Decision>;
 const BUNDLE_RECORD: &str = "bundle.json";
 const DECISIONS: &str = "decisions.json";
 const DECIDED: &str = "exported";
-const LOST: &str = "lost";
+const LOST: &str = "accepted_lost";
 
 static RECORD_LOCK: Mutex<()> = Mutex::new(());
 
@@ -1096,8 +1129,9 @@ fn add_excluded(dir: &Path, keys: &[String], reason: &str) -> Result<(), String>
 }
 
 /// Copies a snapshot file to the place the user chose and records `exported` only after the written
-/// copy has the recorded size and hash.
-pub fn export_file(workspace_dir: &Path, dir: &Path, key: &str, target: &Path, forbidden_root: &Path) -> Result<Decision, String> {
+/// copy has the recorded size and hash. The copy goes to a new temp file next to the destination and
+/// is renamed into place, so a failure never touches what was already at the destination.
+pub fn export_file(workspace_dir: &Path, dir: &Path, key: &str, target: &Path, workspaces_root: &Path) -> Result<Decision, String> {
   let file = snapshot_file(dir, key)?;
   if file.missing {
     return Err("this file is missing from the workspace and cannot be exported; accept it as lost instead".to_string());
@@ -1105,31 +1139,42 @@ pub fn export_file(workspace_dir: &Path, dir: &Path, key: &str, target: &Path, f
   if !target.is_absolute() || target.is_dir() {
     return Err("choose a file path to export to".to_string());
   }
+  let name = target.file_name().ok_or("choose a file path to export to")?;
   let parent = target.parent().ok_or("choose a file path to export to")?;
   let parent = fs::canonicalize(parent).map_err(|_| "the chosen folder does not exist".to_string())?;
-  if fs::canonicalize(forbidden_root).is_ok_and(|root| parent.starts_with(root)) {
+  let target = parent.join(name);
+  let forbidden = workspaces_root.parent().unwrap_or(workspaces_root);
+  let forbidden = fs::canonicalize(forbidden).unwrap_or_else(|_| forbidden.to_path_buf());
+  if parent.starts_with(&forbidden) {
     return Err("export the file outside the local workspaces folder".to_string());
+  }
+  if let Ok(meta) = fs::symlink_metadata(&target) {
+    if meta.file_type().is_symlink() {
+      return Err("the chosen file is a link; choose a regular file path".to_string());
+    }
+    if !meta.is_file() {
+      return Err("choose a file path to export to".to_string());
+    }
+    if fs::canonicalize(&target).is_ok_and(|real| real.starts_with(&forbidden)) {
+      return Err("export the file outside the local workspaces folder".to_string());
+    }
   }
   let source = [file_path(dir, key), file_path(workspace_dir, key)]
     .into_iter()
     .find(|candidate| sha256_file(candidate).is_ok_and(|(size, sha)| size == file.size && sha == file.sha256))
     .ok_or_else(|| "the file no longer matches the snapshot".to_string())?;
-  let target = parent.join(target.file_name().ok_or("choose a file path to export to")?);
-  let copied = fs::copy(&source, &target)
-    .map_err(|e| e.to_string())
-    .and_then(|_| sha256_file(&target));
-  match copied {
-    Ok((size, sha)) if size == file.size && sha == file.sha256 => {}
-    Ok(_) => {
-      let _ = fs::remove_file(&target);
-      return Err("the exported copy does not match the original".to_string());
-    }
-    Err(error) => {
-      let _ = fs::remove_file(&target);
-      return Err(error);
-    }
+  let temp = parent.join(format!(".{}.{}.tmp", name.to_string_lossy(), random_token()));
+  let copied = copy_verified(&source, &temp, &file).and_then(|_| fs::rename(&temp, &target).map_err(|e| e.to_string()));
+  if let Err(error) = copied {
+    let _ = fs::remove_file(&temp);
+    return Err(error);
   }
-  let decision = Decision { decision: DECIDED.to_string(), size: file.size, sha256: file.sha256 };
+  let decision = Decision {
+    decision: DECIDED.to_string(),
+    size: file.size,
+    sha256: file.sha256,
+    path: Some(target.to_string_lossy().into_owned()),
+  };
   change_decisions(dir, |decisions| {
     decisions.insert(key.to_string(), decision.clone());
     Ok(())
@@ -1137,10 +1182,23 @@ pub fn export_file(workspace_dir: &Path, dir: &Path, key: &str, target: &Path, f
   Ok(decision)
 }
 
+fn copy_verified(source: &Path, temp: &Path, file: &SnapshotFile) -> Result<(), String> {
+  let mut input = File::open(source).map_err(|e| e.to_string())?;
+  let mut output = fs::OpenOptions::new().write(true).create_new(true).open(temp).map_err(|e| e.to_string())?;
+  io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
+  output.sync_all().map_err(|e| e.to_string())?;
+  drop(output);
+  match sha256_file(temp) {
+    Ok((size, sha)) if size == file.size && sha == file.sha256 => Ok(()),
+    Ok(_) => Err("the exported copy does not match the original".to_string()),
+    Err(error) => Err(error),
+  }
+}
+
 pub fn accept_lost(dir: &Path, key: &str) -> Result<(), String> {
   let file = snapshot_file(dir, key)?;
   change_decisions(dir, |decisions| {
-    decisions.insert(key.to_string(), Decision { decision: LOST.to_string(), size: file.size, sha256: file.sha256 });
+    decisions.insert(key.to_string(), Decision { decision: LOST.to_string(), size: file.size, sha256: file.sha256, path: None });
     Ok(())
   })
 }
@@ -1162,11 +1220,28 @@ fn undecided_files(dir: &Path) -> Result<Vec<String>, String> {
   needed.extend(bundle.excluded.iter().map(|e| e.key.clone()));
   needed.sort();
   needed.dedup();
-  Ok(needed.into_iter().filter(|key| !decisions.contains_key(key)).collect())
+  Ok(needed.into_iter().filter(|key| !decision_is_valid(&snapshot, key, decisions.get(key))).collect())
 }
 
-pub fn publication_verdict(body: &Json, expected_revision: &str) -> Result<(), String> {
+fn decision_is_valid(snapshot: &SnapshotRecord, key: &str, decision: Option<&Decision>) -> bool {
+  let Some(decision) = decision else { return false };
+  let Some(file) = snapshot.files.iter().find(|f| f.key == key) else { return false };
+  match decision.decision.as_str() {
+    LOST => true,
+    DECIDED => {
+      decision.size == file.size
+        && decision.sha256 == file.sha256
+        && decision.path.as_deref().is_some_and(|p| !p.trim().is_empty())
+    }
+    _ => false,
+  }
+}
+
+pub fn publication_verdict(body: &Json, job_uuid: &str, expected_revision: &str) -> Result<(), String> {
   let data = body.get("data").unwrap_or(&Json::Null);
+  if data.get("job_id").and_then(Json::as_str) != Some(job_uuid) {
+    return Err("the server answered for a different move".to_string());
+  }
   if data.get("status").and_then(Json::as_str) != Some("published") {
     return Err("the cloud copy is not published".to_string());
   }
@@ -1187,15 +1262,64 @@ fn ensure_tls_provider() {
   }
 }
 
-fn job_url(api_base: &str, job_uuid: &str) -> Result<String, String> {
-  let local = ["http://127.0.0.1", "http://localhost", "http://[::1]"].iter().any(|prefix| api_base.starts_with(prefix));
-  if !(api_base.starts_with("https://") || local) {
-    return Err("the server address must use https".to_string());
+const PRODUCTION_API: &str = "https://api.tmgr.dev/api/";
+
+/// Build-time extra API (a stage build), same exact-match rules as production.
+const EXTRA_API: Option<&str> = option_env!("TMGR_DESKTOP_API_BASE");
+
+fn exact_https_base(candidate: &str, allowed: &str) -> bool {
+  let (Ok(candidate), Ok(allowed)) = (url::Url::parse(candidate), url::Url::parse(allowed)) else {
+    return false;
+  };
+  candidate.scheme() == "https"
+    && allowed.scheme() == "https"
+    && candidate.host_str().is_some_and(|host| Some(host) == allowed.host_str())
+    && candidate.port_or_known_default() == allowed.port_or_known_default()
+    && candidate.username().is_empty()
+    && candidate.password().is_none()
+    && candidate.query().is_none()
+    && candidate.fragment().is_none()
+    && candidate.path().trim_end_matches('/') == allowed.path().trim_end_matches('/')
+}
+
+#[cfg(debug_assertions)]
+fn loopback_base(candidate: &str) -> bool {
+  let Ok(url) = url::Url::parse(candidate) else { return false };
+  url.scheme() == "http"
+    && url.host_str().is_some_and(|host| host == "localhost" || host == "127.0.0.1")
+    && url.port().is_some()
+    && url.username().is_empty()
+    && url.password().is_none()
+    && url.query().is_none()
+    && url.fragment().is_none()
+    && url.path().trim_end_matches('/') == "/api"
+}
+
+#[cfg(not(debug_assertions))]
+fn loopback_base(_candidate: &str) -> bool {
+  false
+}
+
+fn trusted_api_base(candidate: &str, extra: Option<&str>) -> Result<String, String> {
+  let trusted = exact_https_base(candidate, PRODUCTION_API)
+    || extra.is_some_and(|extra| exact_https_base(candidate, extra))
+    || loopback_base(candidate);
+  if !trusted {
+    return Err("the server address is not one this app trusts".to_string());
   }
+  let parsed = url::Url::parse(candidate).map_err(|_| "the server address is not valid".to_string())?;
+  Ok(format!("{}/", parsed.as_str().trim_end_matches('/')))
+}
+
+fn job_url(api_base: &str, job_uuid: &str) -> Result<String, String> {
+  job_url_with(api_base, job_uuid, EXTRA_API)
+}
+
+fn job_url_with(api_base: &str, job_uuid: &str, extra: Option<&str>) -> Result<String, String> {
+  let base = trusted_api_base(api_base, extra)?;
   if job_uuid.is_empty() || !job_uuid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
     return Err("the move id is not valid".to_string());
   }
-  let base = if api_base.ends_with('/') { api_base.to_string() } else { format!("{api_base}/") };
   Ok(format!("{base}imports/{job_uuid}"))
 }
 
@@ -1295,7 +1419,28 @@ pub fn check_removal(
       undecided.join(", ")
     ));
   }
+  let changed = moved_files_changed(request.dir, &workspace_dir)?;
+  if !changed.is_empty() {
+    return Err(format!("files changed since the move: {}", changed.join(", ")));
+  }
   Ok(workspace_dir)
+}
+
+/// Every file that went to the cloud must still be on disk exactly as it was published.
+fn moved_files_changed(dir: &Path, workspace_dir: &Path) -> Result<Vec<String>, String> {
+  let snapshot = snapshot_record(dir)?;
+  let bundle: BundleRecord = read_json(&dir.join(BUNDLE_RECORD), "bundle record")?;
+  let live: HashMap<String, (u64, String)> =
+    files_inventory(workspace_dir)?.into_iter().map(|f| (f.path, (f.size, f.sha256))).collect();
+  let mut changed: Vec<String> = snapshot
+    .files
+    .iter()
+    .filter(|f| !f.missing && !bundle.excluded.iter().any(|e| e.key == f.key))
+    .filter(|f| live.get(&f.key) != Some(&(f.size, f.sha256.clone())))
+    .map(|f| f.key.clone())
+    .collect();
+  changed.sort();
+  Ok(changed)
 }
 
 /// Moves a workspace folder to `removed/<code>-<stamp>/` and deletes its database and files there;
@@ -1339,10 +1484,10 @@ pub struct Frozen {
   pub token: String,
 }
 
-async fn begin_operation(moving: &Moving, code: &str) -> Result<Operation, String> {
+async fn begin_operation(moving: &Moving, code: &str, freeze: bool) -> Result<Operation, String> {
   let moving = moving.clone();
   let code = code.to_string();
-  tauri::async_runtime::spawn_blocking(move || moving.begin(&code))
+  tauri::async_runtime::spawn_blocking(move || if freeze { moving.begin_freeze(&code) } else { moving.begin(&code) })
     .await
     .map_err(|e| e.to_string())?
 }
@@ -1354,18 +1499,16 @@ pub async fn local_move_freeze<R: Runtime>(
   moving: State<'_, Moving>,
   code: String,
 ) -> Result<Frozen, String> {
-  let operation = begin_operation(&moving, &code).await?;
+  let operation = begin_operation(&moving, &code, true).await?;
   let now = crate::tray::now_secs();
   let stopped = with_connection(app, &dbs, code.clone(), move |conn| stop_timers(conn, now)).await?;
   log::info!("[local] froze {code} for a cloud move, stopped {stopped} timers");
-  Ok(Frozen { stopped, token: operation.keep().to_string() })
+  Ok(Frozen { stopped, token: operation.keep() })
 }
 
 #[tauri::command]
 pub fn local_move_unfreeze(moving: State<'_, Moving>, code: String, token: String) {
-  if let Ok(token) = token.parse::<u64>() {
-    moving.release(&code, token);
-  }
+  moving.release_freeze(&code, &token);
 }
 
 #[tauri::command]
@@ -1385,7 +1528,7 @@ pub async fn local_move_snapshot<R: Runtime>(
   code: String,
   token: String,
 ) -> Result<Snapshot, String> {
-  if !token.parse::<u64>().is_ok_and(|token| moving.owns(&code, token)) {
+  if !moving.owns_freeze(&code, &token) {
     return Err("the workspace must be frozen before a snapshot".to_string());
   }
   let workspace = local_workspaces::find(&app, &code)?;
@@ -1443,7 +1586,7 @@ pub async fn local_move_archive<R: Runtime>(
 ) -> Result<ArchiveResult, String> {
   let workspace = local_workspaces::find(&app, &code)?;
   let workspace_dir = PathBuf::from(&workspace.path);
-  let _operation = begin_operation(&moving, &code).await?;
+  let _operation = begin_operation(&moving, &code, false).await?;
   let now = crate::tray::now_secs();
   let backups = workspace_dir.join("backups");
   fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
@@ -1527,12 +1670,13 @@ pub async fn local_workspace_remove<R: Runtime>(
   api_base: String,
   token: String,
 ) -> Result<(), String> {
+  trusted_api_base(&api_base, EXTRA_API)?;
   let root = local_workspaces::root(&app)?;
   let (_, dir) = workspace_and_dir(&app, &code, &dir)?;
   let evidence = fetch_job(&api_base, &job_uuid, &token).await?;
-  publication_verdict(&evidence, &expected_revision)?;
+  publication_verdict(&evidence, &job_uuid, &expected_revision)?;
 
-  let _operation = begin_operation(&moving, &code).await?;
+  let _operation = begin_operation(&moving, &code, false).await?;
   let connection = live_connection(&app, &dbs, &code)?;
   let now = crate::tray::now_secs();
   let removed = {
@@ -1666,32 +1810,59 @@ mod tests {
   fn an_operation_owns_the_workspace_until_its_own_token_releases_it() {
     let moving = Moving::default();
     assert!(moving.check("a").is_ok());
-    let first = moving.begin("a").unwrap();
+    let first = moving.begin_freeze("a").unwrap();
     assert_eq!(moving.begin("a").err().unwrap(), "another move or removal is in progress");
     assert_eq!(moving.check("a").unwrap_err(), "workspace is moving");
     assert!(moving.check("b").is_ok());
     let token = first.keep();
-    assert!(moving.owns("a", token));
-    assert!(!moving.owns("a", token + 1));
-    assert!(!moving.release("a", token + 1));
+    assert!(moving.owns_freeze("a", &token));
+    assert!(!moving.owns_freeze("a", "guess"));
+    assert!(!moving.release_freeze("a", "guess"));
     assert!(moving.is_set("a"));
-    assert!(moving.release("a", token));
-    assert!(!moving.release("a", token));
+    assert!(moving.release_freeze("a", &token));
+    assert!(!moving.release_freeze("a", &token));
     assert!(!moving.is_set("a"));
     drop(moving.begin("a").unwrap());
     assert!(!moving.is_set("a"));
   }
 
   #[test]
+  fn lock_tokens_are_random_and_not_sequential() {
+    let moving = Moving::default();
+    let tokens: Vec<String> = (0..4).map(|_| moving.begin_freeze("ws").unwrap().keep()).inspect(|t| {
+      assert!(moving.release_freeze("ws", t));
+    }).collect();
+    for token in &tokens {
+      assert_eq!(token.len(), 32);
+      assert!(token.parse::<u64>().is_err());
+    }
+    let unique: HashSet<_> = tokens.iter().collect();
+    assert_eq!(unique.len(), tokens.len());
+  }
+
+  #[test]
   fn a_removal_lock_cannot_be_cleared_by_a_move_token() {
     let moving = Moving::default();
-    let move_token = moving.begin("ws").unwrap().keep();
-    assert!(moving.release("ws", move_token));
+    let move_token = moving.begin_freeze("ws").unwrap().keep();
+    assert!(moving.release_freeze("ws", &move_token));
     let removal = moving.begin("ws").unwrap();
-    assert!(!moving.release("ws", move_token));
-    assert!(!moving.owns("ws", move_token));
+    assert!(!moving.release_freeze("ws", &move_token));
+    assert!(!moving.owns_freeze("ws", &move_token));
     assert!(moving.is_set("ws"));
     assert!(moving.begin("ws").is_err());
+    drop(removal);
+    assert!(!moving.is_set("ws"));
+  }
+
+  #[test]
+  fn unfreezing_with_the_token_of_a_removal_or_archive_fails_and_the_barrier_stays() {
+    let moving = Moving::default();
+    let removal = moving.begin("ws").unwrap();
+    let removal_token = removal.token.clone();
+    assert!(!moving.release_freeze("ws", &removal_token));
+    assert!(!moving.owns_freeze("ws", &removal_token));
+    assert!(moving.is_set("ws"));
+    assert_eq!(moving.permit("ws").err().unwrap(), "workspace is moving");
     drop(removal);
     assert!(!moving.is_set("ws"));
   }
@@ -2482,7 +2653,15 @@ mod tests {
     let target = out.join("big-copy.png");
     let decision = export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).unwrap();
     assert_eq!(fs::read(&target).unwrap(), b"123456789");
-    assert_eq!(decision, Decision { decision: "exported".into(), size: 9, sha256: sha256_hex(b"123456789") });
+    assert_eq!(
+      decision,
+      Decision {
+        decision: "exported".into(),
+        size: 9,
+        sha256: sha256_hex(b"123456789"),
+        path: Some(fs::canonicalize(out.join("big-copy.png")).unwrap().to_string_lossy().into_owned()),
+      }
+    );
     assert_eq!(read_decisions(&r.snapshot).unwrap()["u2/big.png"], decision);
 
     assert!(export_file(&r.dir, &r.snapshot, "u4/gone.png", &out.join("g.png"), &r.root).unwrap_err().contains("missing"));
@@ -2491,6 +2670,135 @@ mod tests {
     assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", &out, &r.root).is_err());
     assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", Path::new("relative.png"), &r.root).is_err());
     assert!(!r.root.join("inside.png").exists());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn exporting_refuses_a_symlink_destination_and_leaves_the_workspace_database_alone() {
+    let r = removal("export-symlink");
+    let out = temp("export-symlink-out");
+    let db = r.dir.join("workspace.db");
+    let before = fs::read(&db).unwrap();
+    let link = out.join("big.png");
+    std::os::unix::fs::symlink(&db, &link).unwrap();
+    let error = export_file(&r.dir, &r.snapshot, "u2/big.png", &link, &r.root).unwrap_err();
+    assert!(error.contains("link"), "{error}");
+    assert_eq!(fs::read(&db).unwrap(), before);
+    assert!(read_decisions(&r.snapshot).unwrap().is_empty());
+
+    let folder = out.join("folder-link");
+    std::os::unix::fs::symlink(r.root.join("arch"), &folder).unwrap();
+    let error = export_file(&r.dir, &r.snapshot, "u2/big.png", &folder.join("big.png"), &r.root).unwrap_err();
+    assert!(error.contains("outside"), "{error}");
+    assert_eq!(fs::read(&db).unwrap(), before);
+  }
+
+  #[test]
+  fn exporting_refuses_any_destination_inside_the_app_data_folder() {
+    let r = removal("export-appdata");
+    let app_data = r.root.parent().unwrap();
+    fs::create_dir_all(app_data.join("other")).unwrap();
+    for target in [app_data.join("settings.json"), app_data.join("other/x.png"), r.root.join("arch/workspace.db")] {
+      let error = export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).unwrap_err();
+      assert!(error.contains("outside"), "{}: {error}", target.display());
+    }
+  }
+
+  #[test]
+  fn a_failed_export_leaves_a_pre_existing_destination_and_leaves_no_temp_file() {
+    let r = removal("export-preserve");
+    let out = temp("export-preserve-out");
+    let target = out.join("big.png");
+    fs::write(&target, b"precious").unwrap();
+    fs::write(file_path(&r.snapshot, "u2/big.png"), b"tampered!").unwrap();
+    fs::write(file_path(&r.dir, "u2/big.png"), b"tampered!").unwrap();
+    assert!(export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).is_err());
+    assert_eq!(fs::read(&target).unwrap(), b"precious");
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+
+    let file = snapshot_file(&r.snapshot, "u2/big.png").unwrap();
+    let temp_file = out.join(".partial.tmp");
+    fs::write(file_path(&r.snapshot, "u2/big.png"), b"123456789").unwrap();
+    fs::write(&temp_file, b"in the way").unwrap();
+    assert!(copy_verified(&file_path(&r.snapshot, "u2/big.png"), &temp_file, &file).is_err());
+    assert_eq!(fs::read(&target).unwrap(), b"precious");
+  }
+
+  #[test]
+  fn exporting_over_an_existing_regular_file_replaces_it_after_verification() {
+    let r = removal("export-overwrite");
+    let out = temp("export-overwrite-out");
+    let target = out.join("big.png");
+    fs::write(&target, b"old").unwrap();
+    export_file(&r.dir, &r.snapshot, "u2/big.png", &target, &r.root).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"123456789");
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+  }
+
+  #[test]
+  fn junk_decisions_do_not_unlock_removal() {
+    let r = removal("junk-decisions");
+    let write = |value: serde_json::Value| fs::write(r.snapshot.join("decisions.json"), value.to_string()).unwrap();
+    let lost = |decision: &str| serde_json::json!({"decision": decision, "size": 0, "sha256": ""});
+    let big = sha256_hex(b"123456789");
+    let exported = |size: u64, sha: &str, path: Option<&str>| {
+      serde_json::json!({"decision": "exported", "size": size, "sha256": sha, "path": path})
+    };
+    let gone = snapshot_file(&r.snapshot, "u4/gone.png").unwrap();
+    let valid_gone = serde_json::json!({"decision": "accepted_lost", "size": gone.size, "sha256": gone.sha256});
+
+    for bad in [
+      exported(9, &big, None),
+      exported(9, &big, Some("")),
+      exported(8, &big, Some("/x/big.png")),
+      exported(9, "deadbeef", Some("/x/big.png")),
+      lost("whatever"),
+      lost("lost"),
+      lost("exported"),
+      serde_json::json!({"decision": "exported"}),
+    ] {
+      write(serde_json::json!({"u4/gone.png": valid_gone, "u2/big.png": bad.clone()}));
+      let message = attempt(&r, "Arch", &r.revision, &r.archive);
+      let message = message.unwrap_err();
+      assert!(message.contains("u2/big.png") || message.contains("unreadable"), "{bad}: {message}");
+      untouched(&r);
+    }
+
+    write(serde_json::json!({"u4/gone.png": valid_gone, "u2/big.png": exported(9, &big, Some("/x/big.png"))}));
+    assert!(attempt(&r, "Arch", &r.revision, &r.archive).is_ok());
+  }
+
+  #[test]
+  fn replacing_a_moved_attachment_after_the_snapshot_blocks_removal_even_with_a_fresh_archive() {
+    let r = removal("moved-changed");
+    decide_all(&r);
+    fs::write(file_path(&r.dir, "u1/a.png"), b"PNG").unwrap();
+    let live = open_workspace(&r.dir);
+    let copy = r.dir.join("backups").join(".copy2.db");
+    vacuum_into(&live, &copy).unwrap();
+    let fresh = write_archive(&r.dir, &copy, 1_800_000_070).unwrap();
+    let message = attempt(&r, "Arch", &r.revision, Path::new(&fresh.path)).unwrap_err();
+    assert!(message.contains("files changed since the move") && message.contains("u1/a.png"), "{message}");
+    untouched(&r);
+
+    fs::write(file_path(&r.dir, "u1/a.png"), b"png").unwrap();
+    let copy = r.dir.join("backups").join(".copy3.db");
+    vacuum_into(&live, &copy).unwrap();
+    let fresh = write_archive(&r.dir, &copy, 1_800_000_080).unwrap();
+    assert!(attempt(&r, "Arch", &r.revision, Path::new(&fresh.path)).is_ok());
+  }
+
+  #[test]
+  fn a_moved_attachment_deleted_after_the_snapshot_blocks_removal() {
+    let r = removal("moved-deleted");
+    decide_all(&r);
+    fs::remove_file(file_path(&r.dir, "u1/a.png")).unwrap();
+    let live = open_workspace(&r.dir);
+    let copy = r.dir.join("backups").join(".copy2.db");
+    vacuum_into(&live, &copy).unwrap();
+    let fresh = write_archive(&r.dir, &copy, 1_800_000_070).unwrap();
+    let message = attempt(&r, "Arch", &r.revision, Path::new(&fresh.path)).unwrap_err();
+    assert!(message.contains("files changed since the move"), "{message}");
   }
 
   #[test]
@@ -2509,7 +2817,7 @@ mod tests {
   fn accepting_a_loss_and_taking_it_back_are_recorded_in_the_decisions_file() {
     let r = removal("lost");
     accept_lost(&r.snapshot, "u4/gone.png").unwrap();
-    assert_eq!(read_decisions(&r.snapshot).unwrap()["u4/gone.png"].decision, "lost");
+    assert_eq!(read_decisions(&r.snapshot).unwrap()["u4/gone.png"].decision, "accepted_lost");
     assert!(accept_lost(&r.snapshot, "nope/x.png").is_err());
     clear_decision(&r.snapshot, "u4/gone.png").unwrap();
     assert!(read_decisions(&r.snapshot).unwrap().is_empty());
@@ -2517,29 +2825,71 @@ mod tests {
 
   #[test]
   fn publication_needs_published_verified_and_the_same_revision() {
-    let good = serde_json::json!({"data": {"status": "published", "verified": true, "source_revision": "rev"}});
-    assert!(publication_verdict(&good, "rev").is_ok());
-    assert!(publication_verdict(&good, "other").unwrap_err().contains("different revision"));
+    let good = serde_json::json!({"data": {"job_id": "job-1", "status": "published", "verified": true, "source_revision": "rev"}});
+    assert!(publication_verdict(&good, "job-1", "rev").is_ok());
+    assert!(publication_verdict(&good, "job-1", "other").unwrap_err().contains("different revision"));
+    assert!(publication_verdict(&good, "job-2", "rev").unwrap_err().contains("different move"));
     for (body, needle) in [
-      (serde_json::json!({"data": {"status": "verified", "verified": true, "source_revision": "rev"}}), "not published"),
-      (serde_json::json!({"data": {"status": "published", "verified": false, "source_revision": "rev"}}), "not verified"),
-      (serde_json::json!({"data": {"status": "published", "source_revision": "rev"}}), "not verified"),
-      (serde_json::json!({"data": {"status": "published", "verified": true}}), "different revision"),
-      (serde_json::json!({}), "not published"),
+      (serde_json::json!({"data": {"job_id": "job-1", "status": "verified", "verified": true, "source_revision": "rev"}}), "not published"),
+      (serde_json::json!({"data": {"job_id": "job-1", "status": "published", "verified": false, "source_revision": "rev"}}), "not verified"),
+      (serde_json::json!({"data": {"job_id": "job-1", "status": "published", "source_revision": "rev"}}), "not verified"),
+      (serde_json::json!({"data": {"job_id": "job-1", "status": "published", "verified": true}}), "different revision"),
+      (serde_json::json!({}), "different move"),
     ] {
-      assert!(publication_verdict(&body, "rev").unwrap_err().contains(needle), "{body}");
+      assert!(publication_verdict(&body, "job-1", "rev").unwrap_err().contains(needle), "{body}");
     }
   }
 
   #[test]
-  fn the_job_url_is_built_only_from_a_safe_id_and_a_secure_base() {
-    assert_eq!(job_url("https://tmgr.dev/api/", "ab-12").unwrap(), "https://tmgr.dev/api/imports/ab-12");
-    assert_eq!(job_url("https://tmgr.dev/api", "ab-12").unwrap(), "https://tmgr.dev/api/imports/ab-12");
-    assert!(job_url("http://127.0.0.1:8080/api/", "ab").is_ok());
-    assert!(job_url("http://example.com/api/", "ab").is_err());
+  fn the_job_url_is_built_only_from_a_safe_id_and_a_trusted_base() {
+    assert_eq!(job_url("https://api.tmgr.dev/api/", "ab-12").unwrap(), "https://api.tmgr.dev/api/imports/ab-12");
+    assert_eq!(job_url("https://api.tmgr.dev/api", "ab-12").unwrap(), "https://api.tmgr.dev/api/imports/ab-12");
+    assert_eq!(job_url("https://API.tmgr.dev:443/api/", "ab").unwrap(), "https://api.tmgr.dev/api/imports/ab");
     for id in ["", "../x", "a/b", "a?b", "a b"] {
-      assert!(job_url("https://tmgr.dev/api/", id).is_err(), "{id}");
+      assert!(job_url("https://api.tmgr.dev/api/", id).is_err(), "{id}");
     }
+  }
+
+  #[test]
+  fn an_api_base_outside_the_allowlist_is_refused() {
+    for base in [
+      "https://tmgr.dev/api/",
+      "https://api.tmgr.dev.attacker.invalid/api/",
+      "https://attacker.invalid/api/",
+      "https://api.tmgr.dev@attacker.invalid/api/",
+      "https://user:pw@api.tmgr.dev/api/",
+      "https://api.tmgr.dev:8443/api/",
+      "https://api.tmgr.dev/other/",
+      "https://api.tmgr.dev/api/?x=1",
+      "http://api.tmgr.dev/api/",
+      "http://localhost.attacker.invalid/api/",
+      "http://127.0.0.1.attacker.invalid:8080/api/",
+      "http://localhost@attacker.invalid:8080/api/",
+      "http://localhost/api/",
+      "http://localhost:8080/other/",
+      "http://[::1]:8080/api/",
+      "http://example.com/api/",
+      "https://localhost:8080/api/",
+      "not a url",
+    ] {
+      assert!(job_url(base, "ab").is_err(), "{base}");
+    }
+  }
+
+  #[test]
+  fn a_build_time_stage_api_is_trusted_by_exact_match_only() {
+    let stage = Some("https://stage.example/api/");
+    assert!(job_url_with("https://stage.example/api/", "ab", stage).is_ok());
+    assert!(job_url_with("https://stage.example.attacker.invalid/api/", "ab", stage).is_err());
+    assert!(job_url_with("https://stage.example/api/", "ab", None).is_err());
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  fn debug_builds_trust_only_exact_loopback_origins() {
+    assert!(job_url("http://localhost:8080/api/", "ab").is_ok());
+    assert!(job_url("http://127.0.0.1:8080/api/", "ab").is_ok());
+    assert!(job_url("http://127.0.0.1:8080/api", "ab").is_ok());
   }
 
   async fn serve_job(
@@ -2576,9 +2926,9 @@ mod tests {
 
   #[tokio::test]
   async fn the_job_is_read_from_the_server_with_the_bearer_token() {
-    let (base, seen) = serve_job(200, None, r#"{"data":{"status":"published","verified":true,"source_revision":"rev"}}"#).await;
+    let (base, seen) = serve_job(200, None, r#"{"data":{"job_id":"job-1","status":"published","verified":true,"source_revision":"rev"}}"#).await;
     let body = fetch_job(&base, "job-1", "secret-token").await.unwrap();
-    publication_verdict(&body, "rev").unwrap();
+    publication_verdict(&body, "job-1", "rev").unwrap();
     let (path, auth) = seen.await.unwrap();
     assert_eq!(path, "/api/imports/job-1");
     assert_eq!(auth.as_deref(), Some("Bearer secret-token"));

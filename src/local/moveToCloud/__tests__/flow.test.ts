@@ -1,5 +1,10 @@
 import { UNSUPPORTED_SCHEMA_MESSAGE } from '../api';
-import { createMover, toMappingPayload } from '../flow';
+import {
+	ACCOUNT_MISMATCH_MESSAGE,
+	createMover,
+	LEGACY_MOVE_MESSAGE,
+	toMappingPayload,
+} from '../flow';
 import { loadPersisted, savePersisted, storageKey } from '../model';
 import {
 	harness,
@@ -549,6 +554,131 @@ describe('account binding', () => {
 		const view = await mover.discard(CODE);
 		expect(h.api.discard).not.toHaveBeenCalled();
 		expect(view.job).toBeNull();
+	});
+});
+
+describe('moves without a recorded account', () => {
+	const legacy = async () => {
+		const h = harness();
+		h.api.presignFile.mockRejectedValueOnce(new Error('stop'));
+		const { mover } = await begin(h);
+		const state = loadPersisted(h.storage, CODE);
+		state.job!.userId = null;
+		savePersisted(h.storage, CODE, state);
+		h.calls.length = 0;
+		jest.clearAllMocks();
+		return { h, mover };
+	};
+	const touched = (h: ReturnType<typeof harness>) =>
+		[...Object.values(h.api), ...Object.values(h.native)].some(
+			(fn) => (fn as jest.Mock).mock.calls.length > 0,
+		);
+
+	it('does not resume, retry or publish and asks for a discard, as the same or another user', async () => {
+		for (const id of [7, 8]) {
+			const { h, mover } = await legacy();
+			h.user.id = id;
+			expect(mover.view(CODE).legacy).toBe(true);
+			const view = await mover.resume(CODE);
+			expect(view.job?.error).toBe(LEGACY_MOVE_MESSAGE);
+			expect(LEGACY_MOVE_MESSAGE).toBe(
+				'This move was started by an older version. Discard it and start again.',
+			);
+			await mover.retry(CODE);
+			await mover.publishAnyway(CODE);
+			expect(touched(h)).toBe(false);
+			expect(loadPersisted(h.storage, CODE).job).not.toBeNull();
+		}
+	});
+
+	it('sends the discard only after an explicit discard and clears the move', async () => {
+		const { h, mover } = await legacy();
+		await mover.resume(CODE);
+		expect(h.api.discard).not.toHaveBeenCalled();
+		const view = await mover.discard(CODE);
+		expect(h.api.discard).toHaveBeenCalledTimes(1);
+		expect(view.job).toBeNull();
+		expect(h.api.status).not.toHaveBeenCalled();
+		expect(h.api.commit).not.toHaveBeenCalled();
+	});
+
+	it('just clears local state when the server does not know the job for this user', async () => {
+		for (const status of [404, 403]) {
+			const { h, mover } = await legacy();
+			h.user.id = 8;
+			h.api.discard.mockRejectedValueOnce({ response: { status } });
+			const view = await mover.discard(CODE);
+			expect(view.job).toBeNull();
+			expect(loadPersisted(h.storage, CODE).job).toBeNull();
+		}
+	});
+
+	it('keeps the move when the discard fails for another reason', async () => {
+		const { h, mover } = await legacy();
+		h.api.discard.mockRejectedValueOnce({ response: { status: 500 } });
+		const view = await mover.discard(CODE);
+		expect(view.job).not.toBeNull();
+	});
+
+	it('refuses to start a move when nobody is signed in', async () => {
+		const h = harness({ userId: null });
+		const mover = createMover(h.deps);
+		const dry = await mover.dryRun(CODE, 'Local');
+		await expect(
+			mover.start(CODE, 'Local', dry, { cloudName: 'C', personas: [] }),
+		).rejects.toThrow('Sign in');
+		expect(loadPersisted(h.storage, CODE).job).toBeNull();
+		expect(h.native.moveFreeze).not.toHaveBeenCalled();
+	});
+});
+
+describe('account checks before every request', () => {
+	it('stops a move when the account changes between two uploads (user 7 to user 8)', async () => {
+		const h = harness();
+		h.api.presignFile.mockImplementationOnce(async (_job, file) => {
+			h.user.id = 8;
+			return {
+				sha256: file.sha256,
+				status: 'pending' as const,
+				upload_url: `https://s3/${file.sha256}`,
+				upload_headers: {},
+			};
+		});
+		const { view } = await begin(h);
+		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(h.api.confirmFile).not.toHaveBeenCalled();
+		expect(h.api.presignFile).toHaveBeenCalledTimes(1);
+		expect(h.api.commit).not.toHaveBeenCalled();
+		expect(h.api.publish).not.toHaveBeenCalled();
+		expect(h.native.movePut.mock.calls.map((c) => c[0])).toEqual([
+			'https://s3/bundle',
+		]);
+	});
+
+	it('does not poll or publish after the account changes while waiting for the server', async () => {
+		const h = harness({
+			statuses: [verifiedStatus({ status: 'running' }), verifiedStatus()],
+		});
+		h.deps.sleep = async () => {
+			h.user.id = 8;
+		};
+		const { view } = await begin(h);
+		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(h.api.status).toHaveBeenCalledTimes(1);
+		expect(h.api.publish).not.toHaveBeenCalled();
+	});
+
+	it('does not read the status or the job after the account changes during publishing', async () => {
+		const h = harness();
+		h.api.publish.mockImplementationOnce(async () => {
+			h.user.id = 8;
+			throw new Error('network down');
+		});
+		const statusCallsBefore = () => h.api.status.mock.calls.length;
+		const { view } = await begin(h);
+		expect(view.published).toBeNull();
+		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(statusCallsBefore()).toBe(1);
 	});
 });
 

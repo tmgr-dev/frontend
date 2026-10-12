@@ -32,6 +32,10 @@ import type {
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
+export const LEGACY_MOVE_MESSAGE =
+	'This move was started by an older version. Discard it and start again.';
+export const SIGN_IN_TO_MOVE_MESSAGE =
+	'Sign in to move this workspace to the cloud.';
 export const CANCELLED_MESSAGE = 'Move cancelled';
 
 export interface MoveNative {
@@ -99,6 +103,7 @@ export interface MoveView {
 	canPublishAnyway: boolean;
 	failedOnServer: boolean;
 	accountMismatch: boolean;
+	legacy: boolean;
 }
 
 export const STEP_POLL_START_MS = 1000;
@@ -148,13 +153,16 @@ export const createMover = (deps: MoveDeps) => {
 	const listeners = new Set<(view: MoveView) => void>();
 	const cancelled = new Set<string>();
 
+	const legacy = (job: MoveJob | null) => !!job && job.userId == null;
 	const accountMismatch = (job: MoveJob | null) =>
 		!!job && job.userId != null && deps.userId() !== job.userId;
 	const assertAccount = (job: MoveJob | null) => {
+		if (legacy(job)) throw new Error(LEGACY_MOVE_MESSAGE);
 		if (accountMismatch(job)) throw new Error(ACCOUNT_MISMATCH_MESSAGE);
 	};
 	const ensureActive = (code: string) => {
 		if (cancelled.has(code)) throw new Error(CANCELLED_MESSAGE);
+		assertAccount(load(code).job);
 	};
 
 	const load = (code: string) => loadPersisted(storage, code);
@@ -175,6 +183,7 @@ export const createMover = (deps: MoveDeps) => {
 			busy: running.has(code),
 			failedOnServer: status?.status === 'failed',
 			accountMismatch: accountMismatch(job),
+			legacy: legacy(job),
 			canPublishAnyway:
 				status?.status === 'failed' &&
 				status.phase === 'verify' &&
@@ -474,13 +483,18 @@ export const createMover = (deps: MoveDeps) => {
 		emit(code);
 	};
 
-	const publishFromServer = async (jobId: string): Promise<ImportStatus> => {
+	const publishFromServer = async (
+		code: string,
+		jobId: string,
+	): Promise<ImportStatus> => {
 		let failure: unknown = null;
+		ensureActive(code);
 		try {
 			await api.publish(jobId);
 		} catch (error) {
 			failure = error;
 		}
+		ensureActive(code);
 		const status = await api.status(jobId);
 		if (status.status !== 'published') {
 			throw failure ?? new Error('The server has not published the move yet.');
@@ -495,7 +509,7 @@ export const createMover = (deps: MoveDeps) => {
 	) => {
 		if (status.status === 'verified') {
 			ensureActive(code);
-			const published = await publishFromServer(jobId);
+			const published = await publishFromServer(code, jobId);
 			finishPublished(code, jobId, published, published.verified === true);
 		} else if (status.status === 'published') {
 			finishPublished(code, jobId, status, status.verified === true);
@@ -558,6 +572,8 @@ export const createMover = (deps: MoveDeps) => {
 		input: MoveInput,
 	) => {
 		if (dry.blocker) throw new Error(dry.blocker);
+		const userId = deps.userId();
+		if (userId == null) throw new Error(SIGN_IN_TO_MOVE_MESSAGE);
 		const state = load(code);
 		if (state.job)
 			throw new Error('A move of this workspace is already in progress');
@@ -577,7 +593,7 @@ export const createMover = (deps: MoveDeps) => {
 			confirmed: [],
 			startedAt: deps.now().toISOString(),
 			error: null,
-			userId: deps.userId(),
+			userId,
 		};
 		save(code, state);
 		return guarded(code, () => advance(code));
@@ -621,11 +637,17 @@ export const createMover = (deps: MoveDeps) => {
 		while (running.has(code)) await deps.sleep(100);
 		return guarded(code, async () => {
 			const job = load(code).job;
-			if (job?.jobId && !accountMismatch(job)) {
+			if (
+				job?.jobId &&
+				!accountMismatch(job) &&
+				!(legacy(job) && deps.userId() == null)
+			) {
 				try {
 					await api.discard(job.jobId);
 				} catch (error) {
-					if ((error as any)?.response?.status !== 404) throw error;
+					const status = (error as any)?.response?.status;
+					const notOurs = legacy(job) && status === 403;
+					if (status !== 404 && !notOurs) throw error;
 				}
 			}
 			const state = load(code);
