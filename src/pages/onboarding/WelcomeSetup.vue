@@ -41,6 +41,7 @@
 							class="inline-flex min-h-[44px] items-center text-sm text-ink-subtle underline hover:text-ink disabled:opacity-60"
 							:disabled="busy"
 							data-testid="intent-empty"
+							data-tour-avoid="cta"
 							@click="choose('human', false)"
 						>
 							Start with an empty workspace
@@ -50,6 +51,7 @@
 							class="inline-flex min-h-[44px] items-center text-sm font-medium text-brand underline hover:opacity-80 disabled:opacity-60"
 							:disabled="busy"
 							data-testid="intent-skip"
+							data-tour-avoid="cta"
 							@click="skip"
 						>
 							Skip, I'll look around

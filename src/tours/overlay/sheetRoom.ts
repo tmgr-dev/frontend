@@ -1,4 +1,8 @@
+import { AVOID_ATTR } from './avoid';
+
 const RESCROLL_DELAYS_MS = [350, 800, 1500];
+const AVOID_GAP = 12;
+const ANCHOR_KEEP = 48;
 
 export function isAnchorClear(anchor: Element, sheet: boolean): boolean {
   const r = anchor.getBoundingClientRect();
@@ -14,26 +18,64 @@ export function createSheetRoom() {
   let padded: Array<[HTMLElement, string]> = [];
   let stopInput: (() => void) | null = null;
 
-  function makeRoom(anchor: Element) {
-    let el = anchor.parentElement;
+  function findScroller(from: Element): HTMLElement | null {
+    let el = from.parentElement;
     while (el && el !== document.body) {
       const style = getComputedStyle(el);
       const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll';
       const bounded = el.scrollHeight > el.clientHeight || style.maxHeight !== 'none';
-      if (scrolls && bounded) {
-        const scroller = el;
-        if (!padded.some(([done]) => done === scroller)) {
-          padded.push([scroller, scroller.style.paddingBottom]);
-          scroller.style.paddingBottom = `${Math.round(window.innerHeight * 0.5)}px`;
-        }
-        return;
-      }
+      if (scrolls && bounded) return el;
       el = el.parentElement;
+    }
+    return null;
+  }
+
+  function padScroller(scroller: HTMLElement, px: number) {
+    if (!padded.some(([done]) => done === scroller)) {
+      padded.push([scroller, scroller.style.paddingBottom]);
+    }
+    const current = parseFloat(getComputedStyle(scroller).paddingBottom) || 0;
+    if (current < px) scroller.style.paddingBottom = `${Math.round(px)}px`;
+  }
+
+  function makeRoom(anchor: Element) {
+    const scroller = findScroller(anchor);
+    if (scroller) padScroller(scroller, window.innerHeight * 0.5);
+  }
+
+  function revealAvoided(sheet: HTMLElement | null, anchor: Element | null) {
+    if (!sheet) return;
+    const sheetRect = sheet.getBoundingClientRect();
+    if (sheetRect.height <= 0) return;
+    const limit = sheetRect.top - AVOID_GAP;
+    const targets = [...document.querySelectorAll<HTMLElement>(`[${AVOID_ATTR}]`)].filter(
+      (el) => !(anchor && (el === anchor || el.contains(anchor) || anchor.contains(el))),
+    );
+    for (const target of targets) {
+      const r = target.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0 || r.bottom <= limit) continue;
+      let delta = r.bottom - limit;
+      const anchorRect = anchor?.getBoundingClientRect();
+      if (anchorRect) delta = Math.min(delta, Math.max(0, anchorRect.bottom - ANCHOR_KEEP));
+      if (delta <= 0) continue;
+      const scroller = findScroller(target);
+      if (scroller) {
+        padScroller(scroller, sheetRect.height + AVOID_GAP * 2);
+        scroller.scrollTop += delta;
+      } else {
+        window.scrollBy(0, delta);
+      }
     }
   }
 
   return {
-    watch(anchor: Element, sheet: boolean, onScrolled?: () => void) {
+    revealAvoided,
+    watch(
+      anchor: Element,
+      sheet: boolean,
+      onScrolled?: () => void,
+      getSheet?: () => HTMLElement | null,
+    ) {
       stopInput?.();
       const cancel = () => {
         timers.forEach(clearTimeout);
@@ -49,9 +91,12 @@ export function createSheetRoom() {
       };
       timers = RESCROLL_DELAYS_MS.map((delay) =>
         setTimeout(() => {
-          if (!anchor.isConnected || isAnchorClear(anchor, sheet)) return;
-          if (sheet) makeRoom(anchor);
-          anchor.scrollIntoView({ block: 'center', behavior: 'auto' });
+          if (!anchor.isConnected) return;
+          if (!isAnchorClear(anchor, sheet)) {
+            if (sheet) makeRoom(anchor);
+            anchor.scrollIntoView({ block: 'center', behavior: 'auto' });
+          }
+          if (sheet && getSheet) revealAvoided(getSheet(), anchor);
           onScrolled?.();
         }, delay),
       );

@@ -77,7 +77,7 @@ export function createPassiveAdapter(): OverlayAdapter {
       document.body.appendChild(ring);
       nodes.push(ring);
       scrollIntoView(anchorEl, sheet);
-      room.watch(anchorEl, sheet);
+      room.watch(anchorEl, sheet, undefined, () => host);
 
       if (sheet) {
         host.classList.add('tour-host--sheet');
@@ -104,7 +104,7 @@ export function createPassiveAdapter(): OverlayAdapter {
           }).then(({ x, y }) => {
             host.style.left = `${x}px`;
             host.style.top = `${y}px`;
-            clampIntoViewport(host);
+            clampIntoViewport(host, undefined, anchorEl);
           });
         };
         stopAuto = autoUpdate(anchorEl, host, () => update?.(), {
@@ -117,7 +117,10 @@ export function createPassiveAdapter(): OverlayAdapter {
     nodes.push(host);
     const unmount = mount(host);
 
-    const clamp = () => clampIntoViewport(host);
+    const clamp = () => {
+      clampIntoViewport(host, undefined, anchorEl);
+      if (sheet) room.revealAvoided(host, anchorEl);
+    };
     const resize =
       typeof ResizeObserver === 'function' ? new ResizeObserver(clamp) : null;
     resize?.observe(host);

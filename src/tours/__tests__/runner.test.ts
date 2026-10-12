@@ -262,14 +262,29 @@ describe('TourRunner', () => {
 	it('shows a centered unavailable state for a required missing anchor, with Take me there', async () => {
 		const t = tour({ steps: [step('r', { takeMeRoute: { name: 'WorkspaceTasksList', params: 'currentWorkspace' } }), step('n')] });
 		const h = setup([t]);
+		h.setRoute('Dashboard');
 		await h.runner.start('t.one', 'hub');
-		expect(h.last()).toMatchObject({ mode: 'centered', unavailable: true, canTakeMe: true, waiting: false });
+		expect(h.last()).toMatchObject({ mode: 'centered', unavailable: true, canTakeMe: true, onTargetPage: false, waiting: false });
 		await h.runner.next();
 		expect(h.last()?.step.id).toBe('r');
 		h.present.add('a.r');
 		await h.runner.takeMeThere();
 		expect(h.nav).toEqual([{ name: 'WorkspaceTasksList', params: 'currentWorkspace' }]);
 		expect(h.last()).toMatchObject({ mode: 'modal', unavailable: false });
+	});
+
+	it('does not offer a no-op Take me there when already on the target page', async () => {
+		const t = tour({ steps: [step('r', { takeMeRoute: { name: 'WorkspaceTasksList', params: 'currentWorkspace' } }), step('n')] });
+		const h = setup([t]);
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()).toMatchObject({ unavailable: true, canTakeMe: false, onTargetPage: true });
+	});
+
+	it('treats a step route with a different query as not on the target page', async () => {
+		const t = tour({ steps: [step('r', { route: { name: 'WorkspaceTasksList', query: { tab: 'x' } } })] });
+		const h = setup([t]);
+		await h.runner.start('t.one', 'hub');
+		expect(h.last()).toMatchObject({ unavailable: true, canTakeMe: true, onTargetPage: false });
 	});
 
 	it('re-enters an unavailable step as soon as its anchor shows up', async () => {

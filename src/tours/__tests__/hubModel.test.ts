@@ -35,6 +35,18 @@ const item = (t: TourDef, s: TourState | null = null, extra: Partial<HubItem> = 
 const context = { canManageModules: true, isModuleEnabled: () => true };
 
 describe('buildHubModel', () => {
+	it('hides a tour that needs a persona', () => {
+		const model = buildHubModel(
+			[
+				item(tour('p1', 'personas')),
+				item(tour('p2', 'personas'), null, { available: false, unavailableReason: 'needs_persona' }),
+			],
+			context,
+		);
+		expect(model.groups[0].rows.map((r) => r.id)).toEqual(['p1']);
+		expect(model.total).toBe(1);
+	});
+
 	it('groups by catalog order and counts done over listed tours', () => {
 		const model = buildHubModel(
 			[

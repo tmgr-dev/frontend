@@ -40,7 +40,7 @@ export const personasTours: TourDef[] = [
     title: 'Persona token',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { modules: ['personas'], account: 'cloud', platforms: ['web', 'desktop'] },
+    requires: { modules: ['personas'], account: 'cloud', platforms: ['web', 'desktop'], needs: ['persona'] },
     steps: [
       {
         id: 's1',
@@ -61,7 +61,7 @@ export const personasTours: TourDef[] = [
     title: 'Assign a task to a persona',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { modules: ['personas', 'task.assignees'], account: 'cloud', platforms: ['web', 'desktop'] },
+    requires: { modules: ['personas', 'task.assignees'], account: 'cloud', platforms: ['web', 'desktop'], needs: ['persona'] },
     steps: [
       {
         id: 's1',
@@ -90,7 +90,7 @@ export const personasTours: TourDef[] = [
     title: 'Persona skills',
     minutes: 1,
     triggers: [{ kind: 'hub' }],
-    requires: { modules: ['personas'], account: 'cloud', platforms: ['web', 'desktop'] },
+    requires: { modules: ['personas'], account: 'cloud', platforms: ['web', 'desktop'], needs: ['persona'] },
     steps: [
       {
         id: 's1',

@@ -1,3 +1,5 @@
+import { pickAvoidingPosition, visibleAvoidRects } from './avoid';
+
 export interface RectLike {
   left: number;
   top: number;
@@ -26,23 +28,52 @@ export function clampOffset(
   };
 }
 
-export function clampIntoViewport(el: HTMLElement, pad = VIEWPORT_PADDING): void {
+export function clampIntoViewport(
+  el: HTMLElement,
+  pad = VIEWPORT_PADDING,
+  anchor: Element | null = null,
+): void {
   el.style.translate = '';
   if (el.classList.contains('tour-host--sheet')) return;
-  const { dx, dy } = clampOffset(
-    el.getBoundingClientRect(),
-    { width: window.innerWidth, height: window.innerHeight },
-    pad,
-  );
-  if (dx || dy) el.style.translate = `${dx}px ${dy}px`;
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  const rect = el.getBoundingClientRect();
+  const { dx, dy } = clampOffset(rect, viewport, pad);
+  let tx = dx;
+  let ty = dy;
+  const avoid = visibleAvoidRects(anchor);
+  if (avoid.length) {
+    const moved = {
+      left: rect.left + dx,
+      top: rect.top + dy,
+      right: rect.right + dx,
+      bottom: rect.bottom + dy,
+      width: rect.width,
+      height: rect.height,
+    };
+    const spot = pickAvoidingPosition({
+      card: moved,
+      anchor: anchor ? anchor.getBoundingClientRect() : null,
+      avoid,
+      viewport,
+      pad,
+    });
+    if (spot) {
+      tx = spot.left - rect.left;
+      ty = spot.top - rect.top;
+    }
+  }
+  if (tx || ty) el.style.translate = `${tx}px ${ty}px`;
 }
 
-export function createFrameClamp(find: () => HTMLElement | null) {
+export function createFrameClamp(
+  find: () => HTMLElement | null,
+  anchor: () => Element | null = () => null,
+) {
   let frame = 0;
   const run = () => {
     frame = 0;
     const el = find();
-    if (el && !el.classList.contains('tour-sheet-mode')) clampIntoViewport(el);
+    if (el && !el.classList.contains('tour-sheet-mode')) clampIntoViewport(el, VIEWPORT_PADDING, anchor());
   };
   const schedule = () => {
     if (frame) cancelAnimationFrame(frame);

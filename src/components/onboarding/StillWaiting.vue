@@ -17,6 +17,7 @@
 			<button
 				type="button"
 				class="min-h-[44px] rounded-md bg-brand px-4 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:min-h-[36px]"
+				data-tour-avoid="cta"
 				@click="$emit('check-again')"
 			>
 				Check again
@@ -39,6 +40,7 @@
 			<button
 				type="button"
 				class="inline-flex min-h-[44px] items-center text-ink-subtle underline hover:text-ink sm:min-h-0"
+				data-tour-avoid="cta"
 				@click="$emit('later')"
 			>
 				Do this later

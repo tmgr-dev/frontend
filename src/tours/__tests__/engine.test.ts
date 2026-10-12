@@ -162,12 +162,23 @@ describe('engine facade', () => {
 
 	it('an unavailable step is shown centered without blocking the page', async () => {
 		const h = make();
+		h.state.route = 'Dashboard';
 		await h.engine.init();
 		await h.engine.api.start('time.timer', 'hub');
 		expect(h.engine.api.active.value).toMatchObject({ unavailable: true, canTakeMe: true });
 		expect(h.adapter.show.mock.calls[0][0]).toMatchObject({ mode: 'centered', blocking: false });
 		await h.engine.api.start('start.nav', 'hub');
 		expect(h.adapter.show.mock.calls[h.adapter.show.mock.calls.length - 1][0]).toMatchObject({ mode: 'modal', blocking: true });
+	});
+
+	it('shows no Take me there button when already on the target page', async () => {
+		const h = make();
+		await h.engine.init();
+		await h.engine.api.start('time.timer', 'hub');
+		expect(h.engine.api.active.value).toMatchObject({ unavailable: true, canTakeMe: false, onTargetPage: true });
+		h.engine.api.takeMeThere();
+		await flush();
+		expect(h.nav).toHaveLength(0);
 	});
 
 	it('setTipsMode persists, tracks and rejects on failure', async () => {

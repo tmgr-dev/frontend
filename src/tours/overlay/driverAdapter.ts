@@ -24,13 +24,16 @@ export function createDriverAdapter(): OverlayAdapter {
   let unmount: (() => void) | null = null;
   const room = createSheetRoom();
 
-  const frameClamp = createFrameClamp(() =>
-    document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover'),
+  let currentAnchor: Element | null = null;
+  const frameClamp = createFrameClamp(
+    () => document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover'),
+    () => currentAnchor,
   );
 
   function hide() {
     seq += 1;
     frameClamp.stop();
+    currentAnchor = null;
     room.release();
     unmount?.();
     unmount = null;
@@ -43,6 +46,7 @@ export function createDriverAdapter(): OverlayAdapter {
     const mine = seq;
     void loadDriver().then(({ driver }) => {
       if (mine !== seq || !anchorEl) return;
+      currentAnchor = anchorEl;
       const sheet = isSheetViewport();
       const reduced = prefersReducedMotion();
       instance = driver({
@@ -86,6 +90,7 @@ export function createDriverAdapter(): OverlayAdapter {
               ? new ResizeObserver(() => {
                   instance?.refresh();
                   frameClamp.schedule();
+                  if (isSheetViewport()) room.revealAvoided(host, currentAnchor);
                 })
               : null;
           resize?.observe(host);
@@ -101,10 +106,15 @@ export function createDriverAdapter(): OverlayAdapter {
         popover: { title: ' ', description: ' ', side: 'bottom', align: 'start' },
       });
       frameClamp.start();
-      room.watch(anchorEl, sheet, () => {
-        instance?.refresh();
-        frameClamp.schedule();
-      });
+      room.watch(
+        anchorEl,
+        sheet,
+        () => {
+          instance?.refresh();
+          frameClamp.schedule();
+        },
+        () => document.querySelector<HTMLElement>('.driver-popover.tour-driver-popover'),
+      );
     });
   }
 

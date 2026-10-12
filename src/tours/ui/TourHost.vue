@@ -125,7 +125,9 @@
 			media?.addEventListener('change', onMedia);
 
 			const bodySuffix = (a: ActiveTour) =>
-				a.unavailable
+				a.unavailable && a.onTargetPage
+					? ' You are on the right page, but this part is not open yet. Open it, or skip this step.'
+					: a.unavailable
 					? ' We could not find this on the screen right now.'
 					: a.hint === 'timer_too_short'
 					? ' Let the timer run for at least a minute.'

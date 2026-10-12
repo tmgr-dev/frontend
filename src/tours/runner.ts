@@ -185,10 +185,12 @@ export class TourRunner {
     const step = cur.tour.steps[cur.idx];
     const route = step.takeMeRoute ?? step.route;
     if (!route) return;
-    this.navigatedAt = this.deps.now();
-    this.renavigated = false;
-    this.routeReached = false;
-    this.deps.navigate(route);
+    if (!this.onRoute(route)) {
+      this.navigatedAt = this.deps.now();
+      this.renavigated = false;
+      this.routeReached = false;
+      this.deps.navigate(route);
+    }
     await this.enterStep(cur.idx);
   }
 
@@ -400,6 +402,8 @@ export class TourRunner {
   private present(cur: Current, mode: RunnerView['mode']): void {
     const step = cur.tour.steps[cur.idx];
     const mobile = this.deps.mobile();
+    const target = step.takeMeRoute ?? step.route;
+    const onTarget = !!target && this.onRoute(target);
     this.deps.render({
       tour: cur.tour,
       step,
@@ -408,7 +412,8 @@ export class TourRunner {
       waiting: step.type === 'wait' && !cur.alreadyDone && !cur.unavailable,
       unavailable: cur.unavailable,
       alreadyDone: cur.alreadyDone,
-      canTakeMe: cur.unavailable && !!(step.takeMeRoute ?? step.route),
+      canTakeMe: cur.unavailable && !!target && !onTarget,
+      onTargetPage: cur.unavailable && !!target && onTarget,
       mobile,
       hint: cur.hint,
       anchorEl: cur.anchorEl,

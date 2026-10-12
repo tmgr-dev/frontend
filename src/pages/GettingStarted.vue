@@ -164,6 +164,7 @@
 					? `${Math.round((model.value.done / model.value.total) * 100)}%`
 					: '0%',
 			);
+			void tours.ensurePersonas();
 			const tipsOn = computed(() => tours.onboarding.value?.tips_mode === 'auto');
 			const hubHidden = computed(() => tours.onboarding.value?.hub_hidden === true);
 

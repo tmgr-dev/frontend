@@ -39,6 +39,7 @@ export interface TourRequires {
   account?: 'cloud' | 'local' | 'any';
   role?: 'owner' | 'member';
   capability?: 'localAccess' | 'pluginWindows';
+  needs?: Array<'persona'>;
 }
 
 export interface StepDef {

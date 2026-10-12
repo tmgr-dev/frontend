@@ -18,6 +18,7 @@ export interface ActiveTour {
   unavailable?: boolean;
   alreadyDone?: boolean;
   canTakeMe?: boolean;
+  onTargetPage?: boolean;
   mobile?: boolean;
   hint?: 'timer_too_short';
   bodyParts?: BodyPart[];
@@ -27,7 +28,7 @@ export interface HubItem {
   tour: TourDef;
   state: TourState | null;
   available: boolean;
-  unavailableReason?: 'module_off' | 'module_on' | 'platform' | 'account' | 'role';
+  unavailableReason?: 'module_off' | 'module_on' | 'platform' | 'account' | 'role' | 'needs_persona';
 }
 
 export interface ToursApi {
@@ -49,6 +50,7 @@ export interface ToursApi {
   setChecklistHidden(hidden: boolean): Promise<void>;
   resetAll(): Promise<void>;
   takeMeThere(): void;
+  ensurePersonas(): Promise<void>;
   patchFacts(facts: Record<string, unknown>): void;
   resumePill: Readonly<Ref<ResumePill | null>>;
   dismissPill(): void;

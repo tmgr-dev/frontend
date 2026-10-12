@@ -27,7 +27,12 @@
 							Turn on MCP
 						</router-link>
 						<div class="mt-4">
-							<button type="button" class="min-h-[44px] text-sm text-ink-subtle underline" @click="goWorkspace">
+							<button
+								type="button"
+								class="min-h-[44px] text-sm text-ink-subtle underline"
+								data-tour-avoid="cta"
+								@click="goWorkspace"
+							>
 								Continue to my workspace
 							</button>
 						</div>
@@ -48,6 +53,7 @@
 							<button
 								type="button"
 								class="min-h-[44px] rounded-md bg-brand px-6 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+								data-tour-avoid="cta"
 								@click="goWorkspace"
 							>
 								Open my workspace

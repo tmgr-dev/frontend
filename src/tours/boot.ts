@@ -112,6 +112,11 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
         ...(route.query ? { query: route.query } : {}),
       }),
     isBusy: () => isInputBusy(),
+    hasPersonas: async () => {
+      if (localOnly()) return false;
+      const { listPersonas } = await import('@/actions/tmgr/personas');
+      return (await listPersonas()).length > 0;
+    },
     capability: (name) => (name === 'localAccess' ? supportsLocalAccess() : supportsPluginWindows()),
     keycaps,
     setTimer: (fn, ms) => {
