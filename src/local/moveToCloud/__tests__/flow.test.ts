@@ -1,3 +1,4 @@
+import { tourBus } from '@/tours/events';
 import { UNSUPPORTED_SCHEMA_MESSAGE } from '../api';
 import {
 	ACCOUNT_MISMATCH_MESSAGE,
@@ -96,6 +97,16 @@ describe('persona mapping payload', () => {
 });
 
 describe('move flow', () => {
+	it('emits migration.started and migration.completed once each on a successful move', async () => {
+		const seen: string[] = [];
+		const offs = ['migration.started', 'migration.completed'].map((name) =>
+			tourBus.on(name as any, () => seen.push(name)),
+		);
+		await begin(harness());
+		offs.forEach((off) => off());
+		expect(seen).toEqual(['migration.started', 'migration.completed']);
+	});
+
 	it('runs freeze, snapshot, unfreeze, upload, files, commit, publish in order', async () => {
 		const h = harness();
 		const { view } = await begin(h);

@@ -301,6 +301,19 @@ const fakeShell = async ({
   });
 };
 
+export const PLATFORMS = {
+  windows: {
+    platform: 'Win32',
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+  },
+  linux: {
+    platform: 'Linux x86_64',
+    userAgent:
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+  },
+};
+
 /** A page that believes it runs inside the desktop app, backed by `fakeShell` and a fake file scheme. */
 export const desktopPage = async (
   page,
@@ -312,7 +325,14 @@ export const desktopPage = async (
     appVersion = '0.9.8',
     lastSeenVersion = appVersion,
     windowLabel = 'main',
+    platform = null,
   } = shellOptions;
+  if (platform) {
+    await page.addInitScript((spoof) => {
+      Object.defineProperty(navigator, 'platform', { get: () => spoof.platform });
+      Object.defineProperty(navigator, 'userAgent', { get: () => spoof.userAgent });
+    }, platform);
+  }
   await page.addInitScript((seed) => {
     if (sessionStorage.getItem('fixture.whatsNewSeeded')) return;
     sessionStorage.setItem('fixture.whatsNewSeeded', '1');
