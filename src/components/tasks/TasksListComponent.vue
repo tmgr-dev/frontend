@@ -153,7 +153,14 @@
 														: 'opacity-0',
 												]"
 											/>
-											{{ member.name }}
+											<UserAvatar
+												:user-id="member.id"
+												:name="member.name"
+												:has-avatar="member.has_avatar ?? false"
+												:size="20"
+												class="mr-2"
+											/>
+											<span class="truncate">{{ member.name }}</span>
 										</CommandItem>
 									</CommandGroup>
 									<AssigneePersonaGroup
@@ -204,8 +211,25 @@
 								<ArchiveRestore class="mr-2 h-4 w-4" />
 								<span>Restore</span>
 							</DropdownMenuItem>
+							<DropdownMenuItem
+								v-if="getShowButtons(task).restore"
+								@click="restoreTask(task)"
+							>
+								<Undo2 class="mr-2 h-4 w-4" />
+								<span>Restore from trash</span>
+							</DropdownMenuItem>
 							<TaskShareItems :task="task" submenu />
 							<PluginTaskMenuItems :task-id="task.id as number" />
+							<template v-if="getShowButtons(task).deleteTask">
+								<DropdownMenuSeparator />
+								<DropdownMenuItem
+									class="text-red-600 dark:text-red-400"
+									@click="removeTask(task)"
+								>
+									<Trash2 class="mr-2 h-4 w-4" />
+									<span>Delete task</span>
+								</DropdownMenuItem>
+							</template>
 						</DropdownMenuContent>
 					</DropdownMenu>
 
@@ -343,17 +367,6 @@
 							</span>
 						</div>
 					</div>
-
-					<div class="ml-auto">
-						<TaskButtonsInTheList
-							:is-loading-actions="isLoadingActions"
-							:showed-buttons="getShowButtons(task)"
-							:task="task"
-							@startCountdown="startCountdown"
-							@stopCountdown="stopCountdown"
-							@updateStatus="updateStatus"
-						/>
-					</div>
 				</button>
 			</div>
 
@@ -470,6 +483,7 @@
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import Button from '@/components/general/Button.vue';
 	import MobilePagination from '@/components/general/MobilePagination.vue';
@@ -479,7 +493,6 @@
 	import Loader from '@/components/loaders/Loader.vue';
 	import Modal from '@/components/Modal.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
-	import TaskButtonsInTheList from '@/components/tasks/TaskButtonsInTheList.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
@@ -499,6 +512,7 @@
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
+		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
@@ -545,6 +559,8 @@
 		Play,
 		Settings2,
 		Square,
+		Trash2,
+		Undo2,
 		UserPlus,
 	} from 'lucide-vue-next';
 	import { PropType } from 'vue';
@@ -561,13 +577,13 @@
 			BounceLoader,
 			Loader,
 			TasksMultipleActionsModal,
-			TaskButtonsInTheList,
 			DoneCheckbox,
 			Archive,
 			ArchiveRestore,
 			AssigneeUsers,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
+			UserAvatar,
 			AppTooltip,
 			Popover,
 			PopoverContent,
@@ -575,6 +591,7 @@
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuItem,
+			DropdownMenuSeparator,
 			DropdownMenuTrigger,
 			PluginTaskMenuItems,
 			TaskShareItems,
@@ -593,6 +610,8 @@
 			ClockPlus,
 			Play,
 			Square,
+			Trash2,
+			Undo2,
 			AlarmClock,
 		},
 		emits: ['reload-tasks', 'page-change', 'per-page-change'],
@@ -1042,9 +1061,8 @@
 			},
 			getShowButtons(task) {
 				return {
-					start: task.start_time,
-					stop: !task.start_time,
-					deleteTask: this.status === 'hidden',
+					restore: !!task.deleted_at,
+					deleteTask: !task.deleted_at && this.status === 'hidden',
 				};
 			},
 			getApproximatelyTime(task: Task) {

@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test';
 
 import { mockApp } from './mockApp.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+});
+
 const desktopShell = async (page, { nativeConfirm }) => {
   await page.addInitScript((answer) => {
     window.__TAURI_INTERNALS__ = {

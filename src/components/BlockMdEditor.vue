@@ -24,6 +24,17 @@
 	let lastMarkdown = '';
 	let hasUserEdits = false;
 
+	// markdownUpdated is debounced (200ms) and cancelled on destroy.
+	defineExpose({
+		flush: () => {
+			const markdown = crepe?.getMarkdown();
+			if (markdown === undefined || markdown === lastMarkdown) return;
+			lastMarkdown = markdown;
+			hasUserEdits = true;
+			emit('update:modelValue', markdown);
+		},
+	});
+
 	// frame.css and frame-dark.css both target `.milkdown`, so only one may be
 	// mounted at a time; swap the <style> element when the color scheme changes.
 	const themeStyle = document.createElement('style');

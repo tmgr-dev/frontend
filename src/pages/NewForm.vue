@@ -62,6 +62,7 @@
 	import TimeCounter from '@/components/TimeCounter.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import DescriptionPreview from '@/components/description/DescriptionPreview.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
 	import { tourBus } from '@/tours/events';
@@ -462,6 +463,70 @@
 			store.commit('removeModalFromStack', checkpointsModalId);
 		}
 	});
+	const descriptionWrapperRef = ref<HTMLElement | null>(null);
+	const descriptionEditFor = ref<number | null>(null);
+	const isDescriptionEditOpen = computed(
+		() => !!form.value.id && descriptionEditFor.value === form.value.id,
+	);
+	const showDescriptionEditor = computed(
+		() => (!taskId.value && !form.value.id) || isDescriptionEditOpen.value,
+	);
+	let descriptionSnapshot: Pick<Task, 'description' | 'description_json'> = {
+		description: null,
+		description_json: null,
+	};
+	const startDescriptionEdit = () => {
+		descriptionSnapshot = JSON.parse(
+			JSON.stringify({
+				description: form.value.description ?? null,
+				description_json: form.value.description_json ?? null,
+			}),
+		);
+		descriptionEditFor.value = form.value.id ?? null;
+	};
+	const blockMdEditorRef = ref<any>(null);
+	const finishDescriptionEdit = async () => {
+		blockMdEditorRef.value?.flush?.();
+		await blockEditorRef.value?.flush?.();
+		descriptionEditFor.value = null;
+	};
+	const cancelDescriptionEdit = async () => {
+		// Unmount first: a late editor emit must not overwrite the revert.
+		descriptionEditFor.value = null;
+		await nextTick();
+		for (const field of ['description', 'description_json'] as const) {
+			const value = descriptionSnapshot[field] ?? null;
+			if (JSON.stringify(form.value[field] ?? null) !== JSON.stringify(value))
+				onDescriptionInput(field, value);
+		}
+	};
+	// Window capture runs before the modal's document-level Esc handler and
+	// alongside Crepe's own window listener, so an open editor popup closes
+	// instead of the edit (or the task modal).
+	const onDescriptionEsc = (e: KeyboardEvent) => {
+		if (
+			e.key !== 'Escape' ||
+			e.isComposing ||
+			!descriptionWrapperRef.value?.contains(e.target as Node)
+		)
+			return;
+		e.stopPropagation();
+		if (
+			document.querySelector(
+				'.ce-popover--opened, .milkdown-slash-menu[data-show="true"], .cm-search',
+			)
+		)
+			return;
+		e.preventDefault();
+		void cancelDescriptionEdit();
+	};
+	watch(isDescriptionEditOpen, (open) => {
+		if (open) window.addEventListener('keydown', onDescriptionEsc, true);
+		else window.removeEventListener('keydown', onDescriptionEsc, true);
+	});
+	onBeforeUnmount(() =>
+		window.removeEventListener('keydown', onDescriptionEsc, true),
+	);
 	const permissionDenied = ref(false);
 	const taskReady = ref(!taskId.value);
 	const taskLoadError = ref(false);
@@ -2684,17 +2749,29 @@
 
 					<!-- Editor section with toggle button -->
 					<div
+						ref="descriptionWrapperRef"
 						data-tour="task-form.description"
-						class="description-editor-wrapper relative min-h-[260px] shrink-0 rounded-md border border-line bg-surface-sunken"
+						class="description-editor-wrapper relative shrink-0 rounded-md border border-line bg-surface-sunken"
+						:class="{
+							'description-editor-wrapper--editing min-h-[260px]':
+								showDescriptionEditor,
+						}"
 					>
+						<DescriptionPreview
+							v-if="!showDescriptionEditor"
+							:editor-type="editorType"
+							:description="form.description"
+							:description-json="form.description_json"
+							@edit="startDescriptionEdit"
+						/>
+
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
 							:key="form.id"
-							v-if="editorType === 'markdown'"
+							v-else-if="editorType === 'markdown'"
 							:model-value="form.description"
 							@update:model-value="onDescriptionInput('description', $event)"
 							class="mb-0"
-							:show-preview="!!(taskId && form.description)"
 						/>
 
 						<BlockEditor
@@ -2708,6 +2785,7 @@
 						/>
 
 						<BlockMdEditor
+							ref="blockMdEditorRef"
 							:key="form.id"
 							v-else-if="editorType === 'blockmd'"
 							:model-value="form.description"
@@ -2715,6 +2793,26 @@
 							placeholder="Type your description here or enter / to see commands"
 							class="mb-0 min-h-[240px]"
 						/>
+					</div>
+
+					<div v-if="isDescriptionEditOpen" class="flex justify-end gap-2">
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							class="h-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+							@click="cancelDescriptionEdit"
+						>
+							Cancel
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							class="h-8 bg-brand text-white hover:bg-brand-hover"
+							@click="finishDescriptionEdit"
+						>
+							Done
+						</Button>
 					</div>
 
 					<TaskLinkChips
@@ -3306,8 +3404,8 @@
 	}
 
 	/* Description editor wrapper (modal/side-panel) — no overflow clipping so editor popups (slash menu, toolbox) can overflow; the panel scrolls */
-	.description-editor-wrapper .md-editor,
-	.description-editor-wrapper .md-editor-dark {
+	.description-editor-wrapper--editing .md-editor,
+	.description-editor-wrapper--editing .md-editor-dark {
 		border: 0 !important;
 		background: transparent !important;
 		/* md-editor-v3 defaults to 500px and scrolls internally; the wrapper no longer clips it */
