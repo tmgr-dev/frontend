@@ -603,8 +603,10 @@ async fn done_without_gh_links_the_compare_url_of_the_origin_remote() {
             "https://user:s3cret@github.com/acme/site.git",
         ],
     );
+    let stubs = env.tmp.path().join("stubs");
+    write_script(&stubs, "gh", "exit 1");
     let out = env
-        .tmgr_in(&repo, None)
+        .tmgr_in(&repo, Some(&stubs))
         .args([
             "done",
             "TM-512",

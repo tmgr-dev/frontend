@@ -254,3 +254,50 @@ async fn the_hook_command_never_fails_and_never_uses_the_network() {
         "subject\n\nRefs: TM-512\n\n# comment\n"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_custom_template_branch_gets_its_key_from_the_active_task() {
+    let env = Env::new().await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    install(&env, &repo);
+    git(&repo, &["switch", "-c", "my-weird-branch"]);
+    assert_eq!(commit(&repo, "fix: a"), "fix: a");
+    env.seed_active(serde_json::json!({
+        "schema": "tmgr.active.v1",
+        "task": {"id": 1, "key": "TM-77", "title": "x"},
+        "branch": "my-weird-branch",
+    }));
+    std::fs::write(repo.join("g.txt"), "b\n").unwrap();
+    git(&repo, &["add", "g.txt"]);
+    let out = std::process::Command::new("git")
+        .args(["commit", "-q", "-m", "fix: b"])
+        .current_dir(&repo)
+        .env("HOME", env.tmp.path())
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_AUTHOR_NAME", "T")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "T")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(git(&repo, &["log", "-1", "--format=%B"]).ends_with("Refs: TM-77"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hooks_directory_inside_the_working_tree_is_called_out() {
+    let env = Env::new().await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "core.hooksPath", ".githooks"]);
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["git", "install-hooks"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("inside the working tree"),
+        "{}",
+        text(&out.stderr)
+    );
+}

@@ -7,9 +7,11 @@ use serde_json::json;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use tmgr_core::active;
 use tmgr_core::branch::key_from_branch;
 use tmgr_core::config::write_atomic;
 use tmgr_core::error::{Error, Result};
+use tmgr_core::refs::parse_key;
 use tmgr_core::trailer::add_refs;
 
 const MAX_MESSAGE: u64 = 1024 * 1024;
@@ -40,7 +42,12 @@ fn try_commit_msg(file: &Path) -> std::result::Result<(), String> {
     let Some(branch) = Git::at(cwd).current_branch() else {
         return Ok(());
     };
-    let Some(key) = key_from_branch(&branch) else {
+    let from_state = active::load()
+        .filter(|a| {
+            a.branch.as_deref() == Some(branch.as_str()) && parse_key(&a.task.key).is_some()
+        })
+        .map(|a| a.task.key);
+    let Some(key) = from_state.or_else(|| key_from_branch(&branch)) else {
         return Ok(());
     };
     if let Some(updated) = add_refs(&message, &key) {
@@ -81,6 +88,7 @@ struct Target {
     dir: PathBuf,
     shared: bool,
     set_global_config: bool,
+    in_worktree: bool,
 }
 
 fn absolute(dir: &str, base: &Path) -> PathBuf {
@@ -101,6 +109,7 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
                 dir: PathBuf::from(p),
                 shared: true,
                 set_global_config: false,
+                in_worktree: false,
             }),
             Some(_) => Err(Error::usage("the global core.hooksPath is relative")
                 .hint("make it absolute first")),
@@ -108,6 +117,7 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
                 dir: ctx.dir.join("hooks"),
                 shared: true,
                 set_global_config: true,
+                in_worktree: false,
             }),
         };
     }
@@ -132,6 +142,7 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
             dir,
             shared: outside || matches!(scope, "global" | "system"),
             set_global_config: false,
+            in_worktree: !outside,
         });
     }
     let hooks = repo
@@ -141,6 +152,7 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
         dir: absolute(&hooks, &top),
         shared: false,
         set_global_config: false,
+        in_worktree: false,
     })
 }
 
@@ -192,6 +204,12 @@ fn install(ctx: &Ctx, global: bool) -> Result<Output> {
             "run: git config --global core.hooksPath {}",
             t.dir.display()
         ));
+    }
+    if t.in_worktree {
+        plan.push(
+            "the hooks directory is inside the working tree: the hook contains the absolute path of tmgr, so do not commit it"
+                .to_string(),
+        );
     }
     if t.shared {
         plan.push(
