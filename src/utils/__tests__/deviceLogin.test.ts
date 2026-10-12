@@ -43,7 +43,7 @@ describe('scope descriptions', () => {
 		expect(Object.keys(SCOPE_DESCRIPTIONS)).toHaveLength(12);
 		expect(describeScope('tasks:create')).toBe('Create tasks');
 		expect(describeScope('notify:send')).toBe(
-			'Send notifications to your devices',
+			'Send notifications and phone alarms to your devices',
 		);
 	});
 
