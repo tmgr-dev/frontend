@@ -1,5 +1,5 @@
 <template>
-	<div class="flex flex-col gap-1">
+	<div class="flex flex-col gap-1" data-tour="settings.desktop-shortcuts">
 		<p class="mb-3 text-sm text-muted-foreground">
 			Global shortcuts work from any app, even when TMGR is hidden. Click a
 			shortcut and press a new combination; Esc cancels.

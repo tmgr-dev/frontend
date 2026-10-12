@@ -7,6 +7,7 @@
 				only the permissions listed on its card.
 				<router-link
 					to="/settings/plugins/help"
+					data-tour="plugins.help"
 					class="text-primary hover:underline"
 					>How plugins work</router-link
 				>
@@ -99,7 +100,10 @@
 			</ul>
 		</SettingsSection>
 
-		<SettingsSection class="mb-6 flex flex-col gap-2">
+		<SettingsSection
+			class="mb-6 flex flex-col gap-2"
+			data-tour="plugins.install"
+		>
 			<span class="text-sm font-medium">Install from GitHub</span>
 			<span class="text-xs text-muted-foreground">
 				Paste a plugin repository. The app reads its latest release and shows

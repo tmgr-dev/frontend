@@ -1,5 +1,5 @@
 <template>
-	<div id="local-personas-panel" class="flex flex-col gap-4 border-t border-border pt-6">
+	<div id="local-personas-panel" data-tour="local-personas.panel" class="flex flex-col gap-4 border-t border-border pt-6">
 		<header class="flex flex-col gap-1">
 			<h4 class="text-sm font-semibold">
 				{{ localOnly ? 'Agents on this device' : 'On this device' }}
@@ -76,7 +76,13 @@
 				<Button v-if="!localOnly" size="sm" variant="outline" :disabled="syncing" @click="sync">
 					{{ syncing ? 'Syncing…' : 'Sync now' }}
 				</Button>
-				<Button v-else size="sm" variant="outline" @click="showAddForm = !showAddForm">
+				<Button
+					v-else
+					size="sm"
+					variant="outline"
+					:data-tour="personas.length ? undefined : 'local-personas.connect'"
+					@click="showAddForm = !showAddForm"
+				>
 					Add local agent
 				</Button>
 			</div>
@@ -145,7 +151,7 @@
 
 				<div v-if="canConnect(persona) && localAccessAvailable" class="flex flex-col gap-2 border-t border-border pt-2">
 					<div class="flex items-center justify-between">
-						<Button size="sm" variant="outline" @click="openConnect(persona)">
+						<Button size="sm" variant="outline" data-tour="local-personas.connect" @click="openConnect(persona)">
 							Connect an agent
 						</Button>
 						<Button
@@ -210,6 +216,7 @@
 				<h5 class="text-sm font-semibold">Local agent access</h5>
 				<Switch
 					v-if="localAccessAvailable"
+					data-tour="local-personas.access"
 					:checked="accessStatus.enabled"
 					:disabled="accessToggling"
 					@update:checked="toggleAccess"

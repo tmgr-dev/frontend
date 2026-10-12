@@ -2924,6 +2924,7 @@
 								type="button"
 								variant="ghost"
 								size="icon"
+								data-tour="task-form.open-window"
 								title="Open in a separate window"
 								aria-label="Open in a separate window"
 								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"

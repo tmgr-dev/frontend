@@ -604,6 +604,7 @@
 														v-if="activeWorkspace?.is_local"
 														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
 														data-testid="local-workspace-badge"
+																						data-tour="local.badge"
 														>Local</span
 													>
 												</span>
@@ -1009,6 +1010,7 @@
 								class="w-full"
 								size="sm"
 								data-testid="sidebar-create-account"
+								data-tour="nav.create-account"
 								@click="$router.push({ name: 'Login' })"
 							>
 								Create account

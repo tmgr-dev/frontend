@@ -20,7 +20,7 @@
 						{{ revealLabel }}
 					</Button>
 				</SettingsRow>
-				<SettingsRow label="Backups folder">
+				<SettingsRow label="Backups folder" data-tour="settings.data-backups">
 					<template #description>
 						<span class="break-all font-mono text-xs">{{
 							row.status?.backups_dir ?? ''
@@ -43,6 +43,7 @@
 					</template>
 					<Button
 						size="sm"
+						data-tour="settings.backup-now"
 						:disabled="row.busy"
 						:aria-busy="row.busy"
 						@click="backup(row)"
@@ -50,7 +51,7 @@
 						{{ row.busy ? 'Backing up…' : 'Back up now' }}
 					</Button>
 				</SettingsRow>
-				<SettingsRow label="Move to cloud">
+				<SettingsRow label="Move to cloud" data-tour="settings.data-move">
 					<template #description>
 						<template v-if="!signedIn">
 							Sign in to move this workspace to your account.

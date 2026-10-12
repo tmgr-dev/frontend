@@ -4,6 +4,7 @@
 			v-if="showFirstRun"
 			role="status"
 			data-testid="local-only-banner"
+			data-tour="local.banner"
 			class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sky-300 bg-sky-100 px-4 py-2 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
 		>
 			<span class="min-w-0 flex-1">

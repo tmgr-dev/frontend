@@ -107,6 +107,7 @@
 							type="button"
 							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
 							data-testid="page-open-window"
+							data-tour="task-form.open-window"
 							@click="openInWindow"
 						>
 							<ExternalLink class="h-4 w-4" />

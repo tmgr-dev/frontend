@@ -33,6 +33,21 @@
 							</span>
 						</div>
 						<MarkdownText :content="section.body" :link-task-keys="false" />
+						<div
+							v-if="toursFor(section.version).length"
+							class="mt-2 flex flex-wrap gap-2"
+						>
+							<button
+								v-for="item in toursFor(section.version)"
+								:key="item.id"
+								type="button"
+								data-tour="whats-new.item-tour"
+								class="rounded-md border border-border px-3 py-1 text-xs font-medium hover:bg-muted"
+								@click="takeTour(item.id)"
+							>
+								Take the tour: {{ item.title }}
+							</button>
+						</div>
 					</section>
 					<p
 						v-if="state.sections.length === 0"
@@ -68,6 +83,11 @@
 	import Modal from '@/components/Modal.vue';
 	import PromotionsList from '@/components/promotions/PromotionsList.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useTours } from '@/tours/useTours';
+	import {
+		availableTours,
+		WHATS_NEW_TOUR_ID,
+	} from '@/tours/whatsNewTours';
 	import router from '@/router';
 	import store from '@/store';
 	import {
@@ -108,7 +128,41 @@
 				);
 			});
 
+			const tours = useTours();
+			const hubItem = (id) =>
+				tours.hubItems.value.find((item) => item.tour.id === id);
+			const startStatus = (id) => {
+				const item = hubItem(id);
+				if (!item || !item.available) return 'unavailable';
+				return item.state?.status === 'completed' ? 'completed' : 'available';
+			};
+			const toursFor = (version) =>
+				availableTours(version, startStatus).map((id) => ({
+					id,
+					title: hubItem(id).tour.title,
+				}));
+			const takeTour = (id) => {
+				closeWhatsNew();
+				void tours.start(id, 'whats_new');
+			};
+			watch(
+				() =>
+					whatsNewState.value.open &&
+					whatsNewState.value.sections.some(
+						(section) => toursFor(section.version).length > 0,
+					),
+				(shown) => {
+					const item = hubItem(WHATS_NEW_TOUR_ID);
+					if (shown && item?.available && !item.state) {
+						void tours.start(WHATS_NEW_TOUR_ID, 'whats_new');
+					}
+				},
+				{ immediate: true },
+			);
+
 			return {
+				toursFor,
+				takeTour,
 				state: whatsNewState,
 				promotionsEnabled: computed(() => isFeatureEnabled('promotions')),
 				close: closeWhatsNew,
