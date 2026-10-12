@@ -5,6 +5,7 @@
 			:tour-title="active.tour.title"
 			:title="titleText"
 			:body="bodyText"
+			:body-parts="bodyPartsView"
 			:position="active.index + 1"
 			:total="active.total"
 			:waiting="active.waiting"
@@ -61,6 +62,8 @@
 		trapFocus,
 	} from '../a11y';
 	import { createOverlayAdapter } from '../overlay';
+	import { partsToText } from '../keycaps';
+	import type { ActiveTour } from '../useTours';
 	import type {
 		OverlayAdapter,
 		OverlayShowOptions,
@@ -121,17 +124,31 @@
 			};
 			media?.addEventListener('change', onMedia);
 
+			const bodySuffix = (a: ActiveTour) =>
+				a.unavailable
+					? ' We could not find this on the screen right now.'
+					: a.hint === 'timer_too_short'
+					? ' Let the timer run for at least a minute.'
+					: '';
 			const titleText = computed(() => active.value?.step.title ?? '');
 			const bodyText = computed(() => {
 				const a = active.value;
 				if (!a) return '';
 				const base =
-					sheet.value && a.step.mobileBody ? a.step.mobileBody : a.step.body;
-				if (a.unavailable)
-					return `${base} We could not find this on the screen right now.`;
-				if (a.hint === 'timer_too_short')
-					return `${base} Let the timer run for at least a minute.`;
-				return base;
+					sheet.value && a.step.mobileBody
+						? a.step.mobileBody
+						: a.bodyParts
+						? partsToText(a.bodyParts)
+						: a.step.body;
+				return base + bodySuffix(a);
+			});
+			const bodyPartsView = computed(() => {
+				const a = active.value;
+				if (!a?.bodyParts || (sheet.value && a.step.mobileBody)) return null;
+				const suffix = bodySuffix(a);
+				return suffix
+					? [...a.bodyParts, { kind: 'text' as const, text: suffix }]
+					: a.bodyParts;
 			});
 
 			const modal = computed(
@@ -236,6 +253,7 @@
 				sheet,
 				titleText,
 				bodyText,
+				bodyPartsView,
 				pill,
 				modal,
 				onExplore,

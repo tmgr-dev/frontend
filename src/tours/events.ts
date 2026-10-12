@@ -37,6 +37,8 @@ export const KNOWN_EVENTS = [
   'checkpoint.added',
   'page.context_saved',
   'tasks.actions_opened',
+  'migration.started',
+  'migration.completed',
 ] as const;
 
 export type KnownEvent = (typeof KNOWN_EVENTS)[number];

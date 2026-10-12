@@ -56,6 +56,7 @@ export interface StepDef {
   alreadyDone?: string;
   optional?: boolean;
   mobileBody?: string;
+  bodyByPlatform?: { macos?: string; other?: string };
 }
 
 export interface TourDef {

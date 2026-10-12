@@ -7,6 +7,7 @@ import type {
   TourId,
   TourState,
 } from './types';
+import type { BodyPart } from './keycaps';
 
 export interface ActiveTour {
   tour: TourDef;
@@ -19,6 +20,7 @@ export interface ActiveTour {
   canTakeMe?: boolean;
   mobile?: boolean;
   hint?: 'timer_too_short';
+  bodyParts?: BodyPart[];
 }
 
 export interface HubItem {
@@ -42,6 +44,7 @@ export interface ToursApi {
   setTipsMode(mode: TipsMode): Promise<void>;
   setHubHidden(hidden: boolean): Promise<void>;
   startSequence(ids: TourId[], trigger: string): Promise<void>;
+  offer(id: TourId, trigger: string, options?: { retryMs?: number }): Promise<boolean>;
   setIntent(intent: string, options?: { seed?: boolean }): Promise<void>;
   setChecklistHidden(hidden: boolean): Promise<void>;
   resetAll(): Promise<void>;

@@ -429,3 +429,15 @@ html.dark .tour-ring {
     transition: none !important;
   }
 }
+
+.tour-kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--fg, inherit);
+  white-space: nowrap;
+}

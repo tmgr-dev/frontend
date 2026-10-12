@@ -5,7 +5,17 @@ import { configureTours } from './useTours';
 import { installTourInterceptor, tourBus } from './events';
 import { createBrowserLease } from './lease';
 import type { Platform } from './types';
-import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
+import { installDesktopTriggers } from './desktopTriggers';
+import type { KeycapEnv } from './keycaps';
+import {
+  desktopPlatform,
+  desktopWindowLabel,
+  isDesktopApp,
+  isMacLike,
+  supportsLocalAccess,
+  supportsPluginWindows,
+  trayName,
+} from '@/utils/desktop';
 
 interface BootStore {
   state: any;
@@ -59,6 +69,22 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
   const lease = createBrowserLease();
   window.addEventListener('pagehide', () => lease.release());
 
+  let shortcuts: typeof import('@/utils/desktopShortcuts') | null = null;
+  if (isDesktopApp()) {
+    void import('@/utils/desktopShortcuts').then((module) => {
+      shortcuts = module;
+    });
+  }
+  const keycaps = (): KeycapEnv | null =>
+    isDesktopApp()
+      ? {
+          mac: isMacLike(desktopPlatform()),
+          tray: trayName(),
+          shortcut: (action) => shortcuts?.shortcutConfig.value[action as 'quickAdd'] ?? null,
+          describe: (accelerator) => shortcuts?.describeAccelerator(accelerator) ?? accelerator,
+        }
+      : null;
+
   const engine = configureTours({
     api: onboardingApi(),
     bus: tourBus,
@@ -86,10 +112,17 @@ export function installTours(axios: AxiosInstance, store: BootStore, router: Rou
         ...(route.query ? { query: route.query } : {}),
       }),
     isBusy: () => isInputBusy(),
+    capability: (name) => (name === 'localAccess' ? supportsLocalAccess() : supportsPluginWindows()),
+    keycaps,
     setTimer: (fn, ms) => {
       const id = setTimeout(fn, ms);
       return () => clearTimeout(id);
     },
+  });
+
+  installDesktopTriggers(tourBus, engine.api, {
+    isDesktop: isDesktopApp,
+    windowLabel: desktopWindowLabel,
   });
 
   store.subscribe((mutation) => {

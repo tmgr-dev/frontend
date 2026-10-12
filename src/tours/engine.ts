@@ -11,10 +11,12 @@ import type { RunnerView } from './runner';
 import { createToursStore } from './store';
 import type { ToursStore } from './store';
 import { tourTelemetry } from './telemetry';
+import { DEFAULT_KEYCAP_ENV, hasTemplate, resolveBodyParts } from './keycaps';
+import type { KeycapEnv } from './keycaps';
 import { createTriggers, SESSION_KEY } from './triggers';
 import type { Triggers } from './triggers';
 import type { TourLease } from './lease';
-import type { Platform, StepDef, TipsMode, TourDef, TourId, TourState } from './types';
+import type { Platform, StepDef, TipsMode, TourDef, TourId, TourRequires, TourState } from './types';
 import type { ActiveTour, HubItem, ResumePill, ToursApi } from './useTours';
 
 export interface OverlayRegistration {
@@ -42,6 +44,8 @@ export interface ToursHostDeps {
   overlay(): OverlayRegistration | null;
   setTimer(fn: () => void, ms: number): () => void;
   facts?(): Record<string, unknown>;
+  capability?(name: NonNullable<TourRequires['capability']>): boolean;
+  keycaps?(): KeycapEnv | null;
   resolveAnchor?: typeof defaultResolveAnchor;
 }
 
@@ -59,6 +63,7 @@ export interface ToursEngine {
 }
 
 const LEASE_RENEW_MS = 10_000;
+const OFFER_POLL_MS = 2_000;
 const WATCH_ANCHOR_MS = 10 * 60_000;
 
 export function createTours(deps: ToursHostDeps): ToursEngine {
@@ -84,6 +89,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
   const unavailableReason = (tour: TourDef): HubItem['unavailableReason'] | undefined => {
     const req = tour.requires;
     if (req?.platforms && !req.platforms.includes(deps.platform())) return 'platform';
+    if (req?.capability && !(deps.capability?.(req.capability) ?? false)) return 'platform';
     if (req?.account && req.account !== 'any' && req.account !== deps.account()) return 'account';
     if (req?.role === 'owner' && !deps.isOwner()) return 'role';
     if (deps.modulesKnown() && (req?.modules ?? []).some((key) => !deps.isModuleEnabled(key)))
@@ -141,7 +147,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       registration.adapter.show({
         anchorEl: view.anchorEl,
         mode: view.mode,
-        blocking: !view.unavailable,
+        blocking: !view.unavailable && !(view.mode === 'passive' && !view.anchorEl),
         mount: registration.mount ?? (() => () => {}),
       });
   };
@@ -171,7 +177,9 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
         active.value = null;
       } else {
         const { anchorEl: _anchorEl, mode: _mode, ...rest } = view;
-        active.value = rest;
+        active.value = hasTemplate(rest.step)
+          ? { ...rest, bodyParts: resolveBodyParts(rest.step, deps.keycaps?.() ?? DEFAULT_KEYCAP_ENV) }
+          : rest;
       }
       showView(view);
     },
@@ -228,6 +236,58 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     return false;
   }
 
+  const offers = new Map<TourId, { result: Promise<boolean>; stop(): void }>();
+
+  const offer = (id: TourId, trigger: string, options?: { retryMs?: number }): Promise<boolean> => {
+    const tour = getTour(id);
+    if (!tour) return Promise.resolve(false);
+    const pending = offers.get(id);
+    if (pending) return pending.result;
+    const state = store.tourState(id);
+    if (state && state.status !== 'skipped') return Promise.resolve(false);
+    const deadline = deps.now() + (options?.retryMs ?? 0);
+    let cancelTimer: (() => void) | null = null;
+    let finish: (ok: boolean) => void = () => {};
+    const result = new Promise<boolean>((resolve) => {
+      finish = (ok) => {
+        cancelTimer?.();
+        cancelTimer = null;
+        offers.delete(id);
+        resolve(ok);
+      };
+    });
+    offers.set(id, { result, stop: () => finish(false) });
+    const attempt = () => {
+      cancelTimer = null;
+      if (triggers.canAutoOffer(tour)) {
+        markAutoUsed(true);
+        tourTelemetry().track('tour_offered', { tour: id, trigger });
+        begin(id, trigger, false).then(
+          (started) => {
+            if (!started) markAutoUsed(false);
+            finish(started);
+          },
+          () => {
+            markAutoUsed(false);
+            finish(false);
+          },
+        );
+        return;
+      }
+      if (store.state.value?.tips_mode === 'auto' && deps.isBusy() && deps.now() < deadline) {
+        cancelTimer = deps.setTimer(attempt, OFFER_POLL_MS);
+        return;
+      }
+      finish(false);
+    };
+    attempt();
+    return result;
+  };
+
+  const cancelOffers = () => {
+    for (const pending of [...offers.values()]) pending.stop();
+  };
+
   const api: ToursApi = {
     active,
     hubItems: hubItems as unknown as ToursApi['hubItems'],
@@ -256,6 +316,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
       markAutoUsed(true);
       if (!(await runSequence(ids, trigger))) markAutoUsed(false);
     },
+    offer,
     async setIntent(intent, options) {
       const before = store.state.value;
       const previous = before ? { intent: before.intent, invited: before.invited } : null;
@@ -309,6 +370,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     },
     signedOut() {
       sequence = null;
+      cancelOffers();
       runner.abandon();
       triggers.dispose();
       store.clear();
@@ -327,6 +389,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
     },
     dispose() {
       sequence = null;
+      cancelOffers();
       runner.dispose();
       triggers.dispose();
       stopRenewing();

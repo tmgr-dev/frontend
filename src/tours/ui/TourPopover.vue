@@ -12,7 +12,15 @@
 	>
 		<div class="tour-pop__eyebrow">{{ eyebrow }}</div>
 		<h2 :id="titleId" class="tour-pop__title">{{ title }}</h2>
-		<p :id="bodyId" class="tour-pop__body">{{ body }}</p>
+		<p :id="bodyId" class="tour-pop__body">
+			<template v-if="bodyParts">
+				<template v-for="(part, i) in bodyParts" :key="i">
+					<kbd v-if="part.kind === 'key'" class="tour-kbd">{{ part.text }}</kbd>
+					<template v-else>{{ part.text }}</template>
+				</template>
+			</template>
+			<template v-else>{{ body }}</template>
+		</p>
 		<div v-if="total > 1" class="tour-pop__dots" aria-hidden="true">
 			<span
 				v-for="n in total"
@@ -56,7 +64,8 @@
 </template>
 
 <script lang="ts">
-	import { computed, defineComponent } from 'vue';
+	import { computed, defineComponent, type PropType } from 'vue';
+	import type { BodyPart } from '../keycaps';
 	import TourSkipMenu, { type SkipMenuKey } from './TourSkipMenu.vue';
 
 	let counter = 0;
@@ -68,6 +77,7 @@
 			tourTitle: { type: String, default: '' },
 			title: { type: String, required: true },
 			body: { type: String, required: true },
+			bodyParts: { type: Array as PropType<BodyPart[] | null>, default: null },
 			position: { type: Number, required: true },
 			total: { type: Number, required: true },
 			waiting: { type: Boolean, default: false },
